@@ -5,8 +5,8 @@ parts which ordinary host parsers otherwise disagree about; it is not a new
 serialization syntax.
 
 It applies to protocol frames, settings, inputs, results, Service values,
-Event data, schemas, and descriptors unless a narrower profile states a lower
-limit.
+Event data, schemas, and descriptors unless a particular protocol or value
+seam states a lower limit.
 
 ## Syntax and strings
 
@@ -60,10 +60,11 @@ bytes in one number token                      128
 ```
 
 Every array item and object member value is one child value node; member names
-are not additional nodes. A profile may impose a smaller bound only when that
-bound is declared before the value is produced or accepted—for example in the
-immutable Run limits supplied at invocation. It may never accept a value above
-the JSON/1 absolute maxima while claiming JSON/1 conformance.
+are not additional nodes. A declared invocation or protocol limit may impose a
+smaller bound only when that bound is known before the value is produced or
+accepted—for example in the immutable Run limits supplied at invocation. It
+may never accept a value above the JSON/1 absolute maxima while claiming
+JSON/1 conformance.
 
 Malformed or out-of-domain data is `INVALID_JSON` at a protocol boundary. A
 narrower value seam reports its own validation error, such as

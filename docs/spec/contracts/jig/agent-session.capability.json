@@ -1,0 +1,259 @@
+{
+  "$schema": "https://flow.dev/schemas/capability-contract-1.schema.json",
+  "flowCapabilityContract": 1,
+  "id": "https://jig.dev/contracts/agent-session",
+  "version": "1.0.0",
+  "methods": {
+    "open": {
+      "input": { "$ref": "#/$defs/Empty" },
+      "output": { "$ref": "#/$defs/Opened" },
+      "errors": {}
+    },
+    "prompt": {
+      "input": { "$ref": "#/$defs/PromptInput" },
+      "output": { "$ref": "#/$defs/AgentResult" },
+      "errors": {
+        "session-busy": { "$ref": "#/$defs/Empty" },
+        "turn-id-conflict": { "$ref": "#/$defs/Empty" }
+      }
+    },
+    "events": {
+      "input": { "$ref": "#/$defs/EventsInput" },
+      "output": { "$ref": "#/$defs/EventsOutput" },
+      "errors": {
+        "cursor-expired": { "$ref": "#/$defs/CursorExpired" },
+        "cursor-ahead": { "$ref": "#/$defs/CursorAhead" }
+      }
+    },
+    "close": {
+      "input": { "$ref": "#/$defs/SessionRef" },
+      "output": { "$ref": "#/$defs/Empty" },
+      "errors": {}
+    }
+  },
+  "$defs": {
+    "Empty": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": false
+    },
+    "SessionRef": {
+      "type": "object",
+      "properties": {
+        "sessionId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        }
+      },
+      "required": ["sessionId"],
+      "additionalProperties": false
+    },
+    "Opened": {
+      "type": "object",
+      "properties": {
+        "sessionId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        }
+      },
+      "required": ["sessionId"],
+      "additionalProperties": false
+    },
+    "PromptInput": {
+      "type": "object",
+      "properties": {
+        "sessionId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "turnId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "instructions": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1048576
+        },
+        "responseSchema": true
+      },
+      "required": ["sessionId", "turnId", "instructions"],
+      "additionalProperties": false
+    },
+    "AgentResult": {
+      "type": "object",
+      "properties": {
+        "outcome": {
+          "enum": ["completed", "blocked", "limit"]
+        },
+        "text": {
+          "type": "string",
+          "maxLength": 8388608
+        },
+        "structured": true
+      },
+      "required": ["outcome", "text"],
+      "additionalProperties": false
+    },
+    "EventsInput": {
+      "type": "object",
+      "properties": {
+        "sessionId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "afterSequence": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1024
+        },
+        "waitMs": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 60000
+        }
+      },
+      "required": ["sessionId", "afterSequence", "limit", "waitMs"],
+      "additionalProperties": false
+    },
+    "AgentEvent": {
+      "oneOf": [
+        { "$ref": "#/$defs/TurnStartedEvent" },
+        { "$ref": "#/$defs/MessageCompletedEvent" },
+        { "$ref": "#/$defs/TurnCompletedEvent" },
+        { "$ref": "#/$defs/TurnFailedEvent" },
+        { "$ref": "#/$defs/TurnCancelledEvent" }
+      ]
+    },
+    "TurnStartedEvent": {
+      "type": "object",
+      "properties": {
+        "sequence": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "turnId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "type": { "const": "turn.started" },
+        "data": { "$ref": "#/$defs/Empty" }
+      },
+      "required": ["sequence", "turnId", "type", "data"],
+      "additionalProperties": false
+    },
+    "MessageCompletedEvent": {
+      "type": "object",
+      "properties": {
+        "sequence": { "type": "integer", "minimum": 1 },
+        "turnId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "type": { "const": "message.completed" },
+        "data": { "$ref": "#/$defs/MessageCompletedData" }
+      },
+      "required": ["sequence", "turnId", "type", "data"],
+      "additionalProperties": false
+    },
+    "MessageCompletedData": {
+      "type": "object",
+      "properties": {
+        "text": { "type": "string", "maxLength": 8388608 }
+      },
+      "required": ["text"],
+      "additionalProperties": false
+    },
+    "TurnCompletedEvent": {
+      "type": "object",
+      "properties": {
+        "sequence": { "type": "integer", "minimum": 1 },
+        "turnId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "type": { "const": "turn.completed" },
+        "data": { "$ref": "#/$defs/TurnCompletedData" }
+      },
+      "required": ["sequence", "turnId", "type", "data"],
+      "additionalProperties": false
+    },
+    "TurnCompletedData": {
+      "type": "object",
+      "properties": {
+        "outcome": { "enum": ["completed", "blocked", "limit"] }
+      },
+      "required": ["outcome"],
+      "additionalProperties": false
+    },
+    "TurnFailedEvent": {
+      "type": "object",
+      "properties": {
+        "sequence": { "type": "integer", "minimum": 1 },
+        "turnId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "type": { "const": "turn.failed" },
+        "data": { "$ref": "#/$defs/TurnFailedData" }
+      },
+      "required": ["sequence", "turnId", "type", "data"],
+      "additionalProperties": false
+    },
+    "TurnFailedData": {
+      "type": "object",
+      "properties": {
+        "code": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "message": { "type": "string", "maxLength": 8192 }
+      },
+      "required": ["code", "message"],
+      "additionalProperties": false
+    },
+    "TurnCancelledEvent": {
+      "type": "object",
+      "properties": {
+        "sequence": { "type": "integer", "minimum": 1 },
+        "turnId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "type": { "const": "turn.cancelled" },
+        "data": { "$ref": "#/$defs/Empty" }
+      },
+      "required": ["sequence", "turnId", "type", "data"],
+      "additionalProperties": false
+    },
+    "EventsOutput": {
+      "type": "object",
+      "properties": {
+        "events": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/AgentEvent" },
+          "maxItems": 1024
+        },
+        "nextSequence": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": ["events", "nextSequence"],
+      "additionalProperties": false
+    },
+    "CursorExpired": {
+      "type": "object",
+      "properties": {
+        "retentionFloor": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": ["retentionFloor"],
+      "additionalProperties": false
+    },
+    "CursorAhead": {
+      "type": "object",
+      "properties": {
+        "latestSequence": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": ["latestSequence"],
+      "additionalProperties": false
+    }
+  }
+}

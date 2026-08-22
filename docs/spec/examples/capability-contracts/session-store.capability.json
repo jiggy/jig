@@ -1,0 +1,59 @@
+{
+  "$schema": "https://flow.dev/schemas/capability-contract-1.schema.json",
+  "flowCapabilityContract": 1,
+  "id": "https://example.org/contracts/session-store",
+  "version": "1.0.0",
+  "methods": {
+    "read": {
+      "input": {
+        "$ref": "#/$defs/ReadInput"
+      },
+      "output": {
+        "$ref": "#/$defs/Session"
+      },
+      "errors": {
+        "not-found": {
+          "$ref": "#/$defs/NotFound"
+        }
+      }
+    }
+  },
+  "$defs": {
+    "ReadInput": {
+      "type": "object",
+      "properties": {
+        "sessionId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        }
+      },
+      "required": ["sessionId"],
+      "additionalProperties": false
+    },
+    "Session": {
+      "type": "object",
+      "properties": {
+        "sessionId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        }
+      },
+      "required": ["sessionId"],
+      "additionalProperties": false
+    },
+    "NotFound": {
+      "type": "object",
+      "properties": {
+        "sessionId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        }
+      },
+      "required": ["sessionId"],
+      "additionalProperties": false
+    }
+  }
+}

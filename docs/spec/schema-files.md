@@ -14,12 +14,20 @@ code.
 | `settings.schema.json` | Run or Service | The complete immutable Binding `settings` object |
 | `result.schema.json` | Run | The complete normal `{ "outcome", "output" }` result |
 
-Service packages use their Service Contract/1 descriptor for method inputs,
+The third name is `result`, not `output`, because a package may declare several
+outcomes whose legal output shapes differ. Validating the complete value lets a
+schema express that correlation; an output-only schema could not.
+
+Service packages use their Capability Contract/1 descriptors for method inputs,
 results, and named errors. A Service package containing `input.schema.json` or
 `result.schema.json` is invalid. V1 has no dual-mode package.
+Capability descriptor rules are specified in
+[`capability-contracts.md`](capability-contracts.md).
 
 ## 1. Absence has exact semantics
 
+- Binding `settings` is always a JSON object, whether or not a schema exists.
+  Arrays, scalars, and `null` are never settings values.
 - Without `input.schema.json`, any value admitted by the bounded FLOW JSON
   data model is valid input.
 - Without `settings.schema.json`, the only valid settings value is `{}`. A
@@ -35,10 +43,16 @@ environment variables, defaults, examples, or an earlier invocation.
 Jig parses and validates every present schema while creating the inert package
 snapshot, before package code or instructions can run.
 
-Settings are validated as one complete value during Binding normalization,
+Settings are first required to be one complete JSON object and are then
+validated against `settings.schema.json` during Binding normalization,
 before runtime probing, dependency preparation, or Service mounting. There is
 no inheritance, merge, per-Run overlay, environment fallback, or default
 insertion.
+
+A value chosen once for a configured use, such as `maxRetries`, is a setting.
+A value expected to vary from one invocation to another is Run input. Durable
+working data belongs in an attachment or bound capability. These three seams
+replace variable interpolation rather than hiding it elsewhere.
 
 Input is validated against the actual call value before a Run process or
 instruction Agent starts. For open-ended Flow resolution it is also a
@@ -101,7 +115,9 @@ disagreement. `uniqueItems` is deferred because portable deep-uniqueness work
 is difficult to bound. `propertyNames` is deferred to avoid inventing a virtual
 instance-pointer identity for object keys. Values in `const` and `enum` are
 limited to JSON/1 scalars; structural alternatives use schema applicators.
-`description` and `examples` remain inert annotations.
+`description` and `examples` remain inert annotations. A Capability Contract
+descriptor which embeds them still digests the complete descriptor; “inert for
+validation” does not mean “excluded from interface identity.”
 
 `$defs` is allowed only on the root object. `$ref` accepts only an acyclic
 same-document JSON Pointer of the form `#/$defs/<name>`; remote, relative,
@@ -114,7 +130,7 @@ instance. Number handling and equality use JSON/1 rather than host-language
 integer or decimal extensions.
 
 The exact same Schema/1 keyword and evaluation dialect is used by embedded
-input, output, and error-data schemas in Service Contract/1; embedded schemas
+input, output, and error-data schemas in Capability Contract/1; embedded schemas
 do not repeat the file-root `$schema` declaration. FLOW does not maintain two
 subtly different schema languages.
 
