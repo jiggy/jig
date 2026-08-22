@@ -1,0 +1,10 @@
+# Local agent and sandbox state
+/.agent-sandbox/
+/agent-sandbox/
+/.codex/
+/original.research.md
+/.tmp/
+
+# Local environment files
+*.env
+.*.env
