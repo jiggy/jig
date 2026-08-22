@@ -1,0 +1,19 @@
+{
+  "$schema": "https://flow.dev/schemas/schema-1.json",
+  "title": "Gauntlet settings",
+  "type": "object",
+  "properties": {
+    "maxRetries": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 20
+    },
+    "minimumScore": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    }
+  },
+  "required": ["maxRetries", "minimumScore"],
+  "additionalProperties": false
+}

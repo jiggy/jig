@@ -1,0 +1,28 @@
+{
+  "$schema": "https://flow.dev/schemas/schema-1.json",
+  "title": "Ticket input",
+  "type": "object",
+  "properties": {
+    "ticketId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "request": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 65536
+    },
+    "qualityReferences": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 2048
+      },
+      "maxItems": 32
+    }
+  },
+  "required": ["ticketId", "request"],
+  "additionalProperties": false
+}
