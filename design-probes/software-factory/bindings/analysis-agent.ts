@@ -1,9 +1,8 @@
 // DESIGN PROBE ONLY: routing and reference analysis receive no attachments or tools.
+import { run as acpAgentRun } from "@jig/agent-acp";
 import { bind, hostCapability } from "jig";
 
 export default bind({
-  use: hostCapability("local-agent", {
-    export: "run",
-  }),
+  use: hostCapability(acpAgentRun),
   settings: {},
 });

@@ -1,10 +1,9 @@
 // DESIGN PROBE ONLY: exact Agent Run provider configured for factory work.
+import { run as acpAgentRun } from "@jig/agent-acp";
 import { bind, hostCapability, root } from "jig";
 
 export default bind({
-  use: hostCapability("local-agent", {
-    export: "run",
-  }),
+  use: hostCapability(acpAgentRun),
   settings: {},
   attachments: {
     workspace: root("./workspace"),

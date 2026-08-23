@@ -30,8 +30,8 @@ Majority-Vote path obtains three parallel attachment-free opinions through
 
 Each material phase enters its revision-checked Kanban stage before doing the
 work. Success ends in `done`; every domain `blocked` edge first moves the same
-card to `blocked`. Duplicate watcher Events converge on the same card by
-submission ID. A later duplicate returns `duplicate` without selecting a
+card to `blocked`. Duplicate source Events converge on the same card by file
+fingerprint. A later duplicate returns `duplicate` without selecting a
 strategy; a simultaneous duplicate loses a revision comparison before it can
 advance a second strategy.
 

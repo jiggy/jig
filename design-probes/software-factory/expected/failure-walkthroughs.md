@@ -2,27 +2,28 @@
 
 These are expected architectural outcomes, not executed tests.
 
-## Watcher input or attachment failure
+## Owned Hook source input or activation failure
 
 - Nested, escaping, symlinked, special, oversized, empty, or unstable files do
   not become submissions and cannot widen the read-only inbox view.
-- The watcher creates its watch before readiness and initial scan. A file
-  changed during the scan is still queued for observation; a concurrent delete
-  simply leaves no submission.
-- Mount loss closes the watcher and its effects. Restart scans stable files
-  again, so filesystem delivery is explicitly at least once.
+- The registered source creates its watch before readiness and initial scan. A
+  file changed during the scan is still queued for observation; a concurrent
+  delete simply leaves no submission.
+- Read authority, source preparation, or readiness failure prevents the Hook
+  revision from activating. Source loss closes new publication admission;
+  restart may scan stable files again under the same source occurrence keys.
 
 ## Journal authority and crash boundaries
 
-- Publishing any type outside the one admitted URI is denied before append.
-  The Flow cannot forge `source`, position, ID, commit time, Run, or
+- Publishing any type outside the source registration is denied before commit.
+  The source cannot forge another identity, position, ID, commit time, Run, or
   correlation metadata.
-- Cancellation or crash before append commit produces no Event. After the
+- Cancellation or crash before Journal commit produces no Event. After the
   atomic transaction commits, the Event and Hook selection remain facts even
-  if the watcher response is lost or its Mount later fails.
-- Retrying within one Mount owner joins the same append operation. A later
-  Mount may append a second Event for the same stable file; both carry the same
-  deterministic submission ID and converge at Kanban.
+  if the source acknowledgement is lost or its lifetime later fails.
+- Retrying the same source revision and path/content fingerprint returns the
+  same Event. A later Hook revision may create another authenticated Event for
+  the same file; both fingerprints converge at Kanban.
 
 ## Kanban idempotency and conflicts
 

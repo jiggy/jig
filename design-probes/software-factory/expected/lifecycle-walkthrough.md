@@ -2,7 +2,7 @@
 
 This is ordering for review, not a protocol serialization.
 
-## Project admission and Service activation
+## Project admission and activation
 
 1. Jig captures `jig.ts`, shallow source membership, declarations, package
    trees, schemas, descriptors, and static import closure.
@@ -12,24 +12,25 @@ This is ordering for review, not a protocol serialization.
 3. It derives an exact Run or Service recipe—or exact unavailability—for every
    Binding and displays one semantic/authority delta. The initial unlocked plan
    also proposes `jig.lock`.
-4. Aggregate apply publishes one immutable generation and Hook interval. It
-   eagerly mounts ready `kanban` and `inbox-watcher` Service Bindings.
+4. Aggregate apply publishes one immutable generation, the Hook interval, and
+   the owned filesystem-source lifetime. It eagerly mounts ready `kanban`.
 5. Kanban acquires the only board write lease, registers its exact export, and
-   reports ready. The watcher acquires only a read-only inbox view, creates its
-   watch, reports an empty export snapshot ready, and scans existing files.
+   reports ready. The registered source acquires only a read-only inbox view,
+   creates its watch before scanning, and buffers observations until the Hook
+   interval opens.
 
 ## Stable file and atomic Event handoff
 
 1. A new immediate Markdown file produces one or more filesystem observations.
-   The watcher accepts only a regular bounded file whose stat and bytes remain
+   The source accepts only a regular bounded file whose stat and bytes remain
    unchanged across its settle interval.
-2. It derives `submissionId = SHA-256(item || NUL || request)` and calls
-   `journal.append` under an operation ID derived from that submission.
-3. One Jig transaction commits the authenticated Event, append terminal result,
-   matching Hook selection, and derived-Run outbox record.
-4. Filesystem observation is at least once across watcher Mount generations.
-   A repeat may create another Event, but it carries the same submission ID;
-   the downstream Kanban `ensure` operation supplies domain idempotency.
+2. It derives `fingerprint = SHA-256(path || NUL || text)` and submits that
+   source-owned occurrence through Jig's internal Journal surface.
+3. One Jig transaction commits the authenticated Event, source occurrence
+   result, matching Hook selection, and derived-Run outbox record.
+4. Repeating the same source revision, fingerprint, and value returns the same
+   Event. Kanban `ensure` independently retains domain idempotency across a
+   later Hook revision or deliberately repeated fact.
 
 ## Hook-derived Spindle Run and card creation
 
@@ -98,8 +99,9 @@ owners terminal or fenced, validates the result, and commits Run success.
 
 Kanban rollout cannot shadow-activate two writers against the same board. The
 old Mount drains and releases its write lease before the replacement mounts.
-The watcher may overlap only if both generations remain read-only, but Hook
-intervals and submission IDs still make duplicate behavior visible.
+An old Hook source loses publication admission at the generation boundary
+before it is disposed; the replacement may begin committing only after its new
+interval opens. File fingerprints still make deliberate duplicates visible.
 
 ## Deliberate repair
 

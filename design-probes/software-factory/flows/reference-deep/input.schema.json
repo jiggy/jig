@@ -5,16 +5,17 @@
   "properties": {
     "eventId": { "type": "string", "minLength": 1, "maxLength": 128 },
     "journalPosition": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
-    "type": { "const": "https://jig.example/events/inbox-item-created" },
+    "type": { "const": "https://jig.dev/events/stable-text-file" },
     "source": { "type": "string", "minLength": 1, "maxLength": 512 },
     "committedAtUnixMs": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
     "data": {
       "type": "object",
       "properties": {
-        "item": { "type": "string", "minLength": 1, "maxLength": 255 },
-        "request": { "type": "string", "minLength": 1, "maxLength": 262144 }
+        "fingerprint": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "path": { "type": "string", "minLength": 1, "maxLength": 255 },
+        "text": { "type": "string", "minLength": 1, "maxLength": 262144 }
       },
-      "required": ["item", "request"],
+      "required": ["fingerprint", "path", "text"],
       "additionalProperties": false
     },
     "subject": { "type": "string", "maxLength": 2048 },

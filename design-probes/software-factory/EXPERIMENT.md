@@ -12,8 +12,8 @@
 Can a realistic but bounded software-factory journey remain understandable
 when it combines:
 
-1. a long-lived inbox watcher and canonical immutable Event;
-2. one exact inert Hook;
+1. one inert Hook owning a registered filesystem Event Source;
+2. a canonical immutable Event and exact Event-to-Run admission;
 3. a Spindle-local semantic Router over two connected strategy Flows;
 4. exact Agent and Semantic Choice dependencies;
 5. per-call package-local Agent skill selection;
@@ -47,8 +47,8 @@ publish, install, or promote this tree. Never add `.jig/`, a speculative
 
 Included:
 
-- one watched ticket file and mounted producer Service;
-- one canonical Journal effect and one exact Hook;
+- one watched ticket file through an owned registered Hook source;
+- one canonical Journal Event and one exact Hook target;
 - one mounted file-backed Kanban Service;
 - one Spindle package containing the finite Gauntlet and Majority-Vote route
   table;

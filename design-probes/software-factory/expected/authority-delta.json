@@ -5,26 +5,6 @@
   "reviewRule": "A real plan must separately display requested, granted, planned, and post-spawn realized authority. This fixture is not enforcement evidence.",
   "adds": [
     {
-      "binding": "journal",
-      "authority": "canonical Journal append",
-      "ceiling": {
-        "eventTypes": [
-          "https://jig.example/events/inbox-item-created"
-        ]
-      },
-      "filesystem": {}
-    },
-    {
-      "binding": "inbox-watcher",
-      "serviceMount": true,
-      "filesystem": {
-        "inbox": "read-only ./inbox"
-      },
-      "effects": {
-        "journal": "exact journal Binding"
-      }
-    },
-    {
       "binding": "kanban",
       "serviceMount": true,
       "filesystem": {
@@ -114,7 +94,14 @@
     },
     {
       "hook": "on-inbox-item",
-      "authority": "start one exact triage Run for each matching source/type Event",
+      "ownedSource": "@jig/hooks-files#stableTextFiles",
+      "filesystem": {
+        "root": "read-only ./inbox"
+      },
+      "publicationCeiling": [
+        "https://jig.dev/events/stable-text-file"
+      ],
+      "authority": "observe bounded stable Markdown files, commit authenticated Events, and start one exact triage Run per Event",
       "canFilterRewriteDelayOrVeto": false
     }
   ],

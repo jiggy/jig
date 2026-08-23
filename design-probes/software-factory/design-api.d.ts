@@ -18,13 +18,18 @@ declare module "jig" {
     readonly flows?: DiscoverySource | readonly string[];
     readonly bindings?: DiscoverySource | readonly string[];
     readonly hooks?: DiscoverySource | readonly string[];
-    readonly semanticChoice?: string;
+    readonly semanticChoice?: BindingReference;
+  }
+
+  export interface HostProviderExport {
+    readonly kind: "host-provider-export";
+    readonly module: string;
+    readonly export: string;
   }
 
   export interface HostCapabilityReference {
     readonly kind: "host-capability";
-    readonly provider: string;
-    readonly export: string;
+    readonly registration: HostProviderExport;
   }
 
   export interface BindingReference {
@@ -39,7 +44,7 @@ declare module "jig" {
 
   export interface CandidateSetReference {
     readonly kind: "candidate-set";
-    readonly candidates: readonly string[];
+    readonly candidates: readonly BindingReference[];
   }
 
   export interface InstructionConfiguration {
@@ -58,11 +63,22 @@ declare module "jig" {
   }
 
   export interface HookDefinition {
-    readonly source:
-      | { readonly binding: string }
-      | { readonly kernel: string };
+    readonly on: EventSelector | EventSourceUse;
+    readonly run: BindingReference;
+  }
+
+  export interface EventSelector {
+    readonly kind: "event-selector";
+    readonly producer: BindingReference | { readonly kernel: string };
     readonly type: string;
-    readonly target: string;
+  }
+
+  export interface EventSourceUse {
+    readonly kind: "event-source-use";
+    readonly registration: string;
+    readonly eventType: string;
+    readonly settings: Readonly<Record<string, JsonValue>>;
+    readonly roots: Readonly<Record<string, AttachmentRoot>>;
   }
 
   export function discover(
@@ -76,8 +92,7 @@ declare module "jig" {
   export function hook<T extends HookDefinition>(definition: T): Readonly<T>;
 
   export function hostCapability(
-    provider: string,
-    selection: { readonly export: string },
+    registration: HostProviderExport,
   ): HostCapabilityReference;
 
   export function bindingRef(binding: string): BindingReference;
@@ -85,6 +100,33 @@ declare module "jig" {
   export function root(path: string): AttachmentRoot;
 
   export function candidates(
-    candidates: readonly string[],
+    candidates: readonly BindingReference[],
   ): CandidateSetReference;
+
+  export function event(
+    producer: BindingReference | { readonly kernel: string },
+    type: string,
+  ): EventSelector;
+}
+
+declare module "@jig/agent-acp" {
+  import type { HostProviderExport } from "jig";
+  export const run: HostProviderExport;
+}
+
+declare module "@jig/semantic-choice" {
+  import type { HostProviderExport } from "jig";
+  export const chooseViaAgent: HostProviderExport;
+}
+
+declare module "@jig/hooks-files" {
+  import type { AttachmentRoot, EventSourceUse } from "jig";
+
+  export function stableTextFiles(options: {
+    readonly root: AttachmentRoot;
+    readonly suffix: string;
+    readonly settleMs: number;
+    readonly maxBytes: number;
+    readonly maxScalars: number;
+  }): EventSourceUse;
 }

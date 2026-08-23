@@ -32,9 +32,9 @@ interface InboxEvent {
   readonly eventId: string;
   readonly type: string;
   readonly data: {
-    readonly submissionId: string;
-    readonly item: string;
-    readonly request: string;
+    readonly fingerprint: string;
+    readonly path: string;
+    readonly text: string;
   };
 }
 
@@ -133,9 +133,9 @@ class OpenCard extends Node<InboxEvent, InboxEvent, FactoryState> {
         slot: "kanban",
         method: "ensure",
         input: asJson({
-          submissionId: event.data.submissionId,
-          title: event.data.item,
-          request: event.data.request,
+          submissionId: event.data.fingerprint,
+          title: event.data.path,
+          request: event.data.text,
         }),
       },
     );

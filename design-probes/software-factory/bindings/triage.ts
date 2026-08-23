@@ -14,8 +14,8 @@ export default bind({
     choice: bindingRef("semantic-choice"),
     kanban: bindingRef("kanban"),
     "reference-research": candidates([
-      "reference-fast",
-      "reference-deep",
+      bindingRef("reference-fast"),
+      bindingRef("reference-deep"),
     ]),
   },
 });

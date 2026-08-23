@@ -38,6 +38,8 @@ When artifacts disagree:
   relevant to the scenario—not only success.
 - Never populate or commit `.jig/` host state.
 - Never place Runtime Adapter or Sandbox Backend preferences in a project.
+- Prefer Bun for new TypeScript probes and Python for the second independent
+  runtime; use Deno only when a scenario specifically exercises Deno semantics.
 - A mock must not claim to enforce security, durability, or protocol semantics.
 - Delete one-use helpers and speculative abstractions during every review.
 

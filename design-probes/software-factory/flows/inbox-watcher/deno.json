@@ -1,8 +1,0 @@
-{
-  "compilerOptions": {
-    "strict": true
-  },
-  "imports": {
-    "@flow/service": "jsr:@flow/service@^1.0.0"
-  }
-}

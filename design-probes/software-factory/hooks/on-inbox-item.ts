@@ -1,10 +1,14 @@
-// DESIGN PROBE ONLY:
-// inbox-watcher Mount -> Journal Event -> this admitted tuple -> triage Run.
-// The Hook is admission data, not the filesystem watcher or a callback.
-import { hook } from "jig";
+// DESIGN PROBE ONLY: one inert owned source -> durable Event -> triage Run.
+import { stableTextFiles } from "@jig/hooks-files";
+import { bindingRef, hook, root } from "jig";
 
 export default hook({
-  source: { binding: "inbox-watcher" },
-  type: "https://jig.example/events/inbox-item-created",
-  target: "triage",
+  on: stableTextFiles({
+    root: root("./inbox"),
+    suffix: ".md",
+    settleMs: 250,
+    maxBytes: 1_048_576,
+    maxScalars: 262_144,
+  }),
+  run: bindingRef("triage"),
 });

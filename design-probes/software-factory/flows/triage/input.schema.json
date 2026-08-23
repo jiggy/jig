@@ -14,7 +14,7 @@
       "maximum": 9007199254740991
     },
     "type": {
-      "const": "https://jig.example/events/inbox-item-created"
+      "const": "https://jig.dev/events/stable-text-file"
     },
     "source": {
       "type": "string",
@@ -29,22 +29,22 @@
     "data": {
       "type": "object",
       "properties": {
-        "submissionId": {
+        "fingerprint": {
           "type": "string",
           "pattern": "^[0-9a-f]{64}$"
         },
-        "item": {
+        "path": {
           "type": "string",
           "minLength": 1,
           "maxLength": 255
         },
-        "request": {
+        "text": {
           "type": "string",
           "minLength": 1,
           "maxLength": 262144
         }
       },
-      "required": ["submissionId", "item", "request"],
+      "required": ["fingerprint", "path", "text"],
       "additionalProperties": false
     },
     "subject": {

@@ -6,10 +6,10 @@ This is a tabletop story, not an invocation guide.
 
 One reviewed project generation contains:
 
-- a mounted Deno `inbox-watcher` Service with read-only inbox access and one
-  exact Journal dependency;
+- one Hook owning an admitted `stableTextFiles` source with read-only inbox
+  access;
 - a mounted single-writer `kanban` Service with a read-write board attachment;
-- one Hook revision from the watcher's Event to the `triage` Run Binding;
+- that Hook's exact durable Event-to-`triage` Run relation;
 - one Spindle triage package with two fixed outgoing strategy Flows;
 - distinct Agent Run Bindings for attachment-free analysis, writable factory
   work, and staging-only repair;
@@ -23,24 +23,24 @@ real plan would propose a complete lock and admission generation together.
 
 ## File to Event to Run
 
-1. Jig eagerly mounts both ready Service Bindings for the admitted generation.
-   The watcher opens the filesystem watch before declaring readiness, then
-   scans existing immediate `*.md` files so the scan/watch boundary has no
-   silent gap.
+1. Jig mounts the ready Kanban Service and activates the Hook's registered
+   filesystem source. The source opens its watch before its initial scan and
+   buffers observations until the Hook interval opens, so the scan/watch and
+   activation boundaries have no silent gap.
 2. A person writes `inbox/TICKET-001.md`. After one settle interval with the
-   same size, modification time, and bytes, the watcher derives a submission ID
-   from the item name and content.
-3. The watcher calls its exact Journal slot. The Journal atomically commits the
-   Event, effect result, matching Hook selection, and derived-Run outbox entry.
-   Filesystem notifications are at least once across Mount restart, so the
-   stable submission ID—not an exactly-once watcher claim—is the domain
-   idempotency key.
+   same size, modification time, and bytes, the source derives a fingerprint
+   from the relative path and content.
+3. The trusted source integration commits the authenticated
+   `stable-text-file` Event through Jig's internal Journal surface. It uses the
+   path/content fingerprint as its source-operation key. The Journal atomically
+   commits the Event, source result, Hook selection, and derived-Run outbox
+   entry; the project needs neither a producer Flow nor a Journal Binding.
 4. The Hook-derived `triage` Run receives the exact immutable Event. The Hook
    does not execute a callback, read the file, or map its payload; its complete
-   connection is the admitted `(watcher source, Event type) -> triage Binding`
+   connection is the admitted `(owned source, Event type) -> triage Binding`
    tuple.
-5. Triage calls `kanban.ensure`. Identical duplicate watcher Events converge on
-   `card-<submissionId>` in stage `triage`; different content under one ID is a
+5. Triage calls `kanban.ensure`. Identical duplicate source Events converge on
+   `card-<fingerprint>` in stage `triage`; different content under one ID is a
    conflict. A later duplicate that finds the card beyond `triage` returns the
    declared `duplicate` outcome before routing. Card state is an ordinary JSON
    file under `kanban/cards/`.
@@ -68,10 +68,10 @@ real plan would propose a complete lock and admission generation together.
    project `semanticChoice` Binding only because both remain eligible. The
    selected instruction-only child runs with its own package and Agent context;
    triage validates the returned JSON/1 `Reference` shape itself.
-4. Removing `semanticChoice: "semantic-choice"` would not affect the Spindle
-   Router because it still has the explicit `choice` slot. It would make this
-   two-candidate research call terminate `BINDING_AMBIGUOUS`. With only one
-   eligible research candidate, removing it would change nothing.
+4. Removing `semanticChoice: bindingRef("semantic-choice")` would not affect
+   the Spindle Router because it still has the explicit `choice` slot. It would
+   make this two-candidate research call terminate `BINDING_AMBIGUOUS`. With
+   only one eligible research candidate, removing it would change nothing.
 5. Agent calls select role context explicitly. Voters receive only
    `solution-design`; build/revision/synthesis receive only `focused-coding`;
    review and verification receive only `focused-validation`. Omission means
