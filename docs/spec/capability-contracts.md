@@ -168,10 +168,14 @@ the digest. This avoids a second normative “semantic projection” algorithm a
 makes equivocation detection exact. Documentation which should not change
 interface identity belongs outside the descriptor.
 
-Two different descriptors claiming the same URI/version are quarantined as
-equivocation. The digest proves descriptor identity, not publisher authority,
-provider behavior, quality, or semantic substitutability. Provenance and trust
-are recorded separately.
+Two descriptors claiming the same URI/version but deriving different digests
+are incompatible. A publisher, trusted index, or source revision claiming both
+is reported as equivocation in that authority domain. The mere presence of an
+untrusted conflicting package does not globally quarantine an otherwise exact
+trusted match; that would make namespace squatting a denial-of-service tool.
+The digest proves descriptor identity, not publisher authority, provider
+behavior, quality, or semantic substitutability. Provenance and trust are
+recorded separately.
 
 V1 has no compatible version ranges. Versions 1 and 3 do not satisfy a request
 for version 2. A provider may expose several exact descriptors; an adapter
@@ -180,21 +184,34 @@ provider.
 
 ## 4. Package declarations and loading
 
-A consumer records the exact triple in `FLOW.md`:
+A portable consumer carries the complete descriptor it expects inside its own
+package and references those bytes from `FLOW.md`:
 
 ```yaml
 uses:
   sessions:
-    contract: https://example.org/contracts/session-store
-    version: 1.0.0
-    digest: sha256:a8273fd117aa2f2aa8ee8805c0d598b3e1f3bad9036d368d8847bd41513158c5
+    contract: ./contracts/session-store.capability.json
 ```
 
-The local name `sessions` is a consumer slot, not a global identity. A
-project-local nonportable effect may use an explicit `local: true` declaration
-instead; missing a digest never means “weak public contract.”
+The local name `sessions` is a consumer slot, not a global identity. The path
+uses the Package/1 author-reference grammar: exact `./` prefix followed by
+canonical logical path segments. The prefix is stripped once without any
+other normalization, decoding, or case folding. The reference is confined to
+the same immutable staged package and resolves by exact case to one regular
+JSON file. Jig validates it before code loads and derives the contract URI,
+exact version, and canonical descriptor digest. Authors never copy a hash,
+URI, or version into the reference. A project-local nonportable effect may use
+an explicit `local: true` declaration instead; missing a descriptor never
+means “weak public contract.”
 
-A FLOW Service advertises descriptors by safe package-relative path:
+Carrying the descriptor is intentional progressive disclosure. Most Flows
+carry none. A Flow which depends on a strict service seam pays for one small,
+self-contained, offline-inspectable interface. Internal content-addressed
+storage may deduplicate identical copies; v1 does not add a contract package
+manager, ambient contract catalogue, or network fetch to save those bytes.
+
+A FLOW Service advertises descriptors with the same exact Package/1
+author-reference syntax:
 
 ```yaml
 provides:
@@ -202,13 +219,21 @@ provides:
 ```
 
 Before provider code loads, the host reads and bounds the descriptor, validates
-it, computes its digest, and matches the consumer triple.
+it, computes its digest, and matches the consumer's independently derived
+triple.
 
-Descriptor bytes may come from an exact provider package, trusted host-native
-registration, configured local catalogue, content-addressed cache, or optional
-index. The identity URI is never an instruction to fetch from the network and
-no central registry is required. The lock records provider source/revision,
-package digest, export, and contract triple separately.
+Provider descriptor bytes may come from an exact provider package or trusted
+host-native registration. A content-addressed cache or optional index may
+locate already known bytes, but the identity URI is never an instruction to
+fetch from the network and no central registry is required. The lock records
+the consumer package/path, derived triple, provider source/revision, provider
+package digest, and export separately.
+
+Locking a descriptor selected from providers without a consumer-carried
+descriptor would pin later drift but would not prove which interface the
+consumer was authored against. This is why the digest belongs in the lock and
+normalized state while the exact source bytes—not a handwritten digest—belong
+with the consumer.
 
 ## 5. Relationship to Service/1
 
@@ -241,12 +266,17 @@ v1.
 3. `true` schemas accept bounded JSON/1 while unknown methods/errors still
    reject.
 4. Strict schemas validate inputs, successes, and named error data.
-5. Changing any descriptor value under one URI/version causes equivocation.
+5. Changing any descriptor value under one URI/version makes the descriptors
+   incompatible and reports equivocation only for a source or authority which
+   claims both.
 6. Versions 1 and 3 do not satisfy exact version 2.
 7. Independent TypeScript and Python implementations compute the same
    domain-separated full-descriptor digest.
 8. Another SHA-256-bearing object cannot substitute for the contract digest.
-9. A provider resolves offline without dereferencing the identity URI.
-10. Descriptor validation occurs before provider execution.
-11. Concurrent Service invocations have isolated owners and cancellation.
-12. Provider loss never transparently rebinds or replays an invocation.
+9. A consumer and provider resolve offline from their exact descriptors without
+   dereferencing the identity URI; the lock records the derived triple.
+10. An untrusted conflicting claimant cannot globally quarantine an exact
+    trusted consumer/provider match.
+11. Descriptor validation occurs before provider execution.
+12. Concurrent Service invocations have isolated owners and cancellation.
+13. Provider loss never transparently rebinds or replays an invocation.

@@ -99,7 +99,7 @@ gauntlet-loop/
 ├── input.schema.json       optional fixed convention
 ├── settings.schema.json    optional fixed convention
 ├── result.schema.json      optional fixed convention
-├── contracts/              optional Service descriptors
+├── contracts/              optional consumed/provided capability descriptors
 ├── prompts/
 ├── skills/
 ├── references/
@@ -116,7 +116,6 @@ The common Run-capable form is:
 
 ```yaml
 ---
-flow: 1
 name: gauntlet-loop
 description: >
   Build and improve an inspectable artifact through implementation,
@@ -128,9 +127,7 @@ fallback: instruction
 # Structured capabilities consumed through effect/call.
 uses:
   agent:
-    contract: https://jig.dev/contracts/agent-run
-    version: 1.0.0
-    digest: sha256:124668db4b2b003532062d8da291d2e69696d782a38bd2cae9c0140057bd0f9b
+    contract: ./contracts/agent-run.capability.json
 
 outcomes:
   blocked: Progress requires external input.
@@ -147,7 +144,6 @@ A Service-capable package uses the same small vocabulary, adds `service` and
 
 ```yaml
 ---
-flow: 1
 name: session-store
 description: Provide long-lived structured access to stored Agent sessions.
 service: 1
@@ -158,18 +154,26 @@ attachments:
 ---
 ```
 
-Required fields are only `flow`, `name`, and `description`. The other fields
-are optional, but their shapes are normative. Unknown unnamespaced fields are
-errors; `x-*` fields are inert extensions. Frontmatter uses the JSON data model
-subset of YAML 1.2. Duplicate keys, tags, aliases, anchors, merge keys, and
-implementation-specific scalar types are rejected.
+Required fields are only `name` and `description`. The exact-case `FLOW.md`
+entrypoint already identifies Metadata/1, so v1 has no redundant `flow: 1`
+field. Every document valid today retains Metadata/1 semantics permanently;
+any future core vocabulary or semantic change must introduce a discriminator
+which old closed parsers reject. The other fields are optional, but their
+shapes, UTF-8/frontmatter grammar, and parser ceilings are normative. Unknown
+unnamespaced fields are errors; exact `x-<LocalName>` fields are inert
+extensions and can never gain Metadata/1 core meaning.
 
 These two forms comprise the complete v1 field vocabulary. Each portable
-`uses` entry is the exact contract URI/version/digest triple. Only a
-Service-capable consumer may set `binding: dynamic`; static is the default. A
-project-only package may instead mark a slot `local: true`, which is an
+`uses` entry points to the consumer's exact package-local Capability Contract/1
+descriptor. The descriptor carries its URI and exact version; Jig derives and
+locks its digest rather than asking authors to copy hashes into `FLOW.md`. Only
+a Service-capable consumer may set `binding: dynamic`; static is the default.
+A project-only package may instead mark a slot `local: true`, which is an
 explicit non-portability claim. These forms are mutually exclusive. Every
-`provides` entry is a safe package-relative path to one exact descriptor.
+contract reference uses exact `./` author syntax and resolves by exact case to
+one regular descriptor file in the staged package. The closed grammar and
+evolution rules are normative in
+[`../spec/package-format.md`](../spec/package-format.md).
 
 A code-backed package has no FLOW runtime declaration. FLOW does not own a
 runtime registry, runtime-version grammar, command, arguments array, or
@@ -230,13 +234,32 @@ instead only when:
 Candidate planning first attempts to build exactly one complete exact-code
 recipe. Only when zero qualify may both opt-ins select and pin a distinct
 instruction recipe containing the exact instruction runtime, conductor, Agent
-dependency Binding/export/contract, and authority envelope. Exact ambiguity
-remains unavailable and never falls back. An instruction-only package requires
-the instruction recipe directly. Run dependency admission later acquires one
-live provider-generation lease for that exact Agent export or fails without
-rebinding. A Run never chooses the branch: after an exact recipe is pinned, Jig
-never falls back because machinery disappeared or because schema, lock,
-preparation, launch, protocol exchange, or effect failed.
+host-capability Binding/export/contract, per-Run projection support, and
+authority envelope. A Service-backed Agent cannot qualify in v1 because its
+Mount authority is static. Exact ambiguity remains unavailable and never falls
+back. An instruction-only package requires the instruction recipe directly.
+Run dependency admission later acquires one live provider-generation lease for
+that exact Agent export or fails without rebinding. A Run never chooses the
+branch: after an exact recipe is pinned, Jig never falls back because machinery
+disappeared or because schema, lock, preparation, launch, protocol exchange, or
+effect failed.
+
+An instruction recipe is a Jig realization over the existing Run owner and
+Agent Run contract, not another FLOW protocol. After input/settings validation
+it creates one conductor child owner with the pinned Agent generation. The
+integration projects immutable logical resources for the exact package tree,
+canonical input/settings, declared outcomes, logical attachment/slot
+descriptions, and result schema—never host paths. Owner-scoped provider tools
+expose only the admitted attachments, skills, and existing
+`flow/call`/`effect/call` view. One small runtime-fixed Agent instruction refers
+to those resources; it never interpolates package or invocation content and is
+validated before dispatch. The Agent is called once with the complete
+`result.schema.json`, or a synthesized closed base-result schema. Only
+`completed` plus a valid structured `{ outcome, output }` becomes a provisional
+Flow result; Agent text is diagnostic, and Agent `blocked`/`limit` or missing
+structured data fails the implementation. Exact-code owner quiescence and
+result validation then apply unchanged. The focused Agent specification makes
+this mapping testable without standardizing prompt bytes.
 
 ### 3.4 Schemas are values, not shared files
 
@@ -444,6 +467,15 @@ Jig authoring concept. Time, randomness, secrets, network access, Agent work,
 Git, and other observable environment interactions use explicit effect slots
 when mediation matters.
 
+A language SDK may project those fields as one read-only `Run` convenience and
+offer a `serve(handler)` loop. Named attachments appear as sandbox-local roots
+with their exact mode; an SDK `resolve(relativePath)` helper may reject path
+escape but grants no authority. Native code still performs ordinary filesystem
+I/O and the Sandbox Backend remains the enforcement boundary. SDK packages are
+ordinary native dependencies declared and, where supported, locked through the
+package's native ecosystem metadata. A Runtime Adapter never injects an SDK or
+ambient library secretly.
+
 ### 5.5 Child Flows and effects
 
 `flow/call` names a consumer-local slot, optional discovery intent, and input.
@@ -452,11 +484,32 @@ record with the parent operation, and returns its public result. This is nested
 execution, not graph merging. Parent settings, attachments, slots, and grants
 do not inherit implicitly.
 
+Generic Flow composition proves only the common Run envelope and that the
+child satisfied its own result declaration. It does not create a consumer-side
+output contract, and Semantic Choice cannot turn prose similarity into type
+compatibility. An exact caller receives bounded JSON/1 and validates any shape
+on which its next operation depends using ordinary code. An instruction caller
+interprets the value under its procedure and still must fail visibly rather
+than assume missing fields. A stable machine-verifiable API shared by several
+operations belongs behind a Capability Contract instead.
+
 `effect/call` names a slot declared in `uses` (or explicitly local in project
 configuration), one method, and input. A slot may be backed by a host-native
 provider or an exact mounted Service registration. The caller never sees or
 selects an endpoint. Jig validates the owner, binding, contract, method,
 schemas, authority, deadline, budget, and provider generation before dispatch.
+
+Capability Contract/1 wire success is tagged `{ "value": ... }`, while a
+language SDK may return that validated value directly. The same SDK turns a
+declared `{ "error": { "name", "data" } }` into a catchable typed capability
+error. JSON-RPC, authority, cancellation, capacity, and provider-loss failures
+remain operation failures and are never presented as declared application
+errors. This unwrapping is ergonomic projection, not a different wire shape.
+
+Generic component code supplies one stable owner-local `operationId` for each
+semantic call; the SDK fills wire request and owner IDs. A graph runtime such
+as Spindle may derive that operation ID from immutable node-visit identity and
+a code-supplied local key. Neither mechanism weakens the ledger rules below.
 
 ### 5.6 Operation ledger and uncertainty
 
@@ -796,7 +849,8 @@ Any method value schema may be boolean `true`, meaning any bounded FLOW JSON/1
 value. This supports progressive formalization without creating a second loose
 contract format; changing it to a strict schema changes the interface.
 
-Contract compatibility in v1 is exact:
+Contract compatibility in v1 is exact. A portable consumer and provider each
+carry the self-contained descriptor bytes they claim:
 
 ```text
 contract URI + exact version + exact canonical descriptor digest
@@ -809,10 +863,14 @@ consumes one exact interface and provides another.
 The digest is SHA-256 over the domain separator
 `FLOW-Capability-Contract/1\0` followed by RFC 8785 canonical JSON for the
 complete descriptor. It identifies the exact descriptor; it is not publisher
-identity or behavioral proof. The lock separately
-records source/publisher authority evidence and continuity. Different bytes
-claiming the same URI/version are quarantined as equivocation. Local edits to a
-public descriptor require an authorized new version or an owner-qualified fork.
+identity or behavioral proof. `FLOW.md` references the consumer's package-local
+descriptor path; Jig derives the triple and records it in the lock instead of
+requiring a copied hash. The lock separately records source/publisher authority
+evidence and continuity. Different bytes claiming the same URI/version do not
+match. A publisher or trusted source claiming both is diagnosed as
+equivocation, while an unrelated untrusted conflicting claimant cannot
+globally quarantine an exact trusted match. Local edits to a public descriptor
+require an authorized new version or an owner-qualified fork.
 
 Descriptions and tests are evidence. Semantic ranking never converts a
 nonmatching contract into a compatible one.
@@ -879,7 +937,10 @@ export default bind({
   },
   slots: {
     agent: bindingRef("reviewer-agent"),
-    research: discover(factoryCandidates),
+    research: candidates([
+      "research-fast",
+      "research-deep",
+    ]),
   },
   attachments: {
     source: root("./project"),
@@ -959,19 +1020,26 @@ a FLOW Service package instead.
 The optional intent carried by the actual `flow/call` is the sole discovery
 meaning. A project may exact-bind its slot or configure an approved candidate
 snapshot, but it cannot rewrite that intent or select a per-slot semantic
-engine. Missing or ambiguous resolution fails the operation. One
-optional Semantic Resolver implementation, its complete configuration, and
+engine. Missing or ambiguous resolution fails the operation. One optional
+Semantic Choice Binding, selected by the project's `semanticChoice` field, and
 every Agent/effect Binding it uses belong to normalized project desired state
-and the activation digest. No active resolver acquires a host-default Agent.
+and the activation digest. It ranks only after deterministic filtering leaves
+several eligible candidates. No active ranker acquires a host-default Agent.
+A dangling or contract-incompatible project reference invalidates the
+candidate. If the exact ranker Binding is admitted `UNAVAILABLE`, an ambiguous
+call stays `BINDING_AMBIGUOUS` with that evidence until a chooser is actually
+dispatched; only loss of a dispatched result can make the operation
+`UNCERTAIN`.
 
 Two configurations are two ordinary admitted Bindings. There are no roles,
 profiles, variants, deep merges, environment fallback, parent inheritance,
 ephemeral Binding path, or per-Run settings overlays.
 
 An instruction-only Binding, or an exact Binding which permits instruction
-fallback, cannot activate until project policy resolves one exact Agent
-provider Binding or Service export and instruction-runtime revision. Both are
-part of the Binding digest; there is no mutable ambient “default Agent” after
+fallback, cannot activate until project policy resolves one exact
+projection-capable host Agent Binding and instruction-runtime revision. A
+Service export is ineligible for this role in v1. Both exact revisions are part
+of the Binding digest; there is no mutable ambient “default Agent” after
 activation.
 
 Thus `MAX_RETRIES` is a setting, not an environment convention. If
@@ -989,36 +1057,50 @@ item manually:
 
 ```ts
 import {
-  bindingSources,
-  catalogue,
   defineJig,
-  hookSources,
+  discover,
 } from "jig";
 
 export default defineJig({
-  catalogues: {
-    flows: catalogue.directory("./flows"),
-  },
-  bindings: bindingSources.directory("./bindings"),
-  hooks: hookSources.directory("./hooks"),
+  flows: discover("./flows"),
+  bindings: discover("./bindings"),
+  hooks: discover("./hooks"),
 });
 ```
 
-A project wanting closed membership may replace a directory source with an
-explicit file list:
+A software factory which wants semantic ranking for ambiguous open-ended
+`flow/call` resolution adds one direct Binding reference:
 
 ```ts
-bindings: bindingSources.files([
-  "./bindings/build.ts",
-  "./bindings/review.ts",
-])
+semanticChoice: "semantic-choice",
 ```
 
-Directory and explicit-list forms are mutually exclusive for one kind. Each
-immediate `bindings/<LocalName>.ts` or `hooks/<LocalName>.ts` default-exports
-one serializable declaration; the basename is its ID. Discovery is shallow,
-bounded, and symlink-free. Imported packages can never add policy files to
-these project roots automatically.
+This does not replace Jig's deterministic Resolver and does not configure a
+runner-local Router. It is only the optional ranker invoked after deterministic
+filtering leaves several eligible candidates.
+
+`discover()` accepts one project-relative directory root, or an explicit array
+of roots, and has no glob or minimatch semantics. The containing field supplies
+the shallow member convention. One leading `./` is accepted and normalized
+away before confined segment validation. A project wanting closed membership
+replaces a discovered source with a plain exact list:
+
+```ts
+bindings: [
+  "./bindings/build.ts",
+  "./bindings/review.ts",
+]
+```
+
+Directory and exact-list forms are mutually exclusive for one field. Flow
+members are package directories; Binding and Hook members are declaration
+files. Each immediate `bindings/<LocalName>.ts` or
+`hooks/<LocalName>.ts` default-exports one serializable declaration; the
+basename is its ID. Discovery is shallow, bounded, symlink-free, and without
+source-order precedence. A missing discovery root is empty, but a missing,
+duplicate, wrong-kind, escaping, symlinked, or canonically colliding exact-list
+member invalidates the candidate. Imported packages can never add policy files
+to these project roots automatically.
 
 Jig captures `jig.ts`, configured memberships, and the complete static import
 closure before evaluating it once in a bounded authority-free config sandbox.
@@ -1069,10 +1151,13 @@ The complete project-source, captured-evaluation, admission, consent, removal,
 and revocation rules are in
 [`../spec/project-policy.md`](../spec/project-policy.md).
 
-### 8.3 Inert catalogues and reviewed bulk materialization
+### 8.3 Inert Flow sources
 
-`catalogue.directory("./flows")` inspects only immediate child directories
-containing exact-case `FLOW.md`. The scan is bounded, private-staging based,
+In the `flows` field, `discover("./flows")` inspects only immediate child
+directories containing exact-case `FLOW.md`. The public authoring surface uses
+the same primitive for all three source kinds; normalized state still treats
+Flow packages as inert catalogue entries and Binding/Hook modules as
+desired-state declarations. The scan is bounded, private-staging based,
 and does not follow symlinks. It **parses** only Package/1 metadata and schema
 files, but the canonical snapshotter privately stages and hashes every admitted
 regular file—including implementation, prompt, skill, reference, script, and
@@ -1086,7 +1171,7 @@ package.
 Catalogue entry identity is:
 
 ```text
-(catalogue root ID, canonical safe relative package path, package digest)
+(canonical configured root identity, safe relative package path, package digest)
 ```
 
 Friendly `name` and `description` are display and model input only. Duplicate
@@ -1094,66 +1179,15 @@ names may coexist and are always shown with path and digest. A root change,
 path move, or content change creates a different entry; a path move is removal
 plus addition.
 
-Explicit Bindings remain the simplest and safest default. For a large,
-structurally uniform collection, a configuration helper may expand one inert
-catalogue snapshot and one closed recipe into ordinary exact Bindings:
-
-```ts
-const factoryCandidates = bindings.fromCatalogue(flows, {
-  mode: "run",
-  settings: {},
-  satisfy: [
-    {
-      contract: {
-        id: "https://jig.dev/contracts/agent-run",
-        version: "1.0.0",
-        digest: "sha256:124668db4b2b003532062d8da291d2e69696d782a38bd2cae9c0140057bd0f9b",
-      },
-      with: bindingRef("factory-worker-agent"),
-    },
-  ],
-  allowedAttachments: {
-    workspace: {
-      root: root("./workspace"),
-      maxAccess: "read-write",
-    },
-  },
-  instruction: {
-    agent: bindingRef("factory-worker-agent"),
-  },
-});
-```
-
-This helper is an authoring-time materializer, not a runtime Binding type,
-profile, inheritance layer, or permission grant. For each exact member:
-
-1. the package declaration determines the exact attachment and `uses` names;
-2. the recipe may supply a root/provider only for a requested name and only
-   within its stated ceiling;
-3. the emitted Binding exposes exactly the requested access mode and declared
-   slots—never a surplus recipe entry or stronger/weaker access;
-4. an instruction Agent or fallback is emitted only when that exact member's
-   selected implementation requires or declares it, never merely because the
-   recipe can supply one;
-5. settings, fallback, instruction Agent, and budgets must be
-   complete and valid; otherwise that member remains pending.
-
-The expansion proposes a finite immutable **candidate-set snapshot** recording
-the recipe digest, catalogue snapshot, every accepted entry identity, every
-complete materialized Binding digest, and explicit exclusions. It is contained
-in the project's one admission generation rather than creating another
-lifecycle-generation concept. Review may be batched, but it shows every member
-and authority delta. Additions, removals, moves, digest changes, requirement
-changes, and recipe changes are all pending deltas; `check --locked` and
-`apply --locked` reject any delta.
-
-Until an accepted apply, the old project admission generation, candidate-set
-snapshot, and immutable package snapshots remain active. After apply, new
-owners pin the new project generation while existing owners retain the old
-one. Runtime resolution reads only the candidate-set snapshot reached through
-its owner's pinned project generation—never the live catalogue. This lets an
-approved workflow collection grow without editing each parent Flow, while
-ensuring that dropping a file into `flows/` grants no authority by itself.
+Explicit Bindings remain the v1 execution boundary. V1 does not standardize a
+bulk Binding recipe: the earlier proposal depended on a named catalogue object
+which the simplified project surface does not expose, and it had not survived
+a complete Starter probe. Tools and maintenance Flows may generate ordinary
+Binding declaration files for review. Those files then enter the same source,
+aggregate plan, consent, and immutable-generation lifecycle as handwritten
+Bindings. Runtime resolution reads only exact admitted Binding revisions—never
+the live Flow source. A reusable materializer can be reconsidered only after a
+concrete scaling case proves that generated ordinary source is inadequate.
 
 ## 9. Effects, events, Hooks, and Agents
 
@@ -1328,8 +1362,16 @@ Jig does not parse Skill identities or dependencies, overwrite provider-native
 skill directories, or define global shadowing, precedence, a root skill
 catalogue, an override tree, or a skill dependency resolver. An integration
 unable to expose the exact tree without mutation or collision is ineligible.
-The focused Agent specification defines this projection rule without adding a
-skill field to the Agent wire contracts.
+Because Service/1 Mount authority is static, a Service-backed Agent is eligible
+only for operations whose owning FLOW Package has no `skills/` tree; static
+Mount files never impersonate a package's owner-scoped skill projection. A
+package with Flow-local skills therefore requires a projection-capable
+host-capability Agent Binding in v1.
+Projection proves availability, not Agent selection or compliance. A Flow
+which relies on a bundled Skill explicitly requests it in the relevant Agent
+instructions and keeps deterministic safety/validation separate. The focused
+Agent specification defines this projection rule without adding a skill field
+to the Agent wire contracts.
 
 Agent requests never carry raw host paths or permission overrides. An Agent
 Binding fixes provider, settings, its own attachment projection, tool/effect
@@ -1361,8 +1403,9 @@ conformance rules are in
 
 ## 10. Resolution and fault tolerance
 
-The deterministic Resolver is a Jig kernel mechanism. A Semantic Resolver is
-an optional, powerless ranking module. Fault tolerance does not depend on an
+The deterministic Resolver is a Jig kernel mechanism. A Semantic Choice
+ranker is an optional, powerless module selected by one exact project Binding.
+Fault tolerance does not depend on an
 LLM: missing, incompatible, unavailable, and ambiguous dependencies always
 have explicit durable states. Semantic reasoning improves open-ended choice;
 it does not create those states or authority.
@@ -1662,7 +1705,7 @@ its own parent.
 
 `initAgent` is merely a suggestion shown during `jig init`. If accepted, the
 exact Agent becomes reviewed project Binding state. It is never consulted by
-`check`, `apply`, a Semantic Resolver, or an active Run. The activation-policy
+`check`, `apply`, a Semantic Choice ranker, or an active Run. The activation-policy
 digest includes operational Adapter and Sandbox choices which affected it, but
 excludes `initAgent`. An unknown or unavailable suggestion is reported only by
 `jig init` and cannot invalidate unrelated inspection, checking, or execution.
@@ -1854,7 +1897,7 @@ Jig ships separately initialized facilities for:
 Service/1 hosting
 Event Journal, inspection, and inert Hooks
 Agent providers and instruction execution
-Semantic Resolver ranking
+Semantic Choice ranking
 source/install/update tooling
 Runtime Adapters
 Sandbox Backends
@@ -1886,7 +1929,7 @@ jig init --from <starter>
 ```
 
 A selected Starter may run its own reviewed initializer and ask whether to add
-an Agent Binding, Semantic Resolver, `create-missing-flow`, Git/worktrees, an
+an Agent Binding, Semantic Choice Binding, `create-missing-flow`, Git/worktrees, an
 inbox, or a GUI. Those are application choices. Runtime Adapter and Sandbox
 Backend preferences remain in host policy and never become Starter output.
 `jig init` may report whether the copied project is satisfiable on this host and
@@ -1925,20 +1968,51 @@ Node
 Flow
 Router (specialized Node)
 Agent (useful specialized Node)
+Parallel (one explicit fork/join Node)
 ```
 
 Graph definition and inspection remain Spindle concerns. Runtime visit/retry
 state is per Run, host operations await `flow/call`/`effect/call`, and terminal
 graph results become FLOW outcomes. Jig never mirrors its nodes or continuation.
 
-Before Spindle's authoring API is implemented, it must close one minimal
-runner-local dataflow rule: later nodes need explicit access to immutable root
-input and to the prior results they intentionally consume, including results
-from child Flows and parallel branches. Control edges alone are insufficient.
-This belongs in Spindle state/value semantics, not in Jig Binding mappers,
-FLOW metadata, or implicit filesystem inheritance. The software-factory probe
-therefore treats exact syntax and shared-versus-branch state as an open design
-gate rather than pretending `next()` carries all required data.
+Spindle's minimal runner-local dataflow rule is immutable state threading:
+
+```text
+execution token = immutable root Run input + immutable current branch state
+Node             = current state -> next state or transition(action, next state)
+control edge     = carries that exact next state
+```
+
+The start Node initially receives the root Run input as both root and current
+state; an ordinary first Node may shape a workflow-specific state record. Root
+never changes. Portable state is bounded JSON/1 and is deep-frozen before the
+next Node sees it. Workflow code explicitly returns records containing every
+non-adjacent result it intends to retain. There is no ambient result bag,
+mutable shared memory, Jig Binding mapper, or filesystem dataflow convention.
+
+A Router chooses only among its actual outgoing edges and forwards the current
+state unchanged. A nested Flow behaves as one Node. A Parallel Node gives each
+branch the same immutable pre-fork state and root, then returns that state once
+plus branch results in declaration order. It performs no automatic merge;
+ordinary deterministic Node code validates and constructs the post-join state.
+
+`context.flows.call()` and `context.effects.call()` are the primitives. A
+specialized Agent base may supply the provider-neutral Agent effect call, but a
+workflow-specific Agent Node must still return its explicit next state. A
+generic `FlowCall` class and `saveAs`/result-store APIs are not required in v1.
+Spindle derives durable FLOW operation IDs from immutable node-visit identity
+plus one code-supplied local operation key, so retries join the same operation
+without exposing host owner IDs.
+
+`Outcome(name)` is the only v1 terminal graph construct. Encountering it emits
+the declared outcome with `{}` output by default; `Outcome(name, projection)` uses
+the projection's JSON/1 value. That complete terminal result propagates
+unchanged through every enclosing Flow to the root Run. V1 has no
+outcome-handler construct. Completing an ordinary leaf Node without an outgoing
+edge is a graph error and never implies `done` or another outcome. A Node
+invoked as a `Parallel` branch computation is not such a control-graph leaf:
+its returned value belongs to `Parallel`, which waits for and orders all branch
+results before continuing through its own outgoing edge.
 
 ### 14.5 Cordis as a reference integration
 
@@ -1971,7 +2045,8 @@ registry, and black-box fixtures usable without Jig libraries.
 The base error registry distinguishes at least:
 
 ```text
-IMPLEMENTATION_UNAVAILABLE   RUNTIME_UNAVAILABLE
+IMPLEMENTATION_UNAVAILABLE   IMPLEMENTATION_FAILED
+RUNTIME_UNAVAILABLE
 RUNTIME_AMBIGUOUS            PREPARATION_AUTHORITY_REQUIRED
 SANDBOX_UNAVAILABLE          SANDBOX_AMBIGUOUS
 BINDING_MISSING              BINDING_AMBIGUOUS
@@ -1999,7 +2074,7 @@ Required behavior is fail-closed and observable:
 | Two Adapters qualify without host preference | `RUNTIME_AMBIGUOUS`; enumeration order is irrelevant. |
 | Host requires locked preparation; Adapter reports mutable resolution | Preparation fails before launch; policy is not silently weakened. |
 | Several eligible children without a ranker | Explicit ambiguity with candidates and reasons. |
-| New package appears in a live catalogue | An unreferenced entry remains inert. If an admitted bulk recipe includes it, the resulting candidate-set delta is pending until reviewed apply. |
+| New package appears in a live Flow source | The unreferenced entry remains inert; only an ordinary reviewed Binding can make it executable in v1. |
 | Missing child | Terminal durable diagnostic. Separate staged maintenance may enable a deliberate new Run; the old operation is never resumed. |
 | External success cannot be established after crash | `OPERATION_UNCERTAIN`; no automatic replay. |
 | Owner returns with a live child | Admission closes; child receives `OWNER_CLOSED`; owner cannot succeed before bounded quiescence. |
@@ -2073,7 +2148,8 @@ Release order:
    rolled back.
 11. **Root admission and skills:** every frontend starts through the same
     internal admission primitive; Flow-local skills are projected exactly and
-    owner-scoped without provider-directory mutation or implicit precedence.
+    owner-scoped without provider-directory mutation or implicit precedence;
+    static Service-backed Agents are rejected when such a projection is needed.
 12. **Cancellation and update provenance:** cancellation is a request-scoped
     notification and duplicate delivery is idempotent; sibling cancellation
     does not kill unrelated work, successful update/rollback atomically changes

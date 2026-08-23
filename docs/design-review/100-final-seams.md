@@ -93,6 +93,11 @@ descriptor. It prevents same-ID/version descriptor equivocation; it does not
 prove publisher authority, provider behavior, or quality. It is intentionally
 different from internal package, CAS, preparation, and activation hashes.
 
+Authors do not copy that digest into `FLOW.md`. A portable consumer carries the
+self-contained descriptor it expects and references its package-relative path;
+Jig derives and locks the triple. This preserves first-resolution exactness
+without handwritten hash ceremony. Ordinary Flows still carry no descriptor.
+
 No registry or URI dereference is mandatory. Ranges, subtyping, callbacks,
 streams, and external references are deferred.
 
@@ -117,9 +122,21 @@ a DSH compatibility layer are not roadmap goals.
 ## 5. Project discovery no longer requires per-item imports
 
 Generated `jig.ts` explicitly opts into shallow `flows/`, `bindings/`, and
-`hooks/` sources once. Adding a Binding or Hook file does not require another
-manual import. Projects preferring closed membership may list exact files
-instead of using directory discovery.
+`hooks/` sources once through the same `discover("./root")` primitive. The
+containing field supplies the member convention; `discover()` is deliberately
+not a minimatch/glob language. Adding a Binding or Hook file does not require
+another manual import. Projects preferring closed membership may list exact
+paths instead of using directory discovery.
+
+The optional project field `semanticChoice: "<binding>"` names only the ranker
+used after deterministic open-ended resolution leaves several candidates. It
+does not replace the Resolver or configure a runner-local Router.
+
+One leading `./` in a discovery root or exact member path is authoring sugar
+and is stripped before confined segment validation. A missing discovery root
+is empty; a missing or invalid exact-list member fails the candidate. V1 has no
+bulk Binding recipe: tooling may generate ordinary Binding declarations until
+a concrete scaling probe earns another public abstraction.
 
 Binding is one closed union rather than a package-only type plus separate Agent
 profiles: it configures either an exact FLOW package revision or one export of
@@ -217,6 +234,16 @@ that instruction Run Binding's declared component view, not a caller's view.
 Jig itself gates configured effects and consumes one decision bound to the
 exact call; an Agent cannot self-assert approval.
 
+The conductor uses the existing Agent Run contract once through a
+projection-capable host Agent Binding. Immutable logical resources expose the
+package, canonical input/settings, declared outcomes, and logical authority;
+the small fixed instruction interpolates none of them. It requires a complete
+structured `{ outcome, output }` under the package result schema or synthesized
+base schema. Agent text is diagnostic; Agent `blocked`/`limit` is an
+implementation failure, not a fabricated Flow outcome. Service-backed Agents
+remain valid for ordinary calls which require no Flow-local skill projection,
+but cannot accept this larger per-Run projection in Service/1 v1.
+
 See [`../spec/agents-and-semantic-choice.md`](../spec/agents-and-semantic-choice.md).
 
 ## 9. Semantic choice is easy to use but powerless
@@ -313,10 +340,14 @@ Stable labels still require executable cross-implementation fixtures for:
 5. catalogue resolution, semantic-choice uncertainty, three-way updates,
    rollback, init, and decentralized source distribution.
 
-Spindle separately still needs the smallest explicit runner-local dataflow rule
-for immutable root input and intentionally retained node/branch results. That is
-a Spindle authoring gate, not a reason to add mapping or state machinery to Jig
-or FLOW.
+The Starter probe closed Spindle's smallest dataflow rule: immutable root input
+plus one immutable JSON/1 state carried across edges, with ordinary Node code
+returning the next state and Parallel returning ordered branch results. There
+is no runtime result bag, shared mutable memory, Jig mapper, or filesystem
+smuggling. Only `Outcome` terminates and propagates unchanged through nested
+Flows; an ordinary control-graph leaf without an edge is an error. A Parallel
+branch returns its value to the owning Parallel and is not a terminal leaf.
+Exact SDK spelling and executable conformance remain implementation work.
 
 No further v1 abstraction is justified until one of those tests demonstrates a
 concrete missing primitive.

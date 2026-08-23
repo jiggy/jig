@@ -229,9 +229,15 @@ erasure or provider-side cleanup it cannot observe.
 No Agent method accepts a host path, attachment token, tool grant, permission
 override, provider option, model name, or shell command.
 
-An Agent provider reference resolves either to a host-capability Binding whose
-export implements the exact Agent contract, or to an exact Agent export of a
-Service package Binding. It is not a separate Agent profile type.
+An Agent provider reference normally resolves either to a host-capability
+Binding whose export implements the exact Agent contract, or to an exact Agent
+export of a Service package Binding. It is not a separate Agent profile type.
+Instruction conductors are the v1 exception: they require a host-capability
+Agent Binding whose trusted integration can realize the exact per-Run resource
+and tool projection below. A Service-backed Agent remains valid for ordinary
+Agent calls only when the owning package needs no Flow-local skill projection,
+but is ineligible as an instruction conductor because Service/1 has only static
+Mount authority and no delegated per-caller resource view.
 
 The resolved provider configuration fixes:
 
@@ -301,6 +307,23 @@ parse bundle identities, dependencies, or precedence. A provider which cannot
 expose the tree without changing or colliding with existing provider state is
 ineligible for that operation.
 
+Service/1 cannot add this owner-scoped tree to an already mounted provider: its
+resources and authority are fixed for the Mount generation. Consequently, a
+Service-backed Agent is eligible for an ordinary operation only when the owning
+FLOW Package has no `skills/` tree. Static Mount resources, even if they happen
+to contain similar files, never satisfy another package's Flow-local projection.
+A package with Flow-local skills requires a host-capability Agent Binding whose
+integration can create and revoke the exact per-operation view. Instruction
+conductors already require that Binding for the larger per-Run projection.
+
+Projection proves availability, not use. Merely placing a Skill in the tree
+does not cause an Agent to select or obey it. When a Flow's procedure depends
+on one bundled Skill, the relevant Agent instructions must request it in terms
+the configured integration understands, or repeat the mandatory rule directly.
+Even an explicit request is behavioral evidence rather than an authority or
+correctness guarantee; deterministic validation and sandbox limits remain
+separate. FLOW and Agent contracts therefore gain no `skills` argument.
+
 Jig never copies these bundles into or overwrites application- or
 provider-native locations such as `.agents/skills/` or `.claude/skills/`.
 V1 defines no implicit skill-name shadowing, global precedence, shared root
@@ -311,6 +334,65 @@ they do not appear through directory coincidence.
 Flow-local skills remain directly editable package source and participate in
 the package snapshot, provenance, update, and three-way-merge rules. They are
 not a second installation or overlay system.
+
+### 3.2 Instruction conductor mapping
+
+Instruction execution is one pinned Jig implementation recipe over the
+existing Run owner and Agent Run contract, not another FLOW wire protocol.
+After ordinary input and settings validation, Jig acquires the recipe-pinned
+Agent provider-generation lease and creates one instruction-conductor child
+owner.
+
+The conductor builds these host-owned immutable logical resources:
+
+```text
+package/                 exact read-only Package/1 tree, including FLOW.md
+run/input.json           RFC 8785 encoding of immutable Run input
+run/settings.json        RFC 8785 encoding of complete Binding settings
+run/context.json         outcomes, logical attachments/modes, and slot descriptions
+run/result.schema.json   package result schema or synthesized base-result schema
+```
+
+The names above are provider-facing logical resource names, never host paths.
+The exact serialization and projection belong to the versioned instruction
+runtime pinned by the recipe. It invokes Agent Run with one small fixed
+instruction telling the Agent to read those resources, follow the FLOW body,
+use only the exposed tools, and return the complete structured result. No
+package, input, settings, descriptor, or candidate prose is interpolated into
+that string, so it is validated against the Agent Run instruction ceiling
+while the recipe is planned, independently of invocation data. A runtime whose
+fixed request cannot satisfy that ceiling does not qualify; with no other exact
+instruction recipe the Binding is admitted `UNAVAILABLE` with
+`IMPLEMENTATION_UNAVAILABLE`, before any Run dispatch.
+
+The conductor exposes declared attachments, Flow-local skills, and
+already-admitted effect/Flow slots through owner-scoped provider tools. Those
+tools realize the existing `effect/call` and `flow/call` semantics with stable
+operation IDs derived from conductor turn/tool-call identity. They cannot add
+a slot, remap an attachment, widen a mode or grant, or bypass the Run owner's
+deadlines and budgets.
+
+The conductor performs one Agent Run operation. Its `responseSchema` is the
+package's complete `result.schema.json` when present. Otherwise the conductor
+synthesizes a closed Schema/1 root requiring a normal object with `outcome`
+equal to `done` or one declared custom outcome and a required `output` accepting
+any FLOW JSON/1 value.
+
+`AgentResult.outcome: completed` plus a present, valid `structured` value
+becomes the provisional complete Flow result. Agent `text` is diagnostic
+evidence only unless the structured result explicitly includes it. `blocked`
+or `limit`, provider failure, and missing structured data fail the
+implementation rather than becoming domain outcomes. A returned `blocked` or
+`limit` is `IMPLEMENTATION_FAILED` with the exact Agent result retained as
+diagnostic evidence; provider loss and cancellation keep their more specific
+host failures. An Agent expresses a
+declared domain `blocked` outcome only by completing and returning it inside
+the structured Flow result. Schema or base-envelope rejection is
+`INVALID_RESULT`.
+
+The conductor then uses the same owner-close, child-quiescence, final result
+validation, and commit rules as exact code. No result is inferred from prose,
+workspace contents, or Agent text.
 
 ## 4. Runtime Agent approvals
 
@@ -409,6 +491,26 @@ authority, runtime availability, budget, recursion, and liveness. Zero means
 missing; one selects directly; several may call Semantic Choice or remain
 ambiguous.
 
+A project opts into the optional ranker by naming one exact Binding directly:
+
+```ts
+semanticChoice: "semantic-choice",
+```
+
+The field is omitted when semantic ranking is not desired. It is not a
+`resolver` object: deterministic resolution remains kernel machinery and the
+Binding supplies only the Semantic Choice capability used at the many-candidate
+step. A runner-local Router receives a separately declared package capability
+slot even when project policy binds both sites to the same provider revision.
+
+A dangling or contract-incompatible `semanticChoice` reference invalidates the
+project candidate. A valid Binding admitted `UNAVAILABLE` does not turn the
+ranker into a required execution dependency: if deterministic filtering leaves
+several candidates before a chooser can be dispatched, the call terminates
+`BINDING_AMBIGUOUS` with ranker-unavailable evidence. Once a chooser is
+dispatched, its normal effect ownership applies; loss without a provable result
+is `UNCERTAIN`, not ambiguity and not a transparent rerank.
+
 The semantic decision is a journaled child operation. Its committed result is
 reused. Dispatch with an unprovable result makes the parent operation
 `UNCERTAIN`; the same operation never reranks. Provider loss after selection
@@ -476,3 +578,14 @@ new submission key. Reusing the old key returns the old terminal Run.
     component view because it is that Run's selected implementation, while no
     component runner is live. This never permits undeclared roots, provider
     widening, or overlapping independent read-write projections.
+21. Instruction mode supplies exact body/input/settings/outcome and logical
+    authority context as bounded logical resources without host paths;
+    provider tools cannot exceed the admitted Run view. The fixed instruction
+    stays inside Agent Run limits regardless of package/input size. Only
+    `completed` with a valid complete structured Flow result may become a
+    domain result. Agent `blocked`/`limit`, absent structured data, and invalid
+    results fail without fabricating an outcome.
+22. A Service-backed Agent remains usable for an ordinary call only when the
+    owning package has no `skills/` tree, and cannot qualify an instruction
+    recipe in v1; no per-Run package, attachment, skill, or tool projection is
+    smuggled through static Mount authority.

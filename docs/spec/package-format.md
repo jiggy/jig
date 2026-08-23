@@ -45,7 +45,122 @@ Two source mechanisms produce the same package digest exactly when they
 produce the same admitted logical file map. FLOW does not claim that a Git
 checkout and an npm publication necessarily contain the same files.
 
-## 2. Canonical paths
+## 2. `FLOW.md` Metadata/1
+
+The exact-case root filename identifies this as a FLOW package. V1 therefore
+does not repeat a speculative `flow: 1` type/version marker in every document.
+`FLOW.md` is valid UTF-8 without a BOM and contains Unicode scalar values only.
+Its first four bytes are `---` followed by LF, or its first five bytes are
+`---` followed by CRLF. The frontmatter ends at the first later line consisting
+of exactly `---`, followed by LF, CRLF, or end of file. Delimiter line endings
+may differ. The opening delimiter through the closing delimiter is at most
+262,144 bytes. The remaining bytes are the Markdown body; Package/1 identity
+continues to preserve their exact LF or CRLF spelling.
+
+The frontmatter requires only:
+
+```yaml
+---
+name: gauntlet-loop
+description: Build and improve an artifact through repeated review.
+---
+```
+
+`name` is a `LocalName`: a 1–64 character lower-ASCII slug matching
+`[a-z0-9]+(?:-[a-z0-9]+)*`. It is a friendly package-local label, not global
+identity. `description` is human- and Agent-readable text of 1–16,384 Unicode
+scalars. Package identity remains source provenance plus the complete
+Package/1 digest.
+
+The complete unnamespaced Metadata/1 vocabulary is:
+
+```text
+name          required LocalName
+description   required non-empty string
+fallback      optional exact literal `instruction`; Run only
+uses          optional map of LocalName capability slots
+outcomes      optional map of custom LocalName to non-empty description; Run only
+attachments   optional map of LocalName to `read` or `read-write`
+service       optional exact integer 1; selects Service capability
+provides      optional map of LocalName to descriptor path; Service only
+```
+
+Unknown unnamespaced fields reject. An extension key is exactly `x-` followed
+by a `LocalName`; its bounded JSON-shaped value is inert and still ordinary
+package bytes. No key admitted through that extension namespace can later gain
+core meaning under Metadata/1.
+
+Frontmatter uses the YAML 1.2 JSON schema with string mapping keys only. Exact
+`null`, `true`, `false`, and JSON-number plain scalars resolve to their JSON
+values; every other admitted plain or quoted scalar resolves to a string.
+Duplicate keys, explicit tags, aliases, anchors, merge keys, non-string mapping
+keys, and implementation-specific scalar types reject. The parsed root is a
+mapping and its values must lie in the FLOW JSON/1 data domain. Its maximum
+depth is 16 with the root at depth 1, it contains at most 4,096 total nodes,
+and no mapping or sequence contains more than 256 entries. A node is the root
+or one mapping key, mapping value, or sequence item; a container counts once at
+its position rather than once per descendant. Mapping keys and values are
+children at the same next depth. Each of `uses`, `provides`, `outcomes`, and
+`attachments` therefore also has at most 256 members. Limits are checked before
+semantic field validation and use non-wrapping arithmetic.
+
+A package without `service` is Run-capable. It may declare `fallback` and
+`outcomes`, and it must not declare `provides`. A package with `service: 1` is
+Service-capable. It requires exact code, may declare `provides`, and must not
+declare Run-only `fallback` or `outcomes`. V1 has no dual-mode package.
+
+A portable consumed capability references the exact self-contained descriptor
+bytes the consumer was authored against:
+
+```yaml
+uses:
+  agent:
+    contract: ./contracts/agent-run.capability.json
+```
+
+An author package reference is exactly `./` followed by one or more canonical
+logical path segments from section 3. The prefix is reference syntax, not a
+path segment, and is stripped once. No other dot segment, empty segment,
+normalization, percent decoding, backslash, absolute form, or escape is
+allowed. Resolution uses exact case and must name one regular file in the
+already staged package.
+
+`contract` uses that syntax to reference one Capability Contract/1 JSON
+descriptor in this same package. Jig validates the descriptor and derives its
+URI, exact version, and canonical digest; authors do not copy any of those
+values into `FLOW.md`. A Service consumer which genuinely needs dynamic
+provider snapshots may additionally set `binding: dynamic`; static is the
+default. The only other `uses` form is the explicit nonportable local seam:
+
+```yaml
+uses:
+  scratch:
+    local: true
+```
+
+The public and local forms are closed and mutually exclusive. Missing a
+descriptor never implies a weaker public contract. Each `provides` value is
+likewise an exact `./` author reference to a self-contained Capability
+Contract/1 descriptor.
+
+Custom outcomes cannot use the reserved `done`, `failed`, `cancelled`, or
+`error` names. All authority- or protocol-bearing keys in `uses`, `provides`,
+`outcomes`, and `attachments` are `LocalName`s.
+
+Metadata/1 has no `format` field. Every document valid under Metadata/1 keeps
+this complete core vocabulary and these semantics permanently. Any future core
+field or semantic change—not only a visibly breaking one—must use a
+discriminator such as `format: 2`, or a new entrypoint filename, whose presence
+is invalid in Metadata/1. New hosts must continue to treat an absent
+discriminator as Metadata/1. This supplies downgrade safety without taxing the
+first format with a version field that distinguishes nothing.
+
+The Markdown body is the executable procedure for instruction-only packages.
+For exact-code packages it remains the public semantic description and
+documentation; code is operational authority. A host cannot prove prose and
+code equivalent.
+
+## 3. Canonical paths
 
 Each logical path uses the Unicode 15.1 character database for both NFC and
 full default case folding. It:
@@ -69,7 +184,7 @@ changing the package or its digest.
 Canonical records are ordered lexicographically by their unsigned UTF-8 path
 bytes. Host locale and filesystem enumeration order have no role.
 
-## 3. Absolute validity ceilings
+## 4. Absolute validity ceilings
 
 An admitted Package/1 tree has at most:
 
@@ -91,7 +206,7 @@ A host lacking local capacity may reject an otherwise valid package with
 identity, or silently impose a smaller Package/1 validity limit. The digest is
 streamable and does not require holding the tree or a large file in memory.
 
-## 4. Exact package digest
+## 5. Exact package digest
 
 Integers below are unsigned, big-endian, fixed-width values. For every file,
 let `P` be its canonical UTF-8 path bytes and `C` its exact content bytes. Sort
@@ -131,23 +246,31 @@ Package/1 digest
 
 The source tuple provides provenance; the digest provides exact tree identity.
 
-## 5. Required conformance cases
+## 6. Required conformance cases
 
-1. Independent streaming implementations produce the same digest.
-2. Length-prefix collision attempts produce different digests.
-3. Enumeration order, directory entries, mode, owner, and timestamp changes do
+1. Metadata/1 accepts its closed valid Run and Service forms and rejects BOM,
+   invalid UTF-8 or Unicode, malformed or missing exact delimiters, every
+   frontmatter ceiling plus one, `flow: 1`, `format`, invalid cross-mode
+   fields, non-JSON-schema YAML values, malformed YAML features, unsafe or
+   case-mismatched descriptor references, invalid extension keys, and unknown
+   unnamespaced fields.
+2. A future format cannot cause an old Metadata/1 parser to accept and
+   reinterpret the same document.
+3. Independent streaming implementations produce the same digest.
+4. Length-prefix collision attempts produce different digests.
+5. Enumeration order, directory entries, mode, owner, and timestamp changes do
    not change identity.
-4. A path, content, or extra-file change changes identity.
-5. CRLF and LF content produce different identities.
-6. NFC, case-fold, traversal, absolute, backslash, NUL, symlink, and special
+6. A path, content, or extra-file change changes identity.
+7. CRLF and LF content produce different identities.
+8. NFC, case-fold, traversal, absolute, backslash, NUL, symlink, and special
    file cases reject consistently.
-7. Proven in-tree hardlinks behave as independent regular-file records;
+9. Proven in-tree hardlinks behave as independent regular-file records;
    unproved, escaping, or protected-source aliases reject before staging.
-8. Under concurrent source mutation, preparation and execution use exactly the
+10. Under concurrent source mutation, preparation and execution use exactly the
    privately staged tree whose digest was admitted; no later source reread can
    mix bytes into it. Snapshot-backed provenance is claimed only when the
    source adapter actually supplies an atomic immutable snapshot.
-9. Every absolute ceiling passes at its maximum and rejects at maximum plus
+11. Every absolute ceiling passes at its maximum and rejects at maximum plus
    one; aggregate byte accounting cannot overflow.
-10. Git, npm, OCI, and local adapters presenting an identical logical tree
+12. Git, npm, OCI, and local adapters presenting an identical logical tree
     produce the same digest.

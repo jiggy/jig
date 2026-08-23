@@ -29,37 +29,94 @@ The generated `jig.ts` opts into the conventions explicitly once:
 
 ```ts
 import {
-  bindingSources,
-  catalogue,
   defineJig,
-  hookSources,
+  discover,
 } from "jig";
 
 export default defineJig({
-  catalogues: {
-    flows: catalogue.directory("./flows"),
-  },
-  bindings: bindingSources.directory("./bindings"),
-  hooks: hookSources.directory("./hooks"),
+  flows: discover("./flows"),
+  bindings: discover("./bindings"),
+  hooks: discover("./hooks"),
 });
 ```
 
-Jig has no kernel-wide magic paths. A project may choose other roots. A
-careful project may replace either directory source with an explicit closed
-file list:
+`discover()` has exactly one meaning: capture shallow source membership under
+one or more configured project-relative directory roots. It does not use
+minimatch, globstar, brace expansion, negation, or a host matcher dialect.
+The ASCII characters `*`, `?`, `[`, `]`, `{`, and `}` are invalid in a
+discovery root rather than being interpreted. The containing field supplies
+the member kind:
 
-```ts
-bindings: bindingSources.files([
-  "./bindings/build.ts",
-  "./bindings/review.ts",
-]),
+```text
+flows       immediate child directories containing exact-case FLOW.md
+bindings    immediate regular *.ts declaration files
+hooks       immediate regular *.ts declaration files
 ```
 
-Directory and file-list forms are mutually exclusive for one kind. They change
-membership only; declaration files keep the same format and admission rules.
-`catalogues`, `bindings`, and `hooks` are independently optional; omission
-means no source of that kind, never implicit default discovery. References to
-an omitted or empty source still fail normally.
+This common authoring primitive deliberately hides an internal distinction:
+Flow members are inert package catalogue entries, while Binding and Hook
+members are desired-state declarations evaluated later. Their normalization,
+authority, and admission rules remain different.
+
+Jig has no kernel-wide magic paths. A project may choose other roots or pass
+several roots explicitly:
+
+```ts
+flows: discover(["./flows", "./vendor-flows"]),
+```
+
+The roots form an unordered union and confer no precedence. Overlapping or
+duplicate canonical membership is an error.
+
+Each root is resolved from the directory containing `jig.ts`. One leading
+`./` is accepted as authoring convenience and stripped before validation. The
+remaining path uses `/` separators, is already NFC, is project-confined, and
+contains no absolute, empty, `.`, `..`, backslash, symlink, or glob-bearing
+segment. Source adapters privately stage members; they never follow a symlink
+in a root or member path. A missing valid discovery root contributes an empty
+set. Members are normalized and ordered by canonical UTF-8 path bytes before
+capture, hashing, or diagnostics; case-fold or NFC collisions reject the
+complete candidate.
+
+A careful project may replace a discovered source with an exact closed member
+list:
+
+```ts
+bindings: [
+  "./bindings/build.ts",
+  "./bindings/review.ts",
+],
+```
+
+For `flows`, an exact member is a package directory; for `bindings` and
+`hooks`, it is a declaration file. Discovery and exact-list forms are mutually
+exclusive for one field. V1 does not mix them or add an `include()` wrapper.
+Both forms change membership only; declarations keep the same format and
+admission rules. One optional leading `./` is normalized as above. Unlike a
+missing discovery root, any missing, duplicate, wrong-kind, escaping,
+symlinked, NFC-colliding, or case-fold-colliding exact member invalidates the
+complete aggregate candidate.
+
+`flows`, `bindings`, and `hooks` are independently optional. Omission means no
+source of that kind, never implicit default discovery. References to an
+omitted or empty source still fail normally. A project which wants semantic
+ranking for ambiguous open-ended `flow/call` resolution may additionally name
+one exact Binding directly:
+
+```ts
+semanticChoice: "semantic-choice",
+```
+
+That field does not replace Jig's deterministic Resolver. It supplies only the
+optional ranker used after deterministic filtering leaves several eligible
+candidates. Omission leaves such a call `BINDING_AMBIGUOUS`. A runner-local
+Router still consumes its own explicit capability slot. A missing,
+incompatible, or dangling `semanticChoice` reference invalidates the project
+candidate. A valid referenced Binding may nevertheless be admitted
+`UNAVAILABLE`; before any chooser dispatch, that leaves the call
+`BINDING_AMBIGUOUS` with ranker-unavailable evidence. Only a chooser operation
+which was actually dispatched but has no provable result can make its parent
+operation `UNCERTAIN`.
 
 ## 2. One closed Binding union
 
@@ -174,10 +231,12 @@ Backend preparation and launch-envelope plans, and authority envelope. Its
 concrete launch plan is derived only after its Run or Service Mount owner
 executes that pinned preparation and obtains its immutable prepared snapshot.
 An instruction recipe instead pins the exact instruction runtime, conductor,
-Agent dependency Binding revision, export and contract, and authority envelope;
-it does not claim that a live Service provider generation exists during
-planning. A host-capability recipe pins its fully resolved registration and
-operational provider evidence.
+one host-capability Agent dependency Binding revision, export and contract,
+and authority envelope. Its trusted integration must support the exact
+per-Run logical resource/tool projection; a Service-backed Agent cannot
+qualify an instruction recipe in v1. Planning does not claim that a live
+host-provider generation exists yet. A host-capability recipe pins its fully
+resolved registration and operational provider evidence.
 
 For a code-backed Run package, deterministic planning selects the exact-code
 recipe when exactly one qualifies. Only when zero complete exact recipes
@@ -215,9 +274,9 @@ key.
 
 ## 3. Declaration files
 
-Directory discovery inspects only immediate regular `*.ts` files. A missing
-directory is empty. It does not recurse or follow symlinks. Other files and
-subdirectories have no discovery meaning.
+For a Binding or Hook source, directory discovery inspects only immediate
+regular `*.ts` files. A missing directory is empty. It does not recurse or
+follow symlinks. Other files and subdirectories have no discovery meaning.
 
 ```text
 bindings/review.ts       -> Binding ID `review`
@@ -255,8 +314,14 @@ Such behavior belongs in the producer or target Flow.
 Binding dependencies are likewise inert local references:
 `bindingRef("name")` selects a host-capability Binding or the compatible export
 set of a package Binding, while `serviceExportRef("name", "export")` selects one
-explicit Service export. Resolution replaces them with exact admitted revision
-identities; neither helper imports or captures a live provider object.
+explicit Service export. A `flow/call` slot may instead use
+`candidates(["one", "two"])` to declare a closed allowlist of Run Binding
+LocalNames. `candidates()` performs no discovery, filtering, or semantic
+choice during configuration; the owner generation pins the exact revisions
+and the later call follows the Resolver lifecycle. `discover()` is invalid in
+a Binding slot, just as `candidates()` is invalid as a project source.
+Resolution replaces every reference with exact admitted revision identities;
+none of these helpers imports or captures a live provider object.
 
 Aggregate normalization also computes the transitive authority reachable
 through those exact dependencies. Provider-owned attachments and effect
@@ -448,21 +513,23 @@ bypass the tombstone, and missed Events are never replayed.
 V1 has no semantic auto-apply, remembered path trust, glob trust, committed
 consent, or project-controlled `autoApply` switch.
 
-## 9. Catalogues and bulk materialization
+## 9. Flow sources
 
-`catalogue.directory("./flows")` discovers immediate child directories with
-exact-case `FLOW.md` inertly. It does not evaluate or activate them.
+In the `flows` field, `discover("./flows")` discovers immediate child
+directories with exact-case `FLOW.md` inertly. It does not evaluate or activate
+them. Each canonical configured root path is an internal catalogue-source
+identity; the public project surface does not need a named `catalogues` map in
+v1.
 
-A large, uniform catalogue may be materialized by one closed Binding recipe.
-The resulting candidate records the catalogue snapshot, recipe, every exact
-member Binding, and exclusions. One aggregate apply can therefore admit
-thousands of Flows without per-file prompts. Runtime resolution uses only the
-snapshot pinned by its owner's admission generation, never the changing live
-directory.
+V1 has no bulk Binding-materialization API. Tools and maintenance Flows may
+generate ordinary Binding declaration files for review, after which the
+normal Binding source, aggregate plan, and admission rules apply. Runtime
+resolution reads only exact admitted Binding revisions, never the live Flow
+source. A reusable bulk recipe remains deferred until a concrete scaling probe
+can demonstrate a smaller coherent surface than generated ordinary files.
 
 Dropping a package into `flows/` grants no authority. It becomes executable
-only through an approved explicit Binding or approved bulk-materialization
-candidate.
+only through an approved Binding.
 
 ## 10. Root Run admission
 
@@ -514,8 +581,12 @@ values. A different reusable configuration requires a new Binding revision.
 ## 11. Required conformance cases
 
 1. Immediate directory and explicit-list membership agree for the same files;
-   nested, unrelated, symlinked, or colliding entries reject or remain inert as
-   specified.
+   one leading `./` is normalized away; missing discovery roots are empty;
+   nested, unrelated, symlinked, escaping, or colliding entries reject or
+   remain inert as specified. Glob metacharacters reject, multiple roots have
+   no precedence, and overlapping membership invalidates the candidate. Every
+   missing, duplicate, wrong-kind, escaping, symlinked, NFC-colliding, or
+   case-fold-colliding exact-list member invalidates the aggregate candidate.
 2. Invalid exports and non-serializable values reject the whole candidate.
    Hook source-union, type, and target fields reject unknown keys, wildcards,
    source lists, and non-Run targets.
@@ -538,61 +609,65 @@ values. A different reusable configuration requires a new Binding revision.
 11. Emergency revoke survives restart, cannot widen authority, and unchanged
     source cannot restore it.
 12. Formatting-only normalized no-ops require no new consent.
-13. Clean crash recovery exposes either the old or new complete generation,
+13. `discover()` is accepted only for project source fields;
+    `candidates()` is accepted only for compatible `flow/call` Binding slots.
+    Neither performs the other's job.
+14. Clean crash recovery exposes either the old or new complete generation,
     never a mixture.
-14. A host-capability Binding cannot install/trust a provider, run, or mount;
+15. A host-capability Binding cannot install/trust a provider, run, or mount;
     missing or ambiguous registrations leave the candidate unresolved, a
     resolved but inoperable provider may be unavailable, and branch-illegal
     fields reject.
-15. Revocation closes all affected admission and Hook intervals in the same
+16. Revocation closes all affected admission and Hook intervals in the same
     generation-advancing transaction; every prior plan becomes stale.
-16. Mapping a project-root ancestor never exposes protected `.jig` or host
+17. Mapping a project-root ancestor never exposes protected `.jig` or host
     state to a sandboxed component, including under concurrent path mutation.
-17. A visible hardlink to protected or out-of-view state, and a hardlink
+18. A visible hardlink to protected or out-of-view state, and a hardlink
     inserted during activation, cannot expose or mutate that host state; an
     unenforceable attachment is rejected.
-18. External root start accepts an admitted Run Binding, actual input, and one
+19. External root start accepts an admitted Run Binding, actual input, and one
     project-local retry key; same-key/same-content acknowledgement loss returns
     one Run without reevaluating later policy, while changed content conflicts
     before dispatch.
-19. Root admission pins one generation before dispatch and rejects caller
+20. Root admission pins one generation before dispatch and rejects caller
     trigger metadata, direct source, settings, attachment, provider, Adapter,
     environment, and authority overrides.
-20. CLI, GUI, and module frontends use the same external semantics. Hook
+21. CLI, GUI, and module frontends use the same external semantics. Hook
     delivery uses its already-pinned target/generation and unique selected-pair
     key through the shared internal primitive rather than resolving the live
     LocalName again.
-21. An absent external key either allocates under the admitted gate or loses to
+22. An absent external key either allocates under the admitted gate or loses to
     revocation with no Run. A Hook pair selected before revocation always has
     one derived Run; revocation before dispatch makes it terminal rather than
     suppressing it. Invalid Hook input terminates that one Run after JSON/1
     boundary validation, including after redelivery.
-22. Omitting a catalogue, Binding, or Hook source means an empty source of that
+23. Omitting a Flow, Binding, or Hook source means an empty source of that
     kind; Jig never silently enables a conventional directory.
-23. Relative local package references resolve from the directory containing
+24. Relative local package references resolve from the directory containing
     `jig.ts`, remain confined, and do not change when their declaration file
     moves.
-24. One valid Binding may be admitted `UNAVAILABLE` without blocking an
+25. One valid Binding may be admitted `UNAVAILABLE` without blocking an
     independent `READY` Binding. Host machinery changes create a reviewed new
     generation; a Run never reselects machinery or implementation branch, and
     retrying an old submission returns its old terminal result.
-25. Missing lock is permitted only in unlocked mode and causes planning to
+26. Missing lock is permitted only in unlocked mode and causes planning to
     propose a complete lock; `--locked` rejects absence or drift, and no
     host-local runtime or enforcement receipt enters the portable lock.
-26. A code-backed package with both instruction opt-ins pins instruction only
+27. A code-backed package with both instruction opt-ins pins instruction only
     when zero exact recipes qualify during planning; exact ambiguity stays
     unavailable. Failure or machinery loss after an exact recipe is pinned
     never activates instruction fallback.
-27. An instruction recipe pins the dependency Binding/export/contract during
-    planning and acquires one exact live provider-generation lease during Run
-    admission; provider absence fails without rebinding.
-28. Applying a candidate after `BINDING_MISSING` never changes the old Run or
+28. An instruction recipe pins one projection-capable host Agent
+    Binding/export/contract during planning and acquires its exact live
+    provider-generation lease during Run admission; provider absence fails
+    without rebinding, and a Service-backed Agent is ineligible.
+29. Applying a candidate after `BINDING_MISSING` never changes the old Run or
     operation. Repeating its root submission key returns the old terminal Run;
     only a new key may select the new admission generation.
-29. Redelivering an old Hook/Event pair after maintenance returns the same old
+30. Redelivering an old Hook/Event pair after maintenance returns the same old
     derived Run. Retrying Hook-triggered work requires a new Event or an
     explicit root submission with a new key; admission never replays the Hook.
-30. Aggregate authority inspection includes the fixed attachment and effect
+31. Aggregate authority inspection includes the fixed attachment and effect
     authority reachable through every exact dependency Binding; it never
     mislabels that authority as a direct caller attachment or omits it because
     invocation is mediated.

@@ -217,7 +217,7 @@ Jig supports two honest trust modes:
   Adapter/toolchain, and wider authority. The activation remains supervised
   but makes no portable containment claim.
 
-A package, Binding, Starter, or Semantic Resolver cannot select the Backend or
+A package, Binding, Starter, or Semantic Choice ranker cannot select the Backend or
 request `trusted-local` mode.
 
 ## 6. Local evidence and failure

@@ -57,7 +57,7 @@ replace variable interpolation rather than hiding it elsewhere.
 Input is validated against the actual call value before a Run process or
 instruction Agent starts. For open-ended Flow resolution it is also a
 deterministic eligibility check: a candidate whose input schema rejects the
-actual value cannot reach the Semantic Resolver.
+actual value cannot reach a Semantic Choice ranker.
 
 A normal component result first passes the Run/1 envelope checks: it has one
 declared domain outcome and an `output` value, and it is not a protocol,
