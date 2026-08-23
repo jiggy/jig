@@ -115,9 +115,13 @@ Each Hook revision owns one half-open Journal interval
 opening/closing all affected intervals occurs at one Journal boundary. A Hook
 never selects history before its start. For every matching `(Hook revision,
 eventId)`, Jig inserts or returns one derived Run record transactionally. That
-Run receives the exact immutable Event as input and then follows ordinary
-Binding admission and input validation. An invalid input makes that same Run
-terminal; it does not transform the Event or select again.
+insert uses the Hook revision's already-pinned target Binding and admission
+generation; it never resolves the target LocalName against newer live policy.
+A pair selected before later revocation still inserts or returns that unique
+Run. If revocation closes dispatch first, the Run becomes terminal and
+non-dispatchable with the reason recorded. The Run receives the exact immutable
+Event as input and then follows ordinary input validation. An invalid input
+makes that same Run terminal; it does not transform the Event or select again.
 
 Hooks fan out but do not consume, veto, rewrite, delay, debounce, or hide an
 Event. Filtering, conditional logic, multi-step reaction, and coalescing belong

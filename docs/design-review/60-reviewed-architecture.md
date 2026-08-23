@@ -35,7 +35,7 @@ conformance labels. `Service/1` is official rather than experimental, but it
 is not a tax on a Run-only host. Jig implements it; a small third-party host
 may implement only Package and Run.
 
-Caskada, Cordis, an imperative Python program, and an Agent instruction runner
+Spindle, Cordis, an imperative Python program, and an Agent instruction runner
 are implementations behind these boundaries. None receives a privileged Jig
 execution path.
 
@@ -358,7 +358,8 @@ component -> host
     effect/call       one journaled call through a bound capability slot
 
 either request originator -> receiver
-    request/cancel    idempotent cancellation of its own pending request
+    request/cancel    idempotent JSON-RPC notification cancelling its own
+                      pending request; it has no id and receives no response
 ```
 
 That is Run/1. Structured lossy telemetry may later be an optional
@@ -481,15 +482,42 @@ silently replayed.
 
 ### 5.7 Cancellation and results
 
-Cancellation is symmetric: each peer may cancel a still-pending request it
-originated. Sending cancellation records `CANCEL_REQUESTED`; a normal response
-may still win if the receiver completed first. Cancellation is established by
-the terminal response or enforced process loss, and dispatched child effects
-retain their own terminal or uncertain states.
+Cancellation is symmetric: each peer may send the `request/cancel` JSON-RPC
+notification for a still-pending request it originated. The notification has
+no request ID and receives no response; the targeted request's eventual
+terminal response or enforced process loss establishes the result. Sending
+cancellation records `CANCEL_REQUESTED`; a normal response may still win if
+the receiver completed first. Duplicate cancellation notifications are
+idempotent, and dispatched child effects retain their own terminal or
+uncertain states.
 
-On any cancellation Jig closes new admission, cancels descendants child-first,
-runs host-owned cleanup, waits a bounded grace period, then kills the sandbox
-process tree. Owner completion has explicit phases:
+Its complete wire shape is:
+
+```json
+{"jsonrpc":"2.0","method":"request/cancel","params":{"requestId":"<live-request-id>"}}
+```
+
+`params` has exactly the one string field. The sender may target only a request
+it originated on that channel incarnation. A duplicate or a cancellation
+racing with a known terminal request is a no-op. A never-seen,
+opposite-direction, or cross-channel ID fatally closes the channel with
+`PROTOCOL_ERROR`; because cancellation is a notification, no error response is
+sent. Attribution is peer/channel-scoped: FLOW does not claim to identify
+which internal coroutine of one peer emitted the notification.
+
+Cancellation closes new admission only for the targeted request and its owned
+subtree, then cancels descendants child-first, runs that subtree's host-owned
+cleanup, and waits a bounded grace period. Sibling requests and Mount-owned
+work outside the subtree remain live. A dedicated Run or Mount sandbox which
+does not quiesce is killed after the grace period. If one uncooperative
+`service/invoke` cannot be isolated from its shared provider process, Jig must
+wait only through that invocation's fixed cancellation grace/deadline and then
+fence the entire provider generation; it records collateral sibling operations
+as terminal or `UNCERTAIN`/`PROVIDER_LOST` rather than pretending
+request-scoped cancellation succeeded. No Mount may create an unbounded
+cancellation wait.
+
+Owner completion has explicit phases:
 
 ```text
 OPEN -> RESPONSE_RECEIVED -> QUIESCING -> SUCCEEDED | FAILED | LOST
@@ -1248,6 +1276,17 @@ loss never heals or rebinds it. A host-native per-owner projection is revoked
 with that owner, while static Service attachment authority remains Mount-scoped
 until drain/revoke. Jig does not claim remote data erasure it cannot observe.
 
+The package-root `skills/` directory is an opaque Flow-local Agent skill source
+tree. For an Agent operation owned by that exact package revision, Jig supplies
+a read-only owner-scoped provider projection and revokes it with the owner. A
+child Flow receives its own tree, never implicit inheritance from its parent.
+Jig does not parse Skill identities or dependencies, overwrite provider-native
+skill directories, or define global shadowing, precedence, a root skill
+catalogue, an override tree, or a skill dependency resolver. An integration
+unable to expose the exact tree without mutation or collision is ineligible.
+The focused Agent specification defines this projection rule without adding a
+skill field to the Agent wire contracts.
+
 Agent requests never carry raw host paths or permission overrides. An Agent
 Binding fixes provider, settings, attenuated attachment projection, tool/effect
 ceiling, approval gate, deadline, and budget. For a gated effect Jig—not the
@@ -1362,7 +1401,7 @@ A software factory can therefore route a new ticket among Gauntlet,
 Majority-Vote, or any later reviewed member without hard-coded keywords. It
 uses a local Router when that choice is part of its internal topology, or an
 open-ended `flow/call` when any approved implementation may satisfy an intent.
-Caskada's `Router` owns the first problem; Jig's Resolver owns the component
+Spindle's `Router` owns the first problem; Jig's Resolver owns the component
 boundary. Neither impersonates the other.
 
 The exact Semantic Choice contract and both routing lifecycles are specified in
@@ -1638,6 +1677,29 @@ pinned catalogue and policy generation. A successful repair may extend only
 that owner's binding table with the one recorded provider revision; it does not
 switch project generation.
 
+Every user, CLI, GUI, or trusted module requests root work through the same
+host-local operation: one active admitted Run-capable Binding ID, actual Run
+input, and a project-local idempotency key. Jig validates the FLOW JSON/1
+boundary first. An existing same-key/same-content record returns its Run
+without consulting newer policy; changed content conflicts. For an absent key,
+one transaction resolves and pins the current admission generation and exact
+Binding, checks its gate and revocation state, and inserts the root Run. A
+reference CLI is `jig run <binding-id> --input <json-file>`; it generates and
+retains the key. Schema-invalid JSON/1 then terminates the allocated Run as
+`INVALID_INPUT`; invalid JSON/1 allocates nothing.
+
+Hook delivery shares the internal admission primitive but not the external
+operation: it supplies the Hook revision's already-pinned target/generation
+and `(Hook revision digest, event ID)` key, so a later project generation
+cannot retarget delivery. Jig allocates or reuses the root before validating
+its schema; invalid input terminates that same Run. A pair selected before
+revocation still gets its unique Run, terminal and non-dispatchable when
+revocation wins before dispatch. Trigger and correlation metadata are
+Jig-stamped and cannot be supplied by ordinary callers. Neither path can accept
+raw source, per-Run settings, attachment remapping, provider/Adapter choice,
+environment, or grant overrides. The focused project-policy specification
+defines this behavior; CLI spelling is not a FLOW protocol method.
+
 Jig may start candidate Services before publication, but “shadow” means only
 that they receive no consumer bindings. Their outbound effects are real,
 grant-checked, operation-journaled, attributed to the candidate, and may be
@@ -1657,8 +1719,14 @@ UPSTREAM    new pristine revision
 Deterministic tree merge runs first. Conflicts or failed checks leave the old
 activation and visible source safe. An optional maintenance Flow may repair
 textual conflicts or semantic drift using BASE/LOCAL/UPSTREAM, release notes,
-tests, and diagnostics. Agent output remains only a staged candidate subject to
-the same checks and approval.
+tests, and diagnostics, but only after an explicit operator request naming this
+update transaction and an admitted maintenance Flow. Merely having an Agent
+provider or maintenance Flow configured never starts repair. Agent output
+remains only a staged candidate subject to the same checks and approval.
+
+A clean deterministic merge and an Agent-repaired candidate both enter the
+ordinary aggregate plan/review/apply compare-and-set. Update provenance does
+not bypass admission merely because source merging succeeded.
 
 Visible-source replacement and database publication use a recoverable update
 state machine rather than claiming one cross-medium transaction:
@@ -1667,15 +1735,38 @@ state machine rather than claiming one cross-medium transaction:
 PREPARED -> SOURCE_SWITCHED -> ADMISSION_SWITCHED -> COMMITTED
 ```
 
-Before either switch, old source and activation remain authoritative. New
-admission is blocked while a switch transaction is incomplete. Each transition
-records both digests; directory replacement uses same-filesystem atomic rename
-or fails. On restart Jig verifies the recorded source and activation and
-deterministically rolls forward or back before reopening admission. The
-admission switch and Hook interval boundary share one Jig database
-transaction. `jig rollback` uses the same state machine with old/new reversed.
-A distinct runtime-only activation command may pin an old activation while
-reporting source drift and never edits visible source.
+`PREPARED` records complete old and new tuples:
+
+```text
+visible source digest
+active admission generation and digest
+pristine BASE source provenance, revision, and package digest
+```
+
+The new visible source is the validated merge; the new pristine BASE is the
+adopted `UPSTREAM`, never that merge. Before either switch, the old tuple
+remains authoritative. New admission is blocked while a switch transaction is
+incomplete. Directory replacement uses same-filesystem atomic rename or fails.
+The admission switch, pristine-BASE pointer, provenance history, and Hook
+interval boundary publish in one Jig database transaction. On restart Jig
+verifies the recorded tuple and deterministically exposes all old or all new
+state before reopening admission.
+
+`jig rollback` uses the same state machine with old/new tuples reversed,
+including restoration of the prior pristine BASE. A distinct runtime-only
+activation command may pin an old activation while reporting source drift and
+never edits visible source or BASE provenance.
+
+After a successful update commits, the adopted pristine `UPSTREAM` snapshot
+becomes the next update's `BASE`, while the merged visible tree becomes its
+`LOCAL`. Jig retains the prior provenance and update transaction for history
+and rollback; it never treats the merged local tree as pristine upstream.
+
+Read-only inspection must expose, without requiring direct access to `.jig`,
+the source origin and revision, current pristine `BASE`, local divergence,
+candidate `UPSTREAM` and staged merge when present, visible source revision,
+active admission revision, and revisions pinned by running owners. Command
+names are not normative; this visibility is.
 
 Patch files remain useful export/review artifacts, not a second source of truth.
 
@@ -1762,10 +1853,11 @@ The initializer receives no installer-only authority. Declining it still leaves
 the copied project inspectable, and the materialized project has no continuing
 Starter dependency.
 
-### 14.4 Caskada
+### 14.4 Spindle
 
-Caskada is a first-party external graph runtime and reference Run/1 component,
-not a Jig executor. It gets no in-process bypass.
+Spindle—the graph runtime previously discussed as Caskada v3—is a first-party
+external graph runtime and reference Run/1 component, not a Jig executor. It
+gets no in-process bypass.
 
 Its own authoring model can remain:
 
@@ -1776,7 +1868,7 @@ Router (specialized Node)
 Agent (useful specialized Node)
 ```
 
-Graph definition and inspection remain Caskada concerns. Runtime visit/retry
+Graph definition and inspection remain Spindle concerns. Runtime visit/retry
 state is per Run, host operations await `flow/call`/`effect/call`, and terminal
 graph results become FLOW outcomes. Jig never mirrors its nodes or continuation.
 
@@ -1820,6 +1912,7 @@ INVALID_INPUT                INVALID_SETTINGS
 INVALID_RESULT               SCHEMA_LIMIT_EXCEEDED
 SCHEMA_INVALID_JSON          SCHEMA_KEYWORD_UNSUPPORTED
 SCHEMA_REFERENCE_INVALID
+SUBMISSION_CONFLICT
 PERMISSION_UNENFORCEABLE     FEATURE_UNSUPPORTED
 PROVIDER_LOST                REQUEST_CANCELLED
 DEADLINE_EXCEEDED            RESOURCE_EXHAUSTED
@@ -1843,6 +1936,9 @@ Required behavior is fail-closed and observable:
 | External success cannot be established after crash | `OPERATION_UNCERTAIN`; no automatic replay. |
 | Owner returns with a live child | Admission closes; child receives `OWNER_CLOSED`; owner cannot succeed before bounded quiescence. |
 | Root cancellation | New authority closes, descendants cancel, process tree is bounded and killed. |
+| One of two sibling requests is cancelled | Only that request's owned subtree closes; the sibling remains live unless an explicitly recorded whole-provider fence becomes necessary. |
+| Cancellation names a never-seen, wrong-direction, or cross-channel request | The receiving peer closes the channel with `PROTOCOL_ERROR` and sends no response to the notification. |
+| A shared Service cannot quiesce one cancelled invocation | The fixed invocation grace/deadline bounds waiting; Jig fences the provider generation and records collateral outcomes honestly. |
 | Provider disappears and returns | Old binding is lost; return has a new generation; no healing. |
 | Backend cannot enforce requested confinement | Untrusted activation fails; trusted override states wider authority. |
 | Attached root contains or gains a socket, FIFO, device, or hardlink alias to protected/out-of-view state | Backend proves a confined private view or rejects the Binding; a mutable raw bind is insufficient. |
@@ -1902,10 +1998,19 @@ Release order:
    and activation, and each selected pair creates one derived Run record—even
    `INVALID_INPUT`—when dispatch cannot succeed.
 10. **Reconciliation:** kill injection at capture, preparation, candidate Mount,
-   source switch, admission switch, update merge, and rollback recovers one
-   matching visible-source/admission generation before new work; committed or
-   uncertain candidate effects remain explicitly visible rather than being
-   described as rolled back.
+   source switch, admission/BASE switch, update merge, and rollback recovers
+   one matching visible-source/admission/pristine-BASE tuple before new work;
+   clean updates use the ordinary admission CAS, and committed or uncertain
+   candidate effects remain explicitly visible rather than being described as
+   rolled back.
+11. **Root admission and skills:** every frontend starts through the same
+    internal admission primitive; Flow-local skills are projected exactly and
+    owner-scoped without provider-directory mutation or implicit precedence.
+12. **Cancellation and update provenance:** cancellation is a request-scoped
+    notification and duplicate delivery is idempotent; sibling cancellation
+    does not kill unrelated work, successful update/rollback atomically changes
+    pristine BASE with admission, provenance remains inspectable, and Agent
+    repair never starts merely because a provider exists.
 
 The standard makes separate claims:
 
@@ -1937,7 +2042,7 @@ arbitrary Hook callback code
 settings overlays and environment fallback
 portable raw network/process permissions and Grant Profiles
 universal graph schema or graph continuation persistence
-in-process Caskada privilege
+in-process Spindle privilege
 Task/Git/worktree/GUI ontology in Jig core
 persistent patch overlays
 mandatory central registry
@@ -1952,7 +2057,7 @@ Deferred behind evidence, not merely time:
   replay, cancellation, backpressure, and cleanup;
 - compatible contract ranges, after real version lineages and compatibility
   fixtures exist;
-- structured `Telemetry/1`, after Caskada and Agent integrations establish the
+- structured `Telemetry/1`, after Spindle and Agent integrations establish the
   minimum useful common envelope;
 - channel resumption or durable runner continuation, after an epoch/fencing
   model survives crash tests;

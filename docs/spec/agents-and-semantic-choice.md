@@ -263,6 +263,36 @@ only when each Mount drains or is revoked. Dynamic per-caller Service mounts
 are deferred. A stateful provider cannot pool unrelated workspaces unless
 those static Bindings and Sandbox instances already separate them.
 
+### 3.1 Flow-local skills
+
+The optional package-root `skills/` directory has one Jig meaning: its exact
+opaque subtree is Flow-local Agent skill source owned by that FLOW Package
+revision. When an Agent operation is created on behalf of the package, Jig
+makes that tree available through a read-only, owner-scoped projection suitable
+for the selected provider. Instruction execution uses the same rule. A child
+Flow sees its own package tree, not its parent's.
+
+The projection is lifecycle state, not an Agent method argument and not an
+ambient project directory. An integration may realize it with an isolated
+filesystem tree, a provider-native skill catalogue, or an equivalent
+progressive-disclosure mechanism, but it must preserve the exact admitted tree
+bytes and revoke the projection with the Agent owner. The provider integration,
+not Jig, declares and implements the Skill format it understands. Jig does not
+parse bundle identities, dependencies, or precedence. A provider which cannot
+expose the tree without changing or colliding with existing provider state is
+ineligible for that operation.
+
+Jig never copies these bundles into or overwrites application- or
+provider-native locations such as `.agents/skills/` or `.claude/skills/`.
+V1 defines no implicit skill-name shadowing, global precedence, shared root
+skill catalogue, inheritance/override tree, or skill dependency resolver.
+Additional skills require an explicit admitted attachment/provider mechanism;
+they do not appear through directory coincidence.
+
+Flow-local skills remain directly editable package source and participate in
+the package snapshot, provenance, update, and three-way-merge rules. They are
+not a second installation or overlay system.
+
 ## 4. Runtime Agent approvals
 
 Project admission consent and an Agent's runtime tool approval are different
@@ -348,7 +378,7 @@ A rule-based or API-model provider may implement the same contract.
 
 A graph Router presents its actual finite outgoing edges as candidates. Each
 node visit calls Semantic Choice once and maps the returned local ID to an
-edge. It may make a different decision on a later visit. In Caskada, Router is
+edge. It may make a different decision on a later visit. In Spindle, Router is
 a specialized Node; the choice provider is composed into it rather than
 creating Codex/Claude-specific subclasses.
 
@@ -404,3 +434,7 @@ into the blocked operation without the ordinary admission process.
 13. Prompt injection can influence only selection inside the frozen allowlist.
 14. A committed semantic result is reused; uncertain dispatch never reranks.
 15. A later graph visit is a distinct decision.
+16. A Flow-local skill projection contains the exact admitted package tree, is
+    revoked with its Agent owner, and never overwrites provider-native skill
+    directories; an integration unable to project it without mutation or
+    collision fails before provider work.

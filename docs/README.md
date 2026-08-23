@@ -6,7 +6,9 @@ Start here:
    concise record of the final disputed decisions and why they won.
 2. [`design-review/60-reviewed-architecture.md`](design-review/60-reviewed-architecture.md)
    — canonical whole-system architecture.
-3. Focused specifications:
+3. [`decision-index.md`](decision-index.md) — compact traceability map from
+   stable decisions to their normative sections.
+4. Focused specifications:
    - [`spec/json-values.md`](spec/json-values.md)
    - [`spec/package-format.md`](spec/package-format.md)
    - [`spec/schema-files.md`](spec/schema-files.md)

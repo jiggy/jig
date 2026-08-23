@@ -369,7 +369,54 @@ Dropping a package into `flows/` grants no authority. It becomes executable
 only through an approved explicit Binding or approved bulk-materialization
 candidate.
 
-## 10. Required conformance cases
+## 10. Root Run admission
+
+Jig exposes one host-local operation for a person, CLI, GUI, or trusted module
+to request root work:
+
+```text
+startRun(bindingId, input, submissionId) -> durable Run identity
+```
+
+`submissionId` is an opaque project-local retry key. Jig first validates that
+`input` is a bounded FLOW JSON/1 value; invalid JSON/1 creates no Run. For a
+valid value, the first request stores its canonical `(bindingId, input)` digest
+and resulting Run. Repeating the same key and content returns that Run without
+re-resolving current policy, including after later revocation. Reusing it with
+changed content fails with `SUBMISSION_CONFLICT` before dispatch. A caller
+intending new work uses a new key. A reference CLI may expose the operation as:
+
+```text
+jig run <binding-id> --input <json-file>
+```
+
+The frontend generates and retains the submission key until acknowledgement;
+its flag spelling and input transport are host UX. For an absent key,
+`startRun` resolves the LocalName against one current active admission
+generation. In one transaction Jig verifies the root gate and revocation
+state, pins the exact Run-capable Binding revision, and inserts the root Run.
+It then validates the actual value against `input.schema.json` when present.
+Schema-invalid JSON/1 makes that allocated Run terminal `INVALID_INPUT`;
+implementation never starts.
+
+Hook delivery does not resolve the target LocalName again and does not call the
+external operation. It enters the same internal root-admission primitive with
+the Hook revision's already-pinned target Binding/generation, the committed
+Event as unmodified input, and `(Hook revision digest, eventId)` as its unique
+root key. A selected pair always inserts or returns that derived Run, even if
+later revocation closes dispatch admission first. In that race the unique Run
+is terminal and non-dispatchable with the revocation recorded; it is never
+silently omitted or retargeted. Jig allocates it before schema validation, so
+invalid Hook input terminates the same deduplicated Run. Publication of a later
+generation cannot retarget an already selected Hook occurrence.
+
+Trigger, producer, Hook, and correlation metadata are authenticated and
+attached only by Jig. Ordinary frontends cannot supply them. Neither root path
+can name raw package source, select a provider or Runtime Adapter, alter
+Binding settings, remap attachments, widen grants, or inject environment
+values. A different reusable configuration requires a new Binding revision.
+
+## 11. Required conformance cases
 
 1. Immediate directory and explicit-list membership agree for the same files;
    nested, unrelated, symlinked, or colliding entries reject or remain inert as
@@ -407,3 +454,19 @@ candidate.
 17. A visible hardlink to protected or out-of-view state, and a hardlink
     inserted during activation, cannot expose or mutate that host state; an
     unenforceable attachment is rejected.
+18. External root start accepts an admitted Run Binding, actual input, and one
+    project-local retry key; same-key/same-content acknowledgement loss returns
+    one Run without reevaluating later policy, while changed content conflicts
+    before dispatch.
+19. Root admission pins one generation before dispatch and rejects caller
+    trigger metadata, direct source, settings, attachment, provider, Adapter,
+    environment, and authority overrides.
+20. CLI, GUI, and module frontends use the same external semantics. Hook
+    delivery uses its already-pinned target/generation and unique selected-pair
+    key through the shared internal primitive rather than resolving the live
+    LocalName again.
+21. An absent external key either allocates under the admitted gate or loses to
+    revocation with no Run. A Hook pair selected before revocation always has
+    one derived Run; revocation before dispatch makes it terminal rather than
+    suppressing it. Invalid Hook input terminates that one Run after JSON/1
+    boundary validation, including after redelivery.
