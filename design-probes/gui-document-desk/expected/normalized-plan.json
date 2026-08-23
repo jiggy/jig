@@ -1,0 +1,45 @@
+{
+  "probeFormat": 1,
+  "nonnormative": true,
+  "flowSource": {
+    "source": "./flows",
+    "members": ["document-index", "ingest", "search"]
+  },
+  "bindings": {
+    "journal": {
+      "kind": "host-capability",
+      "providerRegistration": "@jig/journal#append",
+      "eventTypeCeiling": ["https://probe.jig.dev/events/document-indexed"]
+    },
+    "document-index": {
+      "kind": "package",
+      "mode": "service-exact",
+      "adapterSelector": "bun",
+      "attachments": {
+        "index": { "root": "./index", "mode": "read-write" }
+      },
+      "slots": { "journal": "journal@<exact-admitted-revision>" },
+      "exports": ["reader", "writer"]
+    },
+    "ingest": {
+      "kind": "package",
+      "mode": "run-exact",
+      "adapterSelector": "python3",
+      "slots": { "index": "document-index#writer@<provider-generation>" }
+    },
+    "search": {
+      "kind": "package",
+      "mode": "run-exact",
+      "adapterSelector": "bun",
+      "slots": { "index": "document-index#reader@<provider-generation>" }
+    }
+  },
+  "application": {
+    "memberOfAdmissionGeneration": false,
+    "implementation": "app/server.ts",
+    "runtime": "user-started Bun",
+    "jigAuthority": ["run:start", "run:read", "run:cancel", "event:read"],
+    "browserReceivesJigAuthority": false
+  }
+}
+

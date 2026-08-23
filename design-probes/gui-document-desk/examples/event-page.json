@@ -1,0 +1,18 @@
+{
+  "events": [
+    {
+      "eventId": "event-17",
+      "journalPosition": 42,
+      "type": "https://probe.jig.dev/events/document-indexed",
+      "source": "document-index@provider-generation-3",
+      "committedAtUnixMs": 1787462400000,
+      "data": {
+        "documentId": "architecture-notes",
+        "revision": 1
+      }
+    }
+  ],
+  "nextPosition": 42,
+  "minimumRetainedPosition": 1,
+  "more": false
+}

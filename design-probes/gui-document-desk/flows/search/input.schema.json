@@ -1,0 +1,11 @@
+{
+  "$schema": "https://flow.dev/schemas/schema-1.json",
+  "type": "object",
+  "properties": {
+    "query": { "type": "string", "minLength": 1, "maxLength": 4096 },
+    "limit": { "type": "integer", "minimum": 1, "maximum": 100 }
+  },
+  "required": ["query", "limit"],
+  "additionalProperties": false
+}
+

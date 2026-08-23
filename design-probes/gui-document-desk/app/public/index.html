@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Document Desk</title>
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <main>
+      <header>
+        <p class="eyebrow">Jig design probe</p>
+        <h1>Document Desk</h1>
+        <p id="connection" role="status">Connecting…</p>
+      </header>
+
+      <section aria-labelledby="add-heading">
+        <h2 id="add-heading">Index a document</h2>
+        <form id="document-form">
+          <label>Document ID <input name="documentId" value="architecture-notes" required></label>
+          <label>Revision <input name="revision" type="number" min="1" value="1" required></label>
+          <label>Text <textarea name="text" required>Jig owns lifecycle. FLOW owns the portable boundary.</textarea></label>
+          <button>Start ingestion</button>
+        </form>
+      </section>
+
+      <section aria-labelledby="search-heading">
+        <h2 id="search-heading">Search</h2>
+        <form id="search-form">
+          <label>Query <input name="query" value="portable" required></label>
+          <button>Start search</button>
+        </form>
+        <pre id="search-result" aria-live="polite">No search yet.</pre>
+      </section>
+
+      <section aria-labelledby="runs-heading">
+        <h2 id="runs-heading">Runs</h2>
+        <ul id="runs"></ul>
+      </section>
+
+      <section aria-labelledby="events-heading">
+        <h2 id="events-heading">Committed index events</h2>
+        <ol id="events" reversed></ol>
+      </section>
+    </main>
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>
+

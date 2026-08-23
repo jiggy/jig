@@ -1,0 +1,8 @@
+{
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "app": "bun run app/server.ts"
+  }
+}
+
