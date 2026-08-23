@@ -104,7 +104,7 @@ ranking for ambiguous open-ended `flow/call` resolution may additionally name
 one exact Binding directly:
 
 ```ts
-semanticChoice: "semantic-choice",
+semanticChoice: bindingRef("semantic-choice"),
 ```
 
 That field does not replace Jig's deterministic Resolver. It supplies only the
@@ -120,11 +120,11 @@ operation `UNCERTAIN`.
 
 For example, suppose a `flow/call` slot admits both `reference-fast` and
 `reference-deep`, and both survive deterministic filtering. With
-`semanticChoice: "semantic-choice"`, Jig asks that exact Binding to rank those
-two IDs. Removing the field makes the same call terminate
+`semanticChoice: bindingRef("semantic-choice")`, Jig asks that exact Binding to
+rank those two IDs. Removing the field makes the same call terminate
 `BINDING_AMBIGUOUS`; it does not affect a graph Router, a call with zero
-candidates, or a call with exactly one candidate. The value may be any local
-Binding ID—such as `offline-choice` or `company-choice`—whose exact export
+candidates, or a call with exactly one candidate. The reference may name any
+local Binding ID—such as `offline-choice` or `company-choice`—whose exact export
 implements the Semantic Choice contract. It is never a strategy name, Flow ID,
 model name, prompt, or algorithm literal.
 
@@ -149,13 +149,15 @@ a configured catalogue snapshot. Moving a Binding file therefore cannot
 retarget it. Other source adapters use explicit inert reference forms rather
 than overloading this path syntax.
 
-A host-capability Binding uses an inert reference such as:
+A host-capability Binding uses an inert reference. The preferred authoring
+form imports a provider integration's exported registration token so its
+origin is visible in source:
 
 ```ts
+import { run as acpAgentRun } from "@jig/agent-acp";
+
 export default bind({
-  use: hostCapability("codex-local", {
-    export: "run",
-  }),
+  use: hostCapability(acpAgentRun),
   settings: {
     model: "gpt-5.6",
   },
@@ -165,9 +167,14 @@ export default bind({
 });
 ```
 
-`hostCapability()` does not load, install, or trust code during source
-evaluation. Resolution must find exactly one host-policy-installed registration
-and pins:
+The imported value is an inert reference exported by an already
+host-policy-installed integration; importing its declaration module does not
+start, install, or grant authority to the provider implementation.
+An initialization tool may substitute another compatible exported reference
+to apply host preference on top of a Starter. The project still declares the
+logical Binding, settings, attachments, and authority ceiling, while the
+host/operator supplies the concrete integration. `hostCapability()` does not
+start the provider or change trust during source evaluation. Resolution pins:
 
 ```text
 provider module artifact and revision
@@ -297,39 +304,42 @@ The basename is the `LocalName` identity. There is no duplicate `id` field. A
 rename is one removal plus one addition.
 
 A Binding file default-exports exactly one `bind({...})`. A Hook file
-default-exports exactly one `hook({...})`. A Hook refers to its target Binding
-by `LocalName`, not by importing a live object. Wrong kinds, multiple/default-
+default-exports exactly one inert `hook({...})`. A Hook refers to its target
+Binding through `bindingRef(LocalName)`, not by importing a live object. Wrong kinds, multiple/default-
 export errors, duplicate IDs, case or Unicode collisions, and dangling targets
 invalidate the complete candidate.
 
-The complete Hook/1 declaration shape is:
+An Event-selector Hook has this complete shape:
 
 ```ts
 export default hook({
-  source: { binding: "inbox-watcher" },
-  type: "https://example.com/events/inbox-item-created",
-  target: "triage",
+  on: event(
+    bindingRef("github-ingress"),
+    "https://example.com/events/issue-opened",
+  ),
+  run: bindingRef("triage"),
 });
 ```
 
-`source` is a closed union of exactly `{ binding: LocalName }` or
-`{ kernel: LocalName }`. The first resolves to the authenticated producer
-identity of one exact admitted Binding revision. The second resolves only to a
-fixed protected Jig producer registration; project source cannot create one.
-`type` is one exact 1–512 character Event type string, and `target` resolves to
-one exact Run-capable Binding revision. There are no source lists, wildcards,
-input mappings, filters, retry/debounce fields, callbacks, or action names.
-Such behavior belongs in the producer or target Flow.
+`event()` accepts one exact Binding reference or protected kernel producer and
+one exact 1–512 character Event type. `run` resolves to one exact Run-capable
+Binding revision. The alternative owned Event Source form uses an inert
+constructor exported by an installed trusted source integration; its settings,
+Event type/schema, authority, readiness, and cleanup are registration-defined.
+Both forms are specified in
+[`journal-and-hooks.md`](journal-and-hooks.md). There are no source lists,
+wildcards, input mappings, open filters, callbacks, or action names.
 
 Binding dependencies are likewise inert local references:
 `bindingRef("name")` selects a host-capability Binding or the compatible export
 set of a package Binding, while `serviceExportRef("name", "export")` selects one
 explicit Service export. A `flow/call` slot may instead use
-`candidates(["one", "two"])` to declare a closed allowlist of Run Binding
-LocalNames. `candidates()` performs no discovery, filtering, or semantic
-choice during configuration; the owner generation pins the exact revisions
-and the later call follows the Resolver lifecycle. `discover()` is invalid in
-a Binding slot, just as `candidates()` is invalid as a project source.
+`candidates([bindingRef("one"), bindingRef("two")])` to declare a closed
+allowlist of Run Bindings. `candidates()` performs no discovery, filtering, or
+semantic choice during configuration; the owner generation pins the exact
+revisions and the later call follows the Resolver lifecycle. `discover()` is
+invalid in a Binding slot, just as `candidates()` is invalid as a project
+source.
 Resolution replaces every reference with exact admitted revision identities;
 none of these helpers imports or captures a live provider object.
 
@@ -598,8 +608,8 @@ values. A different reusable configuration requires a new Binding revision.
    missing, duplicate, wrong-kind, escaping, symlinked, NFC-colliding, or
    case-fold-colliding exact-list member invalidates the aggregate candidate.
 2. Invalid exports and non-serializable values reject the whole candidate.
-   Hook source-union, type, and target fields reject unknown keys, wildcards,
-   source lists, and non-Run targets.
+   Hook `on` source unions and `run` references reject unknown keys, wildcards,
+   source lists, unregistered source constructors, and non-Run targets.
 3. Filesystem, environment, network, process, time, randomness, dynamic import,
    native loading, escape imports, infinite loops, and oversized output fail
    without authority.

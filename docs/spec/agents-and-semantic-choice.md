@@ -9,6 +9,24 @@ Codex, Claude Code, ACP, command-line, API, deterministic-test, and future
 providers may implement. Provider and model choice belongs to project
 Bindings, not to the contracts.
 
+The responsibility boundary is:
+
+```text
+host/operator      installs and trusts concrete Agent integrations
+Starter/project    declares logical Agent Bindings, authority, and Flow slots
+Jig                admits, pins, projects context, supervises, and revokes
+Spindle            consumes an injected Agent slot through an Agent Node
+FLOW               defines no Agent primitive
+```
+
+A public Starter should not encode an unexplained host-local provider alias.
+An exact provider-specific project imports that integration's inert exported
+registration reference; a host-customized initialization may replace the
+reference without changing the logical Binding ID or Flow. The admitted plan
+and lock pin the provider artifact, export, settings, and authority. Bare
+provider strings are a low-level representation, not the preferred authoring
+surface.
+
 The canonical descriptors and their Capability Contract/1 digests are:
 
 | Contract | Descriptor | Digest |
@@ -490,7 +508,7 @@ ambiguous.
 A project opts into the optional ranker by naming one exact Binding directly:
 
 ```ts
-semanticChoice: "semantic-choice",
+semanticChoice: bindingRef("semantic-choice"),
 ```
 
 The field is omitted when semantic ranking is not desired. It is not a
@@ -502,8 +520,8 @@ slot even when project policy binds both sites to the same provider revision.
 If deterministic filtering leaves `reference-fast` and `reference-deep`, the
 configured Binding may choose between those two IDs. Without the field that
 same operation is `BINDING_AMBIGUOUS`; with one survivor it proceeds directly
-and never calls Semantic Choice. The string is simply a Binding LocalName and
-may name any compatible implementation, for example `offline-choice` or
+and never calls Semantic Choice. `bindingRef()` makes the dependency explicit;
+it may name any compatible local Binding, for example `offline-choice` or
 `company-choice`.
 
 A dangling or contract-incompatible `semanticChoice` reference invalidates the

@@ -71,7 +71,7 @@ The governing laws are:
 | **Effect** | An explicit call from a component to a host-bound external capability. |
 | **Binding** | One immutable admitted project-local configured use of an exact package or host-capability implementation. |
 | **Event** | An immutable fact committed to a durable journal. |
-| **Hook** | Jig policy which starts one Flow from a committed event. |
+| **Hook** | Jig policy which owns or selects one Event source and starts one Flow from each committed fact. |
 | **Scope** | Jig's internal lifetime/cleanup tree; not an authored or wire object. |
 | **Runtime Adapter** | Explicitly installed trusted host code which validates and plans one source runtime. |
 | **Sandbox Backend** | Host mechanism which alone prepares, spawns, supervises, and confines package-controlled processes. |
@@ -79,6 +79,23 @@ The governing laws are:
 There is no public `Task`, `Work`, `Worktree`, remote `Context`, arbitrary
 `Scope`, runtime-binary range, graph schema, callback handle, or distributed object
 model in v1.
+
+The author-facing ownership is deliberately asymmetric:
+
+| Layer | Owns | Does not own |
+|---|---|---|
+| **FLOW** | Package, finite Flow Run, long-lived Service, effect/Flow calls, optional Capability Contract | Agent, graph, Hook, provider choice, application ontology |
+| **Jig** | Project admission, Binding, Event Journal, Hook/Event Source lifetime, deterministic resolution, Agent contracts, Runtime Adapter and Sandbox coordination | A Flow's private control graph or application entities such as tickets and boards |
+| **Spindle** | Node, Flow, Router, Agent Node, Parallel join, Outcome, immutable graph state | Concrete Agent provider, durable Journal, Hook source, package installation, sandbox policy |
+| **Starter/application** | Concrete Flows, logical Agent roles, Bindings and authority, Hooks, inbox/Kanban/Git/GUI policy | New privileged kernel semantics |
+| **Host/operator** | Installed Agent/source/provider integrations, Runtime Adapters, Sandbox Backends, trust and machine preference | Application routing or Flow procedure |
+
+The host supplies a concrete Agent integration; the Starter declares logical
+Agent Bindings and their ceilings; Jig pins and mediates them; Spindle merely
+calls an injected slot. Likewise, a common watcher may be a registered Hook
+source supplied by the host, while a custom portable watcher may be a FLOW
+Service. These are responsibility boundaries, not five parallel plugin
+systems.
 
 An SDK may expose `RunContext` as a read-only convenience object. It is only a
 projection of the `flow/run` parameters, not a service locator or remote
@@ -953,10 +970,10 @@ export default bind({
 A host-native Agent uses the same admission surface:
 
 ```ts
+import { run as acpAgentRun } from "@jig/agent-acp";
+
 export default bind({
-  use: hostCapability("codex-local", {
-    export: "run",
-  }),
+  use: hostCapability(acpAgentRun),
   settings: {
     model: "gpt-5.6",
   },
@@ -1073,7 +1090,7 @@ A software factory which wants semantic ranking for ambiguous open-ended
 `flow/call` resolution adds one direct Binding reference:
 
 ```ts
-semanticChoice: "semantic-choice",
+semanticChoice: bindingRef("semantic-choice"),
 ```
 
 This does not replace Jig's deterministic Resolver and does not configure a
@@ -1199,7 +1216,7 @@ These terms are deliberately not interchangeable:
 | Run input, Binding settings, attachment handles, deadline, and budget | Immutable invocation environment; “coeffects” in theory, but not a second public API. |
 | `effect/call` and `flow/call` | Explicit requested operations whose results influence execution. |
 | Journal Event | Durable immutable fact which may trigger later work. |
-| Hook | Inert exact Event-to-Flow admission policy. |
+| Hook | Inert exact Event-source-to-Flow admission policy. |
 | `stderr` diagnostic | Bounded operational text which never drives portable behavior. |
 
 This is why Run/1 has no ambiguous `flow/event` method and why durable facts
@@ -1276,14 +1293,19 @@ owner-qualified type identifiers, which the kernel validates before commit.
 A v1 Hook is intentionally inert:
 
 ```text
-one exact (authenticated source selector, event type)
+one authenticated Event source
     -> one exact Run-capable Binding
 ```
 
 It is not arbitrary callback code, middleware, or a portable package type.
-The source selector is a closed union of exactly one project Binding or one
-protected kernel-producer LocalName. It resolves at activation to one exact
-producer identity; there is no source list or authority-bearing wildcard.
+The source is either an exact Event selector over one project Binding or
+protected kernel producer, or one owned use of a trusted registered host Event
+Source integration. The latter lets a Hook declaration contain common watcher
+configuration while Jig owns readiness, authority, publication, and cleanup.
+It does not execute project callback code or turn every watcher into a FLOW
+Service. Custom portable or reusable producers still use a Service plus the
+selector form. Both forms resolve at activation to one exact producer identity;
+there is no source list or authority-bearing wildcard.
 Source is host-stamped and text similarity never grants publication authority.
 The exact copyable `hook({...})` shape is specified in
 [`../spec/journal-and-hooks.md`](../spec/journal-and-hooks.md).
@@ -1303,12 +1325,17 @@ whose source selector matches and whose interval contains its position.
 For each selected `(Hook revision digest, event ID)`, one database transaction
 inserts or returns one derived Run record. Delivery is complete when that
 record exists; it may remain `PENDING` or `BLOCKED`, or later fail, without
-creating another Run. Multiple Hooks provide fan-out. Filtering, debounce,
-conditional, multi-step, and external logic belongs in the producer or target
-Flow, where effects and uncertainty are explicit.
+creating another Run. Multiple Hooks provide fan-out. Filtering, conditional,
+multi-step, and external logic belongs in the producer or target Flow, where
+effects and uncertainty are explicit. A registered source may expose bounded
+observation settings such as settling or coalescing; those semantics and
+authority are part of that source registration, not an open Hook expression
+language.
 
-Activation verifies only that the selector is authorized and the exact target
-Binding exists and is Run-capable. When a concrete selected Event commits, Jig
+Activation verifies that the source is ready and authorized and that the exact
+target Binding exists and is Run-capable. An owned source buffers observations
+until the Hook interval opens and loses publication admission before disposal.
+When a concrete selected Event commits, Jig
 creates or recovers the unique derived Run and applies ordinary input
 validation to that actual, unaltered Event. Validation failure makes the same
 Run terminal with `INVALID_INPUT` and a durable Hook diagnostic; it never

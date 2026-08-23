@@ -128,7 +128,7 @@ not a minimatch/glob language. Adding a Binding or Hook file does not require
 another manual import. Projects preferring closed membership may list exact
 paths instead of using directory discovery.
 
-The optional project field `semanticChoice: "<binding>"` names only the ranker
+The optional project field `semanticChoice: bindingRef("<binding>")` names only the ranker
 used after deterministic open-ended resolution leaves several candidates. It
 does not replace the Resolver or configure a runner-local Router.
 
@@ -183,7 +183,7 @@ malicious unsandboxed process running as the same OS principal.
 Run input/settings/attachments/deadline/budget  immutable environment
 flow/call and effect/call                       requested operations
 Journal Event                                  durable immutable fact
-Hook                                           inert Event-to-Flow admission
+Hook                                           inert Event-source-to-Flow admission
 stderr                                         bounded diagnostic text
 ```
 
@@ -196,9 +196,12 @@ committed Event; querying, waiting, replay, and subscription are deliberately
 absent. Exact behavior and the canonical descriptor are in
 [`../spec/journal-and-hooks.md`](../spec/journal-and-hooks.md).
 
-Hooks do not consume, veto, rewrite, filter, debounce, or hide continuation.
-Their exact source/type and target Binding form revision intervals aligned to
-the Journal boundary. Complex reaction logic belongs in the target Flow.
+Hooks do not consume, veto, rewrite, filter, or hide continuation. They either
+select an existing exact producer/type or own one registered host Event Source
+use, then target one exact Run Binding. Both forms create revision intervals
+aligned to the Journal boundary. A registered source may own bounded
+observation settings such as settling; complex reaction logic belongs in the
+target Flow. Custom portable or reusable producers remain Services.
 
 ## 8. Agents have exact, owner-scoped contracts
 
