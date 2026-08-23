@@ -27,10 +27,10 @@ network effect, update implementation, GUI, or dynamic Service dependency.
 Those omissions keep every failure attributable to Service/1, Capability
 Contracts, Journal publication, Hooks, or project admission.
 
-The absence of dynamic dependencies is also a deletion challenge: no current
-probe uses `service/bindings`. This probe must not accidentally justify that
-surface. It remains independently evidence-gated rather than being treated as
-necessary merely because Service/1 exists.
+The absence of dynamic dependencies became a deletion challenge. The later
+Cordis reuse probe likewise needed only fixed external bindings and exports;
+the combined evidence removed `service/bindings` and post-readiness export
+mutation from the reviewed v1 design.
 
 ## Review order
 
@@ -54,7 +54,7 @@ Event:
 ```text
 exact consumer and provider generation
 owning lifetime and cancellation boundary
-dependency revision used by child effects
+fixed dependency Binding used by child effects
 durable operation or occurrence key
 terminal, lost, or uncertain result
 writable attachment lease holder
@@ -83,6 +83,5 @@ transparent retry/rebinding rule.
   in independent packages remains visible ceremony, but preserves
   self-contained compatibility. Tooling may copy and verify them; the probe
   does not justify remote references or a second manifest.
-- Nothing in this probe uses `service/bindings` or post-readiness export
-  mutation. Those remain Service/1's largest unproven surfaces and should be
-  deleted or separately falsified before implementation freezes their cost.
+- Nothing in this probe uses dynamic dependencies or export mutation. Their
+  later removal makes this fixed Service package match the current v1 design.

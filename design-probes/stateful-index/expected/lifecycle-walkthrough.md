@@ -6,12 +6,14 @@ This is a nonnormative tabletop trace, not runtime output.
 
 1. The admitted `document-index` Binding pins one Bun Adapter recipe, one
    Sandbox Backend recipe, the `./index` read-write attachment, the fixed
-   Journal dependency revision, and the exact provided index contract.
+   Journal dependency Binding, and the exact provided index contract.
 2. Jig acquires the exclusive writer lease before spawning the Service.
-3. `service/mount` installs static dependency revision 0. The provider scans
-   its local pending outbox through Mount-owned effects before declaring ready.
-4. Its first complete status snapshot publishes `index`; Jig assigns one exact
-   provider export generation. Consumer Bindings acquire leases only afterward.
+3. `service/mount` installs the complete fixed dependency set. The provider
+   scans its local pending outbox through Mount-owned effects before declaring
+   ready.
+4. Its one acknowledged readiness transition publishes the complete fixed
+   export set; Jig assigns exact provider generations. Consumer Bindings
+   acquire leases only afterward.
 
 ## Ingest and publication
 
@@ -21,8 +23,8 @@ This is a nonnormative tabletop trace, not runtime output.
    provider method receives an invocation context rather than a public Scope.
 3. The provider atomically writes the document and outbox entry.
 4. `publish-document-architecture-notes-1` is an invocation-owned child effect
-   using the invocation's fixed dependency revision. It cannot drift to a new
-   Journal provider while pending.
+   through the Mount's fixed Journal Binding. It cannot drift to a new Journal
+   provider while pending.
 5. Journal commit atomically creates the Event, append result, matching Hook
    selection, and derived audit-Run outbox entry.
 6. A proven append result lets the provider remove its pending entry and return

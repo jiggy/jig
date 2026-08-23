@@ -15,6 +15,7 @@ Start here:
    - [`spec/runtime-adapters.md`](spec/runtime-adapters.md)
    - [`spec/capability-contracts.md`](spec/capability-contracts.md)
    - [`spec/project-policy.md`](spec/project-policy.md)
+   - [`spec/frontend-control.md`](spec/frontend-control.md)
    - [`spec/journal-and-hooks.md`](spec/journal-and-hooks.md)
    - [`spec/agents-and-semantic-choice.md`](spec/agents-and-semantic-choice.md)
 

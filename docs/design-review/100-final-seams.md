@@ -108,11 +108,13 @@ See [`../spec/capability-contracts.md`](../spec/capability-contracts.md).
 Jig v1 implements both Run/1 and Service/1. A smaller FLOW host may implement
 Run/1 only. Service/1 is neither experimental nor a tax on every Flow.
 
-It remains bounded request/response JSON with a pending Mount, exact provider
-generations, availability snapshots, dynamic dependency snapshots, draining,
-loss, and cancellation. Multiple invocations on one Mount may be outstanding
-and answer out of order; each has a separate owner. FLOW does not infer
-serialization, linearizability, or transaction isolation.
+It remains bounded request/response JSON with a pending Mount, one fixed
+dependency set, one fixed declared export set, exact provider generations,
+draining, loss, and cancellation. Multiple invocations on one Mount may be
+outstanding and answer out of order; each has a separate owner. FLOW does not
+infer serialization, linearizability, or transaction isolation. Dynamic
+dependency snapshots and post-readiness export mutation were removed after the
+stateful and Cordis probes found no boundary need which justified them.
 
 SDKs project Mount-owned and invocation-owned child calls separately without
 exporting a public Scope object. Shadow-first replacement is permitted only
@@ -366,9 +368,20 @@ legal only when leases coexist and no affected Hook selects that Service as
 its source. Otherwise Jig drains and fences, switches admission/Hook intervals,
 and starts the replacement through an honest unavailable window. Provider
 state plus Journal publication remains an application outbox with
-cross-generation at-least-once behavior, not a Jig transaction. The probe did
-not exercise dynamic dependency or post-readiness export snapshots; those
-surfaces remain independently evidence-gated.
+cross-generation at-least-once behavior, not a Jig transaction.
+
+The GUI probe then separated application frontends from portable components. A
+trusted local GUI uses the same root admission semantics as the CLI plus
+bounded Run/Event inspection and idempotent cancellation through a host-local
+control surface. HTTP and presentation stay application-owned; FLOW gains no
+GUI, Journal-query, callback, or raw-network primitive.
+
+The Cordis timer probe reused an existing disposal-aware component unchanged.
+One realm maps to one Service Mount, callbacks and disposers remain local, and
+root Fiber disposal maps to Mount cancellation. Its external Journal Binding
+and scheduler export remain fixed even though Cordis is reactive internally.
+This supplied the final deletion evidence for dynamic Service dependency and
+export snapshots.
 
 No further v1 abstraction is justified until one of those tests demonstrates a
 concrete missing primitive.

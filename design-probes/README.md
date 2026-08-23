@@ -19,6 +19,12 @@ interoperability.
 - [`stateful-index/`](stateful-index/) — a Bun Service shared by Python and Bun
   Runs, an explicit portable Journal producer path, concurrent invocation
   ownership, persistent-outbox recovery, and exclusive-writer replacement.
+- [`gui-document-desk/`](gui-document-desk/) — a framework-free browser UI and
+  trusted Bun application frontend using host-local Run/Event control while
+  three sandboxed FLOW packages remain networkless.
+- [`cordis-timer/`](cordis-timer/) — the published Cordis Timer Service reused
+  unchanged inside one Bun FLOW Service, with callbacks kept realm-local and a
+  fixed JSON scheduler/Event boundary exposed to Python Runs.
 
 ## Authority order
 

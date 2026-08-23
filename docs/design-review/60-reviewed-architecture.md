@@ -183,9 +183,9 @@ extensions and can never gain Metadata/1 core meaning.
 These two forms comprise the complete v1 field vocabulary. Each portable
 `uses` entry points to the consumer's exact package-local Capability Contract/1
 descriptor. The descriptor carries its URI and exact version; Jig derives and
-locks its digest rather than asking authors to copy hashes into `FLOW.md`. Only
-a Service-capable consumer may set `binding: dynamic`; static is the default.
-A project-only package may instead mark a slot `local: true`, which is an
+locks its digest rather than asking authors to copy hashes into `FLOW.md`.
+Every Service dependency is fixed before initialization for the complete Mount
+lifetime. A project-only package may instead mark a slot `local: true`, which is an
 explicit non-portability claim. These forms are mutually exclusive. Every
 contract reference uses exact `./` author syntax and resolves by exact case to
 one regular descriptor file in the staged package. The closed grammar and
@@ -454,10 +454,10 @@ component process/Mount channel. A host requiring enforceable per-consumer or
 per-authority isolation uses a separate process and channel; bookkeeping,
 deadlines, and cancellation may still be narrower per request.
 
-Every `service/status` names its live owning mount request and status revision.
+Every `service/ready` names its live owning mount request.
 Every `request/cancel` names a still-pending request originated by its sender.
-`service/bindings` is host control and owns no component work. Only
-`flow/run`, `service/mount`, and `service/invoke` may own operations.
+`service/ready` owns no component work. Only `flow/run`, `service/mount`, and
+`service/invoke` may own operations.
 
 There is no public `scopeId`, `scope/open`, Mount handle, or reconnect/resume
 capability in v1. Internally Jig still has a Scope tree because cleanup needs
@@ -669,10 +669,9 @@ participant. Jig v1 implements it; Run-only hosts do not have to.
 host -> component
     service/mount       pending for the complete Mount lifetime
     service/invoke      invoke one exact export generation
-    service/bindings    install a revisioned dynamic-dependency snapshot
 
 component -> host
-    service/status      publish a revisioned full availability snapshot
+    service/ready       acknowledge that every declared export is callable
 
 shared with Run/1
     flow/call
@@ -694,67 +693,59 @@ one invocation cannot cancel unrelated Mount work.
 A language SDK must preserve that distinction. A provided method handler
 receives an invocation-scoped projection of cancellation and `flow/call` /
 `effect/call`; Mount initialization and recovery use the separate Mount-scoped
-projection. Both are views over the wire owner's already-pinned dependency
-revision, not public `Scope`, `Context`, or transferable handles. Calling a
+projection. Both are views over the Mount's already-pinned dependency set, not
+public `Scope`, `Context`, or transferable handles. Calling a
 Mount-scoped client from an invocation must not silently reattribute child work
 to that invocation, or vice versa.
 
 Host and Provider support multiple outstanding `service/invoke` requests on
 one Mount and out-of-order responses. Each invocation separately pins its
-consumer Binding, provider generation, dependency revision, contract/method,
-deadline, budget, and operation key. Concurrency promises separate cooperative
+consumer Binding, provider generation, contract/method, deadline, budget, and
+operation key. Concurrency promises separate cooperative
 lifecycle accounting and admission, not hostile sibling isolation,
 serialization, linearizability, or transaction isolation. The hard security
 ceiling is Mount-scoped. A provider that needs different security principals
 or authority ceilings runs in separate Mount processes/channels.
 
-`service/mount` installs the complete initial dependency snapshot as revision
-0 before provider initialization begins. It contains every fixed static Binding
-and either the initial Binding or explicit absence for every dynamic slot.
-Revision 0 is the first acknowledged dependency revision.
+`service/mount` installs the complete dependency set before provider
+initialization begins. Every declared slot resolves to one exact Binding and
+provider generation. The set never changes for that Mount; losing a required
+dependency cancels the Mount rather than healing it in place.
 
-### 6.3 Availability, identity, and loss
+`service/ready` contains only the live `ownerRequestId` and the complete
+declared export LocalNames in canonical UTF-8 order. It has no `operationId`
+and owns no work. Unknown, duplicate, missing, extra, unsorted, stale-owner, or
+post-cancellation values are protocol errors.
 
-Package metadata statically declares the maximum export set. The first accepted
-`service/status` snapshot—even an empty one—marks the Mount ready; absence until
-the startup deadline fails the Mount. The first ready snapshot names the exact
-acknowledged dependency revision under which initialization completed; unknown
-or partly installed revisions fail. Each snapshot:
+### 6.3 Readiness, identity, and loss
 
-- has a new revision greater than the last accepted revision;
-- contains the complete currently available subset;
-- is acknowledged by Jig;
-- permits retransmission of the last accepted revision only with the same
-  canonical digest; a changed or older revision is a protocol error.
+Package metadata declares the complete export set. After registering every
+declared export locally, the Provider sends exactly one `service/ready` request
+naming the live Mount owner. Jig validates that the set exactly equals
+`provides`; a missing, extra, or duplicate export fails the Mount. No invocation
+is admitted before the readiness acknowledgement, and absence until the
+startup deadline fails the Mount.
 
-At most one logical `service/status` update may be unresolved per Mount. The
-Provider waits for its success or proven rejection before sending a newer
-revision. It may retransmit only that same revision and canonical digest; Jig
-joins the pending update or returns its durably recorded result without
-assigning another export generation. A newer revision while the prior update
-is unresolved is a protocol error. Cancellation, acknowledgement timeout,
-channel loss, or any other ambiguous result authorizes neither side to assume
-old or new status; unless the same update's terminal result is proven, Jig
-loses and terminates the Mount.
+Accepting readiness atomically assigns one fresh provider generation to every
+declared export. Jig serializes and flushes the successful readiness response
+before opening consumer-lease admission or dispatching an invocation on that
+channel. A failed response write loses the Mount and opens no admission. A
+second readiness request, partial readiness, or later export addition/removal
+is a protocol error. If the Provider receives no acknowledgement before its
+fixed deadline, it terminates the Mount rather than continuing under an
+assumed state.
 
-`service/status` carries the live Mount owner and uses its revision—not a
-separate operation ID—as its idempotency key. Accepting a snapshot atomically
-records its digest, assigns fresh host generations to newly available exports,
-closes admission for removed generations, marks their bindings lost, and
-records cancellation of their admitted invocations. Only then is the snapshot
-acknowledged. An invocation racing a removal is therefore either admitted
-before the commit and cancelled or rejected after it. Cleanup may finish after
-the acknowledgement, but the removed generation is no longer callable. A
-status received after Mount cancellation or from a stale channel epoch fails
-before mutation.
+Exports remain callable as one fixed set until the Mount drains, is cancelled,
+or is lost. A provider needing optional or independently changing public
+capabilities uses separate Service packages/Mounts. Internal plugins and local
+services may still appear or disappear, but loss of anything required to
+implement a declared public export terminates this Mount.
 
-Re-adding the same export name creates a fresh generation; old consumers never
-heal to it. Resolving a consumer slot allocates an internal Binding lease for
-the exact provider generation, owned by that consumer Run or Mount dependency
-revision. It is released when the owner closes or a dynamic dependency
-snapshot replaces it; already admitted invocations keep narrower operation
-leases until terminal. Consumer crash/loss releases leases through coordinator
-fencing.
+Resolving a consumer slot allocates an internal Binding lease for the exact
+provider generation, owned by that consumer Run or dependent Mount. It is
+released when the owner closes; already admitted invocations keep narrower
+operation leases until terminal. Consumer crash/loss releases leases through
+coordinator fencing.
 
 An active Mount accepts new Binding leases and invocations. A draining Mount
 accepts no new consumer leases, but an existing live lease may start further
@@ -762,10 +753,9 @@ invocations; admitted invocations and bounded Mount-background work may
 complete. Final lease release or the activation's recorded drain deadline
 closes invocation admission, cancels remaining work, and cancels the pending
 mount request. The provider cannot choose that deadline. Removing an export by
-`service/status` is immediate withdrawal for that generation and overrides
-graceful drain. A graceful replacement therefore keeps the old export
-available on the old Mount. While draining, status may remove exports but may
-not create a new availability transition.
+provider choice is impossible; graceful replacement keeps the old fixed export
+set available on the old Mount until its leases drain or the deadline fences
+it. Provider failure instead loses the complete set immediately.
 
 Graceful shadow-first rollout uses two Mounts only when their complete planned
 resource and attachment leases can coexist. The ready new Mount then receives
@@ -794,43 +784,22 @@ and never transparently rebinds an existing consumer.
 
 ### 6.4 Dependencies
 
-`uses` declares Service dependencies. Static is the default. Required static
-dependencies are resolved before Mount and never rebound; their loss cancels
-the Mount.
-
-Only explicitly dynamic slots may receive `service/bindings`. Each update is a
-complete, revisioned snapshot naming the live Mount owner. A new revision must
-be positive and greater than the last accepted one; retransmitting the last revision is
-idempotent only with the same canonical digest. It is applied wholly or
-rejected wholly, and its successful response means the full snapshot is
-installed.
-
-Exactly one logical Binding update may be unresolved per Mount. Once Jig
-dispatches it, new invocation and Mount-background operation admission pauses;
-already admitted operations remain pinned to their prior revision. Jig may
-retransmit only the same revision and digest, and the Provider joins or returns
-the recorded result. A proven whole-update rejection leaves the prior revision
-active. A success acknowledgement advances the revision. Timeout,
-cancellation, channel loss, or any other ambiguous result loses and terminates
-the Mount unless acknowledgement of that same update is subsequently proven;
-Jig never resumes admission against the old revision by assumption. Ordinary
-`request/cancel` is not used to pretend a dispatched state mutation rolled
-back—cancelling the Mount is the safe escape.
-
-Every later snapshot repeats static entries byte-for-byte; only declared
-dynamic entries may change. Mount initialization operations and readiness name
-revision 0 unless a complete positive revision was acknowledged first.
-
-Each `service/invoke` carries the exact acknowledged dependency revision fixed
-at admission for all its child calls. At operation-intent commit, every
-Mount-owned `flow/call` or `effect/call` likewise names and stores the exact
-latest acknowledged revision used to resolve its slot. Later snapshots cannot
-alter that operation's provider. The host rejects stale, unknown, and partially
-installed revisions. No undeclared dependency or export may appear at runtime.
+`uses` declares the complete dependency set. Every slot resolves before Mount
+initialization and remains pinned to one exact Binding/provider generation for
+the complete Mount lifetime. Initialization, invocation-owned child calls, and
+Mount-background calls all use that same set. No undeclared dependency may
+appear at runtime, no provider may be replaced in place, and dependency loss
+cancels the Mount.
 
 Static dependency cycles fail before mount. Every synchronous Run, effect, and
-Service wait is an edge in Jig's wait-for graph. The newest edge
-which would create a non-runnable cycle fails instead of deadlocking.
+Service wait is an edge in Jig's wait-for graph. The newest edge which would
+create a non-runnable cycle fails instead of deadlocking.
+
+This fixed rule is intentionally less expressive than Cordis inside one realm.
+A Cordis adapter may keep plugins pending and react to local service changes,
+but the realm crosses FLOW only after its declared external dependencies and
+exports are ready. If that public seam can no longer be implemented, the Mount
+ends and a deliberate later activation creates new provider generations.
 
 ### 6.5 Deliberate v1 limit
 
@@ -1846,6 +1815,12 @@ reference CLI is `jig run <binding-id> --input <json-file>`; it generates and
 retains the key. Schema-invalid JSON/1 then terminates the allocated Run as
 `INVALID_INPUT`; invalid JSON/1 allocates nothing.
 
+Trusted frontends use the same narrow host-local surface to inspect one visible
+Run, request idempotent cancellation, and read bounded authority-filtered Event
+pages. These operations neither become FLOW/1 methods nor grant package code a
+Journal reader. Their transport-independent semantics are specified in
+[`../spec/frontend-control.md`](../spec/frontend-control.md).
+
 Hook delivery shares the internal admission primitive but not the external
 operation: it supplies the Hook revision's already-pinned target/generation
 and `(Hook revision digest, event ID)` key, so a later project generation
@@ -2077,9 +2052,11 @@ results before continuing through its own outgoing edge.
 ### 14.5 Cordis as a reference integration
 
 One Cordis realm maps to one pending Service Mount. Declared external injections
-map to exact dependency slots; declared serializable exports map to static
-Service descriptors; availability maps to `service/status`; root disposal maps
-to cancellation of the mount request.
+map to exact fixed dependency slots; declared serializable exports map to
+static Service descriptors; complete boundary readiness maps to
+`service/ready`; root disposal maps to cancellation of the mount request. Cordis
+may remain reactive internally. Loss of a service needed at the public boundary
+ends the Mount rather than mutating its FLOW exports or dependencies in place.
 
 Cordis Fibers, closures, symbols, local events, and arbitrary objects remain in
 the realm. Service/1 v1 proves a host-side serializable seam, not transparent
@@ -2189,12 +2166,11 @@ Release order:
 8. **Service/1:** independently implemented Providers and Hosts agree on
    pending-Mount ownership, owner-return quiescence, readiness,
    Mount-background versus invocation-owned child-call attribution,
-   concurrent invoke/removal races, dropped status acknowledgement and exact
-   status retransmission without a second generation, rejection of a newer
-   unresolved status, exact dynamic binding snapshots, ambiguous Binding-update
-   termination, loss/reappearance, compatible shadow-first update, conflicting
-   lease and Event-source drain/fence/admission-switch/start, cycles,
-   cancellation, EOF, and crash fencing.
+   concurrent invocation and out-of-order response, exact fixed dependency and
+   export sets, dropped readiness acknowledgement, dependency/provider loss,
+   compatible shadow-first update, conflicting lease and Event-source
+   drain/fence/admission-switch/start, cycles, cancellation, EOF, and crash
+   fencing.
 9. **Events/Hooks:** two independently implemented hosts' native canonical
    Journals survive kill injection at every append/result boundary with one
    Event and outer operation result; external effects retain generic
@@ -2241,6 +2217,7 @@ multiple implementation faces
 automatic executable-to-instruction fallback
 public Scope/Context/Mount objects
 immediate mount result and service/unmount
+dynamic Service dependency snapshots and post-readiness export mutation
 callback/delegated/resource handles
 generic subscriptions/signals/streams
 range, subtyping, or closest-match inference for Capability Contracts
@@ -2292,10 +2269,10 @@ independent conformance surface. Source execution is honestly conditional on a
 host-installed Adapter; FLOW does not claim that different language
 toolchains are equivalent.
 
-It is minimalist because Run/1 has four methods, Service/1 adds only the state
-needed for a pending provider with changing availability, one Binding holds all
-configuration, and Flow remains the unit for complex logic—including repair,
-Hook reactions, and Starter setup.
+It is minimalist because Run/1 has four methods, Service/1 adds only one
+pending provider lifetime with fixed dependencies and exports, one Binding
+holds all configuration, and Flow remains the unit for complex logic—including
+repair, Hook reactions, and Starter setup.
 
 It is future-proof because the hard extensions—callbacks, streams, resumption,
 compatible ranges, richer telemetry—have explicit conformance boundaries instead

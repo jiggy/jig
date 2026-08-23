@@ -557,7 +557,7 @@ Jig exposes one host-local operation for a person, CLI, GUI, or trusted module
 to request root work:
 
 ```text
-startRun(bindingId, input, submissionId) -> durable Run identity
+startRun(bindingId, input, submissionId) -> RunSnapshot
 ```
 
 `submissionId` is an opaque project-local retry key. Jig first validates that
@@ -597,6 +597,11 @@ attached only by Jig. Ordinary frontends cannot supply them. Neither root path
 can name raw package source, select a provider or Runtime Adapter, alter
 Binding settings, remap attachments, widen grants, or inject environment
 values. A different reusable configuration requires a new Binding revision.
+
+Host-local `getRun`, idempotent `cancelRun`, bounded Event inspection, frontend
+authority, and the stable `RunSnapshot` projection are specified in
+[`frontend-control.md`](frontend-control.md). They do not add FLOW methods or a
+portable Journal reader.
 
 ## 11. Required conformance cases
 

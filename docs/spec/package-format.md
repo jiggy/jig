@@ -128,9 +128,9 @@ already staged package.
 `contract` uses that syntax to reference one Capability Contract/1 JSON
 descriptor in this same package. Jig validates the descriptor and derives its
 URI, exact version, and canonical digest; authors do not copy any of those
-values into `FLOW.md`. A Service consumer which genuinely needs dynamic
-provider snapshots may additionally set `binding: dynamic`; static is the
-default. The only other `uses` form is the explicit nonportable local seam:
+values into `FLOW.md`. Every dependency of a Service Mount is fixed before
+provider initialization and remains pinned for that Mount. The only other
+`uses` form is the explicit nonportable local seam:
 
 ```yaml
 uses:

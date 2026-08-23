@@ -243,8 +243,9 @@ long-lived process to provide one or more such contracts.
 
 Service/1 supports bounded request/response JSON and multiple outstanding
 `service/invoke` calls on one Mount with out-of-order responses. Each invocation
-is a separate owner which pins consumer Binding, provider generation,
-dependency revision, method, contract, deadline, budget, and operation key.
+is a separate owner which pins consumer Binding, provider generation, method,
+contract, deadline, budget, and operation key. The Mount's complete dependency
+set and complete export set are fixed for its lifetime.
 Cancelling one invocation cannot cancel a sibling or the Mount.
 
 Concurrent invocation does not promise serialization, linearizability, or
