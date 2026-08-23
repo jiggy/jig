@@ -19,10 +19,21 @@
           "minLength": 1,
           "maxLength": 1048576
         },
+        "skills": { "$ref": "#/$defs/SkillNames" },
         "responseSchema": true
       },
       "required": ["instructions"],
       "additionalProperties": false
+    },
+    "SkillNames": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+        "maxLength": 64
+      },
+      "maxItems": 64,
+      "uniqueItems": true
     },
     "AgentResult": {
       "type": "object",

@@ -5,7 +5,7 @@
   "version": "1.0.0",
   "methods": {
     "open": {
-      "input": { "$ref": "#/$defs/Empty" },
+      "input": { "$ref": "#/$defs/OpenInput" },
       "output": { "$ref": "#/$defs/Opened" },
       "errors": {}
     },
@@ -32,6 +32,23 @@
     }
   },
   "$defs": {
+    "OpenInput": {
+      "type": "object",
+      "properties": {
+        "skills": { "$ref": "#/$defs/SkillNames" }
+      },
+      "additionalProperties": false
+    },
+    "SkillNames": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+        "maxLength": 64
+      },
+      "maxItems": 64,
+      "uniqueItems": true
+    },
     "Empty": {
       "type": "object",
       "properties": {},

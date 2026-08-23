@@ -13,9 +13,9 @@ The canonical descriptors and their Capability Contract/1 digests are:
 
 | Contract | Descriptor | Digest |
 |---|---|---|
-| Agent Run 1.0.0 | [`agent-run.capability.json`](contracts/jig/agent-run.capability.json) | `sha256:124668db4b2b003532062d8da291d2e69696d782a38bd2cae9c0140057bd0f9b` |
-| Agent Session 1.0.0 | [`agent-session.capability.json`](contracts/jig/agent-session.capability.json) | `sha256:f1fd50a5f50486e153214d3943cac349af42a0ebcd848a81d0551b3c6fc84e10` |
-| Agent Interactive 1.0.0 | [`agent-interactive.capability.json`](contracts/jig/agent-interactive.capability.json) | `sha256:a7db3742696601c17ff61805b26cbd23165b936db8ef96dd3970a4af8c56d4e1` |
+| Agent Run 1.0.0 | [`agent-run.capability.json`](contracts/jig/agent-run.capability.json) | `sha256:d455730ec798a2cfbba5a5a37e2f8a2167325071dffc7fedc02a22e192b72dd2` |
+| Agent Session 1.0.0 | [`agent-session.capability.json`](contracts/jig/agent-session.capability.json) | `sha256:63b9e1d6753ba2691b72c75ef90a878390177246d163d942d18c8ab867fccfe8` |
+| Agent Interactive 1.0.0 | [`agent-interactive.capability.json`](contracts/jig/agent-interactive.capability.json) | `sha256:abd7aad3b1813f5a8d5d7c45eb217386f0290f9a3187ca10803836915a095d19` |
 | Approval 1.0.0 | [`approval.capability.json`](contracts/jig/approval.capability.json) | `sha256:8153497564cb47d09cbc22671d1f6906f523d88f546815cc904ea2c10a50d38f` |
 | Semantic Choice 1.0.0 | [`semantic-choice.capability.json`](contracts/jig/semantic-choice.capability.json) | `sha256:83767b89d02163d8a36c5e4f561d7c164135866a6bfdee1acd20f76370971e02` |
 
@@ -49,6 +49,7 @@ honest than the third small contract.
 ```text
 run({
   instructions,
+  skills?,
   responseSchema?
 }) -> {
   outcome: completed | blocked | limit,
@@ -57,8 +58,10 @@ run({
 }
 ```
 
-When `responseSchema` is present, `structured` is required and validated with
-Schema/1. The supplied value must itself be a valid bounded Schema/1 root
+`skills` is a strictly increasing unsigned-UTF-8 list of package-local Skill
+`LocalName`s and therefore has set semantics with one canonical spelling.
+Omission means none. When `responseSchema` is present, `structured` is required
+and validated with Schema/1. The supplied value must itself be a valid bounded Schema/1 root
 schema, including the exact `$schema` declaration required of a schema file.
 Provider crash, cancellation, denied authority, malformed output, and schema
 failure are operation failures, not domain outcomes.
@@ -68,7 +71,7 @@ failure are operation failures, not domain outcomes.
 ### Agent Session
 
 ```text
-open({}) -> { sessionId }
+open({ skills? }) -> { sessionId }
 
 prompt({
   sessionId,
@@ -184,10 +187,11 @@ with the same parsed JSON/1 input (equivalently, the same RFC 8785 canonical
 input digest) joins the pending call or returns its recorded result; changed input
 returns `turn-id-conflict`.
 
-Service/1 providers of these contracts must admit multiple outstanding,
-out-of-order invocations on one Mount. This permits `events` and `steer` while
-`prompt` remains pending. The contracts may also be implemented host-natively;
-Service/1 is a provider option, not a requirement.
+Provider integrations must admit the concurrent operations required by the
+contract, including `events` and `steer` while `prompt` remains pending. In Jig
+v1 an Agent Binding is a trusted host-capability Binding, not a direct FLOW
+Service export. The integration may internally supervise a local process or
+remote daemon, but it owns that transport and the exact per-owner projection.
 
 `steer` linearizes against turn completion. It either commits while that exact
 turn is active, or returns
@@ -218,26 +222,22 @@ terminal or uncertain result before releasing or fencing the lease. Consistent
 with Run/1 owner quiescence, cleanup which cannot become terminal or fenced by
 the hard deadline prevents owner success and makes it `FAILED` or `LOST`.
 
-For remote providers Jig can guarantee only local session-admission closure
-and a recorded close attempt. A host-native per-owner projection is revoked as
-described below; a Service-backed provider retains only its static Mount
-authority until that Mount drains or is revoked. Jig does not claim remote data
-erasure or provider-side cleanup it cannot observe.
+For remote providers Jig can guarantee only local session-admission closure,
+projection revocation, and a recorded close attempt. It does not claim remote
+data erasure or provider-side cleanup it cannot observe.
 
 ## 3. Workspace and authority
 
 No Agent method accepts a host path, attachment token, tool grant, permission
 override, provider option, model name, or shell command.
 
-An Agent provider reference normally resolves either to a host-capability
-Binding whose export implements the exact Agent contract, or to an exact Agent
-export of a Service package Binding. It is not a separate Agent profile type.
-Instruction conductors are the v1 exception: they require a host-capability
-Agent Binding whose trusted integration can realize the exact per-Run resource
-and tool projection below. A Service-backed Agent remains valid for ordinary
-Agent calls only when the owning package needs no Flow-local skill projection,
-but is ineligible as an instruction conductor because Service/1 has only static
-Mount authority and no delegated per-caller resource view.
+An Agent provider reference resolves to a host-capability Binding whose export
+implements the exact Agent contract. It is not a separate Agent profile type.
+The trusted integration must realize the exact per-owner resource and tool
+projection below. A direct FLOW Service export cannot qualify in v1 because
+Service/1 has only static Mount authority and no delegated per-invocation
+resource view. A host integration may wrap such a process without exposing it
+as the project Binding.
 
 The resolved provider configuration fixes:
 
@@ -277,28 +277,26 @@ A host-native Agent provider receives that derived operation projection.
 Closing, cancelling, or losing the operation revokes its projection and
 releases its write lease even when remote cleanup is uncertain.
 
-A Service/1 provider instead sees only the attachments statically approved for
-its exact Service Binding. The invoking caller still contributes no attachment
-authority. The provider authority and its write lease belong to the
-Mount, not to an individual session; closing a session cannot revoke them. An
-invocation never remaps the Mount workspace or injects paths or generic
-handles. Projects needing several Service-backed workspaces or isolation
-domains therefore declare several exact Bindings/Mounts, whose authority ends
-only when each Mount drains or is revoked. Dynamic per-caller Service mounts
-are deferred. A stateful provider cannot pool unrelated workspaces unless
-those static Bindings and Sandbox instances already separate them.
-
 ### 3.1 Flow-local skills
 
-The optional package-root `skills/` directory has one Jig meaning: its exact
-opaque subtree is Flow-local Agent skill source owned by that FLOW Package
-revision. When an Agent operation is created on behalf of the package, Jig
-makes that tree available through a read-only, owner-scoped projection suitable
-for the selected provider. Instruction execution uses the same rule. A child
-Flow sees its own package tree, not its parent's.
+The optional package-root `skills/` directory has one Jig meaning: each exact
+immediate `skills/<LocalName>/SKILL.md` subtree is Flow-local Agent skill source
+owned by that FLOW Package revision. Exact-code Agent Run calls select zero or
+more of those LocalNames through `skills`; omission means no Flow-local skill
+context. Session and Interactive calls select their immutable set at `open`,
+and every turn in that session retains that set. A call cannot select a parent
+Flow's skill, a sibling package's skill, or an undeclared project directory.
 
-The projection is lifecycle state, not an Agent method argument and not an
-ambient project directory. An integration may realize it with an isolated
+For each selected name Jig makes only that exact subtree available through a
+read-only projection scoped to the Agent operation or session owner. A child
+Flow sees its own package tree, not its parent's. An instruction conductor is
+the package's single Agent operation and selects every valid immediate
+Flow-local Skill by default, because the Markdown package has no inner call
+site at which to make a narrower executable selection.
+
+The `skills` field selects context; it does not carry files, paths, or
+authority. Projection remains host lifecycle state rather than an ambient
+project directory. An integration may realize it with an isolated
 filesystem tree, a provider-native skill catalogue, or an equivalent
 progressive-disclosure mechanism, but it must preserve the exact admitted tree
 bytes and revoke the projection with the Agent owner. The provider integration,
@@ -308,21 +306,18 @@ expose the tree without changing or colliding with existing provider state is
 ineligible for that operation.
 
 Service/1 cannot add this owner-scoped tree to an already mounted provider: its
-resources and authority are fixed for the Mount generation. Consequently, a
-Service-backed Agent is eligible for an ordinary operation only when the owning
-FLOW Package has no `skills/` tree. Static Mount resources, even if they happen
-to contain similar files, never satisfy another package's Flow-local projection.
-A package with Flow-local skills requires a host-capability Agent Binding whose
-integration can create and revoke the exact per-operation view. Instruction
-conductors already require that Binding for the larger per-Run projection.
+resources and authority are fixed for the Mount generation. Static Mount
+resources, even if they happen to contain similar files, never satisfy another
+package's Flow-local projection. Agent Bindings therefore use a host
+integration which can create and revoke the exact per-owner view. Instruction
+conductors use the same boundary for their larger per-Run projection.
 
-Projection proves availability, not use. Merely placing a Skill in the tree
-does not cause an Agent to select or obey it. When a Flow's procedure depends
-on one bundled Skill, the relevant Agent instructions must request it in terms
-the configured integration understands, or repeat the mandatory rule directly.
-Even an explicit request is behavioral evidence rather than an authority or
-correctness guarantee; deterministic validation and sandbox limits remain
-separate. FLOW and Agent contracts therefore gain no `skills` argument.
+Projection proves availability, not use. Selecting a Skill does not prove that
+an Agent followed it. When a Flow's procedure depends on one bundled Skill, the
+same call both selects its LocalName and requests its use in the instructions,
+or repeats the mandatory rule directly. Even both actions are behavioral
+evidence rather than an authority or correctness guarantee; deterministic
+validation and sandbox limits remain separate.
 
 Jig never copies these bundles into or overwrites application- or
 provider-native locations such as `.agents/skills/` or `.claude/skills/`.
@@ -365,7 +360,8 @@ fixed request cannot satisfy that ceiling does not qualify; with no other exact
 instruction recipe the Binding is admitted `UNAVAILABLE` with
 `IMPLEMENTATION_UNAVAILABLE`, before any Run dispatch.
 
-The conductor exposes declared attachments, Flow-local skills, and
+The conductor exposes declared attachments, every valid immediate Flow-local
+Skill, and
 already-admitted effect/Flow slots through owner-scoped provider tools. Those
 tools realize the existing `effect/call` and `flow/call` semantics with stable
 operation IDs derived from conductor turn/tool-call identity. They cannot add
@@ -425,10 +421,10 @@ Approval can release only authority already inside the configured effect
 ceiling; it cannot add a path, tool, effect, provider, or raw permission. Deny,
 timeout, cancellation, unavailable approval, or an unprovable commit prevents
 dispatch. Ungated effects inside the ceiling remain preapproved; effects
-outside it remain impossible. A Service-backed Agent uses one Mount-scoped
-ceiling and gate policy because sibling attribution on a multiplexed provider
-channel is cooperative rather than a hard security boundary. Persistent grants
-and policy editing are deferred.
+outside it remain impossible. A remote or multiplexed provider remains behind
+the host integration; the integration must preserve exact owner attribution and
+cannot treat a cooperative provider channel as a hard security boundary.
+Persistent grants and policy editing are deferred.
 
 ## 5. Semantic Choice
 
@@ -503,6 +499,13 @@ Binding supplies only the Semantic Choice capability used at the many-candidate
 step. A runner-local Router receives a separately declared package capability
 slot even when project policy binds both sites to the same provider revision.
 
+If deterministic filtering leaves `reference-fast` and `reference-deep`, the
+configured Binding may choose between those two IDs. Without the field that
+same operation is `BINDING_AMBIGUOUS`; with one survivor it proceeds directly
+and never calls Semantic Choice. The string is simply a Binding LocalName and
+may name any compatible implementation, for example `offline-choice` or
+`company-choice`.
+
 A dangling or contract-incompatible `semanticChoice` reference invalidates the
 project candidate. A valid Binding admitted `UNAVAILABLE` does not turn the
 ranker into a required execution dependency: if deterministic filtering leaves
@@ -542,9 +545,8 @@ new submission key. Reusing the old key returns the old terminal Run.
    and future cursors return `cursor-expired` and `cursor-ahead` rather than
    guessing, waiting past a gap, or skipping.
 6. Owner or provider loss invalidates the session without rebinding.
-7. Close/cancel revokes a host-native per-owner projection and write lease. A
-   Service-backed session closes locally while its static Mount authority ends
-   only on Mount drain/revoke; remote erasure is never claimed.
+7. Close/cancel revokes the per-owner projection and write lease. A remote
+   session closes locally while provider-side erasure remains unclaimed.
 8. Returning from an owner with an open session cannot commit success before
    the host-owned disposer closes or fences the exact session generation; its
    cleanup cannot create child work or silently reparent the session.
@@ -559,10 +561,12 @@ new submission key. Reusing the old key returns the old terminal Run.
 13. Prompt injection can influence only selection inside the frozen allowlist.
 14. A committed semantic result is reused; uncertain dispatch never reranks.
 15. A later graph visit is a distinct decision.
-16. A Flow-local skill projection contains the exact admitted package tree, is
-    revoked with its Agent owner, and never overwrites provider-native skill
-    directories; an integration unable to project it without mutation or
-    collision fails before provider work.
+16. Omitted `skills` selects none; an unsorted, unknown, duplicate, malformed,
+    or out-of-package name rejects before provider work. Each selected Flow-local
+    skill projection contains only its exact admitted subtree, is revoked with
+    its Agent owner, and never overwrites provider-native skill directories.
+    Session selection is fixed at `open`; instruction conductors select every
+    immediate package skill.
 17. Zero eligible `flow/call` candidates commit terminal `BINDING_MISSING`
     with the frozen candidate evidence and rejection reasons; repair cannot
     fill its resolution or rerank it.
@@ -585,7 +589,7 @@ new submission key. Reusing the old key returns the old terminal Run.
     `completed` with a valid complete structured Flow result may become a
     domain result. Agent `blocked`/`limit`, absent structured data, and invalid
     results fail without fabricating an outcome.
-22. A Service-backed Agent remains usable for an ordinary call only when the
-    owning package has no `skills/` tree, and cannot qualify an instruction
-    recipe in v1; no per-Run package, attachment, skill, or tool projection is
-    smuggled through static Mount authority.
+22. A direct FLOW Service Binding cannot satisfy a Jig Agent slot in v1. A
+    host integration may wrap a remote provider, but owns projection,
+    revocation, transport, and conformance; static Mount files never
+    impersonate per-owner package, attachment, skill, or tool context.

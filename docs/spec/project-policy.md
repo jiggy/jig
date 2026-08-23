@@ -118,6 +118,16 @@ candidate. A valid referenced Binding may nevertheless be admitted
 which was actually dispatched but has no provable result can make its parent
 operation `UNCERTAIN`.
 
+For example, suppose a `flow/call` slot admits both `reference-fast` and
+`reference-deep`, and both survive deterministic filtering. With
+`semanticChoice: "semantic-choice"`, Jig asks that exact Binding to rank those
+two IDs. Removing the field makes the same call terminate
+`BINDING_AMBIGUOUS`; it does not affect a graph Router, a call with zero
+candidates, or a call with exactly one candidate. The value may be any local
+Binding ID—such as `offline-choice` or `company-choice`—whose exact export
+implements the Semantic Choice contract. It is never a strategy name, Flow ID,
+model name, prompt, or algorithm literal.
+
 ## 2. One closed Binding union
 
 A Binding is one immutable admitted project-local configured use. It has
@@ -233,10 +243,10 @@ executes that pinned preparation and obtains its immutable prepared snapshot.
 An instruction recipe instead pins the exact instruction runtime, conductor,
 one host-capability Agent dependency Binding revision, export and contract,
 and authority envelope. Its trusted integration must support the exact
-per-Run logical resource/tool projection; a Service-backed Agent cannot
-qualify an instruction recipe in v1. Planning does not claim that a live
-host-provider generation exists yet. A host-capability recipe pins its fully
-resolved registration and operational provider evidence.
+per-Run logical resource/tool projection; Jig v1 Agent dependencies are
+host-capability Bindings rather than direct Service exports. Planning does not
+claim that a live host-provider generation exists yet. A host-capability recipe
+pins its fully resolved registration and operational provider evidence.
 
 For a code-backed Run package, deterministic planning selects the exact-code
 recipe when exactly one qualifies. Only when zero complete exact recipes
@@ -660,7 +670,7 @@ values. A different reusable configuration requires a new Binding revision.
 28. An instruction recipe pins one projection-capable host Agent
     Binding/export/contract during planning and acquires its exact live
     provider-generation lease during Run admission; provider absence fails
-    without rebinding, and a Service-backed Agent is ineligible.
+    without rebinding, and a direct Service export is ineligible.
 29. Applying a candidate after `BINDING_MISSING` never changes the old Run or
     operation. Repeating its root submission key returns the old terminal Run;
     only a new key may select the new admission generation.

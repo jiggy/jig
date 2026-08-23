@@ -218,11 +218,10 @@ Session identity includes the consumer owner lifetime and exact provider
 generation. IDs are nontransferable; one turn is active; caller turn/message
 IDs make steering addressable and idempotent; provider loss never heals. A
 successful open installs a host-owned disposer, so owner success cannot commit
-until every unclosed session is closed or fenced. A host-native per-owner
-workspace projection and lease end with that owner.
-Service-backed attachment authority is static and Mount-scoped, so session
-close ends local admission but Mount drain/revoke ends the authority. Jig does
-not claim remote erasure it cannot enforce.
+until every unclosed session is closed or fenced. The host integration's
+per-owner workspace projection and lease end with that owner. A remote close
+may only prove local admission closure and the recorded close attempt; Jig does
+not claim provider-side erasure it cannot observe.
 
 Agent methods cannot pass host paths or widen authority. One Agent Binding
 fixes provider, settings, its own attachment projection, tool/effect ceiling,
@@ -240,9 +239,9 @@ package, canonical input/settings, declared outcomes, and logical authority;
 the small fixed instruction interpolates none of them. It requires a complete
 structured `{ outcome, output }` under the package result schema or synthesized
 base schema. Agent text is diagnostic; Agent `blocked`/`limit` is an
-implementation failure, not a fabricated Flow outcome. Service-backed Agents
-remain valid for ordinary calls which require no Flow-local skill projection,
-but cannot accept this larger per-Run projection in Service/1 v1.
+implementation failure, not a fabricated Flow outcome. Jig Agent Bindings are
+host-capability integrations in v1; a direct Service export cannot partially
+satisfy the contract merely because one call selects no skills.
 
 See [`../spec/agents-and-semantic-choice.md`](../spec/agents-and-semantic-choice.md).
 

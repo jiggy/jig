@@ -235,9 +235,10 @@ Candidate planning first attempts to build exactly one complete exact-code
 recipe. Only when zero qualify may both opt-ins select and pin a distinct
 instruction recipe containing the exact instruction runtime, conductor, Agent
 host-capability Binding/export/contract, per-Run projection support, and
-authority envelope. A Service-backed Agent cannot qualify in v1 because its
-Mount authority is static. Exact ambiguity remains unavailable and never falls
-back. An instruction-only package requires the instruction recipe directly.
+authority envelope. Jig Agent Bindings are host-capability integrations in v1;
+a direct Service export cannot qualify because its Mount authority is static.
+Exact ambiguity remains unavailable and never falls back. An instruction-only
+package requires the instruction recipe directly.
 Run dependency admission later acquires one live provider-generation lease for
 that exact Agent export or fails without rebinding. A Run never chooses the
 branch: after an exact recipe is pinned, Jig never falls back because machinery
@@ -1350,28 +1351,31 @@ terminates and never appear afterward. Successful open also installs a
 host-owned disposer retaining the exact provider-generation cleanup lease, so
 owner success cannot commit until an unclosed session is closed or fenced.
 Close, owner cancellation, or provider loss closes session admission; provider
-loss never heals or rebinds it. A host-native per-owner projection is revoked
-with that owner, while static Service attachment authority remains Mount-scoped
-until drain/revoke. Jig does not claim remote data erasure it cannot observe.
+loss never heals or rebinds it. The integration revokes the per-owner
+projection with that owner. Jig does not claim remote data erasure it cannot
+observe.
 
-The package-root `skills/` directory is an opaque Flow-local Agent skill source
-tree. For an Agent operation owned by that exact package revision, Jig supplies
-a read-only owner-scoped provider projection and revokes it with the owner. A
-child Flow receives its own tree, never implicit inheritance from its parent.
+Each immediate package-root `skills/<LocalName>/SKILL.md` subtree is opaque
+Flow-local Agent skill source. Agent Run calls select an explicit subset,
+defaulting to none; Session/Interactive calls fix their subset at `open`; the
+single instruction-conductor call selects all immediate package skills. Jig
+supplies only the selected subtrees as a read-only owner-scoped provider
+projection and revokes them with the owner. A child Flow receives its own tree,
+never implicit inheritance from its parent.
 Jig does not parse Skill identities or dependencies, overwrite provider-native
 skill directories, or define global shadowing, precedence, a root skill
 catalogue, an override tree, or a skill dependency resolver. An integration
 unable to expose the exact tree without mutation or collision is ineligible.
-Because Service/1 Mount authority is static, a Service-backed Agent is eligible
-only for operations whose owning FLOW Package has no `skills/` tree; static
-Mount files never impersonate a package's owner-scoped skill projection. A
-package with Flow-local skills therefore requires a projection-capable
-host-capability Agent Binding in v1.
+Because Service/1 Mount authority is static, a direct Service export cannot
+satisfy a Jig Agent slot in v1. Static Mount files never impersonate an
+owner-scoped skill projection. A host-capability Agent integration may wrap a
+remote provider, but it remains responsible for exact projection, revocation,
+and contract conformance.
 Projection proves availability, not Agent selection or compliance. A Flow
 which relies on a bundled Skill explicitly requests it in the relevant Agent
 instructions and keeps deterministic safety/validation separate. The focused
-Agent specification defines this projection rule without adding a skill field
-to the Agent wire contracts.
+Agent specification defines the bounded LocalName selection while keeping
+skill bytes, paths, and authority out of the Agent wire contracts.
 
 Agent requests never carry raw host paths or permission overrides. An Agent
 Binding fixes provider, settings, its own attachment projection, tool/effect
@@ -2147,9 +2151,10 @@ Release order:
    candidate effects remain explicitly visible rather than being described as
    rolled back.
 11. **Root admission and skills:** every frontend starts through the same
-    internal admission primitive; Flow-local skills are projected exactly and
-    owner-scoped without provider-directory mutation or implicit precedence;
-    static Service-backed Agents are rejected when such a projection is needed.
+    internal admission primitive; every Agent operation selects an exact
+    Flow-local skill subset (empty by default), projected owner-scoped without
+    provider-directory mutation or implicit precedence; direct Service exports
+    never partially satisfy the Agent contracts.
 12. **Cancellation and update provenance:** cancellation is a request-scoped
     notification and duplicate delivery is idempotent; sibling cancellation
     does not kill unrelated work, successful update/rollback atomically changes
@@ -2210,6 +2215,9 @@ Deferred behind evidence, not merely time:
   the required cancellation/activation compare-and-set state machine;
 - cross-owner or cross-provider Agent session resume, after leases,
   delegation, revocation, and remote-loss semantics are proven;
+- per-invocation resource projection into Service-backed providers, after a
+  bounded resource descriptor and owner-scoped revocation model can project
+  Skill/assets without exposing host paths or inventing generic handles;
 - raw-authority Grant Profiles, only after a real package cannot use mediated
   effects and two Sandbox Backends pass one immutable direct/transitive escape
   corpus on their claimed platforms.

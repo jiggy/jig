@@ -160,6 +160,14 @@ For exact-code packages it remains the public semantic description and
 documentation; code is operational authority. A host cannot prove prose and
 code equivalent.
 
+An exact immediate subtree `skills/<LocalName>/` containing exact-case
+`SKILL.md` is selectable Flow-local Agent context under the Agent contracts.
+Jig identifies the subtree by directory LocalName but does not parse Skill
+identity, dependencies, or precedence. Other directories remain ordinary
+package resources. More than 64 selectable subtrees is still a valid package,
+but cannot qualify for the v1 instruction conductor which selects all of them
+through one bounded Agent Run call.
+
 ## 3. Canonical paths
 
 Each logical path uses the Unicode 15.1 character database for both NFC and
