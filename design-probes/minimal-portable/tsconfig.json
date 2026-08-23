@@ -11,6 +11,7 @@
   },
   "include": [
     "design-api.d.ts",
+    "design-flow.d.ts",
     "jig.ts",
     "bindings/**/*.ts",
     "flows/**/*.ts"

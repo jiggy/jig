@@ -2,16 +2,17 @@
 import {
   bind,
   bindingRef,
-  discover,
+  candidates,
 } from "jig";
 
 export default bind({
   use: "./flows/triage",
   settings: {},
   slots: {
-    agent: bindingRef("work-agent"),
+    worker: bindingRef("work-agent"),
+    analyst: bindingRef("analysis-agent"),
     choice: bindingRef("semantic-choice"),
-    "reference-research": discover([
+    "reference-research": candidates([
       "reference-fast",
       "reference-deep",
     ]),

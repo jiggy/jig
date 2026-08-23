@@ -2,4 +2,4 @@
 name = "jig-design-probe-count-text"
 version = "0.0.0"
 requires-python = ">=3.13,<4"
-dependencies = []
+dependencies = ["flow-run>=1,<2"]

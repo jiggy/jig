@@ -1,5 +1,4 @@
 ---
-flow: 1
 name: create-missing-flow
 description: Prepare an inert candidate Flow for an explicitly reported missing dependency.
 attachments:

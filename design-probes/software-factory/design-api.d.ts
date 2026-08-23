@@ -9,31 +9,16 @@ declare module "jig" {
     | readonly JsonValue[]
     | { readonly [name: string]: JsonValue };
 
-  export interface CatalogueDirectorySource {
-    readonly kind: "catalogue-directory";
-    readonly path: string;
-  }
-
-  export interface BindingDirectorySource {
-    readonly kind: "binding-directory";
-    readonly path: string;
-  }
-
-  export interface HookDirectorySource {
-    readonly kind: "hook-directory";
-    readonly path: string;
-  }
-
-  export interface SemanticResolverDefinition {
-    readonly kind: "semantic-resolver";
-    readonly using: string;
+  export interface DiscoverySource {
+    readonly kind: "directory-discovery";
+    readonly roots: readonly string[];
   }
 
   export interface JigDefinition {
-    readonly catalogues?: Readonly<Record<string, CatalogueDirectorySource>>;
-    readonly bindings?: BindingDirectorySource;
-    readonly hooks?: HookDirectorySource;
-    readonly resolver?: SemanticResolverDefinition;
+    readonly flows?: DiscoverySource | readonly string[];
+    readonly bindings?: DiscoverySource | readonly string[];
+    readonly hooks?: DiscoverySource | readonly string[];
+    readonly semanticChoice?: string;
   }
 
   export interface HostCapabilityReference {
@@ -52,8 +37,8 @@ declare module "jig" {
     readonly path: string;
   }
 
-  export interface DiscoveredFlowReference {
-    readonly kind: "discovered-flow";
+  export interface CandidateSetReference {
+    readonly kind: "candidate-set";
     readonly candidates: readonly string[];
   }
 
@@ -65,7 +50,7 @@ declare module "jig" {
     readonly use: string | HostCapabilityReference;
     readonly settings?: Readonly<Record<string, JsonValue>>;
     readonly slots?: Readonly<
-      Record<string, BindingReference | DiscoveredFlowReference>
+      Record<string, BindingReference | CandidateSetReference>
     >;
     readonly attachments?: Readonly<Record<string, AttachmentRoot>>;
     readonly grants?: Readonly<Record<string, JsonValue>>;
@@ -80,21 +65,9 @@ declare module "jig" {
     readonly target: string;
   }
 
-  export const catalogue: {
-    directory(path: string): CatalogueDirectorySource;
-  };
-
-  export const bindingSources: {
-    directory(path: string): BindingDirectorySource;
-  };
-
-  export const hookSources: {
-    directory(path: string): HookDirectorySource;
-  };
-
-  export function semanticResolver(definition: {
-    readonly using: string;
-  }): SemanticResolverDefinition;
+  export function discover(
+    roots: string | readonly string[],
+  ): DiscoverySource;
 
   export function defineJig<T extends JigDefinition>(definition: T): Readonly<T>;
 
@@ -111,7 +84,7 @@ declare module "jig" {
 
   export function root(path: string): AttachmentRoot;
 
-  export function discover(
+  export function candidates(
     candidates: readonly string[],
-  ): DiscoveredFlowReference;
+  ): CandidateSetReference;
 }

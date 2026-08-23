@@ -1,0 +1,40 @@
+{
+  "$schema": "https://flow.dev/schemas/schema-1.json",
+  "oneOf": [
+    {
+      "type": "object",
+      "properties": {
+        "outcome": { "const": "done" },
+        "output": {
+          "type": "object",
+          "properties": {
+            "strategy": {
+              "enum": ["gauntlet", "majority-vote"]
+            },
+            "evidence": {
+              "type": "string",
+              "maxLength": 8388608
+            }
+          },
+          "required": ["strategy", "evidence"],
+          "additionalProperties": false
+        }
+      },
+      "required": ["outcome", "output"],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "outcome": { "const": "blocked" },
+        "output": {
+          "type": "object",
+          "properties": {},
+          "additionalProperties": false
+        }
+      },
+      "required": ["outcome", "output"],
+      "additionalProperties": false
+    }
+  ]
+}

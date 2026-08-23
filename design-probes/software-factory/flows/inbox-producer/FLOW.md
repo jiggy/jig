@@ -1,12 +1,9 @@
 ---
-flow: 1
 name: inbox-producer
 description: Commit one immutable inbox-item Event from an explicitly submitted file.
 uses:
   journal:
-    contract: https://jig.dev/contracts/journal
-    version: 1.0.0
-    digest: sha256:dd749f53de3a5f80e02386699355e28c1fd7e707b2b12bdf2d5c725eb436ddf9
+    contract: ./contracts/journal.capability.json
 attachments:
   inbox: read
 ---

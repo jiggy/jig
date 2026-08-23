@@ -11,7 +11,8 @@ This is ordering for review, not a proposed trace or protocol serialization.
    confinement without running Flow or Agent code.
 3. It resolves each host-capability export and each package revision exactly.
    It freezes the ordered `reference-research` candidate Binding revisions and
-   pins one project Semantic Resolver Binding.
+   pins the exact project `semanticChoice` Binding used only as an ambiguity
+   ranker.
 4. Against one host-policy snapshot it derives one complete implementation
    recipe or exact unavailable reason for every Binding. Spindle and Deno are
    host Adapter selector tokens, never commands stored in this project.
@@ -58,35 +59,38 @@ This is ordering for review, not a proposed trace or protocol serialization.
 
 ## Local Gauntlet and distinct Jig Resolver
 
-1. If `gauntlet` wins, its first `FlowCall` asks Jig to resolve the
-   `reference-research` slot. The actual Event and call intent are fixed by
-   that operation; the project does not rewrite them.
+1. If `gauntlet` wins, its first `Research` Node calls `context.flows.call()`
+   through the `reference-research` slot. The actual Event and call intent are
+   fixed by that operation; the project does not rewrite them.
 2. Jig freezes the owner generation's two approved exact candidate revisions,
    then filters input schema, readiness, authority, budget, recursion, trust,
    and liveness. It never gives raw catalogue packages to the ranker.
 3. With two remaining candidates, Jig starts one journaled child Semantic
-   Choice operation using its project-pinned Resolver. The returned ID is
+   Choice operation using its project-pinned ranker. The returned ID is
    validated, committed, and compare-and-set into the still-empty resolution
    field once. The selected child Run is allocated atomically before dispatch.
 4. The child gets only its own Binding, instruction recipe, input, and package
    skill tree. It does not inherit triage's workspace or focused-validation
    skill; its instruction recipe uses the attachment- and tool-free
-   `analysis-agent`.
-   Its completion returns to the Spindle `FlowCall` node.
-5. The mock does not yet define how Spindle retains both immutable root input
-   and the returned research value for the build node. The same unresolved
-   dataflow seam applies to collecting three vote results for synthesis. These
-   nodes cannot be called a composable implementation until Spindle provides a
-   minimal runner-local value/state rule.
-6. Gauntlet's Agent nodes then invoke the exact `agent` slot. The Spindle owner
-   has no workspace attachment. For each owned operation Jig projects only the
-   workspace fixed by `work-agent` plus this triage package's skills, without
-   modifying provider-native directories, and revokes both with that Agent
-   owner.
-7. Subject to that unresolved Spindle seam, the fixed build, review, revision,
-   and verification nodes finish. The
-   Majority-Vote branch follows the same ownership rules but never invokes the
-   research slot.
+   `analysis-agent`. The conductor supplies the exact FLOW body, canonical
+   input/settings, and logical authority, and requires one complete structured
+   Flow result under `result.schema.json`; Agent text alone is not output. Its
+   completion returns to the Spindle `Research` Node.
+5. Spindle threads one immutable state through the branch. Research returns
+   `{ event, reference }`; each sequential worker Node returns a new record
+   adding its Agent result. The root Event remains separately immutable. There
+   is no shared result bag, mapper, or filesystem handoff.
+6. Gauntlet's Agent nodes invoke `worker`. The Spindle owner has no workspace
+   attachment. For each owned operation Jig projects only the workspace fixed
+   by `work-agent` plus this triage package's skills, without modifying
+   provider-native directories, and revokes both with that Agent owner.
+   Verification explicitly requests `focused-validation`; the projection is
+   availability evidence, not proof of use.
+7. The Majority-Vote branch forks the same `{ event }` state to three
+   attachment-free `analyst` calls. Parallel returns their results in declared
+   order, one deterministic join Node creates `{ event, votes }`, and only the
+   synthesis worker receives the writable workspace. The branch never invokes
+   the research slot.
 
 ## Root completion order
 

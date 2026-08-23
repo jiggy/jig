@@ -22,16 +22,19 @@ when it combines:
 
 The probe tests whether these concepts compose ergonomically without making a
 Router into a catalogue resolver, a Hook into middleware, or repair into an
-authority bypass. It does not test protocol bytes, durability, confinement,
-Spindle execution, Agent quality, multiple tickets, or working software.
+authority bypass. Its complete pseudocode also tests whether FLOW calls,
+immutable Spindle state, parallel read-only analysis, sequential writable work,
+and skill projection line up. It does not test protocol bytes, durability,
+confinement, actual execution, Agent quality, multiple tickets, or working
+software.
 
 ## Review order
 
 1. Read [`SCENARIO.md`](SCENARIO.md).
 2. Inspect the author-owned `jig.ts`, `bindings/`, `hooks/`, `flows/`,
    `inbox/`, `workspace/`, `repair-staging/`, and `examples/` trees.
-3. Treat `design-api.d.ts`, `design-spindle.d.ts`, and `tsconfig.json` only as
-   declaration-only review scaffolding.
+3. Treat `design-api.d.ts`, `design-flow.d.ts`, `design-spindle.d.ts`, and
+   `tsconfig.json` only as declaration-only review scaffolding.
 4. Compare the tabletop artifacts under `expected/` with the normative docs.
 5. Use [`API-LEDGER.md`](API-LEDGER.md) to challenge every invented spelling.
 
@@ -58,7 +61,8 @@ Excluded:
 
 - inbox watcher Service or filesystem ingress daemon;
 - Task, Kanban, Git, branches, worktrees, GUI, approvals, or Agent sessions;
-- concurrent tickets or workspace allocation;
+- concurrent tickets or workspace allocation (the three Majority voters are
+  parallel only because they use the attachment-free analyst);
 - dynamic graph rewiring, route arguments, confidence, or generated plans;
 - deferred cross-generation `WAITING_BINDING` and automatic repair/resume;
 - public lock serialization; and

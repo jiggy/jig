@@ -12,6 +12,7 @@
     "./hooks/**/*.ts",
     "./flows/**/*.ts",
     "./design-api.d.ts",
+    "./design-flow.d.ts",
     "./design-spindle.d.ts"
   ]
 }

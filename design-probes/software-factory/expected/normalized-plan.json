@@ -3,7 +3,7 @@
   "nonnormative": true,
   "note": "Tabletop projection only. Exact package, Binding, contract, Adapter, toolchain, Backend, provider-generation, recipe, and candidate digests must be computed by a real host.",
   "hostMatrixPrecondition": "The canonical Journal, Agent Run, and Semantic Choice registrations resolve uniquely; the Deno and Spindle implementations each have one complete enforcing activation recipe.",
-  "catalogue": {
+  "flowSource": {
     "source": "./flows",
     "members": [
       "create-missing-flow",
@@ -88,6 +88,9 @@
       "slots": {
         "journal": "journal@<exact-admitted-revision>"
       },
+      "consumerContracts": {
+        "journal": "contracts/journal.capability.json@<derived-exact-triple>"
+      },
       "attachments": {
         "inbox": "./inbox"
       },
@@ -100,10 +103,11 @@
       "implementationRoot": "flow.ts",
       "adapterSelector": "spindle",
       "slots": {
-        "agent": "work-agent@<exact-admitted-revision>",
+        "worker": "work-agent@<exact-admitted-revision>",
+        "analyst": "analysis-agent@<exact-admitted-revision>",
         "choice": "semantic-choice@<exact-admitted-revision>",
         "reference-research": {
-          "kind": "discovered-flow",
+          "kind": "candidate-set",
           "candidateSnapshot": [
             "reference-fast@<exact-admitted-revision>",
             "reference-deep@<exact-admitted-revision>"
@@ -111,6 +115,11 @@
         }
       },
       "attachments": {},
+      "consumerContracts": {
+        "worker": "contracts/agent-run.capability.json@<derived-exact-triple>",
+        "analyst": "contracts/agent-run.capability.json@<derived-exact-triple>",
+        "choice": "contracts/semantic-choice.capability.json@<derived-exact-triple>"
+      },
       "skills": "skills/@<exact-package-bytes>",
       "readiness": "READY(<exact-pinned-recipe>)"
     },
@@ -136,7 +145,6 @@
       "attachments": {
         "workspace": "./repair-staging"
       },
-      "skills": "skills/@<exact-package-bytes>",
       "readiness": "READY(<exact-instruction-recipe>)"
     }
   },
@@ -147,7 +155,7 @@
     "target": "triage@<exact-admitted-revision>",
     "journalInterval": "[<apply-boundary>, open)"
   },
-  "semanticResolver": "semantic-choice@<exact-admitted-revision>",
+  "semanticChoice": "semantic-choice@<exact-admitted-revision>",
   "localSpindleRoute": {
     "owner": "triage package",
     "edgeIds": [

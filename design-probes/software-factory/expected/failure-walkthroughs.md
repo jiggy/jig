@@ -53,11 +53,14 @@ These are expected architectural outcomes, not executed tests.
 - If the exact Agent provider generation pinned for an operation is unavailable,
   that operation fails without selecting another provider or ambient default.
 - Triage Agent operations receive only the triage package's exact admitted
-  `skills/` tree, read-only and owner-scoped, plus `work-agent`'s fixed
-  workspace. The Spindle caller has no overlapping workspace view. Research
-  child Flows do not inherit either and use `analysis-agent`; repair gets only
-  its own skill tree and staging Agent. Collision-free projection failure
-  prevents provider work rather than copying into native skill roots.
+  `skills/` tree, read-only and owner-scoped. `worker` additionally has its
+  fixed workspace; parallel `analyst` voters have no attachment or tools. The
+  Spindle caller has no overlapping workspace view. Research child Flows do
+  not inherit either and use `analysis-agent`; repair gets only its staging
+  Agent and direct instruction-Run attachment. Collision-free projection
+  failure prevents provider work rather than copying into native skill roots.
+- Verification and synthesis explicitly request `focused-validation`, but Jig
+  records only projection. Agent selection or compliance is not a safety fact.
 - Cancellation closes Agent admission and revokes host-native projections and
   write leases. An already dispatched external action may be terminal or
   `UNCERTAIN`; it is never silently replayed.
@@ -66,9 +69,9 @@ These are expected architectural outcomes, not executed tests.
 
 - Deterministic filtering happens before semantic ranking. One eligible
   approved candidate selects directly without Agent use.
-- Several eligible candidates use the one activation-pinned project Resolver
-  or terminate `BINDING_AMBIGUOUS` when none is configured. The local Spindle
-  route is never consulted.
+- Several eligible candidates use the one activation-pinned project Semantic
+  Choice Binding or terminate `BINDING_AMBIGUOUS` when none is configured. The
+  local Spindle route is never consulted.
 - Zero eligible candidates terminates the `flow/call` and owning Run with
   `BINDING_MISSING`. It is not converted into the Flow's domain `blocked`
   outcome and does not sleep, reroute, or invoke repair automatically.

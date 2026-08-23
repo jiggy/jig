@@ -9,19 +9,14 @@ declare module "jig" {
     | readonly JsonValue[]
     | { readonly [name: string]: JsonValue };
 
-  export interface CatalogueDirectorySource {
-    readonly kind: "catalogue-directory";
-    readonly path: string;
-  }
-
-  export interface BindingDirectorySource {
-    readonly kind: "binding-directory";
-    readonly path: string;
+  export interface DiscoverySource {
+    readonly kind: "directory-discovery";
+    readonly roots: readonly string[];
   }
 
   export interface JigDefinition {
-    readonly catalogues: Readonly<Record<string, CatalogueDirectorySource>>;
-    readonly bindings: BindingDirectorySource;
+    readonly flows?: DiscoverySource | readonly string[];
+    readonly bindings?: DiscoverySource | readonly string[];
   }
 
   export interface PackageBindingDefinition {
@@ -29,13 +24,9 @@ declare module "jig" {
     readonly settings?: Readonly<Record<string, JsonValue>>;
   }
 
-  export const catalogue: {
-    directory(path: string): CatalogueDirectorySource;
-  };
-
-  export const bindingSources: {
-    directory(path: string): BindingDirectorySource;
-  };
+  export function discover(
+    roots: string | readonly string[],
+  ): DiscoverySource;
 
   export function defineJig<T extends JigDefinition>(definition: T): Readonly<T>;
 

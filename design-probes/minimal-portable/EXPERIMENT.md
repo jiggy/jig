@@ -13,7 +13,8 @@ Can a project author discover, configure, admit, inspect, and invoke two small
 exact Flows implemented for different runtime ecosystems without learning
 Agents, Hooks, semantic routing, Services, Spindle, or host sandbox machinery?
 
-The probe tests the authoring journey and ownership boundaries. Its failure
+The probe tests the authoring journey, the smallest language-SDK projection,
+and ownership boundaries. Its failure
 walkthroughs table-top the user-visible consequences of protocol loss,
 cancellation, confinement failure, and crash recovery so success is not the
 only path considered. They do not execute or prove component code, protocol
@@ -22,8 +23,9 @@ correctness, dependency installation, confinement, performance, or recovery.
 ## Rules for reviewing this probe
 
 1. Start with [`SCENARIO.md`](SCENARIO.md), not the hypothetical TypeScript.
-2. Treat [`design-api.d.ts`](design-api.d.ts) as disposable editor scaffolding.
-   It declares shapes and implements nothing.
+2. Treat [`design-api.d.ts`](design-api.d.ts) and
+   [`design-flow.d.ts`](design-flow.d.ts) as disposable editor scaffolding.
+   They declare shapes and implement nothing.
 3. Treat files under [`expected/`](expected/) as tabletop observations, not
    output produced by a working Jig.
 4. Do not install dependencies, execute `flow.py` or `flow.ts`, publish either
@@ -41,7 +43,8 @@ This probe includes:
 
 - one project definition;
 - shallow Flow and Binding discovery;
-- one Python-shaped exact Flow and one TypeScript-shaped exact Flow;
+- one Python-shaped exact Flow and one TypeScript-shaped exact Flow, each with
+  complete pseudocode against a hypothetical ordinary native SDK;
 - all three optional conventional schemas for both Flows, included to exercise
   every Schema/1 seam rather than because every package must declare them;
 - two explicit configured Bindings;
@@ -61,9 +64,9 @@ It excludes:
 ## Project files and probe harness
 
 The files a real project author would own are `.gitignore`, `jig.ts`,
-`bindings/`, `flows/`, and `examples/`. `design-api.d.ts`, `tsconfig.json`,
-`EXPERIMENT.md`, `SCENARIO.md`, `API-LEDGER.md`, and `expected/` are probe-only
-review harness.
+`bindings/`, `flows/`, and `examples/`. `design-api.d.ts`, `design-flow.d.ts`,
+`tsconfig.json`, `EXPERIMENT.md`, `SCENARIO.md`, `API-LEDGER.md`, and
+`expected/` are probe-only review harness.
 No machine should interpret the latter group as Jig project configuration.
 
 ## When to rewrite or delete it

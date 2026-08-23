@@ -29,7 +29,8 @@
       "hookRunAdmission": true,
       "filesystem": {},
       "effects": {
-        "agent": "exact work-agent Binding with transitive workspace authority",
+        "worker": "exact work-agent Binding with transitive workspace authority",
+        "analyst": "exact attachment-free analysis-agent Binding",
         "choice": "exact semantic-choice Binding"
       },
       "childFlowCeiling": {
@@ -54,7 +55,7 @@
     },
     {
       "binding": "analysis-agent",
-      "authority": "attachment- and tool-free Agent Run used for Semantic Choice and reference analysis",
+      "authority": "attachment- and tool-free Agent Run used for Semantic Choice, reference analysis, and parallel voting",
       "filesystem": {},
       "providerToolEffectCeiling": [],
       "callerRawNetworkAuthority": false,

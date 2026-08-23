@@ -2,15 +2,13 @@
   "probeFormat": 1,
   "nonnormative": true,
   "note": "Tabletop projection for the host matrix where both selector mappings and an enforcing Backend are available; Package/1 digests, Adapter identities, toolchains, and activation identities must be computed by a real host.",
-  "catalogues": {
-    "flows": {
-      "kind": "directory",
-      "path": "./flows",
-      "members": [
-        "count-text",
-        "render-summary"
-      ]
-    }
+  "flowSource": {
+    "kind": "directory-discovery",
+    "root": "./flows",
+    "members": [
+      "count-text",
+      "render-summary"
+    ]
   },
   "bindings": {
     "count-long-words": {

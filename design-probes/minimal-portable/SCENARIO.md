@@ -57,6 +57,7 @@ minimal-portable/
 ├── SCENARIO.md
 ├── API-LEDGER.md
 ├── design-api.d.ts           declaration-only scaffolding
+├── design-flow.d.ts          hypothetical Run SDK shape
 ├── tsconfig.json             noEmit authoring check
 └── expected/                 nonnormative tabletop fixtures
 ```
@@ -107,8 +108,10 @@ conventions.
     preparation or spawn. Jig never interprets either Markdown body because
     neither package nor Binding opts into instruction fallback.
 
-The implementation roots contain comments only, so steps 8–9 are expected
-architecture, not executable demonstrations.
+The implementation roots now contain complete, small pseudocode against
+hypothetical language SDKs. They expose input/settings/result flow, but steps
+8–9 remain expected architecture rather than executable demonstrations because
+the SDKs, Runtime Adapters, Sandbox Backend, and host do not exist.
 
 ## Host matrices to reason through
 
