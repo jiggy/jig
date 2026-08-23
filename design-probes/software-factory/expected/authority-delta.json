@@ -1,0 +1,122 @@
+{
+  "probeFormat": 1,
+  "nonnormative": true,
+  "baseline": "empty project",
+  "reviewRule": "A real plan must separately display requested, granted, planned, and post-spawn realized authority. This fixture is not enforcement evidence.",
+  "adds": [
+    {
+      "binding": "journal",
+      "authority": "canonical Journal append",
+      "ceiling": {
+        "eventTypes": [
+          "https://jig.example/events/inbox-item-created"
+        ]
+      },
+      "filesystem": {}
+    },
+    {
+      "binding": "inbox-producer",
+      "rootRunAdmission": true,
+      "filesystem": {
+        "inbox": "read-only ./inbox"
+      },
+      "effects": {
+        "journal": "exact journal Binding"
+      }
+    },
+    {
+      "binding": "triage",
+      "hookRunAdmission": true,
+      "filesystem": {},
+      "effects": {
+        "agent": "exact work-agent Binding with transitive workspace authority",
+        "choice": "exact semantic-choice Binding"
+      },
+      "childFlowCeiling": {
+        "reference-research": [
+          "reference-fast",
+          "reference-deep"
+        ]
+      }
+    },
+    {
+      "binding": "work-agent",
+      "authority": "Agent Run provider operation",
+      "providerOwnedFilesystem": {
+        "workspace": "read-write ./workspace"
+      },
+      "providerToolEffectCeiling": [
+        "attachment-files",
+        "sandboxed-command"
+      ],
+      "callerHasMatchingDirectView": false,
+      "skillProjection": "only the exact calling package's admitted skills tree, read-only and owner-scoped"
+    },
+    {
+      "binding": "analysis-agent",
+      "authority": "attachment- and tool-free Agent Run used for Semantic Choice and reference analysis",
+      "filesystem": {},
+      "providerToolEffectCeiling": [],
+      "callerRawNetworkAuthority": false,
+      "providerInternalTransport": "exact trusted registration authority, disclosed separately and not delegated to the component"
+    },
+    {
+      "binding": "semantic-choice",
+      "authority": "choose only within one caller-frozen allowlist",
+      "filesystem": {},
+      "canGrantOrInstall": false,
+      "canReturnArgumentsOrPlans": false
+    },
+    {
+      "binding": "reference-fast",
+      "authority": "instruction Run through exact analysis-agent dependency",
+      "filesystem": {},
+      "inheritedParentAuthority": false
+    },
+    {
+      "binding": "reference-deep",
+      "authority": "instruction Run through exact analysis-agent dependency",
+      "filesystem": {},
+      "inheritedParentAuthority": false
+    },
+    {
+      "binding": "create-missing-flow",
+      "rootRunAdmission": true,
+      "filesystem": {
+        "workspace": "read-write ./repair-staging"
+      },
+      "canEditActiveProject": false,
+      "canApplyOrResume": false
+    },
+    {
+      "binding": "repair-agent",
+      "authority": "Agent Run provider operation for staged repair",
+      "filesystem": {},
+      "providerToolEffectCeiling": [
+        "attachment-files",
+        "sandboxed-command"
+      ],
+      "instructionRunSuppliesComponentView": "create-missing-flow owns read-write ./repair-staging"
+    },
+    {
+      "hook": "on-inbox-item",
+      "authority": "start one exact triage Run for each matching source/type Event",
+      "canFilterRewriteDelayOrVeto": false
+    }
+  ],
+  "ambientAuthorityDenied": [
+    "environment variables as Flow configuration",
+    "undeclared host filesystem and protected .jig state",
+    "raw process or network authority for untrusted Flow components",
+    "Runtime Adapter or Sandbox Backend choice",
+    "implicit parent attachment, grant, slot, or skill inheritance",
+    "automatic activation of discovered or generated source"
+  ],
+  "intrinsicHostExecutionInputsNotProjectGrants": [
+    "immutable admitted package or prepared tree",
+    "pinned runtime substrate and private scratch",
+    "FLOW/1 stdio and supervision descriptors"
+  ],
+  "trustedProviderInternalAuthority": "Every host-capability registration's own transport, tools, and process authority is reviewed and disclosed separately from component grants.",
+  "realization": "The Sandbox Backend must later produce an enforcement receipt for each preparation and launch owner; no project file can claim this occurred."
+}

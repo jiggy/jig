@@ -1,0 +1,17 @@
+{
+  "compilerOptions": {
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "noEmit": true,
+    "strict": true,
+    "target": "ES2022"
+  },
+  "include": [
+    "./jig.ts",
+    "./bindings/**/*.ts",
+    "./hooks/**/*.ts",
+    "./flows/**/*.ts",
+    "./design-api.d.ts",
+    "./design-spindle.d.ts"
+  ]
+}

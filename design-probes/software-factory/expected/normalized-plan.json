@@ -1,0 +1,166 @@
+{
+  "probeFormat": 1,
+  "nonnormative": true,
+  "note": "Tabletop projection only. Exact package, Binding, contract, Adapter, toolchain, Backend, provider-generation, recipe, and candidate digests must be computed by a real host.",
+  "hostMatrixPrecondition": "The canonical Journal, Agent Run, and Semantic Choice registrations resolve uniquely; the Deno and Spindle implementations each have one complete enforcing activation recipe.",
+  "catalogue": {
+    "source": "./flows",
+    "members": [
+      "create-missing-flow",
+      "inbox-producer",
+      "reference-deep",
+      "reference-fast",
+      "triage"
+    ]
+  },
+  "bindings": {
+    "journal": {
+      "kind": "host-capability",
+      "contract": {
+        "id": "https://jig.dev/contracts/journal",
+        "version": "1.0.0",
+        "digest": "sha256:dd749f53de3a5f80e02386699355e28c1fd7e707b2b12bdf2d5c725eb436ddf9"
+      },
+      "export": "append",
+      "publicationCeiling": [
+        "https://jig.example/events/inbox-item-created"
+      ]
+    },
+    "work-agent": {
+      "kind": "host-capability",
+      "contract": {
+        "id": "https://jig.dev/contracts/agent-run",
+        "version": "1.0.0",
+        "digest": "sha256:124668db4b2b003532062d8da291d2e69696d782a38bd2cae9c0140057bd0f9b"
+      },
+      "export": "run",
+      "attachments": {
+        "workspace": "./workspace"
+      },
+      "toolEffectCeiling": [
+        "attachment-files",
+        "sandboxed-command"
+      ]
+    },
+    "analysis-agent": {
+      "kind": "host-capability",
+      "contract": {
+        "id": "https://jig.dev/contracts/agent-run",
+        "version": "1.0.0",
+        "digest": "sha256:124668db4b2b003532062d8da291d2e69696d782a38bd2cae9c0140057bd0f9b"
+      },
+      "export": "run",
+      "attachments": {},
+      "toolEffectCeiling": []
+    },
+    "repair-agent": {
+      "kind": "host-capability",
+      "contract": {
+        "id": "https://jig.dev/contracts/agent-run",
+        "version": "1.0.0",
+        "digest": "sha256:124668db4b2b003532062d8da291d2e69696d782a38bd2cae9c0140057bd0f9b"
+      },
+      "export": "run",
+      "attachments": {},
+      "toolEffectCeiling": [
+        "attachment-files",
+        "sandboxed-command"
+      ]
+    },
+    "semantic-choice": {
+      "kind": "host-capability",
+      "contract": {
+        "id": "https://jig.dev/contracts/semantic-choice",
+        "version": "1.0.0",
+        "digest": "sha256:83767b89d02163d8a36c5e4f561d7c164135866a6bfdee1acd20f76370971e02"
+      },
+      "export": "choose",
+      "slots": {
+        "agent": "analysis-agent@<exact-admitted-revision>"
+      }
+    },
+    "inbox-producer": {
+      "kind": "package",
+      "package": "inbox-producer@<exact-package-revision>",
+      "mode": "run-exact",
+      "implementationRoot": "flow.ts",
+      "adapterSelector": "deno",
+      "slots": {
+        "journal": "journal@<exact-admitted-revision>"
+      },
+      "attachments": {
+        "inbox": "./inbox"
+      },
+      "readiness": "READY(<exact-pinned-recipe>)"
+    },
+    "triage": {
+      "kind": "package",
+      "package": "software-factory-triage@<exact-package-revision>",
+      "mode": "run-exact",
+      "implementationRoot": "flow.ts",
+      "adapterSelector": "spindle",
+      "slots": {
+        "agent": "work-agent@<exact-admitted-revision>",
+        "choice": "semantic-choice@<exact-admitted-revision>",
+        "reference-research": {
+          "kind": "discovered-flow",
+          "candidateSnapshot": [
+            "reference-fast@<exact-admitted-revision>",
+            "reference-deep@<exact-admitted-revision>"
+          ]
+        }
+      },
+      "attachments": {},
+      "skills": "skills/@<exact-package-bytes>",
+      "readiness": "READY(<exact-pinned-recipe>)"
+    },
+    "reference-fast": {
+      "kind": "package",
+      "package": "reference-fast@<exact-package-revision>",
+      "mode": "run-instruction",
+      "instructionAgent": "analysis-agent@<exact-admitted-revision>",
+      "readiness": "READY(<exact-instruction-recipe>)"
+    },
+    "reference-deep": {
+      "kind": "package",
+      "package": "reference-deep@<exact-package-revision>",
+      "mode": "run-instruction",
+      "instructionAgent": "analysis-agent@<exact-admitted-revision>",
+      "readiness": "READY(<exact-instruction-recipe>)"
+    },
+    "create-missing-flow": {
+      "kind": "package",
+      "package": "create-missing-flow@<exact-package-revision>",
+      "mode": "run-instruction",
+      "instructionAgent": "repair-agent@<exact-admitted-revision>",
+      "attachments": {
+        "workspace": "./repair-staging"
+      },
+      "skills": "skills/@<exact-package-bytes>",
+      "readiness": "READY(<exact-instruction-recipe>)"
+    }
+  },
+  "hook": {
+    "id": "on-inbox-item",
+    "source": "inbox-producer@<exact-admitted-revision>",
+    "type": "https://jig.example/events/inbox-item-created",
+    "target": "triage@<exact-admitted-revision>",
+    "journalInterval": "[<apply-boundary>, open)"
+  },
+  "semanticResolver": "semantic-choice@<exact-admitted-revision>",
+  "localSpindleRoute": {
+    "owner": "triage package",
+    "edgeIds": [
+      "gauntlet",
+      "majority-vote"
+    ],
+    "notResolverCandidates": true
+  },
+  "derivedAtPlanTime": [
+    "complete captured project source closure and source memberships",
+    "exact package, schema, contract, provider, Binding, and Hook identities",
+    "one exact implementation recipe or exact unavailable reason per Binding",
+    "ordered approved child-candidate snapshot for reference-research",
+    "semantic and authority delta, candidate digest, base generation, and proposed initial lock"
+  ]
+}

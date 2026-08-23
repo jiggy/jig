@@ -1,0 +1,14 @@
+{
+  "$schema": "https://flow.dev/schemas/schema-1.json",
+  "title": "Inbox producer input",
+  "type": "object",
+  "properties": {
+    "item": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255
+    }
+  },
+  "required": ["item"],
+  "additionalProperties": false
+}

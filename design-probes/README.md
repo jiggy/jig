@@ -13,6 +13,9 @@ interoperability.
 
 - [`minimal-portable/`](minimal-portable/) — two independent exact Run
   packages, two runtime ecosystems, no Agent or dynamic routing.
+- [`software-factory/`](software-factory/) — a Starter-shaped Event/Hook spine,
+  fixed Spindle routing, Agent-backed strategy Flows, one distinct open-ended
+  `flow/call`, and separately staged missing-Flow maintenance.
 
 ## Authority order
 

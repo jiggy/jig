@@ -1,0 +1,13 @@
+{
+  "eventId": "event-probe-001",
+  "journalPosition": 41,
+  "type": "https://jig.example/events/inbox-item-created",
+  "source": "binding:inbox-producer/probe-revision",
+  "committedAtUnixMs": 1787500000000,
+  "data": {
+    "item": "TICKET-001.md",
+    "request": "Create a small football game with polished movement and an inspectable build. Use an iterative build, review, and improvement process. Discover and justify a useful quality reference before implementation because none is supplied here."
+  },
+  "subject": "TICKET-001.md",
+  "runId": "run-probe-inbox-001"
+}
