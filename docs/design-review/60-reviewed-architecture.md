@@ -691,6 +691,14 @@ Mount-background work belongs to the live `service/mount` request. Work caused
 by an invocation belongs to that narrower `service/invoke` request. Cancelling
 one invocation cannot cancel unrelated Mount work.
 
+A language SDK must preserve that distinction. A provided method handler
+receives an invocation-scoped projection of cancellation and `flow/call` /
+`effect/call`; Mount initialization and recovery use the separate Mount-scoped
+projection. Both are views over the wire owner's already-pinned dependency
+revision, not public `Scope`, `Context`, or transferable handles. Calling a
+Mount-scoped client from an invocation must not silently reattribute child work
+to that invocation, or vice versa.
+
 Host and Provider support multiple outstanding `service/invoke` requests on
 one Mount and out-of-order responses. Each invocation separately pins its
 consumer Binding, provider generation, dependency revision, contract/method,
@@ -759,10 +767,27 @@ graceful drain. A graceful replacement therefore keeps the old export
 available on the old Mount. While draining, status may remove exports but may
 not create a new availability transition.
 
-Graceful rollout uses two Mounts. The ready new Mount receives new bindings;
-the old Mount remains available to existing leased consumers until they release
-or reach the deadline, after which its pending mount request is cancelled. This is much
-simpler than an in-Mount distributed generation/drain protocol.
+Graceful shadow-first rollout uses two Mounts only when their complete planned
+resource and attachment leases can coexist. The ready new Mount then receives
+new bindings; the old Mount remains available to existing leased consumers
+until they release or reach the deadline, after which its pending mount request
+is cancelled.
+
+Shadow-first is also disallowed when an affected Hook selects the Service as
+its Event source: candidate startup Events would precede the new Hook interval,
+while a draining old provider could publish after the old interval closed.
+Rather than couple Hook intervals to asynchronous provider drain, v1 uses one
+conservative sequence for either this case or conflicting leases—most
+importantly, two providers requesting the same exclusive writable attachment.
+Jig closes new leases to the old generation, drains and fences it, and proves
+cleanup and lease release before the admission switch. That switch closes old
+Hook intervals and opens replacement intervals atomically; only then may the
+replacement Mount publish effects and become callable. New consumers observe
+an explicit unavailable interval while it starts. Failure of the replacement
+does not resurrect the fenced owner; rollback is another admitted activation
+with a new provider identity. FLOW defines no generic migration callback. This
+rule is simpler than drain-coupled Hook intervals, an in-Mount generation
+protocol, a second activation callback, or a false zero-downtime guarantee.
 
 Provider EOF or crash loses all its generations. Restart creates new identities
 and never transparently rebinds an existing consumer.
@@ -1833,13 +1858,17 @@ raw source, per-Run settings, attachment remapping, provider/Adapter choice,
 environment, or grant overrides. The focused project-policy specification
 defines this behavior; CLI spelling is not a FLOW protocol method.
 
-Jig may start candidate Services before publication, but “shadow” means only
-that they receive no consumer bindings. Their outbound effects are real,
+Jig may start candidate Services before publication only when their complete
+resource leases are compatible with active owners. “Shadow” means only that
+they receive no consumer bindings; their outbound effects are real,
 grant-checked, operation-journaled, attributed to the candidate, and may be
-irreversible. Projects requiring side-effect-free preflight must use checks
-which need no external authority, or accept a post-publication readiness
-window. Abandoning a candidate cancels its Mounts and reports every committed
-or uncertain startup effect; it never claims to restore the external world.
+irreversible. A candidate needing a conflicting exclusive lease, or selected
+as an affected Hook's Event source, uses the
+drain/fence/admission-switch/start sequence in section 6.3 and necessarily has
+a post-publication readiness window. Projects requiring side-effect-free
+preflight must use checks which need no external authority. Abandoning a
+candidate cancels its Mounts and reports every committed or uncertain startup
+effect; it never claims to restore the external world.
 
 Imported-source update is a staged three-way merge:
 
@@ -2159,11 +2188,13 @@ Release order:
    stateful validation.
 8. **Service/1:** independently implemented Providers and Hosts agree on
    pending-Mount ownership, owner-return quiescence, readiness,
+   Mount-background versus invocation-owned child-call attribution,
    concurrent invoke/removal races, dropped status acknowledgement and exact
    status retransmission without a second generation, rejection of a newer
    unresolved status, exact dynamic binding snapshots, ambiguous Binding-update
-   termination, loss/reappearance, update drain, cycles, cancellation, EOF,
-   and crash fencing.
+   termination, loss/reappearance, compatible shadow-first update, conflicting
+   lease and Event-source drain/fence/admission-switch/start, cycles,
+   cancellation, EOF, and crash fencing.
 9. **Events/Hooks:** two independently implemented hosts' native canonical
    Journals survive kill injection at every append/result boundary with one
    Event and outer operation result; external effects retain generic

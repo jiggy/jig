@@ -114,6 +114,14 @@ loss, and cancellation. Multiple invocations on one Mount may be outstanding
 and answer out of order; each has a separate owner. FLOW does not infer
 serialization, linearizability, or transaction isolation.
 
+SDKs project Mount-owned and invocation-owned child calls separately without
+exporting a public Scope object. Shadow-first replacement is permitted only
+when both Mounts' complete resource leases can coexist and no affected Hook
+selects the Service as its Event source. A conflicting lease or selected Event
+source instead requires drain, fencing, proven lease release, and then an
+admission/Hook-boundary switch before replacement startup, with an honest
+unavailable interval.
+
 No framework is a normative conformance participant. Independent Hosts and
 Providers establish Service/1. Cordis is a useful reference integration only.
 DeepSeek Harness was only a conceptual stress test: DSH plugin portability and
@@ -350,6 +358,17 @@ smuggling. Only `Outcome` terminates and propagates unchanged through nested
 Flows; an ordinary control-graph leaf without an edge is an error. A Parallel
 branch returns its value to the owning Parallel and is not a terminal leaf.
 Exact SDK spelling and executable conformance remain implementation work.
+
+The stateful-index probe subsequently closed two Service seams without adding
+a portable primitive: method handlers need separate invocation-owned versus
+Mount-background child-call projections, and shadow-first replacement is
+legal only when leases coexist and no affected Hook selects that Service as
+its source. Otherwise Jig drains and fences, switches admission/Hook intervals,
+and starts the replacement through an honest unavailable window. Provider
+state plus Journal publication remains an application outbox with
+cross-generation at-least-once behavior, not a Jig transaction. The probe did
+not exercise dynamic dependency or post-readiness export snapshots; those
+surfaces remain independently evidence-gated.
 
 No further v1 abstraction is justified until one of those tests demonstrates a
 concrete missing primitive.

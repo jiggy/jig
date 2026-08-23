@@ -189,6 +189,15 @@ non-dispatchable with the reason recorded. The Run receives the exact immutable
 Event as input and then follows ordinary input validation. An invalid input
 makes that same Run terminal; it does not transform the Event or select again.
 
+When replacement changes the exact Service Binding selected as an Event
+source, Jig closes new leases to the old Service and drains and fences its
+publication authority before closing that source's Hook interval. The new
+interval opens at the admission boundary before the replacement Service starts.
+This conservative ordering prevents draining old invocations from publishing
+after their interval and prevents replacement startup Events from preceding
+theirs. Removing a Hook while leaving its source Binding unchanged does not
+fence the producer; later Events intentionally have no such reaction.
+
 Hooks fan out but do not consume, veto, rewrite, delay, or hide a committed
 Event. An owned source may settle or coalesce raw observations only as fixed by
 its registered semantics, before an Event exists. Filtering facts,
@@ -237,3 +246,7 @@ result becomes authoritative.
     registration-declared Event type and authority ceiling.
 11. Source readiness failure leaves the candidate inactive; disposal closes
     observation and publication without running project callback code.
+12. Replacing a Service Binding selected as a Hook source fences the old
+    producer before its interval closes and opens the replacement interval
+    before replacement startup publication; removing only the Hook does not
+    fence an otherwise unchanged producer.
