@@ -2,12 +2,13 @@
   "probeFormat": 1,
   "nonnormative": true,
   "note": "Tabletop projection only. Exact package, Binding, contract, Adapter, toolchain, Backend, provider-generation, recipe, and candidate digests must be computed by a real host.",
-  "hostMatrixPrecondition": "The canonical Journal, Agent Run, and Semantic Choice registrations resolve uniquely; the Deno and Spindle implementations each have one complete enforcing activation recipe.",
+  "hostMatrixPrecondition": "The canonical Journal, Agent Run, and Semantic Choice registrations resolve uniquely; Deno Run/Service and Spindle implementations each have one complete enforcing activation recipe.",
   "flowSource": {
     "source": "./flows",
     "members": [
       "create-missing-flow",
-      "inbox-producer",
+      "inbox-watcher",
+      "kanban",
       "reference-deep",
       "reference-fast",
       "triage"
@@ -31,7 +32,7 @@
       "contract": {
         "id": "https://jig.dev/contracts/agent-run",
         "version": "1.0.0",
-        "digest": "sha256:124668db4b2b003532062d8da291d2e69696d782a38bd2cae9c0140057bd0f9b"
+        "digest": "sha256:d455730ec798a2cfbba5a5a37e2f8a2167325071dffc7fedc02a22e192b72dd2"
       },
       "export": "run",
       "attachments": {
@@ -47,7 +48,7 @@
       "contract": {
         "id": "https://jig.dev/contracts/agent-run",
         "version": "1.0.0",
-        "digest": "sha256:124668db4b2b003532062d8da291d2e69696d782a38bd2cae9c0140057bd0f9b"
+        "digest": "sha256:d455730ec798a2cfbba5a5a37e2f8a2167325071dffc7fedc02a22e192b72dd2"
       },
       "export": "run",
       "attachments": {},
@@ -58,7 +59,7 @@
       "contract": {
         "id": "https://jig.dev/contracts/agent-run",
         "version": "1.0.0",
-        "digest": "sha256:124668db4b2b003532062d8da291d2e69696d782a38bd2cae9c0140057bd0f9b"
+        "digest": "sha256:d455730ec798a2cfbba5a5a37e2f8a2167325071dffc7fedc02a22e192b72dd2"
       },
       "export": "run",
       "attachments": {},
@@ -79,10 +80,10 @@
         "agent": "analysis-agent@<exact-admitted-revision>"
       }
     },
-    "inbox-producer": {
+    "inbox-watcher": {
       "kind": "package",
-      "package": "inbox-producer@<exact-package-revision>",
-      "mode": "run-exact",
+      "package": "inbox-watcher@<exact-package-revision>",
+      "mode": "service-exact",
       "implementationRoot": "flow.ts",
       "adapterSelector": "deno",
       "slots": {
@@ -96,6 +97,20 @@
       },
       "readiness": "READY(<exact-pinned-recipe>)"
     },
+    "kanban": {
+      "kind": "package",
+      "package": "kanban@<exact-package-revision>",
+      "mode": "service-exact",
+      "implementationRoot": "flow.ts",
+      "adapterSelector": "deno",
+      "providerContracts": {
+        "kanban": "contracts/kanban.capability.json@<derived-exact-triple>"
+      },
+      "attachments": {
+        "board": "./kanban"
+      },
+      "readiness": "READY(<exact-pinned-recipe>)"
+    },
     "triage": {
       "kind": "package",
       "package": "software-factory-triage@<exact-package-revision>",
@@ -106,6 +121,7 @@
         "worker": "work-agent@<exact-admitted-revision>",
         "analyst": "analysis-agent@<exact-admitted-revision>",
         "choice": "semantic-choice@<exact-admitted-revision>",
+        "kanban": "kanban#kanban@<exact-export-generation>",
         "reference-research": {
           "kind": "candidate-set",
           "candidateSnapshot": [
@@ -118,9 +134,17 @@
       "consumerContracts": {
         "worker": "contracts/agent-run.capability.json@<derived-exact-triple>",
         "analyst": "contracts/agent-run.capability.json@<derived-exact-triple>",
-        "choice": "contracts/semantic-choice.capability.json@<derived-exact-triple>"
+        "choice": "contracts/semantic-choice.capability.json@<derived-exact-triple>",
+        "kanban": "contracts/kanban.capability.json@<derived-exact-triple>"
       },
-      "skills": "skills/@<exact-package-bytes>",
+      "skills": {
+        "available": [
+          "focused-coding",
+          "focused-validation",
+          "solution-design"
+        ],
+        "selection": "explicit per Agent Run; omitted means none"
+      },
       "readiness": "READY(<exact-pinned-recipe>)"
     },
     "reference-fast": {
@@ -150,7 +174,7 @@
   },
   "hook": {
     "id": "on-inbox-item",
-    "source": "inbox-producer@<exact-admitted-revision>",
+    "source": "inbox-watcher@<exact-admitted-revision>",
     "type": "https://jig.example/events/inbox-item-created",
     "target": "triage@<exact-admitted-revision>",
     "journalInterval": "[<apply-boundary>, open)"

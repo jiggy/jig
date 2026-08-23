@@ -8,6 +8,10 @@
         "output": {
           "type": "object",
           "properties": {
+            "cardId": {
+              "type": "string",
+              "pattern": "^card-[0-9a-f]{64}$"
+            },
             "strategy": {
               "enum": ["gauntlet", "majority-vote"]
             },
@@ -16,7 +20,7 @@
               "maxLength": 8388608
             }
           },
-          "required": ["strategy", "evidence"],
+          "required": ["cardId", "strategy", "evidence"],
           "additionalProperties": false
         }
       },
@@ -29,7 +33,45 @@
         "outcome": { "const": "blocked" },
         "output": {
           "type": "object",
-          "properties": {},
+          "properties": {
+            "cardId": {
+              "type": "string",
+              "pattern": "^card-[0-9a-f]{64}$"
+            }
+          },
+          "required": ["cardId"],
+          "additionalProperties": false
+        }
+      },
+      "required": ["outcome", "output"],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "outcome": { "const": "duplicate" },
+        "output": {
+          "type": "object",
+          "properties": {
+            "cardId": {
+              "type": "string",
+              "pattern": "^card-[0-9a-f]{64}$"
+            },
+            "stage": {
+              "enum": [
+                "triage",
+                "research",
+                "voting",
+                "implementation",
+                "review",
+                "revision",
+                "verification",
+                "done",
+                "blocked"
+              ]
+            }
+          },
+          "required": ["cardId", "stage"],
           "additionalProperties": false
         }
       },

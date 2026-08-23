@@ -12,6 +12,7 @@ export default bind({
     worker: bindingRef("work-agent"),
     analyst: bindingRef("analysis-agent"),
     choice: bindingRef("semantic-choice"),
+    kanban: bindingRef("kanban"),
     "reference-research": candidates([
       "reference-fast",
       "reference-deep",

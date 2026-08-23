@@ -1,0 +1,154 @@
+{
+  "$schema": "https://flow.dev/schemas/capability-contract-1.schema.json",
+  "flowCapabilityContract": 1,
+  "id": "https://jig.example/contracts/kanban",
+  "version": "1.0.0",
+  "methods": {
+    "ensure": {
+      "input": { "$ref": "#/$defs/EnsureInput" },
+      "output": { "$ref": "#/$defs/Card" },
+      "errors": {
+        "submission-conflict": { "$ref": "#/$defs/Empty" }
+      }
+    },
+    "transition": {
+      "input": { "$ref": "#/$defs/TransitionInput" },
+      "output": { "$ref": "#/$defs/Card" },
+      "errors": {
+        "not-found": { "$ref": "#/$defs/Empty" },
+        "revision-conflict": { "$ref": "#/$defs/Empty" },
+        "invalid-transition": { "$ref": "#/$defs/Empty" }
+      }
+    }
+  },
+  "$defs": {
+    "Empty": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": false
+    },
+    "Stage": {
+      "enum": [
+        "triage",
+        "research",
+        "voting",
+        "implementation",
+        "review",
+        "revision",
+        "verification",
+        "done",
+        "blocked"
+      ]
+    },
+    "EnsureInput": {
+      "type": "object",
+      "properties": {
+        "submissionId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255
+        },
+        "request": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 262144
+        }
+      },
+      "required": ["submissionId", "title", "request"],
+      "additionalProperties": false
+    },
+    "TransitionInput": {
+      "type": "object",
+      "properties": {
+        "cardId": {
+          "type": "string",
+          "pattern": "^card-[0-9a-f]{64}$"
+        },
+        "expectedRevision": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740990
+        },
+        "stage": { "$ref": "#/$defs/Stage" },
+        "strategy": {
+          "enum": ["gauntlet", "majority-vote"]
+        },
+        "note": {
+          "type": "string",
+          "maxLength": 4096
+        }
+      },
+      "required": ["cardId", "expectedRevision", "stage"],
+      "additionalProperties": false
+    },
+    "HistoryEntry": {
+      "type": "object",
+      "properties": {
+        "revision": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "stage": { "$ref": "#/$defs/Stage" },
+        "note": {
+          "type": "string",
+          "maxLength": 4096
+        }
+      },
+      "required": ["revision", "stage"],
+      "additionalProperties": false
+    },
+    "Card": {
+      "type": "object",
+      "properties": {
+        "cardId": {
+          "type": "string",
+          "pattern": "^card-[0-9a-f]{64}$"
+        },
+        "submissionId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255
+        },
+        "request": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 262144
+        },
+        "strategy": {
+          "enum": ["gauntlet", "majority-vote"]
+        },
+        "stage": { "$ref": "#/$defs/Stage" },
+        "revision": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "history": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/HistoryEntry" },
+          "minItems": 1,
+          "maxItems": 128
+        }
+      },
+      "required": [
+        "cardId",
+        "submissionId",
+        "title",
+        "request",
+        "stage",
+        "revision",
+        "history"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

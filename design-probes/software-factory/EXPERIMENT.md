@@ -12,27 +12,28 @@
 Can a realistic but bounded software-factory journey remain understandable
 when it combines:
 
-1. a finite inbox producer and canonical immutable Event;
+1. a long-lived inbox watcher and canonical immutable Event;
 2. one exact inert Hook;
 3. a Spindle-local semantic Router over two connected strategy Flows;
 4. exact Agent and Semantic Choice dependencies;
-5. package-local Agent skills;
-6. one distinct open-ended Jig `flow/call`; and
-7. operator-started missing-Flow repair which cannot activate its own output?
+5. per-call package-local Agent skill selection;
+6. one file-backed Kanban Service with revision-checked transitions;
+7. one distinct open-ended Jig `flow/call`; and
+8. operator-started missing-Flow repair which cannot activate its own output?
 
 The probe tests whether these concepts compose ergonomically without making a
 Router into a catalogue resolver, a Hook into middleware, or repair into an
 authority bypass. Its complete pseudocode also tests whether FLOW calls,
 immutable Spindle state, parallel read-only analysis, sequential writable work,
-and skill projection line up. It does not test protocol bytes, durability,
-confinement, actual execution, Agent quality, multiple tickets, or working
-software.
+skill projection, and application Service calls line up. It does not test
+protocol bytes, real durability/confinement, Agent quality, concurrent builder
+workspaces, or working software.
 
 ## Review order
 
 1. Read [`SCENARIO.md`](SCENARIO.md).
 2. Inspect the author-owned `jig.ts`, `bindings/`, `hooks/`, `flows/`,
-   `inbox/`, `workspace/`, `repair-staging/`, and `examples/` trees.
+   `inbox/`, `kanban/`, `workspace/`, `repair-staging/`, and `examples/` trees.
 3. Treat `design-api.d.ts`, `design-flow.d.ts`, `design-spindle.d.ts`, and
    `tsconfig.json` only as declaration-only review scaffolding.
 4. Compare the tabletop artifacts under `expected/` with the normative docs.
@@ -46,8 +47,9 @@ publish, install, or promote this tree. Never add `.jig/`, a speculative
 
 Included:
 
-- one manually submitted ticket file and finite producer Run;
+- one watched ticket file and mounted producer Service;
 - one canonical Journal effect and one exact Hook;
+- one mounted file-backed Kanban Service;
 - one Spindle package containing the finite Gauntlet and Majority-Vote route
   table;
 - exact Agent and chooser Bindings;
@@ -59,8 +61,7 @@ Included:
 
 Excluded:
 
-- inbox watcher Service or filesystem ingress daemon;
-- Task, Kanban, Git, branches, worktrees, GUI, approvals, or Agent sessions;
+- Git, branches, worktrees, Kanban GUI, approvals, or Agent sessions;
 - concurrent tickets or workspace allocation (the three Majority voters are
   parallel only because they use the attachment-free analyst);
 - dynamic graph rewiring, route arguments, confidence, or generated plans;
@@ -71,7 +72,7 @@ Excluded:
 ## Project files and probe harness
 
 The Starter-shaped project owns `.gitignore`, `jig.ts`, `bindings/`, `hooks/`,
-`flows/`, `inbox/`, `workspace/`, `repair-staging/`, and `examples/`. The
+`flows/`, `inbox/`, `kanban/`, `workspace/`, `repair-staging/`, and `examples/`. The
 Markdown documents at this root, declaration files, `tsconfig.json`, and
 `expected/` are probe-only harness and must not be interpreted as project
 configuration.

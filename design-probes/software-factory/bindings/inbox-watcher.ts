@@ -1,8 +1,8 @@
-// DESIGN PROBE ONLY: finite producer Run; no watcher or Service is implied.
+// DESIGN PROBE ONLY: this ready Service Binding is mounted for the generation.
 import { bind, bindingRef, root } from "jig";
 
 export default bind({
-  use: "./flows/inbox-producer",
+  use: "./flows/inbox-watcher",
   settings: {},
   slots: {
     journal: bindingRef("journal"),

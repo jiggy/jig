@@ -2,15 +2,15 @@
 
 These are expected architectural outcomes, not executed tests.
 
-## Producer input or attachment failure
+## Watcher input or attachment failure
 
-- Malformed or out-of-bounds JSON/1 creates no Run. A valid value with a
-  missing or invalid `item` allocates the idempotent root Run, then terminates
-  `INVALID_INPUT` before launch.
-- A path escape, symlink, special file, or missing item cannot widen the
-  read-only inbox view. The Run fails visibly; no Journal append occurs.
-- Reusing the root submission key with changed input fails
-  `SUBMISSION_CONFLICT`; identical input returns the original Run.
+- Nested, escaping, symlinked, special, oversized, empty, or unstable files do
+  not become submissions and cannot widen the read-only inbox view.
+- The watcher creates its watch before readiness and initial scan. A file
+  changed during the scan is still queued for observation; a concurrent delete
+  simply leaves no submission.
+- Mount loss closes the watcher and its effects. Restart scans stable files
+  again, so filesystem delivery is explicitly at least once.
 
 ## Journal authority and crash boundaries
 
@@ -19,9 +19,23 @@ These are expected architectural outcomes, not executed tests.
   correlation metadata.
 - Cancellation or crash before append commit produces no Event. After the
   atomic transaction commits, the Event and Hook selection remain facts even
-  if the producer response is lost or the producer Run later fails.
-- Retrying the same append operation and request digest returns the same Event;
-  a different operation ID intentionally creates another Event.
+  if the watcher response is lost or its Mount later fails.
+- Retrying within one Mount owner joins the same append operation. A later
+  Mount may append a second Event for the same stable file; both carry the same
+  deterministic submission ID and converge at Kanban.
+
+## Kanban idempotency and conflicts
+
+- `ensure` maps one submission ID to one deterministic card. Reusing it with
+  different title/request data is `submission-conflict`.
+- A later duplicate that finds the identical card beyond `triage` returns the
+  declared `duplicate` outcome without routing.
+- Every transition requires the exact current revision and one permitted next
+  stage. Simultaneous triage Runs may both observe `triage`, but one loses the
+  first transition with `revision-conflict` before it can perform Agent work.
+- Kanban serializes one Mount's writes and atomically renames complete card
+  files. Jig denies concurrent writable Mounts over the same board; update
+  drains the old writer before replacement.
 
 ## Hook duplicate, invalid input, and revocation race
 
@@ -52,15 +66,18 @@ These are expected architectural outcomes, not executed tests.
 
 - If the exact Agent provider generation pinned for an operation is unavailable,
   that operation fails without selecting another provider or ambient default.
-- Triage Agent operations receive only the triage package's exact admitted
-  `skills/` tree, read-only and owner-scoped. `worker` additionally has its
-  fixed workspace; parallel `analyst` voters have no attachment or tools. The
+- Triage Agent operations receive only their explicitly selected package-local
+  skill subtrees, read-only and owner-scoped; omission means none. `worker`
+  additionally has its fixed workspace; parallel `analyst` voters have no
+  attachment or tools. The
   Spindle caller has no overlapping workspace view. Research child Flows do
   not inherit either and use `analysis-agent`; repair gets only its staging
   Agent and direct instruction-Run attachment. Collision-free projection
   failure prevents provider work rather than copying into native skill roots.
-- Verification and synthesis explicitly request `focused-validation`, but Jig
-  records only projection. Agent selection or compliance is not a safety fact.
+- Voters select `solution-design`; implementation calls select
+  `focused-coding`; review and verification select `focused-validation`. The
+  instructions request the same skill, but Agent compliance is not a safety
+  fact.
 - Cancellation closes Agent admission and revokes host-native projections and
   write leases. An already dispatched external action may be terminal or
   `UNCERTAIN`; it is never silently replayed.
@@ -124,6 +141,6 @@ repairs desired state and a deliberate new attempt uses it.
   cannot run or enter Resolver candidates, and later host repair requires a
   reviewed generation.
 - Missing `jig.lock` works only in unlocked bootstrap; locked mode rejects it.
-- Two simultaneous tickets are outside this probe. They must not share the
-  writable workspace without a future explicit allocator, isolated Bindings,
-  or serialization policy; this tree proves none of those.
+- The board can hold concurrent cards, but two builders must not share the
+  writable workspace without an allocator, isolated Bindings, or enforced
+  serialization; this probe processes only one active ticket.

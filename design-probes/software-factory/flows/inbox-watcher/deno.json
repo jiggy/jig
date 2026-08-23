@@ -3,6 +3,6 @@
     "strict": true
   },
   "imports": {
-    "@flow/run": "jsr:@flow/run@^1.0.0"
+    "@flow/service": "jsr:@flow/service@^1.0.0"
   }
 }

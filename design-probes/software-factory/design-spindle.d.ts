@@ -96,7 +96,10 @@ declare module "spindle" {
     protected runAgent(
       context: NodeContext<Root, Input>,
       localOperation: string,
-      instructions: string,
+      request: {
+        readonly instructions: string;
+        readonly skills?: readonly string[];
+      },
     ): Promise<AgentResult>;
   }
 
@@ -124,7 +127,7 @@ declare module "spindle" {
   export class Outcome<Root, State>
     extends Node<Root, State, State> {
     constructor(
-      outcome: "done" | "blocked",
+      outcome: string,
       output?: (
         context: NodeContext<Root, State>,
       ) => JsonValue,

@@ -15,8 +15,8 @@
       "filesystem": {}
     },
     {
-      "binding": "inbox-producer",
-      "rootRunAdmission": true,
+      "binding": "inbox-watcher",
+      "serviceMount": true,
       "filesystem": {
         "inbox": "read-only ./inbox"
       },
@@ -25,13 +25,25 @@
       }
     },
     {
+      "binding": "kanban",
+      "serviceMount": true,
+      "filesystem": {
+        "board": "read-write ./kanban"
+      },
+      "provides": {
+        "kanban": "exact ensure/transition contract"
+      },
+      "writerRule": "one exclusive Mount writer; replacement drains before remount"
+    },
+    {
       "binding": "triage",
       "hookRunAdmission": true,
       "filesystem": {},
       "effects": {
         "worker": "exact work-agent Binding with transitive workspace authority",
         "analyst": "exact attachment-free analysis-agent Binding",
-        "choice": "exact semantic-choice Binding"
+        "choice": "exact semantic-choice Binding",
+        "kanban": "exact kanban Service export"
       },
       "childFlowCeiling": {
         "reference-research": [
@@ -51,13 +63,14 @@
         "sandboxed-command"
       ],
       "callerHasMatchingDirectView": false,
-      "skillProjection": "only the exact calling package's admitted skills tree, read-only and owner-scoped"
+      "skillProjection": "only per-call selected Flow-local skill subtrees, read-only and owner-scoped"
     },
     {
       "binding": "analysis-agent",
       "authority": "attachment- and tool-free Agent Run used for Semantic Choice, reference analysis, and parallel voting",
       "filesystem": {},
       "providerToolEffectCeiling": [],
+      "skillProjection": "solution-design only for voters; empty for calls which omit skills",
       "callerRawNetworkAuthority": false,
       "providerInternalTransport": "exact trusted registration authority, disclosed separately and not delegated to the component"
     },

@@ -6,3 +6,4 @@ workspace/*
 !workspace/README.md
 repair-staging/*
 !repair-staging/README.md
+kanban/cards/

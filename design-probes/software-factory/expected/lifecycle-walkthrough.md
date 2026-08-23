@@ -1,119 +1,109 @@
 # Tabletop lifecycle walkthrough
 
-This is ordering for review, not a proposed trace or protocol serialization.
+This is ordering for review, not a protocol serialization.
 
-## Project admission
+## Project admission and Service activation
 
-1. Jig privately captures `jig.ts`, the configured shallow source memberships,
-   declarations, package trees, schemas, and static import closure.
-2. It validates the exact package metadata, complete Hook tuple, Binding
-   references, settings, attachment ceilings, contract triples, and source
-   confinement without running Flow or Agent code.
-3. It resolves each host-capability export and each package revision exactly.
-   It freezes the ordered `reference-research` candidate Binding revisions and
-   pins the exact project `semanticChoice` Binding used only as an ambiguity
-   ranker.
-4. Against one host-policy snapshot it derives one complete implementation
-   recipe or exact unavailable reason for every Binding. Spindle and Deno are
-   host Adapter selector tokens, never commands stored in this project.
-5. It presents one semantic and authority delta. In unlocked mode it also
-   proposes the initial complete `jig.lock`.
-6. A digest-bound compare-and-set apply publishes one immutable generation and
-   opens the Hook revision at one exact Journal position. Merely adding any
-   file above did not activate it.
+1. Jig captures `jig.ts`, shallow source membership, declarations, package
+   trees, schemas, descriptors, and static import closure.
+2. It resolves each host capability and package revision, freezes the
+   `reference-research` candidate set, and pins `semantic-choice` as the
+   optional project ambiguity ranker.
+3. It derives an exact Run or Service recipe—or exact unavailability—for every
+   Binding and displays one semantic/authority delta. The initial unlocked plan
+   also proposes `jig.lock`.
+4. Aggregate apply publishes one immutable generation and Hook interval. It
+   eagerly mounts ready `kanban` and `inbox-watcher` Service Bindings.
+5. Kanban acquires the only board write lease, registers its exact export, and
+   reports ready. The watcher acquires only a read-only inbox view, creates its
+   watch, reports an empty export snapshot ready, and scans existing files.
 
-## Producer Run and atomic Event handoff
+## Stable file and atomic Event handoff
 
-1. A frontend starts `inbox-producer` with a new project-local submission key.
-   Jig validates JSON/1, pins the exact Binding/generation, allocates one Run,
-   then validates `input.schema.json`.
-2. The exact Deno recipe performs its independently fenced preparation and
-   final launch lifecycles. The implementation receives only its read-only
-   `inbox` view and exact Journal effect slot.
-3. It reads the named item and calls `journal.append` under one stable owned
-   effect operation. The request contains only type, data, and subject.
-4. One Jig transaction commits the authenticated Event, append terminal
-   result, matching Hook selection, and derived-Run outbox record. While the
-   same owner lifetime remains live, a duplicate request with the same
-   operation ID and digest returns the same Event. If channel or process loss
-   loses that owner, v1 cannot resume it to retry; the committed Event and Hook
-   selection nevertheless remain facts.
-5. The producer's terminal response is buffered, child admission closes, and
-   all owned effects/resources quiesce or are fenced before Run success may
-   commit. Event commitment is not rolled back by later producer failure.
+1. A new immediate Markdown file produces one or more filesystem observations.
+   The watcher accepts only a regular bounded file whose stat and bytes remain
+   unchanged across its settle interval.
+2. It derives `submissionId = SHA-256(item || NUL || request)` and calls
+   `journal.append` under an operation ID derived from that submission.
+3. One Jig transaction commits the authenticated Event, append terminal result,
+   matching Hook selection, and derived-Run outbox record.
+4. Filesystem observation is at least once across watcher Mount generations.
+   A repeat may create another Event, but it carries the same submission ID;
+   the downstream Kanban `ensure` operation supplies domain idempotency.
 
-## Hook-derived Spindle Run
+## Hook-derived Spindle Run and card creation
 
-1. The outbox allocates or returns exactly one triage Run for
-   `(Hook revision digest, Event ID)`, using the Hook's already-pinned target
-   and generation. The complete Event becomes immutable Run input.
-2. Jig validates that Event against the triage package schema. A later project
-   generation cannot retarget this selected pair.
-3. The exact Spindle recipe prepares and launches under the same two-owner
-   Backend discipline as every code-backed package; Jig never imports the
-   graph in-process.
-4. On the root Router visit, Spindle freezes its two actual edges in order and
-   calls the exact `choice` effect. Semantic Choice may return only
-   `gauntlet`, `majority-vote`, or abstain. Spindle maps the selected local ID
-   to the already connected Flow; abstain maps deterministically to `blocked`.
+1. The outbox allocates one triage Run for `(Hook revision, Event ID)` using the
+   Hook's pinned source/target generation. The complete Event is immutable Run
+   input and is validated against triage's schema.
+2. Spindle launches externally through Run/1; Jig never imports its graph.
+3. `OpenCard` calls the exact Kanban export. The Service serializes access and
+   either creates revision 1 in `triage` or returns the identical existing card.
+4. If that existing card is already beyond `triage`, the Run returns the
+   declared `duplicate` outcome and never invokes the Router.
+5. The root Router freezes its two actual edges and calls triage's explicit
+   `choice` slot. Abstention advances the card to `blocked` and returns the
+   declared blocked result.
 
-## Local Gauntlet and distinct Jig Resolver
+## Gauntlet and the distinct Jig Resolver
 
-1. If `gauntlet` wins, its first `Research` Node calls `context.flows.call()`
-   through the `reference-research` slot. The actual Event and call intent are
-   fixed by that operation; the project does not rewrite them.
-2. Jig freezes the owner generation's two approved exact candidate revisions,
-   then filters input schema, readiness, authority, budget, recursion, trust,
-   and liveness. It never gives raw catalogue packages to the ranker.
-3. With two remaining candidates, Jig starts one journaled child Semantic
-   Choice operation using its project-pinned ranker. The returned ID is
-   validated, committed, and compare-and-set into the still-empty resolution
-   field once. The selected child Run is allocated atomically before dispatch.
-4. The child gets only its own Binding, instruction recipe, input, and package
-   skill tree. It does not inherit triage's workspace or focused-validation
-   skill; its instruction recipe uses the attachment- and tool-free
-   `analysis-agent`. The conductor supplies the exact FLOW body, canonical
-   input/settings, and logical authority, and requires one complete structured
-   Flow result under `result.schema.json`; Agent text alone is not output. Its
-   completion returns to the Spindle `Research` Node.
-5. Spindle threads one immutable state through the branch. Research returns
-   `{ event, reference }`; each sequential worker Node returns a new record
-   adding its Agent result. The root Event remains separately immutable. There
-   is no shared result bag, mapper, or filesystem handoff.
-6. Gauntlet's Agent nodes invoke `worker`. The Spindle owner has no workspace
-   attachment. For each owned operation Jig projects only the workspace fixed
-   by `work-agent` plus this triage package's skills, without modifying
-   provider-native directories, and revokes both with that Agent owner.
-   Verification explicitly requests `focused-validation`; the projection is
-   availability evidence, not proof of use.
-7. The Majority-Vote branch forks the same `{ event }` state to three
-   attachment-free `analyst` calls. Parallel returns their results in declared
-   order, one deterministic join Node creates `{ event, votes }`, and only the
-   synthesis worker receives the writable workspace. The branch never invokes
-   the research slot.
+1. The branch compare-and-sets `triage -> research` with strategy `gauntlet`.
+2. Research calls `context.flows.call()` through the frozen
+   `reference-research` candidate set. With two eligible revisions, Jig invokes
+   the activation-pinned project Semantic Choice Binding once. Without the
+   project `semanticChoice` field this exact call is `BINDING_AMBIGUOUS`; the
+   local Router remains unaffected.
+3. The chosen instruction-only child receives its own package resources and
+   attachment-free Agent Binding. It does not inherit triage skills or the
+   workspace. Triage validates the returned JSON/1 shape.
+4. Each later phase first compare-and-sets the card revision, then calls the
+   worker with only the relevant selected context:
 
-## Root completion order
+   ```text
+   implementation  focused-coding
+   review          focused-validation
+   revision        focused-coding
+   verification    focused-validation
+   ```
 
-For either branch, a complete Spindle terminal response is only provisional:
+5. Agent provider projections contain only those named skill subtrees plus the
+   Binding's fixed workspace/tool ceiling. The Spindle process has no matching
+   workspace view. Every new Card returned by Kanban becomes explicit immutable
+   graph state.
+6. Verification completion advances `verification -> done`, then the Outcome
+   returns card ID, strategy, and evidence.
 
-1. buffer the response;
-2. close new child admission;
-3. drive all Agent, child Flow, effect, process, skill projection, and sandbox
-   owners to terminal or fenced state within fixed bounds;
-4. validate the complete normal result when a result schema exists; and
-5. only then commit Run success.
+## Majority Vote
 
-Outstanding or unprovable cleanup prevents success even if the graph returned
-`done`.
+1. The branch compare-and-sets `triage -> voting` with strategy
+   `majority-vote`.
+2. Three attachment-free analysts each select only `solution-design`. Parallel
+   returns ordered results; an explicit join constructs the next state.
+3. The card advances to `implementation`; one writable worker selects
+   `focused-coding` and implements the synthesis.
+4. The card advances to `verification`; a second worker selects only
+   `focused-validation`. Completion advances the card to `done`.
 
-## Deliberate new attempt after repair
+Any domain-blocked Agent/child result takes the branch's explicit block Node,
+which compare-and-sets the current card to `blocked` before returning the Flow
+outcome. A later duplicate returns `duplicate` before routing. Simultaneous
+Runs can both observe `triage`, but only one wins the first Kanban
+compare-and-set and the loser cannot start Agent work.
 
-When research resolution failed missing, an operator may start
-`create-missing-flow` with a new submission key. Its exact instruction recipe
-pins `repair-agent`, and Run admission acquires that exact provider generation
-or fails without rebinding. The Flow may write only `repair-staging/`.
+## Root completion and update
 
-After normal review copies or recreates the desired proposal in project source,
-a new plan/apply may publish a later generation. A newly submitted ticket or
-deliberate new root attempt may use it. The old Event, Hook-derived Run, and
-failed resolution remain unchanged.
+A complete Spindle response is provisional until Jig closes child admission,
+drives Agent, child Flow, Service invocation, projection, process, and sandbox
+owners terminal or fenced, validates the result, and commits Run success.
+
+Kanban rollout cannot shadow-activate two writers against the same board. The
+old Mount drains and releases its write lease before the replacement mounts.
+The watcher may overlap only if both generations remain read-only, but Hook
+intervals and submission IDs still make duplicate behavior visible.
+
+## Deliberate repair
+
+Missing research resolution leaves the original operation and Run terminal.
+An operator-started `create-missing-flow` uses its pinned repair Agent and may
+write only inert staging files. A later reviewed generation and new submission
+are required; neither the old Event nor old Run is healed or replayed.

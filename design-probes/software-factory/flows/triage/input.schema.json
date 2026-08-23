@@ -29,6 +29,10 @@
     "data": {
       "type": "object",
       "properties": {
+        "submissionId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
         "item": {
           "type": "string",
           "minLength": 1,
@@ -40,7 +44,7 @@
           "maxLength": 262144
         }
       },
-      "required": ["item", "request"],
+      "required": ["submissionId", "item", "request"],
       "additionalProperties": false
     },
     "subject": {
