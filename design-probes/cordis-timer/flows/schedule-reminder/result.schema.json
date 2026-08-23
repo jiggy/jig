@@ -1,0 +1,19 @@
+{
+  "$schema": "https://flow.dev/schemas/schema-1.json",
+  "type": "object",
+  "properties": {
+    "outcome": { "const": "done" },
+    "output": {
+      "type": "object",
+      "properties": {
+        "timerId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "status": { "const": "pending" }
+      },
+      "required": ["timerId", "status"],
+      "additionalProperties": false
+    }
+  },
+  "required": ["outcome", "output"],
+  "additionalProperties": false
+}
+

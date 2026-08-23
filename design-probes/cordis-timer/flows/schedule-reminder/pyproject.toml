@@ -1,0 +1,5 @@
+[project]
+name = "flow-probe-schedule-reminder"
+version = "0.0.0"
+requires-python = ">=3.13,<4"
+

@@ -1,0 +1,43 @@
+{
+  "probeFormat": 1,
+  "nonnormative": true,
+  "flowSource": {
+    "source": "./flows",
+    "members": ["cordis-scheduler", "record-firing", "schedule-reminder"]
+  },
+  "bindings": {
+    "journal": {
+      "kind": "host-capability",
+      "providerRegistration": "@jig/journal#append",
+      "eventTypeCeiling": ["https://probe.jig.dev/events/timer-fired"]
+    },
+    "cordis-scheduler": {
+      "kind": "package",
+      "mode": "service-exact",
+      "adapterSelector": "bun",
+      "nativeDependencies": {
+        "cordis": "4.0.0-rc.8",
+        "@cordisjs/plugin-timer": "1.1.2"
+      },
+      "settings": { "maxTimerRecords": 128 },
+      "slots": { "journal": "journal@<exact-admitted-revision>" },
+      "exports": ["scheduler"]
+    },
+    "schedule-reminder": {
+      "kind": "package",
+      "mode": "run-exact",
+      "adapterSelector": "python3",
+      "slots": { "scheduler": "cordis-scheduler#scheduler@<provider-generation>" }
+    },
+    "record-firing": {
+      "kind": "package",
+      "mode": "run-exact",
+      "adapterSelector": "python3"
+    }
+  },
+  "hook": {
+    "source": "cordis-scheduler@<exact-admitted-revision>",
+    "type": "https://probe.jig.dev/events/timer-fired",
+    "target": "record-firing@<exact-admitted-revision>"
+  }
+}

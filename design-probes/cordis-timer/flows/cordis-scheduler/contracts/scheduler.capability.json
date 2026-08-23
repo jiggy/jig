@@ -1,0 +1,93 @@
+{
+  "$schema": "https://flow.dev/schemas/capability-contract-1.schema.json",
+  "flowCapabilityContract": 1,
+  "id": "https://probe.jig.dev/contracts/process-scheduler",
+  "version": "1.0.0",
+  "methods": {
+    "schedule": {
+      "input": { "$ref": "#/$defs/ScheduleInput" },
+      "output": { "$ref": "#/$defs/TimerRecord" },
+      "errors": {
+        "capacity": { "$ref": "#/$defs/Empty" },
+        "timer-conflict": { "$ref": "#/$defs/TimerId" }
+      }
+    },
+    "cancel": {
+      "input": { "$ref": "#/$defs/TimerId" },
+      "output": { "$ref": "#/$defs/TimerRecord" },
+      "errors": {
+        "not-found": { "$ref": "#/$defs/TimerId" }
+      }
+    },
+    "get": {
+      "input": { "$ref": "#/$defs/TimerId" },
+      "output": { "$ref": "#/$defs/TimerRecord" },
+      "errors": {
+        "not-found": { "$ref": "#/$defs/TimerId" }
+      }
+    },
+    "list": {
+      "input": { "$ref": "#/$defs/Empty" },
+      "output": { "$ref": "#/$defs/TimerList" },
+      "errors": {}
+    }
+  },
+  "$defs": {
+    "Empty": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": false
+    },
+    "TimerIdValue": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "TimerId": {
+      "type": "object",
+      "properties": {
+        "timerId": { "$ref": "#/$defs/TimerIdValue" }
+      },
+      "required": ["timerId"],
+      "additionalProperties": false
+    },
+    "ScheduleInput": {
+      "type": "object",
+      "properties": {
+        "timerId": { "$ref": "#/$defs/TimerIdValue" },
+        "delayMs": {
+          "type": "integer",
+          "minimum": 10,
+          "maximum": 60000
+        },
+        "payload": true
+      },
+      "required": ["timerId", "delayMs", "payload"],
+      "additionalProperties": false
+    },
+    "TimerRecord": {
+      "type": "object",
+      "properties": {
+        "timerId": { "$ref": "#/$defs/TimerIdValue" },
+        "status": {
+          "enum": ["pending", "fired", "cancelled", "failed", "uncertain"]
+        }
+      },
+      "required": ["timerId", "status"],
+      "additionalProperties": false
+    },
+    "TimerList": {
+      "type": "object",
+      "properties": {
+        "timers": {
+          "type": "array",
+          "maxItems": 1024,
+          "items": { "$ref": "#/$defs/TimerRecord" }
+        }
+      },
+      "required": ["timers"],
+      "additionalProperties": false
+    }
+  }
+}
+

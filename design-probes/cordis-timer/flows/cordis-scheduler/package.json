@@ -1,0 +1,9 @@
+{
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@cordisjs/plugin-timer": "1.1.2",
+    "cordis": "4.0.0-rc.8"
+  }
+}
+

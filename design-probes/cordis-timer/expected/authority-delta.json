@@ -1,0 +1,35 @@
+{
+  "probeFormat": 1,
+  "nonnormative": true,
+  "requested": {
+    "cordis-scheduler": {
+      "effects": {
+        "journal": {
+          "methods": ["append"],
+          "eventTypes": ["https://probe.jig.dev/events/timer-fired"]
+        }
+      },
+      "exports": { "scheduler": ["schedule", "cancel", "get", "list"] }
+    },
+    "schedule-reminder": {
+      "effects": { "scheduler": ["schedule", "cancel", "get", "list"] }
+    }
+  },
+  "cordisLocalOnly": [
+    "Context",
+    "Fiber",
+    "TimerService",
+    "timer callback",
+    "timer disposer",
+    "service key timer"
+  ],
+  "deniedAmbient": [
+    "network",
+    "project-files",
+    "environment",
+    "child-processes",
+    "host-ipc",
+    ".jig"
+  ]
+}
+
