@@ -208,9 +208,14 @@ close ends local admission but Mount drain/revoke ends the authority. Jig does
 not claim remote erasure it cannot enforce.
 
 Agent methods cannot pass host paths or widen authority. One Agent Binding
-fixes provider, settings, attenuated attachments, tool/effect ceiling, approval
-gate, deadline, and budget. Jig itself gates configured effects and consumes
-one decision bound to the exact call; an Agent cannot self-assert approval.
+fixes provider, settings, its own attachment projection, tool/effect ceiling,
+approval gate, deadline, and budget. Binding the slot exposes that transitive
+authority during project review; caller resources never inherit or remap into
+the Agent operation, and independently configured read-write roots cannot
+overlap. An instruction conductor is the Run implementation and therefore gets
+that instruction Run Binding's declared component view, not a caller's view.
+Jig itself gates configured effects and consumes one decision bound to the
+exact call; an Agent cannot self-assert approval.
 
 See [`../spec/agents-and-semantic-choice.md`](../spec/agents-and-semantic-choice.md).
 
@@ -232,7 +237,9 @@ There are two intentional call sites:
 
 Thus a software factory can naturally choose Gauntlet versus Majority-Vote for
 a new ticket without keyword gates. A `create-missing-flow` maintenance Flow is
-separate and its output still passes normal admission.
+separate and its output still passes normal admission. In v1 the missing
+operation terminates; maintenance may enable a deliberate later Run, but never
+resumes, retargets, or reranks the original Run.
 
 ## 10. Security is predicate-based host enforcement
 
@@ -305,6 +312,11 @@ Stable labels still require executable cross-implementation fixtures for:
    revocation, and crash recovery; and
 5. catalogue resolution, semantic-choice uncertainty, three-way updates,
    rollback, init, and decentralized source distribution.
+
+Spindle separately still needs the smallest explicit runner-local dataflow rule
+for immutable root input and intentionally retained node/branch results. That is
+a Spindle authoring gate, not a reason to add mapping or state machinery to Jig
+or FLOW.
 
 No further v1 abstraction is justified until one of those tests demonstrates a
 concrete missing primitive.

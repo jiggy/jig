@@ -474,21 +474,23 @@ caller request digest
     operation/selector, input, and caller-visible attachment identities
 
 resolution
-    one exact selected Binding/provider revision, initially absent when
-    waiting and filled exactly once by compare-and-set
+    one exact selected Binding/provider revision, initially absent while
+    resolution runs against the owner's fixed snapshot and filled exactly
+    once by compare-and-set before dispatch
 ```
 
 Transport request IDs, wait deadlines, diagnostics, and the not-yet-known
 resolution are excluded from the caller request digest. Same operation key and
 same caller digest joins the existing record; changed caller content fails
 before dispatch. An exact prebinding may commit the resolution with `INTENT`.
-Semantic or repaired resolution may fill it once later. Dispatch requires a
+Semantic resolution may fill it once later. Missing or ambiguous resolution
+commits terminal failure while the field remains absent. Dispatch requires a
 resolution and atomically commits it with child/lease creation. A retry never
-reruns resolution after that field is filled.
+reruns resolution after that field is filled or the operation is terminal.
 
 ```text
 INTENT -> DISPATCHED -> SUCCEEDED | FAILED | CANCELLED | UNCERTAIN
-   `----------------> CANCELLED  (before dispatch)
+   `----------------> FAILED | CANCELLED | UNCERTAIN  (before dispatch)
 ```
 
 Intent commits before dispatch. Child allocation and dispatch admission commit
@@ -730,8 +732,8 @@ latest acknowledged revision used to resolve its slot. Later snapshots cannot
 alter that operation's provider. The host rejects stale, unknown, and partially
 installed revisions. No undeclared dependency or export may appear at runtime.
 
-Static dependency cycles fail before mount. Every synchronous Run, effect,
-Service, and repair wait is an edge in Jig's wait-for graph. The newest edge
+Static dependency cycles fail before mount. Every synchronous Run, effect, and
+Service wait is an edge in Jig's wait-for graph. The newest edge
 which would create a non-runnable cycle fails instead of deadlocking.
 
 ### 6.5 Deliberate v1 limit
@@ -877,10 +879,7 @@ export default bind({
   },
   slots: {
     agent: bindingRef("reviewer-agent"),
-    research: discover({
-      from: factoryCandidates,
-      onMissing: "fail",
-    }),
+    research: discover(factoryCandidates),
   },
   attachments: {
     source: root("./project"),
@@ -928,8 +927,8 @@ the pinned unavailability reason; later host repair requires a new key and
 generation.
 
 A package Binding additionally contains its exact Package/1/source identity,
-mode, package-declared slots/attachments, and any legal instruction fallback
-or missing/repair policy. A host-capability Binding contains the trusted
+mode, package-declared slots/attachments, and any legal instruction fallback.
+A host-capability Binding contains the trusted
 provider registration artifact/revision and one exact export. Package-only
 runtime, fallback, outcomes, and Service-mount fields are illegal on that
 branch. Its settings, attachments, dependencies, and authority cannot exceed
@@ -958,8 +957,9 @@ trusted registration. A provider intended for portable distribution ships as
 a FLOW Service package instead.
 
 The optional intent carried by the actual `flow/call` is the sole discovery
-meaning. A project may exact-bind its slot or choose fail/wait/repair policy,
-but it cannot rewrite that intent or select a per-slot semantic engine. One
+meaning. A project may exact-bind its slot or configure an approved candidate
+snapshot, but it cannot rewrite that intent or select a per-slot semantic
+engine. Missing or ambiguous resolution fails the operation. One
 optional Semantic Resolver implementation, its complete configuration, and
 every Agent/effect Binding it uses belong to normalized project desired state
 and the activation digest. No active resolver acquires a host-default Agent.
@@ -1135,7 +1135,7 @@ profile, inheritance layer, or permission grant. For each exact member:
 4. an instruction Agent or fallback is emitted only when that exact member's
    selected implementation requires or declares it, never merely because the
    recipe can supply one;
-5. settings, fallback, instruction Agent, repair policy, and budgets must be
+5. settings, fallback, instruction Agent, and budgets must be
    complete and valid; otherwise that member remains pending.
 
 The expansion proposes a finite immutable **candidate-set snapshot** recording
@@ -1332,11 +1332,19 @@ The focused Agent specification defines this projection rule without adding a
 skill field to the Agent wire contracts.
 
 Agent requests never carry raw host paths or permission overrides. An Agent
-Binding fixes provider, settings, attenuated attachment projection, tool/effect
-ceiling, approval gate, deadline, and budget. For a gated effect Jig—not the
-Agent provider—obtains and transactionally consumes one decision bound to the
-exact call before dispatch. Approval can release only authority already inside
-that ceiling.
+Binding fixes provider, settings, its own attachment projection, tool/effect
+ceiling, approval gate, deadline, and budget. Binding that Agent slot exposes
+this transitive authority in the aggregate project plan; caller attachments,
+effects, and scratch neither inherit nor remap into the Agent operation. A
+host-native operation owns its exact projection and leases. Independently
+configured caller/provider read-write roots may not overlap, and concurrent
+writers require enforced exclusion or isolation rather than an assumption that
+the graph is sequential. An instruction conductor instead realizes the Run
+itself and receives that instruction Run Binding's declared component view;
+there is no concurrently live component runner and no caller inheritance. For
+a gated effect Jig—not the Agent provider—obtains
+and transactionally consumes one decision bound to the exact call before
+dispatch. Approval can release only authority already inside that ceiling.
 
 Codex, Claude Code, ACP, and command adapters are providers, not core Agent
 subclasses. A Starter may generate editable local provider packages so users
@@ -1411,20 +1419,20 @@ Thus a retry neither double-spends an Agent turn nor changes the selected
 authority-bearing Binding.
 
 Unresolved dependency handling is mandatory even when semantic reasoning is
-absent. The default is a durable diagnostic and failure. A Binding may opt a
-not-yet-dispatched `flow/call` into a bounded `WAITING_BINDING` state. Search,
-installation, generation, tests, approval, and activation occur in a separate
-repair Run/staging transaction. A compare-and-set dispatches at most one child
-only if the original owner is still live and the operation's resolution field
-is still absent. Once filled, retries reuse it and never ask either Resolver
-again. The owner retains its original admission generation; repair records the
-single provider revision as an explicit extension of that owner's binding
-table rather than changing its catalogue or policy generation.
+absent. No eligible candidate commits terminal `BINDING_MISSING` with the
+pinned generation, slot, actual intent, candidate-snapshot evidence, and
+rejection reasons. Ambiguity likewise commits terminal
+`BINDING_AMBIGUOUS`. A later catalogue or admission generation never fills that
+operation's resolution, ranks it again, or creates its child.
 
-This enables a user-owned `create-missing-flow` maintenance Flow without
-letting synthesized code appear and run invisibly in the blocked operation.
-Long repairs should normally fail and start a new attempt rather than retain an
-unbounded population of sleeping processes.
+A user-owned `create-missing-flow` maintenance Flow is an independent admitted
+root Run. It may search, generate, test, and stage a proposal, but its output
+remains inert until ordinary plan, review, and apply admit a new generation.
+After admission, a person or application deliberately starts new root work
+with a new submission key. The prior Run is never resumed, retargeted, or
+replayed. This is less seamless than retaining an opaque live runner, but it is
+durable across crashes, releases resident capacity, and keeps one recovery
+model in v1.
 
 There are two intentionally different semantic-choice patterns:
 
@@ -1725,9 +1733,8 @@ immutable candidate as described in section 8, then publishes one durable
 **admission generation**. Every new root Run, binding resolution, Hook interval,
 and Service-consumer Binding is admitted against exactly one generation;
 existing owners retain theirs. A Run's later unresolved discovery uses its
-pinned catalogue and policy generation. A successful repair may extend only
-that owner's binding table with the one recorded provider revision; it does not
-switch project generation.
+pinned catalogue and policy generation. Later maintenance and admission never
+extend, heal, or retarget an existing owner's binding table.
 
 Every user, CLI, GUI, or trusted module requests root work through the same
 host-local operation: one active admitted Run-capable Binding ID, actual Run
@@ -1868,7 +1875,7 @@ Git repositories, branches, and worktrees
 GUI/HTTP layout
 approval/checkpoint policy
 application Agent roles, limits, and selection policy
-semantic/missing-Flow repair policy
+semantic selection, missing-Flow maintenance, and retry policy
 ```
 
 Core supports:
@@ -1923,6 +1930,15 @@ Agent (useful specialized Node)
 Graph definition and inspection remain Spindle concerns. Runtime visit/retry
 state is per Run, host operations await `flow/call`/`effect/call`, and terminal
 graph results become FLOW outcomes. Jig never mirrors its nodes or continuation.
+
+Before Spindle's authoring API is implemented, it must close one minimal
+runner-local dataflow rule: later nodes need explicit access to immutable root
+input and to the prior results they intentionally consume, including results
+from child Flows and parallel branches. Control edges alone are insufficient.
+This belongs in Spindle state/value semantics, not in Jig Binding mappers,
+FLOW metadata, or implicit filesystem inheritance. The software-factory probe
+therefore treats exact syntax and shared-versus-branch state as an open design
+gate rather than pretending `next()` carries all required data.
 
 ### 14.5 Cordis as a reference integration
 
@@ -1984,7 +2000,7 @@ Required behavior is fail-closed and observable:
 | Host requires locked preparation; Adapter reports mutable resolution | Preparation fails before launch; policy is not silently weakened. |
 | Several eligible children without a ranker | Explicit ambiguity with candidates and reasons. |
 | New package appears in a live catalogue | An unreferenced entry remains inert. If an admitted bulk recipe includes it, the resulting candidate-set delta is pending until reviewed apply. |
-| Missing child | Durable diagnostic; optional staged bounded repair; never invisible generation. |
+| Missing child | Terminal durable diagnostic. Separate staged maintenance may enable a deliberate new Run; the old operation is never resumed. |
 | External success cannot be established after crash | `OPERATION_UNCERTAIN`; no automatic replay. |
 | Owner returns with a live child | Admission closes; child receives `OWNER_CLOSED`; owner cannot succeed before bounded quiescence. |
 | Root cancellation | New authority closes, descendants cancel, process tree is bounded and killed. |
@@ -2028,8 +2044,8 @@ Release order:
 6. **Resolution:** catalogue collisions, symlink escapes, additions, removals,
    moves, content/recipe changes, candidate-set snapshot changes, semantic
    ranker kill injection before and after external dispatch, reranking retries,
-   and missing repair never change an owner's exact candidates or authority
-   without the specified review and atomic commit.
+   and later maintenance/admission never change a terminal operation or an
+   owner's exact candidates and authority.
 7. **Capability Contract/1:** independent TypeScript and Python
    clients/providers agree from the descriptor alone on method names, wire
    value shapes, named errors, canonicalization, and equivocation, and agree
@@ -2113,6 +2129,9 @@ Deferred behind evidence, not merely time:
   minimum useful common envelope;
 - channel resumption or durable runner continuation, after an epoch/fencing
   model survives crash tests;
+- operation-scoped delayed first binding across admission generations, after
+  real workloads justify cross-generation entitlements, resident waiters, and
+  the required cancellation/activation compare-and-set state machine;
 - cross-owner or cross-provider Agent session resume, after leases,
   delegation, revocation, and remote-loss semantics are proven;
 - raw-authority Grant Profiles, only after a real package cannot use mediated

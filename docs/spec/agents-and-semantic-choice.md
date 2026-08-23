@@ -243,18 +243,37 @@ approval provider
 deadline and budget
 ```
 
-Jig derives an Agent child lifetime and attenuates only the caller's already
-approved named attachments and effects. Project policy roots, `.jig`,
-credentials, ambient tools, unrelated attachments, and the caller's private
-scratch never inherit implicitly. Concurrent writers require isolation or
-mutually exclusive leases.
+These are resources of the exact Agent Binding, not attachments inherited from
+the caller. Binding an Agent slot grants the caller only the mediated ability
+to request work through that exact configured authority; the aggregate project
+plan displays its transitive attachments and effect ceiling. The caller cannot
+pass, remap, or widen them, and its own attachments, effects, private scratch,
+project policy roots, `.jig`, credentials, and ambient tools never inherit into
+the Agent operation.
 
-A host-native Agent provider receives a derived operation projection. Closing,
-cancelling, or losing that operation revokes its projection and releases its
-write lease even when remote cleanup is uncertain.
+For a host-native provider, Jig derives an Agent child lifetime with only the
+Agent Binding's approved per-operation projection and leases. A caller and its
+Agent Binding cannot independently map overlapping read-write roots: that
+candidate is rejected unless a future explicit Backend serialization mechanism
+defines and realizes one safe lease domain. Multiple Agent operations over one
+write root likewise require mutually exclusive leases or isolated views. Graph
+topology and the fact that a caller awaits the operation are not enforcement.
+
+Instruction execution is different from an ordinary Agent effect call: the
+conductor is the selected implementation of the Run, not a child of a live
+component process. It therefore receives the instruction Run Binding's own
+declared attachment and effect view, as an exact-code component would, under
+the Agent provider ceiling and instruction-runtime sandbox. This is direct Run
+authority, not caller inheritance. Any independent Agent-Binding resource is
+still visible in the aggregate plan, and overlapping read-write roots reject.
+
+A host-native Agent provider receives that derived operation projection.
+Closing, cancelling, or losing the operation revokes its projection and
+releases its write lease even when remote cleanup is uncertain.
 
 A Service/1 provider instead sees only the attachments statically approved for
-its exact Service Binding. That authority and its write lease belong to the
+its exact Service Binding. The invoking caller still contributes no attachment
+authority. The provider authority and its write lease belong to the
 Mount, not to an individual session; closing a session cannot revoke them. An
 invocation never remaps the Mount workspace or injects paths or generic
 handles. Projects needing several Service-backed workspaces or isolation
@@ -401,7 +420,11 @@ Router owns graph topology; Jig's Resolver owns open component discovery.
 
 Missing repair is separate. A configured `create-missing-flow` maintenance
 Flow may search, generate, test, and propose a candidate, but cannot insert it
-into the blocked operation without the ordinary admission process.
+into the terminal failed operation. Zero candidates commit terminal
+`BINDING_MISSING`; later admission never resumes, mutates, or semantically
+ranks that operation again. After the proposal passes ordinary plan, review,
+and apply, a person or application starts a deliberate new root attempt with a
+new submission key. Reusing the old key returns the old terminal Run.
 
 ## 7. Required conformance cases
 
@@ -438,3 +461,18 @@ into the blocked operation without the ordinary admission process.
     revoked with its Agent owner, and never overwrites provider-native skill
     directories; an integration unable to project it without mutation or
     collision fails before provider work.
+17. Zero eligible `flow/call` candidates commit terminal `BINDING_MISSING`
+    with the frozen candidate evidence and rejection reasons; repair cannot
+    fill its resolution or rerank it.
+18. A provider admitted by a later project generation can serve only a new
+    attempt. Reusing the old root submission key returns the old terminal Run,
+    and redelivering an old Hook/Event pair returns its old derived Run.
+19. An Agent Binding's fixed attachment/effect authority is visible as
+    transitive project authority but never inherited from or remapped by its
+    caller. Independently configured overlapping caller/provider read-write
+    roots reject before dispatch, and concurrent Agent writers require exact
+    mutual exclusion or isolation.
+20. An instruction conductor receives the instruction Run Binding's declared
+    component view because it is that Run's selected implementation, while no
+    component runner is live. This never permits undeclared roots, provider
+    widening, or overlapping independent read-write projections.

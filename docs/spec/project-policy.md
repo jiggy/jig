@@ -258,6 +258,13 @@ set of a package Binding, while `serviceExportRef("name", "export")` selects one
 explicit Service export. Resolution replaces them with exact admitted revision
 identities; neither helper imports or captures a live provider object.
 
+Aggregate normalization also computes the transitive authority reachable
+through those exact dependencies. Provider-owned attachments and effect
+ceilings appear in the consuming Binding's authority delta even though they do
+not become direct caller views. This is especially important for Agent slots:
+reviewing only the runner's own attachments would hide the work it can request
+through its configured Agent.
+
 Imported FLOW packages cannot contribute to project policy roots. Installers
 place packages only in configured catalogues unless a separate project-source
 operation explicitly changes policy files.
@@ -318,7 +325,7 @@ A semantic delta includes every:
 Binding or Hook add, edit, rename, or removal
 target, source selector, or candidate-set change
 package, provider, Adapter, toolchain, or contract change
-settings, fallback, Agent, repair, deadline, or budget change
+settings, fallback, Agent, deadline, or budget change
 attachment, effect, or sandbox-authority change
 lock resolution change
 ```
@@ -579,3 +586,13 @@ values. A different reusable configuration requires a new Binding revision.
 27. An instruction recipe pins the dependency Binding/export/contract during
     planning and acquires one exact live provider-generation lease during Run
     admission; provider absence fails without rebinding.
+28. Applying a candidate after `BINDING_MISSING` never changes the old Run or
+    operation. Repeating its root submission key returns the old terminal Run;
+    only a new key may select the new admission generation.
+29. Redelivering an old Hook/Event pair after maintenance returns the same old
+    derived Run. Retrying Hook-triggered work requires a new Event or an
+    explicit root submission with a new key; admission never replays the Hook.
+30. Aggregate authority inspection includes the fixed attachment and effect
+    authority reachable through every exact dependency Binding; it never
+    mislabels that authority as a direct caller attachment or omits it because
+    invocation is mediated.
