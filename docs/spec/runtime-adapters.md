@@ -89,7 +89,11 @@ Its bounded interface is conceptually:
 inspect(package snapshot, host toolchain evidence) -> eligibility evidence
 planProbe(configured toolchain) -> optional closed probe plan
 planPreparation(package snapshot, toolchain, policy) -> closed preparation plan
-planLaunch(prepared snapshot, toolchain, Run plan) -> closed launch plan
+planLaunch(
+  prepared snapshot,
+  toolchain,
+  owner plan: RunPlan | ServiceMountPlan,
+) -> closed launch plan
 ```
 
 An Adapter may parse native metadata and consume host-verified toolchain
@@ -104,17 +108,22 @@ Adapter is privileged host code; sandboxing the Flow does not make a compromised
 in-process Adapter safe.
 
 The Sandbox Backend launches and supervises an out-of-process Adapter worker
-inside a fixed host-owned planning sandbox: read-only access to the immutable
-package snapshot and verified toolchain evidence, bounded resources, and no
-network, ambient environment, project attachments, secrets, effects, or child
-processes. This sandbox is chosen by host policy rather than by any
+inside a fixed host-owned planning sandbox. Inspection and preparation planning
+receive read-only access to the immutable package snapshot and verified
+toolchain evidence. Only a `planLaunch` call additionally receives read-only
+access to the sealed prepared snapshot and the closed, authority-normalized
+`RunPlan` or `ServiceMountPlan`; it receives no attachment contents or secrets.
+Every call has bounded resources and no network, ambient environment, effects,
+or child processes. This sandbox is chosen by host policy rather than by any
 package-produced plan. An Adapter parser exploit must therefore cross the
 Backend boundary; choosing an in-process Adapter explicitly enlarges Jig's
 trusted computing base.
 
 ## 3. Deterministic selection
 
-For one immutable package and host-policy snapshot, Jig:
+Adapter selection is a planning operation for one candidate admission
+generation. It is never deferred to `flow/run` or repeated by a Run. For one
+immutable package and host-policy snapshot, Jig:
 
 1. enumerates explicitly installed Adapters which recognize the suffix;
 2. applies the optional selector-token mapping;
@@ -128,6 +137,15 @@ Zero eligible candidates is `RUNTIME_UNAVAILABLE`. More than one without an
 explicit preference is `RUNTIME_AMBIGUOUS`. Installation order, filename order,
 semantic reasoning, source-code guessing, ambient `PATH`, and previous success
 never break a tie.
+
+When exact-code selection yields zero candidates, project policy may select a
+separately qualified, explicitly permitted instruction recipe instead;
+otherwise the structurally valid Binding may be admitted unavailable. Several
+candidates is `RUNTIME_AMBIGUOUS` and never activates instruction fallback. An
+unavailable Binding does not prevent unrelated ready Bindings from being
+admitted, but it is excluded from Resolver candidate sets and cannot spawn or
+mount. Structural package, settings, schema, contract, reference, or authority
+errors still invalidate the aggregate candidate.
 
 Without a selector line, different hosts may intentionally select different
 Adapters for genuinely cross-runtime source. That choice is visible local
@@ -177,10 +195,19 @@ immutable package + Binding + host policy
     -> enforcement receipt
 ```
 
-Preparation receives a narrower grant than the Run. It cannot see Run
-attachments, secrets, project policy roots, or effect slots. Network access, if
-allowed for preparation, is an explicit Backend-enforced preparation policy;
-it is never inherited by the Flow.
+Preparation receives a narrower grant than the final Run or Service Mount. It
+cannot see owner attachments, secrets, project policy roots, or effect slots.
+Network access, if allowed for preparation, is an explicit Backend-enforced
+preparation policy; it is never inherited by the component.
+
+Every host-dispatched preparation activation is a distinct child owner using
+the same fenced lifecycle as the final Run or Service Mount: durable spawn
+intent, Backend seal/spawn, realized enforcement receipt, bounded ownership,
+and cleanup or fencing. One such activation owns and fences its complete
+descendant process tree; package-manager or compiler subprocesses are not new
+Jig owners. Jig accepts its prepared snapshot only after that child quiesces
+successfully and the snapshot passes safe-tree validation. The later final
+activation has its own spawn intent, seal, receipt, and cleanup.
 
 Jig supports two honest trust modes:
 
@@ -212,13 +239,49 @@ trust mode
 These hashes are internal consistency evidence. They never appear as author
 requirements in `FLOW.md` and do not create a runtime namespace.
 
-An Adapter or toolchain change requires a new local activation plan. It does
+An Adapter or toolchain change requires a new local activation recipe. It does
 not change the FLOW package identity. Runtime, preparation, launch, or protocol
 failure never causes Jig to try another Adapter silently.
 
-Instruction fallback is a distinct implementation selected before preparation.
-It is allowed only when both the package declares `fallback: instruction` and
-the Binding approves it. It is never recovery after exact execution begins.
+For a selected exact-code implementation, planning records and apply pins:
+
+```text
+READY(exact staged activation recipe)
+```
+
+When no exact recipe qualifies, Adapter planning instead supplies the exact
+unavailable reason and supporting evidence to project-policy branch selection.
+
+The recipe pins the selected Adapter artifact/revision, actual toolchain path
+and fingerprint, closed preparation plan, launch-planner identity, Sandbox
+Backend artifact/revision, Backend preparation and launch-envelope plans, and
+final authority envelope. A concrete launch plan cannot exist yet:
+`planLaunch` consumes the immutable prepared snapshot and the matching closed
+owner plan.
+
+A Run or Service Mount consumes only that pinned generation result. For
+`READY`, its owner verifies the pinned machinery, executes every
+required host-dispatched preparation activation through the pinned Backend
+lifecycle, with each activation owning its complete descendant process tree,
+obtains and records the immutable prepared snapshot, asks the pinned launch
+planner for the concrete plan using the matching closed owner-plan variant,
+validates that plan against the pinned recipe and authority envelope, and asks
+the pinned Backend to seal and spawn it. It never probes again, changes Adapter
+or Backend, or becomes ready because the host was repaired after admission.
+Changed or missing pinned machinery fails visibly without substitution.
+Host-machinery changes create a new candidate generation requiring ordinary
+review and apply.
+
+Root submission and idempotency behavior for a pinned `UNAVAILABLE` result are
+owned by [project policy §2.1](project-policy.md#21-admission-and-operational-readiness)
+and [§10](project-policy.md#10-root-run-admission).
+
+Instruction fallback is a distinct implementation selected and pinned during
+candidate planning. It is allowed only when exact planning yields zero complete
+recipes and both the package and Binding opt in; ambiguity never falls back. It
+is never selected by a Run or used as recovery after an exact recipe was
+pinned. Branch selection details belong to project policy rather than the
+Adapter interface.
 
 ## 7. Required conformance cases
 
@@ -241,3 +304,17 @@ the Binding approves it. It is never recovery after exact execution begins.
     not package identity.
 11. Missing runtime support never silently invokes Markdown unless the exact
     pre-launch fallback policy allows it.
+12. One unavailable Binding does not block admission or execution of an
+    independent ready Binding; it is excluded from resolution candidates.
+13. A Run and a Service Mount each use only their admission generation's pinned
+    recipe, derive launch only after Backend-supervised pinned preparation, and
+    never substitute machinery after loss or later host repair.
+14. Exact planning with zero recipes may use an explicitly opted-in instruction
+    recipe; ambiguity never does.
+15. Launch planning for either owner kind sees the exact sealed prepared
+    snapshot read-only and no attachment contents, secrets, effects, network,
+    ambient environment, or child-process authority.
+16. Every host-dispatched preparation activation and final Run/Service
+    activation has a distinct spawn intent, Backend seal/receipt, bounded owner,
+    and cleanup/fencing result; each owner covers its complete descendant
+    process tree.

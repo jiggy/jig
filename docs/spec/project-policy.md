@@ -57,6 +57,9 @@ bindings: bindingSources.files([
 
 Directory and file-list forms are mutually exclusive for one kind. They change
 membership only; declaration files keep the same format and admission rules.
+`catalogues`, `bindings`, and `hooks` are independently optional; omission
+means no source of that kind, never implicit default discovery. References to
+an omitted or empty source still fail normally.
 
 ## 2. One closed Binding union
 
@@ -71,8 +74,15 @@ host-capability
     one export of an exact already-installed trusted host provider registration
 ```
 
-A package Binding uses a package reference. A host-capability Binding uses an
-inert reference such as:
+A package Binding uses a package reference. A relative local package reference
+is resolved from the directory containing `jig.ts`, not from the declaration
+file. It must be a normalized confined path within the captured project tree,
+contain no escape or symlink traversal, and identify one exact package entry in
+a configured catalogue snapshot. Moving a Binding file therefore cannot
+retarget it. Other source adapters use explicit inert reference forms rather
+than overloading this path syntax.
+
+A host-capability Binding uses an inert reference such as:
 
 ```ts
 export default bind({
@@ -107,8 +117,10 @@ The trusted registration declares its exports, settings schema, attachment and
 dependency vocabulary, and maximum authority. Project settings and grants may
 narrow but never exceed it. Package-only runtime, fallback, outcomes, and Mount
 fields are invalid on the host-capability branch. Project source cannot install
-or approve a missing registration; it remains unavailable and is reported by
-`jig check`.
+or approve a missing registration. A missing or ambiguous registration leaves
+the reference unresolved and invalidates the candidate; `jig check` reports
+it. A resolved registration may separately be operationally unavailable after
+its schemas, ceiling, artifact, and export have been pinned.
 
 A host-capability provider is trusted host machinery, not package-controlled
 code made safe by this Binding. The Binding limits what the project can request
@@ -133,6 +145,73 @@ Binding. Its optional `fallback` member has only the literal value
 legal only when the package itself declares `fallback: instruction`.
 Instruction-only packages require the Agent reference without a fallback
 member. There is no redundant `"deny"` value.
+
+### 2.1 Admission and operational readiness
+
+Aggregate admission separates structural validity from this host's current
+ability to execute a Binding:
+
+```text
+ADMITTED + READY(exact selected implementation recipe)
+ADMITTED + UNAVAILABLE(exact reason and evidence)
+```
+
+Package shape, settings, schemas, references, contract compatibility, and
+requested authority must be valid before either state can be admitted. Such a
+failure invalidates the aggregate candidate. A structurally valid Binding may
+instead be `UNAVAILABLE` because zero or several Runtime Adapters qualify, a
+native constraint is unsatisfied, no Sandbox Backend can realize its authority
+envelope, or a fully resolved provider registration is temporarily unable to
+operate. A missing or ambiguous trusted host registration is unresolved rather
+than `UNAVAILABLE`. An unavailable Binding does not block independent `READY`
+Bindings, but it is excluded from child/provider candidate resolution and
+cannot spawn or mount.
+
+Planning records either one exact selected implementation recipe or the exact
+unavailable reason. An exact-code package recipe pins the Adapter and toolchain
+evidence, closed preparation plan, launch-planner identity, Sandbox Backend,
+Backend preparation and launch-envelope plans, and authority envelope. Its
+concrete launch plan is derived only after its Run or Service Mount owner
+executes that pinned preparation and obtains its immutable prepared snapshot.
+An instruction recipe instead pins the exact instruction runtime, conductor,
+Agent dependency Binding revision, export and contract, and authority envelope;
+it does not claim that a live Service provider generation exists during
+planning. A host-capability recipe pins its fully resolved registration and
+operational provider evidence.
+
+For a code-backed Run package, deterministic planning selects the exact-code
+recipe when exactly one qualifies. Only when zero complete exact recipes
+qualify and both package and Binding explicitly permit instruction fallback may
+it select and pin a complete instruction recipe. Ambiguous exact selection
+remains unavailable and never falls back. An instruction-only package requires
+the instruction recipe directly. No failure or machinery loss after an exact
+recipe was pinned can switch the Run to instruction mode.
+
+Before dispatching an instruction conductor, Run dependency admission acquires
+and pins a live provider-generation lease for the recipe's exact Agent Binding
+and export. If that exact dependency is not live, the Run fails
+`IMPLEMENTATION_UNAVAILABLE`; it never resolves or rebinds to another Agent.
+
+Apply pins the selected branch in the new admission generation. A Run or
+Service Mount never selects runtime machinery, and any derived exact launch
+must remain inside the recipe. Installing, removing, or preferring host
+machinery creates a new candidate and requires ordinary review/apply before an
+unavailable Binding can become ready or a ready Binding can use a different
+recipe. Existing generations never heal or reselect silently.
+
+`READY` means that the selected recipe was complete and realizable against the
+admission-time host-policy snapshot; it is not a continuing liveness promise.
+If pinned machinery later disappears or changes, the activation fails against
+that pin without substitution. A later plan may propose another recipe or
+`UNAVAILABLE`.
+
+An explicit root submission to an admitted unavailable Run Binding still
+allocates its idempotent Run after JSON/1 boundary validation and Binding pin,
+then performs input-schema validation and terminates with its pinned
+`RUNTIME_*`, `SANDBOX_*`, or `IMPLEMENTATION_UNAVAILABLE` reason before
+preparation or spawn. Retrying the same submission key after a later generation
+becomes ready returns the old terminal Run; a deliberate new attempt uses a new
+key.
 
 ## 3. Declaration files
 
@@ -291,6 +370,15 @@ Without it, the candidate remains pending.
 Committed policy source expresses team-owned desired state. `jig.lock` records
 portable resolution evidence. Neither is local execution consent.
 
+A fresh project may omit `jig.lock` in unlocked mode. Planning then proposes a
+complete lock alongside the candidate, and successful apply publishes both
+through the recoverable lock/admission transaction. `--locked` fails when the
+file or any required entry is absent or would change. Runtime Adapter binaries,
+toolchain probes, Sandbox Backend choices, and realized enforcement receipts
+are host-local activation evidence and never portable lock entries. The exact
+lock serialization remains a required focused specification and schema before
+implementation or public Starter release.
+
 The active generation, approval receipt, emergency tombstones, and realized
 host authority live under `.jig/`, outside ordinary Flow/Agent grants and
 outside version control. A clone with identical source and lock must approve
@@ -446,7 +534,9 @@ values. A different reusable configuration requires a new Binding revision.
 13. Clean crash recovery exposes either the old or new complete generation,
     never a mixture.
 14. A host-capability Binding cannot install/trust a provider, run, or mount;
-    missing registrations stay unavailable and branch-illegal fields reject.
+    missing or ambiguous registrations leave the candidate unresolved, a
+    resolved but inoperable provider may be unavailable, and branch-illegal
+    fields reject.
 15. Revocation closes all affected admission and Hook intervals in the same
     generation-advancing transaction; every prior plan becomes stale.
 16. Mapping a project-root ancestor never exposes protected `.jig` or host
@@ -470,3 +560,22 @@ values. A different reusable configuration requires a new Binding revision.
     one derived Run; revocation before dispatch makes it terminal rather than
     suppressing it. Invalid Hook input terminates that one Run after JSON/1
     boundary validation, including after redelivery.
+22. Omitting a catalogue, Binding, or Hook source means an empty source of that
+    kind; Jig never silently enables a conventional directory.
+23. Relative local package references resolve from the directory containing
+    `jig.ts`, remain confined, and do not change when their declaration file
+    moves.
+24. One valid Binding may be admitted `UNAVAILABLE` without blocking an
+    independent `READY` Binding. Host machinery changes create a reviewed new
+    generation; a Run never reselects machinery or implementation branch, and
+    retrying an old submission returns its old terminal result.
+25. Missing lock is permitted only in unlocked mode and causes planning to
+    propose a complete lock; `--locked` rejects absence or drift, and no
+    host-local runtime or enforcement receipt enters the portable lock.
+26. A code-backed package with both instruction opt-ins pins instruction only
+    when zero exact recipes qualify during planning; exact ambiguity stays
+    unavailable. Failure or machinery loss after an exact recipe is pinned
+    never activates instruction fallback.
+27. An instruction recipe pins the dependency Binding/export/contract during
+    planning and acquires one exact live provider-generation lease during Run
+    admission; provider absence fails without rebinding.

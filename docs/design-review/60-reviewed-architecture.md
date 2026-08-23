@@ -227,10 +227,16 @@ instead only when:
 1. `fallback: instruction` is present; and
 2. the selected Binding explicitly allows it.
 
-Fallback is selected before launch and receives a distinct implementation
-identity. It may be selected only before dependency preparation. Jig never
-falls back because a schema, lock, preparation, launch, protocol exchange, or
-effect failed, nor after exact code started.
+Candidate planning first attempts to build exactly one complete exact-code
+recipe. Only when zero qualify may both opt-ins select and pin a distinct
+instruction recipe containing the exact instruction runtime, conductor, Agent
+dependency Binding/export/contract, and authority envelope. Exact ambiguity
+remains unavailable and never falls back. An instruction-only package requires
+the instruction recipe directly. Run dependency admission later acquires one
+live provider-generation lease for that exact Agent export or fails without
+rebinding. A Run never chooses the branch: after an exact recipe is pinned, Jig
+never falls back because machinery disappeared or because schema, lock,
+preparation, launch, protocol exchange, or effect failed.
 
 ### 3.4 Schemas are values, not shared files
 
@@ -307,17 +313,31 @@ previous success never select an Adapter. Unknown tokens never trigger
 installation. A package cannot select the Adapter artifact, toolchain,
 Sandbox Backend, argv, environment, or trust mode.
 
+Selection occurs while planning one candidate admission generation. Apply pins
+either one exact staged activation recipe or one exact unavailable reason for
+every structurally valid Binding. The recipe contains the Adapter/toolchain
+evidence, closed preparation plan, launch-planner identity, Sandbox Backend,
+Backend preparation and launch-envelope plans, and authority envelope. Because
+the concrete launch plan depends on the prepared snapshot, its Run or Service
+Mount owner derives it only after Backend-supervised pinned preparation, then
+validates and seals it inside that recipe. It never probes or reselects
+machinery. An unavailable Binding may coexist with independent ready Bindings,
+but cannot be chosen by resolution or start work. `READY` records
+admission-time realizability, not continuing liveness; machinery loss fails
+against the pin, while any replacement requires a new reviewed generation.
+
 Native manifests and lockfiles own runtime/dependency constraints where their
 ecosystem provides such a seam. FLOW does not duplicate `requires-python`,
 Node `engines`, or package-manager dependency declarations, and it does not
 claim universal locking across them. The Adapter reports preparation
 reproducibility and authority; project/host policy decides what is admissible.
 
-Preparation runs under a narrower Sandbox plan than the eventual Run and sees
-no Run attachments, secrets, policy roots, or effect slots. Atomic prepared
-snapshots, safe extraction, and internal Adapter/toolchain/plan/tree evidence
-prevent partial or changed preparation from becoming live. Those digests are
-local consistency records, never author-facing runtime requirements.
+Preparation runs under a narrower Sandbox plan than the final Run or Service
+Mount and sees no owner attachments, secrets, policy roots, or effect slots.
+Atomic prepared snapshots, safe extraction, and internal
+Adapter/toolchain/plan/tree evidence prevent partial or changed preparation
+from becoming live. Those digests are local consistency records, never
+author-facing runtime requirements.
 
 The complete Adapter, selector, preparation, selection, trust-mode, and
 conformance rules are specified in
@@ -833,11 +853,18 @@ host-capability
     one exact export of an already installed trusted host provider registration
 ```
 
+A relative package reference is resolved from the project root containing
+`jig.ts`, not from the Binding declaration's directory. It must be a normalized
+confined path in the captured project tree, cannot traverse a symlink or escape
+the root, and must resolve to one exact configured catalogue member. Moving a
+Binding file therefore cannot retarget its package.
+
 The host-capability case does not let project code install or trust host
 machinery. Jig resolves it to one provider module artifact/revision, export,
 exact public contract triple or explicit local identity, and provider-declared
-settings and authority schemas. Missing or ambiguous registrations remain
-unavailable.
+settings and authority schemas. Missing or ambiguous registrations leave the
+candidate unresolved; only a fully resolved registration may then be
+operationally unavailable.
 
 For example, a package Binding in `bindings/strict-review.ts` may contain:
 
@@ -889,6 +916,17 @@ deadline and budget
 project admission generation
 ```
 
+Admission distinguishes validity from operational readiness. Invalid package,
+settings, schema, reference, contract, or authority data rejects the aggregate
+candidate. Each otherwise valid Binding is admitted as either ready with one
+exact selected implementation recipe or unavailable with one exact reason and
+evidence. `READY` records admission-time realizability rather than continuing
+liveness. An unavailable Binding does not block independent ready Bindings,
+but it cannot spawn, mount, or enter a Resolver candidate set. An explicit root
+submission still allocates its idempotent Run and terminates before spawn with
+the pinned unavailability reason; later host repair requires a new key and
+generation.
+
 A package Binding additionally contains its exact Package/1/source identity,
 mode, package-declared slots/attachments, and any legal instruction fallback
 or missing/repair policy. A host-capability Binding contains the trusted
@@ -909,9 +947,10 @@ Service activation requires a Service-capable Binding. `effect/call` slots
 resolve only to one exact Service export or host-capability Binding. A
 host-capability Binding is neither runnable nor mountable. Normalized desired
 state has one `bindings` map, not parallel Flow, Service, Agent, and provider
-configuration trees. Every active Service-capable Binding is mounted for that
-admission generation; lazy Service activation is deferred. Instruction
-fallback is legal only for a Run-capable Binding.
+configuration trees. Every admitted `READY` Service-capable Binding is mounted
+for that admission generation; an `UNAVAILABLE` Service Binding remains
+unmounted and makes its dependents unavailable. Lazy Service activation is
+deferred. Instruction fallback is legal only for a Run-capable Binding.
 
 Project portability is explicit: package Bindings retain FLOW portability;
 host-capability Bindings are conditionally portable to hosts with the exact
@@ -1007,6 +1046,11 @@ snapshots and their exact members, and authority evidence. Host-specific
 runtime binaries, sandbox reports, and live identities belong to the immutable
 local activation under `.jig/`. The lock is evidence, not execution consent;
 consent and revocation tombstones are host-local under `.jig/`.
+
+A fresh unlocked project may omit `jig.lock`; planning then proposes its first
+lock as part of the reviewed aggregate delta. Locked checking or applying
+rejects a missing or stale lock. The exact lock serialization remains a focused
+specification prerequisite for implementation and public Starters.
 
 The configured `flows/`, `bindings/`, and `hooks/` locations are generated
 conventions rather than kernel magic. `agents/`, `inbox/`, `kanban/`, or any
@@ -1501,7 +1545,8 @@ and Service code, instruction conductors, Starter initializers, restricted
 configuration evaluators, and preparation tools. Its interface is:
 
 ```text
-probe/plan    prove whether one immutable authority and launch plan is realizable
+probe/plan    prove whether a pinned preparation plan or launch-authority
+              envelope is realizable
 seal          establish a single-use containment target and fixed inputs
 spawn         start exactly that target and return enforcement evidence
 terminate     fence and end the complete target tree
@@ -1512,8 +1557,14 @@ The Adapter plans; the Backend spawns. Trusted pure host parsing and bounded
 opaque-blob fetching may occur without a child process, but remain journaled
 preparation steps. Archive extraction and materialization of attacker-chosen
 bytes occur only in sandboxed BUILD and undergo the safe-tree checks in section
-4. Preparation has its own narrower plan and receipt and can never widen the
-later Run grant.
+4. Every host-dispatched preparation activation uses its own durable spawn
+intent, Backend seal/spawn, enforcement receipt, bounded child owner, and
+cleanup/fencing. One activation owns its complete descendant process tree; it
+does not mint a Jig owner for each package-manager or compiler subprocess. Jig
+accepts the immutable prepared snapshot only after that owner quiesces
+successfully and safe-tree validation passes. The final Run or Service Mount
+then receives a separate spawn intent, seal, receipt, and cleanup. Preparation
+has a narrower grant and can never widen the final owner.
 
 There is no dishonest universal multi-platform sandbox. A Linux Backend may
 compose bubblewrap, namespaces, Landlock, seccomp, cgroups, pidfds, and a
@@ -1594,11 +1645,12 @@ is `RUNTIME_AMBIGUOUS`. Selection is never semantic. Activation pins the exact
 Adapter artifact, toolchain, probe, and all selection inputs.
 
 `sandboxBackends` similarly orders only trusted installed mechanisms capable
-of realizing the fixed plan. If the field is absent, exactly one installed
-conforming Backend may qualify; zero is `SANDBOX_UNAVAILABLE` and more than one
-is `SANDBOX_AMBIGUOUS`. A Starter cannot select or weaken one. Wrapping all
-Flows with bubblewrap/Landlock is therefore a normal Backend policy, not a
-wrapper Flow which would be too late to confine its own parent.
+of realizing the pinned preparation plan and launch-authority envelope. If the
+field is absent, exactly one installed conforming Backend may qualify; zero is
+`SANDBOX_UNAVAILABLE` and more than one is `SANDBOX_AMBIGUOUS`. A Starter cannot
+select or weaken one. Wrapping all Flows with bubblewrap/Landlock is therefore
+a normal Backend policy, not a wrapper Flow which would be too late to confine
+its own parent.
 
 `initAgent` is merely a suggestion shown during `jig init`. If accepted, the
 exact Agent becomes reviewed project Binding state. It is never consulted by
