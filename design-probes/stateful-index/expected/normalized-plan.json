@@ -1,0 +1,97 @@
+{
+  "probeFormat": 1,
+  "nonnormative": true,
+  "note": "Tabletop projection only. A real host derives every package, contract, Adapter, toolchain, Backend, provider-generation, operation, and admission digest.",
+  "flowSource": {
+    "source": "./flows",
+    "members": [
+      "audit",
+      "document-index",
+      "ingest",
+      "search"
+    ]
+  },
+  "bindings": {
+    "journal": {
+      "kind": "host-capability",
+      "providerRegistration": "@jig/journal#append",
+      "eventTypeCeiling": [
+        "https://probe.jig.dev/events/document-indexed"
+      ]
+    },
+    "document-index": {
+      "kind": "package",
+      "package": "document-index@<exact-package-revision>",
+      "mode": "service-exact",
+      "implementationRoot": "flow.ts",
+      "adapterSelector": "bun",
+      "attachments": {
+        "index": {
+          "root": "./index",
+          "mode": "read-write",
+          "lease": "exclusive-writer"
+        }
+      },
+      "slots": {
+        "journal": "journal@<exact-admitted-revision>"
+      },
+      "consumerContracts": {
+        "journal": "contracts/journal.capability.json@<derived-exact-triple>"
+      },
+      "providerContracts": {
+        "reader": "contracts/document-index-read.capability.json@<derived-exact-triple>",
+        "writer": "contracts/document-index-write.capability.json@<derived-exact-triple>"
+      },
+      "readiness": "READY(<exact-pinned-recipe>)"
+    },
+    "ingest": {
+      "kind": "package",
+      "package": "ingest-document@<exact-package-revision>",
+      "mode": "run-exact",
+      "implementationRoot": "flow.py",
+      "adapterSelector": "python3",
+      "slots": {
+        "index": "document-index#writer@<exact-provider-generation>"
+      },
+      "consumerContracts": {
+        "index": "contracts/document-index-write.capability.json@<derived-exact-triple>"
+      },
+      "readiness": "READY(<exact-pinned-recipe>)"
+    },
+    "search": {
+      "kind": "package",
+      "package": "search-documents@<exact-package-revision>",
+      "mode": "run-exact",
+      "implementationRoot": "flow.ts",
+      "adapterSelector": "bun",
+      "slots": {
+        "index": "document-index#reader@<exact-provider-generation>"
+      },
+      "consumerContracts": {
+        "index": "contracts/document-index-read.capability.json@<derived-exact-triple>"
+      },
+      "readiness": "READY(<exact-pinned-recipe>)"
+    },
+    "audit": {
+      "kind": "package",
+      "package": "audit-index-event@<exact-package-revision>",
+      "mode": "run-exact",
+      "implementationRoot": "flow.py",
+      "adapterSelector": "python3",
+      "slots": {
+        "index": "document-index#reader@<exact-provider-generation>"
+      },
+      "consumerContracts": {
+        "index": "contracts/document-index-read.capability.json@<derived-exact-triple>"
+      },
+      "readiness": "READY(<exact-pinned-recipe>)"
+    }
+  },
+  "hook": {
+    "id": "on-document-indexed",
+    "source": "document-index@<exact-admitted-revision>",
+    "type": "https://probe.jig.dev/events/document-indexed",
+    "target": "audit@<exact-admitted-revision>",
+    "journalInterval": "[<apply-boundary>, open)"
+  }
+}

@@ -16,6 +16,9 @@ interoperability.
 - [`software-factory/`](software-factory/) — a Starter-shaped Event/Hook spine,
   fixed Spindle routing, Agent-backed strategy Flows, one distinct open-ended
   `flow/call`, and separately staged missing-Flow maintenance.
+- [`stateful-index/`](stateful-index/) — a Bun Service shared by Python and Bun
+  Runs, an explicit portable Journal producer path, concurrent invocation
+  ownership, persistent-outbox recovery, and exclusive-writer replacement.
 
 ## Authority order
 
