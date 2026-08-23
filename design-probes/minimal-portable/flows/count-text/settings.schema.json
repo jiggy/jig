@@ -1,0 +1,13 @@
+{
+  "$schema": "https://flow.dev/schemas/schema-1.json",
+  "type": "object",
+  "properties": {
+    "minWordLength": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 64
+    }
+  },
+  "required": ["minWordLength"],
+  "additionalProperties": false
+}

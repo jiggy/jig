@@ -1,0 +1,3 @@
+# Host-owned activations, journals, caches, and runtime state never belong to
+# the project source or this probe.
+.jig/

@@ -1,0 +1,37 @@
+{
+  "probeFormat": 1,
+  "nonnormative": true,
+  "baseline": "empty project",
+  "adds": [
+    {
+      "binding": "count-long-words",
+      "rootRunAdmission": true,
+      "portableAttachmentRequests": {},
+      "portableEffectRequests": {},
+      "ambientEnvironment": false,
+      "rawNetwork": false,
+      "undeclaredHostFilesystem": false
+    },
+    {
+      "binding": "compact-summary",
+      "rootRunAdmission": true,
+      "portableAttachmentRequests": {},
+      "portableEffectRequests": {},
+      "ambientEnvironment": false,
+      "rawNetwork": false,
+      "undeclaredHostFilesystem": false
+    }
+  ],
+  "intrinsicHostManagedExecutionInputsNotProjectGrants": [
+    "the immutable admitted package or prepared tree",
+    "the selected runtime substrate",
+    "private scratch required by the pinned preparation or launch recipe",
+    "stdio and supervision descriptors"
+  ],
+  "hostPrerequisitesNotGrantedByProject": [
+    "one trusted Runtime Adapter selected for the python3 token",
+    "one trusted Runtime Adapter selected for the deno token",
+    "a Sandbox Backend capable of realizing the pinned preparation plan and launch-authority envelope"
+  ],
+  "reviewRule": "The real plan must show exact package, Adapter, toolchain, Backend, and requested, granted, and planned authority. The post-spawn enforcement receipt shows realized authority. This fixture supplies no evidence for either."
+}

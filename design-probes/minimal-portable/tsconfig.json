@@ -1,0 +1,18 @@
+{
+  "compilerOptions": {
+    "lib": ["ES2022"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "noEmit": true,
+    "skipLibCheck": false,
+    "strict": true,
+    "target": "ES2022",
+    "types": []
+  },
+  "include": [
+    "design-api.d.ts",
+    "jig.ts",
+    "bindings/**/*.ts",
+    "flows/**/*.ts"
+  ]
+}

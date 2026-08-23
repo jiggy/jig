@@ -1,0 +1,12 @@
+{
+  "$schema": "https://flow.dev/schemas/schema-1.json",
+  "type": "object",
+  "properties": {
+    "text": {
+      "type": "string",
+      "maxLength": 100000
+    }
+  },
+  "required": ["text"],
+  "additionalProperties": false
+}

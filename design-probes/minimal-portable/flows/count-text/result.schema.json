@@ -1,0 +1,22 @@
+{
+  "$schema": "https://flow.dev/schemas/schema-1.json",
+  "type": "object",
+  "properties": {
+    "outcome": {
+      "const": "done"
+    },
+    "output": {
+      "type": "object",
+      "properties": {
+        "words": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": ["words"],
+      "additionalProperties": false
+    }
+  },
+  "required": ["outcome", "output"],
+  "additionalProperties": false
+}

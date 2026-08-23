@@ -1,0 +1,12 @@
+{
+  "$schema": "https://flow.dev/schemas/schema-1.json",
+  "type": "object",
+  "properties": {
+    "style": {
+      "type": "string",
+      "enum": ["plain", "compact"]
+    }
+  },
+  "required": ["style"],
+  "additionalProperties": false
+}
