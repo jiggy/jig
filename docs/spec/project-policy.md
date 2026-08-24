@@ -163,7 +163,7 @@ host/operator installs the concrete integration. Resolution pins:
 provider module artifact and revision
 one export LocalName
 exact public contract URI/version/digest or explicit local effect identity
-complete settings object and the registration's exact Schema/1 revision
+complete settings object and the registration snapshot's exact schema location
 declared dependency slots and attachment projection
 mediated and raw authority ceiling
 project admission generation
@@ -247,12 +247,22 @@ boundary rather than collapsing requested authority, policy intent, and
 enforcement fact.
 
 Every package execution starts from the portable baseline: its exact privately
-prepared package closure is read-only, one private scratch Space is
-read-write, and protocol stdio is available. Environment variables, network,
-child processes, extra filesystem roots, inherited descriptors, and ambient
-host IPC are denied unless the admitted package and Binding explicitly obtain
-the corresponding authority and host policy allows it. This baseline is a
-closed Jig guarantee, not ambient operating-system behavior.
+prepared package closure and pinned Runtime Support Closure are read-only, one
+private scratch Space is read-write, and protocol stdio is available.
+Environment variables, network, extra filesystem roots, inherited descriptors,
+and ambient host IPC are denied unless the admitted package and Binding
+explicitly obtain the corresponding authority and host policy allows it. This
+baseline is a closed Jig guarantee, not ambient operating-system behavior.
+
+Package code may create descendant processes, but doing so never creates a new
+Jig owner or grants new authority. Every descendant remains inside the same or
+a strictly narrower filesystem, network, IPC, identity/capability,
+environment, descriptor, and enforcement envelope. The Sandbox Backend charges
+the complete tree to the activation's finite CPU, memory, PID, output, scratch,
+and deadline bounds, prevents it from weakening or migrating outside that
+envelope, and fences and reaps the complete tree on success, cancellation,
+failure, deadline, or cleanup. If it cannot enforce those predicates, the
+activation is unavailable. V1 has no package-facing process or spawn grant.
 
 ### 2.2 Admission and operational readiness
 
@@ -725,11 +735,12 @@ Binding revision.
     authority reachable through every exact dependency Binding; it never
     mislabels that authority as a direct caller attachment or omits it because
     invocation is mediated.
-32. Every package execution begins with read-only prepared package bytes,
-    private read-write scratch, and protocol stdio. Environment, network,
-    processes, extra roots and descriptors, and host IPC stay denied until
-    explicitly admitted, and inability to enforce the planned envelope makes
-    the target unavailable rather than wider.
+32. Every package execution begins with read-only prepared package bytes and
+    pinned Runtime Support Closure, private read-write scratch, and protocol
+    stdio. Environment, network, extra roots and descriptors, and host IPC stay
+    denied until explicitly admitted. Descendants remain in the same bounded
+    owner envelope and quiesce before success; inability to enforce the planned
+    envelope makes the target unavailable rather than wider.
 33. Package Bindings reject a generic `grants` field. A host-capability
     Binding accepts only the closed registration-specific attenuation shape,
     validates it against that registration, and cannot exceed provider or

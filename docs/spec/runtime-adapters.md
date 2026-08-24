@@ -116,10 +116,10 @@ toolchain evidence. Only a `planLaunch` call additionally receives read-only
 access to the sealed prepared snapshot and the closed, authority-normalized
 `RunPlan` or `ServiceMountPlan`; it receives no attachment contents or secrets.
 Every call has bounded resources and no network, ambient environment, effects,
-or child processes. This sandbox is chosen by host policy rather than by any
-package-produced plan. An Adapter parser exploit must therefore cross the
-Backend boundary; choosing an in-process Adapter explicitly enlarges Jig's
-trusted computing base.
+or authority outside its fenced descendant process tree. This sandbox is
+chosen by host policy rather than by any package-produced plan. An Adapter
+parser exploit must therefore cross the Backend boundary; choosing an
+in-process Adapter explicitly enlarges Jig's trusted computing base.
 
 ## 3. Deterministic selection
 
@@ -211,6 +211,34 @@ descendant process tree; package-manager or compiler subprocesses are not new
 Jig owners. Jig accepts its prepared snapshot only after that child quiesces
 successfully and the snapshot passes safe-tree validation. The later final
 activation has its own spawn intent, seal, receipt, and cleanup.
+
+An exact-code activation may additionally expose one **Runtime Support
+Closure** selected solely by its admitted Adapter/toolchain recipe. The closure
+is a finite set of immutable read-only trees containing only the interpreter,
+loader, libraries, standard-library data, and fixed support files needed to
+start that implementation. It is host runtime machinery and part of the
+observable execution environment and trust boundary; it is not Package/1
+content, an attachment, capability, setting, Binding grant, or author-selected
+requirement. A package or Starter cannot name, extend, replace, or obtain
+ambient lookup into it.
+
+Planning pins the closure artifact revision, content identity, executable, and
+sandbox mount map. The Backend mounts exactly that sealed closure and records
+the realized identity. The closure excludes mutable host paths, home or config
+directories, credentials, package caches, project or `.jig` state, IPC
+endpoints, and unrelated files. Dependencies prepared from package-native
+metadata belong to the separately sealed prepared package tree. If the closure
+cannot be enumerated, sealed, and mounted without broader host visibility, the
+activation is unavailable.
+
+The Sandbox Backend treats every descendant as an implementation detail of the
+same activation owner. Descendants receive no independent Run, Mount, Binding,
+effect, protocol channel, or authority; the Backend keeps them within the same
+or a narrower envelope, applies the owner's finite resource bounds to the
+complete tree, and fences and reaps it before owner completion. A namespace or
+other mechanism capable of weakening that envelope is denied. The standard
+does not prescribe a syscall list or mistake language-runtime mediation for a
+portable enforcement boundary.
 
 Jig v1 has one package activation mode: the Backend enforces every required
 predicate or activation fails. A package, Binding, Starter, or Semantic Choice
@@ -313,8 +341,14 @@ Adapter interface.
     recipe; ambiguity never does.
 15. Launch planning for either owner kind sees the exact sealed prepared
     snapshot read-only and no attachment contents, secrets, effects, network,
-    ambient environment, or child-process authority.
+    ambient environment, or authority outside the closed launch description.
 16. Every host-dispatched preparation activation and final Run/Service
     activation has a distinct spawn intent, Backend seal/receipt, bounded owner,
     and cleanup/fencing result; each owner covers its complete descendant
     process tree.
+17. A Runtime Support Closure is finite, immutable, read-only, pinned and
+    receipted; exposing a broad host root, mutable lookup path, cache, home,
+    credential, or unrelated runtime tree is not a conforming substitute.
+18. Descendant creation never widens authority or creates an implicit owner;
+    the complete tree shares finite resource bounds, quiescence, fencing, and
+    cleanup.

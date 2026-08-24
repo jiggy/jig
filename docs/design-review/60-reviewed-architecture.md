@@ -1577,9 +1577,13 @@ Binding/provider generations, method, attenuation, and projected resources;
 that proves Jig's mediation, not provider sandboxing. A provider unable to
 enforce and receipt its registered projection is unavailable. Every package
 execution starts with the portable baseline above: read-only prepared package
-bytes, private read-write scratch, and protocol stdio. Ambient environment,
-network, child processes, extra filesystem roots or descriptors, and host IPC
-remain denied until explicitly admitted.
+bytes and pinned Runtime Support Closure, private read-write scratch, and
+protocol stdio. Ambient environment, network, extra filesystem roots or
+descriptors, and host IPC remain denied until explicitly admitted. Descendant
+processes are implementation details of that same owner: they receive no
+independent authority, remain inside the same or a narrower envelope, share
+finite resource bounds, and quiesce or are fenced before owner completion. V1
+has no package-facing process or spawn grant.
 
 The planned and realized records cover package/root visibility, write access,
 regular-tree realization, environment, inherited descriptors, network and
@@ -1631,6 +1635,16 @@ successfully and safe-tree validation passes. The final Run or Service Mount
 then receives a separate spawn intent, seal, receipt, and cleanup. Preparation
 and final authority are independent minimized envelopes: preparation-only
 authority is never inherited by or used to widen the final owner.
+
+Exact execution may expose one finite immutable read-only Runtime Support
+Closure containing only its pinned interpreter, loader, libraries,
+standard-library data, and fixed startup files. The Adapter/toolchain recipe,
+not the package or Starter, selects it. Its identity and mount map are planned
+and receipted; mutable host paths, home/config, credentials, caches, project
+state, IPC endpoints, and unrelated runtime trees remain outside it. Package
+dependencies belong to the separately prepared tree. A Backend unable to
+enumerate and seal the closure without broader visibility reports the target
+unavailable.
 
 There is no dishonest universal multi-platform sandbox. A Linux Backend may
 compose bubblewrap, namespaces, Landlock, seccomp, cgroups, pidfds, and a

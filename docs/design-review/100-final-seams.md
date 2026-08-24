@@ -301,7 +301,8 @@ resumes, retargets, or reranks the original Run.
 
 Bindings map implementation-declared logical attachment names to exact roots
 and bind mediated effects. The portable baseline denies ambient environment,
-network, child processes, extra descriptors, host IPC, and undeclared files.
+network, extra descriptors, host IPC, and undeclared files. Exact execution
+may add only its pinned, finite, immutable, read-only Runtime Support Closure.
 
 Authority is inspectable as:
 
@@ -314,9 +315,11 @@ it; execution planning chooses enforceable predicates. Sandbox Backend
 receipts realize package containment; provider-projection receipts separately
 realize authority mediated by trusted host capabilities without claiming those
 providers are sandboxed. Every package starts with read-only prepared package
-bytes, private read-write scratch, and protocol stdio. Environment, network,
-processes, extra filesystem roots/descriptors, and host IPC remain denied until
-explicitly admitted.
+bytes and runtime closure, private read-write scratch, and protocol stdio.
+Environment, network, extra filesystem roots/descriptors, and host IPC remain
+denied until explicitly admitted. Descendants remain implementation details of
+the same owner and sandbox envelope, share finite resource bounds, and must
+quiesce or be fenced before completion; there is no process grant in v1.
 
 The Sandbox Backend advertises enforceable predicates rather than pretending
 every OS has the same primitives. A Linux implementation may use bubblewrap,
