@@ -2,12 +2,12 @@
   "$schema": "https://flow.dev/schemas/schema-1.json",
   "type": "object",
   "properties": {
-    "maxTimerRecords": {
+    "delayMs": {
       "type": "integer",
       "minimum": 1,
-      "maximum": 1024
+      "maximum": 60000
     }
   },
-  "required": ["maxTimerRecords"],
+  "required": ["delayMs"],
   "additionalProperties": false
 }

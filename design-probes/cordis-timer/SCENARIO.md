@@ -1,72 +1,56 @@
-# Scenario: realm-local timers, portable scheduler boundary
+# Scenario: one portable wait over a realm-local timer
 
 ## User story
 
-Mira schedules a short reminder through a Python Flow. A Bun FLOW Service uses
-the existing Cordis Timer component to own the native timer. When it fires, the
-Service publishes one durable `timer-fired` Event through its fixed Journal
-Binding. A Jig Hook starts a Python recorder Run.
+Mira invokes a Python Flow with a short delay. The Flow calls a Bun FLOW Service
+which uses the existing Cordis Timer component. The Run completes after the
+Cordis-managed timeout fires.
 
 ## Desired tree
 
 ```text
 cordis-timer/
 ├── jig.ts
+├── package.json
 ├── bindings/
-│   ├── cordis-scheduler.ts
-│   ├── journal.ts
-│   ├── record-firing.ts
-│   └── schedule-reminder.ts
-├── hooks/
-│   └── on-timer-fired.ts
+│   ├── cordis-delay.ts
+│   └── wait-on-cordis.ts
 └── flows/
-    ├── cordis-scheduler/     Bun Service + real Cordis dependency
-    ├── schedule-reminder/    Python Run
-    └── record-firing/        Python Run
+    ├── cordis-delay/         Bun Service + real Cordis dependency
+    └── wait-on-cordis/       Python Run
 ```
 
 ## Activation
 
-1. Jig resolves exact native dependencies and prepares the Bun package under
-   host Runtime/Sandbox policy.
-2. The Service receives its fixed Journal dependency before initialization.
-3. It creates one Cordis `Context`, mounts the unmodified Timer Service, and
-   awaits it.
-4. It mounts a local bridge plugin with `inject: ["timer"]`. Cordis keeps that
-   plugin pending until the Timer Service exists.
-5. The bridge captures realm-local scheduler functions. Only then does the
-   FLOW Service expose its statically declared `scheduler` capability and
-   become ready.
+1. Jig resolves the two explicit Bindings and prepares their native packages
+   under host Runtime/Sandbox policy.
+2. The Service creates one Cordis `Context`, installs the unmodified Timer
+   Service, and awaits activation.
+3. The setup returns one fixed `delay` export and a disposer to the FLOW SDK.
+4. The SDK reports that fixed export set; Jig confirms it against `FLOW.md`,
+   acknowledges readiness, and keeps the Service request pending.
 
-The probe retains at most `maxTimerRecords` single-use timer IDs for the Mount
-lifetime. Reaching that explicit bound rejects new schedules rather than
-silently evicting identity or growing memory without limit.
+## Waiting
 
-## Scheduling
-
-1. `schedule-reminder` calls `scheduler.schedule` under one invocation-owned
-   operation.
-2. The bridge asks `ctx.timeout(callback, delay)` for a disposer and retains it
-   in a realm-local map. Neither value crosses FLOW.
-3. `schedule` returns once the timer is accepted. Its invocation owns no live
-   child operation afterward.
-4. Later, the callback starts `journal.append` through the Mount-owned client.
-   The Event is attributed to the scheduler provider, not the old caller.
-5. Hook selection and derived recorder Run use ordinary Journal semantics.
+1. `wait-on-cordis` calls `delay.wait` under one invocation-owned operation.
+2. The Service asks `root.timeout(callback, delayMs)` for a disposer. Neither
+   the callback nor disposer crosses FLOW.
+3. The method remains pending until the callback resolves it.
+4. Cancelling the invocation calls the disposer and rejects the pending method.
+5. A normal firing returns `{ "completed": true }`; the Python Run returns the
+   same result.
 
 ## Disposal and loss
 
-Cancelling the Service Mount first closes invocation admission, then disposes
-the root Cordis Fiber. Timer disposers clear pending native timers. Outstanding
-Mount-owned Journal calls are cancelled or resolved before the Mount response
-can terminate.
+Cancelling the Service Mount first closes invocation admission and cancels
+pending invocations, then calls the setup result's disposer. Root Fiber disposal
+clears any remaining native timer effects before the Mount terminates.
 
-Process loss loses all pending timers and exact scheduler generation. A new
-Mount starts empty. No consumer or timer handle heals across it.
+Process loss fails or makes uncertain every outstanding invocation according to
+the ordinary Service/1 operation rules. No timer handle exists to heal.
 
 ## Replacement
 
-The Service has no attachment conflict, but a Hook selects it as an Event
-source. The reviewed conservative replacement rule therefore drains and
-fences the old source before switching Hook intervals and starting the new
-Mount. Pending timers cancelled by disposal do not migrate.
+Replacement drains invocation admission, cancels outstanding waits, disposes
+and fences the old provider, then activates a new generation. An invocation is
+never moved between generations.

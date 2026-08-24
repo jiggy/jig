@@ -6,14 +6,12 @@
     "output": {
       "type": "object",
       "properties": {
-        "timerId": { "type": "string", "minLength": 1, "maxLength": 128 },
-        "status": { "const": "pending" }
+        "completed": { "const": true }
       },
-      "required": ["timerId", "status"],
+      "required": ["completed"],
       "additionalProperties": false
     }
   },
   "required": ["outcome", "output"],
   "additionalProperties": false
 }
-

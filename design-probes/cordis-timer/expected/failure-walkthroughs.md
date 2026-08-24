@@ -1,41 +1,39 @@
 # Expected Cordis failure walkthroughs
 
-## Missing Timer dependency
+## Missing native dependency
 
-If native preparation cannot resolve the pinned Cordis packages, the Service
-is unavailable before launch. If Timer fails during realm activation, the
-bridge remains pending and the FLOW Mount fails its readiness deadline. Jig
-does not synthesize a timer provider.
+If native preparation cannot resolve the declared Cordis or FLOW SDK packages,
+the Service is unavailable before launch. Jig does not synthesize a Timer.
 
-## Duplicate timer ID
+## Activation failure
 
-The outer effect operation supplies retry idempotency. A different operation
-attempting to reuse the same timer ID receives `timer-conflict`. Timer IDs are
-single-use within one Mount so Journal operation IDs cannot alias.
+If `root.plugin(Timer)` rejects, setup never returns an export set and the Mount
+fails. Process supervision fences the partially initialized process tree; no
+provider generation becomes callable.
+
+## Invalid delay
+
+Schema validation rejects zero, negative, non-integral, and over-limit delays
+before provider invocation. The wrapper does not duplicate contract validation.
+
+## Invocation cancellation
+
+The invocation signal calls the realm-local timer disposer and rejects the
+pending method. Cancellation is a FLOW protocol result, not a named capability
+error invented by this contract.
 
 ## Provider loss
 
-Every pending timer disappears with the provider process. Existing scheduler
-Bindings become lost. Restart creates an empty realm and new export generation;
-it does not replay or recover timers.
+The operation ledger reports a pending wait as failed or uncertain according to
+available evidence. A replacement provider is a new generation; it cannot heal
+or resume the lost native timer.
 
-## Publication uncertainty
+## Contract mismatch
 
-If the timer callback dispatches Journal append but cannot prove its result,
-the timer record becomes `uncertain`. The provider never appends again under a
-new operation ID. Provider loss may erase that in-memory diagnostic, but Jig's
-operation ledger retains the uncertain Mount-owned effect.
+Jig derives URI, exact version, and descriptor digest independently from the
+consumer and provider copies. Any mismatch prevents Binding before code loads.
 
 ## Disposal failure
 
 Jig trusts neither process EOF nor Cordis disposal alone as OS fencing proof.
-The Sandbox Backend still terminates and proves cleanup of the complete process
-tree. A Cordis disposer error is recorded, cleanup continues, and the old
-provider generation never remains callable.
-
-## Replacement
-
-Because a Hook selects the scheduler as Event source, old source authority is
-drained and fenced before the Hook interval switches and replacement starts.
-Pending timers are intentionally cancelled rather than migrated.
-
+The Sandbox Backend still terminates and proves cleanup of the process tree.

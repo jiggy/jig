@@ -4,31 +4,28 @@ This is a tabletop trace, not runtime output.
 
 ## Mount
 
-1. Jig starts one FLOW Service process with one fixed Journal Binding.
+1. Jig admits the explicit `cordis-delay` Service Binding and starts its Bun
+   executable through FLOW Service/1.
 2. The provider creates one Cordis root Context.
 3. `root.plugin(Timer)` registers the existing `timer` Service.
-4. The local bridge Fiber declares `inject: ["timer"]` and becomes active only
-   after the Timer Service is visible.
-5. The provider registers its one fixed JSON export and signals ready.
+4. Setup returns the fixed `delay.wait` export and root Fiber disposer.
+5. The FLOW SDK reports the exports; Jig validates them, reports ready, and
+   waits for cancellation.
 
 No Cordis service object or activation state crosses the FLOW boundary.
 
-## Invoke and fire
+## Invoke
 
-1. The Python caller owns one `service/invoke` for `schedule`.
-2. The bridge creates a Cordis-managed timeout and retains its disposer.
-3. The invocation returns `{ status: "pending" }` with no owned child work.
-4. The native callback later runs within the still-live realm.
-5. It creates one Mount-owned `journal.append` operation and tracks its
-   promise until terminal, cancelled, or uncertain.
-6. Journal commit creates the Event and derived recorder Run atomically.
+1. The Python Run owns one operation calling `delay.wait`.
+2. The method creates a Cordis-managed timeout and retains its disposer only in
+   the pending Promise closure.
+3. The callback removes the abort listener, resolves the method, and lets the
+   operation and Run complete.
+4. No provider-owned timer state remains.
 
-## Cancel Mount
+## Cancel invocation or Mount
 
-1. Jig closes invocation admission and cancels the pending Mount request.
-2. The provider disposes the root Cordis Fiber.
-3. Cordis unwinds the bridge and timer effects; pending native timers clear.
-4. FLOW cancellation closes outstanding Mount-owned calls.
-5. The provider waits for their terminal evidence and only then returns from
-   the Mount handler.
-
+Invocation cancellation calls the local timer disposer and rejects that method.
+Mount cancellation first closes invocation admission and cancels remaining
+methods. The SDK then calls `root.fiber.dispose()`, and FLOW waits for disposal
+before the Service process terminates.

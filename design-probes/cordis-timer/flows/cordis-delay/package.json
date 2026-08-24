@@ -3,7 +3,7 @@
   "type": "module",
   "dependencies": {
     "@cordisjs/plugin-timer": "1.1.2",
+    "@flowmd/sdk": "^1.0.0",
     "cordis": "4.0.0-rc.8"
   }
 }
-

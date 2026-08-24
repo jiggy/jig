@@ -13,14 +13,15 @@ relevant behavior is visible in that exact upstream
 [`packages/timer/src/index.ts`](https://github.com/cordiverse/cordis/blob/6325ce25abb61d8aa112119c949cd52c6f8dcdd6/packages/timer/src/index.ts):
 
 - `TimerService extends Service` and registers as `timer`;
-- `ctx.timeout()` and `ctx.interval()` wrap native timers in `ctx.effect()`;
-- each callback form returns a realm-local disposer; and
+- `ctx.timeout()` wraps a native timer in `ctx.effect()`;
+- it returns a realm-local disposer; and
 - disposal clears the native timer.
 
 Cordis core is the upstream
 [`cordiverse/cordis`](https://github.com/cordiverse/cordis) project. Versions
-are native package dependencies, not FLOW contract or runtime-profile values.
-The eventual native lock is the dependency-resolution authority.
+are exact native package dependencies, not FLOW contract or runtime-profile
+values. The future `@flowmd/sdk` dependency deliberately prevents this probe
+from pretending to have a presently reproducible lock.
 
 This experiment was reviewed against upstream source on 2026-08-23. It does
 not claim compatibility with every Cordis release or fork.

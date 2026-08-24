@@ -2,19 +2,18 @@
   "probeFormat": 1,
   "nonnormative": true,
   "requested": {
-    "cordis-scheduler": {
-      "effects": {
-        "journal": {
-          "methods": ["append"],
-          "eventTypes": ["https://probe.jig.dev/events/timer-fired"]
-        }
-      },
-      "exports": { "scheduler": ["schedule", "cancel", "get", "list"] }
+    "cordis-delay": {
+      "portableBaseline": true,
+      "exports": { "delay": ["wait"] }
     },
-    "schedule-reminder": {
-      "effects": { "scheduler": ["schedule", "cancel", "get", "list"] }
+    "wait-on-cordis": {
+      "portableBaseline": true,
+      "effects": { "delay": ["wait"] }
     }
   },
+  "wouldGrant": "The two exact package Bindings receive only their declared Service/Effect surface plus portable package containment.",
+  "planned": null,
+  "realized": null,
   "cordisLocalOnly": [
     "Context",
     "Fiber",
@@ -30,6 +29,6 @@
     "child-processes",
     "host-ipc",
     ".jig"
-  ]
+  ],
+  "evidenceRule": "Only selected Adapter/Backend plans and later Backend receipts can fill planned and realized authority."
 }
-

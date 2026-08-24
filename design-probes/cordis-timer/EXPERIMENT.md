@@ -1,31 +1,26 @@
-# Existing Cordis component reuse probe
+# Minimal Cordis component reuse probe
 
 > **NON-RUNNABLE · NONNORMATIVE · DISPOSABLE**
 >
-> The Cordis dependency is real. Jig/FLOW SDKs and their adapter code are
-> coherent pseudocode. This is not a compatibility promise or implementation.
+> The Cordis dependencies and APIs are real. Jig and FLOW SDKs are future
+> surfaces represented by coherent pseudocode.
 
 ## Question under test
 
-Can an existing unmodified Cordis component run behind FLOW Service/1 while
-Cordis retains its own dependency, effect, callback, and disposal semantics?
+Can an existing unmodified Cordis component provide one useful FLOW Service/1
+operation without making Jig understand Cordis or recreating a plugin system at
+the boundary?
 
-The chosen component is the official disposal-aware
-`@cordisjs/plugin-timer` package. It is useful because its API contains native
-callbacks and timers which cannot cross FLOW's JSON boundary honestly.
+The probe creates one Cordis realm inside one Bun FLOW Service, installs the
+published Timer Service unchanged, and exposes one serializable method:
 
-The probe:
+```text
+wait({ delayMs }) -> { completed: true }
+```
 
-1. creates one Cordis realm inside one Bun FLOW Service;
-2. mounts the existing Timer Service unchanged;
-3. mounts one local bridge plugin which declares `inject: ["timer"]`;
-4. translates JSON scheduler calls into realm-local timer callbacks;
-5. publishes timer-fired facts through the Service's fixed Journal Binding;
-6. exposes one fixed scheduler Capability Contract;
-7. cancels all timers through Cordis root disposal; and
-8. reacts to committed facts through one ordinary Jig Hook and Python Run.
-
-It does not claim Cordis, DSH, GUI-plugin, or arbitrary object portability.
+One small Python Run calls that Service. The invocation remains pending while
+the native timer exists, so there is no timer identity, background callback,
+Journal publication, Hook, persistent record, or recovery story to invent.
 
 ## Falsification rules
 
@@ -35,27 +30,21 @@ The design fails if it requires:
 - serializing a callback, Cordis Context, Fiber, disposer, or Service object;
 - Jig awareness of Cordis service keys or plugin lifecycle;
 - a Cordis-specific FLOW protocol method;
-- transferring invocation ownership into a later timer callback;
+- exposing scheduler state which the wrapped component does not provide;
 - hidden provider restart or rebinding; or
 - a dynamic FLOW dependency/export merely because Cordis is dynamic locally.
 
-## Findings from the first tabletop pass
+## Findings
 
-- One realm maps cleanly to one pending Service Mount. Root Fiber disposal is
-  the only cross-boundary cleanup operation needed.
-- Cordis callbacks remain local. The exported FLOW interface is ordinary
-  bounded request/response JSON.
-- A scheduled timer is provider-owned application state after `schedule`
-  returns. Its later Journal append is Mount-owned work, not child work
-  falsely attributed to the completed caller invocation.
-- Losing the Mount loses pending timers. This scheduler intentionally promises
-  no persistence or transparent recovery.
-- Cordis injection does not justify dynamic FLOW dependencies. Fixed external
-  bindings can be installed before realm construction; internal services may
-  remain reactive inside Cordis.
-- The adapter also needs no post-readiness export mutation. Loss of a required
-  public realm service should fail the Mount rather than heal consumers through
-  a new invisible generation.
-
-Those last two findings supplied the final evidence used to remove dynamic
-Service Binding snapshots and post-readiness export mutation from reviewed v1.
+- `await root.plugin(Timer)` already makes `root.timeout()` available. An
+  artificial bridge plugin would test our own wrapper rather than Timer reuse.
+- Cordis callbacks and their disposer remain realm-local. Only bounded JSON
+  crosses FLOW.
+- Invocation cancellation calls the disposer immediately. Mount cancellation
+  disposes the root Fiber, so Cordis clears any remaining timer effects.
+- The Service needs one explicit Binding because Services are activated policy,
+  not default Runs. The Python consumer needs one explicit Binding because it
+  has a required capability slot. No other Binding is justified.
+- A small Service-SDK setup result can own readiness, waiting, cancellation,
+  and final disposal. Repeating that lifecycle ceremony in every adapter would
+  be framework tax, not application logic.

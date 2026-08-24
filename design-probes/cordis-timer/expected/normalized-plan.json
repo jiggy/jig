@@ -3,41 +3,33 @@
   "nonnormative": true,
   "flowSource": {
     "source": "./flows",
-    "members": ["cordis-scheduler", "record-firing", "schedule-reminder"]
+    "members": ["cordis-delay", "wait-on-cordis"]
   },
   "bindings": {
-    "journal": {
-      "kind": "host-capability",
-      "providerRegistration": "@jig/journal#append",
-      "eventTypeCeiling": ["https://probe.jig.dev/events/timer-fired"]
-    },
-    "cordis-scheduler": {
+    "cordis-delay": {
       "kind": "package",
       "mode": "service-exact",
       "adapterSelector": "bun",
-      "nativeDependencies": {
+      "nativeRequirements": {
+        "@flowmd/sdk": "^1.0.0",
         "cordis": "4.0.0-rc.8",
         "@cordisjs/plugin-timer": "1.1.2"
       },
-      "settings": { "maxTimerRecords": 128 },
-      "slots": { "journal": "journal@<exact-admitted-revision>" },
-      "exports": ["scheduler"]
+      "settings": {},
+      "exports": ["delay"]
     },
-    "schedule-reminder": {
+    "wait-on-cordis": {
       "kind": "package",
       "mode": "run-exact",
       "adapterSelector": "python3",
-      "slots": { "scheduler": "cordis-scheduler#scheduler@<provider-generation>" }
-    },
-    "record-firing": {
-      "kind": "package",
-      "mode": "run-exact",
-      "adapterSelector": "python3"
+      "nativeRequirements": {
+        "flowmd-sdk": ">=1,<2",
+        "python": ">=3.13,<4"
+      },
+      "settings": {},
+      "slots": {
+        "delay": "cordis-delay#delay@<provider-generation>"
+      }
     }
-  },
-  "hook": {
-    "source": "cordis-scheduler@<exact-admitted-revision>",
-    "type": "https://probe.jig.dev/events/timer-fired",
-    "target": "record-firing@<exact-admitted-revision>"
   }
 }
