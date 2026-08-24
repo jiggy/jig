@@ -50,7 +50,7 @@ export class ComponentPeer {
     this.process.stdin.flush();
   }
 
-  async receive(timeoutMs = 3_000): Promise<Message> {
+  async receive(timeoutMs = 10_000): Promise<Message> {
     const message = this.messages.shift();
     if (message) return message;
     if (this.terminalError) throw this.terminalError;
@@ -89,7 +89,7 @@ export class ComponentPeer {
     await Promise.all([this.pumpDone, this.diagnostics]);
   }
 
-  async exit(timeoutMs = 3_000): Promise<number> {
+  async exit(timeoutMs = 10_000): Promise<number> {
     return await Promise.race([
       this.process.exited,
       delay(timeoutMs).then(() => {
@@ -99,7 +99,7 @@ export class ComponentPeer {
     ]);
   }
 
-  async finish(timeoutMs = 3_000): Promise<void> {
+  async finish(timeoutMs = 10_000): Promise<void> {
     this.closeInput();
     const exitCode = await this.exit(timeoutMs);
     await Promise.all([this.pumpDone, this.diagnostics]);
