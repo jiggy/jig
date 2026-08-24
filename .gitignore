@@ -5,6 +5,11 @@
 /original.research.md
 /.tmp/
 
+# Generated dependency and language caches
+node_modules/
+__pycache__/
+*.py[cod]
+
 # Local environment files
 *.env
 .*.env

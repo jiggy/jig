@@ -1,8 +1,8 @@
 # Jig + FLOW design documents
 
 These are reviewed design specifications, not shipped packages or stable
-conformance labels. The public SDKs and several closed machine models remain
-release gates; see
+conformance labels. Stable SDK publication and several closed machine models
+remain release gates; see
 [`design-review/102-public-interface-release-gates.md`](design-review/102-public-interface-release-gates.md).
 
 Start here:
@@ -17,16 +17,21 @@ Start here:
    - [`spec/json-values.md`](spec/json-values.md)
    - [`spec/package-format.md`](spec/package-format.md)
    - [`spec/schema-files.md`](spec/schema-files.md)
+   - [`spec/run-protocol.md`](spec/run-protocol.md), with its closed candidate
+     [`message schema`](spec/machine/run-1.schema.json) and
+     [`error registry`](spec/machine/run-1-errors.json)
+   - [`spec/run-sdk.md`](spec/run-sdk.md)
    - [`spec/runtime-adapters.md`](spec/runtime-adapters.md)
    - [`spec/capability-contracts.md`](spec/capability-contracts.md)
    - [`spec/project-policy.md`](spec/project-policy.md)
    - [`spec/journal-and-hooks.md`](spec/journal-and-hooks.md)
    - [`spec/agents-and-semantic-choice.md`](spec/agents-and-semantic-choice.md)
 
-The remaining cross-cutting lifecycle rules are in the canonical architecture:
+The focused Run/1 specification owns its finite wire surface. The remaining
+cross-cutting system rules are in the canonical architecture:
 
-- [Run/1](design-review/60-reviewed-architecture.md#5-flow-run1) and
-  [Service/1](design-review/60-reviewed-architecture.md#6-flow-service1);
+- [Jig's Run/1 operation and lifecycle policy](design-review/60-reviewed-architecture.md#5-flow-run1)
+  and [the still-unclosed Service/1 profile](design-review/60-reviewed-architecture.md#6-flow-service1);
 - [effects and Agents](design-review/60-reviewed-architecture.md#9-effects-events-hooks-and-agents);
 - [security and sandbox enforcement](design-review/60-reviewed-architecture.md#11-security-and-trust); and
 - [updates and reconciliation](design-review/60-reviewed-architecture.md#13-desired-state-direct-editing-and-updates).

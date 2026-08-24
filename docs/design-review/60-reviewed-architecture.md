@@ -49,10 +49,12 @@ FLOW Python distribution     flowmd-sdk
 FLOW Python import           flowmd_sdk
 ```
 
-Future TypeScript and Python SDKs should project Run/1 and Service/1 without
-creating another wire layer. No public SDK interface is specified or published
-yet. Earlier design drafts used Caskada v3 and then Spindle for the graph
-runtime. The current name is Sley.
+TypeScript and Python SDKs project Run/1 and will eventually project Service/1
+without creating another wire layer. Run/1 now has private `0.0.0` candidate
+declarations and implementations under the selected minimal semantic
+vocabulary; they are not published or stable until the remaining conformance
+gates close. Service/1's SDK remains unclosed. Earlier design drafts used
+Caskada v3 and then Spindle for the graph runtime. The current name is Sley.
 
 The governing laws are:
 
@@ -66,8 +68,9 @@ The governing laws are:
 5. Flows may be selected by intent; public capabilities match exact contracts.
 6. Semantic reasoning may rank eligible candidates. It may not establish
    compatibility, trust, permission, or completion.
-7. Every component operation belongs to one live inbound request.
-8. Request IDs correlate live wire ownership; host-internal lifetime IDs own
+7. Every component operation belongs to one live inbound lifetime; Run/1 has
+   one implicit root, while a multiplexed profile must define attribution.
+8. Request IDs correlate wire exchanges only; host-internal lifetime IDs own
    durable records and cleanup.
 9. Every Run and Mount pins immutable package, configuration,
    Adapter/toolchain, provider, and authority revisions.
@@ -112,9 +115,9 @@ as watchers, webhooks, and timers live in application code, protected host
 machinery, or FLOW Services and publish through the Journal. Hooks only admit
 their facts into Runs.
 
-A future SDK may expose a read-only convenience projection of `flow/run`
-parameters. Its name and exact TypeScript/Python surface are not defined here,
-and it must not become a service locator or remote object.
+The candidate [`Run SDK/1`](../spec/run-sdk.md) exposes the fixed `flow/run`
+projection and only its two outbound call operations. It is not a service
+locator or remote object.
 
 ## 3. FLOW Package/1
 
@@ -406,129 +409,97 @@ gates.
 
 ## 5. FLOW Run/1
 
-### 5.1 Process and framing
+### 5.1 Closed candidate boundary
 
-V1 uses one root Run per process. The transport is full-duplex JSON-RPC 2.0
-over strict, bounded UTF-8 line framing on stdio:
+The focused [`FLOW Run/1 specification`](../spec/run-protocol.md), its
+[`message schema`](../spec/machine/run-1.schema.json), and its
+[`error registry`](../spec/machine/run-1-errors.json) are normative for the
+finite executable boundary. This whole-system document records only Jig's
+policy around that boundary; it does not restate a second wire protocol.
 
-```text
-stdin     protocol frames only
-stdout    protocol frames only
-stderr    bounded unstructured diagnostics
-```
+Run/1 is a closed candidate rather than a stable conformance label until two
+independent Hosts and Components pass the common corpus. It uses one root Run
+per process and bounded full-duplex JSON-RPC 2.0 over LF-framed UTF-8 stdio.
+Standard input and output contain protocol frames only; standard error contains
+unstructured diagnostics. Readers remain active during outbound calls, writes
+are serialized and flushed, and the focused specification fixes frame, ID,
+pending-request, fatal-channel, EOF, and exit behavior.
 
-Every frame and portable value uses the bounded
-[`FLOW JSON/1 model`](../spec/json-values.md).
-
-There is one JSON object per LF-terminated frame, no BOM and no JSON-RPC batch.
-IDs are strings unique among one sender's live requests. Writes are serialized
-and flushed; readers remain active while application code awaits an outbound
-call. Frame, outstanding-request, diagnostic, memory, and process limits are
-mandatory. EOF closes the channel and every still-open wire request; the owner
-phase rules in section 5.7 decide whether an already received terminal result
-survives that EOF.
-
-### 5.2 Reviewed base method vocabulary
+The complete method vocabulary is:
 
 ```text
 host -> component
     flow/run          one pending root request
 
 component -> host
-    flow/call         one journaled child-Flow operation
-    effect/call       one journaled call through a bound capability slot
+    flow/call         one child-Flow operation
+    effect/call       one call through a bound capability slot
 
 either request originator -> receiver
     request/cancel    idempotent JSON-RPC notification cancelling its own
                       pending request; it has no id and receives no response
 ```
 
-These are the reviewed Run/1 methods. Closed parameter, result, error, limit,
-and version-negotiation schemas remain release gates. Structured lossy
-telemetry may later be an optional
-`Telemetry/1` extension; stderr is sufficient for base conformance. Durable
-events use the Journal capability described in section 9, not a fifth Run
-method.
+There is no version handshake: the exact `run/1` literal in the root request is
+an activation-mismatch guard. Structured lossy telemetry may later be a
+separate profile; stderr is sufficient for base conformance. Durable Events
+use the Journal capability in section 9, not a fifth Run method.
 
-### 5.3 One live request owns work
+### 5.2 One root implicitly owns work
 
-Every component-originated `flow/call` and `effect/call` includes:
+Because one Run/1 process serves exactly one root request, every
+component-originated call is implicitly owned by that root. `flow/call` and
+`effect/call` therefore carry no `ownerRequestId`, Run ID, Scope ID, or public
+lifetime handle. Their JSON-RPC IDs correlate live exchanges only;
+`operationId` supplies caller-chosen semantic identity within the root.
 
-```text
-ownerRequestId
-operationId
-slot
-operation/selector and input
-```
+Jig maps the root request to its own durable Run and lifetime records, owns the
+child tree, and stamps correlation and authority evidence without exposing
+those records to the component. There is no reconnect or live-continuation
+resume in Run/1; EOF before a complete root response loses the continuation.
+Service/1 multiplexes several possible owners on one channel and must close its
+own attribution model before publication rather than changing Run/1's call
+shape retroactively.
 
-The owner must be one live inbound `flow/run`, `service/mount`, or
-`service/invoke` request on the current channel incarnation. The host maps that
-wire reference to an internal immutable lifetime record. Request IDs are not
-durable database identities and cannot be reused after termination.
+### 5.3 Exact invocation projection
 
-`ownerRequestId` is cooperative lifecycle attribution, not a security boundary
-between sibling requests multiplexed through one component channel. A
-component can observe every live inbound ID on that channel, so the host can
-reject a nonexistent, stale, wrong-direction, or cross-channel ID but cannot
-prove which internal coroutine produced a call or detect substitution of one
-live sibling ID for another. Hard authority is therefore bounded at the
-component process/Mount channel. A host requiring enforceable per-consumer or
-per-authority isolation uses a separate process and channel; bookkeeping,
-deadlines, and cancellation may still be narrower per request.
-
-Every `service/ready` names its live owning mount request.
-Every `request/cancel` names a still-pending request originated by its sender.
-`service/ready` owns no component work. Only `flow/run`, `service/mount`, and
-`service/invoke` may own operations.
-
-There is no public `scopeId`, `scope/open`, Mount handle, or reconnect/resume
-capability in v1. Internally Jig still has a Scope tree because cleanup needs
-one. V1 deliberately says EOF loses the live continuation.
-
-### 5.4 Run input
-
-`flow/run` supplies one immutable invocation environment:
+The root request supplies exactly six fields:
 
 ```text
-Run identity and parent relation
+protocol = run/1
 input
-complete Binding settings
-trigger/correlation reference
-visible effect bindings
-named attached roots and access modes
-private scratch root
-effective authority and enforcement report
-host-allocated deadline
-protocol limits
+complete Binding settings object
+named attachment paths and read/read-write modes
+private read-write scratch path
+deadlineUnixMs
 ```
 
-The deadline is a finite invocation fact allocated from host policy before
-dispatch. Packages and Bindings cannot select or widen it, and v1 defines no
-portable override. Provider-specific token, money, turn, or resource ceilings
-belong to that provider's registered settings/grants contract rather than one
-vague universal `budget` field.
+There is no root or parent identity, trigger/correlation field, slot inventory,
+provider identity, grant, enforcement receipt, negotiated limits object, or
+universal budget on the wire. Triggering application data belongs in `input`;
+Jig's durable identity, provenance, authority, and enforcement evidence remain
+host inspection state. The fixed protocol limits live in Run/1 itself.
 
-These are ordinary fields. “Coeffect” is useful theory but not a public FLOW or
-Jig authoring concept. Time, randomness, secrets, network access, Agent work,
-Git, and other observable environment interactions use explicit effect slots
-when mediation matters.
+The deadline is a finite host-authoritative UTC Unix epoch allocated before
+dispatch. Packages and Bindings cannot select or widen it, and child/effect
+calls inherit its remaining time. Provider-specific token, money, turn, or
+resource ceilings belong to that provider's registered settings/grants
+contract. “Coeffect” remains useful theory, not another public API.
 
-A future language SDK may project those fields as one read-only context and
-provide a handler loop. Named attachments appear as sandbox-local roots with
-their exact mode; a path helper may reject escape but grants no authority.
-These names and signatures are not yet specified. Native code still performs
-ordinary filesystem I/O and the Sandbox Backend remains the enforcement
-boundary. SDK packages are ordinary native dependencies declared and, where
-supported, locked through the package's native ecosystem metadata. A Runtime
-Adapter never injects an SDK or ambient library secretly.
+The candidate language SDKs project the six fields as one stable local context.
+Named attachments are sandbox-local paths with their exact mode; native code
+performs ordinary filesystem I/O and the Sandbox Backend remains the
+enforcement boundary. SDK packages remain ordinary native dependencies rather
+than Adapter-injected ambient libraries.
 
-### 5.5 Child Flows and effects
+### 5.4 Child Flows and effects
 
-`flow/call` names a consumer-local slot, optional discovery intent, and input.
-Jig resolves and pins one exact child Binding, atomically creates its child
-record with the parent operation, and returns its public result. This is nested
-execution, not graph merging. Parent settings, attachments, slots, and authority
-do not inherit implicitly.
+`flow/call` contains exactly `operationId`, consumer-local `slot`, `input`, and
+an optional bounded `intent` string. Jig resolves and pins one exact child
+Binding, atomically creates its child record with the operation, and returns
+the complete `{ outcome, output }` result. This is nested execution, not graph
+merging. Parent settings, attachments, slots, and authority do not inherit
+implicitly. An absent intent never grants catalogue-wide discovery.
 
 Generic Flow composition proves only the common Run envelope and that the
 child satisfied its own result declaration. It does not create a consumer-side
@@ -539,143 +510,85 @@ interprets the value under its procedure and still must fail visibly rather
 than assume missing fields. A stable machine-verifiable API shared by several
 operations belongs behind a Capability Contract instead.
 
-`effect/call` names a slot declared in `uses` (or explicitly local in project
-configuration), one method, and input. A slot may be backed by a host-native
-provider or an exact mounted Service registration. The caller never sees or
-selects an endpoint. Jig validates the owner, binding, contract, method,
-schemas, authority, host-allocated deadline, and provider generation before
-dispatch.
+`effect/call` contains exactly `operationId`, a slot declared in `uses` (or
+explicitly local in project configuration), `method`, and `input`. A slot may
+be backed by a host-native provider or an exact mounted Service registration.
+The caller never sees or selects an endpoint. Jig validates the root owner,
+binding, contract, method, schemas, authority, inherited deadline, and provider
+generation before dispatch.
 
-Capability Contract/1 wire success is tagged `{ "value": ... }`; a future
-language SDK may return that validated value directly and turn a
+Capability Contract/1 wire success is tagged `{ "value": ... }`; the candidate
+language SDKs return that validated value directly and turn a
 declared `{ "error": { "name", "data" } }` into a catchable typed capability
 error. JSON-RPC, authority, cancellation, capacity, and provider-loss failures
 remain operation failures and are never presented as declared application
 errors. This unwrapping is ergonomic projection, not a different wire shape.
 
-Generic component code supplies one stable owner-local `operationId` for each
-semantic call; a future SDK may fill wire request and owner IDs. How Sley-based
+Generic component code supplies one stable root-local `operationId` for each
+semantic call; the SDK privately generates wire request IDs. How Sley-based
 components derive stable semantic operation IDs is a Jig Graph/SDK interface
-question, not a Sley runtime invariant. Neither mechanism may weaken the ledger
-rules below.
+question, not a Sley runtime invariant. Neither mechanism may weaken the
+operation rules below.
 
-### 5.6 Operation ledger and uncertainty
+### 5.5 Operation identity and Jig durability
 
-The durable operation key is:
-
-```text
-(activation digest, internal owner lifetime ID, operationId)
-```
-
-The host commits two distinct immutable records:
+Run/1 standardizes only observable operation behavior:
 
 ```text
-caller request digest
-    RFC 8785 canonical JSON over the caller-supplied method, slot,
-    operation/selector, input, and caller-visible attachment identities
+same operationId + same canonical method/params
+    join or return the same operation result
 
-resolution
-    one exact selected Binding/provider revision, initially absent while
-    resolution runs against the owner's fixed snapshot and filled exactly
-    once by compare-and-set before dispatch
+same operationId + different canonical method/params
+    OPERATION_CONFLICT before another dispatch
 ```
 
-Transport request IDs, wait deadlines, diagnostics, and the not-yet-known
-resolution are excluded from the caller request digest. Same operation key and
-same caller digest joins the existing record; changed caller content fails
-before dispatch. An exact prebinding may commit the resolution with `INTENT`.
-Semantic resolution may fill it once later. Missing or ambiguous resolution
-commits terminal failure while the field remains absent. Dispatch requires a
-resolution and atomically commits it with child/lease creation. A retry never
-reruns resolution after that field is filled or the operation is terminal.
+The comparison includes the call method, slot, effect method or optional Flow
+intent when present, and input. Transport IDs and timing are excluded. FLOW
+does not standardize a host database, activation digest, internal lifetime ID,
+or recovery schema; this keeps a small non-Jig Host conforming.
 
-```text
-INTENT -> DISPATCHED -> SUCCEEDED | FAILED | CANCELLED | UNCERTAIN
-   `----------------> FAILED | CANCELLED | UNCERTAIN  (before dispatch)
-```
+Jig supplies a stronger durable implementation. It maps the live root to an
+internal immutable owner, commits intent before dispatch, fills one exact
+Binding/provider resolution at most once, atomically links child allocation or
+provider lease with dispatch admission, and commits a terminal record before
+responding. Those are Jig lifecycle guarantees rather than extra wire fields.
 
-Intent commits before dispatch. Child allocation and dispatch admission commit
-atomically. A terminal result commits before response. Cancellation after
-external dispatch yields `UNCERTAIN` unless the provider proves a terminal
-result. An intentional new attempt has a new `operationId`.
+Cancellation after unprovable external dispatch yields `UNCERTAIN` unless the
+provider proves a terminal result. No uncertain operation is automatically
+replayed, and an intentional new attempt uses a new `operationId`. FLOW
+promises neither exactly-once external execution nor arbitrary live
+continuation recovery; ambiguity remains visible.
 
-FLOW promises neither exactly-once external execution nor arbitrary live
-continuation recovery. It promises that ambiguity is visible and never
-silently replayed.
+### 5.6 Cancellation, errors, and completion
 
-### 5.7 Cancellation and results
+Cancellation is symmetric: the originator of a pending request may send the
+notification-only `request/cancel` naming that request's wire ID. It receives
+no response, and the original request's eventual result/error or channel loss
+settles the race. Duplicate, stale, already-terminal, unknown, and
+opposite-direction targets are harmless no-ops; a malformed cancellation frame
+is fatal because its sender cannot safely assume cancellation occurred.
 
-Cancellation is symmetric: each peer may send the `request/cancel` JSON-RPC
-notification for a still-pending request it originated. The notification has
-no request ID and receives no response; the targeted request's eventual
-terminal response or enforced process loss establishes the result. Sending
-cancellation records `CANCEL_REQUESTED`; a normal response may still win if
-the receiver completed first. Duplicate cancellation notifications are
-idempotent, and dispatched child effects retain their own terminal or
-uncertain states.
+Cancellation closes new admission for the target, propagates through its owned
+subtree, and starts bounded cleanup. It never proves a dispatched external
+effect was undone. Root cancellation closes the complete Run subtree, and the
+Sandbox Backend terminates an uncooperative process under private host grace
+policy no later than the fixed owner deadline.
 
-Its complete wire shape is:
+Normal `flow/run` and `flow/call` results contain exactly one domain `outcome`
+and required `output`. `effect/call` returns exactly one tagged `{ value }` or
+declared `{ error: { name, data } }`. Standard JSON-RPC failures retain their
+standard codes; portable operational failures use `-32000` plus one code from
+the closed Run/1 registry. Protocol, execution, deadline, cancellation,
+provider, authority, capacity, invalid-result, and uncertainty failures never
+masquerade as package outcomes or declared capability errors.
 
-```json
-{"jsonrpc":"2.0","method":"request/cancel","params":{"requestId":"<live-request-id>"}}
-```
-
-`params` has exactly the one string field. The sender may target only a request
-it originated on that channel incarnation. A duplicate or a cancellation
-racing with a known terminal request is a no-op. A never-seen,
-opposite-direction, or cross-channel ID fatally closes the channel with
-`PROTOCOL_ERROR`; because cancellation is a notification, no error response is
-sent. Attribution is peer/channel-scoped: FLOW does not claim to identify
-which internal coroutine of one peer emitted the notification.
-
-Cancellation closes new admission only for the targeted request and its owned
-subtree, then cancels descendants child-first, runs that subtree's host-owned
-cleanup, and waits a bounded grace period. Sibling requests and Mount-owned
-work outside the subtree remain live. A dedicated Run or Mount sandbox which
-does not quiesce is killed after the grace period. If one uncooperative
-`service/invoke` cannot be isolated from its shared provider process, Jig must
-wait only through that invocation's fixed cancellation grace/deadline and then
-fence the entire provider generation; it records collateral sibling operations
-as terminal or `UNCERTAIN`/`PROVIDER_LOST` rather than pretending
-request-scoped cancellation succeeded. No Mount may create an unbounded
-cancellation wait.
-
-Owner completion has explicit phases:
-
-```text
-OPEN -> RESPONSE_RECEIVED -> QUIESCING -> SUCCEEDED | FAILED | LOST
-```
-
-A complete valid terminal frame atomically leaves `OPEN` before later channel
-input is handled and closes new admission. EOF in `OPEN` makes the owner
-`LOST`; EOF after `RESPONSE_RECEIVED` closes other wire requests but does not
-itself overwrite the buffered result. Trailing frames cannot create new owned
-work, even when read in the same OS buffer.
-
-For each component-originated request still pending during `QUIESCING`, the
-host returns `OWNER_CLOSED`, cancels downstream work, resolves its operation to
-a terminal or `UNCERTAIN` record, and completes bounded cleanup before output
-validation and owner commit. The host does not send `request/cancel` for a
-request it did not originate. No operation is detached, reparented, or
-transferred implicitly. A response with owned work outstanding is a lifecycle
-violation even if quiescence succeeds. Cleanup failure or hard-deadline expiry
-makes the owner `FAILED` or `LOST`; the process tree is terminated. Mount-owned
-background work is not silently transferred to an invocation owner.
-
-The normal Run result is:
-
-```json
-{
-  "outcome": "done",
-  "output": {}
-}
-```
-
-Package outcomes are domain results. Protocol failure, execution failure,
-timeout, cancellation, provider loss, host loss, and uncertainty are not
-custom outcomes disguised as business results.
-
-`result.schema.json` validation occurs before owner success commits.
+The component must settle every outbound call before returning its root result
+or error. The terminal frame closes new admission; no call is detached,
+reparented, or transferred. Outstanding owned work, invalid output, nonzero
+exit, failed cleanup, or deadline kill prevents success. A complete valid root
+response followed by clean exit survives EOF; EOF before a complete response
+is channel loss. Jig validates `result.schema.json` only after bounded
+quiescence and before owner success commits.
 
 ## 6. FLOW Service/1
 
@@ -704,11 +617,17 @@ host -> component
 component -> host
     service/ready       acknowledge that every declared export is callable
 
-shared with Run/1
+reuses Run/1 semantics, with Service-owned attribution still to be closed
     flow/call
     effect/call
     request/cancel
 ```
+
+Run/1's call params contain no `ownerRequestId` because its process has one
+implicit root owner. A Service channel has Mount-background work and concurrent
+invocation owners, so Service/1 cannot import those params unchanged. Its
+closed wire model must define cooperative owner attribution for its calls and
+readiness without altering Run/1. That model remains a Service/1 release gate.
 
 There is no `service/unmount`: cancelling the still-pending mount request
 initiates shutdown, and its terminal response acknowledges cleanup. There is no
@@ -750,10 +669,11 @@ initialization begins. Every declared slot resolves to one exact Binding and
 provider generation. The set never changes for that Mount; losing a required
 dependency cancels the Mount rather than healing it in place.
 
-`service/ready` contains only the live `ownerRequestId` and the complete
-declared export LocalNames in canonical UTF-8 order. It has no `operationId`
-and owns no work. Unknown, duplicate, missing, extra, unsorted, stale-owner, or
-post-cancellation values are protocol errors.
+Conceptually, `service/ready` identifies the live owning Mount request and the
+complete declared export LocalNames in canonical UTF-8 order. It has no
+operation identity and owns no work. The exact owner field and request shape
+remain part of the unclosed Service/1 wire model. Unknown, duplicate, missing,
+extra, unsorted, stale-owner, or post-cancellation values are protocol errors.
 
 ### 6.3 Readiness, identity, and loss
 
@@ -1779,8 +1699,9 @@ ship documented defaults or let the operator replace the complete local
 table; a missing/unbounded effective value makes that operation class
 unavailable. Jig allocates and records the chosen duration before owner
 dispatch and enforces it with a monotonic clock. It is invocation evidence,
-not Binding data, Starter output, or a portable Flow override. Exact wire field
-encoding remains part of the Run/1 and Service/1 release gate.
+not Binding data, Starter output, or a portable Flow override. Run/1 projects
+its host-authoritative cutoff through the frozen `deadlineUnixMs` field;
+Service/1 deadline encoding remains a release gate.
 
 There are no includes, merges, environment substitutions, project overlays,
 or partial CLI overrides. Unknown fields fail. Unknown operational module IDs
@@ -2138,13 +2059,16 @@ libraries.
 
 The present design is not yet independently implementable at every boundary.
 Release gates apply to the slice which claims a label; unrelated interfaces do
-not create a waterfall. The complete repository gap inventory includes:
+not create a waterfall. Run/1 now has closed candidate method schemas, framing,
+limits, an error registry, private TypeScript/Python SDK implementations, and
+an initial shared executable corpus. A complete conformance matrix, built
+package artifacts, and a second independent peer still gate a stable Run/1
+label. The remaining repository gap inventory includes:
 
-- exact closed JSON-RPC parameter, result, error-data, version-evolution, and
-  numeric limit definitions for every Run/1 and Service/1 method;
+- exact closed JSON-RPC parameter, result, error-data, version-evolution, owner
+  attribution, and numeric limit definitions for every Service/1 method;
 - the referenced `schema-1.json` and
   `capability-contract-1.schema.json` meta-schemas;
-- authoritative FLOW TypeScript and Python SDK declarations;
 - closed RuntimeAdapter/1 and Sandbox Backend registration, plan, seal, spawn,
   receipt, and error data models;
 - one canonical `jig.lock` data model and schema;
@@ -2161,7 +2085,9 @@ Consumer examples and implementations may not invent these interfaces while
 attempting to use them. These are release gates, not permission to fill gaps
 with incompatible local guesses.
 
-The base error registry distinguishes at least:
+Jig's broader durable diagnostic registry distinguishes at least the following
+host states. These names are not the Run/1 wire registry, which is closed and
+smaller in [`run-1-errors.json`](../spec/machine/run-1-errors.json):
 
 ```text
 IMPLEMENTATION_UNAVAILABLE   IMPLEMENTATION_FAILED
@@ -2199,7 +2125,7 @@ Required behavior is fail-closed and observable:
 | Owner returns with a live child | Admission closes; child receives `OWNER_CLOSED`; owner cannot succeed before bounded quiescence. |
 | Root cancellation | New authority closes, descendants cancel, process tree is bounded and killed. |
 | One of two sibling requests is cancelled | Only that request's owned subtree closes; the sibling remains live unless an explicitly recorded whole-provider fence becomes necessary. |
-| Cancellation names a never-seen, wrong-direction, or cross-channel request | The receiving peer closes the channel with `PROTOCOL_ERROR` and sends no response to the notification. |
+| Cancellation names a duplicate, stale, unknown, terminal, or opposite-direction request | Harmless no-op; the original request result or channel loss remains authoritative. A malformed cancellation notification instead closes the channel. |
 | A shared Service cannot quiesce one cancelled invocation | The fixed invocation grace/deadline bounds waiting; Jig fences the provider generation and records collateral outcomes honestly. |
 | Provider disappears and returns | Old binding is lost; return has a new generation; no healing. |
 | Backend cannot enforce requested confinement | Package activation is unavailable; v1 has no weaker or trusted-package override. |
@@ -2222,12 +2148,14 @@ Release order:
    preparation/spawn, permission realization, cancellation, and exit behavior
    pass hostile black-box fixtures. Runtime equivalence across Adapters is not
    claimed.
-4. **Run/1:** two independently implemented Hosts and Components, including
-   more than one language/runtime, agree on framing, child/effect calls,
-   cancellation, duplicate operations, uncertainty, and outcomes.
+4. **Run/1:** the frozen candidate schema/error registry and authoritative SDK
+   declarations drive one corpus; two independently implemented Hosts and
+   Components, including more than one language/runtime, agree on framing,
+   child/effect calls, cancellation, duplicate operations, uncertainty,
+   outcomes, and process exit.
 5. **Security:** package/config extraction attacks, instruction-Agent attacks,
    direct and transitive I/O escapes, orphan processes, nonexistent/stale or
-   cross-channel owner IDs,
+   cross-channel Service owner IDs,
    stale coordinator epochs, ambient environment/module-cache variation,
    inherited descriptors, undeclared descendants, attachment/grant widening,
    special-file and hardlink-alias insertion, kill injection around

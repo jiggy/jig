@@ -9,9 +9,13 @@ repeat by separating reviewed semantics from actual public interfaces.
 
 ## What exists today
 
-The repository contains reviewed prose and concrete draft JSON descriptors. It
-contains no Jig implementation and no authoritative TypeScript or Python SDK.
-The intended package names are:
+The repository contains reviewed prose, concrete Capability Contract
+descriptors, and a closed Run/1 candidate with a machine message schema and
+error registry. It now also contains private `0.0.0` TypeScript and Python
+candidate SDKs plus a shared executable seed corpus. Run/1 is not yet a stable
+conformance label: the complete matrix, independent peer, packaging, and
+publication checks remain release gates. The repository contains no Jig
+implementation or published SDK. The intended package names are:
 
 ```text
 @jigging/jig    Jig TypeScript package
@@ -58,26 +62,47 @@ not implicit APIs.
 
 ## Interfaces which must be closed before a probe consumes them
 
-A probe need not wait for unrelated surfaces. A Run-only component probe may
-start once the minimal Run SDK/wire slice it imports is frozen; it does not wait
-for Service, GUI, or Agent APIs. Every consumed slice must nevertheless be
-versioned and fixed before it is handed to the independent probe author.
+A probe need not wait for unrelated surfaces. The Run wire is now frozen as a
+closed candidate, but a Run-only component probe still waits for the exact SDK
+declarations and runnable package it will import; it does not wait for Service,
+GUI, or Agent APIs. Every consumed slice must be versioned and fixed before it
+is handed to the independent probe author.
 
-### FLOW component SDK
+### FLOW Run SDK
 
-The SDK must project the reviewed Run/1 and Service/1 wire semantics:
+The closed [`Run/1`](../spec/run-protocol.md) and
+[`Run SDK/1`](../spec/run-sdk.md) candidates, their
+[`message schema`](../spec/machine/run-1.schema.json) and
+[`error registry`](../spec/machine/run-1-errors.json), and the private
+implementations under `packages/` now fix and exercise the finite Run slice.
+The TypeScript and Python SDKs project it as:
 
 - one finite Run handler and its immutable invocation projection;
 - child `flow/call` and `effect/call` with stable semantic operation IDs;
-- cancellation, deadlines, results, and typed capability errors;
+- cancellation, deadlines, complete Flow results, unwrapped effect values, and
+  distinct operation versus declared capability errors; and
+- no public JSON-RPC IDs, owner IDs, resolution objects, Bindings, providers,
+  sandboxes, Jig controls, Services, Agents, or graph types.
+
+The selected semantic vocabulary is `serve(handler)`, `RunContext`,
+`RunResult`, `callFlow`/`call_flow`, `callEffect`/`call_effect`,
+`OperationError`, `EffectError`, and JSON value types. The checked-in source
+declarations and examples are authoritative for this candidate, not a
+publication claim. The seed corpus proves one shared full-duplex conversation;
+the remaining race/error matrix, built package artifacts, and second
+independent peer are required before a stable label or independent probe.
+
+### FLOW Service SDK
+
+Service/1 remains a separate interface slice. Its eventual SDK must project:
+
 - one pending Service Mount with fixed exports and dependencies;
 - distinct Mount-background and invocation-owned clients/lifetimes; and
 - provider readiness and bounded disposal without public remote Scope objects.
 
-Required deliverables are authoritative `.d.ts`/Python protocols, closed wire
-schemas, runnable minimal examples, and conformance fixtures. Names such as
-`RunContext`, `serveRun`, and `serveService` remain unreserved until that work
-chooses them.
+Its wire schemas, owner-attribution model, error registry, SDK vocabulary,
+examples, and conformance fixtures remain release gates. Run/1 does not wait
+for them, and examples may not infer Service helper names from the Run SDK.
 
 ### Jig project authoring SDK
 
@@ -160,7 +185,9 @@ need; keep compiler IR private when possible.
 
 The repository still needs:
 
-- closed Run/1 and Service/1 method schemas and an error registry;
+- the complete Run/1 conformance corpus, built package artifacts, and a second
+  independent peer;
+- closed Service/1 method schemas, owner-attribution model, and error registry;
 - `schema-1.json`;
 - `capability-contract-1.schema.json`;
 - Runtime Adapter and Sandbox Backend schemas;

@@ -1,0 +1,9 @@
+{
+  "name": "jig-workspace",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "bun test packages/flow-sdk conformance/run-1",
+    "test:run-1": "bun test conformance/run-1"
+  }
+}

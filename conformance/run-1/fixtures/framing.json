@@ -1,0 +1,46 @@
+{
+  "valid": [
+    {
+      "name": "empty-object-frame",
+      "hex": "7b7d0a"
+    },
+    {
+      "name": "unicode-scalar",
+      "hex": "7b2276616c7565223a22f09f90a3227d0a"
+    }
+  ],
+  "invalid": [
+    {
+      "name": "empty-frame",
+      "hex": "0a"
+    },
+    {
+      "name": "utf8-bom",
+      "hex": "efbbbf7b7d0a"
+    },
+    {
+      "name": "invalid-utf8",
+      "hex": "7b2261223aff7d0a"
+    },
+    {
+      "name": "duplicate-member",
+      "hex": "7b2261223a312c2261223a327d0a"
+    },
+    {
+      "name": "escaped-lone-surrogate",
+      "hex": "7b2261223a225c7564383030227d0a"
+    },
+    {
+      "name": "unsafe-integral-token",
+      "hex": "7b2261223a393030373139393235343734303939337d0a"
+    },
+    {
+      "name": "eof-before-line-feed",
+      "hex": "7b7d"
+    },
+    {
+      "name": "two-values-one-frame",
+      "hex": "7b7d207b7d0a"
+    }
+  ]
+}

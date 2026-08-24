@@ -60,12 +60,12 @@ bytes in one number token                      128
 ```
 
 Every array item and object member value is one child value node; member names
-are not additional nodes. A declared invocation or protocol limit may impose a
-smaller bound only when that bound is known before the value is produced or
-accepted—for example in the immutable Run limits supplied at invocation. It
-may never accept a value above the JSON/1 absolute maxima while claiming
-JSON/1 conformance.
+are not additional nodes. A narrower protocol, contract, or schema may impose
+a smaller bound only when that bound is fixed and known before the value is
+produced or accepted. It may never accept a value above the JSON/1 absolute
+maxima while claiming JSON/1 conformance.
 
-Malformed or out-of-domain data is `INVALID_JSON` at a protocol boundary. A
-narrower value seam reports its own validation error, such as
-`SCHEMA_INVALID_JSON`, `INVALID_INPUT`, or `INVALID_RESULT`.
+JSON/1 does not define a universal wire error name. The protocol or value seam
+reports the applicable failure—for example a fatal framing error, JSON-RPC
+invalid params, `INVALID_INPUT`, `INVALID_RESULT`, or
+`SCHEMA_INVALID_JSON`.

@@ -1,0 +1,178 @@
+{
+  "valid": [
+    {
+      "name": "root-run",
+      "definition": "flowRunRequest",
+      "value": {
+        "jsonrpc": "2.0",
+        "id": "host:1",
+        "method": "flow/run",
+        "params": {
+          "protocol": "run/1",
+          "input": { "subject": "football" },
+          "settings": {},
+          "attachments": {
+            "source": { "path": "/workspace/source", "access": "read" }
+          },
+          "scratch": "/workspace/scratch",
+          "deadlineUnixMs": 1787558400000
+        }
+      }
+    },
+    {
+      "name": "child-flow-with-intent",
+      "definition": "flowCallRequest",
+      "value": {
+        "jsonrpc": "2.0",
+        "id": "component:1",
+        "method": "flow/call",
+        "params": {
+          "operationId": "research:1",
+          "slot": "research",
+          "intent": "Find a useful comparison target.",
+          "input": { "subject": "football" }
+        }
+      }
+    },
+    {
+      "name": "effect-call",
+      "definition": "effectCallRequest",
+      "value": {
+        "jsonrpc": "2.0",
+        "id": "component:2",
+        "method": "effect/call",
+        "params": {
+          "operationId": "artifact-write:1",
+          "slot": "artifacts",
+          "method": "write",
+          "input": { "text": "result" }
+        }
+      }
+    },
+    {
+      "name": "cancel-notification",
+      "definition": "requestCancelNotification",
+      "value": {
+        "jsonrpc": "2.0",
+        "method": "request/cancel",
+        "params": { "requestId": "component:2" }
+      }
+    },
+    {
+      "name": "run-result",
+      "definition": "runSuccessResponse",
+      "value": {
+        "jsonrpc": "2.0",
+        "id": "host:1",
+        "result": { "outcome": "done", "output": null }
+      }
+    },
+    {
+      "name": "effect-value",
+      "definition": "effectSuccessResponse",
+      "value": {
+        "jsonrpc": "2.0",
+        "id": "component:2",
+        "result": { "value": null }
+      }
+    },
+    {
+      "name": "declared-effect-error",
+      "definition": "effectSuccessResponse",
+      "value": {
+        "jsonrpc": "2.0",
+        "id": "component:2",
+        "result": { "error": { "name": "not-found", "data": {} } }
+      }
+    },
+    {
+      "name": "operational-error",
+      "definition": "flowErrorResponse",
+      "value": {
+        "jsonrpc": "2.0",
+        "id": "component:2",
+        "error": {
+          "code": -32000,
+          "message": "not available",
+          "data": { "code": "UNAVAILABLE" }
+        }
+      }
+    }
+  ],
+  "invalid": [
+    {
+      "name": "numeric-request-id",
+      "definition": "flowRunRequest",
+      "value": {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "flow/run",
+        "params": {}
+      }
+    },
+    {
+      "name": "unknown-root-param",
+      "definition": "flowRunRequest",
+      "value": {
+        "jsonrpc": "2.0",
+        "id": "host:1",
+        "method": "flow/run",
+        "params": {
+          "protocol": "run/1",
+          "input": null,
+          "settings": {},
+          "attachments": {},
+          "scratch": "/tmp",
+          "deadlineUnixMs": 0,
+          "runId": "forbidden"
+        }
+      }
+    },
+    {
+      "name": "cancel-is-not-a-request",
+      "definition": "requestCancelNotification",
+      "value": {
+        "jsonrpc": "2.0",
+        "id": "component:3",
+        "method": "request/cancel",
+        "params": { "requestId": "component:2" }
+      }
+    },
+    {
+      "name": "effect-result-has-two-arms",
+      "definition": "effectSuccessResponse",
+      "value": {
+        "jsonrpc": "2.0",
+        "id": "component:2",
+        "result": {
+          "value": null,
+          "error": { "name": "not-found", "data": null }
+        }
+      }
+    },
+    {
+      "name": "effect-error-missing-data",
+      "definition": "effectSuccessResponse",
+      "value": {
+        "jsonrpc": "2.0",
+        "id": "component:2",
+        "result": { "error": { "name": "not-found" } }
+      }
+    },
+    {
+      "name": "intent-is-an-object",
+      "definition": "flowCallRequest",
+      "value": {
+        "jsonrpc": "2.0",
+        "id": "component:1",
+        "method": "flow/call",
+        "params": {
+          "operationId": "research:1",
+          "slot": "research",
+          "intent": { "query": "forbidden selector" },
+          "input": null
+        }
+      }
+    }
+  ]
+}

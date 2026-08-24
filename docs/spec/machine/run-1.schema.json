@@ -1,0 +1,365 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://flow.dev/schemas/run-1.json",
+  "title": "FLOW Run/1 frames",
+  "oneOf": [
+    { "$ref": "#/$defs/flowRunRequest" },
+    { "$ref": "#/$defs/flowCallRequest" },
+    { "$ref": "#/$defs/effectCallRequest" },
+    { "$ref": "#/$defs/requestCancelNotification" },
+    { "$ref": "#/$defs/runSuccessResponse" },
+    { "$ref": "#/$defs/effectSuccessResponse" },
+    { "$ref": "#/$defs/errorResponse" }
+  ],
+  "$defs": {
+    "wireId": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$",
+      "maxLength": 128
+    },
+    "operationId": {
+      "$ref": "#/$defs/wireId"
+    },
+    "localName": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+      "maxLength": 64
+    },
+    "attachment": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "access": {
+          "enum": ["read", "read-write"]
+        }
+      },
+      "required": ["path", "access"],
+      "additionalProperties": false
+    },
+    "attachments": {
+      "type": "object",
+      "propertyNames": {
+        "$ref": "#/$defs/localName"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/attachment"
+      },
+      "maxProperties": 256
+    },
+    "runResult": {
+      "type": "object",
+      "properties": {
+        "outcome": {
+          "$ref": "#/$defs/localName"
+        },
+        "output": true
+      },
+      "required": ["outcome", "output"],
+      "additionalProperties": false
+    },
+    "effectResult": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "value": true
+          },
+          "required": ["value"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "error": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "$ref": "#/$defs/localName"
+                },
+                "data": true
+              },
+              "required": ["name", "data"],
+              "additionalProperties": false
+            }
+          },
+          "required": ["error"],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "flowErrorCode": {
+      "enum": [
+        "CANCELLED",
+        "DEADLINE_EXCEEDED",
+        "OWNER_CLOSED",
+        "OPERATION_CONFLICT",
+        "UNAVAILABLE",
+        "PERMISSION_DENIED",
+        "RESOURCE_EXHAUSTED",
+        "INVALID_INPUT",
+        "INVALID_RESULT",
+        "UNCERTAIN",
+        "EXECUTION_FAILED"
+      ]
+    },
+    "flowErrorData": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "$ref": "#/$defs/flowErrorCode"
+        },
+        "details": true
+      },
+      "required": ["code"],
+      "additionalProperties": false
+    },
+    "flowRunParams": {
+      "type": "object",
+      "properties": {
+        "protocol": {
+          "const": "run/1"
+        },
+        "input": true,
+        "settings": {
+          "type": "object"
+        },
+        "attachments": {
+          "$ref": "#/$defs/attachments"
+        },
+        "scratch": {
+          "type": "string",
+          "minLength": 1
+        },
+        "deadlineUnixMs": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        }
+      },
+      "required": [
+        "protocol",
+        "input",
+        "settings",
+        "attachments",
+        "scratch",
+        "deadlineUnixMs"
+      ],
+      "additionalProperties": false
+    },
+    "flowCallParams": {
+      "type": "object",
+      "properties": {
+        "operationId": {
+          "$ref": "#/$defs/operationId"
+        },
+        "slot": {
+          "$ref": "#/$defs/localName"
+        },
+        "intent": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 16384
+        },
+        "input": true
+      },
+      "required": ["operationId", "slot", "input"],
+      "additionalProperties": false
+    },
+    "effectCallParams": {
+      "type": "object",
+      "properties": {
+        "operationId": {
+          "$ref": "#/$defs/operationId"
+        },
+        "slot": {
+          "$ref": "#/$defs/localName"
+        },
+        "method": {
+          "$ref": "#/$defs/localName"
+        },
+        "input": true
+      },
+      "required": ["operationId", "slot", "method", "input"],
+      "additionalProperties": false
+    },
+    "requestCancelParams": {
+      "type": "object",
+      "properties": {
+        "requestId": {
+          "$ref": "#/$defs/wireId"
+        }
+      },
+      "required": ["requestId"],
+      "additionalProperties": false
+    },
+    "flowRunRequest": {
+      "type": "object",
+      "properties": {
+        "jsonrpc": { "const": "2.0" },
+        "id": { "$ref": "#/$defs/wireId" },
+        "method": { "const": "flow/run" },
+        "params": { "$ref": "#/$defs/flowRunParams" }
+      },
+      "required": ["jsonrpc", "id", "method", "params"],
+      "additionalProperties": false
+    },
+    "flowCallRequest": {
+      "type": "object",
+      "properties": {
+        "jsonrpc": { "const": "2.0" },
+        "id": { "$ref": "#/$defs/wireId" },
+        "method": { "const": "flow/call" },
+        "params": { "$ref": "#/$defs/flowCallParams" }
+      },
+      "required": ["jsonrpc", "id", "method", "params"],
+      "additionalProperties": false
+    },
+    "effectCallRequest": {
+      "type": "object",
+      "properties": {
+        "jsonrpc": { "const": "2.0" },
+        "id": { "$ref": "#/$defs/wireId" },
+        "method": { "const": "effect/call" },
+        "params": { "$ref": "#/$defs/effectCallParams" }
+      },
+      "required": ["jsonrpc", "id", "method", "params"],
+      "additionalProperties": false
+    },
+    "requestCancelNotification": {
+      "type": "object",
+      "properties": {
+        "jsonrpc": { "const": "2.0" },
+        "method": { "const": "request/cancel" },
+        "params": { "$ref": "#/$defs/requestCancelParams" }
+      },
+      "required": ["jsonrpc", "method", "params"],
+      "additionalProperties": false
+    },
+    "runSuccessResponse": {
+      "type": "object",
+      "properties": {
+        "jsonrpc": { "const": "2.0" },
+        "id": { "$ref": "#/$defs/wireId" },
+        "result": { "$ref": "#/$defs/runResult" }
+      },
+      "required": ["jsonrpc", "id", "result"],
+      "additionalProperties": false
+    },
+    "effectSuccessResponse": {
+      "type": "object",
+      "properties": {
+        "jsonrpc": { "const": "2.0" },
+        "id": { "$ref": "#/$defs/wireId" },
+        "result": { "$ref": "#/$defs/effectResult" }
+      },
+      "required": ["jsonrpc", "id", "result"],
+      "additionalProperties": false
+    },
+    "flowErrorResponse": {
+      "type": "object",
+      "properties": {
+        "jsonrpc": { "const": "2.0" },
+        "id": { "$ref": "#/$defs/wireId" },
+        "error": {
+          "type": "object",
+          "properties": {
+            "code": { "const": -32000 },
+            "message": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1024
+            },
+            "data": { "$ref": "#/$defs/flowErrorData" }
+          },
+          "required": ["code", "message", "data"],
+          "additionalProperties": false
+        }
+      },
+      "required": ["jsonrpc", "id", "error"],
+      "additionalProperties": false
+    },
+    "standardErrorResponse": {
+      "oneOf": [
+        { "$ref": "#/$defs/parseErrorResponse" },
+        { "$ref": "#/$defs/invalidRequestResponse" },
+        { "$ref": "#/$defs/correlatedStandardErrorResponse" }
+      ]
+    },
+    "parseErrorResponse": {
+      "type": "object",
+      "properties": {
+        "jsonrpc": { "const": "2.0" },
+        "id": { "type": "null" },
+        "error": {
+          "type": "object",
+          "properties": {
+            "code": { "const": -32700 },
+            "message": { "$ref": "#/$defs/errorMessage" },
+            "data": true
+          },
+          "required": ["code", "message"],
+          "additionalProperties": false
+        }
+      },
+      "required": ["jsonrpc", "id", "error"],
+      "additionalProperties": false
+    },
+    "invalidRequestResponse": {
+      "type": "object",
+      "properties": {
+        "jsonrpc": { "const": "2.0" },
+        "id": {
+          "oneOf": [
+            { "$ref": "#/$defs/wireId" },
+            { "type": "null" }
+          ]
+        },
+        "error": {
+          "type": "object",
+          "properties": {
+            "code": { "const": -32600 },
+            "message": { "$ref": "#/$defs/errorMessage" },
+            "data": true
+          },
+          "required": ["code", "message"],
+          "additionalProperties": false
+        }
+      },
+      "required": ["jsonrpc", "id", "error"],
+      "additionalProperties": false
+    },
+    "correlatedStandardErrorResponse": {
+      "type": "object",
+      "properties": {
+        "jsonrpc": { "const": "2.0" },
+        "id": { "$ref": "#/$defs/wireId" },
+        "error": {
+          "type": "object",
+          "properties": {
+            "code": { "enum": [-32601, -32602, -32603] },
+            "message": { "$ref": "#/$defs/errorMessage" },
+            "data": true
+          },
+          "required": ["code", "message"],
+          "additionalProperties": false
+        }
+      },
+      "required": ["jsonrpc", "id", "error"],
+      "additionalProperties": false
+    },
+    "errorMessage": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1024
+    },
+    "errorResponse": {
+      "oneOf": [
+        { "$ref": "#/$defs/flowErrorResponse" },
+        { "$ref": "#/$defs/standardErrorResponse" }
+      ]
+    }
+  }
+}

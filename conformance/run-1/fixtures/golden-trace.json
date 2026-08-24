@@ -1,0 +1,46 @@
+[
+  {
+    "direction": "host->component",
+    "kind": "request",
+    "method": "flow/run"
+  },
+  {
+    "direction": "component->host",
+    "kind": "request",
+    "method": "flow/call",
+    "operationId": "research:1"
+  },
+  {
+    "direction": "component->host",
+    "kind": "request",
+    "method": "effect/call",
+    "operationId": "store:1"
+  },
+  {
+    "direction": "host->component",
+    "kind": "result",
+    "for": "effect/call"
+  },
+  {
+    "direction": "host->component",
+    "kind": "result",
+    "for": "flow/call"
+  },
+  {
+    "direction": "component->host",
+    "kind": "request",
+    "method": "effect/call",
+    "operationId": "missing:1"
+  },
+  {
+    "direction": "host->component",
+    "kind": "result",
+    "for": "effect/call",
+    "declaredError": "not-found"
+  },
+  {
+    "direction": "component->host",
+    "kind": "result",
+    "for": "flow/run"
+  }
+]
