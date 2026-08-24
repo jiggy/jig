@@ -171,7 +171,142 @@ for (const component of matrixComponents) {
       });
     });
   });
+
+  test(`${component.name} exercises host operation join, replay, and conflict`, async () => {
+    await withScratch(async (scratch) => {
+      await withPeer(component.command, async (peer) => {
+        peer.send(rootRequest("host:identity", scratch, { case: "operation-identity" }));
+        const operations = new ReferenceOperations();
+        const first = asRequest(await peer.receive());
+        const second = asRequest(await peer.receive());
+        expect(operations.admit(first)).toEqual({ kind: "dispatch" });
+        expect(operations.admit(second)).toEqual({ kind: "join" });
+        expect(operations.dispatches).toBe(1);
+
+        const sharedResult = { value: { receipt: "shared" } };
+        for (const response of operations.settle("shared:1", sharedResult)) {
+          peer.send(response);
+        }
+
+        const replay = asRequest(await peer.receive());
+        expect(operations.admit(replay)).toEqual({ kind: "replay", result: sharedResult });
+        peer.send({ jsonrpc: "2.0", id: replay.id, result: sharedResult });
+        expect(operations.dispatches).toBe(1);
+
+        const conflict = asRequest(await peer.receive());
+        expect(operations.admit(conflict)).toEqual({ kind: "conflict" });
+        peer.send(operationError(conflict.id, "OPERATION_CONFLICT"));
+        expect(operations.dispatches).toBe(1);
+
+        expect(await peer.receive()).toEqual({
+          jsonrpc: "2.0",
+          id: "host:identity",
+          result: {
+            outcome: "done",
+            output: {
+              first: { receipt: "shared" },
+              second: { receipt: "shared" },
+              replay: { receipt: "shared" },
+              conflict: "OPERATION_CONFLICT",
+            },
+          },
+        });
+        await peer.finish();
+      });
+    });
+  });
+
+  test(`${component.name} closes on an unknown response ID`, async () => {
+    await withScratch(async (scratch) => {
+      await withPeer(component.command, async (peer) => {
+        peer.send(rootRequest("host:unknown", scratch, { case: "one-flow" }));
+        await peer.receive();
+        peer.send({
+          jsonrpc: "2.0",
+          id: "component:unknown",
+          result: { outcome: "done", output: null },
+        });
+        await expectClosed(peer);
+      });
+    });
+  });
+
+  test(`${component.name} closes on a malformed child Flow result`, async () => {
+    await withScratch(async (scratch) => {
+      await withPeer(component.command, async (peer) => {
+        peer.send(rootRequest("host:bad-child", scratch, { case: "one-flow" }));
+        const child = asRequest(await peer.receive());
+        peer.send({
+          jsonrpc: "2.0",
+          id: child.id,
+          result: { outcome: "done" },
+        });
+        await expectClosed(peer);
+      });
+    });
+  });
+
+  test(`${component.name} treats a standard child error as fatal`, async () => {
+    await withScratch(async (scratch) => {
+      await withPeer(component.command, async (peer) => {
+        peer.send(rootRequest("host:standard-error", scratch, { case: "one-flow" }));
+        const child = asRequest(await peer.receive());
+        peer.send({
+          jsonrpc: "2.0",
+          id: child.id,
+          error: { code: -32603, message: "Internal error" },
+        });
+        await expectClosed(peer);
+      });
+    });
+  });
+
+  test(`${component.name} closes on a duplicate response ID`, async () => {
+    await withScratch(async (scratch) => {
+      await withPeer(component.command, async (peer) => {
+        peer.send(rootRequest("host:duplicate", scratch, { case: "two-effects" }));
+        const first = asRequest(await peer.receive());
+        peer.send({ jsonrpc: "2.0", id: first.id, result: { value: "first" } });
+        await peer.receive();
+        peer.send({ jsonrpc: "2.0", id: first.id, result: { value: "duplicate" } });
+        await expectClosed(peer);
+      });
+    });
+  });
 }
+
+test("a reference host rejects a malicious 65th request without dispatch", async () => {
+  await withScratch(async (scratch) => {
+    const peer = new ComponentPeer([
+      process.execPath,
+      resolve(import.meta.dir, "components/malicious-65.ts"),
+    ]);
+    try {
+      peer.send(rootRequest("host:malicious", scratch));
+      const dispatched: Request[] = [];
+      for (let count = 0; count < 65; count += 1) {
+        const request = asRequest(await peer.receive());
+        if (count < 64) {
+          dispatched.push(request);
+        } else {
+          peer.send(operationError(request.id, "RESOURCE_EXHAUSTED"));
+        }
+      }
+      expect(dispatched).toHaveLength(64);
+      for (const request of dispatched) {
+        peer.send({ jsonrpc: "2.0", id: request.id, result: { value: null } });
+      }
+      expect(await peer.receive()).toEqual({
+        jsonrpc: "2.0",
+        id: "host:malicious",
+        result: { outcome: "done", output: { accepted: 64, rejected: 1 } },
+      });
+      await peer.finish();
+    } finally {
+      await peer.dispose();
+    }
+  });
+});
 
 test("a nonzero exit invalidates a complete root response", async () => {
   const response = JSON.stringify({
@@ -351,4 +486,74 @@ function asRequest(message: Message): Request {
   expect(typeof message.id).toBe("string");
   expect(typeof message.method).toBe("string");
   return message as Request;
+}
+
+function operationError(id: string, code: string): Message {
+  return {
+    jsonrpc: "2.0",
+    id,
+    error: {
+      code: -32000,
+      message: code,
+      data: { code },
+    },
+  };
+}
+
+interface OperationRecord {
+  readonly signature: string;
+  readonly waiters: string[];
+  result?: unknown;
+}
+
+class ReferenceOperations {
+  private readonly records = new Map<string, OperationRecord>();
+  dispatches = 0;
+
+  admit(request: Request):
+    | { readonly kind: "dispatch" }
+    | { readonly kind: "join" }
+    | { readonly kind: "replay"; readonly result: unknown }
+    | { readonly kind: "conflict" } {
+    const params = request.params as Record<string, unknown>;
+    const operationId = params.operationId;
+    expect(typeof operationId).toBe("string");
+    const signature = canonicalOperation(request);
+    const prior = this.records.get(operationId as string);
+    if (prior === undefined) {
+      this.records.set(operationId as string, { signature, waiters: [request.id] });
+      this.dispatches += 1;
+      return { kind: "dispatch" };
+    }
+    if (prior.signature !== signature) return { kind: "conflict" };
+    if (prior.result !== undefined) return { kind: "replay", result: prior.result };
+    prior.waiters.push(request.id);
+    return { kind: "join" };
+  }
+
+  settle(operationId: string, result: unknown): Message[] {
+    const record = this.records.get(operationId);
+    if (record === undefined) throw new Error(`unknown operation ${operationId}`);
+    record.result = result;
+    return record.waiters.splice(0).map((id) => ({ jsonrpc: "2.0", id, result }));
+  }
+}
+
+function canonicalOperation(request: Request): string {
+  const { operationId: _operationId, ...params } = request.params as Record<string, unknown>;
+  return JSON.stringify(canonicalize({ method: request.method, params }));
+}
+
+function canonicalize(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(canonicalize);
+  if (value !== null && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        // RFC 8785 orders object names by UTF-16 code units. Do not let the
+        // process locale participate in the reference operation signature.
+        .sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0)
+        .map(([key, child]) => [key, canonicalize(child)]),
+    );
+  }
+  return value;
 }

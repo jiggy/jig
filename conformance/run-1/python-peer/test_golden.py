@@ -89,6 +89,34 @@ class GoldenConversationTests(unittest.TestCase):
         self.assertEqual(trace, expected_trace())
 
 
+class ExpandedComponentMatrixTests(unittest.TestCase):
+    def test_typescript_operation_identity_and_response_failures(self) -> None:
+        bun = shutil.which("bun")
+        if bun is None:
+            self.skipTest("bun is unavailable")
+        command = [bun, str(RUN_1 / "components" / "matrix.ts")]
+        exercise_operation_identity(command)
+        exercise_response_failures(command)
+        exercise_malicious_65([
+            bun,
+            str(RUN_1 / "components" / "malicious-65.ts"),
+        ])
+
+    def test_python_operation_identity_and_response_failures(self) -> None:
+        python_path = str(ROOT / "packages" / "flowmd-sdk" / "src")
+        environment = {
+            "PYTHONPATH": os.pathsep.join(
+                part
+                for part in (python_path, os.environ.get("PYTHONPATH", ""))
+                if part
+            ),
+            "PYTHONDONTWRITEBYTECODE": "1",
+        }
+        command = [sys.executable, str(RUN_1 / "components" / "matrix.py")]
+        exercise_operation_identity(command, environment=environment)
+        exercise_response_failures(command, environment=environment)
+
+
 def exercise(
     command: list[str],
     *,
@@ -207,6 +235,163 @@ def exercise(
         trace.append({"direction": "component->host", "kind": "result", "for": "flow/run"})
         peer.finish()
     return trace
+
+
+def exercise_operation_identity(
+    command: list[str],
+    *,
+    environment: dict[str, str] | None = None,
+) -> None:
+    with HostPeer(command, environment=environment) as peer:
+        peer.send(flow_run_request("host:identity", {"case": "operation-identity"}))
+        operations = ReferenceOperations()
+        first = peer.receive_request("effect/call")
+        second = peer.receive_request("effect/call")
+        self_equal(operations.admit(first), {"kind": "dispatch"})
+        self_equal(operations.admit(second), {"kind": "join"})
+        self_equal(operations.dispatches, 1)
+
+        shared_result = {"value": {"receipt": "shared"}}
+        for response in operations.settle("shared:1", shared_result):
+            peer.send(response)
+
+        replay = peer.receive_request("effect/call")
+        self_equal(operations.admit(replay), {"kind": "replay", "result": shared_result})
+        peer.send(success(replay["id"], shared_result))
+
+        conflict = peer.receive_request("effect/call")
+        self_equal(operations.admit(conflict), {"kind": "conflict"})
+        peer.send(operation_error(conflict["id"], "OPERATION_CONFLICT"))
+        self_equal(operations.dispatches, 1)
+
+        root = peer.receive()
+        self_equal(root, {
+            "jsonrpc": "2.0",
+            "id": "host:identity",
+            "result": {
+                "outcome": "done",
+                "output": {
+                    "first": {"receipt": "shared"},
+                    "second": {"receipt": "shared"},
+                    "replay": {"receipt": "shared"},
+                    "conflict": "OPERATION_CONFLICT",
+                },
+            },
+        })
+        peer.finish()
+
+
+def exercise_response_failures(
+    command: list[str],
+    *,
+    environment: dict[str, str] | None = None,
+) -> None:
+    cases = (
+        ("unknown response", {"jsonrpc": "2.0", "id": "component:unknown", "result": None}),
+        ("malformed child", None),
+        ("standard child error", None),
+    )
+    for name, fixed_response in cases:
+        with HostPeer(command, environment=environment) as peer:
+            peer.send(flow_run_request("host:failure", {"case": "one-flow"}))
+            child = peer.receive_request("flow/call")
+            if fixed_response is not None:
+                response = fixed_response
+            elif name == "malformed child":
+                response = success(child["id"], {"outcome": "done"})
+            else:
+                response = {
+                    "jsonrpc": "2.0",
+                    "id": child["id"],
+                    "error": {"code": -32603, "message": "Internal error"},
+                }
+            peer.send(response)
+            try:
+                peer.receive()
+            except ProtocolError:
+                pass
+            else:
+                raise AssertionError(f"{name} did not close the component channel")
+
+    with HostPeer(command, environment=environment) as peer:
+        peer.send(flow_run_request("host:duplicate", {"case": "two-effects"}))
+        first = peer.receive_request("effect/call")
+        peer.send(success(first["id"], {"value": "first"}))
+        peer.receive_request("effect/call")
+        peer.send(success(first["id"], {"value": "duplicate"}))
+        try:
+            peer.receive()
+        except ProtocolError:
+            pass
+        else:
+            raise AssertionError("duplicate response did not close the component channel")
+
+
+def exercise_malicious_65(command: list[str]) -> None:
+    with HostPeer(command) as peer:
+        peer.send(flow_run_request("host:malicious", {}))
+        dispatched = [peer.receive_request("effect/call") for _ in range(64)]
+        rejected = peer.receive_request("effect/call")
+        peer.send(operation_error(rejected["id"], "RESOURCE_EXHAUSTED"))
+        self_equal(len(dispatched), 64)
+        for request in dispatched:
+            peer.send(success(request["id"], {"value": None}))
+        self_equal(peer.receive(), {
+            "jsonrpc": "2.0",
+            "id": "host:malicious",
+            "result": {
+                "outcome": "done",
+                "output": {"accepted": 64, "rejected": 1},
+            },
+        })
+        peer.finish()
+
+
+class ReferenceOperations:
+    def __init__(self) -> None:
+        self.records: dict[str, dict[str, Any]] = {}
+        self.dispatches = 0
+
+    def admit(self, request: dict[str, Any]) -> dict[str, Any]:
+        params = request["params"]
+        operation_id = params["operationId"]
+        signature = {
+            "method": request["method"],
+            "params": {key: value for key, value in params.items() if key != "operationId"},
+        }
+        prior = self.records.get(operation_id)
+        if prior is None:
+            self.records[operation_id] = {
+                "signature": signature,
+                "waiters": [request["id"]],
+            }
+            self.dispatches += 1
+            return {"kind": "dispatch"}
+        if prior["signature"] != signature:
+            return {"kind": "conflict"}
+        if "result" in prior:
+            return {"kind": "replay", "result": prior["result"]}
+        prior["waiters"].append(request["id"])
+        return {"kind": "join"}
+
+    def settle(self, operation_id: str, result: Any) -> list[dict[str, Any]]:
+        record = self.records[operation_id]
+        record["result"] = result
+        waiters = record["waiters"]
+        record["waiters"] = []
+        return [success(request_id, result) for request_id in waiters]
+
+
+def operation_error(request_id: str, code: str) -> dict[str, Any]:
+    return {
+        "jsonrpc": "2.0",
+        "id": request_id,
+        "error": {
+            "code": -32000,
+            "message": code,
+            "data": {"code": code},
+        },
+    }
 
 
 def require_call(

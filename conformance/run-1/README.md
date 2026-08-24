@@ -11,9 +11,12 @@ The current corpus has five layers:
 - `components.test.ts` drives one golden full-duplex conversation through the
   TypeScript and Python SDK components;
 - `component-matrix.test.ts` exercises black-box state, cancellation, framing,
-  request-bound, and process-exit behavior against both SDK components; and
+  request bounds, response correlation, operation identity, and process-exit
+  behavior against both SDK components, plus one deliberately malicious
+  component; and
 - `python-peer/` independently implements JSON/1 framing and a host peer, then
-  drives both SDK components through the same golden conversation.
+  drives both SDK components through the golden conversation and the shared
+  operation-identity and hostile-response cases.
 
 Run it with:
 
@@ -34,5 +37,5 @@ PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover \
 
 Passing this slice does not claim complete Run/1 conformance. The exact
 coverage and remaining stable-label gates are recorded in
-[`MATRIX.md`](MATRIX.md). In particular, the independent Python peer currently
-shares the golden conversation, not the complete behavioral matrix.
+[`MATRIX.md`](MATRIX.md). The independent Python peer covers more than the
+golden conversation, but not the complete behavioral matrix.

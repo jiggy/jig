@@ -13,20 +13,26 @@
 | Root cancellation, duplicate cancellation, and wire quiescence | Yes | No |
 | Representative fatal frames | Yes | No |
 | At most 64 unresolved component requests on wire | Yes | No |
+| Reference-host operation join, settled replay, and conflict | Yes | Yes |
+| Reference-host rejection of a malicious 65th request | Yes | Yes |
+| Unknown and duplicate child-response IDs | Yes | Yes |
+| Malformed child result and standard child JSON-RPC error | Yes | Yes |
 | Trailing output and nonzero exit | Yes | No |
 | Legal stderr diagnostics | Yes | Yes |
 
 The current black-box evidence does not yet cover:
 
-- host-side operation joining, replay, and `OPERATION_CONFLICT`;
-- defensive host handling of a malicious 65th request;
+- cancellation of one waiter joined to a shared host operation;
+- uncertain host dispatch, persistence, and recovery behavior;
 - deadline, cancellation, result, and forced-kill terminal races;
-- unknown or duplicate response IDs across both SDK components;
 - call-specific cancellation and abandoned-call quiescence across both SDKs;
-- malformed child results and standard JSON-RPC child errors across both SDKs;
 - the complete behavioral matrix under a second independent peer;
 - total request-ID lifetime bounds; or
 - memory amplification at the legal 16 MiB frame limit.
+
+The host-operation and malicious-request rows exercise small reference-peer
+implementations of the frozen Run/1 rules. They are executable cross-peer
+fixtures, not evidence that a production Jig host exists or already conforms.
 
 The 64-request test specifies only the wire ceiling. An SDK may queue a 65th
 call or reject it locally; Run SDK/1 deliberately does not select one policy.
