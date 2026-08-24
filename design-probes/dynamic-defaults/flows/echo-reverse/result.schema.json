@@ -1,0 +1,17 @@
+{
+  "$schema": "https://flow.dev/schemas/schema-1.json",
+  "type": "object",
+  "properties": {
+    "outcome": { "const": "done" },
+    "output": {
+      "type": "object",
+      "properties": {
+        "value": { "type": "string", "maxLength": 65536 }
+      },
+      "required": ["value"],
+      "additionalProperties": false
+    }
+  },
+  "required": ["outcome", "output"],
+  "additionalProperties": false
+}

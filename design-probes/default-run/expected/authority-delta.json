@@ -1,0 +1,40 @@
+{
+  "probeFormat": 1,
+  "nonnormative": true,
+  "requested": {
+    "finalRun": {
+      "portableBaseline": {
+        "packageAndPreparedClosure": "read-only",
+        "privateScratch": "read-write",
+        "protocolStdio": "open"
+      },
+      "attachments": {},
+      "effects": {}
+    },
+    "preparation": {
+      "nativeDependencyClosure": "declared by flows/greet/package.json",
+      "rawAuthority": "not selected by this host-agnostic fixture"
+    }
+  },
+  "wouldGrant": {
+    "finalRun": {
+      "packageAndPreparedClosure": "read-only",
+      "privateScratch": "read-write",
+      "protocolStdio": "open"
+    },
+    "preparation": null
+  },
+  "deniedToFinalRun": [
+    "project files",
+    "ambient environment",
+    "raw network",
+    "child processes",
+    "extra file descriptors",
+    "host IPC",
+    "Agents",
+    "undeclared capabilities"
+  ],
+  "planned": null,
+  "realized": null,
+  "evidenceRule": "The fixture claims no concrete preparation wouldGrant or plan. A selected Adapter/Backend must separately expose preparation requested, wouldGrant, planned, and realized authority; preparation-only network never enters the final Run envelope. Final planned requires one selected Backend plan and realized requires its later immutable receipt."
+}

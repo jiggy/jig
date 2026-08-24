@@ -1,0 +1,101 @@
+{
+  "probeFormat": 1,
+  "nonnormative": true,
+  "currentCandidate": "G2",
+  "flowSource": {
+    "kind": "directory-discovery",
+    "root": "./flows",
+    "members": [
+      "dispatcher",
+      "echo-reverse",
+      "echo-upper"
+    ]
+  },
+  "bindings": {
+    "dispatcher": {
+      "origin": "authored",
+      "use": "flows/dispatcher",
+      "mode": "run",
+      "implementation": "flow.ts",
+      "packageDigest": "sha256:dec93f53cb64c7ded9a0d0140415e679fb52c7503820d81bf461393448b400f4",
+      "settings": {},
+      "slots": {
+        "delegate": {
+          "kind": "all-runs-snapshot",
+          "candidates": [
+            {
+              "bindingId": "echo-reverse",
+              "packageDigest": "sha256:30fbf25ec943e6fde8998990f3a0cf103bcc51a6fef77f6a7e67f77d9eef86d8"
+            },
+            {
+              "bindingId": "echo-upper",
+              "packageDigest": "sha256:33bd4d65b834357226c832482833859e93145c646fd1a43d72fd6475d4ccb7a1"
+            }
+          ]
+        }
+      }
+    },
+    "echo-reverse": {
+      "origin": "derived-default",
+      "use": "flows/echo-reverse",
+      "mode": "run",
+      "implementation": "flow.py",
+      "packageDigest": "sha256:30fbf25ec943e6fde8998990f3a0cf103bcc51a6fef77f6a7e67f77d9eef86d8",
+      "settings": {},
+      "slots": {},
+      "attachments": {}
+    },
+    "echo-upper": {
+      "origin": "derived-default",
+      "use": "flows/echo-upper",
+      "mode": "run",
+      "implementation": "flow.ts",
+      "packageDigest": "sha256:33bd4d65b834357226c832482833859e93145c646fd1a43d72fd6475d4ccb7a1",
+      "settings": {},
+      "slots": {},
+      "attachments": {}
+    }
+  },
+  "tabletopGenerations": [
+    {
+      "id": "G0",
+      "change": "initial dispatcher only",
+      "snapshot": []
+    },
+    {
+      "id": "G1",
+      "change": "add echo-upper and apply aggregate plan",
+      "snapshot": [
+        {
+          "bindingId": "echo-upper",
+          "packageDigest": "sha256:33bd4d65b834357226c832482833859e93145c646fd1a43d72fd6475d4ccb7a1"
+        }
+      ]
+    },
+    {
+      "id": "G2",
+      "change": "add echo-reverse and apply aggregate plan",
+      "snapshot": [
+        {
+          "bindingId": "echo-reverse",
+          "packageDigest": "sha256:30fbf25ec943e6fde8998990f3a0cf103bcc51a6fef77f6a7e67f77d9eef86d8"
+        },
+        {
+          "bindingId": "echo-upper",
+          "packageDigest": "sha256:33bd4d65b834357226c832482833859e93145c646fd1a43d72fd6475d4ccb7a1"
+        }
+      ]
+    },
+    {
+      "id": "G3",
+      "change": "remove echo-upper and apply aggregate plan",
+      "snapshot": [
+        {
+          "bindingId": "echo-reverse",
+          "packageDigest": "sha256:30fbf25ec943e6fde8998990f3a0cf103bcc51a6fef77f6a7e67f77d9eef86d8"
+        }
+      ]
+    }
+  ],
+  "portableLockRule": "The real host locks exact Binding-revision identities and digests; its canonical lock schema remains a release gate and is not fabricated by this probe."
+}

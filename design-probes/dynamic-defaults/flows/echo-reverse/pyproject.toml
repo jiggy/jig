@@ -1,0 +1,5 @@
+[project]
+name = "flow-probe-echo-reverse"
+version = "0.0.0"
+requires-python = ">=3.13,<4"
+dependencies = ["flowmd-sdk>=1,<2"]

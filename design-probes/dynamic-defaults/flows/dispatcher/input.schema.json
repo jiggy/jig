@@ -1,0 +1,17 @@
+{
+  "$schema": "https://flow.dev/schemas/schema-1.json",
+  "type": "object",
+  "properties": {
+    "intent": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4096
+    },
+    "text": {
+      "type": "string",
+      "maxLength": 65536
+    }
+  },
+  "required": ["intent", "text"],
+  "additionalProperties": false
+}
