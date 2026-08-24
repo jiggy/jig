@@ -32,12 +32,12 @@ This is ordering for review, not a protocol serialization.
    Event. Kanban `ensure` independently retains domain idempotency across a
    later Hook revision or deliberately repeated fact.
 
-## Hook-derived Spindle Run and card creation
+## Hook-derived Sley Run and card creation
 
 1. The outbox allocates one triage Run for `(Hook revision, Event ID)` using the
    Hook's pinned source/target generation. The complete Event is immutable Run
    input and is validated against triage's schema.
-2. Spindle launches externally through Run/1; Jig never imports its graph.
+2. Sley launches externally through Run/1; Jig never imports its graph.
 3. `OpenCard` calls the exact Kanban export. The Service serializes access and
    either creates revision 1 in `triage` or returns the identical existing card.
 4. If that existing card is already beyond `triage`, the Run returns the
@@ -68,7 +68,7 @@ This is ordering for review, not a protocol serialization.
    ```
 
 5. Agent provider projections contain only those named skill subtrees plus the
-   Binding's fixed workspace/tool ceiling. The Spindle process has no matching
+   Binding's fixed workspace/tool ceiling. The Sley process has no matching
    workspace view. Every new Card returned by Kanban becomes explicit immutable
    graph state.
 6. Verification completion advances `verification -> done`, then the Outcome
@@ -93,7 +93,7 @@ compare-and-set and the loser cannot start Agent work.
 
 ## Root completion and update
 
-A complete Spindle response is provisional until Jig closes child admission,
+A complete Sley response is provisional until Jig closes child admission,
 drives Agent, child Flow, Service invocation, projection, process, and sandbox
 owners terminal or fenced, validates the result, and commits Run success.
 

@@ -1,6 +1,6 @@
 // DESIGN PROBE ONLY: one inert owned source -> durable Event -> triage Run.
-import { stableTextFiles } from "@jig/hooks-files";
-import { bindingRef, hook, root } from "jig";
+import { stableTextFiles } from "@jigging/hooks-files";
+import { bindingRef, hook, root } from "@jigging/jig";
 
 export default hook({
   on: stableTextFiles({

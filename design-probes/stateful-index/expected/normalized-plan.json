@@ -14,7 +14,7 @@
   "bindings": {
     "journal": {
       "kind": "host-capability",
-      "providerRegistration": "@jig/journal#append",
+      "providerRegistration": "@jigging/journal#append",
       "eventTypeCeiling": [
         "https://probe.jig.dev/events/document-indexed"
       ]

@@ -8,6 +8,7 @@
       "input": { "$ref": "#/$defs/EnsureInput" },
       "output": { "$ref": "#/$defs/Card" },
       "errors": {
+        "invalid-submission-id": { "$ref": "#/$defs/Empty" },
         "submission-conflict": { "$ref": "#/$defs/Empty" }
       }
     },
@@ -15,6 +16,7 @@
       "input": { "$ref": "#/$defs/TransitionInput" },
       "output": { "$ref": "#/$defs/Card" },
       "errors": {
+        "invalid-card-id": { "$ref": "#/$defs/Empty" },
         "not-found": { "$ref": "#/$defs/Empty" },
         "revision-conflict": { "$ref": "#/$defs/Empty" },
         "invalid-transition": { "$ref": "#/$defs/Empty" }
@@ -45,7 +47,8 @@
       "properties": {
         "submissionId": {
           "type": "string",
-          "pattern": "^[0-9a-f]{64}$"
+          "minLength": 64,
+          "maxLength": 64
         },
         "title": {
           "type": "string",
@@ -66,7 +69,8 @@
       "properties": {
         "cardId": {
           "type": "string",
-          "pattern": "^card-[0-9a-f]{64}$"
+          "minLength": 69,
+          "maxLength": 69
         },
         "expectedRevision": {
           "type": "integer",
@@ -107,11 +111,13 @@
       "properties": {
         "cardId": {
           "type": "string",
-          "pattern": "^card-[0-9a-f]{64}$"
+          "minLength": 69,
+          "maxLength": 69
         },
         "submissionId": {
           "type": "string",
-          "pattern": "^[0-9a-f]{64}$"
+          "minLength": 64,
+          "maxLength": 64
         },
         "title": {
           "type": "string",

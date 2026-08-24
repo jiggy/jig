@@ -1,0 +1,10 @@
+{
+  "private": true,
+  "type": "module",
+  "devDependencies": {
+    "@jigging/agent-acp": "^1.0.0",
+    "@jigging/hooks-files": "^1.0.0",
+    "@jigging/jig": "^1.0.0",
+    "@jigging/semantic-choice": "^1.0.0"
+  }
+}

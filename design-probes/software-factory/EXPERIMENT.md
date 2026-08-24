@@ -4,7 +4,7 @@
 >
 > This is a pre-implementation design experiment, not a Starter, example app,
 > compatibility promise, conformance result, or source of public API truth.
-> The `jig` and `spindle` modules and every executable behavior implied below
+> The `@jigging/jig`, `@flowmd/sdk`, and `sley` modules and every executable behavior implied below
 > are absent. Expected artifacts are tabletop fixtures produced by reviewers.
 
 ## Question under test
@@ -14,7 +14,7 @@ when it combines:
 
 1. one inert Hook owning a registered filesystem Event Source;
 2. a canonical immutable Event and exact Event-to-Run admission;
-3. a Spindle-local semantic Router over two connected strategy Flows;
+3. a Sley-local semantic Router over two connected strategy Flows;
 4. exact Agent and Semantic Choice dependencies;
 5. per-call package-local Agent skill selection;
 6. one file-backed Kanban Service with revision-checked transitions;
@@ -24,7 +24,7 @@ when it combines:
 The probe tests whether these concepts compose ergonomically without making a
 Router into a catalogue resolver, a Hook into middleware, or repair into an
 authority bypass. Its complete pseudocode also tests whether FLOW calls,
-immutable Spindle state, parallel read-only analysis, sequential writable work,
+immutable Sley state, parallel read-only analysis, sequential writable work,
 skill projection, and application Service calls line up. It does not test
 protocol bytes, real durability/confinement, Agent quality, concurrent builder
 workspaces, or working software.
@@ -34,7 +34,7 @@ workspaces, or working software.
 1. Read [`SCENARIO.md`](SCENARIO.md).
 2. Inspect the author-owned `jig.ts`, `bindings/`, `hooks/`, `flows/`,
    `inbox/`, `kanban/`, `workspace/`, `repair-staging/`, and `examples/` trees.
-3. Treat `design-api.d.ts`, `design-flow.d.ts`, `design-spindle.d.ts`, and
+3. Treat `design-api.d.ts`, `design-flow.d.ts`, `design-sley.d.ts`, and
    `tsconfig.json` only as declaration-only review scaffolding.
 4. Compare the tabletop artifacts under `expected/` with the normative docs.
 5. Use [`API-LEDGER.md`](API-LEDGER.md) to challenge every invented spelling.
@@ -50,7 +50,7 @@ Included:
 - one watched ticket file through an owned registered Hook source;
 - one canonical Journal Event and one exact Hook target;
 - one mounted file-backed Kanban Service;
-- one Spindle package containing the finite Gauntlet and Majority-Vote route
+- one Sley package containing the finite Gauntlet and Majority-Vote route
   table;
 - exact Agent and chooser Bindings;
 - one read-write workspace for one ticket only;
@@ -71,11 +71,11 @@ Excluded:
 
 ## Project files and probe harness
 
-The Starter-shaped project owns `.gitignore`, `jig.ts`, `bindings/`, `hooks/`,
-`flows/`, `inbox/`, `kanban/`, `workspace/`, `repair-staging/`, and `examples/`. The
-Markdown documents at this root, declaration files, `tsconfig.json`, and
-`expected/` are probe-only harness and must not be interpreted as project
-configuration.
+The Starter-shaped project owns `.gitignore`, `jig.ts`, `package.json`,
+`bindings/`, `hooks/`, `flows/`, `inbox/`, `kanban/`, `workspace/`,
+`repair-staging/`, and `examples/`. The Markdown documents at this root,
+declaration files, `tsconfig.json`, and `expected/` are probe-only harness and
+must not be interpreted as project configuration.
 
 The shape is intentionally fuller than the minimal-portable probe but complete
 only for this scenario. Public Starters must later be rebuilt from working

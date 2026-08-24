@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 # DESIGN PROBE ONLY: hypothetical SDK, complete pseudocode behavior.
-from flow_run import serve
+from flowmd_sdk import serve_run
 
 
 async def ingest(run):
@@ -14,4 +14,4 @@ async def ingest(run):
     return {"outcome": "done", "output": record}
 
 
-serve(ingest)
+serve_run(ingest)

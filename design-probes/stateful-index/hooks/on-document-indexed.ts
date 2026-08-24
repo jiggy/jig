@@ -1,5 +1,5 @@
 // DESIGN PROBE ONLY: select Events from one exact Service Binding generation.
-import { bindingRef, event, hook } from "jig";
+import { bindingRef, event, hook } from "@jigging/jig";
 
 export default hook({
   on: event(

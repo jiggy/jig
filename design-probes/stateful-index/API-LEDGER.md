@@ -6,9 +6,9 @@ This ledger distinguishes stable semantics from probe-only spelling.
 |---|---|---|---|---|
 | `discover("./...")` | Opt into conventional shallow project sources. | Project policy source capture. | No new discovery form is needed. | Reuse existing candidate spelling. |
 | `bindingRef("document-index")` | Reuse one exact configured Service. | Immutable Binding reference. | Three consumers need distinct Run Bindings but one provider Binding. | Stable semantics. |
-| Imported `@jig/journal#append` | Give a portable custom producer exact Event authority. | Host-capability Binding plus Journal contract. | This Binding is real application authority, unlike the removed Hook-owned watcher glue. | Stable semantics; module spelling hypothetical. |
+| Imported `@jigging/journal#append` | Give a portable custom producer exact Event authority. | Host-capability Binding plus Journal contract. | This Binding is real application authority, unlike the removed Hook-owned watcher glue. | Stable semantics; module spelling hypothetical. |
 | `event(bindingRef(...), type)` | React to one exact Service producer. | Hook Event-selector source. | Complements the owned Event Source form. | Stable semantics. |
-| `serveService`, `mount.provide`, `mount.ready` | Expose one fixed capability set for one pending Service lifetime. | Service/1 mount and one acknowledged readiness transition. | The probe needs no public Mount handle, lifecycle callback, or mutable export snapshot. | Stable semantics; SDK spelling open. |
+| `serveService(setup => ServiceDefinition)` from `@flowmd/sdk` | Expose one fixed capability set and optional disposer for one Service lifetime. | Service/1 mount and one acknowledged readiness transition. | Returning fixed exports lets the SDK own ready/wait/cancel ceremony; no public Mount handle or mutable export snapshot is needed. | Preferred future SDK projection. |
 | `mount.effects` | Drain a persistent outbox during startup. | Mount-background effect ownership. | Background recovery must not be attributed to a consumer invocation. | Stable need; SDK spelling open. |
 | handler `invocation.effects` | Attribute `journal.append` caused by `upsert` to that invocation. | Service invocation child ownership over the Mount's fixed dependency set. | The previous one-argument Service handler sketch was insufficient. | **Required SDK projection; no public Scope object.** |
 | Atomic JSON snapshot plus outbox | Couple local state intent and eventual publication. | Provider implementation over ordinary attachment and effect calls. | Jig cannot atomically commit arbitrary provider files with its Journal. | Application pattern, not Jig primitive. |
@@ -19,7 +19,7 @@ This ledger distinguishes stable semantics from probe-only spelling.
 
 ## Surfaces deliberately absent
 
-There is no Agent, Session, Spindle graph, Semantic Choice, dynamic Service
+There is no Agent, Session, Sley graph, Semantic Choice, dynamic Service
 Binding update, public Mount handle, callback, subscription, replay API,
 cross-provider transaction, automatic invocation retry, Service migration
 method, or project-selected Sandbox Backend.

@@ -9,6 +9,7 @@
     "skipLibCheck": true
   },
   "include": [
+    "../design-flow-sdk.d.ts",
     "./*.ts",
     "./bindings/**/*.ts",
     "./hooks/**/*.ts",

@@ -6,8 +6,9 @@ import {
   capabilityError,
   type EffectClient,
   type JsonValue,
+  type ServiceInvocation,
   serveService,
-} from "@flow/service";
+} from "@flowmd/sdk";
 
 interface DocumentRecord {
   readonly documentId: string;
@@ -39,13 +40,6 @@ interface SearchInput {
 const EMPTY: IndexState = { documents: [], pendingEvents: [] };
 
 const asJson = (value: unknown): JsonValue => value as JsonValue;
-
-const waitForAbort = (signal: AbortSignal): Promise<void> =>
-  signal.aborted
-    ? Promise.resolve()
-    : new Promise(resolve =>
-      signal.addEventListener("abort", () => resolve(), { once: true })
-    );
 
 serveService(async mount => {
   const index = mount.attachment("index");
@@ -115,53 +109,56 @@ serveService(async mount => {
     return state;
   };
 
-  mount.provide("writer", {
-    upsert: (input, invocation) => mutate(async () => {
-      const value = input as unknown as UpsertInput;
-      const before = await readState();
-      const current = before.documents.find(
-        document => document.documentId === value.documentId,
-      );
-      const currentRevision = current?.revision ?? 0;
+  const writer = {
+    upsert: (
+      input: JsonValue,
+      invocation: ServiceInvocation,
+    ) => mutate(async () => {
+        const value = input as unknown as UpsertInput;
+        const before = await readState();
+        const current = before.documents.find(
+          document => document.documentId === value.documentId,
+        );
+        const currentRevision = current?.revision ?? 0;
 
-      if (current?.revision === value.revision) {
-        if (current.text !== value.text) {
+        if (current?.revision === value.revision) {
+          if (current.text !== value.text) {
+            throw capabilityError(
+              "revision-conflict",
+              asJson({ currentRevision }),
+            );
+          }
+          await drainPending(before, invocation.effects);
+          return asJson(current);
+        }
+
+        if (value.revision !== currentRevision + 1) {
           throw capabilityError(
-            "revision-conflict",
+            "stale-revision",
             asJson({ currentRevision }),
           );
         }
-        await drainPending(before, invocation.effects);
-        return asJson(current);
-      }
 
-      if (value.revision !== currentRevision + 1) {
-        throw capabilityError(
-          "stale-revision",
-          asJson({ currentRevision }),
-        );
-      }
+        const next: IndexState = {
+          documents: [
+            ...before.documents.filter(
+              document => document.documentId !== value.documentId,
+            ),
+            value,
+          ],
+          pendingEvents: [
+            ...before.pendingEvents,
+            { documentId: value.documentId, revision: value.revision },
+          ],
+        };
+        await writeState(next);
+        await drainPending(next, invocation.effects);
+        return asJson(value);
+      }),
+  };
 
-      const next: IndexState = {
-        documents: [
-          ...before.documents.filter(
-            document => document.documentId !== value.documentId,
-          ),
-          value,
-        ],
-        pendingEvents: [
-          ...before.pendingEvents,
-          { documentId: value.documentId, revision: value.revision },
-        ],
-      };
-      await writeState(next);
-      await drainPending(next, invocation.effects);
-      return asJson(value);
-    }),
-  });
-
-  mount.provide("reader", {
-    get: async input => {
+  const reader = {
+    get: async (input: JsonValue) => {
       const value = input as unknown as GetInput;
       const record = (await readState()).documents.find(
         document => document.documentId === value.documentId,
@@ -172,7 +169,7 @@ serveService(async mount => {
       return asJson(record);
     },
 
-    search: async input => {
+    search: async (input: JsonValue) => {
       const value = input as unknown as SearchInput;
       const query = value.query.toLocaleLowerCase("und");
       const documents = (await readState()).documents;
@@ -196,11 +193,10 @@ serveService(async mount => {
         pendingEvents: state.pendingEvents.length,
       });
     },
-  });
+  };
 
   await mutate(async () => {
     await drainPending(await readState(), mount.effects);
   });
-  await mount.ready(["reader", "writer"]);
-  await waitForAbort(mount.signal);
+  return { exports: { reader, writer } };
 });

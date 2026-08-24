@@ -2,10 +2,11 @@
   "probeFormat": 1,
   "nonnormative": true,
   "baseline": "empty project",
-  "adds": [
+  "requested": [
     {
       "binding": "count-long-words",
       "rootRunAdmission": true,
+      "portableBaseline": true,
       "portableAttachmentRequests": {},
       "portableEffectRequests": {},
       "ambientEnvironment": false,
@@ -15,6 +16,7 @@
     {
       "binding": "compact-summary",
       "rootRunAdmission": true,
+      "portableBaseline": true,
       "portableAttachmentRequests": {},
       "portableEffectRequests": {},
       "ambientEnvironment": false,
@@ -22,6 +24,21 @@
       "undeclaredHostFilesystem": false
     }
   ],
+  "wouldGrant": {
+    "count-long-words": "portable baseline only",
+    "compact-summary": "portable baseline only",
+    "preparation": null,
+    "deniedToFinalRuns": [
+      "ambient environment",
+      "raw network",
+      "child processes",
+      "undeclared host filesystem",
+      "extra file descriptors",
+      "host IPC"
+    ]
+  },
+  "planned": null,
+  "realized": null,
   "intrinsicHostManagedExecutionInputsNotProjectGrants": [
     "the immutable admitted package or prepared tree",
     "the selected runtime substrate",
@@ -33,5 +50,5 @@
     "one trusted Runtime Adapter selected for the deno token",
     "a Sandbox Backend capable of realizing the pinned preparation plan and launch-authority envelope"
   ],
-  "reviewRule": "The real plan must show exact package, Adapter, toolchain, Backend, and requested, granted, and planned authority. The post-spawn enforcement receipt shows realized authority. This fixture supplies no evidence for either."
+  "reviewRule": "The real plan must show exact package, Adapter, toolchain, Backend, and requested, wouldGrant, and planned authority for preparation and final owners. This host-agnostic fixture declines to claim a concrete preparation wouldGrant or any plan. Post-spawn receipts alone fill realized authority."
 }

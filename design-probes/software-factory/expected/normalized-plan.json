@@ -2,7 +2,7 @@
   "probeFormat": 1,
   "nonnormative": true,
   "note": "Tabletop projection only. Exact package, Binding, contract, Adapter, toolchain, Backend, provider-generation, recipe, and candidate digests must be computed by a real host.",
-  "hostMatrixPrecondition": "The @jig/hooks-files stable-text source, @jig/agent-acp Run export, and @jig/semantic-choice ranker registration resolve exactly; Deno Service and Spindle implementations each have one complete enforcing activation recipe.",
+  "hostMatrixPrecondition": "The @jigging/hooks-files stable-text source, @jigging/agent-acp Run export, and @jigging/semantic-choice ranker registration resolve exactly; Deno Service and Sley implementations each have one complete enforcing activation recipe.",
   "flowSource": {
     "source": "./flows",
     "members": [
@@ -16,11 +16,11 @@
   "bindings": {
     "work-agent": {
       "kind": "host-capability",
-      "providerRegistration": "@jig/agent-acp#run",
+      "providerRegistration": "@jigging/agent-acp#run",
       "contract": {
         "id": "https://jig.dev/contracts/agent-run",
         "version": "1.0.0",
-        "digest": "sha256:d455730ec798a2cfbba5a5a37e2f8a2167325071dffc7fedc02a22e192b72dd2"
+        "digest": "sha256:ea66148b0ad15d5c060cb94b35fc7ce6ef8acbd5a764b70b92e89c8f11fc3715"
       },
       "export": "run",
       "attachments": {
@@ -33,11 +33,11 @@
     },
     "analysis-agent": {
       "kind": "host-capability",
-      "providerRegistration": "@jig/agent-acp#run",
+      "providerRegistration": "@jigging/agent-acp#run",
       "contract": {
         "id": "https://jig.dev/contracts/agent-run",
         "version": "1.0.0",
-        "digest": "sha256:d455730ec798a2cfbba5a5a37e2f8a2167325071dffc7fedc02a22e192b72dd2"
+        "digest": "sha256:ea66148b0ad15d5c060cb94b35fc7ce6ef8acbd5a764b70b92e89c8f11fc3715"
       },
       "export": "run",
       "attachments": {},
@@ -45,11 +45,11 @@
     },
     "repair-agent": {
       "kind": "host-capability",
-      "providerRegistration": "@jig/agent-acp#run",
+      "providerRegistration": "@jigging/agent-acp#run",
       "contract": {
         "id": "https://jig.dev/contracts/agent-run",
         "version": "1.0.0",
-        "digest": "sha256:d455730ec798a2cfbba5a5a37e2f8a2167325071dffc7fedc02a22e192b72dd2"
+        "digest": "sha256:ea66148b0ad15d5c060cb94b35fc7ce6ef8acbd5a764b70b92e89c8f11fc3715"
       },
       "export": "run",
       "attachments": {},
@@ -60,7 +60,7 @@
     },
     "semantic-choice": {
       "kind": "host-capability",
-      "providerRegistration": "@jig/semantic-choice#chooseViaAgent",
+      "providerRegistration": "@jigging/semantic-choice#chooseViaAgent",
       "contract": {
         "id": "https://jig.dev/contracts/semantic-choice",
         "version": "1.0.0",
@@ -90,7 +90,7 @@
       "package": "software-factory-triage@<exact-package-revision>",
       "mode": "run-exact",
       "implementationRoot": "flow.ts",
-      "adapterSelector": "spindle",
+      "adapterSelector": "sley",
       "slots": {
         "worker": "work-agent@<exact-admitted-revision>",
         "analyst": "analysis-agent@<exact-admitted-revision>",
@@ -149,7 +149,7 @@
   "hook": {
     "id": "on-inbox-item",
     "sourceKind": "owned-host-event-source",
-    "sourceRegistration": "@jig/hooks-files#stableTextFiles",
+    "sourceRegistration": "@jigging/hooks-files#stableTextFiles",
     "sourceRevision": "<exact-admitted-source-revision>",
     "type": "https://jig.dev/events/stable-text-file",
     "sourceSettings": {
@@ -165,7 +165,7 @@
     "journalInterval": "[<apply-boundary>, open)"
   },
   "semanticChoice": "semantic-choice@<exact-admitted-revision>",
-  "localSpindleRoute": {
+  "localSleyRoute": {
     "owner": "triage package",
     "edgeIds": [
       "gauntlet",

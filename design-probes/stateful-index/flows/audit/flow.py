@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 # DESIGN PROBE ONLY: hypothetical SDK, complete pseudocode behavior.
-from flow_run import CapabilityError, serve
+from flowmd_sdk import CapabilityError, serve_run
 
 
 async def audit(run):
@@ -51,4 +51,4 @@ async def audit(run):
     }
 
 
-serve(audit)
+serve_run(audit)

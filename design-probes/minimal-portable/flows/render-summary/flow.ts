@@ -1,7 +1,7 @@
 #!/usr/bin/env deno
 
 // DESIGN PROBE ONLY: hypothetical SDK, complete pseudocode behavior.
-import { serve } from "@flow/run";
+import { serveRun } from "@flowmd/sdk";
 
 interface SummaryInput {
   readonly label: string;
@@ -12,7 +12,7 @@ interface SummarySettings {
   readonly style: "plain" | "compact";
 }
 
-serve<SummaryInput, SummarySettings>(async ({ input, settings }) => {
+serveRun<SummaryInput, SummarySettings>(async ({ input, settings }) => {
   const text = settings.style === "compact"
     ? `${input.label}:${input.words}`
     : `${input.label}: ${input.words} words`;

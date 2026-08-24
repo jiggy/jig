@@ -1,5 +1,5 @@
 // DESIGN PROBE ONLY: one approved candidate for an open flow/call slot.
-import { bind, bindingRef } from "jig";
+import { bind, bindingRef } from "@jigging/jig";
 
 export default bind({
   use: "./flows/reference-fast",

@@ -70,7 +70,8 @@ containment predicates.
 1. Planning records the otherwise valid Binding as
    `ADMITTED + UNAVAILABLE(SANDBOX_UNAVAILABLE)`.
 2. Jig does not launch the implementation directly.
-3. The project cannot select `trusted-local` or a weaker Backend.
+3. V1 has no trusted-package mode, and the project cannot select a weaker
+   Backend.
 
 If a pinned Backend later fails to realize or attest the planned predicates at
 seal/spawn, the already ready Run fails `PERMISSION_UNENFORCEABLE` against its

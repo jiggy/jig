@@ -1,7 +1,7 @@
 // DESIGN PROBE ONLY.
 // Declaration shapes support editor/type review and contain no implementation.
 
-declare module "jig" {
+declare module "@jigging/jig" {
   export type JsonPrimitive = null | boolean | number | string;
 
   export type JsonValue =
@@ -51,16 +51,33 @@ declare module "jig" {
     readonly agent: BindingReference;
   }
 
-  export interface BindingDefinition {
-    readonly use: string | HostCapabilityReference;
+  export interface PackageBindingDefinition {
+    readonly use: string;
     readonly settings?: Readonly<Record<string, JsonValue>>;
     readonly slots?: Readonly<
       Record<string, BindingReference | CandidateSetReference>
     >;
     readonly attachments?: Readonly<Record<string, AttachmentRoot>>;
-    readonly grants?: Readonly<Record<string, JsonValue>>;
     readonly instruction?: InstructionConfiguration;
   }
+
+  export interface HostCapabilityBindingDefinition {
+    readonly use: HostCapabilityReference;
+    readonly settings?: Readonly<Record<string, JsonValue>>;
+    readonly slots?: Readonly<
+      Record<string, BindingReference | CandidateSetReference>
+    >;
+    readonly attachments?: Readonly<Record<string, AttachmentRoot>>;
+    // The concrete registration owns and validates this closed shape. Omission
+    // normalizes to {} / its least optional authority, never its ceiling.
+    // A real registration token carries the provider-specific static type;
+    // this declaration-only probe still relies on runtime Schema/1 validation.
+    readonly grants?: Readonly<Record<string, JsonValue>>;
+  }
+
+  export type BindingDefinition =
+    | PackageBindingDefinition
+    | HostCapabilityBindingDefinition;
 
   export interface HookDefinition {
     readonly on: EventSelector | EventSourceUse;
@@ -87,7 +104,13 @@ declare module "jig" {
 
   export function defineJig<T extends JigDefinition>(definition: T): Readonly<T>;
 
-  export function bind<T extends BindingDefinition>(definition: T): Readonly<T>;
+  export function bind(
+    definition: PackageBindingDefinition,
+  ): Readonly<PackageBindingDefinition>;
+
+  export function bind(
+    definition: HostCapabilityBindingDefinition,
+  ): Readonly<HostCapabilityBindingDefinition>;
 
   export function hook<T extends HookDefinition>(definition: T): Readonly<T>;
 
@@ -109,18 +132,18 @@ declare module "jig" {
   ): EventSelector;
 }
 
-declare module "@jig/agent-acp" {
-  import type { HostProviderExport } from "jig";
+declare module "@jigging/agent-acp" {
+  import type { HostProviderExport } from "@jigging/jig";
   export const run: HostProviderExport;
 }
 
-declare module "@jig/semantic-choice" {
-  import type { HostProviderExport } from "jig";
+declare module "@jigging/semantic-choice" {
+  import type { HostProviderExport } from "@jigging/jig";
   export const chooseViaAgent: HostProviderExport;
 }
 
-declare module "@jig/hooks-files" {
-  import type { AttachmentRoot, EventSourceUse } from "jig";
+declare module "@jigging/hooks-files" {
+  import type { AttachmentRoot, EventSourceUse } from "@jigging/jig";
 
   export function stableTextFiles(options: {
     readonly root: AttachmentRoot;

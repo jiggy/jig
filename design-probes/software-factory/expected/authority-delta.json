@@ -2,8 +2,7 @@
   "probeFormat": 1,
   "nonnormative": true,
   "baseline": "empty project",
-  "reviewRule": "A real plan must separately display requested, granted, planned, and post-spawn realized authority. This fixture is not enforcement evidence.",
-  "adds": [
+  "requested": [
     {
       "binding": "kanban",
       "serviceMount": true,
@@ -94,7 +93,7 @@
     },
     {
       "hook": "on-inbox-item",
-      "ownedSource": "@jig/hooks-files#stableTextFiles",
+      "ownedSource": "@jigging/hooks-files#stableTextFiles",
       "filesystem": {
         "root": "read-only ./inbox"
       },
@@ -105,19 +104,26 @@
       "canFilterRewriteDelayOrVeto": false
     }
   ],
-  "ambientAuthorityDenied": [
-    "environment variables as Flow configuration",
-    "undeclared host filesystem and protected .jig state",
-    "raw process or network authority for untrusted Flow components",
-    "Runtime Adapter or Sandbox Backend choice",
-    "implicit parent attachment, grant, slot, or skill inheritance",
-    "automatic activation of discovered or generated source"
-  ],
+  "wouldGrant": {
+    "status": "The aggregate candidate must resolve every package attachment, Service export, host-capability projection, Hook Event Source, and transitive child/Agent ceiling above before apply.",
+    "transitiveAuthority": "The triage review includes the exact authority reachable through worker, analyst, choice, kanban, and reference-research candidate Bindings; authority union is finite even when dependency edges cycle.",
+    "preparation": null,
+    "ambientDenied": [
+      "environment variables as Flow configuration",
+      "undeclared host filesystem and protected .jig state",
+      "raw process or network authority for untrusted Flow components",
+      "Runtime Adapter or Sandbox Backend choice",
+      "implicit parent attachment, grant, slot, or skill inheritance",
+      "automatic activation of discovered or generated source"
+    ]
+  },
+  "planned": null,
+  "realized": null,
   "intrinsicHostExecutionInputsNotProjectGrants": [
     "immutable admitted package or prepared tree",
     "pinned runtime substrate and private scratch",
     "FLOW/1 stdio and supervision descriptors"
   ],
-  "trustedProviderInternalAuthority": "Every host-capability registration's own transport, tools, and process authority is reviewed and disclosed separately from component grants.",
-  "realization": "The Sandbox Backend must later produce an enforcement receipt for each preparation and launch owner; no project file can claim this occurred."
+  "trustedProviderInternalAuthority": "Every host-capability registration's own transport, tools, and process authority is reviewed and disclosed separately from component authority.",
+  "evidenceRule": "This host-agnostic fixture declines to claim a concrete preparation wouldGrant or enforcement plan. The Sandbox Backend must later receipt each preparation and launch owner; authority-bearing host providers separately receipt their exact mediated projections. No project file can claim planned or realized authority."
 }

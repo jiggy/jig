@@ -1,0 +1,8 @@
+{
+  "private": true,
+  "type": "module",
+  "devDependencies": {
+    "@jigging/jig": "^1.0.0",
+    "@jigging/journal": "^1.0.0"
+  }
+}

@@ -19,6 +19,7 @@ operation ownership, provider loss, and replacement inspectable.
 stateful-index/
 ├── .gitignore
 ├── jig.ts
+├── package.json
 ├── bindings/
 │   ├── audit.ts
 │   ├── document-index.ts

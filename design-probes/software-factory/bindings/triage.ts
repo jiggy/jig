@@ -3,7 +3,7 @@ import {
   bind,
   bindingRef,
   candidates,
-} from "jig";
+} from "@jigging/jig";
 
 export default bind({
   use: "./flows/triage",

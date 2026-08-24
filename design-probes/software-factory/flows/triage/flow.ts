@@ -1,6 +1,6 @@
-#!/usr/bin/env spindle
+#!/usr/bin/env sley
 
-// DESIGN PROBE ONLY: coherent pseudocode against a hypothetical Spindle API.
+// DESIGN PROBE ONLY: coherent pseudocode against a hypothetical Sley API.
 import {
   Agent,
   type AgentResult,
@@ -13,7 +13,7 @@ import {
   type ParallelResult,
   Router,
   transition,
-} from "spindle";
+} from "sley";
 
 type Strategy = "gauntlet" | "majority-vote";
 

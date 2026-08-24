@@ -60,7 +60,7 @@ These are expected architectural outcomes, not executed tests.
 - If choice dispatch occurred but the result cannot be proven, the operation
   and owning Run become uncertain or fail according to exact effect rules. The
   same Router visit never asks again. A later graph visit would be a distinct
-  decision, but v1 does not recover a crashed Spindle continuation to create
+  decision, but v1 does not recover a crashed Sley continuation to create
   one.
 
 ## Agent and skill failure
@@ -71,7 +71,7 @@ These are expected architectural outcomes, not executed tests.
   skill subtrees, read-only and owner-scoped; omission means none. `worker`
   additionally has its fixed workspace; parallel `analyst` voters have no
   attachment or tools. The
-  Spindle caller has no overlapping workspace view. Research child Flows do
+  Sley caller has no overlapping workspace view. Research child Flows do
   not inherit either and use `analysis-agent`; repair gets only its staging
   Agent and direct instruction-Run attachment. Collision-free projection
   failure prevents provider work rather than copying into native skill roots.
@@ -89,7 +89,7 @@ These are expected architectural outcomes, not executed tests.
   approved candidate selects directly without Agent use.
 - Several eligible candidates use the one activation-pinned project Semantic
   Choice Binding or terminate `BINDING_AMBIGUOUS` when none is configured. The
-  local Spindle route is never consulted.
+  local Sley route is never consulted.
 - Zero eligible candidates terminates the `flow/call` and owning Run with
   `BINDING_MISSING`. It is not converted into the Flow's domain `blocked`
   outcome and does not sleep, reroute, or invoke repair automatically.
@@ -117,7 +117,7 @@ The probe intentionally excludes `WAITING_BINDING`: operation-scoped delayed
 first binding across admission generations is deferred from v1. Maintenance
 repairs desired state and a deliberate new attempt uses it.
 
-## Spindle crash, cancellation, and cleanup
+## Sley crash, cancellation, and cleanup
 
 - EOF before a complete root response loses the Run. Jig does not infer an
   outcome, restore the graph frame, reroute, or switch to instructions.

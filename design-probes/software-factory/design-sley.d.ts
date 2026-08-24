@@ -1,7 +1,7 @@
 // DESIGN PROBE ONLY.
-// Disposable syntax scaffolding for immutable Spindle state threading.
+// Disposable syntax scaffolding for immutable Sley state threading.
 
-declare module "spindle" {
+declare module "sley" {
   export type JsonValue =
     | null
     | boolean

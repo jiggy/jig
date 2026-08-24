@@ -22,7 +22,7 @@ The probe deliberately combines only:
 6. provider loss and uncertain mutation evidence; and
 7. replacement of the sole writable Service generation.
 
-There are no Agents, skills, Semantic Choice, Spindle graph, owned watcher,
+There are no Agents, skills, Semantic Choice, Sley graph, owned watcher,
 network effect, update implementation, GUI, or dynamic Service dependency.
 Those omissions keep every failure attributable to Service/1, Capability
 Contracts, Journal publication, Hooks, or project admission.

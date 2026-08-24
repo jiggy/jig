@@ -24,6 +24,7 @@ input.
 minimal-portable/
 ├── .gitignore
 ├── jig.ts
+├── package.json
 ├── bindings/
 │   ├── compact-summary.ts
 │   └── count-long-words.ts

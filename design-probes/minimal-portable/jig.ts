@@ -2,7 +2,7 @@
 import {
   defineJig,
   discover,
-} from "jig";
+} from "@jigging/jig";
 
 export default defineJig({
   flows: discover("./flows"),

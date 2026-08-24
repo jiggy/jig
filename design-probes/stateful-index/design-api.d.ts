@@ -1,5 +1,5 @@
 // DESIGN PROBE ONLY: closed project-authoring surface used by this fixture.
-declare module "jig" {
+declare module "@jigging/jig" {
   export type JsonValue =
     | null
     | boolean
@@ -40,13 +40,27 @@ declare module "jig" {
     readonly hooks?: DiscoverySource | readonly string[];
   }
 
-  export interface BindingDefinition {
-    readonly use: string | HostCapabilityReference;
+  export interface PackageBindingDefinition {
+    readonly use: string;
     readonly settings: Readonly<Record<string, JsonValue>>;
     readonly slots?: Readonly<Record<string, BindingReference>>;
     readonly attachments?: Readonly<Record<string, AttachmentRoot>>;
+  }
+
+  export interface HostCapabilityBindingDefinition {
+    readonly use: HostCapabilityReference;
+    readonly settings: Readonly<Record<string, JsonValue>>;
+    readonly slots?: Readonly<Record<string, BindingReference>>;
+    readonly attachments?: Readonly<Record<string, AttachmentRoot>>;
+    // Registration-specific attenuation, not a generic Jig permission map.
+    // Omission is {} / least optional authority, never maximum authority.
+    // The real provider token will carry the narrower static grants type.
     readonly grants?: Readonly<Record<string, JsonValue>>;
   }
+
+  export type BindingDefinition =
+    | PackageBindingDefinition
+    | HostCapabilityBindingDefinition;
 
   export interface EventSelector {
     readonly kind: "event-selector";
@@ -61,7 +75,13 @@ declare module "jig" {
 
   export function defineJig<T extends JigDefinition>(definition: T): Readonly<T>;
   export function discover(root: string): DiscoverySource;
-  export function bind<T extends BindingDefinition>(definition: T): Readonly<T>;
+  export function bind(
+    definition: PackageBindingDefinition,
+  ): Readonly<PackageBindingDefinition>;
+
+  export function bind(
+    definition: HostCapabilityBindingDefinition,
+  ): Readonly<HostCapabilityBindingDefinition>;
   export function bindingRef(binding: string): BindingReference;
   export function root(path: string): AttachmentRoot;
   export function hostCapability(
@@ -74,7 +94,7 @@ declare module "jig" {
   export function hook<T extends HookDefinition>(definition: T): Readonly<T>;
 }
 
-declare module "@jig/journal" {
-  import type { HostProviderExport } from "jig";
+declare module "@jigging/journal" {
+  import type { HostProviderExport } from "@jigging/jig";
   export const append: HostProviderExport;
 }

@@ -17,7 +17,7 @@ outcomes:
 
 # Software factory triage
 
-Create or recover the submission's Kanban card in `triage`. The root Spindle
+Create or recover the submission's Kanban card in `triage`. The root Sley
 Router then chooses only between the two Flows connected in this
 package: `gauntlet` and `majority-vote`. Candidate IDs are local edge IDs, not
 Jig Binding IDs, and the choice produces no arguments or authority.
@@ -38,7 +38,7 @@ advance a second strategy.
 Each Agent call selects only its role context: voters select `solution-design`,
 implementation and revision select `focused-coding`, and review/verification
 select `focused-validation`. Projection makes a selected Skill available; it
-does not prove the Agent obeyed it. The Spindle runner itself receives no
+does not prove the Agent obeyed it. The Sley runner itself receives no
 workspace view.
 
 This probe intentionally models one ticket at a time. It does not claim that a

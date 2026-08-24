@@ -36,7 +36,7 @@
       "run": "audit"
     }
   },
-  "granted": {
+  "wouldGrant": {
     "document-index": {
       "attachments": {
         "index": {
@@ -78,5 +78,8 @@
     "runtimeAdapters": ["bun", "python3"],
     "sandboxBackend": "<one exact enforcing Backend>",
     "projectMayOverride": false
-  }
+  },
+  "planned": null,
+  "realized": null,
+  "evidenceRule": "The candidate records wouldGrant. Adapter/Backend and host-provider projection plans produce planned authority; only their immutable execution receipts produce realized authority."
 }

@@ -3,6 +3,6 @@
     "strict": true
   },
   "imports": {
-    "spindle": "jsr:@flow/spindle@^1.0.0"
+    "sley": "npm:sley@^1.0.0"
   }
 }

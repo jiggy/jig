@@ -5,7 +5,7 @@ import {
   capabilityError,
   type JsonValue,
   serveService,
-} from "@flow/service";
+} from "@flowmd/sdk";
 
 type Stage =
   | "triage"
@@ -65,12 +65,13 @@ const asJson = (card: Card): JsonValue => card as unknown as JsonValue;
 
 const parseCard = (source: string): Card => JSON.parse(source) as Card;
 
-const waitForAbort = (signal: AbortSignal): Promise<void> =>
-  signal.aborted
-    ? Promise.resolve()
-    : new Promise(resolve =>
-      signal.addEventListener("abort", () => resolve(), { once: true })
-    );
+// Schema/1 intentionally omits regex. Domain identifiers are checked by the
+// operation before they can become filesystem names.
+const isSubmissionId = (value: string): boolean =>
+  /^[0-9a-f]{64}$/.test(value);
+
+const isCardId = (value: string): boolean =>
+  /^card-[0-9a-f]{64}$/.test(value);
 
 serveService(async mount => {
   const board = mount.attachment("board");
@@ -113,88 +114,95 @@ serveService(async mount => {
     await Deno.rename(temporary, pathFor(card.cardId));
   };
 
-  mount.provide("kanban", {
-    ensure: input => exclusive(async () => {
-      const value = input as unknown as EnsureInput;
-      const cardId = `card-${value.submissionId}`;
-      const existing = await read(cardId);
+  return {
+    exports: {
+      kanban: {
+        ensure: input => exclusive(async () => {
+          const value = input as unknown as EnsureInput;
+          if (!isSubmissionId(value.submissionId)) {
+            throw capabilityError("invalid-submission-id", {});
+          }
+          const cardId = `card-${value.submissionId}`;
+          const existing = await read(cardId);
 
-      if (existing !== undefined) {
-        if (
-          existing.submissionId !== value.submissionId ||
-          existing.title !== value.title ||
-          existing.request !== value.request
-        ) {
-          throw capabilityError("submission-conflict", {});
-        }
-        return asJson(existing);
-      }
+          if (existing !== undefined) {
+            if (
+              existing.submissionId !== value.submissionId ||
+              existing.title !== value.title ||
+              existing.request !== value.request
+            ) {
+              throw capabilityError("submission-conflict", {});
+            }
+            return asJson(existing);
+          }
 
-      const card: Card = {
-        cardId,
-        submissionId: value.submissionId,
-        title: value.title,
-        request: value.request,
-        stage: "triage",
-        revision: 1,
-        history: [{ revision: 1, stage: "triage" }],
-      };
-      await write(card);
-      return asJson(card);
-    }),
+          const card: Card = {
+            cardId,
+            submissionId: value.submissionId,
+            title: value.title,
+            request: value.request,
+            stage: "triage",
+            revision: 1,
+            history: [{ revision: 1, stage: "triage" }],
+          };
+          await write(card);
+          return asJson(card);
+        }),
 
-    transition: input => exclusive(async () => {
-      const value = input as unknown as TransitionInput;
-      const current = await read(value.cardId);
-      if (current === undefined) throw capabilityError("not-found", {});
-      if (current.revision !== value.expectedRevision) {
-        throw capabilityError("revision-conflict", {});
-      }
-      if (!NEXT[current.stage].includes(value.stage)) {
-        throw capabilityError("invalid-transition", {});
-      }
-      const requiredStrategy = value.stage === "research"
-        ? "gauntlet"
-        : value.stage === "voting"
-          ? "majority-vote"
-          : undefined;
-      if (
-        requiredStrategy !== undefined &&
-        value.strategy !== requiredStrategy
-      ) {
-        throw capabilityError("invalid-transition", {});
-      }
-      if (
-        value.strategy !== undefined &&
-        current.strategy !== undefined &&
-        current.strategy !== value.strategy
-      ) {
-        throw capabilityError("invalid-transition", {});
-      }
-      if (current.history.length >= 128) {
-        throw capabilityError("invalid-transition", {});
-      }
+        transition: input => exclusive(async () => {
+          const value = input as unknown as TransitionInput;
+          if (!isCardId(value.cardId)) {
+            throw capabilityError("invalid-card-id", {});
+          }
+          const current = await read(value.cardId);
+          if (current === undefined) throw capabilityError("not-found", {});
+          if (current.revision !== value.expectedRevision) {
+            throw capabilityError("revision-conflict", {});
+          }
+          if (!NEXT[current.stage].includes(value.stage)) {
+            throw capabilityError("invalid-transition", {});
+          }
+          const requiredStrategy = value.stage === "research"
+            ? "gauntlet"
+            : value.stage === "voting"
+              ? "majority-vote"
+              : undefined;
+          if (
+            requiredStrategy !== undefined &&
+            value.strategy !== requiredStrategy
+          ) {
+            throw capabilityError("invalid-transition", {});
+          }
+          if (
+            value.strategy !== undefined &&
+            current.strategy !== undefined &&
+            current.strategy !== value.strategy
+          ) {
+            throw capabilityError("invalid-transition", {});
+          }
+          if (current.history.length >= 128) {
+            throw capabilityError("invalid-transition", {});
+          }
 
-      const revision = current.revision + 1;
-      const card: Card = {
-        ...current,
-        strategy: value.strategy ?? current.strategy,
-        stage: value.stage,
-        revision,
-        history: [
-          ...current.history,
-          {
-            revision,
+          const revision = current.revision + 1;
+          const card: Card = {
+            ...current,
+            strategy: value.strategy ?? current.strategy,
             stage: value.stage,
-            ...(value.note === undefined ? {} : { note: value.note }),
-          },
-        ],
-      };
-      await write(card);
-      return asJson(card);
-    }),
-  });
-
-  await mount.ready(["kanban"]);
-  await waitForAbort(mount.signal);
+            revision,
+            history: [
+              ...current.history,
+              {
+                revision,
+                stage: value.stage,
+                ...(value.note === undefined ? {} : { note: value.note }),
+              },
+            ],
+          };
+          await write(card);
+          return asJson(card);
+        }),
+      },
+    },
+  };
 });

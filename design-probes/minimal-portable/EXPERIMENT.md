@@ -11,7 +11,7 @@
 
 Can a project author discover, configure, admit, inspect, and invoke two small
 exact Flows implemented for different runtime ecosystems without learning
-Agents, Hooks, semantic routing, Services, Spindle, or host sandbox machinery?
+Agents, Hooks, semantic routing, Services, Sley, or host sandbox machinery?
 
 The probe tests the authoring journey, the smallest language-SDK projection,
 and ownership boundaries. Its failure
@@ -58,7 +58,7 @@ It excludes:
 - Semantic Choice or missing-Flow repair;
 - FLOW Services or capability contracts;
 - inbox, Task, Git, GUI, or application-specific structure;
-- Spindle or any other graph runner; and
+- Sley or any other graph runner; and
 - project-controlled Runtime Adapter or Sandbox Backend selection.
 
 ## Project files and probe harness

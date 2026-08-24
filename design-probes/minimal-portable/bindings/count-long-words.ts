@@ -1,5 +1,5 @@
 // DESIGN PROBE ONLY: one complete reusable configuration.
-import { bind } from "jig";
+import { bind } from "@jigging/jig";
 
 export default bind({
   use: "./flows/count-text",

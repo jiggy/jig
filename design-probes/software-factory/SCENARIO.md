@@ -10,7 +10,7 @@ One reviewed project generation contains:
   access;
 - a mounted single-writer `kanban` Service with a read-write board attachment;
 - that Hook's exact durable Event-to-`triage` Run relation;
-- one Spindle triage package with two fixed outgoing strategy Flows;
+- one Sley triage package with two fixed outgoing strategy Flows;
 - distinct Agent Run Bindings for attachment-free analysis, writable factory
   work, and staging-only repair;
 - one exact Semantic Choice provider selected both through triage's local
@@ -47,7 +47,7 @@ real plan would propose a complete lock and admission generation together.
 
 ## Triage and processing
 
-1. Spindle presents only the Router's actual `gauntlet` and `majority-vote`
+1. Sley presents only the Router's actual `gauntlet` and `majority-vote`
    edges to the exact `choice` capability. That local choice contributes no
    parameters, package discovery, or authority.
 2. The selected branch moves the card by revision-checked compare-and-set
@@ -69,7 +69,7 @@ real plan would propose a complete lock and admission generation together.
    selected instruction-only child runs with its own package and Agent context;
    triage validates the returned JSON/1 `Reference` shape itself.
 4. Removing `semanticChoice: bindingRef("semantic-choice")` would not affect
-   the Spindle Router because it still has the explicit `choice` slot. It would
+   the Sley Router because it still has the explicit `choice` slot. It would
    make this two-candidate research call terminate `BINDING_AMBIGUOUS`. With
    only one eligible research candidate, removing it would change nothing.
 5. Agent calls select role context explicitly. Voters receive only
@@ -77,7 +77,7 @@ real plan would propose a complete lock and admission generation together.
    review and verification receive only `focused-validation`. Omission means
    no Flow-local skill. Selection projects context but does not prove Agent
    compliance.
-6. Spindle threads one immutable state record containing the Event, Kanban
+6. Sley threads one immutable state record containing the Event, Kanban
    card revision, and deliberate results. Parallel voters receive the same
    pre-fork state, return ordered results, and an explicit join constructs the
    next state. Jig never maps graph values or reads the board as graph memory.

@@ -31,7 +31,8 @@
       "properties": {
         "fingerprint": {
           "type": "string",
-          "pattern": "^[0-9a-f]{64}$"
+          "minLength": 64,
+          "maxLength": 64
         },
         "path": {
           "type": "string",

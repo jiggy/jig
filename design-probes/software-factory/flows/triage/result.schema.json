@@ -10,7 +10,8 @@
           "properties": {
             "cardId": {
               "type": "string",
-              "pattern": "^card-[0-9a-f]{64}$"
+              "minLength": 69,
+              "maxLength": 69
             },
             "strategy": {
               "enum": ["gauntlet", "majority-vote"]
@@ -36,7 +37,8 @@
           "properties": {
             "cardId": {
               "type": "string",
-              "pattern": "^card-[0-9a-f]{64}$"
+              "minLength": 69,
+              "maxLength": 69
             }
           },
           "required": ["cardId"],
@@ -55,7 +57,8 @@
           "properties": {
             "cardId": {
               "type": "string",
-              "pattern": "^card-[0-9a-f]{64}$"
+              "minLength": 69,
+              "maxLength": 69
             },
             "stage": {
               "enum": [

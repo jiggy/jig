@@ -3,6 +3,6 @@
     "strict": true
   },
   "imports": {
-    "@flow/run": "jsr:@flow/run@^1.0.0"
+    "@flowmd/sdk": "npm:@flowmd/sdk@^1.0.0"
   }
 }

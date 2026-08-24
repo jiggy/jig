@@ -11,7 +11,7 @@
     "data": {
       "type": "object",
       "properties": {
-        "fingerprint": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "fingerprint": { "type": "string", "minLength": 64, "maxLength": 64 },
         "path": { "type": "string", "minLength": 1, "maxLength": 255 },
         "text": { "type": "string", "minLength": 1, "maxLength": 262144 }
       },

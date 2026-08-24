@@ -1,5 +1,5 @@
 // DESIGN PROBE ONLY: one exact Bun Run using the same index generation.
-import { bind, bindingRef } from "jig";
+import { bind, bindingRef } from "@jigging/jig";
 
 export default bind({
   use: "./flows/search",

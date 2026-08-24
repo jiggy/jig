@@ -1,7 +1,7 @@
 // DESIGN PROBE ONLY.
 // Declaration shapes support editor/type review and contain no implementation.
 
-declare module "jig" {
+declare module "@jigging/jig" {
   export type JsonPrimitive = null | boolean | number | string;
 
   export type JsonValue =
@@ -30,7 +30,7 @@ declare module "jig" {
 
   export function defineJig<T extends JigDefinition>(definition: T): Readonly<T>;
 
-  export function bind<T extends PackageBindingDefinition>(
-    definition: T,
-  ): Readonly<T>;
+  export function bind(
+    definition: PackageBindingDefinition,
+  ): Readonly<PackageBindingDefinition>;
 }
