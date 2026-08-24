@@ -86,9 +86,29 @@ type RunHandler = (context: RunContext) => Promise<RunResult>;
 declare function serve(handler: RunHandler): Promise<void>;
 ```
 
-`run.signal` reports root cancellation. A call-specific signal cancels that
-local wait promptly and sends `request/cancel` if its request reached the
-wire. It does not claim that remote work was undone.
+`run.signal` reports root cancellation. If a call-specific signal is already
+aborted when `callFlow` or `callEffect` is invoked, or becomes aborted while
+that call is pending, the returned promise rejects with an `OperationError`
+whose `code` is exactly `CANCELLED`. The SDK sends `request/cancel` if the
+request reached the wire. This cancels the local wait promptly; it does not
+claim that remote work was undone.
+
+Code which catches only to observe this cancellation must rethrow every other
+failure:
+
+```ts
+try {
+  await run.callEffect(call, { signal });
+} catch (error) {
+  if (!(error instanceof OperationError) || error.code !== "CANCELLED") {
+    throw error;
+  }
+}
+```
+
+In particular, passing a call-specific signal does not convert an unrelated
+effect, operation, protocol, channel, validation, or programming failure into
+cancellation or success.
 
 ## 3. Python
 

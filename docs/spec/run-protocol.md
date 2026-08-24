@@ -208,11 +208,15 @@ While its root request is pending, the component may request one child Flow:
 }
 ```
 
-`operationId`, `slot`, and `input` are required. `intent` is the only optional
-member and is a 1–16,384 scalar string. It describes the requested work for an
-already admitted slot; it does not name candidates, configure a resolver, grant
-catalogue access, or widen authority. Exact project binding still wins, and an
-absent intent never means catalogue-wide discovery.
+`operationId`, `slot`, and `input` are required. Here `slot` is the
+consumer-local name of one child-Flow resolution slot admitted by the host. It
+is not a capability slot and is not declared in `FLOW.md` `uses`; child-Flow
+targets and candidate sets are project Binding data outside Package/1.
+`intent` is the only optional member and is a 1–16,384 scalar string. It
+describes the requested work for that already admitted slot; it does not name
+candidates, configure a resolver, grant catalogue access, or widen authority.
+Exact project binding still wins, and an absent intent never means
+catalogue-wide discovery.
 
 Success returns the same complete `{ outcome, output }` value as `flow/run`.
 Nested execution is a host operation, not graph merging or settings/authority
@@ -221,7 +225,8 @@ inheritance.
 ## 5. `effect/call`
 
 While its root request is pending, the component may call one method through a
-bound capability slot:
+bound capability slot. Unlike a `flow/call` slot, this slot is a capability
+dependency declared by the package's `FLOW.md` `uses` entry:
 
 ```json
 {

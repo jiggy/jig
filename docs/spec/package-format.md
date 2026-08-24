@@ -138,6 +138,12 @@ uses:
     local: true
 ```
 
+Every `uses` key names a capability slot addressable through Run/1
+`effect/call` (or through the corresponding Service capability boundary).
+`uses` never declares a Run/1 `flow/call` slot. Child-Flow resolution slots,
+their exact targets, and any closed candidate sets are project Binding data,
+not package capability metadata.
+
 The public and local forms are closed and mutually exclusive. Missing a
 descriptor never implies a weaker public contract. Each `provides` value is
 likewise an exact `./` author reference to a self-contained Capability

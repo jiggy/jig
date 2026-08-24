@@ -312,6 +312,97 @@ describe("RunSession", () => {
     });
   });
 
+  test("already-aborted call signals reject both call kinds as CANCELLED without dispatch", async () => {
+    const transport = new MemoryTransport();
+    const session = new RunSession(transport, async (run) => {
+      const controller = new AbortController();
+      controller.abort();
+
+      const calls = [
+        run.callFlow(
+          {
+            operationId: "cancelled-flow:1",
+            slot: "worker",
+            input: null,
+          },
+          { signal: controller.signal },
+        ),
+        run.callEffect(
+          {
+            operationId: "cancelled-effect:1",
+            slot: "records",
+            method: "write",
+            input: null,
+          },
+          { signal: controller.signal },
+        ),
+      ];
+
+      const settlements = await Promise.allSettled(calls);
+      for (const settlement of settlements) {
+        expect(settlement.status).toBe("rejected");
+        if (settlement.status !== "rejected") throw new Error("expected cancellation");
+        expect(settlement.reason).toBeInstanceOf(OperationError);
+        expect((settlement.reason as OperationError).code).toBe("CANCELLED");
+      }
+
+      return { outcome: "done", output: "no-call-dispatched" };
+    });
+    const completion = session.run();
+    transport.push(rootRequest());
+    await completion;
+
+    expect(transport.writes).toHaveLength(1);
+    expect(transport.message(0).result).toEqual({
+      outcome: "done",
+      output: "no-call-dispatched",
+    });
+  });
+
+  test("a cancellation-only catch preserves unrelated call failures", async () => {
+    const transport = new MemoryTransport();
+    const session = new RunSession(transport, async (run) => {
+      const controller = new AbortController();
+      try {
+        await run.callEffect(
+          {
+            operationId: "write:permission-check",
+            slot: "records",
+            method: "write",
+            input: null,
+          },
+          { signal: controller.signal },
+        );
+        throw new Error("expected an operational failure");
+      } catch (error) {
+        if (error instanceof OperationError && error.code === "CANCELLED") {
+          return { outcome: "done", output: "cancelled" };
+        }
+        throw error;
+      }
+    });
+    const completion = session.run();
+    transport.push(rootRequest());
+    await transport.waitForWrites(1);
+    const request = transport.message(0);
+    transport.push({
+      jsonrpc: "2.0",
+      id: request.id as string,
+      error: {
+        code: -32000,
+        message: "The records slot denied write access",
+        data: { code: "PERMISSION_DENIED" },
+      },
+    });
+    await completion;
+
+    expect(transport.message(1).error).toEqual({
+      code: -32000,
+      message: "The records slot denied write access",
+      data: { code: "PERMISSION_DENIED" },
+    });
+  });
+
   test("preserves an unhandled operational failure at the root", async () => {
     const transport = new MemoryTransport();
     const session = new RunSession(transport, async () => {

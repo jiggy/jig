@@ -22,9 +22,12 @@ await serve(async (run: RunContext): Promise<RunResult> => {
 ```
 
 `serve()` owns the process's protocol stdin and stdout and serves exactly one
-root Run. Root cancellation is exposed through `run.signal`. A call-specific
-`AbortSignal` cancels the local wait and sends the matching Run/1 cancellation
-notification without claiming that remote work was undone.
+root Run. Root cancellation is exposed through `run.signal`. An already or
+later aborted call-specific `AbortSignal` rejects that call with
+`OperationError` code `CANCELLED` and sends the matching Run/1 cancellation
+notification if the request reached the wire. A cancellation-only catch must
+rethrow every other error. Cancellation does not claim that remote work was
+undone.
 
 Build and verify a clean tarball install with:
 
