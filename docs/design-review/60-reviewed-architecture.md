@@ -2060,10 +2060,11 @@ libraries.
 The present design is not yet independently implementable at every boundary.
 Release gates apply to the slice which claims a label; unrelated interfaces do
 not create a waterfall. Run/1 now has closed candidate method schemas, framing,
-limits, an error registry, private TypeScript/Python SDK implementations, and
-an initial shared executable corpus. A complete conformance matrix, built
-package artifacts, and a second independent peer still gate a stable Run/1
-label. The remaining repository gap inventory includes:
+limits, an error registry, private TypeScript/Python SDK implementations,
+clean package-install evidence, an expanded black-box matrix, and an
+independent Python host for the shared golden conversation. A complete
+conformance matrix passing under two independent peers still gates a stable
+Run/1 label. The remaining repository gap inventory includes:
 
 - exact closed JSON-RPC parameter, result, error-data, version-evolution, owner
   attribution, and numeric limit definitions for every Service/1 method;

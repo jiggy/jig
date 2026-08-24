@@ -12,10 +12,12 @@ repeat by separating reviewed semantics from actual public interfaces.
 The repository contains reviewed prose, concrete Capability Contract
 descriptors, and a closed Run/1 candidate with a machine message schema and
 error registry. It now also contains private `0.0.0` TypeScript and Python
-candidate SDKs plus a shared executable seed corpus. Run/1 is not yet a stable
-conformance label: the complete matrix, independent peer, packaging, and
-publication checks remain release gates. The repository contains no Jig
-implementation or published SDK. The intended package names are:
+candidate SDKs, clean package-build/install checks, an expanded Bun-hosted
+behavioral matrix, and a clean-room Python host for the shared golden
+conversation. Run/1 is not yet a stable conformance label: the complete
+behavioral matrix has not passed under two independent peers, and publication
+checks remain deferred. The repository contains no Jig implementation or
+published SDK. The intended package names are:
 
 ```text
 @jigging/jig    Jig TypeScript package
@@ -88,9 +90,12 @@ The selected semantic vocabulary is `serve(handler)`, `RunContext`,
 `RunResult`, `callFlow`/`call_flow`, `callEffect`/`call_effect`,
 `OperationError`, `EffectError`, and JSON value types. The checked-in source
 declarations and examples are authoritative for this candidate, not a
-publication claim. The seed corpus proves one shared full-duplex conversation;
-the remaining race/error matrix, built package artifacts, and second
-independent peer are required before a stable label or independent probe.
+publication claim. Both source projections pass one shared full-duplex
+conversation, a Bun host exercises the expanded behavioral matrix, and an
+independent Python host repeats the golden path. The private npm tarball and
+unpublished wheel and sdist artifacts also pass clean-install checks. The
+remaining matrix must be closed and exercised under two independent peers
+before a stable label.
 
 ### FLOW Service SDK
 
@@ -185,8 +190,7 @@ need; keep compiler IR private when possible.
 
 The repository still needs:
 
-- the complete Run/1 conformance corpus, built package artifacts, and a second
-  independent peer;
+- the complete Run/1 conformance corpus passing under two independent peers;
 - closed Service/1 method schemas, owner-attribution model, and error registry;
 - `schema-1.json`;
 - `capability-contract-1.schema.json`;

@@ -31,3 +31,23 @@ test("component peer rejects partial trailing output", async () => {
     await peer.dispose();
   }
 });
+
+test("component peer drains and permits stderr diagnostics", async () => {
+  const peer = new ComponentPeer([
+    process.execPath,
+    "-e",
+    `process.stderr.write("x".repeat(1024 * 1024));
+process.stdout.write('{"jsonrpc":"2.0","id":"host:1","result":null}\\n');`,
+  ]);
+
+  try {
+    expect(await peer.receive()).toEqual({
+      jsonrpc: "2.0",
+      id: "host:1",
+      result: null,
+    });
+    await peer.finish();
+  } finally {
+    await peer.dispose();
+  }
+});

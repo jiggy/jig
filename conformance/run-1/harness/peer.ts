@@ -4,6 +4,7 @@ import { parseFrame } from "./json1";
 
 const encoder = new TextEncoder();
 const MAX_FRAME_BYTES = 16_777_216;
+const MAX_DIAGNOSTIC_BYTES = 65_536;
 
 export type Message = Record<string, unknown>;
 
@@ -16,6 +17,7 @@ interface Waiter {
 export class ComponentPeer {
   private readonly reader: ReadableStreamDefaultReader<Uint8Array>;
   private readonly pumpDone: Promise<void>;
+  private readonly diagnostics: Promise<string>;
   private buffer = new Uint8Array();
   private readonly messages: Message[] = [];
   private readonly waiters: Waiter[] = [];
@@ -34,6 +36,9 @@ export class ComponentPeer {
     });
     this.reader = this.process.stdout.getReader();
     this.pumpDone = this.pump();
+    // Run/1 permits diagnostics on stderr. Drain it immediately so a noisy
+    // component cannot block before reaching its terminal state.
+    this.diagnostics = drainDiagnostics(this.process.stderr);
   }
 
   send(message: Message): void {
@@ -81,7 +86,7 @@ export class ComponentPeer {
       // Killing an already-exited process is harmless cleanup.
     }
     await this.process.exited;
-    await this.pumpDone;
+    await Promise.all([this.pumpDone, this.diagnostics]);
   }
 
   async exit(timeoutMs = 3_000): Promise<number> {
@@ -97,7 +102,7 @@ export class ComponentPeer {
   async finish(timeoutMs = 3_000): Promise<void> {
     this.closeInput();
     const exitCode = await this.exit(timeoutMs);
-    await this.pumpDone;
+    await Promise.all([this.pumpDone, this.diagnostics]);
     if (exitCode !== 0) {
       throw new Error(`component exited ${exitCode}: ${await this.stderr()}`);
     }
@@ -108,7 +113,7 @@ export class ComponentPeer {
   }
 
   async stderr(): Promise<string> {
-    return await new Response(this.process.stderr).text();
+    return await this.diagnostics;
   }
 
   private async pump(): Promise<void> {
@@ -174,4 +179,32 @@ function concat(left: Uint8Array, right: Uint8Array): Uint8Array {
   joined.set(left);
   joined.set(right, left.byteLength);
   return joined;
+}
+
+async function drainDiagnostics(stream: ReadableStream<Uint8Array>): Promise<string> {
+  const reader = stream.getReader();
+  const chunks: Uint8Array[] = [];
+  let length = 0;
+  let truncated = false;
+
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    const remaining = MAX_DIAGNOSTIC_BYTES - length;
+    if (remaining > 0) {
+      const kept = value.slice(0, remaining);
+      chunks.push(kept);
+      length += kept.byteLength;
+    }
+    if (value.byteLength > remaining) truncated = true;
+  }
+
+  const bytes = new Uint8Array(length);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  const text = new TextDecoder().decode(bytes);
+  return truncated ? `${text}\n[stderr truncated]` : text;
 }

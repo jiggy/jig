@@ -2,8 +2,8 @@
 
 **Status:** closed candidate projection of
 [`FLOW Run/1`](run-protocol.md). The implementations are private `0.0.0`
-packages while the complete conformance matrix and an independent peer remain
-release gates.
+packages while the complete shared conformance matrix still has to pass under
+two independent peers.
 
 This document fixes the public component-author interface for the Run/1
 slice. It does not add wire behavior. When this document and Run/1 differ,

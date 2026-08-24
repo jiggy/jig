@@ -418,7 +418,8 @@ Services, Agents, or graph types. `operationId` remains caller-supplied.
 The exact language projections and their cancellation/error behavior are
 closed in [`Run SDK/1`](run-sdk.md).
 
-The seed corpus under `conformance/run-1/` is executable evidence for this
-candidate, not yet the complete conformance corpus. A stable label requires
-the closed release-gate matrix and a second independent implementation rather
-than two wrappers around one codec.
+The corpus under `conformance/run-1/` is executable evidence for this
+candidate, not yet the complete conformance corpus. A clean-room Python host
+already shares the golden conversation; a stable label requires the complete
+release-gate matrix to pass under two independent peers rather than two
+wrappers around one codec.
