@@ -29,11 +29,13 @@ package names are:
 @flowmd/sdk     FLOW TypeScript SDK
 flowmd-sdk      FLOW Python distribution
 flowmd_sdk      FLOW Python import
-sley            independent Sley TypeScript/Python graph runtime
+@jigging/sley   independent Sley TypeScript graph runtime
+sley            independent Sley Python graph runtime
 ```
 
-These names are distribution intent, not protocol identities or claims that a
-package is published. Sley owns its public graph API upstream.
+These names are distribution coordinates, not protocol identities. Sley owns
+and publishes its public graph APIs upstream; the Jig and FLOW SDK names remain
+pre-release intent in this repository.
 
 ## Decontamination disposition
 
@@ -186,6 +188,13 @@ It must not subclass Sley graph elements, attach Jig metadata to them, fork the
 scheduler, or claim Sley owns semantic routing. The first executable check uses
 a deterministic chooser; an LLM-backed engine comes only after valid and
 invalid routes pass.
+
+The external Sley-backed component under `conformance/run-1/` now proves the
+lower boundary using published `@jigging/sley`: ordinary component code maps
+`RunContext -> Sley state -> RunResult` and explicitly preserves an operational
+failure through Sley's `RunError`. It intentionally adds no adapter package,
+compiler, or conformance claim. Repeated real components must first demonstrate
+that a shared helper is worth publishing.
 
 This model is not automatically a second user-authored workflow DSL or a
 universal graph schema. Expose only the authoring surface real Jig Graph users

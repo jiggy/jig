@@ -43,7 +43,8 @@ identities:
 
 ```text
 Jig TypeScript package       @jigging/jig
-Sley graph runtime           sley
+Sley TypeScript runtime      @jigging/sley
+Sley Python dist./import     sley
 FLOW TypeScript SDK          @flowmd/sdk
 FLOW Python distribution     flowmd-sdk
 FLOW Python import           flowmd_sdk
@@ -2014,10 +2015,12 @@ Starter dependency.
 Sley—the graph runtime previously discussed as Caskada v3 and Spindle—is an
 independent graph runtime intended for a reference Run/1 component,
 not a Jig executor or FLOW implementation by itself. It receives no privileged
-in-process Jig path: a separate FLOW adapter around a Sley graph speaks Run/1
-through the same external component boundary. The intended npm and Python distribution
-name is `sley`; at this review the upstream repository is version `0.0.1` and
-is not published.
+in-process Jig path: ordinary component code composes `@flowmd/sdk` around a
+Sley graph and speaks Run/1 through the same external boundary. The published
+distribution names are `@jigging/sley` for TypeScript and `sley` for Python.
+Sley owns and versions those APIs upstream. Exact releases remain native
+package dependencies and lock evidence rather than FLOW protocol, Package/1,
+or Jig Graph workflow identities.
 
 Sley owns only live graph advancement. A `node` wraps one handler;
 `context.state` is run-shared state; `context.input` is branch-local input;
