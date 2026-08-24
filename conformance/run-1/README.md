@@ -19,6 +19,14 @@ The current corpus has five layers:
   direction, root lifecycle, cancellation, framing, request-bound,
   operation-identity, and hostile-response cases.
 
+`sley-integration.test.ts` separately runs one external component implemented
+with published `@jigging/sley` and the private local `@flowmd/sdk` candidate.
+It proves that a graph can sit behind the ordinary Run/1 boundary and exercises
+the component-local unwrapping needed to preserve an existing Run/1
+operational classification through Sley's structured failure wrapper. This is
+integration evidence, not another independent Run/1 peer, a Sley conformance
+claim, or a public FLOW-to-Sley adapter API.
+
 Run it with:
 
 ```console

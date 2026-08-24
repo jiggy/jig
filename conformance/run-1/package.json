@@ -3,6 +3,7 @@
   "private": true,
   "type": "module",
   "devDependencies": {
+    "@jigging/sley": "0.0.2",
     "ajv": "8.17.1"
   }
 }
