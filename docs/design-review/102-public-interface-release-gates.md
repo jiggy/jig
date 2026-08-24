@@ -16,8 +16,13 @@ candidate SDKs, clean package-build/install checks, an expanded Bun-hosted
 behavioral matrix, and a clean-room Python host for the shared golden
 conversation. Run/1 is not yet a stable conformance label: the complete
 behavioral matrix has not passed under two independent peers, and publication
-checks remain deferred. The repository contains no Jig implementation or
-published SDK. The intended package names are:
+checks remain deferred. The repository also contains private Jig slices for
+Package capture and inspection, Schema and Capability Contract validation,
+captured-package materialization, and one Run/1 host session over an already
+fenced exact component process. This is not yet a public Jig SDK or complete
+controller: runtime preparation, Sandbox Backend activation, child-Flow/effect
+dispatch, and durable admission remain separate unfinished seams. The intended
+package names are:
 
 ```text
 @jigging/jig    Jig TypeScript package
