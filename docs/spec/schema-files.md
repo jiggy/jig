@@ -1,8 +1,8 @@
 # FLOW Schema/1 files
 
-**Status:** reviewed architecture specification; publication of the
-`https://flow.dev/schemas/schema-1.json` meta-schema and cross-implementation
-fixtures remains a release gate.
+**Status:** reviewed architecture specification with a published
+`https://flow.dev/schemas/schema-1.json` machine meta-schema. Independent
+cross-implementation fixtures remain a release gate.
 
 FLOW packages may expose three fixed, inert JSON Schema files. They describe
 values; they are never runtime mailboxes, configuration stores, templates, or
@@ -119,10 +119,18 @@ limited to JSON/1 scalars; structural alternatives use schema applicators.
 descriptor which embeds them still digests the complete descriptor; “inert for
 validation” does not mean “excluded from interface identity.”
 
-`$defs` is allowed only on the root object. `$ref` accepts only an acyclic
-same-document JSON Pointer of the form `#/$defs/<name>`; remote, relative,
-anchor, recursive, and dynamic resolution are invalid. Referenced definitions
-use the same closed dialect.
+`$defs` is allowed only on the root object. Definition names match
+`[A-Za-z][A-Za-z0-9]{0,63}`. `$ref` accepts only an acyclic same-document
+reference spelled exactly `#/$defs/<name>` with one such definition name;
+percent encoding and JSON Pointer `~` escapes are not supported. Remote,
+relative, anchor, recursive, and dynamic resolution are invalid. Referenced
+definitions use the same closed dialect.
+
+For a Capability Contract/1 embedded schema graph, the descriptor's `$defs`
+map is the sole root definition map. Method, error, and definition schemas do
+not declare their own `$defs`. All embedded roots and shared definitions are
+compiled together so the graph-wide node, depth, and reference rules cannot be
+evaded by splitting an interface into many methods.
 
 Validation is pure. A conforming evaluator never coerces a value, inserts a
 default, removes a property, resolves a URI, executes code, or changes the
@@ -199,10 +207,17 @@ Schema compilation errors use stable codes:
 
 ```text
 SCHEMA_INVALID_JSON
+SCHEMA_INVALID
 SCHEMA_KEYWORD_UNSUPPORTED
 SCHEMA_REFERENCE_INVALID
 SCHEMA_LIMIT_EXCEEDED
 ```
+
+`SCHEMA_INVALID_JSON` is reserved for invalid UTF-8, JSON syntax, duplicate
+members, and other JSON/1 failures. `SCHEMA_INVALID` means the parsed value
+violates Schema/1's root, keyword-location, or keyword-value-shape rules.
+Keeping those cases distinct lets a host report malformed data without
+misclassifying a well-formed but invalid schema as an unsupported extension.
 
 Instance rejection uses `INVALID_INPUT`, `INVALID_SETTINGS`, or
 `INVALID_RESULT`. Each diagnostic contains:
@@ -214,10 +229,15 @@ schemaPointer        RFC 6901
 keyword              when applicable
 ```
 
-Human wording and multi-error ordering are non-normative. The future Jig
-inspection surface must expose schema digests and report schema compilation
-and example-fixture failures without evaluating package code; its command and
-SDK spellings remain release-gated.
+Human wording and multi-error ordering are non-normative. Schema/1 defines no
+standalone public schema digest. A package schema is identified by its
+containing Package/1 digest and canonical logical path; an embedded schema by
+its containing Capability Contract/1 digest and JSON Pointer. A host may use a
+private cache fingerprint, but that value is not a portable identity,
+compatibility token, lock input, or author-facing requirement. The future Jig
+inspection surface reports those containing identities and locations, plus
+schema compilation and example-fixture failures, without evaluating package
+code; its command and SDK result models remain release-gated.
 
 ## 6. Examples
 

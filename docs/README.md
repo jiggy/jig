@@ -16,13 +16,15 @@ Start here:
 4. Focused specifications:
    - [`spec/json-values.md`](spec/json-values.md)
    - [`spec/package-format.md`](spec/package-format.md)
-   - [`spec/schema-files.md`](spec/schema-files.md)
+   - [`spec/schema-files.md`](spec/schema-files.md), with its
+     [`machine meta-schema`](spec/machine/schema-1.json)
    - [`spec/run-protocol.md`](spec/run-protocol.md), with its closed candidate
      [`message schema`](spec/machine/run-1.schema.json) and
      [`error registry`](spec/machine/run-1-errors.json)
    - [`spec/run-sdk.md`](spec/run-sdk.md)
    - [`spec/runtime-adapters.md`](spec/runtime-adapters.md)
-   - [`spec/capability-contracts.md`](spec/capability-contracts.md)
+   - [`spec/capability-contracts.md`](spec/capability-contracts.md), with its
+     [`machine descriptor schema`](spec/machine/capability-contract-1.schema.json)
    - [`spec/project-policy.md`](spec/project-policy.md)
    - [`spec/journal-and-hooks.md`](spec/journal-and-hooks.md)
    - [`spec/agents-and-semantic-choice.md`](spec/agents-and-semantic-choice.md)

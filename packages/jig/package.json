@@ -1,0 +1,27 @@
+{
+  "name": "@jigging/jig",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Jig FLOW host",
+  "type": "module",
+  "bin": {
+    "jig": "./dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "bun run clean && bun node_modules/typescript/bin/tsc -p tsconfig.json",
+    "clean": "bun -e \"import { rm } from 'node:fs/promises'; await rm('dist', { recursive: true, force: true })\"",
+    "test": "bun test",
+    "check": "bun run build && bun test"
+  },
+  "dependencies": {
+    "yaml": "2.9.0"
+  },
+  "devDependencies": {
+    "@types/node": "24.13.3",
+    "typescript": "7.0.2"
+  }
+}
