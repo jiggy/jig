@@ -3,6 +3,8 @@
   "type": "module",
   "scripts": {
     "app": "bun run app/server.ts"
+  },
+  "dependencies": {
+    "@jigging/jig": "^1.0.0"
   }
 }
-

@@ -9,6 +9,5 @@
     "target": "ESNext",
     "types": []
   },
-  "include": ["**/*.ts", "**/*.d.ts"]
+  "include": ["../design-flow-sdk.d.ts", "**/*.ts", "**/*.d.ts"]
 }
-

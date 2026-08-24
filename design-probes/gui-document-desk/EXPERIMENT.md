@@ -7,29 +7,26 @@
 
 ## Question under test
 
-Can a small interactive application use Jig without making HTTP, browser code,
-Journal queries, or GUI extension concepts part of FLOW?
+Can a small interactive application submit and inspect Jig Runs without making
+HTTP, browser code, or GUI extension concepts part of FLOW?
 
 The probe contains:
 
 1. an ordinary trusted Bun application server and framework-free browser UI;
 2. one file-backed FLOW Service providing read and write index capabilities;
 3. one Python ingestion Run and one Bun search Run;
-4. one explicit Journal publication Binding; and
-5. Jig's host-local control surface for root submission, cancellation, Run
-   inspection, and bounded Event inspection.
+4. Jig's candidate local embedding surface for root submission, cancellation,
+   and Run inspection.
 
 The application server is deliberately **not** a Flow. The user starts it as
 ordinary application code. It may listen on localhost because it runs under
-the user's application authority, not inside an untrusted FLOW sandbox. Its
-Jig client is authenticated to one local project and can request only Jig
-control operations; it cannot mutate project policy or obtain Flow effect
-bindings.
+the user's authority, not inside an untrusted FLOW sandbox. The probe does not
+pretend that a caller-authored authority object can sandbox a same-user
+process.
 
 The browser never talks to Jig directly. It receives a narrow application API
-from the Bun server. Near-live Event display uses bounded polling over the
-host-local inspection surface. FLOW's portable Journal capability remains
-append-only and Service/1 gains no subscription or callback primitive.
+from the Bun server. Run polling is sufficient for this application, so the
+probe does not earn a Journal reader or streaming protocol.
 
 ## Falsification rules
 
@@ -46,13 +43,13 @@ The design fails if the scenario requires:
 
 - Jig needs a small host-local control API, not a GUI framework. CLI, GUI, and
   trusted modules should share the same root submission operation.
-- `startRun` alone is insufficient for a real frontend. Bounded `getRun`,
-  idempotent `cancelRun`, and bounded forward `readEvents` inspection are also
-  needed. These are Jig host APIs, not FLOW/1 methods or Capability Contracts.
-- A client credential must be project-scoped and operation-scoped. Browser
-  code never receives it.
-- Polling is enough for v1. A host-local streaming convenience can be added
-  later without changing FLOW, but this probe does not earn one.
+- `startRun` alone is insufficient for this frontend. Bounded `getRun` and
+  idempotent `cancelRun` are plausible host operations, but their package and
+  transport spelling remains a candidate rather than a frozen standard.
+- `@jigging/jig` is the intended product surface. The earlier `@jig/client`
+  package and caller-authored authority object were unearned inventions.
+- Polling Run records is enough. No Event reader, subscription, SSE, or
+  WebSocket is needed.
 - The GUI owns presentation and HTTP policy. Jig returns stable machine facts;
   it does not render domain objects or infer UI routes.
 
@@ -60,6 +57,6 @@ The design fails if the scenario requires:
 
 1. Read [`SCENARIO.md`](SCENARIO.md).
 2. Trace `app/server.ts` and `app/public/app.js`.
-3. Inspect the bindings and three FLOW packages.
+3. Inspect the three justified package Bindings and three FLOW packages.
 4. Tabletop `expected/` and the authority delta.
 5. Challenge each invented surface through [`API-LEDGER.md`](API-LEDGER.md).

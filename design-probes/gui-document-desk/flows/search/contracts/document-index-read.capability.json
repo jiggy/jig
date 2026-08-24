@@ -1,78 +1,23 @@
 {
   "$schema": "https://flow.dev/schemas/capability-contract-1.schema.json",
   "flowCapabilityContract": 1,
-  "id": "https://probe.jig.dev/contracts/document-index-read",
+  "id": "https://probe.jig.dev/contracts/gui-document-index-read",
   "version": "1.0.0",
   "methods": {
-    "get": {
-      "input": { "$ref": "#/$defs/GetInput" },
-      "output": { "$ref": "#/$defs/DocumentRecord" },
-      "errors": {
-        "not-found": { "$ref": "#/$defs/Empty" }
-      }
-    },
     "search": {
       "input": { "$ref": "#/$defs/SearchInput" },
       "output": { "$ref": "#/$defs/SearchResult" },
       "errors": {}
-    },
-    "stats": {
-      "input": { "$ref": "#/$defs/Empty" },
-      "output": { "$ref": "#/$defs/Stats" },
-      "errors": {}
     }
   },
   "$defs": {
-    "Empty": {
-      "type": "object",
-      "properties": {},
-      "additionalProperties": false
-    },
-    "DocumentId": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 128
-    },
-    "Revision": {
-      "type": "integer",
-      "minimum": 1,
-      "maximum": 9007199254740991
-    },
-    "DocumentRecord": {
-      "type": "object",
-      "properties": {
-        "documentId": { "$ref": "#/$defs/DocumentId" },
-        "revision": { "$ref": "#/$defs/Revision" },
-        "text": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 262144
-        }
-      },
-      "required": ["documentId", "revision", "text"],
-      "additionalProperties": false
-    },
-    "GetInput": {
-      "type": "object",
-      "properties": {
-        "documentId": { "$ref": "#/$defs/DocumentId" }
-      },
-      "required": ["documentId"],
-      "additionalProperties": false
-    },
+    "DocumentId": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "Revision": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
     "SearchInput": {
       "type": "object",
       "properties": {
-        "query": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 4096
-        },
-        "limit": {
-          "type": "integer",
-          "minimum": 1,
-          "maximum": 100
-        }
+        "query": { "type": "string", "minLength": 1, "maxLength": 4096 },
+        "limit": { "type": "integer", "minimum": 1, "maximum": 100 }
       },
       "required": ["query", "limit"],
       "additionalProperties": false
@@ -82,10 +27,7 @@
       "properties": {
         "documentId": { "$ref": "#/$defs/DocumentId" },
         "revision": { "$ref": "#/$defs/Revision" },
-        "excerpt": {
-          "type": "string",
-          "maxLength": 4096
-        }
+        "excerpt": { "type": "string", "maxLength": 4096 }
       },
       "required": ["documentId", "revision", "excerpt"],
       "additionalProperties": false
@@ -100,23 +42,6 @@
         }
       },
       "required": ["hits"],
-      "additionalProperties": false
-    },
-    "Stats": {
-      "type": "object",
-      "properties": {
-        "documents": {
-          "type": "integer",
-          "minimum": 0,
-          "maximum": 1000000
-        },
-        "pendingEvents": {
-          "type": "integer",
-          "minimum": 0,
-          "maximum": 1000000
-        }
-      },
-      "required": ["documents", "pendingEvents"],
       "additionalProperties": false
     }
   }

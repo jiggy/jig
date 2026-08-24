@@ -1,21 +1,19 @@
 #!/usr/bin/env bun
 
 // DESIGN PROBE ONLY: a trusted application frontend, not a FLOW package.
-import { connectProject, type ProjectClient } from "@jig/client";
-import type { JsonValue } from "jig";
+import {
+  openProject,
+  type JsonValue,
+  type ProjectClient,
+} from "@jigging/jig";
 
 const projectRoot = new URL("../", import.meta.url);
 const publicRoot = new URL("./public/", import.meta.url);
 
-const jig = await connectProject({
-  root: projectRoot,
-  authority: {
-    startBindings: ["ingest", "search"],
-    inspectSubmittedRuns: true,
-    cancelSubmittedRuns: true,
-    eventTypes: ["https://probe.jig.dev/events/document-indexed"],
-  },
-});
+// `openProject` is a candidate local embedding surface. The caller does not
+// self-author an authority object: host policy decides whether this same-user
+// process may open the project at all.
+const jig = await openProject({ root: projectRoot });
 
 const json = (value: unknown, status = 200): Response =>
   Response.json(value, {
@@ -106,16 +104,6 @@ const server = Bun.serve({
           runId: decodeURIComponent(runMatch[1]),
           cancellationId: requiredString(value.cancellationId, "cancellationId", 128),
         }), 202);
-      }
-
-      if (request.method === "GET" && url.pathname === "/api/events") {
-        const rawAfter = Number(url.searchParams.get("after") ?? "0");
-        const after = Number.isSafeInteger(rawAfter) && rawAfter >= 0 ? rawAfter : 0;
-        return json(await jig.events.read({
-          after,
-          limit: 50,
-          types: ["https://probe.jig.dev/events/document-indexed"],
-        }));
       }
 
       return json({ error: "not-found" }, 404);

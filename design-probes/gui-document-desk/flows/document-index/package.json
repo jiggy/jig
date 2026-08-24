@@ -1,5 +1,7 @@
 {
   "private": true,
-  "type": "module"
+  "type": "module",
+  "dependencies": {
+    "@flowmd/sdk": "^1.0.0"
+  }
 }
-

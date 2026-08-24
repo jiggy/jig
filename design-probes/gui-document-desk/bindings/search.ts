@@ -1,8 +1,7 @@
-import { bind, bindingRef } from "jig";
+import { bind, bindingRef } from "@jigging/jig";
 
 export default bind({
   use: "./flows/search",
   settings: {},
   slots: { index: bindingRef("document-index") },
 });
-

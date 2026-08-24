@@ -1,9 +1,7 @@
 const connection = document.querySelector("#connection");
-const eventsElement = document.querySelector("#events");
 const runsElement = document.querySelector("#runs");
 const searchResult = document.querySelector("#search-result");
 
-let eventCursor = Number(localStorage.getItem("document-desk-event-cursor") ?? "0");
 const runs = new Map();
 
 const request = async (path, options) => {
@@ -80,14 +78,6 @@ const poll = async () => {
       }
     }
 
-    const page = await request(`/api/events?after=${eventCursor}`);
-    for (const event of page.events) {
-      const item = document.createElement("li");
-      item.textContent = `#${event.journalPosition} ${event.type} ${JSON.stringify(event.data)}`;
-      eventsElement.prepend(item);
-    }
-    eventCursor = page.nextPosition;
-    localStorage.setItem("document-desk-event-cursor", String(eventCursor));
     connection.textContent = "Connected";
   } catch (error) {
     connection.textContent = error instanceof Error ? error.message : "Disconnected";

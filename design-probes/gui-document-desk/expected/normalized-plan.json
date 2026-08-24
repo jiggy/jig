@@ -6,11 +6,6 @@
     "members": ["document-index", "ingest", "search"]
   },
   "bindings": {
-    "journal": {
-      "kind": "host-capability",
-      "providerRegistration": "@jig/journal#append",
-      "eventTypeCeiling": ["https://probe.jig.dev/events/document-indexed"]
-    },
     "document-index": {
       "kind": "package",
       "mode": "service-exact",
@@ -18,7 +13,6 @@
       "attachments": {
         "index": { "root": "./index", "mode": "read-write" }
       },
-      "slots": { "journal": "journal@<exact-admitted-revision>" },
       "exports": ["reader", "writer"]
     },
     "ingest": {
@@ -38,8 +32,7 @@
     "memberOfAdmissionGeneration": false,
     "implementation": "app/server.ts",
     "runtime": "user-started Bun",
-    "jigAuthority": ["run:start", "run:read", "run:cancel", "event:read"],
+    "jigOperationsUsed": ["run:start", "run:read", "run:cancel"],
     "browserReceivesJigAuthority": false
   }
 }
-

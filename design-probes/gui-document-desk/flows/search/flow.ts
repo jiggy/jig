@@ -1,14 +1,14 @@
 #!/usr/bin/env bun
 
 // DESIGN PROBE ONLY: hypothetical SDK, complete pseudocode behavior.
-import { type JsonValue, serve } from "@flow/run";
+import { type JsonValue, serveRun } from "@flowmd/sdk";
 
 interface SearchInput {
   readonly query: string;
   readonly limit: number;
 }
 
-serve<SearchInput>(async run => {
+serveRun<SearchInput>(async run => {
   const result = await run.effects.call<JsonValue>({
     operationId: "search-index",
     slot: "index",

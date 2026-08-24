@@ -1,32 +1,38 @@
 {
   "probeFormat": 1,
   "nonnormative": true,
-  "flowAuthority": {
+  "requested": {
     "document-index": {
       "attachments": { "index": "read-write" },
-      "effects": { "journal": ["append"] }
+      "effects": {}
     },
     "ingest": { "effects": { "index": ["upsert"] } },
-    "search": { "effects": { "index": ["get", "search", "stats"] } }
+    "search": { "effects": { "index": ["search"] } }
   },
   "applicationAuthority": {
     "server": {
       "rawNetwork": "127.0.0.1:4010 under user authority",
-      "jigControl": ["run:start", "run:read", "run:cancel", "event:read"],
+      "jigOperationsUsed": ["run:start", "run:read", "run:cancel"],
       "project": "this exact local project"
     },
     "browser": {
-      "http": ["/api/documents", "/api/search", "/api/runs/:id", "/api/events"],
+      "http": ["/api/documents", "/api/search", "/api/runs/:id"],
       "jigControl": []
     }
   },
-  "deniedToFlows": [
-    "raw-network",
-    "journal-read",
-    "jig-control",
-    "browser-credential",
-    "project-policy",
-    ".jig"
-  ]
+  "wouldGrant": {
+    "flowAuthority": "The aggregate plan must resolve the exact attachment and Service-export projections requested above.",
+    "applicationAuthority": "Separately reviewed host-local policy; never inherited by a FLOW owner.",
+    "deniedToFlows": [
+      "raw-network",
+      "journal-read",
+      "jig-control",
+      "browser-credential",
+      "project-policy",
+      ".jig"
+    ]
+  },
+  "planned": null,
+  "realized": null,
+  "evidenceRule": "The application process has separate host-local trust. FLOW planned/realized authority requires Backend or provider-projection receipts."
 }
-
