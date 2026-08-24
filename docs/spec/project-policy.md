@@ -254,6 +254,15 @@ and ambient host IPC are denied unless the admitted package and Binding
 explicitly obtain the corresponding authority and host policy allows it. This
 baseline is a closed Jig guarantee, not ambient operating-system behavior.
 
+One admitted Adapter recipe may additionally require the closed v1
+`root-process-mappings` runtime predicate. The Backend exposes only one
+read-only, non-traversable mapping view generated for the activation root and
+receipts it separately from the immutable Runtime Support Closure. The subject
+is preserved across final `exec`, descendants see only the same pinned root
+view, and no general pseudo-filesystem, host process, mutable control, or
+package-selected kernel surface is implied. Inability to prove that exact view
+makes the recipe unavailable.
+
 Package code may create descendant processes, but doing so never creates a new
 Jig owner or grants new authority. Every descendant remains inside the same or
 a strictly narrower filesystem, network, IPC, identity/capability,
@@ -740,7 +749,10 @@ Binding revision.
     stdio. Environment, network, extra roots and descriptors, and host IPC stay
     denied until explicitly admitted. Descendants remain in the same bounded
     owner envelope and quiesce before success; inability to enforce the planned
-    envelope makes the target unavailable rather than wider.
+    envelope makes the target unavailable rather than wider. The only v1 live
+    kernel-file exception is a separately planned and receipted read-only
+    `root-process-mappings` view; it never admits a pseudo-filesystem root or
+    retargets to descendants.
 33. Package Bindings reject a generic `grants` field. A host-capability
     Binding accepts only the closed registration-specific attenuation shape,
     validates it against that registration, and cannot exceed provider or

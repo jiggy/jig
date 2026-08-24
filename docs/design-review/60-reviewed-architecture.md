@@ -1603,6 +1603,14 @@ restriction is containment evidence rather than a weaker status. Every raw
 predicate in an untrusted live receipt must be
 `enforced`, or launch fails `PERMISSION_UNENFORCEABLE`.
 
+V1 admits one narrowly closed live kernel-file predicate outside the immutable
+Runtime Support Closure. `root-process-mappings` is one read-only,
+non-traversable view generated for the activation root, preserved across final
+`exec`, and pinned to that same root when read by descendants. Its plan and
+receipt prove the exact path and mechanism. It grants no pseudo-filesystem
+root, host-process visibility, mutable control, or other kernel file; inability
+to prove those bounds makes the recipe unavailable.
+
 The Sandbox Backend is trusted host infrastructure, not a Flow, Starter
 feature, Binding choice, or Runtime Adapter. It alone executes and supervises
 every process which may consume package-controlled bytes—including exact Flow
