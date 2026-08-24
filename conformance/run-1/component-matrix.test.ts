@@ -216,6 +216,60 @@ for (const component of matrixComponents) {
     });
   });
 
+  test(`${component.name} retains a cancelled call until its late wire response`, async () => {
+    await withScratch(async (scratch) => {
+      await withPeer(component.command, async (peer) => {
+        peer.send(rootRequest("host:call-cancel", scratch, { case: "cancel-one-call" }));
+        const calls = [asRequest(await peer.receive()), asRequest(await peer.receive())];
+        const child = calls.find((request) => request.method === "flow/call");
+        const release = calls.find((request) => request.method === "effect/call");
+        expect(child).toBeDefined();
+        expect(release).toBeDefined();
+
+        peer.send({ jsonrpc: "2.0", id: release!.id, result: { value: null } });
+        expect(cancelTarget(await peer.receive())).toBe(child!.id);
+        await expect(peer.receive(75)).rejects.toThrow("timed out");
+
+        peer.send({
+          jsonrpc: "2.0",
+          id: child!.id,
+          result: { outcome: "done", output: "late-success" },
+        });
+        expect(await peer.receive()).toEqual({
+          jsonrpc: "2.0",
+          id: "host:call-cancel",
+          result: { outcome: "done", output: "cancelled-locally" },
+        });
+        await peer.finish();
+      });
+    });
+  });
+
+  test(`${component.name} fails an abandoned call only after wire quiescence`, async () => {
+    await withScratch(async (scratch) => {
+      await withPeer(component.command, async (peer) => {
+        peer.send(rootRequest("host:abandoned", scratch, { case: "abandoned-call" }));
+        const calls = [asRequest(await peer.receive()), asRequest(await peer.receive())];
+        const child = calls.find((request) => request.method === "flow/call");
+        const release = calls.find((request) => request.method === "effect/call");
+        expect(child).toBeDefined();
+        expect(release).toBeDefined();
+
+        peer.send({ jsonrpc: "2.0", id: release!.id, result: { value: null } });
+        expect(cancelTarget(await peer.receive())).toBe(child!.id);
+        await expect(peer.receive(75)).rejects.toThrow("timed out");
+
+        peer.send({
+          jsonrpc: "2.0",
+          id: child!.id,
+          result: { outcome: "done", output: "late-success" },
+        });
+        expectOperationError(await peer.receive(), "host:abandoned", "EXECUTION_FAILED");
+        await peer.finish();
+      });
+    });
+  });
+
   test(`${component.name} closes on an unknown response ID`, async () => {
     await withScratch(async (scratch) => {
       await withPeer(component.command, async (peer) => {

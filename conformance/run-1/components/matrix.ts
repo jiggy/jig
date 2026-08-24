@@ -63,6 +63,49 @@ await serve(async (run) => {
       });
       return { outcome: "done", output: { first, second } };
     }
+    case "cancel-one-call": {
+      const controller = new AbortController();
+      const child = run.callFlow(
+        {
+          operationId: "cancelled-child:1",
+          slot: "child",
+          input: null,
+        },
+        { signal: controller.signal },
+      );
+      await run.callEffect({
+        operationId: "release-cancel:1",
+        slot: "control",
+        method: "release",
+        input: null,
+      });
+      controller.abort();
+      try {
+        await child;
+        throw new Error("cancelled child unexpectedly completed");
+      } catch (error) {
+        if (!(error instanceof OperationError) || error.code !== "CANCELLED") {
+          throw error;
+        }
+      }
+      return { outcome: "done", output: "cancelled-locally" };
+    }
+    case "abandoned-call": {
+      // Abandon the operation without also creating a language-level
+      // unhandled rejection when the SDK closes its owner.
+      void run.callFlow({
+        operationId: "abandoned-child:1",
+        slot: "child",
+        input: null,
+      }).catch(() => undefined);
+      await run.callEffect({
+        operationId: "release-abandon:1",
+        slot: "control",
+        method: "release",
+        input: null,
+      });
+      return { outcome: "done", output: "must-not-succeed" };
+    }
     default:
       return { outcome: "done", output: null };
   }

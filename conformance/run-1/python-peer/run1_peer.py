@@ -315,15 +315,17 @@ class HostPeer:
         self.dispose()
 
     def send(self, message: Mapping[str, Any]) -> None:
-        frame = encode_json1(message) + b"\n"
+        self.send_bytes(encode_json1(message) + b"\n")
+
+    def send_bytes(self, payload: bytes) -> None:
         try:
-            self._stdin.write(frame)
+            self._stdin.write(payload)
             self._stdin.flush()
         except (BrokenPipeError, OSError, ValueError) as error:
             raise ProtocolError("component protocol input is closed") from error
 
-    def receive(self) -> dict[str, Any]:
-        deadline = time.monotonic() + self._timeout
+    def receive(self, *, timeout: float | None = None) -> dict[str, Any]:
+        deadline = time.monotonic() + (self._timeout if timeout is None else timeout)
         while True:
             newline = self._buffer.find(b"\n")
             if newline >= 0:

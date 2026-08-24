@@ -76,6 +76,45 @@ async def handle(run):
         )
         return {"outcome": "done", "output": {"first": first, "second": second}}
 
+    if case == "cancel-one-call":
+        child = asyncio.create_task(
+            run.call_flow(
+                operation_id="cancelled-child:1",
+                slot="child",
+                input=None,
+            )
+        )
+        await run.call_effect(
+            operation_id="release-cancel:1",
+            slot="control",
+            method="release",
+            input=None,
+        )
+        child.cancel()
+        try:
+            await child
+        except asyncio.CancelledError:
+            pass
+        else:
+            raise AssertionError("cancelled child unexpectedly completed")
+        return {"outcome": "done", "output": "cancelled-locally"}
+
+    if case == "abandoned-call":
+        asyncio.create_task(
+            run.call_flow(
+                operation_id="abandoned-child:1",
+                slot="child",
+                input=None,
+            )
+        )
+        await run.call_effect(
+            operation_id="release-abandon:1",
+            slot="control",
+            method="release",
+            input=None,
+        )
+        return {"outcome": "done", "output": "must-not-succeed"}
+
     return {"outcome": "done", "output": None}
 
 

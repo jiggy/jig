@@ -8,16 +8,18 @@
 | Message-schema fixtures | Yes | No |
 | Golden full-duplex conversation, TypeScript component | Yes | Yes |
 | Golden full-duplex conversation, Python component | Yes | Yes |
-| Direction and request/notification form | Yes | No |
-| Invalid root params and second root | Yes | No |
-| Root cancellation, duplicate cancellation, and wire quiescence | Yes | No |
-| Representative fatal frames | Yes | No |
-| At most 64 unresolved component requests on wire | Yes | No |
+| Direction and request/notification form | Yes | Yes |
+| Invalid root params and second root | Yes | Yes |
+| Root cancellation, duplicate cancellation, and wire quiescence | Yes | Yes |
+| Call-specific cancellation and late-response tombstone | Yes | Yes |
+| Abandoned-call failure and wire quiescence | Yes | Yes |
+| Representative fatal frames | Yes | Yes |
+| At most 64 unresolved component requests on wire | Yes | Yes |
 | Reference-host operation join, settled replay, and conflict | Yes | Yes |
 | Reference-host rejection of a malicious 65th request | Yes | Yes |
 | Unknown and duplicate child-response IDs | Yes | Yes |
 | Malformed child result and standard child JSON-RPC error | Yes | Yes |
-| Trailing output and nonzero exit | Yes | No |
+| Trailing output and nonzero exit | Yes | Yes |
 | Legal stderr diagnostics | Yes | Yes |
 
 The current black-box evidence does not yet cover:
@@ -25,8 +27,8 @@ The current black-box evidence does not yet cover:
 - cancellation of one waiter joined to a shared host operation;
 - uncertain host dispatch, persistence, and recovery behavior;
 - deadline, cancellation, result, and forced-kill terminal races;
-- call-specific cancellation and abandoned-call quiescence across both SDKs;
-- the complete behavioral matrix under a second independent peer;
+- malformed-cancellation and complete message-schema coverage under a second
+  independent peer;
 - total request-ID lifetime bounds; or
 - memory amplification at the legal 16 MiB frame limit.
 
