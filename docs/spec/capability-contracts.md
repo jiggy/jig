@@ -1,7 +1,8 @@
 # FLOW Capability Contract/1
 
-**Status:** reviewed FLOW specification; independent digest, Schema/1, consumer,
-and provider fixtures remain a release gate.
+**Status:** reviewed descriptor semantics. Publication of
+`capability-contract-1.schema.json`, independent digest/Schema/1 fixtures, and
+consumer/provider conformance remain release gates.
 
 Most Flows need no formal contract. Generic `flow/call` already means “perform
 this bounded piece of work and return one outcome.” A Capability Contract is

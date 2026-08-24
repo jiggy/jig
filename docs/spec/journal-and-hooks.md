@@ -10,7 +10,7 @@ The boundaries are deliberately separate:
 Run environment                         immutable invocation facts
 flow/call and effect/call               requested operations
 Journal Event                           durable immutable fact
-Hook                                    inert Event-source-to-Run admission
+Hook                                    inert Event-to-Run admission
 stderr                                  bounded diagnostic text
 ```
 
@@ -84,104 +84,37 @@ Service provider implementing the same descriptor elsewhere supplies the same
 method/value interface, but acquires no `Journal/1` label, kernel namespace,
 Hook authority, or atomicity claim.
 
-## 3. Hooks and Event Sources
+## 3. Hooks
 
 A v1 Hook is one admitted, immutable relation:
 
 ```text
-one Event source -> one exact Run-capable Binding
+(authenticated producer, exact Event type)
+    -> one exact admitted Run target
 ```
 
-The source has two deliberately different forms.
+The selector reacts to facts produced elsewhere. It fixes an authenticated
+producer and exact Event type. The producer resolves to an exact admitted
+provider identity, and the target resolves to an exact admitted Run target.
+Normalization pins both revisions to the admission generation. The TypeScript
+declaration and normalized Hook schema are not published yet; in particular,
+this specification does not require a Hook target to be represented as a
+Binding.
 
-An **Event selector** reacts to facts produced elsewhere. It fixes an
-authenticated producer and exact Event type:
-
-```ts
-export default hook({
-  on: event(
-    bindingRef("github-ingress"),
-    "https://example.com/events/issue-opened",
-  ),
-  run: bindingRef("triage"),
-});
-```
-
-The producer reference resolves to an exact Binding or protected kernel
-producer identity. Normalization pins the producer, type, and target Binding
-to the admitted generation.
-
-An owned **Event Source use** is a small convenience for common host
-observations. A trusted installed source integration exports an inert
-constructor which fixes its Event type, payload schema, settings schema,
-requested authority, activation algorithm, and cleanup behavior. The Hook
-contains the observation configuration and owns that source lifetime:
-
-```ts
-import { stableTextFiles } from "@jigging/hooks-files";
-
-export default hook({
-  on: stableTextFiles({
-    root: root("./inbox"),
-    suffix: ".md",
-    settleMs: 250,
-    maxBytes: 1_048_576,
-  }),
-  run: bindingRef("triage"),
-});
-```
-
-This authoring form is still inert. The Hook file does not execute a watcher
-or callback. During activation Jig resolves the exact installed integration,
-validates its settings and authority, starts the source under a host-owned
-lifetime, and exposes the complete authority delta for consent. The source may
-buffer observations while preparing, but cannot commit an Event before its
-Hook interval opens. Removal first closes new source admission at a Journal
-boundary and then disposes the source lifetime. A source which cannot become
-ready prevents that Hook revision from activating.
-
-The normalized source use pins:
-
-```text
-integration artifact, registration ID, and revision
-one exact Event type and bounded payload schema
-complete validated settings and approved roots/authority
-source occurrence-key and conflict semantics
-preparation, readiness, cancellation, and cleanup implementation
-admission generation and Hook revision
-```
-
-After activation the trusted integration may submit only
-`{ occurrenceKey, data, subject?, occurredAtUnixMs? }`. Jig validates the
-bounded value, supplies the authenticated source and commit fields, and owns
-the Journal transaction. Repeating one source revision and occurrence key with
-the same value returns the same Event; changed content under that key is a
-source conflict. The integration cannot start a Run directly.
-
-The integration commits authenticated Events through Jig's internal Journal
-producer surface; application code does not need a Journal Binding merely to
-use it. The source cannot impersonate a kernel producer or publish an Event
-type outside its registration. This is trusted Jig-module machinery, not a new
-FLOW primitive and not sandboxed package code.
-
-Custom, portable, reusable, or multi-consumer producers remain ordinary FLOW
-Services with an explicit Journal effect Binding. Their Hooks use the Event
-selector form. Therefore signal producers are not all Flows, and an owned
-source convenience does not remove the more general Service path.
-
-Both forms normalize to one authenticated producer identity, one exact Event
-type, one target Binding, and one Hook interval. The declaration has no source
-list, wildcard, semantic type match, mapping, filter, retry, callback, or
-action field. Source-specific observation controls such as settling or
-coalescing belong to the registered source settings; application branching and
-transformation belong to the target Flow.
+A filesystem watcher, webhook ingress, timer, or similar producer is outside
+the Hook abstraction. It may be application code, protected host machinery, or
+a FLOW Service which publishes through the Journal capability. V1 defines no
+separate Event Source registration or constructor ABI. The Hook declaration
+has no source list, wildcard, semantic type match, mapping, filter, retry,
+callback, debounce, or action field. Observation policy belongs to the
+producer; branching and transformation belong to the target Flow.
 
 Each Hook revision owns one half-open Journal interval
 `[startPosition, endPosition)`. Publishing a project admission generation and
 opening/closing all affected intervals occurs at one Journal boundary. A Hook
 never selects history before its start. For every matching `(Hook revision,
 eventId)`, Jig inserts or returns one derived Run record transactionally. That
-insert uses the Hook revision's already-pinned target Binding and admission
+insert uses the Hook revision's already-pinned Run target and admission
 generation; it never resolves the target LocalName against newer live policy.
 A pair selected before later revocation still inserts or returns that unique
 Run. If revocation closes dispatch first, the Run becomes terminal and
@@ -189,20 +122,10 @@ non-dispatchable with the reason recorded. The Run receives the exact immutable
 Event as input and then follows ordinary input validation. An invalid input
 makes that same Run terminal; it does not transform the Event or select again.
 
-When replacement changes the exact Service Binding selected as an Event
-source, Jig closes new leases to the old Service and drains and fences its
-publication authority before closing that source's Hook interval. The new
-interval opens at the admission boundary before the replacement Service starts.
-This conservative ordering prevents draining old invocations from publishing
-after their interval and prevents replacement startup Events from preceding
-theirs. Removing a Hook while leaving its source Binding unchanged does not
-fence the producer; later Events intentionally have no such reaction.
-
 Hooks fan out but do not consume, veto, rewrite, delay, or hide a committed
-Event. An owned source may settle or coalesce raw observations only as fixed by
-its registered semantics, before an Event exists. Filtering facts,
-conditionals, and multi-step reaction belong in the producer or target Flow.
-Hook redelivery reuses the same derived Run; there is no v1 replay mode.
+Event. Filtering facts, conditionals, coalescing, and multi-step reaction
+belong in the producer or target Flow. Hook redelivery reuses the same derived
+Run; there is no v1 replay mode.
 
 ## 4. Deliberate omissions
 
@@ -241,12 +164,3 @@ result becomes authoritative.
    rejection terminates that Run without reselection.
 9. External implementations of the descriptor cannot drive Jig Hooks or claim
    Jig kernel atomicity.
-10. An owned Event Source cannot publish before its Hook interval opens, after
-    source admission closes, under another source identity, or outside its
-    registration-declared Event type and authority ceiling.
-11. Source readiness failure leaves the candidate inactive; disposal closes
-    observation and publication without running project callback code.
-12. Replacing a Service Binding selected as a Hook source fences the old
-    producer before its interval closes and opens the replacement interval
-    before replacement startup publication; removing only the Hook does not
-    fence an otherwise unchanged producer.

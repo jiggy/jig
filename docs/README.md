@@ -1,13 +1,18 @@
 # Jig + FLOW design documents
 
+These are reviewed design specifications, not shipped packages or stable
+conformance labels. The public SDKs and several closed machine models remain
+release gates; see
+[`design-review/102-public-interface-release-gates.md`](design-review/102-public-interface-release-gates.md).
+
 Start here:
 
 1. [`design-review/100-final-seams.md`](design-review/100-final-seams.md) —
-   concise record of the final disputed decisions and why they won.
+   concise adversarial rationale for reviewed decisions.
 2. [`design-review/60-reviewed-architecture.md`](design-review/60-reviewed-architecture.md)
    — canonical whole-system architecture.
 3. [`decision-index.md`](decision-index.md) — compact traceability map from
-   stable decisions to their normative sections.
+   reviewed decisions to their normative sections.
 4. Focused specifications:
    - [`spec/json-values.md`](spec/json-values.md)
    - [`spec/package-format.md`](spec/package-format.md)
@@ -32,6 +37,5 @@ tested, but they are historical and may contain decisions explicitly removed
 from the canonical design. Git preserves superseded text; it should not be
 copied forward as current specification.
 
-Post-freeze candidates which still require a focused review are explicitly
-labelled, including
-[`design-review/101-frontend-control-candidate.md`](design-review/101-frontend-control-candidate.md).
+Open interface candidates are explicitly non-normative, including
+[`design-review/101-default-targets-and-open-routing-candidate.md`](design-review/101-default-targets-and-open-routing-candidate.md).

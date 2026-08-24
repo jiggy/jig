@@ -1,10 +1,12 @@
 # Jig Agent and Semantic Choice contracts/1
 
-**Status:** reviewed Jig capability specifications. They use FLOW Capability
-Contract/1; they do not add methods to FLOW Run/1 or create another contract
-format.
+**Status:** reviewed descriptor and lifecycle semantics. The provider
+registration ABI, Agent resource projection, instruction-runtime interface,
+and public SDK are release gates. These contracts use FLOW Capability
+Contract/1; they do not add methods to FLOW Run/1.
 
-FLOW is Agent-neutral. Jig is Agent-native: it publishes exact contracts which
+FLOW is Agent-neutral. Jig is Agent-native: this repository defines exact
+contract descriptors which
 Codex, Claude Code, ACP, command-line, API, deterministic-test, and future
 providers may implement. Provider and model choice belongs to project
 Bindings, not to the contracts.
@@ -15,17 +17,16 @@ The responsibility boundary is:
 host/operator      installs and trusts concrete Agent integrations
 Starter/project    declares logical Agent Bindings, authority, and Flow slots
 Jig                admits, pins, projects context, supervises, and revokes
-Sley            consumes an injected Agent slot through an Agent Node
+Jig Graph          will compile Agent use to ordinary Sley nodes whose handlers
+                   call a separately injected Jig-owned effect client
 FLOW               defines no Agent primitive
 ```
 
 A public Starter should not encode an unexplained host-local provider alias.
-An exact provider-specific project imports that integration's inert exported
-registration reference; a host-customized initialization may replace the
-reference without changing the logical Binding ID or Flow. The admitted plan
-and lock pin the provider artifact, export, settings, and authority. Bare
-provider strings are a low-level representation, not the preferred authoring
-surface.
+The future authoring interface must preserve the integration's origin while
+keeping provider installation and trust in host policy. The admitted plan and
+lock pin the provider artifact, export, settings, and authority. The exact
+registration-token and module shape is not specified here.
 
 The canonical descriptors and their Capability Contract/1 digests are:
 
@@ -37,13 +38,14 @@ The canonical descriptors and their Capability Contract/1 digests are:
 | Approval 1.0.0 | [`approval.capability.json`](contracts/jig/approval.capability.json) | `sha256:8153497564cb47d09cbc22671d1f6906f523d88f546815cc904ea2c10a50d38f` |
 | Semantic Choice 1.0.0 | [`semantic-choice.capability.json`](contracts/jig/semantic-choice.capability.json) | `sha256:83767b89d02163d8a36c5e4f561d7c164135866a6bfdee1acd20f76370971e02` |
 
-The JSON files are the wire authority. Method sketches below are explanatory
-shorthand. Release automation must recompute this table with RFC 8785 and fail
-on drift.
+The checked-in JSON files are the reviewed descriptor authority. Method
+sketches below are explanatory shorthand. A stable conformance label still
+requires the Capability Contract meta-schema, closed provider models,
+fixtures, and digest verification automation.
 
 ## 1. Three non-substitutable Agent contracts
 
-Jig publishes three complete Capability Contract/1 descriptors:
+This repository defines three Capability Contract/1 descriptors:
 
 ```text
 https://jig.dev/contracts/agent-run          1.0.0
@@ -206,10 +208,11 @@ input digest) joins the pending call or returns its recorded result; changed inp
 returns `turn-id-conflict`.
 
 Provider integrations must admit the concurrent operations required by the
-contract, including `events` and `steer` while `prompt` remains pending. In Jig
-v1 an Agent Binding is a trusted host-capability Binding, not a direct FLOW
-Service export. The integration may internally supervise a local process or
-remote daemon, but it owns that transport and the exact per-owner projection.
+contract, including `events` and `steer` while `prompt` remains pending. A
+qualifying provider must realize and revoke the exact per-owner projection;
+whether the first provider ABI admits only trusted host integrations or also a
+FLOW Service profile remains an open interface decision. The transport does
+not weaken the contract or authority requirements.
 
 `steer` linearizes against turn completion. It either commits while that exact
 turn is active, or returns
@@ -249,13 +252,12 @@ data erasure or provider-side cleanup it cannot observe.
 No Agent method accepts a host path, attachment token, tool grant, permission
 override, provider option, model name, or shell command.
 
-An Agent provider reference resolves to a host-capability Binding whose export
+An Agent provider reference resolves to one admitted Binding whose export
 implements the exact Agent contract. It is not a separate Agent profile type.
-The trusted integration must realize the exact per-owner resource and tool
-projection below. A direct FLOW Service export cannot qualify in v1 because
-Service/1 has only static Mount authority and no delegated per-invocation
-resource view. A host integration may wrap such a process without exposing it
-as the project Binding.
+The provider boundary must realize the exact per-owner resource and tool
+projection below. A static Service Mount by itself is insufficient; a future
+Service provider profile could qualify only if it explicitly supports this
+delegated per-operation projection and revocation.
 
 The resolved provider configuration fixes:
 
@@ -294,7 +296,7 @@ the Agent provider ceiling and instruction-runtime sandbox. This is direct Run
 authority, not caller inheritance. Any independent Agent-Binding resource is
 still visible in the aggregate plan, and overlapping read-write roots reject.
 
-A host-native Agent provider receives that derived operation projection.
+Every qualifying Agent provider receives that derived operation projection.
 Closing, cancelling, or losing the operation revokes its projection and
 releases its write lease even when remote cleanup is uncertain.
 
@@ -333,12 +335,11 @@ by unsigned UTF-8 bytes, and no name repeats. Failure occurs before provider
 work. The contract descriptors use only Schema/1's length and item-count
 bounds; they do not smuggle `pattern` or `uniqueItems` into the dialect.
 
-Service/1 cannot add this owner-scoped tree to an already mounted provider: its
-resources and authority are fixed for the Mount generation. Static Mount
-resources, even if they happen to contain similar files, never satisfy another
-package's Flow-local projection. Agent Bindings therefore use a host
-integration which can create and revoke the exact per-owner view. Instruction
-conductors use the same boundary for their larger per-Run projection.
+Static Mount resources, even if they happen to contain similar files, never
+satisfy another package's Flow-local projection. A qualifying Agent provider
+must create and revoke the exact per-owner view. The concrete projection ABI
+is a release gate and must be shared by ordinary Agent calls and instruction
+conductors rather than improvised by each runtime.
 
 Projection proves availability, not use. Selecting a Skill does not prove that
 an Agent followed it. When a Flow's procedure depends on one bundled Skill, the
@@ -364,59 +365,27 @@ Instruction execution is one pinned Jig implementation recipe over the
 existing Run owner and Agent Run contract, not another FLOW wire protocol.
 After ordinary input and settings validation, Jig acquires the recipe-pinned
 Agent provider-generation lease and creates one instruction-conductor child
-owner.
+owner. The conductor must provide the Agent, without host paths:
 
-The conductor builds these host-owned immutable logical resources:
+- the exact package and `FLOW.md` body;
+- immutable Run input and complete Binding settings;
+- the admitted attachments, Flow/effect slots, and their modes;
+- the package's Flow-local skills; and
+- the complete result schema, or the base Flow-result envelope.
 
-```text
-package/                 exact read-only Package/1 tree, including FLOW.md
-run/input.json           RFC 8785 encoding of immutable Run input
-run/settings.json        RFC 8785 encoding of complete Binding settings
-run/context.json         outcomes, logical attachments/modes, and slot descriptions
-run/result.schema.json   package result schema or synthesized base-result schema
-```
+Only admitted provider tools may expose those resources and operations. They
+cannot add a slot, remap an attachment, widen authority, or outlive the Run
+owner. The conductor performs one structured Agent Run; only `completed` with
+a present result valid against the complete Flow-result schema can become the
+provisional Flow result. Agent prose is diagnostic, and `blocked`, `limit`,
+missing structured data, or invalid data fails the implementation rather than
+fabricating a domain outcome.
 
-The names above are provider-facing logical resource names, never host paths.
-The exact serialization and projection belong to the versioned instruction
-runtime pinned by the recipe. It invokes Agent Run with one small fixed
-instruction telling the Agent to read those resources, follow the FLOW body,
-use only the exposed tools, and return the complete structured result. No
-package, input, settings, descriptor, or candidate prose is interpolated into
-that string, so it is validated against the Agent Run instruction ceiling
-while the recipe is planned, independently of invocation data. A runtime whose
-fixed request cannot satisfy that ceiling does not qualify; with no other exact
-instruction recipe the Binding is admitted `UNAVAILABLE` with
-`IMPLEMENTATION_UNAVAILABLE`, before any Run dispatch.
-
-The conductor exposes declared attachments, every valid immediate Flow-local
-Skill, and
-already-admitted effect/Flow slots through owner-scoped provider tools. Those
-tools realize the existing `effect/call` and `flow/call` semantics with stable
-operation IDs derived from conductor turn/tool-call identity. They cannot add
-a slot, remap an attachment, widen a mode or grant, or bypass the Run owner's
-host-allocated deadline.
-
-The conductor performs one Agent Run operation. Its `responseSchema` is the
-package's complete `result.schema.json` when present. Otherwise the conductor
-synthesizes a closed Schema/1 root requiring a normal object with `outcome`
-equal to `done` or one declared custom outcome and a required `output` accepting
-any FLOW JSON/1 value.
-
-`AgentResult.outcome: completed` plus a present, valid `structured` value
-becomes the provisional complete Flow result. Agent `text` is diagnostic
-evidence only unless the structured result explicitly includes it. `blocked`
-or `limit`, provider failure, and missing structured data fail the
-implementation rather than becoming domain outcomes. A returned `blocked` or
-`limit` is `IMPLEMENTATION_FAILED` with the exact Agent result retained as
-diagnostic evidence; provider loss and cancellation keep their more specific
-host failures. An Agent expresses a
-declared domain `blocked` outcome only by completing and returning it inside
-the structured Flow result. Schema or base-envelope rejection is
-`INVALID_RESULT`.
-
-The conductor then uses the same owner-close, child-quiescence, final result
-validation, and commit rules as exact code. No result is inferred from prose,
-workspace contents, or Agent text.
+The precise logical resource names, serialization, fixed instruction,
+provider-tool projection, operation-ID derivation, and SDK methods are not yet
+specified. They require one closed instruction-runtime/provider interface and
+cross-provider fixtures before this execution mode can claim conformance. No
+illustrative layout or helper name is normative.
 
 ## 4. Runtime Agent approvals
 
@@ -456,7 +425,7 @@ Persistent grants and policy editing are deferred.
 
 ## 5. Semantic Choice
 
-Jig publishes one optional provider-neutral Capability Contract:
+This repository defines one optional provider-neutral Capability Contract:
 
 ```text
 https://jig.dev/contracts/semantic-choice  1.0.0
@@ -501,30 +470,31 @@ A rule-based or API-model provider may implement the same contract.
 
 ### Runner-local Router
 
-A graph Router presents its actual finite outgoing edges as candidates. Each
-node visit calls Semantic Choice once and maps the returned local ID to an
-edge. It may make a different decision on a later visit. In Sley, Router is
-a specialized Node; the choice provider is composed into it rather than
-creating Codex/Claude-specific subclasses.
+A graph Router presents its finite Jig Graph route set as candidates. Jig
+Graph compiles those routes one-to-one to named Sley links; Sley topology is
+execution output, not the metadata authority. Each node visit calls Semantic
+Choice once and maps the returned local ID to a route, so a later visit may
+decide differently. Sley has no Router primitive: the compiled ordinary
+`node` uses an injected decision engine, validates the untrusted decision, and
+then calls `context.emit(...)`. Route contracts and decision policy remain Jig
+Graph data rather than Sley metadata.
 
 ### Jig open-ended Resolver
 
-For `flow/call`, the Binding supplies one exact `bindingRef()`, a closed
-`candidates([...])`, or an explicit `allRuns()` snapshot of every other
-normalized Run Binding in the aggregate candidate. Apply atomically admits
-the resulting ordered exact-revision snapshot with the owner generation. An
-unmapped slot is missing; there is no implicit catalogue authority. The
-deterministic Resolver reads only that admitted snapshot and filters exact
-compatibility, input, trust, authority, runtime availability, host resource
-ceilings, active Run ancestors for `allRuns()`, and liveness. Zero means
-missing; one selects directly; several may call Semantic Choice or remain
-ambiguous.
+For `flow/call`, the reviewed Binding surface supplies one exact
+`bindingRef()` or a closed `candidates([...])`. An unmapped slot is missing;
+there is no implicit catalogue authority. The deterministic Resolver reads
+only the admitted candidate set and filters exact compatibility, input, trust,
+authority, runtime availability, host resource ceilings, and liveness. Zero
+means missing; one selects directly; several may call Semantic Choice or
+remain ambiguous.
 
-The canonical Semantic Choice request accepts at most 256 candidates. If more
-than 256 eligible revisions survive deterministic filtering, Jig commits
-`BINDING_AMBIGUOUS` with `candidate-limit-exceeded` evidence. It never
-truncates, samples, batches, or lets a provider-specific limit silently change
-the choice set.
+Applications also need an intentional way to route across a changing,
+reviewed catalogue without granting the chooser discovery or admission power.
+The candidate-universe declaration and normalization algorithm are still open;
+an arbitrary universal candidate cap is not reviewed. The eventual interface
+must freeze an admitted finite set before
+Semantic Choice and must never truncate it invisibly.
 
 A project opts into the optional ranker by naming one exact Binding directly:
 
@@ -558,9 +528,9 @@ reused. Dispatch with an unprovable result makes the parent operation
 `UNCERTAIN`; the same operation never reranks. Provider loss after selection
 does not choose a replacement under the same operation ID.
 
-A software factory can therefore route a new ticket among Gauntlet,
-Majority-Vote, and future approved Bindings without keyword gates. The local
-Router owns graph topology; Jig's Resolver owns open component discovery.
+A software factory can route a new ticket among an explicitly admitted set of
+Gauntlet, Majority-Vote, and other approved Bindings without keyword gates.
+The local Router owns graph topology; Jig's Resolver owns component binding.
 
 Missing repair is separate. A configured `create-missing-flow` maintenance
 Flow may search, generate, test, and propose a candidate, but cannot insert it
@@ -628,13 +598,7 @@ new submission key. Reusing the old key returns the old terminal Run.
     `completed` with a valid complete structured Flow result may become a
     domain result. Agent `blocked`/`limit`, absent structured data, and invalid
     results fail without fabricating an outcome.
-22. A direct FLOW Service Binding cannot satisfy a Jig Agent slot in v1. A
-    host integration may wrap a remote provider, but owns projection,
-    revocation, transport, and conformance; static Mount files never
-    impersonate per-owner package, attachment, skill, or tool context.
-23. `allRuns()` zero/one/many selection is evaluated from the exact admitted
-    generation snapshot; active ancestors are removed before ranking and later
-    project generations cannot add candidates to the operation.
-24. More than 256 eligible candidates returns
-    `BINDING_AMBIGUOUS/candidate-limit-exceeded` without truncation, sampling,
-    batching, ranker dispatch, or provider-defined fallback.
+22. A qualifying Agent provider—host-native or future Service profile—must
+    enforce per-owner projection, revocation, transport, and conformance;
+    static Mount files never impersonate package, attachment, skill, or tool
+    context.

@@ -1,7 +1,7 @@
 # Final adversarial decision record
 
-**Status:** architecture freeze after three specialist drafts, reciprocal
-critique, a focused court round, and a final whole-system blocker audit.
+**Status:** adversarial rationale record after probe decontamination. It is not
+a stable API or implementation claim.
 
 This record explains the decisions which changed or became precise after the
 round-two baseline. It is not a parallel specification. The normative design is
@@ -105,32 +105,29 @@ See [`../spec/capability-contracts.md`](../spec/capability-contracts.md).
 
 ## 4. Service support stays first-class but separately conforming
 
-Jig v1 implements both Run/1 and Service/1. A smaller FLOW host may implement
-Run/1 only. Service/1 is neither experimental nor a tax on every Flow.
+Jig targets both Run/1 and Service/1. A smaller FLOW host may implement Run/1
+only. Service/1 is neither a tax on every Flow nor eligible for a stable label
+before its closed wire schemas and independent conformance exist.
 
 It remains bounded request/response JSON with a pending Mount, one fixed
 dependency set, one fixed declared export set, exact provider generations,
 draining, loss, and cancellation. Multiple invocations on one Mount may be
 outstanding and answer out of order; each has a separate owner. FLOW does not
 infer serialization, linearizability, or transaction isolation. Dynamic
-dependency snapshots and post-readiness export mutation were removed after the
-stateful and Cordis probes found no boundary need which justified them.
+dependency snapshots and post-readiness export mutation remain excluded because
+the public Service boundary needs neither.
 
-SDKs project Mount-owned and invocation-owned cancellation and Flow/effect
+Future SDKs must project Mount-owned and invocation-owned cancellation and Flow/effect
 clients separately without exporting a public Scope object. Shadow-first
 replacement is permitted only
-when both Mounts' complete resource leases can coexist and no affected Hook
-selects the Service as its Event source. A conflicting lease or selected Event
-source instead requires drain, fencing, proven lease release, and then an
-admission/Hook-boundary switch before replacement startup, with an honest
-unavailable interval.
+when both Mounts' complete resource leases can coexist. A conflicting lease
+instead requires drain, fencing, proven lease release, and then an admission
+switch before replacement startup, with an honest unavailable interval.
 
-The design probes additionally share one candidate SDK convenience where
-Service setup receives the Mount projection and returns its fixed export table
-plus an optional disposer; every method receives its invocation projection.
-The SDK, rather than every component wrapper, owns `service/ready`, the pending
-Mount wait, and cancellation cleanup. This remains a conformance candidate and
-an authoring projection over the wire lifecycle, not another FLOW method.
+The future SDK must preserve fixed exports, readiness only after they are
+callable, distinct Mount-background and invocation-owned work, and bounded
+cleanup. Setup return shape, disposer convention, names, and signatures remain
+to be specified.
 
 No framework is a normative conformance participant. Independent Hosts and
 Providers establish Service/1. Cordis is a useful reference integration only.
@@ -150,35 +147,19 @@ The optional project field `semanticChoice: bindingRef("<binding>")` names only 
 used after deterministic open-ended resolution leaves several candidates. It
 does not replace the Resolver or configure a runner-local Router.
 
-Flow-call candidate authority is explicit. A slot uses one exact
-`bindingRef()`, a closed `candidates([...])`, or `allRuns()` for the reviewed
-snapshot of every other normalized Run Binding in the aggregate candidate.
-Apply atomically admits the snapshot with the generation. An unmapped slot is
-missing rather than implicitly catalogue-wide. Snapshot identities/digests are
-locked, its finite fixed-point transitive authority is reviewed, active
-ancestors are filtered to prevent implicit recursion, and changes require
-aggregate apply before use. More than 256 eligible survivors is explicit
-ambiguity rather than silent truncation.
+Flow-call candidate authority is explicit. The reviewed surface supports one
+exact reference or a closed candidate set; an unmapped slot is missing rather
+than implicitly catalogue-wide. The ergonomic declaration, normalization, and
+resource policy for a changing but reviewed candidate universe remain open.
 
 One leading `./` in a discovery root or exact member path is authoring sugar
 and is stripped before confined segment validation. A missing discovery root
 is empty; a missing or invalid exact-list member fails the candidate.
 
-Jig does not require an authored Binding file for every ordinary Flow. It
-derives one normal Run Binding when an exact-code package has no FLOW
-capability dependencies (`uses`) or attachments, is instruction-free, accepts
-`{}` settings, has a matching
-directory basename and `FLOW.md` name, no authored Binding owns that ID, and
-exactly one eligible member proposes it.
-The derived value has empty settings/slots/attachments and only baseline
-authority. An authored Binding always owns its ID and suppresses any proposed
-default for it; another ID is a variant. Several eligible members proposing
-one unowned ID derive none and require an explicit Binding. Source order and
-semantic choice never break that ambiguity.
-Services and packages needing configuration, FLOW capability dependencies,
-attachments, or an Agent never derive defaults. Derivation changes authoring
-ceremony, not the
-Binding-based runtime, admission, Hook, lock, or revocation model.
+Jig still needs zero routine boilerplate for an ordinary discovered Flow while
+preserving one reviewed execution path. Whether that target is represented as
+an internal default Binding or a distinct admitted Flow target remains open;
+the failed probe did not earn a hidden derivation algorithm.
 
 Binding is one closed union rather than a package-only type plus separate Agent
 profiles: it configures either an exact FLOW package revision or one export of
@@ -230,7 +211,7 @@ malicious unsandboxed process running as the same OS principal.
 Run input/settings/attachments/host deadline    immutable environment
 flow/call and effect/call                       requested operations
 Journal Event                                  durable immutable fact
-Hook                                           inert Event-source-to-Flow admission
+Hook                                           inert Event-to-Flow admission
 stderr                                         bounded diagnostic text
 ```
 
@@ -243,16 +224,16 @@ committed Event; querying, waiting, replay, and subscription are deliberately
 absent. Exact behavior and the canonical descriptor are in
 [`../spec/journal-and-hooks.md`](../spec/journal-and-hooks.md).
 
-Hooks do not consume, veto, rewrite, filter, or hide continuation. They either
-select an existing exact producer/type or own one registered host Event Source
-use, then target one exact Run Binding. Both forms create revision intervals
-aligned to the Journal boundary. A registered source may own bounded
-observation settings such as settling; complex reaction logic belongs in the
-target Flow. Custom portable or reusable producers remain Services.
+Hooks do not consume, veto, rewrite, filter, or hide continuation. They select
+one exact authenticated producer/type and target one exact admitted Run
+target.
+Revision intervals align to the Journal boundary. Producers—including
+watchers—own observation, settling, and coalescing; complex reaction logic
+belongs in the producer or target Flow.
 
 ## 8. Agents have exact, owner-scoped contracts
 
-Jig publishes three ordinary Capability Contract/1 descriptors:
+This repository defines three ordinary Capability Contract/1 descriptors:
 
 ```text
 Agent Run          finite self-contained work
@@ -286,14 +267,11 @@ Jig itself gates configured effects and consumes one decision bound to the
 exact call; an Agent cannot self-assert approval.
 
 The conductor uses the existing Agent Run contract once through a
-projection-capable host Agent Binding. Immutable logical resources expose the
-package, canonical input/settings, declared outcomes, and logical authority;
-the small fixed instruction interpolates none of them. It requires a complete
-structured `{ outcome, output }` under the package result schema or synthesized
-base schema. Agent text is diagnostic; Agent `blocked`/`limit` is an
-implementation failure, not a fabricated Flow outcome. Jig Agent Bindings are
-host-capability integrations in v1; a direct Service export cannot partially
-satisfy the contract merely because one call selects no skills.
+projection-capable Agent provider. Immutable logical resources expose the
+package, input/settings, declared outcomes, and admitted authority. It requires
+a complete structured `{ outcome, output }`; Agent text is diagnostic and
+Agent `blocked`/`limit` is an implementation failure. The precise projection
+and qualifying provider ABI remain release gates.
 
 See [`../spec/agents-and-semantic-choice.md`](../spec/agents-and-semantic-choice.md).
 
@@ -335,10 +313,10 @@ requested -> wouldGrant -> planned -> realized
 it; execution planning chooses enforceable predicates. Sandbox Backend
 receipts realize package containment; provider-projection receipts separately
 realize authority mediated by trusted host capabilities without claiming those
-providers are sandboxed. A derived default receives only
-read-only prepared package bytes, private read-write scratch, and protocol
-stdio. Environment, network, processes, extra filesystem roots/descriptors,
-and host IPC remain denied.
+providers are sandboxed. Every package starts with read-only prepared package
+bytes, private read-write scratch, and protocol stdio. Environment, network,
+processes, extra filesystem roots/descriptors, and host IPC remain denied until
+explicitly admitted.
 
 The Sandbox Backend advertises enforceable predicates rather than pretending
 every OS has the same primitives. A Linux implementation may use bubblewrap,
@@ -348,8 +326,8 @@ sandboxed activation. V1 has no trusted-package escape path.
 
 The Backend is host infrastructure, never a wrapper Flow or Starter choice,
 because it must dominate preparation and launch. Runtime-native permissions
-are defense in depth. `jig inspect/status --authority` exposes the exact plan
-and receipt.
+are defense in depth. A future Jig inspection surface must expose the exact
+plan and receipt; its command and SDK spelling remain release-gated.
 
 Deadlines follow the same host/project boundary: the effective local host
 policy supplies a finite positive millisecond duration for each operation
@@ -362,9 +340,9 @@ provider settings/grants rather than a universal `budget` object.
 
 Jig still has an internal lifetime tree; removing public Scope/Context/Mount
 objects did not remove ownership or cleanup. Wire request ownership is the
-portable lifecycle. An SDK `RunContext` is a read-only projection, not a remote
-object model. Service `mount` is one pending lifecycle request, not a portable
-bearer handle.
+portable lifecycle. A future SDK may expose a read-only Run projection, not a
+remote object model. Service `mount` is one pending lifecycle request, not a
+portable bearer handle.
 
 “File-native” describes user ownership: packages, config, prompts, skills, and
 customizations are ordinary files. It does not constrain applications to
@@ -391,9 +369,10 @@ Only conflicts and semantic drift need an optional maintenance Agent. Validation
 and atomic publication remain deterministic host responsibilities. Agent output
 is a staged candidate, never an invisible repair.
 
-## 13. Remaining work is proof, not redesign
+## 13. Remaining interface closure and conformance work
 
-Stable labels still require executable cross-implementation fixtures for:
+Stable labels require closed public data models and SDK interfaces first, then
+executable cross-implementation fixtures for:
 
 1. package snapshot/path safety, Adapter planning, preparation containment, and
    sandbox enforcement;
@@ -406,37 +385,16 @@ Stable labels still require executable cross-implementation fixtures for:
 5. catalogue resolution, semantic-choice uncertainty, three-way updates,
    rollback, init, and decentralized source distribution.
 
-The Starter probe closed Sley's smallest dataflow rule: immutable root input
-plus one immutable JSON/1 state carried across edges, with ordinary Node code
-returning the next state and Parallel returning ordered branch results. There
-is no runtime result bag, shared mutable memory, Jig mapper, or filesystem
-smuggling. Only `Outcome` terminates and propagates unchanged through nested
-Flows; an ordinary control-graph leaf without an edge is an error. A Parallel
-branch returns its value to the owning Parallel and is not a terminal leaf.
-Exact SDK spelling and executable conformance remain implementation work.
+Sley now supplies function nodes, shared run state, branch-local input,
+emit/end, fan-out/combine, retries, recovery, and topology inspection. Jig
+Graph must own semantic contracts and compile them to ordinary Sley objects;
+it must not recreate or subclass the scheduler. Service methods still need
+separate invocation-owned and Mount-background projections, while provider
+state plus Journal publication remains an application outbox rather than a Jig
+transaction. GUI and HTTP presentation remain application-owned. A Cordis
+realm may map to one fixed Service Mount while callbacks and disposers remain
+local.
 
-The stateful-index probe subsequently closed two Service seams without adding
-a portable primitive: method handlers need separate invocation-owned versus
-Mount-background child-call projections, and shadow-first replacement is
-legal only when leases coexist and no affected Hook selects that Service as
-its source. Otherwise Jig drains and fences, switches admission/Hook intervals,
-and starts the replacement through an honest unavailable window. Provider
-state plus Journal publication remains an application outbox with
-cross-generation at-least-once behavior, not a Jig transaction.
-
-The GUI probe then separated application frontends from portable components. A
-trusted local GUI uses the same root admission semantics as the CLI plus
-bounded Run inspection and idempotent cancellation through a host-local
-control surface. Its coordinator, transport, identity, and authorization model
-remain a release-blocking candidate seam rather than FLOW or Jig/1. HTTP and
-presentation stay application-owned; FLOW gains no GUI, Journal-query,
-callback, or raw-network primitive.
-
-The Cordis timer probe reused an existing disposal-aware component unchanged.
-One realm maps to one Service Mount, callbacks and disposers remain local, and
-root Fiber disposal maps to Mount cancellation. The wrapper exposes one fixed
-`delay.wait` method and needs no Journal or Hook. This supplied the final
-deletion evidence for dynamic Service dependency and export snapshots.
-
-No further v1 abstraction is justified until one of those tests demonstrates a
-concrete missing primitive.
+No further v1 abstraction is justified until an independently authored
+consumer demonstrates a concrete missing primitive against a published minimal
+interface.

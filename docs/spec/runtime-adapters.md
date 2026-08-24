@@ -1,7 +1,9 @@
 # Jig Runtime Adapters/1
 
-**Status:** reviewed Jig host specification. Runtime Adapters are host
-extensions, not FLOW package metadata and not a FLOW conformance profile.
+**Status:** reviewed Jig host semantics. Closed registration, planning,
+receipt, and error models for Runtime Adapters and Sandbox Backends remain
+release gates. Runtime Adapters are host extensions, not FLOW package metadata
+or a FLOW conformance profile.
 
 FLOW standardizes one obvious implementation file and the Run/1 process
 boundary. Jig decides how source becomes that process. It does not standardize
@@ -231,7 +233,7 @@ inspection result
 preparation and launch-plan digests
 prepared-tree digest and provenance
 Sandbox Backend revision, plan, and realized receipt
-trust mode
+activation branch and authority envelope
 ```
 
 These hashes are internal consistency evidence. They never appear as author
@@ -271,7 +273,7 @@ Host-machinery changes create a new candidate generation requiring ordinary
 review and apply.
 
 Root submission and idempotency behavior for a pinned `UNAVAILABLE` result are
-owned by [project policy §2.3](project-policy.md#23-admission-and-operational-readiness)
+owned by [project policy §2.2](project-policy.md#22-admission-and-operational-readiness)
 and [§10](project-policy.md#10-root-run-admission).
 
 Instruction fallback is a distinct implementation selected and pinned during

@@ -214,9 +214,10 @@ schemaPointer        RFC 6901
 keyword              when applicable
 ```
 
-Human wording and multi-error ordering are non-normative. `jig inspect`
-exposes the schema digests and `jig check` reports schema compilation and
-example-fixture failures without evaluating package code.
+Human wording and multi-error ordering are non-normative. The future Jig
+inspection surface must expose schema digests and report schema compilation
+and example-fixture failures without evaluating package code; its command and
+SDK spellings remain release-gated.
 
 ## 6. Examples
 
