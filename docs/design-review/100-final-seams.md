@@ -116,13 +116,21 @@ infer serialization, linearizability, or transaction isolation. Dynamic
 dependency snapshots and post-readiness export mutation were removed after the
 stateful and Cordis probes found no boundary need which justified them.
 
-SDKs project Mount-owned and invocation-owned child calls separately without
-exporting a public Scope object. Shadow-first replacement is permitted only
+SDKs project Mount-owned and invocation-owned cancellation and Flow/effect
+clients separately without exporting a public Scope object. Shadow-first
+replacement is permitted only
 when both Mounts' complete resource leases can coexist and no affected Hook
 selects the Service as its Event source. A conflicting lease or selected Event
 source instead requires drain, fencing, proven lease release, and then an
 admission/Hook-boundary switch before replacement startup, with an honest
 unavailable interval.
+
+The design probes additionally share one candidate SDK convenience where
+Service setup receives the Mount projection and returns its fixed export table
+plus an optional disposer; every method receives its invocation projection.
+The SDK, rather than every component wrapper, owns `service/ready`, the pending
+Mount wait, and cancellation cleanup. This remains a conformance candidate and
+an authoring projection over the wire lifecycle, not another FLOW method.
 
 No framework is a normative conformance participant. Independent Hosts and
 Providers establish Service/1. Cordis is a useful reference integration only.
@@ -142,18 +150,47 @@ The optional project field `semanticChoice: bindingRef("<binding>")` names only 
 used after deterministic open-ended resolution leaves several candidates. It
 does not replace the Resolver or configure a runner-local Router.
 
+Flow-call candidate authority is explicit. A slot uses one exact
+`bindingRef()`, a closed `candidates([...])`, or `allRuns()` for the reviewed
+snapshot of every other normalized Run Binding in the aggregate candidate.
+Apply atomically admits the snapshot with the generation. An unmapped slot is
+missing rather than implicitly catalogue-wide. Snapshot identities/digests are
+locked, its finite fixed-point transitive authority is reviewed, active
+ancestors are filtered to prevent implicit recursion, and changes require
+aggregate apply before use. More than 256 eligible survivors is explicit
+ambiguity rather than silent truncation.
+
 One leading `./` in a discovery root or exact member path is authoring sugar
 and is stripped before confined segment validation. A missing discovery root
-is empty; a missing or invalid exact-list member fails the candidate. V1 has no
-bulk Binding recipe: tooling may generate ordinary Binding declarations until
-a concrete scaling probe earns another public abstraction.
+is empty; a missing or invalid exact-list member fails the candidate.
+
+Jig does not require an authored Binding file for every ordinary Flow. It
+derives one normal Run Binding when an exact-code package has no FLOW
+capability dependencies (`uses`) or attachments, is instruction-free, accepts
+`{}` settings, has a matching
+directory basename and `FLOW.md` name, no authored Binding owns that ID, and
+exactly one eligible member proposes it.
+The derived value has empty settings/slots/attachments and only baseline
+authority. An authored Binding always owns its ID and suppresses any proposed
+default for it; another ID is a variant. Several eligible members proposing
+one unowned ID derive none and require an explicit Binding. Source order and
+semantic choice never break that ambiguity.
+Services and packages needing configuration, FLOW capability dependencies,
+attachments, or an Agent never derive defaults. Derivation changes authoring
+ceremony, not the
+Binding-based runtime, admission, Hook, lock, or revocation model.
 
 Binding is one closed union rather than a package-only type plus separate Agent
 profiles: it configures either an exact FLOW package revision or one export of
 an already-installed trusted host capability provider. Both branches share
-settings, admission, locking, grants, and revocation. Only package Bindings may
-run or mount; host-capability Bindings satisfy effects and are conditionally
-portable.
+admission, locking, and revocation. Package Bindings have no generic `grants`:
+their authority comes from declared attachments/dependencies and project/host
+attenuation. A host-capability Binding alone may carry the closed `grants`
+shape declared by its exact trusted registration, capped by that registration
+and host policy. Omission means `{}`/the registration's least optional
+authority, never its ceiling, and still must validate. Only package Bindings
+may run or mount; host-capability
+Bindings satisfy effects and are conditionally portable.
 
 Binding and Hook TypeScript is captured and evaluated once in a bounded,
 authority-free config sandbox. The design does not call arbitrary TypeScript
@@ -176,7 +213,7 @@ atomically.
 
 The project source and committed `jig.lock` express desired state and portable
 resolution evidence; neither transfers host consent. Local approval receipts
-and emergency tombstones live under `.jig/`, outside normal component grants.
+and emergency tombstones live under `.jig/`, outside normal component authority.
 
 Adds, edits, renames, removals, package/provider changes, and behavior changes
 all remain pending. A pending deletion leaves the old immutable generation
@@ -190,7 +227,7 @@ malicious unsandboxed process running as the same OS principal.
 ## 7. Events, effects, Hooks, and coeffects remain separate
 
 ```text
-Run input/settings/attachments/deadline/budget  immutable environment
+Run input/settings/attachments/host deadline    immutable environment
 flow/call and effect/call                       requested operations
 Journal Event                                  durable immutable fact
 Hook                                           inert Event-source-to-Flow admission
@@ -238,7 +275,9 @@ not claim provider-side erasure it cannot observe.
 
 Agent methods cannot pass host paths or widen authority. One Agent Binding
 fixes provider, settings, its own attachment projection, tool/effect ceiling,
-approval gate, deadline, and budget. Binding the slot exposes that transitive
+and approval gate. Host policy allocates the operation deadline, while
+provider-specific limits remain validated provider settings or grants. Binding
+the slot exposes that transitive
 authority during project review; caller resources never inherit or remap into
 the Agent operation, and independently configured read-write roots cannot
 overlap. An instruction conductor is the Run implementation and therefore gets
@@ -289,20 +328,35 @@ network, child processes, extra descriptors, host IPC, and undeclared files.
 Authority is inspectable as:
 
 ```text
-requested -> granted -> planned -> realized
+requested -> wouldGrant -> planned -> realized
 ```
+
+`wouldGrant` is candidate policy, not live authority. Aggregate apply admits
+it; execution planning chooses enforceable predicates. Sandbox Backend
+receipts realize package containment; provider-projection receipts separately
+realize authority mediated by trusted host capabilities without claiming those
+providers are sandboxed. A derived default receives only
+read-only prepared package bytes, private read-write scratch, and protocol
+stdio. Environment, network, processes, extra filesystem roots/descriptors,
+and host IPC remain denied.
 
 The Sandbox Backend advertises enforceable predicates rather than pretending
 every OS has the same primitives. A Linux implementation may use bubblewrap,
 Landlock, namespaces, seccomp, cgroups, pidfds, and a regular-tree broker. A
 different host either realizes the same required predicates or refuses
-sandboxed activation. An exact locally approved `trusted-local` mode honestly
-records wider authority.
+sandboxed activation. V1 has no trusted-package escape path.
 
 The Backend is host infrastructure, never a wrapper Flow or Starter choice,
 because it must dominate preparation and launch. Runtime-native permissions
 are defense in depth. `jig inspect/status --authority` exposes the exact plan
 and receipt.
+
+Deadlines follow the same host/project boundary: the effective local host
+policy supplies a finite positive millisecond duration for each operation
+class, Jig allocates it before dispatch and enforces it monotonically, and a
+missing/unbounded class is unavailable. Deadlines are invocation facts, not
+Binding fields. Provider-specific turns, tokens, money, or resources remain
+provider settings/grants rather than a universal `budget` object.
 
 ## 11. Scope, Context, Mount, file ownership, and initialization
 
@@ -352,7 +406,7 @@ Stable labels still require executable cross-implementation fixtures for:
 5. catalogue resolution, semantic-choice uncertainty, three-way updates,
    rollback, init, and decentralized source distribution.
 
-The Starter probe closed Spindle's smallest dataflow rule: immutable root input
+The Starter probe closed Sley's smallest dataflow rule: immutable root input
 plus one immutable JSON/1 state carried across edges, with ordinary Node code
 returning the next state and Parallel returning ordered branch results. There
 is no runtime result bag, shared mutable memory, Jig mapper, or filesystem
@@ -372,16 +426,17 @@ cross-generation at-least-once behavior, not a Jig transaction.
 
 The GUI probe then separated application frontends from portable components. A
 trusted local GUI uses the same root admission semantics as the CLI plus
-bounded Run/Event inspection and idempotent cancellation through a host-local
-control surface. HTTP and presentation stay application-owned; FLOW gains no
-GUI, Journal-query, callback, or raw-network primitive.
+bounded Run inspection and idempotent cancellation through a host-local
+control surface. Its coordinator, transport, identity, and authorization model
+remain a release-blocking candidate seam rather than FLOW or Jig/1. HTTP and
+presentation stay application-owned; FLOW gains no GUI, Journal-query,
+callback, or raw-network primitive.
 
 The Cordis timer probe reused an existing disposal-aware component unchanged.
 One realm maps to one Service Mount, callbacks and disposers remain local, and
-root Fiber disposal maps to Mount cancellation. Its external Journal Binding
-and scheduler export remain fixed even though Cordis is reactive internally.
-This supplied the final deletion evidence for dynamic Service dependency and
-export snapshots.
+root Fiber disposal maps to Mount cancellation. The wrapper exposes one fixed
+`delay.wait` method and needs no Journal or Hook. This supplied the final
+deletion evidence for dynamic Service dependency and export snapshots.
 
 No further v1 abstraction is justified until one of those tests demonstrates a
 concrete missing primitive.

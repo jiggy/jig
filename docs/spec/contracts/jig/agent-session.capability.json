@@ -43,11 +43,10 @@
       "type": "array",
       "items": {
         "type": "string",
-        "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+        "minLength": 1,
         "maxLength": 64
       },
-      "maxItems": 64,
-      "uniqueItems": true
+      "maxItems": 64
     },
     "Empty": {
       "type": "object",

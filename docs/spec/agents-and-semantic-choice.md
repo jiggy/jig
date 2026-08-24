@@ -15,7 +15,7 @@ The responsibility boundary is:
 host/operator      installs and trusts concrete Agent integrations
 Starter/project    declares logical Agent Bindings, authority, and Flow slots
 Jig                admits, pins, projects context, supervises, and revokes
-Spindle            consumes an injected Agent slot through an Agent Node
+Sley            consumes an injected Agent slot through an Agent Node
 FLOW               defines no Agent primitive
 ```
 
@@ -31,9 +31,9 @@ The canonical descriptors and their Capability Contract/1 digests are:
 
 | Contract | Descriptor | Digest |
 |---|---|---|
-| Agent Run 1.0.0 | [`agent-run.capability.json`](contracts/jig/agent-run.capability.json) | `sha256:d455730ec798a2cfbba5a5a37e2f8a2167325071dffc7fedc02a22e192b72dd2` |
-| Agent Session 1.0.0 | [`agent-session.capability.json`](contracts/jig/agent-session.capability.json) | `sha256:63b9e1d6753ba2691b72c75ef90a878390177246d163d942d18c8ab867fccfe8` |
-| Agent Interactive 1.0.0 | [`agent-interactive.capability.json`](contracts/jig/agent-interactive.capability.json) | `sha256:abd7aad3b1813f5a8d5d7c45eb217386f0290f9a3187ca10803836915a095d19` |
+| Agent Run 1.0.0 | [`agent-run.capability.json`](contracts/jig/agent-run.capability.json) | `sha256:ea66148b0ad15d5c060cb94b35fc7ce6ef8acbd5a764b70b92e89c8f11fc3715` |
+| Agent Session 1.0.0 | [`agent-session.capability.json`](contracts/jig/agent-session.capability.json) | `sha256:3616e0602dd5f0f423b7d14d428f56114eb651b2372d978e46fed1df24d7bb00` |
+| Agent Interactive 1.0.0 | [`agent-interactive.capability.json`](contracts/jig/agent-interactive.capability.json) | `sha256:28dc0c301a5e5bde6c2d9b932ea24b339097927d607e3c1350a4ad2b0ce988d7` |
 | Approval 1.0.0 | [`approval.capability.json`](contracts/jig/approval.capability.json) | `sha256:8153497564cb47d09cbc22671d1f6906f523d88f546815cc904ea2c10a50d38f` |
 | Semantic Choice 1.0.0 | [`semantic-choice.capability.json`](contracts/jig/semantic-choice.capability.json) | `sha256:83767b89d02163d8a36c5e4f561d7c164135866a6bfdee1acd20f76370971e02` |
 
@@ -264,8 +264,11 @@ provider and configuration
 no/read/read-write attachment projection
 tool/effect ceiling
 approval provider
-deadline and budget
 ```
+
+Host policy allocates a finite deadline to each Agent operation.
+Provider-specific token, money, turn, or resource ceilings are validated
+provider settings/grants; they are not a universal Binding `budget` field.
 
 These are resources of the exact Agent Binding, not attachments inherited from
 the caller. Binding an Agent slot grants the caller only the mediated ability
@@ -322,6 +325,13 @@ not Jig, declares and implements the Skill format it understands. Jig does not
 parse bundle identities, dependencies, or precedence. A provider which cannot
 expose the tree without changing or colliding with existing provider state is
 ineligible for that operation.
+
+Schema/1 deliberately has no regex or deep-uniqueness keywords. The Agent
+operation therefore performs one bounded semantic check after schema
+validation: every requested skill is a `LocalName`, names are strictly ordered
+by unsigned UTF-8 bytes, and no name repeats. Failure occurs before provider
+work. The contract descriptors use only Schema/1's length and item-count
+bounds; they do not smuggle `pattern` or `uniqueItems` into the dialect.
 
 Service/1 cannot add this owner-scoped tree to an already mounted provider: its
 resources and authority are fixed for the Mount generation. Static Mount
@@ -384,7 +394,7 @@ already-admitted effect/Flow slots through owner-scoped provider tools. Those
 tools realize the existing `effect/call` and `flow/call` semantics with stable
 operation IDs derived from conductor turn/tool-call identity. They cannot add
 a slot, remap an attachment, widen a mode or grant, or bypass the Run owner's
-deadlines and budgets.
+host-allocated deadline.
 
 The conductor performs one Agent Run operation. Its `responseSchema` is the
 package's complete `result.schema.json` when present. Otherwise the conductor
@@ -493,17 +503,28 @@ A rule-based or API-model provider may implement the same contract.
 
 A graph Router presents its actual finite outgoing edges as candidates. Each
 node visit calls Semantic Choice once and maps the returned local ID to an
-edge. It may make a different decision on a later visit. In Spindle, Router is
+edge. It may make a different decision on a later visit. In Sley, Router is
 a specialized Node; the choice provider is composed into it rather than
 creating Codex/Claude-specific subclasses.
 
 ### Jig open-ended Resolver
 
-For `flow/call`, the deterministic Resolver first freezes an ordered snapshot
-of approved Binding revisions and filters exact compatibility, input, trust,
-authority, runtime availability, budget, recursion, and liveness. Zero means
+For `flow/call`, the Binding supplies one exact `bindingRef()`, a closed
+`candidates([...])`, or an explicit `allRuns()` snapshot of every other
+normalized Run Binding in the aggregate candidate. Apply atomically admits
+the resulting ordered exact-revision snapshot with the owner generation. An
+unmapped slot is missing; there is no implicit catalogue authority. The
+deterministic Resolver reads only that admitted snapshot and filters exact
+compatibility, input, trust, authority, runtime availability, host resource
+ceilings, active Run ancestors for `allRuns()`, and liveness. Zero means
 missing; one selects directly; several may call Semantic Choice or remain
 ambiguous.
+
+The canonical Semantic Choice request accepts at most 256 candidates. If more
+than 256 eligible revisions survive deterministic filtering, Jig commits
+`BINDING_AMBIGUOUS` with `candidate-limit-exceeded` evidence. It never
+truncates, samples, batches, or lets a provider-specific limit silently change
+the choice set.
 
 A project opts into the optional ranker by naming one exact Binding directly:
 
@@ -611,3 +632,9 @@ new submission key. Reusing the old key returns the old terminal Run.
     host integration may wrap a remote provider, but owns projection,
     revocation, transport, and conformance; static Mount files never
     impersonate per-owner package, attachment, skill, or tool context.
+23. `allRuns()` zero/one/many selection is evaluated from the exact admitted
+    generation snapshot; active ancestors are removed before ranking and later
+    project generations cannot add candidates to the operation.
+24. More than 256 eligible candidates returns
+    `BINDING_AMBIGUOUS/candidate-limit-exceeded` without truncation, sampling,
+    batching, ranker dispatch, or provider-defined fallback.

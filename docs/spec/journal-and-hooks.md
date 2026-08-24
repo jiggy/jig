@@ -118,7 +118,7 @@ requested authority, activation algorithm, and cleanup behavior. The Hook
 contains the observation configuration and owns that source lifetime:
 
 ```ts
-import { stableTextFiles } from "@jig/hooks-files";
+import { stableTextFiles } from "@jigging/hooks-files";
 
 export default hook({
   on: stableTextFiles({

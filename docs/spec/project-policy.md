@@ -31,7 +31,7 @@ The generated `jig.ts` opts into the conventions explicitly once:
 import {
   defineJig,
   discover,
-} from "jig";
+} from "@jigging/jig";
 
 export default defineJig({
   flows: discover("./flows"),
@@ -98,7 +98,10 @@ symlinked, NFC-colliding, or case-fold-colliding exact member invalidates the
 complete aggregate candidate.
 
 `flows`, `bindings`, and `hooks` are independently optional. Omission means no
-source of that kind, never implicit default discovery. References to an
+authored source of that kind, never implicit directory discovery. An omitted
+`bindings` source does not disable the narrowly derived default Run Bindings
+specified in §2.1; those are normalized from the explicitly configured Flow
+catalogue rather than discovered from a magic Binding path. References to an
 omitted or empty source still fail normally. A project which wants semantic
 ranking for ambiguous open-ended `flow/call` resolution may additionally name
 one exact Binding directly:
@@ -128,7 +131,7 @@ local Binding ID—such as `offline-choice` or `company-choice`—whose exact ex
 implements the Semantic Choice contract. It is never a strategy name, Flow ID,
 model name, prompt, or algorithm literal.
 
-## 2. One closed Binding union
+## 2. One closed normalized Binding union
 
 A Binding is one immutable admitted project-local configured use. It has
 exactly one implementation branch:
@@ -140,6 +143,40 @@ package
 host-capability
     one export of an exact already-installed trusted host provider registration
 ```
+
+### 2.1 Derived default Run Binding
+
+Bindings are the runtime identity and pinning unit, but an author does not need
+to write one declaration for every ordinary exact-code Run package. During
+aggregate normalization Jig derives exactly one package Binding when all of
+these conditions hold:
+
+1. the catalogue member is Run-capable and has one exact implementation;
+2. it has no `uses`, no attachments, and no instruction execution or fallback;
+3. `settings.schema.json` is absent or accepts the complete value `{}`;
+4. its immediate catalogue-directory basename is a valid `LocalName` and
+   equals the exact `FLOW.md` `name`; and
+5. no authored Binding owns that LocalName and exactly one eligible catalogue
+   member proposes it.
+
+The derived Binding has that LocalName, pins that exact package revision, and
+uses `{}` settings, empty dependency slots, empty attachments, no instruction
+recipe, and only the portable baseline authority defined below. It is an
+ordinary normalized Run Binding for every later API, lock, admission,
+revocation, Hook, and `flow/call` rule. `origin: derived-default` may appear in
+diagnostics, but is not another public Binding kind.
+
+An authored Binding always owns its ID and suppresses any default proposed for
+that ID, irrespective of which package it targets; there is no merge or
+inheritance. An authored Binding under another ID creates a configured
+variant. When several otherwise eligible catalogue members propose the same
+unowned ID, Jig derives none and reports that an explicit Binding is required;
+filesystem and source order never select one. A basename/name mismatch merely
+makes that member ineligible for derivation. Service packages,
+instruction-backed packages, packages with FLOW capability dependencies
+(`uses`) or attachments, and
+packages requiring non-empty settings never receive this default. Default
+derivation is Jig project policy, not FLOW package metadata.
 
 A package Binding uses a package reference. A relative local package reference
 is resolved from the directory containing `jig.ts`, not from the declaration
@@ -154,7 +191,7 @@ form imports a provider integration's exported registration token so its
 origin is visible in source:
 
 ```ts
-import { run as acpAgentRun } from "@jig/agent-acp";
+import { run as acpAgentRun } from "@jigging/agent-acp";
 
 export default bind({
   use: hostCapability(acpAgentRun),
@@ -183,13 +220,21 @@ exact public contract URI/version/digest or explicit local effect identity
 complete settings object and the registration's exact Schema/1 revision
 declared dependency slots and attachment projection
 mediated and raw authority ceiling
-deadline and budget
 project admission generation
 ```
 
 The trusted registration declares its exports, settings schema, attachment and
-dependency vocabulary, and maximum authority. Project settings and grants may
-narrow but never exceed it. Package-only runtime, fallback, outcomes, and Mount
+dependency vocabulary, and maximum authority. Only this host-capability branch
+may contain `grants`, whose closed shape is defined and Schema/1-validated by
+that exact registration. Those values attenuate but never exceed the
+registration and host-policy ceiling; they are not a generic host-permission
+DSL. Omitted `grants` normalizes to the complete object `{}`, meaning the
+registration's least optional authority—never its maximum—and that object must
+validate against the registration's exact grants schema. A registration which
+cannot operate at `{}` rejects it during normalization and requires explicit
+attenuation. A package Binding has no `grants` field: its requested authority is
+derived from package attachments and dependency contracts, then bounded by
+project mappings and host policy. Package-only runtime, fallback, outcomes, and Mount
 fields are invalid on the host-capability branch. Project source cannot install
 or approve a missing registration. A missing or ambiguous registration leaves
 the reference unresolved and invalidates the candidate; `jig check` reports
@@ -220,7 +265,48 @@ legal only when the package itself declares `fallback: instruction`.
 Instruction-only packages require the Agent reference without a fallback
 member. There is no redundant `"deny"` value.
 
-### 2.1 Admission and operational readiness
+### 2.2 Authority derivation and the portable baseline
+
+Authority has four deliberately distinct stages:
+
+```text
+requested
+    authority implied by FLOW metadata, contracts, and configured resources
+
+wouldGrant
+    the candidate's reviewed project/host-policy attenuation; not yet live
+
+planned
+    the closed predicates the selected enforcement boundary commits to
+    enforcing for one immutable activation or mediated operation
+
+realized
+    immutable receipts from those boundaries for what the activation or
+    mediated operation actually received
+```
+
+Project evaluation and planning cannot truthfully call `wouldGrant` granted
+authority. Only aggregate apply admits it, and only execution produces
+`realized` evidence. Package containment is realized by a Sandbox Backend
+receipt. Authority-bearing host-capability calls are realized separately by
+immutable provider-projection receipts naming the Binding/provider
+generations, method, attenuation, and projected resources. Such a receipt
+proves Jig's mediation; it does not claim that trusted provider code is
+sandboxed. A provider unable to produce and enforce its registered projection
+is unavailable. Inspection retains all four views and identifies the enforcing
+boundary rather than collapsing requested authority, policy intent, and
+enforcement fact.
+
+Every derived default Binding receives only the portable baseline: its exact
+privately prepared package closure is read-only, one private scratch Space is
+read-write, and protocol stdio is available. Environment variables, network,
+child processes, extra filesystem roots, inherited descriptors, and ambient
+host IPC are denied. If exact code needs anything more, the author must create
+an explicit Binding and the package must declare the corresponding portable
+need; host policy may still deny it. This baseline is a closed Jig guarantee,
+not ambient operating-system behavior.
+
+### 2.3 Admission and operational readiness
 
 Aggregate admission separates structural validity from this host's current
 ability to execute a Binding:
@@ -335,11 +421,34 @@ Binding dependencies are likewise inert local references:
 set of a package Binding, while `serviceExportRef("name", "export")` selects one
 explicit Service export. A `flow/call` slot may instead use
 `candidates([bindingRef("one"), bindingRef("two")])` to declare a closed
-allowlist of Run Bindings. `candidates()` performs no discovery, filtering, or
-semantic choice during configuration; the owner generation pins the exact
-revisions and the later call follows the Resolver lifecycle. `discover()` is
-invalid in a Binding slot, just as `candidates()` is invalid as a project
-source.
+allowlist of Run Bindings, or `allRuns()` to deliberately admit an open
+snapshot of every other normalized Run Binding in the same aggregate
+candidate.
+`candidates()` performs no discovery, filtering, or semantic choice during
+configuration. `allRuns()` is the only catalogue-wide slot source in v1: it
+excludes the consuming Binding itself and freezes the exact proposed revisions
+in Binding `LocalName` unsigned UTF-8 order during aggregate normalization.
+Apply admits that snapshot atomically with the Binding generation; active
+calls may use only the corresponding exact admitted revisions. Later additions
+or removals change the proposed snapshot and require ordinary plan/apply.
+
+The normalized dependency graph is finite. Jig computes transitive authority
+as the least fixed-point union of each Binding's own requested authority and
+the authority reachable through its exact dependency edges, visiting each
+Binding revision at most once per traversal. Cycles therefore terminate and
+add no authority beyond the finite union of their members. The resulting
+authority appears in aggregate review and admission evidence; the portable
+lock records only the exact snapshot identities and digests. At call time an
+`allRuns()` slot additionally removes every candidate revision already present
+in the active Run ancestry, so an open snapshot cannot introduce implicit
+recursion. Other input, readiness, compatibility, host-limit, and liveness
+filters may remove members but can never add one. Explicit recursive topology
+requires `bindingRef()` or `candidates()` and remains subject to host depth and
+fanout limits.
+An unmapped slot is `BINDING_MISSING`; it never implies `allRuns()`. Explicit
+self-recursion requires `bindingRef()` or `candidates()`. `discover()` is
+invalid in a Binding slot, just as candidate-source helpers are invalid as
+project sources.
 Resolution replaces every reference with exact admitted revision identities;
 none of these helpers imports or captures a live provider object.
 
@@ -407,10 +516,10 @@ generation remains usable while editing.
 A semantic delta includes every:
 
 ```text
-Binding or Hook add, edit, rename, or removal
+authored or derived Binding or Hook add, edit, rename, or removal
 target, source selector, or candidate-set change
 package, provider, Adapter, toolchain, or contract change
-settings, fallback, Agent, deadline, or budget change
+settings, fallback, or Agent change
 attachment, effect, or sandbox-authority change
 lock resolution change
 ```
@@ -436,8 +545,9 @@ apply(candidateDigest, activeGeneration) ->
 
 The candidate digest covers the captured source closure, configured
 memberships, normalized declarations, resolutions, exact package/provider
-revisions, settings, selectors, attachments, grants, runtime choices, and lock
-result. It is internal Jig evidence, not FLOW metadata.
+revisions, settings, selectors, attachments, host-capability attenuation,
+derived-default decisions, runtime choices, and lock result. It is internal
+Jig evidence, not FLOW metadata.
 
 `jig apply` displays one aggregate semantic and authority review. A UI may
 notify that watched changes are pending and offer Apply, but the watcher never
@@ -472,7 +582,7 @@ lock serialization remains a required focused specification and schema before
 implementation or public Starter release.
 
 The active generation, approval receipt, emergency tombstones, and realized
-host authority live under `.jig/`, outside ordinary Flow/Agent grants and
+host authority live under `.jig/`, outside ordinary Flow/Agent authority and
 outside version control. A clone with identical source and lock must approve
 once on that host. Pulling another host's lock never activates it.
 
@@ -541,15 +651,16 @@ them. Each canonical configured root path is an internal catalogue-source
 identity; the public project surface does not need a named `catalogues` map in
 v1.
 
-V1 has no bulk Binding-materialization API. Tools and maintenance Flows may
-generate ordinary Binding declaration files for review, after which the
-normal Binding source, aggregate plan, and admission rules apply. Runtime
-resolution reads only exact admitted Binding revisions, never the live Flow
-source. A reusable bulk recipe remains deferred until a concrete scaling probe
-can demonstrate a smaller coherent surface than generated ordinary files.
+Jig derives only the narrow default Run Bindings defined in §2.1. This is not a
+bulk recipe, mutable overlay, or implicit Service activation. Anything outside
+that closed eligibility rule requires an authored Binding declaration. Runtime
+resolution still reads only exact admitted Binding revisions, never the live
+Flow source.
 
-Dropping a package into `flows/` grants no authority. It becomes executable
-only through an approved Binding.
+Dropping a package into `flows/` grants no live authority. A qualifying package
+may add a derived Binding to the candidate, but it cannot execute until that
+aggregate candidate is reviewed and applied. A non-qualifying package remains
+an inert catalogue entry.
 
 ## 10. Root Run admission
 
@@ -575,8 +686,10 @@ jig run <binding-id> --input <json-file>
 The frontend generates and retains the submission key until acknowledgement;
 its flag spelling and input transport are host UX. For an absent key,
 `startRun` resolves the LocalName against one current active admission
-generation. In one transaction Jig verifies the root gate and revocation
-state, pins the exact Run-capable Binding revision, and inserts the root Run.
+generation. The Run Binding may have been authored or narrowly derived; the
+operation cannot name a raw package or ask Jig to derive one on demand. In one
+transaction Jig verifies the root gate and revocation state, pins the exact
+Run-capable Binding revision, and inserts the root Run.
 It then validates the actual value against `input.schema.json` when present.
 Schema-invalid JSON/1 makes that allocated Run terminal `INVALID_INPUT`;
 implementation never starts.
@@ -595,13 +708,14 @@ generation cannot retarget an already selected Hook occurrence.
 Trigger, producer, Hook, and correlation metadata are authenticated and
 attached only by Jig. Ordinary frontends cannot supply them. Neither root path
 can name raw package source, select a provider or Runtime Adapter, alter
-Binding settings, remap attachments, widen grants, or inject environment
-values. A different reusable configuration requires a new Binding revision.
+Binding settings, remap attachments, request wider authority, or inject
+environment values. A different reusable configuration requires an authored
+Binding revision.
 
-Host-local `getRun`, idempotent `cancelRun`, bounded Event inspection, frontend
-authority, and the stable `RunSnapshot` projection are specified in
-[`frontend-control.md`](frontend-control.md). They do not add FLOW methods or a
-portable Journal reader.
+The GUI probe suggests host-local `getRun` and idempotent `cancelRun`, but their
+surface remains a post-freeze candidate rather than Jig/1. The probe did not
+earn bounded Event inspection or a portable Journal reader. See the
+[candidate note](../design-review/101-frontend-control-candidate.md).
 
 ## 11. Required conformance cases
 
@@ -634,9 +748,14 @@ portable Journal reader.
 11. Emergency revoke survives restart, cannot widen authority, and unchanged
     source cannot restore it.
 12. Formatting-only normalized no-ops require no new consent.
-13. `discover()` is accepted only for project source fields;
-    `candidates()` is accepted only for compatible `flow/call` Binding slots.
-    Neither performs the other's job.
+13. `discover()` is accepted only for project source fields. `candidates()`
+    and `allRuns()` are accepted only for compatible `flow/call` Binding
+    slots. The former freezes a closed allowlist; the latter expands over every
+    other normalized Run Binding in the aggregate candidate and apply admits
+    that exact snapshot atomically. Its finite fixed-point transitive authority
+    is exposed in review while only portable identities/digests enter the lock;
+    call-time ancestor filtering prevents implicit recursion. An unmapped slot
+    is always missing. None performs another helper's job.
 14. Clean crash recovery exposes either the old or new complete generation,
     never a mixture.
 15. A host-capability Binding cannot install/trust a provider, run, or mount;
@@ -666,8 +785,10 @@ portable Journal reader.
     one derived Run; revocation before dispatch makes it terminal rather than
     suppressing it. Invalid Hook input terminates that one Run after JSON/1
     boundary validation, including after redelivery.
-23. Omitting a Flow, Binding, or Hook source means an empty source of that
-    kind; Jig never silently enables a conventional directory.
+23. Omitting a Flow or Hook source means an empty source of that kind; omitting
+    `bindings` means no authored Binding source. Jig never silently enables a
+    conventional directory, while eligible members of an explicitly
+    configured Flow source still derive the §2.1 default.
 24. Relative local package references resolve from the directory containing
     `jig.ts`, remain confined, and do not change when their declaration file
     moves.
@@ -696,3 +817,45 @@ portable Journal reader.
     authority reachable through every exact dependency Binding; it never
     mislabels that authority as a direct caller attachment or omits it because
     invocation is mediated.
+32. An exact Run package with matching unique basename/name, no uses or
+    attachments, no instruction mode, and `{}`-valid settings produces one
+    derived ordinary Binding; it remains non-live until aggregate apply and
+    then works through the unchanged Binding-based root, Hook, lock, and
+    revocation APIs.
+33. Required configuration, any dependency or attachment, instruction mode,
+    Service capability, or basename/name mismatch prevents default derivation.
+    Multiple eligible members proposing one unowned ID derive none and produce
+    an explicit-Binding-required diagnostic; no precedence or semantic choice
+    repairs the ambiguity.
+34. An authored Binding owns its ID and suppresses every proposed default for
+    that ID, whether it targets the same package or another one. Another ID
+    creates a variant. No fields merge implicitly. Removing the authored
+    Binding may propose a derived default in the next reviewed generation; it
+    does not activate one immediately.
+35. A derived default receives only read-only prepared package bytes, private
+    read-write scratch, and protocol stdio. Environment, network, processes,
+    extra roots and descriptors, and host IPC stay denied, and inability to
+    enforce that baseline makes the Binding unavailable rather than wider.
+36. Package Bindings reject a generic `grants` field. A host-capability
+    Binding accepts only the closed registration-specific attenuation shape,
+    validates it against that registration, and cannot exceed provider or
+    host-policy ceilings. Omission normalizes to `{}`/least optional authority,
+    never the registration ceiling. Inspection distinguishes requested,
+    `wouldGrant`, planned, and realized authority.
+37. An `allRuns()` slot expands over other normalized Run Bindings in the same
+    candidate, freezes exact proposed revisions in unsigned UTF-8 LocalName
+    order, and becomes usable only when apply admits owner and snapshot
+    atomically. Adding or removing a member produces a different candidate and
+    cannot affect an active generation.
+38. Mutual `allRuns()` edges and a mixed open/exact dependency cycle terminate
+    under finite least-fixed-point authority union. Each reachable revision's
+    requested authority appears once in review; only snapshot identities and
+    digests enter the portable lock.
+39. An `allRuns()` call removes every active-ancestor revision before
+    selection, so A-to-B-to-A is never introduced implicitly. Explicit exact
+    or closed recursive topology remains separately depth/fanout bounded.
+40. Zero `allRuns()` survivors is `BINDING_MISSING`, one selects directly, and
+    several are `BINDING_AMBIGUOUS` unless the exact project Semantic Choice
+    Binding returns one member. More than 256 survivors commits
+    `BINDING_AMBIGUOUS` with `candidate-limit-exceeded`; no implementation may
+    truncate, sample, batch, or rank a subset.

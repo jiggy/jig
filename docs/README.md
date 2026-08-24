@@ -15,7 +15,6 @@ Start here:
    - [`spec/runtime-adapters.md`](spec/runtime-adapters.md)
    - [`spec/capability-contracts.md`](spec/capability-contracts.md)
    - [`spec/project-policy.md`](spec/project-policy.md)
-   - [`spec/frontend-control.md`](spec/frontend-control.md)
    - [`spec/journal-and-hooks.md`](spec/journal-and-hooks.md)
    - [`spec/agents-and-semantic-choice.md`](spec/agents-and-semantic-choice.md)
 
@@ -32,3 +31,7 @@ rebuttals, ballots, and freeze records. They explain how the architecture was
 tested, but they are historical and may contain decisions explicitly removed
 from the canonical design. Git preserves superseded text; it should not be
 copied forward as current specification.
+
+Post-freeze candidates which still require a focused review are explicitly
+labelled, including
+[`design-review/101-frontend-control-candidate.md`](design-review/101-frontend-control-candidate.md).

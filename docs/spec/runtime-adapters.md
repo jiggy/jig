@@ -195,10 +195,11 @@ immutable package + Binding + host policy
     -> enforcement receipt
 ```
 
-Preparation receives a narrower grant than the final Run or Service Mount. It
-cannot see owner attachments, secrets, project policy roots, or effect slots.
-Network access, if allowed for preparation, is an explicit Backend-enforced
-preparation policy; it is never inherited by the component.
+Preparation receives a separate, independently minimized authority envelope
+from the final Run or Service Mount. It cannot see owner attachments, secrets,
+project policy roots, or effect slots. Network access, if allowed for
+preparation, is an explicit Backend-enforced preparation policy; it is neither
+comparable with nor inherited by the component's final authority.
 
 Every host-dispatched preparation activation is a distinct child owner using
 the same fenced lifecycle as the final Run or Service Mount: durable spawn
@@ -209,16 +210,13 @@ Jig owners. Jig accepts its prepared snapshot only after that child quiesces
 successfully and the snapshot passes safe-tree validation. The later final
 activation has its own spawn intent, seal, receipt, and cleanup.
 
-Jig supports two honest trust modes:
-
-- `sandboxed`: the Backend enforces every required predicate or activation
-  fails; this is the default for imported code.
-- `trusted-local`: a local user explicitly approves the exact package,
-  Adapter/toolchain, and wider authority. The activation remains supervised
-  but makes no portable containment claim.
-
-A package, Binding, Starter, or Semantic Choice ranker cannot select the Backend or
-request `trusted-local` mode.
+Jig v1 has one package activation mode: the Backend enforces every required
+predicate or activation fails. A package, Binding, Starter, or Semantic Choice
+ranker cannot select or weaken the Backend. Host-native trusted capability
+providers are a separate admission branch; they are never a bypass for running
+package-controlled code without containment. A future explicitly nonportable
+trusted-code mode would require its own reviewed specification and is not part
+of v1.
 
 ## 6. Local evidence and failure
 
@@ -273,7 +271,7 @@ Host-machinery changes create a new candidate generation requiring ordinary
 review and apply.
 
 Root submission and idempotency behavior for a pinned `UNAVAILABLE` result are
-owned by [project policy §2.1](project-policy.md#21-admission-and-operational-readiness)
+owned by [project policy §2.3](project-policy.md#23-admission-and-operational-readiness)
 and [§10](project-policy.md#10-root-run-admission).
 
 Instruction fallback is a distinct implementation selected and pinned during
