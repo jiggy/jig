@@ -1,4 +1,4 @@
-import { MAX_FRAME_BYTES } from "./json.ts";
+import { MAX_FRAME_BYTES } from "./json.js";
 
 export interface Transport {
   readonly input: AsyncIterable<Uint8Array>;

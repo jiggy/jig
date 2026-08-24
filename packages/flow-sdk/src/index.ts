@@ -1,6 +1,6 @@
-import { RunSession } from "./session.ts";
-import { stdioTransport } from "./transport.ts";
-import type { RunHandler } from "./types.ts";
+import { RunSession } from "./session.js";
+import { stdioTransport } from "./transport.js";
+import type { RunHandler } from "./types.js";
 
 export type {
   Attachment,
@@ -15,11 +15,11 @@ export type {
   RunContext,
   RunHandler,
   RunResult,
-} from "./types.ts";
+} from "./types.js";
 export {
   EffectError,
   OperationError,
-} from "./types.ts";
+} from "./types.js";
 
 /** Serve exactly one FLOW Run/1 root request over protocol stdio. */
 export async function serve(handler: RunHandler): Promise<void> {

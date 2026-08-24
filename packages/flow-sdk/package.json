@@ -2,11 +2,28 @@
   "name": "@flowmd/sdk",
   "version": "0.0.0",
   "private": true,
+  "description": "TypeScript SDK for the FLOW Run/1 protocol",
   "type": "module",
+  "sideEffects": false,
+  "types": "./dist/index.d.ts",
   "exports": {
-    ".": "./src/index.ts"
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
   },
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "scripts": {
-    "test": "bun test"
+    "build": "bun run clean && bunx --bun tsc -p tsconfig.json",
+    "clean": "bun -e \"import { rm } from 'node:fs/promises'; await rm('dist', { recursive: true, force: true })\"",
+    "prepack": "bun run build",
+    "test": "bun test",
+    "test:package": "bun run build && bun test/package-smoke.ts"
+  },
+  "devDependencies": {
+    "typescript": "7.0.2"
   }
 }

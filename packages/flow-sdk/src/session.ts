@@ -1,4 +1,4 @@
-import { decodeJson, encodeJson, JsonViolation } from "./json.ts";
+import { decodeJson, encodeJson, JsonViolation } from "./json.js";
 import {
   cancelMessage,
   errorMessage,
@@ -14,12 +14,12 @@ import {
   validateFlowCall,
   type ParsedMessage,
   type RunParams,
-} from "./protocol.ts";
+} from "./protocol.js";
 import {
   FramingViolation,
   readFrames,
   type Transport,
-} from "./transport.ts";
+} from "./transport.js";
 import {
   EffectError,
   OperationError,
@@ -33,7 +33,7 @@ import {
   type RunContext,
   type RunHandler,
   type RunResult,
-} from "./types.ts";
+} from "./types.js";
 
 const MAX_OUTBOUND_REQUESTS = 64;
 type WireOperationErrorCode = Exclude<

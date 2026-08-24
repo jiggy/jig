@@ -6,8 +6,8 @@ import type {
   JsonValue,
   OperationErrorCode,
   RunResult,
-} from "./types.ts";
-import { OPERATION_ERROR_CODES } from "./types.ts";
+} from "./types.js";
+import { OPERATION_ERROR_CODES } from "./types.js";
 
 export const WIRE_ID = /^[A-Za-z0-9][A-Za-z0-9._:/-]*$/;
 export const LOCAL_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;

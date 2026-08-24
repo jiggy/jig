@@ -25,3 +25,9 @@ await serve(async (run: RunContext): Promise<RunResult> => {
 root Run. Root cancellation is exposed through `run.signal`. A call-specific
 `AbortSignal` cancels the local wait and sends the matching Run/1 cancellation
 notification without claiming that remote work was undone.
+
+Build and verify a clean tarball install with:
+
+```console
+bun run test:package
+```

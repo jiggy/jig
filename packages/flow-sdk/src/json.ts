@@ -1,4 +1,4 @@
-import type { JsonValue } from "./types.ts";
+import type { JsonValue } from "./types.js";
 
 export const MAX_FRAME_BYTES = 16_777_216;
 const MAX_DEPTH = 128;

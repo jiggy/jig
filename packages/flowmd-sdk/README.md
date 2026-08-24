@@ -27,3 +27,10 @@ serve(run)
 root Run. Handler cancellation uses ordinary `asyncio.CancelledError`.
 Cancelling a task awaiting `call_flow()` or `call_effect()` sends the matching
 Run/1 cancellation notification.
+
+Build and verify both distribution formats with:
+
+```console
+python -m build
+python tests/package_smoke.py dist/*.whl dist/*.tar.gz
+```
