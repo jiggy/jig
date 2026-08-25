@@ -8,7 +8,7 @@ if ! "$python_bin" --version >/dev/null 2>&1; then
   exit 1
 fi
 
-bun test packages/flow-sdk packages/jig conformance/run-1
+bun test packages/flow-sdk packages/jig conformance/run-1 conformance/service-1
 bun run --cwd packages/flow-sdk test:package
 
 PYTHONDONTWRITEBYTECODE=1 \
