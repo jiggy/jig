@@ -25,8 +25,8 @@ import {
   type PackageBindingDefinition,
 } from "./author.js";
 import {
-  isCapturedAuthorModule,
-  type CapturedAuthorModule,
+  isCapturedAuthorClosure,
+  type CapturedAuthorClosure,
 } from "./author-module.js";
 
 const PROTOCOL = "jig-author-evaluator/1";
@@ -64,7 +64,7 @@ export interface EvaluatorProfile {
   readonly runtimeExecutable: string;
   readonly runtimeDigest: string;
   readonly runtimeMounts: readonly string[];
-  readonly buildOptions: "bun-cjs-closed-single-module/1";
+  readonly buildOptions: "bun-cjs-closed-static-closure/1";
   readonly sandbox: {
     readonly kind: "linux-cgroup-v2-bubblewrap/1";
     readonly helperDigest: string;
@@ -87,9 +87,18 @@ export interface EvaluatedAuthorDeclaration<
 > {
   readonly expected: "project" | "binding";
   readonly source: {
-    readonly projectPath: string;
+    readonly entryProjectPath: string;
     readonly bytes: number;
     readonly digest: string;
+    readonly modules: readonly {
+      readonly projectPath: string;
+      readonly bytes: number;
+      readonly digest: string;
+      readonly imports: readonly {
+        readonly specifier: string;
+        readonly projectPath: string;
+      }[];
+    }[];
   };
   readonly profile: EvaluatorProfile;
   readonly outputDigest: string;
@@ -112,15 +121,19 @@ export interface EvaluatedAuthorDeclaration<
   };
 }
 
-/** Evaluate one authentic capture in the private enforced Linux envelope. */
-export async function evaluateAuthorModule(
+/** Evaluate one entry from an authentic captured closure in the enforced envelope. */
+export async function evaluateAuthorClosure(
   options: PrivateAuthorEvaluatorOptions,
-  captured: CapturedAuthorModule,
+  captured: CapturedAuthorClosure,
+  entryProjectPath: string,
   expected: "project" | "binding",
   signal?: AbortSignal,
 ): Promise<EvaluatedAuthorDeclaration> {
-  if (!isCapturedAuthorModule(captured)) {
-    invalid("PROJECT_AUTHOR_CAPTURE", "author module was not produced by the capture boundary");
+  if (!isCapturedAuthorClosure(captured)) {
+    invalid("PROJECT_AUTHOR_CAPTURE", "author closure was not produced by the capture boundary");
+  }
+  if (!captured.entries.includes(entryProjectPath)) {
+    invalid("PROJECT_AUTHOR_CAPTURE", "selected entry is outside the author closure", entryProjectPath);
   }
   const distribution = await realpath(options.jigDistributionPath);
   const bunPath = await realpath(options.bunPath);
@@ -166,7 +179,7 @@ export async function evaluateAuthorModule(
       runtimeExecutable: bunPath,
       runtimeDigest,
       runtimeMounts: Object.freeze(runtimeMounts.map(({ source }) => source)),
-      buildOptions: "bun-cjs-closed-single-module/1" as const,
+      buildOptions: "bun-cjs-closed-static-closure/1" as const,
     });
     if (runtimeDigest !== options.runtimeObservation.executableDigest) {
       unavailable(
@@ -174,10 +187,15 @@ export async function evaluateAuthorModule(
         "selected Bun executable no longer matches its sealed observation",
       );
     }
-    const source = decoder.decode(captured.read());
+    const modules = captured.modules.map((module) => ({
+      projectPath: module.projectPath,
+      source: decoder.decode(captured.read(module.projectPath)),
+      imports: module.imports.map(({ specifier, projectPath }) => ({ specifier, projectPath })),
+    }));
     const request = canonicalJson({
       protocol: PROTOCOL,
-      source,
+      entryProjectPath,
+      modules,
     });
     const runId = `config-${process.pid.toString(36)}-${(++evaluationSequence).toString(36)}`;
     const component = await options.backend.launch({
@@ -249,27 +267,27 @@ export async function evaluateAuthorModule(
         unavailable(
           "PROJECT_EVALUATOR_UNAVAILABLE",
           `evaluator cleanup was not proven: ${exit.cleanupError ?? "not fenced"}`,
-          captured.projectPath,
+          entryProjectPath,
         );
       }
       if ((evidence.memoryEvents.max ?? 0) > 0 || (evidence.pidsEvents.max ?? 0) > 0) {
-        invalid("PROJECT_EVALUATION_LIMIT", "evaluator reached a hard resource limit", captured.projectPath);
+        invalid("PROJECT_EVALUATION_LIMIT", "evaluator reached a hard resource limit", entryProjectPath);
       }
       if (terminationReason === "deadline") {
-        invalid("PROJECT_EVALUATION_LIMIT", "evaluator reached its hard wall deadline", captured.projectPath);
+        invalid("PROJECT_EVALUATION_LIMIT", "evaluator reached its hard wall deadline", entryProjectPath);
       }
       if (terminationReason !== "payload_exit") {
         unavailable(
           "PROJECT_EVALUATOR_UNAVAILABLE",
           `evaluator ended for an unexpected reason: ${terminationReason}`,
-          captured.projectPath,
+          entryProjectPath,
         );
       }
       if (exit.exitCode !== 0 || exit.signal !== null) {
         invalid(
           "PROJECT_EVALUATION_FAILED",
           `evaluator exited ${exit.exitCode ?? exit.signal}${diagnostics.length === 0 ? "" : `: ${safeText(diagnostics)}`}`,
-          captured.projectPath,
+          entryProjectPath,
         );
       }
       let response: JsonValue;
@@ -277,11 +295,11 @@ export async function evaluateAuthorModule(
         response = decodeJson1(output);
       } catch (error) {
         if (error instanceof Json1Error) {
-          unavailable("PROJECT_EVALUATOR_PROTOCOL", error.message, captured.projectPath);
+          unavailable("PROJECT_EVALUATOR_PROTOCOL", error.message, entryProjectPath);
         }
         throw error;
       }
-      const value = checkedResponse(response, captured.projectPath);
+      const value = checkedResponse(response, entryProjectPath);
       contextualAuthorSchema(schemaBytes, expected).validate(
         value,
         "PROJECT_AUTHORING_SCHEMA_INVALID",
@@ -295,16 +313,22 @@ export async function evaluateAuthorModule(
         invalid(
           "PROJECT_DECLARATION_INVALID",
           errorText(error),
-          captured.projectPath,
+          entryProjectPath,
         );
       }
       const outputBytes = canonicalJson(normalized as unknown as JsonValue);
       return Object.freeze({
         expected,
         source: Object.freeze({
-          projectPath: captured.projectPath,
+          entryProjectPath,
           bytes: captured.sourceBytes,
-          digest: captured.sourceDigest,
+          digest: captured.closureDigest,
+          modules: Object.freeze(captured.modules.map((module) => Object.freeze({
+            projectPath: module.projectPath,
+            bytes: module.sourceBytes,
+            digest: module.sourceDigest,
+            imports: Object.freeze(module.imports.map((edge) => Object.freeze({ ...edge }))),
+          }))),
         }),
         profile,
         outputDigest: digestBytes(outputBytes),

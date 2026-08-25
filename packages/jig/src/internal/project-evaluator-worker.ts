@@ -18,7 +18,19 @@ const EVALUATION_CODES = new Set([
 
 interface WorkerRequest {
   readonly protocol: typeof PROTOCOL;
+  readonly entryProjectPath: string;
+  readonly modules: readonly WorkerModule[];
+}
+
+interface WorkerModule {
+  readonly projectPath: string;
   readonly source: string;
+  readonly imports: readonly WorkerImport[];
+}
+
+interface WorkerImport {
+  readonly specifier: string;
+  readonly projectPath: string;
 }
 
 interface BuildMessage {
@@ -97,16 +109,67 @@ async function readRequest(): Promise<WorkerRequest> {
     throw tagged("PROJECT_EVALUATOR_PROTOCOL", "evaluator request is not valid JSON");
   }
   if (!isRecord(value) || value.protocol !== PROTOCOL ||
-      typeof value.source !== "string" || Object.keys(value).length !== 2) {
+      typeof value.entryProjectPath !== "string" || !Array.isArray(value.modules) ||
+      Object.keys(value).length !== 3) {
     throw tagged("PROJECT_EVALUATOR_PROTOCOL", "evaluator request has an invalid shape");
   }
-  return value as unknown as WorkerRequest;
+  const paths = new Set<string>();
+  const modules: WorkerModule[] = [];
+  for (const candidate of value.modules) {
+    if (!isRecord(candidate) || typeof candidate.projectPath !== "string" ||
+        typeof candidate.source !== "string" || !Array.isArray(candidate.imports) ||
+        Object.keys(candidate).length !== 3 || paths.has(candidate.projectPath)) {
+      throw tagged("PROJECT_EVALUATOR_PROTOCOL", "evaluator module has an invalid shape");
+    }
+    paths.add(candidate.projectPath);
+    const imports: WorkerImport[] = [];
+    const edges = new Set<string>();
+    for (const edge of candidate.imports) {
+      if (!isRecord(edge) || typeof edge.specifier !== "string" ||
+          typeof edge.projectPath !== "string" || Object.keys(edge).length !== 2) {
+        throw tagged("PROJECT_EVALUATOR_PROTOCOL", "evaluator import has an invalid shape");
+      }
+      const key = `${edge.specifier}\0${edge.projectPath}`;
+      if (edges.has(key)) {
+        throw tagged("PROJECT_EVALUATOR_PROTOCOL", "evaluator request repeats an import edge");
+      }
+      edges.add(key);
+      imports.push({ specifier: edge.specifier, projectPath: edge.projectPath });
+    }
+    modules.push({
+      projectPath: candidate.projectPath,
+      source: candidate.source,
+      imports,
+    });
+  }
+  if (!paths.has(value.entryProjectPath)) {
+    throw tagged("PROJECT_EVALUATOR_PROTOCOL", "evaluator entry is absent from its module closure");
+  }
+  for (const module of modules) {
+    for (const edge of module.imports) {
+      if (!paths.has(edge.projectPath)) {
+        throw tagged("PROJECT_EVALUATOR_PROTOCOL", "evaluator import target is absent from its module closure");
+      }
+    }
+  }
+  return {
+    protocol: PROTOCOL,
+    entryProjectPath: value.entryProjectPath,
+    modules,
+  };
 }
 
 async function build(request: WorkerRequest): Promise<string> {
   const sdkSource = await runtime.file(SDK_ENTRY).text();
+  const modules = new Map(request.modules.map((module) => [module.projectPath, module]));
+  const edges = new Map<string, string>();
+  for (const module of request.modules) {
+    for (const edge of module.imports) {
+      edges.set(`${module.projectPath}\0${edge.specifier}`, edge.projectPath);
+    }
+  }
   const bridge = [
-    'import * as declaration from "jig-author:source";',
+    'import * as declaration from "jig-author:entry";',
     'const keys = Object.keys(declaration);',
     'if (keys.length !== 1 || keys[0] !== "default") {',
     '  const error = new Error("author module must export only default");',
@@ -133,12 +196,12 @@ async function build(request: WorkerRequest): Promise<string> {
           }
           return { path: arguments_.path, namespace: "jig-author" };
         });
-        builder.onResolve({ filter: /^jig-author:source$/ }, (arguments_) => {
+        builder.onResolve({ filter: /^jig-author:entry$/ }, (arguments_) => {
           if (arguments_.kind !== "import-statement" ||
               arguments_.importer !== "jig-author:bridge") {
             throw deniedImport(arguments_.path);
           }
-          return { path: arguments_.path, namespace: "jig-author" };
+          return { path: request.entryProjectPath, namespace: "jig-project" };
         });
         builder.onResolve({ filter: /^jig-author:/ }, (arguments_) => {
           throw deniedImport(arguments_.path);
@@ -147,13 +210,12 @@ async function build(request: WorkerRequest): Promise<string> {
           loader: "ts",
           contents: bridge,
         }));
-        builder.onLoad({ filter: /^jig-author:source$/, namespace: "jig-author" }, () => ({
-          loader: "ts",
-          contents: request.source,
-        }));
+        // Bun 1.3 reports the importer namespace as `file` for imports parsed
+        // from a custom-namespace onLoad result. Importer identity, not that
+        // reported namespace, is therefore the closed authority check.
         builder.onResolve({ filter: /^@jigging\/jig$/ }, (arguments_) => {
           if (arguments_.kind !== "import-statement" ||
-              arguments_.importer !== "jig-author:source") {
+              !modules.has(arguments_.importer)) {
             throw deniedImport(arguments_.path);
           }
           return { path: "sdk", namespace: "jig-sealed" };
@@ -164,6 +226,24 @@ async function build(request: WorkerRequest): Promise<string> {
         }));
         builder.onResolve({ filter: /.*/, namespace: "jig-sealed" }, (arguments_) => {
           throw deniedImport(arguments_.path);
+        });
+        builder.onResolve({ filter: /.*/ }, (arguments_) => {
+          if (arguments_.kind !== "import-statement") {
+            throw deniedImport(`${arguments_.path} (${arguments_.kind} from ${arguments_.importer})`);
+          }
+          if (!modules.has(arguments_.importer)) {
+            throw deniedImport(`${arguments_.path} (from ${arguments_.importer})`);
+          }
+          const target = edges.get(`${arguments_.importer}\0${arguments_.path}`);
+          if (target === undefined || !modules.has(target)) {
+            throw deniedImport(`${arguments_.path} (from ${arguments_.importer})`);
+          }
+          return { path: target, namespace: "jig-project" };
+        });
+        builder.onLoad({ filter: /.*/, namespace: "jig-project" }, (arguments_) => {
+          const module = modules.get(arguments_.path);
+          if (module === undefined) return undefined;
+          return { loader: "ts", contents: module.source };
         });
         builder.onResolve({ filter: /.*/, namespace: "jig-author" }, (arguments_) => {
           throw deniedImport(arguments_.path);

@@ -158,13 +158,15 @@ shape schema for one authored value.
 
 The privileged Linux corpus now evaluates both project and Binding values from
 captured bytes and proves that later source mutation does not alter the result.
-It rejects project-local, synthetic-namespace, CommonJS, and dynamic imports;
-syntax errors; extra exports; wrong contextual schemas; runtime-constructed
-loading; and non-terminating evaluation. A hostile declaration also attempts
-the known constructor paths from realm objects to the worker's `process` and
-stdout; it cannot forge the result channel in the tested tuple. Every accepted
-result records the sealed source, evaluator, SDK, schema, runtime, helper,
-Bubblewrap, launcher, cgroup, limit, and terminal evidence described above.
+At this checkpoint it rejected every project-local import; review 112 replaces
+that temporary restriction with an exact captured edge table. It continues to
+reject synthetic namespaces, CommonJS and dynamic imports, syntax errors,
+extra exports, wrong contextual schemas, runtime-constructed loading, and
+non-terminating evaluation. A hostile declaration also attempts the known
+constructor paths from realm objects to the worker's `process` and stdout; it
+cannot forge the result channel in the tested tuple. Every accepted result
+records the sealed source, evaluator, SDK, schema, runtime, helper, Bubblewrap,
+launcher, cgroup, limit, and terminal evidence described above.
 
 This is a bounded checkpoint, not a claim that `node:vm` is a general security
 boundary. If authored code escapes the reduced realm by another engine flaw,
@@ -173,11 +175,11 @@ normalizer remain authoritative.
 
 ## 6. Following checkpoint
 
-After the one-module evaluator passes hostile tests, the next slice adds a
-closed project-local static import graph. It must use explicit `.ts` paths,
-capture shared files once candidate-wide, reject cycles and escape/collision
-hazards, build only from captured bytes, and include canonical module paths,
-content digests, and resolved edges in the closure identity.
+The closed project-local static import graph is now implemented in
+[`112-static-author-closure.md`](112-static-author-closure.md). It uses
+explicit `.ts` paths, captures shared files once candidate-wide, rejects cycles
+and escape/collision hazards, builds only from captured bytes, and includes
+canonical module paths, content digests, and resolved edges in its identity.
 
 Only after that closure exists can Jig complete the two-stage project capture:
 

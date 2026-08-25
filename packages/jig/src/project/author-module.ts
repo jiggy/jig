@@ -1,23 +1,54 @@
 import { createHash } from "node:crypto";
 import { constants, type BigIntStats } from "node:fs";
 import { type FileHandle, lstat, open } from "node:fs/promises";
+import { dirname, join as joinPath, normalize as normalizePath } from "node:path/posix";
 import { resolve } from "node:path";
 
 import { invalid, unavailable } from "../diagnostics.js";
+import { canonicalJson, type JsonValue } from "../json.js";
 import { fullCaseFold15_1 } from "../package/paths.js";
-import { validateProjectPath } from "./paths.js";
+import {
+  assertNoProjectPathCollisions,
+  compareProjectPaths,
+  validateProjectPath,
+} from "./paths.js";
 
 const MAX_SOURCE_BYTES = 1024 * 1024;
+const MAX_CLOSURE_SOURCE_BYTES = 1024 * 1024;
+const MAX_CLOSURE_MODULES = 256;
+const MAX_CLOSURE_EDGES = 1024;
 const CAPTURE_ATTEMPTS = 3;
 const READ_CHUNK_BYTES = 64 * 1024;
 const decoder = new TextDecoder("utf-8", { fatal: true });
 const authenticCaptures = new WeakSet<object>();
+const authenticClosures = new WeakSet<object>();
 
 export interface CapturedAuthorModule {
   readonly projectPath: string;
   readonly sourceBytes: number;
   readonly sourceDigest: string;
   read(): Uint8Array;
+  dispose(): void;
+}
+
+export interface CapturedAuthorImport {
+  readonly specifier: string;
+  readonly projectPath: string;
+}
+
+export interface CapturedAuthorClosureModule {
+  readonly projectPath: string;
+  readonly sourceBytes: number;
+  readonly sourceDigest: string;
+  readonly imports: readonly CapturedAuthorImport[];
+}
+
+export interface CapturedAuthorClosure {
+  readonly entries: readonly string[];
+  readonly modules: readonly CapturedAuthorClosureModule[];
+  readonly sourceBytes: number;
+  readonly closureDigest: string;
+  read(projectPath: string): Uint8Array;
   dispose(): void;
 }
 
@@ -30,6 +61,15 @@ interface OpenProject {
 interface CapturedAttempt {
   readonly bytes: Uint8Array;
   readonly information: BigIntStats;
+}
+
+interface ScannedImport {
+  readonly kind: string;
+  readonly path: string;
+}
+
+interface BunScanner {
+  scanImports(source: string): readonly ScannedImport[];
 }
 
 /** Capture one TypeScript declaration without retaining a live project path. */
@@ -74,6 +114,115 @@ export function isCapturedAuthorModule(value: unknown): value is CapturedAuthorM
   return typeof value === "object" && value !== null && authenticCaptures.has(value);
 }
 
+/** Capture one closed static TypeScript import graph under one opened root. */
+export async function captureAuthorClosure(
+  projectRoot: string,
+  entryPaths: readonly string[],
+): Promise<CapturedAuthorClosure> {
+  if (!Array.isArray(entryPaths) || entryPaths.length === 0) {
+    invalid("PROJECT_EVALUATOR_SOURCE", "author closure requires at least one entry module");
+  }
+  if (entryPaths.length > MAX_CLOSURE_MODULES) {
+    invalid("PROJECT_EVALUATION_LIMIT", `author closure exceeds ${MAX_CLOSURE_MODULES} entries`);
+  }
+  const entries = [...entryPaths];
+  for (const projectPath of entries) validateAuthorPath(projectPath);
+  entries.sort(compareProjectPaths);
+  assertUniquePaths(entries, "author closure entry");
+
+  if (process.platform !== "linux") {
+    unavailable(
+      "PROJECT_EVALUATOR_UNAVAILABLE",
+      "author-closure capture requires Linux descriptor paths",
+    );
+  }
+
+  for (let attempt = 1; attempt <= CAPTURE_ATTEMPTS; attempt += 1) {
+    const captured = new Map<string, CapturedAttempt>();
+    try {
+      const project = await openProject(projectRoot);
+      return await withOwnedHandle(project.handle, async () => {
+        const imports = new Map<string, readonly CapturedAuthorImport[]>();
+        const visiting = new Set<string>();
+        const visited = new Set<string>();
+        const folded = new Map<string, string>();
+        let totalBytes = 0;
+        let totalEdges = 0;
+
+        const visit = async (projectPath: string, ancestry: readonly string[]): Promise<void> => {
+          const prior = folded.get(fullCaseFold15_1(projectPath));
+          if (prior !== undefined && prior !== projectPath) {
+            invalid(
+              "PROJECT_SOURCE_COLLISION",
+              `author closure paths collide: ${prior} and ${projectPath}`,
+              projectPath,
+            );
+          }
+          folded.set(fullCaseFold15_1(projectPath), projectPath);
+          if (visited.has(projectPath)) return;
+          if (visiting.has(projectPath)) {
+            invalid(
+              "PROJECT_EVALUATOR_IMPORT",
+              `author closure contains an import cycle: ${[...ancestry, projectPath].join(" -> ")}`,
+              projectPath,
+            );
+          }
+          if (captured.size >= MAX_CLOSURE_MODULES) {
+            invalid("PROJECT_EVALUATION_LIMIT", `author closure exceeds ${MAX_CLOSURE_MODULES} modules`);
+          }
+
+          visiting.add(projectPath);
+          const module = await captureFile(project.handle, projectPath);
+          captured.set(projectPath, module);
+          totalBytes += module.bytes.byteLength;
+          if (totalBytes > MAX_CLOSURE_SOURCE_BYTES) {
+            invalid(
+              "PROJECT_EVALUATION_LIMIT",
+              `author closure source exceeds ${MAX_CLOSURE_SOURCE_BYTES} bytes`,
+              projectPath,
+            );
+          }
+          const edges = scanStaticImports(projectPath, decoder.decode(module.bytes));
+          totalEdges += edges.length;
+          if (totalEdges > MAX_CLOSURE_EDGES) {
+            invalid("PROJECT_EVALUATION_LIMIT", `author closure exceeds ${MAX_CLOSURE_EDGES} imports`);
+          }
+          imports.set(projectPath, edges);
+          for (const edge of edges) {
+            await visit(edge.projectPath, [...ancestry, projectPath]);
+          }
+          visiting.delete(projectPath);
+          visited.add(projectPath);
+        };
+
+        for (const entry of entries) await visit(entry, []);
+        const modulePaths = [...captured.keys()].sort(compareProjectPaths);
+        assertNoProjectPathCollisions(modulePaths, "author closure");
+        await verifyProject(project);
+        for (const projectPath of modulePaths) {
+          await verifyFile(project.handle, projectPath, captured.get(projectPath)!.information);
+        }
+        return createClosure(entries, modulePaths, captured, imports, totalBytes);
+      }, "project-root descriptor");
+    } catch (error) {
+      for (const module of captured.values()) module.bytes.fill(0);
+      if (isSourceChange(error) && attempt < CAPTURE_ATTEMPTS) continue;
+      if (isSourceChange(error)) {
+        unavailable(
+          "PROJECT_SOURCE_CHANGED",
+          `author closure kept changing during ${CAPTURE_ATTEMPTS} capture attempts`,
+        );
+      }
+      throw error;
+    }
+  }
+  throw new Error("unreachable author-closure capture state");
+}
+
+export function isCapturedAuthorClosure(value: unknown): value is CapturedAuthorClosure {
+  return typeof value === "object" && value !== null && authenticClosures.has(value);
+}
+
 function createCapture(projectPath: string, source: Uint8Array): CapturedAuthorModule {
   const bytes = source.slice();
   let disposed = false;
@@ -93,6 +242,146 @@ function createCapture(projectPath: string, source: Uint8Array): CapturedAuthorM
   });
   authenticCaptures.add(capture);
   return capture;
+}
+
+function createClosure(
+  entries: readonly string[],
+  modulePaths: readonly string[],
+  captured: ReadonlyMap<string, CapturedAttempt>,
+  imports: ReadonlyMap<string, readonly CapturedAuthorImport[]>,
+  sourceBytes: number,
+): CapturedAuthorClosure {
+  const sources = new Map<string, Uint8Array>();
+  const modules = modulePaths.map((projectPath) => {
+    const capturedBytes = captured.get(projectPath)!.bytes;
+    const bytes = capturedBytes.slice();
+    capturedBytes.fill(0);
+    sources.set(projectPath, bytes);
+    return Object.freeze({
+      projectPath,
+      sourceBytes: bytes.byteLength,
+      sourceDigest: digest(bytes),
+      imports: Object.freeze([...(imports.get(projectPath) ?? [])]),
+    });
+  });
+  const identity = {
+    entries,
+    modules: modules.map(({ projectPath, sourceBytes, sourceDigest, imports: edges }) => ({
+      projectPath,
+      sourceBytes,
+      sourceDigest,
+      imports: edges.map(({ specifier, projectPath: target }) => ({ specifier, projectPath: target })),
+    })),
+  } as unknown as JsonValue;
+  let disposed = false;
+  const closure = Object.freeze({
+    entries: Object.freeze([...entries]),
+    modules: Object.freeze(modules),
+    sourceBytes,
+    closureDigest: digest(canonicalJson(identity)),
+    read(projectPath: string): Uint8Array {
+      if (disposed) unavailable("PROJECT_CAPTURE_CLOSED", "author closure has been disposed", projectPath);
+      const bytes = sources.get(projectPath);
+      if (bytes === undefined) invalid("PROJECT_EVALUATOR_SOURCE", "module is outside the author closure", projectPath);
+      return bytes.slice();
+    },
+    dispose(): void {
+      if (disposed) return;
+      disposed = true;
+      for (const bytes of sources.values()) bytes.fill(0);
+      sources.clear();
+    },
+  });
+  authenticClosures.add(closure);
+  return closure;
+}
+
+function scanStaticImports(
+  importer: string,
+  source: string,
+): readonly CapturedAuthorImport[] {
+  const BunRuntime = (globalThis as unknown as {
+    readonly Bun?: { readonly Transpiler?: new (options: { loader: "ts" }) => BunScanner };
+  }).Bun;
+  if (BunRuntime?.Transpiler === undefined) {
+    unavailable("PROJECT_EVALUATOR_UNAVAILABLE", "author-closure scanning requires Bun");
+  }
+  let scanned: readonly ScannedImport[];
+  try {
+    scanned = new BunRuntime.Transpiler({ loader: "ts" }).scanImports(source);
+  } catch (error) {
+    invalid("PROJECT_EVALUATOR_COMPILE", errorText(error), importer);
+  }
+  const edges = new Map<string, CapturedAuthorImport>();
+  for (const item of scanned) {
+    if (item.kind !== "import-statement") {
+      invalid(
+        "PROJECT_EVALUATOR_IMPORT",
+        `author modules allow only static ESM imports: ${item.kind}`,
+        importer,
+      );
+    }
+    if (item.path === "@jigging/jig") continue;
+    const target = resolveAuthorImport(importer, item.path);
+    edges.set(`${item.path}\0${target}`, Object.freeze({ specifier: item.path, projectPath: target }));
+  }
+  return Object.freeze([...edges.values()].sort((left, right) => {
+    const specifierOrder = compareUtf8(left.specifier, right.specifier);
+    return specifierOrder === 0 ? compareProjectPaths(left.projectPath, right.projectPath) : specifierOrder;
+  }));
+}
+
+function resolveAuthorImport(importer: string, specifier: string): string {
+  if (!(specifier.startsWith("./") || specifier.startsWith("../")) ||
+      specifier.includes("\\") || specifier.includes("\0") ||
+      !specifier.endsWith(".ts") || specifier.endsWith(".d.ts")) {
+    invalid(
+      "PROJECT_EVALUATOR_IMPORT",
+      `project-local imports must use an explicit relative .ts path: ${specifier}`,
+      importer,
+    );
+  }
+  const target = normalizePath(joinPath(dirname(importer), specifier));
+  try {
+    validateProjectPath(target, "author import target");
+    if (fullCaseFold15_1(target.split("/", 1)[0]!) === ".jig") {
+      throw new TypeError("author import target cannot use protected .jig state");
+    }
+    if (!target.endsWith(".ts") || target.endsWith(".d.ts")) {
+      throw new TypeError("author import target must have an exact .ts suffix");
+    }
+  } catch (error) {
+    invalid("PROJECT_EVALUATOR_IMPORT", errorText(error), importer);
+  }
+  return target;
+}
+
+function assertUniquePaths(paths: readonly string[], label: string): void {
+  try {
+    assertNoProjectPathCollisions(paths, label);
+  } catch (error) {
+    invalid("PROJECT_SOURCE_COLLISION", errorText(error));
+  }
+  for (let index = 1; index < paths.length; index += 1) {
+    if (paths[index - 1] === paths[index]) {
+      invalid("PROJECT_SOURCE_COLLISION", `${label} repeats ${paths[index]}`, paths[index]);
+    }
+  }
+}
+
+function compareUtf8(left: string, right: string): number {
+  const leftBytes = new TextEncoder().encode(left);
+  const rightBytes = new TextEncoder().encode(right);
+  const length = Math.min(leftBytes.byteLength, rightBytes.byteLength);
+  for (let index = 0; index < length; index += 1) {
+    const difference = leftBytes[index]! - rightBytes[index]!;
+    if (difference !== 0) return difference;
+  }
+  return leftBytes.byteLength - rightBytes.byteLength;
+}
+
+function digest(bytes: Uint8Array): string {
+  return `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
 }
 
 async function openProject(projectRoot: string): Promise<OpenProject> {

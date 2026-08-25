@@ -9,8 +9,8 @@ import {
   PrivateLinuxCgroupBackend,
   type PrivateLinuxLaunchPlan,
 } from "../src/internal/linux-cgroup-backend.js";
-import { evaluateAuthorModule } from "../src/project/author-evaluator.js";
-import { captureAuthorModule } from "../src/project/author-module.js";
+import { evaluateAuthorClosure } from "../src/project/author-evaluator.js";
+import { captureAuthorClosure } from "../src/project/author-module.js";
 import { RunHostSession } from "../src/run/session.js";
 import { ServiceHostSession } from "../src/service/session.js";
 
@@ -226,30 +226,49 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
     const evaluate = async (source: string, expected: "project" | "binding" = "project") => {
       const path = `fixture-${++fixtureSequence}.ts`;
       await writeFile(join(root, path), source);
-      const fixture = await captureAuthorModule(root, path);
+      const fixture = await captureAuthorClosure(root, [path]);
       try {
-        return await evaluateAuthorModule(evaluator, fixture, expected);
+        return await evaluateAuthorClosure(evaluator, fixture, path, expected);
       } finally {
         fixture.dispose();
       }
     };
     try {
       const entry = join(root, "jig.ts");
-      await writeFile(entry, [
-        'import { defineJig, discover } from "@jigging/jig";',
-        'export default defineJig({ flows: discover("./flows") });',
+      await writeFile(join(root, "shared.ts"), [
+        'import { defineBinding, defineJig, discover, flowRef } from "@jigging/jig";',
+        'export const project = defineJig({ flows: discover("./flows") });',
+        "export const binding = defineBinding({",
+        '  package: "flows/worker",',
+        "  settings: { maxRetries: 3 },",
+        '  slots: { fallback: flowRef("flows/fallback") },',
+        "});",
       ].join("\n"));
-      const captured = await captureAuthorModule(root, "jig.ts");
+      await writeFile(entry, [
+        'import { project } from "./shared.ts";',
+        "export default project;",
+      ].join("\n"));
+      await writeFile(join(root, "build.ts"), [
+        'import { binding } from "./shared.ts";',
+        "export default binding;",
+      ].join("\n"));
+      const captured = await captureAuthorClosure(root, ["jig.ts", "build.ts"]);
       try {
         await writeFile(entry, "export default { changed: true };\n");
-        const evaluated = await evaluateAuthorModule(evaluator, captured, "project");
+        await writeFile(join(root, "shared.ts"), "export const changed = true;\n");
+        const evaluated = await evaluateAuthorClosure(evaluator, captured, "jig.ts", "project");
         expect(evaluated.value).toEqual({
           flows: { kind: "discover", roots: ["flows"] },
         });
-        expect(evaluated.source.digest).toBe(captured.sourceDigest);
+        expect(evaluated.source.digest).toBe(captured.closureDigest);
+        expect(evaluated.source.modules.map(({ projectPath }) => projectPath)).toEqual([
+          "build.ts",
+          "jig.ts",
+          "shared.ts",
+        ]);
         expect(evaluated.profile).toMatchObject({
           protocol: "jig-author-evaluator/1",
-          buildOptions: "bun-cjs-closed-single-module/1",
+          buildOptions: "bun-cjs-closed-static-closure/1",
           sandbox: {
             kind: "linux-cgroup-v2-bubblewrap/1",
             rootProcessMappings: true,
@@ -276,14 +295,29 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
           memoryEvents: { max: 0 },
           pidsEvents: { max: 0 },
         });
+        const binding = await evaluateAuthorClosure(evaluator, captured, "build.ts", "binding");
+        expect(binding.value).toEqual({
+          kind: "package",
+          package: "flows/worker",
+          settings: { maxRetries: 3 },
+          slots: { fallback: { kind: "flow", path: "flows/fallback" } },
+          attachments: {},
+        });
+        expect(binding.source.digest).toBe(captured.closureDigest);
       } finally {
         captured.dispose();
       }
 
-      await expect(evaluate([
-        'import value from "./other.ts";',
+      await writeFile(join(root, "other.ts"), [
+        'import { defineJig } from "@jigging/jig";',
+        'export const value = defineJig({ flows: ["flows/local"] });',
+      ].join("\n"));
+      expect((await evaluate([
+        'import { value } from "./other.ts";',
         "export default value;",
-      ].join("\n"))).rejects.toMatchObject({ code: "PROJECT_EVALUATOR_IMPORT" });
+      ].join("\n"))).value).toEqual({
+        flows: { kind: "members", paths: ["flows/local"] },
+      });
       await expect(evaluate([
         'import "jig-author:evil";',
         "export default {};",
@@ -296,22 +330,6 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         'const load = () => import("@jigging/jig");',
         "export default load();",
       ].join("\n"))).rejects.toMatchObject({ code: "PROJECT_EVALUATOR_IMPORT" });
-
-      const binding = await evaluate([
-        'import { defineBinding, flowRef } from "@jigging/jig";',
-        "export default defineBinding({",
-        '  package: "flows/worker",',
-        "  settings: { maxRetries: 3 },",
-        '  slots: { fallback: flowRef("flows/fallback") },',
-        "});",
-      ].join("\n"), "binding");
-      expect(binding.value).toEqual({
-        kind: "package",
-        package: "flows/worker",
-        settings: { maxRetries: 3 },
-        slots: { fallback: { kind: "flow", path: "flows/fallback" } },
-        attachments: {},
-      });
 
       await expect(evaluate([
         "export const extra = true;",
