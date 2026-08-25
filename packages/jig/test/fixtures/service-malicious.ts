@@ -36,8 +36,16 @@ const acknowledgement = await receive();
 if (acknowledgement.id !== "provider:1" || !Object.hasOwn(acknowledgement, "result")) {
   throw new Error("expected readiness acknowledgement");
 }
+if (scenario === "crash-on-invoke") {
+  const invocation = await receive();
+  if (invocation.method !== "service/invoke") throw new Error("expected Service invocation");
+  process.exit(8);
+}
 const cancellation = await receive();
 if (cancellation.method !== "request/cancel") throw new Error("expected Mount cancellation");
+if (scenario === "ignore-mount-cancel") {
+  await new Promise(() => undefined);
+}
 
 send({ jsonrpc: "2.0", id: "host:1", result: {} });
 if (scenario === "trailing-frame") {

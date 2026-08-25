@@ -85,6 +85,31 @@ describe("private Service/1 process integration", () => {
     await expect(service.start()).rejects.toThrow("CHANNEL_LOST");
     expect(await service.result()).toMatchObject({ status: "failed", code: "CHANNEL_LOST" });
   });
+
+  test("loses a pending invocation when its Provider crashes", async () => {
+    const service = new ServiceHostSession(
+      spawnProvider([process.execPath, "run", maliciousFixture, "crash-on-invoke"], {}),
+      activation(),
+    );
+    await service.start();
+    expect(await service.invoke({
+      exportName: "sessions",
+      method: "read",
+      input: null,
+      deadlineUnixMs: Date.now() + 5_000,
+    })).toMatchObject({ status: "failed", code: "UNAVAILABLE" });
+    expect(await service.result()).toMatchObject({ status: "failed", code: "CHANNEL_LOST" });
+  });
+
+  test("hard-terminates a Provider which ignores Mount cancellation", async () => {
+    const service = new ServiceHostSession(
+      spawnProvider([process.execPath, "run", maliciousFixture, "ignore-mount-cancel"], {}),
+      activation(),
+      { cancellationGraceMs: 20 },
+    );
+    await service.start();
+    expect(await service.stop()).toMatchObject({ status: "failed", code: "EXECUTION_FAILED" });
+  });
 });
 
 function activation() {

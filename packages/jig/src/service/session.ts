@@ -127,6 +127,7 @@ interface InvocationRecord {
   readonly terminal: Deferred<ServiceInvocationTerminal>;
   phase: "queued" | "open" | "terminal";
   cancellation?: { readonly code: "CANCELLED" | "DEADLINE_EXCEEDED"; readonly message: string };
+  mountFailed?: boolean;
   abortListener?: () => void;
   deadlineTimer?: ReturnType<typeof setTimeout>;
   graceTimer?: ReturnType<typeof setTimeout>;
@@ -310,7 +311,7 @@ export class ServiceHostSession {
     for (const invocation of [...this.invocations.values()]) {
       this.finishInvocation(
         invocation,
-        invocation.cancellation === undefined
+        invocation.cancellation === undefined || invocation.mountFailed === true
           ? failedInvocation("UNAVAILABLE", "Service Provider was lost")
           : failedInvocation(invocation.cancellation.code, invocation.cancellation.message),
       );
@@ -374,7 +375,12 @@ export class ServiceHostSession {
         }
       }
       if (!discard && length !== 0) this.failProtocol("Provider stdout ended with an incomplete frame");
-      else if (!discard && this.mountTerminal === undefined && this.localFailure === undefined) {
+      else if (
+        !discard &&
+        this.mountTerminal === undefined &&
+        this.localFailure === undefined &&
+        !this.terminateStarted
+      ) {
         this.fail("CHANNEL_LOST", "Provider stdout closed before the Mount terminal");
       }
     } catch (error) {
@@ -691,7 +697,10 @@ export class ServiceHostSession {
     this.recordFailure(code, message, details);
     if (this.phase !== "new" && this.phase !== "terminal") this.phase = "stopping";
     for (const invocation of this.invocations.values()) {
-      this.cancelInvocation(invocation, "CANCELLED", "Service Mount failed");
+      if (invocation.cancellation === undefined) {
+        invocation.mountFailed = true;
+        this.cancelInvocation(invocation, "CANCELLED", "Service Mount failed");
+      }
     }
     this.sendMountCancellation();
     this.readyDeferred.reject(new Error(`${code}: ${message}`));
