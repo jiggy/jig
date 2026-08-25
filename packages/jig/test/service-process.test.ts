@@ -8,6 +8,7 @@ import { ServiceHostSession } from "../src/service/session.js";
 const testDirectory = dirname(fileURLToPath(import.meta.url));
 const typescriptFixture = join(testDirectory, "fixtures", "service-provider.ts");
 const pythonFixture = join(testDirectory, "fixtures", "service-provider.py");
+const maliciousFixture = join(testDirectory, "fixtures", "service-malicious.ts");
 const pythonSource = join(testDirectory, "..", "..", "flowmd-sdk", "src");
 
 describe("private Service/1 process integration", () => {
@@ -60,7 +61,41 @@ describe("private Service/1 process integration", () => {
       });
     });
   }
+
+  for (const [scenario, code] of [
+    ["trailing-frame", "PROTOCOL_ERROR"],
+    ["partial-frame", "PROTOCOL_ERROR"],
+    ["nonzero-exit", "EXECUTION_FAILED"],
+  ] as const) {
+    test(`rejects ${scenario} after a valid Mount response`, async () => {
+      const service = new ServiceHostSession(
+        spawnProvider([process.execPath, "run", maliciousFixture, scenario], {}),
+        activation(),
+      );
+      await service.start();
+      expect(await service.stop()).toMatchObject({ status: "failed", code });
+    });
+  }
+
+  test("classifies a Provider crash before readiness as channel loss", async () => {
+    const service = new ServiceHostSession(
+      spawnProvider([process.execPath, "run", maliciousFixture, "crash-before-ready"], {}),
+      activation(),
+    );
+    await expect(service.start()).rejects.toThrow("CHANNEL_LOST");
+    expect(await service.result()).toMatchObject({ status: "failed", code: "CHANNEL_LOST" });
+  });
 });
+
+function activation() {
+  return {
+    settings: {},
+    attachments: {},
+    scratch: "/scratch",
+    startupDeadlineUnixMs: Date.now() + 5_000,
+    exports: ["sessions"],
+  } as const;
+}
 
 function providers(): ReadonlyArray<{
   readonly name: string;
