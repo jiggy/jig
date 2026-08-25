@@ -1,4 +1,5 @@
 from ._runtime import serve
+from ._service import serve_service
 from ._types import (
     Attachment,
     AttachmentAccess,
@@ -11,6 +12,13 @@ from ._types import (
     RunContext,
     RunHandler,
     RunResult,
+    ServiceDefinition,
+    ServiceError,
+    ServiceExportHandler,
+    ServiceInvocationContext,
+    ServiceMountContext,
+    ServiceMountHandler,
+    ServiceOwnerContext,
 )
 
 __all__ = [
@@ -25,5 +33,13 @@ __all__ = [
     "RunContext",
     "RunHandler",
     "RunResult",
+    "ServiceDefinition",
+    "ServiceError",
+    "ServiceExportHandler",
+    "ServiceInvocationContext",
+    "ServiceMountContext",
+    "ServiceMountHandler",
+    "ServiceOwnerContext",
     "serve",
+    "serve_service",
 ]

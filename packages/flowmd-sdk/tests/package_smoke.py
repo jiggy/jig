@@ -55,12 +55,17 @@ def main() -> None:
                     """
 from importlib.metadata import metadata
 from importlib.resources import files
-from flowmd_sdk import EffectError, OperationError
+from flowmd_sdk import EffectError, OperationError, ServiceDefinition, ServiceError, serve_service
 
 operation = OperationError("UNAVAILABLE")
 effect = EffectError("not-found", None)
+service_error = ServiceError("not-found", None)
+service = ServiceDefinition(exports={"clock": lambda context: None}, mount=lambda context: None)
 assert operation.code == "UNAVAILABLE"
 assert effect.error_name == "not-found"
+assert service_error.error_name == "not-found"
+assert "clock" in service.exports
+assert callable(serve_service)
 assert files("flowmd_sdk").joinpath("py.typed").is_file()
 assert "../../docs/" not in metadata("flowmd-sdk").get_payload()
 """,

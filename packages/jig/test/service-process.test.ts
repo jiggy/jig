@@ -5,64 +5,85 @@ import { fileURLToPath } from "node:url";
 import type { ExactComponentExit, ExactComponentProcess } from "../src/run/session.js";
 import { ServiceHostSession } from "../src/service/session.js";
 
-const fixture = join(dirname(fileURLToPath(import.meta.url)), "fixtures", "service-provider.ts");
+const testDirectory = dirname(fileURLToPath(import.meta.url));
+const typescriptFixture = join(testDirectory, "fixtures", "service-provider.ts");
+const pythonFixture = join(testDirectory, "fixtures", "service-provider.py");
+const pythonSource = join(testDirectory, "..", "..", "flowmd-sdk", "src");
 
 describe("private Service/1 process integration", () => {
-  test("drives a real TypeScript Provider through mount, calls, and cleanup", async () => {
-    const process = spawnProvider();
-    const service = new ServiceHostSession(process, {
-      settings: {},
-      attachments: {},
-      scratch: "/scratch",
-      startupDeadlineUnixMs: Date.now() + 5_000,
-      exports: ["sessions"],
-    });
-    await service.start();
+  for (const provider of providers()) {
+    test(`drives a real ${provider.name} Provider through mount, calls, and cleanup`, async () => {
+      const process = spawnProvider(provider.command, provider.environment);
+      const service = new ServiceHostSession(process, {
+        settings: {},
+        attachments: {},
+        scratch: "/scratch",
+        startupDeadlineUnixMs: Date.now() + 5_000,
+        exports: ["sessions"],
+      });
+      await service.start();
 
-    expect(await service.invoke({
-      exportName: "sessions",
-      method: "read",
-      input: { session: "s-1" },
-      deadlineUnixMs: Date.now() + 5_000,
-    })).toEqual({
-      status: "succeeded",
-      value: { input: { session: "s-1" } },
-    });
+      expect(await service.invoke({
+        exportName: "sessions",
+        method: "read",
+        input: { session: "s-1" },
+        deadlineUnixMs: Date.now() + 5_000,
+      })).toEqual({
+        status: "succeeded",
+        value: { input: { session: "s-1" } },
+      });
 
-    expect(await service.invoke({
-      exportName: "sessions",
-      method: "missing",
-      input: { session: "s-2" },
-      deadlineUnixMs: Date.now() + 5_000,
-    })).toEqual({
-      status: "application-error",
-      name: "not-found",
-      data: { session: "s-2" },
-    });
+      expect(await service.invoke({
+        exportName: "sessions",
+        method: "missing",
+        input: { session: "s-2" },
+        deadlineUnixMs: Date.now() + 5_000,
+      })).toEqual({
+        status: "application-error",
+        name: "not-found",
+        data: { session: "s-2" },
+      });
 
-    expect(await service.invoke({
-      exportName: "sessions",
-      method: "dependency",
-      input: { key: "s-3" },
-      deadlineUnixMs: Date.now() + 5_000,
-    })).toMatchObject({
-      status: "failed",
-      code: "UNAVAILABLE",
-    });
+      expect(await service.invoke({
+        exportName: "sessions",
+        method: "dependency",
+        input: { key: "s-3" },
+        deadlineUnixMs: Date.now() + 5_000,
+      })).toMatchObject({
+        status: "failed",
+        code: "UNAVAILABLE",
+      });
 
-    expect(await service.stop()).toMatchObject({
-      status: "succeeded",
-      diagnostics: { stderrBytes: 0 },
+      expect(await service.stop()).toMatchObject({
+        status: "succeeded",
+        diagnostics: { stderrBytes: 0 },
+      });
     });
-  });
+  }
 });
 
-function spawnProvider(): ExactComponentProcess {
-  const child = Bun.spawn([process.execPath, "run", fixture], {
+function providers(): ReadonlyArray<{
+  readonly name: string;
+  readonly command: readonly string[];
+  readonly environment: Readonly<Record<string, string>>;
+}> {
+  const python = Bun.which("python3");
+  if (python === null) throw new Error("Python Provider proof requires python3");
+  return [
+    { name: "TypeScript", command: [process.execPath, "run", typescriptFixture], environment: {} },
+    { name: "Python", command: [python, pythonFixture], environment: { PYTHONPATH: pythonSource } },
+  ];
+}
+
+function spawnProvider(
+  command: readonly string[],
+  environment: Readonly<Record<string, string>>,
+): ExactComponentProcess {
+  const child = Bun.spawn(command, {
     stdin: "pipe",
     stdout: "pipe",
     stderr: "pipe",
-    env: {},
+    env: environment,
   });
   const completion = child.exited.then((exitCode): ExactComponentExit => ({
     exitCode,
