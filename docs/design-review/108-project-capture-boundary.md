@@ -157,7 +157,7 @@ The subsequent order is:
 ```text
 protected durable Package/1 store (closed by review 109)
     -> pure package/Binding semantic linker (closed by review 110)
-    -> bounded TypeScript evaluator
+    -> bounded TypeScript evaluator (closed by reviews 111 and 112)
     -> resolution and admission
 ```
 

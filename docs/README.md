@@ -44,11 +44,11 @@ Current implementation frontier:
   session-local TypeScript/Python/independent matrix is complete while durable
   hosting and a portable Host-under-test conformance label remain open.
 - [`design-review/107-project-authoring-sdk-slice.md`](design-review/107-project-authoring-sdk-slice.md)
-  through [`design-review/111-bounded-project-evaluator.md`](design-review/111-bounded-project-evaluator.md)
+  through [`design-review/112-static-author-closure.md`](design-review/112-static-author-closure.md)
   record the private project pipeline now proven through inert authoring,
   descriptor-confined source capture, retained Package/1 artifacts, pure
-  package/Binding linking, and one sandboxed single-module evaluator. Static
-  project-local imports and the durable aggregate are the next boundary.
+  package/Binding linking, and one sandboxed static-import evaluator. The
+  retained project aggregate is the next boundary.
 
 The focused Run/1 specification owns its finite wire surface. The remaining
 cross-cutting system rules are in the canonical architecture:

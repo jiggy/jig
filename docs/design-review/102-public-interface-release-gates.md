@@ -154,12 +154,15 @@ The private implementation boundary is fixed in
 values, a durable captured aggregate, and a resolved admission candidate are
 three separate stages. Flow membership capture, retained Package/1 artifacts,
 and the pure package/Binding linker are implemented private consumers. The
-one-module evaluator checkpoint in
+bounded evaluator checkpoint in
 [`111-bounded-project-evaluator.md`](111-bounded-project-evaluator.md) now
 proves captured-source evaluation, a closed `@jigging/jig` resolver, bounded
 JSON transport, host-side schema validation and canonical re-normalization,
-and complete cgroup/Bubblewrap fencing. It deliberately does not yet accept a
-project-local import graph. No aggregate schema or evaluator API is public.
+and complete cgroup/Bubblewrap fencing. The following
+[`112-static-author-closure.md`](112-static-author-closure.md) checkpoint adds
+one candidate-wide, captured, explicit static `.ts` import graph and makes the
+evaluator resolve only its recorded edges. No aggregate schema or evaluator API
+is public.
 
 Hooks, Service export references, instruction Agent selection,
 `semanticChoice`, and host-capability Bindings remain later gated slices. The
