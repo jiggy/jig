@@ -39,6 +39,11 @@ interface CapturedRecord extends CapturedFile {
   readonly offset: number;
 }
 
+export interface CapturedPackageBacking {
+  stream(path: string, maximumBytes?: number): AsyncIterable<Uint8Array>;
+  dispose(): Promise<void>;
+}
+
 interface SourceFingerprint {
   readonly path: string;
   readonly device: bigint;
@@ -169,11 +174,11 @@ async function captureOpenedRootAttempt(
   }
 }
 
-function createCapturedPackage(
+export function createCapturedPackage(
   sourceLabel: string,
   files: readonly CapturedFile[],
   digest: string,
-  snapshot: AnonymousSnapshot,
+  snapshot: CapturedPackageBacking,
 ): CapturedPackage {
   const byPath = new Map(files.map((file) => [file.path, file]));
   return Object.freeze({
@@ -601,15 +606,10 @@ async function openDirectoryEntry(
   }
 }
 
-interface AnonymousSnapshot {
-  stream(path: string, maximumBytes?: number): AsyncIterable<Uint8Array>;
-  dispose(): Promise<void>;
-}
-
 async function sealSnapshot(
   writable: FileHandle,
   records: readonly CapturedRecord[],
-): Promise<AnonymousSnapshot> {
+): Promise<CapturedPackageBacking> {
   const expectedSize = records.reduce((total, record) => total + record.size, 0);
   let readonly: FileHandle | undefined;
   try {

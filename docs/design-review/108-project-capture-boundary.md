@@ -155,7 +155,7 @@ authority planning.
 The subsequent order is:
 
 ```text
-protected durable content store
+protected durable Package/1 store (closed by review 109)
     -> pure package/Binding semantic aggregate over injected values
     -> bounded TypeScript evaluator
     -> resolution and admission

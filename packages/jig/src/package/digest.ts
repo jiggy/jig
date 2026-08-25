@@ -6,6 +6,13 @@ import { assertNoPathCollisions, comparePathBytes } from "./paths.js";
 const MAX_FILES = 65_536;
 const MAX_FILE_BYTES = 1_073_741_824;
 const MAX_TOTAL_BYTES = 4_294_967_296;
+const PACKAGE_1_HEADER = Buffer.from("FLOW-Package/1\0", "ascii");
+
+export const PACKAGE_1_LIMITS = Object.freeze({
+  files: MAX_FILES,
+  fileBytes: MAX_FILE_BYTES,
+  totalBytes: MAX_TOTAL_BYTES,
+});
 
 export interface PackageDigestFile {
   readonly path: string;
@@ -16,9 +23,21 @@ export async function packageDigest(
   files: readonly PackageDigestFile[],
   contents: (file: PackageDigestFile) => AsyncIterable<Uint8Array>,
 ): Promise<string> {
+  const hash = createHash("sha256");
+  for await (const chunk of encodePackage1(files, contents)) hash.update(chunk);
+  return `sha256:${hash.digest("hex")}`;
+}
+
+/** The exact canonical byte sequence hashed by Package/1. */
+export async function* encodePackage1(
+  files: readonly PackageDigestFile[],
+  contents: (file: PackageDigestFile) => AsyncIterable<Uint8Array>,
+): AsyncIterable<Uint8Array> {
   if (files.length > MAX_FILES) invalid("PACKAGE_LIMIT", `package exceeds ${MAX_FILES} files`);
   assertNoPathCollisions(files.map((file) => file.path));
-  const ordered = files.slice().sort((left, right) => comparePathBytes(left.path, right.path));
+  const ordered = files
+    .map((file) => Object.freeze({ path: file.path, size: file.size }))
+    .sort((left, right) => comparePathBytes(left.path, right.path));
   let totalBytes = 0;
   for (const file of ordered) {
     if (!Number.isSafeInteger(file.size) || file.size < 0 || file.size > MAX_FILE_BYTES) {
@@ -27,24 +46,26 @@ export async function packageDigest(
     totalBytes += file.size;
     if (totalBytes > MAX_TOTAL_BYTES) invalid("PACKAGE_LIMIT", `package exceeds ${MAX_TOTAL_BYTES} bytes`);
   }
-  const hash = createHash("sha256");
-  hash.update(Buffer.from("FLOW-Package/1\0", "ascii"));
-  hash.update(unsignedBigEndian(BigInt(ordered.length), 8));
+  // Do not expose the mutable module-owned Buffer to a consumer.
+  yield Uint8Array.from(PACKAGE_1_HEADER);
+  yield unsignedBigEndian(BigInt(ordered.length), 8);
   for (const file of ordered) {
     const path = Buffer.from(file.path, "utf8");
-    hash.update(Uint8Array.of(0x01));
-    hash.update(unsignedBigEndian(BigInt(path.byteLength), 4));
-    hash.update(path);
-    hash.update(unsignedBigEndian(BigInt(file.size), 8));
+    yield Uint8Array.of(0x01);
+    yield unsignedBigEndian(BigInt(path.byteLength), 4);
+    yield path;
+    yield unsignedBigEndian(BigInt(file.size), 8);
     let observed = 0;
     for await (const chunk of contents(file)) {
+      if (!(chunk instanceof Uint8Array)) {
+        throw new TypeError(`digest source ${file.path} yielded a non-byte chunk`);
+      }
       observed += chunk.byteLength;
       if (observed > file.size) throw new Error(`digest source ${file.path} exceeds its declared size`);
-      hash.update(chunk);
+      yield chunk;
     }
     if (observed !== file.size) throw new Error(`digest source ${file.path} does not match its declared size`);
   }
-  return `sha256:${hash.digest("hex")}`;
 }
 
 function unsignedBigEndian(value: bigint, bytes: number): Buffer {
