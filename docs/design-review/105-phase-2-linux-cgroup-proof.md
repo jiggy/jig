@@ -116,7 +116,7 @@ Run:
 bun run --cwd packages/jig test:linux-cgroup
 ```
 
-The 2026-08-25 proof now passes all ten focused tests:
+The 2026-08-25 proof now passes all eleven focused tests:
 
 ```text
 plan rejects cgroupfs mounts and malformed finite limits
@@ -129,6 +129,8 @@ orphaned grandchildren are fenced after activation-root exit
 coordinator SIGKILL is recovered by the surviving helper
 eight repeated Runs leave no process or cgroup residue
 one real Python flowmd_sdk component completes Run/1 through RunHostSession
+one real Python Service/1 Provider completes Mount, invocation, and cleanup
+through ServiceHostSession
 ```
 
 The suite's final `afterAll` enumerates the delegated scope and requires zero
@@ -178,12 +180,13 @@ finite immutable Nix Runtime Support Closure
     -> cgroup.kill fence, populated 0, removal
 ```
 
-The proof mounts only the 23 paths in the Python runtime's Nix closure, the
-FLOW SDK source, and the fixture component. It exposes the exact entropy
-device, clears the ambient environment, writes no bytecode, admits no network,
-and observes no memory or PID limit event. This is proof that the already
-private `ExactComponentProcess` seam can represent an enforced activation; it
-is not yet a Python Runtime Adapter implementation or public Backend API.
+The Run and Service proofs mount only the 23 paths in the Python runtime's Nix
+closure, the FLOW SDK source, and one fixture component. They expose the exact
+entropy device, clear the ambient environment, write no bytecode, admit no
+network, and observe no memory or PID limit event. This proves that the private
+`ExactComponentProcess` seam can represent both finite and long-lived enforced
+activations; it is not yet a Python Runtime Adapter implementation or public
+Backend API.
 
 ## VM comparison
 

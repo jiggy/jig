@@ -41,11 +41,13 @@ adds the correct wire owner privately.
 - The complete FLOW TypeScript SDK suite passes 53 tests.
 - The complete Python SDK suite passes 40 tests.
 - The installed-package smoke test passes after building only package files.
-- The private Jig Host passes 10 focused state-machine tests and drives real
+- The private Jig Host passes 13 focused state-machine tests and drives real
   TypeScript and Python Provider processes through the same three operations.
-- An independent Bun protocol peer runs eight cross-language Provider matrix
+- An independent Bun protocol peer runs ten cross-language Provider matrix
   cases.
-- The existing Jig suite passes 169 tests with the privileged hostile envelope
+- A real Python Provider completes Mount, invocation, cancellation, fencing,
+  and cgroup removal inside the private Linux security envelope.
+- The existing Jig suite passes 172 tests with the 11 privileged hostile envelope
   cases skipped unless their explicit environment gate is enabled.
 
 The focused Provider tests cover readiness, fixed exports, declared errors,
@@ -64,6 +66,7 @@ The milestone does not yet contain:
 
 The private Jig Host and independent Bun peer exercise overlapping scenarios,
 but they do not yet consume one complete Host-under-test corpus. Request
-ceilings, framing and process-loss injection, deadline/terminal races, detached
-work, and containment cleanup remain explicit gates. Consumer probes must not
-treat this milestone as a stable Service platform.
+ceilings, full framing and process-loss injection, and deadline/terminal races
+remain explicit gates. Detached invocation work, trailing output, pre-readiness
+loss, and one complete containment cleanup path are now proven. Consumer probes
+must not treat this milestone as a stable Service platform.

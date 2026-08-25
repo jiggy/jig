@@ -126,7 +126,8 @@ The private TypeScript and Python Provider projections implement
 invocation contexts, owner-scoped dependency calls, `ServiceError`, readiness,
 cancellation, and terminal quiescence. A private Jig Host drives both real
 Provider processes, and an independent Bun peer runs the first shared Provider
-matrix. The complete Host-under-test corpus, process and containment failures,
+matrix. One real Python Mount also completes inside the private Linux cgroup-v2
+envelope. The complete Host-under-test corpus, adversarial process failures,
 durable Jig provider generations/Bindings, further independent implementations,
 and the resulting conformance label remain release gates. Run/1 does not wait
 for them.
