@@ -354,6 +354,8 @@ export class ServiceSession {
     }
     if (mount.phase !== "open" || this.channel !== "open") return;
     mount.phase = "publishing";
+    const detached = [...mount.outbound].some((pending) => !pending.userSettled);
+    if (detached && !mount.controller.signal.aborted) failure ??= "EXECUTION_FAILED";
     for (const owner of [...this.owners.values()]) {
       if (owner.kind === "invocation" && owner.phase === "open") {
         this.cancelOwner(owner, new OperationError("OWNER_CLOSED", "Service Mount is closing"));

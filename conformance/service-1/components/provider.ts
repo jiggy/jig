@@ -61,6 +61,15 @@ const service: ServiceDefinition = {
       });
     }
     await context.ready();
+    if (context.settings.detachedMount === true) {
+      void context.callEffect({
+        operationId: "mount-detached:1",
+        slot: "storage",
+        method: "read",
+        input: null,
+      });
+      return;
+    }
     await context.cancelled;
   },
 };

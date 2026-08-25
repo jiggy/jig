@@ -513,6 +513,7 @@ class _ServiceRuntime:
 
         owner.accepting = False
         self._admitting_invocations = False
+        abandoned = owner.active_calls > 0 or bool(owner.pending)
         for child in list(self._owners.values()):
             if child.kind == "invocation":
                 await self._cancel_owner(child, "OWNER_CLOSED")
@@ -522,6 +523,8 @@ class _ServiceRuntime:
             return_exceptions=True,
         )
         await owner.empty.wait()
+        if owner.termination_code is None and abandoned and failure is None:
+            failure = OperationError("EXECUTION_FAILED")
         try:
             owner.terminal_claimed = True
             if owner.termination_code == "CANCELLED" or failure is None:

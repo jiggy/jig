@@ -58,6 +58,16 @@ async def mount(context):
             input=None,
         )
     await context.ready()
+    if context.settings.get("detachedMount") is True:
+        task = asyncio.create_task(context.call_effect(
+            operation_id="mount-detached:1",
+            slot="storage",
+            method="read",
+            input=None,
+        ))
+        task.add_done_callback(lambda completed: completed.exception())
+        await asyncio.sleep(0)
+        return
     await context.cancelled()
 
 

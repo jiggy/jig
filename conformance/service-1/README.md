@@ -13,7 +13,8 @@ readiness, concurrent invocation, declared errors, Mount- and
 invocation-attributed calls, cancellation which cannot be swallowed, clean
 Mount shutdown, detached-work rejection and wire quiescence, premature
 invocation, invalid readiness acknowledgement, and the 64-request concurrent
-Provider ceiling.
+Provider ceiling. Both invocation-owned and voluntarily abandoned Mount work
+are covered.
 
 The private Jig Host separately drives both Provider implementations in
 `packages/jig/test/service-process.test.ts`.

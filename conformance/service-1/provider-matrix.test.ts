@@ -143,6 +143,23 @@ for (const provider of providers) {
       });
     });
 
+    test("rejects detached Mount work before voluntary completion", async () => {
+      await withPeer(provider, async (peer) => {
+        peer.send(mount({ detachedMount: true }));
+        await acknowledgeReady(peer);
+        const dependency = await peer.receive();
+        expect(dependency).toMatchObject({
+          method: "effect/call",
+          params: { ownerRequestId: "host:1", operationId: "mount-detached:1" },
+        });
+        expect(await peer.receive()).toEqual(cancel(dependency.id as string));
+        await expect(peer.receive(75)).rejects.toThrow("timed out");
+        peer.send(operationError(dependency.id as string, "OWNER_CLOSED"));
+        expectOperationError(await peer.receive(), "host:1", "EXECUTION_FAILED");
+        await peer.finish();
+      });
+    });
+
     test("fails fatally when the Host invokes before readiness acknowledgement", async () => {
       await withPeer(provider, async (peer) => {
         peer.send(mount());
