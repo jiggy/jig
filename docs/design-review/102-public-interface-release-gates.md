@@ -111,15 +111,23 @@ was not OS-hermetic; its durable evidence and limits are recorded in
 
 ### FLOW Service SDK
 
-Service/1 remains a separate interface slice. Its eventual SDK must project:
+Service/1 remains a separate interface slice. The closed
+[`Service/1`](../spec/service-protocol.md) wire candidate, its
+[`message schema`](../spec/machine/service-1.schema.json),
+[`error registry`](../spec/machine/service-1-errors.json), and
+[`Service SDK/1`](../spec/service-sdk.md) candidate now fix:
 
 - one pending Service Mount with fixed exports and dependencies;
 - distinct Mount-background and invocation-owned clients/lifetimes; and
 - provider readiness and bounded disposal without public remote Scope objects.
 
-Its wire schemas, owner-attribution model, error registry, SDK vocabulary,
-examples, and conformance fixtures remain release gates. Run/1 does not wait
-for them, and examples may not infer Service helper names from the Run SDK.
+The private TypeScript Provider projection implements `serveService`, a static
+`ServiceDefinition`, mount and invocation contexts, owner-scoped dependency
+calls, `ServiceError`, readiness, cancellation, and terminal quiescence. It
+passes focused behavioral and clean-package checks. The private Host, Python
+projection, shared black-box Provider/Host fixtures, independent peers, and
+the resulting conformance label remain release gates. Run/1 does not wait for
+them.
 
 ### Jig project authoring SDK
 
@@ -220,7 +228,7 @@ need; keep compiler IR private when possible.
 
 The repository still needs:
 
-- closed Service/1 method schemas, owner-attribution model, and error registry;
+- a Service/1 Host, Python Provider SDK, and cross-language black-box corpus;
 - Runtime Adapter and Sandbox Backend schemas;
 - the host-policy document schema and extension-registration identity model;
 - the canonical `jig.lock` schema; and

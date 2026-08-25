@@ -39,12 +39,16 @@ Current implementation frontier:
 - [`design-review/105-phase-2-linux-cgroup-proof.md`](design-review/105-phase-2-linux-cgroup-proof.md)
   records the private cgroup-v2/Bubblewrap implementation, hostile proof, and
   remaining Bun descendant blocker.
+- [`design-review/106-service-wire-and-provider-sdk.md`](design-review/106-service-wire-and-provider-sdk.md)
+  records the closed Service/1 wire candidate and first TypeScript Provider
+  projection, while keeping Host, Python, and independent-conformance work
+  explicit.
 
 The focused Run/1 specification owns its finite wire surface. The remaining
 cross-cutting system rules are in the canonical architecture:
 
 - [Jig's Run/1 operation and lifecycle policy](design-review/60-reviewed-architecture.md#5-flow-run1)
-  and [the still-unclosed Service/1 profile](design-review/60-reviewed-architecture.md#6-flow-service1);
+  and [the Service/1 profile](design-review/60-reviewed-architecture.md#6-flow-service1);
 - [effects and Agents](design-review/60-reviewed-architecture.md#9-effects-events-hooks-and-agents);
 - [security and sandbox enforcement](design-review/60-reviewed-architecture.md#11-security-and-trust); and
 - [updates and reconciliation](design-review/60-reviewed-architecture.md#13-desired-state-direct-editing-and-updates).

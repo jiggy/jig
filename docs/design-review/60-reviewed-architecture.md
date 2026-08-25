@@ -31,8 +31,8 @@ Jig Runtime Adapter + Sandbox Backend
 
 `Package/1`, `Run/1`, `Capability Contract/1`, and `Service/1` are intended to
 have separate conformance labels. `Service/1` is a first-class design target,
-not a tax on a Run-only host; its stable label awaits closed wire schemas and
-independent conformance.
+not a tax on a Run-only host; its stable label awaits independent Provider and
+Host conformance against the now-closed wire candidate.
 
 Sley, Cordis, an imperative Python program, and an Agent instruction runner
 are intended reference integration shapes behind these boundaries. None would
@@ -50,13 +50,14 @@ FLOW Python distribution     flowmd-sdk
 FLOW Python import           flowmd_sdk
 ```
 
-TypeScript and Python SDKs project Run/1 and will eventually project Service/1
-without creating another wire layer. Run/1 now has private `0.0.0` candidate
-declarations and implementations under the selected minimal semantic
+TypeScript and Python SDKs project Run/1 without creating another wire layer.
+The TypeScript SDK now also projects the Service/1 Provider candidate; its
+Python peer and Host remain to be implemented. Run/1 has private `0.0.0`
+candidate declarations and implementations under the selected minimal semantic
 vocabulary. Its Phase 1 prerelease gate is complete, but the packages and a
-general third-party conformance label are not published. Service/1's SDK
-remains unclosed. Earlier design drafts used Caskada v3 and then Spindle for
-the graph runtime. The current name is Sley.
+general third-party conformance label are not published. Service/1 is not
+stable or independently conforming yet. Earlier design drafts used Caskada v3
+and then Spindle for the graph runtime. The current name is Sley.
 
 The governing laws are:
 
@@ -619,7 +620,7 @@ host -> component
 component -> host
     service/ready       acknowledge that every declared export is callable
 
-reuses Run/1 semantics, with Service-owned attribution still to be closed
+reuses Run/1 call semantics with Service-owned attribution
     flow/call
     effect/call
     request/cancel
@@ -627,9 +628,12 @@ reuses Run/1 semantics, with Service-owned attribution still to be closed
 
 Run/1's call params contain no `ownerRequestId` because its process has one
 implicit root owner. A Service channel has Mount-background work and concurrent
-invocation owners, so Service/1 cannot import those params unchanged. Its
-closed wire model must define cooperative owner attribution for its calls and
-readiness without altering Run/1. That model remains a Service/1 release gate.
+invocation owners, so Service/1 adds `ownerRequestId` to Provider-originated
+calls. The field names the pending Host request which owns the work: either the
+one `service/mount` request or one live `service/invoke` request. The closed
+wire model and error registry are in [Service/1](../spec/service-protocol.md),
+with machine messages in
+[`service-1.schema.json`](../spec/machine/service-1.schema.json).
 
 There is no `service/unmount`: cancelling the still-pending mount request
 initiates shutdown, and its terminal response acknowledges cleanup. There is no
@@ -642,7 +646,7 @@ Mount-background work belongs to the live `service/mount` request. Work caused
 by an invocation belongs to that narrower `service/invoke` request. Cancelling
 one invocation cannot cancel unrelated Mount work.
 
-A future language SDK must preserve that distinction. A provided method handler
+A language SDK must preserve that distinction. A provided method handler
 receives an invocation-scoped projection of cancellation and `flow/call` /
 `effect/call`; Mount initialization and recovery use the separate Mount-scoped
 projection. Both are views over the Mount's already-pinned dependency set, not
@@ -650,11 +654,13 @@ public `Scope`, `Context`, or transferable handles. Calling a
 Mount-scoped client from an invocation must not silently reattribute child work
 to that invocation, or vice versa.
 
-The future SDK must preserve fixed exports, readiness only after they are
-callable, distinct Mount-background versus invocation-owned work, and bounded
-cleanup. No setup return shape, disposer convention, helper name, or signature
-is normative until the SDK interface is specified; mutable export registration
-remains excluded.
+The [Service SDK/1 candidate](../spec/service-sdk.md) preserves fixed exports,
+readiness only after they are callable, distinct Mount-background versus
+invocation-owned work, and bounded cleanup. Its TypeScript projection uses one
+static `ServiceDefinition`, one mount handler, a static export-handler map,
+`ready()`, ordinary `try/finally`, and owner-scoped `callFlow` / `callEffect`.
+Mutable export registration remains excluded. The Python projection and
+independent corpus remain release gates.
 
 Host and Provider support multiple outstanding `service/invoke` requests on
 one Mount and out-of-order responses. Each invocation separately pins its
@@ -671,11 +677,11 @@ initialization begins. Every declared slot resolves to one exact Binding and
 provider generation. The set never changes for that Mount; losing a required
 dependency cancels the Mount rather than healing it in place.
 
-Conceptually, `service/ready` identifies the live owning Mount request and the
-complete declared export LocalNames in canonical UTF-8 order. It has no
-operation identity and owns no work. The exact owner field and request shape
-remain part of the unclosed Service/1 wire model. Unknown, duplicate, missing,
-extra, unsorted, stale-owner, or post-cancellation values are protocol errors.
+`service/ready` identifies the live owning Mount request through
+`ownerRequestId` and sends the complete declared export LocalNames in ascending
+Unicode code-point order. It has no operation identity and owns no work.
+Unknown, duplicate, missing, extra, unsorted, stale-owner, second, or
+post-cancellation values are protocol errors.
 
 ### 6.3 Readiness, identity, and loss
 
@@ -1724,8 +1730,10 @@ table; a missing/unbounded effective value makes that operation class
 unavailable. Jig allocates and records the chosen duration before owner
 dispatch and enforces it with a monotonic clock. It is invocation evidence,
 not Binding data, Starter output, or a portable Flow override. Run/1 projects
-its host-authoritative cutoff through the frozen `deadlineUnixMs` field;
-Service/1 deadline encoding remains a release gate.
+its host-authoritative cutoff through `deadlineUnixMs`. Service/1 uses
+`startupDeadlineUnixMs` for initialization through acknowledged readiness and
+`deadlineUnixMs` for each invocation; host enforcement and policy remain
+outside the Provider's control.
 
 There are no includes, merges, environment substitutions, project overlays,
 or partial CLI overrides. Unknown fields fail. Unknown operational module IDs
@@ -2092,10 +2100,12 @@ Bun peer and an independently implemented Python host peer, and an
 instruction-restricted external author/evaluator pass over the SDK plus one
 valid Package/1 and Schema/1 package. This completes the Phase 1 prerelease
 foundation; publication and a general third-party conformance label remain
-separate decisions. The remaining repository gap inventory includes:
+separate decisions. Service/1 now has closed method schemas, ownership,
+readiness, cancellation, and error candidates plus one private TypeScript
+Provider SDK. The remaining repository gap inventory includes:
 
-- exact closed JSON-RPC parameter, result, error-data, version-evolution, owner
-  attribution, and numeric limit definitions for every Service/1 method;
+- a private Service/1 Host, the Python Provider projection, and a shared
+  independent black-box lifecycle corpus;
 - closed RuntimeAdapter/1 and Sandbox Backend registration, plan, seal, spawn,
   receipt, and error data models;
 - one canonical `jig.lock` data model and schema;
