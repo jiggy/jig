@@ -11,6 +11,7 @@
 | Golden full-duplex conversation, Python component | Yes | Yes |
 | Direction and request/notification form | Yes | Yes |
 | Invalid root params and second root | Yes | Yes |
+| Root response then immediate host-stdin half-close | Yes | Yes |
 | Root cancellation, duplicate cancellation, and wire quiescence | Yes | Yes |
 | Call-specific cancellation and late-response tombstone | Yes | Yes |
 | Abandoned-call failure and wire quiescence | Yes | Yes |

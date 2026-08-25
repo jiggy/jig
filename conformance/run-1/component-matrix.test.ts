@@ -147,6 +147,24 @@ for (const component of standardComponents) {
 }
 
 for (const component of matrixComponents) {
+  test(`${component.name} survives immediate host half-close after its root response`, async () => {
+    await withScratch(async (scratch) => {
+      await withPeer(component.command, async (peer) => {
+        peer.send(rootRequest("host:half-close", scratch));
+        const response = await peer.receive();
+
+        expect(response).toEqual({
+          jsonrpc: "2.0",
+          id: "host:half-close",
+          result: { outcome: "done", output: null },
+        });
+        peer.closeInput();
+        expect(await peer.exit()).toBe(0);
+        await expect(peer.receive()).rejects.toThrow("component stdout closed");
+      });
+    });
+  });
+
   test(`${component.name} never puts a 65th component request on the wire concurrently`, async () => {
     await withScratch(async (scratch) => {
       await withPeer(component.command, async (peer) => {

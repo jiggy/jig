@@ -91,7 +91,7 @@ export class RunSession {
   private nextId = 1;
   private sentCount = 0;
   private accepting = true;
-  private channel: "open" | "complete" | "failed" = "open";
+  private channel: "open" | "root-publishing" | "fatal" | "complete" | "failed" = "open";
   private writeTail: Promise<void> = Promise.resolve();
 
   constructor(
@@ -117,17 +117,27 @@ export class RunSession {
           value = decodeJson(frame);
         } catch (error) {
           if (error instanceof JsonViolation && error.reportable) {
-            await this.bestEffort(errorMessage(null, -32700, "Parse error"));
+            await this.failWithDiagnostic(
+              "PROTOCOL_ERROR",
+              errorMessageText(error),
+              errorMessage(null, -32700, "Parse error"),
+            );
+          } else {
+            this.failChannel("PROTOCOL_ERROR", errorMessageText(error));
           }
-          throw error;
+          return;
         }
 
         let message: ParsedMessage;
         try {
           message = parseEnvelope(value);
         } catch (error) {
-          await this.bestEffort(errorMessage(null, -32600, "Invalid Request"));
-          throw new PeerProtocolViolation(errorMessageText(error));
+          await this.failWithDiagnostic(
+            "PROTOCOL_ERROR",
+            errorMessageText(error),
+            errorMessage(null, -32600, "Invalid Request"),
+          );
+          return;
         }
         await this.receive(message);
       }
@@ -184,8 +194,11 @@ export class RunSession {
       return;
     }
     if (this.root !== undefined) {
-      await this.bestEffort(errorMessage(id, -32600, "Only one flow/run is allowed"));
-      this.failChannel("PROTOCOL_ERROR", "host sent more than one flow/run");
+      await this.failWithDiagnostic(
+        "PROTOCOL_ERROR",
+        "host sent more than one flow/run",
+        errorMessage(id, -32600, "Only one flow/run is allowed"),
+      );
       return;
     }
 
@@ -193,8 +206,12 @@ export class RunSession {
     try {
       runParams = parseRunParams(params as JsonValue);
     } catch {
-      await this.send(errorMessage(id, -32602, "Invalid params"));
-      await this.complete();
+      try {
+        await this.sendTerminal(errorMessage(id, -32602, "Invalid params"));
+        await this.complete();
+      } catch (error) {
+        this.failRootPublication(errorMessageText(error));
+      }
       return;
     }
 
@@ -342,9 +359,9 @@ export class RunSession {
 
     try {
       if (failure === undefined && result !== undefined) {
-        await this.send(resultMessage(root.id, result));
+        await this.sendTerminal(resultMessage(root.id, result));
       } else {
-        await this.send(
+        await this.sendTerminal(
           operationErrorMessage(
             root.id,
             failure ?? "EXECUTION_FAILED",
@@ -356,7 +373,7 @@ export class RunSession {
       root.phase = "terminal";
       await this.complete();
     } catch (error) {
-      this.failChannel("CHANNEL_LOST", errorMessageText(error));
+      this.failRootPublication(errorMessageText(error));
     }
   }
 
@@ -522,44 +539,98 @@ export class RunSession {
   }
 
   private async send(value: JsonObject): Promise<void> {
-    if (this.channel !== "open") throw new Error("protocol channel is closed");
+    return this.enqueueWrite(value, "ordinary");
+  }
+
+  private async sendTerminal(value: JsonObject): Promise<void> {
+    return this.enqueueWrite(value, "root");
+  }
+
+  private async sendFatalDiagnostic(value: JsonObject): Promise<void> {
+    return this.enqueueWrite(value, "fatal");
+  }
+
+  private async enqueueWrite(
+    value: JsonObject,
+    kind: "ordinary" | "root" | "fatal",
+  ): Promise<void> {
+    if (
+      (kind === "fatal" && this.channel !== "fatal") ||
+      (kind !== "fatal" && this.channel !== "open")
+    ) {
+      throw new Error("protocol channel is closed");
+    }
     const frame = encodeJson(value);
     const line = new Uint8Array(frame.byteLength + 1);
     line.set(frame);
     line[frame.byteLength] = 0x0a;
     const write = this.writeTail.then(() => {
-      if (this.channel !== "open") throw new Error("protocol channel is closed");
+      if (kind === "fatal") {
+        if (this.channel !== "fatal") throw new Error("protocol channel is closed");
+      } else {
+        if (this.channel !== "open") throw new Error("protocol channel is closed");
+      }
+      if (kind === "root") {
+        // Claim the terminal decision immediately before publication. Once
+        // `write()` starts, later peer input cannot overturn the root result;
+        // only failure of this write can still fail the Run.
+        this.channel = "root-publishing";
+        this.accepting = false;
+      }
       return this.transport.write(line);
     });
     this.writeTail = write.catch(() => undefined);
     return write;
   }
 
-  private async bestEffort(value: JsonObject): Promise<void> {
-    try {
-      await this.send(value);
-    } catch {
-      // The channel is already unusable; another error frame cannot repair it.
-    }
-  }
-
   private async complete(): Promise<void> {
-    if (this.channel !== "open") return;
+    if (this.channel === "complete" || this.channel === "failed") return;
+    if (this.channel !== "root-publishing") return;
     this.channel = "complete";
     this.accepting = false;
     try {
       await this.transport.stopReading();
-    } finally {
-      this.completion.resolve();
+    } catch (error) {
+      this.channel = "failed";
+      this.completion.reject(
+        new OperationError("CHANNEL_LOST", errorMessageText(error)),
+      );
+      return;
     }
+    this.completion.resolve();
   }
 
   private failChannel(
     code: "PROTOCOL_ERROR" | "CHANNEL_LOST",
     message: string,
   ): void {
-    if (this.channel !== "open") return;
-    this.channel = "failed";
+    const failure = this.claimFatal(code, message);
+    if (failure === undefined) return;
+    this.finishFatal(failure);
+  }
+
+  private async failWithDiagnostic(
+    code: "PROTOCOL_ERROR" | "CHANNEL_LOST",
+    message: string,
+    diagnostic: JsonObject,
+  ): Promise<void> {
+    const failure = this.claimFatal(code, message);
+    if (failure === undefined) return;
+    try {
+      await this.sendFatalDiagnostic(diagnostic);
+    } catch {
+      // The diagnosed failure remains authoritative when stderr/stdout cannot
+      // carry an additional best-effort protocol frame.
+    }
+    this.finishFatal(failure);
+  }
+
+  private claimFatal(
+    code: "PROTOCOL_ERROR" | "CHANNEL_LOST",
+    message: string,
+  ): OperationError | undefined {
+    if (this.channel !== "open") return undefined;
+    this.channel = "fatal";
     this.accepting = false;
     const failure = new OperationError(code, message);
     const root = this.root;
@@ -578,6 +649,25 @@ export class RunSession {
       pending.wire.resolve();
     }
     if (root?.phase === "open") root.controller.abort(failure);
+    void this.transport.stopReading().catch(() => undefined);
+    return failure;
+  }
+
+  private finishFatal(failure: OperationError): void {
+    if (this.channel !== "fatal") return;
+    this.channel = "failed";
+    this.completion.reject(failure);
+  }
+
+  private failRootPublication(message: string): void {
+    if (this.channel === "open") {
+      this.failChannel("CHANNEL_LOST", message);
+      return;
+    }
+    if (this.channel !== "root-publishing") return;
+    this.channel = "failed";
+    this.accepting = false;
+    const failure = new OperationError("CHANNEL_LOST", message);
     void this.transport.stopReading().catch(() => undefined);
     this.completion.reject(failure);
   }

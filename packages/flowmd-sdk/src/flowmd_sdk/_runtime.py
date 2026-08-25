@@ -258,6 +258,10 @@ class _Runtime:
         self._frames: asyncio.Queue[Any] = asyncio.Queue(maxsize=_QUEUE_LIMIT)
         self._reader_stop = threading.Event()
         self._write_lock = threading.Lock()
+        # Guarded by _write_lock. The terminal claimant is chosen at the same
+        # boundary which serializes stdout, so a root response and a fatal
+        # channel close cannot both publish terminal frames.
+        self._terminal_phase = "open"
         self._done = asyncio.Event()
         self._fatal = False
         self._fatal_error: OperationError | None = None
@@ -315,7 +319,7 @@ class _Runtime:
                 self._offer(_FrameFailure(None, "stdin read failed", "CHANNEL_LOST"))
                 return
             if not chunk:
-                self._offer(_EndOfFile(incomplete=bool(buffered)))
+                self._offer_end_of_file(incomplete=bool(buffered))
                 return
             buffered.extend(chunk)
             if len(buffered) > MAX_DOCUMENT_BYTES and b"\n" not in buffered:
@@ -339,26 +343,62 @@ class _Runtime:
                 if not self._offer(frame):
                     return
 
-    async def _write(self, value: Any, *, preserve_cancellation: bool = True) -> None:
+    def _offer_end_of_file(self, *, incomplete: bool) -> None:
+        # A conforming host keeps its sending half open while the root request
+        # is pending. Once root publication has claimed the terminal boundary,
+        # however, a later EOF (including a trailing partial frame) cannot
+        # replace that response with a channel failure.
+        with self._write_lock:
+            if self._terminal_phase != "open":
+                return
+        self._offer(_EndOfFile(incomplete=incomplete))
+
+    async def _write(
+        self,
+        value: Any,
+        *,
+        preserve_cancellation: bool = True,
+        fatal_diagnostic: bool = False,
+        publishes_root: bool = False,
+    ) -> None:
         payload = encode_json1(value) + b"\n"
 
-        def write() -> None:
+        def write() -> bool:
             with self._write_lock:
-                sys.stdout.buffer.write(payload)
-                sys.stdout.buffer.flush()
+                if fatal_diagnostic:
+                    if self._terminal_phase != "fatal":
+                        return False
+                elif publishes_root:
+                    if self._terminal_phase != "open":
+                        return False
+                    self._terminal_phase = "publishing_root"
+                elif self._terminal_phase != "open":
+                    return False
+                try:
+                    sys.stdout.buffer.write(payload)
+                    sys.stdout.buffer.flush()
+                except Exception:
+                    if publishes_root:
+                        self._terminal_phase = "root_write_failed"
+                    raise
+                if publishes_root:
+                    self._terminal_phase = "root_published"
+                return True
 
         worker = asyncio.create_task(asyncio.to_thread(write))
         try:
-            await asyncio.shield(worker)
+            written = await asyncio.shield(worker)
         except asyncio.CancelledError:
             # Once a frame write starts it remains atomic. Root responses use
             # this to let a completed response win a cancellation race.
-            await worker
+            written = await worker
             if preserve_cancellation:
                 raise
         except Exception as error:
             await self._fatal_close("CHANNEL_LOST")
             raise OperationError("CHANNEL_LOST") from error
+        if not written:
+            raise self._fatal_error or OperationError("OWNER_CLOSED")
 
     async def _dispatch(self) -> None:
         while not self._done.is_set():
@@ -435,7 +475,12 @@ class _Runtime:
                 frame.get("params")
             )
         except (Json1Error, _InvalidParams):
-            await self._standard_error(request_id, -32602, "Invalid params")
+            await self._standard_error(
+                request_id,
+                -32602,
+                "Invalid params",
+                publishes_root=True,
+            )
             self._done.set()
             return
 
@@ -549,6 +594,7 @@ class _Runtime:
                     },
                 },
                 preserve_cancellation=False,
+                publishes_root=True,
             )
         except asyncio.CancelledError:
             self._root_phase = "completing"
@@ -597,7 +643,11 @@ class _Runtime:
         finally:
             self._root_phase = "terminal"
             self._accepting_calls = False
-            self._done.set()
+            # A fatal dispatcher owns channel completion so it can finish its
+            # optional diagnostic response before run() tears the dispatcher
+            # down. Normal root completion still owns the process lifetime.
+            if not self._fatal:
+                self._done.set()
 
     @staticmethod
     def _diagnose(error: Exception) -> None:
@@ -805,7 +855,11 @@ class _Runtime:
                 encode_json1(response)
         except Exception:
             response = self._execution_failure_response(request_id)
-        await self._write(response, preserve_cancellation=False)
+        await self._write(
+            response,
+            preserve_cancellation=False,
+            publishes_root=True,
+        )
 
     @staticmethod
     def _execution_failure_response(request_id: str) -> dict[str, Any]:
@@ -819,7 +873,15 @@ class _Runtime:
             },
         }
 
-    async def _standard_error(self, request_id: str | None, code: int, message: str) -> None:
+    async def _standard_error(
+        self,
+        request_id: str | None,
+        code: int,
+        message: str,
+        *,
+        publishes_root: bool = False,
+        fatal_diagnostic: bool = False,
+    ) -> None:
         await self._write(
             {
                 "jsonrpc": "2.0",
@@ -827,6 +889,8 @@ class _Runtime:
                 "error": {"code": code, "message": message},
             },
             preserve_cancellation=False,
+            fatal_diagnostic=fatal_diagnostic,
+            publishes_root=publishes_root,
         )
 
     async def _best_effort_standard_error(
@@ -835,14 +899,29 @@ class _Runtime:
         code: int,
         message: str,
     ) -> None:
+        # Every caller uses this only for a fatal envelope/framing violation.
+        # Close admission before serializing the diagnostic so an already
+        # queued root call cannot appear after that final frame.
+        if not self._begin_fatal("PROTOCOL_ERROR"):
+            return
         try:
-            await self._standard_error(request_id, code, message)
+            await self._standard_error(
+                request_id,
+                code,
+                message,
+                fatal_diagnostic=True,
+            )
         except Exception:
             pass
 
-    async def _fatal_close(self, code: OperationErrorCode) -> None:
+    def _begin_fatal(self, code: OperationErrorCode) -> bool:
+        with self._write_lock:
+            if self._terminal_phase in {"publishing_root", "root_published"}:
+                return False
+            if self._terminal_phase != "fatal":
+                self._terminal_phase = "fatal"
         if self._fatal:
-            return
+            return True
         self._fatal = True
         self._fatal_error = OperationError(code)
         self._accepting_calls = False
@@ -850,7 +929,11 @@ class _Runtime:
         current = asyncio.current_task()
         if self._root_task is not None and self._root_task is not current:
             self._root_task.cancel()
-        self._done.set()
+        return True
+
+    async def _fatal_close(self, code: OperationErrorCode) -> None:
+        if self._begin_fatal(code):
+            self._done.set()
 
 
 def serve(handler: RunHandler) -> None:

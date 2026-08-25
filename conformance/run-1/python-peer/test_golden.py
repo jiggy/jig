@@ -122,6 +122,30 @@ sys.stdout.flush()
                 with self.assertRaises(ProtocolError):
                     peer.finish()
 
+    def test_large_trailing_output_is_drained_before_exit(self) -> None:
+        response = encode_json1({
+            "jsonrpc": "2.0",
+            "id": "host:1",
+            "result": {"outcome": "done", "output": None},
+        }) + b"\n"
+        program = (
+            "import sys; "
+            f"sys.stdout.buffer.write({response!r}); "
+            "sys.stdout.buffer.write(b'x' * (2 * 1024 * 1024)); "
+            "sys.stdout.buffer.flush()"
+        )
+        with HostPeer([sys.executable, "-c", program]) as peer:
+            self.assertEqual(
+                peer.receive(),
+                {
+                    "jsonrpc": "2.0",
+                    "id": "host:1",
+                    "result": {"outcome": "done", "output": None},
+                },
+            )
+            with self.assertRaisesRegex(ProtocolError, "unexpected bytes"):
+                peer.finish()
+
 
 class GoldenConversationTests(unittest.TestCase):
     def test_typescript_sdk_component(self) -> None:
@@ -156,6 +180,7 @@ class ExpandedComponentMatrixTests(unittest.TestCase):
         standard = [bun, str(RUN_1 / "components" / "flow.ts")]
         command = [bun, str(RUN_1 / "components" / "matrix.ts")]
         exercise_standard_component_matrix(standard)
+        exercise_terminal_half_close(command)
         exercise_call_cancellation(command)
         exercise_abandoned_call(command)
         exercise_request_ceiling(command)
@@ -179,6 +204,7 @@ class ExpandedComponentMatrixTests(unittest.TestCase):
         standard = [sys.executable, str(RUN_1 / "components" / "flow.py")]
         command = [sys.executable, str(RUN_1 / "components" / "matrix.py")]
         exercise_standard_component_matrix(standard, environment=environment)
+        exercise_terminal_half_close(command, environment=environment)
         exercise_call_cancellation(command, environment=environment)
         exercise_abandoned_call(command, environment=environment)
         exercise_request_ceiling(command, environment=environment)
@@ -396,6 +422,24 @@ def exercise_standard_component_matrix(
             if response_code is not None:
                 expect_standard_error(peer.receive(), None, response_code)
             expect_closed(peer)
+
+
+def exercise_terminal_half_close(
+    command: list[str],
+    *,
+    environment: dict[str, str] | None = None,
+) -> None:
+    with HostPeer(command, environment=environment) as peer:
+        peer.send(flow_run_request("host:half-close", {}))
+        response = peer.receive()
+
+        self_equal(response, {
+            "jsonrpc": "2.0",
+            "id": "host:half-close",
+            "result": {"outcome": "done", "output": None},
+        })
+        peer.close_input()
+        peer.finish()
 
 
 def exercise_call_cancellation(

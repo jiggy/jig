@@ -78,6 +78,51 @@ class MemoryTransport implements Transport {
   }
 }
 
+class ControlledFirstWriteTransport extends MemoryTransport {
+  private firstWrite = true;
+  private release!: () => void;
+  private reject!: (reason: unknown) => void;
+  private markStopped!: () => void;
+  private readonly settlement = new Promise<void>((resolve, reject) => {
+    this.release = resolve;
+    this.reject = reject;
+  });
+  private readonly stopObserved = new Promise<void>((resolve) => {
+    this.markStopped = resolve;
+  });
+
+  override async write(bytes: Uint8Array): Promise<void> {
+    await super.write(bytes);
+    if (!this.firstWrite) return;
+    this.firstWrite = false;
+    await this.settlement;
+  }
+
+  resolveFirstWrite(): void {
+    this.release();
+  }
+
+  rejectFirstWrite(reason: unknown): void {
+    this.reject(reason);
+  }
+
+  override async stopReading(): Promise<void> {
+    await super.stopReading();
+    this.markStopped();
+  }
+
+  async waitForStop(): Promise<void> {
+    await this.stopObserved;
+  }
+}
+
+class RejectingStopTransport extends MemoryTransport {
+  override async stopReading(): Promise<void> {
+    await super.stopReading();
+    throw new Error("stdin shutdown failed");
+  }
+}
+
 function rootRequest(id = "host:1"): JsonObject {
   return {
     jsonrpc: "2.0",
@@ -114,6 +159,191 @@ describe("RunSession", () => {
         outcome: "done",
         output: { subject: "test" },
       },
+    });
+  });
+
+  test("completes when input closes after the root terminal frame is observable", async () => {
+    const transport = new ControlledFirstWriteTransport();
+    const session = new RunSession(transport, async (run) => ({
+      outcome: "done",
+      output: run.input,
+    }));
+    const completion = session.run();
+    transport.push(rootRequest());
+
+    await transport.waitForWrites(1);
+    expect(transport.message(0).result).toEqual({
+      outcome: "done",
+      output: { subject: "test" },
+    });
+    transport.closeInput();
+    transport.resolveFirstWrite();
+
+    await completion;
+  });
+
+  test("fails when the observable root terminal write rejects", async () => {
+    const transport = new ControlledFirstWriteTransport();
+    const session = new RunSession(transport, async (run) => ({
+      outcome: "done",
+      output: run.input,
+    }));
+    const completion = session.run();
+    transport.push(rootRequest());
+
+    await transport.waitForWrites(1);
+    transport.rejectFirstWrite(new Error("stdout failed"));
+
+    await expect(completion).rejects.toMatchObject({ code: "CHANNEL_LOST" });
+  });
+
+  test("fails when input shutdown rejects after publishing the root terminal frame", async () => {
+    const transport = new RejectingStopTransport();
+    const session = new RunSession(transport, async (run) => ({
+      outcome: "done",
+      output: run.input,
+    }));
+    const completion = session.run();
+    transport.push(rootRequest());
+
+    await expect(completion).rejects.toMatchObject({ code: "CHANNEL_LOST" });
+    expect(transport.writes).toHaveLength(1);
+    expect(transport.message(0)).toEqual({
+      jsonrpc: "2.0",
+      id: "host:1",
+      result: {
+        outcome: "done",
+        output: { subject: "test" },
+      },
+    });
+  });
+
+  test("fails when an invalid-params terminal write rejects", async () => {
+    const transport = new ControlledFirstWriteTransport();
+    const session = new RunSession(transport, async () => ({
+      outcome: "done",
+      output: null,
+    }));
+    const completion = session.run();
+    transport.push({
+      jsonrpc: "2.0",
+      id: "host:invalid",
+      method: "flow/run",
+      params: {},
+    });
+
+    await transport.waitForWrites(1);
+    transport.rejectFirstWrite(new Error("stdout failed"));
+
+    await expect(completion).rejects.toMatchObject({ code: "CHANNEL_LOST" });
+  });
+
+  test("fails when input closes before root terminal publication", async () => {
+    const transport = new MemoryTransport();
+    let markStarted!: () => void;
+    const started = new Promise<void>((resolve) => {
+      markStarted = resolve;
+    });
+    const session = new RunSession(transport, async (run) => {
+      markStarted();
+      await new Promise<void>((resolve) => {
+        run.signal.addEventListener("abort", () => resolve(), { once: true });
+      });
+      return { outcome: "done", output: null };
+    });
+    const completion = session.run();
+    transport.push(rootRequest());
+    await started;
+
+    transport.closeInput();
+
+    await expect(completion).rejects.toMatchObject({ code: "CHANNEL_LOST" });
+    expect(transport.writes).toHaveLength(0);
+  });
+
+  test("suppresses queued writes after a fatal protocol decision", async () => {
+    const transport = new ControlledFirstWriteTransport();
+    let markFatal!: () => void;
+    const fatal = new Promise<void>((resolve) => {
+      markFatal = resolve;
+    });
+    const session = new RunSession(transport, async (run) => {
+      run.signal.addEventListener("abort", markFatal, { once: true });
+      const calls = [
+        run.callEffect({
+          operationId: "queued:1",
+          slot: "store",
+          method: "write",
+          input: 1,
+        }),
+        run.callEffect({
+          operationId: "queued:2",
+          slot: "store",
+          method: "write",
+          input: 2,
+        }),
+      ];
+      await Promise.allSettled(calls);
+      return { outcome: "done", output: null };
+    });
+    const completion = session.run();
+    transport.push(rootRequest());
+    await transport.waitForWrites(1);
+
+    transport.pushRaw(new TextEncoder().encode("{}\n"));
+    await fatal;
+    transport.resolveFirstWrite();
+
+    await expect(completion).rejects.toMatchObject({ code: "PROTOCOL_ERROR" });
+    expect(transport.writes).toHaveLength(2);
+    expect(transport.message(0).method).toBe("effect/call");
+    expect(transport.message(1)).toEqual({
+      jsonrpc: "2.0",
+      id: null,
+      error: { code: -32600, message: "Invalid Request" },
+    });
+  });
+
+  test("suppresses a queued root response after a fatal protocol decision", async () => {
+    const transport = new ControlledFirstWriteTransport();
+    let markHandlerDone!: () => void;
+    const handlerDone = new Promise<void>((resolve) => {
+      markHandlerDone = resolve;
+    });
+    const session = new RunSession(transport, async (run) => {
+      const output = await run.callEffect({
+        operationId: "before-root:1",
+        slot: "store",
+        method: "read",
+        input: null,
+      });
+      markHandlerDone();
+      return { outcome: "done", output };
+    });
+    const completion = session.run();
+    transport.push(rootRequest());
+    await transport.waitForWrites(1);
+    const request = transport.message(0);
+
+    transport.push({
+      jsonrpc: "2.0",
+      id: request.id as string,
+      result: { value: "stored" },
+    });
+    await handlerDone;
+    // Let handleRoot enqueue its response behind the unresolved first write.
+    await Promise.resolve();
+    transport.pushRaw(new TextEncoder().encode("{}\n"));
+    await transport.waitForStop();
+    transport.resolveFirstWrite();
+
+    await expect(completion).rejects.toMatchObject({ code: "PROTOCOL_ERROR" });
+    expect(transport.writes).toHaveLength(2);
+    expect(transport.message(0).method).toBe("effect/call");
+    expect(transport.message(1)).toEqual({
+      jsonrpc: "2.0",
+      id: null,
+      error: { code: -32600, message: "Invalid Request" },
     });
   });
 

@@ -1,15 +1,19 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 from pathlib import Path
 import selectors
 import subprocess
 import sys
+import threading
 import time
 import unittest
+from unittest.mock import patch
 
 from flowmd_sdk import OperationError, RunContext
+from flowmd_sdk._runtime import _EndOfFile, _Runtime
 
 
 PACKAGE = Path(__file__).resolve().parents[1]
@@ -102,6 +106,42 @@ class Component:
         for stream in (self.process.stdin, self.process.stdout, self.process.stderr):
             if stream is not None:
                 stream.close()
+
+
+class _CapturedBuffer:
+    def __init__(self) -> None:
+        self.payloads: list[bytes] = []
+
+    def write(self, payload: bytes) -> int:
+        self.payloads.append(payload)
+        return len(payload)
+
+    def flush(self) -> None:
+        pass
+
+
+class _BlockingBuffer(_CapturedBuffer):
+    def __init__(self) -> None:
+        super().__init__()
+        self.visible = threading.Event()
+        self.release = threading.Event()
+
+    def write(self, payload: bytes) -> int:
+        result = super().write(payload)
+        self.visible.set()
+        if not self.release.wait(2):
+            raise TimeoutError("test did not release the root write")
+        return result
+
+
+class _FailingBuffer(_CapturedBuffer):
+    def write(self, payload: bytes) -> int:
+        raise OSError("stdout closed")
+
+
+class _TestStdout:
+    def __init__(self, buffer: _CapturedBuffer) -> None:
+        self.buffer = buffer
 
 
 def root_request(mode: str) -> dict[str, object]:
@@ -245,6 +285,12 @@ class RuntimeTests(unittest.TestCase):
         response = self.component.receive()
         self.assertEqual(response["error"]["data"]["code"], "CANCELLED")
         self.component.wait()
+
+    def test_eof_while_root_is_pending_prevents_a_root_response(self) -> None:
+        self.component.send(root_request("cancel"))
+        self.component.close_input()
+        self.component.wait(expected=1)
+        self.assertEqual(self.component.remaining_stdout(), b"")
 
     def test_swallowed_root_cancellation_still_wins_and_closes_admission(self) -> None:
         for index, mode in enumerate(("swallow-cancel", "swallow-cancel-error")):
@@ -531,6 +577,148 @@ class RuntimeTests(unittest.TestCase):
         )
         self.component.wait(expected=1)
         self.assertEqual(self.component.remaining_stdout(), b"")
+
+
+class RuntimeOrderingTests(unittest.TestCase):
+    @staticmethod
+    async def _handler(_: RunContext) -> dict[str, object]:
+        return {"outcome": "done", "output": None}
+
+    def test_root_publication_claim_beats_later_fatal_and_eof(self) -> None:
+        async def exercise() -> None:
+            runtime = _Runtime(self._handler)
+            output = _BlockingBuffer()
+            offered: list[object] = []
+            runtime._offer = lambda item: offered.append(item) is None  # type: ignore[method-assign]
+
+            with patch.object(sys, "stdout", _TestStdout(output)):
+                root = asyncio.create_task(
+                    runtime._write(
+                        {
+                            "jsonrpc": "2.0",
+                            "id": "host:1",
+                            "result": {"outcome": "done", "output": None},
+                        },
+                        publishes_root=True,
+                    )
+                )
+                self.assertTrue(await asyncio.to_thread(output.visible.wait, 1))
+
+                # _begin_fatal waits on the same lock held throughout root
+                # publication. Release stdout from another thread so the
+                # already-claimed root can finish before fatal inspects phase.
+                release = threading.Timer(0.05, output.release.set)
+                release.start()
+                try:
+                    await runtime._best_effort_standard_error(
+                        "host:2",
+                        -32600,
+                        "Invalid Request",
+                    )
+                finally:
+                    output.release.set()
+                    release.join(1)
+                await root
+
+            self.assertEqual(runtime._terminal_phase, "root_published")
+            self.assertFalse(runtime._fatal)
+            self.assertEqual(len(output.payloads), 1)
+            response = json.loads(output.payloads[0])
+            self.assertEqual(response["id"], "host:1")
+            self.assertIn("result", response)
+
+            runtime._offer_end_of_file(incomplete=False)
+            runtime._offer_end_of_file(incomplete=True)
+            self.assertEqual(offered, [])
+
+        asyncio.run(exercise())
+
+    def test_fatal_claim_suppresses_root_and_ordinary_writes(self) -> None:
+        async def exercise() -> None:
+            runtime = _Runtime(self._handler)
+            output = _CapturedBuffer()
+
+            self.assertTrue(runtime._begin_fatal("PROTOCOL_ERROR"))
+            with patch.object(sys, "stdout", _TestStdout(output)):
+                root = asyncio.create_task(
+                    runtime._write(
+                        {
+                            "jsonrpc": "2.0",
+                            "id": "host:1",
+                            "result": {"outcome": "done", "output": None},
+                        },
+                        publishes_root=True,
+                    )
+                )
+                ordinary = asyncio.create_task(
+                    runtime._write(
+                        {
+                            "jsonrpc": "2.0",
+                            "id": "component:1",
+                            "method": "flow/call",
+                            "params": {},
+                        }
+                    )
+                )
+                await runtime._best_effort_standard_error(
+                    "host:2",
+                    -32600,
+                    "Invalid Request",
+                )
+                suppressed = await asyncio.gather(root, ordinary, return_exceptions=True)
+
+            self.assertEqual(runtime._terminal_phase, "fatal")
+            self.assertTrue(runtime._fatal)
+            self.assertTrue(all(isinstance(item, OperationError) for item in suppressed))
+            self.assertEqual(
+                [item.code for item in suppressed if isinstance(item, OperationError)],
+                ["PROTOCOL_ERROR", "PROTOCOL_ERROR"],
+            )
+
+            self.assertEqual(len(output.payloads), 1)
+            response = json.loads(output.payloads[0])
+            self.assertEqual(response["id"], "host:2")
+            self.assertEqual(response["error"]["code"], -32600)
+
+        asyncio.run(exercise())
+
+    def test_root_publication_failure_becomes_channel_lost(self) -> None:
+        async def exercise() -> None:
+            runtime = _Runtime(self._handler)
+            output = _FailingBuffer()
+
+            with patch.object(sys, "stdout", _TestStdout(output)):
+                with self.assertRaises(OperationError) as raised:
+                    await runtime._write(
+                        {
+                            "jsonrpc": "2.0",
+                            "id": "host:1",
+                            "result": {"outcome": "done", "output": None},
+                        },
+                        publishes_root=True,
+                    )
+
+            self.assertEqual(raised.exception.code, "CHANNEL_LOST")
+            self.assertEqual(runtime._terminal_phase, "fatal")
+            self.assertTrue(runtime._fatal)
+            self.assertIsNotNone(runtime._fatal_error)
+            assert runtime._fatal_error is not None
+            self.assertEqual(runtime._fatal_error.code, "CHANNEL_LOST")
+
+        asyncio.run(exercise())
+
+    def test_eof_before_root_publication_remains_observable(self) -> None:
+        runtime = _Runtime(self._handler)
+        offered: list[object] = []
+        runtime._offer = lambda item: offered.append(item) is None  # type: ignore[method-assign]
+
+        runtime._offer_end_of_file(incomplete=False)
+        runtime._offer_end_of_file(incomplete=True)
+
+        self.assertEqual(len(offered), 2)
+        self.assertTrue(all(isinstance(item, _EndOfFile) for item in offered))
+        self.assertFalse(offered[0].incomplete)  # type: ignore[union-attr]
+        self.assertTrue(offered[1].incomplete)  # type: ignore[union-attr]
 
 
 if __name__ == "__main__":

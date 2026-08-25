@@ -377,18 +377,50 @@ class HostPeer:
 
     def finish(self) -> None:
         self.close_input()
-        try:
-            exit_code = self._process.wait(timeout=self._timeout)
-        except subprocess.TimeoutExpired as error:
-            self._process.kill()
-            self._process.wait()
-            raise TimeoutError("component did not exit after its root response") from error
-        remaining = bytes(self._buffer) + self._stdout.read()
+        deadline = time.monotonic() + self._timeout
+        has_remaining_output = bool(self._buffer)
+        self._buffer.clear()
+
+        # Drain stdout while the component is still running. Waiting first can
+        # deadlock when trailing output fills the process pipe.
+        while True:
+            remaining_time = deadline - time.monotonic()
+            if remaining_time <= 0:
+                self._terminate_after_finish_timeout()
+            ready, _, _ = select.select(
+                [self._stdout.fileno()],
+                [],
+                [],
+                remaining_time,
+            )
+            if not ready:
+                self._terminate_after_finish_timeout()
+            chunk = os.read(self._stdout.fileno(), 65_536)
+            if not chunk:
+                break
+            has_remaining_output = True
+
+        remaining_time = deadline - time.monotonic()
+        exit_code = self._process.poll()
+        if exit_code is None:
+            try:
+                exit_code = self._process.wait(timeout=max(0, remaining_time))
+            except subprocess.TimeoutExpired as error:
+                self._terminate_after_finish_timeout(error)
         if exit_code != 0:
             diagnostics = self._read_diagnostics()
             raise ProtocolError(f"component exited {exit_code}: {diagnostics}")
-        if remaining:
+        if has_remaining_output:
             raise ProtocolError("component emitted unexpected bytes after its root response")
+
+    def _terminate_after_finish_timeout(
+        self,
+        error: subprocess.TimeoutExpired | None = None,
+    ) -> None:
+        if self._process.poll() is None:
+            self._process.kill()
+        self._process.wait()
+        raise TimeoutError("component did not exit after its root response") from error
 
     def dispose(self) -> None:
         self.close_input()

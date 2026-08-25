@@ -337,6 +337,9 @@ wins a later cancellation or deadline observation. Otherwise the first
 recorded cancellation/deadline terminal condition determines `CANCELLED` or
 `DEADLINE_EXCEEDED`; no peer sends two terminal responses.
 
+That decision fixes the request-level result or error. Overall Run acceptance
+also requires the clean process completion described in Section 9.
+
 Host-internal distinctions such as which Binding, provider, Runtime Adapter,
 or Sandbox Backend was unavailable belong in durable host diagnostics, not the
 portable error taxonomy. Activation failures which occur before a channel
@@ -384,20 +387,48 @@ settle every outbound request before returning the root result or error. Calls
 cannot be detached, reparented, or transferred. A normal root response with
 outstanding owned work cannot become success.
 
-A complete valid root response followed by clean process exit survives EOF.
-The supervising host classifies premature termination deterministically:
+The host must keep the component's stdin open while the root request is
+pending. After receiving and validating the complete root terminal response,
+it may close that sending half immediately. The component must tolerate this
+causally later half-close.
+
+Component stdin and stdout are independent byte streams; Run/1 infers no
+physical wall-clock ordering between them. The component locally linearizes a
+terminal response by claiming publication immediately before its serialized
+transport write begins. An stdin EOF, framing failure, or fatal protocol
+condition prevents the root response only when the component's protocol state
+machine atomically claims it before that publication claim. Once publication
+has started, later stdin state cannot overturn it: the complete write and
+runtime-buffer flush wins, while a write failure is `CHANNEL_LOST`. Flush is
+not `fsync`, a peer acknowledgement, or proof that the host received the
+frame. Kernel or runtime buffering does not establish cross-pipe order; bytes
+merely read or queued by the transport have no priority. After publication
+starts, the component may stop reading; unread or subsequently observed host
+input has no response guarantee.
+
+After receiving a root response, the host continues draining component stdout
+and awaits process termination. It accepts the Run only when the response is
+valid and correlated, no component-originated request remains pending, stdout
+ends on a frame boundary with no trailing bytes or frames, and the process
+exits zero. The supervising host classifies premature termination
+deterministically:
 
 - a host-enforced kill after a recorded cancellation or deadline is
   `CANCELLED` or `DEADLINE_EXCEEDED` respectively, unless a terminal response
   had already won;
 - a detected peer-protocol violation is `PROTOCOL_ERROR`;
 - a nonzero process exit without either condition is `EXECUTION_FAILED`;
-- EOF, transport loss, or a zero exit before a complete response is
+- component-stdout EOF, transport loss, or a zero exit before a complete
+  response is
   `CHANNEL_LOST`.
 
-A nonzero exit after an apparently successful response, pending owned work,
-invalid output, failed cleanup, trailing component frames, or deadline kill
-prevents success.
+A response fixes the request decision but does not by itself satisfy those
+acceptance conditions. A nonzero exit, pending owned work, invalid output,
+trailing component bytes or frames, or a post-response shutdown kill prevents
+overall success. A post-response shutdown kill is an `EXECUTION_FAILED`
+lifecycle failure rather than a later cancellation or request deadline winning
+the already-fixed request decision. Cleanup failure must surface through
+process exit; there is no hidden cleanup-acknowledgement protocol.
 
 ## 10. Machine interface and SDK projection
 
