@@ -1,0 +1,149 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://jig.dev/schemas/project-policy-1.json",
+  "title": "Jig normalized package project policy/1",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "const": "https://jig.dev/schemas/project-policy-1.json"
+    },
+    "project": {
+      "$ref": "#/$defs/project"
+    },
+    "bindings": {
+      "type": "object",
+      "propertyNames": {
+        "$ref": "#/$defs/localName"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/packageBinding"
+      },
+      "maxProperties": 4096
+    }
+  },
+  "required": ["$schema", "project", "bindings"],
+  "additionalProperties": false,
+  "$defs": {
+    "localName": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+      "maxLength": 64
+    },
+    "projectPath": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1024,
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.?(?:/|$))(?!.*[\\\\*?\\[\\]{}])[^\\u0000]+$"
+    },
+    "discoverSource": {
+      "type": "object",
+      "properties": {
+        "kind": { "const": "discover" },
+        "roots": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/projectPath" },
+          "minItems": 1,
+          "maxItems": 64,
+          "uniqueItems": true
+        }
+      },
+      "required": ["kind", "roots"],
+      "additionalProperties": false
+    },
+    "membersSource": {
+      "type": "object",
+      "properties": {
+        "kind": { "const": "members" },
+        "paths": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/projectPath" },
+          "maxItems": 4096,
+          "uniqueItems": true
+        }
+      },
+      "required": ["kind", "paths"],
+      "additionalProperties": false
+    },
+    "source": {
+      "oneOf": [
+        { "$ref": "#/$defs/discoverSource" },
+        { "$ref": "#/$defs/membersSource" }
+      ]
+    },
+    "project": {
+      "type": "object",
+      "properties": {
+        "flows": { "$ref": "#/$defs/source" },
+        "bindings": { "$ref": "#/$defs/source" }
+      },
+      "additionalProperties": false
+    },
+    "flowRef": {
+      "type": "object",
+      "properties": {
+        "kind": { "const": "flow" },
+        "path": { "$ref": "#/$defs/projectPath" }
+      },
+      "required": ["kind", "path"],
+      "additionalProperties": false
+    },
+    "bindingRef": {
+      "type": "object",
+      "properties": {
+        "kind": { "const": "binding" },
+        "id": { "$ref": "#/$defs/localName" }
+      },
+      "required": ["kind", "id"],
+      "additionalProperties": false
+    },
+    "runTargetRef": {
+      "oneOf": [
+        { "$ref": "#/$defs/flowRef" },
+        { "$ref": "#/$defs/bindingRef" }
+      ]
+    },
+    "candidateSet": {
+      "type": "object",
+      "properties": {
+        "kind": { "const": "candidates" },
+        "targets": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/runTargetRef" },
+          "minItems": 2,
+          "maxItems": 256,
+          "uniqueItems": true
+        }
+      },
+      "required": ["kind", "targets"],
+      "additionalProperties": false
+    },
+    "slotRef": {
+      "oneOf": [
+        { "$ref": "#/$defs/runTargetRef" },
+        { "$ref": "#/$defs/candidateSet" }
+      ]
+    },
+    "packageBinding": {
+      "type": "object",
+      "properties": {
+        "kind": { "const": "package" },
+        "package": { "$ref": "#/$defs/projectPath" },
+        "settings": { "type": "object", "maxProperties": 65536 },
+        "slots": {
+          "type": "object",
+          "propertyNames": { "$ref": "#/$defs/localName" },
+          "additionalProperties": { "$ref": "#/$defs/slotRef" },
+          "maxProperties": 256
+        },
+        "attachments": {
+          "type": "object",
+          "propertyNames": { "$ref": "#/$defs/localName" },
+          "additionalProperties": { "$ref": "#/$defs/projectPath" },
+          "maxProperties": 256
+        }
+      },
+      "required": ["kind", "package", "settings", "slots", "attachments"],
+      "additionalProperties": false
+    }
+  }
+}

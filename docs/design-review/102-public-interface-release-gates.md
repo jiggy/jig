@@ -134,23 +134,25 @@ label remain release gates. Run/1 does not wait for them.
 
 ### Jig project authoring SDK
 
-The SDK must project captured, inert desired state:
+The first package-authoring slice is now closed in
+[`107-project-authoring-sdk-slice.md`](107-project-authoring-sdk-slice.md). It
+projects captured inert desired state for:
 
 - project source discovery and exact membership;
-- Binding declarations and package/host-capability references;
+- package Binding declarations;
 - exact and closed-candidate dependency slots;
-- Hook producer/type selectors and Run targets;
-- attachments, settings, registration-defined grant attenuation; and
-- the optional project Semantic Choice Binding.
+- tagged direct Flow and Binding Run targets; and
+- attachments and complete settings.
 
-The desired ergonomics currently use illustrative names such as `defineJig`,
-`discover`, `bind`, `hook`, `bindingRef`, `serviceExportRef`, `candidates`, and
-`event`, and `root`. They are not published APIs until one authoritative declaration file
-and normalized captured-value schema define their inputs, outputs, unknown-key
-behavior, and module-evaluation boundary.
+Its selected vocabulary is `defineJig`, `discover`, `defineBinding`, `flowRef`,
+`bindingRef`, and `candidates`. The checked-in declaration implementation and
+normalized captured-value schema must pass their corpus before this private
+slice may be handed to an external probe.
 
-The separate questions of zero-boilerplate simple Run targets and a changing
-admitted routing universe remain open in
+Hooks, Service export references, instruction Agent selection,
+`semanticChoice`, and host-capability Bindings remain later gated slices. The
+zero-boilerplate target is resolved; only the changing admitted routing
+universe remains open in
 [`101-default-targets-and-open-routing-candidate.md`](101-default-targets-and-open-routing-candidate.md).
 
 ### Jig host and administration interface

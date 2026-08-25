@@ -977,8 +977,10 @@ Agent Binding. Its optional `fallback` member has one legal value,
 the Agent reference but no fallback opt-in.
 
 Root Runs, `flow/call`, and Hook targets require an exact admitted Run target.
-An authored Run-capable Binding supplies one such target; the zero-boilerplate
-representation for a simple discovered Flow remains an open interface seam.
+An authored Run-capable Binding supplies one such target. A narrowly
+zero-configuration Run package supplies a tagged direct admitted Flow target;
+Jig never derives a hidden Binding for it. Both use the same admission,
+authority, idempotency, Hook, revocation, sandbox, and scheduling path.
 Desired Service activation requires a Service-capable Binding. `effect/call` slots
 resolve only to one exact Service export or host-capability Binding. A
 host-capability Binding is neither runnable nor mountable. Normalized desired
@@ -1163,12 +1165,10 @@ path move, or content change creates a different entry; a path move is removal
 plus addition.
 
 Runtime execution always uses one exact target revision from the immutable
-admission generation—never a live catalogue package. Authored Bindings already
-supply configured Run targets. Jig still needs a zero-boilerplate target for a
-simple discovered Flow, but whether that normalizes to an internal default
-Binding or a distinct admitted Flow target remains intentionally open. Either
-design must use the same admission, authority, revocation, idempotency, and
-locking path. See
+admission generation—never a live catalogue package. Authored Bindings supply
+configured Run targets. A structurally eligible package may instead become a
+tagged direct target only through aggregate admission; availability is planned
+separately and may be `UNAVAILABLE`. See
 [`101-default-targets-and-open-routing-candidate.md`](101-default-targets-and-open-routing-candidate.md).
 
 ## 9. Effects, events, Hooks, and Agents

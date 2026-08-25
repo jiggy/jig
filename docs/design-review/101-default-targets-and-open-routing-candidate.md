@@ -1,7 +1,8 @@
 # Open candidate: default Run targets and catalogue-wide routing
 
-**Status:** non-normative interface question. The failed design probes exposed
-two real ergonomic requirements but did not earn their proposed mechanisms.
+**Status:** Question A is resolved by the direct admitted Flow target; Question
+B remains open. The failed design probes exposed both requirements but did not
+earn a catalogue-wide routing mechanism.
 
 ## Requirements which survive
 
@@ -15,43 +16,29 @@ target and every semantic candidate must belong to one immutable admitted
 generation before a Run can use it. Semantic Choice may rank only that frozen
 set.
 
-## Question A: the simple root target
+## Resolved A: the simple root target
 
-Two plausible models remain:
+The reviewed choice is a **direct admitted Flow target**. Jig does not create a
+hidden default Binding.
 
-### Internal default Binding
+The rejected alternative was an internal default Binding. Although it would
+reuse one internal representation, it would make a user-facing customization
+concept into hidden framework ontology, introduce surprising derived names,
+and make a no-Binding project appear to contain Bindings it never authored.
 
-Jig normalizes a narrowly eligible simple package into the same internal
-Binding representation used by configured variants.
+An eligible direct target is Run-capable, valid with `{}` settings, and needs no
+attachment, dependency, Agent, or instruction mapping. Operational availability
+is not an eligibility condition: planning may admit the exact target as
+`UNAVAILABLE`.
 
-Advantages:
+`flowRef("./flows/review")` and `bindingRef("strict-review")` are distinct
+tagged references. Both compile to the same internal admitted-Run-target path,
+which must share admission, authority, idempotency, Hook, generation,
+revocation, sandbox, and scheduling behavior. Binding therefore retains its
+plain meaning: one tailored configured use.
 
-- one execution, admission, revocation, Hook, and lock path;
-- no public second target kind; and
-- simple packages are immediately ergonomic.
-
-Risks:
-
-- a hidden derivation algorithm becomes surprising policy;
-- name collisions and eligibility boundaries become framework magic; and
-- a Binding intended for customization becomes mandatory internal ontology.
-
-### Direct admitted Flow target
-
-The admitted catalogue exposes a simple package revision directly as a Run
-target, while configured Bindings remain explicit variants and capability
-uses.
-
-Advantages:
-
-- the public model says exactly what happened; and
-- Binding keeps its intended role as reusable configuration/customization.
-
-Risks:
-
-- Jig must prove that direct targets do not create a second security,
-  idempotency, Hook, or revocation path; and
-- target references need an unambiguous kind and collision rule.
+The complete disposition is in
+[`107-project-authoring-sdk-slice.md`](107-project-authoring-sdk-slice.md).
 
 ## Question B: the open candidate universe
 
@@ -76,10 +63,10 @@ The probe spelling `allRuns()` is not reserved. A future design must specify:
 - what portable identity enters `jig.lock`; and
 - how large sets fail or are deliberately staged without silent truncation.
 
-## Acceptance method
+## Acceptance method for Question B
 
-Do not settle these questions inside another probe. First publish two minimal,
-competing authoring interfaces with their normalized data models. Give only
-those interfaces and the stable platform documentation to independent
-consumers. Choose the smaller model that satisfies both requirements without
-granting discovery or Semantic Choice admission power.
+Do not settle the remaining question inside another probe. First publish two
+minimal, competing authoring interfaces with their normalized data models.
+Give only those interfaces and the stable platform documentation to independent
+consumers. Choose the smaller model that supports a changing reviewed universe
+without granting discovery or Semantic Choice admission power.

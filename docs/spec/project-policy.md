@@ -1,7 +1,8 @@
 # Jig project policy and admission/1
 
-**Status:** reviewed host semantics; the TypeScript authoring SDK is not yet
-specified or published.
+**Status:** reviewed host semantics. The first package-only TypeScript authoring
+slice is specified privately; evaluator, admission, Hooks, host-capability,
+Agent, and open-candidate slices remain release-gated.
 
 Project files express desired state. They do not become live authority merely
 because a watcher observed them. Jig captures one candidate, resolves it,
@@ -102,8 +103,8 @@ complete aggregate candidate.
 source of that kind, never implicit directory discovery. References to an
 omitted or empty source still fail normally. A project which wants semantic
 ranking after deterministic `flow/call` filtering may additionally name one
-exact Binding directly. The snippets in this section describe the intended
-authoring projection; they are not yet a published `@jigging/jig` API:
+exact Binding directly. This field belongs to a later authoring slice and is
+not part of the first package-only `@jigging/jig` surface:
 
 ```ts
 semanticChoice: bindingRef("semantic-choice"),
@@ -195,10 +196,10 @@ distributed provider should run as a FLOW Service package behind the Sandbox
 Backend.
 
 Run roots, Hook targets, and `flow/call` candidates accept only exact admitted
-Run targets. An authored Run package Binding is one such target. The
-zero-boilerplate representation of a simple discovered Flow remains the open
-interface seam described in §3. Service activation accepts only Service
-package Bindings.
+Run targets. An authored Run package Binding is one such target. A narrowly
+eligible zero-configuration Run package is another: an explicit direct admitted
+Flow target named with a tagged Flow reference, never a hidden Binding. Service
+activation accepts only Service package Bindings.
 `effect/call` accepts an exact Service export or host-capability Binding. Both
 branches use the same source discovery, aggregate admission, digest, locking,
 generation pinning, and revocation rules. This avoids a second Agent/provider
@@ -357,11 +358,11 @@ The basename is the `LocalName` identity. There is no duplicate `id` field. A
 rename is one removal plus one addition.
 
 A Binding file default-exports exactly one inert Binding declaration. A Hook
-file default-exports exactly one inert Hook declaration. The unpublished
+file default-exports exactly one inert Hook declaration. The later
 authoring projection for a Hook must identify one exact producer, one exact
 1–512 character Event type, and one exact admitted Run target without
-importing a live object. Whether a simple discovered Flow target is represented
-as an internal Binding or another admitted-target reference remains open.
+importing a live object. Flow and Binding target references are explicitly
+tagged; no namespace precedence resolves a raw string.
 Wrong kinds, multiple/default-export errors, duplicate IDs, case or Unicode
 collisions, and dangling targets invalidate the complete candidate.
 
@@ -375,20 +376,19 @@ Binding dependencies are likewise inert local references:
 `bindingRef("name")` selects a host-capability Binding or the compatible export
 set of a package Binding, while `serviceExportRef("name", "export")` selects one
 explicit Service export. A `flow/call` slot may instead use
-`candidates([bindingRef("one"), bindingRef("two")])` to declare a closed
-allowlist of Run Bindings. `candidates()` performs no discovery, filtering, or
+`candidates([flowRef("./flows/fast"), bindingRef("deep")])` to declare a closed
+allowlist of Run targets. `candidates()` performs no discovery, filtering, or
 semantic choice during configuration. An unmapped slot is `BINDING_MISSING`;
 it never means catalogue-wide. `discover()` is invalid in a Binding slot.
 Resolution replaces every reference with exact admitted revision identities;
 none of these helpers imports or captures a live provider object.
 
-Two ergonomic requirements remain deliberately unresolved: an ordinary
-discovered Flow should be runnable without routine Binding boilerplate, and an
-application should be able to admit a changing but reviewable candidate
-universe for semantic dispatch. Their previously explored mechanisms are not
-reviewed interfaces. Alternatives are compared in the
+An ordinary zero-configuration discovered Run Flow is now a tagged direct
+admitted target and enters the same execution path as an admitted Run Binding.
+The remaining unresolved ergonomic requirement is a changing but reviewable
+candidate universe for semantic dispatch. Alternatives are compared in the
 [open target and routing note](../design-review/101-default-targets-and-open-routing-candidate.md)
-and are not part of the reviewed interface.
+and are not part of the first authoring slice.
 
 Aggregate normalization also computes the transitive authority reachable
 through those exact dependencies. Provider-owned attachments and effect
@@ -593,9 +593,13 @@ identity; the public project surface does not need a named `catalogues` map in
 v1.
 
 Dropping a package into `flows/` grants no live authority. Runtime resolution
-reads only exact admitted targets, never the live Flow source. The zero-routine-
-boilerplate mapping from a simple catalogue member to such a target remains an
-open authoring seam; discovery alone must never activate a Run or Service.
+reads only exact admitted targets, never the live Flow source. A structurally
+eligible Run package may become a direct target only when the aggregate
+candidate containing that exact package revision is applied. It is eligible
+when `{}` satisfies settings and no attachment, dependency, Agent, or
+instruction mapping is required. Runtime or sandbox availability does not
+change structural eligibility: the admitted target may be `UNAVAILABLE`.
+Services always require explicit Bindings.
 
 ## 10. Root Run admission
 
@@ -603,15 +607,16 @@ Jig exposes one host-local operation for a person, CLI, GUI, or trusted module
 to request root work:
 
 ```text
-startRun(targetId, input, submissionId) -> durable Run identity
+startRun(target, input, submissionId) -> durable Run identity
 ```
 
 `startRun` is semantic shorthand. Its transport, authentication, request and
 result schemas, and SDK/CLI spelling remain host-interface release gates.
 
-`submissionId` is an opaque project-local retry key. Jig first validates that
+`target` is one explicit tagged Flow or Binding reference. `submissionId` is an
+opaque project-local retry key. Jig first validates that
 `input` is a bounded FLOW JSON/1 value; invalid JSON/1 creates no Run. For a
-valid value, the first request stores its canonical `(targetId, input)` digest
+valid value, the first request stores its canonical `(target, input)` digest
 and resulting Run. Repeating the same key and content returns that Run without
 re-resolving current policy, including after later revocation. Reusing it with
 changed content fails with `SUBMISSION_CONFLICT` before dispatch. A caller
@@ -623,12 +628,11 @@ jig run <target-id> --input <json-file>
 
 The frontend generates and retains the submission key until acknowledgement;
 its flag spelling and input transport are host UX. For a previously unseen key,
-`startRun` resolves the LocalName against one current active admission
-generation. The operation cannot name a raw package or ask Jig to construct an
-unreviewed target on demand. In one transaction Jig verifies the root gate and
+`startRun` resolves the tagged target against one current active admission
+generation. The operation cannot name a raw unadmitted package or ask Jig to
+construct a target on demand. In one transaction Jig verifies the root gate and
 revocation state, pins the exact admitted Run target revision, and inserts the
-root Run. Whether a simple catalogue member normalizes to a Binding or another
-admitted target representation remains the open seam described in §3.
+root Run.
 It then validates the actual value against `input.schema.json` when present.
 Schema-invalid JSON/1 makes that allocated Run terminal `INVALID_INPUT`;
 implementation never starts.

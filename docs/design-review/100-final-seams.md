@@ -156,10 +156,10 @@ One leading `./` in a discovery root or exact member path is authoring sugar
 and is stripped before confined segment validation. A missing discovery root
 is empty; a missing or invalid exact-list member fails the candidate.
 
-Jig still needs zero routine boilerplate for an ordinary discovered Flow while
-preserving one reviewed execution path. Whether that target is represented as
-an internal default Binding or a distinct admitted Flow target remains open;
-the failed probe did not earn a hidden derivation algorithm.
+Jig provides zero routine boilerplate for a narrowly zero-configuration Run
+package through a tagged direct admitted Flow target. It does not derive a
+hidden Binding. Direct and Binding targets share one internal admitted-target
+execution path; discovery remains inert until aggregate admission.
 
 Binding is one closed union rather than a package-only type plus separate Agent
 profiles: it configures either an exact FLOW package revision or one export of
