@@ -149,6 +149,13 @@ Its selected vocabulary is `defineJig`, `discover`, `defineBinding`, `flowRef`,
 normalized captured-value schema must pass their corpus before this private
 slice may be handed to an external probe.
 
+The next private implementation boundary is fixed in
+[`108-project-capture-boundary.md`](108-project-capture-boundary.md): authored
+values, a durable captured aggregate, and a resolved admission candidate are
+three separate stages. No aggregate schema or evaluator API is public. The
+first checkpoint adds descriptor-confined Flow membership capture and direct
+target derivation only.
+
 Hooks, Service export references, instruction Agent selection,
 `semanticChoice`, and host-capability Bindings remain later gated slices. The
 zero-boilerplate target is resolved; only the changing admitted routing

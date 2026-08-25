@@ -1,8 +1,9 @@
 # Jig project policy and admission/1
 
 **Status:** reviewed host semantics. The first package-only TypeScript authoring
-slice is specified privately; evaluator, admission, Hooks, host-capability,
-Agent, and open-candidate slices remain release-gated.
+slice and the private capture-stage boundary are specified; evaluator,
+admission, Hooks, host-capability, Agent, and open-candidate slices remain
+release-gated.
 
 Project files express desired state. They do not become live authority merely
 because a watcher observed them. Jig captures one candidate, resolves it,
@@ -13,6 +14,12 @@ The core rule is:
 
 > Source proposes; one aggregate compare-and-set admits; immutable generations
 > execute; emergency revocation only narrows.
+
+Authored helper values, the captured project aggregate, and the resolved
+admission candidate are different records. Resolution consumes only protected
+captured artifacts, and apply never rediscovers or rereads visible source. The
+capture and admission identities are deliberately distinct; see
+[`108-project-capture-boundary.md`](../design-review/108-project-capture-boundary.md).
 
 ## 1. Default project convention
 

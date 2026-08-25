@@ -128,9 +128,11 @@ It validates either one `defineJig()` value:
 or one normalized `defineBinding()` value. Authors do not add a redundant
 `jig: 1` or `$schema` field to either declaration.
 
-Schema/1 validates closed shape and local type/size bounds. The deterministic
-semantic capture stage—still unimplemented—must expand exact source membership
-and retain declaration provenance before resolution. It separately validates
+Schema/1 validates closed shape and local type/size bounds. The private staged
+capture boundary is fixed in
+[`108-project-capture-boundary.md`](../design-review/108-project-capture-boundary.md):
+it must expand exact source membership, retain immutable package and declaration
+bytes, and record provenance before resolution. It separately validates
 LocalName and path grammar, collisions, dangling references, package
 capabilities, settings schemas, attachment completeness, slot contract
 compatibility, and direct-target eligibility. Diagnostics identify their
