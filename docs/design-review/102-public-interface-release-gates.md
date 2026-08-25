@@ -178,15 +178,16 @@ The behavioral requirements are reviewed, but examples must not invent provider
 package names, tokens, receipts, or launch structures before these interfaces
 exist.
 
-The first live Linux security probe is intentionally stopped at
-`SANDBOX_UNAVAILABLE`: some namespace, filesystem, runtime-closure, and root
-mappings predicates have positive evidence, but the current host has no
-delegated aggregate owner resource controller. Entropy/device and descendant
-runtime behavior also remain unresolved. The exact evidence and unblock
-conditions are recorded in
-[`104-phase-2-security-blocker.md`](104-phase-2-security-blocker.md). This
-failure is a reason to keep the complete-tree invariant and withhold the public
-Backend interface, not to replace enforcement with advisory receipts.
+The former Linux `SANDBOX_UNAVAILABLE` stop is historical. The private proof
+now has a delegated aggregate owner, pre-exec placement, entropy and
+root-mapping evidence, coordinator-independent cleanup, a hostile corpus, and
+one complete Python Run/1 activation. The exact evidence is recorded in
+[`105-phase-2-linux-cgroup-proof.md`](105-phase-2-linux-cgroup-proof.md); the
+old environmental stop remains in
+[`104-phase-2-security-blocker.md`](104-phase-2-security-blocker.md). The proof
+still withholds the public Backend interface: registration and plan schemas,
+an installed immutable helper, and a genuinely different Backend mechanism
+remain unclosed.
 
 ### Jig Graph over Sley
 

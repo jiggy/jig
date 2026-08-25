@@ -7,6 +7,7 @@ import {
   PrivateLinuxCgroupBackend,
   type PrivateLinuxLaunchPlan,
 } from "../src/internal/linux-cgroup-backend.js";
+import { RunHostSession } from "../src/run/session.js";
 
 const HOSTILE = process.env.JIG_LINUX_CGROUP_HOSTILE === "1";
 const hostileDescribe = HOSTILE ? describe.serial : describe.skip;
@@ -197,6 +198,56 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
     const child = JSON.parse((await stdout).trim()) as { exit: number; stdout: string; stderr: string };
     expect(child).toEqual({ exit: 134, stdout: "", stderr: "" });
   });
+
+  test("drives a real Python Run/1 component through the complete envelope", async () => {
+    host = await hostConfiguration();
+    const python = await pythonClosure();
+    const sdk = await realpath(join(import.meta.dir, "..", "..", "flowmd-sdk", "src"));
+    const fixture = await realpath(join(import.meta.dir, "..", "..", "flowmd-sdk", "tests"));
+    const component = await backend(host).launch({
+      runId: "python-run1",
+      limits: {
+        ...limits(),
+        memoryBytes: 256 * 1024 * 1024,
+        pids: 16,
+        wallClockMs: 5_000,
+      },
+      readOnlyMounts: [
+        ...python.stores.map((store) => ({ source: store, destination: store })),
+        { source: sdk, destination: "/flowmd-sdk" },
+        { source: fixture, destination: "/component" },
+      ],
+      entropyDevice: true,
+      environment: {
+        PYTHONPATH: "/flowmd-sdk",
+        PYTHONDONTWRITEBYTECODE: "1",
+        PYTHONUNBUFFERED: "1",
+      },
+      command: [python.executable, "/component/fixture_component.py"],
+    });
+
+    const terminal = await new RunHostSession(component, {
+      input: { message: "inside the enforced envelope" },
+      settings: {},
+      attachments: {},
+      scratch: "/work",
+      deadlineUnixMs: Date.now() + 3_000,
+    }).run();
+
+    expect(terminal).toMatchObject({
+      status: "succeeded",
+      result: {
+        outcome: "done",
+        output: { message: "inside the enforced envelope" },
+      },
+      diagnostics: { stderr: "" },
+    });
+    expect(await component.evidence).toMatchObject({
+      memoryEvents: { max: 0 },
+      pidsEvents: { max: 0 },
+    });
+    await expect(access(component.cgroup.parentCgroup)).rejects.toBeDefined();
+  });
 });
 
 interface HostConfiguration {
@@ -222,6 +273,29 @@ async function bunClosure(): Promise<{ executable: string; store: string; glibcS
   if (match === null) throw new Error("could not derive Bun's pinned glibc closure from its ELF interpreter");
   const glibcStore = match[0]!.slice(0, match[0]!.indexOf("/lib/"));
   return { executable, store: dirname(dirname(executable)), glibcStore };
+}
+
+async function pythonClosure(): Promise<{ executable: string; stores: readonly string[] }> {
+  const configuredPython = process.env.JIG_TEST_PYTHON;
+  const configuredNixStore = process.env.JIG_TEST_NIX_STORE;
+  if (configuredPython === undefined || configuredNixStore === undefined) {
+    throw new Error("JIG_TEST_PYTHON and JIG_TEST_NIX_STORE are required for the Python runtime proof");
+  }
+  const executable = await realpath(configuredPython);
+  const store = executable.match(/^\/nix\/store\/[^/]+/)?.[0];
+  if (store === undefined) throw new Error("the Python runtime proof requires an immutable Nix store executable");
+  const query = spawn(configuredNixStore, ["-qR", store], {
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  const stdout = collect(query.stdout!);
+  const stderr = collect(query.stderr!);
+  const exit = await childExit(query);
+  if (exit.code !== 0) {
+    throw new Error(`could not derive the Python runtime closure: ${(await stderr).trim()}`);
+  }
+  const stores = (await stdout).trim().split("\n").filter(Boolean);
+  if (!stores.includes(store)) throw new Error("Python closure omitted its root store path");
+  return { executable, stores: Object.freeze(stores) };
 }
 
 function backend(host: HostConfiguration): PrivateLinuxCgroupBackend {
@@ -337,6 +411,13 @@ function firstLine(stream: NodeJS.ReadableStream): Promise<string> {
     });
     stream.once("error", reject);
     stream.once("end", () => reject(new Error("coordinator exited before announcing its cgroup")));
+  });
+}
+
+function childExit(child: ReturnType<typeof spawn>): Promise<{ code: number | null; signal: string | null }> {
+  return new Promise((resolveExit, reject) => {
+    child.once("error", reject);
+    child.once("close", (code, signal) => resolveExit({ code, signal }));
   });
 }
 

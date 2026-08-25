@@ -15,7 +15,7 @@
     "build": "bun run clean && bun node_modules/typescript/bin/tsc -p tsconfig.json",
     "clean": "bun -e \"import { rm } from 'node:fs/promises'; await rm('dist', { recursive: true, force: true })\"",
     "test": "bun test",
-    "test:linux-cgroup": "sh ../../scripts/preflight-linux-cgroup.sh && JIG_LINUX_CGROUP_HOSTILE=1 bun test test/linux-cgroup-backend.test.ts --timeout 30000",
+    "test:linux-cgroup": "sh ../../scripts/preflight-linux-cgroup.sh && JIG_TEST_PYTHON=\"$(command -v python3)\" JIG_TEST_NIX_STORE=\"$(command -v nix-store)\" JIG_LINUX_CGROUP_HOSTILE=1 bun test test/linux-cgroup-backend.test.ts --timeout 30000",
     "check": "bun run build && bun test"
   },
   "dependencies": {

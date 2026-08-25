@@ -116,7 +116,7 @@ Run:
 bun run --cwd packages/jig test:linux-cgroup
 ```
 
-The 2026-08-25 proof passed all nine focused tests:
+The 2026-08-25 proof now passes all ten focused tests:
 
 ```text
 plan rejects cgroupfs mounts and malformed finite limits
@@ -128,6 +128,7 @@ cancellation during startup and shutdown leaves no owner
 orphaned grandchildren are fenced after activation-root exit
 coordinator SIGKILL is recovered by the surviving helper
 eight repeated Runs leave no process or cgroup residue
+one real Python flowmd_sdk component completes Run/1 through RunHostSession
 ```
 
 The suite's final `afterAll` enumerates the delegated scope and requires zero
@@ -163,6 +164,44 @@ Bun recipe status:    unavailable
 The hostile suite preserves this as a passing negative gate. No insecure Bun
 compatibility path was retained.
 
+## First complete exact-Run path
+
+A separately selected Python 3.14.7 recipe now proves the complete live path:
+
+```text
+finite immutable Nix Runtime Support Closure
+    -> private Linux Backend launch
+    -> Python flowmd_sdk component
+    <-> Run/1 over the Backend-owned byte channel
+    <-> RunHostSession
+    -> typed done result
+    -> cgroup.kill fence, populated 0, removal
+```
+
+The proof mounts only the 23 paths in the Python runtime's Nix closure, the
+FLOW SDK source, and the fixture component. It exposes the exact entropy
+device, clears the ambient environment, writes no bytecode, admits no network,
+and observes no memory or PID limit event. This is proof that the already
+private `ExactComponentProcess` seam can represent an enforced activation; it
+is not yet a Python Runtime Adapter implementation or public Backend API.
+
+## VM comparison
+
+The host also passed the Firecracker prerequisites and booted the official,
+checksum-verified Firecracker 1.16.1 VMM to `Running` with KVM. That result is
+deliberately not counted as a second Backend. A conforming VM Backend still
+needs a host-owned guest image, an authenticated full-duplex Run/1 guest
+transport, jailer and outer-owner containment, coordinator-loss recovery,
+whole-tree cancellation, and hostile cleanup proofs.
+
+The comparison nevertheless rejects two premature abstractions:
+
+- the public boundary cannot be named or shaped as a container interface; and
+- host bind mounts and child-process stdio are mechanisms, not portable plan
+  vocabulary. A VM may materialize sealed trees as images and proxy its guest
+  channel while exposing the same bounded byte channel and terminal evidence
+  to Jig.
+
 ## Still open before a public Backend API
 
 This proof closes the cgroup ownership blocker, but it intentionally does not
@@ -174,7 +213,7 @@ settle:
 - a portable meaning for a finite aggregate CPU-consumption budget beyond the
   proven rate ceiling, accounting evidence, and hard wall deadline;
 - Runtime Support Closure construction for an executable recipe that supports
-  all permitted descendants; or
+  all permitted descendants beyond the qualified Python proof; or
 - VM/Firecracker backend behavior. KVM and TUN availability alone is not such
   a proof.
 
