@@ -87,6 +87,25 @@ describe("private ServiceHostSession", () => {
     await cleanStop(service, process);
   });
 
+  test("admits at most 63 invocations beside the pending Mount", async () => {
+    const process = new FakeProcess();
+    const service = new ServiceHostSession(process, activation());
+    await startReady(service, process);
+    const pending = Array.from({ length: 63 }, (_, index) => service.invoke(invocation("read", index)));
+    for (let index = 0; index < pending.length; index += 1) {
+      expect(await process.nextHost()).toMatchObject({ id: `host:${index + 2}`, method: "service/invoke" });
+    }
+    expect(await service.invoke(invocation("read", "overflow"))).toMatchObject({
+      status: "failed",
+      code: "RESOURCE_EXHAUSTED",
+    });
+    for (let index = pending.length - 1; index >= 0; index -= 1) {
+      process.emit({ jsonrpc: "2.0", id: `host:${index + 2}`, result: { value: index } });
+    }
+    expect(await Promise.all(pending)).toHaveLength(63);
+    await cleanStop(service, process);
+  });
+
   test("cancels one invocation without cancelling its sibling", async () => {
     const process = new FakeProcess();
     const service = new ServiceHostSession(process, activation(), { cancellationGraceMs: 100 });
@@ -102,6 +121,31 @@ describe("private ServiceHostSession", () => {
     process.emit({ jsonrpc: "2.0", id: "host:2", result: { value: "too-late" } });
     expect(await fast).toEqual({ status: "succeeded", value: "fast" });
     expect(await slow).toMatchObject({ status: "failed", code: "CANCELLED" });
+    await cleanStop(service, process);
+  });
+
+  test("lets a committed invocation result win later cancellation", async () => {
+    const process = new FakeProcess();
+    const service = new ServiceHostSession(process, activation());
+    await startReady(service, process);
+    const controller = new AbortController();
+    const invoked = service.invoke({ ...invocation("read", null), signal: controller.signal });
+    await process.nextHost();
+    process.emit({ jsonrpc: "2.0", id: "host:2", result: { value: "committed" } });
+    expect(await invoked).toEqual({ status: "succeeded", value: "committed" });
+    controller.abort();
+    await cleanStop(service, process);
+  });
+
+  test("keeps the first deadline decision when a response arrives later", async () => {
+    const process = new FakeProcess();
+    const service = new ServiceHostSession(process, activation(), { cancellationGraceMs: 100 });
+    await startReady(service, process);
+    const invoked = service.invoke({ ...invocation("read", null), deadlineUnixMs: Date.now() + 10 });
+    await process.nextHost();
+    expect(await process.nextHost()).toEqual(cancel("host:2"));
+    process.emit({ jsonrpc: "2.0", id: "host:2", result: { value: "too-late" } });
+    expect(await invoked).toMatchObject({ status: "failed", code: "DEADLINE_EXCEEDED" });
     await cleanStop(service, process);
   });
 
@@ -178,6 +222,37 @@ describe("private ServiceHostSession", () => {
     unclean.finish(9);
     await expect(uncleanStart).rejects.toThrow("CHANNEL_LOST");
     expect(await uncleanService.result()).toMatchObject({ status: "failed", code: "CHANNEL_LOST" });
+  });
+
+  test("enforces the startup deadline and terminates an unready Provider", async () => {
+    const process = new FakeProcess();
+    const service = new ServiceHostSession(process, {
+      ...activation(),
+      startupDeadlineUnixMs: Date.now() + 10,
+    }, { cancellationGraceMs: 1 });
+    const started = service.start();
+    await process.nextHost();
+    await expect(started).rejects.toThrow("DEADLINE_EXCEEDED");
+    expect(await process.nextHost()).toEqual(cancel("host:1"));
+    expect(await service.result()).toMatchObject({ status: "failed", code: "DEADLINE_EXCEEDED" });
+  });
+
+  test("invalidates Mount success when diagnostics exceed the host budget", async () => {
+    const process = new FakeProcess();
+    const service = new ServiceHostSession(process, activation(), {
+      stderrBytes: 4,
+      capturedStderrBytes: 3,
+    });
+    await startReady(service, process);
+    const stopped = service.stop();
+    await process.nextHost();
+    process.emit({ jsonrpc: "2.0", id: "host:1", result: {} });
+    process.emitStderr(new TextEncoder().encode("diagnostic"));
+    expect(await stopped).toMatchObject({
+      status: "failed",
+      code: "RESOURCE_EXHAUSTED",
+      diagnostics: { stderr: "dia", stderrBytes: 10, stderrTruncated: true },
+    });
   });
 
   test("snapshots activation and invocation values before delayed transport", async () => {
@@ -345,6 +420,10 @@ class FakeProcess implements ExactComponentProcess {
 
   emitBytes(bytes: Uint8Array): void {
     this.stdout.push(bytes);
+  }
+
+  emitStderr(bytes: Uint8Array): void {
+    this.stderr.push(bytes);
   }
 
   finish(exitCode: number | null, signal: string | null = null): void {
