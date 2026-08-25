@@ -74,6 +74,8 @@ try {
       "types.js",
     ],
   );
+  const readme = await readFile(join(installed, "README.md"), "utf8");
+  assert.doesNotMatch(readme, /\]\((?:\.\.\/)+docs\//);
 
   const manifest = JSON.parse(
     await readFile(join(installed, "package.json"), "utf8"),

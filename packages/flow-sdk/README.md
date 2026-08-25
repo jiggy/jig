@@ -2,9 +2,11 @@
 
 Minimal, dependency-free TypeScript projection of FLOW Run/1.
 
-The candidate public surface is specified in
-[`docs/spec/run-sdk.md`](../../docs/spec/run-sdk.md); wire behavior is specified
-in [`docs/spec/run-protocol.md`](../../docs/spec/run-protocol.md).
+This is a private `0.0.0` candidate, not a stable release. Its authoritative
+source-checkout documents are `docs/spec/run-sdk.md` (the component API) and
+`docs/spec/run-protocol.md` (wire behavior). Stable external documentation
+URLs will be added before publication. This installed README contains a
+minimal quickstart.
 
 ```ts
 import { serve, type RunContext, type RunResult } from "@flowmd/sdk";

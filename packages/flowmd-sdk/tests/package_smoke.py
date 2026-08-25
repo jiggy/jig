@@ -53,6 +53,7 @@ def main() -> None:
                     "-I",
                     "-c",
                     """
+from importlib.metadata import metadata
 from importlib.resources import files
 from flowmd_sdk import EffectError, OperationError
 
@@ -61,6 +62,7 @@ effect = EffectError("not-found", None)
 assert operation.code == "UNAVAILABLE"
 assert effect.error_name == "not-found"
 assert files("flowmd_sdk").joinpath("py.typed").is_file()
+assert "../../docs/" not in metadata("flowmd-sdk").get_payload()
 """,
                 ],
                 check=True,
