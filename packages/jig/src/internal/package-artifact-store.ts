@@ -209,16 +209,32 @@ function packageArtifactRef(digest: PackageDigest): PackageArtifactRef {
   return Object.freeze({ kind: ARTIFACT_KIND, digest });
 }
 
-function parsePackageArtifactRef(reference: PackageArtifactRef): PackageDigest {
+/** Normalize an untrusted value at a private PackageArtifactRef boundary. */
+export function normalizePackageArtifactRef(reference: unknown): PackageArtifactRef {
+  return packageArtifactRef(parsePackageArtifactRef(reference));
+}
+
+function parsePackageArtifactRef(reference: unknown): PackageDigest {
   if (typeof reference !== "object" || reference === null || Array.isArray(reference)) {
     invalid("PACKAGE_ARTIFACT_REF", "Package/1 artifact reference must be an object");
   }
-  const record = reference as unknown as Record<string, unknown>;
-  const keys = Object.keys(record).sort();
-  if (keys.length !== 2 || keys[0] !== "digest" || keys[1] !== "kind" || record.kind !== ARTIFACT_KIND) {
+  const prototype = Object.getPrototypeOf(reference);
+  const keys = Reflect.ownKeys(reference).sort((left, right) => String(left).localeCompare(String(right)));
+  if (prototype !== Object.prototype && prototype !== null) {
+    invalid("PACKAGE_ARTIFACT_REF", "Package/1 artifact reference must be a plain object");
+  }
+  if (keys.length !== 2 || keys[0] !== "digest" || keys[1] !== "kind") {
     invalid("PACKAGE_ARTIFACT_REF", `Package/1 artifact reference must contain only kind=${ARTIFACT_KIND} and digest`);
   }
-  return parsePackageDigest(record.digest);
+  const kind = Object.getOwnPropertyDescriptor(reference, "kind");
+  const digest = Object.getOwnPropertyDescriptor(reference, "digest");
+  if (
+    kind === undefined || !("value" in kind) || !kind.enumerable || kind.value !== ARTIFACT_KIND ||
+    digest === undefined || !("value" in digest) || !digest.enumerable
+  ) {
+    invalid("PACKAGE_ARTIFACT_REF", `Package/1 artifact reference must contain enumerable data fields kind=${ARTIFACT_KIND} and digest`);
+  }
+  return parsePackageDigest(digest.value);
 }
 
 function parsePackageDigest(value: unknown): PackageDigest {

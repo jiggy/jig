@@ -99,6 +99,16 @@ describe("private project Flow source capture", () => {
         () => captureFlowSource(root, { kind: "members", paths: [".jig/private"] }),
         "PROJECT_SOURCE_PROTECTED",
       );
+      await expectCode(
+        () => captureFlowSource(root, { kind: "members", paths: [".JIG/private"] }),
+        "PROJECT_SOURCE_PROTECTED",
+      );
+      await packageFiles(root, ".jig-safe/ok", { "FLOW.md": metadata("safe") });
+      const similarlyNamed = await captureFlowSource(root, {
+        kind: "members",
+        paths: [".jig-safe/ok"],
+      });
+      await similarlyNamed.dispose();
       await writeFile(join(root, "not-a-directory"), "file");
       await expectCode(
         () => captureFlowSource(root, { kind: "members", paths: ["not-a-directory"] }),

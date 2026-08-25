@@ -185,6 +185,35 @@ describe("private Package/1 artifact store", () => {
       await expect(captureStoredPackage(store, candidateShaped)).rejects.toMatchObject({
         code: "PACKAGE_ARTIFACT_REF",
       });
+
+      let getterInvoked = false;
+      const accessor = Object.defineProperty({ kind: "flow-package/1" }, "digest", {
+        get() { getterInvoked = true; return `sha256:${"a".repeat(64)}`; },
+        enumerable: true,
+      }) as unknown as PackageArtifactRef;
+      await expect(captureStoredPackage(store, accessor)).rejects.toMatchObject({
+        code: "PACKAGE_ARTIFACT_REF",
+      });
+      expect(getterInvoked).toBeFalse();
+
+      for (const reference of [
+        Object.assign(Object.create({}), {
+          kind: "flow-package/1",
+          digest: `sha256:${"a".repeat(64)}`,
+        }),
+        Object.assign({
+          kind: "flow-package/1",
+          digest: `sha256:${"a".repeat(64)}`,
+        }, { [Symbol("hidden")]: true }),
+        Object.defineProperty({ kind: "flow-package/1" }, "digest", {
+          value: `sha256:${"a".repeat(64)}`,
+          enumerable: false,
+        }),
+      ]) {
+        await expect(captureStoredPackage(store, reference as PackageArtifactRef)).rejects.toMatchObject({
+          code: "PACKAGE_ARTIFACT_REF",
+        });
+      }
     });
   });
 

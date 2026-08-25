@@ -85,20 +85,20 @@ export async function inspectCapturedPackage(
   for (const [slot, declaration] of Object.entries(metadata.uses ?? {})) {
     if (declaration.contract === undefined) continue;
     const path = declaration.contract.slice(2);
-    usedContracts.push({
+    usedContracts.push(Object.freeze({
       slot,
       path,
       contract: await readContract(captured, byPath, contractCache, path),
-    });
+    }));
   }
   const providedContracts: CheckedContractReference[] = [];
   for (const [slot, reference] of Object.entries(metadata.provides ?? {})) {
     const path = reference.slice(2);
-    providedContracts.push({
+    providedContracts.push(Object.freeze({
       slot,
       path,
       contract: await readContract(captured, byPath, contractCache, path),
-    });
+    }));
   }
 
   const skills = [...new Set(captured.files.flatMap((file) => {

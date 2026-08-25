@@ -250,7 +250,7 @@ function validateMetadata(root: JsonObject): FlowMetadata {
     invalid("METADATA_MODE", "Run packages cannot declare provides", "FLOW.md");
   }
 
-  return {
+  const metadata: FlowMetadata = {
     name,
     description,
     ...(fallback === "instruction" ? { fallback } : {}),
@@ -261,6 +261,8 @@ function validateMetadata(root: JsonObject): FlowMetadata {
     ...(provides === undefined ? {} : { provides }),
     extensions,
   };
+  deepFreezeJson(metadata as unknown as JsonValue);
+  return metadata;
 }
 
 function validateUses(value: JsonValue): Readonly<Record<string, CapabilityUse>> {
@@ -356,6 +358,12 @@ function requireObject(value: JsonValue, field: string): JsonObject {
 
 function isObject(value: JsonValue): value is JsonObject {
   return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function deepFreezeJson(value: JsonValue): void {
+  if (value === null || typeof value !== "object" || Object.isFrozen(value)) return;
+  for (const child of Object.values(value)) deepFreezeJson(child);
+  Object.freeze(value);
 }
 
 function isCanonicalLogicalPath(path: string): boolean {
