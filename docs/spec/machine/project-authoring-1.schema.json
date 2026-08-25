@@ -1,39 +1,19 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://jig.dev/schemas/project-policy-1.json",
-  "title": "Jig normalized package project policy/1",
-  "type": "object",
-  "properties": {
-    "$schema": {
-      "const": "https://jig.dev/schemas/project-policy-1.json"
-    },
-    "project": {
-      "$ref": "#/$defs/project"
-    },
-    "bindings": {
-      "type": "object",
-      "propertyNames": {
-        "$ref": "#/$defs/localName"
-      },
-      "additionalProperties": {
-        "$ref": "#/$defs/packageBinding"
-      },
-      "maxProperties": 4096
-    }
-  },
-  "required": ["$schema", "project", "bindings"],
-  "additionalProperties": false,
+  "$schema": "https://flow.dev/schemas/schema-1.json",
+  "title": "Jig project authoring value/1",
+  "oneOf": [
+    { "$ref": "#/$defs/project" },
+    { "$ref": "#/$defs/packageBinding" }
+  ],
   "$defs": {
     "localName": {
       "type": "string",
-      "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+      "minLength": 1,
       "maxLength": 64
     },
     "projectPath": {
       "type": "string",
-      "minLength": 1,
-      "maxLength": 1024,
-      "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.?(?:/|$))(?!.*[\\\\*?\\[\\]{}])[^\\u0000]+$"
+      "minLength": 1
     },
     "discoverSource": {
       "type": "object",
@@ -43,8 +23,7 @@
           "type": "array",
           "items": { "$ref": "#/$defs/projectPath" },
           "minItems": 1,
-          "maxItems": 64,
-          "uniqueItems": true
+          "maxItems": 65536
         }
       },
       "required": ["kind", "roots"],
@@ -57,8 +36,7 @@
         "paths": {
           "type": "array",
           "items": { "$ref": "#/$defs/projectPath" },
-          "maxItems": 4096,
-          "uniqueItems": true
+          "maxItems": 65536
         }
       },
       "required": ["kind", "paths"],
@@ -110,8 +88,7 @@
           "type": "array",
           "items": { "$ref": "#/$defs/runTargetRef" },
           "minItems": 2,
-          "maxItems": 256,
-          "uniqueItems": true
+          "maxItems": 65536
         }
       },
       "required": ["kind", "targets"],
@@ -131,15 +108,13 @@
         "settings": { "type": "object", "maxProperties": 65536 },
         "slots": {
           "type": "object",
-          "propertyNames": { "$ref": "#/$defs/localName" },
           "additionalProperties": { "$ref": "#/$defs/slotRef" },
-          "maxProperties": 256
+          "maxProperties": 65536
         },
         "attachments": {
           "type": "object",
-          "propertyNames": { "$ref": "#/$defs/localName" },
           "additionalProperties": { "$ref": "#/$defs/projectPath" },
-          "maxProperties": 256
+          "maxProperties": 65536
         }
       },
       "required": ["kind", "package", "settings", "slots", "attachments"],

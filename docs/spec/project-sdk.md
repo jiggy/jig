@@ -82,9 +82,11 @@ namespace never silently wins over another.
 
 ## 2. Direct admitted Flow targets
 
-A discovered Run package which is valid with `{}` settings and requires no
-attachment, dependency, Agent, or instruction mapping may be admitted directly
-without a Binding. Aggregate approval is still required. Runtime availability
+A discovered Run package which is valid with `{}` settings, declares no
+required capability use or attachment, and needs no Agent or instruction
+mapping may be admitted directly without a Binding. It receives empty settings,
+attachment, and Flow-call slot maps; an attempted undeclared child call ends
+`BINDING_MISSING`. Aggregate approval is still required. Runtime availability
 is planned separately, so an eligible direct target may be admitted
 `UNAVAILABLE`.
 
@@ -110,31 +112,29 @@ Helper checks are ergonomic only. Jig evaluates the captured module in a
 bounded authority-free environment and independently normalizes the result.
 Forged helper output acquires no trust.
 
-## 4. Normalized capture
+## 4. Captured authoring values
 
 The machine schema is
-[`machine/project-policy-1.schema.json`](machine/project-policy-1.schema.json).
-A normalized aggregate contains:
+[`machine/project-authoring-1.schema.json`](machine/project-authoring-1.schema.json).
+It validates either one `defineJig()` value:
 
 ```json
 {
-  "$schema": "https://jig.dev/schemas/project-policy-1.json",
-  "project": {
-    "flows": { "kind": "discover", "roots": ["flows"] },
-    "bindings": { "kind": "discover", "roots": ["bindings"] }
-  },
-  "bindings": {}
+  "flows": { "kind": "discover", "roots": ["flows"] },
+  "bindings": { "kind": "discover", "roots": ["bindings"] }
 }
 ```
 
-`$schema` identifies the normalized machine document. Authors do not add a
-redundant `jig: 1` field to `jig.ts`.
+or one normalized `defineBinding()` value. Authors do not add a redundant
+`jig: 1` or `$schema` field to either declaration.
 
-JSON Schema validates closed shape and local lexical bounds. The deterministic
-semantic normalizer separately validates source membership, derived Binding
-IDs, collisions, dangling references, package capabilities, settings schemas,
-attachment completeness, slot contract compatibility, and direct-target
-eligibility. Diagnostics identify their normalized JSON Pointer.
+Schema/1 validates closed shape and local type/size bounds. The deterministic
+semantic capture stage—still unimplemented—must expand exact source membership
+and retain declaration provenance before resolution. It separately validates
+LocalName and path grammar, collisions, dangling references, package
+capabilities, settings schemas, attachment completeness, slot contract
+compatibility, and direct-target eligibility. Diagnostics identify their
+normalized JSON Pointer. The shape schema alone is never admission evidence.
 
 ## 5. Deliberate exclusions
 

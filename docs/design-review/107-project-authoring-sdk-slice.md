@@ -22,10 +22,11 @@ identities or operational APIs.
    unresolved later interface.
 6. Automatic shallow discovery proposes membership only. The existing
    aggregate plan/apply admission boundary remains the authority boundary.
-7. The first machine schema describes normalized project-owned desired state,
-   not resolved plans, locks, host registrations, runtime recipes, sandbox
-   receipts, or active generations.
-8. JSON Schema validates closed record shape and lexical constraints.
+7. The first machine schema describes individual captured authoring values,
+   not the still-unimplemented aggregate semantic capture, resolved plans,
+   locks, host registrations, runtime recipes, sandbox receipts, or active
+   generations.
+8. Schema/1 validates closed record shape and local type/size constraints.
    Cross-record identity, reference, package-compatibility, attachment, and
    contract invariants belong to deterministic semantic normalization with
    pointer-addressed diagnostics.
@@ -43,7 +44,7 @@ closed default configuration exists:
 - it is Run-capable and not Service-only;
 - `{}` satisfies its settings contract;
 - no attachment mapping is required;
-- no Flow/effect/Agent dependency mapping is required; and
+- it declares no required capability use or Agent projection; and
 - no instruction conductor or fallback choice is required.
 
 Implementation and host machinery availability are deliberately not
@@ -56,6 +57,11 @@ path. They share input validation, idempotent root admission, Hook pinning,
 runtime and sandbox planning, authority inspection, generation pinning,
 revocation, scheduling, and terminal history. Only their source identity
 differs.
+
+The target receives empty settings, attachment, and Flow-call slot maps. Exact
+code may still attempt an undeclared `flow/call`; that operation simply ends
+`BINDING_MISSING`. Eligibility makes no static claim that package code never
+calls a child Flow.
 
 ## First public vocabulary
 
@@ -83,14 +89,16 @@ not be added merely to make an example compile.
 ## Representation rules
 
 - Authors do not write a redundant format-version property.
-- Normalized JSON carries the canonical `$schema` URI.
+- Authors do not add a `$schema` field; the evaluator applies the authoring
+  schema externally.
 - Unknown keys reject.
-- `undefined`, functions, getters, proxies, class instances, symbols, bigint,
+- `undefined`, functions, getters, class instances, symbols, bigint,
   dates, maps, sets, sparse arrays, cycles, and non-finite numbers reject.
 - Optional means absent, not `undefined` or `null`.
-- Paths accept one authoring `./` prefix, normalize to project-relative `/`
-  form, and reject absolute, escaping, empty, backslash, symlink, glob, NFC,
-  and case-fold hazards during authoritative capture.
+- Paths accept one authoring `./` prefix and normalize to project-relative `/`
+  form. Authoring helpers reject absolute, escaping, empty, backslash, and NFC
+  errors; discovery roots additionally reject glob syntax. Symlink and
+  case-fold hazards require authoritative filesystem capture.
 - Helpers provide early ergonomic validation, but their brands are not trust.
   The isolated evaluator and normalizer repeat every invariant.
 

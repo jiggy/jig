@@ -596,8 +596,10 @@ Dropping a package into `flows/` grants no live authority. Runtime resolution
 reads only exact admitted targets, never the live Flow source. A structurally
 eligible Run package may become a direct target only when the aggregate
 candidate containing that exact package revision is applied. It is eligible
-when `{}` satisfies settings and no attachment, dependency, Agent, or
-instruction mapping is required. Runtime or sandbox availability does not
+when `{}` satisfies settings, it declares no required capability use or
+attachment, and no Agent or instruction mapping is required. It receives an
+empty Flow-call slot map; an attempted undeclared child call ends
+`BINDING_MISSING`. Runtime or sandbox availability does not
 change structural eligibility: the admitted target may be `UNAVAILABLE`.
 Services always require explicit Bindings.
 
