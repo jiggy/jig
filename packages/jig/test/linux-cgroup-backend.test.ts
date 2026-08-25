@@ -1,7 +1,7 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { access, mkdtemp, readFile, readdir, realpath, rm, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, readdir, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
@@ -9,8 +9,10 @@ import {
   PrivateLinuxCgroupBackend,
   type PrivateLinuxLaunchPlan,
 } from "../src/internal/linux-cgroup-backend.js";
+import { captureStoredPackage } from "../src/internal/package-artifact-store.js";
 import { evaluateAuthorClosure } from "../src/project/author-evaluator.js";
 import { captureAuthorClosure } from "../src/project/author-module.js";
+import { retainPackageProject } from "../src/project/retained-project.js";
 import { RunHostSession } from "../src/run/session.js";
 import { ServiceHostSession } from "../src/service/session.js";
 
@@ -370,6 +372,80 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
       });
     } finally {
       await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("publishes one complete retained package project from a shared root owner", async () => {
+    host = await hostConfiguration();
+    const bun = await bunClosure();
+    const distribution = await realpath(join(import.meta.dir, "..", "dist"));
+    const root = await mkdtemp(join(tmpdir(), "jig-retained-project-"));
+    const store = await mkdtemp(join(tmpdir(), "jig-retained-store-"));
+    try {
+      await mkdir(join(root, "bindings"));
+      await mkdir(join(root, "flows", "run"), { recursive: true });
+      await writeFile(join(root, "shared.ts"), [
+        'import { defineBinding, defineJig, discover } from "@jigging/jig";',
+        'export const project = defineJig({ flows: discover("flows"), bindings: discover("bindings") });',
+        'export const configured = defineBinding({ package: "flows/run" });',
+      ].join("\n"));
+      await writeFile(join(root, "jig.ts"), [
+        'import { project } from "./shared.ts";',
+        "export default project;",
+      ].join("\n"));
+      await writeFile(join(root, "bindings", "run.ts"), [
+        'import { configured } from "../shared.ts";',
+        "export default configured;",
+      ].join("\n"));
+      await writeFile(join(root, "flows", "run", "FLOW.md"), [
+        "---",
+        "name: run",
+        "description: Retained aggregate fixture.",
+        "---",
+        "",
+      ].join("\n"));
+      await writeFile(join(root, "flows", "run", "flow.ts"), "export {};\n");
+
+      const aggregate = await retainPackageProject({
+        projectRoot: root,
+        storeRoot: store,
+        evaluator: {
+          backend: backend(host),
+          bunPath: bun.executable,
+          runtimeMounts: [
+            { source: bun.store, destination: bun.store },
+            { source: bun.glibcStore, destination: bun.glibcStore },
+          ],
+          runtimeObservation: {
+            executableDigest: bun.digest,
+            closureSources: [bun.store, bun.glibcStore],
+          },
+          jigDistributionPath: distribution,
+        },
+      });
+
+      expect(aggregate.captureDigest).toMatch(/^sha256:[0-9a-f]{64}$/);
+      expect(aggregate.root).toEqual({ device: expect.any(String), inode: expect.any(String) });
+      expect(aggregate.bindings.map(({ id }) => id)).toEqual(["run"]);
+      expect(aggregate.flows.map(({ provenance }) => provenance.projectPath)).toEqual(["flows/run"]);
+      expect(aggregate.linked.bindings).toHaveLength(1);
+      expect(aggregate.linked.bindings[0]).toMatchObject({
+        id: "run",
+        packagePath: "flows/run",
+      });
+      const declarations = await captureStoredPackage(store, aggregate.declarationArtifact.package);
+      try {
+        expect(declarations.files.map(({ path }) => path)).toEqual([
+          "bindings/run.ts",
+          "jig.ts",
+          "shared.ts",
+        ]);
+      } finally {
+        await declarations.dispose();
+      }
+    } finally {
+      await rm(root, { recursive: true, force: true });
+      await rm(store, { recursive: true, force: true });
     }
   });
 

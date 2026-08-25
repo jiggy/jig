@@ -1,6 +1,5 @@
 import { constants, type BigIntStats } from "node:fs";
 import { type FileHandle, lstat, open, opendir } from "node:fs/promises";
-import { resolve } from "node:path";
 
 import { CheckError, invalid, unavailable } from "../diagnostics.js";
 import {
@@ -19,6 +18,11 @@ import {
   compareProjectPaths,
   validateProjectPath,
 } from "./paths.js";
+import {
+  openPrivateProjectRoot,
+  requirePrivateProjectRoot,
+  type PrivateProjectRoot,
+} from "./root.js";
 
 const CAPTURE_ATTEMPTS = 3;
 const MAX_MEMBERS = 65_536;
@@ -94,38 +98,47 @@ export async function captureFlowSource(
   source?: ProjectSource,
 ): Promise<CapturedFlowSource> {
   const normalized = validateSource(source);
-  if (normalized === undefined) return createSource([], []);
-
-  const project = await openProjectRoot(projectRoot);
+  const project = await openPrivateProjectRoot(projectRoot);
   try {
-    for (let attempt = 1; attempt <= CAPTURE_ATTEMPTS; attempt += 1) {
-      const captured: CapturedFlowMember[] = [];
-      try {
-        const observations = normalized.kind === "discover"
-          ? await captureDiscovered(project, normalized.roots, captured)
-          : await captureExact(project, normalized.paths, captured);
-        await verifyProjectRoot(project);
-        captured.sort((left, right) => compareProjectPaths(
-          left.provenance.projectPath,
-          right.provenance.projectPath,
-        ));
-        assertUniqueMembers(captured);
-        return createSource(observations, captured);
-      } catch (error) {
-        await disposeMembers(captured);
-        if (isSourceChange(error) && attempt < CAPTURE_ATTEMPTS) continue;
-        if (isSourceChange(error)) {
-          unavailable(
-            "PROJECT_SOURCE_CHANGED",
-            `project Flow source kept changing during ${CAPTURE_ATTEMPTS} capture attempts`,
-            project.requestedPath,
-          );
-        }
-        throw error;
-      }
-    }
+    return await captureOpenedFlowSource(project, normalized);
   } finally {
-    await project.handle.close().catch(() => undefined);
+    await project.dispose();
+  }
+}
+
+/** Capture a Flow source beneath a borrowed private project-root descriptor. */
+export async function captureOpenedFlowSource(
+  projectRoot: PrivateProjectRoot,
+  source?: ProjectSource,
+): Promise<CapturedFlowSource> {
+  const project = requirePrivateProjectRoot(projectRoot);
+  const normalized = validateSource(source);
+  if (normalized === undefined) return createSource([], []);
+  for (let attempt = 1; attempt <= CAPTURE_ATTEMPTS; attempt += 1) {
+    const captured: CapturedFlowMember[] = [];
+    try {
+      const observations = normalized.kind === "discover"
+        ? await captureDiscovered(project, normalized.roots, captured)
+        : await captureExact(project, normalized.paths, captured);
+      await project.verify();
+      captured.sort((left, right) => compareProjectPaths(
+        left.provenance.projectPath,
+        right.provenance.projectPath,
+      ));
+      assertUniqueMembers(captured);
+      return createSource(observations, captured);
+    } catch (error) {
+      await disposeMembers(captured);
+      if (isSourceChange(error) && attempt < CAPTURE_ATTEMPTS) continue;
+      if (isSourceChange(error)) {
+        unavailable(
+          "PROJECT_SOURCE_CHANGED",
+          `project Flow source kept changing during ${CAPTURE_ATTEMPTS} capture attempts`,
+          project.requestedPath,
+        );
+      }
+      throw error;
+    }
   }
   throw new Error("unreachable Flow-source capture attempt state");
 }
@@ -277,52 +290,6 @@ async function captureMember(
   } catch (error) {
     await captured.dispose();
     throw error;
-  }
-}
-
-async function openProjectRoot(projectRoot: string): Promise<OpenDirectory & { readonly requestedPath: string }> {
-  const requestedPath = resolve(projectRoot);
-  let observed: BigIntStats;
-  try {
-    observed = await lstat(requestedPath, { bigint: true });
-  } catch (error) {
-    unavailable("PROJECT_ROOT_IO", `cannot inspect project root: ${errorText(error)}`, requestedPath);
-  }
-  if (observed.isSymbolicLink()) invalid("PROJECT_ROOT", "project root must not be a symlink", requestedPath);
-  if (!observed.isDirectory()) invalid("PROJECT_ROOT", "project root is not a directory", requestedPath);
-  let handle: FileHandle;
-  try {
-    handle = await open(
-      requestedPath,
-      constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW | constants.O_NONBLOCK,
-    );
-  } catch (error) {
-    unavailable("PROJECT_ROOT_IO", `cannot open project root: ${errorText(error)}`, requestedPath);
-  }
-  try {
-    const information = await handle.stat({ bigint: true });
-    if (!information.isDirectory() || !sameIdentity(observed, information)) {
-      sourceChanged("project root changed while it was opened", requestedPath);
-    }
-    return { requestedPath, handle, information };
-  } catch (error) {
-    await handle.close().catch(() => undefined);
-    throw error;
-  }
-}
-
-async function verifyProjectRoot(
-  project: OpenDirectory & { readonly requestedPath: string },
-): Promise<void> {
-  let current: BigIntStats;
-  try {
-    current = await lstat(project.requestedPath, { bigint: true });
-  } catch (error) {
-    if (isMissing(error)) sourceChanged("project root disappeared during capture", project.requestedPath);
-    unavailable("PROJECT_ROOT_IO", `cannot verify project root: ${errorText(error)}`, project.requestedPath);
-  }
-  if (!current.isDirectory() || !sameIdentity(project.information, current)) {
-    sourceChanged("project root changed during capture", project.requestedPath);
   }
 }
 

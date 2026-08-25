@@ -5,6 +5,7 @@ import { fullCaseFold15_1 } from "../package/paths.js";
 import { SchemaDiagnostic } from "../schema/index.js";
 import {
   defineBinding,
+  normalizePackageBindingDefinition,
   type PackageBindingInput,
   type RunTargetRef,
   type SlotRef,
@@ -207,7 +208,11 @@ function prepareBindings(
 
     let definition: ReturnType<typeof defineBinding>;
     try {
-      definition = defineBinding(record.definition as PackageBindingInput);
+      const candidate = record.definition;
+      definition = typeof candidate === "object" && candidate !== null &&
+          Object.hasOwn(candidate, "kind")
+        ? normalizePackageBindingDefinition(candidate)
+        : defineBinding(candidate as PackageBindingInput);
     } catch (error) {
       invalid("PROJECT_BINDING_DECLARATION", errorText(error), declarationPath);
     }

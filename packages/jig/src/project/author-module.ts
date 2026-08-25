@@ -2,7 +2,6 @@ import { createHash } from "node:crypto";
 import { constants, type BigIntStats } from "node:fs";
 import { type FileHandle, lstat, open } from "node:fs/promises";
 import { dirname, join as joinPath, normalize as normalizePath } from "node:path/posix";
-import { resolve } from "node:path";
 
 import { invalid, unavailable } from "../diagnostics.js";
 import { canonicalJson, type JsonValue } from "../json.js";
@@ -12,6 +11,11 @@ import {
   compareProjectPaths,
   validateProjectPath,
 } from "./paths.js";
+import {
+  openPrivateProjectRoot,
+  requirePrivateProjectRoot,
+  type PrivateProjectRoot,
+} from "./root.js";
 
 const MAX_SOURCE_BYTES = 1024 * 1024;
 const MAX_CLOSURE_SOURCE_BYTES = 1024 * 1024;
@@ -52,12 +56,6 @@ export interface CapturedAuthorClosure {
   dispose(): void;
 }
 
-interface OpenProject {
-  readonly requestedPath: string;
-  readonly handle: FileHandle;
-  readonly information: BigIntStats;
-}
-
 interface CapturedAttempt {
   readonly bytes: Uint8Array;
   readonly information: BigIntStats;
@@ -87,14 +85,15 @@ export async function captureAuthorModule(
   }
 
   for (let attempt = 1; attempt <= CAPTURE_ATTEMPTS; attempt += 1) {
+    let project: PrivateProjectRoot | undefined;
     try {
-      const project = await openProject(projectRoot);
-      return await withOwnedHandle(project.handle, async () => {
+      project = await openPrivateProjectRoot(projectRoot);
+      return await (async () => {
         const captured = await captureFile(project.handle, projectPath);
-        await verifyProject(project);
+        await project.verify();
         await verifyFile(project.handle, projectPath, captured.information);
         return createCapture(projectPath, captured.bytes);
-      }, "project-root descriptor");
+      })();
     } catch (error) {
       if (isSourceChange(error) && attempt < CAPTURE_ATTEMPTS) continue;
       if (isSourceChange(error)) {
@@ -105,6 +104,8 @@ export async function captureAuthorModule(
         );
       }
       throw error;
+    } finally {
+      await project?.dispose().catch(() => undefined);
     }
   }
   throw new Error("unreachable author-module capture state");
@@ -119,6 +120,33 @@ export async function captureAuthorClosure(
   projectRoot: string,
   entryPaths: readonly string[],
 ): Promise<CapturedAuthorClosure> {
+  for (let attempt = 1; attempt <= CAPTURE_ATTEMPTS; attempt += 1) {
+    let project: PrivateProjectRoot | undefined;
+    try {
+      project = await openPrivateProjectRoot(projectRoot);
+      return await captureOpenedAuthorClosure(project, entryPaths);
+    } catch (error) {
+      if (isSourceChange(error) && attempt < CAPTURE_ATTEMPTS) continue;
+      if (isSourceChange(error)) {
+        unavailable(
+          "PROJECT_SOURCE_CHANGED",
+          `author closure kept changing during ${CAPTURE_ATTEMPTS} capture attempts`,
+        );
+      }
+      throw error;
+    } finally {
+      await project?.dispose().catch(() => undefined);
+    }
+  }
+  throw new Error("unreachable author-closure capture state");
+}
+
+/** Capture one closure beneath a borrowed private project-root descriptor. */
+export async function captureOpenedAuthorClosure(
+  projectRoot: PrivateProjectRoot,
+  entryPaths: readonly string[],
+): Promise<CapturedAuthorClosure> {
+  const project = requirePrivateProjectRoot(projectRoot);
   if (!Array.isArray(entryPaths) || entryPaths.length === 0) {
     invalid("PROJECT_EVALUATOR_SOURCE", "author closure requires at least one entry module");
   }
@@ -137,11 +165,8 @@ export async function captureAuthorClosure(
     );
   }
 
-  for (let attempt = 1; attempt <= CAPTURE_ATTEMPTS; attempt += 1) {
-    const captured = new Map<string, CapturedAttempt>();
-    try {
-      const project = await openProject(projectRoot);
-      return await withOwnedHandle(project.handle, async () => {
+  const captured = new Map<string, CapturedAttempt>();
+  try {
         const imports = new Map<string, readonly CapturedAuthorImport[]>();
         const visiting = new Set<string>();
         const visited = new Set<string>();
@@ -198,25 +223,15 @@ export async function captureAuthorClosure(
         for (const entry of entries) await visit(entry, []);
         const modulePaths = [...captured.keys()].sort(compareProjectPaths);
         assertNoProjectPathCollisions(modulePaths, "author closure");
-        await verifyProject(project);
+        await project.verify();
         for (const projectPath of modulePaths) {
           await verifyFile(project.handle, projectPath, captured.get(projectPath)!.information);
         }
         return createClosure(entries, modulePaths, captured, imports, totalBytes);
-      }, "project-root descriptor");
-    } catch (error) {
-      for (const module of captured.values()) module.bytes.fill(0);
-      if (isSourceChange(error) && attempt < CAPTURE_ATTEMPTS) continue;
-      if (isSourceChange(error)) {
-        unavailable(
-          "PROJECT_SOURCE_CHANGED",
-          `author closure kept changing during ${CAPTURE_ATTEMPTS} capture attempts`,
-        );
-      }
-      throw error;
-    }
+  } catch (error) {
+    for (const module of captured.values()) module.bytes.fill(0);
+    throw error;
   }
-  throw new Error("unreachable author-closure capture state");
 }
 
 export function isCapturedAuthorClosure(value: unknown): value is CapturedAuthorClosure {
@@ -384,34 +399,6 @@ function digest(bytes: Uint8Array): string {
   return `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
 }
 
-async function openProject(projectRoot: string): Promise<OpenProject> {
-  const requestedPath = resolve(projectRoot);
-  let observed: BigIntStats;
-  try {
-    observed = await lstat(requestedPath, { bigint: true });
-  } catch (error) {
-    unavailable("PROJECT_ROOT_IO", `cannot inspect project root: ${errorText(error)}`, requestedPath);
-  }
-  if (observed.isSymbolicLink()) invalid("PROJECT_ROOT", "project root must not be a symlink", requestedPath);
-  if (!observed.isDirectory()) invalid("PROJECT_ROOT", "project root is not a directory", requestedPath);
-
-  let handle: FileHandle;
-  try {
-    handle = await open(
-      requestedPath,
-      constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW | constants.O_NONBLOCK,
-    );
-  } catch (error) {
-    unavailable("PROJECT_ROOT_IO", `cannot open project root: ${errorText(error)}`, requestedPath);
-  }
-  const information = await statOwned(handle, "project-root descriptor");
-  if (!information.isDirectory() || !sameIdentity(observed, information)) {
-    await closeHandles([handle], "changed project-root descriptor");
-    sourceChanged("project root changed while it was opened", requestedPath);
-  }
-  return { requestedPath, handle, information };
-}
-
 async function captureFile(project: FileHandle, projectPath: string): Promise<CapturedAttempt> {
   const opened = await openProjectFile(project, projectPath, false);
   return await withOwnedHandle(opened.handle, async () => {
@@ -537,18 +524,6 @@ async function readBounded(file: FileHandle, projectPath: string): Promise<Uint8
     offset += chunk.byteLength;
   }
   return output;
-}
-
-async function verifyProject(project: OpenProject): Promise<void> {
-  let current: BigIntStats;
-  try {
-    current = await lstat(project.requestedPath, { bigint: true });
-  } catch {
-    sourceChanged("project root disappeared during author-module capture", project.requestedPath);
-  }
-  if (!current.isDirectory() || !sameIdentity(project.information, current)) {
-    sourceChanged("project root changed during author-module capture", project.requestedPath);
-  }
 }
 
 async function verifyFile(
