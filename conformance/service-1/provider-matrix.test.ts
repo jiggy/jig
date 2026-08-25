@@ -101,6 +101,48 @@ for (const provider of providers) {
       });
     });
 
+    test("never exposes a 65th concurrent Provider request", async () => {
+      await withPeer(provider, async (peer) => {
+        await ready(peer);
+        peer.send(invoke("host:2", "fanout", null));
+
+        const requests: Message[] = [];
+        for (let index = 0; index < 64; index += 1) {
+          const request = await peer.receive();
+          expect(request).toMatchObject({
+            method: "effect/call",
+            params: { ownerRequestId: "host:2" },
+          });
+          requests.push(request);
+        }
+        await expect(peer.receive(75)).rejects.toThrow("timed out");
+
+        peer.send({ jsonrpc: "2.0", id: requests[0]!.id, result: { value: null } });
+        let queued: Message | undefined;
+        try {
+          queued = await peer.receive(100);
+        } catch (error) {
+          expect(String(error)).toContain("timed out");
+        }
+        if (queued !== undefined) {
+          expect(queued).toMatchObject({ method: "effect/call", params: { ownerRequestId: "host:2" } });
+        }
+        for (const request of requests.slice(1)) {
+          peer.send({ jsonrpc: "2.0", id: request.id, result: { value: null } });
+        }
+        if (queued !== undefined) {
+          peer.send({ jsonrpc: "2.0", id: queued.id, result: { value: null } });
+        }
+
+        const terminal = await peer.receive();
+        expect(terminal.id).toBe("host:2");
+        const value = (terminal.result as { value?: unknown }).value;
+        expect(Array.isArray(value)).toBeTrue();
+        expect(value as unknown[]).toHaveLength(65);
+        await stop(peer);
+      });
+    });
+
     test("fails fatally when the Host invokes before readiness acknowledgement", async () => {
       await withPeer(provider, async (peer) => {
         peer.send(mount());

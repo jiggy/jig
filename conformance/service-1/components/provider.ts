@@ -1,4 +1,5 @@
 import {
+  OperationError,
   ServiceError,
   serveService,
   type ServiceDefinition,
@@ -25,6 +26,21 @@ const service: ServiceDefinition = {
           input: context.input,
         });
         return "must-not-succeed";
+      }
+      if (context.method === "fanout") {
+        return await Promise.all(Array.from({ length: 65 }, async (_, index) => {
+          try {
+            await context.callEffect({
+              operationId: `fanout:${index}`,
+              slot: "storage",
+              method: "read",
+              input: index,
+            });
+            return "ok";
+          } catch (error) {
+            return error instanceof OperationError ? error.code : "unexpected";
+          }
+        }));
       }
       if (context.method === "slow") {
         await new Promise<void>((resolve) => {

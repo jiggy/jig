@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 
-from flowmd_sdk import ServiceDefinition, ServiceError, serve_service
+from flowmd_sdk import OperationError, ServiceDefinition, ServiceError, serve_service
 
 
 async def sessions(context):
@@ -27,6 +27,20 @@ async def sessions(context):
         task.add_done_callback(lambda completed: completed.exception())
         await asyncio.sleep(0)
         return "must-not-succeed"
+    if context.method == "fanout":
+        settled = await asyncio.gather(*(
+            context.call_effect(
+                operation_id=f"fanout:{index}",
+                slot="storage",
+                method="read",
+                input=index,
+            )
+            for index in range(65)
+        ), return_exceptions=True)
+        return [
+            item.code if isinstance(item, OperationError) else "ok"
+            for item in settled
+        ]
     if context.method == "slow":
         try:
             await asyncio.Event().wait()
