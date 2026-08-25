@@ -35,7 +35,10 @@ Current implementation frontier:
   records the completed Run/1, two-peer, Package/Schema, and independent
   author/evaluator SDK gate.
 - [`design-review/104-phase-2-security-blocker.md`](design-review/104-phase-2-security-blocker.md)
-  records why live secure-root activation is fail-closed on the current host.
+  preserves the earlier fail-closed environment stop.
+- [`design-review/105-phase-2-linux-cgroup-proof.md`](design-review/105-phase-2-linux-cgroup-proof.md)
+  records the private cgroup-v2/Bubblewrap implementation, hostile proof, and
+  remaining Bun descendant blocker.
 
 The focused Run/1 specification owns its finite wire surface. The remaining
 cross-cutting system rules are in the canonical architecture:

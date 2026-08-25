@@ -1,8 +1,9 @@
 # Phase 2 secure-root blocker
 
-**Status:** verified host blocker on 2026-08-25. This is implementation
-evidence, not a weakening of the reviewed security model or a portable
-Sandbox Backend specification.
+**Status:** historical blocker verified on the earlier 2026-08-25 host
+profile. The environment stop is superseded by the private proof in
+[`105-phase-2-linux-cgroup-proof.md`](105-phase-2-linux-cgroup-proof.md); the
+evidence below remains the reason weaker fallbacks were rejected.
 
 ## Decision
 
