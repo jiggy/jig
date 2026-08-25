@@ -8,6 +8,7 @@ import {
   type PrivateLinuxLaunchPlan,
 } from "../src/internal/linux-cgroup-backend.js";
 import { RunHostSession } from "../src/run/session.js";
+import { ServiceHostSession } from "../src/service/session.js";
 
 const HOSTILE = process.env.JIG_LINUX_CGROUP_HOSTILE === "1";
 const hostileDescribe = HOSTILE ? describe.serial : describe.skip;
@@ -240,6 +241,61 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         outcome: "done",
         output: { message: "inside the enforced envelope" },
       },
+      diagnostics: { stderr: "" },
+    });
+    expect(await component.evidence).toMatchObject({
+      memoryEvents: { max: 0 },
+      pidsEvents: { max: 0 },
+    });
+    await expect(access(component.cgroup.parentCgroup)).rejects.toBeDefined();
+  });
+
+  test("drives a real Python Service/1 Mount through the complete envelope", async () => {
+    host = await hostConfiguration();
+    const python = await pythonClosure();
+    const sdk = await realpath(join(import.meta.dir, "..", "..", "flowmd-sdk", "src"));
+    const fixture = await realpath(join(import.meta.dir, "fixtures", "service-provider.py"));
+    const component = await backend(host).launch({
+      runId: "python-service1",
+      limits: {
+        ...limits(),
+        memoryBytes: 256 * 1024 * 1024,
+        pids: 16,
+        wallClockMs: 5_000,
+      },
+      readOnlyMounts: [
+        ...python.stores.map((store) => ({ source: store, destination: store })),
+        { source: sdk, destination: "/flowmd-sdk" },
+        { source: fixture, destination: "/component/service-provider.py" },
+      ],
+      entropyDevice: true,
+      environment: {
+        PYTHONPATH: "/flowmd-sdk",
+        PYTHONDONTWRITEBYTECODE: "1",
+        PYTHONUNBUFFERED: "1",
+      },
+      command: [python.executable, "/component/service-provider.py"],
+    });
+    const service = new ServiceHostSession(component, {
+      settings: {},
+      attachments: {},
+      scratch: "/work",
+      startupDeadlineUnixMs: Date.now() + 3_000,
+      exports: ["sessions"],
+    });
+
+    await service.start();
+    expect(await service.invoke({
+      exportName: "sessions",
+      method: "read",
+      input: { message: "inside the enforced envelope" },
+      deadlineUnixMs: Date.now() + 3_000,
+    })).toEqual({
+      status: "succeeded",
+      value: { input: { message: "inside the enforced envelope" } },
+    });
+    expect(await service.stop()).toMatchObject({
+      status: "succeeded",
       diagnostics: { stderr: "" },
     });
     expect(await component.evidence).toMatchObject({
