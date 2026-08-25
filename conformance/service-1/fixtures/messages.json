@@ -1,0 +1,205 @@
+{
+  "valid": [
+    {
+      "name": "mount request",
+      "definition": "serviceMountRequest",
+      "value": {
+        "jsonrpc": "2.0",
+        "id": "host:1",
+        "method": "service/mount",
+        "params": {
+          "protocol": "service/1",
+          "settings": {},
+          "attachments": {},
+          "scratch": "/scratch",
+          "startupDeadlineUnixMs": 1787558400000
+        }
+      }
+    },
+    {
+      "name": "invoke request",
+      "definition": "serviceInvokeRequest",
+      "value": {
+        "jsonrpc": "2.0",
+        "id": "host:2",
+        "method": "service/invoke",
+        "params": {
+          "export": "sessions",
+          "method": "read",
+          "input": {"session-id": "s-1"},
+          "deadlineUnixMs": 1787558400000
+        }
+      }
+    },
+    {
+      "name": "readiness request",
+      "definition": "serviceReadyRequest",
+      "value": {
+        "jsonrpc": "2.0",
+        "id": "provider:1",
+        "method": "service/ready",
+        "params": {
+          "ownerRequestId": "host:1",
+          "exports": ["documents", "sessions"]
+        }
+      }
+    },
+    {
+      "name": "mount-owned Flow call",
+      "definition": "flowCallRequest",
+      "value": {
+        "jsonrpc": "2.0",
+        "id": "provider:2",
+        "method": "flow/call",
+        "params": {
+          "ownerRequestId": "host:1",
+          "operationId": "refresh:1",
+          "slot": "refresh",
+          "input": null
+        }
+      }
+    },
+    {
+      "name": "invocation-owned effect call",
+      "definition": "effectCallRequest",
+      "value": {
+        "jsonrpc": "2.0",
+        "id": "provider:3",
+        "method": "effect/call",
+        "params": {
+          "ownerRequestId": "host:2",
+          "operationId": "load:1",
+          "slot": "storage",
+          "method": "read",
+          "input": {"key": "s-1"}
+        }
+      }
+    },
+    {
+      "name": "mount cancellation",
+      "definition": "requestCancelNotification",
+      "value": {
+        "jsonrpc": "2.0",
+        "method": "request/cancel",
+        "params": {"requestId": "host:1"}
+      }
+    },
+    {
+      "name": "readiness acknowledgement",
+      "definition": "emptySuccessResponse",
+      "value": {"jsonrpc": "2.0", "id": "provider:1", "result": {}}
+    },
+    {
+      "name": "child Flow result",
+      "definition": "runSuccessResponse",
+      "value": {
+        "jsonrpc": "2.0",
+        "id": "provider:2",
+        "result": {"outcome": "done", "output": null}
+      }
+    },
+    {
+      "name": "capability value",
+      "definition": "effectSuccessResponse",
+      "value": {"jsonrpc": "2.0", "id": "host:2", "result": {"value": null}}
+    },
+    {
+      "name": "capability application error",
+      "definition": "effectSuccessResponse",
+      "value": {
+        "jsonrpc": "2.0",
+        "id": "host:2",
+        "result": {"error": {"name": "not-found", "data": null}}
+      }
+    },
+    {
+      "name": "operational failure",
+      "definition": "flowErrorResponse",
+      "value": {
+        "jsonrpc": "2.0",
+        "id": "host:2",
+        "error": {
+          "code": -32000,
+          "message": "provider is unavailable",
+          "data": {"code": "UNAVAILABLE"}
+        }
+      }
+    }
+  ],
+  "invalid": [
+    {
+      "name": "wrong mount protocol",
+      "definition": "serviceMountRequest",
+      "value": {
+        "jsonrpc": "2.0",
+        "id": "host:1",
+        "method": "service/mount",
+        "params": {
+          "protocol": "run/1",
+          "settings": {},
+          "attachments": {},
+          "scratch": "/scratch",
+          "startupDeadlineUnixMs": 0
+        }
+      }
+    },
+    {
+      "name": "invoke with ambient provider generation",
+      "definition": "serviceInvokeRequest",
+      "value": {
+        "jsonrpc": "2.0",
+        "id": "host:2",
+        "method": "service/invoke",
+        "params": {
+          "export": "sessions",
+          "method": "read",
+          "input": null,
+          "deadlineUnixMs": 0,
+          "generation": "g-1"
+        }
+      }
+    },
+    {
+      "name": "duplicate readiness export",
+      "definition": "serviceReadyRequest",
+      "value": {
+        "jsonrpc": "2.0",
+        "id": "provider:1",
+        "method": "service/ready",
+        "params": {
+          "ownerRequestId": "host:1",
+          "exports": ["sessions", "sessions"]
+        }
+      }
+    },
+    {
+      "name": "unattributed effect call",
+      "definition": "effectCallRequest",
+      "value": {
+        "jsonrpc": "2.0",
+        "id": "provider:2",
+        "method": "effect/call",
+        "params": {
+          "operationId": "load:1",
+          "slot": "storage",
+          "method": "read",
+          "input": null
+        }
+      }
+    },
+    {
+      "name": "scalar cancellation params",
+      "definition": "requestCancelNotification",
+      "value": {
+        "jsonrpc": "2.0",
+        "method": "request/cancel",
+        "params": "host:1"
+      }
+    },
+    {
+      "name": "untagged invocation result",
+      "definition": "effectSuccessResponse",
+      "value": {"jsonrpc": "2.0", "id": "host:2", "result": null}
+    }
+  ]
+}
