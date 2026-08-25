@@ -42,9 +42,9 @@ byte count, content digest, and resolved local edges. Captured bytes are
 copy-on-read, remain unchanged after visible source edits, and are zeroed when
 the invocation-local owner is disposed.
 
-This is the first candidate-wide declaration closure, but not yet the complete
-project aggregate: Flow package membership and retained Package/1 objects are
-still captured by their existing owners.
+This is the candidate-wide declaration closure used by the implemented private
+retained aggregate in
+[`113-retained-project-aggregate.md`](113-retained-project-aggregate.md).
 
 ## 3. Closed build resolver
 
@@ -84,7 +84,7 @@ captured closure after their visible entry and helper sources are modified. It
 records the same sealed evaluator and cgroup/Bubblewrap receipts as review 111.
 No Jig-owned cgroup remains after the suite.
 
-## 5. Next boundary
+## 5. Closed following boundary
 
 Jig can now assemble the first private retained project aggregate:
 
@@ -97,7 +97,7 @@ capture and evaluate jig.ts closure
     -> feed the existing pure package/Binding linker
 ```
 
-That aggregate must own all retained artifacts and evaluation receipts, reject
-partial publication, and never reopen visible source during linking. It remains
-private until resolution, consent, locking, and admission justify a public
-administration shape.
+Review 113 closes that package-only aggregate. It owns all retained artifacts
+and evaluation receipts, rejects partial project publication, and never reopens
+visible source during linking. It remains private until resolution, consent,
+locking, and admission justify a public administration shape.

@@ -1,9 +1,9 @@
 # Jig project policy and admission/1
 
-**Status:** reviewed host semantics. The first package-only TypeScript authoring
-slice, the private capture/link stages, and one bounded static-import evaluator
-checkpoint are implemented. The retained project aggregate, admission, Hooks,
-host-capability, Agent, and open-candidate slices remain release-gated.
+**Status:** reviewed host semantics. The first package-only TypeScript authoring,
+capture, static-import evaluation, retention, and pure-link aggregate are
+implemented privately. Resolution, admission, Hooks, host-capability, Agent,
+and open-candidate slices remain release-gated.
 
 Project files express desired state. They do not become live authority merely
 because a watcher observed them. Jig captures one candidate, resolves it,
