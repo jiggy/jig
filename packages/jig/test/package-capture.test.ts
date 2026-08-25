@@ -1,10 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import { createReadStream } from "node:fs";
+import { constants, createReadStream } from "node:fs";
 import {
   chmod,
   link,
   mkdir,
   mkdtemp,
+  open,
+  rename,
   rm,
   symlink,
   truncate,
@@ -17,6 +19,7 @@ import { join } from "node:path";
 import { CheckError } from "../src/diagnostics.js";
 import {
   capturePackageDirectory,
+  captureOpenedPackageDirectory,
   type CapturedFile,
   type CapturedPackage,
 } from "../src/package/capture.js";
@@ -187,6 +190,38 @@ describe("Linux Package/1 directory capture", () => {
       await writeFile(join(source, "FLOW.md"), metadata);
       await symlink(source, alias);
       await expectCaptureError(alias, "PACKAGE_ROOT");
+    });
+  });
+
+  linuxTest("captures an opened directory identity rather than a replaced pathname", async () => {
+    await withDirectory(async (root) => {
+      const selected = join(root, "selected");
+      const moved = join(root, "moved");
+      await mkdir(selected);
+      await writeFile(join(selected, "FLOW.md"), metadata);
+      await writeFile(join(selected, "value.txt"), "original");
+
+      const handle = await open(
+        selected,
+        constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW,
+      );
+      try {
+        await rename(selected, moved);
+        await mkdir(selected);
+        await writeFile(join(selected, "FLOW.md"), metadata);
+        await writeFile(join(selected, "value.txt"), "replacement");
+
+        const captured = await captureOpenedPackageDirectory("flows/selected", handle);
+        try {
+          expect(new TextDecoder().decode(await captured.read("value.txt"))).toBe("original");
+          expect(captured.sourceRoot).toBe("flows/selected");
+          expect((await handle.stat()).isDirectory()).toBeTrue();
+        } finally {
+          await captured.dispose();
+        }
+      } finally {
+        await handle.close();
+      }
     });
   });
 

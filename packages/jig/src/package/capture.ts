@@ -65,38 +65,10 @@ export async function capturePackageDirectory(source: string): Promise<CapturedP
 
   for (let attempt = 1; attempt <= CAPTURE_ATTEMPTS; attempt += 1) {
     let root: OpenRoot | undefined;
-    let backing: FileHandle | undefined;
     try {
       root = await openDirectoryRoot(source);
-      backing = await openAnonymousBacking();
-      const { records, fingerprints } = await captureAttempt(root, backing);
-      let verification: SourceFingerprint[];
-      try {
-        verification = await fingerprintTree(root);
-      } catch (error) {
-        if (isVerificationMutation(error)) {
-          sourceChanged("package source changed before verification completed", root.requestedPath);
-        }
-        throw error;
-      }
-      await verifyRootPath(root);
-      if (!sameFingerprints(fingerprints, verification)) {
-        sourceChanged("package source changed between capture and verification", root.requestedPath);
-      }
-
-      records.sort((left, right) => comparePathBytes(left.path, right.path));
-      const snapshot = await sealSnapshot(backing, records);
-      backing = undefined;
-      try {
-        const files = Object.freeze(records.map(({ path, size }) => Object.freeze({ path, size })));
-        const digest = await packageDigest(files, (file) => snapshot.stream(file.path));
-        return createCapturedPackage(root.requestedPath, files, digest, snapshot);
-      } catch (error) {
-        await snapshot.dispose();
-        throw error;
-      }
+      return await captureOpenedRootAttempt(root, true);
     } catch (error) {
-      await backing?.close().catch(() => undefined);
       if (isResourceError(error)) {
         resourceExhausted(error, "cannot capture package source", resolve(source));
       }
@@ -114,6 +86,86 @@ export async function capturePackageDirectory(source: string): Promise<CapturedP
     }
   }
   throw new Error("unreachable package capture attempt state");
+}
+
+/**
+ * Capture the directory named by an already-open descriptor without reopening
+ * its source pathname. The descriptor is borrowed and remains open on return.
+ * This is a low-level host seam for descriptor-confined project traversal.
+ */
+export async function captureOpenedPackageDirectory(
+  sourceRoot: string,
+  directory: FileHandle,
+): Promise<CapturedPackage> {
+  if (process.platform !== "linux") {
+    unavailable(
+      "PACKAGE_CAPTURE_UNAVAILABLE",
+      "opened-directory capture requires Linux descriptor paths and O_TMPFILE",
+    );
+  }
+
+  const root = await duplicateDirectoryRoot(sourceRoot, directory);
+  try {
+    for (let attempt = 1; attempt <= CAPTURE_ATTEMPTS; attempt += 1) {
+      try {
+        return await captureOpenedRootAttempt(root, false);
+      } catch (error) {
+        if (isResourceError(error)) {
+          resourceExhausted(error, "cannot capture opened package source", sourceRoot);
+        }
+        if (isSourceChange(error) && attempt < CAPTURE_ATTEMPTS) continue;
+        if (isSourceChange(error)) {
+          unavailable(
+            "PACKAGE_SOURCE_CHANGED",
+            `opened package source kept changing during ${CAPTURE_ATTEMPTS} capture attempts`,
+            sourceRoot,
+          );
+        }
+        throw error;
+      }
+    }
+  } finally {
+    await root.handle.close().catch(() => undefined);
+  }
+  throw new Error("unreachable opened package capture attempt state");
+}
+
+async function captureOpenedRootAttempt(
+  root: OpenRoot,
+  verifyPath: boolean,
+): Promise<CapturedPackage> {
+  let backing: FileHandle | undefined;
+  try {
+    backing = await openAnonymousBacking();
+    const { records, fingerprints } = await captureAttempt(root, backing);
+    let verification: SourceFingerprint[];
+    try {
+      verification = await fingerprintTree(root);
+    } catch (error) {
+      if (isVerificationMutation(error)) {
+        sourceChanged("package source changed before verification completed", root.requestedPath);
+      }
+      throw error;
+    }
+    if (verifyPath) await verifyRootPath(root);
+    if (!sameFingerprints(fingerprints, verification)) {
+      sourceChanged("package source changed between capture and verification", root.requestedPath);
+    }
+
+    records.sort((left, right) => comparePathBytes(left.path, right.path));
+    const snapshot = await sealSnapshot(backing, records);
+    backing = undefined;
+    try {
+      const files = Object.freeze(records.map(({ path, size }) => Object.freeze({ path, size })));
+      const digest = await packageDigest(files, (file) => snapshot.stream(file.path));
+      return createCapturedPackage(root.requestedPath, files, digest, snapshot);
+    } catch (error) {
+      await snapshot.dispose();
+      throw error;
+    }
+  } finally {
+    await backing?.close().catch(() => undefined);
+  }
 }
 
 function createCapturedPackage(
@@ -213,6 +265,34 @@ async function openDirectoryRoot(source: string): Promise<OpenRoot> {
       sourceChanged("package source root changed while it was opened", requestedPath);
     }
     return { requestedPath, handle, information: actual };
+  } catch (error) {
+    await handle.close().catch(() => undefined);
+    throw error;
+  }
+}
+
+async function duplicateDirectoryRoot(
+  sourceRoot: string,
+  directory: FileHandle,
+): Promise<OpenRoot> {
+  let handle: FileHandle;
+  try {
+    handle = await open(
+      `/proc/self/fd/${directory.fd}`,
+      constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NONBLOCK,
+    );
+  } catch (error) {
+    if (isResourceError(error)) resourceExhausted(error, "cannot duplicate opened package directory", sourceRoot);
+    unavailable(
+      "PACKAGE_CAPTURE_UNAVAILABLE",
+      `cannot duplicate opened package directory: ${errorText(error)}`,
+      sourceRoot,
+    );
+  }
+  try {
+    const information = await handle.stat({ bigint: true });
+    if (!information.isDirectory()) invalid("PACKAGE_ROOT", "opened package source is not a directory", sourceRoot);
+    return { requestedPath: sourceRoot, handle, information };
   } catch (error) {
     await handle.close().catch(() => undefined);
     throw error;
