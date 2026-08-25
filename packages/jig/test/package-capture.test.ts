@@ -214,7 +214,7 @@ describe("Linux Package/1 directory capture", () => {
         const captured = await captureOpenedPackageDirectory("flows/selected", handle);
         try {
           expect(new TextDecoder().decode(await captured.read("value.txt"))).toBe("original");
-          expect(captured.sourceRoot).toBe("flows/selected");
+          expect(captured.sourceLabel).toBe("flows/selected");
           expect((await handle.stat()).isDirectory()).toBeTrue();
         } finally {
           await captured.dispose();

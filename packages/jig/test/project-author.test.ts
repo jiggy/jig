@@ -175,4 +175,8 @@ describe("Jig project authoring SDK/1", () => {
     }).attachments.source).toBe("workspace/{drafts}");
     expect(() => discover("flows/[draft]")).toThrow();
   });
+
+  test("rejects project-source collisions under the canonical case fold", () => {
+    expect(() => defineJig({ flows: ["flows/Review", "flows/review"] })).toThrow();
+  });
 });

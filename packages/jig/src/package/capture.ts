@@ -25,7 +25,8 @@ export interface CapturedFile {
 }
 
 export interface CapturedPackage {
-  readonly sourceRoot: string;
+  /** Human-readable diagnostic label; never source identity or a reopenable path. */
+  readonly sourceLabel: string;
   readonly files: readonly CapturedFile[];
   readonly digest: string;
   read(path: string, maximumBytes?: number): Promise<Uint8Array>;
@@ -169,14 +170,14 @@ async function captureOpenedRootAttempt(
 }
 
 function createCapturedPackage(
-  sourceRoot: string,
+  sourceLabel: string,
   files: readonly CapturedFile[],
   digest: string,
   snapshot: AnonymousSnapshot,
 ): CapturedPackage {
   const byPath = new Map(files.map((file) => [file.path, file]));
   return Object.freeze({
-    sourceRoot,
+    sourceLabel,
     files,
     digest,
     async read(path: string, maximumBytes = MAX_FILE_BYTES): Promise<Uint8Array> {

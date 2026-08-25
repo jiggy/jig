@@ -142,7 +142,8 @@ The next slice is deliberately smaller than the durable aggregate:
 
 1. add descriptor-relative opened-directory Package/1 capture;
 2. privately capture one Flow source as an invocation-local cleanup owner;
-3. derive zero-configuration direct Run targets from the captured inspection;
+3. derive zero-configuration direct Run-target candidates from the captured
+   inspection;
 4. prove discovery, exact membership, collisions, mutation isolation, partial
    failure cleanup, and direct-target eligibility.
 
@@ -165,8 +166,9 @@ from becoming a general-purpose TypeScript loader.
 
 ## 6. Public schema disposition
 
-`project-authoring-1.schema.json` remains the only public project schema. It
-describes one authored default-export value, not a project aggregate.
+`project-authoring-1.schema.json` remains the only exposed project machine-shape
+candidate. It describes one authored default-export value, not a project
+aggregate, and is not yet a publication or conformance claim.
 
 The captured aggregate and resolved candidate remain private records. A public
 normalized Project Policy schema is withheld until Hooks, Semantic Choice,

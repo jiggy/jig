@@ -1,9 +1,13 @@
 import type { JsonObject, JsonValue } from "../json.js";
 import { JSON_1_LIMITS, validateJson1 } from "../json.js";
+import {
+  assertNoProjectPathCollisions,
+  compareProjectPaths,
+  normalizeProjectPath,
+} from "./paths.js";
 
 const LOCAL_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const GLOB_CHARACTERS = /[*?\[\]{}]/;
-const encoder = new TextEncoder();
 
 export interface DiscoverySource {
   readonly kind: "discover";
@@ -197,13 +201,6 @@ function normalizeRunTarget(value: RunTargetRef): RunTargetRef {
   throw new TypeError("Run target must be a flowRef() or bindingRef()");
 }
 
-function normalizeProjectPath(value: unknown, label: string): string {
-  if (typeof value !== "string") throw new TypeError(`${label} must be a string`);
-  const path = value.startsWith("./") ? value.slice(2) : value;
-  validateProjectPath(path, label);
-  return path;
-}
-
 function normalizeUniquePaths(
   values: readonly unknown[],
   label: string,
@@ -219,10 +216,8 @@ function normalizeUniquePaths(
     }
     return path;
   });
-  paths.sort(compareUtf8);
-  for (let index = 1; index < paths.length; index += 1) {
-    if (paths[index - 1] === paths[index]) throw new TypeError(`duplicate ${label} ${paths[index]}`);
-  }
+  paths.sort(compareProjectPaths);
+  assertNoProjectPathCollisions(paths, label);
   return Object.freeze(paths);
 }
 
@@ -231,19 +226,6 @@ function validateLocalName(value: unknown, label: string): string {
     throw new TypeError(`${label} must be a LocalName`);
   }
   return value;
-}
-
-function validateProjectPath(path: string, label: string): void {
-  validateJson1(path);
-  if (path.length === 0 || path.startsWith("/") || path.includes("\\") || path.includes("\0")) {
-    throw new TypeError(`${label} must be a project-relative slash path`);
-  }
-  if (path !== path.normalize("NFC")) throw new TypeError(`${label} must be NFC`);
-  for (const segment of path.split("/")) {
-    if (segment.length === 0 || segment === "." || segment === "..") {
-      throw new TypeError(`${label} contains an invalid path segment`);
-    }
-  }
 }
 
 function snapshotJsonObject(value: unknown, label: string): JsonObject {
@@ -394,12 +376,5 @@ function record<T extends object>(value: T): Readonly<T> {
 }
 
 function compareUtf8(left: string, right: string): number {
-  const leftBytes = encoder.encode(left);
-  const rightBytes = encoder.encode(right);
-  const length = Math.min(leftBytes.length, rightBytes.length);
-  for (let index = 0; index < length; index += 1) {
-    const difference = leftBytes[index]! - rightBytes[index]!;
-    if (difference !== 0) return difference;
-  }
-  return leftBytes.length - rightBytes.length;
+  return compareProjectPaths(left, right);
 }
