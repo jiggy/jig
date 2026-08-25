@@ -50,6 +50,32 @@ describe("private ServiceHostSession", () => {
     expect(await service.result()).toMatchObject({ status: "failed", code: "PROTOCOL_ERROR" });
   });
 
+  test("rejects wrong-owner, duplicate, and unsorted readiness", async () => {
+    const invalid = [
+      { ownerRequestId: "host:2", exports: ["sessions"] },
+      { ownerRequestId: "host:1", exports: ["sessions", "sessions"] },
+      { ownerRequestId: "host:1", exports: ["sessions", "documents"] },
+    ];
+    for (const [index, params] of invalid.entries()) {
+      const process = new FakeProcess();
+      const service = new ServiceHostSession(process, activation());
+      const started = service.start();
+      await process.nextHost();
+      process.emit({ jsonrpc: "2.0", id: `provider:${index + 1}`, method: "service/ready", params });
+      expect(await process.nextHost()).toMatchObject({ error: { code: -32602 } });
+      await expect(started).rejects.toThrow("PROTOCOL_ERROR");
+      expect(await service.result()).toMatchObject({ status: "failed", code: "PROTOCOL_ERROR" });
+    }
+  });
+
+  test("rejects a second readiness after admission", async () => {
+    const process = new FakeProcess();
+    const service = new ServiceHostSession(process, activation());
+    await startReady(service, process);
+    process.emit(ready("provider:2", ["sessions"]));
+    expect(await service.result()).toMatchObject({ status: "failed", code: "PROTOCOL_ERROR" });
+  });
+
   test("accepts an exactly 16 MiB Provider frame", async () => {
     const process = new FakeProcess();
     const service = new ServiceHostSession(process, activation());
@@ -83,7 +109,9 @@ describe("private ServiceHostSession", () => {
     expect(operationCode(await process.nextHost())).toBe("UNAVAILABLE");
     process.emit(providerEffect("provider:3", "host:1", "open:1", { changed: true }));
     expect(operationCode(await process.nextHost())).toBe("OPERATION_CONFLICT");
-    process.emit(ready("provider:4", ["sessions"]));
+    process.emit(providerEffect("provider:4", "host:unknown", "open:1", null));
+    expect(operationCode(await process.nextHost())).toBe("OWNER_CLOSED");
+    process.emit(ready("provider:5", ["sessions"]));
     await process.nextHost();
     await started;
     const stopped = service.stop();
