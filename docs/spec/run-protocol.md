@@ -1,9 +1,9 @@
 # FLOW Run/1
 
-**Status:** closed candidate specification. The schemas, error registry, SDKs,
-and conformance corpus named here are part of the same release slice; Run/1
-does not receive a stable conformance label until two independent peers pass
-that corpus.
+**Status:** closed prerelease candidate. The schemas, error registry, SDKs, and
+conformance corpus named here are one release slice, and the complete shared
+corpus passes under two independent peers. No stable third-party conformance
+label has been published.
 
 Run/1 is the finite executable boundary for a FLOW package. It deliberately
 does not expose Jig's durable records, resolver, authority evidence, graph
@@ -471,7 +471,7 @@ The exact language projections and their cancellation/error behavior are
 closed in [`Run SDK/1`](run-sdk.md).
 
 The corpus under `conformance/run-1/` is executable evidence for this
-candidate, not yet the complete conformance corpus. A clean-room Python host
-already shares the golden conversation; a stable label requires the complete
-release-gate matrix to pass under two independent peers rather than two
-wrappers around one codec.
+candidate. The complete shared matrix passes under the Bun peer and an
+independently implemented Python host peer rather than two wrappers around one
+codec. This closes the prerelease Run/1 implementation gate; publication and a
+general third-party conformance label remain separate decisions.

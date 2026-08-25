@@ -53,9 +53,10 @@ FLOW Python import           flowmd_sdk
 TypeScript and Python SDKs project Run/1 and will eventually project Service/1
 without creating another wire layer. Run/1 now has private `0.0.0` candidate
 declarations and implementations under the selected minimal semantic
-vocabulary; they are not published or stable until the remaining conformance
-gates close. Service/1's SDK remains unclosed. Earlier design drafts used
-Caskada v3 and then Spindle for the graph runtime. The current name is Sley.
+vocabulary. Its Phase 1 prerelease gate is complete, but the packages and a
+general third-party conformance label are not published. Service/1's SDK
+remains unclosed. Earlier design drafts used Caskada v3 and then Spindle for
+the graph runtime. The current name is Sley.
 
 The governing laws are:
 
@@ -2071,7 +2072,7 @@ large service/plugin application. Porting DSH plugins, shipping a DSH
 compatibility layer, or claiming DSH portability is explicitly outside the Jig
 and FLOW roadmap.
 
-A small independent Python component should prove that Run/1 is neither
+The independent Python component and host peer prove that Run/1 is neither
 TypeScript- nor graph-specific.
 
 ## 15. Conformance and release gates
@@ -2086,15 +2087,15 @@ The present design is not yet independently implementable at every boundary.
 Release gates apply to the slice which claims a label; unrelated interfaces do
 not create a waterfall. Run/1 now has closed candidate method schemas, framing,
 limits, an error registry, private TypeScript/Python SDK implementations,
-clean package-install evidence, an expanded black-box matrix, and an
-independent Python host for the shared golden conversation. A complete
-conformance matrix passing under two independent peers still gates a stable
-Run/1 label. The remaining repository gap inventory includes:
+clean package-install evidence, a complete shared black-box matrix under the
+Bun peer and an independently implemented Python host peer, and an
+instruction-restricted external author/evaluator pass over the SDK plus one
+valid Package/1 and Schema/1 package. This completes the Phase 1 prerelease
+foundation; publication and a general third-party conformance label remain
+separate decisions. The remaining repository gap inventory includes:
 
 - exact closed JSON-RPC parameter, result, error-data, version-evolution, owner
   attribution, and numeric limit definitions for every Service/1 method;
-- the referenced `schema-1.json` and
-  `capability-contract-1.schema.json` meta-schemas;
 - closed RuntimeAdapter/1 and Sandbox Backend registration, plan, seal, spawn,
   receipt, and error data models;
 - one canonical `jig.lock` data model and schema;
@@ -2106,6 +2107,10 @@ Run/1 label. The remaining repository gap inventory includes:
 
 The complete gap inventory is
 [`102-public-interface-release-gates.md`](102-public-interface-release-gates.md).
+The Phase 1 evidence and limits are recorded in
+[`103-phase-1-flow-foundations.md`](103-phase-1-flow-foundations.md); the first
+live secure-root attempt stops fail-closed at the environment evidence in
+[`104-phase-2-security-blocker.md`](104-phase-2-security-blocker.md).
 
 Consumer examples and implementations may not invent these interfaces while
 attempting to use them. These are release gates, not permission to fill gaps

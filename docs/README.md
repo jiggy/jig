@@ -29,6 +29,14 @@ Start here:
    - [`spec/journal-and-hooks.md`](spec/journal-and-hooks.md)
    - [`spec/agents-and-semantic-choice.md`](spec/agents-and-semantic-choice.md)
 
+Current implementation frontier:
+
+- [`design-review/103-phase-1-flow-foundations.md`](design-review/103-phase-1-flow-foundations.md)
+  records the completed Run/1, two-peer, Package/Schema, and independent
+  author/evaluator SDK gate.
+- [`design-review/104-phase-2-security-blocker.md`](design-review/104-phase-2-security-blocker.md)
+  records why live secure-root activation is fail-closed on the current host.
+
 The focused Run/1 specification owns its finite wire surface. The remaining
 cross-cutting system rules are in the canonical architecture:
 

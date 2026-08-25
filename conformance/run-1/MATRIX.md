@@ -1,7 +1,7 @@
 # Run/1 evidence matrix
 
-**Status:** release-candidate evidence, not a certification programme or a
-published conformance label.
+**Status:** Phase 1 release-candidate evidence complete; this is not a general
+certification programme or a published conformance label.
 
 The Bun and independent Python host peers execute the same black-box component
 behaviours through separate framing, validation, and process harnesses. The
@@ -44,12 +44,14 @@ store exists. In particular, persistence across a host crash remains a Jig
 implementation responsibility rather than part of this component-facing
 corpus.
 
-Terminal arbitration is additionally tested against the private Jig host:
-ordered result, cancellation, deadline, EOF, write rejection, nonzero exit,
-signal exit, and forced termination cannot publish competing terminal
-classifications. The lightweight peer tests for pre-response process exit are
-harness checks, not independent proof of Jig's classification policy; the
-private host tests are the authority for that claim.
+Selected terminal orderings are additionally tested against the private Jig
+host: result, cancellation, deadline, EOF, root-request and child-response
+write rejection, nonzero exit, signal exit, and forced termination each retain
+the expected classification in the exercised ordering. These cases are not an
+exhaustive proof of every pairwise race. The lightweight peer tests for
+pre-response process exit are harness checks, not independent proof of Jig's
+classification policy; the private host tests are the authority for those
+selected classifications.
 
 The 64-request test specifies only the wire ceiling. The TypeScript SDK rejects
 another live call locally; the Python SDK queues additional calling tasks. Both
@@ -63,5 +65,7 @@ portable Run/1 pass/fail rule.
 Package build and clean-install checks prove artifact shape and importability.
 The Python source-distribution smoke permits ordinary PEP 517 build-dependency
 resolution; it is not claimed to be an offline or hermetic build proof. A
-separate sealed-input author probe is required before the candidate SDK surface
-is frozen.
+separate instruction-restricted author and independent evaluator passed the
+SDK, Package/1, Schema/1, and bounded Run/1 gate against the same packed
+TypeScript SDK artifact; the durable disposition is recorded in
+[`103-phase-1-flow-foundations.md`](../../docs/design-review/103-phase-1-flow-foundations.md).

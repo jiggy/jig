@@ -12,17 +12,19 @@ repeat by separating reviewed semantics from actual public interfaces.
 The repository contains reviewed prose, concrete Capability Contract
 descriptors, and a closed Run/1 candidate with a machine message schema and
 error registry. It now also contains private `0.0.0` TypeScript and Python
-candidate SDKs, clean package-build/install checks, an expanded Bun-hosted
-behavioral matrix, and a clean-room Python host for the shared golden
-conversation. Run/1 is not yet a stable conformance label: the complete
-behavioral matrix has not passed under two independent peers, and publication
-checks remain deferred. The repository also contains private Jig slices for
-Package capture and inspection, Schema and Capability Contract validation,
-captured-package materialization, and one Run/1 host session over an already
-fenced exact component process. This is not yet a public Jig SDK or complete
-controller: runtime preparation, Sandbox Backend activation, child-Flow/effect
-dispatch, and durable admission remain separate unfinished seams. The intended
-package names are:
+candidate SDKs, clean package-build/install checks, a complete shared
+behavioral corpus under Bun and an independent Python host peer, and an
+instruction-restricted external-author/evaluator pass against the packed
+TypeScript SDK plus a valid Package/1 and Schema/1 package. Phase 1 is therefore
+frozen as a prerelease foundation; npm/PyPI publication and a general
+third-party certification label remain deferred. The repository also contains
+private Jig slices for Package capture and inspection, Schema and Capability
+Contract validation, captured-package materialization, and one Run/1 host
+session whose private input is a Backend-supplied exact-component process
+seam. This is not yet a public Jig SDK or complete controller: runtime
+preparation, Sandbox Backend activation, child-Flow/effect dispatch, and
+durable admission remain separate unfinished seams. The intended package names
+are:
 
 ```text
 @jigging/jig    Jig TypeScript package
@@ -71,11 +73,11 @@ not implicit APIs.
 
 ## Interfaces which must be closed before a probe consumes them
 
-A probe need not wait for unrelated surfaces. The Run wire is now frozen as a
-closed candidate, but a Run-only component probe still waits for the exact SDK
-declarations and runnable package it will import; it does not wait for Service,
-GUI, or Agent APIs. Every consumed slice must be versioned and fixed before it
-is handed to the independent probe author.
+A probe need not wait for unrelated surfaces. The Run-only author slice is now
+frozen and has passed independently together with the Package/Schema material
+needed by its authored package; it does not wait for Service, GUI, or Agent
+APIs. Every other consumed slice must likewise be versioned and fixed before it
+is handed to an independent probe author.
 
 ### FLOW Run SDK
 
@@ -97,12 +99,15 @@ The selected semantic vocabulary is `serve(handler)`, `RunContext`,
 `RunResult`, `callFlow`/`call_flow`, `callEffect`/`call_effect`,
 `OperationError`, `EffectError`, and JSON value types. The checked-in source
 declarations and examples are authoritative for this candidate, not a
-publication claim. Both source projections pass one shared full-duplex
-conversation, a Bun host exercises the expanded behavioral matrix, and an
-independent Python host repeats the golden path. The private npm tarball and
-unpublished wheel and sdist artifacts also pass clean-install checks. The
-remaining matrix must be closed and exercised under two independent peers
-before a stable label.
+publication claim. Both source projections pass the complete shared black-box
+corpus under a Bun host and an independently implemented Python host. The
+private npm tarball and unpublished wheel and sdist artifacts pass
+clean-install checks. An instruction-restricted external author built the
+concurrency probe from the applicable public documents, a private inert-package
+checker, and the packed SDK. An independent evaluator repeated Package/1,
+Schema/1, type, and wire checks against the same SDK artifact. The experiment
+was not OS-hermetic; its durable evidence and limits are recorded in
+[`103-phase-1-flow-foundations.md`](103-phase-1-flow-foundations.md).
 
 ### FLOW Service SDK
 
@@ -173,6 +178,16 @@ The behavioral requirements are reviewed, but examples must not invent provider
 package names, tokens, receipts, or launch structures before these interfaces
 exist.
 
+The first live Linux security probe is intentionally stopped at
+`SANDBOX_UNAVAILABLE`: some namespace, filesystem, runtime-closure, and root
+mappings predicates have positive evidence, but the current host has no
+delegated aggregate owner resource controller. Entropy/device and descendant
+runtime behavior also remain unresolved. The exact evidence and unblock
+conditions are recorded in
+[`104-phase-2-security-blocker.md`](104-phase-2-security-blocker.md). This
+failure is a reason to keep the complete-tree invariant and withhold the public
+Backend interface, not to replace enforcement with advisory receipts.
+
 ### Jig Graph over Sley
 
 Jig Graph must own a serializable compiler/contract model independent of Sley
@@ -204,10 +219,7 @@ need; keep compiler IR private when possible.
 
 The repository still needs:
 
-- the complete Run/1 conformance corpus passing under two independent peers;
 - closed Service/1 method schemas, owner-attribution model, and error registry;
-- `schema-1.json`;
-- `capability-contract-1.schema.json`;
 - Runtime Adapter and Sandbox Backend schemas;
 - the host-policy document schema and extension-registration identity model;
 - the canonical `jig.lock` schema; and
