@@ -65,6 +65,34 @@ describe("private RunHostSession", () => {
     });
   });
 
+  test("classifies a rejected root request write as CHANNEL_LOST", async () => {
+    const process = new FakeProcess();
+    process.failNextWrite(new Error("root request write failed"));
+
+    expect(await new RunHostSession(process, invocation()).run()).toMatchObject({
+      status: "failed",
+      code: "CHANNEL_LOST",
+    });
+  });
+
+  test("classifies a rejected child response write as CHANNEL_LOST", async () => {
+    const process = new FakeProcess();
+    const running = new RunHostSession(process, invocation()).run();
+    await process.nextHost();
+    process.failNextWrite(new Error("child response write failed"));
+    process.emit(request("component:1", "effect/call", {
+      operationId: "write-failure:1",
+      slot: "artifacts",
+      method: "write",
+      input: null,
+    }));
+
+    expect(await running).toMatchObject({
+      status: "failed",
+      code: "CHANNEL_LOST",
+    });
+  });
+
   test("does not reopen root admission after a fast terminal response", async () => {
     const fast = new FakeProcess(Number.POSITIVE_INFINITY, 1);
     const running = new RunHostSession(fast, invocation()).run();
@@ -422,6 +450,7 @@ class FakeProcess implements ExactComponentProcess {
   private release?: () => void;
   private writes = 0;
   private finished = false;
+  private nextWriteFailure?: unknown;
 
   constructor(
     private readonly blockAfter = Number.POSITIVE_INFINITY,
@@ -439,6 +468,11 @@ class FakeProcess implements ExactComponentProcess {
 
   async write(bytes: Uint8Array): Promise<void> {
     if (this.finished) throw new Error("process already exited");
+    if (this.nextWriteFailure !== undefined) {
+      const failure = this.nextWriteFailure;
+      this.nextWriteFailure = undefined;
+      throw failure;
+    }
     if (this.writes >= this.blockAfter) {
       this.blocked ??= new Promise<void>((resolve) => {
         this.release = resolve;
@@ -469,6 +503,10 @@ class FakeProcess implements ExactComponentProcess {
   releaseWrites(): void {
     this.release?.();
     this.release = undefined;
+  }
+
+  failNextWrite(error: unknown): void {
+    this.nextWriteFailure = error;
   }
 
   emit(value: JsonValue): void {
