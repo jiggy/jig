@@ -1,5 +1,6 @@
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { createReadStream } from "node:fs";
 import { mkdir, realpath, rm } from "node:fs/promises";
 import { createServer, type Server, type Socket } from "node:net";
 import { tmpdir } from "node:os";
@@ -36,6 +37,8 @@ export interface PrivateLinuxLaunchPlan {
   readonly rootProcessMappings?: boolean;
   /** Backend-owned runtime predicate; never package-selected. */
   readonly entropyDevice?: boolean;
+  /** Backend-owned exact helper override; never package-selected. */
+  readonly trustedHelperPath?: string;
 }
 
 export interface PrivateLinuxCgroupBackendOptions {
@@ -47,6 +50,23 @@ export interface PrivateLinuxCgroupBackendOptions {
   readonly payloadGid: number;
   readonly helperPath?: string;
   readonly startupTimeoutMs?: number;
+}
+
+export interface PrivateLinuxEnvelopeIdentity {
+  readonly kind: "linux-cgroup-v2-bubblewrap/1";
+  readonly trustedHelperPath: string;
+  readonly trustedHelperDigest: string;
+  readonly trustedBubblewrapPath: string;
+  readonly trustedBubblewrapDigest: string;
+  readonly trustedCoordinatorBunPath: string;
+  readonly trustedCoordinatorBunDigest: string;
+  readonly trustedLauncherPath: string;
+  readonly trustedLauncherDigest: string;
+  readonly payloadUid: number;
+  readonly payloadGid: number;
+  readonly limits: PrivateLinuxCgroupLimits;
+  readonly rootProcessMappings: boolean;
+  readonly entropyDevice: boolean;
 }
 
 interface HelperReady {
@@ -101,27 +121,41 @@ export class PrivateLinuxCgroupBackend {
   ): Promise<ExactComponentProcess & {
     readonly cgroup: Readonly<Pick<HelperReady, "parentCgroup" | "runCgroup" | "payloadPid">>;
     readonly evidence: Promise<HelperTerminal["evidence"]>;
+    readonly terminationReason: Promise<HelperTerminal["reason"]>;
+    readonly envelope: PrivateLinuxEnvelopeIdentity;
   }> {
     validatePlan(plan);
     const sealedPlan = await sealMountSources(plan);
+    const trustedHelperPath = await realpath(plan.trustedHelperPath ?? this.options.helperPath);
+    const trustedBubblewrapPath = await realpath(this.options.bubblewrapPath);
+    const trustedCoordinatorBunPath = await realpath(this.options.bunPath);
+    const trustedLauncherPath = await realpath(this.options.sudoPath);
+    const [trustedHelperDigest, trustedBubblewrapDigest, trustedCoordinatorBunDigest,
+      trustedLauncherDigest] = await Promise.all([
+      digestFile(trustedHelperPath),
+      digestFile(trustedBubblewrapPath),
+      digestFile(trustedCoordinatorBunPath),
+      digestFile(trustedLauncherPath),
+    ]);
     const nonce = randomBytes(12).toString("hex");
     const parentName = `jig-run-${plan.runId}-${nonce}`;
     const controlDirectory = join(tmpdir(), `jig-cgroup-control-${nonce}`);
-    await mkdir(controlDirectory, { recursive: false, mode: 0o700 });
     const controlPath = join(controlDirectory, "control.sock");
-    const control = await listen(controlPath);
+    const control = createServer();
 
     let child: ChildProcessWithoutNullStreams | undefined;
     let helperClose: Promise<{ code: number | null; signal: string | null }> | undefined;
     let socket: Socket | undefined;
     try {
+      await mkdir(controlDirectory, { recursive: false, mode: 0o700 });
+      await listen(control, controlPath);
       const accepted = acceptOne(control, this.options.startupTimeoutMs);
       child = spawn(
-        this.options.sudoPath,
+        trustedLauncherPath,
         [
           "-n",
-          this.options.bunPath,
-          this.options.helperPath,
+          trustedCoordinatorBunPath,
+          trustedHelperPath,
           "--control", controlPath,
           "--scope", this.options.cgroupScope,
           "--parent", parentName,
@@ -133,7 +167,7 @@ export class PrivateLinuxCgroupBackend {
           "--cleanup-ms", String(plan.limits.cleanupTimeoutMs ?? 5_000),
           "--uid", String(this.options.payloadUid),
           "--gid", String(this.options.payloadGid),
-          "--bubblewrap", this.options.bubblewrapPath,
+          "--bubblewrap", trustedBubblewrapPath,
           "--",
           ...bubblewrapArguments(sealedPlan, this.options.payloadUid, this.options.payloadGid),
         ],
@@ -207,6 +241,22 @@ export class PrivateLinuxCgroupBackend {
       })();
 
       return Object.freeze({
+        envelope: Object.freeze({
+          kind: "linux-cgroup-v2-bubblewrap/1" as const,
+          trustedHelperPath,
+          trustedHelperDigest,
+          trustedBubblewrapPath,
+          trustedBubblewrapDigest,
+          trustedCoordinatorBunPath,
+          trustedCoordinatorBunDigest,
+          trustedLauncherPath,
+          trustedLauncherDigest,
+          payloadUid: this.options.payloadUid,
+          payloadGid: this.options.payloadGid,
+          limits: Object.freeze({ ...sealedPlan.limits }),
+          rootProcessMappings: sealedPlan.rootProcessMappings === true,
+          entropyDevice: sealedPlan.entropyDevice === true,
+        }),
         cgroup: Object.freeze({
           parentCgroup: readyReceipt.parentCgroup,
           runCgroup: readyReceipt.runCgroup,
@@ -216,6 +266,7 @@ export class PrivateLinuxCgroupBackend {
         stderr: process.stderr,
         completion,
         evidence: terminal.promise.then((receipt) => receipt.evidence),
+        terminationReason: terminal.promise.then((receipt) => receipt.reason),
         write(bytes: Uint8Array): Promise<void> {
           if (inputClosed) return Promise.reject(new Error("component input is closed"));
           return writeStream(process.stdin, bytes);
@@ -233,7 +284,7 @@ export class PrivateLinuxCgroupBackend {
         },
       });
     } catch (error) {
-      let cleanupFailure: unknown;
+      const cleanupFailures: unknown[] = [];
       if (socket !== undefined) {
         writeControl(socket, { type: "cancel" });
         if (helperClose !== undefined) {
@@ -244,7 +295,7 @@ export class PrivateLinuxCgroupBackend {
               "cgroup helper failed-launch cleanup",
             );
           } catch (cleanupError) {
-            cleanupFailure = cleanupError;
+            cleanupFailures.push(cleanupError);
           }
         }
         socket.destroy();
@@ -252,11 +303,35 @@ export class PrivateLinuxCgroupBackend {
         // The helper connects before creating any cgroup. Prior to that
         // handshake it owns no host resource, so terminating it is safe.
         child.kill("SIGTERM");
+        if (helperClose !== undefined) {
+          try {
+            await withTimeout(helperClose, this.options.startupTimeoutMs, "pre-handshake helper cleanup");
+          } catch {
+            child.kill("SIGKILL");
+            try {
+              await withTimeout(helperClose, this.options.startupTimeoutMs, "pre-handshake helper kill");
+            } catch {
+              // The missing terminal receipt below is the authoritative
+              // cleanup failure; helper exit alone cannot prove fencing.
+            }
+            cleanupFailures.push(new Error(
+              "pre-handshake helper required SIGKILL without a terminal fencing receipt",
+            ));
+          }
+        }
       }
-      await closeServer(control).catch(() => undefined);
-      await rm(controlDirectory, { recursive: true, force: true }).catch(() => undefined);
-      if (cleanupFailure !== undefined) {
-        throw new AggregateError([error, cleanupFailure], "cgroup launch failed and cleanup was not confirmed");
+      try {
+        await closeServer(control);
+      } catch (cleanupError) {
+        cleanupFailures.push(cleanupError);
+      }
+      try {
+        await rm(controlDirectory, { recursive: true, force: true });
+      } catch (cleanupError) {
+        cleanupFailures.push(cleanupError);
+      }
+      if (cleanupFailures.length > 0) {
+        throw new AggregateError([error, ...cleanupFailures], "cgroup launch failed and cleanup was not confirmed");
       }
       throw error;
     }
@@ -343,6 +418,9 @@ function validatePlan(plan: PrivateLinuxLaunchPlan): void {
   if (plan.command.length === 0 || !plan.command[0].startsWith("/")) {
     throw new TypeError("sandbox command must use an absolute path");
   }
+  if (plan.trustedHelperPath !== undefined && !plan.trustedHelperPath.startsWith("/")) {
+    throw new TypeError("trustedHelperPath must be absolute");
+  }
   const destinations = new Set<string>();
   for (const mount of plan.readOnlyMounts) {
     if (!mount.source.startsWith("/") || !mount.destination.startsWith("/")) {
@@ -373,8 +451,7 @@ function positiveInteger(value: number, name: string, allowZero = false): void {
   }
 }
 
-async function listen(path: string): Promise<Server> {
-  const server = createServer();
+async function listen(server: Server, path: string): Promise<void> {
   await new Promise<void>((resolveListen, reject) => {
     server.once("error", reject);
     server.listen(path, () => {
@@ -382,7 +459,6 @@ async function listen(path: string): Promise<Server> {
       resolveListen();
     });
   });
-  return server;
 }
 
 function acceptOne(server: Server, timeoutMs: number): Promise<Socket> {
@@ -515,4 +591,10 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): 
       },
     );
   });
+}
+
+async function digestFile(path: string): Promise<string> {
+  const hash = createHash("sha256");
+  for await (const chunk of createReadStream(path)) hash.update(chunk);
+  return `sha256:${hash.digest("hex")}`;
 }

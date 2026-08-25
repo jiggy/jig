@@ -8,6 +8,10 @@ import {
   discover,
   flowRef,
 } from "../src/index.js";
+import {
+  normalizeJigDefinition,
+  normalizePackageBindingDefinition,
+} from "../src/project/author.js";
 
 describe("Jig project authoring SDK/1", () => {
   test("captures a minimal no-Binding project", () => {
@@ -22,12 +26,15 @@ describe("Jig project authoring SDK/1", () => {
       kind: "discover",
       roots: ["flows", "vendor"],
     });
-    expect(defineJig({ bindings: ["./bindings/z.ts", "./bindings/a.ts"] })).toEqual({
+    const project = defineJig({ bindings: ["./bindings/z.ts", "./bindings/a.ts"] });
+    expect(project).toEqual({
       bindings: {
         kind: "members",
         paths: ["bindings/a.ts", "bindings/z.ts"],
       },
     });
+    expect(normalizeJigDefinition(project)).toEqual(project);
+    expect(() => defineJig(project as never)).toThrow();
   });
 
   test("captures one complete package Binding", () => {
@@ -60,6 +67,8 @@ describe("Jig project authoring SDK/1", () => {
     });
     expect(Object.isFrozen(binding.settings)).toBeTrue();
     expect(Object.isFrozen(binding.slots.research)).toBeTrue();
+    expect(normalizePackageBindingDefinition(binding)).toEqual(binding);
+    expect(() => defineBinding(binding as never)).toThrow();
   });
 
   test("uses only structural empty defaults", () => {

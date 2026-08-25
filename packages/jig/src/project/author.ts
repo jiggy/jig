@@ -78,25 +78,59 @@ export function discover(roots: string | readonly string[]): DiscoverySource {
 }
 
 export function defineJig(input: JigDefinitionInput): JigDefinition {
+  return normalizeJig(input, false);
+}
+
+/** Evaluator-only canonical re-normalization; absent from the package root. */
+export function normalizeJigDefinition(input: unknown): JigDefinition {
+  return normalizeJig(input as JigDefinitionInput, true);
+}
+
+function normalizeJig(input: JigDefinitionInput, canonical: boolean): JigDefinition {
   const captured = snapshotJsonObject(input, "Jig definition");
   assertClosedObject(captured, ["flows", "bindings"], "Jig definition");
   const output: { flows?: ProjectSource; bindings?: ProjectSource } = {};
   if (Object.hasOwn(captured, "flows")) {
-    output.flows = normalizeSource(captured.flows as unknown as ProjectSourceInput, "flows");
+    output.flows = normalizeSource(
+      captured.flows as unknown as ProjectSourceInput,
+      "flows",
+      canonical,
+    );
   }
   if (Object.hasOwn(captured, "bindings")) {
-    output.bindings = normalizeSource(captured.bindings as unknown as ProjectSourceInput, "bindings");
+    output.bindings = normalizeSource(
+      captured.bindings as unknown as ProjectSourceInput,
+      "bindings",
+      canonical,
+    );
   }
   return record(output) as unknown as JigDefinition;
 }
 
 export function defineBinding(input: PackageBindingInput): PackageBindingDefinition {
+  return normalizeBinding(input, false);
+}
+
+/** Evaluator-only canonical re-normalization; absent from the package root. */
+export function normalizePackageBindingDefinition(input: unknown): PackageBindingDefinition {
+  return normalizeBinding(input as PackageBindingInput, true);
+}
+
+function normalizeBinding(
+  input: PackageBindingInput,
+  canonical: boolean,
+): PackageBindingDefinition {
   const captured = snapshotJsonObject(input, "Binding definition");
   assertClosedObject(
     captured,
-    ["package", "settings", "slots", "attachments"],
+    canonical
+      ? ["kind", "package", "settings", "slots", "attachments"]
+      : ["package", "settings", "slots", "attachments"],
     "Binding definition",
   );
+  if (canonical && captured.kind !== "package") {
+    throw new TypeError("Binding kind must be package");
+  }
   if (!Object.hasOwn(captured, "package")) throw new TypeError("Binding package is required");
   const packagePath = normalizeProjectPath(captured.package, "package");
   const settings = Object.hasOwn(captured, "settings")
@@ -137,7 +171,11 @@ export function candidates(targets: readonly RunTargetRef[]): CandidateSetRef {
   return record({ kind: "candidates", targets: Object.freeze(normalized) }) as unknown as CandidateSetRef;
 }
 
-function normalizeSource(value: ProjectSourceInput | undefined, field: string): ProjectSource {
+function normalizeSource(
+  value: ProjectSourceInput | MembersSource | undefined,
+  field: string,
+  canonical: boolean,
+): ProjectSource {
   if (value === undefined) throw new TypeError(`${field} cannot be undefined`);
   if (isReadonlyArray(value)) {
     return record({
@@ -145,8 +183,21 @@ function normalizeSource(value: ProjectSourceInput | undefined, field: string): 
       paths: normalizeUniquePaths(snapshotStringArray(value, field), `${field} member`, false),
     }) as unknown as MembersSource;
   }
+  if ((value as ProjectSource).kind === "members") {
+    if (!canonical) throw new TypeError(`${field} source must come from discover()`);
+    const members = value as unknown as MembersSource;
+    assertClosedObject(members, ["kind", "paths"], `${field} source`);
+    return record({
+      kind: "members",
+      paths: normalizeUniquePaths(
+        snapshotStringArray(members.paths, `${field} paths`),
+        `${field} member`,
+        false,
+      ),
+    }) as unknown as MembersSource;
+  }
   assertClosedObject(value, ["kind", "roots"], `${field} source`);
-  if (value.kind !== "discover") throw new TypeError(`${field} source must come from discover()`);
+  if (value.kind !== "discover") throw new TypeError(`${field} source has an invalid kind`);
   const roots = normalizeUniquePaths(
     snapshotStringArray(value.roots, `${field} roots`),
     `${field} root`,

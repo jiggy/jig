@@ -1,7 +1,7 @@
 # Bounded project evaluator
 
-**Status:** reviewed private implementation plan. It publishes no evaluator,
-Sandbox Backend, or administration API.
+**Status:** implemented private one-module checkpoint. It publishes no
+evaluator, Sandbox Backend, or administration API.
 
 The package/Binding linker now has an inert semantic consumer. The next trust
 boundary turns captured TypeScript declarations into the plain values that
@@ -15,8 +15,9 @@ runtime recipe inside the already proven private Linux cgroup-v2 and
 Bubblewrap envelope. Bun is the first candidate, but remains unavailable as a
 general Runtime Adapter and is not qualified for this narrower evaluator role
 until its dedicated hostile gates pass. That envelope can prove
-that package-controlled code cannot reach the visible project, host files,
-environment, network, secrets, Jig Services, cgroup controls, or another Run.
+that package-controlled code cannot reach the visible project, undeclared or
+unmounted host files, host environment, network, secrets, Jig Services,
+cgroup controls, or another Run.
 It also bounds aggregate memory, PIDs, CPU rate, wall time, diagnostics, and
 output, and fences the complete process tree on every terminal path.
 
@@ -35,14 +36,17 @@ replace the enforced process envelope.
 
 The first checkpoint deliberately accepts one `.ts` module containing only:
 
-- exact static ESM imports or re-exports from the evaluator-provided
-  `@jigging/jig` module; and
+- static ESM imports which the closed resolver maps to the exact
+  evaluator-provided `@jigging/jig` module; and
 - one default export whose contextual kind is supplied by the host:
   `project` for `jig.ts`, or `binding` for `<LocalName>.ts`.
 
-Project-local imports, other bare imports, built-ins, URLs, dynamic import,
-`require`, import attributes, loader hooks, macros, native addons, project
-`tsconfig`, JSX, and path or extension guessing reject. This is an explicit
+Project-local imports, other bare imports, built-ins, URLs, loader hooks,
+native addons, project `tsconfig`, JSX, and path or extension guessing reject.
+Runtime-generated loading has no resolver and CommonJS `require` is a throwing
+bootstrap argument. The design does not pretend a source blacklist can prove
+that arbitrary JavaScript never constructs a loader expression; containment
+and the closed resolver are the authority boundary. This is an explicit
 checkpoint restriction, not the final v1 authoring promise. It proves capture,
 compilation, containment, value transport, and normalization before adding the
 separate static-closure resolver.
@@ -77,9 +81,34 @@ exact evaluator-owned @jigging/jig JavaScript closure
 
 There is no filesystem fallback or `node_modules` search. The evaluator's
 actual parser and closed build resolver enforce language and import rules once;
-capture does not carry a second approximate syntax scanner. The exact SDK
-executes inside the guest realm; host-realm helper functions are not injected
-into project code.
+capture does not carry a second approximate syntax scanner. The exact
+authoring SDK is bundled and executed in the guest realm; the private
+canonical normalizer runs again over decoded data in the host. The bootstrap
+constructs its reduced `process` and text-codec values inside the guest realm
+and injects no outer-worker object or callable. This closes the known
+constructor path to the worker's stdout and exit controls. The VM remains
+defence in depth, while the enforced process envelope remains the authority
+boundary.
+
+Before launch, Jig captures its complete built evaluator distribution into the
+same immutable Package/1 backing used for retained packages. It materializes
+only those captured bytes into an unpredictable read-only tree and mounts that
+tree at `/jig-evaluator`. The tree is protected from package code but remains
+owned by Jig's trusted host account; another process already holding that
+account is outside this checkpoint's threat model. Within that boundary, the
+receipt's aggregate package digest identifies the staged bytes and Jig never
+reopens the original mutable distribution. The private checkpoint consumes one
+trusted host-supplied sealed runtime observation containing the expected
+executable digest and exact runtime-closure source set. It requires
+the executable and each closure mount to be immutable Nix store paths mounted
+onto themselves and rejects drift before launch. The hostile gate qualifies
+only this evaluator tuple; the observation is not a reusable readiness profile,
+public runtime identity, or future general Runtime Adapter API.
+
+Evaluator resource limits are fixed by this implementation. Callers cannot
+raise or lower them. The current ceiling is 256 MiB aggregate memory, 32
+processes, 50% of one CPU, a three-second hard wall deadline, and a five-second
+cleanup deadline.
 
 The evaluator accepts exactly one default export. It copies that value into a
 bounded JSON/1 tree inside the sandbox and emits one bootstrap-owned result.
@@ -92,9 +121,14 @@ The coordinator then:
 
 1. decodes the one bounded result with FLOW JSON/1;
 2. validates the contextual `project` or `packageBinding` schema branch;
-3. independently runs the corresponding `defineJig` or `defineBinding`
-   normalizer over fresh decoded data; and
+3. independently runs the corresponding private canonical normalizer over
+   fresh decoded data; and
 4. retains only deeply frozen normalized data and provenance.
+
+Private `normalizeJigDefinition()` and
+`normalizePackageBindingDefinition()` functions are idempotent over canonical
+outputs. The public `defineJig()` and `defineBinding()` author inputs remain
+smaller and reject their normalized-only discriminator forms.
 
 Malformed wire output is an evaluator protocol fault. Syntax/import failures,
 missing or invalid defaults, schema failures, resource exhaustion, exceptions,
@@ -110,7 +144,9 @@ entry project path and source digest
 evaluator protocol and implementation
 authoring SDK and Project Authoring Schema/1
 selected evaluator runtime/build toolchain and fixed build options
-Sandbox plan and enforcement receipt
+selected private runtime observation
+fixed Sandbox plan, pre-launch helper and enforcement-tool observations,
+cgroup identity, and terminal receipt
 canonical normalized output and its digest
 ```
 
@@ -118,7 +154,24 @@ These are private candidate facts, not fields authors maintain and not public
 machine-schema properties. The current Project Authoring Schema/1 remains the
 shape schema for one authored value.
 
-## 5. Following checkpoint
+## 5. Checkpoint evidence
+
+The privileged Linux corpus now evaluates both project and Binding values from
+captured bytes and proves that later source mutation does not alter the result.
+It rejects project-local, synthetic-namespace, CommonJS, and dynamic imports;
+syntax errors; extra exports; wrong contextual schemas; runtime-constructed
+loading; and non-terminating evaluation. A hostile declaration also attempts
+the known constructor paths from realm objects to the worker's `process` and
+stdout; it cannot forge the result channel in the tested tuple. Every accepted
+result records the sealed source, evaluator, SDK, schema, runtime, helper,
+Bubblewrap, launcher, cgroup, limit, and terminal evidence described above.
+
+This is a bounded checkpoint, not a claim that `node:vm` is a general security
+boundary. If authored code escapes the reduced realm by another engine flaw,
+the outer cgroup/Bubblewrap envelope and the host's schema and canonical
+normalizer remain authoritative.
+
+## 6. Following checkpoint
 
 After the one-module evaluator passes hostile tests, the next slice adds a
 closed project-local static import graph. It must use explicit `.ts` paths,

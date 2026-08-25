@@ -53,6 +53,10 @@ export async function materializeCapturedPackage(
     for (const directory of [...directories].sort(deeperPathFirst)) {
       await chmod(directory, 0o555);
     }
+    // Bubblewrap resolves bind sources after applying its payload identity.
+    // The unpredictable transaction directory therefore permits traversal but
+    // not listing or mutation; the package tree beneath it remains read-only.
+    await chmod(transactionRoot, 0o711);
 
     let disposal: Promise<void> | undefined;
     return Object.freeze({
@@ -60,6 +64,7 @@ export async function materializeCapturedPackage(
       packageDigest: captured.digest,
       dispose(): Promise<void> {
         disposal ??= (async () => {
+          await chmod(transactionRoot, 0o700).catch(() => undefined);
           await makeRemovable(directories);
           await rm(transactionRoot, { recursive: true, force: true });
         })();
@@ -68,7 +73,15 @@ export async function materializeCapturedPackage(
     });
   } catch (error) {
     await makeRemovable(directories);
-    await rm(transactionRoot, { recursive: true, force: true }).catch(() => undefined);
+    try {
+      await chmod(transactionRoot, 0o700).catch(() => undefined);
+      await rm(transactionRoot, { recursive: true, force: true });
+    } catch (cleanupError) {
+      throw new AggregateError(
+        [error, cleanupError],
+        "package materialization failed and staging cleanup failed",
+      );
+    }
     throw error;
   }
 }

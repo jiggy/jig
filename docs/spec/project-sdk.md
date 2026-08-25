@@ -111,8 +111,11 @@ project-relative. Paths are NFC Unicode-scalar strings bounded to 64 segments,
 accept a glob language.
 
 Helper checks are ergonomic only. Jig evaluates the captured module in a
-bounded authority-free environment and independently normalizes the result.
-Forged helper output acquires no trust.
+bounded, default-deny process envelope and independently normalizes the
+result. The JavaScript realm itself is not an authority boundary and retains
+engine nondeterminism; the OS envelope denies project, undeclared host-file,
+host-environment, network, Service, and cgroup authority. Forged helper output
+acquires no trust.
 
 ## 4. Captured authoring values
 

@@ -1,12 +1,16 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import { spawn } from "node:child_process";
-import { access, readFile, readdir, realpath } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { access, mkdtemp, readFile, readdir, realpath, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
 import {
   PrivateLinuxCgroupBackend,
   type PrivateLinuxLaunchPlan,
 } from "../src/internal/linux-cgroup-backend.js";
+import { evaluateAuthorModule } from "../src/project/author-evaluator.js";
+import { captureAuthorModule } from "../src/project/author-module.js";
 import { RunHostSession } from "../src/run/session.js";
 import { ServiceHostSession } from "../src/service/session.js";
 
@@ -200,6 +204,157 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
     expect(child).toEqual({ exit: 134, stdout: "", stderr: "" });
   });
 
+  test("evaluates one captured project declaration in a root-only Bun envelope", async () => {
+    host = await hostConfiguration();
+    const bun = await bunClosure();
+    const distribution = await realpath(join(import.meta.dir, "..", "dist"));
+    const root = await mkdtemp(join(tmpdir(), "jig-evaluator-proof-"));
+    const evaluator = {
+      backend: backend(host),
+      bunPath: bun.executable,
+      runtimeMounts: [
+        { source: bun.store, destination: bun.store },
+        { source: bun.glibcStore, destination: bun.glibcStore },
+      ],
+      runtimeObservation: {
+        executableDigest: bun.digest,
+        closureSources: [bun.store, bun.glibcStore],
+      },
+      jigDistributionPath: distribution,
+    } as const;
+    let fixtureSequence = 0;
+    const evaluate = async (source: string, expected: "project" | "binding" = "project") => {
+      const path = `fixture-${++fixtureSequence}.ts`;
+      await writeFile(join(root, path), source);
+      const fixture = await captureAuthorModule(root, path);
+      try {
+        return await evaluateAuthorModule(evaluator, fixture, expected);
+      } finally {
+        fixture.dispose();
+      }
+    };
+    try {
+      const entry = join(root, "jig.ts");
+      await writeFile(entry, [
+        'import { defineJig, discover } from "@jigging/jig";',
+        'export default defineJig({ flows: discover("./flows") });',
+      ].join("\n"));
+      const captured = await captureAuthorModule(root, "jig.ts");
+      try {
+        await writeFile(entry, "export default { changed: true };\n");
+        const evaluated = await evaluateAuthorModule(evaluator, captured, "project");
+        expect(evaluated.value).toEqual({
+          flows: { kind: "discover", roots: ["flows"] },
+        });
+        expect(evaluated.source.digest).toBe(captured.sourceDigest);
+        expect(evaluated.profile).toMatchObject({
+          protocol: "jig-author-evaluator/1",
+          buildOptions: "bun-cjs-closed-single-module/1",
+          sandbox: {
+            kind: "linux-cgroup-v2-bubblewrap/1",
+            rootProcessMappings: true,
+            entropyDevice: true,
+            limits: {
+              memoryBytes: 256 * 1024 * 1024,
+              pids: 32,
+              wallClockMs: 3_000,
+            },
+          },
+        });
+        expect(evaluated.enforcement).toMatchObject({
+          cgroup: {
+            parentCgroup: expect.any(String),
+            runCgroup: expect.any(String),
+            payloadPid: expect.any(Number),
+          },
+          terminal: {
+            reason: "payload_exit",
+            exitCode: 0,
+            signal: null,
+            fenced: true,
+          },
+          memoryEvents: { max: 0 },
+          pidsEvents: { max: 0 },
+        });
+      } finally {
+        captured.dispose();
+      }
+
+      await expect(evaluate([
+        'import value from "./other.ts";',
+        "export default value;",
+      ].join("\n"))).rejects.toMatchObject({ code: "PROJECT_EVALUATOR_IMPORT" });
+      await expect(evaluate([
+        'import "jig-author:evil";',
+        "export default {};",
+      ].join("\n"))).rejects.toMatchObject({ code: "PROJECT_EVALUATOR_IMPORT" });
+      await expect(evaluate([
+        'const jig = require("@jigging/jig");',
+        "export default jig.defineJig({});",
+      ].join("\n"))).rejects.toMatchObject({ code: "PROJECT_EVALUATOR_IMPORT" });
+      await expect(evaluate([
+        'const load = () => import("@jigging/jig");',
+        "export default load();",
+      ].join("\n"))).rejects.toMatchObject({ code: "PROJECT_EVALUATOR_IMPORT" });
+
+      const binding = await evaluate([
+        'import { defineBinding, flowRef } from "@jigging/jig";',
+        "export default defineBinding({",
+        '  package: "flows/worker",',
+        "  settings: { maxRetries: 3 },",
+        '  slots: { fallback: flowRef("flows/fallback") },',
+        "});",
+      ].join("\n"), "binding");
+      expect(binding.value).toEqual({
+        kind: "package",
+        package: "flows/worker",
+        settings: { maxRetries: 3 },
+        slots: { fallback: { kind: "flow", path: "flows/fallback" } },
+        attachments: {},
+      });
+
+      await expect(evaluate([
+        "export const extra = true;",
+        "export default {};",
+      ].join("\n"))).rejects.toMatchObject({ code: "PROJECT_DEFAULT_EXPORT" });
+      await expect(evaluate("export default { flows: ; };\n"))
+        .rejects.toMatchObject({ code: "PROJECT_EVALUATOR_COMPILE" });
+      await expect(evaluate("export default { flows: [] };\n", "binding"))
+        .rejects.toMatchObject({ code: "PROJECT_AUTHORING_SCHEMA_INVALID" });
+      await expect(evaluate([
+        'const loader = Function("return import(\\"./other.ts\\")");',
+        "loader();",
+        "export default {};",
+      ].join("\n"))).rejects.toMatchObject({ code: "PROJECT_EVALUATION_FAILED" });
+      await expect(evaluate("while (true) {}\nexport default {};\n"))
+        .rejects.toMatchObject({ code: "PROJECT_EVALUATION_LIMIT" });
+
+      const contained = await evaluate([
+        'import { defineJig } from "@jigging/jig";',
+        'const forged = JSON.stringify({ protocol: "jig-author-evaluator/1", status: "ok", value: {} });',
+        "const globalObject = globalThis as any;",
+        "for (const exposed of [",
+        "  TextEncoder,",
+        "  globalObject.__jigRequire,",
+        "  globalObject.constructor,",
+        "  Object.getPrototypeOf(globalObject)?.constructor,",
+        "]) {",
+        "  try {",
+        '    const outerProcess = exposed.constructor("return process")();',
+        "    outerProcess.stdout.write(forged);",
+        "    outerProcess.exit(0);",
+        "  } catch {}",
+        "}",
+        'export default defineJig({ flows: ["flows/café", "flows/😀"] });',
+      ].join("\n"));
+      expect(contained.value).toEqual({
+        flows: { kind: "members", paths: ["flows/café", "flows/😀"] },
+      });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   test("drives a real Python Run/1 component through the complete envelope", async () => {
     host = await hostConfiguration();
     const python = await pythonClosure();
@@ -320,7 +475,12 @@ async function hostConfiguration(): Promise<HostConfiguration> {
   return { scope: dirname(self), bash: first.slice(2) };
 }
 
-async function bunClosure(): Promise<{ executable: string; store: string; glibcStore: string }> {
+async function bunClosure(): Promise<{
+  executable: string;
+  store: string;
+  glibcStore: string;
+  digest: string;
+}> {
   const executable = await realpath("/bin/bun");
   const bytes = await readFile(executable);
   const match = bytes.toString("latin1").match(
@@ -328,7 +488,12 @@ async function bunClosure(): Promise<{ executable: string; store: string; glibcS
   );
   if (match === null) throw new Error("could not derive Bun's pinned glibc closure from its ELF interpreter");
   const glibcStore = match[0]!.slice(0, match[0]!.indexOf("/lib/"));
-  return { executable, store: dirname(dirname(executable)), glibcStore };
+  return {
+    executable,
+    store: dirname(dirname(executable)),
+    glibcStore,
+    digest: `sha256:${createHash("sha256").update(bytes).digest("hex")}`,
+  };
 }
 
 async function pythonClosure(): Promise<{ executable: string; stores: readonly string[] }> {
