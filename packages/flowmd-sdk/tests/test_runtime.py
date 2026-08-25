@@ -488,6 +488,41 @@ class RuntimeTests(unittest.TestCase):
         self.component.wait(expected=1)
         self.assertEqual(self.component.remaining_stdout(), b"")
 
+    def test_scalar_or_null_request_params_are_invalid_envelopes(self) -> None:
+        for index, params in enumerate((1, None)):
+            if index:
+                self.component.close()
+                self.component = Component()
+            self.component.send(
+                {
+                    "jsonrpc": "2.0",
+                    "id": "host:1",
+                    "method": "flow/run",
+                    "params": params,
+                }
+            )
+            response = self.component.receive()
+            self.assertEqual(response["id"], None)
+            self.assertEqual(response["error"]["code"], -32600)
+            self.component.wait(expected=1)
+
+    def test_scalar_or_null_notification_params_are_invalid_envelopes(self) -> None:
+        for index, params in enumerate((1, None)):
+            if index:
+                self.component.close()
+                self.component = Component()
+            self.component.send(
+                {
+                    "jsonrpc": "2.0",
+                    "method": "unknown",
+                    "params": params,
+                }
+            )
+            response = self.component.receive()
+            self.assertEqual(response["id"], None)
+            self.assertEqual(response["error"]["code"], -32600)
+            self.component.wait(expected=1)
+
     def test_unknown_response_fatally_closes_without_root_error(self) -> None:
         self.component.send(root_request("calls"))
         self.component.receive()

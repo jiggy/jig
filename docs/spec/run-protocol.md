@@ -53,6 +53,10 @@ may coincidentally use the same spelling. IDs correlate wire messages only;
 they are not durable Run or operation identities. Numeric and `null` request
 IDs are invalid in Run/1.
 
+Whenever a request or notification includes `params`, that member must be a
+JSON object or array. `null` and scalar `params` make the complete JSON-RPC
+envelope invalid; they are not method-level invalid parameters.
+
 An unknown well-formed request method receives JSON-RPC `-32601`. A recognized
 request with invalid params receives `-32602`. Unknown notifications are
 ignored. The direction restrictions in this specification are part of method

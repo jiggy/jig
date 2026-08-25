@@ -18,6 +18,7 @@ from run1_peer import (
     require_exact_object,
     require_local_name,
     success,
+    validate_envelope,
 )
 
 
@@ -48,6 +49,25 @@ class Json1CodecTests(unittest.TestCase):
 
 
 class HostPeerTransportTests(unittest.TestCase):
+    def test_rejects_scalar_and_null_request_params(self) -> None:
+        for params in (None, "not-structured"):
+            with self.subTest(params=params), self.assertRaises(ProtocolError):
+                validate_envelope({
+                    "jsonrpc": "2.0",
+                    "id": "host:bad-params",
+                    "method": "flow/run",
+                    "params": params,
+                })
+
+    def test_rejects_scalar_and_null_notification_params(self) -> None:
+        for params in (None, False):
+            with self.subTest(params=params), self.assertRaises(ProtocolError):
+                validate_envelope({
+                    "jsonrpc": "2.0",
+                    "method": "request/cancel",
+                    "params": params,
+                })
+
     def test_stderr_diagnostics_are_drained_and_permitted(self) -> None:
         program = """
 import sys

@@ -251,6 +251,8 @@ def validate_envelope(value: Any) -> dict[str, Any]:
             expected.add("id")
             require_wire_id(value["id"])
         if "params" in value:
+            if not isinstance(value["params"], (dict, list)):
+                raise ProtocolError("JSON-RPC params must be an object or array")
             expected.add("params")
         require_exact_object(value, expected)
         return value

@@ -6,6 +6,7 @@
 |---|---:|---:|
 | JSON/1 positive and negative fixtures | Yes | Representative independent checks |
 | Message-schema fixtures | Yes | No |
+| Structured `params` envelope rule | Yes | Yes |
 | Golden full-duplex conversation, TypeScript component | Yes | Yes |
 | Golden full-duplex conversation, Python component | Yes | Yes |
 | Direction and request/notification form | Yes | Yes |

@@ -12,6 +12,8 @@ import { OPERATION_ERROR_CODES } from "./types.js";
 export const WIRE_ID = /^[A-Za-z0-9][A-Za-z0-9._:/-]*$/;
 export const LOCAL_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
+type StructuredParams = JsonObject | readonly JsonValue[];
+
 export interface RunParams {
   readonly protocol: "run/1";
   readonly input: JsonValue;
@@ -25,13 +27,13 @@ export interface RequestMessage {
   readonly jsonrpc: "2.0";
   readonly id: string;
   readonly method: string;
-  readonly params?: JsonValue;
+  readonly params?: StructuredParams;
 }
 
 export interface NotificationMessage {
   readonly jsonrpc: "2.0";
   readonly method: string;
-  readonly params?: JsonValue;
+  readonly params?: StructuredParams;
 }
 
 export interface SuccessMessage {
@@ -76,6 +78,12 @@ export function parseEnvelope(value: JsonValue): ParsedMessage {
 
   if (hasMethod) {
     const hasParams = Object.hasOwn(object, "params");
+    if (
+      hasParams &&
+      (object.params === null || typeof object.params !== "object")
+    ) {
+      throw new Error("JSON-RPC params must be a structured value");
+    }
     requireExactKeys(
       object,
       hasId
@@ -95,7 +103,7 @@ export function parseEnvelope(value: JsonValue): ParsedMessage {
           jsonrpc: "2.0",
           id,
           method: object.method,
-          ...(hasParams ? { params: object.params as JsonValue } : {}),
+          ...(hasParams ? { params: object.params as StructuredParams } : {}),
         },
       };
     }
@@ -105,7 +113,7 @@ export function parseEnvelope(value: JsonValue): ParsedMessage {
         jsonrpc: "2.0",
         method: object.method,
         ...(Object.hasOwn(object, "params")
-          ? { params: object.params as JsonValue }
+          ? { params: object.params as StructuredParams }
           : {}),
       },
     };

@@ -15,6 +15,19 @@ if (!standardComponents.some((component) => component.name.startsWith("Python ")
 
 for (const component of standardComponents) {
   describe(`${component.name} Run/1 component matrix`, () => {
+    for (const envelope of invalidParamsEnvelopes()) {
+      test(`rejects ${envelope.name} as an invalid envelope`, async () => {
+        await withPeer(component.command, async (peer) => {
+          peer.send(envelope.message);
+          expectInvalidEnvelopeError(
+            await peer.receive(),
+            Object.hasOwn(envelope.message, "id") ? envelope.message.id as string : undefined,
+          );
+          await expectClosed(peer);
+        });
+      });
+    }
+
     test("enforces request form and direction without poisoning the channel", async () => {
       await withPeer(component.command, async (peer) => {
         const wrongRequests = ["request/cancel", "flow/call", "effect/call"];
@@ -483,6 +496,29 @@ function invalidRootParams(): Array<readonly [string, unknown]> {
   ];
 }
 
+function invalidParamsEnvelopes(): Array<{
+  readonly name: string;
+  readonly message: Message;
+}> {
+  const scalars: ReadonlyArray<readonly [string, null | boolean | number | string]> = [
+    ["null", null],
+    ["boolean", false],
+    ["number", 1],
+    ["string", "not-structured"],
+  ];
+  return (["request", "notification"] as const).flatMap((form) =>
+    scalars.map(([name, params]) => ({
+      name: `${form} params: ${name}`,
+      message: {
+        jsonrpc: "2.0",
+        ...(form === "request" ? { id: `host:${name}-params` } : {}),
+        method: `unknown/${form}`,
+        params,
+      },
+    })),
+  );
+}
+
 function fatalFrames(): Array<{
   readonly name: string;
   readonly bytes: Uint8Array;
@@ -513,6 +549,13 @@ function expectStandardError(
 ): void {
   expect(message).toMatchObject({ jsonrpc: "2.0", id, error: { code } });
   expect(typeof (message!.error as Record<string, unknown>).message).toBe("string");
+}
+
+function expectInvalidEnvelopeError(message: Message, requestId?: string): void {
+  expect(message).toMatchObject({ jsonrpc: "2.0", error: { code: -32600 } });
+  expect(message.id === null || message.id === requestId).toBeTrue();
+  if (requestId === undefined) expect(message.id).toBeNull();
+  expect(typeof (message.error as Record<string, unknown>).message).toBe("string");
 }
 
 function expectOperationError(message: Message, id: string, code: string): void {

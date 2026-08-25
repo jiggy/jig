@@ -390,6 +390,10 @@ class _Runtime:
                 await self._best_effort_standard_error(None, -32600, "Invalid Request")
                 await self._fatal_close("PROTOCOL_ERROR")
                 return
+            if "params" in frame and not isinstance(frame["params"], (dict, list)):
+                await self._best_effort_standard_error(None, -32600, "Invalid Request")
+                await self._fatal_close("PROTOCOL_ERROR")
+                return
             if "id" in frame:
                 await self._handle_request(frame)
             else:
