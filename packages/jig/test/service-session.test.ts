@@ -72,6 +72,22 @@ describe("private ServiceHostSession", () => {
     expect((await stopped).status).toBe("succeeded");
   });
 
+  test("keeps unknown Provider requests local but closes on malformed cancellation", async () => {
+    const process = new FakeProcess();
+    const service = new ServiceHostSession(process, activation());
+    const started = service.start();
+    await process.nextHost();
+    process.emit({ jsonrpc: "2.0", id: "provider:1", method: "unknown/request", params: {} });
+    expect(await process.nextHost()).toMatchObject({ id: "provider:1", error: { code: -32601 } });
+    process.emit({
+      jsonrpc: "2.0",
+      method: "request/cancel",
+      params: { requestId: "host:1", extra: true },
+    });
+    await expect(started).rejects.toThrow("PROTOCOL_ERROR");
+    expect(await service.result()).toMatchObject({ status: "failed", code: "PROTOCOL_ERROR" });
+  });
+
   test("settles concurrent invocations out of order", async () => {
     const process = new FakeProcess();
     const service = new ServiceHostSession(process, activation());

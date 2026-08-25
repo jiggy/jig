@@ -178,6 +178,27 @@ for (const provider of providers) {
         expect(await peer.exit()).toBe(1);
       });
     });
+
+    test("keeps request errors local but closes on malformed cancellation", async () => {
+      await withPeer(provider, async (peer) => {
+        await ready(peer);
+        peer.send({ jsonrpc: "2.0", id: "host:2", method: "unknown/request", params: {} });
+        expect(await peer.receive()).toMatchObject({ id: "host:2", error: { code: -32601 } });
+        peer.send({
+          jsonrpc: "2.0",
+          id: "host:3",
+          method: "service/invoke",
+          params: { export: "sessions" },
+        });
+        expect(await peer.receive()).toMatchObject({ id: "host:3", error: { code: -32602 } });
+        peer.send({
+          jsonrpc: "2.0",
+          method: "request/cancel",
+          params: { requestId: "host:1", extra: true },
+        });
+        expect(await peer.exit()).toBe(1);
+      });
+    });
   });
 }
 
