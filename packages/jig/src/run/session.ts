@@ -12,6 +12,7 @@ import {
 
 const ROOT_ID = "host:1";
 const MAX_PENDING_COMPONENT_REQUESTS = 64;
+const MAX_COMPONENT_REQUEST_IDS = 65_536;
 const WIRE_ID = /^[A-Za-z0-9][A-Za-z0-9._:/-]*$/;
 const LOCAL_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const encoder = new TextEncoder();
@@ -70,7 +71,6 @@ export interface RunHostLimits {
   readonly stdoutBytes: number;
   readonly stderrBytes: number;
   readonly capturedStderrBytes: number;
-  readonly componentRequestIds: number;
 }
 
 export interface ExactComponentExit {
@@ -169,7 +169,6 @@ const DEFAULT_LIMITS: RunHostLimits = Object.freeze({
   stdoutBytes: 64 * 1024 * 1024,
   stderrBytes: 16 * 1024 * 1024,
   capturedStderrBytes: 64 * 1024,
-  componentRequestIds: 65_536,
 });
 
 /**
@@ -417,9 +416,8 @@ export class RunHostSession {
       this.failProtocol(`component reused request ID ${request.id}`);
       return;
     }
-    if (this.componentIds.size >= this.limits.componentRequestIds) {
-      this.recordResourceFailure("component request-ID lifetime capacity was exhausted");
-      this.startTermination();
+    if (this.componentIds.size >= MAX_COMPONENT_REQUEST_IDS) {
+      this.failProtocol("component exceeded the Run/1 request-ID lifetime limit");
       return;
     }
     this.componentIds.add(request.id);
@@ -816,9 +814,6 @@ function validateLimits(limits: RunHostLimits): void {
   }
   if (limits.cancellationGraceMs > 2_147_483_647) {
     throw new TypeError("cancellationGraceMs exceeds the timer range");
-  }
-  if (limits.componentRequestIds < MAX_PENDING_COMPONENT_REQUESTS) {
-    throw new TypeError("componentRequestIds must admit 64 simultaneous requests");
   }
 }
 

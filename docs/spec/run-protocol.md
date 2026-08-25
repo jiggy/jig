@@ -53,6 +53,17 @@ may coincidentally use the same spelling. IDs correlate wire messages only;
 they are not durable Run or operation identities. Numeric and `null` request
 IDs are invalid in Run/1.
 
+Each sender may originate at most 65,536 request-form messages during one
+channel incarnation. Settled and cancelled requests still consume this
+lifetime budget; responses and notifications do not. A request with a fresh,
+structurally valid ID consumes the budget before method dispatch, including
+when its method is unknown or its method params are invalid. A conforming SDK
+rejects an attempted 65,537th outbound request locally with
+`RESOURCE_EXHAUSTED` and emits no frame, so its root handler may recover. A
+receiver which observes a 65,537th request records a fatal `PROTOCOL_ERROR` and
+closes without relying on another response. This fixed lifetime bound is
+separate from the limit of 64 unresolved component requests on the wire.
+
 Whenever a request or notification includes `params`, that member must be a
 JSON object or array. `null` and scalar `params` make the complete JSON-RPC
 envelope invalid; they are not method-level invalid parameters.
@@ -94,6 +105,7 @@ State-dependent request handling is fixed as follows:
 | Second `flow/run` | Best-effort `-32600`, then fatal `PROTOCOL_ERROR`. |
 | `flow/call` or `effect/call` without a pending root owner | Respond `OWNER_CLOSED`; do not dispatch. |
 | 65th simultaneously pending component request | Respond `RESOURCE_EXHAUSTED` to that request; do not dispatch it. |
+| 65,537th request originated by one peer during the channel lifetime | Fatal `PROTOCOL_ERROR`; do not dispatch it or rely on a response. |
 | Component frame after its root terminal response | Fatal `PROTOCOL_ERROR`; any buffered success is invalidated. |
 
 After sending its root terminal response, a component may immediately stop

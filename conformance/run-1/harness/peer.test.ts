@@ -51,3 +51,21 @@ process.stdout.write('{"jsonrpc":"2.0","id":"host:1","result":null}\\n');`,
     await peer.dispose();
   }
 });
+
+for (const [exitCode, classification] of [[0, "CHANNEL_LOST"], [7, "EXECUTION_FAILED"]] as const) {
+  test(`component peer classifies pre-response exit ${exitCode} as ${classification}`, async () => {
+    const peer = new ComponentPeer([
+      process.execPath,
+      "-e",
+      `process.exit(${exitCode})`,
+    ]);
+    try {
+      await expect(peer.receive()).rejects.toThrow("stdout closed");
+      const observedExit = await peer.exit();
+      const observedClassification = observedExit === 0 ? "CHANNEL_LOST" : "EXECUTION_FAILED";
+      expect(observedClassification).toBe(classification);
+    } finally {
+      await peer.dispose();
+    }
+  });
+}

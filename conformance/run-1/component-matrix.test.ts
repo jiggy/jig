@@ -4,10 +4,48 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
 import { ComponentPeer, type Message } from "./harness/peer";
+import framingCases from "./fixtures/framing.json";
+import scenarioManifest from "./fixtures/scenarios.json";
 
 const root = resolve(import.meta.dir, "../..");
 const standardComponents = componentCommands("flow");
 const matrixComponents = componentCommands("matrix");
+
+const IMPLEMENTED_SCENARIOS = [
+  "json-framing-fixtures",
+  "json-depth-and-frame-bounds",
+  "message-schema-fixtures",
+  "structured-params",
+  "golden-conversation",
+  "direction-and-request-form",
+  "invalid-root-params",
+  "second-root",
+  "root-cancellation",
+  "malformed-root-cancellation",
+  "fatal-frames",
+  "root-frame-boundaries",
+  "terminal-half-close",
+  "simultaneous-request-ceiling",
+  "request-lifetime-ceiling",
+  "operation-join-replay-conflict",
+  "joined-waiter-cancellation",
+  "uncertain-replay",
+  "call-cancellation-late-response",
+  "abandoned-call",
+  "response-failures",
+  "malicious-simultaneous-overflow",
+  "malicious-lifetime-overflow",
+  "request-id-reuse-after-settlement",
+  "component-frame-boundaries",
+  "pre-response-process-exit",
+  "trailing-output",
+  "nonzero-exit",
+  "stderr-diagnostics",
+] as const;
+
+test("Bun peer implements every shared Run/1 scenario", () => {
+  expect([...IMPLEMENTED_SCENARIOS].sort()).toEqual([...scenarioManifest.cases].sort());
+});
 
 if (!standardComponents.some((component) => component.name.startsWith("Python "))) {
   test.skip("Python Run/1 component matrix (python3 or need launcher unavailable)", () => {});
@@ -83,6 +121,23 @@ for (const component of standardComponents) {
       });
     });
 
+    test("closes when a host exceeds its 65,536-request lifetime", async () => {
+      await withPeer(component.command, async (peer) => {
+        for (let index = 1; index <= 65_536; index += 1) {
+          const id = `host:lifetime:${index}`;
+          peer.send({ jsonrpc: "2.0", id, method: "unknown/request", params: {} });
+          expectStandardError(await peer.receive(), id, -32601);
+        }
+        peer.send({
+          jsonrpc: "2.0",
+          id: "host:lifetime:65537",
+          method: "unknown/request",
+          params: {},
+        });
+        await expectClosed(peer);
+      });
+    }, 120_000);
+
     test("cancels the owned subtree but waits for outbound wire settlement", async () => {
       await withScratch(async (scratch) => {
         await withPeer(component.command, async (peer) => {
@@ -134,6 +189,7 @@ for (const component of standardComponents) {
       test(`closes on ${frameCase.name}`, async () => {
         await withPeer(component.command, async (peer) => {
           peer.sendBytes(frameCase.bytes);
+          if (frameCase.closeInput) peer.closeInput();
           if (frameCase.responseCode === undefined) {
             await expect(peer.receive()).rejects.toThrow("stdout closed");
           } else {
@@ -143,10 +199,34 @@ for (const component of standardComponents) {
         });
       });
     }
+
   });
 }
 
 for (const component of matrixComponents) {
+  test(`${component.name} accepts an exactly 16 MiB root frame`, async () => {
+    await withScratch(async (scratch) => {
+      await withPeer(component.command, async (peer) => {
+        peer.sendBytes(paddedFrame(rootRequest("host:max-frame", scratch), 16_777_216));
+        expect(await peer.receive()).toEqual({
+          jsonrpc: "2.0",
+          id: "host:max-frame",
+          result: { outcome: "done", output: null },
+        });
+        await peer.finish();
+      });
+    });
+  }, 30_000);
+
+  test(`${component.name} closes on a root frame one byte over 16 MiB`, async () => {
+    await withScratch(async (scratch) => {
+      await withPeer(component.command, async (peer) => {
+        peer.sendBytes(paddedFrame(rootRequest("host:oversized", scratch), 16_777_217));
+        await expectClosed(peer);
+      });
+    });
+  }, 30_000);
+
   test(`${component.name} survives immediate host half-close after its root response`, async () => {
     await withScratch(async (scratch) => {
       await withPeer(component.command, async (peer) => {
@@ -203,6 +283,31 @@ for (const component of matrixComponents) {
     });
   });
 
+  test(`${component.name} emits at most 65,536 requests during one channel lifetime`, async () => {
+    await withScratch(async (scratch) => {
+      await withPeer(component.command, async (peer) => {
+        peer.send(rootRequest("host:lifetime", scratch, { case: "request-lifetime" }));
+        for (let index = 1; index <= 65_536; index += 1) {
+          const request = asRequest(await peer.receive());
+          expect(request.method).toBe("effect/call");
+          expect((request.params as Record<string, unknown>).operationId).toBe(
+            `lifetime:${index}`,
+          );
+          peer.send({ jsonrpc: "2.0", id: request.id, result: { value: null } });
+        }
+        expect(await peer.receive()).toEqual({
+          jsonrpc: "2.0",
+          id: "host:lifetime",
+          result: {
+            outcome: "done",
+            output: { accepted: 65_536, rejected: "RESOURCE_EXHAUSTED" },
+          },
+        });
+        await peer.finish();
+      });
+    });
+  }, 120_000);
+
   test(`${component.name} exercises host operation join, replay, and conflict`, async () => {
     await withScratch(async (scratch) => {
       await withPeer(component.command, async (peer) => {
@@ -239,6 +344,107 @@ for (const component of matrixComponents) {
               second: { receipt: "shared" },
               replay: { receipt: "shared" },
               conflict: "OPERATION_CONFLICT",
+            },
+          },
+        });
+        await peer.finish();
+      });
+    });
+  });
+
+  test(`${component.name} cancels one joined waiter without cancelling shared work`, async () => {
+    await withScratch(async (scratch) => {
+      await withPeer(component.command, async (peer) => {
+        peer.send(rootRequest("host:shared-cancel", scratch, { case: "cancel-shared-waiter" }));
+        const requests = [
+          asRequest(await peer.receive()),
+          asRequest(await peer.receive()),
+          asRequest(await peer.receive()),
+        ];
+        const shared = requests.filter(
+          (request) =>
+            request.method === "effect/call" &&
+            (request.params as Record<string, unknown>).operationId === "shared-cancel:1",
+        );
+        const release = requests.find(
+          (request) =>
+            request.method === "effect/call" &&
+            (request.params as Record<string, unknown>).operationId ===
+              "release-shared-cancel:1",
+        );
+        expect(shared).toHaveLength(2);
+        expect(release).toBeDefined();
+
+        const operations = new ReferenceOperations();
+        expect(operations.admit(shared[0]!)).toEqual({ kind: "dispatch" });
+        expect(operations.admit(shared[1]!)).toEqual({ kind: "join" });
+        expect(operations.dispatches).toBe(1);
+
+        peer.send({ jsonrpc: "2.0", id: release!.id, result: { value: null } });
+        const cancelledId = cancelTarget(await peer.receive());
+        expect(shared.map((request) => request.id)).toContain(cancelledId);
+        expect(operations.cancelWaiter(cancelledId)).toEqual({ remaining: 1 });
+        peer.send(operationError(cancelledId, "CANCELLED"));
+
+        const sharedResult = { value: { receipt: "survived" } };
+        for (const response of operations.settle("shared-cancel:1", sharedResult)) {
+          peer.send(response);
+        }
+        expect(operations.dispatches).toBe(1);
+        expect(await peer.receive()).toEqual({
+          jsonrpc: "2.0",
+          id: "host:shared-cancel",
+          result: {
+            outcome: "done",
+            output: {
+              cancellation: "CANCELLED",
+              survivor: { receipt: "survived" },
+            },
+          },
+        });
+        await peer.finish();
+      });
+    });
+  });
+
+  test(`${component.name} replays UNCERTAIN without redispatch and accepts a fresh operation ID`, async () => {
+    await withScratch(async (scratch) => {
+      await withPeer(component.command, async (peer) => {
+        peer.send(rootRequest("host:uncertain", scratch, { case: "uncertain-replay" }));
+        const operations = new ReferenceOperations();
+
+        const first = asRequest(await peer.receive());
+        expect(operations.admit(first)).toEqual({ kind: "dispatch" });
+        for (const response of operations.fail("uncertain:1", "UNCERTAIN")) {
+          peer.send(response);
+        }
+
+        const replay = asRequest(await peer.receive());
+        const replayAdmission = operations.admit(replay);
+        expect(replayAdmission).toMatchObject({ kind: "replay-error" });
+        if (replayAdmission.kind !== "replay-error") {
+          throw new Error("expected an uncertain replay");
+        }
+        peer.send({ jsonrpc: "2.0", id: replay.id, error: replayAdmission.error });
+        expect(operations.dispatches).toBe(1);
+
+        const fresh = asRequest(await peer.receive());
+        expect(operations.admit(fresh)).toEqual({ kind: "dispatch" });
+        const freshResult = { value: { receipt: "fresh" } };
+        for (const response of operations.settle("uncertain:2", freshResult)) {
+          peer.send(response);
+        }
+        expect(operations.dispatches).toBe(2);
+
+        expect(await peer.receive()).toEqual({
+          jsonrpc: "2.0",
+          id: "host:uncertain",
+          result: {
+            outcome: "done",
+            output: {
+              first: "UNCERTAIN",
+              replay: "UNCERTAIN",
+              fresh: { receipt: "fresh" },
             },
           },
         });
@@ -393,6 +599,80 @@ test("a reference host rejects a malicious 65th request without dispatch", async
   });
 });
 
+test("a reference host closes on a malicious 65,537th lifetime request", async () => {
+  await withScratch(async (scratch) => {
+    const peer = new ComponentPeer([
+      process.execPath,
+      resolve(import.meta.dir, "components/malicious-lifetime.ts"),
+    ]);
+    try {
+      peer.send(rootRequest("host:malicious-lifetime", scratch));
+      for (let index = 1; index <= 65_536; index += 1) {
+        const request = asRequest(await peer.receive());
+        if (index === 65_536) {
+          expect(request.method).toBe("effect/call");
+          expect(request.params).toEqual({});
+          peer.send({
+            jsonrpc: "2.0",
+            id: request.id,
+            error: { code: -32602, message: "Invalid params" },
+          });
+        } else {
+          peer.send({ jsonrpc: "2.0", id: request.id, result: { value: null } });
+        }
+      }
+      await expect(peer.receive()).rejects.toThrow("request-ID lifetime limit");
+    } finally {
+      await peer.dispose();
+    }
+  });
+}, 120_000);
+
+test("a reference host closes on request-ID reuse after settlement", async () => {
+  await withScratch(async (scratch) => {
+    const peer = new ComponentPeer([
+      process.execPath,
+      resolve(import.meta.dir, "components/malicious-lifetime.ts"),
+      "reuse",
+    ]);
+    try {
+      peer.send(rootRequest("host:malicious-reuse", scratch));
+      const first = asRequest(await peer.receive());
+      peer.send({ jsonrpc: "2.0", id: first.id, result: { value: null } });
+      await expect(peer.receive()).rejects.toThrow("reused request ID");
+    } finally {
+      await peer.dispose();
+    }
+  });
+});
+
+for (const mode of ["exact", "oversized"] as const) {
+  test(`a reference host ${mode === "exact" ? "accepts" : "rejects"} a component ${mode} frame boundary`, async () => {
+    await withScratch(async (scratch) => {
+      const peer = new ComponentPeer([
+        process.execPath,
+        resolve(import.meta.dir, "components/frame-boundary.ts"),
+        mode,
+      ]);
+      try {
+        peer.send(rootRequest(`host:${mode}`, scratch));
+        if (mode === "exact") {
+          expect(await peer.receive()).toEqual({
+            jsonrpc: "2.0",
+            id: "host:exact",
+            result: { outcome: "done", output: null },
+          });
+          await peer.finish();
+        } else {
+          await expect(peer.receive()).rejects.toThrow("oversized frame");
+        }
+      } finally {
+        await peer.dispose();
+      }
+    });
+  }, 30_000);
+}
+
 test("a nonzero exit invalidates a complete root response", async () => {
   const response = JSON.stringify({
     jsonrpc: "2.0",
@@ -541,7 +821,16 @@ function fatalFrames(): Array<{
   readonly name: string;
   readonly bytes: Uint8Array;
   readonly responseCode?: number;
+  readonly closeInput?: boolean;
 }> {
+  const shared = framingCases.invalid.map((fixture) => ({
+    name: `shared fixture ${fixture.name}`,
+    bytes: hex(fixture.hex),
+    ...(fixture.name === "invalid-utf8" || fixture.name === "eof-before-line-feed"
+      ? {}
+      : { responseCode: -32700 }),
+    ...(fixture.name === "eof-before-line-feed" ? { closeInput: true } : {}),
+  }));
   return [
     {
       name: "complete invalid JSON",
@@ -554,10 +843,26 @@ function fatalFrames(): Array<{
       responseCode: -32600,
     },
     {
-      name: "invalid UTF-8",
-      bytes: Uint8Array.from([0xff, 0x0a]),
+      name: "a parsed scalar",
+      bytes: new TextEncoder().encode("null\n"),
+      responseCode: -32600,
     },
+    ...shared,
   ];
+}
+
+function hex(value: string): Uint8Array {
+  return Uint8Array.from(value.match(/.{2}/g) ?? [], (byte) => Number.parseInt(byte, 16));
+}
+
+function paddedFrame(message: Message, payloadBytes: number): Uint8Array {
+  const payload = new TextEncoder().encode(JSON.stringify(message));
+  if (payload.byteLength > payloadBytes) throw new Error("message exceeds padded frame target");
+  const frame = new Uint8Array(payloadBytes + 1);
+  frame.fill(0x20);
+  frame.set(payload);
+  frame[payloadBytes] = 0x0a;
+  return frame;
 }
 
 function expectStandardError(
@@ -619,6 +924,7 @@ interface OperationRecord {
   readonly signature: string;
   readonly waiters: string[];
   result?: unknown;
+  error?: unknown;
 }
 
 class ReferenceOperations {
@@ -629,6 +935,7 @@ class ReferenceOperations {
     | { readonly kind: "dispatch" }
     | { readonly kind: "join" }
     | { readonly kind: "replay"; readonly result: unknown }
+    | { readonly kind: "replay-error"; readonly error: unknown }
     | { readonly kind: "conflict" } {
     const params = request.params as Record<string, unknown>;
     const operationId = params.operationId;
@@ -641,9 +948,20 @@ class ReferenceOperations {
       return { kind: "dispatch" };
     }
     if (prior.signature !== signature) return { kind: "conflict" };
+    if (prior.error !== undefined) return { kind: "replay-error", error: prior.error };
     if (prior.result !== undefined) return { kind: "replay", result: prior.result };
     prior.waiters.push(request.id);
     return { kind: "join" };
+  }
+
+  cancelWaiter(requestId: string): { readonly remaining: number } | undefined {
+    for (const record of this.records.values()) {
+      const index = record.waiters.indexOf(requestId);
+      if (index < 0) continue;
+      record.waiters.splice(index, 1);
+      return { remaining: record.waiters.length };
+    }
+    return undefined;
   }
 
   settle(operationId: string, result: unknown): Message[] {
@@ -651,6 +969,14 @@ class ReferenceOperations {
     if (record === undefined) throw new Error(`unknown operation ${operationId}`);
     record.result = result;
     return record.waiters.splice(0).map((id) => ({ jsonrpc: "2.0", id, result }));
+  }
+
+  fail(operationId: string, code: string): Message[] {
+    const record = this.records.get(operationId);
+    if (record === undefined) throw new Error(`unknown operation ${operationId}`);
+    const error = operationError("operation", code).error;
+    record.error = error;
+    return record.waiters.splice(0).map((id) => ({ jsonrpc: "2.0", id, error }));
   }
 }
 

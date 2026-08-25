@@ -51,6 +51,7 @@ _FLOW_ERROR_CODES = frozenset(
 _STANDARD_ERROR_CODES = frozenset({-32700, -32600, -32601, -32602, -32603})
 _QUEUE_LIMIT = 1
 _OUTSTANDING_LIMIT = 64
+_REQUEST_ID_LIMIT = 65_536
 
 
 class _InvalidParams(ValueError):
@@ -460,6 +461,9 @@ class _Runtime:
         if request_id in self._host_ids:
             await self._fatal_close("PROTOCOL_ERROR")
             return
+        if len(self._host_ids) >= _REQUEST_ID_LIMIT:
+            await self._fatal_close("PROTOCOL_ERROR")
+            return
         self._host_ids.add(request_id)
 
         method = frame["method"]
@@ -725,6 +729,9 @@ class _Runtime:
             if not self._accepting_calls:
                 self._outstanding.release()
                 raise OperationError("OWNER_CLOSED")
+            if len(self._component_ids) >= _REQUEST_ID_LIMIT:
+                self._outstanding.release()
+                raise OperationError("RESOURCE_EXHAUSTED")
             request_id = f"component:{self._next_request_id}"
             self._next_request_id += 1
             if request_id in self._component_ids:

@@ -589,6 +589,76 @@ describe("RunSession", () => {
     });
   });
 
+  test("already-aborted call signals take precedence over live-call capacity", async () => {
+    const transport = new MemoryTransport();
+    const session = new RunSession(transport, async (run) => {
+      const pending = Array.from({ length: 64 }, (_, index) =>
+        run.callEffect({
+          operationId: `capacity:${index}`,
+          slot: "records",
+          method: "write",
+          input: null,
+        }),
+      );
+      await transport.waitForWrites(64);
+
+      const controller = new AbortController();
+      controller.abort();
+      await expect(
+        run.callEffect(
+          {
+            operationId: "capacity:cancelled",
+            slot: "records",
+            method: "write",
+            input: null,
+          },
+          { signal: controller.signal },
+        ),
+      ).rejects.toMatchObject({ code: "CANCELLED" });
+      expect(transport.writes).toHaveLength(64);
+
+      for (let index = 0; index < 64; index += 1) {
+        const request = transport.message(index);
+        transport.push({ jsonrpc: "2.0", id: request.id as string, result: { value: null } });
+      }
+      await Promise.all(pending);
+      return { outcome: "done", output: null };
+    });
+
+    const completion = session.run();
+    transport.push(rootRequest());
+    await completion;
+  });
+
+  test("already-aborted call signals take precedence over lifetime capacity", async () => {
+    const transport = new MemoryTransport();
+    const session = new RunSession(transport, async (run) => {
+      const controller = new AbortController();
+      controller.abort();
+      await expect(
+        run.callEffect(
+          {
+            operationId: "lifetime:cancelled",
+            slot: "records",
+            method: "write",
+            input: null,
+          },
+          { signal: controller.signal },
+        ),
+      ).rejects.toMatchObject({ code: "CANCELLED" });
+      return { outcome: "done", output: null };
+    });
+    const internals = session as unknown as { usedComponentIds: Set<string> };
+    for (let index = 0; index < 65_536; index += 1) {
+      internals.usedComponentIds.add(`seed:${index}`);
+    }
+
+    const completion = session.run();
+    transport.push(rootRequest());
+    await completion;
+    expect(transport.writes).toHaveLength(1);
+  });
+
   test("a cancellation-only catch preserves unrelated call failures", async () => {
     const transport = new MemoryTransport();
     const session = new RunSession(transport, async (run) => {

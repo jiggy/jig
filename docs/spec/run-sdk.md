@@ -211,7 +211,9 @@ rather than presenting it as an ordinary call failure.
 
 The handler may issue concurrent child calls; the SDK continues reading while
 responses arrive in any order and serializes writes. At most 64
-component-originated requests are live on the wire.
+component-originated requests are live on the wire. It emits at most 65,536
+requests during the channel lifetime; a later call fails locally with
+`OperationError` code `RESOURCE_EXHAUSTED` and emits no request.
 
 Handler return closes admission. The SDK does not detach calls: it requests
 cancellation for remaining owned work, waits for each wire request to settle,

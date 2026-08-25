@@ -40,6 +40,77 @@ await serve(async (run) => {
       }
       return { outcome: "done", output: { first, second, replay, conflict } };
     }
+    case "cancel-shared-waiter": {
+      const controller = new AbortController();
+      const call = (signal?: AbortSignal) =>
+        run.callEffect(
+          {
+            operationId: "shared-cancel:1",
+            slot: "sink",
+            method: "write",
+            input: { value: "shared" },
+          },
+          signal === undefined ? undefined : { signal },
+        );
+      const cancelled = call(controller.signal);
+      const survivor = call();
+      await run.callEffect({
+        operationId: "release-shared-cancel:1",
+        slot: "control",
+        method: "release",
+        input: null,
+      });
+      controller.abort();
+      let cancellation: string | null = null;
+      try {
+        await cancelled;
+      } catch (error) {
+        if (!(error instanceof OperationError)) throw error;
+        cancellation = error.code;
+      }
+      return {
+        outcome: "done",
+        output: { cancellation, survivor: await survivor },
+      };
+    }
+    case "uncertain-replay": {
+      const call = async (operationId: string) => {
+        try {
+          return await run.callEffect({
+            operationId,
+            slot: "sink",
+            method: "write",
+            input: { value: "uncertain" },
+          });
+        } catch (error) {
+          if (!(error instanceof OperationError)) throw error;
+          return error.code;
+        }
+      };
+      const first = await call("uncertain:1");
+      const replay = await call("uncertain:1");
+      const fresh = await call("uncertain:2");
+      return { outcome: "done", output: { first, replay, fresh } };
+    }
+    case "request-lifetime": {
+      let accepted = 0;
+      let rejected: string | null = null;
+      for (let index = 1; index <= 65_537; index += 1) {
+        try {
+          await run.callEffect({
+            operationId: `lifetime:${index}`,
+            slot: "sink",
+            method: "write",
+            input: null,
+          });
+          accepted += 1;
+        } catch (error) {
+          if (!(error instanceof OperationError)) throw error;
+          rejected = error.code;
+        }
+      }
+      return { outcome: "done", output: { accepted, rejected } };
+    }
     case "one-flow": {
       const child = await run.callFlow({
         operationId: "child:1",

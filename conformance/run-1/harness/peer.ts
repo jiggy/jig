@@ -5,6 +5,7 @@ import { parseFrame } from "./json1";
 const encoder = new TextEncoder();
 const MAX_FRAME_BYTES = 16_777_216;
 const MAX_DIAGNOSTIC_BYTES = 65_536;
+const MAX_REQUEST_IDS = 65_536;
 
 export type Message = Record<string, unknown>;
 
@@ -21,6 +22,7 @@ export class ComponentPeer {
   private buffer = new Uint8Array();
   private readonly messages: Message[] = [];
   private readonly waiters: Waiter[] = [];
+  private readonly componentRequestIds = new Set<string>();
   private terminalError?: Error;
   private ended = false;
 
@@ -151,6 +153,22 @@ export class ComponentPeer {
   }
 
   private deliver(message: Message): void {
+    if (Object.hasOwn(message, "method") && Object.hasOwn(message, "id")) {
+      const id = message.id;
+      if (typeof id !== "string") {
+        this.fail(new Error("component emitted an invalid request ID"));
+        return;
+      }
+      if (this.componentRequestIds.has(id)) {
+        this.fail(new Error(`component reused request ID ${id}`));
+        return;
+      }
+      if (this.componentRequestIds.size >= MAX_REQUEST_IDS) {
+        this.fail(new Error("component exceeded the Run/1 request-ID lifetime limit"));
+        return;
+      }
+      this.componentRequestIds.add(id);
+    }
     const waiter = this.waiters.shift();
     if (!waiter) {
       this.messages.push(message);

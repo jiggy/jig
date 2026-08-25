@@ -22,6 +22,7 @@ MAX_STRING_BYTES = 8_388_608
 MAX_MEMBER_NAME_BYTES = 1_024
 MAX_NUMBER_TOKEN_BYTES = 128
 MAX_SAFE_INTEGER = 9_007_199_254_740_991
+MAX_REQUEST_IDS = 65_536
 
 _WIRE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/-]*$")
 _LOCAL_NAME = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
@@ -363,6 +364,8 @@ class HostPeer:
         request_id = require_wire_id(message["id"])
         if request_id in self._component_ids:
             raise ProtocolError("component reused a request ID")
+        if len(self._component_ids) >= MAX_REQUEST_IDS:
+            raise ProtocolError("component exceeded the Run/1 request-ID lifetime limit")
         self._component_ids.add(request_id)
         return message
 

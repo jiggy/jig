@@ -31,8 +31,7 @@ notification if the request reached the wire. A cancellation-only catch must
 rethrow every other error. Cancellation does not claim that remote work was
 undone.
 
-Build and verify a clean tarball install with:
-
-```console
-bun run test:package
-```
+The SDK permits at most 64 live outbound requests; another call made while all
+64 are live fails locally with `OperationError` code `RESOURCE_EXHAUSTED`. It
+emits at most 65,536 outbound requests over the complete Run lifetime; a later
+call fails with the same code rather than emitting another frame.

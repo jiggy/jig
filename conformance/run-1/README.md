@@ -33,9 +33,8 @@ Run it with:
 bun test conformance/run-1
 ```
 
-Python parity uses `python3` when it is available. In this development
-environment the harness also understands the installed `need` launcher. A
-missing Python runtime is reported as a skipped parity case, never as a pass.
+That fast development command uses Python when it is available. A missing
+Python runtime is reported as a skipped parity case, never as a pass.
 
 Run the independent peer with:
 
@@ -44,7 +43,14 @@ PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover \
   -s conformance/run-1/python-peer -p 'test_*.py' -v
 ```
 
-Passing this slice does not claim complete Run/1 conformance. The exact
-coverage and remaining stable-label gates are recorded in
-[`MATRIX.md`](MATRIX.md). The independent Python peer now covers the main
-black-box component matrix, but not every schema fixture or hostile frame.
+The canonical release gate does not permit that skip. It runs the Bun corpus,
+both package tests, Python SDK tests, and the independent Python peer, and fails
+if Python or its `build` module is unavailable:
+
+```console
+bun run test:release
+```
+
+Passing this corpus does not create a general certification programme. The
+exact evidence and limits of the release-candidate claim are recorded in
+[`MATRIX.md`](MATRIX.md).

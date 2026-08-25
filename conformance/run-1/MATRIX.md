@@ -1,11 +1,18 @@
 # Run/1 evidence matrix
 
-**Status:** pre-probe evidence, not a stable conformance label.
+**Status:** release-candidate evidence, not a certification programme or a
+published conformance label.
+
+The Bun and independent Python host peers execute the same black-box component
+behaviours through separate framing, validation, and process harnesses. The
+scenario manifest is only a review inventory: matching its strings is not
+evidence by itself. The rows below refer to the executable tests which exercise
+each behaviour.
 
 | Seam | Bun host peer | Independent Python host peer |
 |---|---:|---:|
-| JSON/1 positive and negative fixtures | Yes | Representative independent checks |
-| Message-schema fixtures | Yes | No |
+| Complete shared JSON/1 positive and negative fixtures | Yes | Yes |
+| Complete shared message-schema fixtures | Yes | Yes |
 | Structured `params` envelope rule | Yes | Yes |
 | Golden full-duplex conversation, TypeScript component | Yes | Yes |
 | Golden full-duplex conversation, Python component | Yes | Yes |
@@ -13,36 +20,48 @@
 | Invalid root params and second root | Yes | Yes |
 | Root response then immediate host-stdin half-close | Yes | Yes |
 | Root cancellation, duplicate cancellation, and wire quiescence | Yes | Yes |
+| Malformed root cancellation | Yes | Yes |
 | Call-specific cancellation and late-response tombstone | Yes | Yes |
 | Abandoned-call failure and wire quiescence | Yes | Yes |
-| Representative fatal frames | Yes | Yes |
+| Complete shared hostile-frame corpus | Yes | Yes |
+| Exact and oversized root frame boundaries | Yes | Yes |
+| Exact and oversized component frame boundaries | Yes | Yes |
 | At most 64 unresolved component requests on wire | Yes | Yes |
-| Reference-host operation join, settled replay, and conflict | Yes | Yes |
-| Reference-host rejection of a malicious 65th request | Yes | Yes |
+| 65,536-request sender and receiver lifetime boundaries | Yes | Yes |
+| Invalid method params consume the receiver lifetime budget | Yes | Yes |
+| Request-ID reuse after settlement is fatal | Yes | Yes |
+| Operation join, settled replay, and conflict | Yes | Yes |
+| Cancellation of one waiter joined to shared work | Yes | Yes |
+| `UNCERTAIN` replay without redispatch and fresh-ID recovery | Yes | Yes |
 | Unknown and duplicate child-response IDs | Yes | Yes |
 | Malformed child result and standard child JSON-RPC error | Yes | Yes |
 | Trailing output and nonzero exit | Yes | Yes |
 | Legal stderr diagnostics | Yes | Yes |
 
-The current black-box evidence does not yet cover:
+The operation rows exercise small reference-peer ledgers implementing the
+frozen Run/1 rules. They are not evidence that a durable production operation
+store exists. In particular, persistence across a host crash remains a Jig
+implementation responsibility rather than part of this component-facing
+corpus.
 
-- cancellation of one waiter joined to a shared host operation;
-- uncertain host dispatch, persistence, and recovery behavior;
-- deadline, cancellation, result, and forced-kill terminal races;
-- malformed-cancellation and complete message-schema coverage under a second
-  independent peer;
-- total request-ID lifetime bounds; or
-- memory amplification at the legal 16 MiB frame limit.
+Terminal arbitration is additionally tested against the private Jig host:
+ordered result, cancellation, deadline, EOF, write rejection, nonzero exit,
+signal exit, and forced termination cannot publish competing terminal
+classifications. The lightweight peer tests for pre-response process exit are
+harness checks, not independent proof of Jig's classification policy; the
+private host tests are the authority for that claim.
 
-The host-operation and malicious-request rows exercise small reference-peer
-implementations of the frozen Run/1 rules. They are executable cross-peer
-fixtures, not evidence that a production Jig host exists or already conforms.
+The 64-request test specifies only the wire ceiling. The TypeScript SDK rejects
+another live call locally; the Python SDK queues additional calling tasks. Both
+policies conform because neither emits a 65th unresolved request. The fixed
+65,536-request lifetime is separate and common to both SDKs.
 
-The 64-request test specifies only the wire ceiling. An SDK may queue a 65th
-call or reject it locally; Run SDK/1 deliberately does not select one policy.
-Short no-frame timeouts are regression evidence, not proof that a frame can
-never arrive.
+The exact 16 MiB frame boundary is a protocol gate. Peak RSS or memory
+amplification at that boundary is implementation hardening evidence, not a
+portable Run/1 pass/fail rule.
 
-Private package build and clean-install checks live with each SDK. They prove
-artifact shape and importability, not publication readiness or stable Run/1
-conformance.
+Package build and clean-install checks prove artifact shape and importability.
+The Python source-distribution smoke permits ordinary PEP 517 build-dependency
+resolution; it is not claimed to be an offline or hermetic build proof. A
+separate sealed-input author probe is required before the candidate SDK surface
+is frozen.

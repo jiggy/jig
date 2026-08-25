@@ -53,6 +53,78 @@ async def handle(run):
             },
         }
 
+    if case == "cancel-shared-waiter":
+        async def call_shared():
+            return await run.call_effect(
+                operation_id="shared-cancel:1",
+                slot="sink",
+                method="write",
+                input={"value": "shared"},
+            )
+
+        cancelled = asyncio.create_task(call_shared())
+        await asyncio.sleep(0)
+        survivor = asyncio.create_task(call_shared())
+        await asyncio.sleep(0)
+        await run.call_effect(
+            operation_id="release-shared-cancel:1",
+            slot="control",
+            method="release",
+            input=None,
+        )
+        cancelled.cancel()
+        cancellation = None
+        try:
+            await cancelled
+        except asyncio.CancelledError:
+            cancellation = "CANCELLED"
+        return {
+            "outcome": "done",
+            "output": {
+                "cancellation": cancellation,
+                "survivor": await survivor,
+            },
+        }
+
+    if case == "uncertain-replay":
+        async def call_uncertain(operation_id):
+            try:
+                return await run.call_effect(
+                    operation_id=operation_id,
+                    slot="sink",
+                    method="write",
+                    input={"value": "uncertain"},
+                )
+            except OperationError as error:
+                return error.code
+
+        first = await call_uncertain("uncertain:1")
+        replay = await call_uncertain("uncertain:1")
+        fresh = await call_uncertain("uncertain:2")
+        return {
+            "outcome": "done",
+            "output": {"first": first, "replay": replay, "fresh": fresh},
+        }
+
+    if case == "request-lifetime":
+        accepted = 0
+        rejected = None
+        for index in range(1, 65_538):
+            try:
+                await run.call_effect(
+                    operation_id=f"lifetime:{index}",
+                    slot="sink",
+                    method="write",
+                    input=None,
+                )
+                accepted += 1
+            except OperationError as error:
+                rejected = error.code
+        return {
+            "outcome": "done",
+            "output": {"accepted": accepted, "rejected": rejected},
+        }
+
     if case == "one-flow":
         child = await run.call_flow(
             operation_id="child:1",

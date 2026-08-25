@@ -36,6 +36,7 @@ import {
 } from "./types.js";
 
 const MAX_OUTBOUND_REQUESTS = 64;
+const MAX_REQUEST_IDS = 65_536;
 type WireOperationErrorCode = Exclude<
   OperationErrorCode,
   "PROTOCOL_ERROR" | "CHANNEL_LOST"
@@ -185,6 +186,10 @@ export class RunSession {
   ): Promise<void> {
     if (this.seenHostIds.has(id)) {
       this.failChannel("PROTOCOL_ERROR", `host reused request ID ${id}`);
+      return;
+    }
+    if (this.seenHostIds.size >= MAX_REQUEST_IDS) {
+      this.failChannel("PROTOCOL_ERROR", "host exceeded the Run/1 request-ID lifetime limit");
       return;
     }
     this.seenHostIds.add(id);
@@ -421,6 +426,12 @@ export class RunSession {
     if (!this.accepting || root === undefined || root.phase !== "open") {
       return Promise.reject(new OperationError("OWNER_CLOSED", "Run is not accepting calls"));
     }
+    const signals = options?.signal
+      ? [root.controller.signal, options.signal]
+      : [root.controller.signal];
+    const alreadyAborted = signals.find((signal) => signal.aborted);
+    if (alreadyAborted !== undefined) return Promise.reject(cancellationError());
+
     if (this.outbound.size >= MAX_OUTBOUND_REQUESTS) {
       return Promise.reject(
         new OperationError(
@@ -429,12 +440,14 @@ export class RunSession {
         ),
       );
     }
-
-    const signals = options?.signal
-      ? [root.controller.signal, options.signal]
-      : [root.controller.signal];
-    const alreadyAborted = signals.find((signal) => signal.aborted);
-    if (alreadyAborted !== undefined) return Promise.reject(cancellationError());
+    if (this.usedComponentIds.size >= MAX_REQUEST_IDS) {
+      return Promise.reject(
+        new OperationError(
+          "RESOURCE_EXHAUSTED",
+          `at most ${MAX_REQUEST_IDS} requests may be emitted during one Run`,
+        ),
+      );
+    }
 
     const pending: Outbound = {
       method,

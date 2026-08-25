@@ -1,0 +1,33 @@
+{
+  "cases": [
+    "json-framing-fixtures",
+    "json-depth-and-frame-bounds",
+    "message-schema-fixtures",
+    "structured-params",
+    "golden-conversation",
+    "direction-and-request-form",
+    "invalid-root-params",
+    "second-root",
+    "root-cancellation",
+    "malformed-root-cancellation",
+    "fatal-frames",
+    "root-frame-boundaries",
+    "terminal-half-close",
+    "simultaneous-request-ceiling",
+    "request-lifetime-ceiling",
+    "operation-join-replay-conflict",
+    "joined-waiter-cancellation",
+    "uncertain-replay",
+    "call-cancellation-late-response",
+    "abandoned-call",
+    "response-failures",
+    "malicious-simultaneous-overflow",
+    "malicious-lifetime-overflow",
+    "request-id-reuse-after-settlement",
+    "component-frame-boundaries",
+    "pre-response-process-exit",
+    "trailing-output",
+    "nonzero-exit",
+    "stderr-diagnostics"
+  ]
+}

@@ -30,9 +30,7 @@ root Run. Handler cancellation uses ordinary `asyncio.CancelledError`.
 Cancelling a task awaiting `call_flow()` or `call_effect()` sends the matching
 Run/1 cancellation notification.
 
-Build and verify both distribution formats with:
-
-```console
-python -m build
-python tests/package_smoke.py dist/*.whl dist/*.tar.gz
-```
+The SDK emits at most 64 outbound requests simultaneously; additional calling
+tasks wait for wire admission. It emits at most 65,536 outbound requests over
+the complete Run lifetime; a later call fails locally with `OperationError`
+code `RESOURCE_EXHAUSTED` rather than emitting another frame.

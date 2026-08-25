@@ -160,6 +160,29 @@ describe("private RunHostSession", () => {
     expect(await running).toMatchObject({ status: "failed", code: "PROTOCOL_ERROR" });
   });
 
+  test("counts invalid method params before rejecting a 65,537th lifetime request", async () => {
+    const process = new FakeProcess();
+    const session = new RunHostSession(process, invocation());
+    const ids = (session as unknown as { componentIds: Set<string> }).componentIds;
+    for (let index = 1; index <= 65_535; index += 1) ids.add(`component:${index}`);
+
+    const running = session.run();
+    await process.nextHost();
+    process.emit(request("component:65536", "effect/call", {}));
+    expect(await process.nextHost()).toMatchObject({
+      id: "component:65536",
+      error: { code: -32602 },
+    });
+    process.emit(request("component:65537", "effect/call", {
+      operationId: "overflow:1",
+      slot: "sink",
+      method: "write",
+      input: null,
+    }));
+
+    expect(await running).toMatchObject({ status: "failed", code: "PROTOCOL_ERROR" });
+  });
+
   test("rejects a 65th response-pending request while writes are blocked", async () => {
     const process = new FakeProcess(1);
     const running = new RunHostSession(process, invocation()).run();
@@ -329,6 +352,34 @@ describe("private RunHostSession", () => {
     await hung.nextHost();
     hung.emit(result("settled"));
     expect(await hungRun).toMatchObject({ status: "failed", code: "EXECUTION_FAILED" });
+  });
+
+  test("keeps the first ordered cancellation or deadline terminal decision", async () => {
+    const cancelledController = new AbortController();
+    const cancelled = new FakeProcess();
+    const cancelledRun = new RunHostSession(cancelled, {
+      ...invocation(Date.now() + 1_000),
+      signal: cancelledController.signal,
+    }, { cancellationGraceMs: 100 }).run();
+    await cancelled.nextHost();
+    cancelledController.abort();
+    expect(await cancelled.nextHost()).toMatchObject({ method: "request/cancel" });
+    cancelled.emit(result("too-late"));
+    cancelled.finish(0);
+    expect(await cancelledRun).toMatchObject({ status: "failed", code: "CANCELLED" });
+
+    const deadlineController = new AbortController();
+    const deadline = new FakeProcess();
+    const deadlineRun = new RunHostSession(deadline, {
+      ...invocation(Date.now() + 15),
+      signal: deadlineController.signal,
+    }, { cancellationGraceMs: 100 }).run();
+    await deadline.nextHost();
+    expect(await deadline.nextHost()).toMatchObject({ method: "request/cancel" });
+    deadlineController.abort();
+    deadline.emit(result("too-late"));
+    deadline.finish(0);
+    expect(await deadlineRun).toMatchObject({ status: "failed", code: "DEADLINE_EXCEEDED" });
   });
 });
 
