@@ -1,7 +1,8 @@
 # Jig project policy and admission/1
 
 **Status:** reviewed host semantics. The first package-only TypeScript authoring
-slice and the private capture-stage boundary are specified; evaluator,
+slice, the private capture/link stages, and one bounded single-module evaluator
+checkpoint are implemented. The project-local static import closure, aggregate
 admission, Hooks, host-capability, Agent, and open-candidate slices remain
 release-gated.
 

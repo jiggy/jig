@@ -149,12 +149,17 @@ Its selected vocabulary is `defineJig`, `discover`, `defineBinding`, `flowRef`,
 normalized captured-value schema must pass their corpus before this private
 slice may be handed to an external probe.
 
-The next private implementation boundary is fixed in
+The private implementation boundary is fixed in
 [`108-project-capture-boundary.md`](108-project-capture-boundary.md): authored
 values, a durable captured aggregate, and a resolved admission candidate are
-three separate stages. No aggregate schema or evaluator API is public. The
-first checkpoint adds descriptor-confined Flow membership capture and direct
-target derivation only.
+three separate stages. Flow membership capture, retained Package/1 artifacts,
+and the pure package/Binding linker are implemented private consumers. The
+one-module evaluator checkpoint in
+[`111-bounded-project-evaluator.md`](111-bounded-project-evaluator.md) now
+proves captured-source evaluation, a closed `@jigging/jig` resolver, bounded
+JSON transport, host-side schema validation and canonical re-normalization,
+and complete cgroup/Bubblewrap fencing. It deliberately does not yet accept a
+project-local import graph. No aggregate schema or evaluator API is public.
 
 Hooks, Service export references, instruction Agent selection,
 `semanticChoice`, and host-capability Bindings remain later gated slices. The

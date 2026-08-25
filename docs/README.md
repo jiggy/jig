@@ -40,9 +40,15 @@ Current implementation frontier:
   records the private cgroup-v2/Bubblewrap implementation, hostile proof, and
   remaining Bun descendant blocker.
 - [`design-review/106-service-wire-and-provider-sdk.md`](design-review/106-service-wire-and-provider-sdk.md)
-  records the closed Service/1 wire candidate and first TypeScript Provider
-  projection, while keeping Host, Python, and independent-conformance work
-  explicit.
+  records the closed Service/1 wire candidate and Provider projections; the
+  session-local TypeScript/Python/independent matrix is complete while durable
+  hosting and a portable Host-under-test conformance label remain open.
+- [`design-review/107-project-authoring-sdk-slice.md`](design-review/107-project-authoring-sdk-slice.md)
+  through [`design-review/111-bounded-project-evaluator.md`](design-review/111-bounded-project-evaluator.md)
+  record the private project pipeline now proven through inert authoring,
+  descriptor-confined source capture, retained Package/1 artifacts, pure
+  package/Binding linking, and one sandboxed single-module evaluator. Static
+  project-local imports and the durable aggregate are the next boundary.
 
 The focused Run/1 specification owns its finite wire surface. The remaining
 cross-cutting system rules are in the canonical architecture:
