@@ -88,6 +88,26 @@ describe("private ServiceHostSession", () => {
     expect(await service.result()).toMatchObject({ status: "failed", code: "PROTOCOL_ERROR" });
   });
 
+  test("closes after the 65,536-request Provider lifetime", async () => {
+    const process = new FakeProcess();
+    const service = new ServiceHostSession(process, activation());
+    const started = service.start();
+    await process.nextHost();
+    for (let index = 1; index <= 65_536; index += 1) {
+      const id = `provider:lifetime:${index}`;
+      process.emit({ jsonrpc: "2.0", id, method: "unknown/request", params: {} });
+      expect(await process.nextHost()).toMatchObject({ id, error: { code: -32601 } });
+    }
+    process.emit({
+      jsonrpc: "2.0",
+      id: "provider:lifetime:65537",
+      method: "unknown/request",
+      params: {},
+    });
+    await expect(started).rejects.toThrow("PROTOCOL_ERROR");
+    expect(await service.result()).toMatchObject({ status: "failed", code: "PROTOCOL_ERROR" });
+  }, 120_000);
+
   test("settles concurrent invocations out of order", async () => {
     const process = new FakeProcess();
     const service = new ServiceHostSession(process, activation());

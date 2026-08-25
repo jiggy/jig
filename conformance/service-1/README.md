@@ -17,6 +17,10 @@ Provider ceiling. Both invocation-owned and voluntarily abandoned Mount work
 are covered. Unknown methods and invalid params remain request-local, while a
 malformed cancellation closes the channel.
 
+The exact 65,536-request lifetime cases are deliberately slower than the rest
+of the matrix. They remain in the ordinary conformance command because the
+inclusive boundary is protocol behavior, not a performance benchmark.
+
 The private Jig Host separately drives both Provider implementations in
 `packages/jig/test/service-process.test.ts`.
 

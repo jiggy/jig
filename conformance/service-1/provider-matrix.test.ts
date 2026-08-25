@@ -199,6 +199,23 @@ for (const provider of providers) {
         expect(await peer.exit()).toBe(1);
       });
     });
+
+    test("closes after the 65,536-request peer lifetime", async () => {
+      await withPeer(provider, async (peer) => {
+        for (let index = 1; index <= 65_536; index += 1) {
+          const id = `host:lifetime:${index}`;
+          peer.send({ jsonrpc: "2.0", id, method: "unknown/request", params: {} });
+          expect(await peer.receive()).toMatchObject({ id, error: { code: -32601 } });
+        }
+        peer.send({
+          jsonrpc: "2.0",
+          id: "host:lifetime:65537",
+          method: "unknown/request",
+          params: {},
+        });
+        expect(await peer.exit()).toBe(1);
+      });
+    }, 120_000);
   });
 }
 
