@@ -62,6 +62,9 @@ describe("Project Authoring SDK/1 shape schema", () => {
     ["wrong Binding reference branch", changed(binding, (item) => {
       item.slots["exact-binding"] = { kind: "binding", path: "wrong" };
     })],
+    ["oversized project path", changed(binding, (item) => {
+      item.package = "a".repeat(1025);
+    })],
   ] as const) {
     test(`rejects ${name}`, () => {
       expect(() => schema.validate(value, "INVALID_PROJECT_AUTHORING")).toThrow(SchemaDiagnostic);

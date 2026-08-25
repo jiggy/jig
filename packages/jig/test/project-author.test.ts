@@ -179,4 +179,11 @@ describe("Jig project authoring SDK/1", () => {
   test("rejects project-source collisions under the canonical case fold", () => {
     expect(() => defineJig({ flows: ["flows/Review", "flows/review"] })).toThrow();
   });
+
+  test("bounds project paths independently of the host filesystem", () => {
+    expect(() => flowRef(`${"a/".repeat(64)}z`)).toThrow("64 segments");
+    expect(() => flowRef(`flows/${"a".repeat(256)}`)).toThrow("255 UTF-8 bytes");
+    expect(() => flowRef(`flows/${"é".repeat(510)}`)).toThrow("1024 UTF-8 bytes");
+    expect(() => flowRef("flows/\ud800")).toThrow("lone Unicode surrogate");
+  });
 });

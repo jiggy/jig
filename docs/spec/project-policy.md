@@ -425,15 +425,20 @@ For one candidate Jig:
    unproved multiply linked source inodes, ambient/global module lookup, native
    addons, and source changes it detects while staging;
 3. evaluates the immutable capture once in a bounded config sandbox with no
-   filesystem, process, network, environment, secret, clock, randomness,
-   Agent, Service, Journal, or runtime authority;
+   visible project or host filesystem, network, environment, secret, Agent,
+   Service, Journal, or host-runtime authority; the evaluator's exact sealed
+   runtime support and scratch are implementation inputs, not project grants;
 4. accepts only closed serializable Binding/Hook intermediate values; and
 5. persists the exact normalized result as the sole input to resolution and
    approval.
 
-The evaluator freezes or removes ambient nondeterministic APIs and bounds CPU,
-memory, imports, source, and output. Functions, getters, class instances,
-proxies, callbacks, and handles fail normalization.
+The evaluator removes ambient nondeterministic APIs where its proven runtime
+allows and always bounds CPU, memory, imports, source, and output. It does not
+claim arbitrary TypeScript evaluation is deterministic: exact normalized
+output is captured and reviewed. Functions, getters, class instances,
+callbacks, and handles cannot cross normalization. Proxy traps may run inside
+the sandbox while a value is copied, but no live Proxy crosses the process
+boundary.
 
 Evaluation and publication never reopen project source: both consume the same
 private immutable staged closure. A host may serialize project writes or use an

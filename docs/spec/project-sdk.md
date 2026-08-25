@@ -106,7 +106,9 @@ plain data and reject:
 - candidate sets with fewer than two entries.
 
 One leading `./` is removed from author paths. Output paths use `/` and are
-project-relative. Discovery does not accept a glob language.
+project-relative. Paths are NFC Unicode-scalar strings bounded to 64 segments,
+1,024 UTF-8 bytes total, and 255 UTF-8 bytes per segment. Discovery does not
+accept a glob language.
 
 Helper checks are ergonomic only. Jig evaluates the captured module in a
 bounded authority-free environment and independently normalizes the result.
