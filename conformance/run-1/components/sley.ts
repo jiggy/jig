@@ -58,7 +58,7 @@ function buildGraph(run: RunContext): Flow<State> {
       slot: "delegate",
       intent: "Process the supplied value.",
       input: { value: context.state.request.value },
-    }, { signal: run.signal });
+    });
   });
 
   choose.link(local, "local");
