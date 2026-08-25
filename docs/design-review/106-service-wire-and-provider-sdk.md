@@ -41,14 +41,15 @@ adds the correct wire owner privately.
 - The complete FLOW TypeScript SDK suite passes 53 tests.
 - The complete Python SDK suite passes 40 tests.
 - The installed-package smoke test passes after building only package files.
-- The private Jig Host passes 13 focused state-machine tests and drives real
-  TypeScript and Python Provider processes through the same three operations.
-- An independent Bun protocol peer runs ten cross-language Provider matrix
-  cases.
+- The private Jig Host passes 24 focused state-machine tests and eight real
+  process cases across conforming and hostile Providers.
+- An independent Bun protocol peer runs 24 cross-language Provider matrix
+  cases, including exact lifetime and frame boundaries.
 - A real Python Provider completes Mount, invocation, cancellation, fencing,
   and cgroup removal inside the private Linux security envelope.
-- The existing Jig suite passes 172 tests with the 11 privileged hostile envelope
-  cases skipped unless their explicit environment gate is enabled.
+- The existing Jig suite passes 189 tests with the 11 privileged hostile
+  envelope harness entries skipped unless their explicit environment gate is
+  enabled.
 
 The focused Provider tests cover readiness, fixed exports, declared errors,
 Mount- and invocation-owned calls, sibling-isolated cancellation, invocation
@@ -59,14 +60,15 @@ protocol input.
 
 The milestone does not yet contain:
 
-- the complete shared Host/Provider black-box lifecycle corpus;
+- a portable shared Host-under-test lifecycle corpus;
 - a second non-test Host product implementation;
 - provider generation, Binding, replacement, or durable Jig scheduling; or
 - a stable Service/1 conformance label.
 
-The private Jig Host and independent Bun peer exercise overlapping scenarios,
-but they do not yet consume one complete Host-under-test corpus. Request
-ceilings, full framing and process-loss injection, and deadline/terminal races
-remain explicit gates. Detached invocation work, trailing output, pre-readiness
-loss, and one complete containment cleanup path are now proven. Consumer probes
-must not treat this milestone as a stable Service platform.
+The required-case matrix now has executable evidence for every session-local
+wire rule. Provider crash is proven, but fresh durable provider generations,
+lease pinning, drain/replacement behavior, and the guarantee against silent
+rebinding belong to the still-missing Jig controller. The cases are not yet
+packaged as one portable Host-under-test corpus, and no second independent Host
+has passed them. Consumer probes must not treat this milestone as a stable
+Service platform.

@@ -2106,9 +2106,9 @@ readiness, cancellation, and error candidates; TypeScript and Python Provider
 SDKs; a private Jig Host; and a first independent cross-language Provider
 matrix. The remaining repository gap inventory includes:
 
-- a complete shared Service/1 Host/Provider lifecycle corpus, adversarial
-  process failure cases, and durable Jig hosting integration; one real Python
-  Mount already passes through the private Linux containment envelope;
+- a portable shared Service/1 Host-under-test corpus, a second independent
+  Host, and durable generation/lease hosting integration; every session-local
+  case and one real contained Python Mount already have executable evidence;
 - closed RuntimeAdapter/1 and Sandbox Backend registration, plan, seal, spawn,
   receipt, and error data models;
 - one canonical `jig.lock` data model and schema;

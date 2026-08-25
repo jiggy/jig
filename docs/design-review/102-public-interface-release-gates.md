@@ -127,10 +127,10 @@ invocation contexts, owner-scoped dependency calls, `ServiceError`, readiness,
 cancellation, and terminal quiescence. A private Jig Host drives both real
 Provider processes, and an independent Bun peer runs the first shared Provider
 matrix. One real Python Mount also completes inside the private Linux cgroup-v2
-envelope. The complete Host-under-test corpus, adversarial process failures,
-durable Jig provider generations/Bindings, further independent implementations,
-and the resulting conformance label remain release gates. Run/1 does not wait
-for them.
+envelope. Every session-local required case now has executable evidence, but
+the cases are not yet one portable Host-under-test corpus. Durable Jig provider
+generations/Bindings, a second independent Host, and the resulting conformance
+label remain release gates. Run/1 does not wait for them.
 
 ### Jig project authoring SDK
 

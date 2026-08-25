@@ -26,8 +26,10 @@ oversize rejection, invalid UTF-8, and incomplete EOF in both SDKs.
 The private Jig Host separately drives both Provider implementations in
 `packages/jig/test/service-process.test.ts`.
 
-This is not yet a Service/1 conformance label. The corpus still needs complete
-Host-under-test fixtures, request ceilings, framing/failure injection,
-deadline and terminal-publication races, detached work, process loss, and
-containment cleanup before independent implementations can claim the Host or
-Provider label.
+This is not yet a Service/1 conformance label. The existing evidence must still
+be packaged as portable Host-under-test fixtures, and a second independent Host
+must pass them. Durable provider generations and lease behavior remain Jig
+controller gates rather than Service wire cases.
+
+[`MATRIX.md`](MATRIX.md) records the current required-case coverage and the
+remaining durable-generation and independent-Host gap.
