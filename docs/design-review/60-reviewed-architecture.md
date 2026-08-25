@@ -51,8 +51,8 @@ FLOW Python import           flowmd_sdk
 ```
 
 TypeScript and Python SDKs project Run/1 without creating another wire layer.
-The TypeScript SDK now also projects the Service/1 Provider candidate; its
-Python peer and Host remain to be implemented. Run/1 has private `0.0.0`
+Both now also project the Service/1 Provider candidate, and Jig has a private
+Host session which drives either language through the same wire. Run/1 has private `0.0.0`
 candidate declarations and implementations under the selected minimal semantic
 vocabulary. Its Phase 1 prerelease gate is complete, but the packages and a
 general third-party conformance label are not published. Service/1 is not
@@ -659,8 +659,9 @@ readiness only after they are callable, distinct Mount-background versus
 invocation-owned work, and bounded cleanup. Its TypeScript projection uses one
 static `ServiceDefinition`, one mount handler, a static export-handler map,
 `ready()`, ordinary `try/finally`, and owner-scoped `callFlow` / `callEffect`.
-Mutable export registration remains excluded. The Python projection and
-independent corpus remain release gates.
+Mutable export registration remains excluded. The Python projection now uses
+the same semantic surface; a complete independent corpus remains a release
+gate.
 
 Host and Provider support multiple outstanding `service/invoke` requests on
 one Mount and out-of-order responses. Each invocation separately pins its
@@ -2101,11 +2102,12 @@ instruction-restricted external author/evaluator pass over the SDK plus one
 valid Package/1 and Schema/1 package. This completes the Phase 1 prerelease
 foundation; publication and a general third-party conformance label remain
 separate decisions. Service/1 now has closed method schemas, ownership,
-readiness, cancellation, and error candidates plus one private TypeScript
-Provider SDK. The remaining repository gap inventory includes:
+readiness, cancellation, and error candidates; TypeScript and Python Provider
+SDKs; a private Jig Host; and a first independent cross-language Provider
+matrix. The remaining repository gap inventory includes:
 
-- a private Service/1 Host, the Python Provider projection, and a shared
-  independent black-box lifecycle corpus;
+- a complete shared Service/1 Host/Provider lifecycle corpus, process and
+  containment failure cases, and durable Jig hosting integration;
 - closed RuntimeAdapter/1 and Sandbox Backend registration, plan, seal, spawn,
   receipt, and error data models;
 - one canonical `jig.lock` data model and schema;

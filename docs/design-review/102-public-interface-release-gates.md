@@ -121,13 +121,15 @@ Service/1 remains a separate interface slice. The closed
 - distinct Mount-background and invocation-owned clients/lifetimes; and
 - provider readiness and bounded disposal without public remote Scope objects.
 
-The private TypeScript Provider projection implements `serveService`, a static
-`ServiceDefinition`, mount and invocation contexts, owner-scoped dependency
-calls, `ServiceError`, readiness, cancellation, and terminal quiescence. It
-passes focused behavioral and clean-package checks. The private Host, Python
-projection, shared black-box Provider/Host fixtures, independent peers, and
-the resulting conformance label remain release gates. Run/1 does not wait for
-them.
+The private TypeScript and Python Provider projections implement
+`serveService` / `serve_service`, a static `ServiceDefinition`, mount and
+invocation contexts, owner-scoped dependency calls, `ServiceError`, readiness,
+cancellation, and terminal quiescence. A private Jig Host drives both real
+Provider processes, and an independent Bun peer runs the first shared Provider
+matrix. The complete Host-under-test corpus, process and containment failures,
+durable Jig provider generations/Bindings, further independent implementations,
+and the resulting conformance label remain release gates. Run/1 does not wait
+for them.
 
 ### Jig project authoring SDK
 
@@ -228,7 +230,8 @@ need; keep compiler IR private when possible.
 
 The repository still needs:
 
-- a Service/1 Host, Python Provider SDK, and cross-language black-box corpus;
+- the complete Service/1 Host/Provider cross-language black-box corpus and
+  durable Jig hosting integration;
 - Runtime Adapter and Sandbox Backend schemas;
 - the host-policy document schema and extension-registration identity model;
 - the canonical `jig.lock` schema; and

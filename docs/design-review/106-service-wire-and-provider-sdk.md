@@ -1,6 +1,6 @@
-# Service/1 wire and TypeScript Provider milestone
+# Service/1 wire, Provider, and private Host milestone
 
-**Status:** partial Service phase milestone, 2026-08-25.
+**Status:** partial Service implementation milestone, 2026-08-25.
 
 This milestone closes the first implementable Service boundary without claiming
 Service/1 conformance or stability.
@@ -14,10 +14,10 @@ Service/1 conformance or stability.
   [`service-1-errors.json`](../spec/machine/service-1-errors.json) define the
   closed machine message and operational-error candidates.
 - [`Service SDK/1`](../spec/service-sdk.md) defines the small TypeScript/Python
-  author projection. The TypeScript implementation now exists privately in
-  `@flowmd/sdk`.
+  author projection. Both implementations now exist privately in
+  `@flowmd/sdk` and `flowmd-sdk`.
 
-The Provider-facing TypeScript vocabulary is deliberately limited to:
+The Provider-facing vocabulary is deliberately limited to:
 
 ```text
 serveService
@@ -26,6 +26,8 @@ ServiceMountContext
 ServiceInvocationContext
 ServiceError
 ```
+
+Python uses the corresponding `serve_service` and snake-case context methods.
 
 The definition has one static export-handler map and one mount handler. The
 mount calls `ready()` once and uses ordinary `try/finally` for cleanup. Both
@@ -37,8 +39,13 @@ adds the correct wire owner privately.
 - 20 Service/1 machine-schema fixtures pass.
 - 10 focused TypeScript Provider lifecycle tests pass.
 - The complete FLOW TypeScript SDK suite passes 53 tests.
+- The complete Python SDK suite passes 40 tests.
 - The installed-package smoke test passes after building only package files.
-- The existing Jig suite passes 157 tests with the privileged hostile envelope
+- The private Jig Host passes 10 focused state-machine tests and drives real
+  TypeScript and Python Provider processes through the same three operations.
+- An independent Bun protocol peer runs eight cross-language Provider matrix
+  cases.
+- The existing Jig suite passes 169 tests with the privileged hostile envelope
   cases skipped unless their explicit environment gate is enabled.
 
 The focused Provider tests cover readiness, fixed exports, declared errors,
@@ -50,12 +57,13 @@ protocol input.
 
 The milestone does not yet contain:
 
-- a Service/1 Host implementation;
-- a Python Provider implementation;
-- a shared process-level black-box lifecycle corpus;
-- an independently implemented Host or Provider;
+- the complete shared Host/Provider black-box lifecycle corpus;
+- a second non-test Host product implementation;
 - provider generation, Binding, replacement, or durable Jig scheduling; or
 - a stable Service/1 conformance label.
 
-Those are the next gates. Consumer probes must not treat the TypeScript
-Provider candidate alone as proof that Jig can host Services.
+The private Jig Host and independent Bun peer exercise overlapping scenarios,
+but they do not yet consume one complete Host-under-test corpus. Request
+ceilings, framing and process-loss injection, deadline/terminal races, detached
+work, and containment cleanup remain explicit gates. Consumer probes must not
+treat this milestone as a stable Service platform.
