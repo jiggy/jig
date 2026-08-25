@@ -4,6 +4,7 @@ import { resolve } from "node:path";
 import { ComponentPeer, type Message } from "../run-1/harness/peer";
 
 const root = resolve(import.meta.dir, "../..");
+const MAX_FRAME_BYTES = 16_777_216;
 const python = Bun.which("python3");
 const providers: ReadonlyArray<{
   readonly name: string;
@@ -216,6 +217,33 @@ for (const provider of providers) {
         expect(await peer.exit()).toBe(1);
       });
     }, 120_000);
+
+    test("accepts an exactly 16 MiB Mount frame", async () => {
+      await withPeer(provider, async (peer) => {
+        peer.sendBytes(paddedFrame(mount(), MAX_FRAME_BYTES));
+        await acknowledgeReady(peer);
+        await stop(peer);
+      });
+    }, 30_000);
+
+    test("closes on a Mount frame one byte over 16 MiB", async () => {
+      await withPeer(provider, async (peer) => {
+        peer.sendBytes(paddedFrame(mount(), MAX_FRAME_BYTES + 1));
+        expect(await peer.exit(30_000)).toBe(1);
+      });
+    }, 30_000);
+
+    test("closes on invalid UTF-8 and incomplete EOF", async () => {
+      await withPeer(provider, async (peer) => {
+        peer.sendBytes(Uint8Array.from([0x7b, 0x22, 0x61, 0x22, 0x3a, 0xff, 0x7d, 0x0a]));
+        expect(await peer.exit()).toBe(1);
+      });
+      await withPeer(provider, async (peer) => {
+        peer.sendBytes(new TextEncoder().encode('{"jsonrpc":"2.0"}'));
+        peer.closeInput();
+        expect(await peer.exit()).toBe(1);
+      });
+    });
   });
 }
 
@@ -282,6 +310,16 @@ function operationError(id: string, code: string): Message {
 
 function expectOperationError(message: Message, id: string, code: string): void {
   expect(message).toMatchObject({ id, error: { code: -32000, data: { code } } });
+}
+
+function paddedFrame(message: Message, payloadBytes: number): Uint8Array {
+  const encoded = new TextEncoder().encode(JSON.stringify(message));
+  if (encoded.byteLength > payloadBytes) throw new Error("message exceeds requested frame size");
+  const frame = new Uint8Array(payloadBytes + 1);
+  frame.fill(0x20);
+  frame.set(encoded);
+  frame[payloadBytes] = 0x0a;
+  return frame;
 }
 
 async function withPeer(

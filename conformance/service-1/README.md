@@ -20,6 +20,8 @@ malformed cancellation closes the channel.
 The exact 65,536-request lifetime cases are deliberately slower than the rest
 of the matrix. They remain in the ordinary conformance command because the
 inclusive boundary is protocol behavior, not a performance benchmark.
+The process matrix also exercises the inclusive 16 MiB frame boundary,
+oversize rejection, invalid UTF-8, and incomplete EOF in both SDKs.
 
 The private Jig Host separately drives both Provider implementations in
 `packages/jig/test/service-process.test.ts`.

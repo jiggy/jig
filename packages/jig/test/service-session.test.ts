@@ -50,6 +50,27 @@ describe("private ServiceHostSession", () => {
     expect(await service.result()).toMatchObject({ status: "failed", code: "PROTOCOL_ERROR" });
   });
 
+  test("accepts an exactly 16 MiB Provider frame", async () => {
+    const process = new FakeProcess();
+    const service = new ServiceHostSession(process, activation());
+    const started = service.start();
+    await process.nextHost();
+    process.emitBytes(paddedJsonFrame(ready("provider:1", ["sessions"]), 16_777_216));
+    await process.nextHost();
+    await started;
+    await cleanStop(service, process);
+  });
+
+  test("rejects a Provider frame one byte over 16 MiB", async () => {
+    const process = new FakeProcess();
+    const service = new ServiceHostSession(process, activation());
+    const started = service.start();
+    await process.nextHost();
+    process.emitBytes(paddedJsonFrame(ready("provider:1", ["sessions"]), 16_777_217));
+    await expect(started).rejects.toThrow("PROTOCOL_ERROR");
+    expect(await service.result()).toMatchObject({ status: "failed", code: "PROTOCOL_ERROR" });
+  });
+
   test("accepts mount-owned calls before readiness and scopes operation reuse", async () => {
     const process = new FakeProcess();
     const service = new ServiceHostSession(process, activation());
@@ -412,6 +433,16 @@ function cancel(requestId: string): JsonObject {
 
 function operationCode(value: JsonValue): string {
   return (((value as JsonObject).error as JsonObject).data as JsonObject).code as string;
+}
+
+function paddedJsonFrame(value: JsonValue, payloadBytes: number): Uint8Array {
+  const encoded = canonicalJson(value);
+  if (encoded.byteLength > payloadBytes) throw new Error("value exceeds requested frame size");
+  const frame = new Uint8Array(payloadBytes + 1);
+  frame.fill(0x20);
+  frame.set(encoded);
+  frame[payloadBytes] = 0x0a;
+  return frame;
 }
 
 class FakeProcess implements ExactComponentProcess {
