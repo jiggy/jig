@@ -682,7 +682,12 @@ export class ServiceHostSession {
   }
 
   private fail(code: RunHostFailureCode, message: string, details?: JsonValue): void {
-    if (this.localFailure !== undefined || this.mountTerminal !== undefined) return;
+    if (this.localFailure !== undefined) return;
+    if (this.mountTerminal !== undefined) {
+      this.recordFailure(code, message, details);
+      this.startTermination();
+      return;
+    }
     this.recordFailure(code, message, details);
     if (this.phase !== "new" && this.phase !== "terminal") this.phase = "stopping";
     for (const invocation of this.invocations.values()) {
@@ -695,7 +700,12 @@ export class ServiceHostSession {
   }
 
   private failProtocol(message: string, diagnostic?: JsonObject): void {
-    if (this.localFailure !== undefined || this.mountTerminal !== undefined) return;
+    if (this.localFailure !== undefined) return;
+    if (this.mountTerminal !== undefined) {
+      this.recordFailure("PROTOCOL_ERROR", message);
+      this.startTermination();
+      return;
+    }
     this.recordFailure("PROTOCOL_ERROR", message);
     this.phase = "stopping";
     this.readyDeferred.reject(new Error(`PROTOCOL_ERROR: ${message}`));

@@ -79,6 +79,28 @@ for (const provider of providers) {
       });
     });
 
+    test("rejects detached invocation work and waits for wire settlement", async () => {
+      await withPeer(provider, async (peer) => {
+        await ready(peer);
+        peer.send(invoke("host:2", "detached", { key: "s-3" }));
+
+        const dependency = await peer.receive();
+        expect(dependency).toMatchObject({
+          method: "effect/call",
+          params: {
+            ownerRequestId: "host:2",
+            operationId: "detached:1",
+          },
+        });
+        expect(await peer.receive()).toEqual(cancel(dependency.id as string));
+        await expect(peer.receive(75)).rejects.toThrow("timed out");
+
+        peer.send(operationError(dependency.id as string, "CANCELLED"));
+        expectOperationError(await peer.receive(), "host:2", "EXECUTION_FAILED");
+        await stop(peer);
+      });
+    });
+
     test("fails fatally when the Host invokes before readiness acknowledgement", async () => {
       await withPeer(provider, async (peer) => {
         peer.send(mount());

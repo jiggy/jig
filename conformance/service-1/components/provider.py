@@ -17,6 +17,16 @@ async def sessions(context):
             method="read",
             input=context.input,
         )
+    if context.method == "detached":
+        task = asyncio.create_task(context.call_effect(
+            operation_id="detached:1",
+            slot="storage",
+            method="read",
+            input=context.input,
+        ))
+        task.add_done_callback(lambda completed: completed.exception())
+        await asyncio.sleep(0)
+        return "must-not-succeed"
     if context.method == "slow":
         try:
             await asyncio.Event().wait()

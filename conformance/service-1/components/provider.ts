@@ -17,6 +17,15 @@ const service: ServiceDefinition = {
           input: context.input,
         });
       }
+      if (context.method === "detached") {
+        void context.callEffect({
+          operationId: "detached:1",
+          slot: "storage",
+          method: "read",
+          input: context.input,
+        });
+        return "must-not-succeed";
+      }
       if (context.method === "slow") {
         await new Promise<void>((resolve) => {
           context.signal.addEventListener("abort", () => resolve(), { once: true });

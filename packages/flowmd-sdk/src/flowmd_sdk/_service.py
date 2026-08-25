@@ -62,6 +62,7 @@ class _Pending:
     kind: str
     owner: _Owner
     future: asyncio.Future[Any]
+    request_written: asyncio.Event = field(default_factory=asyncio.Event)
     cancel_sent: bool = False
     user_cancelled: bool = False
 
@@ -680,7 +681,10 @@ class _ServiceRuntime:
             self._pending[request_id] = pending
             owner.pending.add(request_id)
             try:
-                await self._write({"jsonrpc": "2.0", "id": request_id, "method": method, "params": normalize_json1(params)})
+                try:
+                    await self._write({"jsonrpc": "2.0", "id": request_id, "method": method, "params": normalize_json1(params)})
+                finally:
+                    pending.request_written.set()
             except asyncio.CancelledError:
                 pending.user_cancelled = True
                 await self._send_cancel(request_id)
@@ -696,6 +700,13 @@ class _ServiceRuntime:
             self._update_owner_empty(owner)
 
     async def _send_cancel(self, request_id: str) -> None:
+        pending = self._pending.get(request_id)
+        if pending is None or pending.cancel_sent or self._fatal:
+            return
+        # The cancellation names a request already visible to the Host. A
+        # thread-backed stdout write and an owner cancellation may otherwise
+        # race, putting this notification on the wire first.
+        await pending.request_written.wait()
         pending = self._pending.get(request_id)
         if pending is None or pending.cancel_sent or self._fatal:
             return

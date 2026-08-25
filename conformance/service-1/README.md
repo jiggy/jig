@@ -11,7 +11,8 @@ The matrix uses an independent Bun protocol peer to drive both the TypeScript
 and Python `@flowmd/sdk` / `flowmd-sdk` Provider projections. It covers fixed
 readiness, concurrent invocation, declared errors, Mount- and
 invocation-attributed calls, cancellation which cannot be swallowed, clean
-Mount shutdown, premature invocation, and invalid readiness acknowledgement.
+Mount shutdown, detached-work rejection and wire quiescence, premature
+invocation, and invalid readiness acknowledgement.
 
 The private Jig Host separately drives both Provider implementations in
 `packages/jig/test/service-process.test.ts`.

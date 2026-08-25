@@ -139,6 +139,47 @@ describe("private ServiceHostSession", () => {
     expect(await stopped).toMatchObject({ status: "failed", code: "EXECUTION_FAILED" });
   });
 
+  test("invalidates Mount success after a trailing frame", async () => {
+    const process = new FakeProcess();
+    const service = new ServiceHostSession(process, activation());
+    await startReady(service, process);
+    const stopped = service.stop();
+    await process.nextHost();
+    process.emit({ jsonrpc: "2.0", id: "host:1", result: {} });
+    process.emit({ jsonrpc: "2.0", method: "unknown/event", params: {} });
+    expect(await stopped).toMatchObject({ status: "failed", code: "PROTOCOL_ERROR" });
+  });
+
+  test("invalidates Mount success after an incomplete trailing frame", async () => {
+    const process = new FakeProcess();
+    const service = new ServiceHostSession(process, activation());
+    await startReady(service, process);
+    const stopped = service.stop();
+    await process.nextHost();
+    process.emit({ jsonrpc: "2.0", id: "host:1", result: {} });
+    process.emitBytes(new TextEncoder().encode("{\"jsonrpc\":\"2.0\"}"));
+    process.finish(0);
+    expect(await stopped).toMatchObject({ status: "failed", code: "PROTOCOL_ERROR" });
+  });
+
+  test("classifies process loss before readiness as channel loss", async () => {
+    const clean = new FakeProcess();
+    const cleanService = new ServiceHostSession(clean, activation());
+    const cleanStart = cleanService.start();
+    await clean.nextHost();
+    clean.finish(0);
+    await expect(cleanStart).rejects.toThrow("CHANNEL_LOST");
+    expect(await cleanService.result()).toMatchObject({ status: "failed", code: "CHANNEL_LOST" });
+
+    const unclean = new FakeProcess();
+    const uncleanService = new ServiceHostSession(unclean, activation());
+    const uncleanStart = uncleanService.start();
+    await unclean.nextHost();
+    unclean.finish(9);
+    await expect(uncleanStart).rejects.toThrow("CHANNEL_LOST");
+    expect(await uncleanService.result()).toMatchObject({ status: "failed", code: "CHANNEL_LOST" });
+  });
+
   test("snapshots activation and invocation values before delayed transport", async () => {
     const process = new FakeProcess();
     const mutableSettings = { mode: "original" };
@@ -300,6 +341,10 @@ class FakeProcess implements ExactComponentProcess {
     frame.set(bytes);
     frame[bytes.byteLength] = 0x0a;
     this.stdout.push(frame);
+  }
+
+  emitBytes(bytes: Uint8Array): void {
+    this.stdout.push(bytes);
   }
 
   finish(exitCode: number | null, signal: string | null = null): void {
