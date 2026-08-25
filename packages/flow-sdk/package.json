@@ -2,7 +2,7 @@
   "name": "@flowmd/sdk",
   "version": "0.0.0",
   "private": true,
-  "description": "TypeScript SDK for the FLOW Run/1 protocol",
+  "description": "TypeScript SDK for FLOW Run/1 and Service/1",
   "type": "module",
   "sideEffects": false,
   "types": "./dist/index.d.ts",

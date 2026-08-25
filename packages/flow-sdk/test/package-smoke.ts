@@ -66,6 +66,8 @@ try {
       "json.js",
       "protocol.d.ts",
       "protocol.js",
+      "service-session.d.ts",
+      "service-session.js",
       "session.d.ts",
       "session.js",
       "transport.d.ts",
@@ -85,10 +87,11 @@ try {
 
   await writeFile(
     join(consumer, "smoke.mjs"),
-    `import { EffectError, OperationError } from "@flowmd/sdk";
+    `import { EffectError, OperationError, ServiceError } from "@flowmd/sdk";
 const operation = new OperationError("UNAVAILABLE");
 const effect = new EffectError("not-found", null);
-if (operation.code !== "UNAVAILABLE" || effect.errorName !== "not-found") {
+const service = new ServiceError("not-found", null);
+if (operation.code !== "UNAVAILABLE" || effect.errorName !== "not-found" || service.errorName !== "not-found") {
   throw new Error("installed runtime exports are invalid");
 }
 `,
@@ -102,7 +105,7 @@ if (operation.code !== "UNAVAILABLE" || effect.errorName !== "not-found") {
 
   await writeFile(
     join(consumer, "smoke.ts"),
-    `import { OperationError, type RunHandler } from "@flowmd/sdk";
+    `import { OperationError, type RunHandler, type ServiceDefinition } from "@flowmd/sdk";
 const handler: RunHandler = async (run) => ({
   outcome: "done",
   output: await run.callEffect({
@@ -113,6 +116,11 @@ const handler: RunHandler = async (run) => ({
   }),
 });
 void handler;
+const service: ServiceDefinition = {
+  exports: { clock: async () => null },
+  mount: async context => { await context.ready(); await context.cancelled; },
+};
+void service;
 void new OperationError("UNAVAILABLE");
 `,
   );
