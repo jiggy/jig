@@ -10,14 +10,14 @@ why trusted host code is not another coordinator-owned content store, what the
 smallest current implementation generation contains, and the remaining gates
 before a Python/Linux recipe may be `READY`.
 
-## 1. One generation, two roles
+## 1. One generation, two Jig-authored roles
 
 The current private Python/Linux implementation cannot be split into an
 independent Adapter bundle and Backend bundle. Its authenticity checks use
 module-local `WeakSet`s; values created by a second evaluation of those modules
 are intentionally rejected.
 
-The smallest honest generation therefore has two members:
+The smallest honest generation therefore has two Jig-authored programs:
 
 ```text
 python-linux-coordinator/1
@@ -204,8 +204,8 @@ Successful convergence produces only a private process-local branded value
 with `admissible: false`. It proves that this process read the committed exact
 intent, successfully requested the complete effect set, freshly inspected the
 exact local links, and freshly reobserved the generation. It does **not** prove
-exact collector enumeration, same-path daemon reachability, power-loss
-durability, persisted completion, acquisition, retirement, or `READY`. There
+a confined daemon-visible retention mechanism, power-loss durability,
+persisted completion, acquisition, retirement, or `READY`. There
 is no production canary, passive verifier, unlink, rollback, generation
 replacement, or cleanup operation. Failures may leave only replayable exact
 intended roots.
@@ -226,13 +226,17 @@ Collector-visible retention is necessary but not sufficient. A runnable
 generation still needs:
 
 1. trusted host bootstrap/configuration for the registration anchor and
-   expected record digest plus qualifying exact same-path daemon reachability;
-2. a restricted launcher that authenticates one lock-first, one-shot admitted
-   spawn plan and itself supplies the fixed registration selection, never
-   caller-selected helper paths or raw arguments;
-3. one durable acquisition/recovery transaction that freshly observes the
-   registration, reconverges and reverifies the exact generation, and runs the
-   active Backend preflight before package code;
+   expected record digest plus one confined daemon-visible retention mechanism
+   meeting [review 129](129-private-nix-reachability-blocker.md);
+2. one lock-first durable acquisition/recovery transaction that persists a
+   protected one-shot spawn intent and its fixed registration/generation
+   selection;
+3. a restricted launcher that accepts only that opaque intent identity,
+   claims it under the acquisition owner, derives paths, arguments, mounts,
+   environment, cgroup controls, and registration selection only from
+   protected state and host-owned configuration, then freshly verifies the
+   registration/generation and performs active Backend preflight before
+   package code;
 4. durable ownership for every trusted executable used by that transaction:
    coordinator/helper Bun, Python, Nix query tool, Bubblewrap, shell, and their
    required closures, with the privileged launcher either included or
@@ -257,20 +261,23 @@ original review is now implemented by
 of consent ordering and generation CAS, never evidence of execution support.
 
 The real coordinator/helper bundle checkpoint is now implemented by
-[review 126](126-private-host-bundle-proof.md). The remaining private
-prerequisites can advance independently:
+[review 126](126-private-host-bundle-proof.md). The inert eight-role
+observation/codec is implemented by
+[review 124](124-private-python-linux-host-generation.md), exact bundle loading
+is proven, retain-only convergence is implemented by
+[review 127](127-private-host-root-convergence.md), and strict non-admissible
+registration observation is implemented by
+[review 128](128-private-host-registration-observation.md). The rejected
+global root-query candidate and the corrected ordering are recorded in
+[review 129](129-private-nix-reachability-blocker.md).
 
-1. finish the privileged helper's authorization boundary and produce one
-   active Linux Backend preflight receipt (the ambient startup sub-boundary is
-   now closed by [review 123](123-private-helper-startup-posture.md)); and
-2. continue the canonical host-generation work: the inert eight-role
-   observation/codec is implemented by [review 124](124-private-python-linux-host-generation.md),
-   exact bundle loading is proven, retain-only convergence is implemented by
-   [review 127](127-private-host-root-convergence.md), and strict non-admissible
-   registration observation is implemented by
-   [review 128](128-private-host-registration-observation.md), while qualifying
-   reachability, trusted production selection, acquisition, spawn recovery,
-   and retirement remain open.
+Only non-authorizing helper corpus work and an isolated registrar proof may
+advance independently. No production launcher or qualifying active Backend
+preflight may be connected before durable acquisition exists. Earlier
+preflight evidence remains proof-only and must be rerun inside the acquired
+spawn transaction. A confined daemon-visible retention mechanism, trusted
+production selection, acquisition, restricted launch, spawn recovery, and
+retirement remain open.
 
 Neither slice exposes a public Backend, host-generation, or retention API.
 Neither may call the Python/Linux recipe `READY`. The later `READY` branch must

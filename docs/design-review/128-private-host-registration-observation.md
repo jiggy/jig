@@ -9,8 +9,9 @@ the helper, connect admission, or make the recipe `READY`.
 This checkpoint closes only the record-observation part of the host-policy
 boundary left open by
 [review 127](127-private-host-root-convergence.md). The production source of
-the trusted anchor and expected registration digest remains a later launcher
-and host-bootstrap concern.
+the trusted anchor and expected registration digest remains a host-bootstrap
+concern and must be fixed into protected acquisition state before the
+restricted launcher consumes it.
 
 ## 1. Trust begins at an explicit anchor
 
@@ -164,11 +165,14 @@ This checkpoint does not prove:
 - resistance to a malicious host administrator or mount-namespace authority.
 
 The next qualifying slice must not widen this observer. It must first establish
-a trusted production source for the anchor and expected digest plus exact
-same-path reachability. A restricted launcher must then authenticate one
-lock-first, one-shot admitted spawn plan and supply that fixed registration
-selection itself, never caller-selected helper paths or raw arguments. Within
-durable acquisition and recovery ownership, Jig must freshly observe the
+a trusted production source for the anchor and expected digest plus the
+confined daemon-visible retention mechanism required by
+[review 129](129-private-nix-reachability-blocker.md). Durable acquisition
+must then create one lock-first, one-shot admitted spawn intent before a
+restricted launcher can consume it. The launcher obtains the fixed selection
+solely from the protected acquisition record and host-owned configuration,
+never caller-selected helper paths or raw arguments. Within
+that acquisition and recovery owner, Jig must freshly observe the
 registration, reconverge and reverify the exact generation, and run the active
 Backend preflight before package code. Until those gates and restart-safe
 lifecycle ownership are proven, the Python/Linux recipe remains `UNAVAILABLE`.
