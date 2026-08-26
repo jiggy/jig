@@ -92,7 +92,7 @@ Adapter or a retained `READY` recipe.
 | Service/1 | Wire and Provider SDK candidates plus the session-local matrix are complete; durable hosting and a second independent Host remain open. |
 | Sley compatibility | One real Run/1 integration proves the lower boundary; Jig Graph's definition/compiler interface remains open. |
 | Linux containment | Strong private cgroup-v2/Bubblewrap evidence exists; no public Sandbox Backend interface is claimed. |
-| Project authoring and capture | Inert authoring, capture, retention, and linking are generic private proofs. Executing and retaining the aggregate is proven only with the current Nix-backed proof-host evaluator; generic retained evaluator support remains open. |
+| Project authoring and capture | Inert authoring, capture, retention, and linking are generic private proofs. The private evaluator now consumes an authenticated sandbox-lifetime runtime-support receipt rather than a Nix lifetime observation; the agent-sandbox observer remains one proof-host input rather than a public host interface. |
 | Lock and admission | Private portable projection and durable exact-`UNAVAILABLE` plan/apply path are complete. |
 | Runnable admission | No generic retained `READY` recipe or restart-safe spawn lifecycle exists. |
 | Public Jig administration | Plan, apply, root-Run, authentication, status, and error interfaces remain release-gated. |
@@ -145,17 +145,18 @@ mutation API, the checkpoint ends at exact `UNAVAILABLE`. Only after the
 substrate works end to end should Jig derive the smallest private
 Adapter/Backend candidate model from the path actually consumed.
 
-On 2026-08-26, the proof host did not contain such a substrate or protected
-registration. Its Bun, Bash, Bubblewrap, and Python installations all resolved
-into `/nix/store`, and its only privileged entrypoint was broad passwordless
-sudo. Installing copies with that same broad authority would not satisfy the
-administrator-owned lifetime or narrowly authorized launcher requirements.
-This is the current successful stop condition, not permission for repository
-code to manufacture another installation or retention subsystem.
+Later on 2026-08-26, the sandbox host supplied a sandbox-lifetime runtime lease
+and bounded read-only receipts. The private observer and evaluator checkpoint
+in [review 131](131-private-runtime-lease-observation.md) now proves retained
+author evaluation and fresh-process reacquisition without giving Jig Nix
+lifecycle authority. The host's isolated live-GC/teardown exercise remains a
+deployment check. A narrowly installed production launcher and one retained
+Flow execution recipe remain open; the lease does not manufacture either.
 
 Before expansion, the slice must prove:
 
-1. generic retained author-evaluator support on the selected host;
+1. generic retained author-evaluator support on the selected host (**private
+   proof complete in review 131**);
 2. deterministic Adapter and Backend selection from explicit host policy;
 3. one generic retained `READY` disposition beside the existing exact
    `UNAVAILABLE` branch;

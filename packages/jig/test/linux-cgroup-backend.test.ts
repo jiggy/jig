@@ -5,10 +5,15 @@ import { access, chmod, mkdir, mkdtemp, readFile, readdir, realpath, rm, stat, w
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { pathToFileURL } from "node:url";
 
 import {
   createPrivateActivationPlanningObservation,
 } from "../src/internal/activation-planning.js";
+import {
+  observeAgentSandboxRuntimeSupport,
+  requirePrivateRuntimeSupportObservation,
+} from "../src/internal/agent-sandbox-runtime-support.js";
 import {
   PrivateLinuxCgroupBackend,
   requirePrivateLinuxCgroupBackend,
@@ -120,6 +125,53 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
     ]);
     expect(duplicate.code).toBe(70);
     expect(duplicate.stderr).toContain("invalid trusted cgroup helper arguments");
+  });
+
+  test("reacquires the leased runtime support in a fresh coordinator process", async () => {
+    const executable = await realpath("/bin/bun");
+    const receiptsDirectory = process.env.AGENT_RUNTIME_RECEIPTS_DIR;
+    const expectedLeaseId = process.env.AGENT_RUNTIME_LEASE_ID;
+    if (receiptsDirectory === undefined || expectedLeaseId === undefined) {
+      throw new Error("proof host did not expose its runtime lease receipt");
+    }
+    const module = pathToFileURL(join(
+      import.meta.dir,
+      "..",
+      "src",
+      "internal",
+      "agent-sandbox-runtime-support.ts",
+    )).href;
+    const program = [
+      `import { observeAgentSandboxRuntimeSupport } from ${JSON.stringify(module)};`,
+      `const value = await observeAgentSandboxRuntimeSupport(${JSON.stringify({
+        receiptsDirectory,
+        expectedLeaseId,
+        executablePath: executable,
+      })});`,
+      "console.log(JSON.stringify(value));",
+    ].join("\n");
+    const arguments_ = [
+      "--no-env-file",
+      "--no-install",
+      "--config=/dev/null",
+      "-e",
+      program,
+    ];
+    const first = await invoke(executable, arguments_);
+    const second = await invoke(executable, arguments_);
+    expect(first).toEqual({ code: 0, stdout: expect.any(String), stderr: "" });
+    expect(second).toEqual({ code: 0, stdout: first.stdout, stderr: "" });
+    expect(JSON.parse(second.stdout)).toMatchObject({
+      kind: "runtime-support-observation/1",
+      lease: { id: expectedLeaseId, retention: "until-sandbox-teardown" },
+      executablePath: executable,
+    });
+
+    const mismatched = program.replace(expectedLeaseId, "sandbox-intentionally-wrong");
+    const rejected = await invoke(executable, [...arguments_.slice(0, -1), mismatched]);
+    expect(rejected.code).not.toBe(0);
+    expect(rejected.stdout).toBe("");
+    expect(rejected.stderr).toContain("runtime lease receipt does not match the selected sandbox lease");
   });
 
   test("hides cgroupfs, prevents migration, and runs as the payload identity", async () => {
@@ -277,10 +329,10 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         // Leave enough time for two Bun startups on a contended proof host.
         wallClockMs: 10_000,
       },
-      readOnlyMounts: [
-        { source: bun.store, destination: bun.store },
-        { source: bun.glibcStore, destination: bun.glibcStore },
-      ],
+      readOnlyMounts: bun.runtimeSupport.closureSources.map((source) => ({
+        source,
+        destination: source,
+      })),
       rootProcessMappings: true,
       entropyDevice: true,
       command: [bun.executable, "-e", [
@@ -307,14 +359,11 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
     const evaluator = {
       backend: backend(host),
       bunPath: bun.executable,
-      runtimeMounts: [
-        { source: bun.store, destination: bun.store },
-        { source: bun.glibcStore, destination: bun.glibcStore },
-      ],
-      nixRuntimeObservation: {
-        executableDigest: bun.digest,
-        closureSources: [bun.store, bun.glibcStore],
-      },
+      runtimeMounts: bun.runtimeSupport.closureSources.map((source) => ({
+        source,
+        destination: source,
+      })),
+      runtimeSupport: bun.runtimeSupport,
       jigDistributionPath: distribution,
     } as const;
     let fixtureSequence = 0;
@@ -364,6 +413,12 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         expect(evaluated.profile).toMatchObject({
           protocol: "jig-author-evaluator/1",
           buildOptions: "bun-cjs-closed-static-closure/1",
+          runtimeSupport: {
+            kind: "runtime-support-observation/1",
+            digest: bun.runtimeSupport.digest,
+            leaseId: bun.runtimeSupport.lease.id,
+            receiptDigest: bun.runtimeSupport.lease.receiptDigest,
+          },
           sandbox: {
             kind: "linux-cgroup-v2-bubblewrap/1",
             rootProcessMappings: true,
@@ -506,14 +561,11 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         evaluator: {
           backend: backend(host),
           bunPath: bun.executable,
-          runtimeMounts: [
-            { source: bun.store, destination: bun.store },
-            { source: bun.glibcStore, destination: bun.glibcStore },
-          ],
-          nixRuntimeObservation: {
-            executableDigest: bun.digest,
-            closureSources: [bun.store, bun.glibcStore],
-          },
+          runtimeMounts: bun.runtimeSupport.closureSources.map((source) => ({
+            source,
+            destination: source,
+          })),
+          runtimeSupport: bun.runtimeSupport,
           jigDistributionPath: distribution,
         },
       });
@@ -873,22 +925,23 @@ async function hostConfiguration(): Promise<HostConfiguration> {
  */
 async function proofHostBunClosure(): Promise<{
   executable: string;
-  store: string;
-  glibcStore: string;
-  digest: string;
+  runtimeSupport: Awaited<ReturnType<typeof observeAgentSandboxRuntimeSupport>>;
 }> {
   const executable = await realpath("/bin/bun");
-  const bytes = await readFile(executable);
-  const match = bytes.toString("latin1").match(
-    /\/nix\/store\/[a-z0-9]{32}-glibc-[^/\0]+\/lib\/ld-linux-x86-64\.so\.2/,
-  );
-  if (match === null) throw new Error("could not derive Bun's pinned glibc closure from its ELF interpreter");
-  const glibcStore = match[0]!.slice(0, match[0]!.indexOf("/lib/"));
+  const receiptsDirectory = process.env.AGENT_RUNTIME_RECEIPTS_DIR;
+  const expectedLeaseId = process.env.AGENT_RUNTIME_LEASE_ID;
+  if (receiptsDirectory === undefined || expectedLeaseId === undefined) {
+    throw new Error("proof host did not expose its runtime lease receipt");
+  }
+  const runtimeSupport = await observeAgentSandboxRuntimeSupport({
+    receiptsDirectory,
+    expectedLeaseId,
+    executablePath: executable,
+  });
+  expect(requirePrivateRuntimeSupportObservation(runtimeSupport)).toBe(runtimeSupport);
   return {
     executable,
-    store: dirname(dirname(executable)),
-    glibcStore,
-    digest: `sha256:${createHash("sha256").update(bytes).digest("hex")}`,
+    runtimeSupport,
   };
 }
 

@@ -7,6 +7,10 @@ import {
   PrivateLinuxCgroupBackend,
   type PrivateLinuxReadOnlyMount,
 } from "../internal/linux-cgroup-backend.js";
+import {
+  requirePrivateRuntimeSupportObservation,
+  type PrivateRuntimeSupportObservation,
+} from "../internal/agent-sandbox-runtime-support.js";
 import { materializeCapturedPackage } from "../internal/package-materialization.js";
 import {
   canonicalJson,
@@ -48,15 +52,8 @@ export interface PrivateAuthorEvaluatorOptions {
   readonly backend: PrivateLinuxCgroupBackend;
   readonly bunPath: string;
   readonly runtimeMounts: readonly PrivateLinuxReadOnlyMount[];
-  /**
-   * Proof-host evidence only. The current private evaluator accepts an exact
-   * immutable Nix-store closure; this is not a Runtime Adapter interface or
-   * project `flake.nix`/`shell.nix` support.
-   */
-  readonly nixRuntimeObservation: {
-    readonly executableDigest: string;
-    readonly closureSources: readonly string[];
-  };
+  /** Private host-retained runtime evidence; not a Runtime Adapter interface. */
+  readonly runtimeSupport: PrivateRuntimeSupportObservation;
   readonly jigDistributionPath: string;
 }
 
@@ -69,6 +66,12 @@ export interface EvaluatorProfile {
   readonly runtimeExecutable: string;
   readonly runtimeDigest: string;
   readonly runtimeMounts: readonly string[];
+  readonly runtimeSupport: {
+    readonly kind: "runtime-support-observation/1";
+    readonly digest: string;
+    readonly leaseId: string;
+    readonly receiptDigest: string;
+  };
   readonly buildOptions: "bun-cjs-closed-static-closure/1";
   readonly sandbox: {
     readonly kind: "linux-cgroup-v2-bubblewrap/1";
@@ -142,10 +145,11 @@ export async function evaluateAuthorClosure(
   }
   const distribution = await realpath(options.jigDistributionPath);
   const bunPath = await realpath(options.bunPath);
+  const runtimeSupport = requirePrivateRuntimeSupportObservation(options.runtimeSupport);
   const runtimeMounts = await checkedRuntimeMounts(
     options.runtimeMounts,
     bunPath,
-    options.nixRuntimeObservation,
+    runtimeSupport,
   );
   const toolchain = await capturePackageDirectory(distribution).catch((error) => unavailable(
     "PROJECT_EVALUATOR_UNAVAILABLE",
@@ -184,12 +188,19 @@ export async function evaluateAuthorClosure(
       runtimeExecutable: bunPath,
       runtimeDigest,
       runtimeMounts: Object.freeze(runtimeMounts.map(({ source }) => source)),
+      runtimeSupport: Object.freeze({
+        kind: runtimeSupport.kind,
+        digest: runtimeSupport.digest,
+        leaseId: runtimeSupport.lease.id,
+        receiptDigest: runtimeSupport.lease.receiptDigest,
+      }),
       buildOptions: "bun-cjs-closed-static-closure/1" as const,
     });
-    if (runtimeDigest !== options.nixRuntimeObservation.executableDigest) {
+    if (bunPath !== runtimeSupport.executablePath ||
+        runtimeDigest !== runtimeSupport.executableDigest) {
       unavailable(
         "PROJECT_EVALUATOR_UNAVAILABLE",
-        "selected Bun executable no longer matches its sealed observation",
+        "selected Bun executable no longer matches its retained runtime support",
       );
     }
     const modules = captured.modules.map((module) => ({
@@ -461,20 +472,18 @@ function evaluatorLimits() {
 async function checkedRuntimeMounts(
   mounts: readonly PrivateLinuxReadOnlyMount[],
   bunPath: string,
-  observation: PrivateAuthorEvaluatorOptions["nixRuntimeObservation"],
+  observation: PrivateRuntimeSupportObservation,
 ): Promise<readonly PrivateLinuxReadOnlyMount[]> {
-  if (!bunPath.startsWith("/nix/store/")) {
-    unavailable(
-      "PROJECT_EVALUATOR_UNAVAILABLE",
-      "the first evaluator requires Bun from an immutable Nix store closure",
-    );
+  requirePrivateRuntimeSupportObservation(observation);
+  if (bunPath !== observation.executablePath) {
+    unavailable("PROJECT_EVALUATOR_UNAVAILABLE", "evaluator runtime executable is not retained");
   }
   const normalized = await Promise.all(mounts.map(async ({ source, destination }) => {
     const canonical = await realpath(source);
-    if (!canonical.startsWith("/nix/store/") || destination !== canonical) {
+    if (destination !== canonical) {
       unavailable(
         "PROJECT_EVALUATOR_UNAVAILABLE",
-        "evaluator runtime mounts must map immutable Nix store paths onto themselves",
+        "evaluator runtime mounts must preserve their retained absolute paths",
       );
     }
     return Object.freeze({ source: canonical, destination: canonical });
@@ -486,12 +495,12 @@ async function checkedRuntimeMounts(
     );
   }
   const observedSources = normalized.map(({ source }) => source).sort();
-  const sealedSources = [...observation.closureSources].sort();
+  const sealedSources = [...observation.closureSources];
   if (observedSources.length !== sealedSources.length ||
       observedSources.some((source, index) => source !== sealedSources[index])) {
     unavailable(
       "PROJECT_EVALUATOR_UNAVAILABLE",
-      "evaluator runtime mounts do not match the sealed observation",
+      "evaluator runtime mounts do not match the retained support closure",
     );
   }
   return Object.freeze(normalized);
