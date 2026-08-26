@@ -483,39 +483,73 @@ The admission operation semantics are summarized as:
 
 ```text
 plan() -> {
-  candidateDigest,
+  planDigest,
+  captureDigest,
+  semanticDigest,
   activeGeneration,
   normalizedDelta,
   authorityDelta
 }
 
-apply(candidateDigest, activeGeneration) ->
+apply(planDigest, activeGeneration) ->
   newGeneration | STALE_PLAN | INVALID_CANDIDATE
 ```
 
 These names are explanatory. Authentication, transport, closed delta/result
 schemas, and the public host SDK/CLI remain release gates.
 
-The candidate digest covers the captured source closure, configured
-memberships, normalized declarations, resolutions, exact package/provider
-revisions, settings, selectors, attachments, host-capability attenuation,
-runtime choices, and lock result. It is internal
-Jig evidence, not FLOW metadata.
+Three domain-separated identities answer different questions:
+
+```text
+captureDigest
+    Which exact retained source, membership, evaluator, and toolchain
+    observation produced this result?
+
+semanticDigest
+    Which normalized behavior, dependencies, exact executable/provider
+    artifacts, authority, and pinned readiness recipes would be admitted?
+
+planDigest
+    Which exact capture, semantic result, resolution-input snapshot, proposed
+    portable lock, and active-generation base was reviewed?
+```
+
+The semantic digest excludes declaration spelling, comments, root inode, and
+per-evaluation enforcement counters. It includes exact executable artifacts,
+so an implementation byte change is never formatting-only. The plan digest
+commits to `captureDigest`, `semanticDigest`, the complete immutable
+resolution-input snapshot identity, proposed lock digest, and base generation.
+All three are internal Jig evidence, not FLOW metadata.
 
 `jig apply` displays one aggregate semantic and authority review. A UI may
 notify that watched changes are pending and offer Apply, but the watcher never
 blocks on stdin and never activates them. Multiple edits naturally coalesce
 into one plan.
 
-Before commit, Jig verifies that both the candidate digest and base generation
-still match. Any source, dependency, authority-relevant host-policy, or active-
-generation change returns `STALE_PLAN`. Admission publication and the Hook
-Journal boundary commit atomically in Jig state.
+Before commit, Jig verifies that the plan is still the latest published
+candidate, its base generation and complete resolution-input snapshot still
+match, every retained artifact remains available, the proposed lock bytes are
+durable, and the relevant revocation state is unchanged. Any mismatch returns
+`STALE_PLAN` or `INVALID_CANDIDATE` as appropriate. Apply never reopens visible
+source, reevaluates declarations, rediscovers members, or reruns resolution.
+Admission publication and the Hook Journal boundary commit atomically in Jig
+state.
+
+A visible edit becomes CAS-relevant when capture publishes a replacement
+candidate. Filesystem notification is a liveness mechanism which schedules
+that capture, not an atomicity oracle. An edit not yet captured cannot alter
+the reviewed immutable bytes which apply admits. Once the replacement is
+published, every plan for the prior latest-candidate pointer is stale.
+
+When a newer capture has the same semantic digest and proposed lock as the
+active generation, Jig may record it as an equivalent observation without new
+consent, without replacing active artifacts, and without advancing the
+generation. It never retargets an outstanding plan for an older capture.
 
 Headless use supplies the exact reviewed pair, for example:
 
 ```text
-jig apply --candidate <digest> --active-generation <generation> --yes
+jig apply --plan <digest> --active-generation <generation> --yes
 ```
 
 Without it, the candidate remains pending.
@@ -526,13 +560,30 @@ Committed policy source expresses team-owned desired state. `jig.lock` records
 portable resolution evidence. Neither is local execution consent.
 
 A fresh project may omit `jig.lock` in unlocked mode. Planning then proposes a
-complete lock alongside the candidate, and successful apply publishes both
-through the recoverable lock/admission transaction. `--locked` fails when the
-file or any required entry is absent or would change. Runtime Adapter binaries,
+complete lock alongside the candidate. `--locked` fails when the file or any
+required entry is absent or would change. Runtime Adapter binaries,
 toolchain probes, Sandbox Backend choices, and realized enforcement receipts
 are host-local activation evidence and never portable lock entries. The exact
 lock serialization remains a required focused specification and schema before
 implementation or public Starter release.
+
+Ordinary apply does not need a fictional atomic transaction across the visible
+lock file and protected Jig state because the lock grants no authority. Under
+one host-serialized administration operation Jig:
+
+1. atomically publishes and durably synchronizes the exact proposed canonical
+   lock bytes, or in `--locked` mode verifies the existing bytes without
+   changing them; then
+2. performs one local admission transaction which rechecks the complete CAS,
+   inserts the immutable generation and approval receipt, advances the active
+   pointer, and publishes the Hook Journal boundary.
+
+Jig never commits step 2 before lock durability. A crash after step 1 leaves a
+new inert desired-state lock and the complete old active generation; recovery
+reports the unapplied delta. A crash during step 2 exposes either the old or
+new complete local generation. The immutable active generation retains its own
+lock digest and complete activation record, so a later lock edit cannot mutate
+already admitted behavior.
 
 The active generation, approval receipt, emergency tombstones, and realized
 host authority live under `.jig/`, outside ordinary Flow/Agent authority and
@@ -560,8 +611,9 @@ and `.jig`, approval is confirmation and audit, not a security boundary against
 that principal. Its security value is preventing discovered, imported, or
 sandboxed component bytes from silently becoming authority.
 
-If apply chooses new portable resolutions, the lock update and admission use a
-recoverable transaction. `--locked` rejects any resolution change.
+If apply chooses new portable resolutions, it uses the same ordered durable
+lock-publication and local-admission sequence. `--locked` rejects any
+resolution change.
 
 ## 8. Edit, delete, and revoke
 
@@ -681,9 +733,11 @@ Binding revision.
 2. Invalid exports and non-serializable values reject the whole candidate.
    Hook `on` selectors and `run` references reject unknown keys, wildcards,
    source lists, and non-Run targets.
-3. Filesystem, environment, network, process, time, randomness, dynamic import,
-   native loading, escape imports, infinite loops, and oversized output fail
-   without authority.
+3. Filesystem, environment, network, process creation, dynamic import, native
+   loading, escape imports, infinite loops, and oversized output fail without
+   authority. Clock and randomness may remain language intrinsics; their
+   nondeterminism is contained, the exact bounded output is captured, and
+   apply never reevaluates it.
 4. Evaluation occurs once over the exact privately staged closure; apply never
    reevaluates or rereads project source. Atomic source-revision provenance is
    claimed only when its capture mechanism supplies it.
@@ -691,8 +745,10 @@ Binding revision.
    consent.
 6. A new Hook and its target Run revision can be admitted together; a dangling target
    blocks the aggregate.
-7. Edits during review return `STALE_PLAN`; only displayed bytes and
-   resolutions publish.
+7. A replacement capture or resolution-input snapshot published during review
+   returns `STALE_PLAN`; only the exact displayed capture and resolutions may
+   publish. A raw filesystem edit has no authority before capture and cannot
+   mutate the retained bytes under review.
 8. Hook revision intervals align exactly with the admission Journal boundary.
 9. Clone/pull of source and lock transfers no local consent.
 10. Unapproved deletion leaves old behavior active; approved deletion closes
@@ -703,8 +759,10 @@ Binding revision.
 13. `discover()` is accepted only for project source fields. `candidates()` is
     accepted only for compatible `flow/call` Binding slots and freezes a
     closed allowlist. An unmapped slot is always missing.
-14. Clean crash recovery exposes either the old or new complete generation,
-    never a mixture.
+14. Lock publication precedes local admission. A crash between them exposes the
+    new inert lock and old complete active generation as a pending delta; a
+    crash in local admission exposes either the old or new complete generation,
+    never a mixed authority state.
 15. A host-capability Binding cannot install/trust a provider, run, or mount;
     missing or ambiguous registrations leave the candidate unresolved, a
     resolved but inoperable provider may be unavailable, and branch-illegal
@@ -744,25 +802,28 @@ Binding revision.
 26. Missing lock is permitted only in unlocked mode and causes planning to
     propose a complete lock; `--locked` rejects absence or drift, and no
     host-local runtime or enforcement receipt enters the portable lock.
-27. A code-backed package with both instruction opt-ins pins instruction only
+27. Retrying the exact `(planDigest, baseGeneration)` after a lost successful
+    response returns its already-created direct child generation. If another
+    generation intervened, it returns `STALE_PLAN` and never reruns resolution.
+28. A code-backed package with both instruction opt-ins pins instruction only
     when zero exact recipes qualify during planning; exact ambiguity stays
     unavailable. Failure or machinery loss after an exact recipe is pinned
     never activates instruction fallback.
-28. An instruction recipe pins one projection-capable Agent dependency during
+29. An instruction recipe pins one projection-capable Agent dependency during
     planning and acquires its exact live provider-generation lease during Run
     admission; provider absence fails without rebinding. The provider form is
     a release-gated interface question rather than an assumed package API.
-29. Applying a candidate after `BINDING_MISSING` never changes the old Run or
+30. Applying a candidate after `BINDING_MISSING` never changes the old Run or
     operation. Repeating its root submission key returns the old terminal Run;
     only a new key may select the new admission generation.
-30. Redelivering an old Hook/Event pair after maintenance returns the same old
+31. Redelivering an old Hook/Event pair after maintenance returns the same old
     derived Run. Retrying Hook-triggered work requires a new Event or an
     explicit root submission with a new key; admission never replays the Hook.
-31. Aggregate authority inspection includes the fixed attachment and effect
+32. Aggregate authority inspection includes the fixed attachment and effect
     authority reachable through every exact dependency Binding; it never
     mislabels that authority as a direct caller attachment or omits it because
     invocation is mediated.
-32. Every package execution begins with read-only prepared package bytes and
+33. Every package execution begins with read-only prepared package bytes and
     pinned Runtime Support Closure, private read-write scratch, and protocol
     stdio. Environment, network, extra roots and descriptors, and host IPC stay
     denied until explicitly admitted. Descendants remain in the same bounded
@@ -771,7 +832,7 @@ Binding revision.
     kernel-file exception is a separately planned and receipted read-only
     `root-process-mappings` view; it never admits a pseudo-filesystem root or
     retargets to descendants.
-33. Package Bindings reject a generic `grants` field. A host-capability
+34. Package Bindings reject a generic `grants` field. A host-capability
     Binding accepts only the closed registration-specific attenuation shape,
     validates it against that registration, and cannot exceed provider or
     host-policy ceilings. Omission normalizes to `{}`/least optional authority,

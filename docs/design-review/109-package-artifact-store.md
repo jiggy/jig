@@ -30,8 +30,10 @@ retention; the bare reference does not. It does **not** prove:
 - that dependencies or authority were resolved; or
 - that the package was admitted.
 
-Source-capture and semantic-candidate digests remain distinct identities. The
-current direct-target observation still contains only `packageDigest`; a later
+Capture and semantic digests remain distinct identities. The later reviewed
+plan digest binds both to exact resolution inputs, lock proposal, and active
+generation. The current direct-target observation still contains only
+`packageDigest`; a later
 durable aggregate will carry `package: PackageArtifactRef` after publication.
 
 ## 2. Stored representation

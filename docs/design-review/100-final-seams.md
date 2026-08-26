@@ -187,14 +187,20 @@ See [`../spec/project-policy.md`](../spec/project-policy.md).
 ## 6. Consent is local atomic admission
 
 `jig apply` reviews one semantic and authority delta and performs a
-compare-and-set over the exact candidate digest and active generation. Any edit
-or relevant resolution/policy change while review is open returns
-`STALE_PLAN`. The Hook Journal boundary and admission generation publish
-atomically.
+compare-and-set over the exact plan digest and active generation. The plan
+commits to separate capture and semantic digests plus every immutable resolver
+input and the proposed lock. A published replacement capture or relevant
+resolution/policy change while review is open returns `STALE_PLAN`; apply never
+reopens visible source. The Hook Journal boundary and admission generation
+publish atomically in protected Jig state.
 
 The project source and committed `jig.lock` express desired state and portable
 resolution evidence; neither transfers host consent. Local approval receipts
 and emergency tombstones live under `.jig/`, outside normal component authority.
+Ordinary apply durably publishes the inert lock first and only then commits the
+local admission transaction. A crash between those steps leaves the new lock
+pending against the complete old generation rather than requiring a
+cross-medium atomicity claim.
 
 Adds, edits, renames, removals, package/provider changes, and behavior changes
 all remain pending. A pending deletion leaves the old immutable generation

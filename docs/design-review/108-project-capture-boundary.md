@@ -95,7 +95,7 @@ Adapters, Sandbox Backends, and provider generations. Its private result pins:
 - lock and generation proposals; and
 - every resolution-input snapshot identity.
 
-Apply is a compare-and-set over that result. It does not reevaluate modules,
+Apply is a compare-and-set over the exact reviewed plan for that result. It does not reevaluate modules,
 rediscover members, reread source, reselect providers, or silently substitute
 new host machinery. A missing retained artifact invalidates the candidate.
 
@@ -109,31 +109,41 @@ type RunTargetIdentity =
 
 They converge only in the internal planned execution path.
 
-## 4. Two digests, two questions
+## 4. Three digests, three questions
 
-A source-capture digest and a semantic candidate digest answer different
+A source-capture digest, semantic digest, and plan digest answer different
 questions:
 
 ```text
 capture digest
     Which exact source observation produced this candidate?
 
-semantic candidate digest
+semantic digest
     Which executable behavior, dependencies, authority, and exact artifacts
     would this admission install?
+
+plan digest
+    Which exact capture, semantic result, resolution-input snapshot, proposed
+    lock, and base active generation did the reviewer approve?
 ```
 
 The capture digest includes declaration bytes and evaluator provenance. A
 comment or formatting edit therefore creates a new capture. The semantic
-candidate digest is computed only from normalized resolved meaning; it still
+digest is computed only from normalized resolved meaning; it still
 includes exact executable Package/provider artifacts, so executable source
 changes are never formatting-only.
 
-An apply request is bound to the exact reviewed capture and active-generation
-base. If either pointer changes, that request is stale. Jig may independently
-resolve the newer capture. When its semantic digest is identical, Jig records
-the new capture as equivalent observation without manufacturing an authority
-or behavior change and without replacing pinned execution artifacts. It never
+The plan digest commits to the other two identities, every immutable resolver
+input, the proposed portable lock, and the active-generation base. An apply
+request is bound to that exact plan. If the latest published candidate, base,
+or resolver snapshot changes, that request is stale. Apply never reopens the
+visible tree; a raw edit cannot mutate the retained source under review and
+becomes CAS-relevant only when capture publishes its replacement candidate.
+
+Jig may independently resolve the newer capture. When its semantic digest and
+lock are identical to the active generation, Jig records the new capture as an
+equivalent observation without manufacturing an authority or behavior change,
+advancing the generation, or replacing pinned execution artifacts. It never
 silently retargets the old apply request.
 
 ## 5. First implementation checkpoint

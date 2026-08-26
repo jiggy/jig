@@ -136,14 +136,21 @@ through ServiceHostSession
 The suite's final `afterAll` enumerates the delegated scope and requires zero
 `jig-run-*` cgroups. A separate post-run inspection also found none.
 
-## Bun Runtime Support Closure remains unavailable
+## Bun entropy exception and unavailable Runtime Support Closure
 
-The Backend itself does not expose general `/proc` or `/dev`. It has two
-closed, Backend-owned runtime predicates already reviewed in the
-specification:
+The Backend itself does not expose general `/proc` or `/dev`. The Bun proof
+uses two private switches:
 
-- a single read-only `/proc/self/maps` bind pinned to the activation root; and
-- the exact `/dev/urandom` device.
+- the reviewed `root-process-mappings` predicate, realized by one read-only
+  `/proc/self/maps` bind pinned to the activation root; and
+- an unresolved evaluator-only `/dev/urandom` exception.
+
+The latter is not FLOW metadata, package authority, an admitted Runtime
+Adapter predicate, or a general device grant. The private Backend currently
+resolves the literal host path at launch and receipts only a boolean; it does
+not pin and identify the device strongly enough to establish a portable or
+production trust boundary. It remains confined to the Bun evaluator proof and
+cannot enter a Python recipe or resolved admission candidate.
 
 With `--as-pid-1`, a root Bun 1.3.3 JavaScript process succeeds using only the
 Bun and glibc Nix store trees plus those two predicates. It reads entropy and
@@ -181,9 +188,12 @@ finite immutable Nix Runtime Support Closure
 ```
 
 The Run and Service proofs mount only the 23 paths in the Python runtime's Nix
-closure, the FLOW SDK source, and one fixture component. They expose the exact
-entropy device, clear the ambient environment, write no bytecode, admit no
-network, and observe no memory or PID limit event. This proves that the private
+closure, the FLOW SDK source, and one fixture component. Their historical
+plans also enabled the private entropy switch even though the proof did not
+establish that Python needed it. A conforming Python planning witness must
+disable that switch and prove the exact device absent. The existing paths
+clear the ambient environment, write no bytecode, admit no network, and
+observe no memory or PID limit event. This proves that the private
 `ExactComponentProcess` seam can represent both finite and long-lived enforced
 activations; it is not yet a Python Runtime Adapter implementation or public
 Backend API.

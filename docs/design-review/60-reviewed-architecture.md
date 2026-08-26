@@ -1089,11 +1089,12 @@ to these project roots automatically.
 
 Jig captures `jig.ts`, configured memberships, and the complete static import
 closure before evaluating it once in a bounded authority-free config sandbox.
-It removes ambient filesystem, process, network, environment, clock,
-randomness, secrets, Agents, and dynamic/native loading. The exact normalized
-result—not a claim that arbitrary TypeScript is mathematically deterministic—
-is persisted as the sole resolution and approval input. Publication never
-reevaluates approved source.
+It removes ambient filesystem, process creation, network, environment,
+secrets, Agents, and dynamic/native loading. Clock and randomness may remain
+language intrinsics; their nondeterminism is contained and the exact bounded,
+normalized result—not a claim that arbitrary TypeScript is mathematically
+deterministic—is persisted as the sole resolution and approval input.
+Publication never reevaluates approved source.
 
 `jig inspect` reads inert package and last-normalized state without executing
 project code. `jig plan`/`apply` require trust for the exact captured config
@@ -1119,6 +1120,15 @@ lock as part of the reviewed aggregate delta. Locked checking or applying
 rejects a missing or stale lock. The exact lock serialization remains a focused
 specification prerequisite for implementation and public Starters.
 
+Because that portable lock is inert evidence rather than local consent,
+ordinary apply does not need cross-medium atomic publication. One serialized
+administration operation first atomically writes and durably synchronizes the
+exact proposed lock, then commits the generation, approval receipt, active
+pointer, and Hook Journal boundary in one protected Jig-state transaction. A
+crash after lock publication but before admission leaves the new lock as a
+pending delta against the complete old generation; Jig never exposes a new
+generation before its lock is durable.
+
 The configured `flows/`, `bindings/`, and `hooks/` locations are generated
 conventions rather than kernel magic. `agents/`, `inbox/`, `kanban/`, or any
 other directories remain application conventions unless `jig.ts` explicitly
@@ -1126,8 +1136,10 @@ references them.
 
 Watched edits create one inert aggregate candidate. They do not activate it or
 prompt once per file. `jig apply` reviews the complete semantic and authority
-delta and commits only the displayed candidate digest against the displayed
-base generation; an intervening edit returns `STALE_PLAN`. Adds, edits,
+delta and commits only the displayed plan digest against the displayed base
+generation. That plan commits to separate capture and semantic digests plus
+the immutable resolver-input and lock snapshots. A published replacement
+capture returns `STALE_PLAN`; apply does not reopen mutable source. Adds, edits,
 renames, removals, provider changes, and authority-neutral behavior changes all
 need aggregate consent. A pending deletion leaves the old immutable generation
 active; emergency `jig revoke` is the separate immediate deny operation.
