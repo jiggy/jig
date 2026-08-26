@@ -152,20 +152,22 @@ unless explicitly enabled.
 ## 7. Next boundary
 
 The next slice must not persist this observation as a ready candidate. It
-should prove one real private Python Run recipe end to end:
+must retain and reacquire one generic executable recipe whose complete
+selection and launch machinery comes from explicit trusted host policy:
 
 ```text
-retained Python Package/1 artifact
-    + retained Python/Nix runtime observation
-    + pinned private Linux Backend mechanism and finite limits
-    + runtimePredicates: []
-    -> reacquire and materialize
-    -> derived immutable launch envelope
-    -> Run/1 completion
-    -> whole-tree fence and materialization cleanup
+retained Package/1 artifact
+    + authenticated Runtime Adapter registration and toolchain evidence
+    + authenticated Sandbox Backend registration and finite owner limits
+    -> retained READY or exact UNAVAILABLE disposition
+    -> reviewed lock-first admission
+    -> restart-safe spawn intent and derived launch envelope
+    -> Run/1 completion, whole-tree fence, and cleanup
 ```
 
-That slice should extract the existing Python closure observation from the
-hostile test, vendor or embed the component-side FLOW SDK in Package/1, disable
-the private entropy switch, and prove `/dev/urandom` absent. It still must not
-publish a general Adapter or Sandbox Backend interface.
+The first path remains one direct zero-configuration Run package. It should
+close only the candidate Adapter, Backend, host-policy, lock, and root-Run
+models needed for that vertical path, without assuming Nix or another package
+manager. The archived host-runtime experiment and current roadmap are recorded
+in
+[`130-nix-experiment-disposition-and-next-slice.md`](130-nix-experiment-disposition-and-next-slice.md).

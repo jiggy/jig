@@ -31,6 +31,9 @@ Start here:
 
 Current implementation frontier:
 
+- [`design-review/130-nix-experiment-disposition-and-next-slice.md`](design-review/130-nix-experiment-disposition-and-next-slice.md)
+  is the authoritative current roadmap and explains why the archived
+  host-runtime Nix experiment is not a Jig or FLOW release gate.
 - [`design-review/103-phase-1-flow-foundations.md`](design-review/103-phase-1-flow-foundations.md)
   records the completed Run/1, two-peer, Package/Schema, and independent
   author/evaluator SDK gate.
@@ -44,11 +47,17 @@ Current implementation frontier:
   session-local TypeScript/Python/independent matrix is complete while durable
   hosting and a portable Host-under-test conformance label remain open.
 - [`design-review/107-project-authoring-sdk-slice.md`](design-review/107-project-authoring-sdk-slice.md)
-  through [`design-review/113-retained-project-aggregate.md`](design-review/113-retained-project-aggregate.md)
+  through [`design-review/121-private-unavailable-lock-first-apply.md`](design-review/121-private-unavailable-lock-first-apply.md)
   record the private project pipeline now proven through inert authoring,
   descriptor-confined source capture, retained Package/1 artifacts, pure
   package/Binding linking, one sandboxed static-import evaluator, and one
-  retained package-only project aggregate. Resolution is the next boundary.
+  retained package-only project aggregate; deterministic non-admissible
+  resolution; a strict portable lock projection; and durable lock-first
+  admission of one exact unavailable target. Author-code execution in this
+  chain is still a Nix-backed proof-host fixture, not a generic evaluator
+  recipe. Generic retained evaluator support, a retained `READY` recipe,
+  public host-extension models, and the public plan/apply/root-Run interface
+  are the next boundary.
 
 The focused Run/1 specification owns its finite wire surface. The remaining
 cross-cutting system rules are in the canonical architecture:
@@ -59,11 +68,13 @@ cross-cutting system rules are in the canonical architecture:
 - [security and sandbox enforcement](design-review/60-reviewed-architecture.md#11-security-and-trust); and
 - [updates and reconciliation](design-review/60-reviewed-architecture.md#13-desired-state-direct-editing-and-updates).
 
-The other files under `design-review/` are preserved adversarial drafts,
+Most other files under `design-review/` are preserved adversarial drafts,
 rebuttals, ballots, and freeze records. They explain how the architecture was
 tested, but they are historical and may contain decisions explicitly removed
-from the canonical design. Git preserves superseded text; it should not be
-copied forward as current specification.
+from the canonical design. The removed Nix-retention sequence remains on
+`experiments/nix-runtime-retention`; review 130 records its disposition. Git
+preserves superseded text; it should not be copied forward as current
+specification.
 
 Open interface candidates are explicitly non-normative, including
 [`design-review/101-default-targets-and-open-routing-candidate.md`](design-review/101-default-targets-and-open-routing-candidate.md).

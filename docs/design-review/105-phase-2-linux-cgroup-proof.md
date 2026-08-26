@@ -6,12 +6,13 @@ environmental stop recorded in
 private Linux proof backend. It does not publish a Sandbox Backend interface,
 make cgroup v2 portable FLOW vocabulary, or qualify the Bun Runtime Adapter.
 
-**Subsequent checkpoint:** the historical live-SDK-mounted Python Run described
-below has now been replaced by the process-local, Package/1-vendored,
-no-entropy launch candidate in
-[`115-private-python-exact-run.md`](115-private-python-exact-run.md). The
-earlier evidence remains recorded here to show how the stronger boundary was
-derived; it is not the current Python recipe design.
+**Host-specific integration note:** the Python and Bun witnesses below used
+runtimes which happened to be installed in this host's Nix store. A later
+runtime-retention experiment is archived on the
+`experiments/nix-runtime-retention` branch. Neither witness is a current Nix
+feature, production Runtime Adapter, retained `READY` recipe, or Jig
+dependency. The generic containment evidence remains applicable; see
+[`130-nix-experiment-disposition-and-next-slice.md`](130-nix-experiment-disposition-and-next-slice.md).
 
 ## Disposition
 
@@ -120,25 +121,35 @@ and delegation complexity.
 Run:
 
 ```sh
-bun run --cwd packages/jig test:linux-cgroup
+bun run --cwd packages/jig test:linux-cgroup:proof-host
 ```
 
-The 2026-08-25 proof now passes all eleven focused tests:
+The command name is intentionally explicit: its containment assertions are
+generic, but its current Bash and Bun fixtures resolve through this machine's
+Nix store. It is not a portable Linux-host conformance command.
+
+The current main-branch corpus contains twelve focused tests:
 
 ```text
 plan rejects cgroupfs mounts and malformed finite limits
+privileged helper rejects ambient, drifted, and ambiguous startup
 payload cannot see cgroupfs or migrate and runs as uid 1000/gid 100
 fork storm reaches aggregate pids.max
 four descendant allocators reach aggregate memory.max
 cpu.max throttles while the trusted wall deadline terminates the tree
 cancellation during startup and shutdown leaves no owner
 orphaned grandchildren are fenced after activation-root exit
-coordinator SIGKILL is recovered by the surviving helper
-eight repeated Runs leave no process or cgroup residue
-one real Python flowmd_sdk component completes Run/1 through RunHostSession
-one real Python Service/1 Provider completes Mount, invocation, and cleanup
-through ServiceHostSession
+coordinator SIGKILL recovery plus eight repeated Runs leave no residue
+Bun remains unavailable when a descendant cannot use root-pinned mappings
+one captured project declaration executes in the proof-host evaluator
+one retained project reaches deterministic unavailable lock-first admission
 ```
+
+Earlier Python RunHostSession and ServiceHostSession witnesses proved the same
+Backend seam end to end on this host. Their exact Nix-runtime fixtures are now
+preserved on `experiments/nix-runtime-retention`, not in the current main-branch
+corpus. Provider-neutral replacements are required before any public Backend
+or `READY` claim.
 
 The suite's final `afterAll` enumerates the delegated scope and requires zero
 `jig-run-*` cgroups. A separate post-run inspection also found none.
@@ -180,9 +191,10 @@ Bun recipe status:    unavailable
 The hostile suite preserves this as a passing negative gate. No insecure Bun
 compatibility path was retained.
 
-## First complete exact-Run path
+## Historical host-specific exact-Run witness
 
-A separately selected Python 3.14.7 recipe now proves the complete live path:
+A separately selected Python 3.14.7 fixture proved this complete live path on
+the measured host:
 
 ```text
 finite immutable Nix Runtime Support Closure
@@ -197,12 +209,14 @@ finite immutable Nix Runtime Support Closure
 The Run and Service proofs mount only the 23 paths in the Python runtime's Nix
 closure, the FLOW SDK source, and one fixture component. Their historical
 plans also enabled the private entropy switch even though the proof did not
-establish that Python needed it. A conforming Python planning witness must
-disable that switch and prove the exact device absent. The existing paths
-clear the ambient environment, write no bytecode, admit no network, and
-observe no memory or PID limit event. This proves that the private
-`ExactComponentProcess` seam can represent both finite and long-lived enforced
-activations; it is not yet a Python Runtime Adapter implementation or public
+establish that Python needed it. A production Python planning witness would
+have needed to disable that switch and prove the exact device absent. The
+measured paths cleared the ambient environment, wrote no bytecode, admitted no
+network, and observed no memory or PID limit event. This proved that the private
+`ExactComponentProcess` seam could represent both finite and long-lived
+enforced activations. The Nix-specific recipe and its later retention work are
+no longer on the current implementation path. This section is evidence for
+the Backend envelope, not a Python Runtime Adapter implementation or public
 Backend API.
 
 ## VM comparison

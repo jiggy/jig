@@ -80,8 +80,8 @@ Hostile negative tests prove:
 - a missing Bun policy flag is rejected; and
 - duplicate helper control fields are rejected.
 
-The complete Linux hostile matrix then passed through the changed bridge and
-trampoline:
+At this checkpoint, the complete Linux hostile matrix passed through the
+changed bridge and trampoline:
 
 ```text
 14 tests
@@ -96,6 +96,12 @@ coordinator death, repeated Runs, Bun unavailability, project evaluation,
 retained package resolution, an exact Python Run/1 invocation, and a Python
 Service/1 Mount. The preflight reported cgroup v2 plus cpu/memory/pids controls,
 KVM and TUN separately available, and all test cgroups removed.
+
+The current main-branch proof-host corpus is smaller: the exact Python Run and
+Service witnesses moved with the Nix-retention experiment to
+`experiments/nix-runtime-retention`. Review 105 lists the twelve cases retained
+on main. This dated result remains evidence for the helper change, not the
+current test manifest.
 
 ## 4. Exact non-claim
 
@@ -114,24 +120,25 @@ Therefore it adds no:
 
 - administrator-owned restricted launcher;
 - authenticated host-generation or host-policy registration;
-- protected Nix root-set acquisition;
+- durable authenticated host-runtime acquisition;
 - stable mechanism pin or volatile active-preflight capability;
 - persisted spawn owner, coordinator epoch, recovery lock, or restart fence;
 - public Backend, launcher, receipt, or sandbox interface; or
 - `READY` candidate or admission evidence.
 
-## 5. Next boundary
+## 5. Current disposition
 
-The independent root-set work in review 122 can now retain an exact Bash, Bun,
-helper, Bubblewrap, and other Nix members without an ambient startup path. A
-qualifying production launcher must additionally be the narrowly authorized,
-durably installed host entrypoint and must accept only one authenticated closed
-plan for one acquired generation.
+A later Nix-specific experiment tried to retain the proof host's exact Bash,
+Bun, helper, Bubblewrap, and other store members. That work is preserved on
+`experiments/nix-runtime-retention`, not on the current implementation path.
+It did not turn this helper into a production launcher or qualify `READY`.
 
-Only after that root and authorization boundary exists may the active Backend
-preflight mint a process-private capability. It must run a fixed package-free
-canary through the exact acquired generation, prove live controller readback,
+The generic successor still needs a narrowly authorized, durably installed
+host entrypoint which accepts only one authenticated closed plan from one
+explicitly registered Runtime Adapter and Sandbox Backend selection. Its active
+preflight must run a fixed package-free canary, prove live controller readback,
 payload identity and cgroup invisibility, terminal fencing, helper exit, and
-zero residue, and remain bound to the live generation acquisition and
-coordinator epoch. A checkout-based or broad-sudo preflight cannot qualify
-`READY`.
+zero residue, and remain bound to the admitted recipe and coordinator epoch. A
+checkout-based or broad-sudo preflight cannot qualify `READY`. See the current
+roadmap in
+[`130-nix-experiment-disposition-and-next-slice.md`](130-nix-experiment-disposition-and-next-slice.md).

@@ -4,13 +4,12 @@
 candidate shape and does not publish an admission API, database, public lock,
 approval protocol, or runnable generation.
 
-The unimplemented host-generation root set and restart-safe spawn lifecycle
-recorded in [review 117](117-private-host-generation-boundary.md) keep the
-current Python/Linux implementation unavailable. Review 122 later proved that
-the required Nix indirect-root mechanism is available on this host; it did not
-implement or admit it. This slice preserves the unavailable state while
-closing the record boundary needed to exercise lock-first admission without
-manufacturing a recipe.
+No generic retained executable recipe, authenticated public Adapter/Backend
+registration, or restart-safe spawn lifecycle has qualified. This slice
+preserves that exact unavailable state while closing the record boundary
+needed to exercise lock-first admission without manufacturing readiness. The
+later host-runtime Nix experiment is archived separately and does not alter
+this generic checkpoint.
 
 ## 1. The only representable candidate
 
@@ -41,7 +40,8 @@ the lock does not contain it.
 No Boolean or union can turn this record into a runnable one. `READY`, planned
 observations, recipes, commands, runtime paths, Backend data, host-generation
 members, and execution handles are structurally absent. A later ready
-generation needs a distinct record and all lifecycle gates from review 117.
+generation needs a distinct record plus authenticated host-extension,
+retention, active-preflight, spawn-ownership, and cleanup evidence.
 
 ## 2. Exact target closure
 

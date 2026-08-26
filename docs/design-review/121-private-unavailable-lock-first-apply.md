@@ -192,11 +192,10 @@ This checkpoint adds no:
 - protection against an uncooperative same-UID editor, network filesystem,
   hostile FUSE implementation, or arbitrary power-loss model.
 
-The target remains structurally unavailable because the trusted Python/Linux
-host generation, active Backend preflight, and durable spawn lifecycle are not
-implemented or admitted. Review 122 corrected the earlier environmental
-conclusion: an ordinary Nix indirect-root set is collector-visible when its
-Jig-owned path is shared with the daemon. That measured feasibility does not
-retroactively make this admission runnable. A later slice may expose read-only
-inspection or a larger aggregate admission model, but must not turn this
-private single-target checkpoint into a public compatibility promise.
+The target remains unavailable because no generic retained Runtime
+Adapter/Sandbox Backend recipe, active Backend preflight, and durable spawn
+lifecycle are implemented and admitted. The next slice must add those facts
+through explicit host policy and one restart-safe direct-Run path, without
+promoting this private single-target checkpoint into a public compatibility
+promise. The archived Nix host-runtime experiment is not a prerequisite; see
+[`130-nix-experiment-disposition-and-next-slice.md`](130-nix-experiment-disposition-and-next-slice.md).

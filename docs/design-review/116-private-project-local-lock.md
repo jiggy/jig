@@ -152,10 +152,9 @@ The focused corpus proves:
 The remaining runnable-admission boundary is host-local and private:
 
 ```text
-one closed two-role Python/Linux host generation
+one retained Runtime Adapter and Sandbox Backend recipe
 stable registration identity separated from volatile preflight receipts
-canonical authenticated host-policy/eligible-registration snapshot
-durable Python/Nix runtime-root ownership
+canonical authenticated host-policy and eligible-registration snapshot
 durable visible-lock publication followed by exact byte/digest reverification
 persisted candidate/recipe identity and one lock-first admission CAS
 ```
@@ -165,16 +164,13 @@ containing a runnable recipe be persisted for lock-first admission. Publication
 additionally requires confined visible-file replacement with durability
 appropriate to the host and a post-publication comparison against the
 persisted candidate; this pure module does neither. A runnable `READY`
-generation additionally needs
-coordinator-chosen, persisted spawn/materialization identities and restart
-fencing; Phase 3's random launch nonce and unrecorded temporary materialization
-are intentionally insufficient.
+generation additionally needs coordinator-chosen, persisted
+spawn/materialization identities and restart fencing; a random launch nonce
+and unrecorded temporary materialization are intentionally insufficient.
 
-The two-role bundle proof and host-generation retention boundary are recorded
-in [review 117](117-private-host-generation-boundary.md). Review 122 later
-corrected its environmental conclusion by proving a same-path Nix indirect
-root is collector-visible; the generation root set and restart lifecycle
-remain unimplemented. The successor slice nevertheless proved lock-first
-persistence with a strict `UNAVAILABLE` candidate. It did not manufacture a
-`READY` recipe or another private byte store to conceal those unimplemented
-gates.
+The successor checkpoints proved lock-first persistence with a strict
+`UNAVAILABLE` candidate. They did not manufacture a `READY` recipe or another
+private byte store to conceal the unimplemented host-extension and spawn
+gates. A Nix-specific attempt to close those gates is archived separately and
+is not the current successor design; see
+[`130-nix-experiment-disposition-and-next-slice.md`](130-nix-experiment-disposition-and-next-slice.md).

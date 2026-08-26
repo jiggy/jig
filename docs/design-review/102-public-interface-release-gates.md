@@ -21,10 +21,14 @@ third-party certification label remain deferred. The repository also contains
 private Jig slices for Package capture and inspection, Schema and Capability
 Contract validation, captured-package materialization, and one Run/1 host
 session whose private input is a Backend-supplied exact-component process
-seam. This is not yet a public Jig SDK or complete controller: runtime
-preparation, Sandbox Backend activation, child-Flow/effect dispatch, and
-durable admission remain separate unfinished seams. The intended package names
-are:
+seam. The private project path now continues through static declaration
+evaluation, a retained package-only aggregate, deterministic non-admissible
+resolution, strict portable-lock projection, and lock-first durable admission
+of one exact `UNAVAILABLE` target. This is not yet a public Jig SDK or complete
+controller: a generic retained `READY` recipe, public Runtime Adapter and
+Sandbox Backend models, root-Run dispatch, child-Flow/effect dispatch, and the
+host administration interface remain unfinished seams. The intended package
+names are:
 
 ```text
 @jigging/jig    Jig TypeScript package
@@ -38,6 +42,14 @@ sley            independent Sley Python graph runtime
 These names are distribution coordinates, not protocol identities. Sley owns
 and publishes its public graph APIs upstream; the Jig and FLOW SDK names remain
 pre-release intent in this repository.
+
+The former Nix-specific host-runtime retention sequence is preserved on the
+`experiments/nix-runtime-retention` branch and is not the current roadmap. It
+investigated retention of runtimes which happened to be installed in
+`/nix/store`; it did not implement project `flake.nix`, `flake.lock`, or
+`shell.nix` support. The exact disposition and current milestone are recorded
+in
+[`130-nix-experiment-disposition-and-next-slice.md`](130-nix-experiment-disposition-and-next-slice.md).
 
 ## Decontamination disposition
 
@@ -126,8 +138,10 @@ The private TypeScript and Python Provider projections implement
 invocation contexts, owner-scoped dependency calls, `ServiceError`, readiness,
 cancellation, and terminal quiescence. A private Jig Host drives both real
 Provider processes, and an independent Bun peer runs the first shared Provider
-matrix. One real Python Mount also completes inside the private Linux cgroup-v2
-envelope. Every session-local required case now has executable evidence, but
+matrix. An archived host-specific witness also completed one real Python Mount
+inside the private Linux cgroup-v2 envelope; that Nix-runtime fixture is no
+longer in main's current hostile corpus. Every session-local required case has
+executable evidence, but
 the cases are not yet one portable Host-under-test corpus. Durable Jig provider
 generations/Bindings, a second independent Host, and the resulting conformance
 label remain release gates. Run/1 does not wait for them.
@@ -158,11 +172,22 @@ bounded evaluator checkpoint in
 [`111-bounded-project-evaluator.md`](111-bounded-project-evaluator.md) now
 proves captured-source evaluation, a closed `@jigging/jig` resolver, bounded
 JSON transport, host-side schema validation and canonical re-normalization,
-and complete cgroup/Bubblewrap fencing. The following
+and complete cgroup/Bubblewrap fencing on the current Nix-backed proof-host
+fixture. It is not a generic retained evaluator recipe. The following
 [`112-static-author-closure.md`](112-static-author-closure.md) checkpoint adds
 one candidate-wide, captured, explicit static `.ts` import graph and makes the
 evaluator resolve only its recorded edges. No aggregate schema or evaluator API
 is public.
+
+The subsequent private checkpoints retain the complete package-only aggregate,
+reduce it with one closed host-planning observation without making that
+observation executable, project canonical portable lock evidence while
+excluding host state, and durably publish/replay one lock-first unavailable
+admission. They prove restart and compare-and-set mechanics, not a public lock
+schema, public administration API, or runnable generation. The next path must
+first replace the evaluator's proof-host runtime fixture with generic retained
+support. A `READY` candidate must additionally retain and reacquire one generic
+Adapter/Backend recipe and own its spawn lifecycle across restart.
 
 Hooks, Service export references, instruction Agent selection,
 `semanticChoice`, and host-capability Bindings remain later gated slices. The
@@ -208,8 +233,10 @@ exist.
 
 The former Linux `SANDBOX_UNAVAILABLE` stop is historical. The private proof
 now has a delegated aggregate owner, pre-exec placement, entropy and
-root-mapping evidence, coordinator-independent cleanup, a hostile corpus, and
-one complete Python Run/1 activation. The exact evidence is recorded in
+root-mapping evidence, coordinator-independent cleanup, and a hostile corpus.
+A Python Run/1 and Service/1 activation using this host's Nix-store runtime
+were integration witnesses for that envelope, not an admitted Nix Adapter or
+current product dependency. The exact evidence is recorded in
 [`105-phase-2-linux-cgroup-proof.md`](105-phase-2-linux-cgroup-proof.md); the
 old environmental stop remains in
 [`104-phase-2-security-blocker.md`](104-phase-2-security-blocker.md). The proof
@@ -243,6 +270,37 @@ that a shared helper is worth publishing.
 This model is not automatically a second user-authored workflow DSL or a
 universal graph schema. Expose only the authoring surface real Jig Graph users
 need; keep compiler IR private when possible.
+
+## Next public vertical slice
+
+The next slice is one direct exact root Run. It begins with one discovered
+zero-configuration Run package, resolves one explicitly installed Runtime
+Adapter and Sandbox Backend, records `READY` or exact `UNAVAILABLE`, applies
+the reviewed candidate lock-first, accepts one idempotent root Run submission
+against that admitted generation, executes Run/1 inside the Backend-owned
+envelope, and publishes one durable terminal result after complete cleanup.
+
+Before that chain can be generic, it must retain one exact author-evaluator
+support closure or an equivalently narrow host mechanism. The current
+Nix-backed evaluator remains proof evidence only.
+
+This slice intentionally adds no Binding requirement, Service, Hook, Agent,
+Semantic Choice, child Flow, Jig Graph compiler, update watcher, Nix
+dependency, or ambient runtime fallback. It closes only the host-extension,
+host-policy, lock, administration, and Run models required for that path.
+
+Before an independent probe consumes it, the candidate must prove:
+
+1. generic retained author-evaluator support on the selected host;
+2. deterministic Adapter and Backend selection from explicit host policy;
+3. one retained generic `READY` recipe beside the exact unavailable branch;
+4. stale-plan rejection and lock-first admission;
+5. idempotent root submission and durable Run identity;
+6. restart reconciliation around spawn intent and terminal publication; and
+7. cancellation, deadline, whole-tree fencing, and zero residue.
+
+The complete status and Nix decontamination boundary are in
+[`130-nix-experiment-disposition-and-next-slice.md`](130-nix-experiment-disposition-and-next-slice.md).
 
 ## Machine-readable release gates
 
