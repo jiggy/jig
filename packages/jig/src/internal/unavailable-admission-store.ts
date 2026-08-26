@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { constants, type BigIntStats } from "node:fs";
-import { lstat, mkdir, open, type FileHandle } from "node:fs/promises";
+import { lstat, mkdir, open, rename, unlink, type FileHandle } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { join } from "node:path";
 
@@ -16,23 +16,29 @@ import {
   type PrivateLockPackage,
 } from "./project-local-lock.js";
 import {
+  createPrivateUnavailableAdmission,
   createPrivateUnavailablePlan,
+  decodePrivateUnavailableAdmission,
   decodePrivateUnavailableCandidate,
   decodePrivateUnavailablePlan,
+  encodePrivateUnavailableAdmission,
   encodePrivateUnavailableCandidate,
   encodePrivateUnavailablePlan,
+  privateUnavailableAdmissionDigest,
   privateUnavailableCandidateDigest,
   privateUnavailablePlanDigest,
   requirePrivateCreatedUnavailableCandidate,
+  type PrivateUnavailableAdmission,
   type PrivateUnavailableCandidateArtifact,
   type PrivateUnavailablePlan,
 } from "./unavailable-admission.js";
 
 const STATE_DIRECTORY = ".jig";
-const DATABASE_NAME = "private-unavailable-admission-v1.sqlite3";
+const DATABASE_NAME = "private-unavailable-admission-v2.sqlite3";
 const LOCK_NAME = "jig.lock";
-const SCHEMA_VERSION = 1n;
-const APPLICATION_ID = 0x4a494731n; // JIG1
+const LOCK_STAGE_NAME = "private-unavailable-jig-lock-v1.stage";
+const SCHEMA_VERSION = 2n;
+const APPLICATION_ID = 0x4a494732n; // JIG2
 const BUSY_TIMEOUT_MS = 250;
 const MAX_STORED_BYTES = 16_777_216;
 const MAX_SAFE_REVISION = BigInt(Number.MAX_SAFE_INTEGER);
@@ -41,7 +47,11 @@ const DIGEST = /^sha256:[0-9a-f]{64}$/;
 const CREATE_CANDIDATES = "CREATE TABLE candidates (revision INTEGER PRIMARY KEY CHECK (revision BETWEEN 1 AND 9007199254740991), candidate_digest TEXT NOT NULL, candidate_bytes BLOB NOT NULL CHECK (length(candidate_bytes) BETWEEN 1 AND 16777216), lock_bytes BLOB NOT NULL CHECK (length(lock_bytes) BETWEEN 1 AND 16777216)) STRICT";
 const CREATE_CANDIDATE_HEAD = "CREATE TABLE candidate_head (singleton INTEGER PRIMARY KEY CHECK (singleton = 1), revision INTEGER REFERENCES candidates(revision)) STRICT";
 const CREATE_REVIEW_PLANS = "CREATE TABLE review_plans (plan_digest TEXT PRIMARY KEY, candidate_revision INTEGER NOT NULL REFERENCES candidates(revision), plan_bytes BLOB NOT NULL CHECK (length(plan_bytes) BETWEEN 1 AND 16777216)) STRICT";
+const CREATE_ADMISSIONS = "CREATE TABLE admissions (revision INTEGER PRIMARY KEY CHECK (revision BETWEEN 1 AND 9007199254740991), admission_digest TEXT NOT NULL UNIQUE, base_generation TEXT UNIQUE REFERENCES admissions(admission_digest), plan_digest TEXT NOT NULL UNIQUE REFERENCES review_plans(plan_digest), admission_bytes BLOB NOT NULL CHECK (length(admission_bytes) BETWEEN 1 AND 16777216)) STRICT";
+const CREATE_ADMISSION_HEAD = "CREATE TABLE admission_head (singleton INTEGER PRIMARY KEY CHECK (singleton = 1), revision INTEGER REFERENCES admissions(revision)) STRICT";
 const EXPECTED_SCHEMA = Object.freeze([
+  Object.freeze({ type: "table", name: "admission_head", table: "admission_head", sql: CREATE_ADMISSION_HEAD }),
+  Object.freeze({ type: "table", name: "admissions", table: "admissions", sql: CREATE_ADMISSIONS }),
   Object.freeze({ type: "table", name: "candidate_head", table: "candidate_head", sql: CREATE_CANDIDATE_HEAD }),
   Object.freeze({ type: "table", name: "candidates", table: "candidates", sql: CREATE_CANDIDATES }),
   Object.freeze({ type: "table", name: "review_plans", table: "review_plans", sql: CREATE_REVIEW_PLANS }),
@@ -103,6 +113,26 @@ interface PlanRow {
   readonly plan_bytes: Uint8Array;
 }
 
+interface AdmissionRow {
+  readonly revision: bigint;
+  readonly admission_digest: string;
+  readonly base_generation: string | null;
+  readonly plan_digest: string;
+  readonly admission_bytes: Uint8Array;
+}
+
+interface AdmissionHeadRow {
+  readonly singleton: bigint;
+  readonly revision: bigint | null;
+}
+
+interface AdmissionCountRow {
+  readonly count: bigint;
+  readonly minimum: bigint | null;
+  readonly maximum: bigint | null;
+  readonly roots: bigint | null;
+}
+
 interface StateOwner {
   readonly root: PrivateProjectRoot;
   readonly directory: FileHandle;
@@ -124,6 +154,12 @@ export interface PrivateUnavailableReviewPlan {
   readonly planBytes: Uint8Array;
   readonly planDigest: string;
   readonly candidate: PrivateUnavailableCandidateArtifact;
+}
+
+export interface PrivateUnavailableAdmissionReceipt {
+  readonly admission: PrivateUnavailableAdmission;
+  readonly admissionBytes: Uint8Array;
+  readonly admissionDigest: string;
 }
 
 /** Persist a factory-produced proposal as the monotonic unavailable head. */
@@ -208,6 +244,7 @@ export async function createPrivateUnavailableReviewPlan(input: {
       if (currentHead.revision !== initialRow.revision) candidateChanged();
       const currentRow = requireCandidateRow(owner.database, initialRow.revision);
       requireSameCandidateRow(initialRow, currentRow);
+      const admissionHead = readAdmissionHead(owner.database, owner.root);
       const observed = await observeVisibleLock(owner.root);
       const proposed = encodePrivateProjectLocalLock(candidate.lock);
       if (input.lockMode === "locked" && (
@@ -218,7 +255,9 @@ export async function createPrivateUnavailableReviewPlan(input: {
       const plan = createPrivateUnavailablePlan({
         candidateDigest: currentRow.candidate_digest,
         candidateRevision: safeRevision(currentRow.revision),
-        baseGeneration: null,
+        baseGeneration: admissionHead.revision === null
+          ? null
+          : requireAdmissionRow(owner.database, admissionHead.revision).admission_digest,
         lockMode: input.lockMode,
         observedLock: observed.state === "absent"
           ? { state: "absent" }
@@ -256,8 +295,10 @@ export async function loadPrivateUnavailableReviewPlan(input: {
   let failure: unknown;
   try {
     readCandidateHead(owner.database, owner.root);
+    readAdmissionHead(owner.database, owner.root);
     const initialPlanRow = requirePlanRow(owner.database, input.planDigest);
     const plan = loadPlanRow(initialPlanRow);
+    requirePlanBase(owner.database, plan, owner.root);
     const initialCandidateRow = requireCandidateRow(owner.database, initialPlanRow.candidate_revision);
     const candidate = loadCandidateRow(initialCandidateRow);
     crossCheckPlanCandidate(plan, initialPlanRow, initialCandidateRow);
@@ -265,11 +306,13 @@ export async function loadPrivateUnavailableReviewPlan(input: {
     artifacts = await reacquireCandidateArtifacts(input.packageStoreRoot, candidate);
     await immediate(owner, () => {
       readCandidateHead(owner.database, owner.root);
+      readAdmissionHead(owner.database, owner.root);
       const currentPlanRow = requirePlanRow(owner.database, input.planDigest);
       const currentCandidateRow = requireCandidateRow(owner.database, initialPlanRow.candidate_revision);
       requireSamePlanRow(initialPlanRow, currentPlanRow);
       requireSameCandidateRow(initialCandidateRow, currentCandidateRow);
       crossCheckPlanCandidate(plan, currentPlanRow, currentCandidateRow);
+      requirePlanBase(owner.database, plan, owner.root);
     });
     await owner.finish();
     return Object.freeze({
@@ -278,6 +321,120 @@ export async function loadPrivateUnavailableReviewPlan(input: {
       planDigest: input.planDigest,
       candidate: markStored(candidate),
     });
+  } catch (error) {
+    failure = error;
+    throw error;
+  } finally {
+    await disposeOperation(owner, artifacts, failure);
+  }
+}
+
+/**
+ * Durably converge the visible lock, then advance one unavailable admission
+ * generation. The returned canonical record is the idempotent receipt.
+ */
+export async function applyPrivateUnavailableReviewPlan(input: {
+  readonly projectRoot: string;
+  readonly packageStoreRoot: string;
+  readonly planDigest: string;
+  readonly baseGeneration: string | null;
+}): Promise<PrivateUnavailableAdmissionReceipt> {
+  requireDigest(input.planDigest, "review plan");
+  if (input.baseGeneration !== null) requireDigest(input.baseGeneration, "expected base generation");
+  const owner = await openStateOwner(input.projectRoot, false);
+  let artifacts: ReacquiredArtifacts | undefined;
+  let failure: unknown;
+  try {
+    const initialPlanRow = requirePlanRow(owner.database, input.planDigest);
+    const plan = loadPlanRow(initialPlanRow);
+    if (plan.baseGeneration !== input.baseGeneration) stale("apply base differs from the reviewed plan");
+
+    const committed = findAdmissionByPlan(owner.database, input.planDigest);
+    if (committed !== null) {
+      const receipt = loadAndCrossCheckAdmission(owner.database, committed, owner.root);
+      await owner.finish();
+      return receipt;
+    }
+
+    const initialCandidateRow = requireCandidateRow(owner.database, initialPlanRow.candidate_revision);
+    const candidate = loadCandidateRow(initialCandidateRow);
+    crossCheckPlanCandidate(plan, initialPlanRow, initialCandidateRow);
+    requirePlanBase(owner.database, plan, owner.root);
+    requireCandidateRoot(candidate, owner.root);
+    artifacts = await reacquireCandidateArtifacts(input.packageStoreRoot, candidate);
+
+    const receipt = await immediate(owner, async () => {
+      const raced = findAdmissionByPlan(owner.database, input.planDigest);
+      if (raced !== null) return loadAndCrossCheckAdmission(owner.database, raced, owner.root);
+
+      const currentPlanRow = requirePlanRow(owner.database, input.planDigest);
+      const currentCandidateRow = requireCandidateRow(owner.database, initialPlanRow.candidate_revision);
+      requireSamePlanRow(initialPlanRow, currentPlanRow);
+      requireSameCandidateRow(initialCandidateRow, currentCandidateRow);
+      crossCheckPlanCandidate(plan, currentPlanRow, currentCandidateRow);
+      requirePlanBase(owner.database, plan, owner.root);
+
+      const candidateHead = readCandidateHead(owner.database, owner.root);
+      if (
+        candidateHead.revision !== currentCandidateRow.revision ||
+        currentCandidateRow.candidate_digest !== plan.candidateDigest
+      ) stale("reviewed candidate is no longer the candidate head");
+      const admissionHead = readAdmissionHead(owner.database, owner.root);
+      const currentBase = admissionHead.revision === null
+        ? null
+        : requireAdmissionRow(owner.database, admissionHead.revision).admission_digest;
+      if (currentBase !== plan.baseGeneration) stale("reviewed base generation is no longer active");
+
+      const proposedLock = encodePrivateProjectLocalLock(candidate.lock);
+      await convergeVisibleLock(owner, plan, proposedLock);
+
+      const finalCandidateHead = readCandidateHead(owner.database, owner.root);
+      if (finalCandidateHead.revision !== currentCandidateRow.revision) {
+        stale("candidate head changed during lock publication");
+      }
+      const finalAdmissionHead = readAdmissionHead(owner.database, owner.root);
+      if (finalAdmissionHead.revision !== admissionHead.revision) {
+        stale("admission head changed during lock publication");
+      }
+      const finalPlanRow = requirePlanRow(owner.database, input.planDigest);
+      const finalCandidateRow = requireCandidateRow(owner.database, currentCandidateRow.revision);
+      requireSamePlanRow(currentPlanRow, finalPlanRow);
+      requireSameCandidateRow(currentCandidateRow, finalCandidateRow);
+
+      const admission = createPrivateUnavailableAdmission({
+        baseGeneration: plan.baseGeneration,
+        planDigest: input.planDigest,
+        candidateRevision: safeRevision(finalCandidateRow.revision),
+        candidateDigest: finalCandidateRow.candidate_digest,
+        lockDigest: candidate.candidate.lockDigest,
+      });
+      const admissionBytes = encodePrivateUnavailableAdmission(admission);
+      requireStoredSize(admissionBytes, "unavailable admission");
+      const admissionDigest = privateUnavailableAdmissionDigest(admission);
+      const next = admissionHead.revision === null ? 1n : admissionHead.revision + 1n;
+      if (next > MAX_SAFE_REVISION) {
+        unavailable("ADMISSION_REVISION_EXHAUSTED", "private admission generation revision is exhausted");
+      }
+      statement<never>(owner.database,
+        "INSERT INTO admissions(revision, admission_digest, base_generation, plan_digest, admission_bytes) VALUES (?1, ?2, ?3, ?4, ?5)",
+      ).run(
+        next,
+        admissionDigest,
+        plan.baseGeneration,
+        input.planDigest,
+        admissionBytes,
+      );
+      const changed = statement<never>(owner.database,
+        "UPDATE admission_head SET revision = ?1 WHERE singleton = 1 AND revision IS ?2",
+      ).run(next, admissionHead.revision).changes;
+      if (changed !== 1) corrupt("admission head compare-and-set did not update exactly one row");
+      const applied = requireAdmissionRow(owner.database, next);
+      const stored = loadAndCrossCheckAdmission(owner.database, applied, owner.root);
+      readAdmissionHead(owner.database, owner.root);
+      return stored;
+    });
+    await owner.finish();
+    return receipt;
   } catch (error) {
     failure = error;
     throw error;
@@ -538,7 +695,10 @@ function initializeOrVerifySchema(database: SqliteDatabase, root: PrivateProject
       database.exec(CREATE_CANDIDATES);
       database.exec(CREATE_CANDIDATE_HEAD);
       database.exec(CREATE_REVIEW_PLANS);
+      database.exec(CREATE_ADMISSIONS);
+      database.exec(CREATE_ADMISSION_HEAD);
       database.exec("INSERT INTO candidate_head(singleton, revision) VALUES (1, NULL)");
+      database.exec("INSERT INTO admission_head(singleton, revision) VALUES (1, NULL)");
       database.exec(`PRAGMA application_id=${APPLICATION_ID}`);
       database.exec(`PRAGMA user_version=${SCHEMA_VERSION}`);
     } else if (version !== SCHEMA_VERSION || application !== APPLICATION_ID) {
@@ -554,11 +714,12 @@ function verifySchema(database: SqliteDatabase, root: PrivateProjectRoot): void 
   if (actual.length !== EXPECTED_SCHEMA.length || actual.some((row, index) => {
     const expected = EXPECTED_SCHEMA[index]!;
     return row.type !== expected.type || row.name !== expected.name || row.table !== expected.table || row.sql !== expected.sql;
-  })) corrupt("private admission database schema differs from version 1");
+  })) corrupt("private admission database schema differs from version 2");
   if (statement<Record<string, unknown>>(database, "PRAGMA foreign_key_check").all().length !== 0) {
     corrupt("private admission database has broken foreign keys");
   }
   readCandidateHead(database, root);
+  readAdmissionHead(database, root);
 }
 
 function schemaRows(database: SqliteDatabase): readonly { readonly type: string; readonly name: string; readonly table: string; readonly sql: string }[] {
@@ -610,6 +771,32 @@ function readCandidateHead(database: SqliteDatabase, root: PrivateProjectRoot): 
   return head;
 }
 
+function readAdmissionHead(database: SqliteDatabase, root: PrivateProjectRoot): AdmissionHeadRow {
+  const heads = statement<AdmissionHeadRow>(database, "SELECT singleton, revision FROM admission_head").all();
+  if (heads.length !== 1 || heads[0]!.singleton !== 1n) corrupt("admission head singleton is invalid");
+  const head = heads[0]!;
+  const counts = statement<AdmissionCountRow>(database,
+    "SELECT count(*) AS count, min(revision) AS minimum, max(revision) AS maximum, sum(CASE WHEN base_generation IS NULL THEN 1 ELSE 0 END) AS roots FROM admissions",
+  ).all();
+  if (counts.length !== 1) corrupt("admission revision aggregate is invalid");
+  const count = counts[0]!;
+  if (count.count === 0n) {
+    if (
+      head.revision !== null || count.minimum !== null || count.maximum !== null ||
+      (count.roots !== 0n && count.roots !== null)
+    ) corrupt("empty admission store has a non-empty head");
+    return head;
+  }
+  if (
+    head.revision === null || count.minimum !== 1n || count.maximum !== head.revision ||
+    count.count !== head.revision || count.roots !== 1n || head.revision > MAX_SAFE_REVISION
+  ) corrupt("admission revisions are not one contiguous linear head");
+  for (let revision = 1n; revision <= head.revision; revision += 1n) {
+    loadAndCrossCheckAdmission(database, requireAdmissionRow(database, revision), root);
+  }
+  return head;
+}
+
 function requireCandidateRow(database: SqliteDatabase, revision: bigint): CandidateRow {
   const rows = statement<CandidateRow>(database,
     "SELECT revision, candidate_digest, candidate_bytes, lock_bytes FROM candidates WHERE revision = ?1",
@@ -624,6 +811,30 @@ function requirePlanRow(database: SqliteDatabase, digest: string): PlanRow {
   ).all(digest);
   if (rows.length === 0) unavailable("ADMISSION_PLAN_MISSING", `review plan ${digest} does not exist`);
   if (rows.length !== 1) corrupt(`review plan ${digest} is duplicated`);
+  return rows[0]!;
+}
+
+function requireAdmissionRow(database: SqliteDatabase, revision: bigint): AdmissionRow {
+  const rows = statement<AdmissionRow>(database,
+    "SELECT revision, admission_digest, base_generation, plan_digest, admission_bytes FROM admissions WHERE revision = ?1",
+  ).all(revision);
+  if (rows.length !== 1) corrupt(`admission revision ${revision} is missing or duplicated`);
+  return rows[0]!;
+}
+
+function findAdmissionByPlan(database: SqliteDatabase, planDigest: string): AdmissionRow | null {
+  const rows = statement<AdmissionRow>(database,
+    "SELECT revision, admission_digest, base_generation, plan_digest, admission_bytes FROM admissions WHERE plan_digest = ?1",
+  ).all(planDigest);
+  if (rows.length > 1) corrupt(`plan ${planDigest} names multiple admissions`);
+  return rows[0] ?? null;
+}
+
+function requireAdmissionByDigest(database: SqliteDatabase, digest: string): AdmissionRow {
+  const rows = statement<AdmissionRow>(database,
+    "SELECT revision, admission_digest, base_generation, plan_digest, admission_bytes FROM admissions WHERE admission_digest = ?1",
+  ).all(digest);
+  if (rows.length !== 1) corrupt(`base admission ${digest} is missing or duplicated`);
   return rows[0]!;
 }
 
@@ -645,8 +856,21 @@ function loadPlanRow(row: PlanRow): PrivateUnavailablePlan {
   requireStoredSize(bytes, "stored review plan");
   const plan = decodePrivateUnavailablePlan(bytes);
   if (privateUnavailablePlanDigest(plan) !== row.plan_digest) corrupt("stored review plan digest does not match canonical bytes");
-  if (plan.baseGeneration !== null) corrupt("review plan names a generation before generation storage exists");
   return plan;
+}
+
+function loadAdmissionRow(row: AdmissionRow): PrivateUnavailableAdmission {
+  safeRevision(row.revision);
+  requireDigest(row.admission_digest, "stored admission");
+  if (row.base_generation !== null) requireDigest(row.base_generation, "stored admission base");
+  requireDigest(row.plan_digest, "stored admission plan");
+  const bytes = copiedBlob(row.admission_bytes, "stored unavailable admission");
+  requireStoredSize(bytes, "stored unavailable admission");
+  const admission = decodePrivateUnavailableAdmission(bytes);
+  if (privateUnavailableAdmissionDigest(admission) !== row.admission_digest) {
+    corrupt("stored admission row digest does not match canonical bytes");
+  }
+  return admission;
 }
 
 function persistReviewPlan(database: SqliteDatabase, row: PlanRow): void {
@@ -668,6 +892,54 @@ function crossCheckPlanCandidate(plan: PrivateUnavailablePlan, planRow: PlanRow,
     plan.candidateRevision !== safeRevision(planRow.candidate_revision) || planRow.candidate_revision !== candidate.revision ||
     plan.candidateDigest !== candidate.candidate_digest
   ) corrupt("review plan does not name its stored candidate row exactly");
+}
+
+function requirePlanBase(
+  database: SqliteDatabase,
+  plan: PrivateUnavailablePlan,
+  root: PrivateProjectRoot,
+): void {
+  if (plan.baseGeneration === null) return;
+  const base = requireAdmissionByDigest(database, plan.baseGeneration);
+  loadAndCrossCheckAdmission(database, base, root);
+}
+
+function loadAndCrossCheckAdmission(
+  database: SqliteDatabase,
+  row: AdmissionRow,
+  root: PrivateProjectRoot,
+): PrivateUnavailableAdmissionReceipt {
+  const admission = loadAdmissionRow(row);
+  const planRow = requirePlanRow(database, row.plan_digest);
+  const plan = loadPlanRow(planRow);
+  const candidateRow = requireCandidateRow(database, planRow.candidate_revision);
+  const candidate = loadCandidateRow(candidateRow);
+  requireCandidateRoot(candidate, root);
+  crossCheckPlanCandidate(plan, planRow, candidateRow);
+  if (
+    admission.baseGeneration !== row.base_generation ||
+    admission.baseGeneration !== plan.baseGeneration ||
+    admission.planDigest !== row.plan_digest ||
+    admission.candidateRevision !== safeRevision(planRow.candidate_revision) ||
+    admission.candidateRevision !== plan.candidateRevision ||
+    admission.candidateDigest !== candidateRow.candidate_digest ||
+    admission.candidateDigest !== plan.candidateDigest ||
+    admission.lockDigest !== candidate.candidate.lockDigest
+  ) corrupt("stored admission does not match its plan and candidate closure");
+  if (row.revision === 1n) {
+    if (admission.baseGeneration !== null) corrupt("first admission has a non-null base generation");
+  } else {
+    if (admission.baseGeneration === null) corrupt("later admission has a null base generation");
+    const prior = requireAdmissionRow(database, row.revision - 1n);
+    if (prior.admission_digest !== admission.baseGeneration) {
+      corrupt("admission base is not the immediately preceding generation");
+    }
+  }
+  return Object.freeze({
+    admission,
+    admissionBytes: copiedBlob(row.admission_bytes, "stored unavailable admission"),
+    admissionDigest: row.admission_digest,
+  });
 }
 
 function requireSameCandidateRow(left: CandidateRow, right: CandidateRow): void {
@@ -712,6 +984,203 @@ async function observeVisibleLock(root: PrivateProjectRoot): Promise<
     decodePrivateProjectLocalLock(bytes);
     return Object.freeze({ state: "present" as const, digest: rawDigest(bytes), bytes });
   } finally { await handle.close(); }
+}
+
+async function convergeVisibleLock(
+  owner: StateOwner,
+  plan: PrivateUnavailablePlan,
+  proposed: Uint8Array,
+): Promise<void> {
+  const observed = await observeVisibleLock(owner.root);
+  const exact = observed.state === "present" && sameBytes(observed.bytes, proposed);
+  if (plan.lockMode === "locked") {
+    if (!exact) stale("locked apply no longer sees the exact reviewed jig.lock bytes");
+    await clearSafeLockStage(owner);
+    await synchronizeExactVisibleLock(owner, proposed);
+    return;
+  }
+  if (exact) {
+    await clearSafeLockStage(owner);
+    await synchronizeExactVisibleLock(owner, proposed);
+    return;
+  }
+  if (!matchesObservedLock(plan, observed)) {
+    stale("jig.lock changed after the review plan was created");
+  }
+  await publishVisibleLock(owner, plan, proposed);
+}
+
+function matchesObservedLock(
+  plan: PrivateUnavailablePlan,
+  observed: Awaited<ReturnType<typeof observeVisibleLock>>,
+): boolean {
+  if (plan.observedLock.state === "absent") return observed.state === "absent";
+  return observed.state === "present" && observed.digest === plan.observedLock.digest;
+}
+
+async function synchronizeExactVisibleLock(owner: StateOwner, proposed: Uint8Array): Promise<void> {
+  const path = descriptorChild(owner.root.handle, LOCK_NAME);
+  let handle: FileHandle;
+  try { handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK); }
+  catch (error) {
+    if (hasCode(error, "ENOENT")) stale("jig.lock disappeared before admission");
+    throw error;
+  }
+  try {
+    const before = await handle.stat({ bigint: true });
+    requireVisibleLockFile(before, owner.root.information.dev);
+    const bytes = await readBounded(handle, Number(before.size), JSON_1_LIMITS.bytes);
+    if (!sameBytes(bytes, proposed)) stale("jig.lock differs from the exact proposed bytes");
+    await handle.sync();
+    const after = await handle.stat({ bigint: true });
+    const visible = await lstat(path, { bigint: true });
+    if (!sameSnapshot(before, after) || !sameSnapshot(after, visible)) {
+      stale("jig.lock changed while it was synchronized");
+    }
+    await owner.root.handle.sync();
+  } finally { await handle.close(); }
+  const final = await observeVisibleLock(owner.root);
+  if (final.state !== "present" || !sameBytes(final.bytes, proposed)) {
+    stale("jig.lock changed after it was synchronized");
+  }
+}
+
+async function publishVisibleLock(
+  owner: StateOwner,
+  plan: PrivateUnavailablePlan,
+  proposed: Uint8Array,
+): Promise<void> {
+  await clearSafeLockStage(owner);
+  const stagePath = descriptorChild(owner.directory, LOCK_STAGE_NAME);
+  const lockPath = descriptorChild(owner.root.handle, LOCK_NAME);
+  const handle = await open(
+    stagePath,
+    constants.O_RDWR | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW | constants.O_NONBLOCK,
+    0o600,
+  );
+  let failure: unknown;
+  try {
+    const opened = await handle.stat({ bigint: true });
+    requireCreatingLockStage(opened, owner.root.information.dev);
+    await handle.writeFile(proposed);
+    await handle.chmod(0o644);
+    await handle.sync();
+    const prepared = await handle.stat({ bigint: true });
+    requirePreparedLockStage(prepared, owner.root.information.dev, proposed.byteLength);
+    const preparedPath = await lstat(stagePath, { bigint: true });
+    if (!sameSnapshot(prepared, preparedPath)) {
+      invalid("ADMISSION_LOCK_STAGE_CHANGED", "reserved lock stage changed while it was prepared");
+    }
+    const preparedBytes = await readBounded(handle, Number(prepared.size), JSON_1_LIMITS.bytes);
+    if (!sameBytes(preparedBytes, proposed)) {
+      invalid("ADMISSION_LOCK_STAGE_CHANGED", "reserved lock stage bytes changed while they were prepared");
+    }
+    await owner.directory.sync();
+
+    const destination = await observeVisibleLock(owner.root);
+    if (destination.state === "present" && sameBytes(destination.bytes, proposed)) {
+      await clearOwnedStage(owner, stagePath, prepared);
+      await synchronizeExactVisibleLock(owner, proposed);
+      return;
+    }
+    if (!matchesObservedLock(plan, destination)) {
+      stale("jig.lock changed before atomic publication");
+    }
+
+    await rename(stagePath, lockPath);
+    const renamed = await handle.stat({ bigint: true });
+    requirePreparedLockStage(renamed, owner.root.information.dev, proposed.byteLength);
+    const visible = await lstat(lockPath, { bigint: true });
+    if (!sameSnapshot(renamed, visible)) {
+      invalid("LOCK_CHANGED", "published jig.lock path differs from its staged inode");
+    }
+    const visibleBytes = await readBounded(handle, Number(renamed.size), JSON_1_LIMITS.bytes);
+    if (!sameBytes(visibleBytes, proposed)) invalid("LOCK_CHANGED", "published jig.lock bytes changed");
+    await handle.sync();
+    await owner.root.handle.sync();
+    await owner.directory.sync();
+    const final = await observeVisibleLock(owner.root);
+    if (final.state !== "present" || !sameBytes(final.bytes, proposed)) {
+      stale("jig.lock changed after atomic publication");
+    }
+  } catch (error) {
+    failure = error;
+    throw error;
+  } finally {
+    const cleanup: unknown[] = [];
+    if (failure !== undefined) {
+      try {
+        const information = await handle.stat({ bigint: true });
+        await clearOwnedStage(owner, stagePath, information);
+      } catch (error) {
+        cleanup.push(error);
+      }
+    }
+    try { await handle.close(); } catch (error) { cleanup.push(error); }
+    if (cleanup.length > 0) {
+      if (failure !== undefined) cleanup.unshift(failure);
+      throw new AggregateError(cleanup, "lock publication and stage cleanup did not both complete");
+    }
+  }
+}
+
+async function clearSafeLockStage(owner: StateOwner): Promise<void> {
+  const path = descriptorChild(owner.directory, LOCK_STAGE_NAME);
+  let information: BigIntStats;
+  try { information = await lstat(path, { bigint: true }); }
+  catch (error) { if (hasCode(error, "ENOENT")) return; throw error; }
+  requireAbandonedLockStage(information, owner.root.information.dev);
+  await unlink(path);
+  await owner.directory.sync();
+}
+
+async function clearOwnedStage(owner: StateOwner, path: string, expected: BigIntStats): Promise<void> {
+  let current: BigIntStats;
+  try { current = await lstat(path, { bigint: true }); }
+  catch (error) { if (hasCode(error, "ENOENT")) return; throw error; }
+  requireAbandonedLockStage(current, owner.root.information.dev);
+  if (!sameIdentity(current, expected)) {
+    invalid("ADMISSION_LOCK_STAGE_CHANGED", "reserved lock stage changed before cleanup");
+  }
+  await unlink(path);
+  await owner.directory.sync();
+}
+
+function requireCreatingLockStage(information: BigIntStats, expectedDevice: bigint): void {
+  const mode = information.mode & 0o7777n;
+  if (
+    !information.isFile() || information.nlink !== 1n ||
+    information.uid !== BigInt(currentEuid()) || information.dev !== expectedDevice ||
+    ![0o000n, 0o200n, 0o400n, 0o600n].includes(mode)
+  ) invalid("ADMISSION_LOCK_STAGE_UNSAFE", "new reserved lock stage has unsafe filesystem identity");
+}
+
+function requirePreparedLockStage(
+  information: BigIntStats,
+  expectedDevice: bigint,
+  expectedSize: number,
+): void {
+  if (
+    !information.isFile() || information.nlink !== 1n ||
+    information.uid !== BigInt(currentEuid()) || information.dev !== expectedDevice ||
+    (information.mode & 0o7777n) !== 0o644n || information.size !== BigInt(expectedSize)
+  ) invalid("ADMISSION_LOCK_STAGE_UNSAFE", "prepared lock stage has unsafe filesystem identity");
+}
+
+function requireAbandonedLockStage(information: BigIntStats, expectedDevice: bigint): void {
+  const mode = information.mode & 0o7777n;
+  if (
+    !information.isFile() || information.nlink !== 1n ||
+    information.uid !== BigInt(currentEuid()) || information.dev !== expectedDevice ||
+    ![0o000n, 0o200n, 0o400n, 0o600n, 0o644n].includes(mode)
+  ) invalid("ADMISSION_LOCK_STAGE_UNSAFE", "reserved lock stage requires operator repair");
+}
+
+function requireVisibleLockFile(information: BigIntStats, expectedDevice: bigint): void {
+  if (!information.isFile() || information.nlink !== 1n || information.dev !== expectedDevice) {
+    invalid("LOCK_KIND", "jig.lock must be a single-link regular file on the project filesystem");
+  }
+  if (information.size > BigInt(JSON_1_LIMITS.bytes)) invalid("LOCK_INVALID", "jig.lock exceeds the private lock byte ceiling");
 }
 
 async function reacquireCandidateArtifacts(
@@ -959,6 +1428,7 @@ function isSqliteBusy(error: unknown): boolean {
 
 function busy(): never { unavailable("ADMISSION_STATE_BUSY", "private admission state is busy; retry the complete operation"); }
 function candidateChanged(): never { unavailable("ADMISSION_CANDIDATE_CHANGED", "unavailable candidate head changed; retry planning"); }
+function stale(message: string): never { unavailable("STALE_PLAN", message); }
 function corrupt(message: string): never { invalid("ADMISSION_STATE_CORRUPT", message); }
 function hasCode(error: unknown, code: string): boolean {
   return typeof error === "object" && error !== null && "code" in error && (error as { readonly code?: unknown }).code === code;

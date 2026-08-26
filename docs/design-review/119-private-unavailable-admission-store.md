@@ -1,9 +1,10 @@
 # Private unavailable candidate head and review-plan store
 
-**Status:** implemented private persistence checkpoint. It stores immutable
-single-target unavailable candidates and inert review plans. It does not write
-`jig.lock`, apply a plan, create an active generation, return an admission
-receipt, approve anything, or make a target runnable.
+**Status:** implemented historical private persistence checkpoint, subsequently
+extended by [reviews 120](120-private-unavailable-admission-record.md) and
+[121](121-private-unavailable-lock-first-apply.md). This document describes the
+three-table pre-apply format; the current pre-release private format replaces
+it rather than migrating it.
 
 This closes the first restart boundary after the canonical candidate from
 [review 118](118-private-unavailable-candidate.md). The store deliberately
@@ -210,9 +211,9 @@ The store still has no public API or machine schema. Its types and database are
 private implementation checkpoints, so the format may be replaced rather than
 migrated before release.
 
-## 6. Next boundary
+## 6. Closed successor boundary
 
-The next slice is lock-first apply for this one unavailable case:
+Review 121 closes the lock-first apply slice for this one unavailable case:
 
 ```text
 reload exact persisted plan
@@ -223,8 +224,8 @@ reload exact persisted plan
     -> persist and return one canonical admission record as the idempotent receipt
 ```
 
-That slice must define the one admission/receipt record before extending storage.
-It must handle the crash window between visible lock publication and SQLite
-commit without pretending rename is a filesystem-wide CAS against an
-uncooperative editor. Until then, no function in this checkpoint applies a
-plan or changes admission.
+It defines one admission/receipt record and handles the recoverable state
+between visible lock publication and SQLite commit without pretending rename
+is a filesystem-wide CAS against an uncooperative editor. The limitations in
+the original three-table checkpoint remain historically accurate for that
+format, not for the successor implementation.

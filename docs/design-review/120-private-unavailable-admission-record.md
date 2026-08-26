@@ -1,8 +1,9 @@
 # Private unavailable admission record and lock-first protocol
 
-**Status:** canonical record implemented; protected apply remains the next
-executable slice. This review freezes its minimum state machine before the
-private SQLite format changes.
+**Status:** canonical record and protocol implemented. The executable private
+checkpoint and its proof limits are recorded in
+[review 121](121-private-unavailable-lock-first-apply.md). This review remains
+the design freeze for that implementation.
 
 ## 1. Admission is not readiness
 
@@ -181,7 +182,9 @@ This slice adds no:
 - public API, public schema, migration framework, or storage abstraction; or
 - stronger filesystem claim than review 119.
 
-The next implementation replaces the private database format with the smallest
-version containing immutable admissions and one admission-head pointer, then
-proves sequential apply, concurrent apply, crash convergence, historical
-replay, and zero stage leakage.
+The private implementation has now replaced the pre-release database format
+with the smallest version containing immutable admissions and one
+admission-head pointer. Review 121 records its sequential and concurrent apply,
+crash-state convergence, historical replay, locked-mode, integrity, and
+zero-stage-leakage evidence. No READY or public-admission claim follows from
+that closure.

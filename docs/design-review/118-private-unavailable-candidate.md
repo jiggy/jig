@@ -137,12 +137,13 @@ passes in the cgroup-v2/Bubblewrap envelope.
 
 ## 5. Subsequent boundary
 
-The protected candidate-head and review-plan checkpoint described below is now
-closed by [review 119](119-private-unavailable-admission-store.md). It persisted
-only candidates and inert plans; it did not implement the later lock or
-generation steps.
+The protected candidate-head and review-plan checkpoint was closed by
+[review 119](119-private-unavailable-admission-store.md). The canonical
+admission protocol was then frozen by
+[review 120](120-private-unavailable-admission-record.md) and implemented by
+[review 121](121-private-unavailable-lock-first-apply.md).
 
-The remaining apply slice is not a public storage framework:
+That apply slice remains private rather than becoming a storage framework:
 
 ```text
 reload one persisted review plan and reacquire exact retained artifacts
@@ -159,6 +160,6 @@ transaction. Bun's async transaction callback must not be used because it
 commits when the callback returns its Promise rather than after awaited file
 work.
 
-That future proof coordinates cooperating Jig administrators. Ordinary
+That proof coordinates cooperating Jig administrators. Ordinary
 rename cannot provide a filesystem-wide compare-and-swap against an
 uncooperative concurrent editor, and no checkpoint should claim otherwise.

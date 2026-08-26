@@ -22,9 +22,11 @@ import {
 } from "../src/internal/package-artifact-store.js";
 import {
   decodePrivateProjectLocalLock,
+  encodePrivateProjectLocalLock,
   privateProjectLocalLockDigest,
 } from "../src/internal/project-local-lock.js";
 import {
+  applyPrivateUnavailableReviewPlan,
   createPrivateUnavailableReviewPlan,
   loadPrivateUnavailableReviewPlan,
   requirePrivateStoredUnavailableCandidate,
@@ -41,6 +43,8 @@ import { capturePackageDirectory } from "../src/package/capture.js";
 const CREATE_CANDIDATES = "CREATE TABLE candidates (revision INTEGER PRIMARY KEY CHECK (revision BETWEEN 1 AND 9007199254740991), candidate_digest TEXT NOT NULL, candidate_bytes BLOB NOT NULL CHECK (length(candidate_bytes) BETWEEN 1 AND 16777216), lock_bytes BLOB NOT NULL CHECK (length(lock_bytes) BETWEEN 1 AND 16777216)) STRICT";
 const CREATE_CANDIDATE_HEAD = "CREATE TABLE candidate_head (singleton INTEGER PRIMARY KEY CHECK (singleton = 1), revision INTEGER REFERENCES candidates(revision)) STRICT";
 const CREATE_REVIEW_PLANS = "CREATE TABLE review_plans (plan_digest TEXT PRIMARY KEY, candidate_revision INTEGER NOT NULL REFERENCES candidates(revision), plan_bytes BLOB NOT NULL CHECK (length(plan_bytes) BETWEEN 1 AND 16777216)) STRICT";
+const CREATE_ADMISSIONS = "CREATE TABLE admissions (revision INTEGER PRIMARY KEY CHECK (revision BETWEEN 1 AND 9007199254740991), admission_digest TEXT NOT NULL UNIQUE, base_generation TEXT UNIQUE REFERENCES admissions(admission_digest), plan_digest TEXT NOT NULL UNIQUE REFERENCES review_plans(plan_digest), admission_bytes BLOB NOT NULL CHECK (length(admission_bytes) BETWEEN 1 AND 16777216)) STRICT";
+const CREATE_ADMISSION_HEAD = "CREATE TABLE admission_head (singleton INTEGER PRIMARY KEY CHECK (singleton = 1), revision INTEGER REFERENCES admissions(revision)) STRICT";
 
 setDefaultTimeout(20_000);
 
@@ -88,12 +92,14 @@ describe.serial("private unavailable admission SQLite store", () => {
         expect(database.query(
           "SELECT name FROM sqlite_schema WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name",
         ).all().map(({ name }: { name: string }) => name)).toEqual([
+          "admission_head",
+          "admissions",
           "candidate_head",
           "candidates",
           "review_plans",
         ]);
-        expect(database.query("PRAGMA application_id").get().application_id).toBe(0x4a494731);
-        expect(database.query("PRAGMA user_version").get().user_version).toBe(1);
+        expect(database.query("PRAGMA application_id").get().application_id).toBe(0x4a494732);
+        expect(database.query("PRAGMA user_version").get().user_version).toBe(2);
         expect(database.query("SELECT count(*) AS count FROM review_plans").get().count).toBe(1);
       } finally {
         database.close(true);
@@ -101,6 +107,257 @@ describe.serial("private unavailable admission SQLite store", () => {
     } finally {
       await fixture.dispose();
     }
+  });
+
+  test("applies sequential generations and replays historical receipts without moving the head", async () => {
+    const fixture = await createFixture();
+    try {
+      const firstPlan = await createPrivateUnavailableReviewPlan({
+        projectRoot: fixture.root,
+        packageStoreRoot: fixture.store,
+        lockMode: "update",
+      });
+      expect(firstPlan.plan.baseGeneration).toBeNull();
+      const first = await applyPrivateUnavailableReviewPlan({
+        projectRoot: fixture.root,
+        packageStoreRoot: fixture.store,
+        planDigest: firstPlan.planDigest,
+        baseGeneration: null,
+      });
+      expect(new Uint8Array(await readFile(join(fixture.root, "jig.lock")))).toEqual(
+        encodePrivateProjectLocalLock(fixture.candidate.lock),
+      );
+      expect(await applyPrivateUnavailableReviewPlan({
+        projectRoot: fixture.root,
+        packageStoreRoot: fixture.store,
+        planDigest: firstPlan.planDigest,
+        baseGeneration: null,
+      })).toEqual(first);
+
+      const secondPlan = await createPrivateUnavailableReviewPlan({
+        projectRoot: fixture.root,
+        packageStoreRoot: fixture.store,
+        lockMode: "update",
+      });
+      expect(secondPlan.plan.baseGeneration).toBe(first.admissionDigest);
+      const competingPlan = await createPrivateUnavailableReviewPlan({
+        projectRoot: fixture.root,
+        packageStoreRoot: fixture.store,
+        lockMode: "locked",
+      });
+      expect(competingPlan.plan.baseGeneration).toBe(first.admissionDigest);
+      const second = await applyPrivateUnavailableReviewPlan({
+        projectRoot: fixture.root,
+        packageStoreRoot: fixture.store,
+        planDigest: secondPlan.planDigest,
+        baseGeneration: first.admissionDigest,
+      });
+      expect(second.admission.baseGeneration).toBe(first.admissionDigest);
+      expect(second.admissionDigest).not.toBe(first.admissionDigest);
+      await expect(applyPrivateUnavailableReviewPlan({
+        projectRoot: fixture.root,
+        packageStoreRoot: fixture.store,
+        planDigest: competingPlan.planDigest,
+        baseGeneration: first.admissionDigest,
+      })).rejects.toMatchObject({ code: "STALE_PLAN" });
+      expect(await applyPrivateUnavailableReviewPlan({
+        projectRoot: fixture.root,
+        packageStoreRoot: fixture.store,
+        planDigest: firstPlan.planDigest,
+        baseGeneration: null,
+      })).toEqual(first);
+
+      const database = openSqlite(fixture.database, "readonly");
+      try {
+        expect(database.query("SELECT count(*) AS count FROM admissions").get().count).toBe(2);
+        expect(database.query(
+          "SELECT admissions.admission_digest FROM admission_head JOIN admissions USING (revision) WHERE singleton = 1",
+        ).get().admission_digest).toBe(second.admissionDigest);
+      } finally { database.close(true); }
+      await expect(stat(join(fixture.root, ".jig", "private-unavailable-jig-lock-v1.stage")))
+        .rejects.toMatchObject({ code: "ENOENT" });
+
+      const corruptor = openSqlite(fixture.database, "readwrite");
+      corruptor.query(
+        "UPDATE admissions SET admission_bytes = (SELECT admission_bytes FROM admissions WHERE revision = 2) WHERE revision = 1",
+      ).run();
+      corruptor.close(true);
+      await expect(loadPrivateUnavailableReviewPlan({
+        projectRoot: fixture.root,
+        packageStoreRoot: fixture.store,
+        planDigest: secondPlan.planDigest,
+      })).rejects.toMatchObject({ code: "ADMISSION_STATE_CORRUPT" });
+    } finally {
+      await fixture.dispose();
+    }
+  });
+
+  test("converges a published-lock crash state and applies locked mode without replacing the lock", async () => {
+    const fixture = await createFixture();
+    try {
+      const plan = await createPrivateUnavailableReviewPlan({
+        projectRoot: fixture.root,
+        packageStoreRoot: fixture.store,
+        lockMode: "update",
+      });
+      const lock = join(fixture.root, "jig.lock");
+      const stage = join(fixture.root, ".jig", "private-unavailable-jig-lock-v1.stage");
+      const proposed = encodePrivateProjectLocalLock(fixture.candidate.lock);
+      await writeFile(lock, proposed, { mode: 0o644 });
+      await writeFile(stage, "partial crash residue", { mode: 0o600 });
+      const before = await stat(lock);
+      const database = openSqlite(fixture.database, "readonly");
+      expect(database.query("SELECT count(*) AS count FROM admissions").get().count).toBe(0);
+      expect(database.query("SELECT revision FROM admission_head WHERE singleton = 1").get().revision)
+        .toBeNull();
+      database.close(true);
+
+      const first = await applyPrivateUnavailableReviewPlan({
+        projectRoot: fixture.root,
+        packageStoreRoot: fixture.store,
+        planDigest: plan.planDigest,
+        baseGeneration: null,
+      });
+      expect(new Uint8Array(await readFile(lock))).toEqual(proposed);
+      expect((await stat(lock)).ino).toBe(before.ino);
+      await expect(stat(stage)).rejects.toMatchObject({ code: "ENOENT" });
+      expect(await applyPrivateUnavailableReviewPlan({
+        projectRoot: fixture.root,
+        packageStoreRoot: fixture.store,
+        planDigest: plan.planDigest,
+        baseGeneration: null,
+      })).toEqual(first);
+
+      const locked = await createPrivateUnavailableReviewPlan({
+        projectRoot: fixture.root,
+        packageStoreRoot: fixture.store,
+        lockMode: "locked",
+      });
+      const lockedBefore = await stat(lock);
+      const second = await applyPrivateUnavailableReviewPlan({
+        projectRoot: fixture.root,
+        packageStoreRoot: fixture.store,
+        planDigest: locked.planDigest,
+        baseGeneration: first.admissionDigest,
+      });
+      expect(second.admission.baseGeneration).toBe(first.admissionDigest);
+      expect((await stat(lock)).ino).toBe(lockedBefore.ino);
+      expect(new Uint8Array(await readFile(lock))).toEqual(proposed);
+      await expect(stat(stage)).rejects.toMatchObject({ code: "ENOENT" });
+    } finally { await fixture.dispose(); }
+  });
+
+  test("serializes concurrent replay and admits exactly one competing child", async () => {
+    const fixture = await createFixture();
+    try {
+      const firstPlan = await createPrivateUnavailableReviewPlan({
+        projectRoot: fixture.root,
+        packageStoreRoot: fixture.store,
+        lockMode: "update",
+      });
+      const receipts = await Promise.all(Array.from({ length: 4 }, () => retryBusy(
+        () => applyPrivateUnavailableReviewPlan({
+          projectRoot: fixture.root,
+          packageStoreRoot: fixture.store,
+          planDigest: firstPlan.planDigest,
+          baseGeneration: null,
+        }),
+      )));
+      expect(receipts).toEqual(Array.from({ length: 4 }, () => receipts[0]));
+
+      const update = await createPrivateUnavailableReviewPlan({
+        projectRoot: fixture.root,
+        packageStoreRoot: fixture.store,
+        lockMode: "update",
+      });
+      const locked = await createPrivateUnavailableReviewPlan({
+        projectRoot: fixture.root,
+        packageStoreRoot: fixture.store,
+        lockMode: "locked",
+      });
+      const attempts = await Promise.allSettled([update, locked].map((plan) => retryBusy(
+        () => applyPrivateUnavailableReviewPlan({
+          projectRoot: fixture.root,
+          packageStoreRoot: fixture.store,
+          planDigest: plan.planDigest,
+          baseGeneration: receipts[0]!.admissionDigest,
+        }),
+      )));
+      const admitted = attempts.filter((result) => result.status === "fulfilled");
+      const rejected = attempts.filter((result) => result.status === "rejected");
+      expect(admitted).toHaveLength(1);
+      expect(rejected).toHaveLength(1);
+      expect((rejected[0] as PromiseRejectedResult).reason).toMatchObject({ code: "STALE_PLAN" });
+
+      const database = openSqlite(fixture.database, "readonly");
+      expect(database.query("SELECT count(*) AS count FROM admissions").get().count).toBe(2);
+      expect(database.query(
+        "SELECT admissions.admission_digest FROM admission_head JOIN admissions USING (revision) WHERE singleton = 1",
+      ).get().admission_digest).toBe((admitted[0] as PromiseFulfilledResult<{
+        admissionDigest: string;
+      }>).value.admissionDigest);
+      database.close(true);
+      expect(await applyPrivateUnavailableReviewPlan({
+        projectRoot: fixture.root,
+        packageStoreRoot: fixture.store,
+        planDigest: firstPlan.planDigest,
+        baseGeneration: null,
+      })).toEqual(receipts[0]);
+    } finally { await fixture.dispose(); }
+  });
+
+  test("bounds crash residue and rejects third-state lock drift before admission", async () => {
+    const fixture = await createFixture();
+    try {
+      const plan = await createPrivateUnavailableReviewPlan({
+        projectRoot: fixture.root,
+        packageStoreRoot: fixture.store,
+        lockMode: "update",
+      });
+      const stage = join(fixture.root, ".jig", "private-unavailable-jig-lock-v1.stage");
+      await mkdir(stage, { mode: 0o700 });
+      await expect(applyPrivateUnavailableReviewPlan({
+        projectRoot: fixture.root,
+        packageStoreRoot: fixture.store,
+        planDigest: plan.planDigest,
+        baseGeneration: null,
+      })).rejects.toMatchObject({ code: "ADMISSION_LOCK_STAGE_UNSAFE" });
+      expect((await stat(stage)).isDirectory()).toBeTrue();
+      await rm(stage, { recursive: true });
+
+      await writeFile(stage, "partial", { mode: 0o600 });
+      const receipt = await applyPrivateUnavailableReviewPlan({
+        projectRoot: fixture.root,
+        packageStoreRoot: fixture.store,
+        planDigest: plan.planDigest,
+        baseGeneration: null,
+      });
+      expect(receipt.admission.planDigest).toBe(plan.planDigest);
+      await expect(stat(stage)).rejects.toMatchObject({ code: "ENOENT" });
+    } finally { await fixture.dispose(); }
+
+    const drift = await createFixture();
+    try {
+      const plan = await createPrivateUnavailableReviewPlan({
+        projectRoot: drift.root,
+        packageStoreRoot: drift.store,
+        lockMode: "update",
+      });
+      await writeFile(join(drift.root, "jig.lock"), json1({
+        kind: "private-package-project-lock/1",
+        packages: {},
+        bindings: {},
+      }));
+      await expect(applyPrivateUnavailableReviewPlan({
+        projectRoot: drift.root,
+        packageStoreRoot: drift.store,
+        planDigest: plan.planDigest,
+        baseGeneration: null,
+      })).rejects.toMatchObject({ code: "STALE_PLAN" });
+      const database = openSqlite(drift.database, "readonly");
+      try { expect(database.query("SELECT count(*) AS count FROM admissions").get().count).toBe(0); }
+      finally { database.close(true); }
+    } finally { await drift.dispose(); }
   });
 
   test("accepts a safe non-hot journal but rejects unsafe and WAL sidecars", async () => {
@@ -265,7 +522,7 @@ async function createFixture(): Promise<Fixture> {
     const encoded = encodePrivateUnavailableCandidate(candidate);
 
     const state = join(root, ".jig");
-    const databasePath = join(state, "private-unavailable-admission-v1.sqlite3");
+    const databasePath = join(state, "private-unavailable-admission-v2.sqlite3");
     await mkdir(state, { mode: 0o700 });
     const databaseFile = await open(
       databasePath,
@@ -282,9 +539,12 @@ async function createFixture(): Promise<Fixture> {
         CREATE_CANDIDATES,
         CREATE_CANDIDATE_HEAD,
         CREATE_REVIEW_PLANS,
+        CREATE_ADMISSIONS,
+        CREATE_ADMISSION_HEAD,
         "INSERT INTO candidate_head(singleton, revision) VALUES (1, NULL)",
-        "PRAGMA application_id=1246316337",
-        "PRAGMA user_version=1",
+        "INSERT INTO admission_head(singleton, revision) VALUES (1, NULL)",
+        "PRAGMA application_id=1246316338",
+        "PRAGMA user_version=2",
       ].join(";"));
       database.exec("BEGIN IMMEDIATE");
       database.query(

@@ -23,6 +23,7 @@ import {
   requirePrivateCreatedUnavailableCandidate,
 } from "../src/internal/unavailable-admission.js";
 import {
+  applyPrivateUnavailableReviewPlan,
   createPrivateUnavailableReviewPlan,
   loadPrivateUnavailableReviewPlan,
   publishPrivateUnavailableCandidate,
@@ -570,7 +571,30 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         lockMode: "locked",
       }))
         .rejects.toMatchObject({ code: "LOCK_MISMATCH" });
-      await writeFile(join(root, "jig.lock"), persisted.lock);
+      const admissionDatabase = join(root, ".jig", "private-unavailable-admission-v2.sqlite3");
+      await writeFile(join(root, "jig.lock"), persisted.lock, { mode: 0o644 });
+      const crashSqlite = createRequire(import.meta.url)("bun:sqlite") as any;
+      const recovered = crashSqlite.Database.open(
+        admissionDatabase,
+        crashSqlite.constants.SQLITE_OPEN_READONLY | crashSqlite.constants.SQLITE_OPEN_NOFOLLOW,
+      );
+      expect(recovered.query("SELECT count(*) AS count FROM admissions").get().count).toBe(0);
+      expect(recovered.query("SELECT revision FROM admission_head WHERE singleton = 1").get().revision)
+        .toBeNull();
+      recovered.close(true);
+      const firstAdmission = await applyPrivateUnavailableReviewPlan({
+        projectRoot: root,
+        packageStoreRoot: store,
+        planDigest: firstPlan.planDigest,
+        baseGeneration: null,
+      });
+      expect(await applyPrivateUnavailableReviewPlan({
+        projectRoot: root,
+        packageStoreRoot: store,
+        planDigest: firstPlan.planDigest,
+        baseGeneration: null,
+      })).toEqual(firstAdmission);
+      expect(new Uint8Array(await readFile(join(root, "jig.lock")))).toEqual(persisted.lock);
       const lockedPlan = await createPrivateUnavailableReviewPlan({
         projectRoot: root,
         packageStoreRoot: store,
@@ -580,6 +604,7 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         state: "present",
         digest: `sha256:${createHash("sha256").update(persisted.lock).digest("hex")}`,
       });
+      expect(lockedPlan.plan.baseGeneration).toBe(firstAdmission.admissionDigest);
       await rm(join(root, "jig.lock"));
 
       const secondPlanning = createPrivateActivationPlanningObservation({
@@ -627,7 +652,6 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         planDigest: firstPlan.planDigest,
       })).plan).toEqual(firstPlan.plan);
       expect((await stat(join(root, ".jig"))).mode & 0o777).toBe(0o700);
-      const admissionDatabase = join(root, ".jig", "private-unavailable-admission-v1.sqlite3");
       expect((await stat(admissionDatabase)).mode & 0o777)
         .toBe(0o600);
       const interruptedWriter = spawn(process.execPath, [
@@ -687,16 +711,19 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         expect(database.query(
           "SELECT name FROM sqlite_schema WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name",
         ).all().map(({ name }: { name: string }) => name)).toEqual([
+          "admission_head",
+          "admissions",
           "candidate_head",
           "candidates",
           "review_plans",
         ]);
-        expect(database.query("PRAGMA application_id").get().application_id).toBe(0x4a494731);
-        expect(database.query("PRAGMA user_version").get().user_version).toBe(1);
+        expect(database.query("PRAGMA application_id").get().application_id).toBe(0x4a494732);
+        expect(database.query("PRAGMA user_version").get().user_version).toBe(2);
         expect(database.query("PRAGMA journal_mode").get().journal_mode).toBe("delete");
         expect(database.query("SELECT revision FROM candidate_head WHERE singleton = 1").get().revision).toBe(3);
         expect(database.query("SELECT count(*) AS count FROM candidates").get().count).toBe(3);
         expect(database.query("SELECT count(*) AS count FROM review_plans").get().count).toBe(3);
+        expect(database.query("SELECT count(*) AS count FROM admissions").get().count).toBe(1);
       } finally {
         database.close(true);
       }
@@ -739,6 +766,26 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         packageStoreRoot: store,
         planDigest: firstPlan.planDigest,
       })).plan).toEqual(firstPlan.plan);
+
+      const secondAdmission = await applyPrivateUnavailableReviewPlan({
+        projectRoot: root,
+        packageStoreRoot: store,
+        planDigest: replayedPlan.planDigest,
+        baseGeneration: firstAdmission.admissionDigest,
+      });
+      expect(secondAdmission.admission.baseGeneration).toBe(firstAdmission.admissionDigest);
+      expect(await applyPrivateUnavailableReviewPlan({
+        projectRoot: root,
+        packageStoreRoot: store,
+        planDigest: firstPlan.planDigest,
+        baseGeneration: null,
+      })).toEqual(firstAdmission);
+      await expect(applyPrivateUnavailableReviewPlan({
+        projectRoot: root,
+        packageStoreRoot: store,
+        planDigest: lockedPlan.planDigest,
+        baseGeneration: firstAdmission.admissionDigest,
+      })).rejects.toMatchObject({ code: "STALE_PLAN" });
 
       corruptor = sqlite.Database.open(admissionDatabase, writableFlags);
       corruptor.query("UPDATE candidates SET candidate_digest = ?1 WHERE revision = 1")
