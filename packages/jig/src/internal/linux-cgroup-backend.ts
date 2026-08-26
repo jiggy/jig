@@ -19,7 +19,6 @@ const HELPER_BUN_POLICY = Object.freeze([
   "--config=/dev/null",
 ] as const);
 const EMPTY_ROOT_ENVIRONMENT = 'cd -- / && exec -c -- "$@"';
-const authenticMechanismObservations = new WeakSet<object>();
 const authenticBackends = new WeakSet<object>();
 
 export interface PrivateLinuxCgroupLimits {
@@ -46,8 +45,6 @@ export interface PrivateLinuxLaunchPlan {
   readonly rootProcessMappings?: boolean;
   /** Backend-owned runtime predicate; never package-selected. */
   readonly entropyDevice?: boolean;
-  /** Backend-owned pin checked again immediately before helper spawn. */
-  readonly expectedMechanismDigest?: string;
   /** Backend-owned exact helper override; never package-selected. */
   readonly trustedHelperPath?: string;
 }
@@ -91,7 +88,7 @@ export interface PrivateLinuxEnvelopeIdentity {
   readonly entropyDevice: boolean;
 }
 
-export interface PrivateLinuxBackendMechanismObservation {
+interface PrivateLinuxBackendMechanismObservation {
   readonly kind: "linux-cgroup-v2-bubblewrap-mechanism/1";
   readonly digest: string;
   readonly cgroupScope: string;
@@ -183,12 +180,6 @@ export class PrivateLinuxCgroupBackend {
     Object.freeze(this);
   }
 
-  /** Observe the exact trusted mechanism selected by this private backend. */
-  async observeMechanism(): Promise<PrivateLinuxBackendMechanismObservation> {
-    requirePrivateLinuxCgroupBackend(this);
-    return observeBackendMechanism(this.options, this.options.helperPath);
-  }
-
   async launch(
     plan: PrivateLinuxLaunchPlan,
     signal?: AbortSignal,
@@ -205,10 +196,6 @@ export class PrivateLinuxCgroupBackend {
       this.options,
       plan.trustedHelperPath ?? this.options.helperPath,
     );
-    if (plan.expectedMechanismDigest !== undefined &&
-        plan.expectedMechanismDigest !== mechanism.digest) {
-      throw new Error("pinned Linux Backend mechanism observation changed");
-    }
     const sealedPlanDigest = privateDomainDigest(
       "JIG-Linux-Sealed-Launch-Plan/1",
       {
@@ -512,15 +499,6 @@ export function requirePrivateLinuxCgroupBackend(value: unknown): PrivateLinuxCg
 
 Object.freeze(PrivateLinuxCgroupBackend.prototype);
 
-export function requirePrivateLinuxBackendMechanismObservation(
-  value: unknown,
-): PrivateLinuxBackendMechanismObservation {
-  if (value === null || typeof value !== "object" || !authenticMechanismObservations.has(value)) {
-    throw new TypeError("Linux Backend mechanism was not produced by the private observer");
-  }
-  return value as PrivateLinuxBackendMechanismObservation;
-}
-
 async function observeBackendMechanism(
   options: NormalizedBackendOptions,
   helperPath: string,
@@ -591,7 +569,6 @@ async function observeBackendMechanism(
       identity as unknown as JsonValue,
     ),
   });
-  authenticMechanismObservations.add(observation);
   return observation;
 }
 
@@ -676,10 +653,6 @@ function validatePlan(plan: PrivateLinuxLaunchPlan): void {
   }
   if (plan.trustedHelperPath !== undefined && !plan.trustedHelperPath.startsWith("/")) {
     throw new TypeError("trustedHelperPath must be absolute");
-  }
-  if (plan.expectedMechanismDigest !== undefined &&
-      !/^sha256:[0-9a-f]{64}$/.test(plan.expectedMechanismDigest)) {
-    throw new TypeError("expectedMechanismDigest must be a canonical SHA-256 digest");
   }
   const destinations = new Set<string>();
   for (const mount of plan.readOnlyMounts) {
