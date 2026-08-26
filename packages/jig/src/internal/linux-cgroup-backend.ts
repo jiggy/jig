@@ -13,6 +13,12 @@ import type { ExactComponentExit, ExactComponentProcess } from "../run/session.j
 const RUN_ID = /^[a-z0-9][a-z0-9-]{0,47}$/;
 const ENVIRONMENT_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const CONTROL_BYTES = 64 * 1024;
+const HELPER_BUN_POLICY = Object.freeze([
+  "--no-env-file",
+  "--no-install",
+  "--config=/dev/null",
+] as const);
+const EMPTY_ROOT_ENVIRONMENT = 'cd -- / && exec -c -- "$@"';
 const authenticMechanismObservations = new WeakSet<object>();
 const authenticBackends = new WeakSet<object>();
 
@@ -51,10 +57,10 @@ export interface PrivateLinuxCgroupBackendOptions {
   readonly sudoPath: string;
   readonly bunPath: string;
   readonly bubblewrapPath: string;
+  readonly bashPath: string;
   readonly payloadUid: number;
   readonly payloadGid: number;
   readonly helperPath?: string;
-  readonly shellPath?: string;
   readonly startupTimeoutMs?: number;
 }
 
@@ -68,8 +74,8 @@ export interface PrivateLinuxEnvelopeIdentity {
   readonly trustedCoordinatorBunDigest: string;
   readonly trustedLauncherPath: string;
   readonly trustedLauncherDigest: string;
-  readonly trustedShellPath: string;
-  readonly trustedShellDigest: string;
+  readonly trustedBashPath: string;
+  readonly trustedBashDigest: string;
   readonly trustedBackendPath: string;
   readonly trustedBackendDigest: string;
   readonly cgroupVersion: 2;
@@ -97,8 +103,8 @@ export interface PrivateLinuxBackendMechanismObservation {
   readonly trustedCoordinatorBunDigest: string;
   readonly trustedLauncherPath: string;
   readonly trustedLauncherDigest: string;
-  readonly trustedShellPath: string;
-  readonly trustedShellDigest: string;
+  readonly trustedBashPath: string;
+  readonly trustedBashDigest: string;
   readonly trustedBackendPath: string;
   readonly trustedBackendDigest: string;
   readonly cgroupVersion: 2;
@@ -152,10 +158,9 @@ type HelperMessage = HelperReady | HelperTerminal | {
 };
 
 type NormalizedBackendOptions = Required<
-  Omit<PrivateLinuxCgroupBackendOptions, "helperPath" | "shellPath">
+  Omit<PrivateLinuxCgroupBackendOptions, "helperPath">
 > & {
   readonly helperPath: string;
-  readonly shellPath: string;
 };
 
 /**
@@ -171,7 +176,6 @@ export class PrivateLinuxCgroupBackend {
     this.options = Object.freeze({
       ...options,
       helperPath: options.helperPath ?? join(dirname(sourcePath), `linux-cgroup-helper${helperExtension}`),
-      shellPath: options.shellPath ?? "/bin/sh",
       startupTimeoutMs: options.startupTimeoutMs ?? 10_000,
     });
     validateOptions(this.options);
@@ -236,7 +240,16 @@ export class PrivateLinuxCgroupBackend {
         mechanism.trustedLauncherPath,
         [
           "-n",
+          "--",
+          mechanism.trustedBashPath,
+          "--noprofile",
+          "--norc",
+          "-p",
+          "-c",
+          EMPTY_ROOT_ENVIRONMENT,
+          "jig-cgroup-helper",
           mechanism.trustedCoordinatorBunPath,
+          ...HELPER_BUN_POLICY,
           mechanism.trustedHelperPath,
           "--control", controlPath,
           "--scope", mechanism.cgroupScope,
@@ -250,11 +263,11 @@ export class PrivateLinuxCgroupBackend {
           "--uid", String(this.options.payloadUid),
           "--gid", String(this.options.payloadGid),
           "--bubblewrap", mechanism.trustedBubblewrapPath,
-          "--shell", mechanism.trustedShellPath,
+          "--bash", mechanism.trustedBashPath,
           "--",
           ...bubblewrapArguments(sealedPlan, this.options.payloadUid, this.options.payloadGid),
         ],
-        { stdio: ["pipe", "pipe", "pipe"] },
+        { cwd: "/", env: {}, stdio: ["pipe", "pipe", "pipe"] },
       );
       helperClose = childClose(child);
       const connectedSocket = await Promise.race([
@@ -360,8 +373,8 @@ export class PrivateLinuxCgroupBackend {
           trustedCoordinatorBunDigest: mechanism.trustedCoordinatorBunDigest,
           trustedLauncherPath: mechanism.trustedLauncherPath,
           trustedLauncherDigest: mechanism.trustedLauncherDigest,
-          trustedShellPath: mechanism.trustedShellPath,
-          trustedShellDigest: mechanism.trustedShellDigest,
+          trustedBashPath: mechanism.trustedBashPath,
+          trustedBashDigest: mechanism.trustedBashDigest,
           trustedBackendPath: mechanism.trustedBackendPath,
           trustedBackendDigest: mechanism.trustedBackendDigest,
           cgroupVersion: mechanism.cgroupVersion,
@@ -513,22 +526,22 @@ async function observeBackendMechanism(
   helperPath: string,
 ): Promise<PrivateLinuxBackendMechanismObservation> {
   const [cgroupScope, trustedHelperPath, trustedBubblewrapPath,
-    trustedCoordinatorBunPath, trustedLauncherPath, trustedShellPath, trustedBackendPath] = await Promise.all([
+    trustedCoordinatorBunPath, trustedLauncherPath, trustedBashPath, trustedBackendPath] = await Promise.all([
     realpath(options.cgroupScope),
     realpath(helperPath),
     realpath(options.bubblewrapPath),
     realpath(options.bunPath),
     realpath(options.sudoPath),
-    realpath(options.shellPath),
+    realpath(options.bashPath),
     realpath(fileURLToPath(import.meta.url)),
   ]);
   const [trustedHelperDigest, trustedBubblewrapDigest, trustedCoordinatorBunDigest,
-    trustedLauncherDigest, trustedShellDigest, trustedBackendDigest] = await Promise.all([
+    trustedLauncherDigest, trustedBashDigest, trustedBackendDigest] = await Promise.all([
     privateFileDigest(trustedHelperPath),
     privateFileDigest(trustedBubblewrapPath),
     privateFileDigest(trustedCoordinatorBunPath),
     privateFileDigest(trustedLauncherPath),
-    privateFileDigest(trustedShellPath),
+    privateFileDigest(trustedBashPath),
     privateFileDigest(trustedBackendPath),
   ]);
   const [filesystem, scopeInformation, controllersText, processes] = await Promise.all([
@@ -557,8 +570,8 @@ async function observeBackendMechanism(
     trustedCoordinatorBunDigest,
     trustedLauncherPath,
     trustedLauncherDigest,
-    trustedShellPath,
-    trustedShellDigest,
+    trustedBashPath,
+    trustedBashDigest,
     trustedBackendPath,
     trustedBackendDigest,
     cgroupVersion: 2 as const,
@@ -635,7 +648,7 @@ function validateOptions(options: NormalizedBackendOptions): void {
     bunPath: options.bunPath,
     bubblewrapPath: options.bubblewrapPath,
     helperPath: options.helperPath,
-    shellPath: options.shellPath,
+    bashPath: options.bashPath,
   })) {
     if (!path.startsWith("/") || path.includes("\0")) throw new TypeError(`${name} must be an absolute path`);
   }

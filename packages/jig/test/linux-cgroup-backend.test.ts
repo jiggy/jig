@@ -56,6 +56,7 @@ describe("private Linux cgroup-v2 plan boundary", () => {
       sudoPath: "/usr/bin/sudo",
       bunPath: "/usr/bin/bun",
       bubblewrapPath: "/usr/bin/bwrap",
+      bashPath: "/usr/bin/bash",
       payloadUid: 1000,
       payloadGid: 1000,
     });
@@ -87,6 +88,46 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
     if (host === undefined) return;
     const residue = await jigCgroups(host.scope);
     expect(residue).toEqual([]);
+  });
+
+  test("rejects ambient, policy-drifted, and ambiguous privileged helper starts", async () => {
+    host = await hostConfiguration();
+    const helper = join(import.meta.dir, "..", "src", "internal", "linux-cgroup-helper.ts");
+    const bun = await realpath("/bin/bun");
+    const sudo = "/agent-sudo/bin/sudo";
+    const policy = ["--no-env-file", "--no-install", "--config=/dev/null"];
+    const bridge = [
+      "-n",
+      "--",
+      host.bash,
+      "--noprofile",
+      "--norc",
+      "-p",
+      "-c",
+      'cd -- / && exec -c -- "$@"',
+      "jig-cgroup-helper",
+      bun,
+    ];
+
+    const ambient = await invoke(sudo, ["-n", "--", bun, ...policy, helper]);
+    expect(ambient.code).toBe(70);
+    expect(ambient.stderr).toContain("trusted cgroup helper requires an empty environment");
+
+    const drifted = await invoke(sudo, [...bridge, "--no-env-file", "--no-install", helper]);
+    expect(drifted.code).toBe(70);
+    expect(drifted.stderr).toContain("trusted cgroup helper requires the fixed Bun policy");
+
+    const duplicate = await invoke(sudo, [
+      ...bridge,
+      ...policy,
+      helper,
+      "--scope", host.scope,
+      "--scope", host.scope,
+      "--",
+      "/invalid",
+    ]);
+    expect(duplicate.code).toBe(70);
+    expect(duplicate.stderr).toContain("invalid trusted cgroup helper arguments");
   });
 
   test("hides cgroupfs, prevents migration, and runs as the payload identity", async () => {
@@ -141,17 +182,31 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
 
   test("combines CPU throttling with an independent hard wall deadline", async () => {
     host = await hostConfiguration();
-    const started = performance.now();
-    const result = await run(host, "cpu-deadline", "while :; do :; done", {
+
+    const throttled = await run(host, "cpu-throttling", [
+      "SECONDS=0",
+      "while (( SECONDS < 2 )); do :; done",
+    ].join("\n"), {
       ...limits(),
       cpuQuotaMicros: 10_000,
       cpuPeriodMicros: 100_000,
-      wallClockMs: 300,
+      wallClockMs: 5_000,
+    });
+
+    expect(throttled.exit).toMatchObject({ exitCode: 0, signal: null, fenced: true });
+    expect(throttled.evidence.cpuStat.usage_usec).toBeGreaterThan(0);
+    expect(throttled.evidence.cpuStat.nr_throttled).toBeGreaterThan(0);
+
+    const started = performance.now();
+    const terminated = await run(host, "cpu-deadline", "while :; do :; done", {
+      ...limits(),
+      cpuQuotaMicros: 10_000,
+      cpuPeriodMicros: 100_000,
+      wallClockMs: 500,
     });
 
     expect(performance.now() - started).toBeLessThan(2_000);
-    expect(result.exit).toMatchObject({ signal: "SIGKILL", fenced: true });
-    expect(result.evidence.cpuStat.nr_throttled).toBeGreaterThan(0);
+    expect(terminated.exit).toMatchObject({ signal: "SIGKILL", fenced: true });
   });
 
   test("cancels during startup and shutdown without leaking ownership", async () => {
@@ -1221,6 +1276,7 @@ function backend(host: HostConfiguration, startupTimeoutMs?: number): PrivateLin
     sudoPath: "/agent-sudo/bin/sudo",
     bunPath: "/bin/bun",
     bubblewrapPath: "/usr/bin/bwrap",
+    bashPath: host.bash,
     payloadUid: 1000,
     payloadGid: 100,
     ...(startupTimeoutMs === undefined ? {} : { startupTimeoutMs }),
@@ -1279,6 +1335,21 @@ async function run(
     evidence: await process.evidence,
     cgroup: process.cgroup,
   };
+}
+
+async function invoke(
+  command: string,
+  arguments_: readonly string[],
+): Promise<{ code: number | null; stdout: string; stderr: string }> {
+  const child = spawn(command, arguments_, {
+    cwd: "/",
+    env: {},
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  const stdout = collect(child.stdout!);
+  const stderr = collect(child.stderr!);
+  const exit = await childExit(child);
+  return { code: exit.code, stdout: await stdout, stderr: await stderr };
 }
 
 async function collect(source: AsyncIterable<Uint8Array>): Promise<string> {

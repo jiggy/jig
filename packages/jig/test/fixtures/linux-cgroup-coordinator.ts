@@ -13,6 +13,7 @@ const backend = new PrivateLinuxCgroupBackend({
   sudoPath: "/agent-sudo/bin/sudo",
   bunPath: "/bin/bun",
   bubblewrapPath: "/usr/bin/bwrap",
+  bashPath: bash,
   payloadUid: 1000,
   payloadGid: 100,
 });

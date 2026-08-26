@@ -17,11 +17,32 @@ interface Configuration {
   readonly uid: string;
   readonly gid: string;
   readonly bubblewrap: string;
-  readonly shell: string;
+  readonly bash: string;
   readonly bubblewrapArguments: readonly string[];
 }
 
 type StopReason = "cancelled" | "coordinator_lost" | "deadline" | "payload_exit" | "setup_failed";
+
+const HELPER_BUN_POLICY = Object.freeze([
+  "--no-env-file",
+  "--no-install",
+  "--config=/dev/null",
+] as const);
+const HELPER_FIELDS = new Set([
+  "bubblewrap",
+  "cleanup-ms",
+  "control",
+  "cpu-period",
+  "cpu-quota",
+  "gid",
+  "memory",
+  "parent",
+  "pids",
+  "scope",
+  "bash",
+  "uid",
+  "wall-ms",
+]);
 
 const ENTER_SCRIPT = [
   "set -eu",
@@ -34,10 +55,20 @@ const ENTER_SCRIPT = [
 ].join("\n");
 
 async function main(): Promise<void> {
-  const config = parseArguments(process.argv.slice(2));
   if (typeof process.getuid !== "function" || process.getuid() !== 0) {
     throw new Error("trusted cgroup helper requires uid 0");
   }
+  if (process.cwd() !== "/") {
+    throw new Error("trusted cgroup helper requires fixed cwd /");
+  }
+  if (Object.keys(process.env).length !== 0) {
+    throw new Error("trusted cgroup helper requires an empty environment");
+  }
+  if (process.execArgv.length !== HELPER_BUN_POLICY.length ||
+      process.execArgv.some((value, index) => value !== HELPER_BUN_POLICY[index])) {
+    throw new Error("trusted cgroup helper requires the fixed Bun policy");
+  }
+  const config = parseArguments(process.argv.slice(2));
 
   const parentCgroup = join(config.scope, config.parent);
   const runCgroup = join(parentCgroup, "run");
@@ -122,9 +153,20 @@ async function main(): Promise<void> {
     if (stopping !== undefined) throw new Error(`launch cancelled during setup: ${stopping}`);
 
     const launched = spawn(
-      config.shell,
-      ["-eu", "-c", ENTER_SCRIPT, "jig-cgroup-enter", runCgroup, config.bubblewrap, ...config.bubblewrapArguments],
-      { stdio: ["pipe", "pipe", "pipe", "pipe"] },
+      config.bash,
+      [
+        "--noprofile",
+        "--norc",
+        "-p",
+        "-eu",
+        "-c",
+        ENTER_SCRIPT,
+        "jig-cgroup-enter",
+        runCgroup,
+        config.bubblewrap,
+        ...config.bubblewrapArguments,
+      ],
+      { cwd: "/", env: {}, stdio: ["pipe", "pipe", "pipe", "pipe"] },
     );
     if (launched.stdin === null || launched.stdout === null || launched.stderr === null) {
       throw new Error("payload process pipes were unavailable");
@@ -219,7 +261,11 @@ function parseArguments(arguments_: readonly string[]): Configuration {
     if (name === undefined || value === undefined || !name.startsWith("--")) {
       throw new Error("invalid trusted cgroup helper arguments");
     }
-    values.set(name.slice(2), value);
+    const field = name.slice(2);
+    if (!HELPER_FIELDS.has(field) || values.has(field)) {
+      throw new Error("invalid trusted cgroup helper arguments");
+    }
+    values.set(field, value);
   }
   const bubblewrapArguments = arguments_.slice(index + 1);
   const required = (name: string): string => {
@@ -243,8 +289,8 @@ function parseArguments(arguments_: readonly string[]): Configuration {
     throw new Error("helper cgroup target is outside the Jig-owned naming boundary");
   }
   const bubblewrap = required("bubblewrap");
-  const shell = required("shell");
-  if (!bubblewrap.startsWith("/") || !shell.startsWith("/") || bubblewrapArguments.length === 0) {
+  const bash = required("bash");
+  if (!bubblewrap.startsWith("/") || !bash.startsWith("/") || bubblewrapArguments.length === 0) {
     throw new Error("invalid Bubblewrap launch");
   }
   return {
@@ -260,7 +306,7 @@ function parseArguments(arguments_: readonly string[]): Configuration {
     uid: nonnegativeInteger("uid"),
     gid: nonnegativeInteger("gid"),
     bubblewrap,
-    shell,
+    bash,
     bubblewrapArguments,
   };
 }

@@ -261,8 +261,9 @@ of consent ordering and generation CAS, never evidence of execution support.
 
 Two small private prerequisites can now advance independently:
 
-1. close the privileged helper's launch posture and produce one active Linux
-   Backend preflight receipt; and
+1. finish the privileged helper's authorization boundary and produce one
+   active Linux Backend preflight receipt (the ambient startup sub-boundary is
+   now closed by [review 123](123-private-helper-startup-posture.md)); and
 2. build, acquire, reconcile, and retire one canonical host-generation record
    with the bounded indirect-root set above.
 
