@@ -149,11 +149,10 @@ The focused corpus proves:
 
 ## 6. Next boundary
 
-The next slice remains host-local and private:
+The remaining runnable-admission boundary is host-local and private:
 
 ```text
-complete retained Adapter/planner implementation closure
-complete retained Backend/helper implementation closure
+one closed two-role Python/Linux host generation
 stable registration identity separated from volatile preflight receipts
 canonical authenticated host-policy/eligible-registration snapshot
 durable Python/Nix runtime-root ownership
@@ -161,11 +160,19 @@ durable visible-lock publication followed by exact byte/digest reverification
 persisted candidate/recipe identity and one lock-first admission CAS
 ```
 
-Only after those artifacts can be reacquired after restart may a candidate be
-persisted for lock-first admission. Publication additionally requires confined
-visible-file replacement with durability appropriate to the host and a
-post-publication comparison against the persisted candidate; this pure module
-does neither. A runnable `READY` generation additionally needs
+Only after those artifacts can be reacquired after restart may a candidate
+containing a runnable recipe be persisted for lock-first admission. Publication
+additionally requires confined visible-file replacement with durability
+appropriate to the host and a post-publication comparison against the
+persisted candidate; this pure module does neither. A runnable `READY`
+generation additionally needs
 coordinator-chosen, persisted spawn/materialization identities and restart
 fencing; Phase 3's random launch nonce and unrecorded temporary materialization
 are intentionally insufficient.
+
+The two-role bundle proof and the missing collector-namespace root capability
+are recorded in [review 117](117-private-host-generation-boundary.md). Because
+that capability is unavailable in the current host environment, the next
+executable slice proves lock-first persistence with a strict `UNAVAILABLE`
+candidate. It must not manufacture a `READY` recipe or another private byte
+store to conceal the missing lifecycle root.
