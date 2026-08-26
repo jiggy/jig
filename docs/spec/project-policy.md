@@ -456,7 +456,7 @@ the exact captured config evaluator and source closure.
 
 Jig maintains:
 
-- one immutable locally approved **active admission generation**; and
+- zero or one immutable locally approved **active admission generation**; and
 - at most one latest **candidate** derived from current source and resolution.
 
 Later edits supersede the previous candidate; there is no per-file approval
@@ -492,7 +492,7 @@ plan() -> {
 }
 
 apply(planDigest, activeGeneration) ->
-  newGeneration | STALE_PLAN | INVALID_CANDIDATE
+  admissionReceipt | STALE_PLAN | INVALID_CANDIDATE
 ```
 
 These names are explanatory. Authentication, transport, closed delta/result
@@ -534,6 +534,18 @@ durable, and the relevant revocation state is unchanged. Any mismatch returns
 source, reevaluates declarations, rediscovers members, or reruns resolution.
 Admission publication and the Hook Journal boundary commit atomically in Jig
 state.
+
+The admission record is one canonical immutable record. Its digest names the
+new generation, and returning that same stored record is the idempotent
+admission receipt. V1 does not persist a second nominal approval receipt which
+would duplicate the plan and generation without proving an authenticated
+actor. A future authenticated approval boundary may add its own evidence.
+
+Replay checks whether the exact plan already committed before applying stale
+head tests. A committed replay returns its immutable historical receipt even
+when a later generation is now active, and never moves the active pointer. An
+uncommitted plan whose candidate or base generation is no longer current is
+stale. This resolves a lost response without making old policy current again.
 
 A visible edit becomes CAS-relevant when capture publishes a replacement
 candidate. Filesystem notification is a liveness mechanism which schedules
@@ -582,8 +594,8 @@ one host-serialized administration operation Jig:
    lock bytes, or in `--locked` mode verifies the existing bytes without
    changing them; then
 2. performs one local admission transaction which rechecks the complete CAS,
-   inserts the immutable generation and approval receipt, advances the active
-   pointer, and publishes the Hook Journal boundary.
+   inserts one immutable admission record whose digest names the generation,
+   advances the active pointer, and publishes the Hook Journal boundary.
 
 Jig never commits step 2 before lock durability. A crash after step 1 leaves a
 new inert desired-state lock and the complete old active generation; recovery
@@ -592,10 +604,10 @@ new complete local generation. The immutable active generation retains its own
 lock digest and complete activation record, so a later lock edit cannot mutate
 already admitted behavior.
 
-The active generation, approval receipt, emergency tombstones, and realized
-host authority live under `.jig/`, outside ordinary Flow/Agent authority and
-outside version control. A clone with identical source and lock must approve
-once on that host. Pulling another host's lock never activates it.
+The active generation and its stored admission receipt, emergency tombstones,
+and realized host authority live under `.jig/`, outside ordinary Flow/Agent
+authority and outside version control. A clone with identical source and lock
+must approve once on that host. Pulling another host's lock never activates it.
 
 `.jig/`, host configuration, approval databases, tombstones, Adapter/Sandbox
 state, and credentials are protected host state. A sandboxed attachment view
@@ -809,9 +821,11 @@ Binding revision.
 26. Missing lock is permitted only in unlocked mode and causes planning to
     propose a complete lock; `--locked` rejects absence or drift, and no
     host-local runtime or enforcement receipt enters the portable lock.
-27. Retrying the exact `(planDigest, baseGeneration)` after a lost successful
-    response returns its already-created direct child generation. If another
-    generation intervened, it returns `STALE_PLAN` and never reruns resolution.
+27. Retrying the exact `(planDigest, baseGeneration)` after it committed
+    returns its already-created child generation and immutable historical
+    receipt, even when another generation is now active; replay never moves
+    the active pointer. An unapplied plan whose base is no longer current
+    returns `STALE_PLAN` and never reruns resolution.
 28. A code-backed package with both instruction opt-ins pins instruction only
     when zero exact recipes qualify during planning; exact ambiguity stays
     unavailable. Failure or machinery loss after an exact recipe is pinned

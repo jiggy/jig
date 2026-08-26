@@ -37,6 +37,7 @@ import {
 
 const KIND = "private-unavailable-candidate/1";
 const PLAN_KIND = "private-unavailable-plan/1";
+const ADMISSION_KIND = "private-unavailable-admission/1";
 const DIGEST = /^sha256:[0-9a-f]{64}$/;
 const LOCAL_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const UNSIGNED_64 = /^(?:0|[1-9][0-9]{0,19})$/;
@@ -93,6 +94,19 @@ export interface PrivateUnavailablePlan {
   readonly baseGeneration: string | null;
   readonly lockMode: "update" | "locked";
   readonly observedLock: PrivateObservedLock;
+}
+
+/**
+ * One locally admitted project-policy generation whose sole target remains
+ * unavailable. The stored record is also the idempotent apply receipt.
+ */
+export interface PrivateUnavailableAdmission {
+  readonly kind: typeof ADMISSION_KIND;
+  readonly baseGeneration: string | null;
+  readonly planDigest: string;
+  readonly candidateRevision: number;
+  readonly candidateDigest: string;
+  readonly lockDigest: string;
 }
 
 /**
@@ -215,6 +229,37 @@ export function privateUnavailablePlanDigest(value: unknown): string {
   );
 }
 
+/** Build the closed admission record after protected storage wins its CAS. */
+export function createPrivateUnavailableAdmission(input: {
+  readonly baseGeneration: string | null;
+  readonly planDigest: string;
+  readonly candidateRevision: number;
+  readonly candidateDigest: string;
+  readonly lockDigest: string;
+}): PrivateUnavailableAdmission {
+  return normalizeAdmission({ kind: ADMISSION_KIND, ...input });
+}
+
+export function decodePrivateUnavailableAdmission(bytesValue: unknown): PrivateUnavailableAdmission {
+  const bytes = copiedBytes(bytesValue, "unavailable admission bytes");
+  const admission = normalizeAdmission(decodeJson1(bytes));
+  if (!sameBytes(bytes, encodePrivateUnavailableAdmission(admission))) {
+    throw new TypeError("private unavailable admission is not in canonical JSON/1 + LF form");
+  }
+  return admission;
+}
+
+export function encodePrivateUnavailableAdmission(value: unknown): Uint8Array {
+  return encodeRecord(normalizeAdmission(value), "private unavailable admission");
+}
+
+export function privateUnavailableAdmissionDigest(value: unknown): string {
+  return privateDomainDigest(
+    "JIG-Private-Unavailable-Admission/1",
+    normalizeAdmission(value) as unknown as JsonValue,
+  );
+}
+
 function normalizeCandidate(
   input: unknown,
   lock: PrivateProjectLocalLock,
@@ -296,13 +341,10 @@ function normalizePlan(input: unknown): PrivateUnavailablePlan {
     "observedLock",
   ], "unavailable plan");
   if (root.kind !== PLAN_KIND) throw new TypeError(`unavailable plan kind must be ${PLAN_KIND}`);
-  if (
-    typeof root.candidateRevision !== "number" ||
-    !Number.isSafeInteger(root.candidateRevision) ||
-    root.candidateRevision < 1
-  ) {
-    throw new TypeError("unavailable plan candidate revision must be a positive safe integer");
-  }
+  const candidateRevision = requirePositiveSafeInteger(
+    root.candidateRevision,
+    "unavailable plan candidate revision",
+  );
   if (root.lockMode !== "update" && root.lockMode !== "locked") {
     throw new TypeError("unavailable plan lock mode must be update or locked");
   }
@@ -324,12 +366,40 @@ function normalizePlan(input: unknown): PrivateUnavailablePlan {
   return Object.freeze({
     kind: PLAN_KIND,
     candidateDigest: requireDigest(root.candidateDigest, "plan candidate"),
-    candidateRevision: root.candidateRevision,
+    candidateRevision,
     baseGeneration: root.baseGeneration === null
       ? null
       : requireDigest(root.baseGeneration, "base generation"),
     lockMode: root.lockMode,
     observedLock,
+  });
+}
+
+function normalizeAdmission(input: unknown): PrivateUnavailableAdmission {
+  const root = exactObject(input, [
+    "kind",
+    "baseGeneration",
+    "planDigest",
+    "candidateRevision",
+    "candidateDigest",
+    "lockDigest",
+  ], "unavailable admission");
+  if (root.kind !== ADMISSION_KIND) {
+    throw new TypeError(`unavailable admission kind must be ${ADMISSION_KIND}`);
+  }
+  const baseGeneration = root.baseGeneration === null
+    ? null
+    : requireDigest(root.baseGeneration, "base generation");
+  return Object.freeze({
+    kind: ADMISSION_KIND,
+    baseGeneration,
+    planDigest: requireDigest(root.planDigest, "plan"),
+    candidateRevision: requirePositiveSafeInteger(
+      root.candidateRevision,
+      "unavailable admission candidate revision",
+    ),
+    candidateDigest: requireDigest(root.candidateDigest, "admission candidate"),
+    lockDigest: requireDigest(root.lockDigest, "admission lock"),
   });
 }
 
@@ -501,6 +571,13 @@ function ordinaryArray(value: unknown, maximum: number, label: string): readonly
 function requireDigest(value: unknown, label: string): string {
   if (typeof value !== "string" || !DIGEST.test(value)) {
     throw new TypeError(`${label} digest must be sha256: followed by 64 lowercase hexadecimal digits`);
+  }
+  return value;
+}
+
+function requirePositiveSafeInteger(value: unknown, label: string): number {
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 1) {
+    throw new TypeError(`${label} must be a positive safe integer`);
   }
   return value;
 }

@@ -8,11 +8,15 @@ import {
   privateProjectLocalLockDigest,
 } from "../src/internal/project-local-lock.js";
 import {
+  createPrivateUnavailableAdmission,
   createPrivateUnavailablePlan,
+  decodePrivateUnavailableAdmission,
   decodePrivateUnavailablePlan,
   decodePrivateUnavailableCandidate,
+  encodePrivateUnavailableAdmission,
   encodePrivateUnavailableCandidate,
   encodePrivateUnavailablePlan,
+  privateUnavailableAdmissionDigest,
   privateUnavailableCandidateDigest,
   privateUnavailablePlanDigest,
   requirePrivateCreatedUnavailableCandidate,
@@ -293,6 +297,58 @@ describe("private unavailable review plan", () => {
       "not in canonical",
     );
     expect(() => decodePrivateUnavailablePlan(Buffer.from(bytes))).toThrow("ordinary Uint8Array");
+  });
+});
+
+describe("private unavailable admission", () => {
+  test("is one canonical generation record and idempotent receipt", () => {
+    const admission = createPrivateUnavailableAdmission({
+      baseGeneration: digest("base-generation"),
+      planDigest: digest("plan"),
+      candidateRevision: 7,
+      candidateDigest: digest("candidate"),
+      lockDigest: digest("lock"),
+    });
+    const bytes = encodePrivateUnavailableAdmission(admission);
+    expect(new TextDecoder().decode(bytes)).toBe(
+      '{"baseGeneration":"sha256:d7bb43beeee67aacf5f0ae376511b9a632f0dd0923a3c37a06e8edd607687b28","candidateDigest":"sha256:dda18a0e21ae47c53b4309434cbc02ae8bf764fa83a6defbb719431242722aa7","candidateRevision":7,"kind":"private-unavailable-admission/1","lockDigest":"sha256:0c030586945fe504b604ecc2e875c38ede400cd5cd73da9730302162e6b02c6f","planDigest":"sha256:64879f7d6b960a01909762d911a32d4582c20010c5641ee90278b644a9e3b525"}\n',
+    );
+    expect(privateUnavailableAdmissionDigest(admission)).toBe(
+      "sha256:c6911fcffd9e72d3f7d5295de9f59c0261005b2ddb904485fdd9b921ba97b0cc",
+    );
+    expect(decodePrivateUnavailableAdmission(bytes)).toEqual(admission);
+    expect(Object.isFrozen(admission)).toBeTrue();
+  });
+
+  test("closes generation lineage, references, and alternate spelling", () => {
+    const first = createPrivateUnavailableAdmission({
+      baseGeneration: null,
+      planDigest: digest("first-plan"),
+      candidateRevision: 1,
+      candidateDigest: digest("first-candidate"),
+      lockDigest: digest("first-lock"),
+    });
+    expect(first.baseGeneration).toBeNull();
+    expect(createPrivateUnavailableAdmission({
+      ...first,
+      baseGeneration: digest("prior-generation"),
+    }).baseGeneration).toBe(digest("prior-generation"));
+    expect(() => createPrivateUnavailableAdmission({
+      ...first,
+      candidateRevision: Number.MAX_SAFE_INTEGER + 1,
+    })).toThrow("positive safe integer");
+    expect(() => createPrivateUnavailableAdmission({
+      ...first,
+      planDigest: "plan",
+    })).toThrow("plan digest");
+
+    const bytes = encodePrivateUnavailableAdmission(first);
+    expect(() => decodePrivateUnavailableAdmission(bytes.subarray(0, bytes.length - 1))).toThrow(
+      "not in canonical",
+    );
+    expect(() => decodePrivateUnavailableAdmission(encoder.encode(JSON.stringify(first, null, 2) + "\n")))
+      .toThrow("not in canonical");
+    expect(() => decodePrivateUnavailableAdmission(Buffer.from(bytes))).toThrow("ordinary Uint8Array");
   });
 });
 

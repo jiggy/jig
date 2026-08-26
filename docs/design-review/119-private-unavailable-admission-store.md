@@ -220,10 +220,10 @@ reload exact persisted plan
     -> durably stage and publish the exact proposed jig.lock when update mode permits
     -> fsync the visible file and both parent directories
     -> commit one local generation compare-and-set
-    -> persist and return one idempotent unavailable receipt
+    -> persist and return one canonical admission record as the idempotent receipt
 ```
 
-That slice must define generation and receipt records before extending storage.
+That slice must define the one admission/receipt record before extending storage.
 It must handle the crash window between visible lock publication and SQLite
 commit without pretending rename is a filesystem-wide CAS against an
 uncooperative editor. Until then, no function in this checkpoint applies a

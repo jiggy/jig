@@ -203,10 +203,12 @@ canonical unavailable candidate
     -> durable visible lock publication
     -> exact lock-byte reverification
     -> one protected local admission compare-and-set
-    -> immutable unavailable generation and approval receipt
+    -> immutable admission record whose sole target remains unavailable
 ```
 
 It exercises consent ordering, crash recovery, restart reacquisition, and
 generation CAS without needing or impersonating a runnable host generation.
+The admission record's digest names that generation and the same stored record
+is its idempotent receipt; there is no duplicate unauthenticated approval row.
 The later `READY` branch must add all gates above; it cannot reuse
 `UNAVAILABLE` as evidence of execution support.
