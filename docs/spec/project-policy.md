@@ -567,6 +567,13 @@ are host-local activation evidence and never portable lock entries. The exact
 lock serialization remains a required focused specification and schema before
 implementation or public Starter release.
 
+The lock's portable authority evidence means only package/project-derived
+**requested** authority: exact attachment requests and exact capability
+dependencies. Host-policy `wouldGrant`, Backend/provider `planned` authority,
+realized receipts, approval, and revocation are local activation state. Binding
+settings remain authored desired state and participate in semantic admission;
+the lock does not duplicate them merely to become a second project file.
+
 Ordinary apply does not need a fictional atomic transaction across the visible
 lock file and protected Jig state because the lock grants no authority. Under
 one host-serialized administration operation Jig:

@@ -9,6 +9,7 @@ import { fullCaseFold15_1 } from "../package/paths.js";
 import {
   assertNoProjectPathCollisions,
   compareProjectPaths,
+  isProtectedProjectPath,
   validateProjectPath,
 } from "./paths.js";
 import {
@@ -359,7 +360,7 @@ function resolveAuthorImport(importer: string, specifier: string): string {
   const target = normalizePath(joinPath(dirname(importer), specifier));
   try {
     validateProjectPath(target, "author import target");
-    if (fullCaseFold15_1(target.split("/", 1)[0]!) === ".jig") {
+    if (isProtectedProjectPath(target)) {
       throw new TypeError("author import target cannot use protected .jig state");
     }
     if (!target.endsWith(".ts") || target.endsWith(".d.ts")) {
@@ -606,7 +607,7 @@ function validateAuthorPath(projectPath: string): void {
   } catch (error) {
     invalid("PROJECT_EVALUATOR_SOURCE", errorText(error), projectPath);
   }
-  if (fullCaseFold15_1(projectPath.split("/", 1)[0]!) === ".jig") {
+  if (isProtectedProjectPath(projectPath)) {
     invalid("PROJECT_SOURCE_PROTECTED", "author module cannot use protected .jig state", projectPath);
   }
   if (!projectPath.endsWith(".ts") || projectPath.endsWith(".d.ts")) {

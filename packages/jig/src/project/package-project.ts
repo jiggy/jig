@@ -1,7 +1,6 @@
 import { CheckError, invalid } from "../diagnostics.js";
 import type { JsonObject, JsonValue } from "../json.js";
 import type { CheckedContractReference, InspectedPackage } from "../package/inspect.js";
-import { fullCaseFold15_1 } from "../package/paths.js";
 import { SchemaDiagnostic } from "../schema/index.js";
 import {
   defineBinding,
@@ -18,6 +17,7 @@ import {
 import {
   assertNoProjectPathCollisions,
   compareProjectPaths,
+  isProtectedProjectPath,
   normalizeProjectPath,
 } from "./paths.js";
 
@@ -204,7 +204,7 @@ function prepareBindings(
       record.sourcePath,
       `bindings[${index}] source path`,
     );
-    if (isProtectedPath(declarationPath)) {
+    if (isProtectedProjectPath(declarationPath)) {
       invalid("PROJECT_BINDING_PROTECTED_PATH", "Binding declaration cannot be beneath .jig", declarationPath);
     }
     const name = declarationPath.slice(declarationPath.lastIndexOf("/") + 1);
@@ -391,7 +391,7 @@ function linkAttachments(
   const output: Record<string, { readonly source: string; readonly access: "read" | "read-write" }> = Object.create(null) as Record<string, { readonly source: string; readonly access: "read" | "read-write" }>;
   for (const name of declaredKeys) {
     const source = configured[name]!;
-    if (isProtectedPath(source)) {
+    if (isProtectedProjectPath(source)) {
       invalid("PROJECT_BINDING_ATTACHMENT_PROTECTED", `attachment ${name} cannot expose .jig`, path, attachmentPointer(name));
     }
     output[name] = Object.freeze({ source, access: declared[name]! });
@@ -597,10 +597,6 @@ function readClosedRecord(
     output[field] = descriptor.value;
   }
   return output;
-}
-
-function isProtectedPath(path: string): boolean {
-  return fullCaseFold15_1(path.split("/", 1)[0]!) === ".jig";
 }
 
 function slotPointer(name: string): string {

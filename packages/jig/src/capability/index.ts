@@ -91,10 +91,10 @@ export function parseCapabilityContract(
   if (root.flowCapabilityContract !== 1) {
     invalid("CAPABILITY_FIELD", "descriptor.flowCapabilityContract must be the integer 1", path);
   }
-  if (typeof root.id !== "string" || !isContractId(root.id)) {
+  if (typeof root.id !== "string" || !isCapabilityContractId(root.id)) {
     invalid("CAPABILITY_ID", "descriptor.id is not a canonical Capability Contract/1 ID", path);
   }
-  if (typeof root.version !== "string" || !VERSION.test(root.version)) {
+  if (typeof root.version !== "string" || !isCapabilityContractVersion(root.version)) {
     invalid("CAPABILITY_VERSION", "descriptor.version is not stable SemVer core", path);
   }
 
@@ -212,7 +212,8 @@ export function capabilityContractDigest(descriptor: CapabilityContractDescripto
   return `sha256:${hash.digest("hex")}`;
 }
 
-function isContractId(value: string): boolean {
+/** Shared syntax check for already-parsed Capability Contract identities. */
+export function isCapabilityContractId(value: string): boolean {
   if (!value.startsWith("https://")) return false;
   const remainder = value.slice("https://".length);
   const separator = remainder.indexOf("/");
@@ -228,6 +229,11 @@ function isContractId(value: string): boolean {
   return segments.every(
     (segment) => segment !== "." && segment !== ".." && PATH_SEGMENT.test(segment),
   );
+}
+
+/** Capability Contract/1 uses stable SemVer core without ranges or labels. */
+export function isCapabilityContractVersion(value: string): boolean {
+  return VERSION.test(value);
 }
 
 function requireLocalName(value: string, field: string, path: string): void {

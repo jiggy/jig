@@ -64,6 +64,11 @@ export function assertNoProjectPathCollisions(paths: readonly string[], label: s
   }
 }
 
+/** Protected host state is excluded under Unicode 15.1 case folding. */
+export function isProtectedProjectPath(path: string): boolean {
+  return fullCaseFold15_1(path.split("/", 1)[0]!) === ".jig";
+}
+
 export function compareProjectPaths(left: string, right: string): number {
   const leftBytes = encoder.encode(left);
   const rightBytes = encoder.encode(right);

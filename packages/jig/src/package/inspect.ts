@@ -100,6 +100,7 @@ export async function inspectCapturedPackage(
       contract: await readContract(captured, byPath, contractCache, path),
     }));
   }
+  rejectContractEquivocation([...usedContracts, ...providedContracts]);
 
   const skills = [...new Set(captured.files.flatMap((file) => {
     const match = /^skills\/([^/]+)\/SKILL\.md$/.exec(file.path);
@@ -118,6 +119,23 @@ export async function inspectCapturedPackage(
     fileCount: captured.files.length,
     contentBytes: captured.files.reduce((total, file) => total + file.size, 0),
   });
+}
+
+function rejectContractEquivocation(contracts: readonly CheckedContractReference[]): void {
+  const seen = new Map<string, CheckedContractReference>();
+  for (const reference of contracts) {
+    const { id, version } = reference.contract.descriptor;
+    const key = `${id}\0${version}`;
+    const prior = seen.get(key);
+    if (prior !== undefined && prior.contract.digest !== reference.contract.digest) {
+      invalid(
+        "CAPABILITY_EQUIVOCATION",
+        `package carries different bytes for capability contract ${id}@${version}`,
+        reference.path,
+      );
+    }
+    seen.set(key, reference);
+  }
 }
 
 /** Capture, inspect, and release one local package directory. */

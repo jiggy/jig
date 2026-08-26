@@ -224,12 +224,26 @@ Before provider code loads, the host reads and bounds the descriptor, validates
 it, computes its digest, and matches the consumer's independently derived
 triple.
 
-Provider descriptor bytes may come from an exact provider package or trusted
-host-native registration. A content-addressed cache or optional index may
-locate already known bytes, but the identity URI is never an instruction to
-fetch from the network and no central registry is required. The lock records
-the consumer package/path, derived triple, provider source/revision, provider
-package digest, and export separately.
+Provider descriptor bytes may come from an exact FLOW Service package or a
+trusted host-native registration. A content-addressed cache or optional index
+may locate already known bytes, but the identity URI is never an instruction
+to fetch from the network and no central registry is required.
+
+For a FLOW Service provider, the eventual public lock records the consumer
+package/path and independently derived contract triple separately from the
+provider source locator, immutable source revision, exact provider Package/1
+digest, and selected export. The current private package-project projection
+records only project-local package paths/digests and the selected provider
+Binding/export; it deliberately does not define upstream source provenance or
+the public `jig.lock` schema.
+
+A host-capability Binding is only conditionally portable. Its eventual
+portable lock evidence may record the project-authored inert host-capability
+reference and the consumer-carried contract triple or explicit local effect
+requirement, once that authoring model is closed. The receiving host's resolved
+registration snapshot, provider-module artifact/revision, host-policy decision,
+authority attenuation, and live provider generation remain protected local
+activation evidence under `.jig/` and never become portable lock entries.
 
 Locking a descriptor selected from providers without a consumer-carried
 descriptor would pin later drift but would not prove which interface the

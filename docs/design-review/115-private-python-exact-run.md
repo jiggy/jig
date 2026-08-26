@@ -218,8 +218,12 @@ kernel use. General protection against a compromised coordinator would need
 administrator-owned immutable installation or descriptor/image-based mount
 realization, not more FLOW metadata.
 
-The next checkpoint is therefore a private `Lock/1` and admission persistence
-boundary. It must persist inert evidence, reacquire every referenced artifact,
-establish the missing runtime/materialization lifecycle roots, and only then
-mint an admitted generation. This checkpoint must never be promoted merely by
-changing `admissible: false` to `true`.
+The next checkpoint begins with a strict private package-project lock
+projection, then admission persistence. The projection must prove that inert
+portable evidence cannot absorb host activation fields; it is not the final
+public `jig.lock` schema while upstream source provenance, Hooks, Semantic
+Choice, and host-capability registration identities remain open. Admission
+must additionally reacquire every referenced artifact, establish the missing
+runtime/materialization lifecycle roots, and only then mint a generation. This
+checkpoint must never be promoted merely by changing `admissible: false` to
+`true`.

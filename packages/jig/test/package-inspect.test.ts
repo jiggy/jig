@@ -187,6 +187,25 @@ provides:
     });
   });
 
+  test("rejects one package carrying different bytes for the same contract version", async () => {
+    const id = "https://example.org/contracts/equivocal";
+    await withPackage({
+      "FLOW.md": flowMetadata(`name: service
+description: Service.
+service: 1
+uses:
+  dependency:
+    contract: ./contracts/consumer.capability.json
+provides:
+  api: ./contracts/provider.capability.json`),
+      "flow.ts": "export {};\n",
+      "contracts/consumer.capability.json": capability(id),
+      "contracts/provider.capability.json": capability(id, false),
+    }, async (root) => {
+      await expectCheckError(() => checkPackageDirectory(root), "CAPABILITY_EQUIVOCATION");
+    });
+  });
+
   test("rejects a capability reference absent from the captured package", async () => {
     await withPackage({
       "FLOW.md": flowMetadata(`name: exact
@@ -225,14 +244,14 @@ function schemaDocument(schema: Record<string, unknown>): string {
   return JSON.stringify({ $schema: schemaUri, ...schema });
 }
 
-function capability(id: string): string {
+function capability(id: string, input: boolean = true): string {
   return JSON.stringify({
     $schema: "https://flow.dev/schemas/capability-contract-1.schema.json",
     flowCapabilityContract: 1,
     id,
     version: "1.0.0",
     methods: {
-      call: { input: true, output: true, errors: {} },
+      call: { input, output: true, errors: {} },
     },
   });
 }

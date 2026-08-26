@@ -2,11 +2,11 @@ import { constants, type BigIntStats } from "node:fs";
 import { type FileHandle, lstat, open, opendir } from "node:fs/promises";
 
 import { invalid, unavailable } from "../diagnostics.js";
-import { fullCaseFold15_1 } from "../package/paths.js";
 import type { ProjectSource } from "./author.js";
 import {
   assertNoProjectPathCollisions,
   compareProjectPaths,
+  isProtectedProjectPath,
   validateProjectPath,
 } from "./paths.js";
 import { requirePrivateProjectRoot, type PrivateProjectRoot } from "./root.js";
@@ -243,7 +243,7 @@ function validateSourcePath(path: string): void {
   } catch (error) {
     invalid("PROJECT_SOURCE_PATH", errorText(error), path);
   }
-  if (fullCaseFold15_1(path.split("/", 1)[0]!) === ".jig") {
+  if (isProtectedProjectPath(path)) {
     invalid("PROJECT_SOURCE_PROTECTED", "project source cannot use protected .jig state", path);
   }
 }

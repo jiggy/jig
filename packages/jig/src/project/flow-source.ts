@@ -11,11 +11,11 @@ import {
   type InspectedPackage,
 } from "../package/inspect.js";
 import { SchemaDiagnostic } from "../schema/index.js";
-import { fullCaseFold15_1 } from "../package/paths.js";
 import type { ProjectSource } from "./author.js";
 import {
   assertNoProjectPathCollisions,
   compareProjectPaths,
+  isProtectedProjectPath,
   validateProjectPath,
 } from "./paths.js";
 import {
@@ -572,7 +572,7 @@ function validateProjectSourcePath(path: string): void {
   } catch (error) {
     invalid("PROJECT_SOURCE_PATH", errorText(error), path);
   }
-  if (fullCaseFold15_1(path.split("/", 1)[0]!) === ".jig") {
+  if (isProtectedProjectPath(path)) {
     invalid("PROJECT_SOURCE_PROTECTED", "project source cannot use protected .jig state", path);
   }
 }
