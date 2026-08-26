@@ -264,8 +264,10 @@ Two small private prerequisites can now advance independently:
 1. finish the privileged helper's authorization boundary and produce one
    active Linux Backend preflight receipt (the ambient startup sub-boundary is
    now closed by [review 123](123-private-helper-startup-posture.md)); and
-2. build, acquire, reconcile, and retire one canonical host-generation record
-   with the bounded indirect-root set above.
+2. continue the canonical host-generation work: the inert eight-role
+   observation/codec is now implemented by [review 124](124-private-python-linux-host-generation.md),
+   while real bundle emission, durable root publication, authenticated
+   acquisition, reconciliation, and retirement remain open.
 
 Neither slice exposes a public Backend, host-generation, or retention API.
 Neither may call the Python/Linux recipe `READY`. The later `READY` branch must
