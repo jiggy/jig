@@ -19,6 +19,7 @@ import {
   requirePrivateLinuxCgroupBackend,
   type PrivateLinuxLaunchPlan,
 } from "../src/internal/linux-cgroup-backend.js";
+import { RunHostSession } from "../src/run/session.js";
 import { captureStoredPackage } from "../src/internal/package-artifact-store.js";
 import {
   createPrivateUnavailableCandidate,
@@ -172,6 +173,64 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
     expect(rejected.code).not.toBe(0);
     expect(rejected.stdout).toBe("");
     expect(rejected.stderr).toContain("runtime lease receipt does not match the selected sandbox lease");
+  });
+
+  test("runs one Python FLOW component from exact leased support", async () => {
+    host = await hostConfiguration();
+    const python = await proofHostPythonClosure();
+    const component = await mkdtemp(join(tmpdir(), "jig-python-flow-"));
+    try {
+      await chmod(component, 0o755);
+      const sdk = join(component, "flowmd_sdk");
+      await mkdir(sdk);
+      await chmod(sdk, 0o755);
+      for (const name of ["__init__.py", "_json.py", "_runtime.py", "_service.py", "_types.py"]) {
+        const source = join(import.meta.dir, "..", "..", "flowmd-sdk", "src", "flowmd_sdk", name);
+        await writeFile(join(sdk, name), await readFile(source));
+      }
+      await writeFile(join(component, "flow.py"), [
+        "from flowmd_sdk import serve",
+        "",
+        "async def run(context):",
+        "    return {\"outcome\": \"done\", \"output\": {\"echo\": context.input}}",
+        "",
+        "serve(run)",
+        "",
+      ].join("\n"));
+
+      const process = await backend(host).launch({
+        runId: "python-flow",
+        limits: { ...limits(), memoryBytes: 128 * 1024 * 1024, wallClockMs: 10_000 },
+        readOnlyMounts: [
+          ...python.runtimeSupport.closureSources.map((source) => ({ source, destination: source })),
+          { source: component, destination: "/package" },
+        ],
+        command: [python.executable, "/package/flow.py"],
+      });
+      const result = await new RunHostSession(process, {
+        input: { message: "retained" },
+        settings: {},
+        attachments: {},
+        scratch: "/work",
+        deadlineUnixMs: Date.now() + 8_000,
+      }).run();
+      expect(result).toEqual({
+        status: "succeeded",
+        result: {
+          outcome: "done",
+          output: { echo: { message: "retained" } },
+        },
+        diagnostics: { stderr: "", stderrBytes: 0, stderrTruncated: false },
+      });
+      expect(await process.terminationReason).toBe("payload_exit");
+      expect(await process.evidence).toMatchObject({
+        cpuStat: expect.any(Object),
+        memoryEvents: expect.any(Object),
+        pidsEvents: expect.any(Object),
+      });
+    } finally {
+      await rm(component, { recursive: true, force: true });
+    }
   });
 
   test("hides cgroupfs, prevents migration, and runs as the payload identity", async () => {
@@ -943,6 +1002,51 @@ async function proofHostBunClosure(): Promise<{
     executable,
     runtimeSupport,
   };
+}
+
+async function proofHostPythonClosure(): Promise<{
+  executable: string;
+  runtimeSupport: Awaited<ReturnType<typeof observeAgentSandboxRuntimeSupport>>;
+}> {
+  const receiptsDirectory = process.env.AGENT_RUNTIME_RECEIPTS_DIR;
+  const expectedLeaseId = process.env.AGENT_RUNTIME_LEASE_ID;
+  if (receiptsDirectory === undefined || expectedLeaseId === undefined) {
+    throw new Error("proof host did not expose its runtime lease receipt");
+  }
+  const candidates: Array<{ receiptName: string; executablePath: string }> = [];
+  for (const receiptName of (await readdir(receiptsDirectory)).sort()) {
+    if (!/^need-[0-9a-f]{64}\.json$/.test(receiptName)) continue;
+    const value = JSON.parse(await readFile(join(receiptsDirectory, receiptName), "utf8")) as {
+      kind?: unknown;
+      installable?: unknown;
+      selected_out_path?: unknown;
+    };
+    if (value.kind === "need-materialization" &&
+        value.installable === "github:NixOS/nixpkgs/nixos-unstable#python314" &&
+        typeof value.selected_out_path === "string") {
+      candidates.push({
+        receiptName,
+        executablePath: join(value.selected_out_path, "bin", "python3"),
+      });
+    }
+  }
+  if (candidates.length === 0) {
+    throw new Error("proof host has no leased python314 runtime receipt");
+  }
+  const observations = await Promise.all(candidates.map(async (candidate) => ({
+    executable: await realpath(candidate.executablePath),
+    runtimeSupport: await observeAgentSandboxRuntimeSupport({
+      receiptsDirectory,
+      expectedLeaseId,
+      receiptName: candidate.receiptName,
+      executablePath: candidate.executablePath,
+    }),
+  })));
+  const selected = observations[0]!;
+  if (observations.some((observation) => observation.runtimeSupport.digest !== selected.runtimeSupport.digest)) {
+    throw new Error("proof host exposes ambiguous python314 runtime receipts");
+  }
+  return selected;
 }
 
 function testDigest(label: string): string {

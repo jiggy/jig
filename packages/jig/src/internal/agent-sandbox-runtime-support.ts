@@ -6,6 +6,7 @@ import { decodeJson1, type JsonValue } from "../json.js";
 
 const LEASE_ID = /^[a-z0-9][a-z0-9-]{0,127}$/;
 const NAR_HASH = /^sha256-[A-Za-z0-9+/]+={0,2}$/;
+const RECEIPT_NAME = /^(?:runtime-rootfs|need-[0-9a-f]{64})\.json$/;
 const MAX_OUTPUTS = 64;
 const MAX_CLOSURE = 4_096;
 const MAX_REFERENCES = 4_096;
@@ -30,6 +31,8 @@ export interface AgentSandboxRuntimeSupportOptions {
   readonly receiptsDirectory: string;
   readonly expectedLeaseId: string;
   readonly executablePath: string;
+  /** Exact host-selected receipt basename. Defaults to the outer rootfs. */
+  readonly receiptName?: string;
 }
 
 /**
@@ -44,6 +47,10 @@ export async function observeAgentSandboxRuntimeSupport(
   if (!isAbsolute(options.receiptsDirectory) || !LEASE_ID.test(options.expectedLeaseId)) {
     throw new TypeError("runtime support requires an absolute receipt directory and valid lease ID");
   }
+  const receiptName = options.receiptName ?? "runtime-rootfs.json";
+  if (!RECEIPT_NAME.test(receiptName)) {
+    throw new TypeError("runtime support requires one exact agent-sandbox receipt name");
+  }
   const [receiptsDirectory, executablePath, mountInfo] = await Promise.all([
     realpath(options.receiptsDirectory),
     realpath(options.executablePath),
@@ -56,7 +63,7 @@ export async function observeAgentSandboxRuntimeSupport(
 
   const [leaseValue, runtimeValue] = await Promise.all([
     readReceipt(`${receiptsDirectory}/lease.json`, "runtime lease"),
-    readReceipt(`${receiptsDirectory}/runtime-rootfs.json`, "runtime artifact"),
+    readReceipt(`${receiptsDirectory}/${receiptName}`, "runtime artifact"),
   ]);
   const lease = parseLease(leaseValue, options.expectedLeaseId, receiptsDirectory);
   const runtime = parseRuntimeReceipt(runtimeValue, lease.id);
@@ -155,16 +162,39 @@ function parseLease(value: JsonValue, expectedLeaseId: string, receiptsDirectory
 }
 
 function parseRuntimeReceipt(value: JsonValue, leaseId: string): ParsedRuntimeReceipt {
-  const root = exactRecord(
-    value,
-    ["artifact", "closure", "kind", "lease_id", "output_paths", "schema_version"],
-    "runtime artifact receipt",
-  );
-  if (root.schema_version !== 1 || root.lease_id !== leaseId ||
-      root.kind !== "runtime-artifact" || root.artifact !== "rootfs") {
+  const kind = recordField(value, "kind", "runtime artifact receipt");
+  const fields = kind === "runtime-artifact"
+    ? ["artifact", "closure", "kind", "lease_id", "output_paths", "schema_version"]
+    : kind === "need-materialization"
+      ? [
+          "bin_path",
+          "closure",
+          "installable",
+          "kind",
+          "lease_id",
+          "output_paths",
+          "schema_version",
+          "selected_out_path",
+        ]
+      : [];
+  if (fields.length === 0) throw new Error("runtime artifact receipt has an unknown kind");
+  const root = exactRecord(value, fields, "runtime artifact receipt");
+  if (root.schema_version !== 1 || root.lease_id !== leaseId) {
     throw new Error("runtime artifact receipt does not match the selected sandbox lease");
   }
+  if (kind === "runtime-artifact" && root.artifact !== "rootfs") {
+    throw new Error("runtime artifact receipt does not describe the sandbox rootfs");
+  }
   const outputPaths = pathArray(root.output_paths, MAX_OUTPUTS, "runtime output paths");
+  if (kind === "need-materialization") {
+    const selected = absolutePath(root.selected_out_path, "selected runtime output");
+    const bin = absolutePath(root.bin_path, "selected runtime bin path");
+    if (!outputPaths.includes(selected) || (bin !== selected && !bin.startsWith(`${selected}/`)) ||
+        typeof root.installable !== "string" || root.installable.length === 0 ||
+        root.installable.length > 1_024 || root.installable.includes("\0")) {
+      throw new Error("runtime materialization receipt has invalid selected output evidence");
+    }
+  }
   const rawClosure = boundedArray(root.closure, MAX_CLOSURE, "runtime closure");
   const closure = new Map<string, ClosureEntry>();
   for (const [index, raw] of rawClosure.entries()) {
@@ -259,6 +289,13 @@ function exactRecord(value: JsonValue, keys: readonly string[], label: string): 
     throw new Error(`${label} has unknown or missing fields`);
   }
   return value as Record<string, JsonValue>;
+}
+
+function recordField(value: JsonValue, field: string, label: string): JsonValue | undefined {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(`${label} must be an object`);
+  }
+  return (value as { readonly [key: string]: JsonValue })[field];
 }
 
 function boundedArray(

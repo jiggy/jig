@@ -104,11 +104,15 @@ Bun for general Flow execution or justify broader `/proc` or `/dev` access.
 
 ## 5. Next checkpoint
 
-The next step is deterministic private selection of one explicitly configured
-Python runtime support observation and the existing Linux Backend for one
-zero-configuration `flow.py` Run package. It may create one retained `READY`
-candidate beside the already implemented exact `UNAVAILABLE` candidate only
-after the complete recipe can be reacquired from protected host policy.
+The deterministic private Python execution proof is complete in
+[review 132](132-private-python-run-recipe.md). It uses one exact leased
+materialization receipt and the existing Linux Backend for a real `flow.py`
+Run/1 component.
+
+The next step may create one retained `READY` candidate beside the already
+implemented exact `UNAVAILABLE` candidate only after that complete recipe is
+bound to an authentic retained activation request and can be re-planned after
+coordinator restart.
 
 The runtime lease remains an external input to that recipe. Jig must not
 materialize it, extend its lifetime, or infer readiness from ambient `PATH`.
