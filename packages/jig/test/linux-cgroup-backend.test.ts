@@ -1,7 +1,8 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { access, copyFile, mkdir, mkdtemp, readFile, readdir, realpath, rm, writeFile } from "node:fs/promises";
+import { access, chmod, copyFile, mkdir, mkdtemp, readFile, readdir, realpath, rm, stat, writeFile } from "node:fs/promises";
+import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
@@ -21,6 +22,12 @@ import {
   privateUnavailableCandidateDigest,
   requirePrivateCreatedUnavailableCandidate,
 } from "../src/internal/unavailable-admission.js";
+import {
+  createPrivateUnavailableReviewPlan,
+  loadPrivateUnavailableReviewPlan,
+  publishPrivateUnavailableCandidate,
+  requirePrivateStoredUnavailableCandidate,
+} from "../src/internal/unavailable-admission-store.js";
 import {
   executePrivatePythonExactRun,
   planPrivatePythonExactRun,
@@ -495,6 +502,204 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
       expect(() => requirePrivateCreatedUnavailableCandidate(restarted)).toThrow(
         "was not built from a retained project",
       );
+
+      const firstHead = await publishPrivateUnavailableCandidate({
+        projectRoot: root,
+        packageStoreRoot: store,
+        candidate: unavailable,
+      });
+      expect(firstHead).toEqual({
+        candidateRevision: 1,
+        candidateDigest: privateUnavailableCandidateDigest(unavailable),
+      });
+      expect(await publishPrivateUnavailableCandidate({
+        projectRoot: root,
+        packageStoreRoot: store,
+        candidate: unavailable,
+      })).toEqual(firstHead);
+      expect(await Promise.all(Array.from({ length: 4 }, () => retryAdmissionBusy(
+        () => publishPrivateUnavailableCandidate({
+          projectRoot: root,
+          packageStoreRoot: store,
+          candidate: unavailable,
+        }),
+      )))).toEqual(Array.from({ length: 4 }, () => firstHead));
+      const firstPlan = await createPrivateUnavailableReviewPlan({
+        projectRoot: root,
+        packageStoreRoot: store,
+        lockMode: "update",
+      });
+      expect(firstPlan.plan).toMatchObject({
+        candidateRevision: 1,
+        candidateDigest: firstHead.candidateDigest,
+        baseGeneration: null,
+        lockMode: "update",
+        observedLock: { state: "absent" },
+      });
+      expect(requirePrivateStoredUnavailableCandidate(firstPlan.candidate)).toBe(firstPlan.candidate);
+      expect(() => requirePrivateCreatedUnavailableCandidate(firstPlan.candidate)).toThrow(
+        "was not built from a retained project",
+      );
+      const loadedFirstPlan = await loadPrivateUnavailableReviewPlan({
+        projectRoot: root,
+        packageStoreRoot: store,
+        planDigest: firstPlan.planDigest,
+      });
+      expect(loadedFirstPlan.plan).toEqual(firstPlan.plan);
+      expect(loadedFirstPlan.planBytes).toEqual(firstPlan.planBytes);
+      expect(requirePrivateStoredUnavailableCandidate(loadedFirstPlan.candidate)).toBe(
+        loadedFirstPlan.candidate,
+      );
+      expect((await createPrivateUnavailableReviewPlan({
+        projectRoot: root,
+        packageStoreRoot: store,
+        lockMode: "update",
+      })).planDigest).toBe(firstPlan.planDigest);
+      expect(await Promise.all(Array.from({ length: 4 }, async () => (
+        await retryAdmissionBusy(() => createPrivateUnavailableReviewPlan({
+          projectRoot: root,
+          packageStoreRoot: store,
+          lockMode: "update",
+        }))
+      ).planDigest))).toEqual(
+        Array.from({ length: 4 }, () => firstPlan.planDigest),
+      );
+      await expect(createPrivateUnavailableReviewPlan({
+        projectRoot: root,
+        packageStoreRoot: store,
+        lockMode: "locked",
+      }))
+        .rejects.toMatchObject({ code: "LOCK_MISMATCH" });
+      await writeFile(join(root, "jig.lock"), persisted.lock);
+      const lockedPlan = await createPrivateUnavailableReviewPlan({
+        projectRoot: root,
+        packageStoreRoot: store,
+        lockMode: "locked",
+      });
+      expect(lockedPlan.plan.observedLock).toEqual({
+        state: "present",
+        digest: `sha256:${createHash("sha256").update(persisted.lock).digest("hex")}`,
+      });
+      await rm(join(root, "jig.lock"));
+
+      const secondPlanning = createPrivateActivationPlanningObservation({
+        policyDigest: testDigest("retained-policy-2"),
+        mechanismDigest: testDigest("retained-mechanisms"),
+        entries: requests.map((request) => ({
+          target: request.target,
+          requestDigest: request.digest,
+          disposition: {
+            state: "unavailable" as const,
+            code: "RUNTIME_UNAVAILABLE" as const,
+            evidenceDigests: [testDigest(`unavailable-2:${request.digest}`)],
+          },
+        })),
+      });
+      const second = createPrivateUnavailableCandidate(
+        aggregate,
+        resolveRetainedPackageProjectObservation(aggregate, secondPlanning),
+      );
+      const secondHead = await publishPrivateUnavailableCandidate({
+        projectRoot: root,
+        packageStoreRoot: store,
+        candidate: second,
+      });
+      expect(secondHead.candidateRevision).toBe(2);
+      expect(secondHead.candidateDigest).not.toBe(firstHead.candidateDigest);
+      const replayedHead = await publishPrivateUnavailableCandidate({
+        projectRoot: root,
+        packageStoreRoot: store,
+        candidate: unavailable,
+      });
+      expect(replayedHead).toEqual({ candidateRevision: 3, candidateDigest: firstHead.candidateDigest });
+      const replayedPlan = await createPrivateUnavailableReviewPlan({
+        projectRoot: root,
+        packageStoreRoot: store,
+        lockMode: "update",
+      });
+      expect(replayedPlan.plan).toMatchObject({
+        candidateRevision: 3,
+        candidateDigest: firstHead.candidateDigest,
+      });
+      expect((await loadPrivateUnavailableReviewPlan({
+        projectRoot: root,
+        packageStoreRoot: store,
+        planDigest: firstPlan.planDigest,
+      })).plan).toEqual(firstPlan.plan);
+      expect((await stat(join(root, ".jig"))).mode & 0o777).toBe(0o700);
+      const admissionDatabase = join(root, ".jig", "private-unavailable-admission-v1.sqlite3");
+      expect((await stat(admissionDatabase)).mode & 0o777)
+        .toBe(0o600);
+      const interruptedWriter = spawn(process.execPath, [
+        "-e",
+        [
+          'import { Database, constants } from "bun:sqlite";',
+          "const database = Database.open(process.argv[1], constants.SQLITE_OPEN_READWRITE | constants.SQLITE_OPEN_NOFOLLOW);",
+          'if (database.query("PRAGMA journal_mode").get().journal_mode !== "delete") throw new Error("not DELETE mode");',
+          'database.exec("PRAGMA synchronous=EXTRA; PRAGMA cache_size=1; BEGIN IMMEDIATE");',
+          'database.query("UPDATE candidates SET candidate_bytes = randomblob(1048576) WHERE revision = 3").run();',
+          'console.log("READY");',
+          "await Bun.sleep(3600000);",
+        ].join("\n"),
+        admissionDatabase,
+      ], { stdio: ["ignore", "pipe", "pipe"] });
+      expect(await firstLine(interruptedWriter.stdout!)).toBe("READY");
+      await waitUntil(async () => {
+        try { return (await stat(`${admissionDatabase}-journal`)).size > 0; }
+        catch { return false; }
+      }, 2_000);
+      interruptedWriter.kill("SIGKILL");
+      expect((await childExit(interruptedWriter)).signal).toBe("SIGKILL");
+      expect((await loadPrivateUnavailableReviewPlan({
+        projectRoot: root,
+        packageStoreRoot: store,
+        planDigest: replayedPlan.planDigest,
+      })).plan).toEqual(replayedPlan.plan);
+      const rollbackJournal = `${admissionDatabase}-journal`;
+      const nonHotJournal = new Uint8Array(512);
+      await writeFile(rollbackJournal, nonHotJournal, { mode: 0o600 });
+      expect((await loadPrivateUnavailableReviewPlan({
+        projectRoot: root,
+        packageStoreRoot: store,
+        planDigest: replayedPlan.planDigest,
+      })).plan).toEqual(replayedPlan.plan);
+      expect(new Uint8Array(await readFile(rollbackJournal))).toEqual(nonHotJournal);
+      await chmod(rollbackJournal, 0o644);
+      await expect(loadPrivateUnavailableReviewPlan({
+        projectRoot: root,
+        packageStoreRoot: store,
+        planDigest: replayedPlan.planDigest,
+      })).rejects.toMatchObject({ code: "ADMISSION_SQLITE_SIDECAR" });
+      await rm(rollbackJournal);
+      await writeFile(`${admissionDatabase}-wal`, new Uint8Array(), { mode: 0o600 });
+      await expect(loadPrivateUnavailableReviewPlan({
+        projectRoot: root,
+        packageStoreRoot: store,
+        planDigest: replayedPlan.planDigest,
+      })).rejects.toMatchObject({ code: "ADMISSION_SQLITE_SIDECAR" });
+      await rm(`${admissionDatabase}-wal`);
+      const sqlite = createRequire(import.meta.url)("bun:sqlite") as any;
+      const database = sqlite.Database.open(
+        admissionDatabase,
+        sqlite.constants.SQLITE_OPEN_READONLY | sqlite.constants.SQLITE_OPEN_NOFOLLOW,
+      );
+      try {
+        expect(database.query(
+          "SELECT name FROM sqlite_schema WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name",
+        ).all().map(({ name }: { name: string }) => name)).toEqual([
+          "candidate_head",
+          "candidates",
+          "review_plans",
+        ]);
+        expect(database.query("PRAGMA application_id").get().application_id).toBe(0x4a494731);
+        expect(database.query("PRAGMA user_version").get().user_version).toBe(1);
+        expect(database.query("PRAGMA journal_mode").get().journal_mode).toBe("delete");
+        expect(database.query("SELECT revision FROM candidate_head WHERE singleton = 1").get().revision).toBe(3);
+        expect(database.query("SELECT count(*) AS count FROM candidates").get().count).toBe(3);
+        expect(database.query("SELECT count(*) AS count FROM review_plans").get().count).toBe(3);
+      } finally {
+        database.close(true);
+      }
       const declarations = await captureStoredPackage(store, aggregate.declarationArtifact.package);
       try {
         expect(declarations.files.map(({ path }) => path)).toEqual([
@@ -505,6 +710,45 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
       } finally {
         await declarations.dispose();
       }
+      const writableFlags = sqlite.constants.SQLITE_OPEN_READWRITE |
+        sqlite.constants.SQLITE_OPEN_NOFOLLOW;
+      let corruptor = sqlite.Database.open(admissionDatabase, writableFlags);
+      const secondRow = corruptor.query(
+        "SELECT candidate_digest, candidate_bytes, lock_bytes FROM candidates WHERE revision = 2",
+      ).get();
+      const retainedSecondRow = {
+        candidateDigest: secondRow.candidate_digest,
+        candidateBytes: Uint8Array.from(secondRow.candidate_bytes),
+        lockBytes: Uint8Array.from(secondRow.lock_bytes),
+      };
+      corruptor.query("DELETE FROM candidates WHERE revision = 2").run();
+      corruptor.close(true);
+      await expect(loadPrivateUnavailableReviewPlan({
+        projectRoot: root,
+        packageStoreRoot: store,
+        planDigest: firstPlan.planDigest,
+      })).rejects.toMatchObject({ code: "ADMISSION_STATE_CORRUPT" });
+
+      corruptor = sqlite.Database.open(admissionDatabase, writableFlags);
+      corruptor.query(
+        "INSERT INTO candidates(revision, candidate_digest, candidate_bytes, lock_bytes) VALUES (2, ?1, ?2, ?3)",
+      ).run(retainedSecondRow.candidateDigest, retainedSecondRow.candidateBytes, retainedSecondRow.lockBytes);
+      corruptor.close(true);
+      expect((await loadPrivateUnavailableReviewPlan({
+        projectRoot: root,
+        packageStoreRoot: store,
+        planDigest: firstPlan.planDigest,
+      })).plan).toEqual(firstPlan.plan);
+
+      corruptor = sqlite.Database.open(admissionDatabase, writableFlags);
+      corruptor.query("UPDATE candidates SET candidate_digest = ?1 WHERE revision = 1")
+        .run(`sha256:${"0".repeat(64)}`);
+      corruptor.close(true);
+      await expect(loadPrivateUnavailableReviewPlan({
+        projectRoot: root,
+        packageStoreRoot: store,
+        planDigest: firstPlan.planDigest,
+      })).rejects.toMatchObject({ code: "ADMISSION_STATE_CORRUPT" });
     } finally {
       await rm(root, { recursive: true, force: true });
       await rm(store, { recursive: true, force: true });
@@ -1021,6 +1265,18 @@ async function waitUntil(predicate: () => Promise<boolean>, timeoutMs: number): 
     if (Date.now() >= deadline) throw new Error("condition did not settle before timeout");
     await Bun.sleep(10);
   }
+}
+
+async function retryAdmissionBusy<T>(action: () => Promise<T>): Promise<T> {
+  for (let attempt = 1; attempt <= 8; attempt += 1) {
+    try {
+      return await action();
+    } catch (error) {
+      if (!errorTreeHasCode(error, "ADMISSION_STATE_BUSY") || attempt === 8) throw error;
+      await Bun.sleep(attempt * 10);
+    }
+  }
+  throw new Error("unreachable admission retry state");
 }
 
 function sameMembers(left: ReadonlySet<string>, right: ReadonlySet<string>): boolean {

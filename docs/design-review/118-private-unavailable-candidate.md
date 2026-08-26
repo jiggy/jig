@@ -135,15 +135,17 @@ The created value carries factory provenance; the restart-decoded value does
 not. All focused and ordinary Jig tests pass, and the host-gated integration
 passes in the cgroup-v2/Bubblewrap envelope.
 
-## 5. Next boundary
+## 5. Subsequent boundary
 
-The next slice is one private protected admission store, not a public storage
-framework:
+The protected candidate-head and review-plan checkpoint described below is now
+closed by [review 119](119-private-unavailable-admission-store.md). It persisted
+only candidates and inert plans; it did not implement the later lock or
+generation steps.
+
+The remaining apply slice is not a public storage framework:
 
 ```text
-publish latest unavailable candidate with monotonic revision
-    -> create one reviewable plan against active generation and visible lock
-    -> reacquire exact retained artifacts after restart
+reload one persisted review plan and reacquire exact retained artifacts
     -> durably publish the inert visible lock
     -> commit one protected active-generation compare-and-set
     -> return one idempotent unavailable receipt
