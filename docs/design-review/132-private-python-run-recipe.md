@@ -63,8 +63,11 @@ This is a valid Package/1 shape, not a claim that every Python package must
 vendor dependencies. Native dependency inspection and preparation remain a
 future Adapter concern.
 
-Most importantly, a successful process launch is not a `READY` admission. The
-next checkpoint must bind this exact recipe to one retained activation request,
-persist only the local evidence needed to re-plan it, compare the re-planned
-observation after restart, and preserve the existing lock-first admission
-rules. Only then may a durable root-Run submission consume it.
+The exact request-to-recipe binding and protected Package/1 execution seam are
+now implemented in [review 133](133-private-python-recipe-planner.md).
+
+Most importantly, a successful process launch is still not a `READY`
+admission. The next checkpoint must persist only the stable evidence needed to
+re-plan it, compare the re-planned observation after restart, and preserve the
+existing lock-first admission rules. Only then may a durable root-Run
+submission consume it.

@@ -158,8 +158,8 @@ Before expansion, the slice must prove:
 1. generic retained author-evaluator support on the selected host (**private
    proof complete in review 131**);
 2. deterministic Adapter and Backend selection from explicit host policy
-   (**one private exact Python execution recipe proven in review 132; no
-   admission or public SPI claimed**);
+   (**one private exact Python request-to-recipe planner and execution path
+   proven in reviews 132–133; no admission or public SPI claimed**);
 3. one generic retained `READY` disposition beside the existing exact
    `UNAVAILABLE` branch;
 4. reviewed-plan staleness and lock-first admission;

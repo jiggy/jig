@@ -19,8 +19,12 @@ import {
   requirePrivateLinuxCgroupBackend,
   type PrivateLinuxLaunchPlan,
 } from "../src/internal/linux-cgroup-backend.js";
-import { RunHostSession } from "../src/run/session.js";
 import { captureStoredPackage } from "../src/internal/package-artifact-store.js";
+import {
+  planPrivatePythonDirectRun,
+  requirePrivatePythonDirectRecipe,
+  runPrivatePythonDirectRecipe,
+} from "../src/internal/python-direct-run.js";
 import {
   createPrivateUnavailableCandidate,
   decodePrivateUnavailableCandidate,
@@ -37,11 +41,15 @@ import {
 } from "../src/internal/unavailable-admission-store.js";
 import { evaluateAuthorClosure } from "../src/project/author-evaluator.js";
 import { captureAuthorClosure } from "../src/project/author-module.js";
+import { defineJig } from "../src/project/author.js";
+import { captureFlowSource } from "../src/project/flow-source.js";
+import { linkPackageProject } from "../src/project/package-project.js";
 import {
   buildPrivateActivationRequests,
   requirePrivateRetainedResolutionObservation,
   resolveRetainedPackageProjectObservation,
 } from "../src/project/package-resolution.js";
+import { retainFlowSourcePackages } from "../src/project/retained-flow.js";
 import { retainPackageProject } from "../src/project/retained-project.js";
 
 const HOSTILE = process.env.JIG_LINUX_CGROUP_HOSTILE === "1";
@@ -178,17 +186,27 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
   test("runs one Python FLOW component from exact leased support", async () => {
     host = await hostConfiguration();
     const python = await proofHostPythonClosure();
-    const component = await mkdtemp(join(tmpdir(), "jig-python-flow-"));
+    const root = await mkdtemp(join(tmpdir(), "jig-python-flow-"));
+    const store = join(root, "store");
+    const component = join(root, "flows", "run");
     try {
-      await chmod(component, 0o755);
+      await mkdir(store, { mode: 0o700 });
+      await mkdir(component, { recursive: true });
       const sdk = join(component, "flowmd_sdk");
       await mkdir(sdk);
-      await chmod(sdk, 0o755);
       for (const name of ["__init__.py", "_json.py", "_runtime.py", "_service.py", "_types.py"]) {
         const source = join(import.meta.dir, "..", "..", "flowmd-sdk", "src", "flowmd_sdk", name);
         await writeFile(join(sdk, name), await readFile(source));
       }
+      await writeFile(join(component, "FLOW.md"), [
+        "---",
+        "name: retained-python",
+        "description: Exact retained Python Run fixture.",
+        "---",
+        "",
+      ].join("\n"));
       await writeFile(join(component, "flow.py"), [
+        "#!/usr/bin/env python",
         "from flowmd_sdk import serve",
         "",
         "async def run(context):",
@@ -197,39 +215,72 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         "serve(run)",
         "",
       ].join("\n"));
+      const source = await captureFlowSource(root, defineJig({ flows: ["flows/run"] }).flows);
+      try {
+        const retained = await retainFlowSourcePackages(store, source);
+        const project = linkPackageProject({ flows: retained, bindings: [] });
+        const [request] = buildPrivateActivationRequests(project);
+        const recipe = await planPrivatePythonDirectRun({
+          request: request!,
+          runtimeSupport: python.runtimeSupport,
+          backend: backend(host),
+        });
+        expect(requirePrivatePythonDirectRecipe(recipe)).toBe(recipe);
+        expect((await planPrivatePythonDirectRun({
+          request: request!,
+          runtimeSupport: python.runtimeSupport,
+          backend: backend(host),
+        })).observation.digest).toBe(recipe.observation.digest);
+        await expect(planPrivatePythonDirectRun({
+          request: request!,
+          runtimeSupport: python.runtimeSupport,
+          backend: backend(host),
+          selector: "not-python",
+        })).rejects.toThrow("matching direct flow.py activation");
+        await expect(runPrivatePythonDirectRecipe({
+          recipe,
+          packageStoreRoot: store,
+          runId: "python-config-drift",
+          invocation: {
+            input: {},
+            settings: { unexpected: true },
+            attachments: {},
+            deadlineUnixMs: Date.now() + 20_000,
+          },
+        })).rejects.toThrow("differs from its admitted settings or attachments");
 
-      const process = await backend(host).launch({
-        runId: "python-flow",
-        limits: { ...limits(), memoryBytes: 128 * 1024 * 1024, wallClockMs: 10_000 },
-        readOnlyMounts: [
-          ...python.runtimeSupport.closureSources.map((source) => ({ source, destination: source })),
-          { source: component, destination: "/package" },
-        ],
-        command: [python.executable, "/package/flow.py"],
-      });
-      const result = await new RunHostSession(process, {
-        input: { message: "retained" },
-        settings: {},
-        attachments: {},
-        scratch: "/work",
-        deadlineUnixMs: Date.now() + 8_000,
-      }).run();
-      expect(result).toEqual({
-        status: "succeeded",
-        result: {
-          outcome: "done",
-          output: { echo: { message: "retained" } },
-        },
-        diagnostics: { stderr: "", stderrBytes: 0, stderrTruncated: false },
-      });
-      expect(await process.terminationReason).toBe("payload_exit");
-      expect(await process.evidence).toMatchObject({
-        cpuStat: expect.any(Object),
-        memoryEvents: expect.any(Object),
-        pidsEvents: expect.any(Object),
-      });
+        const result = await runPrivatePythonDirectRecipe({
+          recipe,
+          packageStoreRoot: store,
+          runId: "python-flow",
+          invocation: {
+            input: { message: "retained" },
+            settings: {},
+            attachments: {},
+            deadlineUnixMs: Date.now() + 20_000,
+          },
+        });
+        expect(result.terminal).toEqual({
+          status: "succeeded",
+          result: {
+            outcome: "done",
+            output: { echo: { message: "retained" } },
+          },
+          diagnostics: { stderr: "", stderrBytes: 0, stderrTruncated: false },
+        });
+        expect(result.enforcement).toMatchObject({
+          terminationReason: "payload_exit",
+          evidence: {
+            cpuStat: expect.any(Object),
+            memoryEvents: expect.any(Object),
+            pidsEvents: expect.any(Object),
+          },
+        });
+      } finally {
+        await source.dispose();
+      }
     } finally {
-      await rm(component, { recursive: true, force: true });
+      await rm(root, { recursive: true, force: true });
     }
   });
 

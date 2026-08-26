@@ -88,7 +88,7 @@ export interface PrivateLinuxEnvelopeIdentity {
   readonly entropyDevice: boolean;
 }
 
-interface PrivateLinuxBackendMechanismObservation {
+export interface PrivateLinuxBackendMechanismObservation {
   readonly kind: "linux-cgroup-v2-bubblewrap-mechanism/1";
   readonly digest: string;
   readonly cgroupScope: string;
@@ -178,6 +178,12 @@ export class PrivateLinuxCgroupBackend {
     validateOptions(this.options);
     authenticBackends.add(this);
     Object.freeze(this);
+  }
+
+  /** Observe the exact private mechanism without starting package code. */
+  async observeMechanism(): Promise<PrivateLinuxBackendMechanismObservation> {
+    requirePrivateLinuxCgroupBackend(this);
+    return await observeBackendMechanism(this.options, this.options.helperPath);
   }
 
   async launch(
