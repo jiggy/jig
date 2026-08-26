@@ -23,6 +23,7 @@ import {
 } from "../src/project/package-project.js";
 import {
   buildPrivateActivationRequests,
+  requirePrivateActivationRequest,
   requirePrivateRetainedResolutionObservation,
   resolveLinkedPackageProjectObservation,
   type PrivateActivationRequest,
@@ -41,6 +42,10 @@ describe("private package resolution", () => {
         "project was not produced by the package-project linker",
       );
       const requests = buildPrivateActivationRequests(project);
+      expect(requirePrivateActivationRequest(requests[0])).toBe(requests[0]);
+      expect(() => requirePrivateActivationRequest({ ...requests[0]! })).toThrow(
+        "activation request was not produced from a linked package project",
+      );
       expect(requests.map(({ target }) => target)).toEqual([
         { kind: "binding", id: "z" },
         { kind: "flow", path: "flows/a" },

@@ -17,6 +17,7 @@ interface Configuration {
   readonly uid: string;
   readonly gid: string;
   readonly bubblewrap: string;
+  readonly shell: string;
   readonly bubblewrapArguments: readonly string[];
 }
 
@@ -47,10 +48,27 @@ async function main(): Promise<void> {
   let stopping: StopReason | undefined;
   let terminalSent = false;
   let controlBuffer = "";
+  let admit!: () => void;
+  let rejectAdmission!: (error: Error) => void;
+  let admitted = false;
+  let requestedKills = Promise.resolve();
+  let requestedKillError: unknown;
+  const admission = new Promise<void>((resolve, reject) => {
+    admit = resolve;
+    rejectAdmission = reject;
+  });
 
   const requestStop = (reason: StopReason): void => {
     if (stopping === undefined || stopping === "payload_exit") stopping = reason;
-    if (runCreated) void killCgroup(runCgroup);
+    if (!admitted) rejectAdmission(new Error(`launch stopped before admission: ${reason}`));
+    child?.kill("SIGKILL");
+    if (runCreated) {
+      requestedKills = requestedKills
+        .then(() => killCgroup(runCgroup))
+        .catch((error) => {
+          requestedKillError ??= error;
+        });
+    }
   };
   control.on("data", (data) => {
     controlBuffer += String(data);
@@ -61,8 +79,14 @@ async function main(): Promise<void> {
       if (line !== "") {
         try {
           const message: unknown = JSON.parse(line);
-          if (typeof message === "object" && message !== null &&
-            (message as { type?: unknown }).type === "cancel") requestStop("cancelled");
+          if (typeof message === "object" && message !== null) {
+            const type = (message as { type?: unknown }).type;
+            if (type === "admit") {
+              admitted = true;
+              admit();
+            }
+            if (type === "cancel") requestStop("cancelled");
+          }
         } catch {
           requestStop("cancelled");
         }
@@ -70,13 +94,21 @@ async function main(): Promise<void> {
       newline = controlBuffer.indexOf("\n");
     }
   });
-  control.once("close", () => requestStop("coordinator_lost"));
-  control.once("error", () => requestStop("coordinator_lost"));
+  control.once("close", () => {
+    requestStop("coordinator_lost");
+    rejectAdmission(new Error("coordinator closed before launch admission"));
+  });
+  control.once("error", () => {
+    requestStop("coordinator_lost");
+    rejectAdmission(new Error("coordinator failed before launch admission"));
+  });
   process.once("SIGTERM", () => requestStop("cancelled"));
   process.once("SIGINT", () => requestStop("cancelled"));
 
   const deadline = setTimeout(() => requestStop("deadline"), config.wallMs);
   try {
+    await admission;
+    if (stopping !== undefined) throw new Error(`launch cancelled before admission: ${stopping}`);
     await requireScope(config.scope);
     await mkdir(parentCgroup, { mode: 0o755 });
     parentCreated = true;
@@ -90,7 +122,7 @@ async function main(): Promise<void> {
     if (stopping !== undefined) throw new Error(`launch cancelled during setup: ${stopping}`);
 
     const launched = spawn(
-      "/bin/sh",
+      config.shell,
       ["-eu", "-c", ENTER_SCRIPT, "jig-cgroup-enter", runCgroup, config.bubblewrap, ...config.bubblewrapArguments],
       { stdio: ["pipe", "pipe", "pipe", "pipe"] },
     );
@@ -104,16 +136,26 @@ async function main(): Promise<void> {
     process.stdin.pipe(payload.stdin);
     const exitPromise = childExit(payload);
     await waitForReady(payload);
-    send(control, {
-      type: "ready",
-      parentCgroup,
-      runCgroup,
-      payloadPid: payload.pid,
-    });
+    await requestedKills;
+    if (stopping !== undefined) {
+      await captureKillFailure(runCgroup, (error) => {
+        requestedKillError ??= error;
+      });
+    } else {
+      send(control, {
+        type: "ready",
+        parentCgroup,
+        runCgroup,
+        payloadPid: payload.pid,
+      });
+    }
 
     const exit = await exitPromise;
     stopping ??= "payload_exit";
-    await killCgroup(runCgroup);
+    await requestedKills;
+    await captureKillFailure(runCgroup, (error) => {
+      requestedKillError ??= error;
+    });
     const cleanupResult = await cleanup(runCgroup, parentCgroup, config.cleanupMs);
     const cleanupError = cleanupResult.error;
     runCreated = cleanupError !== undefined;
@@ -124,6 +166,7 @@ async function main(): Promise<void> {
       signal: exit.signal,
       reason: stopping,
       fenced: cleanupError === undefined,
+      ...(requestedKillError === undefined ? {} : { killError: errorText(requestedKillError) }),
       ...(cleanupError === undefined ? {} : { cleanupError }),
       evidence: cleanupResult.evidence,
     };
@@ -131,7 +174,12 @@ async function main(): Promise<void> {
     terminalSent = true;
   } catch (error) {
     stopping ??= "setup_failed";
-    if (runCreated) await killCgroup(runCgroup);
+    await requestedKills;
+    if (runCreated) {
+      await captureKillFailure(runCgroup, (killError) => {
+        requestedKillError ??= killError;
+      });
+    }
     const cleanupResult = await cleanup(
       runCreated ? runCgroup : undefined,
       parentCreated ? parentCgroup : undefined,
@@ -140,19 +188,18 @@ async function main(): Promise<void> {
     const cleanupError = cleanupResult.error;
     const message = errorText(error);
     if (!terminalSent && control.writable) {
-      if (child === undefined) {
-        send(control, { type: "error", message: cleanupError === undefined ? message : `${message}; cleanup: ${cleanupError}` });
-      } else {
-        send(control, {
-          type: "terminal",
-          exitCode: null,
-          signal: null,
-          reason: stopping,
-          fenced: cleanupError === undefined,
-          ...(cleanupError === undefined ? {} : { cleanupError }),
-          evidence: cleanupResult.evidence,
-        });
-      }
+      send(control, {
+        type: "terminal",
+        exitCode: null,
+        signal: null,
+        reason: stopping,
+        fenced: cleanupError === undefined,
+        setupError: message,
+        ...(requestedKillError === undefined ? {} : { killError: errorText(requestedKillError) }),
+        ...(cleanupError === undefined ? {} : { cleanupError }),
+        evidence: cleanupResult.evidence,
+      });
+      terminalSent = true;
     }
     if (cleanupError !== undefined) throw new Error(`${message}; cleanup: ${cleanupError}`);
     if (child === undefined) throw error;
@@ -185,13 +232,19 @@ function parseArguments(arguments_: readonly string[]): Configuration {
     if (!Number.isSafeInteger(value) || value <= 0) throw new Error(`invalid helper argument --${name}`);
     return value;
   };
+  const nonnegativeInteger = (name: string): string => {
+    const value = Number(required(name));
+    if (!Number.isSafeInteger(value) || value < 0) throw new Error(`invalid helper argument --${name}`);
+    return String(value);
+  };
   const scope = required("scope");
   const parent = required("parent");
   if (!scope.startsWith("/sys/fs/cgroup/") || parent.includes("/") || !parent.startsWith("jig-run-")) {
     throw new Error("helper cgroup target is outside the Jig-owned naming boundary");
   }
   const bubblewrap = required("bubblewrap");
-  if (!bubblewrap.startsWith("/") || bubblewrapArguments.length === 0) {
+  const shell = required("shell");
+  if (!bubblewrap.startsWith("/") || !shell.startsWith("/") || bubblewrapArguments.length === 0) {
     throw new Error("invalid Bubblewrap launch");
   }
   return {
@@ -204,9 +257,10 @@ function parseArguments(arguments_: readonly string[]): Configuration {
     cpuPeriod: String(integer("cpu-period")),
     wallMs: integer("wall-ms"),
     cleanupMs: integer("cleanup-ms"),
-    uid: String(Number(required("uid"))),
-    gid: String(Number(required("gid"))),
+    uid: nonnegativeInteger("uid"),
+    gid: nonnegativeInteger("gid"),
     bubblewrap,
+    shell,
     bubblewrapArguments,
   };
 }
@@ -261,6 +315,17 @@ async function killCgroup(runCgroup: string): Promise<void> {
   await writeFile(join(runCgroup, "cgroup.kill"), "1").catch((error: NodeJS.ErrnoException) => {
     if (error.code !== "ENOENT") throw error;
   });
+}
+
+async function captureKillFailure(
+  runCgroup: string,
+  failed: (error: unknown) => void,
+): Promise<void> {
+  try {
+    await killCgroup(runCgroup);
+  } catch (error) {
+    failed(error);
+  }
 }
 
 async function cleanup(

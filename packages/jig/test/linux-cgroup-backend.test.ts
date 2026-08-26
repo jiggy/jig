@@ -1,7 +1,7 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { access, mkdir, mkdtemp, readFile, readdir, realpath, rm, writeFile } from "node:fs/promises";
+import { access, copyFile, mkdir, mkdtemp, readFile, readdir, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
@@ -10,9 +10,16 @@ import {
 } from "../src/internal/activation-planning.js";
 import {
   PrivateLinuxCgroupBackend,
+  requirePrivateLinuxCgroupBackend,
   type PrivateLinuxLaunchPlan,
 } from "../src/internal/linux-cgroup-backend.js";
 import { captureStoredPackage } from "../src/internal/package-artifact-store.js";
+import {
+  executePrivatePythonExactRun,
+  planPrivatePythonExactRun,
+  requirePrivatePythonExactRunCandidate,
+} from "../src/internal/python-nix-run.js";
+import { observePrivatePythonNixRuntime } from "../src/internal/python-nix-runtime.js";
 import { evaluateAuthorClosure } from "../src/project/author-evaluator.js";
 import { captureAuthorClosure } from "../src/project/author-module.js";
 import {
@@ -37,6 +44,12 @@ describe("private Linux cgroup-v2 plan boundary", () => {
       payloadUid: 1000,
       payloadGid: 1000,
     });
+    expect(requirePrivateLinuxCgroupBackend(backend)).toBe(backend);
+    expect(Object.isFrozen(backend)).toBe(true);
+    expect(() => requirePrivateLinuxCgroupBackend({
+      observeMechanism: backend.observeMechanism,
+      launch: backend.launch,
+    })).toThrow("Linux Backend was not produced by the private constructor");
     await expect(backend.launch({
       runId: "unsafe-mount",
       limits: limits(),
@@ -129,10 +142,18 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
   test("cancels during startup and shutdown without leaking ownership", async () => {
     host = await hostConfiguration();
     const before = new Set(await jigCgroups(host.scope));
+    const alreadyAborted = new AbortController();
+    alreadyAborted.abort();
+    await expect(backend(host).launch(
+      plan(host, "pre-admission-cancel", "printf must-not-run"),
+      alreadyAborted.signal,
+    )).rejects.toThrow("cancelled before admission");
+    expect(new Set(await jigCgroups(host.scope))).toEqual(before);
+
     const abort = new AbortController();
     const launching = backend(host).launch(plan(host, "startup-cancel", "/bin/sleep 10"), abort.signal);
     abort.abort();
-    await expect(launching).rejects.toThrow("cancelled during startup");
+    await expect(launching).rejects.toThrow("cancelled before admission");
     await waitUntil(async () => sameMembers(before, new Set(await jigCgroups(host.scope))), 5_000);
 
     const process = await backend(host).launch(plan(host, "shutdown-cancel", "/bin/sleep 10"));
@@ -473,54 +494,299 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
     }
   });
 
-  test("drives a real Python Run/1 component through the complete envelope", async () => {
+  test("reacquires and drives one exact retained Python Run/1 candidate", async () => {
     host = await hostConfiguration();
-    const python = await pythonClosure();
-    const sdk = await realpath(join(import.meta.dir, "..", "..", "flowmd-sdk", "src"));
-    const fixture = await realpath(join(import.meta.dir, "..", "..", "flowmd-sdk", "tests"));
-    const component = await backend(host).launch({
-      runId: "python-run1",
-      limits: {
-        ...limits(),
-        memoryBytes: 256 * 1024 * 1024,
-        pids: 16,
-        wallClockMs: 5_000,
-      },
-      readOnlyMounts: [
-        ...python.stores.map((store) => ({ source: store, destination: store })),
-        { source: sdk, destination: "/flowmd-sdk" },
-        { source: fixture, destination: "/component" },
-      ],
-      entropyDevice: true,
-      environment: {
-        PYTHONPATH: "/flowmd-sdk",
-        PYTHONDONTWRITEBYTECODE: "1",
-        PYTHONUNBUFFERED: "1",
-      },
-      command: [python.executable, "/component/fixture_component.py"],
+    const configuredPython = process.env.JIG_TEST_PYTHON;
+    const configuredNixStore = process.env.JIG_TEST_NIX_STORE;
+    if (configuredPython === undefined || configuredNixStore === undefined) {
+      throw new Error("JIG_TEST_PYTHON and JIG_TEST_NIX_STORE are required");
+    }
+    const exactBackend = backend(host);
+    const runtime = await observePrivatePythonNixRuntime({
+      pythonPath: configuredPython,
+      nixStorePath: configuredNixStore,
     });
+    const mechanism = await exactBackend.observeMechanism();
+    const distribution = await realpath(join(import.meta.dir, "..", "dist"));
+    const root = await mkdtemp(join(tmpdir(), "jig-python-exact-project-"));
+    const store = await mkdtemp(join(tmpdir(), "jig-python-exact-store-"));
+    const stagingBefore = new Set((await readdir(tmpdir())).filter((name) => name.startsWith("jig-package-")));
+    try {
+      await mkdir(join(root, "flows", "run"), { recursive: true });
+      await mkdir(join(root, "flows", "prepared"), { recursive: true });
+      const sdkSource = await realpath(join(import.meta.dir, "..", "..", "flowmd-sdk", "src", "flowmd_sdk"));
+      const sdkDestination = join(root, "flows", "run", "flowmd_sdk");
+      const sdkFiles = ["__init__.py", "_json.py", "_runtime.py", "_service.py", "_types.py", "py.typed"];
+      await mkdir(sdkDestination);
+      await Promise.all(sdkFiles.map((file) => copyFile(
+        join(sdkSource, file),
+        join(sdkDestination, file),
+      )));
+      await writeFile(join(root, "jig.ts"), [
+        'import { defineJig } from "@jigging/jig";',
+        'export default defineJig({ flows: ["flows/run", "flows/prepared"] });',
+      ].join("\n"));
+      await writeFile(join(root, "flows", "run", "FLOW.md"), [
+        "---",
+        "name: exact-python",
+        "description: Self-contained exact Python Run witness.",
+        "---",
+        "",
+      ].join("\n"));
+      await writeFile(join(root, "flows", "run", "input.schema.json"), JSON.stringify({
+        $schema: "https://flow.dev/schemas/schema-1.json",
+        type: "object",
+        properties: { message: { type: "string" } },
+        required: ["message"],
+        additionalProperties: false,
+      }));
+      await writeFile(join(root, "flows", "run", "result.schema.json"), JSON.stringify({
+        $schema: "https://flow.dev/schemas/schema-1.json",
+        type: "object",
+        required: ["message"],
+      }));
+      await writeFile(join(root, "flows", "run", "flow.py"), [
+        "import asyncio",
+        "import json",
+        "import os",
+        "import subprocess",
+        "import sys",
+        "",
+        "from flowmd_sdk import RunContext, RunResult, serve",
+        "",
+        "async def run(context: RunContext) -> RunResult:",
+        "    if context.input['message'] == 'wait-for-cancellation':",
+        "        await asyncio.sleep(30)",
+        "    child_code = \"\"\"",
+        "import json",
+        "import subprocess",
+        "import sys",
+        "grandchild = subprocess.check_output([sys.executable, '-c', \"print('grandchild-ok')\"], text=True).strip()",
+        "print(json.dumps({'child': 'child-ok', 'grandchild': grandchild}, separators=(',', ':')))",
+        "    \"\"\"",
+        "    descendants = json.loads(subprocess.check_output([sys.executable, '-c', child_code], text=True))",
+        "    output = {",
+        "        'message': context.input['message'],",
+        "        'cwd': os.getcwd(),",
+        "        'uid': os.getuid(),",
+        "        'gid': os.getgid(),",
+        "        'executable': sys.executable,",
+        "        'environment': dict(sorted(os.environ.items())),",
+        "        'urandomExists': os.path.exists('/dev/urandom'),",
+        "        'mapsExists': os.path.exists('/proc/self/maps'),",
+        "        'cgroupExists': os.path.exists('/sys/fs/cgroup'),",
+        "        'descendants': descendants,",
+        "    }",
+        "    if context.input['message'] == 'invalid-result':",
+        "        del output['message']",
+        "    return {'outcome': 'done', 'output': output}",
+        "",
+        "serve(run)",
+        "",
+      ].join("\n"));
+      await writeFile(join(root, "flows", "prepared", "FLOW.md"), [
+        "---",
+        "name: prepared-python",
+        "description: Intentionally preparation-bearing Python fixture.",
+        "---",
+        "",
+      ].join("\n"));
+      await writeFile(join(root, "flows", "prepared", "flow.py"), "print('not executed')\n");
+      await writeFile(join(root, "flows", "prepared", "requirements.txt"), "example==1.0.0\n");
 
-    const terminal = await new RunHostSession(component, {
-      input: { message: "inside the enforced envelope" },
-      settings: {},
-      attachments: {},
-      scratch: "/work",
-      deadlineUnixMs: Date.now() + 3_000,
-    }).run();
+      const bun = await bunClosure();
+      const retained = await retainPackageProject({
+        projectRoot: root,
+        storeRoot: store,
+        evaluator: {
+          backend: exactBackend,
+          bunPath: bun.executable,
+          runtimeMounts: [
+            { source: bun.store, destination: bun.store },
+            { source: bun.glibcStore, destination: bun.glibcStore },
+          ],
+          runtimeObservation: {
+            executableDigest: bun.digest,
+            closureSources: [bun.store, bun.glibcStore],
+          },
+          jigDistributionPath: distribution,
+        },
+      });
+      const requests = buildPrivateActivationRequests(retained.linked);
+      const request = requests.find(({ packagePath }) => packagePath === "flows/run")!;
+      const preparedRequest = requests.find(({ packagePath }) => packagePath === "flows/prepared")!;
+      const candidateInput = {
+        storeRoot: store,
+        request,
+        runtime,
+        backend: mechanism,
+        policyDigest: testDigest("python-exact-policy"),
+        sandboxLimits: {
+          memoryBytes: 256 * 1024 * 1024,
+          pids: 16,
+          cpuQuotaMicros: 50_000,
+          cpuPeriodMicros: 100_000,
+          wallClockMs: 20_000,
+          cleanupTimeoutMs: 5_000,
+        },
+        runHostLimits: {
+          cancellationGraceMs: 250,
+          stdoutBytes: 64 * 1024 * 1024,
+          stderrBytes: 16 * 1024 * 1024,
+          capturedStderrBytes: 64 * 1024,
+        },
+      } as const;
+      const candidate = await planPrivatePythonExactRun(candidateInput);
+      const embedded = await captureStoredPackage(store, candidate.package);
+      try {
+        expect(embedded.files
+          .filter(({ path }) => path.startsWith("flowmd_sdk/"))
+          .map(({ path }) => path))
+          .toEqual(sdkFiles.map((file) => `flowmd_sdk/${file}`).sort());
+      } finally {
+        await embedded.dispose();
+      }
+      expect((await planPrivatePythonExactRun(candidateInput)).digest).toBe(candidate.digest);
+      expect((await planPrivatePythonExactRun({
+        ...candidateInput,
+        sandboxLimits: { ...candidateInput.sandboxLimits, memoryBytes: 255 * 1024 * 1024 },
+      })).digest).not.toBe(candidate.digest);
+      const { cleanupTimeoutMs: _omittedCleanup, ...partialLimits } = candidateInput.sandboxLimits;
+      await expect(planPrivatePythonExactRun({
+        ...candidateInput,
+        sandboxLimits: partialLimits as typeof candidateInput.sandboxLimits,
+      })).rejects.toThrow("sandbox limits must contain exactly");
+      await expect(planPrivatePythonExactRun({ ...candidateInput, request: preparedRequest }))
+        .rejects.toMatchObject({ code: "PYTHON_PREPARATION_UNSUPPORTED" });
+      expect(requirePrivatePythonExactRunCandidate(candidate)).toBe(candidate);
+      expect(() => requirePrivatePythonExactRunCandidate({ ...candidate })).toThrow(
+        "Python exact Run candidate was not produced by the private planner",
+      );
+      expect(candidate).toMatchObject({
+        admissible: false,
+        adapterRevision: "python-nix-private-adapter/1",
+        launchPlannerRevision: "python-nix-linux-run/1",
+        preparation: { kind: "none" },
+        runtimePredicates: [],
+        authority: {
+          attachments: false,
+          ambientEnvironment: false,
+          capabilityCalls: false,
+          extraHostFilesystem: false,
+          flowCalls: false,
+          network: false,
+        },
+      });
+      expect(Object.isFrozen(candidate)).toBe(true);
 
-    expect(terminal).toMatchObject({
-      status: "succeeded",
-      result: {
-        outcome: "done",
-        output: { message: "inside the enforced envelope" },
-      },
-      diagnostics: { stderr: "" },
-    });
-    expect(await component.evidence).toMatchObject({
-      memoryEvents: { max: 0 },
-      pidsEvents: { max: 0 },
-    });
-    await expect(access(component.cgroup.parentCgroup)).rejects.toBeDefined();
+      await rm(root, { recursive: true, force: true });
+      await expect(executePrivatePythonExactRun({
+        storeRoot: store,
+        candidate,
+        backend: exactBackend,
+        runId: "python-invalid-input",
+        input: {},
+        deadlineUnixMs: Date.now() + 4_000,
+      })).rejects.toMatchObject({ code: "RUN_INPUT_INVALID" });
+      const changedBackend = backend(host, 9_999);
+      expect((await changedBackend.observeMechanism()).digest).not.toBe(mechanism.digest);
+      await expect(executePrivatePythonExactRun({
+        storeRoot: store,
+        candidate,
+        backend: changedBackend,
+        runId: "python-mechanism-drift",
+        input: { message: "must not launch" },
+        deadlineUnixMs: Date.now() + 30_000,
+      })).rejects.toThrow("pinned Linux Backend mechanism observation changed");
+      expect(await jigCgroups(host.scope)).toEqual([]);
+      const result = await executePrivatePythonExactRun({
+        storeRoot: store,
+        candidate,
+        backend: exactBackend,
+        runId: "python-exact-run1",
+        input: { message: "inside the exact retained envelope" },
+        deadlineUnixMs: Date.now() + 30_000,
+      });
+
+      expect(result).toMatchObject({
+        admissible: false,
+        candidateDigest: candidate.digest,
+        terminationReason: "payload_exit",
+        terminal: {
+          status: "succeeded",
+          result: {
+            outcome: "done",
+            output: {
+              message: "inside the exact retained envelope",
+              cwd: "/work",
+              uid: 1000,
+              gid: 100,
+              executable: runtime.executable,
+              environment: candidate.environment,
+              urandomExists: false,
+              mapsExists: false,
+              cgroupExists: false,
+              descendants: { child: "child-ok", grandchild: "grandchild-ok" },
+            },
+          },
+          diagnostics: { stderr: "" },
+        },
+        envelope: {
+          mechanismDigest: mechanism.digest,
+          rootProcessMappings: false,
+          entropyDevice: false,
+        },
+        evidence: {
+          memoryEvents: { max: 0 },
+          pidsEvents: { max: 0 },
+        },
+      });
+
+      const invalidResultError = await executePrivatePythonExactRun({
+        storeRoot: store,
+        candidate,
+        backend: exactBackend,
+        runId: "python-invalid-result",
+        input: { message: "invalid-result" },
+        deadlineUnixMs: Date.now() + 30_000,
+      }).then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+      expect(errorTreeHasCode(invalidResultError, "RUN_RESULT_INVALID")).toBe(true);
+      expect(await jigCgroups(host.scope)).toEqual([]);
+
+      const cancellation = new AbortController();
+      const cancelling = executePrivatePythonExactRun({
+        storeRoot: store,
+        candidate,
+        backend: exactBackend,
+        runId: "python-cancelled-run",
+        input: { message: "wait-for-cancellation" },
+        deadlineUnixMs: Date.now() + 40_000,
+        signal: cancellation.signal,
+      });
+      await waitUntil(async () => (await jigCgroups(host.scope)).length === 1, 15_000);
+      // The cgroup exists slightly before the Backend returns its ready
+      // receipt. Keep the SDK handler asleep long enough to cross that seam.
+      await Bun.sleep(1_000);
+      cancellation.abort();
+      expect(await cancelling).toMatchObject({
+        terminal: { status: "failed", code: "CANCELLED" },
+        envelope: { mechanismDigest: mechanism.digest },
+      });
+      expect(await jigCgroups(host.scope)).toEqual([]);
+
+      await waitUntil(async () => (await readdir(tmpdir()))
+        .filter((name) => name.startsWith("jig-package-") && !stagingBefore.has(name))
+        .length === 0, 5_000);
+      expect((await readdir(tmpdir()))
+        .filter((name) => name.startsWith("jig-package-") && !stagingBefore.has(name)))
+        .toEqual([]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+      await rm(store, { recursive: true, force: true });
+    }
   });
 
   test("drives a real Python Service/1 Mount through the complete envelope", async () => {
@@ -641,7 +907,7 @@ function testDigest(label: string): string {
   return `sha256:${createHash("sha256").update(label).digest("hex")}`;
 }
 
-function backend(host: HostConfiguration): PrivateLinuxCgroupBackend {
+function backend(host: HostConfiguration, startupTimeoutMs?: number): PrivateLinuxCgroupBackend {
   return new PrivateLinuxCgroupBackend({
     cgroupScope: host.scope,
     sudoPath: "/agent-sudo/bin/sudo",
@@ -649,6 +915,7 @@ function backend(host: HostConfiguration): PrivateLinuxCgroupBackend {
     bubblewrapPath: "/usr/bin/bwrap",
     payloadUid: 1000,
     payloadGid: 100,
+    ...(startupTimeoutMs === undefined ? {} : { startupTimeoutMs }),
   });
 }
 
@@ -741,6 +1008,15 @@ async function waitUntil(predicate: () => Promise<boolean>, timeoutMs: number): 
 
 function sameMembers(left: ReadonlySet<string>, right: ReadonlySet<string>): boolean {
   return left.size === right.size && [...left].every((value) => right.has(value));
+}
+
+function errorTreeHasCode(error: unknown, code: string): boolean {
+  if (error === null || typeof error !== "object") return false;
+  if ((error as { code?: unknown }).code === code) return true;
+  if (error instanceof AggregateError && error.errors.some((nested) => errorTreeHasCode(nested, code))) {
+    return true;
+  }
+  return "cause" in error && errorTreeHasCode((error as { cause: unknown }).cause, code);
 }
 
 function firstLine(stream: NodeJS.ReadableStream): Promise<string> {

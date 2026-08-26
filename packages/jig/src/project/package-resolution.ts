@@ -24,6 +24,7 @@ import {
 
 const DIGEST = /^sha256:[0-9a-f]{64}$/;
 const authenticRetainedObservations = new WeakSet<object>();
+const authenticActivationRequests = new WeakSet<object>();
 
 export interface PrivateActivationRequest {
   readonly kind: "activation-request/1";
@@ -125,6 +126,14 @@ export function buildPrivateActivationRequests(
   return Object.freeze(requests);
 }
 
+/** Reject structurally similar requests which did not come from the retained linker boundary. */
+export function requirePrivateActivationRequest(value: unknown): PrivateActivationRequest {
+  if (value === null || typeof value !== "object" || !authenticActivationRequests.has(value)) {
+    throw new TypeError("activation request was not produced from a linked package project");
+  }
+  return value as PrivateActivationRequest;
+}
+
 /**
  * Pure testable reducer over authentic invocation-local meaning. Its output is
  * deliberately not authenticated because capture provenance is caller data.
@@ -224,13 +233,15 @@ function createRequest(input: Omit<PrivateActivationRequest, "kind" | "digest">)
     attachments: input.attachments,
     slots: input.slots,
   });
-  return Object.freeze({
+  const request = Object.freeze({
     ...valueWithoutDigest,
     digest: privateDomainDigest(
       "JIG-Activation-Request/1",
       valueWithoutDigest as unknown as JsonValue,
     ),
   });
+  authenticActivationRequests.add(request);
+  return request;
 }
 
 function propagateServiceAvailability(

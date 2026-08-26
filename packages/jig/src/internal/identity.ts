@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { createReadStream } from "node:fs";
 
 import { canonicalJson, type JsonValue } from "../json.js";
 
@@ -11,5 +12,12 @@ export function privateDomainDigest(domain: string, value: JsonValue): string {
   hash.update(domain, "ascii");
   hash.update("\0", "ascii");
   hash.update(canonicalJson(value));
+  return `sha256:${hash.digest("hex")}`;
+}
+
+/** Hash one already-selected host file without buffering it as one value. */
+export async function privateFileDigest(path: string): Promise<string> {
+  const hash = createHash("sha256");
+  for await (const chunk of createReadStream(path)) hash.update(chunk);
   return `sha256:${hash.digest("hex")}`;
 }

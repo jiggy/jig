@@ -6,6 +6,13 @@ environmental stop recorded in
 private Linux proof backend. It does not publish a Sandbox Backend interface,
 make cgroup v2 portable FLOW vocabulary, or qualify the Bun Runtime Adapter.
 
+**Subsequent checkpoint:** the historical live-SDK-mounted Python Run described
+below has now been replaced by the process-local, Package/1-vendored,
+no-entropy launch candidate in
+[`115-private-python-exact-run.md`](115-private-python-exact-run.md). The
+earlier evidence remains recorded here to show how the stronger boundary was
+derived; it is not the current Python recipe design.
+
 ## Disposition
 
 The `firecracker-host` profile supplies the previously missing trusted
