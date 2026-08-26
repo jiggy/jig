@@ -122,19 +122,36 @@ path. Cgroup v2 and Bubblewrap remain one private implementation, not portable
 schema vocabulary.
 
 The existing Nix-backed evaluator is evidence for sandboxed author-code
-execution only. It cannot supply the generic step above. The slice must first
-retain an exact evaluator Runtime Support Closure, or an equivalently narrow
-host mechanism, without weakening the evaluator's current immutability checks
-or publishing a speculative general interface.
+execution only. It cannot supply the generic step above. The slice first needs
+an exact Runtime Support Closure for both the author evaluator and one direct
+Run, or an equivalently narrow host mechanism, without weakening the current
+immutability checks or publishing a speculative general interface.
 
-Before implementing that chain, one private substrate must be fixed: an
-administrator-installed, Jig-owned immutable proof recipe containing the exact
-runtime support and trusted launch artifacts required by one Run. Its
-registration is host policy; disappearance or byte/identity drift makes the
-target exactly `UNAVAILABLE`. This is a single test substrate, not a generic
-runtime store, package-manager abstraction, or public extension interface.
-Only after it works end to end should Jig derive the smallest private
+Before implementing that chain, the **administrator**, not Jig, must install
+and own the lifetime of one immutable proof substrate. It contains exactly the
+runtime support and trusted launch artifacts required by the evaluator and one
+Run. Host policy fixes one protected registration for that substrate. Jig owns
+only the protected registration and admission evidence it consumes: every new
+coordinator reacquires and revalidates the registered paths and bytes, and
+absence or identity drift makes the target exactly `UNAVAILABLE`.
+
+Jig does not copy, install, retain, update, garbage-collect, or delete those
+physical runtime bytes. It does not query or mutate a package manager to keep
+them alive. This is one externally provisioned test substrate, not a generic
+runtime store, package-manager abstraction, host-generation system, or public
+extension interface. If the selected host cannot provide that lifetime promise
+without Jig coordinating a package-manager namespace, daemon, collector, or
+mutation API, the checkpoint ends at exact `UNAVAILABLE`. Only after the
+substrate works end to end should Jig derive the smallest private
 Adapter/Backend candidate model from the path actually consumed.
+
+On 2026-08-26, the proof host did not contain such a substrate or protected
+registration. Its Bun, Bash, Bubblewrap, and Python installations all resolved
+into `/nix/store`, and its only privileged entrypoint was broad passwordless
+sudo. Installing copies with that same broad authority would not satisfy the
+administrator-owned lifetime or narrowly authorized launcher requirements.
+This is the current successful stop condition, not permission for repository
+code to manufacture another installation or retention subsystem.
 
 Before expansion, the slice must prove:
 
