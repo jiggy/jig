@@ -1,5 +1,11 @@
 import { invalid } from "../diagnostics.js";
-import { validateJson1, type JsonValue } from "../json.js";
+import {
+  canonicalJson,
+  decodeJson1,
+  validateJson1,
+  type JsonObject,
+  type JsonValue,
+} from "../json.js";
 import { inspectCapturedPackage } from "../package/inspect.js";
 import {
   requirePrivateActivationRequest,
@@ -20,7 +26,11 @@ import {
   type PrivateLinuxEnvelopeIdentity,
   type PrivateLinuxCgroupBackend,
 } from "./linux-cgroup-backend.js";
-import { captureStoredPackage, type PackageArtifactRef } from "./package-artifact-store.js";
+import {
+  captureStoredPackage,
+  normalizePackageArtifactRef,
+  type PackageArtifactRef,
+} from "./package-artifact-store.js";
 import {
   materializeCapturedPackage,
   type PrivatePackageMaterialization,
@@ -30,9 +40,11 @@ import {
   verifyPrivatePythonNixRuntime,
   type PrivatePythonNixRuntimeObservation,
 } from "./python-nix-runtime.js";
+import { normalizeProjectPath } from "../project/paths.js";
 
 const DIGEST = /^sha256:[0-9a-f]{64}$/;
 const RUN_ID = /^[a-z0-9][a-z0-9-]{0,47}$/;
+const PLANNING_INTENT_BYTES = 4 * 1024;
 const PREPARATION_FILES = new Set([
   "Pipfile",
   "Pipfile.lock",
@@ -124,6 +136,18 @@ export interface PrivatePythonExactRunCandidateInput {
   readonly runHostLimits: RunHostLimits;
 }
 
+export interface PrivatePythonExactPlanningIntent {
+  readonly kind: "python-exact-planning-intent/1";
+  readonly requestDigest: string;
+  readonly packagePath: string;
+  readonly package: PackageArtifactRef;
+}
+
+export interface PrivatePythonExactRunIntentInput
+  extends Omit<PrivatePythonExactRunCandidateInput, "request"> {
+  readonly request: Uint8Array;
+}
+
 export interface PrivatePythonExactRunInvocation {
   readonly storeRoot: string;
   readonly candidate: PrivatePythonExactRunCandidate;
@@ -153,6 +177,86 @@ export async function planPrivatePythonExactRun(
   input: PrivatePythonExactRunCandidateInput,
 ): Promise<PrivatePythonExactRunCandidate> {
   const request = requirePrivateActivationRequest(input.request);
+  return planPrivatePythonExactRunRequest(input, request);
+}
+
+/**
+ * Project one authentic host request into the narrow canonical value accepted
+ * across the separately evaluated coordinator boundary.
+ */
+export function encodePrivatePythonExactPlanningIntent(
+  value: PrivateActivationRequest,
+): Uint8Array {
+  const request = requirePrivateActivationRequest(value);
+  requireExactPythonRequest(request);
+  if (request.target.kind !== "flow" || request.target.path !== request.packagePath) {
+    throw new TypeError("exact Python direct Flow target must equal its package path");
+  }
+  const intent = Object.freeze({
+    kind: "python-exact-planning-intent/1" as const,
+    requestDigest: request.digest,
+    packagePath: request.packagePath,
+    package: normalizePackageArtifactRef(request.package),
+  });
+  const canonical = canonicalJson(intent as unknown as JsonValue);
+  if (canonical.byteLength + 1 > PLANNING_INTENT_BYTES) {
+    throw new Error("exact Python planning intent exceeds its byte limit");
+  }
+  return withLf(canonical);
+}
+
+/** Strictly decode inert request meaning; this does not establish provenance. */
+export function decodePrivatePythonExactPlanningIntent(
+  bytes: Uint8Array,
+): PrivatePythonExactPlanningIntent {
+  if (!(bytes instanceof Uint8Array) || bytes.byteLength < 2 ||
+      bytes.byteLength > PLANNING_INTENT_BYTES || bytes.at(-1) !== 0x0a) {
+    throw new TypeError("exact Python planning intent must be bounded canonical JSON/1 plus LF");
+  }
+  const source = bytes.subarray(0, -1);
+  const decoded = decodeJson1(source);
+  if (!Buffer.from(canonicalJson(decoded)).equals(Buffer.from(source))) {
+    throw new TypeError("exact Python planning intent is not canonically encoded");
+  }
+  const root = requireIntentObject(decoded);
+  const keys = Object.keys(root).sort();
+  if (keys.length !== 4 || keys[0] !== "kind" || keys[1] !== "package" ||
+      keys[2] !== "packagePath" || keys[3] !== "requestDigest") {
+    throw new TypeError("exact Python planning intent has unknown or missing fields");
+  }
+  if (root.kind !== "python-exact-planning-intent/1") {
+    throw new TypeError("exact Python planning intent kind is invalid");
+  }
+  const packagePath = normalizeProjectPath(root.packagePath, "exact Python package path");
+  if (packagePath !== root.packagePath) {
+    throw new TypeError("exact Python package path is not canonical");
+  }
+  const packageReference = normalizePackageArtifactRef(root.package);
+  const request = exactPythonRequest(packagePath, packageReference);
+  if (root.requestDigest !== request.digest) {
+    throw new TypeError("exact Python planning intent request digest does not match its value");
+  }
+  return Object.freeze({
+    kind: "python-exact-planning-intent/1" as const,
+    requestDigest: request.digest,
+    packagePath,
+    package: packageReference,
+  });
+}
+
+/** Plan from the inert port while keeping all live brands coordinator-local. */
+export async function planPrivatePythonExactRunIntent(
+  input: PrivatePythonExactRunIntentInput,
+): Promise<PrivatePythonExactRunCandidate> {
+  const intent = decodePrivatePythonExactPlanningIntent(input.request);
+  const request = exactPythonRequest(intent.packagePath, intent.package);
+  return planPrivatePythonExactRunRequest(input, request);
+}
+
+async function planPrivatePythonExactRunRequest(
+  input: Omit<PrivatePythonExactRunCandidateInput, "request">,
+  request: PrivateActivationRequest,
+): Promise<PrivatePythonExactRunCandidate> {
   const runtime = await verifyPrivatePythonNixRuntime(
     requirePrivatePythonNixRuntimeObservation(input.runtime),
   );
@@ -362,6 +466,48 @@ export async function executePrivatePythonExactRun(
     }
     throw operationError;
   }
+}
+
+function exactPythonRequest(
+  packagePath: string,
+  packageReference: PackageArtifactRef,
+): PrivateActivationRequest {
+  const valueWithoutDigest = Object.freeze({
+    kind: "activation-request/1" as const,
+    target: Object.freeze({ kind: "flow" as const, path: packagePath }),
+    mode: "run" as const,
+    packagePath,
+    package: packageReference,
+    entrypoint: Object.freeze({ path: "flow.py", suffix: "py" }),
+    settings: emptyRecord<JsonObject>(),
+    attachments: emptyRecord<PrivateActivationRequest["attachments"]>(),
+    slots: emptyRecord<PrivateActivationRequest["slots"]>(),
+  });
+  return Object.freeze({
+    ...valueWithoutDigest,
+    digest: privateDomainDigest(
+      "JIG-Activation-Request/1",
+      valueWithoutDigest as unknown as JsonValue,
+    ),
+  });
+}
+
+function requireIntentObject(value: JsonValue): JsonObject {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    throw new TypeError("exact Python planning intent must be an object");
+  }
+  return value as JsonObject;
+}
+
+function withLf(value: Uint8Array): Uint8Array {
+  const result = new Uint8Array(value.byteLength + 1);
+  result.set(value);
+  result[result.length - 1] = 0x0a;
+  return result;
+}
+
+function emptyRecord<T extends object>(): T {
+  return Object.freeze(Object.create(null)) as T;
 }
 
 async function requireExactPackage(

@@ -38,6 +38,15 @@ observeRuntime
 plan
 ```
 
+`plan` is a boundary wrapper, not the source planner alias. As corrected by
+[review 125](125-private-python-planning-intent.md), the host encoder projects
+only an authentic direct-Python activation request into bounded canonical
+inert bytes. The coordinator accepts exact reconstructable meaning without
+claiming the foreign module's `WeakSet` provenance; the trusted loader must
+correlate the result with its authentic request and protected admission before
+production execution. Runtime, Backend, candidate, and execution brands remain
+inside that one coordinator evaluation.
+
 The helper remains a program rather than an imported coordinator module. A
 future three-role design is earned only after the Adapter consumes a strictly
 decoded inert Backend port instead of trying to authenticate an object branded

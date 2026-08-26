@@ -30,8 +30,11 @@ import {
   requirePrivateStoredUnavailableCandidate,
 } from "../src/internal/unavailable-admission-store.js";
 import {
+  decodePrivatePythonExactPlanningIntent,
+  encodePrivatePythonExactPlanningIntent,
   executePrivatePythonExactRun,
   planPrivatePythonExactRun,
+  planPrivatePythonExactRunIntent,
   requirePrivatePythonExactRunCandidate,
 } from "../src/internal/python-nix-run.js";
 import { observePrivatePythonNixRuntime } from "../src/internal/python-nix-runtime.js";
@@ -1000,6 +1003,27 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         },
       } as const;
       const candidate = await planPrivatePythonExactRun(candidateInput);
+      const planningIntent = encodePrivatePythonExactPlanningIntent(request);
+      expect(planningIntent.at(-1)).toBe(0x0a);
+      expect(decodePrivatePythonExactPlanningIntent(planningIntent)).toEqual({
+        kind: "python-exact-planning-intent/1",
+        requestDigest: request.digest,
+        packagePath: request.packagePath,
+        package: request.package,
+      });
+      expect((await planPrivatePythonExactRunIntent({
+        ...candidateInput,
+        request: planningIntent,
+      })).digest).toBe(candidate.digest);
+      expect(() => decodePrivatePythonExactPlanningIntent(
+        Buffer.concat([Buffer.from(" "), Buffer.from(planningIntent)]),
+      )).toThrow("not canonically encoded");
+      const mismatchedIntent = Buffer.from(planningIntent);
+      const requestDigestOffset = mismatchedIntent.indexOf(Buffer.from(request.digest)) + "sha256:".length;
+      mismatchedIntent[requestDigestOffset] = mismatchedIntent[requestDigestOffset] === 0x30 ? 0x31 : 0x30;
+      expect(() => decodePrivatePythonExactPlanningIntent(mismatchedIntent)).toThrow(
+        "request digest does not match",
+      );
       const embedded = await captureStoredPackage(store, candidate.package);
       try {
         expect(embedded.files
