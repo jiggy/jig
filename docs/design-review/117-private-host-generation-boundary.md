@@ -1,12 +1,13 @@
 # Private host-generation retention boundary
 
-**Status:** reviewed private boundary and measured feasibility result. No host
-generation is admitted, rooted, or exposed through a public API.
+**Status:** reviewed private boundary with a corrected retention-feasibility
+result. No host generation is admitted, rooted, or exposed through a public
+API.
 
 This review replaces the reverted host-extension Blob experiment. It records
 why trusted host code is not another coordinator-owned content store, what the
-smallest current implementation generation contains, and the exact host
-capability still missing before a Python/Linux recipe may be `READY`.
+smallest current implementation generation contains, and the remaining gates
+before a Python/Linux recipe may be `READY`.
 
 ## 1. One generation, two roles
 
@@ -96,77 +97,135 @@ close the next security boundary:
 - it duplicated filesystem publication and recovery machinery before a second
   storage implementation was required.
 
-The trusted generation should instead be one atomic immutable installation:
+The trusted generation is one canonical protected value, not a synthetic store
+directory or public file format:
 
 ```text
 python-linux-host-generation/1
-├── registration.json
-├── coordinator.mjs
-├── cgroup-helper.mjs
-└── exact references to its runtime support closures
+├── coordinator { ABI, top-level store path, byte count, member digest }
+├── helper { ABI, top-level store path, byte count, member digest }
+└── support members { role set, top-level store path, closure evidence }
 ```
 
-Its closed canonical registration identifies the two fixed ABIs, relative
-member paths, byte counts, and domain-separated member digests. It contains no
-volatile boot ID, cgroup inode, controller availability, or scope-emptiness
-facts. Those belong to a fresh activation preflight receipt.
+Members are normalized by unique top-level store path; several roles may share
+one root. The generation digest covers the complete canonical value. It
+contains no volatile boot ID, cgroup inode, controller availability, or scope-
+emptiness facts. Those belong only to a fresh activation preflight receipt.
 
-The generation object must embed every member or carry registered Nix
-reference edges to it. A `/nix/store/...` string in `registration.json` is not
-itself a Nix reference edge and cannot retain a runtime closure.
+Every named top-level store member is rooted separately beneath one
+generation-owned root directory. Nix's existing reference graph then retains
+that member's transitive closure. A `/nix/store/...` string in a canonical
+record is not itself a Nix reference edge and cannot retain a runtime closure.
+A separate probe found that a `nix-store --add` directory containing store-path
+text and symlinks did not acquire those reference edges, so v1 does not invent
+a synthetic one-object generation.
 
-One generation object and one lifecycle root avoid partially retaining a pair
-of role objects. A later non-Nix implementation may justify a storage-neutral
-host-generation boundary; v1 does not invent one in advance.
+The canonical record and its complete bounded root set are one admission unit:
+partial publication remains unavailable and retirement removes no member until
+all durable owners of the generation have retired. A later non-Nix
+implementation may justify a storage-neutral host-generation boundary; v1
+does not invent one in advance.
+
+The exact Nix client and daemon used to establish or inspect roots are
+bootstrap host mechanisms. A generation root may retain their executable
+closure for later reacquisition, but cannot serve as the proof that made the
+root operation available initially.
 
 Nix ownership is not authorization: any caller may add bytes to the store.
 Before a generation may be rooted or loaded, its canonical registration and
 generation digest must match one exact authenticated host-policy registration.
-The privileged launcher accepts only that registered helper and its registered
-Bun closure, never an arbitrary root-owned path supplied by a project or Flow.
+A qualifying privileged launcher must accept only that registered helper and
+its registered Bun closure, never an arbitrary path supplied by a project,
+Flow, or untrusted caller.
 
-## 4. Exact unavailable host capability
+## 4. Corrected retention capability
 
-The active Nix store is reached through a remote daemon socket. Inside this
-environment, `/nix/var/nix/gcroots` is a client-mount symlink to
-`/cache/nix/gcroots`; it is not the collector's root namespace. Even
-root-owned direct links created beneath that client path were ignored by the
-active daemon collector. Both exact proof objects appeared in
-`nix-store --gc --print-dead` while those links existed. No garbage collection
-was run.
+The earlier probe tested the wrong root mechanism. The active Nix store is
+reached through a daemon, and this environment's direct
+`/nix/var/nix/gcroots` path resolves to a client-only mount. Direct links there
+were correctly ignored by the active collector and their targets remained
+dead. That result did **not** prove that collector-visible retention was
+unavailable.
 
-`sudo` does not provide the supported lifecycle: it has more authority in the
-same client mount namespace and its separate local-store view is not the active
-daemon collector. Profiles have the same namespace problem. Temporary daemon
-roots die with the connection and therefore do not survive coordinator
-failure. The daemon worker protocol can create a permanent root, but this
-environment exposes no supported matching enumeration and safe-removal path;
-using that one-way operation would trade collection for unreconcilable leaks.
+The corrected probe registered an indirect root whose absolute path is visible
+identically to Jig and the daemon, using this exact command shape:
 
-The missing capability is exact:
+```text
+nix-store --add-root <fresh-jig-owned-path> --indirect \
+  -r <exact-store-member>
+```
 
-> A trusted collector-namespace GC-root registrar/remover, or a shared
-> collector-visible root directory, restricted to Jig-owned names and store
-> objects and reconcilable after coordinator failure.
+An independent daemon query enumerated the exact root, `--print-live` included
+the uniquely chosen target, and `--print-dead` excluded it. The creating
+process then exited. After unlinking the exact Jig-owned link, synchronizing
+its local parent, and forcing root enumeration, the root disappeared and the
+target became dead again. No garbage collection was run. The probe left no
+root behind.
 
-It is host administration, not a Flow, Binding, Sandbox Backend choice, or
-project grant. Flow code must never receive it. A conforming implementation
-must support no-replace creation, exact-target reacquisition, removal only
-after all durable owners retire, and enumeration sufficient to reconcile a
-coordinator crash. The root for a generation must retain the complete Nix
-reference closure, not merely make textual store paths appear valid.
+The feasible private mechanism is therefore a bounded set of ordinary Nix
+indirect roots beneath one Jig-controlled host-state directory whose absolute
+path is stable and shared with the daemon. It requires no privileged registrar,
+Podman layer, copied closure store, or project grant. Flow/package code never
+receives the root directory or Nix control surface. Atomic collision-safe
+publication is still an implementation and proof gate: the probe did not
+establish whether the Nix CLI refuses or replaces a preexisting root path.
 
-Root publication is not complete until the collector-visible link and parent
-directory are durably synchronized and a separate query to the active
-collector confirms the exact generation is live. Failure to synchronize or
-confirm leaves the candidate `UNAVAILABLE`; protected admission state may not
-refer to an unconfirmed root.
+The root tree remains inside the cooperative same-UID/local-filesystem model.
+Its configured root must be a pinned effective-user-owned mode `0700`, non-
+symlink directory. Before using that exact configured location, preflight
+registers, queries, and removes one canary beneath it; success in the workspace
+or any other directory does not prove same-absolute-path daemon visibility.
 
-Unsupported worker-protocol calls, temporary roots, open descriptors, Nix
-validity checks, or assumptions that collection is infrequent are not
-substitutes. Until the capability exists, this Python/Linux recipe is exactly
-`UNAVAILABLE`; it cannot be promoted by the reverted coordinator-owned Blob
-copy.
+Jig creates or reacquires the deterministic generation directory. For every
+normalized member, only two states are admissible: absent, or one safely
+confined link whose exact target matches the canonical member. Exact partial
+publication resumes idempotently; every other type, owner, target, unexpected
+entry, or path identity is unavailable and is never deleted automatically.
+Registration and daemon confirmation may be retried after acknowledgement
+loss. The implementation must:
+
+1. acquire the generation directory without replacement on first creation and
+   prove its collision-safe member publication/recovery rule rather than rely
+   on a racy path precheck or assumed Nix CLI replacement behavior;
+2. register each bounded top-level store member through the exact trusted Nix
+   CLI with an empty environment, fixed working directory, bounded output, a
+   deadline, and an invocation proven to disable substitution and fallback;
+3. synchronize the Jig-owned local directory;
+4. independently enumerate the active daemon's roots and verify every exact
+   target and its re-queried closure before admission; and
+5. on retirement, remove only roots still owned by the retired generation,
+   synchronize the directory, force enumeration, and confirm absence.
+
+Creation and confirmation precede the protected `READY` compare-and-set, so a
+process crash can leak a reconcilable root but cannot admit an unrooted
+generation. Acquisition durably establishes a generation lease/spawn intent
+only while the generation is active. That operation serializes with
+retirement's no-new-acquisition fence. The owner then reverifies the complete
+root set and closures; failure closes the owner and returns unavailable.
+
+Retirement first commits the no-new-acquisition fence and moves the active head
+away from the generation. Its expected root set remains protected while
+existing owners drain. Only after the last lease and spawn intent is fenced may
+retirement unlink exact owned roots and confirm daemon absence; protected
+state marks removal complete only after that confirmation. A crash resumes
+from the retained expectation. Creation crashes can therefore only leak roots,
+while retirement crashes can only leave a fenced leak or idempotently removable
+prefix—never a runnable unrooted generation. A reconciler compares only Jig's
+private root tree with protected ownership and never mutates unrelated roots.
+
+This establishes feasibility for coordinator-process retention under the
+project's cooperative local-filesystem crash model; the protected directory,
+publication protocol, and reconciler are not implemented yet. Nix's indirect-
+root operation does not expose a parent-directory fsync acknowledgement from
+the daemon, so it does **not** establish arbitrary power-loss ordering. If that
+stronger model becomes a hard requirement, the upgrade trigger is a
+preinstalled collector-namespace registrar restricted to Jig-owned roots with
+explicit parent fsync—not a v1 dependency.
+
+The full measured correction is frozen in
+[review 122](122-private-indirect-gc-root-feasibility.md). The recipe remains
+`UNAVAILABLE` until this mechanism and the other gates below are implemented
+and admitted.
 
 ## 5. Remaining `READY` gates
 
@@ -175,12 +234,12 @@ generation still needs:
 
 1. a canonical generation builder and strict acquirer;
 2. an authenticated host-policy registration for its exact generation digest;
-3. a durably published, collector-confirmed generation root and complete
-   execution-closure proof;
+3. a process-crash-persistent, collector-confirmed generation root set and
+   exact execution-closure proof;
 4. durable ownership for every trusted executable used after admission:
    coordinator/helper Bun, Python, Nix query tool, Bubblewrap, shell, and their
-   required closures, with the privileged launcher and root registrar either
-   included or separately retained and reverified as host mechanisms;
+   required closures, with the privileged launcher either included or
+   separately retained and reverified as a host mechanism;
 5. a root-owned helper launch with empty environment and fixed Bun policy;
 6. a root-owned per-spawn recovery lock held from before admission through
    cgroup cleanup;
@@ -193,22 +252,23 @@ The present helper kills and cleans its tree when the coordinator channel is
 lost, but recovery cannot treat a missing cgroup as final until it acquires the
 same per-spawn lock. No document or test may call the current recipe `READY`.
 
-## 6. Next executable slice
+## 6. Next executable slices
 
-Work can continue without weakening this gate. The next slice is one strict
-private `UNAVAILABLE` admission path:
+The strict private `UNAVAILABLE` lock-first admission path proposed by the
+original review is now implemented by
+[review 121](121-private-unavailable-lock-first-apply.md). It remains evidence
+of consent ordering and generation CAS, never evidence of execution support.
 
-```text
-canonical unavailable candidate
-    -> durable visible lock publication
-    -> exact lock-byte reverification
-    -> one protected local admission compare-and-set
-    -> immutable admission record whose sole target remains unavailable
-```
+Two small private prerequisites can now advance independently:
 
-It exercises consent ordering, crash recovery, restart reacquisition, and
-generation CAS without needing or impersonating a runnable host generation.
-The admission record's digest names that generation and the same stored record
-is its idempotent receipt; there is no duplicate unauthenticated approval row.
-The later `READY` branch must add all gates above; it cannot reuse
-`UNAVAILABLE` as evidence of execution support.
+1. close the privileged helper's launch posture and produce one active Linux
+   Backend preflight receipt; and
+2. build, acquire, reconcile, and retire one canonical host-generation record
+   with the bounded indirect-root set above.
+
+Neither slice exposes a public Backend, host-generation, or retention API.
+Neither may call the Python/Linux recipe `READY`. The later `READY` branch must
+also add durable spawn ownership, restart fencing, and lock-first admission
+reverification from §5. Its active preflight evidence must be rerun against and
+name the exact acquired, rooted, authenticated generation; a checkout-based
+preflight cannot qualify it.

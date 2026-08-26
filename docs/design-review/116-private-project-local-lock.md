@@ -170,9 +170,11 @@ coordinator-chosen, persisted spawn/materialization identities and restart
 fencing; Phase 3's random launch nonce and unrecorded temporary materialization
 are intentionally insufficient.
 
-The two-role bundle proof and the missing collector-namespace root capability
-are recorded in [review 117](117-private-host-generation-boundary.md). Because
-that capability is unavailable in the current host environment, the next
-executable slice proves lock-first persistence with a strict `UNAVAILABLE`
-candidate. It must not manufacture a `READY` recipe or another private byte
-store to conceal the missing lifecycle root.
+The two-role bundle proof and host-generation retention boundary are recorded
+in [review 117](117-private-host-generation-boundary.md). Review 122 later
+corrected its environmental conclusion by proving a same-path Nix indirect
+root is collector-visible; the generation root set and restart lifecycle
+remain unimplemented. The successor slice nevertheless proved lock-first
+persistence with a strict `UNAVAILABLE` candidate. It did not manufacture a
+`READY` recipe or another private byte store to conceal those unimplemented
+gates.

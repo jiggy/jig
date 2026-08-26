@@ -193,7 +193,10 @@ This checkpoint adds no:
   hostile FUSE implementation, or arbitrary power-loss model.
 
 The target remains structurally unavailable because the trusted Python/Linux
-host generation still lacks a collector-confirmed lifecycle root. That is a
-real prerequisite, not work to bypass in this store. A later slice may expose
-read-only inspection or a larger aggregate admission model, but must not turn
-this private single-target checkpoint into a public compatibility promise.
+host generation, active Backend preflight, and durable spawn lifecycle are not
+implemented or admitted. Review 122 corrected the earlier environmental
+conclusion: an ordinary Nix indirect-root set is collector-visible when its
+Jig-owned path is shared with the daemon. That measured feasibility does not
+retroactively make this admission runnable. A later slice may expose read-only
+inspection or a larger aggregate admission model, but must not turn this
+private single-target checkpoint into a public compatibility promise.

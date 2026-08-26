@@ -4,9 +4,11 @@
 candidate shape and does not publish an admission API, database, public lock,
 approval protocol, or runnable generation.
 
-The missing host-generation lifecycle root recorded in
-[review 117](117-private-host-generation-boundary.md) keeps the current
-Python/Linux implementation unavailable. This slice preserves that fact while
+The unimplemented host-generation root set and restart-safe spawn lifecycle
+recorded in [review 117](117-private-host-generation-boundary.md) keep the
+current Python/Linux implementation unavailable. Review 122 later proved that
+the required Nix indirect-root mechanism is available on this host; it did not
+implement or admit it. This slice preserves the unavailable state while
 closing the record boundary needed to exercise lock-first admission without
 manufacturing a recipe.
 
