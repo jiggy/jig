@@ -152,8 +152,9 @@ The focused corpus proves:
 The next slice remains host-local and private:
 
 ```text
-complete retained Adapter/planner implementation closure
-complete retained Backend/helper implementation closure
+opaque Adapter/planner and Backend/helper bytes retained in a separate
+    host-extension Blob/1 trust domain (implemented checkpoint)
+exact closed role/ABI registrations over reacquired Blob/1 bytes
 stable registration identity separated from volatile preflight receipts
 canonical authenticated host-policy/eligible-registration snapshot
 durable Python/Nix runtime-root ownership
@@ -169,3 +170,7 @@ does neither. A runnable `READY` generation additionally needs
 coordinator-chosen, persisted spawn/materialization identities and restart
 fencing; Phase 3's random launch nonce and unrecorded temporary materialization
 are intentionally insufficient.
+
+The implemented opaque-byte substrate is documented in
+[review 117](117-private-host-extension-blob-store.md). It intentionally does
+not yet authenticate a complete implementation closure or role registration.
