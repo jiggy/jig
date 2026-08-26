@@ -37,8 +37,9 @@ SHA-256 file digest
 
 The observer does not stamp or infer an ABI merely because a caller assigns a
 file to a role. The generation kind and fixed roles state the intended private
-protocol; a later real bundle/load probe and host-policy registration must
-prove that the exact bytes implement it.
+protocol. The subsequent [real-bundle checkpoint](126-private-host-bundle-proof.md)
+proves that the exact emitted bytes implement that surface; host-policy
+registration remains open.
 
 Several roles may share one member. Unique top-level members are sorted and
 record the fixed-order role subset, closure count, and a domain-separated
@@ -111,9 +112,9 @@ observed and authorized generation. It cannot authorize itself after restart.
 
 ## 4. Evidence
 
-The dedicated host gate creates two deterministic unrooted flat Nix store
-fixtures, combines them with the real Bun, Python, Bubblewrap, Nix, and Bash
-files, and proves:
+The dedicated host gate adds the emitted coordinator and helper as unrooted
+flat Nix store objects, combines them with the real Bun, Python, Bubblewrap,
+Nix, and Bash files, and proves:
 
 - the complete fixed role set;
 - unique sorted member normalization and shared-member deduplication;
@@ -123,19 +124,22 @@ files, and proves:
 - decoded-intent and forged-lookalike rejection; and
 - live role and closure reverification.
 
-The gate passes two focused cases with all checks satisfied. It removes its
-temporary source tree and creates no GC root, cgroup, or running process. The
-two content-addressed flat test objects remain unrooted Nix data and are reused
-by later runs.
+The codec assertions themselves create no GC root, cgroup, or running process.
+The same gate now also performs the separately delimited checkout-independent
+load and benign envelope proofs recorded by [review 126](126-private-host-bundle-proof.md).
+That envelope is fenced and its cgroup is removed before the gate succeeds.
+The two content-addressed bundle objects remain unrooted Nix data and may be
+reused by later runs.
 
 The ordinary Jig suite continues to pass with this host gate skipped.
 
 ## 5. Exact non-claim and next boundary
 
-This checkpoint does not yet produce the reviewed real coordinator/helper
-bundles. The package build currently emits only the project-evaluator SDK
-bundle. Synthetic flat members test generation mechanics, not coordinator or
-helper loadability.
+The following [real-bundle checkpoint](126-private-host-bundle-proof.md) now
+emits the reviewed coordinator/helper programs in the ordinary package build,
+adds those exact bytes to Nix, observes them as the generation roles, and
+proves checkout-independent load and helper behavior. The generation codec
+remains unchanged and inert.
 
 It also adds no:
 
@@ -149,11 +153,10 @@ It also adds no:
 
 The next slices are therefore ordered:
 
-1. emit and load-test the exact coordinator and helper bundles;
-2. durably write this inert expected value before any Nix root mutation;
-3. serialize one publisher, run the exact configured-root canary, and publish
+1. durably write this inert expected value before any Nix root mutation;
+2. serialize one publisher, run the exact configured-root canary, and publish
    and read-only verify every unique member; and
-4. leave production retirement and activation acquisition closed until a
+3. leave production retirement and activation acquisition closed until a
    host-global authenticated state machine and durable spawn owners exist.
 
 Failure after a future root mutation must remain a diagnosable safe leak. No

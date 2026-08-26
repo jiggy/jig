@@ -111,8 +111,10 @@ The Linux host corpus additionally projects a real authentic retained request,
 plans through the intent path, and obtains the same candidate identity as the
 original process-local planner.
 
-The real-bundle checkpoint must still call the separately bundled `plan` and
-prove that valid intent bytes pass request decoding before a deliberately
-foreign runtime value is rejected. Bundle emission, root publication,
-authenticated loading, preflight, restart recovery, and `READY` remain
-separate gates.
+The [real-bundle checkpoint](126-private-host-bundle-proof.md) now calls the
+separately bundled `plan`, rejects noncanonical intent, and proves that valid
+intent bytes pass request decoding and local-runtime reverification before a
+deliberately foreign Backend value is rejected. It also
+executes the complete runtime/Backend/plan/execute brand chain in one bundled
+coordinator evaluation. Root publication, authenticated loading, qualifying
+active preflight, restart recovery, and `READY` remain separate gates.

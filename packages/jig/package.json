@@ -22,13 +22,13 @@
     "README.md"
   ],
   "scripts": {
-    "build": "bun run clean && bun node_modules/typescript/bin/tsc -p tsconfig.json && bun build src/project/evaluator-sdk-entry.ts --target=bun --format=esm --outfile=dist/internal/project-evaluator-sdk.bundle.js && cp ../../docs/spec/machine/project-authoring-1.schema.json dist/project-authoring-1.schema.json",
+    "build": "bun run clean && bun node_modules/typescript/bin/tsc -p tsconfig.json && bun build src/project/evaluator-sdk-entry.ts --target=bun --format=esm --outfile=dist/internal/project-evaluator-sdk.bundle.js && bun build src/internal/python-linux-coordinator-entry.ts --target=bun --format=esm --packages=bundle --sourcemap=none --env=disable --outfile=dist/internal/python-linux-coordinator.bundle.js && bun build src/internal/linux-cgroup-helper.ts --target=bun --format=esm --packages=bundle --sourcemap=none --env=disable --outfile=dist/internal/linux-cgroup-helper.bundle.js && cp ../../docs/spec/machine/project-authoring-1.schema.json dist/project-authoring-1.schema.json",
     "clean": "bun -e \"import { rm } from 'node:fs/promises'; await rm('dist', { recursive: true, force: true })\"",
     "prepack": "bun run build",
     "test": "bun test",
     "test:package": "bun run build && bun test/package-smoke.ts",
     "test:linux-cgroup": "bun run build && sh ../../scripts/preflight-linux-cgroup.sh && JIG_TEST_PYTHON=\"$(command -v python3)\" JIG_TEST_NIX_STORE=\"$(command -v nix-store)\" JIG_LINUX_CGROUP_HOSTILE=1 bun test test/linux-cgroup-backend.test.ts --timeout 120000",
-    "test:nix-generation": "bun run build && JIG_TEST_PYTHON=\"$(command -v python3)\" JIG_TEST_NIX_STORE=\"$(command -v nix-store)\" JIG_NIX_GENERATION_HOST=1 bun test test/python-linux-host-generation.test.ts --timeout 120000",
+    "test:nix-generation": "bun run build && sh ../../scripts/preflight-linux-cgroup.sh && JIG_TEST_PYTHON=\"$(command -v python3)\" JIG_TEST_NIX_STORE=\"$(command -v nix-store)\" JIG_TEST_SUDO=\"$(command -v sudo)\" JIG_NIX_GENERATION_HOST=1 bun test test/python-linux-host-generation.test.ts --timeout 120000",
     "check": "bun run build && bun test"
   },
   "dependencies": {

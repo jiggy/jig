@@ -5,6 +5,7 @@ import { access, chmod, copyFile, mkdir, mkdtemp, readFile, readdir, realpath, r
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { pathToFileURL } from "node:url";
 
 import {
   createPrivateActivationPlanningObservation,
@@ -1015,6 +1016,54 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         ...candidateInput,
         request: planningIntent,
       })).digest).toBe(candidate.digest);
+      const bundledCoordinator = await import(pathToFileURL(
+        join(distribution, "internal", "python-linux-coordinator.bundle.js"),
+      ).href);
+      expect(Object.keys(bundledCoordinator).sort()).toEqual([
+        "createBackend",
+        "execute",
+        "observeRuntime",
+        "plan",
+        "privateHostExtensionAbi",
+      ]);
+      const bundledRuntime = await bundledCoordinator.observeRuntime({
+        pythonPath: configuredPython,
+        nixStorePath: configuredNixStore,
+      });
+      const bundledBackend = bundledCoordinator.createBackend({
+        cgroupScope: host.scope,
+        sudoPath: "/agent-sudo/bin/sudo",
+        bunPath: "/bin/bun",
+        bubblewrapPath: "/usr/bin/bwrap",
+        bashPath: host.bash,
+        helperPath: join(distribution, "internal", "linux-cgroup-helper.bundle.js"),
+        payloadUid: 1000,
+        payloadGid: 100,
+      });
+      const bundledMechanism = await bundledBackend.observeMechanism();
+      const bundledCandidate = await bundledCoordinator.plan({
+        ...candidateInput,
+        request: planningIntent,
+        runtime: bundledRuntime,
+        backend: bundledMechanism,
+      });
+      expect(bundledCandidate).toMatchObject({
+        requestDigest: request.digest,
+        package: request.package,
+        admissible: false,
+      });
+      const preAborted = new AbortController();
+      preAborted.abort();
+      await expect(bundledCoordinator.execute({
+        storeRoot: store,
+        candidate: bundledCandidate,
+        backend: bundledBackend,
+        runId: "bundled-pre-aborted",
+        input: { message: "must not launch" },
+        deadlineUnixMs: Date.now() + 5_000,
+        signal: preAborted.signal,
+      })).rejects.toThrow("cancelled before activation");
+      expect(await jigCgroups(host.scope)).toEqual([]);
       expect(() => decodePrivatePythonExactPlanningIntent(
         Buffer.concat([Buffer.from(" "), Buffer.from(planningIntent)]),
       )).toThrow("not canonically encoded");

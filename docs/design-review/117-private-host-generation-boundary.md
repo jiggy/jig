@@ -62,8 +62,8 @@ Two self-contained Bun ESM bundles were built from the current implementation:
 
 | Member | Bytes | SHA-256 |
 |---|---:|---|
-| coordinator | 438,120 | `c27688c035f11db72bb82dfec1e3e02f749cbcfcf1586efe17cbc759559dbe46` |
-| helper | 12,693 | `f7bbbb6966a10947a6dea98a454c89b285a586bb383502767b4629d11bc34b7c` |
+| coordinator | 442,152 | `fdd1bfa2e4aa163c18fbd1af4bafd38351fa33f3a43effbbc5a4a7bc4dd7b614` |
+| helper | 13,695 | `bfe4528e0e8909bdc0d46d4e36c3d84fd50586241493f4ceae82947256602ac0` |
 
 Adding each flat file to the active daemon-backed Nix store produced a
 root-owned, mode `0444` regular file with identical bytes. The temporary build
@@ -76,21 +76,29 @@ was invoked with:
 ```
 
 The coordinator loaded from its Nix path, exposed exactly the five expected
-exports, and ran the real observer against Python 3.13.14. The observer
-reacquired a 22-store runtime closure and reproduced its exact private digest.
+exports, and ran the real observer against the configured Python runtime. The
+observer reacquired its runtime closure and reproduced its exact private
+digest.
 The helper also ran from its Nix path with the checkout hidden and failed with
 its expected exit status 70 when deliberately given no trusted arguments.
 
 This proves checkout-independent bundling and loading. It does not prove
 durable retention, safe admission, or helper lifecycle recovery.
 
+The earlier feasibility build is now an ordinary package build product and a
+stronger proof checkpoint in [review 126](126-private-host-bundle-proof.md).
+That gate restricts `/nix/store` visibility to the exact observed closure
+union, exercises the planning-intent compatibility port, the four coordinator
+operations, and the ABI export, tests the real helper's startup posture, and
+completes one benign envelope.
+
 Production privileged-helper execution must retain the same closed startup
 posture. The coordinator remains unprivileged; root in the feasibility probe
 was used only to create the isolated inspection namespace. The exact Bun
-runtime and an empty root-owned configuration are host-generation members or
-dependencies. Root Bun receives an explicit empty environment, fixed working
-directory, `--no-env-file`, `--no-install`, and the fixed config; it never
-inherits project `.env`, `bunfig.toml`, home, or current-directory policy.
+runtime is a host-generation role. Root Bun receives an explicit empty
+environment, fixed working directory, `--no-env-file`, `--no-install`, and
+`--config=/dev/null`; it never inherits project `.env`, `bunfig.toml`, home,
+or current-directory policy.
 
 ## 3. Why the private Blob store was reverted
 
@@ -111,9 +119,8 @@ directory or public file format:
 
 ```text
 python-linux-host-generation/1
-├── coordinator { ABI, top-level store path, byte count, member digest }
-├── helper { ABI, top-level store path, byte count, member digest }
-└── support members { role set, top-level store path, closure evidence }
+├── roles[] { role, path, store path, byte count, file digest }
+└── members[] { store path, role set, closure count, closure digest }
 ```
 
 Members are normalized by unique top-level store path; several roles may share
@@ -268,15 +275,17 @@ original review is now implemented by
 [review 121](121-private-unavailable-lock-first-apply.md). It remains evidence
 of consent ordering and generation CAS, never evidence of execution support.
 
-Two small private prerequisites can now advance independently:
+The real coordinator/helper bundle checkpoint is now implemented by
+[review 126](126-private-host-bundle-proof.md). The remaining private
+prerequisites can advance independently:
 
 1. finish the privileged helper's authorization boundary and produce one
    active Linux Backend preflight receipt (the ambient startup sub-boundary is
    now closed by [review 123](123-private-helper-startup-posture.md)); and
 2. continue the canonical host-generation work: the inert eight-role
-   observation/codec is now implemented by [review 124](124-private-python-linux-host-generation.md),
-   while real bundle emission, durable root publication, authenticated
-   acquisition, reconciliation, and retirement remain open.
+   observation/codec is implemented by [review 124](124-private-python-linux-host-generation.md)
+   and exact bundle loading is proven, while durable root publication,
+   authenticated acquisition, reconciliation, and retirement remain open.
 
 Neither slice exposes a public Backend, host-generation, or retention API.
 Neither may call the Python/Linux recipe `READY`. The later `READY` branch must
