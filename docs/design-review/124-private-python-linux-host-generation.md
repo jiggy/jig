@@ -159,6 +159,12 @@ every exact same-path/same-target root, and produces only private local
 deliberately adds no passive root verifier, production canary, completion
 record, acquisition, or deletion authority.
 
+The following
+[host-registration checkpoint](128-private-host-registration-observation.md)
+strictly observes one root-installed canonical record beneath an explicit
+trusted anchor and binds it to that same live stored generation. Its result is
+still non-admissible and contains no executable generation or launch authority.
+
 Production reachability qualification, activation acquisition, and retirement
 remain closed until host-global authenticated policy and durable spawn owners
 exist.

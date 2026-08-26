@@ -1,9 +1,9 @@
 # Private host-generation retention boundary
 
-**Status:** reviewed private boundary with implemented retain-only convergence.
-No host generation is admitted or exposed through a public API. The converger
-produces only non-admissible local evidence and does not prove collector
-retention.
+**Status:** reviewed private boundary with implemented retain-only convergence
+and strict host-registration observation. No host generation is admitted or
+exposed through a public API. Both operations produce only non-admissible local
+evidence and do not prove collector retention or execution acquisition.
 
 This review replaces the reverted host-extension Blob experiment. It records
 why trusted host code is not another coordinator-owned content store, what the
@@ -210,16 +210,30 @@ is no production canary, passive verifier, unlink, rollback, generation
 replacement, or cleanup operation. Failures may leave only replayable exact
 intended roots.
 
+The subsequent
+[registration-observation checkpoint](128-private-host-registration-observation.md)
+strictly binds that stored intent to one root-installed canonical record under
+an explicit trusted anchor. The host must independently supply the anchor's
+canonical path/device/inode and the expected record digest; neither is inferred
+from a project or from the record itself. The observer rechecks all file and
+state identities around fresh generation verification and returns only
+`admissible: false` identities. There is no production record writer, trusted
+input source, acquisition, launcher integration, or admission connection yet.
+
 ## 5. Remaining `READY` gates
 
 Collector-visible retention is necessary but not sufficient. A runnable
 generation still needs:
 
-1. a strict acquisition operation over the implemented canonical generation;
-2. an authenticated host-policy registration for its exact generation digest;
-3. a qualifying independently justified same-path daemon-reachability gate,
-   followed by a fresh exact convergence and execution-closure proof;
-4. durable ownership for every trusted executable used after admission:
+1. trusted host bootstrap/configuration for the registration anchor and
+   expected record digest plus qualifying exact same-path daemon reachability;
+2. a restricted launcher that authenticates one lock-first, one-shot admitted
+   spawn plan and itself supplies the fixed registration selection, never
+   caller-selected helper paths or raw arguments;
+3. one durable acquisition/recovery transaction that freshly observes the
+   registration, reconverges and reverifies the exact generation, and runs the
+   active Backend preflight before package code;
+4. durable ownership for every trusted executable used by that transaction:
    coordinator/helper Bun, Python, Nix query tool, Bubblewrap, shell, and their
    required closures, with the privileged launcher either included or
    separately retained and reverified as a host mechanism;
@@ -229,7 +243,7 @@ generation still needs:
 7. persisted owner, spawn-intent, materialization, and coordinator-epoch
    identities;
 8. restart fencing before backing or roots are released; and
-9. lock-first admission persistence and exact post-lock reverification.
+9. exact post-lock reverification within that one admitted spawn transaction.
 
 The present helper kills and cleans its tree when the coordinator channel is
 lost, but recovery cannot treat a missing cgroup as final until it acquires the
@@ -251,10 +265,12 @@ prerequisites can advance independently:
    now closed by [review 123](123-private-helper-startup-posture.md)); and
 2. continue the canonical host-generation work: the inert eight-role
    observation/codec is implemented by [review 124](124-private-python-linux-host-generation.md),
-   exact bundle loading is proven, and retain-only convergence is implemented
-   by [review 127](127-private-host-root-convergence.md), while qualifying
-   reachability, authenticated acquisition, spawn recovery, and retirement
-   remain open.
+   exact bundle loading is proven, retain-only convergence is implemented by
+   [review 127](127-private-host-root-convergence.md), and strict non-admissible
+   registration observation is implemented by
+   [review 128](128-private-host-registration-observation.md), while qualifying
+   reachability, trusted production selection, acquisition, spawn recovery,
+   and retirement remain open.
 
 Neither slice exposes a public Backend, host-generation, or retention API.
 Neither may call the Python/Linux recipe `READY`. The later `READY` branch must

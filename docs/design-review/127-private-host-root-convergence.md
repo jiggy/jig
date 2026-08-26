@@ -50,8 +50,9 @@ The protected state contains exactly:
         └── ...
 ```
 
-There is no `registration.json`, completion bit, active head, lease table, or
-retirement record.
+There is no `registration.json` inside this converger-owned state, completion
+bit, active head, lease table, or retirement record. The later host-policy
+observer uses a separate root-installed registration boundary.
 
 The state root must already exist as one canonical, owner-only mode `0700`
 directory. Its SQLite database is one owner-only, single-link mode `0600`
@@ -170,7 +171,7 @@ It does not prove:
 - passive or exact collector enumeration;
 - same-path daemon reachability for the configured root;
 - survival across arbitrary host power loss;
-- authenticated host-policy registration;
+- production selection or acquisition of the separately observed host policy;
 - acquisition, lease, active ownership, or restart fencing;
 - no-new-acquisition retirement or safe root deletion;
 - restricted privileged launch or active Backend readiness;
@@ -182,22 +183,31 @@ receipt, capability, grant, admission record, or `READY` evidence.
 
 ## 6. Remaining `READY` gates
 
-Before this retained intent may support execution, Jig still needs:
+Before this stored intent may support execution, Jig still needs:
 
-1. a qualifying same-path daemon-reachability mechanism, or a narrower trusted
-   registrar, followed by fresh convergence and exact execution-closure proof;
-2. authenticated host-policy registration and acquisition of this exact
-   generation digest;
-3. a restricted root-owned helper launcher and an active Backend preflight
-   receipt tied to the acquired, rooted, authenticated generation;
-4. durable acquisition, coordinator epoch, spawn intent, cgroup ownership, and
+1. trusted host bootstrap/configuration for the strict registration observer's
+   anchor identity and expected digest plus qualifying exact same-path daemon
+   reachability;
+2. a restricted root-owned launcher that authenticates one lock-first,
+   one-shot admitted spawn plan and itself supplies the fixed registration
+   selection, never caller-selected helper paths or raw arguments;
+3. one durable acquisition/recovery transaction that freshly observes the
+   registration, reconverges and reverifies the exact generation, and runs the
+   active Backend preflight before package code;
+4. durable coordinator epoch, spawn intent, cgroup ownership, and
    a kernel-released per-spawn recovery fence;
 5. restart reconciliation before execution backing can be released;
 6. a later no-new-acquisition retirement and exact deletion protocol, with no
    removal authority inferred from inert generation bytes alone; and
-7. lock-first admission persistence plus exact post-lock reverification.
+7. exact post-lock reverification within that one admitted spawn transaction.
 
 Arbitrary-power-loss retention requires a separately justified registrar or
 equivalent acknowledgement boundary if it becomes a product requirement.
 Until the listed gates are implemented and hostile-tested, the Python/Linux
 candidate remains `UNAVAILABLE`.
+
+The strict, still non-admissible observation mechanism used by items 1 and 3
+is implemented by
+[review 128](128-private-host-registration-observation.md). That checkpoint
+does not supply the production trust source, launcher, or acquisition and
+therefore does not change this `UNAVAILABLE` conclusion.

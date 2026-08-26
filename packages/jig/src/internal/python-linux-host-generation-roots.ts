@@ -38,6 +38,7 @@ const NIX_TIMEOUT_MS = 10_000;
 const DIGEST = /^sha256:[0-9a-f]{64}$/u;
 const CREATE_GENERATION = "CREATE TABLE generation (singleton INTEGER PRIMARY KEY CHECK (singleton = 1), generation_digest TEXT NOT NULL UNIQUE, generation_bytes BLOB NOT NULL CHECK (length(generation_bytes) BETWEEN 2 AND 65536)) STRICT";
 const authenticRootConvergences = new WeakSet<object>();
+const authenticRootIntentObservations = new WeakSet<object>();
 
 interface SqliteRunResult {
   readonly changes: number;
@@ -119,19 +120,35 @@ export interface PrivatePythonLinuxRootConvergence {
   readonly roots: readonly PrivatePythonLinuxRootMember[];
 }
 
+export interface PrivatePythonLinuxStateRootIdentity {
+  readonly path: string;
+  readonly device: string;
+  readonly inode: string;
+  readonly ownerUid: string;
+}
+
+export interface PrivatePythonLinuxRootIntentObservation {
+  readonly kind: "python-linux-root-intent-observation/1";
+  readonly admissible: false;
+  readonly digest: string;
+  readonly generationDigest: string;
+  readonly stateRoot: PrivatePythonLinuxStateRootIdentity;
+}
+
 /** Durably store one authentic expected generation before any Nix root effect. */
 export async function stagePrivatePythonLinuxRootIntent(input: {
   readonly stateRoot: string;
   readonly generation: PrivatePythonLinuxHostGeneration;
 }): Promise<void> {
+  const request = snapshotStageRootIntentInput(input);
   const generation = await verifyPrivatePythonLinuxHostGeneration(
-    requirePrivatePythonLinuxHostGeneration(input.generation),
+    requirePrivatePythonLinuxHostGeneration(request.generation),
   );
   const generationBytes = encodePrivatePythonLinuxHostGeneration(generation);
   if (generationBytes.byteLength > MAX_DATABASE_BYTES) {
     unavailable("HOST_ROOT_INTENT_SIZE", "host generation exceeds the root intent byte limit");
   }
-  const owner = await openRootState(input.stateRoot, true);
+  const owner = await openRootState(request.stateRoot, true);
   let failure: unknown;
   try {
     await immediate(owner, async () => {
@@ -156,17 +173,136 @@ export async function stagePrivatePythonLinuxRootIntent(input: {
   }
 }
 
+/**
+ * Reobserve the exact immutable intent without creating or registering roots.
+ * This is bounded identity evidence, not an execution acquisition.
+ */
+export async function observePrivatePythonLinuxRootIntent(input: {
+  readonly stateRoot: string;
+  readonly expectedDigest: string;
+}): Promise<PrivatePythonLinuxRootIntentObservation> {
+  const request = snapshotRootIntentInput(input);
+  const owner = await openRootState(request.stateRoot, false);
+  let failure: unknown;
+  try {
+    await owner.verify();
+    const stored = requireStoredGeneration(owner.database, request.expectedDigest);
+    const live = await reobserveStoredGeneration(stored);
+    await requireStoredGenerationStillLive(stored, live);
+    requireStoredGeneration(owner.database, request.expectedDigest, stored.bytes);
+    await owner.verify();
+    const identity = Object.freeze({
+      kind: "python-linux-root-intent-observation/1" as const,
+      admissible: false as const,
+      generationDigest: stored.intent.digest,
+      stateRoot: stateRootIdentity(owner.root),
+    });
+    const observation = Object.freeze({
+      ...identity,
+      digest: privateDomainDigest(
+        "JIG-Python-Linux-Root-Intent-Observation/1",
+        identity as unknown as JsonValue,
+      ),
+    });
+    authenticRootIntentObservations.add(observation);
+    return observation;
+  } catch (error) {
+    failure = error;
+    throw error;
+  } finally {
+    await disposeOwner(owner, failure);
+  }
+}
+
+function snapshotRootIntentInput(value: unknown): Readonly<{
+  readonly stateRoot: string;
+  readonly expectedDigest: string;
+}> {
+  const input = snapshotDataRecord(
+    value,
+    ["expectedDigest", "stateRoot"],
+    "root intent observation",
+  );
+  const stateRoot = input.stateRoot;
+  const expectedDigest = input.expectedDigest;
+  if (typeof stateRoot !== "string") throw new TypeError("root intent state root must be a string");
+  requireAbsolutePath(stateRoot, "root intent state root");
+  requireDigest(expectedDigest, "expected generation");
+  return Object.freeze({ stateRoot, expectedDigest });
+}
+
+function snapshotStageRootIntentInput(value: unknown): Readonly<{
+  readonly stateRoot: string;
+  readonly generation: PrivatePythonLinuxHostGeneration;
+}> {
+  const input = snapshotDataRecord(
+    value,
+    ["generation", "stateRoot"],
+    "root intent staging",
+  );
+  if (typeof input.stateRoot !== "string") {
+    throw new TypeError("root intent state root must be a string");
+  }
+  requireAbsolutePath(input.stateRoot, "root intent state root");
+  return Object.freeze({
+    stateRoot: input.stateRoot,
+    generation: requirePrivatePythonLinuxHostGeneration(input.generation),
+  });
+}
+
+function snapshotDataRecord(
+  value: unknown,
+  expectedKeys: readonly string[],
+  label: string,
+): Readonly<Record<string, unknown>> {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    throw new TypeError(`${label} input must be one plain data object`);
+  }
+  let descriptors: Record<string, PropertyDescriptor>;
+  try {
+    descriptors = Object.getOwnPropertyDescriptors(value);
+  } catch {
+    throw new TypeError(`${label} properties could not be inspected`);
+  }
+  const propertyKeys = Reflect.ownKeys(descriptors);
+  if (propertyKeys.some((key) => typeof key !== "string")) {
+    throw new TypeError(`${label} has unknown or missing fields`);
+  }
+  const keys = (propertyKeys as string[]).sort(compareText);
+  if (keys.length !== expectedKeys.length || keys.some((key, index) => key !== expectedKeys[index])) {
+    throw new TypeError(`${label} has unknown or missing fields`);
+  }
+  const snapshot: Record<string, unknown> = Object.create(null) as Record<string, unknown>;
+  for (const key of expectedKeys) {
+    const descriptor = descriptors[key]!;
+    if (!("value" in descriptor) || descriptor.enumerable !== true) {
+      throw new TypeError(`${label}.${key} must be an enumerable data property`);
+    }
+    snapshot[key] = descriptor.value;
+  }
+  return Object.freeze(snapshot);
+}
+
+export function requirePrivatePythonLinuxRootIntentObservation(
+  value: unknown,
+): PrivatePythonLinuxRootIntentObservation {
+  if (value === null || typeof value !== "object" || !authenticRootIntentObservations.has(value)) {
+    throw new TypeError("Python/Linux root intent was not produced by the private observer");
+  }
+  return value as PrivatePythonLinuxRootIntentObservation;
+}
+
 /** Converge the one durably expected generation to a complete retain-only root set. */
 export async function convergePrivatePythonLinuxRoots(input: {
   readonly stateRoot: string;
   readonly expectedDigest: string;
 }): Promise<PrivatePythonLinuxRootConvergence> {
-  requireDigest(input.expectedDigest, "expected generation");
-  const owner = await openRootState(input.stateRoot, false);
+  const request = snapshotRootIntentInput(input);
+  const owner = await openRootState(request.stateRoot, false);
   let failure: unknown;
   try {
     await owner.verify();
-    const stored = requireStoredGeneration(owner.database, input.expectedDigest);
+    const stored = requireStoredGeneration(owner.database, request.expectedDigest);
     const live = await reobserveStoredGeneration(stored);
     const tree = await openRootTree(owner.root, stored.intent, true);
     let treeFailure: unknown;
@@ -189,11 +325,11 @@ export async function convergePrivatePythonLinuxRoots(input: {
       await tree.generation.handle.sync();
       await tree.verify(true);
       await requireStoredGenerationStillLive(stored, live);
-      requireStoredGeneration(owner.database, input.expectedDigest, stored.bytes);
+      requireStoredGeneration(owner.database, request.expectedDigest, stored.bytes);
       await owner.verify();
       await tree.verify(true);
       return authenticateRootConvergence(
-        rootConvergence(input.stateRoot, stored.intent.digest, tree.expectedRoots),
+        rootConvergence(request.stateRoot, stored.intent.digest, tree.expectedRoots),
       );
     } catch (error) {
       treeFailure = error;
@@ -288,6 +424,15 @@ function authenticateRootConvergence(
 ): PrivatePythonLinuxRootConvergence {
   authenticRootConvergences.add(convergence);
   return convergence;
+}
+
+function stateRootIdentity(root: ProtectedDirectory): PrivatePythonLinuxStateRootIdentity {
+  return Object.freeze({
+    path: root.visiblePath,
+    device: root.information.dev.toString(10),
+    inode: root.information.ino.toString(10),
+    ownerUid: root.ownerUid.toString(10),
+  });
 }
 
 async function openRootTree(

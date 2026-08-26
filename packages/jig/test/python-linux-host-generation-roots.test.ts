@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { spawn } from "node:child_process";
+import { randomBytes } from "node:crypto";
 import { constants } from "node:fs";
 import {
   chmod,
@@ -22,6 +23,8 @@ import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
 import { CheckError } from "../src/diagnostics.js";
+import { canonicalJson, type JsonValue } from "../src/json.js";
+import { privateDomainDigest } from "../src/internal/identity.js";
 import {
   encodePrivatePythonLinuxHostGeneration,
   observePrivatePythonLinuxHostGeneration,
@@ -29,10 +32,16 @@ import {
 } from "../src/internal/python-linux-host-generation.js";
 import {
   convergePrivatePythonLinuxRoots,
+  observePrivatePythonLinuxRootIntent,
   requirePrivatePythonLinuxRootConvergence,
+  requirePrivatePythonLinuxRootIntentObservation,
   stagePrivatePythonLinuxRootIntent,
   type PrivatePythonLinuxRootMember,
 } from "../src/internal/python-linux-host-generation-roots.js";
+import {
+  observePrivatePythonLinuxHostRegistration,
+  requirePrivatePythonLinuxHostRegistrationObservation,
+} from "../src/internal/python-linux-host-registration.js";
 import { observePrivatePythonNixRuntime } from "../src/internal/python-nix-runtime.js";
 
 const hostDescribe = process.env.JIG_NIX_GENERATION_HOST === "1" ? describe.serial : describe.skip;
@@ -51,10 +60,13 @@ hostDescribe("private Python/Linux retained host generation", () => {
   let fakeNixStore: string;
   let fakeNixLog: string;
   let fakeNixControl: string;
+  let sudoPath: string;
   const liveFixtures = new Set<string>();
+  const liveRegistrations = new Set<string>();
 
   beforeAll(async () => {
     stateParent = await realpath(requiredEnvironment("JIG_TEST_HOST_STATE_PARENT"));
+    sudoPath = await realpath(requiredEnvironment("JIG_TEST_SUDO"));
     parentBaseline = await testStateDirectories(stateParent);
     ({
       storePath: fakeNixStore,
@@ -87,6 +99,7 @@ hostDescribe("private Python/Linux retained host generation", () => {
       await unlinkOwnedFixtureFile(fakeNixLog);
     }
     expect(live).toEqual([]);
+    expect([...liveRegistrations]).toEqual([]);
     expect(stateDirectories).toEqual(parentBaseline);
     expect(controlWasPresent).toBe(false);
     expect(logEvidence).toEqual({
@@ -101,8 +114,35 @@ hostDescribe("private Python/Linux retained host generation", () => {
     const stateRoot = await createStateRoot(stateParent, liveFixtures);
     try {
       await stagePrivatePythonLinuxRootIntent({ stateRoot, generation });
+      await expect(stagePrivatePythonLinuxRootIntent({
+        get stateRoot(): string {
+          return stateRoot;
+        },
+        generation,
+      })).rejects.toThrow("must be an enumerable data property");
       await stagePrivatePythonLinuxRootIntent({ stateRoot, generation });
       await expectSqliteState(stateRoot, generation.digest);
+
+      let convergenceDigestReads = 0;
+      const changingConvergence = new Proxy({
+        stateRoot,
+        expectedDigest: generation.digest,
+      }, {
+        getOwnPropertyDescriptor(target, property) {
+          const descriptor = Reflect.getOwnPropertyDescriptor(target, property);
+          if (property !== "expectedDigest" || descriptor === undefined) return descriptor;
+          convergenceDigestReads += 1;
+          return {
+            ...descriptor,
+            value: convergenceDigestReads === 1 ? `sha256:${"0".repeat(64)}` : generation.digest,
+          };
+        },
+      });
+      await expectCheckErrorAsync(
+        () => convergePrivatePythonLinuxRoots(changingConvergence),
+        ["HOST_ROOT_GENERATION_CONFLICT"],
+      );
+      expect(convergenceDigestReads).toBe(1);
 
       const first = await convergePrivatePythonLinuxRoots({
         stateRoot,
@@ -136,6 +176,606 @@ hostDescribe("private Python/Linux retained host generation", () => {
       expectFakeNixPosture(await readFakeEffects(fakeNixLog));
     } finally {
       await cleanupStateRoot(stateRoot, generation, liveFixtures);
+    }
+  }, 120_000);
+
+  test("authenticates one root-installed registration without authorizing execution", async () => {
+    const fixture = await createRegistrationFixture(
+      stateParent,
+      sudoPath,
+      liveFixtures,
+      liveRegistrations,
+    );
+    try {
+      await stagePrivatePythonLinuxRootIntent({ stateRoot: fixture.stateRoot, generation });
+      const effectsBefore = (await readFakeEffects(fakeNixLog)).length;
+
+      const intent = await observePrivatePythonLinuxRootIntent({
+        stateRoot: fixture.stateRoot,
+        expectedDigest: generation.digest,
+      });
+      expect(requirePrivatePythonLinuxRootIntentObservation(intent)).toBe(intent);
+      expect(intent.admissible).toBe(false);
+      expect(() => requirePrivatePythonLinuxRootIntentObservation({ ...intent })).toThrow(
+        "was not produced by the private observer",
+      );
+      let rootIntentDigestReads = 0;
+      const changingRootIntent = new Proxy({
+        stateRoot: fixture.stateRoot,
+        expectedDigest: generation.digest,
+      }, {
+        getOwnPropertyDescriptor(target, property) {
+          const descriptor = Reflect.getOwnPropertyDescriptor(target, property);
+          if (property !== "expectedDigest" || descriptor === undefined) return descriptor;
+          rootIntentDigestReads += 1;
+          return {
+            ...descriptor,
+            value: rootIntentDigestReads === 1 ? `sha256:${"0".repeat(64)}` : generation.digest,
+          };
+        },
+      });
+      await expectCheckErrorAsync(
+        () => observePrivatePythonLinuxRootIntent(changingRootIntent),
+        ["HOST_ROOT_GENERATION_CONFLICT"],
+      );
+      expect(rootIntentDigestReads).toBe(1);
+
+      const registeredBytes = await registrationBytes(generation.digest, fixture.stateRoot);
+      const expectedRegistrationDigest = registrationDigest(registeredBytes);
+      await installRegistration(fixture, registeredBytes);
+      const [first, second] = await Promise.all([
+        observePrivatePythonLinuxHostRegistration(registrationInput(fixture, expectedRegistrationDigest)),
+        observePrivatePythonLinuxHostRegistration(registrationInput(fixture, expectedRegistrationDigest)),
+      ]);
+      expect(requirePrivatePythonLinuxHostRegistrationObservation(first)).toBe(first);
+      expect(first).toEqual(second);
+      expect(Object.isFrozen(first)).toBe(true);
+      expect(Object.isFrozen(first.registrationAnchor)).toBe(true);
+      expect(Object.isFrozen(first.registrationRoot)).toBe(true);
+      expect(Object.isFrozen(first.registrationFile)).toBe(true);
+      expect(Object.isFrozen(first.stateRoot)).toBe(true);
+      expect(first.admissible).toBe(false);
+      expect(first.generationDigest).toBe(generation.digest);
+      expect(first.stateRoot.path).toBe(fixture.stateRoot);
+      expect(Object.keys(first).sort()).toEqual([
+        "admissible",
+        "digest",
+        "generationDigest",
+        "kind",
+        "registrationAnchor",
+        "registrationDigest",
+        "registrationFile",
+        "registrationRoot",
+        "rootIntentDigest",
+        "stateRoot",
+      ]);
+      expect(() => requirePrivatePythonLinuxHostRegistrationObservation({ ...first })).toThrow(
+        "was not produced by the private observer",
+      );
+
+      const restarted = await freshProcessObserveRegistration(
+        fixture.registrationAnchor,
+        fixture.registrationName,
+        expectedRegistrationDigest,
+      );
+      expect(restarted).toEqual({
+        admissible: false,
+        digest: first.digest,
+        generationDigest: generation.digest,
+        registrationDigest: first.registrationDigest,
+      });
+      expect(() => requirePrivatePythonLinuxHostRegistrationObservation(restarted)).toThrow(
+        "was not produced by the private observer",
+      );
+      expect((await readFakeEffects(fakeNixLog)).length).toBe(effectsBefore);
+
+      const lookalike = await createUserRegistrationLookalike(
+        generation.digest,
+        stateParent,
+        liveFixtures,
+      );
+      try {
+        await expectCheckErrorAsync(() => observePrivatePythonLinuxHostRegistration({
+          registrationAnchor: lookalike.registrationAnchor,
+          registrationName: lookalike.registrationName,
+          expectedRegistrationDigest,
+        }), ["HOST_REGISTRATION_PERMISSIONS"]);
+      } finally {
+        await cleanupUserRegistrationLookalike(lookalike, liveFixtures);
+      }
+    } finally {
+      await cleanupRegistrationFixture(
+        fixture,
+        generation,
+        sudoPath,
+        liveFixtures,
+        liveRegistrations,
+      );
+    }
+  }, 120_000);
+
+  test("fails closed on registration, state, and canonical-record drift", async () => {
+    const fixture = await createRegistrationFixture(
+      stateParent,
+      sudoPath,
+      liveFixtures,
+      liveRegistrations,
+    );
+    try {
+      await stagePrivatePythonLinuxRootIntent({ stateRoot: fixture.stateRoot, generation });
+      const valid = await registrationBytes(generation.digest, fixture.stateRoot);
+      const validDigest = registrationDigest(valid);
+      await installRegistration(fixture, valid);
+      const effectsBefore = (await readFakeEffects(fakeNixLog)).length;
+
+      await expectCheckErrorAsync(() => observePrivatePythonLinuxHostRegistration({
+        registrationAnchor: fixture.registrationAnchor,
+        registrationName: fixture.registrationName,
+        get expectedRegistrationDigest(): string {
+          return validDigest;
+        },
+      }), ["HOST_REGISTRATION_INPUT"]);
+
+      let expectedDescriptorReads = 0;
+      const changingRequest = new Proxy({
+        registrationAnchor: fixture.registrationAnchor,
+        registrationName: fixture.registrationName,
+        expectedRegistrationDigest: validDigest,
+      }, {
+        getOwnPropertyDescriptor(target, property) {
+          const descriptor = Reflect.getOwnPropertyDescriptor(target, property);
+          if (property !== "expectedRegistrationDigest" || descriptor === undefined) return descriptor;
+          expectedDescriptorReads += 1;
+          return {
+            ...descriptor,
+            value: expectedDescriptorReads === 1 ? `sha256:${"0".repeat(64)}` : validDigest,
+          };
+        },
+      });
+      await expectCheckErrorAsync(
+        () => observePrivatePythonLinuxHostRegistration(changingRequest),
+        ["HOST_REGISTRATION_CONFLICT"],
+      );
+      expect(expectedDescriptorReads).toBe(1);
+
+      await expectCheckErrorAsync(() => observePrivatePythonLinuxHostRegistration({
+        ...registrationInput(fixture, validDigest),
+        registrationAnchor: {
+          ...fixture.registrationAnchor,
+          inode: (BigInt(fixture.registrationAnchor.inode) + 1n).toString(10),
+        },
+      }), ["HOST_REGISTRATION_ANCHOR_IDENTITY"]);
+      await expectCheckErrorAsync(() => observePrivatePythonLinuxHostRegistration({
+        ...registrationInput(fixture, validDigest),
+        registrationAnchor: {
+          ...fixture.registrationAnchor,
+          device: (BigInt(fixture.registrationAnchor.device) + 1n).toString(10),
+        },
+      }), ["HOST_REGISTRATION_ANCHOR_IDENTITY"]);
+
+      const anchorLink = join(stateParent, `${fixture.registrationName}-anchor-link-${process.pid}`);
+      await symlink(fixture.registrationAnchor.path, anchorLink);
+      try {
+        await expectCheckErrorAsync(() => observePrivatePythonLinuxHostRegistration({
+          ...registrationInput(fixture, validDigest),
+          registrationAnchor: { ...fixture.registrationAnchor, path: anchorLink },
+        }), ["HOST_REGISTRATION_ANCHOR_PATH"]);
+      } finally {
+        await unlink(anchorLink);
+      }
+
+      for (const registrationName of ["", ".", "..", "python/linux", "../python-linux"]) {
+        await expectCheckErrorAsync(() => observePrivatePythonLinuxHostRegistration({
+          ...registrationInput(fixture, validDigest),
+          registrationName,
+        }), ["HOST_REGISTRATION_NAME"]);
+      }
+
+      await sudoCommand(sudoPath, "chmod", ["0775", fixture.registrationAnchor.path]);
+      try {
+        await expectCheckErrorAsync(() => observePrivatePythonLinuxHostRegistration(
+          registrationInput(fixture, validDigest),
+        ), ["HOST_REGISTRATION_PERMISSIONS"]);
+      } finally {
+        await sudoCommand(sudoPath, "chmod", ["0755", fixture.registrationAnchor.path]);
+      }
+
+      await sudoCommand(sudoPath, "chmod", ["0775", fixture.root]);
+      try {
+        await expectCheckErrorAsync(() => observePrivatePythonLinuxHostRegistration(
+          registrationInput(fixture, validDigest),
+        ), ["HOST_REGISTRATION_PERMISSIONS"]);
+      } finally {
+        await sudoCommand(sudoPath, "chmod", ["0755", fixture.root]);
+      }
+
+      const extraStaging = join(stateParent, `${fixture.registrationName}-extra-${process.pid}`);
+      const extraEntry = join(fixture.root, "extra");
+      await writeFile(extraStaging, "extra\n", { flag: "wx", mode: 0o600 });
+      try {
+        await sudoCommand(sudoPath, "install", ["-o", "0", "-g", "0", "-m", "0444", extraStaging, extraEntry]);
+        await expectCheckErrorAsync(() => observePrivatePythonLinuxHostRegistration(
+          registrationInput(fixture, validDigest),
+        ), ["HOST_REGISTRATION_ENTRIES"]);
+      } finally {
+        if (await exists(extraEntry)) await sudoCommand(sudoPath, "unlink", [extraEntry]);
+        await unlinkOwnedFixtureFile(extraStaging);
+      }
+
+      await expectCheckErrorAsync(() => observePrivatePythonLinuxHostRegistration(
+        registrationInput(fixture, `sha256:${"0".repeat(64)}`),
+      ), ["HOST_REGISTRATION_CONFLICT"]);
+
+      await sudoCommand(sudoPath, "chmod", ["0644", fixture.registrationFile]);
+      try {
+        await expectCheckErrorAsync(() => observePrivatePythonLinuxHostRegistration(
+          registrationInput(fixture, validDigest),
+        ), ["HOST_REGISTRATION_FILE"]);
+      } finally {
+        await sudoCommand(sudoPath, "chmod", ["0444", fixture.registrationFile]);
+      }
+
+      await chmod(fixture.stateRoot, 0o755);
+      try {
+        await expectCheckErrorAsync(() => observePrivatePythonLinuxHostRegistration(
+          registrationInput(fixture, validDigest),
+        ), ["HOST_REGISTRATION_STATE_PERMISSIONS"]);
+      } finally {
+        await chmod(fixture.stateRoot, 0o700);
+      }
+
+      const state = await lstat(fixture.stateRoot, { bigint: true });
+      const wrongIdentity = await registrationBytes(generation.digest, fixture.stateRoot, {
+        inode: (state.ino + 1n).toString(10),
+      });
+      await installRegistration(fixture, wrongIdentity);
+      await expectCheckErrorAsync(() => observePrivatePythonLinuxHostRegistration(
+        registrationInput(fixture, registrationDigest(wrongIdentity)),
+      ), ["HOST_REGISTRATION_STATE_IDENTITY"]);
+
+      const conflictingGeneration = await registrationBytes(
+        alternateGeneration.digest,
+        fixture.stateRoot,
+      );
+      await installRegistration(fixture, conflictingGeneration);
+      await expectCheckErrorAsync(() => observePrivatePythonLinuxHostRegistration(
+        registrationInput(fixture, registrationDigest(conflictingGeneration)),
+      ), ["HOST_ROOT_GENERATION_CONFLICT"]);
+
+      const malformed = [
+        Uint8Array.from(Buffer.from("{}\n")),
+        Uint8Array.from(Buffer.from("{\"kind\":\"python-linux-host-registration/1\",\"kind\":\"duplicate\"}\n")),
+        Uint8Array.from(Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from(valid)])),
+        valid.subarray(0, valid.byteLength - 1),
+        Uint8Array.from(Buffer.from(Buffer.from(valid).toString("utf8").replace("{", "{ "))),
+        canonicalLine({
+          ...(JSON.parse(Buffer.from(valid.subarray(0, -1)).toString("utf8")) as Record<string, JsonValue>),
+          digest: `sha256:${"0".repeat(64)}`,
+        } as JsonValue),
+        canonicalLine({
+          ...(JSON.parse(Buffer.from(valid.subarray(0, -1)).toString("utf8")) as Record<string, JsonValue>),
+          kind: "python-linux-host-registration/2",
+        } as JsonValue),
+        canonicalLine({
+          ...(JSON.parse(Buffer.from(valid.subarray(0, -1)).toString("utf8")) as Record<string, JsonValue>),
+          unknown: true,
+        } as JsonValue),
+      ];
+      for (const bytes of malformed) {
+        await installRegistration(fixture, bytes);
+        await expectCheckErrorAsync(() => observePrivatePythonLinuxHostRegistration(
+          registrationInput(fixture, validDigest),
+        ), ["HOST_REGISTRATION_FORMAT", "HOST_REGISTRATION_KIND", "HOST_REGISTRATION_DIGEST"]);
+      }
+
+      await installRegistration(fixture, valid);
+      const externalLink = `${fixture.root}.hardlink`;
+      await sudoCommand(sudoPath, "ln", [fixture.registrationFile, externalLink]);
+      try {
+        await expectCheckErrorAsync(() => observePrivatePythonLinuxHostRegistration(
+          registrationInput(fixture, validDigest),
+        ), ["HOST_REGISTRATION_FILE"]);
+      } finally {
+        await sudoCommand(sudoPath, "unlink", [externalLink]);
+      }
+
+      expect((await readFakeEffects(fakeNixLog)).length).toBe(effectsBefore);
+      await observePrivatePythonLinuxHostRegistration(registrationInput(fixture, validDigest));
+    } finally {
+      await cleanupRegistrationFixture(
+        fixture,
+        generation,
+        sudoPath,
+        liveFixtures,
+        liveRegistrations,
+      );
+    }
+  }, 120_000);
+
+  test("rejects an identical registration replaced during live intent observation", async () => {
+    const fixture = await createRegistrationFixture(
+      stateParent,
+      sudoPath,
+      liveFixtures,
+      liveRegistrations,
+    );
+    const suffix = fixture.registrationAnchor.path.slice(
+      fixture.registrationAnchor.path.lastIndexOf("/") + 1,
+    );
+    const claimPath = join(stateParent, `${suffix}.registration-claim`);
+    const markerPath = join(stateParent, `${suffix}.registration-marker`);
+    const releasePath = join(stateParent, `${suffix}.registration-release`);
+    let observing: Promise<unknown> | undefined;
+    try {
+      await stagePrivatePythonLinuxRootIntent({ stateRoot: fixture.stateRoot, generation });
+      const valid = await registrationBytes(generation.digest, fixture.stateRoot);
+      const validDigest = registrationDigest(valid);
+      await installRegistration(fixture, valid);
+      const before = await lstat(fixture.registrationFile, { bigint: true });
+      await writeFile(fakeNixControl, JSON.stringify({
+        claimPath,
+        markerPath,
+        queryTarget: generation.members[0]!.storePath,
+        releasePath,
+      }) + "\n", { flag: "wx", mode: 0o600 });
+
+      observing = observePrivatePythonLinuxHostRegistration(
+        registrationInput(fixture, validDigest),
+      );
+      await waitForPath(markerPath);
+      await sudoCommand(sudoPath, "unlink", [fixture.registrationFile]);
+      await installRegistration(fixture, valid);
+      const replacement = await lstat(fixture.registrationFile, { bigint: true });
+      expect(replacement.ino).not.toBe(before.ino);
+      await writeFile(releasePath, "release\n", { flag: "wx", mode: 0o600 });
+      await expectCheckErrorAsync(() => observing, ["HOST_REGISTRATION_CHANGED"]);
+      observing = undefined;
+
+      await unlinkOwnedFixtureFile(fakeNixControl);
+      await observePrivatePythonLinuxHostRegistration(registrationInput(fixture, validDigest));
+    } finally {
+      const cleanupFailures: unknown[] = [];
+      await cleanupAttempt(cleanupFailures, async () => {
+        if (!await exists(releasePath)) await writeFile(releasePath, "release\n", { mode: 0o600 });
+      });
+      await cleanupAttempt(cleanupFailures, async () => { await observing; });
+      for (const path of [fakeNixControl, claimPath, markerPath, releasePath]) {
+        await cleanupAttempt(cleanupFailures, () => unlinkOwnedFixtureFile(path));
+      }
+      await cleanupAttempt(cleanupFailures, () => cleanupRegistrationFixture(
+        fixture,
+        generation,
+        sudoPath,
+        liveFixtures,
+        liveRegistrations,
+      ));
+      if (cleanupFailures.length > 0) {
+        throw new AggregateError(cleanupFailures, "registration replacement fixture cleanup failed");
+      }
+    }
+  }, 120_000);
+
+  test("rejects the registered state directory replaced during live intent observation", async () => {
+    const fixture = await createRegistrationFixture(
+      stateParent,
+      sudoPath,
+      liveFixtures,
+      liveRegistrations,
+    );
+    const suffix = fixture.registrationAnchor.path.slice(
+      fixture.registrationAnchor.path.lastIndexOf("/") + 1,
+    );
+    const claimPath = join(stateParent, `${suffix}.state-claim`);
+    const markerPath = join(stateParent, `${suffix}.state-marker`);
+    const releasePath = join(stateParent, `${suffix}.state-release`);
+    const displacedState = join(fixture.registrationAnchor.path, "displaced-state");
+    let observing: Promise<unknown> | undefined;
+    try {
+      await stagePrivatePythonLinuxRootIntent({ stateRoot: fixture.stateRoot, generation });
+      const valid = await registrationBytes(generation.digest, fixture.stateRoot);
+      const validDigest = registrationDigest(valid);
+      await installRegistration(fixture, valid);
+      await writeFile(fakeNixControl, JSON.stringify({
+        claimPath,
+        markerPath,
+        queryTarget: generation.members[0]!.storePath,
+        releasePath,
+      }) + "\n", { flag: "wx", mode: 0o600 });
+
+      observing = observePrivatePythonLinuxHostRegistration(
+        registrationInput(fixture, validDigest),
+      );
+      await waitForPath(markerPath);
+      liveRegistrations.add(displacedState);
+      await sudoCommand(sudoPath, "mv", [fixture.stateRoot, displacedState]);
+      await sudoCommand(sudoPath, "mkdir", ["-m", "0700", fixture.stateRoot]);
+      await sudoCommand(sudoPath, "chown", [
+        `${process.geteuid!()}:${process.getegid!()}`,
+        fixture.stateRoot,
+      ]);
+      await writeFile(releasePath, "release\n", { flag: "wx", mode: 0o600 });
+      await expectCheckErrorAsync(
+        () => observing!,
+        ["HOST_ROOT_STATE_CHANGED", "HOST_REGISTRATION_STATE_CHANGED"],
+      );
+      observing = undefined;
+
+      if ((await readdir(fixture.stateRoot)).length !== 0) {
+        throw new Error("replacement state unexpectedly contains data");
+      }
+      await sudoCommand(sudoPath, "rmdir", [fixture.stateRoot]);
+      await sudoCommand(sudoPath, "mv", [displacedState, fixture.stateRoot]);
+      liveRegistrations.delete(displacedState);
+      await unlinkOwnedFixtureFile(fakeNixControl);
+      await observePrivatePythonLinuxHostRegistration(registrationInput(fixture, validDigest));
+    } finally {
+      const cleanupFailures: unknown[] = [];
+      await cleanupAttempt(cleanupFailures, async () => {
+        if (!await exists(releasePath)) await writeFile(releasePath, "release\n", { mode: 0o600 });
+      });
+      await cleanupAttempt(cleanupFailures, async () => { await observing; });
+      await cleanupAttempt(cleanupFailures, async () => {
+        if (await exists(displacedState)) {
+          if (await exists(fixture.stateRoot)) {
+            if ((await readdir(fixture.stateRoot)).length !== 0) {
+              throw new Error("refusing to remove nonempty replacement state");
+            }
+            await sudoCommand(sudoPath, "rmdir", [fixture.stateRoot]);
+          }
+          await sudoCommand(sudoPath, "mv", [displacedState, fixture.stateRoot]);
+        }
+        if (!await exists(displacedState)) liveRegistrations.delete(displacedState);
+      });
+      for (const path of [fakeNixControl, claimPath, markerPath, releasePath]) {
+        await cleanupAttempt(cleanupFailures, () => unlinkOwnedFixtureFile(path));
+      }
+      await cleanupAttempt(cleanupFailures, () => cleanupRegistrationFixture(
+        fixture,
+        generation,
+        sudoPath,
+        liveFixtures,
+        liveRegistrations,
+      ));
+      if (cleanupFailures.length > 0) {
+        throw new AggregateError(cleanupFailures, "registered state replacement fixture cleanup failed");
+      }
+    }
+  }, 120_000);
+
+  test("rejects registration-root and anchor replacement during live observation", async () => {
+    const fixture = await createRegistrationFixture(
+      stateParent,
+      sudoPath,
+      liveFixtures,
+      liveRegistrations,
+    );
+    try {
+      await stagePrivatePythonLinuxRootIntent({ stateRoot: fixture.stateRoot, generation });
+      const valid = await registrationBytes(generation.digest, fixture.stateRoot);
+      const validDigest = registrationDigest(valid);
+      await installRegistration(fixture, valid);
+
+      const exerciseReplacement = async (
+        label: string,
+        replace: () => Promise<void>,
+        restore: () => Promise<void>,
+        expectedErrors: readonly string[],
+      ): Promise<void> => {
+        const suffix = `${fixture.registrationName}-${label}-${randomBytes(4).toString("hex")}`;
+        const claimPath = join(stateParent, `${suffix}.claim`);
+        const markerPath = join(stateParent, `${suffix}.marker`);
+        const releasePath = join(stateParent, `${suffix}.release`);
+        let observing: Promise<unknown> | undefined;
+        try {
+          await writeFile(fakeNixControl, JSON.stringify({
+            claimPath,
+            markerPath,
+            queryTarget: generation.members[0]!.storePath,
+            releasePath,
+          }) + "\n", { flag: "wx", mode: 0o600 });
+          observing = observePrivatePythonLinuxHostRegistration(
+            registrationInput(fixture, validDigest),
+          );
+          await waitForPath(markerPath);
+          await replace();
+          await writeFile(releasePath, "release\n", { flag: "wx", mode: 0o600 });
+          await expectCheckErrorAsync(() => observing!, expectedErrors);
+          observing = undefined;
+        } finally {
+          const cleanupFailures: unknown[] = [];
+          await cleanupAttempt(cleanupFailures, async () => {
+            if (!await exists(releasePath)) await writeFile(releasePath, "release\n", { mode: 0o600 });
+          });
+          await cleanupAttempt(cleanupFailures, async () => { await observing; });
+          await cleanupAttempt(cleanupFailures, restore);
+          for (const path of [fakeNixControl, claimPath, markerPath, releasePath]) {
+            await cleanupAttempt(cleanupFailures, () => unlinkOwnedFixtureFile(path));
+          }
+          if (cleanupFailures.length > 0) {
+            throw new AggregateError(cleanupFailures, `${label} replacement fixture cleanup failed`);
+          }
+        }
+        await observePrivatePythonLinuxHostRegistration(registrationInput(fixture, validDigest));
+      };
+
+      const displacedRoot = join(fixture.registrationAnchor.path, "displaced-registration-root");
+      await exerciseReplacement(
+        "root",
+        async () => {
+          liveRegistrations.add(displacedRoot);
+          await sudoCommand(sudoPath, "mv", [fixture.root, displacedRoot]);
+          await sudoCommand(sudoPath, "mkdir", ["-m", "0755", fixture.root]);
+          await sudoCommand(sudoPath, "mv", [join(displacedRoot, "state"), fixture.stateRoot]);
+        },
+        async () => {
+          if (!await exists(displacedRoot)) {
+            liveRegistrations.delete(displacedRoot);
+            return;
+          }
+          if (await exists(fixture.stateRoot)) {
+            await sudoCommand(sudoPath, "mv", [fixture.stateRoot, join(displacedRoot, "state")]);
+          }
+          if (await exists(fixture.root)) {
+            if ((await readdir(fixture.root)).length !== 0) {
+              throw new Error("refusing to remove nonempty replacement registration root");
+            }
+            await sudoCommand(sudoPath, "rmdir", [fixture.root]);
+          }
+          await sudoCommand(sudoPath, "mv", [displacedRoot, fixture.root]);
+          liveRegistrations.delete(displacedRoot);
+        },
+        ["HOST_REGISTRATION_CHANGED", "HOST_REGISTRATION_ANCHOR_CHANGED"],
+      );
+
+      const displacedAnchor = `${fixture.registrationAnchor.path}-displaced`;
+      await exerciseReplacement(
+        "anchor",
+        async () => {
+          liveRegistrations.add(displacedAnchor);
+          await sudoCommand(sudoPath, "mv", [fixture.registrationAnchor.path, displacedAnchor]);
+          await sudoCommand(sudoPath, "mkdir", ["-m", "0755", fixture.registrationAnchor.path]);
+          await sudoCommand(sudoPath, "mkdir", ["-m", "0755", fixture.root]);
+          await sudoCommand(sudoPath, "mv", [
+            join(displacedAnchor, fixture.registrationName, "state"),
+            fixture.stateRoot,
+          ]);
+        },
+        async () => {
+          if (!await exists(displacedAnchor)) {
+            liveRegistrations.delete(displacedAnchor);
+            return;
+          }
+          if (await exists(fixture.stateRoot)) {
+            await sudoCommand(sudoPath, "mv", [
+              fixture.stateRoot,
+              join(displacedAnchor, fixture.registrationName, "state"),
+            ]);
+          }
+          if (await exists(fixture.root)) {
+            if ((await readdir(fixture.root)).length !== 0) {
+              throw new Error("refusing to remove nonempty replacement registration root");
+            }
+            await sudoCommand(sudoPath, "rmdir", [fixture.root]);
+          }
+          if (await exists(fixture.registrationAnchor.path)) {
+            if ((await readdir(fixture.registrationAnchor.path)).length !== 0) {
+              throw new Error("refusing to remove nonempty replacement registration anchor");
+            }
+            await sudoCommand(sudoPath, "rmdir", [fixture.registrationAnchor.path]);
+          }
+          await sudoCommand(sudoPath, "mv", [displacedAnchor, fixture.registrationAnchor.path]);
+          liveRegistrations.delete(displacedAnchor);
+        },
+        ["HOST_REGISTRATION_ANCHOR_CHANGED"],
+      );
+    } finally {
+      await cleanupRegistrationFixture(
+        fixture,
+        generation,
+        sudoPath,
+        liveFixtures,
+        liveRegistrations,
+      );
     }
   }, 120_000);
 
@@ -679,14 +1319,42 @@ async function createFakeNixStore(parent: string): Promise<{
   const logPath = join(parent, `jig-host-roots-fake-nix-${sourceDirectory.slice(sourceDirectory.lastIndexOf("-") + 1)}.jsonl`);
   const controlPath = `${logPath}.control.json`;
   await writeFile(logPath, "", { flag: "wx", mode: 0o600 });
-  const source = `#!/bin/bun
+const source = `#!/bin/bun
 import { appendFile, readFile, readlink, symlink, unlink, writeFile } from "node:fs/promises";
 
 const arguments_ = process.argv.slice(2);
+async function waitForControl(control) {
+  let claimed = false;
+  try {
+    await writeFile(control.claimPath, String(process.pid) + "\\n", { flag: "wx", mode: 0o600 });
+    claimed = true;
+  } catch (error) {
+    if (error?.code !== "EEXIST") throw error;
+  }
+  if (!claimed) return;
+  await writeFile(control.markerPath, JSON.stringify({ pid: process.pid }) + "\\n", {
+    flag: "wx",
+    mode: 0o600,
+  });
+  const deadline = Date.now() + 8_000;
+  while (true) {
+    try { await readFile(control.releasePath); return; }
+    catch (error) { if (error?.code !== "ENOENT") throw error; }
+    if (Date.now() >= deadline) throw new Error("fake Nix pause deadline exceeded");
+    await Bun.sleep(5);
+  }
+}
+
 const query = arguments_.indexOf("-qR");
 if (query >= 0) {
   const target = arguments_[query + 1];
   if (typeof target !== "string" || !target.startsWith("/nix/store/")) process.exit(70);
+  try {
+    const control = JSON.parse(await readFile(${JSON.stringify(controlPath)}, "utf8"));
+    if (control.queryTarget === target) await waitForControl(control);
+  } catch (error) {
+    if (error?.code !== "ENOENT") throw error;
+  }
   process.stdout.write(target + "\\n");
   process.exit(0);
 }
@@ -718,28 +1386,7 @@ await appendFile(${JSON.stringify(logPath)}, JSON.stringify({
 }) + "\\n");
 try {
   const control = JSON.parse(await readFile(${JSON.stringify(controlPath)}, "utf8"));
-  if (control.rootPath === root) {
-    let claimed = false;
-    try {
-      await writeFile(control.claimPath, String(process.pid) + "\\n", { flag: "wx", mode: 0o600 });
-      claimed = true;
-    } catch (error) {
-      if (error?.code !== "EEXIST") throw error;
-    }
-    if (claimed) {
-      await writeFile(control.markerPath, JSON.stringify({ pid: process.pid }) + "\\n", {
-        flag: "wx",
-        mode: 0o600,
-      });
-      const deadline = Date.now() + 8_000;
-      while (true) {
-        try { await readFile(control.releasePath); break; }
-        catch (error) { if (error?.code !== "ENOENT") throw error; }
-        if (Date.now() >= deadline) throw new Error("fake Nix pause deadline exceeded");
-        await Bun.sleep(5);
-      }
-    }
-  }
+  if (control.rootPath === root) await waitForControl(control);
 } catch (error) {
   if (error?.code !== "ENOENT") throw error;
 }
@@ -788,6 +1435,328 @@ async function createStateRoot(parent: string, live: Set<string>): Promise<strin
   if (canonical !== root) throw new Error("test state root is not canonical");
   live.add(root);
   return root;
+}
+
+async function fixtureDirectoryIdentity(
+  path: string,
+): Promise<Readonly<{ readonly device: string; readonly inode: string }>> {
+  const information = await lstat(path, { bigint: true });
+  if (!information.isDirectory() || information.isSymbolicLink()) {
+    throw new Error(`fixture path is not a directory: ${path}`);
+  }
+  return Object.freeze({
+    device: information.dev.toString(10),
+    inode: information.ino.toString(10),
+  });
+}
+
+async function requireFixtureDirectoryIdentity(
+  path: string,
+  expected: Readonly<{ readonly device: string; readonly inode: string }>,
+): Promise<void> {
+  const observed = await fixtureDirectoryIdentity(path);
+  if (observed.device !== expected.device || observed.inode !== expected.inode) {
+    throw new Error(`refusing to modify replaced fixture directory: ${path}`);
+  }
+}
+
+interface RegistrationFixture {
+  readonly registrationAnchor: Readonly<{
+    readonly path: string;
+    readonly device: string;
+    readonly inode: string;
+  }>;
+  readonly rootIdentity: Readonly<{ readonly device: string; readonly inode: string }>;
+  readonly stateIdentity: Readonly<{ readonly device: string; readonly inode: string }>;
+  readonly registrationName: string;
+  readonly root: string;
+  readonly stateRoot: string;
+  readonly registrationFile: string;
+  readonly stagingFile: string;
+  readonly sudoPath: string;
+}
+
+async function createRegistrationFixture(
+  stateParent: string,
+  sudo: string,
+  liveStates: Set<string>,
+  liveRegistrations: Set<string>,
+): Promise<RegistrationFixture> {
+  const name = `jig-host-registration-anchor-test-${process.pid}-${randomBytes(8).toString("hex")}`;
+  const anchorRoot = join("/run/host-services", name);
+  const registrationName = "python-linux";
+  const root = join(anchorRoot, registrationName);
+  const stateRoot = join(root, "state");
+  const registrationFile = join(root, "registration.json");
+  const stagingFile = join(stateParent, `${name}.registration`);
+  let anchorIdentity: Readonly<{ device: string; inode: string }> | undefined;
+  let rootIdentity: Readonly<{ device: string; inode: string }> | undefined;
+  let stateIdentity: Readonly<{ device: string; inode: string }> | undefined;
+  try {
+    await sudoCommand(sudo, "mkdir", ["-m", "0755", anchorRoot]);
+    anchorIdentity = await fixtureDirectoryIdentity(anchorRoot);
+    liveRegistrations.add(anchorRoot);
+    await sudoCommand(sudo, "mkdir", ["-m", "0755", root]);
+    rootIdentity = await fixtureDirectoryIdentity(root);
+    await sudoCommand(sudo, "mkdir", ["-m", "0700", stateRoot]);
+    stateIdentity = await fixtureDirectoryIdentity(stateRoot);
+    await sudoCommand(sudo, "chown", [
+      `${process.geteuid!()}:${process.getegid!()}`,
+      stateRoot,
+    ]);
+    const canonical = await realpath(stateRoot);
+    if (canonical !== stateRoot) throw new Error("registered state root is not canonical");
+    const registrationAnchor = Object.freeze({
+      path: anchorRoot,
+      device: anchorIdentity.device,
+      inode: anchorIdentity.inode,
+    });
+    liveStates.add(stateRoot);
+    return Object.freeze({
+      registrationAnchor,
+      rootIdentity,
+      stateIdentity,
+      registrationName,
+      root,
+      stateRoot,
+      registrationFile,
+      stagingFile,
+      sudoPath: sudo,
+    });
+  } catch (error) {
+    const cleanupFailures: unknown[] = [];
+    for (const [path, identity] of [
+      [stateRoot, stateIdentity] as const,
+      [root, rootIdentity] as const,
+      [anchorRoot, anchorIdentity] as const,
+    ]) {
+      if (identity === undefined) continue;
+      await cleanupAttempt(cleanupFailures, async () => {
+        if (await exists(path)) {
+          await requireFixtureDirectoryIdentity(path, identity);
+          await sudoCommand(sudo, "rmdir", [path]);
+        }
+      });
+    }
+    if (!await exists(anchorRoot)) liveRegistrations.delete(anchorRoot);
+    else cleanupFailures.push(new Error(`registration fixture residue remains at ${anchorRoot}`));
+    if (cleanupFailures.length > 0) {
+      throw new AggregateError([error, ...cleanupFailures], "registration fixture setup and cleanup failed");
+    }
+    throw error;
+  }
+}
+
+function registrationInput(
+  fixture: RegistrationFixture,
+  expectedRegistrationDigest: string,
+): Parameters<typeof observePrivatePythonLinuxHostRegistration>[0] {
+  return Object.freeze({
+    registrationAnchor: fixture.registrationAnchor,
+    registrationName: fixture.registrationName,
+    expectedRegistrationDigest,
+  });
+}
+
+async function registrationBytes(
+  generationDigest: string,
+  stateRoot: string,
+  overrides: Partial<Readonly<{
+    path: string;
+    device: string;
+    inode: string;
+    ownerUid: string;
+  }>> = {},
+): Promise<Uint8Array> {
+  const information = await lstat(stateRoot, { bigint: true });
+  const registeredState = Object.freeze({
+    path: overrides.path ?? stateRoot,
+    device: overrides.device ?? information.dev.toString(10),
+    inode: overrides.inode ?? information.ino.toString(10),
+    ownerUid: overrides.ownerUid ?? information.uid.toString(10),
+  });
+  const identity = Object.freeze({
+    kind: "python-linux-host-registration/1" as const,
+    generationDigest,
+    stateRoot: registeredState,
+  });
+  const record = Object.freeze({
+    ...identity,
+    digest: privateDomainDigest(
+      "JIG-Python-Linux-Host-Registration/1",
+      identity as unknown as JsonValue,
+    ),
+  });
+  const canonical = canonicalJson(record as unknown as JsonValue);
+  const bytes = new Uint8Array(canonical.byteLength + 1);
+  bytes.set(canonical);
+  bytes[bytes.length - 1] = 0x0a;
+  return bytes;
+}
+
+function canonicalLine(value: JsonValue): Uint8Array {
+  const canonical = canonicalJson(value);
+  const bytes = new Uint8Array(canonical.byteLength + 1);
+  bytes.set(canonical);
+  bytes[bytes.length - 1] = 0x0a;
+  return bytes;
+}
+
+function registrationDigest(bytes: Uint8Array): string {
+  const value = JSON.parse(Buffer.from(bytes.subarray(0, -1)).toString("utf8")) as {
+    readonly digest?: unknown;
+  };
+  if (typeof value.digest !== "string") throw new Error("test registration omitted its digest");
+  return value.digest;
+}
+
+async function installRegistration(
+  fixture: RegistrationFixture,
+  bytes: Uint8Array,
+): Promise<void> {
+  await writeFile(fixture.stagingFile, bytes, { flag: "wx", mode: 0o600 });
+  try {
+    await sudoCommand(fixture.sudoPath, "install", [
+      "-o", "0",
+      "-g", "0",
+      "-m", "0444",
+      fixture.stagingFile,
+      fixture.registrationFile,
+    ]);
+  } finally {
+    await unlinkOwnedFixtureFile(fixture.stagingFile);
+  }
+}
+
+async function cleanupRegistrationFixture(
+  fixture: RegistrationFixture,
+  generation: PrivatePythonLinuxHostGeneration,
+  sudo: string,
+  liveStates: Set<string>,
+  liveRegistrations: Set<string>,
+): Promise<void> {
+  const failures: unknown[] = [];
+  const attempt = async (operation: () => Promise<void>): Promise<void> => {
+    try { await operation(); } catch (error) { failures.push(error); }
+  };
+  await attempt(() => unlinkOwnedFixtureFile(fixture.stagingFile));
+  if (await exists(fixture.stateRoot)) {
+    await attempt(async () => {
+      await requireFixtureDirectoryIdentity(fixture.stateRoot, fixture.stateIdentity);
+      await cleanupStateRoot(fixture.stateRoot, generation, liveStates, false);
+    });
+  }
+  if (await exists(fixture.registrationFile)) {
+    await attempt(async () => {
+      await requireFixtureDirectoryIdentity(fixture.root, fixture.rootIdentity);
+      await sudoCommand(sudo, "unlink", [fixture.registrationFile]);
+    });
+  }
+  if (await exists(fixture.stateRoot)) {
+    await attempt(async () => {
+      await requireFixtureDirectoryIdentity(fixture.stateRoot, fixture.stateIdentity);
+      await sudoCommand(sudo, "rmdir", [fixture.stateRoot]);
+    });
+  }
+  if (await exists(fixture.root)) {
+    await attempt(async () => {
+      await requireFixtureDirectoryIdentity(fixture.root, fixture.rootIdentity);
+      await sudoCommand(sudo, "rmdir", [fixture.root]);
+    });
+  }
+  if (await exists(fixture.registrationAnchor.path)) {
+    await attempt(async () => {
+      await requireFixtureDirectoryIdentity(
+        fixture.registrationAnchor.path,
+        fixture.registrationAnchor,
+      );
+      await sudoCommand(sudo, "rmdir", [fixture.registrationAnchor.path]);
+    });
+  }
+  if (!await exists(fixture.stateRoot)) liveStates.delete(fixture.stateRoot);
+  else failures.push(new Error(`registered state fixture residue remains at ${fixture.stateRoot}`));
+  if (!await exists(fixture.registrationAnchor.path)) {
+    liveRegistrations.delete(fixture.registrationAnchor.path);
+  } else {
+    failures.push(new Error(`registration fixture residue remains at ${fixture.registrationAnchor.path}`));
+  }
+  if (failures.length > 0) {
+    throw new AggregateError(failures, "registration fixture cleanup failed");
+  }
+}
+
+interface UserRegistrationLookalike {
+  readonly registrationAnchor: Readonly<{
+    readonly path: string;
+    readonly device: string;
+    readonly inode: string;
+  }>;
+  readonly registrationName: string;
+  readonly root: string;
+  readonly stateRoot: string;
+  readonly registrationFile: string;
+}
+
+async function createUserRegistrationLookalike(
+  generationDigest: string,
+  parent: string,
+  live: Set<string>,
+): Promise<UserRegistrationLookalike> {
+  const anchorRoot = await mkdtemp(join(parent, `${STATE_PREFIX}registration-lookalike-`));
+  live.add(anchorRoot);
+  const registrationName = "python-linux";
+  const root = join(anchorRoot, registrationName);
+  const stateRoot = join(root, "state");
+  const registrationFile = join(root, "registration.json");
+  try {
+    await chmod(anchorRoot, 0o755);
+    await mkdir(root, { mode: 0o755 });
+    await mkdir(stateRoot, { mode: 0o700 });
+    await writeFile(registrationFile, await registrationBytes(generationDigest, stateRoot), {
+      flag: "wx",
+      mode: 0o444,
+    });
+    const anchorInformation = await lstat(anchorRoot, { bigint: true });
+    return Object.freeze({
+      registrationAnchor: Object.freeze({
+        path: anchorRoot,
+        device: anchorInformation.dev.toString(10),
+        inode: anchorInformation.ino.toString(10),
+      }),
+      registrationName,
+      root,
+      stateRoot,
+      registrationFile,
+    });
+  } catch (error) {
+    const cleanupFailures: unknown[] = [];
+    for (const [path, remove] of [
+      [registrationFile, unlink] as const,
+      [stateRoot, rmdir] as const,
+      [root, rmdir] as const,
+      [anchorRoot, rmdir] as const,
+    ]) {
+      try { if (await exists(path)) await remove(path); } catch (failure) { cleanupFailures.push(failure); }
+    }
+    if (!await exists(anchorRoot)) live.delete(anchorRoot);
+    else cleanupFailures.push(new Error(`lookalike fixture residue remains at ${anchorRoot}`));
+    if (cleanupFailures.length > 0) {
+      throw new AggregateError([error, ...cleanupFailures], "lookalike fixture setup and cleanup failed");
+    }
+    throw error;
+  }
+}
+
+async function cleanupUserRegistrationLookalike(
+  fixture: UserRegistrationLookalike,
+  live: Set<string>,
+): Promise<void> {
+  await unlink(fixture.registrationFile);
+  if ((await readdir(fixture.stateRoot)).length !== 0) throw new Error("lookalike state is not empty");
+  await rmdir(fixture.stateRoot);
+  await rmdir(fixture.root);
+  await rmdir(fixture.registrationAnchor.path);
+  live.delete(fixture.registrationAnchor.path);
 }
 
 async function createRootTree(
@@ -947,6 +1916,51 @@ process.stdout.write(JSON.stringify({
   ], "bun");
   if (result.code !== 0) throw new Error(`fresh root converger failed: ${result.stderr}`);
   return JSON.parse(result.stdout) as { admissible: false; digest: string; generationDigest: string; roots: number };
+}
+
+async function freshProcessObserveRegistration(
+  registrationAnchor: Readonly<{ path: string; device: string; inode: string }>,
+  registrationName: string,
+  expectedRegistrationDigest: string,
+): Promise<{
+  readonly admissible: false;
+  readonly digest: string;
+  readonly generationDigest: string;
+  readonly registrationDigest: string;
+}> {
+  const module = pathToFileURL(resolve(
+    import.meta.dir,
+    "../src/internal/python-linux-host-registration.ts",
+  )).href;
+  const source = `
+const registration = await import(${JSON.stringify(module)});
+const result = await registration.observePrivatePythonLinuxHostRegistration({
+  registrationAnchor: ${JSON.stringify(registrationAnchor)},
+  registrationName: ${JSON.stringify(registrationName)},
+  expectedRegistrationDigest: ${JSON.stringify(expectedRegistrationDigest)},
+});
+registration.requirePrivatePythonLinuxHostRegistrationObservation(result);
+process.stdout.write(JSON.stringify({
+  admissible: result.admissible,
+  digest: result.digest,
+  generationDigest: result.generationDigest,
+  registrationDigest: result.registrationDigest,
+}) + "\\n");
+`;
+  const result = await invoke(await realpath("/bin/bun"), [
+    "--no-env-file",
+    "--no-install",
+    "--config=/dev/null",
+    "--eval",
+    source,
+  ], "bun");
+  if (result.code !== 0) throw new Error(`fresh host registration observer failed: ${result.stderr}`);
+  return JSON.parse(result.stdout) as {
+    readonly admissible: false;
+    readonly digest: string;
+    readonly generationDigest: string;
+    readonly registrationDigest: string;
+  };
 }
 
 function convergenceWorkerSource(stateRoot: string, digest: string): string {
@@ -1122,6 +2136,7 @@ async function cleanupStateRoot(
   stateRoot: string,
   generation: PrivatePythonLinuxHostGeneration,
   live: Set<string>,
+  removeRoot = true,
 ): Promise<void> {
   const roots = expectedRoots(stateRoot, generation);
   const generationPath = dirname(roots[0]!.rootPath);
@@ -1158,8 +2173,21 @@ async function cleanupStateRoot(
     await syncDirectory(stateRoot);
   }
   if ((await readdir(stateRoot)).length !== 0) throw new Error("test state root has unknown residue");
-  await rmdir(stateRoot);
-  live.delete(stateRoot);
+  if (removeRoot) {
+    await rmdir(stateRoot);
+    live.delete(stateRoot);
+  }
+}
+
+async function cleanupAttempt(
+  failures: unknown[],
+  operation: () => Promise<void>,
+): Promise<void> {
+  try {
+    await operation();
+  } catch (error) {
+    failures.push(error);
+  }
 }
 
 async function syncDirectory(path: string): Promise<void> {
@@ -1244,6 +2272,18 @@ async function invoke(
     stdout: decoder.decode(Buffer.concat(stdoutChunks, stdoutBytes)),
     stderr: decoder.decode(Buffer.concat(stderrChunks, stderrBytes)),
   });
+}
+
+async function sudoCommand(
+  sudo: string,
+  command: "chmod" | "chown" | "install" | "ln" | "mkdir" | "mv" | "rmdir" | "unlink",
+  arguments_: readonly string[],
+): Promise<void> {
+  const executable = `/bin/${command}`;
+  const result = await invoke(sudo, ["-n", "--", executable, ...arguments_], "sudo");
+  if (result.code !== 0) {
+    throw new Error(`test sudo ${command} failed (${result.code ?? result.signal}): ${result.stderr.trim()}`);
+  }
 }
 
 function requiredEnvironment(name: string): string {
