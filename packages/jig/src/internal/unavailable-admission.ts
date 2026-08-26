@@ -1,0 +1,447 @@
+import { types as utilTypes } from "node:util";
+
+import {
+  privateActivationTargetKey,
+} from "./activation-planning.js";
+import { privateDomainDigest } from "./identity.js";
+import {
+  normalizePackageArtifactRef,
+  type PackageArtifactRef,
+} from "./package-artifact-store.js";
+import {
+  createPrivateProjectLocalLock,
+  decodePrivateProjectLocalLock,
+  encodePrivateProjectLocalLock,
+  privateProjectLocalLockDigest,
+  type PrivateProjectLocalLock,
+} from "./project-local-lock.js";
+import {
+  canonicalJson,
+  decodeJson1,
+  JSON_1_LIMITS,
+  type JsonValue,
+} from "../json.js";
+import type { RunTargetIdentity } from "../project/package-project.js";
+import {
+  requirePrivateRetainedResolutionObservation,
+  type PrivateResolutionUnavailableCode,
+} from "../project/package-resolution.js";
+import {
+  isProtectedProjectPath,
+  normalizeProjectPath,
+} from "../project/paths.js";
+import {
+  requirePrivateRetainedPackageProject,
+  type PrivateRetainedPackageProject,
+} from "../project/retained-project.js";
+
+const KIND = "private-unavailable-candidate/1";
+const DIGEST = /^sha256:[0-9a-f]{64}$/;
+const LOCAL_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+const UNSIGNED_64 = /^(?:0|[1-9][0-9]{0,19})$/;
+const MAX_UNSIGNED_64 = (1n << 64n) - 1n;
+const MAX_EVIDENCE = 64;
+const createdCandidates = new WeakSet<object>();
+
+export interface PrivateUnavailableCandidate {
+  readonly kind: typeof KIND;
+  readonly projectRoot: {
+    readonly device: string;
+    readonly inode: string;
+  };
+  readonly captureDigest: string;
+  readonly semanticDigest: string;
+  readonly resolutionInputDigest: string;
+  readonly planningObservationDigest: string;
+  readonly lockDigest: string;
+  readonly declarationArtifact: {
+    readonly kind: "author-closure/1";
+    readonly closureDigest: string;
+    readonly package: PackageArtifactRef;
+  };
+  readonly target: {
+    readonly identity: RunTargetIdentity;
+    readonly requestDigest: string;
+    readonly disposition: {
+      readonly state: "unavailable";
+      readonly code: PrivateResolutionUnavailableCode;
+      readonly evidenceDigests: readonly string[];
+    };
+  };
+}
+
+/** One inert admission candidate and the exact portable lock it commits. */
+export interface PrivateUnavailableCandidateArtifact {
+  readonly candidate: PrivateUnavailableCandidate;
+  readonly lock: PrivateProjectLocalLock;
+}
+
+export interface PrivateUnavailableCandidateEncoding {
+  readonly candidate: Uint8Array;
+  readonly lock: Uint8Array;
+}
+
+/**
+ * Build the one deliberately narrow admission record supported by this
+ * checkpoint. It cannot represent READY, a recipe, or more than one target.
+ */
+export function createPrivateUnavailableCandidate(
+  project: PrivateRetainedPackageProject,
+  resolutionValue: unknown,
+): PrivateUnavailableCandidateArtifact {
+  const retained = requirePrivateRetainedPackageProject(project);
+  const resolution = requirePrivateRetainedResolutionObservation(resolutionValue);
+  if (resolution.captureDigest !== retained.captureDigest) {
+    throw new TypeError("resolution observation belongs to a different retained project capture");
+  }
+  if (resolution.targets.length !== 1) {
+    throw new TypeError("private unavailable admission requires exactly one target");
+  }
+  const target = resolution.targets[0]!;
+  if (target.disposition.state !== "unavailable") {
+    throw new TypeError("private unavailable admission cannot contain a planned target");
+  }
+
+  const lock = createPrivateProjectLocalLock(retained.linked);
+  const candidate = normalizeCandidate({
+    kind: KIND,
+    projectRoot: retained.root,
+    captureDigest: retained.captureDigest,
+    semanticDigest: resolution.semanticDigest,
+    resolutionInputDigest: resolution.resolutionInputDigest,
+    planningObservationDigest: resolution.planningObservationDigest,
+    lockDigest: privateProjectLocalLockDigest(lock),
+    declarationArtifact: retained.declarationArtifact,
+    target: {
+      identity: target.request.target,
+      requestDigest: target.request.digest,
+      disposition: target.disposition,
+    },
+  }, lock);
+  encodeCandidate(candidate);
+  return markCreated(candidate, lock);
+}
+
+/**
+ * Strictly decode and cross-check inert persisted bytes after restart. This
+ * does not authenticate their storage provenance or make them admissible.
+ */
+export function decodePrivateUnavailableCandidate(
+  input: unknown,
+): PrivateUnavailableCandidateArtifact {
+  const encoded = exactObject(input, ["candidate", "lock"], "candidate encoding");
+  const lockBytes = copiedBytes(encoded.lock, "candidate lock bytes");
+  const candidateBytes = copiedBytes(encoded.candidate, "candidate bytes");
+  const lock = decodePrivateProjectLocalLock(lockBytes);
+  const candidate = normalizeCandidate(decodeJson1(candidateBytes), lock);
+  if (!sameBytes(candidateBytes, encodeCandidate(candidate))) {
+    throw new TypeError("private unavailable candidate is not in canonical JSON/1 + LF form");
+  }
+  return Object.freeze({ candidate, lock });
+}
+
+export function encodePrivateUnavailableCandidate(
+  value: unknown,
+): PrivateUnavailableCandidateEncoding {
+  const artifact = normalizeArtifact(value);
+  return Object.freeze({
+    candidate: encodeCandidate(artifact.candidate),
+    lock: encodePrivateProjectLocalLock(artifact.lock),
+  });
+}
+
+export function privateUnavailableCandidateDigest(
+  value: unknown,
+): string {
+  const artifact = normalizeArtifact(value);
+  return privateDomainDigest(
+    "JIG-Private-Unavailable-Candidate/1",
+    artifact.candidate as unknown as JsonValue,
+  );
+}
+
+/** Require the invocation-local factory result; strict decoding alone cannot mint it. */
+export function requirePrivateCreatedUnavailableCandidate(
+  value: unknown,
+): PrivateUnavailableCandidateArtifact {
+  if (value === null || typeof value !== "object" || !createdCandidates.has(value)) {
+    throw new TypeError("unavailable candidate was not built from a retained project and resolution");
+  }
+  return value as PrivateUnavailableCandidateArtifact;
+}
+
+function normalizeCandidate(
+  input: unknown,
+  lock: PrivateProjectLocalLock,
+): PrivateUnavailableCandidate {
+  const root = exactObject(input, [
+    "kind",
+    "projectRoot",
+    "captureDigest",
+    "semanticDigest",
+    "resolutionInputDigest",
+    "planningObservationDigest",
+    "lockDigest",
+    "declarationArtifact",
+    "target",
+  ], "unavailable candidate");
+  if (root.kind !== KIND) throw new TypeError(`unavailable candidate kind must be ${KIND}`);
+
+  const projectRoot = exactObject(root.projectRoot, ["device", "inode"], "project root");
+  const captureDigest = requireDigest(root.captureDigest, "capture");
+  const planningObservationDigest = requireDigest(
+    root.planningObservationDigest,
+    "planning observation",
+  );
+  const resolutionInputDigest = requireDigest(root.resolutionInputDigest, "resolution input");
+  const expectedResolutionInput = privateDomainDigest(
+    "JIG-Package-Project-Resolution-Input/1",
+    { captureDigest, planningObservationDigest },
+  );
+  if (resolutionInputDigest !== expectedResolutionInput) {
+    throw new TypeError("resolution input digest does not match capture and planning observation");
+  }
+
+  const lockDigest = requireDigest(root.lockDigest, "lock");
+  if (lockDigest !== privateProjectLocalLockDigest(lock)) {
+    throw new TypeError("unavailable candidate lock digest does not match lock bytes");
+  }
+
+  const declaration = exactObject(
+    root.declarationArtifact,
+    ["kind", "closureDigest", "package"],
+    "declaration artifact",
+  );
+  if (declaration.kind !== "author-closure/1") {
+    throw new TypeError("declaration artifact kind must be author-closure/1");
+  }
+
+  const target = normalizeTarget(root.target);
+  requireExactTargetSet(target.identity, lock);
+  if (target.disposition.code === "DEPENDENCY_UNAVAILABLE") {
+    throw new TypeError("single-target unavailable admission cannot represent dependency unavailability");
+  }
+  return Object.freeze({
+    kind: KIND,
+    projectRoot: Object.freeze({
+      device: requireUnsigned64(projectRoot.device, "project root device"),
+      inode: requireUnsigned64(projectRoot.inode, "project root inode"),
+    }),
+    captureDigest,
+    semanticDigest: requireDigest(root.semanticDigest, "semantic"),
+    resolutionInputDigest,
+    planningObservationDigest,
+    lockDigest,
+    declarationArtifact: Object.freeze({
+      kind: "author-closure/1" as const,
+      closureDigest: requireDigest(declaration.closureDigest, "declaration closure"),
+      package: normalizePackageArtifactRef(declaration.package),
+    }),
+    target,
+  });
+}
+
+function normalizeTarget(input: unknown): PrivateUnavailableCandidate["target"] {
+  const value = exactObject(input, ["identity", "requestDigest", "disposition"], "target");
+  const identity = normalizeIdentity(value.identity);
+  const disposition = exactObject(
+    value.disposition,
+    ["state", "code", "evidenceDigests"],
+    "target disposition",
+  );
+  if (disposition.state !== "unavailable") {
+    throw new TypeError("target disposition must be unavailable");
+  }
+  if (!isUnavailableCode(disposition.code)) {
+    throw new TypeError("target disposition has an invalid unavailable code");
+  }
+  const evidence = ordinaryArray(disposition.evidenceDigests, MAX_EVIDENCE, "target evidence")
+    .map((digest) => requireDigest(digest, "target evidence"))
+    .sort();
+  if (evidence.length === 0) throw new TypeError("unavailable target requires evidence");
+  for (let index = 1; index < evidence.length; index += 1) {
+    if (evidence[index - 1] === evidence[index]) {
+      throw new TypeError("unavailable target contains duplicate evidence");
+    }
+  }
+  return Object.freeze({
+    identity,
+    requestDigest: requireDigest(value.requestDigest, "target request"),
+    disposition: Object.freeze({
+      state: "unavailable" as const,
+      code: disposition.code,
+      evidenceDigests: Object.freeze(evidence),
+    }),
+  });
+}
+
+function normalizeIdentity(value: unknown): RunTargetIdentity {
+  const record = plainObject(value, "target identity");
+  const kind = dataField(record, "kind", "target identity");
+  if (kind === "flow") {
+    const flow = exactObject(record, ["kind", "path"], "Flow target identity");
+    if (typeof flow.path !== "string") throw new TypeError("Flow target path must be a string");
+    const path = normalizeProjectPath(flow.path, "Flow target path");
+    if (isProtectedProjectPath(path)) throw new TypeError("Flow target cannot be beneath .jig");
+    return Object.freeze({ kind: "flow" as const, path });
+  }
+  if (kind === "binding") {
+    const binding = exactObject(record, ["kind", "id"], "Binding target identity");
+    if (typeof binding.id !== "string" || !LOCAL_NAME.test(binding.id) || binding.id.length > 64) {
+      throw new TypeError("Binding target has an invalid LocalName");
+    }
+    return Object.freeze({ kind: "binding" as const, id: binding.id });
+  }
+  throw new TypeError("target identity must be a Flow or Binding reference");
+}
+
+function requireExactTargetSet(
+  target: RunTargetIdentity,
+  lock: PrivateProjectLocalLock,
+): void {
+  const keys = [
+    ...Object.entries(lock.packages)
+      .filter(([, packageValue]) => packageValue.mode === "run" && packageValue.directRun)
+      .map(([path]) => privateActivationTargetKey({ kind: "flow", path })),
+    ...Object.keys(lock.bindings)
+      .map((id) => privateActivationTargetKey({ kind: "binding", id })),
+  ].sort();
+  const expected = privateActivationTargetKey(target);
+  if (keys.length !== 1 || keys[0] !== expected) {
+    throw new TypeError("unavailable candidate and lock must contain the same single activation target");
+  }
+}
+
+function markCreated(
+  candidate: PrivateUnavailableCandidate,
+  lock: PrivateProjectLocalLock,
+): PrivateUnavailableCandidateArtifact {
+  const artifact = Object.freeze({ candidate, lock });
+  createdCandidates.add(artifact);
+  return artifact;
+}
+
+function normalizeArtifact(value: unknown): PrivateUnavailableCandidateArtifact {
+  const root = exactObject(value, ["candidate", "lock"], "unavailable candidate artifact");
+  if (root.lock === null || typeof root.lock !== "object") {
+    throw new TypeError("unavailable candidate lock must be an object");
+  }
+  const lock = decodePrivateProjectLocalLock(encodePrivateProjectLocalLock(
+    root.lock as PrivateProjectLocalLock,
+  ));
+  return Object.freeze({ candidate: normalizeCandidate(root.candidate, lock), lock });
+}
+
+function encodeCandidate(value: PrivateUnavailableCandidate): Uint8Array {
+  const body = canonicalJson(value as unknown as JsonValue);
+  if (body.byteLength >= JSON_1_LIMITS.bytes) {
+    throw new TypeError(`private unavailable candidate maximum bytes exceeded (${JSON_1_LIMITS.bytes})`);
+  }
+  const bytes = new Uint8Array(body.byteLength + 1);
+  bytes.set(body);
+  bytes[body.byteLength] = 0x0a;
+  return bytes;
+}
+
+function exactObject(value: unknown, fields: readonly string[], label: string): Record<string, unknown> {
+  const record = plainObject(value, label);
+  const keys = Reflect.ownKeys(record);
+  if (
+    keys.some((key) => typeof key !== "string") ||
+    keys.length !== fields.length ||
+    fields.some((field) => !keys.includes(field))
+  ) {
+    throw new TypeError(`${label} must contain exactly ${fields.join(", ")}`);
+  }
+  const result: Record<string, unknown> = Object.create(null) as Record<string, unknown>;
+  for (const field of fields) result[field] = dataField(record, field, label);
+  return result;
+}
+
+function plainObject(value: unknown, label: string): object {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    throw new TypeError(`${label} must be an object`);
+  }
+  if (utilTypes.isProxy(value)) throw new TypeError(`${label} must not be a Proxy`);
+  const prototype = Object.getPrototypeOf(value);
+  if (prototype !== Object.prototype && prototype !== null) {
+    throw new TypeError(`${label} must be a plain object`);
+  }
+  return value;
+}
+
+function dataField(value: object, field: string, label: string): unknown {
+  const descriptor = Object.getOwnPropertyDescriptor(value, field);
+  if (descriptor === undefined || !("value" in descriptor) || !descriptor.enumerable) {
+    throw new TypeError(`${label}.${field} must be an enumerable data property`);
+  }
+  return descriptor.value;
+}
+
+function ordinaryArray(value: unknown, maximum: number, label: string): readonly unknown[] {
+  if (value !== null && typeof value === "object" && utilTypes.isProxy(value)) {
+    throw new TypeError(`${label} must not be a Proxy`);
+  }
+  if (!Array.isArray(value) || Object.getPrototypeOf(value) !== Array.prototype) {
+    throw new TypeError(`${label} must be an ordinary array`);
+  }
+  if (value.length > maximum) throw new TypeError(`${label} exceeds ${maximum} members`);
+  const keys = Reflect.ownKeys(value);
+  if (keys.length !== value.length + 1 || keys.some((key) =>
+    typeof key !== "string" || (key !== "length" && !/^(?:0|[1-9][0-9]*)$/.test(key)))) {
+    throw new TypeError(`${label} must not contain extra, symbolic, or sparse properties`);
+  }
+  const result: unknown[] = [];
+  for (let index = 0; index < value.length; index += 1) {
+    const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
+    if (descriptor === undefined || !("value" in descriptor) || !descriptor.enumerable) {
+      throw new TypeError(`${label} must not be sparse or accessor-backed`);
+    }
+    result.push(descriptor.value);
+  }
+  return result;
+}
+
+function requireDigest(value: unknown, label: string): string {
+  if (typeof value !== "string" || !DIGEST.test(value)) {
+    throw new TypeError(`${label} digest must be sha256: followed by 64 lowercase hexadecimal digits`);
+  }
+  return value;
+}
+
+function requireUnsigned64(value: unknown, label: string): string {
+  if (typeof value !== "string" || !UNSIGNED_64.test(value) || BigInt(value) > MAX_UNSIGNED_64) {
+    throw new TypeError(`${label} must be an unsigned 64-bit decimal string`);
+  }
+  return value;
+}
+
+function copiedBytes(value: unknown, label: string): Uint8Array {
+  if (
+    value === null || typeof value !== "object" || utilTypes.isProxy(value) ||
+    !(value instanceof Uint8Array) || Object.getPrototypeOf(value) !== Uint8Array.prototype
+  ) {
+    throw new TypeError(`${label} must be an ordinary Uint8Array`);
+  }
+  return value.slice();
+}
+
+function isUnavailableCode(value: unknown): value is PrivateResolutionUnavailableCode {
+  return [
+    "RUNTIME_UNAVAILABLE",
+    "RUNTIME_AMBIGUOUS",
+    "PREPARATION_AUTHORITY_REQUIRED",
+    "SANDBOX_UNAVAILABLE",
+    "SANDBOX_AMBIGUOUS",
+    "PERMISSION_UNENFORCEABLE",
+    "DEPENDENCY_UNAVAILABLE",
+  ].includes(value as string);
+}
+
+function sameBytes(left: Uint8Array, right: Uint8Array): boolean {
+  if (left.byteLength !== right.byteLength) return false;
+  for (let index = 0; index < left.byteLength; index += 1) {
+    if (left[index] !== right[index]) return false;
+  }
+  return true;
+}

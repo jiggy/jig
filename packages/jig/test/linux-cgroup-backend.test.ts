@@ -15,6 +15,13 @@ import {
 } from "../src/internal/linux-cgroup-backend.js";
 import { captureStoredPackage } from "../src/internal/package-artifact-store.js";
 import {
+  createPrivateUnavailableCandidate,
+  decodePrivateUnavailableCandidate,
+  encodePrivateUnavailableCandidate,
+  privateUnavailableCandidateDigest,
+  requirePrivateCreatedUnavailableCandidate,
+} from "../src/internal/unavailable-admission.js";
+import {
   executePrivatePythonExactRun,
   planPrivatePythonExactRun,
   requirePrivatePythonExactRunCandidate,
@@ -430,6 +437,7 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         "---",
         "name: run",
         "description: Retained aggregate fixture.",
+        "service: 1",
         "---",
         "",
       ].join("\n"));
@@ -478,6 +486,15 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
       });
       const resolution = resolveRetainedPackageProjectObservation(aggregate, planning);
       expect(requirePrivateRetainedResolutionObservation(resolution)).toBe(resolution);
+      const unavailable = createPrivateUnavailableCandidate(aggregate, resolution);
+      expect(requirePrivateCreatedUnavailableCandidate(unavailable)).toBe(unavailable);
+      expect(privateUnavailableCandidateDigest(unavailable)).toMatch(/^sha256:[0-9a-f]{64}$/);
+      const persisted = encodePrivateUnavailableCandidate(unavailable);
+      const restarted = decodePrivateUnavailableCandidate(persisted);
+      expect(encodePrivateUnavailableCandidate(restarted)).toEqual(persisted);
+      expect(() => requirePrivateCreatedUnavailableCandidate(restarted)).toThrow(
+        "was not built from a retained project",
+      );
       const declarations = await captureStoredPackage(store, aggregate.declarationArtifact.package);
       try {
         expect(declarations.files.map(({ path }) => path)).toEqual([
