@@ -36,6 +36,7 @@ import {
 } from "../project/retained-project.js";
 
 const KIND = "private-unavailable-candidate/1";
+const PLAN_KIND = "private-unavailable-plan/1";
 const DIGEST = /^sha256:[0-9a-f]{64}$/;
 const LOCAL_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const UNSIGNED_64 = /^(?:0|[1-9][0-9]{0,19})$/;
@@ -79,6 +80,19 @@ export interface PrivateUnavailableCandidateArtifact {
 export interface PrivateUnavailableCandidateEncoding {
   readonly candidate: Uint8Array;
   readonly lock: Uint8Array;
+}
+
+export type PrivateObservedLock =
+  | { readonly state: "absent" }
+  | { readonly state: "present"; readonly digest: string };
+
+export interface PrivateUnavailablePlan {
+  readonly kind: typeof PLAN_KIND;
+  readonly candidateDigest: string;
+  readonly candidateRevision: number;
+  readonly baseGeneration: string | null;
+  readonly lockMode: "update" | "locked";
+  readonly observedLock: PrivateObservedLock;
 }
 
 /**
@@ -170,6 +184,37 @@ export function requirePrivateCreatedUnavailableCandidate(
   return value as PrivateUnavailableCandidateArtifact;
 }
 
+/** Build an inert review plan from facts already observed by protected storage. */
+export function createPrivateUnavailablePlan(input: {
+  readonly candidateDigest: string;
+  readonly candidateRevision: number;
+  readonly baseGeneration: string | null;
+  readonly lockMode: "update" | "locked";
+  readonly observedLock: PrivateObservedLock;
+}): PrivateUnavailablePlan {
+  return normalizePlan({ kind: PLAN_KIND, ...input });
+}
+
+export function decodePrivateUnavailablePlan(bytesValue: unknown): PrivateUnavailablePlan {
+  const bytes = copiedBytes(bytesValue, "unavailable plan bytes");
+  const plan = normalizePlan(decodeJson1(bytes));
+  if (!sameBytes(bytes, encodePrivateUnavailablePlan(plan))) {
+    throw new TypeError("private unavailable plan is not in canonical JSON/1 + LF form");
+  }
+  return plan;
+}
+
+export function encodePrivateUnavailablePlan(value: unknown): Uint8Array {
+  return encodeRecord(normalizePlan(value), "private unavailable plan");
+}
+
+export function privateUnavailablePlanDigest(value: unknown): string {
+  return privateDomainDigest(
+    "JIG-Private-Unavailable-Plan/1",
+    normalizePlan(value) as unknown as JsonValue,
+  );
+}
+
 function normalizeCandidate(
   input: unknown,
   lock: PrivateProjectLocalLock,
@@ -238,6 +283,53 @@ function normalizeCandidate(
       package: normalizePackageArtifactRef(declaration.package),
     }),
     target,
+  });
+}
+
+function normalizePlan(input: unknown): PrivateUnavailablePlan {
+  const root = exactObject(input, [
+    "kind",
+    "candidateDigest",
+    "candidateRevision",
+    "baseGeneration",
+    "lockMode",
+    "observedLock",
+  ], "unavailable plan");
+  if (root.kind !== PLAN_KIND) throw new TypeError(`unavailable plan kind must be ${PLAN_KIND}`);
+  if (
+    typeof root.candidateRevision !== "number" ||
+    !Number.isSafeInteger(root.candidateRevision) ||
+    root.candidateRevision < 1
+  ) {
+    throw new TypeError("unavailable plan candidate revision must be a positive safe integer");
+  }
+  if (root.lockMode !== "update" && root.lockMode !== "locked") {
+    throw new TypeError("unavailable plan lock mode must be update or locked");
+  }
+  const observed = plainObject(root.observedLock, "observed lock");
+  const state = dataField(observed, "state", "observed lock");
+  let observedLock: PrivateObservedLock;
+  if (state === "absent") {
+    exactObject(observed, ["state"], "observed lock");
+    observedLock = Object.freeze({ state: "absent" as const });
+  } else if (state === "present") {
+    const present = exactObject(observed, ["state", "digest"], "observed lock");
+    observedLock = Object.freeze({
+      state: "present" as const,
+      digest: requireDigest(present.digest, "observed lock"),
+    });
+  } else {
+    throw new TypeError("observed lock state must be absent or present");
+  }
+  return Object.freeze({
+    kind: PLAN_KIND,
+    candidateDigest: requireDigest(root.candidateDigest, "plan candidate"),
+    candidateRevision: root.candidateRevision,
+    baseGeneration: root.baseGeneration === null
+      ? null
+      : requireDigest(root.baseGeneration, "base generation"),
+    lockMode: root.lockMode,
+    observedLock,
   });
 }
 
@@ -333,9 +425,13 @@ function normalizeArtifact(value: unknown): PrivateUnavailableCandidateArtifact 
 }
 
 function encodeCandidate(value: PrivateUnavailableCandidate): Uint8Array {
+  return encodeRecord(value, "private unavailable candidate");
+}
+
+function encodeRecord(value: object, label: string): Uint8Array {
   const body = canonicalJson(value as unknown as JsonValue);
   if (body.byteLength >= JSON_1_LIMITS.bytes) {
-    throw new TypeError(`private unavailable candidate maximum bytes exceeded (${JSON_1_LIMITS.bytes})`);
+    throw new TypeError(`${label} maximum bytes exceeded (${JSON_1_LIMITS.bytes})`);
   }
   const bytes = new Uint8Array(body.byteLength + 1);
   bytes.set(body);
