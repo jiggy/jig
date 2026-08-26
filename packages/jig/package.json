@@ -28,7 +28,7 @@
     "test": "bun test",
     "test:package": "bun run build && bun test/package-smoke.ts",
     "test:linux-cgroup": "bun run build && sh ../../scripts/preflight-linux-cgroup.sh && JIG_TEST_PYTHON=\"$(command -v python3)\" JIG_TEST_NIX_STORE=\"$(command -v nix-store)\" JIG_LINUX_CGROUP_HOSTILE=1 bun test test/linux-cgroup-backend.test.ts --timeout 120000",
-    "test:nix-generation": "bun run build && sh ../../scripts/preflight-linux-cgroup.sh && JIG_TEST_PYTHON=\"$(command -v python3)\" JIG_TEST_NIX_STORE=\"$(command -v nix-store)\" JIG_TEST_SUDO=\"$(command -v sudo)\" JIG_NIX_GENERATION_HOST=1 bun test test/python-linux-host-generation.test.ts --timeout 120000",
+    "test:nix-generation": "bun run build && sh ../../scripts/preflight-linux-cgroup.sh && JIG_NIX_ROOT_TEST_STATE=\"$(mktemp -d)\" && trap 'rmdir \"$JIG_NIX_ROOT_TEST_STATE\"' EXIT && JIG_TEST_HOST_STATE_PARENT=\"$JIG_NIX_ROOT_TEST_STATE\" JIG_TEST_PYTHON=\"$(command -v python3)\" JIG_TEST_NIX_STORE=\"$(command -v nix-store)\" JIG_TEST_SUDO=\"$(command -v sudo)\" JIG_NIX_GENERATION_HOST=1 bun test test/python-linux-host-generation.test.ts test/python-linux-host-generation-roots.test.ts --timeout 120000",
     "check": "bun run build && bun test"
   },
   "dependencies": {

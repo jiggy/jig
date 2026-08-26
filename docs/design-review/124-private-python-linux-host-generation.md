@@ -141,23 +141,27 @@ adds those exact bytes to Nix, observes them as the generation roles, and
 proves checkout-independent load and helper behavior. The generation codec
 remains unchanged and inert.
 
-It also adds no:
+At this checkpoint it also added no:
 
-- configured root directory or same-path canary;
+- configured root directory;
 - durable, fsynced generation intent;
-- collision-safe publisher serialization;
-- indirect root publication or daemon root confirmation;
+- collision-safe publisher decision;
+- indirect root convergence;
 - acquired execution owner, lease, retirement, or cleanup authority;
 - authenticated host policy, restricted launcher, active preflight, restart
   recovery, admission connection, or `READY` evidence.
 
-The next slices are therefore ordered:
+The subsequent
+[retain-only convergence checkpoint](127-private-host-root-convergence.md) now
+durably stores one immutable singleton generation, unconditionally re-adds
+every exact same-path/same-target root, and produces only private local
+`admissible: false` evidence after fresh role and closure checks. It
+deliberately adds no passive root verifier, production canary, completion
+record, acquisition, or deletion authority.
 
-1. durably write this inert expected value before any Nix root mutation;
-2. serialize one publisher, run the exact configured-root canary, and publish
-   and read-only verify every unique member; and
-3. leave production retirement and activation acquisition closed until a
-   host-global authenticated state machine and durable spawn owners exist.
+Production reachability qualification, activation acquisition, and retirement
+remain closed until host-global authenticated policy and durable spawn owners
+exist.
 
 Failure after a future root mutation must remain a diagnosable safe leak. No
 fresh coordinator may infer deletion authority from this inert value alone.

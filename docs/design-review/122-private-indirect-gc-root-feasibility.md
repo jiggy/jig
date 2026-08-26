@@ -1,8 +1,8 @@
 # Private indirect GC-root feasibility correction
 
-**Status:** measured host-feasibility correction. It changes one environmental
-conclusion in review 117. It does not implement or admit a host generation and
-does not make any recipe `READY`.
+**Status:** historical host-feasibility measurement, with its proof boundary
+corrected by [review 127](127-private-host-root-convergence.md). It does not
+admit a host generation and does not make any recipe `READY`.
 
 ## 1. Question and prior error
 
@@ -42,6 +42,14 @@ enumeration. The root was no longer enumerated, the object was no longer live,
 and it was dead again. No garbage collection was run. All probe-owned roots
 and local paths were removed.
 
+Later hostile measurement showed that this query is not an exact passive
+verifier. `nix-store -q --roots` includes transitive roots, censors source
+paths inaccessible to an untrusted daemon client, and may prune stale root
+state while answering. `--print-live` and `--print-dead` establish global
+liveness only. The observations above remain feasibility evidence that an
+indirect-root effect survived creator exit; they do not prove a durable exact
+path-to-target association or authorize passive verification.
+
 The negative direct-root result was also reproduced: a root under the
 client-only collector path did not make its target live. This distinguishes
 the mechanisms rather than discarding the earlier observation.
@@ -66,12 +74,14 @@ path under one deterministic generation-digest directory:
 ```
 
 The state root is host-selected, Jig-controlled, unavailable to package code,
-and visible at the same absolute path to the daemon. Under the current
-cooperative same-UID/local-filesystem model it is a pinned effective-user-owned
-mode `0700`, non-symlink directory. It is not a FLOW package field, project
-grant, Binding, Backend choice, or public directory convention. Preflight must
-register, query, and remove a canary beneath this exact configured root;
-success in a different same-path directory is not transferable evidence.
+and must eventually be proven reachable at the same absolute path by the
+daemon. Under the current
+cooperative same-UID/local-filesystem model it is a pinned effective-user-
+owned mode `0700`, non-symlink directory. It is not a FLOW package field,
+project grant, Binding, Backend choice, or public directory convention. The qualifying
+same-path reachability mechanism remains deferred; the retain-only checkpoint
+does not add a removable production canary or infer reachability from another
+directory.
 
 Do not first manufacture a single Nix generation object. A separate
 architecture probe added a directory containing store-path text and symlinks
@@ -80,65 +90,45 @@ to those members. Rooting that object would falsely leave the real members
 collectible. Rooting the bounded top-level members is both smaller and honest;
 Nix's recorded references retain each transitive closure.
 
-## 4. Publication, acquisition, and retirement
+## 4. Retain-only convergence
 
-The private implementation must use the exact observed Nix CLI with an empty
-environment, fixed working directory, bounded output, a deadline, and an
-invocation proven to disable substitution and fallback. It creates or
-reacquires the deterministic protected generation directory. For each
-normalized member only two states are admissible: absent, or a safely confined
-link with the exact canonical target. Exact partial publication resumes
-idempotently. Any other type, owner, target, entry, or path identity is
-unavailable and is never deleted automatically. Registration and daemon
-confirmation may be retried after acknowledgement loss.
+The implemented private operation uses the exact observed Nix CLI with an
+empty environment, fixed working directory, bounded output, a deadline, and
+substitution and fallback disabled. One protected mode-`0600` SQLite database
+stores exactly one immutable canonical generation. An absent singleton is
+inserted, the exact same value is idempotent, and any other generation fails.
+The transaction commits and is reverified before the first Nix child starts;
+the database contains no completion, owner, lease, or readiness field.
 
-First creation must acquire the generation directory without replacement and
-prove collision-safe member publication/recovery. The feasibility probe did
-not establish whether `nix-store --add-root` refuses or replaces an existing
-path, so a racy absence precheck or assumed CLI behavior is not an acceptable
-substitute.
+For each normalized member the protected tree permits only an absent path or
+one owner-created exact same-target symlink. Before the first Nix effect Jig
+creates every absent link and validates the complete bounded tree. Any wrong
+target, regular file, directory, unexpected entry, or changed path identity
+fails without invoking Nix. It then unconditionally re-adds every member. Each
+effect must return the exact requested root path; Jig synchronizes, revalidates
+the existing descriptor-backed tree, and freshly inspects the exact links
+before and after each add. Finally it freshly reverifies all generation roles
+and closures and the immutable stored intent.
 
-Publication order is:
+The immutable singleton makes concurrent effects safe without holding a
+database transaction around subprocesses. Every legitimate publisher—and an
+old Nix client that outlives its coordinator—can request only the same
+path/target pairs. A restart simply replays every effect. The result is a
+private process-local branded convergence value with `admissible: false`, not
+a durable completion receipt or passive collector proof.
 
-1. validate the canonical generation record and authenticated host-policy
-   registration;
-2. requery every top-level object and exact closure;
-3. register every absent member root or reacquire its exact existing link;
-4. synchronize the Jig-owned root directory;
-5. independently enumerate roots through the active daemon;
-6. verify every role maps to its exact target and every exact closure remains
-   present; and only then
-7. qualify the root-set evidence for a later `READY` admission. `READY` remains
-   forbidden until every gate in §7 passes.
-
-A crash before step 7 can leak roots but cannot admit an unrooted generation.
-The roots are deterministic protected state which a reconciler can compare to
-canonical generation ownership.
-
-Acquisition first durably establishes one generation lease/spawn intent only
-while the generation is active. That operation and retirement's no-new-
-acquisition fence serialize in protected state. The owner then reverifies the
-canonical record, complete root set, daemon enumeration, and exact closures;
-failure closes the owner and returns unavailable. Merely finding a store path
-or symlink is insufficient. Root removal cannot begin while any owner exists.
-
-Retirement first commits the durable no-new-acquisition fence and moves the
-active head away from the generation. Its exact expected root set remains
-recorded while existing owners drain. After the last lease and spawn intent is
-fenced, removal unlinks only exact owned links, synchronizes the directory,
-forces daemon enumeration, and confirms absence. Only then may protected state
-mark root removal complete and remove the empty generation directory. A crash
-at any point resumes from that retained expectation. Creation crashes can only
-leak roots; retirement crashes can only leave a fenced leak or an idempotently
-removable prefix—never a runnable unrooted generation. The reconciler is
-confined to this private tree and never edits unrelated Nix roots.
+This checkpoint has no acquisition, active head, lease, replacement,
+retirement, unlink, rollback, or production cleanup authority. Those lifecycle
+operations require their own fenced design. Current failures may retain exact
+durably intended roots; they cannot make the generation runnable.
 
 ## 5. Exact durability claim
 
-This mechanism survives loss of the coordinator process: the root is daemon-
-registered, externally enumerable, and reconstructible from protected
-generation ownership. It uses no long-lived coordinator descriptor or
-connection.
+This mechanism survives loss of the coordinator process in a narrower sense:
+protected intent remains, and recovery can safely repeat the same exact
+path/target operations. The host corpus proves recovery while one old
+same-target Nix client outlives its killed coordinator. It does not claim that
+the resulting association is externally enumerable or passively complete.
 
 The Nix indirect-root operation does not expose an acknowledgement that the
 daemon's own auto-root parent directory was fsynced. The present proof
@@ -146,20 +136,21 @@ therefore makes no arbitrary-power-loss claim. It has the same cooperative
 local-filesystem/process-crash boundary as the implemented unavailable
 admission checkpoint.
 
-If arbitrary-power-loss ordering becomes mandatory, the narrow upgrade is a
-preinstalled registrar which creates, removes, enumerates, and fsyncs only a
+If exact passive association, independently proven same-path reachability,
+strict subprocess serialization, or arbitrary-power-loss ordering becomes
+mandatory, the narrow upgrade is a preinstalled registrar confined to one
 Jig-owned collector-namespace subtree. That additional privileged authority is
-not justified for v1 by the current requirement or evidence.
+not justified by this retain-only checkpoint.
 
 ## 6. Rejected alternatives
 
 - Direct links through the client-only collector mount: measured ineffective.
 - Temporary roots or open descriptors: disappear with process/connection
   failure.
-- One-way daemon permanent roots: no sufficiently narrow safe-removal and
-  reconciliation path was established.
-- A privileged registrar now: unnecessary for the supported process-crash
-  model.
+- One-way daemon permanent roots: the current checkpoint deliberately accepts
+  replayable retained leaks but establishes no safe-removal authority.
+- A privileged registrar now: unnecessary for monotonic same-target replay;
+  it remains the upgrade trigger for the stronger guarantees listed in §5.
 - Rootful Podman or an OCI image: adds another privileged lifecycle and store
   without solving Jig's ownership protocol.
 - Copying closures: Nix absolute paths and reference semantics make this a new
@@ -169,15 +160,14 @@ not justified for v1 by the current requirement or evidence.
 
 ## 7. What remains open
 
-Collector-visible retention is now feasible, not complete. `READY` still
+Retain-only convergence is implemented, not admissible. `READY` still
 requires:
 
-- the canonical generation builder/acquirer and bounded root-set lifecycle;
-- atomic collision-safe root publication and partial-publication recovery;
-- exact authenticated host-policy registration;
+- a qualifying independently justified same-path daemon-reachability gate;
+- exact authenticated host-policy registration and a restricted launcher;
 - a hardened privileged helper launch and active Backend preflight receipt;
-- persisted generation, coordinator epoch, spawn intent, materialization, and
-  cgroup ownership;
+- generation acquisition plus persisted coordinator epoch, spawn intent,
+  materialization, and cgroup ownership;
 - one kernel-released per-spawn recovery fence shared by helper and restart
   recovery;
 - restart reconciliation before cleanup or root retirement; and

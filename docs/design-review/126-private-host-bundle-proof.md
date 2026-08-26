@@ -150,15 +150,17 @@ future restricted launcher or qualifying host-policy authorization.
 This checkpoint establishes emitted bytes and behavior, not reproducible
 builds, signatures, GC retention, or production authority. It adds no:
 
-- durable generation intent or root set;
-- publisher serialization, root canary, or recovery;
+- durable generation intent, root convergence, or recovery;
 - authenticated host registration or restricted launcher;
 - active readiness receipt tied to protected admission;
 - restart-safe spawn owner, generation acquisition, lease, retirement, or
   deletion authority; or
 - public Runtime Adapter, Sandbox Backend, or host-generation API.
 
-The next safe slice is collision-safe durable publication and read-only
-verification of one root per unique observed generation member. Production
-acquisition and retirement remain closed until Jig has host-global
-authenticated state and restart-safe spawn ownership.
+The subsequent
+[retain-only convergence checkpoint](127-private-host-root-convergence.md)
+stores one immutable generation decision and unconditionally re-adds every
+exact root with local rechecks. It produces no passive completion receipt:
+same-path daemon reachability, production acquisition, and retirement remain
+closed until Jig has authenticated host-global state and restart-safe spawn
+ownership.
