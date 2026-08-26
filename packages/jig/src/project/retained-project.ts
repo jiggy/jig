@@ -1,7 +1,6 @@
-import { createHash } from "node:crypto";
-
 import { invalid } from "../diagnostics.js";
-import { canonicalJson, type JsonValue } from "../json.js";
+import { privateDomainDigest } from "../internal/identity.js";
+import type { JsonValue } from "../json.js";
 import type { JigDefinition, PackageBindingDefinition } from "./author.js";
 import {
   evaluateAuthorClosure,
@@ -203,7 +202,10 @@ function digestCapture(input: {
       evaluation: evaluationIdentity(binding.evaluation),
     })),
   };
-  return `sha256:${createHash("sha256").update(canonicalJson(value as unknown as JsonValue)).digest("hex")}`;
+  return privateDomainDigest(
+    "JIG-Package-Project-Capture/1",
+    value as unknown as JsonValue,
+  );
 }
 
 function evaluationIdentity(value: EvaluatedAuthorDeclaration): object {

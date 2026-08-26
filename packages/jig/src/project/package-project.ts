@@ -24,6 +24,7 @@ import {
 const LOCAL_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const MAX_MEMBERS = 65_536;
 const MAX_SEMANTIC_WORK = 1_000_000;
+const authenticPackageProjects = new WeakSet<object>();
 
 export interface InjectedBindingDeclaration {
   readonly sourcePath: string;
@@ -117,10 +118,19 @@ export function linkPackageProject(input: PackageProjectInput): PackageProjectVa
   const bindings = prepared.map((binding) => linkBinding(binding, flowByPath, bindingById));
 
   rejectServiceCycles(bindings, flowByPath);
-  return Object.freeze({
+  const value = Object.freeze({
     flows: Object.freeze(preparedFlows.map((flow) => flow.value)),
     bindings: Object.freeze(bindings),
   });
+  authenticPackageProjects.add(value);
+  return value;
+}
+
+export function requirePackageProjectValue(value: unknown): PackageProjectValue {
+  if (value === null || typeof value !== "object" || !authenticPackageProjects.has(value)) {
+    throw new TypeError("project was not produced by the package-project linker");
+  }
+  return value as PackageProjectValue;
 }
 
 function prepareFlows(values: readonly unknown[], budget: WorkBudget): readonly PreparedFlow[] {

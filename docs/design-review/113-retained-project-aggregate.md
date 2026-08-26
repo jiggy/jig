@@ -103,7 +103,7 @@ the proven cgroup-v2/Bubblewrap evaluator, retains both artifact classes,
 links the project, reacquires the author closure after all live capture owners
 close, and confirms that no Jig cgroup remains.
 
-## 6. Next boundary
+## 6. Subsequent boundary
 
 The package-only retained aggregate is the immutable input for the next layer:
 
@@ -115,7 +115,10 @@ retained aggregate
     -> immutable active generation
 ```
 
-Before that layer can be public, the project language still needs reviewed
+The first deterministic resolution layer is now implemented as the explicitly
+non-admissible observation in
+[checkpoint 114](114-private-resolution-observation.md). Before resolution or
+admission can be public, the project language still needs reviewed
 authoring and capture shapes for host-capability Bindings, Hooks, and optional
 Semantic Choice. Those features must extend the aggregate rather than reopen
 visible source or create parallel publication paths.

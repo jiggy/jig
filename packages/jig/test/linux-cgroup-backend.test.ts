@@ -6,12 +6,20 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
 import {
+  createPrivateActivationPlanningObservation,
+} from "../src/internal/activation-planning.js";
+import {
   PrivateLinuxCgroupBackend,
   type PrivateLinuxLaunchPlan,
 } from "../src/internal/linux-cgroup-backend.js";
 import { captureStoredPackage } from "../src/internal/package-artifact-store.js";
 import { evaluateAuthorClosure } from "../src/project/author-evaluator.js";
 import { captureAuthorClosure } from "../src/project/author-module.js";
+import {
+  buildPrivateActivationRequests,
+  requirePrivateRetainedResolutionObservation,
+  resolveRetainedPackageProjectObservation,
+} from "../src/project/package-resolution.js";
 import { retainPackageProject } from "../src/project/retained-project.js";
 import { RunHostSession } from "../src/run/session.js";
 import { ServiceHostSession } from "../src/service/session.js";
@@ -433,6 +441,22 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         id: "run",
         packagePath: "flows/run",
       });
+      const requests = buildPrivateActivationRequests(aggregate.linked);
+      const planning = createPrivateActivationPlanningObservation({
+        policyDigest: testDigest("retained-policy"),
+        mechanismDigest: testDigest("retained-mechanisms"),
+        entries: requests.map((request) => ({
+          target: request.target,
+          requestDigest: request.digest,
+          disposition: {
+            state: "unavailable" as const,
+            code: "RUNTIME_UNAVAILABLE" as const,
+            evidenceDigests: [testDigest(`unavailable:${request.digest}`)],
+          },
+        })),
+      });
+      const resolution = resolveRetainedPackageProjectObservation(aggregate, planning);
+      expect(requirePrivateRetainedResolutionObservation(resolution)).toBe(resolution);
       const declarations = await captureStoredPackage(store, aggregate.declarationArtifact.package);
       try {
         expect(declarations.files.map(({ path }) => path)).toEqual([
@@ -611,6 +635,10 @@ async function pythonClosure(): Promise<{ executable: string; stores: readonly s
   const stores = (await stdout).trim().split("\n").filter(Boolean);
   if (!stores.includes(store)) throw new Error("Python closure omitted its root store path");
   return { executable, stores: Object.freeze(stores) };
+}
+
+function testDigest(label: string): string {
+  return `sha256:${createHash("sha256").update(label).digest("hex")}`;
 }
 
 function backend(host: HostConfiguration): PrivateLinuxCgroupBackend {
