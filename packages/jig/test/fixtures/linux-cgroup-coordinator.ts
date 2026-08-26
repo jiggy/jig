@@ -27,6 +27,8 @@ const component = await backend.launch({
     wallClockMs: 30_000,
     cleanupTimeoutMs: 5_000,
   },
+  // Proof-host fixture only: Bash resolves into this host's Nix store. This is
+  // not a portable Backend default or a FLOW package capability.
   readOnlyMounts: [{ source: "/nix/store", destination: "/nix/store" }],
   command: [bash, "-c", "while :; do :; done"],
 });

@@ -48,7 +48,12 @@ export interface PrivateAuthorEvaluatorOptions {
   readonly backend: PrivateLinuxCgroupBackend;
   readonly bunPath: string;
   readonly runtimeMounts: readonly PrivateLinuxReadOnlyMount[];
-  readonly runtimeObservation: {
+  /**
+   * Proof-host evidence only. The current private evaluator accepts an exact
+   * immutable Nix-store closure; this is not a Runtime Adapter interface or
+   * project `flake.nix`/`shell.nix` support.
+   */
+  readonly nixRuntimeObservation: {
     readonly executableDigest: string;
     readonly closureSources: readonly string[];
   };
@@ -140,7 +145,7 @@ export async function evaluateAuthorClosure(
   const runtimeMounts = await checkedRuntimeMounts(
     options.runtimeMounts,
     bunPath,
-    options.runtimeObservation,
+    options.nixRuntimeObservation,
   );
   const toolchain = await capturePackageDirectory(distribution).catch((error) => unavailable(
     "PROJECT_EVALUATOR_UNAVAILABLE",
@@ -181,7 +186,7 @@ export async function evaluateAuthorClosure(
       runtimeMounts: Object.freeze(runtimeMounts.map(({ source }) => source)),
       buildOptions: "bun-cjs-closed-static-closure/1" as const,
     });
-    if (runtimeDigest !== options.runtimeObservation.executableDigest) {
+    if (runtimeDigest !== options.nixRuntimeObservation.executableDigest) {
       unavailable(
         "PROJECT_EVALUATOR_UNAVAILABLE",
         "selected Bun executable no longer matches its sealed observation",
@@ -456,7 +461,7 @@ function evaluatorLimits() {
 async function checkedRuntimeMounts(
   mounts: readonly PrivateLinuxReadOnlyMount[],
   bunPath: string,
-  observation: PrivateAuthorEvaluatorOptions["runtimeObservation"],
+  observation: PrivateAuthorEvaluatorOptions["nixRuntimeObservation"],
 ): Promise<readonly PrivateLinuxReadOnlyMount[]> {
   if (!bunPath.startsWith("/nix/store/")) {
     unavailable(
