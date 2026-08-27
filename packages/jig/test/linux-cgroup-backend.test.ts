@@ -1,10 +1,10 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { access, chmod, mkdir, mkdtemp, readFile, readdir, realpath, rm, stat, writeFile } from "node:fs/promises";
+import { access, chmod, mkdir, mkdtemp, readFile, readdir, realpath, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 
 import {
@@ -14,6 +14,16 @@ import {
   observeAgentSandboxRuntimeSupport,
   requirePrivateRuntimeSupportObservation,
 } from "../src/internal/agent-sandbox-runtime-support.js";
+import {
+  planPrivateBunDirectRun,
+  requirePrivateBunDirectRecipe,
+  runPrivateBunDirectRecipe,
+} from "../src/internal/bun-direct-run.js";
+import {
+  planPrivateDirectRun,
+  requirePrivateDirectRunRecipe,
+  runPrivateDirectRunRecipe,
+} from "../src/internal/direct-run.js";
 import {
   PrivateLinuxCgroupBackend,
   requirePrivateLinuxCgroupBackend,
@@ -64,6 +74,8 @@ describe("private Linux cgroup-v2 plan boundary", () => {
     const backend = new PrivateLinuxCgroupBackend({
       cgroupScope: "/sys/fs/cgroup/jig-test-scope",
       sudoPath: "/usr/bin/sudo",
+      subreaperPath: "/usr/bin/catatonit",
+      mknodPath: "/bin/mknod",
       bunPath: "/usr/bin/bun",
       bubblewrapPath: "/usr/bin/bwrap",
       bashPath: "/usr/bin/bash",
@@ -72,6 +84,17 @@ describe("private Linux cgroup-v2 plan boundary", () => {
     });
     expect(requirePrivateLinuxCgroupBackend(backend)).toBe(backend);
     expect(Object.isFrozen(backend)).toBe(true);
+    let recipeAccessorRead = false;
+    const forgedRecipe = Object.defineProperty({}, "kind", {
+      get() {
+        recipeAccessorRead = true;
+        return "private-bun-direct-recipe/1";
+      },
+    });
+    expect(() => requirePrivateDirectRunRecipe(forgedRecipe)).toThrow(
+      "direct Run recipe was not produced by a private planner",
+    );
+    expect(recipeAccessorRead).toBe(false);
     expect(() => requirePrivateLinuxCgroupBackend({
       observeMechanism: backend.observeMechanism,
       launch: backend.launch,
@@ -82,6 +105,27 @@ describe("private Linux cgroup-v2 plan boundary", () => {
       readOnlyMounts: [{ source: "/sys/fs/cgroup", destination: "/host-cgroup" }],
       command: ["/payload"],
     })).rejects.toThrow("host cgroupfs cannot enter the sandbox");
+    const aliasRoot = await mkdtemp(join(tmpdir(), "jig-pseudo-alias-"));
+    try {
+      const alias = join(aliasRoot, "status");
+      await symlink("/proc/self/status", alias);
+      await expect(backend.launch({
+        runId: "unsafe-pseudo-alias",
+        limits: limits(),
+        readOnlyMounts: [{ source: alias, destination: "/data/status" }],
+        command: ["/payload"],
+      })).rejects.toThrow("host pseudo-filesystem cannot enter the sandbox through an alias");
+      const deviceAlias = join(aliasRoot, "urandom");
+      await symlink("/dev/urandom", deviceAlias);
+      await expect(backend.launch({
+        runId: "unsafe-device-alias",
+        limits: limits(),
+        readOnlyMounts: [{ source: deviceAlias, destination: "/data/urandom" }],
+        command: ["/payload"],
+      })).rejects.toThrow("host pseudo-filesystem cannot enter the sandbox through an alias");
+    } finally {
+      await rm(aliasRoot, { recursive: true, force: true });
+    }
     await expect(backend.launch({
       runId: "invalid-limit",
       limits: { ...limits(), pids: 0 },
@@ -187,6 +231,118 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
     expect(rejected.stderr).toContain("runtime lease receipt does not match the selected sandbox lease");
   });
 
+  test("runs one Bun FLOW component from exact leased support", async () => {
+    host = await hostConfiguration();
+    const bun = await proofHostBunClosure();
+    const root = await mkdtemp(join(tmpdir(), "jig-bun-flow-"));
+    const store = join(root, "store");
+    const component = join(root, "flows", "run");
+    try {
+      await mkdir(store, { mode: 0o700 });
+      await mkdir(component, { recursive: true });
+      const sdk = join(component, "flow-sdk");
+      await mkdir(sdk);
+      for (const name of [
+        "index.ts",
+        "json.ts",
+        "protocol.ts",
+        "service-session.ts",
+        "session.ts",
+        "transport.ts",
+        "types.ts",
+      ]) {
+        await writeFile(
+          join(sdk, name),
+          await readFile(join(import.meta.dir, "..", "..", "flow-sdk", "src", name)),
+        );
+      }
+      await writeFile(join(component, "FLOW.md"), [
+        "---",
+        "name: retained-bun",
+        "description: Exact retained Bun Run fixture.",
+        "---",
+        "",
+      ].join("\n"));
+      await writeFile(join(component, "flow.ts"), [
+        "#!/usr/bin/env bun",
+        'import { serve } from "./flow-sdk/index.ts";',
+        "",
+        "await serve(async (context) => ({",
+        '  outcome: "done",',
+        "  output: { echo: context.input },",
+        "}));",
+        "",
+      ].join("\n"));
+      const source = await captureFlowSource(root, defineJig({ flows: ["flows/run"] }).flows);
+      try {
+        const retained = await retainFlowSourcePackages(store, source);
+        const project = linkPackageProject({ flows: retained, bindings: [] });
+        const [request] = buildPrivateActivationRequests(project);
+        const recipe = await planPrivateDirectRun({
+          request: request!,
+          runtimeSupport: bun.runtimeSupport,
+          backend: backend(host),
+        });
+        expect(requirePrivateBunDirectRecipe(recipe)).toBe(recipe);
+        expect(requirePrivateDirectRunRecipe(recipe)).toBe(recipe);
+        expect((await planPrivateBunDirectRun({
+          request: request!,
+          runtimeSupport: bun.runtimeSupport,
+          backend: backend(host),
+        })).observation.digest).toBe(recipe.observation.digest);
+        await expect(planPrivateBunDirectRun({
+          request: request!,
+          runtimeSupport: bun.runtimeSupport,
+          backend: backend(host),
+          selector: "not-bun",
+        })).rejects.toThrow("matching direct flow.ts activation");
+        await expect(runPrivateBunDirectRecipe({
+          recipe,
+          packageStoreRoot: store,
+          runId: "bun-config-drift",
+          invocation: {
+            input: {},
+            settings: { unexpected: true },
+            attachments: {},
+            deadlineUnixMs: Date.now() + 20_000,
+          },
+        })).rejects.toThrow("differs from its admitted settings or attachments");
+
+        const result = await runPrivateDirectRunRecipe({
+          recipe,
+          packageStoreRoot: store,
+          runId: "bun-flow",
+          invocation: {
+            input: { message: "retained" },
+            settings: {},
+            attachments: {},
+            deadlineUnixMs: Date.now() + 20_000,
+          },
+        });
+        expect(result.terminal).toEqual({
+          status: "succeeded",
+          result: {
+            outcome: "done",
+            output: { echo: { message: "retained" } },
+          },
+          diagnostics: { stderr: "", stderrBytes: 0, stderrTruncated: false },
+        });
+        expect(result.enforcement).toMatchObject({
+          terminationReason: "payload_exit",
+          evidence: {
+            cpuStat: expect.any(Object),
+            memoryEvents: expect.any(Object),
+            pidsEvents: expect.any(Object),
+          },
+        });
+      } finally {
+        await source.dispose();
+      }
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   test("runs one Python FLOW component from exact leased support", async () => {
     host = await hostConfiguration();
     const python = await proofHostPythonClosure();
@@ -290,14 +446,17 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
 
   test("hides cgroupfs, prevents migration, and runs as the payload identity", async () => {
     host = await hostConfiguration();
+    const unshare = await proofHostUnshare();
     const result = await run(host, "visibility", [
       "set -eu",
+      `unshare=${shellQuote(unshare)}`,
       "test \"$(/bin/id -u)\" = 1000",
       "test \"$(/bin/id -g)\" = 100",
       "test ! -e /sys/fs/cgroup",
       "test ! -e /proc/self/cgroup",
       "! /bin/mkdir /sys 2>/dev/null",
       "! printf 1 > /proc/self/cgroup 2>/tmp/proc-denied",
+      "! \"$unshare\" --user /bin/true 2>/tmp/userns-denied",
       "printf envelope-ok",
     ].join("\n"));
 
@@ -394,6 +553,7 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
 
   test("fences orphaned grandchildren after the activation root exits", async () => {
     host = await hostConfiguration();
+    const zombiesBefore = await zombiePids();
     const result = await run(host, "orphans", [
       `worker=${shellQuote(host.bash)}`,
       ": >/tmp/empty",
@@ -403,10 +563,12 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
 
     expect(result.exit).toMatchObject({ exitCode: 0, signal: null, fenced: true });
     await expect(access(result.cgroup.parentCgroup)).rejects.toBeDefined();
+    expect(await zombiePids()).toEqual(zombiesBefore);
   });
 
   test("reaps after coordinator SIGKILL and remains leak-free across repeated Runs", async () => {
     host = await hostConfiguration();
+    const zombiesBefore = await zombiePids();
     const fixture = spawn(
       "/bin/bun",
       [join(import.meta.dir, "fixtures", "linux-cgroup-coordinator.ts")],
@@ -421,54 +583,134 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
     );
     const line = await firstLine(fixture.stdout!);
     const announced = JSON.parse(line) as { parentCgroup: string };
+    const privateDevices = join("/dev", `.jig-${basename(announced.parentCgroup)}-devices`);
     fixture.kill("SIGKILL");
     await waitUntil(async () => !(await exists(announced.parentCgroup)), 5_000);
+    await waitUntil(async () => !(await exists(privateDevices)), 5_000);
 
     for (let index = 0; index < 8; index += 1) {
       const result = await run(host, `repeat-${index}`, "exit 0");
       expect(result.exit.fenced).toBe(true);
     }
     expect(await jigCgroups(host.scope)).toEqual([]);
+    expect(await zombiePids()).toEqual(zombiesBefore);
   });
 
-  test("keeps the general descendant-capable Bun recipe unavailable under root-pinned mappings", async () => {
+  test("runs Bun descendants with private read-only proc and entropy devices", async () => {
     host = await hostConfiguration();
     const bun = await proofHostBunClosure();
+    const hostEntropy = await stat("/dev/urandom");
+    const childProgram = [
+      "import { readFileSync } from 'node:fs';",
+      "console.log(JSON.stringify({",
+      "  pid: process.pid,",
+      "  mapsBytes: readFileSync('/proc/self/maps').byteLength,",
+      "  selfVisible: readFileSync(`/proc/${process.pid}/status`, 'utf8').includes(`Pid:\\t${process.pid}`),",
+      "}));",
+    ].join(" ");
+    const program = [
+      "import { closeSync, openSync, readFileSync, readdirSync, statSync } from 'node:fs';",
+      "import { randomBytes } from 'node:crypto';",
+      `const childProgram = ${JSON.stringify(childProgram)};`,
+      "let writeError = '';",
+      "try { closeSync(openSync('/dev/urandom', 'w')); } catch (error) { writeError = error.code; }",
+      "const entropy = statSync('/dev/urandom');",
+      "const child = Bun.spawn([process.execPath, '-e', childProgram], { stdout: 'pipe', stderr: 'pipe' });",
+      "const childStdout = await new Response(child.stdout).text();",
+      "const childStderr = await new Response(child.stderr).text();",
+      "console.log(JSON.stringify({",
+      "  pid: process.pid,",
+      `  outerVisible: readdirSync('/proc').includes(${JSON.stringify(String(process.pid))}),`,
+      "  procMount: readFileSync('/proc/mounts', 'utf8').split('\\n').find((line) => line.includes(' /proc ')),",
+      "  cgroup: readFileSync('/proc/self/cgroup', 'utf8'),",
+      "  mapsBytes: readFileSync('/proc/self/maps').byteLength,",
+      "  devices: readdirSync('/dev').sort(),",
+      "  entropyMode: entropy.mode & 0o777,",
+      "  entropyDevice: entropy.dev,",
+      "  entropyInode: entropy.ino,",
+      "  randomBytes: randomBytes(16).byteLength,",
+      "  writeError,",
+      "  child: { exit: await child.exited, stdout: childStdout, stderr: childStderr },",
+      "}));",
+    ].join(" ");
     const component = await backend(host).launch({
-      runId: "bun-descendant-gate",
+      runId: "bun-descendants",
       limits: {
         ...limits(),
         memoryBytes: 256 * 1024 * 1024,
-        // This case proves descendant mapping failure, not deadline behavior.
-        // Leave enough time for two Bun startups on a contended proof host.
         wallClockMs: 10_000,
       },
       readOnlyMounts: bun.runtimeSupport.closureSources.map((source) => ({
         source,
         destination: source,
       })),
-      rootProcessMappings: true,
-      entropyDevice: true,
-      command: [bun.executable, "-e", [
-        "const child = Bun.spawn([process.execPath, '-e', 'console.log(\\\"child-ok\\\")'], { stdout: 'pipe', stderr: 'pipe' });",
-        "const stdout = await new Response(child.stdout).text();",
-        "const stderr = await new Response(child.stderr).text();",
-        "console.log(JSON.stringify({ exit: await child.exited, stdout, stderr }));",
-      ].join(" ")],
+      privateProcessFilesystem: true,
+      privateRuntimeDevices: true,
+      command: [bun.executable, "-e", program],
     });
     const stdout = collect(component.stdout);
     const stderr = collect(component.stderr);
     await component.closeInput();
     expect(await component.completion).toMatchObject({ exitCode: 0, fenced: true });
     expect(await stderr).toBe("");
-    const child = JSON.parse((await stdout).trim()) as { exit: number; stdout: string; stderr: string };
-    expect(child).toEqual({ exit: 134, stdout: "", stderr: "" });
+    const result = JSON.parse((await stdout).trim()) as {
+      readonly pid: number;
+      readonly outerVisible: boolean;
+      readonly procMount: string;
+      readonly cgroup: string;
+      readonly mapsBytes: number;
+      readonly devices: readonly string[];
+      readonly entropyMode: number;
+      readonly entropyDevice: number;
+      readonly entropyInode: number;
+      readonly randomBytes: number;
+      readonly writeError: string;
+      readonly child: { readonly exit: number; readonly stdout: string; readonly stderr: string };
+    };
+    expect(result).toMatchObject({
+      pid: 1,
+      outerVisible: false,
+      cgroup: "0::/\n",
+      entropyMode: 0o444,
+      randomBytes: 16,
+      writeError: "EACCES",
+      child: { exit: 0, stderr: "" },
+    });
+    expect(result.procMount).toMatch(/^proc \/proc proc ro,nosuid,nodev,noexec,/);
+    expect(result.mapsBytes).toBeGreaterThan(0);
+    expect(result.devices).not.toContain("kvm");
+    expect(result.devices).not.toContain("net");
+    expect({ dev: result.entropyDevice, ino: result.entropyInode }).not.toEqual({
+      dev: hostEntropy.dev,
+      ino: hostEntropy.ino,
+    });
+    const hostEntropyAfter = await stat("/dev/urandom");
+    expect({
+      dev: hostEntropyAfter.dev,
+      ino: hostEntropyAfter.ino,
+      mode: hostEntropyAfter.mode & 0o777,
+    }).toEqual({
+      dev: hostEntropy.dev,
+      ino: hostEntropy.ino,
+      mode: hostEntropy.mode & 0o777,
+    });
+    expect(await exists(join(
+      "/dev",
+      `.jig-${basename(component.cgroup.parentCgroup)}-devices`,
+    ))).toBe(false);
+    const child = JSON.parse(result.child.stdout) as {
+      readonly pid: number;
+      readonly mapsBytes: number;
+      readonly selfVisible: boolean;
+    };
+    expect(child.pid).toBeGreaterThan(1);
+    expect(child.mapsBytes).toBeGreaterThan(0);
+    expect(child.selfVisible).toBe(true);
   });
 
   test("evaluates one captured project declaration in a root-only Bun envelope", async () => {
     host = await hostConfiguration();
     const bun = await proofHostBunClosure();
-    const python = await proofHostPythonClosure();
     const distribution = await realpath(join(import.meta.dir, "..", "dist"));
     const root = await mkdtemp(join(tmpdir(), "jig-evaluator-proof-"));
     const evaluator = {
@@ -536,8 +778,8 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
           },
           sandbox: {
             kind: "linux-cgroup-v2-bubblewrap/1",
-            rootProcessMappings: true,
-            entropyDevice: true,
+            privateProcessFilesystem: true,
+            privateRuntimeDevices: true,
             limits: {
               memoryBytes: 256 * 1024 * 1024,
               pids: 32,
@@ -1018,27 +1260,34 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
       await writeFile(join(root, "flows", "run", "FLOW.md"), [
         "---",
         "name: ready-run",
-        "description: Admitted retained Python Run fixture.",
+        "description: Admitted retained Bun Run fixture.",
         "---",
         "",
       ].join("\n"));
-      await rm(join(root, "flows", "run", "flow.ts"));
-      const readySdk = join(root, "flows", "run", "flowmd_sdk");
+      const readySdk = join(root, "flows", "run", "flow-sdk");
       await mkdir(readySdk);
-      for (const name of ["__init__.py", "_json.py", "_runtime.py", "_service.py", "_types.py"]) {
+      for (const name of [
+        "index.ts",
+        "json.ts",
+        "protocol.ts",
+        "service-session.ts",
+        "session.ts",
+        "transport.ts",
+        "types.ts",
+      ]) {
         await writeFile(
           join(readySdk, name),
-          await readFile(join(import.meta.dir, "..", "..", "flowmd-sdk", "src", "flowmd_sdk", name)),
+          await readFile(join(import.meta.dir, "..", "..", "flow-sdk", "src", name)),
         );
       }
-      await writeFile(join(root, "flows", "run", "flow.py"), [
-        "#!/usr/bin/env python",
-        "from flowmd_sdk import serve",
+      await writeFile(join(root, "flows", "run", "flow.ts"), [
+        "#!/usr/bin/env bun",
+        'import { serve } from "./flow-sdk/index.ts";',
         "",
-        "async def run(context):",
-        '    return {"outcome": "done", "output": {"admitted": context.input}}',
-        "",
-        "serve(run)",
+        "await serve(async (context) => ({",
+        '  outcome: "done",',
+        "  output: { admitted: context.input },",
+        "}));",
         "",
       ].join("\n"));
       const readyAggregate = await retainPackageProject({
@@ -1047,10 +1296,9 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         evaluator,
       });
       const [readyRequest] = buildPrivateActivationRequests(readyAggregate.linked);
-      const readyPython = await proofHostPythonClosure();
-      const readyRecipe = await planPrivatePythonDirectRun({
+      const readyRecipe = await planPrivateDirectRun({
         request: readyRequest!,
-        runtimeSupport: readyPython.runtimeSupport,
+        runtimeSupport: bun.runtimeSupport,
         backend: backend(host),
       });
       const readyPlanning = createPrivateActivationPlanningObservation({
@@ -1100,7 +1348,7 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
       expect(restartedActivation.admission).toEqual(readyAdmission);
       const admittedRequest = restartedActivation.candidate.candidate.target.request;
       expect(admittedRequest.digest).toBe(readyRequest!.digest);
-      const reacquiredPython = await proofHostPythonClosure();
+      const reacquiredBun = await proofHostBunClosure();
       const rootBackend = backend(host);
       rootController = await openPrivateRootAdministrationController({
         projectRoot: root,
@@ -1110,7 +1358,7 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
           projectRoot: root,
           packageStoreRoot: store,
           launch,
-          runtimeSupport: reacquiredPython.runtimeSupport,
+          runtimeSupport: reacquiredBun.runtimeSupport,
           backend: rootBackend,
           signal,
         }),
@@ -1274,6 +1522,15 @@ async function proofHostPythonClosure(): Promise<{
   return selected;
 }
 
+async function proofHostUnshare(): Promise<string> {
+  for (const entry of (await readdir("/nix/store")).sort()) {
+    if (!entry.includes("-util-linux-") || !entry.endsWith("-bin")) continue;
+    const candidate = join("/nix/store", entry, "bin", "unshare");
+    if (await exists(candidate)) return await realpath(candidate);
+  }
+  throw new Error("proof host has no util-linux unshare executable");
+}
+
 function testDigest(label: string): string {
   return `sha256:${createHash("sha256").update(label).digest("hex")}`;
 }
@@ -1282,6 +1539,8 @@ function backend(host: HostConfiguration, startupTimeoutMs?: number): PrivateLin
   return new PrivateLinuxCgroupBackend({
     cgroupScope: host.scope,
     sudoPath: "/agent-sudo/bin/sudo",
+    subreaperPath: "/run/podman-init",
+    mknodPath: "/bin/mknod",
     bunPath: "/bin/bun",
     bubblewrapPath: "/usr/bin/bwrap",
     bashPath: host.bash,
@@ -1376,6 +1635,20 @@ async function drain(source: AsyncIterable<Uint8Array>): Promise<void> {
 
 async function jigCgroups(scope: string): Promise<string[]> {
   return (await readdir(scope)).filter((name) => name.startsWith("jig-run-")).sort();
+}
+
+async function zombiePids(): Promise<number[]> {
+  const pids: number[] = [];
+  for (const entry of await readdir("/proc")) {
+    if (!/^\d+$/.test(entry)) continue;
+    try {
+      const fields = (await readFile(`/proc/${entry}/stat`, "utf8")).split(" ");
+      if (fields[2] === "Z") pids.push(Number(entry));
+    } catch {
+      // The process disappeared between directory and stat inspection.
+    }
+  }
+  return pids.sort((left, right) => left - right);
 }
 
 async function exists(path: string): Promise<boolean> {

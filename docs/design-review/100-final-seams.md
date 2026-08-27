@@ -328,12 +328,12 @@ denied until explicitly admitted. Descendants remain implementation details of
 the same owner and sandbox envelope, share finite resource bounds, and must
 quiesce or be fenced before completion; there is no process grant in v1.
 
-The only v1 live kernel-file exception is the closed
-`root-process-mappings` runtime predicate: one read-only, non-traversable view
-of the activation root which follows that root across final `exec` and remains
-the same view for descendants. It is planned and receipted separately and does
-not admit a pseudo-filesystem root, host-process data, mutable control, or any
-additional kernel file.
+An exact Adapter may require a Backend-owned process view or small runtime
+device set. These are planned and receipted host mechanisms, not package
+authority. Process views are namespace-local and read-only, hide host data and
+controls, and retarget per-process paths for descendants. Runtime devices are
+fresh least-mode projections rather than existing host nodes. Inability to
+prove exact realization and cleanup makes the recipe unavailable.
 
 The Sandbox Backend advertises enforceable predicates rather than pretending
 every OS has the same primitives. A Linux implementation may use bubblewrap,

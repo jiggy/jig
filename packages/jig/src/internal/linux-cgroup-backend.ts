@@ -13,6 +13,12 @@ import type { ExactComponentExit, ExactComponentProcess } from "../run/session.j
 const RUN_ID = /^[a-z0-9][a-z0-9-]{0,47}$/;
 const ENVIRONMENT_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const CONTROL_BYTES = 64 * 1024;
+const CGROUP2_SUPER_MAGIC = 0x63677270;
+const DEVPTS_SUPER_MAGIC = 0x1cd1;
+const PROC_SUPER_MAGIC = 0x9fa0;
+const SYSFS_SUPER_MAGIC = 0x62656572;
+const PRIVATE_NULL_SOURCE = "@jig-private-null@";
+const PRIVATE_URANDOM_SOURCE = "@jig-private-urandom@";
 const HELPER_BUN_POLICY = Object.freeze([
   "--no-env-file",
   "--no-install",
@@ -42,9 +48,9 @@ export interface PrivateLinuxLaunchPlan {
   readonly command: readonly [string, ...string[]];
   readonly environment?: Readonly<Record<string, string>>;
   /** Backend-owned runtime predicate; never package-selected. */
-  readonly rootProcessMappings?: boolean;
+  readonly privateProcessFilesystem?: boolean;
   /** Backend-owned runtime predicate; never package-selected. */
-  readonly entropyDevice?: boolean;
+  readonly privateRuntimeDevices?: boolean;
   /** Backend-owned exact helper override; never package-selected. */
   readonly trustedHelperPath?: string;
 }
@@ -52,6 +58,8 @@ export interface PrivateLinuxLaunchPlan {
 export interface PrivateLinuxCgroupBackendOptions {
   readonly cgroupScope: string;
   readonly sudoPath: string;
+  readonly subreaperPath: string;
+  readonly mknodPath: string;
   readonly bunPath: string;
   readonly bubblewrapPath: string;
   readonly bashPath: string;
@@ -71,6 +79,11 @@ export interface PrivateLinuxEnvelopeIdentity {
   readonly trustedCoordinatorBunDigest: string;
   readonly trustedLauncherPath: string;
   readonly trustedLauncherDigest: string;
+  readonly trustedSubreaperPath: string;
+  readonly trustedSubreaperDigest: string;
+  readonly trustedMknodPath: string;
+  readonly trustedMknodTargetPath: string;
+  readonly trustedMknodDigest: string;
   readonly trustedBashPath: string;
   readonly trustedBashDigest: string;
   readonly trustedBackendPath: string;
@@ -84,8 +97,8 @@ export interface PrivateLinuxEnvelopeIdentity {
   readonly payloadUid: number;
   readonly payloadGid: number;
   readonly limits: PrivateLinuxCgroupLimits;
-  readonly rootProcessMappings: boolean;
-  readonly entropyDevice: boolean;
+  readonly privateProcessFilesystem: boolean;
+  readonly privateRuntimeDevices: boolean;
 }
 
 export interface PrivateLinuxBackendMechanismObservation {
@@ -100,6 +113,11 @@ export interface PrivateLinuxBackendMechanismObservation {
   readonly trustedCoordinatorBunDigest: string;
   readonly trustedLauncherPath: string;
   readonly trustedLauncherDigest: string;
+  readonly trustedSubreaperPath: string;
+  readonly trustedSubreaperDigest: string;
+  readonly trustedMknodPath: string;
+  readonly trustedMknodTargetPath: string;
+  readonly trustedMknodDigest: string;
   readonly trustedBashPath: string;
   readonly trustedBashDigest: string;
   readonly trustedBackendPath: string;
@@ -234,6 +252,8 @@ export class PrivateLinuxCgroupBackend {
         [
           "-n",
           "--",
+          mechanism.trustedSubreaperPath,
+          "--",
           mechanism.trustedBashPath,
           "--noprofile",
           "--norc",
@@ -256,6 +276,7 @@ export class PrivateLinuxCgroupBackend {
           "--uid", String(this.options.payloadUid),
           "--gid", String(this.options.payloadGid),
           "--bubblewrap", mechanism.trustedBubblewrapPath,
+          "--mknod", mechanism.trustedMknodPath,
           "--bash", mechanism.trustedBashPath,
           "--",
           ...bubblewrapArguments(sealedPlan, this.options.payloadUid, this.options.payloadGid),
@@ -366,6 +387,11 @@ export class PrivateLinuxCgroupBackend {
           trustedCoordinatorBunDigest: mechanism.trustedCoordinatorBunDigest,
           trustedLauncherPath: mechanism.trustedLauncherPath,
           trustedLauncherDigest: mechanism.trustedLauncherDigest,
+          trustedSubreaperPath: mechanism.trustedSubreaperPath,
+          trustedSubreaperDigest: mechanism.trustedSubreaperDigest,
+          trustedMknodPath: mechanism.trustedMknodPath,
+          trustedMknodTargetPath: mechanism.trustedMknodTargetPath,
+          trustedMknodDigest: mechanism.trustedMknodDigest,
           trustedBashPath: mechanism.trustedBashPath,
           trustedBashDigest: mechanism.trustedBashDigest,
           trustedBackendPath: mechanism.trustedBackendPath,
@@ -379,8 +405,8 @@ export class PrivateLinuxCgroupBackend {
           payloadUid: this.options.payloadUid,
           payloadGid: this.options.payloadGid,
           limits: Object.freeze({ ...sealedPlan.limits }),
-          rootProcessMappings: sealedPlan.rootProcessMappings === true,
-          entropyDevice: sealedPlan.entropyDevice === true,
+          privateProcessFilesystem: sealedPlan.privateProcessFilesystem === true,
+          privateRuntimeDevices: sealedPlan.privateRuntimeDevices === true,
         }),
         cgroup: Object.freeze({
           parentCgroup: readyReceipt.parentCgroup,
@@ -510,21 +536,27 @@ async function observeBackendMechanism(
   helperPath: string,
 ): Promise<PrivateLinuxBackendMechanismObservation> {
   const [cgroupScope, trustedHelperPath, trustedBubblewrapPath,
-    trustedCoordinatorBunPath, trustedLauncherPath, trustedBashPath, trustedBackendPath] = await Promise.all([
+    trustedCoordinatorBunPath, trustedLauncherPath, trustedSubreaperPath,
+    trustedMknodTargetPath, trustedBashPath, trustedBackendPath] = await Promise.all([
     realpath(options.cgroupScope),
     realpath(helperPath),
     realpath(options.bubblewrapPath),
     realpath(options.bunPath),
     realpath(options.sudoPath),
+    realpath(options.subreaperPath),
+    realpath(options.mknodPath),
     realpath(options.bashPath),
     realpath(fileURLToPath(import.meta.url)),
   ]);
   const [trustedHelperDigest, trustedBubblewrapDigest, trustedCoordinatorBunDigest,
-    trustedLauncherDigest, trustedBashDigest, trustedBackendDigest] = await Promise.all([
+    trustedLauncherDigest, trustedSubreaperDigest, trustedMknodDigest, trustedBashDigest,
+    trustedBackendDigest] = await Promise.all([
     privateFileDigest(trustedHelperPath),
     privateFileDigest(trustedBubblewrapPath),
     privateFileDigest(trustedCoordinatorBunPath),
     privateFileDigest(trustedLauncherPath),
+    privateFileDigest(trustedSubreaperPath),
+    privateFileDigest(trustedMknodTargetPath),
     privateFileDigest(trustedBashPath),
     privateFileDigest(trustedBackendPath),
   ]);
@@ -534,7 +566,7 @@ async function observeBackendMechanism(
     readFile(join(cgroupScope, "cgroup.controllers"), "utf8"),
     readFile(join(cgroupScope, "cgroup.procs"), "utf8"),
   ]);
-  if (filesystem.type !== 0x63677270) throw new Error("Linux Backend requires cgroup v2");
+  if (filesystem.type !== CGROUP2_SUPER_MAGIC) throw new Error("Linux Backend requires cgroup v2");
   const availableControllers = new Set(controllersText.trim().split(/\s+/));
   const controllers = Object.freeze(["cpu", "memory", "pids"] as const);
   for (const controller of controllers) {
@@ -554,6 +586,11 @@ async function observeBackendMechanism(
     trustedCoordinatorBunDigest,
     trustedLauncherPath,
     trustedLauncherDigest,
+    trustedSubreaperPath,
+    trustedSubreaperDigest,
+    trustedMknodPath: resolve(options.mknodPath),
+    trustedMknodTargetPath,
+    trustedMknodDigest,
     trustedBashPath,
     trustedBashDigest,
     trustedBackendPath,
@@ -579,11 +616,16 @@ async function observeBackendMechanism(
 }
 
 async function sealMountSources(plan: PrivateLinuxLaunchPlan): Promise<PrivateLinuxLaunchPlan> {
+  const deviceRoot = await stat("/dev");
   const mounts: PrivateLinuxReadOnlyMount[] = [];
   for (const mount of plan.readOnlyMounts) {
     const source = await realpath(mount.source);
-    if (source === "/sys/fs/cgroup" || source.startsWith("/sys/fs/cgroup/")) {
-      throw new TypeError("host cgroupfs cannot enter the sandbox through an alias");
+    const [filesystem, information] = await Promise.all([statfs(source), stat(source)]);
+    if ([CGROUP2_SUPER_MAGIC, DEVPTS_SUPER_MAGIC, PROC_SUPER_MAGIC, SYSFS_SUPER_MAGIC]
+      .includes(Number(filesystem.type)) || ["/dev", "/proc", "/run", "/sys"].some(
+        (root) => source === root || source.startsWith(`${root}/`),
+      ) || information.dev === deviceRoot.dev) {
+      throw new TypeError("host pseudo-filesystem cannot enter the sandbox through an alias");
     }
     mounts.push(Object.freeze({ source, destination: resolve(mount.destination) }));
   }
@@ -597,22 +639,27 @@ function bubblewrapArguments(
 ): string[] {
   const result = [
     "--unshare-all",
+    "--unshare-user",
+    "--disable-userns",
+    "--assert-userns-disabled",
     "--as-pid-1",
     "--die-with-parent",
     "--new-session",
     "--clearenv",
-    "--dir", "/proc",
+    ...(plan.privateProcessFilesystem === true
+      ? ["--proc", "/proc", "--remount-ro", "/proc"]
+      : ["--dir", "/proc"]),
     "--dir", "/dev",
     "--tmpfs", "/tmp",
     "--tmpfs", "/run",
     "--dir", "/work",
     "--chdir", "/work",
   ];
-  if (plan.rootProcessMappings === true) {
-    result.push("--dir", "/proc/self", "--ro-bind", "/proc/self/maps", "/proc/self/maps");
-  }
-  if (plan.entropyDevice === true) {
-    result.push("--dev-bind", "/dev/urandom", "/dev/urandom");
+  if (plan.privateRuntimeDevices === true) {
+    result.push(
+      "--dev-bind", PRIVATE_NULL_SOURCE, "/dev/null",
+      "--dev-bind", PRIVATE_URANDOM_SOURCE, "/dev/urandom",
+    );
   }
   for (const mount of plan.readOnlyMounts) {
     result.push("--ro-bind", mount.source, mount.destination);
@@ -628,6 +675,8 @@ function validateOptions(options: NormalizedBackendOptions): void {
   for (const [name, path] of Object.entries({
     cgroupScope: options.cgroupScope,
     sudoPath: options.sudoPath,
+    subreaperPath: options.subreaperPath,
+    mknodPath: options.mknodPath,
     bunPath: options.bunPath,
     bubblewrapPath: options.bubblewrapPath,
     helperPath: options.helperPath,

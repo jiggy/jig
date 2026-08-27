@@ -1,8 +1,11 @@
 # Private deterministic resolution observation checkpoint
 
-**Status:** implemented private, non-admissible checkpoint. It publishes no
-Resolver, Runtime Adapter, recipe, lock, plan, consent, admission, generation,
-or execution API.
+**Status:** implemented private, non-admissible checkpoint. Its former
+`root-process-mappings` member is removed and superseded by exact private
+Backend launch evidence in
+[`141-bun-and-run-lifecycle-closure.md`](141-bun-and-run-lifecycle-closure.md).
+It publishes no Resolver, Runtime Adapter, recipe, lock, plan, consent,
+admission, generation, or execution API.
 
 This slice proves that one authentic retained package project can be combined
 deterministically with one closed trusted-host planning observation without

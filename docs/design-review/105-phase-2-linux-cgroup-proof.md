@@ -1,10 +1,13 @@
 # Phase 2 private Linux cgroup-v2 proof
 
-**Status:** implemented and host-proven on 2026-08-25. This closes the
+**Status:** implemented and host-proven on 2026-08-25. Its root-pinned Bun
+conclusion is historical and superseded by
+[`141-bun-and-run-lifecycle-closure.md`](141-bun-and-run-lifecycle-closure.md).
+This review closes the
 environmental stop recorded in
 [`104-phase-2-security-blocker.md`](104-phase-2-security-blocker.md) for the
 private Linux proof backend. It does not publish a Sandbox Backend interface,
-make cgroup v2 portable FLOW vocabulary, or qualify the Bun Runtime Adapter.
+make cgroup v2 portable FLOW vocabulary, or publish a Bun Runtime Adapter.
 
 **Host-specific integration note:** the Python and Bun witnesses below used
 runtimes which happened to be installed in this host's Nix store. A later

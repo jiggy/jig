@@ -35,7 +35,7 @@ export interface PrivateActivationRecipeObservationInput {
   readonly preparationEnvelopeDigest: string | null;
   readonly launchEnvelopeDigest: string;
   readonly runtimeSupportClosureDigest: string;
-  readonly runtimePredicates: readonly [] | readonly ["root-process-mappings"];
+  readonly runtimePredicates: readonly [];
   readonly requestedAuthorityDigest: string;
   readonly wouldGrantAuthorityDigest: string;
   readonly plannedAuthorityDigest: string;
@@ -315,13 +315,10 @@ function normalizeExtension(input: unknown, label: string): PrivateExtensionObse
 
 function normalizeRuntimePredicates(
   input: unknown,
-): readonly [] | readonly ["root-process-mappings"] {
-  const values = readBoundedArray(input, 1, "runtime predicates");
-  if (values.length === 0) return Object.freeze([]);
-  if (values[0] !== "root-process-mappings") {
-    throw new TypeError("runtime predicates may contain only root-process-mappings");
-  }
-  return Object.freeze(["root-process-mappings"] as const);
+): readonly [] {
+  const values = readBoundedArray(input, 0, "runtime predicates");
+  if (values.length !== 0) throw new TypeError("public runtime predicates are not defined");
+  return Object.freeze([]);
 }
 
 function optionalDigest(value: unknown, label: string): string | null {

@@ -1,8 +1,9 @@
 # Root Administration and Bun boundary clarification
 
-**Status:** accepted correction to terminology and current-frontier status. No
-wire or SDK surface/behavior, admission, authority, or Backend interface
-changes in this review.
+**Status:** Root Administration terminology remains accepted. The Bun status
+and next gate are historical and superseded by
+[`141-bun-and-run-lifecycle-closure.md`](141-bun-and-run-lifecycle-closure.md).
+This review made no wire or SDK surface changes.
 
 ## 1. Root Administration is host control plane
 

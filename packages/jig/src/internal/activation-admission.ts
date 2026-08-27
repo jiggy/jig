@@ -16,9 +16,9 @@ import {
   type PrivateProjectLocalLock,
 } from "./project-local-lock.js";
 import {
-  requirePrivatePythonDirectRecipe,
-  type PrivatePythonDirectRecipe,
-} from "./python-direct-run.js";
+  requirePrivateDirectRunRecipe,
+  type PrivateDirectRunRecipe,
+} from "./direct-run.js";
 import {
   canonicalJson,
   decodeJson1,
@@ -126,7 +126,7 @@ export interface PrivateActivationAdmission {
 export function createPrivateActivationCandidate(
   project: PrivateRetainedPackageProject,
   resolutionValue: unknown,
-  recipeValue?: PrivatePythonDirectRecipe,
+  recipeValue?: PrivateDirectRunRecipe,
 ): PrivateActivationCandidateArtifact {
   const retained = requirePrivateRetainedPackageProject(project);
   const resolution = requirePrivateRetainedResolutionObservation(resolutionValue);
@@ -139,7 +139,7 @@ export function createPrivateActivationCandidate(
   const target = resolution.targets[0]!;
   let disposition: PrivateActivationCandidate["target"]["disposition"];
   if (target.disposition.state === "planned") {
-    const recipe = requirePrivatePythonDirectRecipe(recipeValue);
+    const recipe = requirePrivateDirectRunRecipe(recipeValue);
     if (recipe.request.digest !== target.request.digest ||
         recipe.observation.digest !== target.disposition.observation.digest) {
       throw new TypeError("ready recipe does not match the retained planned target");

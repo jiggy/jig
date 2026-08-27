@@ -307,14 +307,10 @@ uses:
         ...base,
         preparationEnvelopeDigest: digest("envelope"),
       })).toThrow("preparation plan and envelope must both be present or both be absent");
-      expect(createPrivateActivationRecipeObservation({
-        ...base,
-        runtimePredicates: ["root-process-mappings"],
-      }).runtimePredicates).toEqual(["root-process-mappings"]);
       expect(() => createPrivateActivationRecipeObservation({
         ...base,
-        runtimePredicates: ["cryptographic-entropy" as never],
-      })).toThrow("may contain only root-process-mappings");
+        runtimePredicates: ["root-process-mappings" as never],
+      })).toThrow("runtime predicates exceeds 0 members");
     });
 
     const value = { same: true } as const;

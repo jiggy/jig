@@ -85,8 +85,8 @@ export interface EvaluatorProfile {
     readonly payloadUid: number;
     readonly payloadGid: number;
     readonly limits: ReturnType<typeof evaluatorLimits>;
-    readonly rootProcessMappings: true;
-    readonly entropyDevice: true;
+    readonly privateProcessFilesystem: true;
+    readonly privateRuntimeDevices: true;
   };
 }
 
@@ -221,15 +221,15 @@ export async function evaluateAuthorClosure(
         ...runtimeMounts,
         { source: materialized.root, destination: "/jig-evaluator" },
       ],
-      rootProcessMappings: true,
-      entropyDevice: true,
+      privateProcessFilesystem: true,
+      privateRuntimeDevices: true,
       trustedHelperPath: `${materialized.root}/internal/linux-cgroup-helper.js`,
       command: [bunPath, "/jig-evaluator/internal/project-evaluator-worker.js"],
     }, signal).catch((error) => unavailable(
       "PROJECT_EVALUATOR_UNAVAILABLE",
       `cannot launch evaluator envelope: ${errorText(error)}`,
     ));
-    if (!component.envelope.rootProcessMappings || !component.envelope.entropyDevice ||
+    if (!component.envelope.privateProcessFilesystem || !component.envelope.privateRuntimeDevices ||
         component.envelope.trustedHelperDigest !== digestBytes(helperBytes) ||
         component.envelope.trustedCoordinatorBunDigest !== runtimeDigest) {
       await component.terminate().catch(() => undefined);
@@ -262,8 +262,8 @@ export async function evaluateAuthorClosure(
         payloadUid: component.envelope.payloadUid,
         payloadGid: component.envelope.payloadGid,
         limits: component.envelope.limits as ReturnType<typeof evaluatorLimits>,
-        rootProcessMappings: component.envelope.rootProcessMappings,
-        entropyDevice: component.envelope.entropyDevice,
+        privateProcessFilesystem: component.envelope.privateProcessFilesystem,
+        privateRuntimeDevices: component.envelope.privateRuntimeDevices,
       }),
     });
 

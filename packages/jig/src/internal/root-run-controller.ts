@@ -6,15 +6,15 @@ import {
   type PrivateRootRunTerminal,
 } from "./activation-admission-store.js";
 import {
-  planPrivatePythonDirectRun,
-  runPrivatePythonDirectRecipe,
-} from "./python-direct-run.js";
+  planPrivateDirectRun,
+  runPrivateDirectRunRecipe,
+} from "./direct-run.js";
 import type { PrivateRuntimeSupportObservation } from "./agent-sandbox-runtime-support.js";
 import type { PrivateLinuxCgroupBackend } from "./linux-cgroup-backend.js";
 
 /**
- * Execute the one admitted Python direct-Run recipe supported by this
- * checkpoint, then publish its terminal only after protected cleanup settles.
+ * Reproduce one admitted exact direct-Run recipe, then publish its terminal
+ * only after protected cleanup settles.
  */
 export async function executePrivateRootRunLaunch(input: {
   readonly projectRoot: string;
@@ -33,7 +33,7 @@ export async function executePrivateRootRunLaunch(input: {
         launch.candidate.candidate.target.disposition.state !== "ready") {
       throw new Error("durable root spawn intent differs from its admitted target");
     }
-    const recipe = await planPrivatePythonDirectRun({
+    const recipe = await planPrivateDirectRun({
       request,
       runtimeSupport: input.runtimeSupport,
       backend: input.backend,
@@ -42,7 +42,7 @@ export async function executePrivateRootRunLaunch(input: {
         recipe.observation.digest !== launch.intent.observationDigest) {
       throw new Error("current host mechanisms do not reproduce the admitted Run recipe");
     }
-    const result = await runPrivatePythonDirectRecipe({
+    const result = await runPrivateDirectRunRecipe({
       recipe,
       packageStoreRoot: input.packageStoreRoot,
       runId: backendRunLabel(launch.run.runId),

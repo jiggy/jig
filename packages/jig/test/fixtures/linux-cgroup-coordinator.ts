@@ -11,6 +11,8 @@ await readFile(bash);
 const backend = new PrivateLinuxCgroupBackend({
   cgroupScope: scope,
   sudoPath: "/agent-sudo/bin/sudo",
+  subreaperPath: "/run/podman-init",
+  mknodPath: "/bin/mknod",
   bunPath: "/bin/bun",
   bubblewrapPath: "/usr/bin/bwrap",
   bashPath: bash,
@@ -30,6 +32,8 @@ const component = await backend.launch({
   // Proof-host fixture only: Bash resolves into this host's Nix store. This is
   // not a portable Backend default or a FLOW package capability.
   readOnlyMounts: [{ source: "/nix/store", destination: "/nix/store" }],
+  privateProcessFilesystem: true,
+  privateRuntimeDevices: true,
   command: [bash, "-c", "while :; do :; done"],
 });
 void (async () => { for await (const _ of component.stdout) {} })();

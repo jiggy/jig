@@ -262,14 +262,14 @@ and ambient host IPC are denied unless the admitted package and Binding
 explicitly obtain the corresponding authority and host policy allows it. This
 baseline is a closed Jig guarantee, not ambient operating-system behavior.
 
-One admitted Adapter recipe may additionally require the closed v1
-`root-process-mappings` runtime predicate. The Backend exposes only one
-read-only, non-traversable mapping view generated for the activation root and
-receipts it separately from the immutable Runtime Support Closure. The subject
-is preserved across final `exec`, descendants see only the same pinned root
-view, and no general pseudo-filesystem, host process, mutable control, or
-package-selected kernel surface is implied. Inability to prove that exact view
-makes the recipe unavailable.
+One admitted Adapter recipe may additionally require exact Backend-owned
+process views or runtime devices. They are host runtime mechanisms, not package
+authority or author-selectable fields. A process view is generated inside the
+activation's PID/cgroup namespaces, is read-only, hides host processes and
+controls, and resolves per-process paths correctly for descendants. Runtime
+devices are fresh least-mode projections; existing host device nodes and
+unrelated devices remain hidden and unchanged. The Backend receipts and cleans
+up the exact realization. Inability to prove it makes the recipe unavailable.
 
 Package code may create descendant processes, but doing so never creates a new
 Jig owner or grants new authority. Every descendant remains inside the same or
@@ -851,10 +851,9 @@ Binding revision.
     stdio. Environment, network, extra roots and descriptors, and host IPC stay
     denied until explicitly admitted. Descendants remain in the same bounded
     owner envelope and quiesce before success; inability to enforce the planned
-    envelope makes the target unavailable rather than wider. The only v1 live
-    kernel-file exception is a separately planned and receipted read-only
-    `root-process-mappings` view; it never admits a pseudo-filesystem root or
-    retargets to descendants.
+    envelope makes the target unavailable rather than wider. Adapter-selected
+    process views and runtime devices remain exact, namespace-local,
+    least-mode Backend mechanisms and never become package-selected authority.
 34. Package Bindings reject a generic `grants` field. A host-capability
     Binding accepts only the closed registration-specific attenuation shape,
     validates it against that registration, and cannot exceed provider or

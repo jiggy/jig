@@ -1,5 +1,5 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
-import { mkdir, readFile, rmdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, rmdir, stat, writeFile } from "node:fs/promises";
 import { connect, type Socket } from "node:net";
 import { join } from "node:path";
 import { Readable } from "node:stream";
@@ -17,6 +17,7 @@ interface Configuration {
   readonly uid: string;
   readonly gid: string;
   readonly bubblewrap: string;
+  readonly mknod: string;
   readonly bash: string;
   readonly bubblewrapArguments: readonly string[];
 }
@@ -36,6 +37,7 @@ const HELPER_FIELDS = new Set([
   "cpu-quota",
   "gid",
   "memory",
+  "mknod",
   "parent",
   "pids",
   "scope",
@@ -43,6 +45,8 @@ const HELPER_FIELDS = new Set([
   "uid",
   "wall-ms",
 ]);
+const PRIVATE_NULL_SOURCE = "@jig-private-null@";
+const PRIVATE_URANDOM_SOURCE = "@jig-private-urandom@";
 
 const ENTER_SCRIPT = [
   "set -eu",
@@ -78,6 +82,7 @@ async function main(): Promise<void> {
   let runCreated = false;
   let stopping: StopReason | undefined;
   let terminalSent = false;
+  let privateDeviceDirectory: string | undefined;
   let controlBuffer = "";
   let admit!: () => void;
   let rejectAdmission!: (error: Error) => void;
@@ -152,6 +157,26 @@ async function main(): Promise<void> {
     await writeFile(join(runCgroup, "cpu.max"), `${config.cpuQuota} ${config.cpuPeriod}`);
     if (stopping !== undefined) throw new Error(`launch cancelled during setup: ${stopping}`);
 
+    const nullSources = config.bubblewrapArguments.filter((value) => value === PRIVATE_NULL_SOURCE);
+    const entropySources = config.bubblewrapArguments.filter((value) => value === PRIVATE_URANDOM_SOURCE);
+    if (nullSources.length !== entropySources.length || entropySources.length > 1) {
+      throw new Error("invalid private runtime device request");
+    }
+    let bubblewrapArguments = config.bubblewrapArguments;
+    if (entropySources.length === 1) {
+      const deviceDirectory = join("/dev", `.jig-${config.parent}-devices`);
+      const nullSource = join(deviceDirectory, "null");
+      const entropySource = join(deviceDirectory, "urandom");
+      await mkdir(deviceDirectory, { mode: 0o700 });
+      privateDeviceDirectory = deviceDirectory;
+      await runMknod(config.mknod, nullSource, "0666", "3");
+      await runMknod(config.mknod, entropySource, "0444", "9");
+      bubblewrapArguments = config.bubblewrapArguments.map(
+        (value) => value === PRIVATE_NULL_SOURCE ? nullSource :
+          value === PRIVATE_URANDOM_SOURCE ? entropySource : value,
+      );
+    }
+
     const launched = spawn(
       config.bash,
       [
@@ -164,7 +189,7 @@ async function main(): Promise<void> {
         "jig-cgroup-enter",
         runCgroup,
         config.bubblewrap,
-        ...config.bubblewrapArguments,
+        ...bubblewrapArguments,
       ],
       { cwd: "/", env: {}, stdio: ["pipe", "pipe", "pipe", "pipe"] },
     );
@@ -199,7 +224,9 @@ async function main(): Promise<void> {
       requestedKillError ??= error;
     });
     const cleanupResult = await cleanup(runCgroup, parentCgroup, config.cleanupMs);
-    const cleanupError = cleanupResult.error;
+    const deviceCleanupError = await cleanupPrivateDevices(privateDeviceDirectory);
+    privateDeviceDirectory = deviceCleanupError === undefined ? undefined : privateDeviceDirectory;
+    const cleanupError = joinErrors(cleanupResult.error, deviceCleanupError);
     runCreated = cleanupError !== undefined;
     parentCreated = cleanupError !== undefined;
     const receipt = {
@@ -227,7 +254,9 @@ async function main(): Promise<void> {
       parentCreated ? parentCgroup : undefined,
       config.cleanupMs,
     );
-    const cleanupError = cleanupResult.error;
+    const deviceCleanupError = await cleanupPrivateDevices(privateDeviceDirectory);
+    privateDeviceDirectory = deviceCleanupError === undefined ? undefined : privateDeviceDirectory;
+    const cleanupError = joinErrors(cleanupResult.error, deviceCleanupError);
     const message = errorText(error);
     if (!terminalSent && control.writable) {
       send(control, {
@@ -248,6 +277,10 @@ async function main(): Promise<void> {
   } finally {
     clearTimeout(deadline);
     control.end();
+    if (privateDeviceDirectory !== undefined) {
+      const error = await cleanupPrivateDevices(privateDeviceDirectory);
+      if (error !== undefined) process.stderr.write(`jig private device cleanup failed: ${error}\n`);
+    }
   }
 }
 
@@ -289,8 +322,10 @@ function parseArguments(arguments_: readonly string[]): Configuration {
     throw new Error("helper cgroup target is outside the Jig-owned naming boundary");
   }
   const bubblewrap = required("bubblewrap");
+  const mknod = required("mknod");
   const bash = required("bash");
-  if (!bubblewrap.startsWith("/") || !bash.startsWith("/") || bubblewrapArguments.length === 0) {
+  if (!bubblewrap.startsWith("/") || !mknod.startsWith("/") || !bash.startsWith("/") ||
+      bubblewrapArguments.length === 0) {
     throw new Error("invalid Bubblewrap launch");
   }
   return {
@@ -306,9 +341,54 @@ function parseArguments(arguments_: readonly string[]): Configuration {
     uid: nonnegativeInteger("uid"),
     gid: nonnegativeInteger("gid"),
     bubblewrap,
+    mknod,
     bash,
     bubblewrapArguments,
   };
+}
+
+async function runMknod(
+  executable: string,
+  path: string,
+  mode: "0444" | "0666",
+  minor: "3" | "9",
+): Promise<void> {
+  const child = spawn(executable, ["-m", mode, path, "c", "1", minor], {
+    cwd: "/",
+    env: {},
+    stdio: ["ignore", "ignore", "pipe"],
+  });
+  let stderr = "";
+  child.stderr?.setEncoding("utf8");
+  child.stderr?.on("data", (chunk) => {
+    stderr += String(chunk);
+  });
+  const exit = await new Promise<{ code: number | null; signal: string | null }>((resolve, reject) => {
+    child.once("error", reject);
+    child.once("close", (code, signal) => resolve({ code, signal }));
+  });
+  if (exit.code !== 0) throw new Error(`private runtime device creation failed: ${stderr.trim() || exit.signal}`);
+  const information = await stat(path);
+  if (!information.isCharacterDevice() ||
+      (information.mode & 0o777) !== Number.parseInt(mode, 8) ||
+      information.uid !== 0 || information.gid !== 0) {
+    throw new Error("private runtime device has unexpected ownership or mode");
+  }
+}
+
+async function cleanupPrivateDevices(directory: string | undefined): Promise<string | undefined> {
+  if (directory === undefined) return undefined;
+  try {
+    await rm(directory, { recursive: true, force: false });
+    return undefined;
+  } catch (error) {
+    return errorText(error);
+  }
+}
+
+function joinErrors(...errors: readonly (string | undefined)[]): string | undefined {
+  const present = errors.filter((error): error is string => error !== undefined);
+  return present.length === 0 ? undefined : present.join("; ");
 }
 
 async function connectControl(path: string): Promise<Socket> {

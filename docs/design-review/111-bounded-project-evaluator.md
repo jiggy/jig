@@ -1,7 +1,9 @@
 # Bounded project evaluator
 
-**Status:** implemented private one-module checkpoint. It publishes no
-evaluator, Sandbox Backend, or administration API.
+**Status:** implemented private one-module checkpoint. Its root-only Bun
+qualification is historical and superseded by
+[`141-bun-and-run-lifecycle-closure.md`](141-bun-and-run-lifecycle-closure.md).
+It publishes no evaluator, Sandbox Backend, or administration API.
 
 The package/Binding linker now has an inert semantic consumer. The next trust
 boundary turns captured TypeScript declarations into the plain values that
