@@ -211,7 +211,10 @@ async function disposeController(
 }
 
 function projectStatus(run: PrivateRootRunSnapshot): RootRunStatus {
-  const base = { runId: run.runId, submissionId: run.submissionId, target: run.target };
+  if (run.origin.kind !== "private-root-external-submission-origin/1") {
+    throw new Error("Root Administration cannot project a non-external root Run");
+  }
+  const base = { runId: run.runId, submissionId: run.origin.submissionId, target: run.target };
   const value = run.state === "spawn-intent"
     ? { ...base, state: "pending" as const }
     : { ...base, state: "terminal" as const, terminal: projectTerminal(run) };

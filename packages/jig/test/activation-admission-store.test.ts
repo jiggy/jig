@@ -52,6 +52,11 @@ import {
 import { normalizePrivateRootFlowCallAllocation } from "../src/internal/root-flow-call-state.js";
 import { normalizePrivateRootJournalAppendAllocation } from "../src/internal/root-journal-effect-state.js";
 import {
+  createPrivateExternalSubmissionOrigin,
+  encodePrivateRootRunOrigin,
+  privateRootRunOriginDigest,
+} from "../src/internal/root-run-state.js";
+import {
   decodePrivateActivationCandidate,
   encodePrivateActivationCandidate,
   privateActivationCandidateDigest,
@@ -69,7 +74,7 @@ const CREATE_REVIEW_PLANS = "CREATE TABLE review_plans (plan_digest TEXT PRIMARY
 const CREATE_ADMISSIONS = "CREATE TABLE admissions (revision INTEGER PRIMARY KEY CHECK (revision BETWEEN 1 AND 9007199254740991), admission_digest TEXT NOT NULL UNIQUE, base_generation TEXT UNIQUE REFERENCES admissions(admission_digest), plan_digest TEXT NOT NULL UNIQUE REFERENCES review_plans(plan_digest), admission_bytes BLOB NOT NULL CHECK (length(admission_bytes) BETWEEN 1 AND 16777216)) STRICT";
 const CREATE_ADMISSION_HEAD = "CREATE TABLE admission_head (singleton INTEGER PRIMARY KEY CHECK (singleton = 1), revision INTEGER REFERENCES admissions(revision)) STRICT";
 const CREATE_COORDINATOR_HEAD = "CREATE TABLE coordinator_head (singleton INTEGER PRIMARY KEY CHECK (singleton = 1), epoch INTEGER NOT NULL CHECK (epoch BETWEEN 0 AND 9007199254740991)) STRICT";
-const CREATE_ROOT_RUNS = "CREATE TABLE root_runs (run_id TEXT PRIMARY KEY, submission_id TEXT NOT NULL UNIQUE, submission_digest TEXT NOT NULL, admission_digest TEXT NOT NULL REFERENCES admissions(admission_digest), candidate_revision INTEGER NOT NULL REFERENCES candidates(revision), coordinator_epoch INTEGER NOT NULL CHECK (coordinator_epoch BETWEEN 1 AND 9007199254740991), request_bytes BLOB NOT NULL CHECK (length(request_bytes) BETWEEN 1 AND 16777216)) STRICT";
+const CREATE_ROOT_RUNS = "CREATE TABLE root_runs (run_id TEXT PRIMARY KEY, origin_digest TEXT NOT NULL UNIQUE, origin_bytes BLOB NOT NULL CHECK (length(origin_bytes) BETWEEN 1 AND 16777216), admission_digest TEXT NOT NULL REFERENCES admissions(admission_digest), candidate_revision INTEGER NOT NULL REFERENCES candidates(revision), coordinator_epoch INTEGER NOT NULL CHECK (coordinator_epoch BETWEEN 1 AND 9007199254740991), request_bytes BLOB NOT NULL CHECK (length(request_bytes) BETWEEN 1 AND 16777216)) STRICT";
 const CREATE_ROOT_SPAWN_INTENTS = "CREATE TABLE root_spawn_intents (run_id TEXT PRIMARY KEY REFERENCES root_runs(run_id), intent_digest TEXT NOT NULL UNIQUE, intent_bytes BLOB NOT NULL CHECK (length(intent_bytes) BETWEEN 1 AND 16777216)) STRICT";
 const CREATE_ROOT_EXECUTION_LIFECYCLES = "CREATE TABLE root_execution_lifecycles (run_id TEXT PRIMARY KEY REFERENCES root_spawn_intents(run_id), allocation_digest TEXT NOT NULL UNIQUE, allocation_bytes BLOB NOT NULL CHECK (length(allocation_bytes) BETWEEN 1 AND 16777216), plan_digest TEXT UNIQUE, plan_bytes BLOB, backing_digest TEXT UNIQUE, backing_bytes BLOB, sandbox_digest TEXT UNIQUE, sandbox_bytes BLOB, prepared_digest TEXT UNIQUE, prepared_bytes BLOB, provisional_digest TEXT UNIQUE, provisional_bytes BLOB, fence_digest TEXT UNIQUE, fence_bytes BLOB, release_digest TEXT UNIQUE, release_bytes BLOB, admitted_digest TEXT UNIQUE, admitted_bytes BLOB, CHECK ((plan_digest IS NULL) = (plan_bytes IS NULL)), CHECK ((backing_digest IS NULL) = (backing_bytes IS NULL)), CHECK ((sandbox_digest IS NULL) = (sandbox_bytes IS NULL)), CHECK ((prepared_digest IS NULL) = (prepared_bytes IS NULL)), CHECK ((provisional_digest IS NULL) = (provisional_bytes IS NULL)), CHECK ((fence_digest IS NULL) = (fence_bytes IS NULL)), CHECK ((release_digest IS NULL) = (release_bytes IS NULL)), CHECK ((admitted_digest IS NULL) = (admitted_bytes IS NULL)), CHECK (backing_digest IS NULL OR plan_digest IS NOT NULL), CHECK (sandbox_digest IS NULL OR backing_digest IS NOT NULL), CHECK (prepared_digest IS NULL OR sandbox_digest IS NOT NULL), CHECK (fence_digest IS NULL OR sandbox_digest IS NOT NULL), CHECK (admitted_digest IS NULL OR (provisional_digest IS NOT NULL AND release_digest IS NOT NULL))) STRICT";
 const CREATE_ROOT_EXECUTION_CLOSURES = "CREATE TABLE root_execution_closures (run_id TEXT PRIMARY KEY REFERENCES root_execution_lifecycles(run_id), closure_digest TEXT NOT NULL UNIQUE, closure_bytes BLOB NOT NULL CHECK (length(closure_bytes) BETWEEN 1 AND 16777216), UNIQUE (run_id, closure_digest)) STRICT";
@@ -152,7 +157,7 @@ describe.serial("private activation admission SQLite store", () => {
           "root_terminals",
         ]);
         expect(database.query("PRAGMA application_id").get().application_id).toBe(0x4a494741);
-        expect(database.query("PRAGMA user_version").get().user_version).toBe(10);
+        expect(database.query("PRAGMA user_version").get().user_version).toBe(11);
         expect(database.query("SELECT count(*) AS count FROM review_plans").get().count).toBe(1);
       } finally {
         database.close(true);
@@ -257,6 +262,33 @@ describe.serial("private activation admission SQLite store", () => {
     }
   });
 
+  test("fails closed on the preceding private schema instead of migrating it", async () => {
+    const fixture = await createFixture();
+    try {
+      const plan = await createPrivateActivationReviewPlan({
+        projectRoot: fixture.root,
+        packageStoreRoot: fixture.store,
+        lockMode: "update",
+      });
+      const database = openSqlite(fixture.database, "readwrite");
+      database.exec("PRAGMA user_version=10");
+      database.close(true);
+
+      await expect(loadPrivateActivationReviewPlan({
+        projectRoot: fixture.root,
+        packageStoreRoot: fixture.store,
+        planDigest: plan.planDigest,
+      })).rejects.toMatchObject({ code: "ADMISSION_SCHEMA_VERSION" });
+
+      const unchanged = openSqlite(fixture.database, "readonly");
+      try {
+        expect(unchanged.query("PRAGMA user_version").get().user_version).toBe(10);
+      } finally { unchanged.close(true); }
+    } finally {
+      await fixture.dispose();
+    }
+  });
+
   test("persists write-once root execution closure and leaves takeover work pending until fenced", async () => {
     const fixture = await createFixture("ready");
     let coordinator: Awaited<ReturnType<typeof openPrivateProjectCoordinator>> | undefined;
@@ -291,7 +323,10 @@ describe.serial("private activation admission SQLite store", () => {
       expect(attempts.filter(({ launch }) => launch !== undefined)).toHaveLength(1);
       const first = attempts.find(({ launch }) => launch !== undefined)!;
       expect(first.run).toMatchObject({
-        submissionId: "ticket-1",
+        origin: {
+          kind: "private-root-external-submission-origin/1",
+          submissionId: "ticket-1",
+        },
         target: { kind: "flow", path: "flows/run" },
         input: { value: "first" },
         coordinatorEpoch: 1,
@@ -306,6 +341,43 @@ describe.serial("private activation admission SQLite store", () => {
       const duplicate = attempts.find(({ launch }) => launch === undefined)!;
       expect(duplicate.run).toEqual(first.run);
       expect(duplicate.launch).toBeUndefined();
+      const expectedOrigin = createPrivateExternalSubmissionOrigin("ticket-1");
+      const expectedOriginBytes = encodePrivateRootRunOrigin(expectedOrigin);
+      let originStore = openSqlite(fixture.database, "readwrite");
+      const storedOrigin = originStore.query(
+        "SELECT origin_digest, origin_bytes FROM root_runs WHERE run_id = ?1",
+      ).get(first.run.runId) as { origin_digest: string; origin_bytes: Uint8Array };
+      expect(storedOrigin.origin_digest).toBe(privateRootRunOriginDigest(expectedOrigin));
+      expect(new Uint8Array(storedOrigin.origin_bytes)).toEqual(expectedOriginBytes);
+      originStore.query("UPDATE root_runs SET origin_digest = ?1 WHERE run_id = ?2")
+        .run(`sha256:${"0".repeat(64)}`, first.run.runId);
+      originStore.close(true);
+      await expect(loadPrivateRootRun({
+        projectRoot: fixture.root,
+        runId: first.run.runId,
+      })).rejects.toMatchObject({ code: "ADMISSION_STATE_CORRUPT" });
+
+      originStore = openSqlite(fixture.database, "readwrite");
+      originStore.query("UPDATE root_runs SET origin_digest = ?1, origin_bytes = ?2 WHERE run_id = ?3")
+        .run(
+          storedOrigin.origin_digest,
+          encodePrivateRootRunOrigin(createPrivateExternalSubmissionOrigin("ticket-other")),
+          first.run.runId,
+        );
+      originStore.close(true);
+      await expect(loadPrivateRootRun({
+        projectRoot: fixture.root,
+        runId: first.run.runId,
+      })).rejects.toMatchObject({ code: "ADMISSION_STATE_CORRUPT" });
+
+      originStore = openSqlite(fixture.database, "readwrite");
+      originStore.query("UPDATE root_runs SET origin_bytes = ?1 WHERE run_id = ?2")
+        .run(expectedOriginBytes, first.run.runId);
+      originStore.close(true);
+      expect(await loadPrivateRootRun({
+        projectRoot: fixture.root,
+        runId: first.run.runId,
+      })).toEqual(first.run);
       await expect(submitPrivateRootRun({
         coordinator,
         projectRoot: fixture.root,
@@ -1546,7 +1618,7 @@ async function createFixture(
     const encoded = encodePrivateActivationCandidate(candidate);
 
     const state = join(root, ".jig");
-    const databasePath = join(state, "private-activation-admission-v10.sqlite3");
+    const databasePath = join(state, "private-activation-admission-v11.sqlite3");
     await mkdir(state, { mode: 0o700 });
     const databaseFile = await open(
       databasePath,
@@ -1585,7 +1657,7 @@ async function createFixture(
         "INSERT INTO coordinator_head(singleton, epoch) VALUES (1, 0)",
         "INSERT INTO journal_head(singleton, position) VALUES (1, 0)",
         "PRAGMA application_id=1246316353",
-        "PRAGMA user_version=10",
+        "PRAGMA user_version=11",
       ].join(";"));
       database.exec("BEGIN IMMEDIATE");
       database.query(
@@ -1761,7 +1833,7 @@ async function createComposedFixture(): Promise<Fixture> {
     });
     const encoded = encodePrivateActivationCandidate(candidate);
     const state = join(root, ".jig");
-    const databasePath = join(state, "private-activation-admission-v10.sqlite3");
+    const databasePath = join(state, "private-activation-admission-v11.sqlite3");
     await mkdir(state, { mode: 0o700 });
     const databaseFile = await open(
       databasePath,
@@ -1800,7 +1872,7 @@ async function createComposedFixture(): Promise<Fixture> {
         "INSERT INTO coordinator_head(singleton, epoch) VALUES (1, 0)",
         "INSERT INTO journal_head(singleton, position) VALUES (1, 0)",
         "PRAGMA application_id=1246316353",
-        "PRAGMA user_version=10",
+        "PRAGMA user_version=11",
       ].join(";"));
       database.exec("BEGIN IMMEDIATE");
       database.query(

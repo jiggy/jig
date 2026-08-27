@@ -38,16 +38,21 @@ import {
   type PrivateActivationPlan,
 } from "./activation-admission.js";
 import {
+  createPrivateExternalSubmissionOrigin,
   createPrivateRootSubmissionRequest,
+  decodePrivateRootRunOrigin,
   decodePrivateRootSubmissionRequest,
+  encodePrivateRootRunOrigin,
   failedPrivateRootTerminal,
   normalizePrivateRootSpawnIntent,
   normalizePrivateRootTerminal,
+  privateRootRunIdentityDigest,
+  privateRootRunOriginDigest,
   privateRootSpawnIntentDigest,
   privateRootRequestDigest,
   privateRootSubmissionDigest,
   privateRootTerminalBytes,
-  requirePrivateRootSubmissionId,
+  type PrivateRootRunOrigin,
   type PrivateRootRunSnapshot,
   type PrivateRootRunSpawnIntent,
   type PrivateRootRunTerminal,
@@ -93,12 +98,12 @@ export type {
 } from "./root-run-state.js";
 
 const STATE_DIRECTORY = ".jig";
-const DATABASE_NAME = "private-activation-admission-v10.sqlite3";
+const DATABASE_NAME = "private-activation-admission-v11.sqlite3";
 const COORDINATOR_DATABASE_NAME = "private-project-coordinator-v1.sqlite3";
 const LOCK_NAME = "jig.lock";
 const LOCK_STAGE_NAME = "private-activation-jig-lock-v1.stage";
-const SCHEMA_VERSION = 10n;
-const APPLICATION_ID = 0x4a494741n; // JIGA: schema 10
+const SCHEMA_VERSION = 11n;
+const APPLICATION_ID = 0x4a494741n; // JIGA: schema 11
 const COORDINATOR_SCHEMA_VERSION = 1n;
 const COORDINATOR_APPLICATION_ID = 0x4a494743n; // JIGC
 const BUSY_TIMEOUT_MS = 250;
@@ -114,7 +119,7 @@ const CREATE_REVIEW_PLANS = "CREATE TABLE review_plans (plan_digest TEXT PRIMARY
 const CREATE_ADMISSIONS = "CREATE TABLE admissions (revision INTEGER PRIMARY KEY CHECK (revision BETWEEN 1 AND 9007199254740991), admission_digest TEXT NOT NULL UNIQUE, base_generation TEXT UNIQUE REFERENCES admissions(admission_digest), plan_digest TEXT NOT NULL UNIQUE REFERENCES review_plans(plan_digest), admission_bytes BLOB NOT NULL CHECK (length(admission_bytes) BETWEEN 1 AND 16777216)) STRICT";
 const CREATE_ADMISSION_HEAD = "CREATE TABLE admission_head (singleton INTEGER PRIMARY KEY CHECK (singleton = 1), revision INTEGER REFERENCES admissions(revision)) STRICT";
 const CREATE_COORDINATOR_HEAD = "CREATE TABLE coordinator_head (singleton INTEGER PRIMARY KEY CHECK (singleton = 1), epoch INTEGER NOT NULL CHECK (epoch BETWEEN 0 AND 9007199254740991)) STRICT";
-const CREATE_ROOT_RUNS = "CREATE TABLE root_runs (run_id TEXT PRIMARY KEY, submission_id TEXT NOT NULL UNIQUE, submission_digest TEXT NOT NULL, admission_digest TEXT NOT NULL REFERENCES admissions(admission_digest), candidate_revision INTEGER NOT NULL REFERENCES candidates(revision), coordinator_epoch INTEGER NOT NULL CHECK (coordinator_epoch BETWEEN 1 AND 9007199254740991), request_bytes BLOB NOT NULL CHECK (length(request_bytes) BETWEEN 1 AND 16777216)) STRICT";
+const CREATE_ROOT_RUNS = "CREATE TABLE root_runs (run_id TEXT PRIMARY KEY, origin_digest TEXT NOT NULL UNIQUE, origin_bytes BLOB NOT NULL CHECK (length(origin_bytes) BETWEEN 1 AND 16777216), admission_digest TEXT NOT NULL REFERENCES admissions(admission_digest), candidate_revision INTEGER NOT NULL REFERENCES candidates(revision), coordinator_epoch INTEGER NOT NULL CHECK (coordinator_epoch BETWEEN 1 AND 9007199254740991), request_bytes BLOB NOT NULL CHECK (length(request_bytes) BETWEEN 1 AND 16777216)) STRICT";
 const CREATE_ROOT_SPAWN_INTENTS = "CREATE TABLE root_spawn_intents (run_id TEXT PRIMARY KEY REFERENCES root_runs(run_id), intent_digest TEXT NOT NULL UNIQUE, intent_bytes BLOB NOT NULL CHECK (length(intent_bytes) BETWEEN 1 AND 16777216)) STRICT";
 const CREATE_ROOT_EXECUTION_LIFECYCLES = "CREATE TABLE root_execution_lifecycles (run_id TEXT PRIMARY KEY REFERENCES root_spawn_intents(run_id), allocation_digest TEXT NOT NULL UNIQUE, allocation_bytes BLOB NOT NULL CHECK (length(allocation_bytes) BETWEEN 1 AND 16777216), plan_digest TEXT UNIQUE, plan_bytes BLOB, backing_digest TEXT UNIQUE, backing_bytes BLOB, sandbox_digest TEXT UNIQUE, sandbox_bytes BLOB, prepared_digest TEXT UNIQUE, prepared_bytes BLOB, provisional_digest TEXT UNIQUE, provisional_bytes BLOB, fence_digest TEXT UNIQUE, fence_bytes BLOB, release_digest TEXT UNIQUE, release_bytes BLOB, admitted_digest TEXT UNIQUE, admitted_bytes BLOB, CHECK ((plan_digest IS NULL) = (plan_bytes IS NULL)), CHECK ((backing_digest IS NULL) = (backing_bytes IS NULL)), CHECK ((sandbox_digest IS NULL) = (sandbox_bytes IS NULL)), CHECK ((prepared_digest IS NULL) = (prepared_bytes IS NULL)), CHECK ((provisional_digest IS NULL) = (provisional_bytes IS NULL)), CHECK ((fence_digest IS NULL) = (fence_bytes IS NULL)), CHECK ((release_digest IS NULL) = (release_bytes IS NULL)), CHECK ((admitted_digest IS NULL) = (admitted_bytes IS NULL)), CHECK (backing_digest IS NULL OR plan_digest IS NOT NULL), CHECK (sandbox_digest IS NULL OR backing_digest IS NOT NULL), CHECK (prepared_digest IS NULL OR sandbox_digest IS NOT NULL), CHECK (fence_digest IS NULL OR sandbox_digest IS NOT NULL), CHECK (admitted_digest IS NULL OR (provisional_digest IS NOT NULL AND release_digest IS NOT NULL))) STRICT";
 const CREATE_ROOT_EXECUTION_CLOSURES = "CREATE TABLE root_execution_closures (run_id TEXT PRIMARY KEY REFERENCES root_execution_lifecycles(run_id), closure_digest TEXT NOT NULL UNIQUE, closure_bytes BLOB NOT NULL CHECK (length(closure_bytes) BETWEEN 1 AND 16777216), UNIQUE (run_id, closure_digest)) STRICT";
@@ -254,8 +259,8 @@ interface ReacquiredArtifacts {
 
 interface RootRunRow {
   readonly run_id: string;
-  readonly submission_id: string;
-  readonly submission_digest: string;
+  readonly origin_digest: string;
+  readonly origin_bytes: Uint8Array;
   readonly admission_digest: string;
   readonly candidate_revision: bigint;
   readonly coordinator_epoch: bigint;
@@ -745,16 +750,18 @@ export async function submitPrivateRootRun(input: {
   const coordinator = requirePrivateProjectCoordinator(input.coordinator);
   await coordinator.verify();
   const request = createPrivateRootSubmissionRequest(input);
+  const origin = createPrivateExternalSubmissionOrigin(input.submissionId);
+  const originDigest = privateRootRunOriginDigest(origin);
   const submissionDigest = privateRootSubmissionDigest(request);
   const owner = await openStateOwner(input.projectRoot, false);
   let artifacts: ReacquiredArtifacts | undefined;
   let failure: unknown;
   try {
     requireCoordinatorRoot(coordinator, owner.root);
-    const replay = findRootRunBySubmission(owner.database, input.submissionId);
+    const replay = findRootRunByOrigin(owner.database, originDigest);
     if (replay !== null) {
       const run = loadRootRunSnapshot(owner.database, replay, owner.root);
-      requireSameSubmission(run, submissionDigest);
+      requireSameExternalSubmission(run, submissionDigest);
       await owner.finish();
       return Object.freeze({ run });
     }
@@ -769,25 +776,26 @@ export async function submitPrivateRootRun(input: {
     artifacts = await reacquireCandidateArtifacts(input.packageStoreRoot, candidate);
 
     const terminal = rootPreflightTerminal(candidate, request, artifacts);
-    const runId = privateDomainDigest("JIG-Private-Root-Run/1", {
+    const runId = privateRootRunIdentityDigest({
       project: {
         device: owner.root.information.dev.toString(),
         inode: owner.root.information.ino.toString(),
       },
-      submissionId: input.submissionId,
-      submissionDigest,
+      origin,
       requestDigest: privateRootRequestDigest(request),
       coordinatorEpoch: coordinator.epoch,
     });
+    const originBytes = encodePrivateRootRunOrigin(origin);
     const requestBytes = canonicalJson(request as unknown as JsonValue);
+    requireStoredSize(originBytes, "root Run origin");
     requireStoredSize(requestBytes, "root Run request");
 
     const created = await immediate(owner, async () => {
       await coordinator.verify();
-      const raced = findRootRunBySubmission(owner.database, input.submissionId);
+      const raced = findRootRunByOrigin(owner.database, originDigest);
       if (raced !== null) {
         const run = loadRootRunSnapshot(owner.database, raced, owner.root);
-        requireSameSubmission(run, submissionDigest);
+        requireSameExternalSubmission(run, submissionDigest);
         return Object.freeze({ run });
       }
       const currentHead = readAdmissionHead(owner.database, owner.root);
@@ -799,11 +807,11 @@ export async function submitPrivateRootRun(input: {
       loadAndCrossCheckAdmission(owner.database, currentAdmission, owner.root);
 
       runFinalized(owner.database,
-        "INSERT INTO root_runs(run_id, submission_id, submission_digest, admission_digest, candidate_revision, coordinator_epoch, request_bytes) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        "INSERT INTO root_runs(run_id, origin_digest, origin_bytes, admission_digest, candidate_revision, coordinator_epoch, request_bytes) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
         [
         runId,
-        input.submissionId,
-        submissionDigest,
+        originDigest,
+        originBytes,
         admission.admissionDigest,
         candidateRow.revision,
         coordinator.epoch,
@@ -1361,7 +1369,7 @@ export async function listPrivateRootExecutionWork(input: {
     }
     const comparison = input.epoch === "current" ? "=" : "<";
     const query = statement<RootRunRow>(owner.database, [
-      "SELECT root_runs.run_id, root_runs.submission_id, root_runs.submission_digest,",
+      "SELECT root_runs.run_id, root_runs.origin_digest, root_runs.origin_bytes,",
       "root_runs.admission_digest, root_runs.candidate_revision, root_runs.coordinator_epoch, root_runs.request_bytes",
       "FROM root_runs JOIN root_spawn_intents USING (run_id)",
       "LEFT JOIN root_terminals USING (run_id)",
@@ -1428,7 +1436,7 @@ export async function reacquirePrivateRootExecutionWork(input: {
       if (run.state === "terminal") invalid("RUN_ALREADY_TERMINAL", "root Run became terminal during reacquisition");
       if (run.candidateRevision !== safeRevision(initialCandidateRow.revision) ||
           run.admissionDigest !== initialRun.admissionDigest ||
-          run.submissionDigest !== initialRun.submissionDigest ||
+          privateRootRunOriginDigest(run.origin) !== privateRootRunOriginDigest(initialRun.origin) ||
           run.coordinatorEpoch !== initialRun.coordinatorEpoch) {
         corrupt("root Run identity changed during pinned candidate reacquisition");
       }
@@ -1768,20 +1776,20 @@ function rootPreflightTerminal(
   return undefined;
 }
 
-function findRootRunBySubmission(database: SqliteDatabase, submissionId: string): RootRunRow | null {
+function findRootRunByOrigin(database: SqliteDatabase, originDigest: string): RootRunRow | null {
   const query = statement<RootRunRow>(database, [
-    "SELECT run_id, submission_id, submission_digest, admission_digest, candidate_revision, coordinator_epoch, request_bytes",
-    "FROM root_runs WHERE submission_id = ?1",
+    "SELECT run_id, origin_digest, origin_bytes, admission_digest, candidate_revision, coordinator_epoch, request_bytes",
+    "FROM root_runs WHERE origin_digest = ?1",
   ].join(" ")).safeIntegers(true);
   try {
-    const row = query.get(submissionId);
+    const row = query.get(originDigest);
     return row === null ? null : copiedRootRunRow(row);
   } finally { query.finalize(); }
 }
 
 function requireRootRunRow(database: SqliteDatabase, runId: string): RootRunRow {
   const query = statement<RootRunRow>(database, [
-    "SELECT run_id, submission_id, submission_digest, admission_digest, candidate_revision, coordinator_epoch, request_bytes",
+    "SELECT run_id, origin_digest, origin_bytes, admission_digest, candidate_revision, coordinator_epoch, request_bytes",
     "FROM root_runs WHERE run_id = ?1",
   ].join(" ")).safeIntegers(true);
   let row: RootRunRow | null;
@@ -2457,8 +2465,8 @@ function findRootTerminal(database: SqliteDatabase, runId: string): RootTerminal
 function copiedRootRunRow(row: RootRunRow): RootRunRow {
   return Object.freeze({
     run_id: row.run_id,
-    submission_id: row.submission_id,
-    submission_digest: row.submission_digest,
+    origin_digest: row.origin_digest,
+    origin_bytes: copiedBlob(row.origin_bytes, "stored root Run origin"),
     admission_digest: row.admission_digest,
     candidate_revision: row.candidate_revision,
     coordinator_epoch: row.coordinator_epoch,
@@ -2472,29 +2480,33 @@ function loadRootRunSnapshot(
   root: PrivateProjectRoot,
 ): PrivateRootRunSnapshot {
   requireDigest(row.run_id, "stored root Run");
-  try { requirePrivateRootSubmissionId(row.submission_id); }
-  catch { corrupt("stored root submission ID is invalid"); }
-  requireDigest(row.submission_digest, "stored root submission");
+  requireDigest(row.origin_digest, "stored root Run origin");
   requireDigest(row.admission_digest, "stored root admission");
   const coordinatorEpoch = safeRevision(row.coordinator_epoch);
   if (row.coordinator_epoch > readCoordinatorEpoch(database)) {
     corrupt("stored root Run names a future coordinator epoch");
   }
+  const originBytes = copiedBlob(row.origin_bytes, "stored root Run origin");
+  let origin: PrivateRootRunOrigin;
+  try { origin = decodePrivateRootRunOrigin(originBytes); }
+  catch { corrupt("stored root Run origin is invalid"); }
+  if (!sameBytes(originBytes, encodePrivateRootRunOrigin(origin)) ||
+      privateRootRunOriginDigest(origin) !== row.origin_digest) {
+    corrupt("stored root Run origin differs from its durable identity");
+  }
   let request: PrivateRootSubmissionRequest;
   try { request = decodePrivateRootSubmissionRequest(copiedBlob(row.request_bytes, "stored root Run request")); }
   catch { corrupt("stored root Run request is invalid"); }
-  if (privateRootSubmissionDigest(request) !== row.submission_digest) corrupt("stored root submission digest differs from its request");
-  const expectedRunId = privateDomainDigest("JIG-Private-Root-Run/1", {
+  const expectedRunId = privateRootRunIdentityDigest({
     project: {
       device: root.information.dev.toString(),
       inode: root.information.ino.toString(),
     },
-    submissionId: row.submission_id,
-    submissionDigest: row.submission_digest,
+    origin,
     requestDigest: privateRootRequestDigest(request),
     coordinatorEpoch,
   });
-  if (row.run_id !== expectedRunId) corrupt("stored root Run ID differs from its submission identity");
+  if (row.run_id !== expectedRunId) corrupt("stored root Run ID differs from its origin identity");
   const admissionRow = requireAdmissionByDigest(database, row.admission_digest);
   const admission = loadAndCrossCheckAdmission(database, admissionRow, root);
   const candidateRevision = safeRevision(row.candidate_revision);
@@ -2528,8 +2540,7 @@ function loadRootRunSnapshot(
   const terminal = terminalRow === null ? undefined : loadRootTerminalRow(terminalRow, row.run_id);
   return Object.freeze({
     runId: row.run_id,
-    submissionId: row.submission_id,
-    submissionDigest: row.submission_digest,
+    origin,
     admissionDigest: row.admission_digest,
     candidateRevision,
     coordinatorEpoch,
@@ -2541,8 +2552,17 @@ function loadRootRunSnapshot(
   });
 }
 
-function requireSameSubmission(run: PrivateRootRunSnapshot, submissionDigest: string): void {
-  if (run.submissionDigest !== submissionDigest) {
+function requireSameExternalSubmission(run: PrivateRootRunSnapshot, submissionDigest: string): void {
+  if (run.origin.kind !== "private-root-external-submission-origin/1") {
+    invalid("SUBMISSION_CONFLICT", "root submission ID collides with a non-submission Run origin");
+  }
+  const durableRequest = createPrivateRootSubmissionRequest({
+    submissionId: run.origin.submissionId,
+    target: run.target,
+    input: run.input,
+    deadlineUnixMs: run.deadlineUnixMs,
+  });
+  if (privateRootSubmissionDigest(durableRequest) !== submissionDigest) {
     invalid("SUBMISSION_CONFLICT", "root submission ID already names different immutable content");
   }
 }
@@ -2560,7 +2580,7 @@ function reconcileRootRunsBeforeEpoch(
   finally { future.finalize(); }
   if (futureCount !== 0n) corrupt("a root Run names the new or a future coordinator epoch before takeover");
   const query = statement<RootRunRow>(database, [
-    "SELECT root_runs.run_id, root_runs.submission_id, root_runs.submission_digest,",
+    "SELECT root_runs.run_id, root_runs.origin_digest, root_runs.origin_bytes,",
     "root_runs.admission_digest, root_runs.candidate_revision, root_runs.coordinator_epoch, root_runs.request_bytes",
     "FROM root_runs JOIN root_spawn_intents USING (run_id)",
     "LEFT JOIN root_terminals USING (run_id)",
@@ -2960,8 +2980,9 @@ function requireLaunchMatches(
   run: PrivateRootRunSnapshot,
   database: SqliteDatabase,
 ): void {
-  if (launch.run.runId !== run.runId || launch.run.submissionDigest !== run.submissionDigest) {
-    invalid("RUN_LAUNCH_CONFLICT", "root Run launch does not match durable submission state");
+  if (launch.run.runId !== run.runId ||
+      privateRootRunOriginDigest(launch.run.origin) !== privateRootRunOriginDigest(run.origin)) {
+    invalid("RUN_LAUNCH_CONFLICT", "root Run launch does not match durable origin state");
   }
   const row = requireRootRunRow(database, run.runId);
   const spawn = findRootSpawn(database, run.runId);
@@ -3362,7 +3383,7 @@ function verifySchema(database: SqliteDatabase, root: PrivateProjectRoot): void 
   if (actual.length !== EXPECTED_SCHEMA.length || actual.some((row, index) => {
     const expected = EXPECTED_SCHEMA[index]!;
     return row.type !== expected.type || row.name !== expected.name || row.table !== expected.table || row.sql !== expected.sql;
-  })) corrupt("private admission database schema differs from version 10");
+  })) corrupt("private admission database schema differs from version 11");
   if (statement<Record<string, unknown>>(database, "PRAGMA foreign_key_check").all().length !== 0) {
     corrupt("private admission database has broken foreign keys");
   }

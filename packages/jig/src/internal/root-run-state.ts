@@ -64,8 +64,7 @@ export type PrivateRootRunTerminal = RunHostTerminal | {
 
 export interface PrivateRootRunSnapshot {
   readonly runId: string;
-  readonly submissionId: string;
-  readonly submissionDigest: string;
+  readonly origin: PrivateRootRunOrigin;
   readonly admissionDigest: string;
   readonly candidateRevision: number;
   readonly coordinatorEpoch: number;
