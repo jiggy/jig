@@ -30,7 +30,7 @@ import {
   PrivateLinuxCgroupBackend,
   releasePrivateLinuxOwnerState,
   requirePrivateLinuxCgroupBackend,
-  type PrivateLinuxPreparedOwnerIdentity,
+  type PrivateLinuxCgroupBackendOptions,
   type PrivateLinuxLaunchPlan,
   type PrivateLinuxOwnerStateAllocationIdentity,
 } from "../src/internal/linux-cgroup-backend.js";
@@ -1841,6 +1841,7 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
       await mkdir(join(root, "flows", "parent"), { recursive: true });
       await mkdir(join(root, "flows", "child"), { recursive: true });
       await mkdir(join(root, "flows", "child-two"), { recursive: true });
+      await mkdir(join(root, "flows", "child-starting"), { recursive: true });
       await mkdir(join(root, "flows", "unavailable"), { recursive: true });
       await writeFile(join(root, "jig.ts"), [
         'import { defineJig, discover } from "@jigging/jig";',
@@ -1882,6 +1883,15 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         "});",
         "",
       ].join("\n"));
+      await writeFile(join(root, "bindings", "starting.ts"), [
+        'import { defineBinding, flowRef } from "@jigging/jig";',
+        "export default defineBinding({",
+        '  package: "flows/parent",',
+        '  settings: { marker: "starting" },',
+        '  slots: { child: flowRef("flows/child-starting") },',
+        "});",
+        "",
+      ].join("\n"));
 
       const parent = join(root, "flows", "parent");
       await writeFile(join(parent, "FLOW.md"), [
@@ -1895,7 +1905,7 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         $schema: "https://flow.dev/schemas/schema-1.json",
         type: "object",
         properties: {
-          marker: { enum: ["admitted", "missing", "multiple", "unavailable"] },
+          marker: { enum: ["admitted", "missing", "multiple", "unavailable", "starting"] },
         },
         required: ["marker"],
         additionalProperties: false,
@@ -2027,6 +2037,31 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         }
         await writeFile(join(childPath, "flow.py"), childProgram);
       }
+      const startingChild = join(root, "flows", "child-starting");
+      await writeFile(join(startingChild, "FLOW.md"), [
+        "---",
+        "name: starting-child",
+        "description: Delays its Run handshake to prove startup lifecycle handling.",
+        "---",
+        "",
+      ].join("\n"));
+      await writeFile(join(startingChild, "input.schema.json"), childInputSchema);
+      await writeFile(join(startingChild, "result.schema.json"), childResultSchema);
+      const startingPythonSdk = join(startingChild, "flowmd_sdk");
+      await mkdir(startingPythonSdk);
+      for (const name of ["__init__.py", "_json.py", "_runtime.py", "_service.py", "_types.py"]) {
+        await writeFile(join(startingPythonSdk, name), await readFile(join(import.meta.dir, "..", "..", "flowmd-sdk", "src", "flowmd_sdk", name)));
+      }
+      await writeFile(
+        join(startingChild, "flow.py"),
+        childProgram.replace("serve(run)\n", "import time\ntime.sleep(30)\nserve(run)\n"),
+      );
+      const startingPadding = join(startingChild, "padding");
+      await mkdir(startingPadding);
+      await Promise.all(Array.from({ length: 512 }, (_, index) => writeFile(
+        join(startingPadding, `${index.toString().padStart(4, "0")}.txt`),
+        `retained startup fixture ${index}\n`,
+      )));
       const unavailablePath = join(root, "flows", "unavailable");
       await writeFile(join(unavailablePath, "FLOW.md"), [
         "---",
@@ -2042,9 +2077,9 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         storeRoot: store,
         evaluator,
       });
-      expect(aggregate.linked.bindings).toHaveLength(4);
+      expect(aggregate.linked.bindings).toHaveLength(5);
       const requests = buildPrivateActivationRequests(aggregate.linked);
-      expect(requests).toHaveLength(7);
+      expect(requests).toHaveLength(9);
       const runtimeSupport = Object.freeze({
         bun: bun.runtimeSupport,
         python: python.runtimeSupport,
@@ -2116,20 +2151,25 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
       )!.request.target;
       expect(parentTarget).toEqual({ kind: "binding", id: "parent" });
 
-      controller = await openPrivateRootAdministrationController({
+      const openController = async (
+        selectedBackend: PrivateLinuxCgroupBackend = rootBackend,
+        runTimeoutMs = 25_000,
+      ) => await openPrivateRootAdministrationController({
         projectRoot: root,
         packageStoreRoot: store,
-        runTimeoutMs: 25_000,
+        runTimeoutMs,
         execute: (runId, coordinator, signal) => executePrivateRootRunLaunch({
           projectRoot: root,
           packageStoreRoot: store,
           runId,
           coordinator,
           runtimeSupport,
-          backend: rootBackend,
+          backend: selectedBackend,
           signal,
         }),
       });
+
+      controller = await openController();
       const handle = await controller.administration.startRun({
         submissionId: "composed-one",
         target: parentTarget,
@@ -2278,6 +2318,95 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
       controller = undefined;
       expect(await jigCgroups(host.scope)).toEqual([]);
 
+      controller = await openController();
+      const heldFence = await controller.administration.startRun({
+        submissionId: "composed-held-fence",
+        target: parentTarget,
+        input: { probe: "held-fence", childInput: { ticket: "held", delayMs: 2_000 } },
+      });
+      await waitForRootFlowCallFact(databasePath, heldFence.runId, "prepared");
+      expect(await countRootFlowCallFact(databasePath, heldFence.runId, "fence")).toBe(0);
+      expect(await controller.administration.runStatus(heldFence)).toMatchObject({ state: "pending" });
+      await controller.drain();
+      expect(await countRootFlowCallFact(databasePath, heldFence.runId, "fence")).toBe(1);
+      expect(await controller.administration.runStatus(heldFence)).toMatchObject({
+        state: "terminal",
+        terminal: { status: "succeeded", output: { marker: "admitted" } },
+      });
+      await controller.dispose();
+      controller = undefined;
+      expect(await jigCgroups(host.scope)).toEqual([]);
+
+      controller = await openController();
+      const cancelledDuringStartup = await controller.administration.startRun({
+        submissionId: "composed-cancel-startup",
+        target: bindingTarget("starting"),
+        input: {},
+      });
+      await waitForRootFlowCallFact(databasePath, cancelledDuringStartup.runId, "plan");
+      await controller.dispose();
+      controller = undefined;
+      controller = await openController();
+      expect(await controller.administration.runStatus(cancelledDuringStartup)).toMatchObject({
+        state: "terminal",
+        terminal: { status: "failed", code: "CANCELLED" },
+      });
+      expect(await countRootFlowCallFact(databasePath, cancelledDuringStartup.runId, "prepared")).toBe(0);
+      await controller.dispose();
+      controller = undefined;
+      expect(await jigCgroups(host.scope)).toEqual([]);
+
+      controller = await openController();
+      const cancelledWhileRunning = await controller.administration.startRun({
+        submissionId: "composed-cancel-running",
+        target: parentTarget,
+        input: { delayMs: 30_000 },
+      });
+      await waitForRootFlowCallFact(databasePath, cancelledWhileRunning.runId, "prepared");
+      await controller.dispose();
+      controller = undefined;
+      controller = await openController();
+      expect(await controller.administration.runStatus(cancelledWhileRunning)).toMatchObject({
+        state: "terminal",
+        terminal: { status: "failed", code: "CANCELLED" },
+      });
+      await controller.dispose();
+      controller = undefined;
+      expect(await jigCgroups(host.scope)).toEqual([]);
+
+      controller = await openController(rootBackend, 30_000);
+      const childDeadline = await controller.administration.startRun({
+        submissionId: "composed-child-deadline",
+        target: parentTarget,
+        input: { delayMs: 60_000 },
+      });
+      await waitForRootFlowCallFact(databasePath, childDeadline.runId, "prepared", 25_000);
+      await controller.drain();
+      expect(await controller.administration.runStatus(childDeadline)).toMatchObject({
+        state: "terminal",
+        terminal: { status: "failed", code: "DEADLINE_EXCEEDED" },
+      });
+      await controller.dispose();
+      controller = undefined;
+      expect(await jigCgroups(host.scope)).toEqual([]);
+
+      controller = await openController(rootBackend, 20_000);
+      const startupDeadline = await controller.administration.startRun({
+        submissionId: "composed-startup-deadline",
+        target: bindingTarget("starting"),
+        input: {},
+      });
+      await controller.drain();
+      expect(await controller.administration.runStatus(startupDeadline)).toMatchObject({
+        state: "terminal",
+        terminal: { status: "failed", code: "DEADLINE_EXCEEDED" },
+      });
+      expect(await countRootFlowCallFact(databasePath, startupDeadline.runId, "plan")).toBe(1);
+      expect(await countRootFlowCallFact(databasePath, startupDeadline.runId, "prepared")).toBe(0);
+      await controller.dispose();
+      controller = undefined;
+      expect(await jigCgroups(host.scope)).toEqual([]);
+
       crashed = spawn(process.execPath, [
         join(import.meta.dir, "fixtures", "composed-root-run-controller.ts"),
         root,
@@ -2286,47 +2415,18 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
       ], { stdio: ["ignore", "pipe", "pipe"] });
       const crashedDiagnostics = collect(crashed.stderr!);
       const abandoned = JSON.parse(await firstLine(crashed.stdout!)) as { readonly runId: string };
-      const childStartedDeadline = Date.now() + 20_000;
-      while (true) {
-        let started = 0;
-        let observation: any;
-        try {
-          observation = sqlite.Database.open(
-            databasePath,
-            sqlite.constants.SQLITE_OPEN_READONLY | sqlite.constants.SQLITE_OPEN_NOFOLLOW,
-          );
-          started = observation.query(
-            "SELECT count(*) AS count FROM root_flow_call_facts WHERE parent_run_id = ?1 AND fact_name = 'prepared'",
-          ).get(abandoned.runId).count;
-        } catch (error) {
-          if ((error as { readonly code?: unknown }).code !== "SQLITE_BUSY") throw error;
-        } finally { observation?.close(true); }
-        if (started === 1) break;
-        if (Date.now() >= childStartedDeadline) {
-          crashed.kill("SIGKILL");
-          await childExit(crashed);
-          throw new Error(`child Flow did not reach prepared state: ${await crashedDiagnostics}`);
-        }
-        await Bun.sleep(50);
-      }
+      await waitForRootFlowCallFact(databasePath, abandoned.runId, "prepared", 20_000).catch(
+        async (error) => {
+          crashed!.kill("SIGKILL");
+          await childExit(crashed!);
+          throw new Error(`${String(error)}: ${await crashedDiagnostics}`);
+        },
+      );
       crashed.kill("SIGKILL");
       expect((await childExit(crashed)).signal).toBe("SIGKILL");
       crashed = undefined;
 
-      controller = await openPrivateRootAdministrationController({
-        projectRoot: root,
-        packageStoreRoot: store,
-        runTimeoutMs: 25_000,
-        execute: (runId, coordinator, signal) => executePrivateRootRunLaunch({
-          projectRoot: root,
-          packageStoreRoot: store,
-          runId,
-          coordinator,
-          runtimeSupport,
-          backend: rootBackend,
-          signal,
-        }),
-      });
+      controller = await openController();
       expect(await controller.administration.runStatus(abandoned)).toMatchObject({
         state: "terminal",
         terminal: { status: "lost", code: "COORDINATOR_LOST" },
@@ -2341,8 +2441,47 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         expect(recovered.query(
           "SELECT count(*) AS count FROM root_flow_call_closures WHERE parent_run_id = ?1",
         ).get(abandoned.runId).count).toBe(1);
+        expect(recovered.query(
+          "SELECT count(*) AS count FROM root_flow_call_facts WHERE parent_run_id = ?1 AND fact_name = 'prepared'",
+        ).get(abandoned.runId).count).toBe(1);
       } finally { recovered.close(true); }
       expect(await jigCgroups(host.scope)).toEqual([]);
+
+      crashed = spawn(process.execPath, [
+        join(import.meta.dir, "fixtures", "composed-root-run-controller.ts"),
+        root,
+        store,
+        "composed-crash-before-admission",
+        "starting",
+      ], { stdio: ["ignore", "pipe", "pipe"] });
+      const preAdmissionDiagnostics = collect(crashed.stderr!);
+      const preAdmission = JSON.parse(await firstLine(crashed.stdout!)) as { readonly runId: string };
+      await waitForRootFlowCallFact(databasePath, preAdmission.runId, "plan", 20_000).catch(
+        async (error) => {
+          crashed!.kill("SIGKILL");
+          await childExit(crashed!);
+          throw new Error(`${String(error)}: ${await preAdmissionDiagnostics}`);
+        },
+      );
+      expect(await countRootFlowCallFact(databasePath, preAdmission.runId, "sandbox")).toBe(0);
+      crashed.kill("SIGKILL");
+      expect((await childExit(crashed)).signal).toBe("SIGKILL");
+      crashed = undefined;
+
+      controller = await openController();
+      expect(await controller.administration.runStatus(preAdmission)).toMatchObject({
+        state: "terminal",
+        terminal: { status: "lost", code: "COORDINATOR_LOST" },
+      });
+      await controller.dispose();
+      controller = undefined;
+      expect(await countRootFlowCallFact(databasePath, preAdmission.runId, "sandbox")).toBe(0);
+      expect(await countRootFlowCallFact(databasePath, preAdmission.runId, "prepared")).toBe(0);
+      expect(await countRootFlowCallClosures(databasePath, preAdmission.runId)).toBe(1);
+      expect(await jigCgroups(host.scope)).toEqual([]);
+      expect(await listOrEmpty(join(root, ".jig", "private-root-materializations"))).toEqual([]);
+      expect(await listOrEmpty(join(root, ".jig", "private-root-linux-owners"))).toEqual([]);
+      expect((await readdir("/dev")).filter((name) => name.startsWith(".jig-jig-run-") && name.endsWith("-devices"))).toEqual([]);
     } finally {
       if (crashed !== undefined && crashed.exitCode === null && crashed.signalCode === null) {
         crashed.kill("SIGKILL");
@@ -2352,7 +2491,7 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
       await rm(root, { recursive: true, force: true });
       await rm(store, { recursive: true, force: true });
     }
-  }, 300_000);
+  }, 420_000);
 
 });
 
@@ -2454,8 +2593,11 @@ function testDigest(label: string): string {
   return `sha256:${createHash("sha256").update(label).digest("hex")}`;
 }
 
-function backend(host: HostConfiguration, startupTimeoutMs?: number): PrivateLinuxCgroupBackend {
-  return new PrivateLinuxCgroupBackend({
+function backendOptions(
+  host: HostConfiguration,
+  startupTimeoutMs?: number,
+): PrivateLinuxCgroupBackendOptions {
+  return {
     cgroupScope: host.scope,
     sudoPath: "/agent-sudo/bin/sudo",
     subreaperPath: "/run/podman-init",
@@ -2466,7 +2608,11 @@ function backend(host: HostConfiguration, startupTimeoutMs?: number): PrivateLin
     payloadUid: 1000,
     payloadGid: 100,
     ...(startupTimeoutMs === undefined ? {} : { startupTimeoutMs }),
-  });
+  };
+}
+
+function backend(host: HostConfiguration, startupTimeoutMs?: number): PrivateLinuxCgroupBackend {
+  return new PrivateLinuxCgroupBackend(backendOptions(host, startupTimeoutMs));
 }
 
 function plan(
@@ -2555,6 +2701,76 @@ async function drain(source: AsyncIterable<Uint8Array>): Promise<void> {
 
 async function jigCgroups(scope: string): Promise<string[]> {
   return (await readdir(scope)).filter((name) => name.startsWith("jig-run-")).sort();
+}
+
+async function waitForRootFlowCallFact(
+  databasePath: string,
+  parentRunId: string,
+  factName: string,
+  timeoutMs = 20_000,
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (await countRootFlowCallFact(databasePath, parentRunId, factName) !== 1) {
+    if (Date.now() >= deadline) {
+      throw new Error(`child Flow did not record ${factName} before timeout`);
+    }
+    await Bun.sleep(50);
+  }
+}
+
+async function countRootFlowCallFact(
+  databasePath: string,
+  parentRunId: string,
+  factName: string,
+): Promise<number> {
+  return await queryAdmissionCount(databasePath, [
+    "SELECT count(*) AS count FROM root_flow_call_facts",
+    "WHERE parent_run_id = ?1 AND fact_name = ?2",
+  ].join(" "), parentRunId, factName);
+}
+
+async function countRootFlowCallClosures(
+  databasePath: string,
+  parentRunId: string,
+): Promise<number> {
+  return await queryAdmissionCount(
+    databasePath,
+    "SELECT count(*) AS count FROM root_flow_call_closures WHERE parent_run_id = ?1",
+    parentRunId,
+  );
+}
+
+async function queryAdmissionCount(
+  databasePath: string,
+  query: string,
+  ...parameters: readonly string[]
+): Promise<number> {
+  const sqlite = createRequire(import.meta.url)("bun:sqlite") as any;
+  for (let attempt = 1; attempt <= 20; attempt += 1) {
+    let database: any;
+    try {
+      database = sqlite.Database.open(
+        databasePath,
+        sqlite.constants.SQLITE_OPEN_READONLY | sqlite.constants.SQLITE_OPEN_NOFOLLOW,
+      );
+      return database.query(query).get(...parameters).count;
+    } catch (error) {
+      if ((error as { readonly code?: unknown }).code !== "SQLITE_BUSY" || attempt === 20) throw error;
+      await Bun.sleep(attempt * 5);
+    } finally {
+      database?.close(true);
+    }
+  }
+  throw new Error("unreachable admission count retry state");
+}
+
+async function listOrEmpty(path: string): Promise<string[]> {
+  try {
+    return (await readdir(path)).sort();
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+    throw error;
+  }
 }
 
 async function zombiePids(): Promise<number[]> {

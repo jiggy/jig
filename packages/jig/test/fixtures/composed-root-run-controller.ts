@@ -6,9 +6,11 @@ import { PrivateLinuxCgroupBackend } from "../../src/internal/linux-cgroup-backe
 import { openPrivateRootAdministrationController } from "../../src/internal/root-administration-controller.js";
 import { executePrivateRootRunLaunch } from "../../src/internal/root-run-controller.js";
 
-const [projectRoot, packageStoreRoot, submissionId] = process.argv.slice(2);
+const [projectRoot, packageStoreRoot, submissionId, bindingId = "parent"] = process.argv.slice(2);
 if (projectRoot === undefined || packageStoreRoot === undefined || submissionId === undefined) {
-  throw new Error("usage: composed-root-run-controller <project-root> <package-store-root> <submission-id>");
+  throw new Error(
+    "usage: composed-root-run-controller <project-root> <package-store-root> <submission-id> [binding-id]",
+  );
 }
 const receiptsDirectory = process.env.AGENT_RUNTIME_RECEIPTS_DIR;
 const expectedLeaseId = process.env.AGENT_RUNTIME_LEASE_ID;
@@ -51,7 +53,7 @@ const self = await realpath(`/sys/fs/cgroup${relative}`);
 const shellWrapper = await realpath("/bin/sh");
 const shebang = (await readFile(shellWrapper, "utf8")).split("\n", 1)[0]!;
 if (!shebang.startsWith("#!/")) throw new Error("proof host Bash shebang is unavailable");
-const backend = new PrivateLinuxCgroupBackend({
+const backendOptions = {
   cgroupScope: dirname(self),
   sudoPath: "/agent-sudo/bin/sudo",
   subreaperPath: "/run/podman-init",
@@ -61,7 +63,9 @@ const backend = new PrivateLinuxCgroupBackend({
   bashPath: shebang.slice(2),
   payloadUid: 1000,
   payloadGid: 100,
-});
+} as const;
+
+const backend = new PrivateLinuxCgroupBackend(backendOptions);
 const runtimeSupport = Object.freeze({ bun, python });
 const controller = await openPrivateRootAdministrationController({
   projectRoot,
@@ -79,7 +83,7 @@ const controller = await openPrivateRootAdministrationController({
 });
 const handle = await controller.administration.startRun({
   submissionId,
-  target: { kind: "binding", id: "parent" },
+  target: { kind: "binding", id: bindingId },
   input: { delayMs: 30_000 },
 });
 console.log(JSON.stringify(handle));
