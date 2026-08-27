@@ -78,7 +78,8 @@ interface ServiceInvocationContext extends ServiceOwnerContext {
 ```
 
 `exports` is captured once before protocol input. Its own enumerable keys must
-be 1–256 LocalNames and each value must be a function. Inherited keys,
+be 0–256 LocalNames and each value must be a function. An empty map represents
+a Mount-background component with no callable export. Inherited keys,
 getters, proxies, later mutation, and dynamic registration are not part of the
 contract. The SDK snapshots and freezes the map and sends the keys in canonical
 order at readiness.

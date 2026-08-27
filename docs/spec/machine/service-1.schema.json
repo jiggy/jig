@@ -134,7 +134,7 @@
         "exports": {
           "type": "array",
           "items": { "$ref": "#/$defs/localName" },
-          "minItems": 1,
+          "minItems": 0,
           "maxItems": 256,
           "uniqueItems": true
         }

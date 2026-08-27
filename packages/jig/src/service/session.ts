@@ -904,8 +904,8 @@ function validateActivation(activation: ServiceHostActivation): void {
   validateAttachments(activation.attachments);
   if (typeof activation.scratch !== "string" || activation.scratch.length === 0) throw new TypeError("scratch must be nonempty");
   validateDeadline(activation.startupDeadlineUnixMs, "startupDeadlineUnixMs");
-  if (!Array.isArray(activation.exports) || activation.exports.length === 0 || activation.exports.length > 256) {
-    throw new TypeError("Service requires 1-256 exports");
+  if (!Array.isArray(activation.exports) || activation.exports.length > 256) {
+    throw new TypeError("Service permits at most 256 exports");
   }
   let previous: string | undefined;
   for (const name of activation.exports) {
@@ -1081,7 +1081,7 @@ function requireExactKeys(object: JsonObject, expected: readonly string[]): void
 }
 
 function requireNameArray(value: JsonValue | undefined): readonly string[] {
-  if (!Array.isArray(value) || value.length === 0 || value.length > 256) throw new Error("invalid Service exports");
+  if (!Array.isArray(value) || value.length > 256) throw new Error("invalid Service exports");
   const names: string[] = [];
   let previous: string | undefined;
   for (const raw of value) {

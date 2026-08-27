@@ -171,8 +171,8 @@ class _ServiceRuntime:
                 raise TypeError("Service exports must be a mapping") from error
         else:
             exports = dict(definition.exports)
-        if not 1 <= len(exports) <= 256:
-            raise TypeError("Service requires 1-256 exports")
+        if len(exports) > 256:
+            raise TypeError("Service permits at most 256 exports")
         for name, handler in exports.items():
             _require_local_name(name, "Service export")
             if not callable(handler):

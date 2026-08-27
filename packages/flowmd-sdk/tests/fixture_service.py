@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 
 from flowmd_sdk import ServiceDefinition, ServiceError, serve_service
 
@@ -28,6 +29,6 @@ async def mount(context):
 
 
 serve_service(ServiceDefinition(
-    exports={"sessions": sessions},
+    exports={} if os.environ.get("FLOWMD_TEST_EMPTY_SERVICE") == "1" else {"sessions": sessions},
     mount=mount,
 ))

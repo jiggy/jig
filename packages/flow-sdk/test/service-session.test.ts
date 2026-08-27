@@ -299,12 +299,26 @@ describe("ServiceSession", () => {
     await completion;
   });
 
-  test("captures a closed static export map", () => {
+  test("captures a closed static export map and permits a background-only Mount", async () => {
     const transport = new MemoryTransport();
-    expect(() => new ServiceSession(transport, {
+    const background = new ServiceSession(transport, {
       exports: {},
-      async mount() {},
-    })).toThrow("1-256 exports");
+      async mount(context) {
+        await context.ready();
+        await context.cancelled;
+      },
+    });
+    const completion = background.run();
+    transport.push(mount());
+    await transport.waitForWrites(1);
+    expect(transport.message(0)).toMatchObject({
+      method: "service/ready",
+      params: { ownerRequestId: "host:1", exports: [] },
+    });
+    transport.push({ jsonrpc: "2.0", id: "provider:1", result: {} });
+    transport.push(cancel("host:1"));
+    await completion;
+    expect(transport.message(1)).toEqual({ jsonrpc: "2.0", id: "host:1", result: {} });
 
     const exports = {} as Record<string, () => Promise<JsonValue>>;
     Object.defineProperty(exports, "sessions", { enumerable: true, get: () => async () => null });

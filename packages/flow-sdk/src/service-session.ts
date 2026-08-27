@@ -767,7 +767,7 @@ function snapshotDefinition(definition: ServiceDefinition): {
   if (Object.getOwnPropertySymbols(source).length !== 0) throw new TypeError("Service exports cannot use symbols");
   const descriptors = Object.getOwnPropertyDescriptors(source);
   const names = Object.keys(descriptors).sort();
-  if (names.length === 0 || names.length > 256) throw new TypeError("Service requires 1-256 exports");
+  if (names.length > 256) throw new TypeError("Service permits at most 256 exports");
   const exports: Record<string, ServiceExportHandler> = Object.create(null) as Record<string, ServiceExportHandler>;
   for (const name of names) {
     requireLocalName(name);

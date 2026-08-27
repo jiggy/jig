@@ -8,6 +8,17 @@ import {
 } from "../src/service/session.js";
 
 describe("private ServiceHostSession", () => {
+  test("mounts and stops a background-only Service with no exports", async () => {
+    const process = new FakeProcess();
+    const service = new ServiceHostSession(process, { ...activation(), exports: [] });
+    const started = service.start();
+    expect(await process.nextHost()).toMatchObject({ id: "host:1", method: "service/mount" });
+    process.emit(ready("provider:empty", []));
+    expect(await process.nextHost()).toEqual({ jsonrpc: "2.0", id: "provider:empty", result: {} });
+    await started;
+    await cleanStop(service, process);
+  });
+
   test("mounts, admits one invocation after readiness, and stops cleanly", async () => {
     const process = new FakeProcess();
     const service = new ServiceHostSession(process, activation());

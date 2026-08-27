@@ -5,9 +5,11 @@ and error models in this document are fixed for the first implementation and
 black-box corpus. Service/1 is not `1.0` until independent Hosts and Providers
 pass that corpus.
 
-Service/1 is the optional portable boundary for one long-lived provider whose
-package declares a fixed set of capability exports and dependencies. Ordinary
-finite work remains Run/1. A Run-only FLOW Host need not implement Service/1.
+Service/1 is the optional portable boundary for one long-lived component whose
+package declares fixed capability exports and dependencies. The export set may
+be empty: a watcher, timer, or ingress component can own Mount-background work
+without inventing a dummy callable capability. Ordinary finite work remains
+Run/1. A Run-only FLOW Host need not implement Service/1.
 
 The complete protocol has six methods:
 
@@ -131,7 +133,7 @@ exactly one request:
 ```
 
 `ownerRequestId` must name the one pending `service/mount`. `exports` contains
-1–256 unique LocalNames in ascending Unicode code-point order. It must exactly
+0–256 unique LocalNames in ascending Unicode code-point order. It must exactly
 equal the package's admitted `provides` LocalNames. Unknown, duplicate, missing,
 extra, unsorted, stale-owner, second, or post-cancellation readiness is a fatal
 Provider protocol error.

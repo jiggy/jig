@@ -19,9 +19,11 @@ def frame(value: object) -> bytes:
 
 
 class Provider:
-    def __init__(self) -> None:
+    def __init__(self, *, empty: bool = False) -> None:
         environment = os.environ.copy()
         environment["PYTHONPATH"] = str(PACKAGE / "src")
+        if empty:
+            environment["FLOWMD_TEST_EMPTY_SERVICE"] = "1"
         self.process = subprocess.Popen(
             [sys.executable, str(FIXTURE)],
             stdin=subprocess.PIPE,
@@ -150,6 +152,16 @@ class ServiceRuntimeTests(unittest.TestCase):
             "error": {"code": -32000, "message": "unavailable", "data": {"code": "UNAVAILABLE"}},
         })
         self.assertEqual(self.provider.receive()["error"]["data"]["code"], "UNAVAILABLE")
+        self.stop()
+
+    def test_background_only_mount_has_an_explicit_empty_readiness_set(self) -> None:
+        self.provider.close()
+        self.provider = Provider(empty=True)
+        self.provider.send(mount())
+        readiness = self.provider.receive()
+        self.assertEqual(readiness["method"], "service/ready")
+        self.assertEqual(readiness["params"], {"ownerRequestId": "host:1", "exports": []})
+        self.provider.send({"jsonrpc": "2.0", "id": readiness["id"], "result": {}})
         self.stop()
 
     def test_invocation_cancellation_does_not_cancel_sibling(self) -> None:

@@ -277,7 +277,7 @@ export function attributedEffectCall(ownerRequestId: string, call: EffectCall): 
 
 export function serviceReadyParams(ownerRequestId: string, exports: readonly string[]): JsonObject {
   requireWireId(ownerRequestId);
-  if (exports.length === 0 || exports.length > 256) throw new Error("invalid Service export count");
+  if (exports.length > 256) throw new Error("invalid Service export count");
   let previous: string | undefined;
   for (const name of exports) {
     requireLocalName(name);

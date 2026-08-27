@@ -6,7 +6,7 @@ import {
 } from "../../../packages/flow-sdk/src/index.ts";
 
 const service: ServiceDefinition = {
-  exports: {
+  exports: process.env.FLOWMD_TEST_EMPTY_SERVICE === "1" ? {} : {
     sessions: async (context) => {
       if (context.method === "echo") return context.input;
       if (context.method === "missing") throw new ServiceError("not-found", context.input);

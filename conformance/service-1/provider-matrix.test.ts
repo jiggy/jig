@@ -26,6 +26,22 @@ if (python === null) test.skip("Python Service/1 Provider matrix requires python
 
 for (const provider of providers) {
   describe(`${provider.name} Service/1 Provider`, () => {
+    test("publishes an explicit empty readiness set for a background-only Mount", async () => {
+      await withPeer({
+        ...provider,
+        environment: { ...provider.environment, FLOWMD_TEST_EMPTY_SERVICE: "1" },
+      }, async (peer) => {
+        peer.send(mount());
+        const readiness = await peer.receive();
+        expect(readiness).toMatchObject({
+          method: "service/ready",
+          params: { ownerRequestId: "host:1", exports: [] },
+        });
+        peer.send({ jsonrpc: "2.0", id: readiness.id, result: {} });
+        await stop(peer);
+      });
+    });
+
     test("serves concurrent invocations, errors, owned calls, and cleanup", async () => {
       await withPeer(provider, async (peer) => {
         await ready(peer);

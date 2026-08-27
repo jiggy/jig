@@ -27,6 +27,12 @@ describe("Service/1 message schemas", () => {
     const validate = definition("serviceReadyRequest");
     expect(validate({
       jsonrpc: "2.0",
+      id: "provider:empty",
+      method: "service/ready",
+      params: { ownerRequestId: "host:1", exports: [] },
+    })).toBe(true);
+    expect(validate({
+      jsonrpc: "2.0",
       id: "provider:1",
       method: "service/ready",
       params: {
