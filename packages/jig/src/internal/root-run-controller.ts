@@ -5,7 +5,6 @@ import { type JsonValue } from "../json.js";
 import { inspectCapturedPackage } from "../package/inspect.js";
 import { findPrivateActivationCandidateTarget } from "./activation-admission.js";
 import { RunHostSession, type RunHostTerminal } from "../run/session.js";
-import type { PrivateRuntimeSupportObservation } from "./agent-sandbox-runtime-support.js";
 import {
   closePrivateRootExecution,
   reacquirePrivateRootExecutionWork,
@@ -18,7 +17,11 @@ import {
   type PrivateRootRunTerminal,
 } from "./activation-admission-store.js";
 import type { PrivateBunDirectRecipe } from "./bun-direct-run.js";
-import { planPrivateDirectRun, type PrivateDirectRunRecipe } from "./direct-run.js";
+import {
+  planPrivateDirectRun,
+  type PrivateDirectRunRecipe,
+  type PrivateDirectRunRuntimeSupport,
+} from "./direct-run.js";
 import { privateFileDigest } from "./identity.js";
 import {
   PrivateLinuxFenceUnconfirmedError,
@@ -46,6 +49,10 @@ import {
   type PrivatePackageMaterializationLeaseIdentity,
 } from "./package-materialization.js";
 import { admitPrivatePackageResult } from "./package-result-admission.js";
+import {
+  closePrivateRootFlowCallBeforeParent,
+  executePrivateRootFlowCall,
+} from "./root-flow-call-controller.js";
 import {
   failedPrivateRootTerminal,
   normalizePrivateRootTerminal,
@@ -101,15 +108,24 @@ export async function executePrivateRootRunLaunch(input: {
   readonly packageStoreRoot: string;
   readonly runId: string;
   readonly coordinator: PrivateProjectCoordinator;
-  readonly runtimeSupport: PrivateRuntimeSupportObservation;
+  readonly runtimeSupport: PrivateDirectRunRuntimeSupport;
   readonly backend: PrivateLinuxCgroupBackend;
   readonly signal?: AbortSignal;
 }): Promise<PrivateRootExecutionDisposition> {
   await input.coordinator.verify();
-  const work = await reacquire(input);
+  let work = await reacquire(input);
   if (work.lifecycle.admitted !== undefined) {
     return terminal(await closeFromAdmitted(input, work));
   }
+  try {
+    await closePrivateRootFlowCallBeforeParent({ ...input, parent: work });
+  } catch (error) {
+    if (error instanceof PrivateLinuxFenceUnconfirmedError) {
+      return Object.freeze({ state: "pending", reason: "fence-unconfirmed" });
+    }
+    throw error;
+  }
+  work = await reacquire(input);
   if (work.run.coordinatorEpoch < input.coordinator.epoch) {
     return await recoverOlderExecution(input, work);
   }
@@ -250,7 +266,15 @@ async function startOrResumeCurrentExecution(
         scratch: recipe.scratch,
         deadlineUnixMs: plan.effectiveDeadlineUnixMs,
         ...(input.signal === undefined ? {} : { signal: input.signal }),
-      }, { cancellationGraceMs: plan.cancellationGraceMs }).run();
+      }, { cancellationGraceMs: plan.cancellationGraceMs }, {
+        callFlow: async (call, signal) => await executePrivateRootFlowCall({
+          ...input,
+          parent: work,
+          call,
+          parentDeadlineUnixMs: plan.effectiveDeadlineUnixMs,
+          signal,
+        }),
+      }).run();
       observedTerminal = provisional;
       await recordCheckpoint(input, work.run.runId, "provisional", provisional as unknown as JsonValue);
       try {
@@ -460,6 +484,7 @@ async function settleWithoutPlan(
     fenceDigest: null,
     packageReleased: true,
     ownerRelease: null,
+    childClosureDigest: null,
   } as unknown as JsonValue);
   work = await reacquire(input);
   const admitted = normalizePrivateRootTerminal(work.lifecycle.provisional!.value);
@@ -474,6 +499,7 @@ async function releaseAdmitAndClose(
 ): Promise<PrivateRootRunSnapshot> {
   let work = initial;
   if (work.lifecycle.release === undefined) {
+    const childClosureDigest = await closePrivateRootFlowCallBeforeParent({ ...input, parent: work });
     const plan = work.lifecycle.plan === undefined ? undefined : parsePlan(work.lifecycle.plan.value);
     let ownerRelease: PrivateLinuxOwnerStateReleaseReceipt | null = null;
     if (plan !== undefined) {
@@ -506,6 +532,7 @@ async function releaseAdmitAndClose(
       fenceDigest: work.lifecycle.fence?.digest ?? null,
       packageReleased: true,
       ownerRelease,
+      childClosureDigest,
     } as unknown as JsonValue);
     work = await reacquire(input);
   }

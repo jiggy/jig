@@ -5,7 +5,10 @@ import {
   type PrivateBunDirectRecipe,
   type PrivateBunDirectRunResult,
 } from "./bun-direct-run.js";
-import type { PrivateRuntimeSupportObservation } from "./agent-sandbox-runtime-support.js";
+import {
+  requirePrivateRuntimeSupportObservation,
+  type PrivateRuntimeSupportObservation,
+} from "./agent-sandbox-runtime-support.js";
 import type { PrivateLinuxCgroupBackend } from "./linux-cgroup-backend.js";
 import {
   planPrivatePythonDirectRun,
@@ -22,15 +25,20 @@ import type { RunHostInvocation } from "../run/session.js";
 
 export type PrivateDirectRunRecipe = PrivateBunDirectRecipe | PrivatePythonDirectRecipe;
 export type PrivateDirectRunResult = PrivateBunDirectRunResult | PrivatePythonDirectRunResult;
+export type PrivateDirectRunRuntimeSupport = PrivateRuntimeSupportObservation | Readonly<{
+  readonly bun?: PrivateRuntimeSupportObservation;
+  readonly python?: PrivateRuntimeSupportObservation;
+}>;
 
 /** Select only between exact recipes already implemented by the trusted host. */
 export async function planPrivateDirectRun(input: {
   readonly request: PrivateActivationRequest;
-  readonly runtimeSupport: PrivateRuntimeSupportObservation;
+  readonly runtimeSupport: PrivateDirectRunRuntimeSupport;
   readonly backend: PrivateLinuxCgroupBackend;
 }): Promise<PrivateDirectRunRecipe> {
   const request = requirePrivateActivationRequest(input.request);
-  const normalized = { ...input, request };
+  const runtimeSupport = selectRuntimeSupport(request, input.runtimeSupport);
+  const normalized = { ...input, request, runtimeSupport };
   if (request.entrypoint.path === "flow.py") {
     return await planPrivatePythonDirectRun(normalized);
   }
@@ -38,6 +46,34 @@ export async function planPrivateDirectRun(input: {
     return await planPrivateBunDirectRun(normalized);
   }
   throw new TypeError(`no exact private direct recipe for ${request.entrypoint.path}`);
+}
+
+function selectRuntimeSupport(
+  request: PrivateActivationRequest,
+  value: PrivateDirectRunRuntimeSupport,
+): PrivateRuntimeSupportObservation {
+  try { return requirePrivateRuntimeSupportObservation(value); }
+  catch {
+    // Continue to the closed multi-runtime host input.
+  }
+  if (value === null || typeof value !== "object" || Array.isArray(value) ||
+      Object.getPrototypeOf(value) !== Object.prototype && Object.getPrototypeOf(value) !== null) {
+    throw new TypeError("direct Run runtime support is invalid");
+  }
+  const actual = Object.keys(value).sort();
+  if (actual.length === 0 || actual.some((key) => key !== "bun" && key !== "python")) {
+    throw new TypeError("direct Run runtime support set is invalid");
+  }
+  const support = value as Exclude<PrivateDirectRunRuntimeSupport, PrivateRuntimeSupportObservation>;
+  const selected = request.entrypoint.path === "flow.ts"
+    ? support.bun
+    : request.entrypoint.path === "flow.py"
+      ? support.python
+      : undefined;
+  if (selected === undefined) {
+    throw new TypeError(`no retained runtime support for ${request.entrypoint.path}`);
+  }
+  return requirePrivateRuntimeSupportObservation(selected);
 }
 
 export function requirePrivateDirectRunRecipe(value: unknown): PrivateDirectRunRecipe {

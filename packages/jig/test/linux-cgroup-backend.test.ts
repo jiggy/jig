@@ -59,7 +59,7 @@ import { openPrivateRootAdministrationController } from "../src/internal/root-ad
 import { executePrivateRootRunLaunch } from "../src/internal/root-run-controller.js";
 import { evaluateAuthorClosure } from "../src/project/author-evaluator.js";
 import { captureAuthorClosure } from "../src/project/author-module.js";
-import { defineJig } from "../src/project/author.js";
+import { defineJig, flowRef } from "../src/project/author.js";
 import { captureFlowSource } from "../src/project/flow-source.js";
 import { linkPackageProject } from "../src/project/package-project.js";
 import {
@@ -299,7 +299,7 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
           runtimeSupport: bun.runtimeSupport,
           backend: backend(host),
           selector: "not-bun",
-        })).rejects.toThrow("matching direct flow.ts activation");
+        })).rejects.toThrow("matching flow.ts activation");
         await expect(runPrivateBunDirectRecipe({
           recipe,
           packageStoreRoot: store,
@@ -1812,6 +1812,344 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
       })).rejects.toMatchObject({ code: "ADMISSION_STATE_CORRUPT" });
     } finally {
       await rootController?.dispose();
+      await rm(root, { recursive: true, force: true });
+      await rm(store, { recursive: true, force: true });
+    }
+  });
+
+  test("runs one admitted Bun parent through one exact Python child Flow", async () => {
+    host = await hostConfiguration();
+    const [bun, python] = await Promise.all([
+      proofHostBunClosure(),
+      proofHostPythonClosure(),
+    ]);
+    const distribution = await realpath(join(import.meta.dir, "..", "dist"));
+    const root = await mkdtemp(join(tmpdir(), "jig-child-flow-project-"));
+    const store = await mkdtemp(join(tmpdir(), "jig-child-flow-store-"));
+    let controller: Awaited<ReturnType<typeof openPrivateRootAdministrationController>> | undefined;
+    let crashed: ReturnType<typeof spawn> | undefined;
+    const rootBackend = backend(host);
+    const evaluator = {
+      backend: rootBackend,
+      bunPath: bun.executable,
+      runtimeMounts: bun.runtimeSupport.closureSources.map((source) => ({ source, destination: source })),
+      runtimeSupport: bun.runtimeSupport,
+      jigDistributionPath: distribution,
+    } as const;
+    try {
+      await mkdir(join(root, "bindings"));
+      await mkdir(join(root, "flows", "parent"), { recursive: true });
+      await mkdir(join(root, "flows", "child"), { recursive: true });
+      await writeFile(join(root, "jig.ts"), [
+        'import { defineJig, discover } from "@jigging/jig";',
+        'export default defineJig({ flows: discover("flows"), bindings: discover("bindings") });',
+        "",
+      ].join("\n"));
+      await writeFile(join(root, "bindings", "parent.ts"), [
+        'import { defineBinding, flowRef } from "@jigging/jig";',
+        "export default defineBinding({",
+        '  package: "flows/parent",',
+        '  settings: { marker: "admitted" },',
+        '  slots: { child: flowRef("flows/child") },',
+        "});",
+        "",
+      ].join("\n"));
+
+      const parent = join(root, "flows", "parent");
+      await writeFile(join(parent, "FLOW.md"), [
+        "---",
+        "name: composed-parent",
+        "description: Calls one exact admitted child Flow.",
+        "---",
+        "",
+      ].join("\n"));
+      await writeFile(join(parent, "settings.schema.json"), JSON.stringify({
+        $schema: "https://flow.dev/schemas/schema-1.json",
+        type: "object",
+        properties: { marker: { const: "admitted" } },
+        required: ["marker"],
+        additionalProperties: false,
+      }));
+      const parentSdk = join(parent, "flow-sdk");
+      await mkdir(parentSdk);
+      for (const name of [
+        "index.ts", "json.ts", "protocol.ts", "service-session.ts", "session.ts", "transport.ts", "types.ts",
+      ]) {
+        await writeFile(join(parentSdk, name), await readFile(join(import.meta.dir, "..", "..", "flow-sdk", "src", name)));
+      }
+      await writeFile(join(parent, "flow.ts"), [
+        "#!/usr/bin/env bun",
+        'import { OperationError, serve } from "./flow-sdk/index.ts";',
+        "",
+        "await serve(async (context) => {",
+        "  const call = { operationId: \"child-one\", slot: \"child\", input: context.input };",
+        "  if (context.input && typeof context.input === \"object\" && \"cancelMode\" in context.input) {",
+        "    const firstController = new AbortController();",
+        "    const secondController = new AbortController();",
+        "    const observed = (promise) => promise.then(",
+        "      (result) => ({ result }),",
+        "      (error) => ({ error: error instanceof OperationError ? error.code : \"unexpected\" }),",
+        "    );",
+        "    const first = observed(context.callFlow(call, { signal: firstController.signal }));",
+        "    const second = observed(context.callFlow(call, { signal: secondController.signal }));",
+        "    await Bun.sleep(100);",
+        "    firstController.abort();",
+        "    if (context.input.cancelMode === \"all\") secondController.abort();",
+        "    return { outcome: \"done\", output: { waiters: await Promise.all([first, second]) } };",
+        "  }",
+        "  const first = await context.callFlow(call);",
+        "  const replay = await context.callFlow(call);",
+        "  let rejected = \"missing\";",
+        "  try {",
+        "    await context.callFlow({ ...call, operationId: \"child-two\" });",
+        "  } catch (error) {",
+        "    rejected = error instanceof OperationError ? error.code : \"unexpected\";",
+        "  }",
+        "  return {",
+        '    outcome: "done",',
+        "    output: { marker: context.settings.marker, first, replay, rejected },",
+        "  };",
+        "});",
+        "",
+      ].join("\n"));
+
+      const child = join(root, "flows", "child");
+      await writeFile(join(child, "FLOW.md"), [
+        "---",
+        "name: exact-child",
+        "description: Returns one value from a contained Python Run.",
+        "---",
+        "",
+      ].join("\n"));
+      const pythonSdk = join(child, "flowmd_sdk");
+      await mkdir(pythonSdk);
+      for (const name of ["__init__.py", "_json.py", "_runtime.py", "_service.py", "_types.py"]) {
+        await writeFile(join(pythonSdk, name), await readFile(join(import.meta.dir, "..", "..", "flowmd-sdk", "src", "flowmd_sdk", name)));
+      }
+      await writeFile(join(child, "flow.py"), [
+        "#!/usr/bin/env python",
+        "import asyncio",
+        "from flowmd_sdk import serve",
+        "",
+        "async def run(context):",
+        "    if isinstance(context.input, dict) and context.input.get(\"delayMs\"):",
+        "        await asyncio.sleep(context.input[\"delayMs\"] / 1000)",
+        '    return {"outcome": "done", "output": {"child": context.input}}',
+        "",
+        "serve(run)",
+        "",
+      ].join("\n"));
+
+      const aggregate = await retainPackageProject({
+        projectRoot: root,
+        storeRoot: store,
+        evaluator,
+      });
+      expect(aggregate.linked.bindings).toHaveLength(1);
+      const requests = buildPrivateActivationRequests(aggregate.linked);
+      expect(requests.map(({ target }) => target)).toEqual([
+        { kind: "binding", id: "parent" },
+        { kind: "flow", path: "flows/child" },
+      ]);
+      const runtimeSupport = Object.freeze({
+        bun: bun.runtimeSupport,
+        python: python.runtimeSupport,
+      });
+      const recipes = await Promise.all(requests.map(async (request) => await planPrivateDirectRun({
+        request,
+        runtimeSupport,
+        backend: rootBackend,
+      })));
+      const planning = createPrivateActivationPlanningObservation({
+        policyDigest: testDigest("child-flow-policy"),
+        mechanismDigest: recipes[0]!.mechanismDigest,
+        entries: requests.map((request, index) => ({
+          target: request.target,
+          requestDigest: request.digest,
+          disposition: { state: "planned" as const, observation: recipes[index]!.observation },
+        })),
+      });
+      const candidate = createPrivateActivationCandidate(
+        aggregate,
+        resolveRetainedPackageProjectObservation(aggregate, planning),
+        recipes,
+      );
+      await publishPrivateActivationCandidate({
+        projectRoot: root,
+        packageStoreRoot: store,
+        candidate,
+      });
+      const review = await createPrivateActivationReviewPlan({
+        projectRoot: root,
+        packageStoreRoot: store,
+        lockMode: "update",
+      });
+      await applyPrivateActivationReviewPlan({
+        projectRoot: root,
+        packageStoreRoot: store,
+        planDigest: review.planDigest,
+        baseGeneration: null,
+      });
+      const parentTarget = candidate.candidate.targets.find(
+        ({ request }) => request.target.kind === "binding",
+      )!.request.target;
+      expect(parentTarget).toEqual({ kind: "binding", id: "parent" });
+
+      controller = await openPrivateRootAdministrationController({
+        projectRoot: root,
+        packageStoreRoot: store,
+        runTimeoutMs: 25_000,
+        execute: (runId, coordinator, signal) => executePrivateRootRunLaunch({
+          projectRoot: root,
+          packageStoreRoot: store,
+          runId,
+          coordinator,
+          runtimeSupport,
+          backend: rootBackend,
+          signal,
+        }),
+      });
+      const handle = await controller.administration.startRun({
+        submissionId: "composed-one",
+        target: parentTarget,
+        input: { ticket: "T-child" },
+      });
+      await controller.drain();
+      expect(await controller.administration.runStatus(handle)).toMatchObject({
+        state: "terminal",
+        terminal: {
+          status: "succeeded",
+          outcome: "done",
+          output: {
+            marker: "admitted",
+            first: { outcome: "done", output: { child: { ticket: "T-child" } } },
+            replay: { outcome: "done", output: { child: { ticket: "T-child" } } },
+            rejected: "RESOURCE_EXHAUSTED",
+          },
+        },
+      });
+      const cancelOne = await controller.administration.startRun({
+        submissionId: "composed-cancel-one",
+        target: parentTarget,
+        input: { cancelMode: "one", delayMs: 500 },
+      });
+      await controller.drain();
+      expect(await controller.administration.runStatus(cancelOne)).toMatchObject({
+        state: "terminal",
+        terminal: {
+          status: "succeeded",
+          output: {
+            waiters: [
+              { error: "CANCELLED" },
+              { result: { outcome: "done", output: { child: { cancelMode: "one", delayMs: 500 } } } },
+            ],
+          },
+        },
+      });
+      const cancelAll = await controller.administration.startRun({
+        submissionId: "composed-cancel-all",
+        target: parentTarget,
+        input: { cancelMode: "all", delayMs: 30_000 },
+      });
+      await controller.drain();
+      expect(await controller.administration.runStatus(cancelAll)).toMatchObject({
+        state: "terminal",
+        terminal: {
+          status: "succeeded",
+          output: { waiters: [{ error: "CANCELLED" }, { error: "CANCELLED" }] },
+        },
+      });
+      const sqlite = createRequire(import.meta.url)("bun:sqlite") as any;
+      const databasePath = join(root, ".jig", "private-activation-admission-v9.sqlite3");
+      const database = sqlite.Database.open(
+        databasePath,
+        sqlite.constants.SQLITE_OPEN_READONLY | sqlite.constants.SQLITE_OPEN_NOFOLLOW,
+      );
+      try {
+        expect(database.query("SELECT count(*) AS count FROM root_flow_calls").get().count).toBe(3);
+        expect(database.query(
+          "SELECT count(*) AS count FROM root_flow_call_facts WHERE fact_name = 'release'",
+        ).get().count).toBe(3);
+        expect(database.query(
+          "SELECT count(*) AS count FROM root_flow_call_facts WHERE fact_name = 'admitted'",
+        ).get().count).toBe(3);
+        expect(database.query("SELECT count(*) AS count FROM root_flow_call_closures").get().count).toBe(3);
+      } finally { database.close(true); }
+      await controller.dispose();
+      controller = undefined;
+      expect(await jigCgroups(host.scope)).toEqual([]);
+
+      crashed = spawn(process.execPath, [
+        join(import.meta.dir, "fixtures", "composed-root-run-controller.ts"),
+        root,
+        store,
+        "composed-crash",
+      ], { stdio: ["ignore", "pipe", "pipe"] });
+      const crashedDiagnostics = collect(crashed.stderr!);
+      const abandoned = JSON.parse(await firstLine(crashed.stdout!)) as { readonly runId: string };
+      const childStartedDeadline = Date.now() + 20_000;
+      while (true) {
+        let started = 0;
+        let observation: any;
+        try {
+          observation = sqlite.Database.open(
+            databasePath,
+            sqlite.constants.SQLITE_OPEN_READONLY | sqlite.constants.SQLITE_OPEN_NOFOLLOW,
+          );
+          started = observation.query(
+            "SELECT count(*) AS count FROM root_flow_call_facts WHERE parent_run_id = ?1 AND fact_name = 'prepared'",
+          ).get(abandoned.runId).count;
+        } catch (error) {
+          if ((error as { readonly code?: unknown }).code !== "SQLITE_BUSY") throw error;
+        } finally { observation?.close(true); }
+        if (started === 1) break;
+        if (Date.now() >= childStartedDeadline) {
+          crashed.kill("SIGKILL");
+          await childExit(crashed);
+          throw new Error(`child Flow did not reach prepared state: ${await crashedDiagnostics}`);
+        }
+        await Bun.sleep(50);
+      }
+      crashed.kill("SIGKILL");
+      expect((await childExit(crashed)).signal).toBe("SIGKILL");
+      crashed = undefined;
+
+      controller = await openPrivateRootAdministrationController({
+        projectRoot: root,
+        packageStoreRoot: store,
+        runTimeoutMs: 25_000,
+        execute: (runId, coordinator, signal) => executePrivateRootRunLaunch({
+          projectRoot: root,
+          packageStoreRoot: store,
+          runId,
+          coordinator,
+          runtimeSupport,
+          backend: rootBackend,
+          signal,
+        }),
+      });
+      expect(await controller.administration.runStatus(abandoned)).toMatchObject({
+        state: "terminal",
+        terminal: { status: "lost", code: "COORDINATOR_LOST" },
+      });
+      await controller.dispose();
+      controller = undefined;
+      const recovered = sqlite.Database.open(
+        databasePath,
+        sqlite.constants.SQLITE_OPEN_READONLY | sqlite.constants.SQLITE_OPEN_NOFOLLOW,
+      );
+      try {
+        expect(recovered.query(
+          "SELECT count(*) AS count FROM root_flow_call_closures WHERE parent_run_id = ?1",
+        ).get(abandoned.runId).count).toBe(1);
+      } finally { recovered.close(true); }
+      expect(await jigCgroups(host.scope)).toEqual([]);
+    } finally {
+      if (crashed !== undefined && crashed.exitCode === null && crashed.signalCode === null) {
+        crashed.kill("SIGKILL");
+        await childExit(crashed).catch(() => undefined);
+      }
+      await controller?.dispose();
       await rm(root, { recursive: true, force: true });
       await rm(store, { recursive: true, force: true });
     }
