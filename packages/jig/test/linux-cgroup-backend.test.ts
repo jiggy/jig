@@ -1840,6 +1840,8 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
       await mkdir(join(root, "bindings"));
       await mkdir(join(root, "flows", "parent"), { recursive: true });
       await mkdir(join(root, "flows", "child"), { recursive: true });
+      await mkdir(join(root, "flows", "child-two"), { recursive: true });
+      await mkdir(join(root, "flows", "unavailable"), { recursive: true });
       await writeFile(join(root, "jig.ts"), [
         'import { defineJig, discover } from "@jigging/jig";',
         'export default defineJig({ flows: discover("flows"), bindings: discover("bindings") });',
@@ -1851,6 +1853,32 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         '  package: "flows/parent",',
         '  settings: { marker: "admitted" },',
         '  slots: { child: flowRef("flows/child") },',
+        "});",
+        "",
+      ].join("\n"));
+      await writeFile(join(root, "bindings", "missing.ts"), [
+        'import { defineBinding } from "@jigging/jig";',
+        "export default defineBinding({",
+        '  package: "flows/parent",',
+        '  settings: { marker: "missing" },',
+        "});",
+        "",
+      ].join("\n"));
+      await writeFile(join(root, "bindings", "multiple.ts"), [
+        'import { candidates, defineBinding, flowRef } from "@jigging/jig";',
+        "export default defineBinding({",
+        '  package: "flows/parent",',
+        '  settings: { marker: "multiple" },',
+        '  slots: { child: candidates([flowRef("flows/child"), flowRef("flows/child-two")]) },',
+        "});",
+        "",
+      ].join("\n"));
+      await writeFile(join(root, "bindings", "unavailable.ts"), [
+        'import { defineBinding, flowRef } from "@jigging/jig";',
+        "export default defineBinding({",
+        '  package: "flows/parent",',
+        '  settings: { marker: "unavailable" },',
+        '  slots: { child: flowRef("flows/unavailable") },',
         "});",
         "",
       ].join("\n"));
@@ -1866,7 +1894,9 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
       await writeFile(join(parent, "settings.schema.json"), JSON.stringify({
         $schema: "https://flow.dev/schemas/schema-1.json",
         type: "object",
-        properties: { marker: { const: "admitted" } },
+        properties: {
+          marker: { enum: ["admitted", "missing", "multiple", "unavailable"] },
+        },
         required: ["marker"],
         additionalProperties: false,
       }));
@@ -1882,7 +1912,23 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         'import { OperationError, serve } from "./flow-sdk/index.ts";',
         "",
         "await serve(async (context) => {",
+        "  const request = context.input && typeof context.input === \"object\" ? context.input : {};",
         "  const call = { operationId: \"child-one\", slot: \"child\", input: context.input };",
+        "  if (\"probe\" in request) {",
+        "    const probeCall = {",
+        "      operationId: \"probe-one\",",
+        "      slot: typeof request.slot === \"string\" ? request.slot : \"child\",",
+        "      input: Object.hasOwn(request, \"childInput\") ? request.childInput : context.input,",
+        "    };",
+        "    try {",
+        "      return { outcome: \"done\", output: { marker: context.settings.marker, result: await context.callFlow(probeCall) } };",
+        "    } catch (error) {",
+        "      return {",
+        "        outcome: \"done\",",
+        "        output: { marker: context.settings.marker, error: error instanceof OperationError ? error.code : \"unexpected\" },",
+        "      };",
+        "    }",
+        "  }",
         "  if (context.input && typeof context.input === \"object\" && \"cancelMode\" in context.input) {",
         "    const firstController = new AbortController();",
         "    const secondController = new AbortController();",
@@ -1921,53 +1967,128 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         "---",
         "",
       ].join("\n"));
-      const pythonSdk = join(child, "flowmd_sdk");
-      await mkdir(pythonSdk);
-      for (const name of ["__init__.py", "_json.py", "_runtime.py", "_service.py", "_types.py"]) {
-        await writeFile(join(pythonSdk, name), await readFile(join(import.meta.dir, "..", "..", "flowmd-sdk", "src", "flowmd_sdk", name)));
-      }
-      await writeFile(join(child, "flow.py"), [
+      const childInputSchema = JSON.stringify({
+        $schema: "https://flow.dev/schemas/schema-1.json",
+        type: "object",
+      });
+      const childResultSchema = JSON.stringify({
+        $schema: "https://flow.dev/schemas/schema-1.json",
+        type: "object",
+        properties: {
+          outcome: { const: "done" },
+          output: {
+            type: "object",
+            properties: { child: {} },
+            required: ["child"],
+            additionalProperties: false,
+          },
+        },
+        required: ["outcome", "output"],
+        additionalProperties: false,
+      });
+      const childProgram = [
         "#!/usr/bin/env python",
         "import asyncio",
+        "import os",
         "from flowmd_sdk import serve",
         "",
         "async def run(context):",
+        "    mode = context.input.get(\"childMode\") if isinstance(context.input, dict) else None",
+        "    if mode == \"protocol\":",
+        "        os.write(1, b\"not-json\\n\")",
+        "        await asyncio.sleep(0.1)",
         "    if isinstance(context.input, dict) and context.input.get(\"delayMs\"):",
         "        await asyncio.sleep(context.input[\"delayMs\"] / 1000)",
+        "    if mode == \"invalid-result\":",
+        '        return {"outcome": "done", "output": "invalid"}',
+        "    if mode == \"undeclared-outcome\":",
+        '        return {"outcome": "unexpected", "output": {"child": context.input}}',
         '    return {"outcome": "done", "output": {"child": context.input}}',
         "",
         "serve(run)",
         "",
+      ].join("\n");
+      for (const childPath of [child, join(root, "flows", "child-two")]) {
+        if (childPath !== child) {
+          await writeFile(join(childPath, "FLOW.md"), [
+            "---",
+            "name: exact-child-two",
+            "description: Second exact candidate used only to prove ambiguity refusal.",
+            "---",
+            "",
+          ].join("\n"));
+        }
+        await writeFile(join(childPath, "input.schema.json"), childInputSchema);
+        await writeFile(join(childPath, "result.schema.json"), childResultSchema);
+        const pythonSdk = join(childPath, "flowmd_sdk");
+        await mkdir(pythonSdk);
+        for (const name of ["__init__.py", "_json.py", "_runtime.py", "_service.py", "_types.py"]) {
+          await writeFile(join(pythonSdk, name), await readFile(join(import.meta.dir, "..", "..", "flowmd-sdk", "src", "flowmd_sdk", name)));
+        }
+        await writeFile(join(childPath, "flow.py"), childProgram);
+      }
+      const unavailablePath = join(root, "flows", "unavailable");
+      await writeFile(join(unavailablePath, "FLOW.md"), [
+        "---",
+        "name: unavailable-child",
+        "description: Has no installed private direct-Run recipe.",
+        "---",
+        "",
       ].join("\n"));
+      await writeFile(join(unavailablePath, "flow.sh"), "#!/usr/bin/env sh\nexit 0\n");
 
       const aggregate = await retainPackageProject({
         projectRoot: root,
         storeRoot: store,
         evaluator,
       });
-      expect(aggregate.linked.bindings).toHaveLength(1);
+      expect(aggregate.linked.bindings).toHaveLength(4);
       const requests = buildPrivateActivationRequests(aggregate.linked);
-      expect(requests.map(({ target }) => target)).toEqual([
-        { kind: "binding", id: "parent" },
-        { kind: "flow", path: "flows/child" },
-      ]);
+      expect(requests).toHaveLength(7);
       const runtimeSupport = Object.freeze({
         bun: bun.runtimeSupport,
         python: python.runtimeSupport,
       });
-      const recipes = await Promise.all(requests.map(async (request) => await planPrivateDirectRun({
-        request,
-        runtimeSupport,
-        backend: rootBackend,
-      })));
+      const recipes = [];
+      const entries = [];
+      for (const request of requests) {
+        const unsupportedParent = request.target.kind === "binding" &&
+          (request.target.id === "missing" || request.target.id === "multiple");
+        if (request.entrypoint.path === "flow.sh" || unsupportedParent) {
+          if (unsupportedParent) {
+            await expect(planPrivateDirectRun({
+              request,
+              runtimeSupport,
+              backend: rootBackend,
+            })).rejects.toThrow("private Bun Binding recipe requires one exact direct-Flow call slot");
+          }
+          entries.push({
+            target: request.target,
+            requestDigest: request.digest,
+            disposition: {
+              state: "unavailable" as const,
+              code: "RUNTIME_UNAVAILABLE" as const,
+              evidenceDigests: [testDigest(
+                request.entrypoint.path === "flow.sh"
+                  ? "unavailable-shell-recipe"
+                  : `unsupported-parent-${request.target.kind === "binding" ? request.target.id : "unknown"}`,
+              )],
+            },
+          });
+          continue;
+        }
+        const recipe = await planPrivateDirectRun({ request, runtimeSupport, backend: rootBackend });
+        recipes.push(recipe);
+        entries.push({
+          target: request.target,
+          requestDigest: request.digest,
+          disposition: { state: "planned" as const, observation: recipe.observation },
+        });
+      }
       const planning = createPrivateActivationPlanningObservation({
         policyDigest: testDigest("child-flow-policy"),
         mechanismDigest: recipes[0]!.mechanismDigest,
-        entries: requests.map((request, index) => ({
-          target: request.target,
-          requestDigest: request.digest,
-          disposition: { state: "planned" as const, observation: recipes[index]!.observation },
-        })),
+        entries,
       });
       const candidate = createPrivateActivationCandidate(
         aggregate,
@@ -1991,7 +2112,7 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         baseGeneration: null,
       });
       const parentTarget = candidate.candidate.targets.find(
-        ({ request }) => request.target.kind === "binding",
+        ({ request }) => request.target.kind === "binding" && request.target.id === "parent",
       )!.request.target;
       expect(parentTarget).toEqual({ kind: "binding", id: "parent" });
 
@@ -2027,6 +2148,76 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
             rejected: "RESOURCE_EXHAUSTED",
           },
         },
+      });
+      const bindingTarget = (id: string) => candidate.candidate.targets.find(
+        ({ request }) => request.target.kind === "binding" && request.target.id === id,
+      )!.request.target;
+      const probe = async (
+        submissionId: string,
+        target: ReturnType<typeof bindingTarget>,
+        childInput: unknown,
+      ) => {
+        const started = await controller!.administration.startRun({
+          submissionId,
+          target,
+          input: { probe: submissionId, childInput } as never,
+        });
+        await controller!.drain();
+        return { started, status: await controller!.administration.runStatus(started) };
+      };
+      const missing = await controller.administration.startRun({
+        submissionId: "composed-missing",
+        target: bindingTarget("missing"),
+        input: {},
+      });
+      const multiple = await controller.administration.startRun({
+        submissionId: "composed-multiple",
+        target: bindingTarget("multiple"),
+        input: {},
+      });
+      await controller.drain();
+      for (const refused of [missing, multiple]) {
+        expect(await controller.administration.runStatus(refused)).toMatchObject({
+          state: "terminal",
+          terminal: { status: "failed", code: "UNAVAILABLE" },
+        });
+      }
+      const unavailable = await probe("composed-unavailable", bindingTarget("unavailable"), {});
+      expect(unavailable.status).toMatchObject({
+        state: "terminal",
+        terminal: { status: "succeeded", output: { marker: "unavailable", error: "UNAVAILABLE" } },
+      });
+      const invalidInput = await probe("composed-invalid-input", parentTarget, "not-an-object");
+      expect(invalidInput.status).toMatchObject({
+        state: "terminal",
+        terminal: { status: "succeeded", output: { marker: "admitted", error: "INVALID_INPUT" } },
+      });
+      const invalidResult = await probe(
+        "composed-invalid-result",
+        parentTarget,
+        { childMode: "invalid-result" },
+      );
+      expect(invalidResult.status).toMatchObject({
+        state: "terminal",
+        terminal: { status: "succeeded", output: { marker: "admitted", error: "INVALID_RESULT" } },
+      });
+      const undeclaredOutcome = await probe(
+        "composed-undeclared-outcome",
+        parentTarget,
+        { childMode: "undeclared-outcome" },
+      );
+      expect(undeclaredOutcome.status).toMatchObject({
+        state: "terminal",
+        terminal: { status: "succeeded", output: { marker: "admitted", error: "INVALID_RESULT" } },
+      });
+      const protocolFailure = await probe(
+        "composed-protocol-failure",
+        parentTarget,
+        { childMode: "protocol" },
+      );
+      expect(protocolFailure.status).toMatchObject({
+        state: "terminal",
+        terminal: { status: "succeeded", output: { marker: "admitted", error: "EXECUTION_FAILED" } },
       });
       const cancelOne = await controller.administration.startRun({
         submissionId: "composed-cancel-one",
@@ -2066,14 +2257,22 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         sqlite.constants.SQLITE_OPEN_READONLY | sqlite.constants.SQLITE_OPEN_NOFOLLOW,
       );
       try {
-        expect(database.query("SELECT count(*) AS count FROM root_flow_calls").get().count).toBe(3);
+        expect(database.query("SELECT count(*) AS count FROM root_flow_calls").get().count).toBe(7);
+        for (const refused of [missing, multiple, unavailable.started]) {
+          expect(database.query(
+            "SELECT count(*) AS count FROM root_flow_calls WHERE parent_run_id = ?1",
+          ).get(refused.runId).count).toBe(0);
+        }
+        expect(database.query(
+          "SELECT count(*) AS count FROM root_flow_call_facts WHERE parent_run_id = ?1 AND fact_name = 'plan'",
+        ).get(invalidInput.started.runId).count).toBe(0);
         expect(database.query(
           "SELECT count(*) AS count FROM root_flow_call_facts WHERE fact_name = 'release'",
-        ).get().count).toBe(3);
+        ).get().count).toBe(7);
         expect(database.query(
           "SELECT count(*) AS count FROM root_flow_call_facts WHERE fact_name = 'admitted'",
-        ).get().count).toBe(3);
-        expect(database.query("SELECT count(*) AS count FROM root_flow_call_closures").get().count).toBe(3);
+        ).get().count).toBe(7);
+        expect(database.query("SELECT count(*) AS count FROM root_flow_call_closures").get().count).toBe(7);
       } finally { database.close(true); }
       await controller.dispose();
       controller = undefined;
@@ -2153,7 +2352,7 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
       await rm(root, { recursive: true, force: true });
       await rm(store, { recursive: true, force: true });
     }
-  });
+  }, 300_000);
 
 });
 
