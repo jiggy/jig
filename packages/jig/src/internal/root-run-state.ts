@@ -7,6 +7,8 @@ import { privateDomainDigest } from "./identity.js";
 
 const DIGEST = /^sha256:[0-9a-f]{64}$/;
 const LOCAL_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+const UNSIGNED_DECIMAL = /^(?:0|[1-9][0-9]*)$/;
+const MAX_UNSIGNED_64 = (1n << 64n) - 1n;
 const RUN_HOST_FAILURE_CODES = new Set([
   "CANCELLED",
   "DEADLINE_EXCEEDED",
@@ -28,6 +30,30 @@ export interface PrivateRootSubmissionRequest {
   readonly target: RunTargetIdentity;
   readonly input: JsonValue;
   readonly deadlineUnixMs: number;
+}
+
+export interface PrivateExternalSubmissionOrigin {
+  readonly kind: "private-root-external-submission-origin/1";
+  readonly submissionId: string;
+}
+
+export interface PrivateHookDerivedOrigin {
+  readonly kind: "private-root-hook-derived-origin/1";
+  readonly hookRevisionDigest: string;
+  readonly eventId: string;
+}
+
+/** One closed, inert reason that a root Run exists. */
+export type PrivateRootRunOrigin = PrivateExternalSubmissionOrigin | PrivateHookDerivedOrigin;
+
+export interface PrivateRootRunIdentityInput {
+  readonly project: {
+    readonly device: string;
+    readonly inode: string;
+  };
+  readonly origin: PrivateRootRunOrigin;
+  readonly requestDigest: string;
+  readonly coordinatorEpoch: number;
 }
 
 export type PrivateRootRunTerminal = RunHostTerminal | {
@@ -77,6 +103,112 @@ export function createPrivateRootSubmissionRequest(input: {
     target: normalizeTarget(input.target),
     input: decodeJson1(canonicalJson(input.input)),
     deadlineUnixMs: input.deadlineUnixMs,
+  });
+}
+
+export function createPrivateExternalSubmissionOrigin(
+  submissionId: string,
+): PrivateExternalSubmissionOrigin {
+  return normalizePrivateRootRunOrigin({
+    kind: "private-root-external-submission-origin/1",
+    submissionId,
+  }) as PrivateExternalSubmissionOrigin;
+}
+
+export function createPrivateHookDerivedOrigin(input: {
+  readonly hookRevisionDigest: string;
+  readonly eventId: string;
+}): PrivateHookDerivedOrigin {
+  return normalizePrivateRootRunOrigin({
+    kind: "private-root-hook-derived-origin/1",
+    hookRevisionDigest: input.hookRevisionDigest,
+    eventId: input.eventId,
+  }) as PrivateHookDerivedOrigin;
+}
+
+export function normalizePrivateRootRunOrigin(value: unknown): PrivateRootRunOrigin {
+  const kind = value !== null && typeof value === "object"
+    ? (value as Record<string, unknown>).kind
+    : undefined;
+  if (kind === "private-root-external-submission-origin/1") {
+    const root = exactRecord(value, ["kind", "submissionId"], "external root Run origin");
+    requirePrivateRootSubmissionId(root.submissionId);
+    return Object.freeze({
+      kind: "private-root-external-submission-origin/1",
+      submissionId: root.submissionId as string,
+    });
+  }
+  if (kind === "private-root-hook-derived-origin/1") {
+    const root = exactRecord(
+      value,
+      ["kind", "hookRevisionDigest", "eventId"],
+      "Hook-derived root Run origin",
+    );
+    return Object.freeze({
+      kind: "private-root-hook-derived-origin/1",
+      hookRevisionDigest: digest(root.hookRevisionDigest, "Hook revision"),
+      eventId: digest(root.eventId, "Hook Event"),
+    });
+  }
+  throw new TypeError("root Run origin kind is invalid");
+}
+
+export function encodePrivateRootRunOrigin(value: PrivateRootRunOrigin): Uint8Array {
+  return canonicalJson(normalizePrivateRootRunOrigin(value) as unknown as JsonValue);
+}
+
+export function decodePrivateRootRunOrigin(bytes: Uint8Array): PrivateRootRunOrigin {
+  const origin = normalizePrivateRootRunOrigin(decodeJson1(bytes));
+  if (!sameBytes(bytes, canonicalJson(origin as unknown as JsonValue))) {
+    throw new TypeError("root Run origin is not canonical JSON/1");
+  }
+  return origin;
+}
+
+export function privateRootRunOriginDigest(value: PrivateRootRunOrigin): string {
+  const origin = normalizePrivateRootRunOrigin(value);
+  return origin.kind === "private-root-external-submission-origin/1"
+    ? privateDomainDigest(
+        "JIG-Private-Root-Origin-External-Submission/1",
+        { submissionId: origin.submissionId },
+      )
+    : privateDomainDigest(
+        "JIG-Private-Root-Origin-Hook-Derived/1",
+        {
+          hookRevisionDigest: origin.hookRevisionDigest,
+          eventId: origin.eventId,
+        },
+      );
+}
+
+export function normalizePrivateRootRunIdentityInput(
+  value: unknown,
+): PrivateRootRunIdentityInput {
+  const root = exactRecord(
+    value,
+    ["project", "origin", "requestDigest", "coordinatorEpoch"],
+    "root Run identity input",
+  );
+  const project = exactRecord(root.project, ["device", "inode"], "root Run identity project");
+  return Object.freeze({
+    project: Object.freeze({
+      device: unsigned64(project.device, "root Run project device"),
+      inode: unsigned64(project.inode, "root Run project inode"),
+    }),
+    origin: normalizePrivateRootRunOrigin(root.origin),
+    requestDigest: digest(root.requestDigest, "root Run identity request"),
+    coordinatorEpoch: positiveSafeInteger(root.coordinatorEpoch, "root Run identity coordinator epoch"),
+  });
+}
+
+/** The origin-aware deterministic Run identity selected for the next store schema. */
+export function privateRootRunIdentityDigest(value: PrivateRootRunIdentityInput): string {
+  const input = normalizePrivateRootRunIdentityInput(value);
+  return privateDomainDigest("JIG-Private-Root-Run/2", {
+    project: input.project,
+    originDigest: privateRootRunOriginDigest(input.origin),
+    requestDigest: input.requestDigest,
+    coordinatorEpoch: input.coordinatorEpoch,
   });
 }
 
@@ -282,6 +414,17 @@ function positiveSafeInteger(value: unknown, label: string): number {
 function nonnegativeSafeInteger(value: unknown, label: string): number {
   if (!Number.isSafeInteger(value) || (value as number) < 0) throw new TypeError(`${label} is invalid`);
   return value as number;
+}
+
+function unsigned64(value: unknown, label: string): string {
+  if (typeof value !== "string" || !UNSIGNED_DECIMAL.test(value)) {
+    throw new TypeError(`${label} is invalid`);
+  }
+  let parsed: bigint;
+  try { parsed = BigInt(value); }
+  catch { throw new TypeError(`${label} is invalid`); }
+  if (parsed > MAX_UNSIGNED_64) throw new TypeError(`${label} is invalid`);
+  return value;
 }
 
 function sameBytes(left: Uint8Array, right: Uint8Array): boolean {
