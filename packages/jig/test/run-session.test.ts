@@ -5,7 +5,10 @@ import {
   RunHostSession,
   type ExactComponentExit,
   type ExactComponentProcess,
+  type RunHostFlowCall,
   type RunHostInvocation,
+  type RunHostOperationDispatcher,
+  type RunHostOperationTerminal,
 } from "../src/run/session.js";
 
 const encoder = new TextEncoder();
@@ -170,6 +173,111 @@ describe("private RunHostSession", () => {
     process.emit(result(null));
     process.finish(0);
     expect((await running).status).toBe("succeeded");
+  });
+
+  test("dispatches one flow operation and joins identical waiters", async () => {
+    const process = new FakeProcess();
+    const decision = deferred<RunHostOperationTerminal>();
+    const calls: RunHostFlowCall[] = [];
+    const dispatcher: RunHostOperationDispatcher = {
+      async callFlow(call) {
+        calls.push(call);
+        return await decision.promise;
+      },
+    };
+    const running = new RunHostSession(process, invocation(), {}, dispatcher).run();
+    await process.nextHost();
+    const params = {
+      operationId: "research:1",
+      slot: "research",
+      intent: "Research this",
+      input: { subject: "FLOW" },
+    };
+    process.emit(request("component:1", "flow/call", params));
+    process.emit(request("component:2", "flow/call", params));
+    await tick();
+    expect(calls).toEqual([params]);
+
+    decision.resolve({
+      status: "succeeded",
+      result: { outcome: "done", output: { answer: 42 } },
+    });
+    expect(await process.nextHost()).toMatchObject({ result: { outcome: "done" } });
+    expect(await process.nextHost()).toMatchObject({ result: { outcome: "done" } });
+    process.emit(result("parent"));
+    process.finish(0);
+    expect(await running).toMatchObject({ status: "succeeded" });
+  });
+
+  test("rejects a conflicting operation while the first dispatch is pending", async () => {
+    const process = new FakeProcess();
+    const decision = deferred<RunHostOperationTerminal>();
+    let calls = 0;
+    const running = new RunHostSession(process, invocation(), {}, {
+      async callFlow() {
+        calls += 1;
+        return await decision.promise;
+      },
+    }).run();
+    await process.nextHost();
+    process.emit(request("component:1", "flow/call", {
+      operationId: "same:1",
+      slot: "research",
+      input: { value: 1 },
+    }));
+    process.emit(request("component:2", "flow/call", {
+      operationId: "same:1",
+      slot: "research",
+      input: { value: 2 },
+    }));
+    expect(operationCode(await process.nextHost())).toBe("OPERATION_CONFLICT");
+    expect(calls).toBe(1);
+    decision.resolve({ status: "succeeded", result: { outcome: "done", output: null } });
+    expect(await process.nextHost()).toMatchObject({ id: "component:1", result: {} });
+    process.emit(result(null));
+    process.finish(0);
+    expect(await running).toMatchObject({ status: "succeeded" });
+  });
+
+  test("cancels one waiter and aborts shared work only after the final waiter", async () => {
+    const process = new FakeProcess();
+    const aborted = deferred<void>();
+    const running = new RunHostSession(process, invocation(), {}, {
+      async callFlow(_call, signal) {
+        await new Promise<void>((resolve) => {
+          signal.addEventListener("abort", () => {
+            aborted.resolve();
+            resolve();
+          }, { once: true });
+        });
+        return { status: "failed", code: "CANCELLED", message: "child cancelled" };
+      },
+    }).run();
+    await process.nextHost();
+    const params = { operationId: "shared:1", slot: "research", input: null };
+    process.emit(request("component:1", "flow/call", params));
+    process.emit(request("component:2", "flow/call", params));
+    process.emit({
+      jsonrpc: "2.0",
+      method: "request/cancel",
+      params: { requestId: "component:1" },
+    });
+    expect(operationCode(await process.nextHost())).toBe("CANCELLED");
+    let observedAbort = false;
+    void aborted.promise.then(() => { observedAbort = true; });
+    await tick();
+    expect(observedAbort).toBe(false);
+
+    process.emit({
+      jsonrpc: "2.0",
+      method: "request/cancel",
+      params: { requestId: "component:2" },
+    });
+    expect(operationCode(await process.nextHost())).toBe("CANCELLED");
+    await aborted.promise;
+    process.emit(result(null));
+    process.finish(0);
+    expect(await running).toMatchObject({ status: "succeeded" });
   });
 
   test("treats component request-ID reuse as fatal", async () => {
@@ -636,4 +744,13 @@ class ValuePipe {
 
 async function tick(): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, 10));
+}
+
+function deferred<T>(): {
+  readonly promise: Promise<T>;
+  readonly resolve: (value: T) => void;
+} {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((settle) => { resolve = settle; });
+  return { promise, resolve };
 }

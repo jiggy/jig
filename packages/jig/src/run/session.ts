@@ -66,6 +66,30 @@ export interface RunHostInvocation {
   readonly signal?: AbortSignal;
 }
 
+export interface RunHostFlowCall {
+  readonly operationId: string;
+  readonly slot: string;
+  readonly intent?: string;
+  readonly input: JsonValue;
+}
+
+export type RunHostOperationTerminal =
+  | {
+      readonly status: "succeeded";
+      readonly result: RunResult;
+    }
+  | {
+      readonly status: "failed";
+      readonly code: WireFailureCode;
+      readonly message: string;
+      readonly details?: JsonValue;
+    };
+
+/** Private host seam. Portable components see only Run/1. */
+export interface RunHostOperationDispatcher {
+  callFlow(call: RunHostFlowCall, signal: AbortSignal): Promise<RunHostOperationTerminal>;
+}
+
 export interface RunHostLimits {
   readonly cancellationGraceMs: number;
   readonly stdoutBytes: number;
@@ -142,6 +166,19 @@ interface ParsedError {
 
 type ParsedEnvelope = ParsedRequest | ParsedNotification | ParsedSuccess | ParsedError;
 
+type ParsedOperation =
+  | {
+      readonly method: "flow/call";
+      readonly operationId: string;
+      readonly signature: string;
+      readonly call: RunHostFlowCall;
+    }
+  | {
+      readonly method: "effect/call";
+      readonly operationId: string;
+      readonly signature: string;
+    };
+
 interface RootSuccess {
   readonly kind: "success";
   readonly result: RunResult;
@@ -158,6 +195,9 @@ type RootTerminal = RootSuccess | RootFailure;
 
 interface OperationRecord {
   readonly signature: string;
+  readonly controller: AbortController;
+  readonly waiters: Set<string>;
+  terminal?: RunHostOperationTerminal;
 }
 
 interface LocalTerminal {
@@ -174,12 +214,13 @@ const DEFAULT_LIMITS: RunHostLimits = Object.freeze({
 
 /**
  * One pre-release host session for one already selected and sandboxed process.
- * It deliberately has no child-Flow or effect dispatcher yet.
+ * The optional dispatcher is private Jig host machinery, not a Run/1 field.
  */
 export class RunHostSession {
   private readonly limits: RunHostLimits;
   private readonly componentIds = new Set<string>();
   private readonly operations = new Map<string, OperationRecord>();
+  private readonly operationWaiters = new Map<string, OperationRecord>();
   private readonly stderrChunks: Uint8Array[] = [];
   private readonly ownedTasks = new Set<Promise<void>>();
   private writeTail: Promise<void> = Promise.resolve();
@@ -208,6 +249,7 @@ export class RunHostSession {
     private readonly process: ExactComponentProcess,
     private readonly invocation: RunHostInvocation,
     limits: Partial<RunHostLimits> = {},
+    private readonly dispatcher?: RunHostOperationDispatcher,
   ) {
     this.limits = Object.freeze({ ...DEFAULT_LIMITS, ...limits });
     validateLimits(this.limits);
@@ -424,7 +466,7 @@ export class RunHostSession {
     this.componentIds.add(request.id);
 
     if (this.responseOverflowed) return;
-    if (this.pendingResponses >= MAX_PENDING_COMPONENT_REQUESTS) {
+    if (this.pendingResponses + this.operationWaiters.size >= MAX_PENDING_COMPONENT_REQUESTS) {
       this.responseOverflowed = true;
       this.recordResourceFailure("too many pending component response writes");
       this.queueResponse(
@@ -440,9 +482,9 @@ export class RunHostSession {
       return;
     }
 
-    let operation: { readonly operationId: string; readonly signature: string };
+    let operation: ParsedOperation;
     try {
-      operation = parseUnavailableOperation(request);
+      operation = parseOperation(request);
     } catch {
       this.queueResponse(request.id, errorMessage(request.id, -32602, "Invalid params"));
       return;
@@ -464,11 +506,41 @@ export class RunHostSession {
       );
       return;
     }
-    if (prior === undefined) this.operations.set(operation.operationId, { signature: operation.signature });
-    this.queueResponse(
-      request.id,
-      operationError(request.id, "UNAVAILABLE", "no child Flow or effect dispatcher is installed"),
-    );
+    if (prior !== undefined) {
+      this.attachOperationWaiter(request.id, prior);
+      return;
+    }
+
+    if (operation.method === "effect/call" || this.dispatcher === undefined) {
+      const terminal = failedOperation(
+        "UNAVAILABLE",
+        operation.method === "effect/call"
+          ? "no effect dispatcher is installed"
+          : "no child Flow dispatcher is installed",
+      );
+      const settled = {
+        signature: operation.signature,
+        controller: new AbortController(),
+        waiters: new Set<string>(),
+        terminal,
+      } satisfies OperationRecord;
+      this.operations.set(operation.operationId, settled);
+      this.queueOperationResponse(request.id, terminal);
+      return;
+    }
+
+    const record: OperationRecord = {
+      signature: operation.signature,
+      controller: new AbortController(),
+      waiters: new Set<string>(),
+    };
+    this.operations.set(operation.operationId, record);
+    this.attachOperationWaiter(request.id, record);
+    const task = this.dispatcher.callFlow(operation.call, record.controller.signal)
+      .then((terminal) => normalizeOperationTerminal(terminal))
+      .catch((error) => failedOperation("EXECUTION_FAILED", boundedMessage(errorText(error))))
+      .then((terminal) => this.settleOperation(record, terminal));
+    this.own(task);
   }
 
   private receiveNotification(notification: ParsedNotification): void {
@@ -476,9 +548,18 @@ export class RunHostSession {
     try {
       const params = requireObject(notification.params, "request/cancel params");
       requireExactKeys(params, ["requestId"]);
-      requireWireId(params.requestId);
-      // Every host decision in this initial no-dispatch slice is immediate.
-      // A later cancellation therefore targets an already-terminal waiter.
+      const requestId = requireWireId(params.requestId);
+      const operation = this.operationWaiters.get(requestId);
+      if (operation === undefined) return;
+      operation.waiters.delete(requestId);
+      this.operationWaiters.delete(requestId);
+      this.queueOperationResponse(
+        requestId,
+        failedOperation("CANCELLED", "component cancelled the pending operation"),
+      );
+      if (operation.waiters.size === 0 && operation.terminal === undefined) {
+        operation.controller.abort();
+      }
     } catch (error) {
       this.failProtocol(`malformed request/cancel: ${errorText(error)}`);
     }
@@ -489,7 +570,7 @@ export class RunHostSession {
       this.failProtocol(`unknown response ID ${response.id}`);
       return;
     }
-    if (this.pendingResponses !== 0) {
+    if (this.pendingResponses !== 0 || this.operationWaiters.size !== 0) {
       this.failProtocol("component returned its root result before owned requests settled");
       return;
     }
@@ -510,7 +591,7 @@ export class RunHostSession {
       this.failProtocol(`unknown response ID ${String(response.id)}`);
       return;
     }
-    if (this.pendingResponses !== 0) {
+    if (this.pendingResponses !== 0 || this.operationWaiters.size !== 0) {
       this.failProtocol("component returned its root error before owned requests settled");
       return;
     }
@@ -541,6 +622,39 @@ export class RunHostSession {
     ));
   }
 
+  private attachOperationWaiter(id: string, operation: OperationRecord): void {
+    if (operation.terminal !== undefined) {
+      this.queueOperationResponse(id, operation.terminal);
+      return;
+    }
+    operation.waiters.add(id);
+    this.operationWaiters.set(id, operation);
+  }
+
+  private settleOperation(operation: OperationRecord, terminal: RunHostOperationTerminal): void {
+    if (operation.terminal !== undefined) return;
+    operation.terminal = terminal;
+    for (const id of operation.waiters) {
+      this.operationWaiters.delete(id);
+      this.queueOperationResponse(id, terminal);
+    }
+    operation.waiters.clear();
+  }
+
+  private queueOperationResponse(id: string, terminal: RunHostOperationTerminal): void {
+    this.queueResponse(id, terminal.status === "succeeded"
+      ? { jsonrpc: "2.0", id, result: terminal.result as unknown as JsonObject }
+      : operationError(id, terminal.code, terminal.message, terminal.details));
+  }
+
+  private abortOwnedOperations(): void {
+    for (const operation of this.operations.values()) {
+      if (operation.terminal === undefined && !operation.controller.signal.aborted) {
+        operation.controller.abort();
+      }
+    }
+  }
+
   private sendFrame(value: JsonObject, onWriteStart?: () => void): Promise<void> {
     const payload = canonicalJson(value);
     const line = new Uint8Array(payload.byteLength + 1);
@@ -558,6 +672,7 @@ export class RunHostSession {
     if (this.protocolFailure !== undefined) return;
     this.protocolFailure = message;
     this.rootOpen = false;
+    this.abortOwnedOperations();
     if (response === undefined) {
       this.startTermination();
       return;
@@ -571,12 +686,14 @@ export class RunHostSession {
     if (this.channelFailure !== undefined) return;
     this.localTerminal ??= { code: "RESOURCE_EXHAUSTED", message };
     this.rootOpen = false;
+    this.abortOwnedOperations();
   }
 
   private recordChannelFailure(message: string): void {
     if (this.localTerminal !== undefined) return;
     this.channelFailure ??= message;
     this.rootOpen = false;
+    this.abortOwnedOperations();
   }
 
   private armCancellation(): void {
@@ -616,6 +733,7 @@ export class RunHostSession {
     }
     if (this.channelFailure === undefined) this.localTerminal ??= { code, message };
     this.rootOpen = false;
+    this.abortOwnedOperations();
     if (this.rootWritten && this.rootResponse === undefined) this.sendRootCancellation();
     if (!this.rootWritten) {
       this.startTermination();
@@ -649,6 +767,7 @@ export class RunHostSession {
   private startTermination(): void {
     if (this.terminateStarted) return;
     this.terminateStarted = true;
+    this.abortOwnedOperations();
     if (this.rootResponse !== undefined) this.postResponseTermination = true;
     this.own(this.process.terminate().catch((error) => {
       this.recordChannelFailure(`failed to terminate component: ${errorText(error)}`);
@@ -702,7 +821,7 @@ export class RunHostSession {
       }
       return failure("CHANNEL_LOST", "component exited before a root response");
     }
-    if (this.pendingResponses !== 0) {
+    if (this.pendingResponses !== 0 || this.operationWaiters.size !== 0) {
       return failure("EXECUTION_FAILED", "component exited with pending owned protocol work");
     }
     if (this.rootResponse.kind === "failure") {
@@ -911,10 +1030,7 @@ function parseRunResult(value: JsonValue): RunResult {
   return { outcome: requireLocalName(object.outcome), output: object.output! };
 }
 
-function parseUnavailableOperation(request: ParsedRequest): {
-  readonly operationId: string;
-  readonly signature: string;
-} {
+function parseOperation(request: ParsedRequest): ParsedOperation {
   const params = requireObject(request.params, `${request.method} params`);
   if (request.method === "flow/call") {
     const keys = Object.hasOwn(params, "intent")
@@ -922,18 +1038,35 @@ function parseUnavailableOperation(request: ParsedRequest): {
       : ["operationId", "slot", "input"];
     requireExactKeys(params, keys);
     const operationId = requireWireId(params.operationId);
-    requireLocalName(params.slot);
+    const slot = requireLocalName(params.slot);
+    let intent: string | undefined;
     if (Object.hasOwn(params, "intent")) {
       if (typeof params.intent !== "string" || scalarLength(params.intent) < 1 ||
         scalarLength(params.intent) > 16_384) throw new Error("invalid intent");
+      intent = params.intent;
     }
-    return { operationId, signature: operationSignature(request.method, params) };
+    const call = Object.freeze({
+      operationId,
+      slot,
+      ...(intent === undefined ? {} : { intent }),
+      input: params.input!,
+    });
+    return {
+      method: "flow/call",
+      operationId,
+      signature: operationSignature(request.method, params),
+      call,
+    };
   }
   requireExactKeys(params, ["operationId", "slot", "method", "input"]);
   const operationId = requireWireId(params.operationId);
   requireLocalName(params.slot);
   requireLocalName(params.method);
-  return { operationId, signature: operationSignature(request.method, params) };
+  return {
+    method: "effect/call",
+    operationId,
+    signature: operationSignature(request.method, params),
+  };
 }
 
 function operationSignature(method: string, params: JsonObject): string {
@@ -949,12 +1082,58 @@ function errorMessage(id: string | null, code: number, message: string): JsonObj
   return { jsonrpc: "2.0", id, error: { code, message } };
 }
 
-function operationError(id: string, code: WireFailureCode, message: string): JsonObject {
+function operationError(
+  id: string,
+  code: WireFailureCode,
+  message: string,
+  details?: JsonValue,
+): JsonObject {
   return {
     jsonrpc: "2.0",
     id,
-    error: { code: -32000, message, data: { code } },
+    error: {
+      code: -32000,
+      message,
+      data: details === undefined ? { code } : { code, details },
+    },
   };
+}
+
+function failedOperation(
+  code: WireFailureCode,
+  message: string,
+  details?: JsonValue,
+): RunHostOperationTerminal {
+  return Object.freeze({
+    status: "failed" as const,
+    code,
+    message: boundedMessage(message),
+    ...(details === undefined ? {} : { details }),
+  });
+}
+
+function normalizeOperationTerminal(value: RunHostOperationTerminal): RunHostOperationTerminal {
+  if (value.status === "succeeded") {
+    const result = parseRunResult(value.result as unknown as JsonValue);
+    return Object.freeze({ status: "succeeded" as const, result });
+  }
+  if (!WIRE_FAILURE_CODES.has(value.code) || typeof value.message !== "string" ||
+      scalarLength(value.message) < 1 || scalarLength(value.message) > 1_024) {
+    throw new TypeError("operation dispatcher returned an invalid failure");
+  }
+  if (value.details !== undefined) validateJson1(value.details);
+  return Object.freeze({
+    status: "failed" as const,
+    code: value.code,
+    message: value.message,
+    ...(value.details === undefined ? {} : { details: value.details }),
+  });
+}
+
+function boundedMessage(value: string): string {
+  const scalars = [...value];
+  if (scalars.length === 0) return "operation dispatcher failed";
+  return scalars.length <= 1_024 ? value : `${scalars.slice(0, 1_021).join("")}...`;
 }
 
 function requireObject(value: JsonValue | undefined, description: string): JsonObject {
