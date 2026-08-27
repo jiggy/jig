@@ -5,6 +5,8 @@ import {
   RunHostSession,
   type ExactComponentExit,
   type ExactComponentProcess,
+  type RunHostEffectCall,
+  type RunHostEffectOperationTerminal,
   type RunHostFlowCall,
   type RunHostInvocation,
   type RunHostOperationDispatcher,
@@ -207,6 +209,109 @@ describe("private RunHostSession", () => {
     process.emit(result("parent"));
     process.finish(0);
     expect(await running).toMatchObject({ status: "succeeded" });
+  });
+
+  test("dispatches effect values and declared errors with the complete snapshotted call", async () => {
+    const process = new FakeProcess();
+    const calls: RunHostEffectCall[] = [];
+    const terminals: RunHostEffectOperationTerminal[] = [
+      { status: "succeeded", result: { value: { eventId: "event-1" } } },
+      { status: "succeeded", result: { error: { name: "type-denied", data: { type: "private" } } } },
+    ];
+    const running = new RunHostSession(process, invocation(), {}, {
+      async callEffect(call) {
+        calls.push(call);
+        return terminals.shift()!;
+      },
+    }).run();
+    await process.nextHost();
+
+    process.emit(request("component:1", "effect/call", {
+      operationId: "append:1",
+      slot: "journal",
+      method: "append",
+      input: { type: "document-created", data: { id: 1 } },
+    }));
+    expect(await process.nextHost()).toEqual({
+      jsonrpc: "2.0",
+      id: "component:1",
+      result: { value: { eventId: "event-1" } },
+    });
+    process.emit(request("component:2", "effect/call", {
+      operationId: "append:2",
+      slot: "journal",
+      method: "append",
+      input: { type: "private", data: null },
+    }));
+    expect(await process.nextHost()).toEqual({
+      jsonrpc: "2.0",
+      id: "component:2",
+      result: { error: { name: "type-denied", data: { type: "private" } } },
+    });
+    expect(calls).toEqual([
+      {
+        operationId: "append:1",
+        slot: "journal",
+        method: "append",
+        input: { type: "document-created", data: { id: 1 } },
+      },
+      {
+        operationId: "append:2",
+        slot: "journal",
+        method: "append",
+        input: { type: "private", data: null },
+      },
+    ]);
+    process.emit(result(null));
+    process.finish(0);
+    expect(await running).toMatchObject({ status: "succeeded" });
+  });
+
+  test("rejects malformed effect dispatcher results and cross-method operation reuse", async () => {
+    const invalid = new FakeProcess();
+    const invalidRun = new RunHostSession(invalid, invocation(), {}, {
+      async callEffect() {
+        return { status: "succeeded", result: { value: null, extra: true } } as unknown as RunHostEffectOperationTerminal;
+      },
+    }).run();
+    await invalid.nextHost();
+    invalid.emit(request("component:1", "effect/call", {
+      operationId: "append:1",
+      slot: "journal",
+      method: "append",
+      input: null,
+    }));
+    expect(operationCode(await invalid.nextHost())).toBe("INVALID_RESULT");
+    invalid.emit(result(null));
+    invalid.finish(0);
+    expect(await invalidRun).toMatchObject({ status: "succeeded" });
+
+    const conflict = new FakeProcess();
+    const conflictRun = new RunHostSession(conflict, invocation(), {}, {
+      async callFlow() {
+        return { status: "succeeded", result: { outcome: "done", output: null } };
+      },
+      async callEffect() {
+        throw new Error("must not dispatch");
+      },
+    }).run();
+    await conflict.nextHost();
+    conflict.emit(request("component:1", "flow/call", {
+      operationId: "shared:1",
+      slot: "child",
+      input: null,
+    }));
+    expect(await conflict.nextHost()).toMatchObject({ result: { outcome: "done" } });
+    conflict.emit(request("component:2", "effect/call", {
+      operationId: "shared:1",
+      slot: "journal",
+      method: "append",
+      input: null,
+    }));
+    expect(operationCode(await conflict.nextHost())).toBe("OPERATION_CONFLICT");
+    conflict.emit(result(null));
+    conflict.finish(0);
+    expect(await conflictRun).toMatchObject({ status: "succeeded" });
   });
 
   test("rejects a conflicting operation while the first dispatch is pending", async () => {

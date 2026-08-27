@@ -73,21 +73,46 @@ export interface RunHostFlowCall {
   readonly input: JsonValue;
 }
 
-export type RunHostOperationTerminal =
+export interface RunHostEffectCall {
+  readonly operationId: string;
+  readonly slot: string;
+  readonly method: string;
+  readonly input: JsonValue;
+}
+
+export type RunHostOperationFailure =
+  {
+    readonly status: "failed";
+    readonly code: WireFailureCode;
+    readonly message: string;
+    readonly details?: JsonValue;
+  };
+
+export type RunHostFlowOperationTerminal =
   | {
       readonly status: "succeeded";
       readonly result: RunResult;
     }
+  | RunHostOperationFailure;
+
+export type RunHostEffectResult =
+  | { readonly value: JsonValue }
+  | { readonly error: { readonly name: string; readonly data: JsonValue } };
+
+export type RunHostEffectOperationTerminal =
   | {
-      readonly status: "failed";
-      readonly code: WireFailureCode;
-      readonly message: string;
-      readonly details?: JsonValue;
-    };
+      readonly status: "succeeded";
+      readonly result: RunHostEffectResult;
+    }
+  | RunHostOperationFailure;
+
+/** Backwards-compatible private alias for existing Flow dispatchers. */
+export type RunHostOperationTerminal = RunHostFlowOperationTerminal;
 
 /** Private host seam. Portable components see only Run/1. */
 export interface RunHostOperationDispatcher {
-  callFlow(call: RunHostFlowCall, signal: AbortSignal): Promise<RunHostOperationTerminal>;
+  callFlow?(call: RunHostFlowCall, signal: AbortSignal): Promise<RunHostFlowOperationTerminal>;
+  callEffect?(call: RunHostEffectCall, signal: AbortSignal): Promise<RunHostEffectOperationTerminal>;
 }
 
 export interface RunHostLimits {
@@ -177,7 +202,21 @@ type ParsedOperation =
       readonly method: "effect/call";
       readonly operationId: string;
       readonly signature: string;
+      readonly call: RunHostEffectCall;
     };
+
+type NormalizedOperationTerminal =
+  | {
+      readonly status: "succeeded";
+      readonly method: "flow/call";
+      readonly result: RunResult;
+    }
+  | {
+      readonly status: "succeeded";
+      readonly method: "effect/call";
+      readonly result: RunHostEffectResult;
+    }
+  | RunHostOperationFailure;
 
 interface RootSuccess {
   readonly kind: "success";
@@ -197,7 +236,7 @@ interface OperationRecord {
   readonly signature: string;
   readonly controller: AbortController;
   readonly waiters: Set<string>;
-  terminal?: RunHostOperationTerminal;
+  terminal?: NormalizedOperationTerminal;
 }
 
 interface LocalTerminal {
@@ -511,7 +550,10 @@ export class RunHostSession {
       return;
     }
 
-    if (operation.method === "effect/call" || this.dispatcher === undefined) {
+    const dispatch = operation.method === "flow/call"
+      ? this.dispatcher?.callFlow
+      : this.dispatcher?.callEffect;
+    if (dispatch === undefined) {
       const terminal = failedOperation(
         "UNAVAILABLE",
         operation.method === "effect/call"
@@ -536,9 +578,15 @@ export class RunHostSession {
     };
     this.operations.set(operation.operationId, record);
     this.attachOperationWaiter(request.id, record);
-    const task = this.dispatcher.callFlow(operation.call, record.controller.signal)
-      .then((terminal) => normalizeOperationTerminal(terminal))
-      .catch((error) => failedOperation("EXECUTION_FAILED", boundedMessage(errorText(error))))
+    const task = (operation.method === "flow/call"
+      ? this.dispatcher!.callFlow!(operation.call, record.controller.signal)
+        .then((terminal) => normalizeFlowOperationTerminal(terminal))
+      : this.dispatcher!.callEffect!(operation.call, record.controller.signal)
+        .then((terminal) => normalizeEffectOperationTerminal(terminal)))
+      .catch((error) => failedOperation(
+        error instanceof InvalidDispatcherResult ? "INVALID_RESULT" : "EXECUTION_FAILED",
+        boundedMessage(errorText(error)),
+      ))
       .then((terminal) => this.settleOperation(record, terminal));
     this.own(task);
   }
@@ -631,7 +679,7 @@ export class RunHostSession {
     this.operationWaiters.set(id, operation);
   }
 
-  private settleOperation(operation: OperationRecord, terminal: RunHostOperationTerminal): void {
+  private settleOperation(operation: OperationRecord, terminal: NormalizedOperationTerminal): void {
     if (operation.terminal !== undefined) return;
     operation.terminal = terminal;
     for (const id of operation.waiters) {
@@ -641,7 +689,7 @@ export class RunHostSession {
     operation.waiters.clear();
   }
 
-  private queueOperationResponse(id: string, terminal: RunHostOperationTerminal): void {
+  private queueOperationResponse(id: string, terminal: NormalizedOperationTerminal): void {
     this.queueResponse(id, terminal.status === "succeeded"
       ? { jsonrpc: "2.0", id, result: terminal.result as unknown as JsonObject }
       : operationError(id, terminal.code, terminal.message, terminal.details));
@@ -1060,12 +1108,13 @@ function parseOperation(request: ParsedRequest): ParsedOperation {
   }
   requireExactKeys(params, ["operationId", "slot", "method", "input"]);
   const operationId = requireWireId(params.operationId);
-  requireLocalName(params.slot);
-  requireLocalName(params.method);
+  const slot = requireLocalName(params.slot);
+  const method = requireLocalName(params.method);
   return {
     method: "effect/call",
     operationId,
     signature: operationSignature(request.method, params),
+    call: Object.freeze({ operationId, slot, method, input: params.input! }),
   };
 }
 
@@ -1103,7 +1152,7 @@ function failedOperation(
   code: WireFailureCode,
   message: string,
   details?: JsonValue,
-): RunHostOperationTerminal {
+): RunHostOperationFailure {
   return Object.freeze({
     status: "failed" as const,
     code,
@@ -1112,22 +1161,67 @@ function failedOperation(
   });
 }
 
-function normalizeOperationTerminal(value: RunHostOperationTerminal): RunHostOperationTerminal {
+class InvalidDispatcherResult extends TypeError {}
+
+function normalizeFlowOperationTerminal(
+  value: RunHostFlowOperationTerminal,
+): NormalizedOperationTerminal {
   if (value.status === "succeeded") {
-    const result = parseRunResult(value.result as unknown as JsonValue);
-    return Object.freeze({ status: "succeeded" as const, result });
+    try {
+      const result = parseRunResult(value.result as unknown as JsonValue);
+      return Object.freeze({ status: "succeeded" as const, method: "flow/call" as const, result });
+    } catch (error) {
+      throw new InvalidDispatcherResult(`invalid Flow dispatcher result: ${errorText(error)}`);
+    }
   }
+  return normalizeOperationFailure(value);
+}
+
+function normalizeEffectOperationTerminal(
+  value: RunHostEffectOperationTerminal,
+): NormalizedOperationTerminal {
+  if (value.status === "succeeded") {
+    try {
+      const result = parseEffectResult(value.result as unknown as JsonValue);
+      return Object.freeze({ status: "succeeded" as const, method: "effect/call" as const, result });
+    } catch (error) {
+      throw new InvalidDispatcherResult(`invalid effect dispatcher result: ${errorText(error)}`);
+    }
+  }
+  return normalizeOperationFailure(value);
+}
+
+function normalizeOperationFailure(value: RunHostOperationFailure): RunHostOperationFailure {
   if (!WIRE_FAILURE_CODES.has(value.code) || typeof value.message !== "string" ||
       scalarLength(value.message) < 1 || scalarLength(value.message) > 1_024) {
-    throw new TypeError("operation dispatcher returned an invalid failure");
+    throw new InvalidDispatcherResult("operation dispatcher returned an invalid failure");
   }
-  if (value.details !== undefined) validateJson1(value.details);
+  try {
+    if (value.details !== undefined) validateJson1(value.details);
+  } catch (error) {
+    throw new InvalidDispatcherResult(`invalid operation failure details: ${errorText(error)}`);
+  }
   return Object.freeze({
     status: "failed" as const,
     code: value.code,
     message: value.message,
     ...(value.details === undefined ? {} : { details: value.details }),
   });
+}
+
+function parseEffectResult(value: JsonValue): RunHostEffectResult {
+  const object = requireObject(value, "effect result");
+  if (Object.hasOwn(object, "value")) {
+    requireExactKeys(object, ["value"]);
+    validateJson1(object.value!);
+    return Object.freeze({ value: object.value! });
+  }
+  requireExactKeys(object, ["error"]);
+  const error = requireObject(object.error, "declared effect error");
+  requireExactKeys(error, ["name", "data"]);
+  const name = requireLocalName(error.name);
+  validateJson1(error.data!);
+  return Object.freeze({ error: Object.freeze({ name, data: error.data! }) });
 }
 
 function boundedMessage(value: string): string {
