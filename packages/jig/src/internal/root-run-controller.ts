@@ -54,6 +54,10 @@ import {
   executePrivateRootFlowCall,
 } from "./root-flow-call-controller.js";
 import {
+  closePrivateRootJournalEffectsBeforeParent,
+  executePrivateRootJournalEffect,
+} from "./root-journal-effect-controller.js";
+import {
   failedPrivateRootTerminal,
   normalizePrivateRootTerminal,
 } from "./root-run-state.js";
@@ -119,6 +123,7 @@ export async function executePrivateRootRunLaunch(input: {
   }
   try {
     await closePrivateRootFlowCallBeforeParent({ ...input, parent: work });
+    await closePrivateRootJournalEffectsBeforeParent({ ...input, parent: work });
   } catch (error) {
     if (error instanceof PrivateLinuxFenceUnconfirmedError) {
       return Object.freeze({ state: "pending", reason: "fence-unconfirmed" });
@@ -272,6 +277,12 @@ async function startOrResumeCurrentExecution(
           parent: work,
           call,
           parentDeadlineUnixMs: plan.effectiveDeadlineUnixMs,
+          signal,
+        }),
+        callEffect: async (call, signal) => await executePrivateRootJournalEffect({
+          ...input,
+          parent: work,
+          call,
           signal,
         }),
       }).run();
@@ -485,6 +496,7 @@ async function settleWithoutPlan(
     packageReleased: true,
     ownerRelease: null,
     childClosureDigest: null,
+    journalClosureDigest: null,
   } as unknown as JsonValue);
   work = await reacquire(input);
   const admitted = normalizePrivateRootTerminal(work.lifecycle.provisional!.value);
@@ -500,6 +512,7 @@ async function releaseAdmitAndClose(
   let work = initial;
   if (work.lifecycle.release === undefined) {
     const childClosureDigest = await closePrivateRootFlowCallBeforeParent({ ...input, parent: work });
+    const journalClosureDigest = await closePrivateRootJournalEffectsBeforeParent({ ...input, parent: work });
     const plan = work.lifecycle.plan === undefined ? undefined : parsePlan(work.lifecycle.plan.value);
     let ownerRelease: PrivateLinuxOwnerStateReleaseReceipt | null = null;
     if (plan !== undefined) {
@@ -533,6 +546,7 @@ async function releaseAdmitAndClose(
       packageReleased: true,
       ownerRelease,
       childClosureDigest,
+      journalClosureDigest,
     } as unknown as JsonValue);
     work = await reacquire(input);
   }

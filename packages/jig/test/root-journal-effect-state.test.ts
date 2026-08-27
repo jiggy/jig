@@ -1,19 +1,44 @@
 import { describe, expect, test } from "bun:test";
 
 import {
+  createPrivateRootJournalEffectsClosure,
   createPrivateJournalEvent,
   normalizePrivateRootJournalAppendAllocation,
   normalizePrivateRootJournalAppendClosure,
+  normalizePrivateRootJournalEffectsClosure,
   privateEmptyHookSelectionDigest,
   privateJournalEventDigest,
   privateRootJournalAppendAllocationDigest,
   privateRootJournalAppendClosureDigest,
+  privateRootJournalEffectsClosureDigest,
   privateRootJournalEffectTerminalDigest,
+  type PrivateRootJournalAppendReceipt,
 } from "../src/internal/root-journal-effect-state.js";
 
 const runId = `sha256:${"1".repeat(64)}`;
 
 describe("private root Journal effect state", () => {
+  test("binds the sorted complete operation set into one parent closure", () => {
+    const receipt = (operationId: string, digit: string) => ({
+      allocation: { call: { operationId } },
+      closureDigest: `sha256:${digit.repeat(64)}`,
+    }) as unknown as PrivateRootJournalAppendReceipt;
+    const closure = createPrivateRootJournalEffectsClosure({
+      parentRunId: `sha256:${"a".repeat(64)}`,
+      receipts: [receipt("publish-2", "2"), receipt("publish-1", "1")],
+    });
+    expect(closure.operations.map((operation) => operation.operationId)).toEqual(["publish-1", "publish-2"]);
+    expect(privateRootJournalEffectsClosureDigest(closure)).toMatch(/^sha256:[0-9a-f]{64}$/);
+    expect(privateRootJournalEffectsClosureDigest(createPrivateRootJournalEffectsClosure({
+      parentRunId: `sha256:${"a".repeat(64)}`,
+      receipts: [],
+    }))).not.toBe(privateRootJournalEffectsClosureDigest(closure));
+    expect(() => normalizePrivateRootJournalEffectsClosure({
+      ...closure,
+      operations: [closure.operations[0], closure.operations[0]],
+    })).toThrow("unique and sorted");
+  });
+
   test("normalizes one bounded publisher allocation and creates an authenticated Event", () => {
     const allocation = normalizePrivateRootJournalAppendAllocation({
       kind: "private-root-journal-append-allocation/1",

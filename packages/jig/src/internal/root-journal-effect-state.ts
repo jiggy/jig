@@ -55,6 +55,15 @@ export interface PrivateRootJournalAppendReceipt {
   readonly closureDigest: string;
 }
 
+export interface PrivateRootJournalEffectsClosure {
+  readonly kind: "private-root-journal-effects-closure/1";
+  readonly parentRunId: string;
+  readonly operations: readonly {
+    readonly operationId: string;
+    readonly closureDigest: string;
+  }[];
+}
+
 export function normalizePrivateRootJournalAppendAllocation(
   value: unknown,
 ): PrivateRootJournalAppendAllocation {
@@ -212,6 +221,53 @@ export function privateRootJournalAppendClosureDigest(value: PrivateRootJournalA
   return privateDomainDigest(
     "JIG-Private-Root-Journal-Append-Closure/1",
     normalizePrivateRootJournalAppendClosure(value) as unknown as JsonValue,
+  );
+}
+
+/** One stable parent-release witness over every committed Journal operation. */
+export function createPrivateRootJournalEffectsClosure(input: {
+  readonly parentRunId: string;
+  readonly receipts: readonly PrivateRootJournalAppendReceipt[];
+}): PrivateRootJournalEffectsClosure {
+  return normalizePrivateRootJournalEffectsClosure({
+    kind: "private-root-journal-effects-closure/1",
+    parentRunId: input.parentRunId,
+    operations: input.receipts.map((receipt) => ({
+      operationId: receipt.allocation.call.operationId,
+      closureDigest: receipt.closureDigest,
+    })).sort((left, right) => left.operationId < right.operationId ? -1 : left.operationId > right.operationId ? 1 : 0),
+  });
+}
+
+export function normalizePrivateRootJournalEffectsClosure(value: unknown): PrivateRootJournalEffectsClosure {
+  const root = exactObject(value, ["kind", "operations", "parentRunId"], "Journal effects closure");
+  if (root.kind !== "private-root-journal-effects-closure/1" || !Array.isArray(root.operations) ||
+      root.operations.length > JSON_1_LIMITS.containerEntries) {
+    throw new TypeError("Journal effects closure is invalid");
+  }
+  const operations = root.operations.map((operation) => {
+    const item = exactObject(operation, ["closureDigest", "operationId"], "Journal effects closure operation");
+    return Object.freeze({
+      operationId: requireWireId(item.operationId, "Journal effects closure operation ID"),
+      closureDigest: requireDigest(item.closureDigest, "Journal effects closure operation"),
+    });
+  });
+  for (let index = 1; index < operations.length; index += 1) {
+    if (operations[index - 1]!.operationId >= operations[index]!.operationId) {
+      throw new TypeError("Journal effects closure operations must be unique and sorted");
+    }
+  }
+  return Object.freeze({
+    kind: "private-root-journal-effects-closure/1",
+    parentRunId: requireDigest(root.parentRunId, "Journal effects closure parent Run"),
+    operations: Object.freeze(operations),
+  });
+}
+
+export function privateRootJournalEffectsClosureDigest(value: PrivateRootJournalEffectsClosure): string {
+  return privateDomainDigest(
+    "JIG-Private-Root-Journal-Effects-Closure/1",
+    normalizePrivateRootJournalEffectsClosure(value) as unknown as JsonValue,
   );
 }
 
