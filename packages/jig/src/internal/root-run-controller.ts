@@ -3,6 +3,7 @@ import { join } from "node:path";
 
 import { type JsonValue } from "../json.js";
 import { inspectCapturedPackage } from "../package/inspect.js";
+import { findPrivateActivationCandidateTarget } from "./activation-admission.js";
 import { RunHostSession, type RunHostTerminal } from "../run/session.js";
 import type { PrivateRuntimeSupportObservation } from "./agent-sandbox-runtime-support.js";
 import {
@@ -525,7 +526,9 @@ async function admitProtectedResult(
   provisional: Extract<RunHostTerminal, { readonly status: "succeeded" }>,
 ): Promise<RunHostTerminal> {
   const refreshed = await reacquire(input);
-  const request = refreshed.candidate.candidate.target.request;
+  const target = findPrivateActivationCandidateTarget(refreshed.candidate, refreshed.run.target);
+  if (target === undefined) throw new Error("durable root Run target is absent from its candidate");
+  const request = target.request;
   const captured = await captureStoredPackage(input.packageStoreRoot, request.package);
   try {
     return admitPrivatePackageResult(await inspectCapturedPackage(captured), provisional);
@@ -538,9 +541,11 @@ async function reproduceRecipe(
   input: RootExecutionInput,
   work: PrivateReacquiredRootExecutionWork,
 ): Promise<PrivateDirectRunRecipe> {
-  const request = work.candidate.candidate.target.request;
+  const target = findPrivateActivationCandidateTarget(work.candidate, work.run.target);
+  if (target === undefined) throw new Error("durable root Run target is absent from its candidate");
+  const request = target.request;
   if (request.digest !== work.intent.requestDigest ||
-      work.candidate.candidate.target.disposition.state !== "ready") {
+      target.disposition.state !== "ready") {
     throw new Error("durable root spawn intent differs from its admitted target");
   }
   const recipe = await planPrivateDirectRun({

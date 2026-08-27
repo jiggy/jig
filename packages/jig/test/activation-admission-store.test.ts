@@ -124,8 +124,8 @@ describe.serial("private activation admission SQLite store", () => {
           "root_spawn_intents",
           "root_terminals",
         ]);
-        expect(database.query("PRAGMA application_id").get().application_id).toBe(0x4a494737);
-        expect(database.query("PRAGMA user_version").get().user_version).toBe(7);
+        expect(database.query("PRAGMA application_id").get().application_id).toBe(0x4a494738);
+        expect(database.query("PRAGMA user_version").get().user_version).toBe(8);
         expect(database.query("SELECT count(*) AS count FROM review_plans").get().count).toBe(1);
       } finally {
         database.close(true);
@@ -198,7 +198,7 @@ describe.serial("private activation admission SQLite store", () => {
         packageStoreRoot: fixture.store,
       });
       expect(active.admission).toEqual(second);
-      expect(active.candidate.candidate.target.request).toMatchObject({
+      expect(active.candidate.candidate.targets[0]!.request).toMatchObject({
         target: { kind: "flow", path: "flows/run" },
         packagePath: "flows/run",
         entrypoint: { path: "flow.py", suffix: "py" },
@@ -272,7 +272,7 @@ describe.serial("private activation admission SQLite store", () => {
       });
       expect(first.launch?.intent).toMatchObject({
         runId: first.run.runId,
-        requestDigest: fixture.candidate.candidate.target.request.digest,
+        requestDigest: fixture.candidate.candidate.targets[0]!.request.digest,
         coordinatorEpoch: 1,
       });
 
@@ -353,7 +353,7 @@ describe.serial("private activation admission SQLite store", () => {
       })).rejects.toMatchObject({ code: "RUN_EXECUTION_CHECKPOINT_CONFLICT" });
 
       for (const [checkpoint, value] of [
-        ["backing", { package: fixture.candidate.candidate.target.request.package.digest }],
+        ["backing", { package: fixture.candidate.candidate.targets[0]!.request.package.digest }],
         ["sandbox", { owner: "sandbox-1" }],
       ] as const) {
         await recordPrivateRootExecutionCheckpoint({
@@ -504,7 +504,7 @@ describe.serial("private activation admission SQLite store", () => {
       });
       for (const [checkpoint, value] of [
         ["plan", { recipe: fencedBeforePreparation.launch!.intent.recipeDigest }],
-        ["backing", { package: fixture.candidate.candidate.target.request.package.digest }],
+        ["backing", { package: fixture.candidate.candidate.targets[0]!.request.package.digest }],
         ["sandbox", { owner: "sandbox-fenced" }],
         ["fence", { populated: false }],
       ] as const) {
@@ -1202,7 +1202,7 @@ async function createFixture(disposition: "unavailable" | "ready" = "unavailable
     const planningObservationDigest = digest("planning");
     const candidate = decodePrivateActivationCandidate({
       candidate: json1({
-        kind: "private-activation-candidate/2",
+        kind: "private-activation-candidate/3",
         projectRoot: {
           device: rootInformation.dev.toString(),
           inode: rootInformation.ino.toString(),
@@ -1220,7 +1220,7 @@ async function createFixture(disposition: "unavailable" | "ready" = "unavailable
           closureDigest: digest("declaration-closure"),
           package: declaration,
         },
-        target: {
+        targets: [{
           request: activationRequest({
             target: { kind: "flow", path: "flows/run" },
             mode: "run",
@@ -1242,14 +1242,14 @@ async function createFixture(disposition: "unavailable" | "ready" = "unavailable
                 code: "RUNTIME_UNAVAILABLE",
                 evidenceDigests: [digest("evidence")],
               },
-        },
+        }],
       }),
       lock: lockBytes,
     });
     const encoded = encodePrivateActivationCandidate(candidate);
 
     const state = join(root, ".jig");
-    const databasePath = join(state, "private-activation-admission-v7.sqlite3");
+    const databasePath = join(state, "private-activation-admission-v8.sqlite3");
     await mkdir(state, { mode: 0o700 });
     const databaseFile = await open(
       databasePath,
@@ -1277,8 +1277,8 @@ async function createFixture(disposition: "unavailable" | "ready" = "unavailable
         "INSERT INTO candidate_head(singleton, revision) VALUES (1, NULL)",
         "INSERT INTO admission_head(singleton, revision) VALUES (1, NULL)",
         "INSERT INTO coordinator_head(singleton, epoch) VALUES (1, 0)",
-        "PRAGMA application_id=1246316343",
-        "PRAGMA user_version=7",
+        "PRAGMA application_id=1246316344",
+        "PRAGMA user_version=8",
       ].join(";"));
       database.exec("BEGIN IMMEDIATE");
       database.query(

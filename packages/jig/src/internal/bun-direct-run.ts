@@ -92,14 +92,26 @@ export async function planPrivateBunDirectRun(input: {
   const runtimeSupport = requirePrivateRuntimeSupportObservation(input.runtimeSupport);
   const backend = requirePrivateLinuxCgroupBackend(input.backend);
   const selector = input.selector ?? DEFAULT_SELECTOR;
-  if (request.mode !== "run" || request.target.kind !== "flow" ||
+  if (request.mode !== "run" ||
       request.entrypoint.path !== "flow.ts" || request.entrypoint.suffix !== "ts" ||
       (request.entrypoint.selector !== undefined && request.entrypoint.selector !== selector)) {
-    throw new TypeError("private Bun recipe requires one matching direct flow.ts activation");
+    throw new TypeError("private Bun recipe requires one matching flow.ts activation");
   }
-  if (Object.keys(request.settings).length !== 0 || Object.keys(request.attachments).length !== 0 ||
-      Object.keys(request.slots).length !== 0) {
-    throw new TypeError("private Bun recipe supports only a zero-configuration direct Run");
+  if (Object.keys(request.attachments).length !== 0) {
+    throw new TypeError("private Bun recipe does not yet project attachments");
+  }
+  if (request.target.kind === "flow") {
+    if (Object.keys(request.settings).length !== 0 || Object.keys(request.slots).length !== 0) {
+      throw new TypeError("private Bun direct Flow recipe requires zero configuration");
+    }
+  } else {
+    const slots = Object.values(request.slots);
+    if (slots.length !== 1 || slots[0]!.kind !== "flow-call" ||
+        slots[0]!.targets.length !== 1 || slots[0]!.targets[0]!.kind !== "flow") {
+      throw new TypeError(
+        "private Bun Binding recipe requires one exact direct-Flow call slot",
+      );
+    }
   }
 
   const [adapterDigest, mechanism] = await Promise.all([

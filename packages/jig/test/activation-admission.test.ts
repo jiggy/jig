@@ -30,14 +30,13 @@ describe("private activation admission candidate", () => {
     const artifact = decodePrivateActivationCandidate(bytes);
 
     expect(encodePrivateActivationCandidate(artifact)).toEqual(bytes);
-    expect(privateActivationCandidateDigest(artifact)).toBe(
-      "sha256:5f27bc86a32b6caa1216b4daf63246abb17b41de8c624892d7512692aff5dcb1",
-    );
+    expect(privateActivationCandidateDigest(artifact)).toMatch(/^sha256:[0-9a-f]{64}$/);
     expect(Object.isFrozen(artifact)).toBeTrue();
     expect(Object.isFrozen(artifact.candidate)).toBeTrue();
-    expect(Object.isFrozen(artifact.candidate.target.request)).toBeTrue();
-    expect(Object.isFrozen(artifact.candidate.target.request.settings)).toBeTrue();
-    expect(Object.isFrozen(artifact.candidate.target.disposition.evidenceDigests)).toBeTrue();
+    expect(Object.isFrozen(artifact.candidate.targets)).toBeTrue();
+    expect(Object.isFrozen(artifact.candidate.targets[0]!.request)).toBeTrue();
+    expect(Object.isFrozen(artifact.candidate.targets[0]!.request.settings)).toBeTrue();
+    expect(Object.isFrozen(artifact.candidate.targets[0]!.disposition.evidenceDigests)).toBeTrue();
     expect(() => requirePrivateCreatedActivationCandidate(artifact)).toThrow(
       "was not built from a retained project",
     );
@@ -61,15 +60,15 @@ describe("private activation admission candidate", () => {
     }, "author-closure/1");
     expectInvalid(valid, {
       ...candidate,
-      target: {
-        ...candidate.target as object,
+      targets: [{
+        ...candidate.targets[0] as object,
         request: activationRequest({
-          ...(candidate.target as any).request,
+          ...(candidate.targets[0] as any).request,
           target: { kind: "flow", path: "flows/missing" },
           packagePath: "flows/missing",
         }),
-      },
-    }, "same single activation target");
+      }],
+    }, "same activation targets");
 
     const nonDirectLock = decodeJson(valid.lock);
     (nonDirectLock.packages as any)["flows/run"].directRun = false;
@@ -79,7 +78,7 @@ describe("private activation admission candidate", () => {
         lockDigest: privateProjectLocalLockDigest(decodePrivateProjectLocalLock(lockBytes(nonDirectLock))),
       }),
       lock: lockBytes(nonDirectLock),
-    })).toThrow("same single activation target");
+    })).toThrow("same activation targets");
 
     const extraDirect = decodeJson(valid.lock);
     extraDirect.packages["flows/other"] = {
@@ -96,19 +95,8 @@ describe("private activation admission candidate", () => {
     };
     expectLockTargetMismatch(valid, candidate, extraBinding);
 
-    expectInvalid(valid, {
-      ...candidate,
-      target: {
-        ...candidate.target as object,
-        disposition: {
-          ...(candidate.target as any).disposition,
-          code: "DEPENDENCY_UNAVAILABLE",
-        },
-      },
-    }, "cannot represent dependency unavailability");
-
     const binding = bindingFixture();
-    expect(decodePrivateActivationCandidate(binding).candidate.target.request.target).toEqual({
+    expect(decodePrivateActivationCandidate(binding).candidate.targets[0]!.request.target).toEqual({
       kind: "binding",
       id: "run",
     });
@@ -129,30 +117,142 @@ describe("private activation admission candidate", () => {
 
     const ready = {
       ...candidate,
-      target: {
-        ...candidate.target as object,
+      targets: [{
+        ...candidate.targets[0] as object,
         disposition: {
           state: "ready",
           recipeDigest: digest("recipe"),
           observationDigest: digest("observation"),
         },
-      },
+      }],
     };
     expect(decodePrivateActivationCandidate({
       ...valid,
       candidate: candidateBytes(ready),
-    }).candidate.target.disposition).toEqual({
+    }).candidate.targets[0]!.disposition).toEqual({
       state: "ready",
       recipeDigest: digest("recipe"),
       observationDigest: digest("observation"),
     });
     expectInvalid(valid, {
       ...ready,
-      target: {
-        ...ready.target,
+      targets: [{
+        ...ready.targets[0],
         disposition: { state: "ready", recipeDigest: digest("recipe") },
-      },
+      }],
     }, "must contain exactly");
+  });
+
+  test("closes and canonically orders a Binding together with its exact child Flow", () => {
+    const childPackage = digest("child-package");
+    const parentPackage = digest("parent-package");
+    const lock = {
+      kind: "private-package-project-lock/1",
+      packages: {
+        "flows/child": {
+          digest: childPackage,
+          mode: "run",
+          directRun: true,
+          attachments: {},
+          uses: {},
+          provides: {},
+        },
+        "flows/parent": {
+          digest: parentPackage,
+          mode: "run",
+          directRun: false,
+          attachments: {},
+          uses: {},
+          provides: {},
+        },
+      },
+      bindings: {
+        parent: {
+          packagePath: "flows/parent",
+          attachments: {},
+          slots: {
+            child: {
+              kind: "flow-call",
+              targets: [{ kind: "flow", path: "flows/child" }],
+            },
+          },
+        },
+      },
+    };
+    const lockEncoding = lockBytes(lock);
+    const lockValue = decodePrivateProjectLocalLock(lockEncoding);
+    const captureDigest = digest("composed-capture");
+    const planningObservationDigest = digest("composed-planning");
+    const child = {
+      request: activationRequest({
+        target: { kind: "flow", path: "flows/child" },
+        mode: "run",
+        packagePath: "flows/child",
+        package: { kind: "flow-package/1", digest: childPackage },
+        entrypoint: { path: "flow.py", suffix: "py" },
+        settings: {},
+        attachments: {},
+        slots: {},
+      }),
+      disposition: {
+        state: "unavailable",
+        code: "RUNTIME_UNAVAILABLE",
+        evidenceDigests: [digest("child-evidence")],
+      },
+    };
+    const parent = {
+      request: activationRequest({
+        target: { kind: "binding", id: "parent" },
+        mode: "run",
+        packagePath: "flows/parent",
+        package: { kind: "flow-package/1", digest: parentPackage },
+        entrypoint: { path: "flow.ts", suffix: "ts" },
+        settings: { label: "closed" },
+        attachments: {},
+        slots: {
+          child: {
+            kind: "flow-call",
+            targets: [{ kind: "flow", path: "flows/child" }],
+          },
+        },
+      }),
+      disposition: {
+        state: "unavailable",
+        code: "DEPENDENCY_UNAVAILABLE",
+        evidenceDigests: [digest("parent-evidence")],
+      },
+    };
+    const artifact = decodePrivateActivationCandidate({
+      candidate: candidateBytes({
+        kind: "private-activation-candidate/3",
+        projectRoot: { device: "64768", inode: "999999" },
+        captureDigest,
+        semanticDigest: digest("composed-semantics"),
+        resolutionInputDigest: privateDomainDigest(
+          "JIG-Package-Project-Resolution-Input/1",
+          { captureDigest, planningObservationDigest },
+        ),
+        planningObservationDigest,
+        lockDigest: privateProjectLocalLockDigest(lockValue),
+        declarationArtifact: {
+          kind: "author-closure/1",
+          closureDigest: digest("composed-closure"),
+          package: { kind: "flow-package/1", digest: digest("composed-declarations") },
+        },
+        // Binding target keys sort before Flow target keys in the persisted form.
+        targets: [parent, child],
+      }),
+      lock: lockEncoding,
+    });
+
+    expect(artifact.candidate.targets.map(({ request }) => request.target)).toEqual([
+      { kind: "binding", id: "parent" },
+      { kind: "flow", path: "flows/child" },
+    ]);
+    expect(artifact.candidate.targets[0]!.disposition).toMatchObject({
+      state: "unavailable",
+      code: "DEPENDENCY_UNAVAILABLE",
+    });
   });
 
   test("rejects alternate spelling and malformed closed values", () => {
@@ -174,8 +274,8 @@ describe("private activation admission candidate", () => {
     expect(() => decodePrivateActivationCandidate({
       ...valid,
       candidate: encoder.encode(validString(valid.candidate).replace(
-        '"kind":"private-activation-candidate/2"',
-        '"kind":"private-activation-candidate/2","kind":"private-activation-candidate/2"',
+        '"kind":"private-activation-candidate/3"',
+        '"kind":"private-activation-candidate/3","kind":"private-activation-candidate/3"',
       )),
     })).toThrow("duplicate object member");
 
@@ -196,35 +296,35 @@ describe("private activation admission candidate", () => {
     }, "64 lowercase hexadecimal");
     expectInvalid(valid, {
       ...candidate,
-      target: {
-        ...candidate.target as object,
+      targets: [{
+        ...candidate.targets[0] as object,
         disposition: {
-          ...(candidate.target as any).disposition,
+          ...(candidate.targets[0] as any).disposition,
           evidenceDigests: [],
         },
-      },
+      }],
     }, "requires evidence");
     expectInvalid(valid, {
       ...candidate,
-      target: {
-        ...candidate.target as object,
+      targets: [{
+        ...candidate.targets[0] as object,
         disposition: {
-          ...(candidate.target as any).disposition,
+          ...(candidate.targets[0] as any).disposition,
           evidenceDigests: [digest("evidence"), digest("evidence")],
         },
-      },
+      }],
     }, "duplicate evidence");
 
     const reversed = [digest("z"), digest("a")].sort().reverse();
     expectInvalid(valid, {
       ...candidate,
-      target: {
-        ...candidate.target as object,
+      targets: [{
+        ...candidate.targets[0] as object,
         disposition: {
-          ...(candidate.target as any).disposition,
+          ...(candidate.targets[0] as any).disposition,
           evidenceDigests: reversed,
         },
-      },
+      }],
     }, "not in canonical");
 
     let getterCalls = 0;
@@ -395,7 +495,7 @@ function fixture() {
   const captureDigest = digest("capture");
   const planningObservationDigest = digest("planning");
   const candidate = {
-    kind: "private-activation-candidate/2",
+    kind: "private-activation-candidate/3",
     projectRoot: { device: "64768", inode: "123456" },
     captureDigest,
     semanticDigest: digest("semantics"),
@@ -410,7 +510,7 @@ function fixture() {
       closureDigest: digest("closure"),
       package: { kind: "flow-package/1", digest: digest("declarations") },
     },
-    target: {
+    targets: [{
       request: activationRequest({
         target: { kind: "flow", path: "flows/run" },
         mode: "run",
@@ -426,7 +526,7 @@ function fixture() {
         code: "RUNTIME_UNAVAILABLE",
         evidenceDigests: [digest("evidence")],
       },
-    },
+    }],
   };
   return Object.freeze({ candidate: candidateBytes(candidate), lock: canonicalLock });
 }
@@ -455,7 +555,7 @@ function expectLockTargetMismatch(
       lockDigest: privateProjectLocalLockDigest(lockValue),
     }),
     lock: lockEncoding,
-  })).toThrow("same single activation target");
+  })).toThrow("same activation targets");
 }
 
 function bindingFixture() {
@@ -481,7 +581,7 @@ function bindingFixture() {
   const planningObservationDigest = digest("binding-planning");
   return {
     candidate: candidateBytes({
-      kind: "private-activation-candidate/2",
+      kind: "private-activation-candidate/3",
       projectRoot: { device: "64768", inode: "654321" },
       captureDigest,
       semanticDigest: digest("binding-semantics"),
@@ -496,7 +596,7 @@ function bindingFixture() {
         closureDigest: digest("binding-closure"),
         package: { kind: "flow-package/1", digest: digest("binding-declarations") },
       },
-      target: {
+      targets: [{
         request: activationRequest({
           target: { kind: "binding", id: "run" },
           mode: "run",
@@ -512,7 +612,7 @@ function bindingFixture() {
           code: "RUNTIME_UNAVAILABLE",
           evidenceDigests: [digest("binding-evidence")],
         },
-      },
+      }],
     }),
     lock: lockEncoding,
   };

@@ -41,7 +41,7 @@ import {
   type PrivateRetainedPackageProject,
 } from "../project/retained-project.js";
 
-const KIND = "private-activation-candidate/2";
+const KIND = "private-activation-candidate/3";
 const PLAN_KIND = "private-activation-plan/1";
 const ADMISSION_KIND = "private-activation-admission/1";
 const DIGEST = /^sha256:[0-9a-f]{64}$/;
@@ -50,6 +50,21 @@ const UNSIGNED_64 = /^(?:0|[1-9][0-9]{0,19})$/;
 const MAX_UNSIGNED_64 = (1n << 64n) - 1n;
 const MAX_EVIDENCE = 64;
 const createdCandidates = new WeakSet<object>();
+
+export interface PrivateActivationCandidateTarget {
+  readonly request: PrivateActivationRequest;
+  readonly disposition:
+    | {
+        readonly state: "ready";
+        readonly recipeDigest: string;
+        readonly observationDigest: string;
+      }
+    | {
+        readonly state: "unavailable";
+        readonly code: PrivateResolutionUnavailableCode;
+        readonly evidenceDigests: readonly string[];
+      };
+}
 
 export interface PrivateActivationCandidate {
   readonly kind: typeof KIND;
@@ -67,20 +82,7 @@ export interface PrivateActivationCandidate {
     readonly closureDigest: string;
     readonly package: PackageArtifactRef;
   };
-  readonly target: {
-    readonly request: PrivateActivationRequest;
-    readonly disposition:
-      | {
-          readonly state: "ready";
-          readonly recipeDigest: string;
-          readonly observationDigest: string;
-        }
-      | {
-          readonly state: "unavailable";
-          readonly code: PrivateResolutionUnavailableCode;
-          readonly evidenceDigests: readonly string[];
-        };
-  };
+  readonly targets: readonly PrivateActivationCandidateTarget[];
 }
 
 /** One inert admission candidate and the exact portable lock it commits. */
@@ -121,37 +123,50 @@ export interface PrivateActivationAdmission {
 }
 
 /**
- * Build the one-target activation record supported by this checkpoint.
+ * Build one closed activation generation containing every admitted Run target.
  */
 export function createPrivateActivationCandidate(
   project: PrivateRetainedPackageProject,
   resolutionValue: unknown,
-  recipeValue?: PrivateDirectRunRecipe,
+  recipeValue?: PrivateDirectRunRecipe | readonly PrivateDirectRunRecipe[],
 ): PrivateActivationCandidateArtifact {
   const retained = requirePrivateRetainedPackageProject(project);
   const resolution = requirePrivateRetainedResolutionObservation(resolutionValue);
   if (resolution.captureDigest !== retained.captureDigest) {
     throw new TypeError("resolution observation belongs to a different retained project capture");
   }
-  if (resolution.targets.length !== 1) {
-    throw new TypeError("private activation admission requires exactly one target");
-  }
-  const target = resolution.targets[0]!;
-  let disposition: PrivateActivationCandidate["target"]["disposition"];
-  if (target.disposition.state === "planned") {
-    const recipe = requirePrivateDirectRunRecipe(recipeValue);
-    if (recipe.request.digest !== target.request.digest ||
-        recipe.observation.digest !== target.disposition.observation.digest) {
-      throw new TypeError("ready recipe does not match the retained planned target");
+  const recipeValues = recipeValue === undefined
+    ? []
+    : Array.isArray(recipeValue) ? recipeValue : [recipeValue];
+  const recipes = recipeValues.map((recipe) => requirePrivateDirectRunRecipe(recipe));
+  const recipeByRequest = new Map<string, PrivateDirectRunRecipe>();
+  for (const recipe of recipes) {
+    if (recipeByRequest.has(recipe.request.digest)) {
+      throw new TypeError("activation candidate contains duplicate recipes for one request");
     }
-    disposition = Object.freeze({
-      state: "ready" as const,
-      recipeDigest: recipe.digest,
-      observationDigest: recipe.observation.digest,
-    });
-  } else {
-    if (recipeValue !== undefined) throw new TypeError("unavailable target cannot carry a ready recipe");
-    disposition = target.disposition;
+    recipeByRequest.set(recipe.request.digest, recipe);
+  }
+  const targets = resolution.targets.map((target) => {
+    let disposition: PrivateActivationCandidateTarget["disposition"];
+    if (target.disposition.state === "planned") {
+      const recipe = recipeByRequest.get(target.request.digest);
+      if (recipe === undefined ||
+          recipe.observation.digest !== target.disposition.observation.digest) {
+        throw new TypeError("ready recipe does not match the retained planned target");
+      }
+      recipeByRequest.delete(target.request.digest);
+      disposition = Object.freeze({
+        state: "ready" as const,
+        recipeDigest: recipe.digest,
+        observationDigest: recipe.observation.digest,
+      });
+    } else {
+      disposition = target.disposition;
+    }
+    return Object.freeze({ request: target.request, disposition });
+  });
+  if (recipeByRequest.size !== 0) {
+    throw new TypeError("activation candidate contains a recipe for an unplanned target");
   }
 
   const lock = createPrivateProjectLocalLock(retained.linked);
@@ -164,10 +179,7 @@ export function createPrivateActivationCandidate(
     planningObservationDigest: resolution.planningObservationDigest,
     lockDigest: privateProjectLocalLockDigest(lock),
     declarationArtifact: retained.declarationArtifact,
-    target: {
-      request: target.request,
-      disposition,
-    },
+    targets,
   }, lock);
   encodeCandidate(candidate);
   return markCreated(candidate, lock);
@@ -206,7 +218,7 @@ export function privateActivationCandidateDigest(
 ): string {
   const artifact = normalizeArtifact(value);
   return privateDomainDigest(
-    "JIG-Private-Activation-Candidate/2",
+    "JIG-Private-Activation-Candidate/3",
     artifact.candidate as unknown as JsonValue,
   );
 }
@@ -219,6 +231,18 @@ export function requirePrivateCreatedActivationCandidate(
     throw new TypeError("activation candidate was not built from a retained project and resolution");
   }
   return value as PrivateActivationCandidateArtifact;
+}
+
+/** Resolve one target only inside an already closed candidate generation. */
+export function findPrivateActivationCandidateTarget(
+  value: PrivateActivationCandidateArtifact,
+  identity: RunTargetIdentity,
+): PrivateActivationCandidateTarget | undefined {
+  const artifact = normalizeArtifact(value);
+  const key = privateActivationTargetKey(normalizeIdentity(identity));
+  return artifact.candidate.targets.find(
+    (target) => privateActivationTargetKey(target.request.target) === key,
+  );
 }
 
 /** Build an inert review plan from facts already observed by protected storage. */
@@ -296,7 +320,7 @@ function normalizeCandidate(
     "planningObservationDigest",
     "lockDigest",
     "declarationArtifact",
-    "target",
+    "targets",
   ], "activation candidate");
   if (root.kind !== KIND) throw new TypeError(`activation candidate kind must be ${KIND}`);
 
@@ -329,13 +353,19 @@ function normalizeCandidate(
     throw new TypeError("declaration artifact kind must be author-closure/1");
   }
 
-  const target = normalizeTarget(root.target);
-  requireExactTargetSet(target.request.target, lock);
-  requireRequestLockProjection(target.request, lock);
-  if (target.disposition.state === "unavailable" &&
-      target.disposition.code === "DEPENDENCY_UNAVAILABLE") {
-    throw new TypeError("single-target activation admission cannot represent dependency unavailability");
+  const targets = ordinaryArray(root.targets, JSON_1_LIMITS.containerEntries, "activation targets")
+    .map((target) => normalizeTarget(target))
+    .sort((left, right) => privateActivationTargetKey(left.request.target)
+      .localeCompare(privateActivationTargetKey(right.request.target)));
+  if (targets.length === 0) throw new TypeError("activation candidate requires at least one target");
+  for (let index = 1; index < targets.length; index += 1) {
+    if (privateActivationTargetKey(targets[index - 1]!.request.target) ===
+        privateActivationTargetKey(targets[index]!.request.target)) {
+      throw new TypeError("activation candidate contains duplicate targets");
+    }
   }
+  requireExactTargetSet(targets.map((target) => target.request.target), lock);
+  for (const target of targets) requireRequestLockProjection(target.request, lock);
   return Object.freeze({
     kind: KIND,
     projectRoot: Object.freeze({
@@ -352,7 +382,7 @@ function normalizeCandidate(
       closureDigest: requireDigest(declaration.closureDigest, "declaration closure"),
       package: normalizePackageArtifactRef(declaration.package),
     }),
-    target,
+    targets: Object.freeze(targets),
   });
 }
 
@@ -428,7 +458,7 @@ function normalizeAdmission(input: unknown): PrivateActivationAdmission {
   });
 }
 
-function normalizeTarget(input: unknown): PrivateActivationCandidate["target"] {
+function normalizeTarget(input: unknown): PrivateActivationCandidateTarget {
   const value = exactObject(input, ["request", "disposition"], "target");
   const request = restorePrivateActivationRequest(value.request);
   const state = dataField(
@@ -519,7 +549,7 @@ function normalizeIdentity(value: unknown): RunTargetIdentity {
 }
 
 function requireExactTargetSet(
-  target: RunTargetIdentity,
+  targets: readonly RunTargetIdentity[],
   lock: PrivateProjectLocalLock,
 ): void {
   const keys = [
@@ -529,9 +559,9 @@ function requireExactTargetSet(
     ...Object.keys(lock.bindings)
       .map((id) => privateActivationTargetKey({ kind: "binding", id })),
   ].sort();
-  const expected = privateActivationTargetKey(target);
-  if (keys.length !== 1 || keys[0] !== expected) {
-    throw new TypeError("activation candidate and lock must contain the same single activation target");
+  const expected = targets.map(privateActivationTargetKey).sort();
+  if (keys.length !== expected.length || keys.some((key, index) => key !== expected[index])) {
+    throw new TypeError("activation candidate and lock must contain the same activation targets");
   }
 }
 

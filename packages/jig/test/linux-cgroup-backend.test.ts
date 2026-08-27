@@ -1394,7 +1394,7 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         lockMode: "locked",
       }))
         .rejects.toMatchObject({ code: "LOCK_MISMATCH" });
-      const admissionDatabase = join(root, ".jig", "private-activation-admission-v7.sqlite3");
+      const admissionDatabase = join(root, ".jig", "private-activation-admission-v8.sqlite3");
       await writeFile(join(root, "jig.lock"), persisted.lock, { mode: 0o644 });
       const crashSqlite = createRequire(import.meta.url)("bun:sqlite") as any;
       const recovered = crashSqlite.Database.open(
@@ -1546,8 +1546,8 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
           "root_spawn_intents",
           "root_terminals",
         ]);
-        expect(database.query("PRAGMA application_id").get().application_id).toBe(0x4a494737);
-        expect(database.query("PRAGMA user_version").get().user_version).toBe(7);
+        expect(database.query("PRAGMA application_id").get().application_id).toBe(0x4a494738);
+        expect(database.query("PRAGMA user_version").get().user_version).toBe(8);
         expect(database.query("PRAGMA journal_mode").get().journal_mode).toBe("delete");
         expect(database.query("SELECT revision FROM candidate_head WHERE singleton = 1").get().revision).toBe(3);
         expect(database.query("SELECT count(*) AS count FROM candidates").get().count).toBe(3);
@@ -1680,7 +1680,7 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         readyResolution,
         readyRecipe,
       );
-      expect(readyCandidate.candidate.target.disposition).toEqual({
+      expect(readyCandidate.candidate.targets[0]!.disposition).toEqual({
         state: "ready",
         recipeDigest: readyRecipe.digest,
         observationDigest: readyRecipe.observation.digest,
@@ -1696,7 +1696,7 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         packageStoreRoot: store,
         lockMode: "update",
       });
-      expect(readyPlan.candidate.candidate.target.disposition.state).toBe("ready");
+      expect(readyPlan.candidate.candidate.targets[0]!.disposition.state).toBe("ready");
       const readyAdmission = await applyPrivateActivationReviewPlan({
         projectRoot: root,
         packageStoreRoot: store,
@@ -1710,7 +1710,7 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         packageStoreRoot: store,
       });
       expect(restartedActivation.admission).toEqual(readyAdmission);
-      const admittedRequest = restartedActivation.candidate.candidate.target.request;
+      const admittedRequest = restartedActivation.candidate.candidate.targets[0]!.request;
       expect(admittedRequest.digest).toBe(readyRequest!.digest);
       const reacquiredBun = await proofHostBunClosure();
       const rootBackend = backend(host);

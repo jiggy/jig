@@ -10,7 +10,6 @@ import { inspectCapturedPackage, type InspectedPackage } from "../package/inspec
 import { SchemaDiagnostic } from "../schema/index.js";
 import type { RunTargetIdentity } from "../project/package-project.js";
 import { isDirectRunEligible } from "../project/flow-source.js";
-import { privateActivationTargetKey } from "./activation-planning.js";
 import { privateDomainDigest } from "./identity.js";
 import { openPrivateProjectRoot, type PrivateProjectRoot } from "../project/root.js";
 import { captureStoredPackage, normalizePackageArtifactRef } from "./package-artifact-store.js";
@@ -28,6 +27,7 @@ import {
   encodePrivateActivationAdmission,
   encodePrivateActivationCandidate,
   encodePrivateActivationPlan,
+  findPrivateActivationCandidateTarget,
   privateActivationAdmissionDigest,
   privateActivationCandidateDigest,
   privateActivationPlanDigest,
@@ -60,12 +60,12 @@ export type {
 } from "./root-run-state.js";
 
 const STATE_DIRECTORY = ".jig";
-const DATABASE_NAME = "private-activation-admission-v7.sqlite3";
+const DATABASE_NAME = "private-activation-admission-v8.sqlite3";
 const COORDINATOR_DATABASE_NAME = "private-project-coordinator-v1.sqlite3";
 const LOCK_NAME = "jig.lock";
 const LOCK_STAGE_NAME = "private-activation-jig-lock-v1.stage";
-const SCHEMA_VERSION = 7n;
-const APPLICATION_ID = 0x4a494737n; // JIG7
+const SCHEMA_VERSION = 8n;
+const APPLICATION_ID = 0x4a494738n; // JIG8
 const COORDINATOR_SCHEMA_VERSION = 1n;
 const COORDINATOR_APPLICATION_ID = 0x4a494743n; // JIGC
 const BUSY_TIMEOUT_MS = 250;
@@ -704,7 +704,8 @@ export async function submitPrivateRootRun(input: {
         return Object.freeze({ run: loadRootRunSnapshot(owner.database, row, owner.root) });
       }
 
-      if (candidate.candidate.target.disposition.state !== "ready") {
+      const selectedTarget = findPrivateActivationCandidateTarget(candidate, request.target);
+      if (selectedTarget === undefined || selectedTarget.disposition.state !== "ready") {
         corrupt("root Run preflight omitted an unavailable candidate terminal");
       }
       const intent = normalizePrivateRootSpawnIntent({
@@ -713,9 +714,9 @@ export async function submitPrivateRootRun(input: {
         admissionDigest: admission.admissionDigest,
         candidateRevision: safeRevision(candidateRow.revision),
         coordinatorEpoch: coordinator.epoch,
-        requestDigest: candidate.candidate.target.request.digest,
-        recipeDigest: candidate.candidate.target.disposition.recipeDigest,
-        observationDigest: candidate.candidate.target.disposition.observationDigest,
+        requestDigest: selectedTarget.request.digest,
+        recipeDigest: selectedTarget.disposition.recipeDigest,
+        observationDigest: selectedTarget.disposition.observationDigest,
         deadlineUnixMs: request.deadlineUnixMs,
       });
       const intentBytes = canonicalJson(intent as unknown as JsonValue);
@@ -1219,8 +1220,8 @@ function rootPreflightTerminal(
   request: PrivateRootSubmissionRequest,
   artifacts: ReacquiredArtifacts,
 ): PrivateRootRunTerminal | undefined {
-  const target = candidate.candidate.target;
-  if (privateActivationTargetKey(target.request.target) !== privateActivationTargetKey(request.target)) {
+  const target = findPrivateActivationCandidateTarget(candidate, request.target);
+  if (target === undefined) {
     return failedPrivateRootTerminal("UNAVAILABLE", "the active generation does not contain the requested root target");
   }
   if (target.disposition.state === "unavailable") {
