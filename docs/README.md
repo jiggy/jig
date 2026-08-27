@@ -26,6 +26,10 @@ Start here:
    - [`spec/capability-contracts.md`](spec/capability-contracts.md), with its
      [`machine descriptor schema`](spec/machine/capability-contract-1.schema.json)
    - [`spec/project-policy.md`](spec/project-policy.md)
+   - [`spec/project-sdk.md`](spec/project-sdk.md), with its
+     [`authoring-value schema`](spec/machine/project-authoring-1.schema.json)
+   - [`spec/root-administration.md`](spec/root-administration.md), with its
+     [`administration-value schema`](spec/machine/root-administration-1.schema.json)
    - [`spec/journal-and-hooks.md`](spec/journal-and-hooks.md)
    - [`spec/agents-and-semantic-choice.md`](spec/agents-and-semantic-choice.md)
 
@@ -56,8 +60,10 @@ Current implementation frontier:
   spanning exact `READY` and `UNAVAILABLE`; and lock-first admission of one
   exact Python target. The evaluator and Run consume authenticated
   sandbox-lifetime runtime support, while Jig remains outside runtime retention
-  and package-manager lifecycle. Generic host-extension models and the public
-  plan/apply/root-Run interface remain the next boundary.
+  and package-manager lifecycle. The smallest root start/status interface is
+  now closed as a candidate; its private controller and independent consumer
+  are the current boundary. Generic host-extension and public plan/apply models
+  remain later gates.
 
 The focused Run/1 specification owns its finite wire surface. The remaining
 cross-cutting system rules are in the canonical architecture:

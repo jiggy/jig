@@ -201,17 +201,27 @@ universe remains open in
 
 ### Jig host and administration interface
 
-Reviewed semantics exist for plan/apply admission and idempotent root Run
-submission. Before CLI, GUI, or library clients can consume them, Jig must
+The smallest library-facing root slice is now closed as the
+[`Root Administration/1`](../spec/root-administration.md) candidate and its
+[`machine value schema`](../spec/machine/root-administration-1.schema.json).
+A trusted host hands one object-capability to application code for one
+already-open project. Its complete surface is `startRun` and `runStatus`; the
+host, rather than the caller, supplies policy, authority, deadline, and launch
+mechanism. The candidate deliberately excludes project location and opening,
+transport authentication, list/watch/cancel, and authority inspection.
+
+Before CLI or GUI clients can consume equivalent authority, Jig must still
 define authentication and closed request/result/error models for:
 
 - candidate inspection, plan, apply, and stale-plan handling;
-- root Run submission and durable Run identity;
-- status and authority evidence; and
+- project selection and authority issuance;
+- plan/apply and authority evidence; and
 - any later inspection or cancellation operations.
 
-No `RunSnapshot`, `openProject`, `getRun`, or `cancelRun` interface is currently
-part of Jig/1.
+No `RunSnapshot`, `openProject`, `getRun`, or `cancelRun` interface is part of
+Jig/1. The root administration candidate does not become published merely by
+having checked-in declarations; a private coordinator-owned controller and an
+independent consumer must pass first.
 
 ### Trusted host extension interfaces
 
@@ -283,10 +293,10 @@ discovered zero-configuration Run package records `READY` or exact
 an exclusive local coordinator epoch, executes inside the Backend-owned
 envelope, and publishes one durable terminal after cleanup.
 
-The next slice is the smallest closed administration interface and one
-independent consumer of it. That interface may expose the proven behavior; it
-must not pretend the one proof mechanism has established a generic Runtime
-Adapter or Sandbox Backend SPI.
+The smallest administration interface is now closed. The next slice is one
+private controller implementing it and one independent consumer using only the
+published subpath. Neither may pretend the one proof mechanism has established
+a generic Runtime Adapter or Sandbox Backend SPI.
 
 This slice intentionally adds no Binding requirement, Service, Hook, Agent,
 Semantic Choice, child Flow, Jig Graph compiler, update watcher, Nix
@@ -303,9 +313,9 @@ Before an independent probe consumes it, the candidate must prove:
 6. exclusive coordinator takeover and terminal reconciliation; and
 7. cancellation, deadline, whole-tree fencing, and zero residue.
 
-All seven are privately proven for the selected host path. Public release now
-depends on closing the request/result/error models, routing all mutation
-through the coordinator-owned controller, and passing the independent
+All seven are privately proven for the selected host path, and the root
+request/result/error model is now closed. Public release depends on routing the
+surface through the coordinator-owned controller and passing the independent
 consumer experiment.
 
 The complete status and Nix decontamination boundary are in

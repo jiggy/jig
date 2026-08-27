@@ -36,11 +36,22 @@ if (project.flows.roots[0] !== "flows" || binding.package !== "flows/review") th
   await run([node, "smoke.mjs"], consumer);
   await run(["bun", "smoke.mjs"], consumer);
 
+  await writeFile(join(consumer, "administration-smoke.mjs"), `
+import { RootAdministrationError } from "@jigging/jig/administration";
+const error = new RootAdministrationError("PROJECT_BUSY", "busy");
+if (error.code !== "PROJECT_BUSY" || error.toJSON().message !== "busy") throw new Error("bad administration export");
+`);
+  await run([node, "administration-smoke.mjs"], consumer);
+  await run(["bun", "administration-smoke.mjs"], consumer);
+
   await writeFile(join(consumer, "schema-smoke.mjs"), `
 import { readFile } from "node:fs/promises";
 const path = import.meta.resolve("@jigging/jig/schema/project-authoring-1");
 const schema = JSON.parse(await readFile(new URL(path), "utf8"));
 if (schema.$schema !== "https://flow.dev/schemas/schema-1.json") throw new Error("bad packaged schema");
+const administrationPath = import.meta.resolve("@jigging/jig/schema/root-administration-1");
+const administration = JSON.parse(await readFile(new URL(administrationPath), "utf8"));
+if (!administration.$defs?.startRunRequest) throw new Error("bad packaged administration schema");
 `);
   await run([node, "schema-smoke.mjs"], consumer);
 
@@ -52,9 +63,13 @@ if (schema.$schema !== "https://flow.dev/schemas/schema-1.json") throw new Error
 
   await writeFile(join(consumer, "smoke.ts"), `
 import { defineJig, discover, type JigDefinitionInput } from "@jigging/jig";
+import type { RootAdministration, RootRunStatus } from "@jigging/jig/administration";
 const input: JigDefinitionInput = { flows: discover("./flows") };
 const project = defineJig(input);
+declare const administration: RootAdministration;
+const status: Promise<RootRunStatus> = administration.runStatus({ runId: "sha256:${"a".repeat(64)}" });
 void project;
+void status;
 `);
   await writeFile(join(consumer, "tsconfig.json"), JSON.stringify({
     compilerOptions: {

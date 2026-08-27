@@ -1,0 +1,198 @@
+{
+  "$schema": "https://flow.dev/schemas/schema-1.json",
+  "title": "Jig root administration value/1",
+  "anyOf": [
+    { "$ref": "#/$defs/startRunRequest" },
+    { "$ref": "#/$defs/startRunReceipt" },
+    { "$ref": "#/$defs/runStatusRequest" },
+    { "$ref": "#/$defs/runStatus" },
+    { "$ref": "#/$defs/administrationError" }
+  ],
+  "$defs": {
+    "digest": {
+      "type": "string",
+      "minLength": 71,
+      "maxLength": 71
+    },
+    "submissionId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1024
+    },
+    "projectPath": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1024
+    },
+    "localName": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64
+    },
+    "flowRef": {
+      "type": "object",
+      "properties": {
+        "kind": { "const": "flow" },
+        "path": { "$ref": "#/$defs/projectPath" }
+      },
+      "required": ["kind", "path"],
+      "additionalProperties": false
+    },
+    "bindingRef": {
+      "type": "object",
+      "properties": {
+        "kind": { "const": "binding" },
+        "id": { "$ref": "#/$defs/localName" }
+      },
+      "required": ["kind", "id"],
+      "additionalProperties": false
+    },
+    "runTarget": {
+      "oneOf": [
+        { "$ref": "#/$defs/flowRef" },
+        { "$ref": "#/$defs/bindingRef" }
+      ]
+    },
+    "startRunRequest": {
+      "type": "object",
+      "properties": {
+        "submissionId": { "$ref": "#/$defs/submissionId" },
+        "target": { "$ref": "#/$defs/runTarget" },
+        "input": {}
+      },
+      "required": ["submissionId", "target", "input"],
+      "additionalProperties": false
+    },
+    "startRunReceipt": {
+      "type": "object",
+      "properties": {
+        "runId": { "$ref": "#/$defs/digest" }
+      },
+      "required": ["runId"],
+      "additionalProperties": false
+    },
+    "runStatusRequest": {
+      "type": "object",
+      "properties": {
+        "runId": { "$ref": "#/$defs/digest" }
+      },
+      "required": ["runId"],
+      "additionalProperties": false
+    },
+    "diagnostics": {
+      "type": "object",
+      "properties": {
+        "stderr": { "type": "string", "maxLength": 65536 },
+        "stderrBytes": { "type": "integer", "minimum": 0 },
+        "stderrTruncated": { "type": "boolean" }
+      },
+      "required": ["stderr", "stderrBytes", "stderrTruncated"],
+      "additionalProperties": false
+    },
+    "succeededTerminal": {
+      "type": "object",
+      "properties": {
+        "status": { "const": "succeeded" },
+        "outcome": { "type": "string", "minLength": 1 },
+        "output": {},
+        "diagnostics": { "$ref": "#/$defs/diagnostics" }
+      },
+      "required": ["status", "outcome", "output", "diagnostics"],
+      "additionalProperties": false
+    },
+    "failedTerminal": {
+      "type": "object",
+      "properties": {
+        "status": { "const": "failed" },
+        "code": {
+          "enum": [
+            "CANCELLED",
+            "DEADLINE_EXCEEDED",
+            "OWNER_CLOSED",
+            "OPERATION_CONFLICT",
+            "UNAVAILABLE",
+            "PERMISSION_DENIED",
+            "RESOURCE_EXHAUSTED",
+            "INVALID_INPUT",
+            "INVALID_RESULT",
+            "UNCERTAIN",
+            "EXECUTION_FAILED",
+            "PROTOCOL_ERROR",
+            "CHANNEL_LOST"
+          ]
+        },
+        "message": { "type": "string" },
+        "details": {},
+        "diagnostics": { "$ref": "#/$defs/diagnostics" }
+      },
+      "required": ["status", "code", "message", "diagnostics"],
+      "additionalProperties": false
+    },
+    "lostTerminal": {
+      "type": "object",
+      "properties": {
+        "status": { "const": "lost" },
+        "code": { "const": "COORDINATOR_LOST" },
+        "message": { "type": "string" }
+      },
+      "required": ["status", "code", "message"],
+      "additionalProperties": false
+    },
+    "terminal": {
+      "oneOf": [
+        { "$ref": "#/$defs/succeededTerminal" },
+        { "$ref": "#/$defs/failedTerminal" },
+        { "$ref": "#/$defs/lostTerminal" }
+      ]
+    },
+    "pendingStatus": {
+      "type": "object",
+      "properties": {
+        "runId": { "$ref": "#/$defs/digest" },
+        "submissionId": { "$ref": "#/$defs/submissionId" },
+        "target": { "$ref": "#/$defs/runTarget" },
+        "state": { "const": "pending" }
+      },
+      "required": ["runId", "submissionId", "target", "state"],
+      "additionalProperties": false
+    },
+    "terminalStatus": {
+      "type": "object",
+      "properties": {
+        "runId": { "$ref": "#/$defs/digest" },
+        "submissionId": { "$ref": "#/$defs/submissionId" },
+        "target": { "$ref": "#/$defs/runTarget" },
+        "state": { "const": "terminal" },
+        "terminal": { "$ref": "#/$defs/terminal" }
+      },
+      "required": ["runId", "submissionId", "target", "state", "terminal"],
+      "additionalProperties": false
+    },
+    "runStatus": {
+      "oneOf": [
+        { "$ref": "#/$defs/pendingStatus" },
+        { "$ref": "#/$defs/terminalStatus" }
+      ]
+    },
+    "administrationError": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "enum": [
+            "INVALID_REQUEST",
+            "SUBMISSION_CONFLICT",
+            "RUN_NOT_FOUND",
+            "PROJECT_BUSY",
+            "PROJECT_CLOSED",
+            "UNAVAILABLE",
+            "INTERNAL"
+          ]
+        },
+        "message": { "type": "string" },
+        "details": {}
+      },
+      "required": ["code", "message"],
+      "additionalProperties": false
+    }
+  }
+}
