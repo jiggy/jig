@@ -17,6 +17,17 @@ import { join } from "node:path";
 
 import { privateDomainDigest } from "../src/internal/identity.js";
 import {
+  decodePrivateHookRevision,
+  decodePrivateHookAdmissionBoundary,
+  encodePrivateHookAdmissionBoundary,
+  encodePrivateHookRevision,
+  normalizePrivateHookRevision,
+  normalizePrivateHookAdmissionBoundary,
+  privateHookAdmissionBoundaryDigest,
+  privateHookMeaningDigest,
+  privateHookRevisionDigest,
+} from "../src/internal/hook-runtime-state.js";
+import {
   publishCapturedPackage,
   type PackageArtifactRef,
 } from "../src/internal/package-artifact-store.js";
@@ -50,7 +61,10 @@ import {
   type PrivateRootRunTerminal,
 } from "../src/internal/activation-admission-store.js";
 import { normalizePrivateRootFlowCallAllocation } from "../src/internal/root-flow-call-state.js";
-import { normalizePrivateRootJournalAppendAllocation } from "../src/internal/root-journal-effect-state.js";
+import {
+  normalizePrivateRootJournalAppendAllocation,
+  privateJournalEventDigest,
+} from "../src/internal/root-journal-effect-state.js";
 import {
   createPrivateExternalSubmissionOrigin,
   encodePrivateRootRunOrigin,
@@ -62,11 +76,12 @@ import {
   privateActivationCandidateDigest,
   requirePrivateCreatedActivationCandidate,
 } from "../src/internal/activation-admission.js";
-import { canonicalJson, type JsonValue } from "../src/json.js";
+import { canonicalJson, decodeJson1, type JsonValue } from "../src/json.js";
 import { capturePackageDirectory } from "../src/package/capture.js";
 import { RootAdministrationError } from "../src/administration/root.js";
 import { openPrivateRootAdministrationController } from "../src/internal/root-administration-controller.js";
 import { awaitRootRun } from "../../../conformance/root-administration-1/consumer.js";
+import { privateHookRelationDigest } from "../src/project/package-project.js";
 
 const CREATE_CANDIDATES = "CREATE TABLE candidates (revision INTEGER PRIMARY KEY CHECK (revision BETWEEN 1 AND 9007199254740991), candidate_digest TEXT NOT NULL, candidate_bytes BLOB NOT NULL CHECK (length(candidate_bytes) BETWEEN 1 AND 16777216), lock_bytes BLOB NOT NULL CHECK (length(lock_bytes) BETWEEN 1 AND 16777216)) STRICT";
 const CREATE_CANDIDATE_HEAD = "CREATE TABLE candidate_head (singleton INTEGER PRIMARY KEY CHECK (singleton = 1), revision INTEGER REFERENCES candidates(revision)) STRICT";
@@ -83,13 +98,16 @@ const CREATE_ROOT_FLOW_CALL_FACTS = "CREATE TABLE root_flow_call_facts (parent_r
 const CREATE_ROOT_FLOW_CALL_CLOSURES = "CREATE TABLE root_flow_call_closures (parent_run_id TEXT PRIMARY KEY REFERENCES root_flow_calls(parent_run_id), closure_digest TEXT NOT NULL UNIQUE, closure_bytes BLOB NOT NULL CHECK (length(closure_bytes) BETWEEN 1 AND 16777216), UNIQUE (parent_run_id, closure_digest)) STRICT";
 const CREATE_JOURNAL_HEAD = "CREATE TABLE journal_head (singleton INTEGER PRIMARY KEY CHECK (singleton = 1), position INTEGER NOT NULL CHECK (position BETWEEN 0 AND 9007199254740991)) STRICT";
 const CREATE_JOURNAL_EVENTS = "CREATE TABLE journal_events (position INTEGER PRIMARY KEY CHECK (position BETWEEN 1 AND 9007199254740991), event_id TEXT NOT NULL UNIQUE, event_digest TEXT NOT NULL UNIQUE, event_bytes BLOB NOT NULL CHECK (length(event_bytes) BETWEEN 1 AND 16777216)) STRICT";
+const CREATE_HOOK_ADMISSION_BOUNDARIES = "CREATE TABLE hook_admission_boundaries (admission_digest TEXT PRIMARY KEY REFERENCES admissions(admission_digest), boundary_digest TEXT NOT NULL UNIQUE, boundary_bytes BLOB NOT NULL CHECK (length(boundary_bytes) BETWEEN 1 AND 16777216)) STRICT";
+const CREATE_HOOK_REVISIONS = "CREATE TABLE hook_revisions (revision_digest TEXT PRIMARY KEY, hook_id TEXT NOT NULL, meaning_digest TEXT NOT NULL, opening_admission_digest TEXT NOT NULL REFERENCES admissions(admission_digest), opening_candidate_revision INTEGER NOT NULL REFERENCES candidates(revision), start_position INTEGER NOT NULL CHECK (start_position BETWEEN 1 AND 9007199254740991), closing_admission_digest TEXT REFERENCES admissions(admission_digest), end_position INTEGER CHECK (end_position IS NULL OR end_position BETWEEN start_position AND 9007199254740991), revision_bytes BLOB NOT NULL CHECK (length(revision_bytes) BETWEEN 1 AND 16777216), CHECK ((closing_admission_digest IS NULL) = (end_position IS NULL))) STRICT";
+const CREATE_HOOK_REVISIONS_ONE_OPEN = "CREATE UNIQUE INDEX hook_revisions_one_open ON hook_revisions(hook_id) WHERE end_position IS NULL";
 const CREATE_ROOT_JOURNAL_APPENDS = "CREATE TABLE root_journal_appends (parent_run_id TEXT NOT NULL REFERENCES root_spawn_intents(run_id), operation_id TEXT NOT NULL, event_position INTEGER NOT NULL UNIQUE REFERENCES journal_events(position), allocation_digest TEXT NOT NULL UNIQUE, allocation_bytes BLOB NOT NULL CHECK (length(allocation_bytes) BETWEEN 1 AND 16777216), PRIMARY KEY (parent_run_id, operation_id)) WITHOUT ROWID, STRICT";
 const CREATE_ROOT_JOURNAL_TERMINALS = "CREATE TABLE root_journal_terminals (parent_run_id TEXT NOT NULL, operation_id TEXT NOT NULL, terminal_digest TEXT NOT NULL UNIQUE, terminal_bytes BLOB NOT NULL CHECK (length(terminal_bytes) BETWEEN 1 AND 16777216), PRIMARY KEY (parent_run_id, operation_id), FOREIGN KEY (parent_run_id, operation_id) REFERENCES root_journal_appends(parent_run_id, operation_id)) WITHOUT ROWID, STRICT";
 const CREATE_ROOT_JOURNAL_HOOK_SELECTIONS = "CREATE TABLE root_journal_hook_selections (parent_run_id TEXT NOT NULL, operation_id TEXT NOT NULL, selection_digest TEXT NOT NULL UNIQUE, selection_bytes BLOB NOT NULL CHECK (length(selection_bytes) BETWEEN 1 AND 16777216), PRIMARY KEY (parent_run_id, operation_id), FOREIGN KEY (parent_run_id, operation_id) REFERENCES root_journal_appends(parent_run_id, operation_id)) WITHOUT ROWID, STRICT";
 const CREATE_ROOT_JOURNAL_CLOSURES = "CREATE TABLE root_journal_closures (parent_run_id TEXT NOT NULL, operation_id TEXT NOT NULL, closure_digest TEXT NOT NULL UNIQUE, closure_bytes BLOB NOT NULL CHECK (length(closure_bytes) BETWEEN 1 AND 16777216), PRIMARY KEY (parent_run_id, operation_id), FOREIGN KEY (parent_run_id, operation_id) REFERENCES root_journal_appends(parent_run_id, operation_id)) WITHOUT ROWID, STRICT";
 const CREATE_ROOT_TERMINALS = "CREATE TABLE root_terminals (run_id TEXT PRIMARY KEY REFERENCES root_runs(run_id), execution_closure_digest TEXT, terminal_digest TEXT NOT NULL, terminal_bytes BLOB NOT NULL CHECK (length(terminal_bytes) BETWEEN 1 AND 16777216), FOREIGN KEY (run_id, execution_closure_digest) REFERENCES root_execution_closures(run_id, closure_digest)) STRICT";
 
-setDefaultTimeout(20_000);
+setDefaultTimeout(30_000);
 
 describe.serial("private activation admission SQLite store", () => {
   test("creates and reloads one immutable plan under ordinary Linux CI", async () => {
@@ -140,6 +158,8 @@ describe.serial("private activation admission SQLite store", () => {
           "candidate_head",
           "candidates",
           "coordinator_head",
+          "hook_admission_boundaries",
+          "hook_revisions",
           "journal_events",
           "journal_head",
           "review_plans",
@@ -156,8 +176,13 @@ describe.serial("private activation admission SQLite store", () => {
           "root_spawn_intents",
           "root_terminals",
         ]);
+        expect(database.query(
+          "SELECT name FROM sqlite_schema WHERE type = 'index' AND name NOT LIKE 'sqlite_%' ORDER BY name",
+        ).all().map(({ name }: { name: string }) => name)).toEqual([
+          "hook_revisions_one_open",
+        ]);
         expect(database.query("PRAGMA application_id").get().application_id).toBe(0x4a494741);
-        expect(database.query("PRAGMA user_version").get().user_version).toBe(11);
+        expect(database.query("PRAGMA user_version").get().user_version).toBe(12);
         expect(database.query("SELECT count(*) AS count FROM review_plans").get().count).toBe(1);
       } finally {
         database.close(true);
@@ -262,6 +287,478 @@ describe.serial("private activation admission SQLite store", () => {
     }
   });
 
+  test("reconciles Hook revisions at one atomic Journal boundary", async () => {
+    const fixture = await createFixture();
+    try {
+      const initial = await applyLatestCandidate(fixture);
+      expect(readHookRevisionRows(fixture.database)).toEqual([]);
+
+      await installHookCandidate(fixture, { enabled: true });
+      const added = await applyLatestCandidate(fixture);
+      let rows = readHookRevisionRows(fixture.database);
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toMatchObject({
+        hook_id: "on-work",
+        opening_candidate_revision: 2,
+        opening_admission_digest: added.admissionDigest,
+        start_position: 1,
+        closing_admission_digest: null,
+        end_position: null,
+      });
+      const originalRevision = rows[0]!.revision_digest;
+
+      await installHookCandidate(fixture, {
+        enabled: true,
+        extraEventTypes: ["https://example.org/events/unrelated"],
+      });
+      const unchanged = await applyLatestCandidate(fixture);
+      rows = readHookRevisionRows(fixture.database);
+      expect(rows).toHaveLength(1);
+      expect(rows[0]!.revision_digest).toBe(originalRevision);
+      expect(rows[0]!.opening_candidate_revision).toBe(2);
+
+      await installHookCandidate(fixture, {
+        enabled: true,
+        dispositionEvidence: "replacement-one",
+      });
+      const replacedOnce = await applyLatestCandidate(fixture);
+      await installHookCandidate(fixture, {
+        enabled: true,
+        dispositionEvidence: "replacement-two",
+      });
+      const replacedTwice = await applyLatestCandidate(fixture);
+      rows = readHookRevisionRows(fixture.database);
+      expect(rows).toHaveLength(3);
+      expect(rows.map((row) => ({
+        opening: row.opening_candidate_revision,
+        start: row.start_position,
+        closing: row.closing_admission_digest,
+        end: row.end_position,
+      }))).toEqual([
+        { opening: 2, start: 1, closing: replacedOnce.admissionDigest, end: 1 },
+        { opening: 4, start: 1, closing: replacedTwice.admissionDigest, end: 1 },
+        { opening: 5, start: 1, closing: null, end: null },
+      ]);
+      expect(new Set(rows.map((row) => row.revision_digest)).size).toBe(3);
+
+      await installHookCandidate(fixture, { enabled: false });
+      const removed = await applyLatestCandidate(fixture);
+      rows = readHookRevisionRows(fixture.database);
+      expect(rows).toHaveLength(3);
+      expect(rows[2]).toMatchObject({
+        opening_candidate_revision: 5,
+        closing_admission_digest: removed.admissionDigest,
+        start_position: 1,
+        end_position: 1,
+      });
+      expect(rows.filter((row) => row.end_position === null)).toHaveLength(0);
+      expect(readHookBoundaryRows(fixture.database).map((row) => ({
+        admission: row.admission_digest,
+        position: row.boundary.boundaryPosition,
+      }))).toEqual([
+        { admission: initial.admissionDigest, position: null },
+        { admission: added.admissionDigest, position: 1 },
+        { admission: unchanged.admissionDigest, position: null },
+        { admission: replacedOnce.admissionDigest, position: 1 },
+        { admission: replacedTwice.admissionDigest, position: 1 },
+        { admission: removed.admissionDigest, position: 1 },
+      ]);
+    } finally {
+      await fixture.dispose();
+    }
+  }, 60_000);
+
+  test("roots Hook changes immediately after one real Journal Event", async () => {
+    const fixture = await createFixture("ready", true);
+    let coordinator: PrivateProjectCoordinator | undefined;
+    try {
+      const initial = await applyLatestCandidate(fixture);
+      coordinator = await openPrivateProjectCoordinator({ projectRoot: fixture.root });
+      const submission = await submitPrivateRootRun({
+        coordinator,
+        projectRoot: fixture.root,
+        packageStoreRoot: fixture.store,
+        submissionId: "hook-boundary-publisher",
+        target: { kind: "binding", id: "producer" },
+        input: { value: "root" },
+        deadlineUnixMs: Date.now() + 30_000,
+      });
+      const event = await appendPrivateRootJournalEvent({
+        coordinator,
+        projectRoot: fixture.root,
+        allocation: normalizePrivateRootJournalAppendAllocation({
+          kind: "private-root-journal-append-allocation/1",
+          parentRunId: submission.run.runId,
+          coordinatorEpoch: coordinator.epoch,
+          publisherBinding: "publisher",
+          eventTypes: ["https://example.org/events/work-created"],
+          call: {
+            operationId: "hook-boundary:1",
+            slot: "journal",
+            method: "append",
+            input: {
+              type: "https://example.org/events/work-created",
+              data: { value: 1 },
+            },
+          },
+        }),
+        committedAtUnixMs: 1_000,
+      });
+      expect(event.event.journalPosition).toBe(1);
+
+      await installHookCandidate(fixture, { enabled: true });
+      const added = await applyLatestCandidate(fixture);
+      await installHookCandidate(fixture, {
+        enabled: true,
+        dispositionEvidence: "after-event-replacement-one",
+      });
+      const replaced = await applyLatestCandidate(fixture);
+      await installHookCandidate(fixture, {
+        enabled: true,
+        dispositionEvidence: "after-event-replacement-two",
+      });
+      const replacedAgain = await applyLatestCandidate(fixture);
+      await installHookCandidate(fixture, { enabled: false });
+      const removed = await applyLatestCandidate(fixture);
+
+      const boundaries = readHookBoundaryRows(fixture.database);
+      expect(boundaries.map((row) => ({
+        admission: row.admission_digest,
+        observed: row.boundary.observedJournalPosition,
+        eventDigest: row.boundary.observedJournalEventDigest,
+        boundary: row.boundary.boundaryPosition,
+      }))).toEqual([
+        { admission: initial.admissionDigest, observed: 0, eventDigest: null, boundary: null },
+        { admission: added.admissionDigest, observed: 1, eventDigest: event.eventDigest, boundary: 2 },
+        { admission: replaced.admissionDigest, observed: 1, eventDigest: event.eventDigest, boundary: 2 },
+        { admission: replacedAgain.admissionDigest, observed: 1, eventDigest: event.eventDigest, boundary: 2 },
+        { admission: removed.admissionDigest, observed: 1, eventDigest: event.eventDigest, boundary: 2 },
+      ]);
+      expect(readHookRevisionRows(fixture.database).map((row) => [
+        row.start_position,
+        row.end_position,
+      ])).toEqual([[2, 2], [2, 2], [2, 2]]);
+
+      const corruptor = openSqlite(fixture.database, "readwrite");
+      try {
+        corruptor.query("UPDATE journal_events SET event_digest = ?1 WHERE position = 1")
+          .run(digest("forged-predecessor"));
+      } finally { corruptor.close(true); }
+      await expect(loadPrivateActiveActivation({
+        projectRoot: fixture.root,
+        packageStoreRoot: fixture.store,
+      })).rejects.toMatchObject({ code: "ADMISSION_STATE_CORRUPT" });
+    } finally {
+      await coordinator?.dispose();
+      await fixture.dispose();
+    }
+  }, 60_000);
+
+  test("refuses a coherently rewritten Event whose append closure is unchanged", async () => {
+    const fixture = await createFixture("ready", true);
+    let coordinator: PrivateProjectCoordinator | undefined;
+    try {
+      await applyLatestCandidate(fixture);
+      coordinator = await openPrivateProjectCoordinator({ projectRoot: fixture.root });
+      const submission = await submitPrivateRootRun({
+        coordinator,
+        projectRoot: fixture.root,
+        packageStoreRoot: fixture.store,
+        submissionId: "hook-boundary-corrupt-publisher",
+        target: { kind: "binding", id: "producer" },
+        input: { value: "root" },
+        deadlineUnixMs: Date.now() + 30_000,
+      });
+      const receipt = await appendPrivateRootJournalEvent({
+        coordinator,
+        projectRoot: fixture.root,
+        allocation: normalizePrivateRootJournalAppendAllocation({
+          kind: "private-root-journal-append-allocation/1",
+          parentRunId: submission.run.runId,
+          coordinatorEpoch: coordinator.epoch,
+          publisherBinding: "publisher",
+          eventTypes: ["https://example.org/events/work-created"],
+          call: {
+            operationId: "hook-boundary:corrupt",
+            slot: "journal",
+            method: "append",
+            input: {
+              type: "https://example.org/events/work-created",
+              data: { value: 1 },
+            },
+          },
+        }),
+        committedAtUnixMs: 1_000,
+      });
+      const pseudoEvent = Object.freeze({
+        ...receipt.event,
+        data: Object.freeze({ value: "coherent-but-not-allocated" }),
+      });
+      const corruptor = openSqlite(fixture.database, "readwrite");
+      try {
+        corruptor.query([
+          "UPDATE journal_events SET event_digest = ?1, event_bytes = ?2",
+          "WHERE position = ?3",
+        ].join(" ")).run(
+          privateJournalEventDigest(pseudoEvent),
+          canonicalJson(pseudoEvent as unknown as JsonValue),
+          receipt.event.journalPosition,
+        );
+      } finally { corruptor.close(true); }
+
+      await installHookCandidate(fixture, { enabled: true });
+      await expect(applyLatestCandidate(fixture)).rejects.toMatchObject({
+        code: "ADMISSION_STATE_CORRUPT",
+      });
+
+      const unchanged = openSqlite(fixture.database, "readonly");
+      try {
+        expect(unchanged.query("SELECT count(*) AS count FROM admissions").get().count).toBe(1);
+        expect(unchanged.query("SELECT count(*) AS count FROM hook_revisions").get().count).toBe(0);
+        expect(unchanged.query("SELECT count(*) AS count FROM root_journal_terminals").get().count)
+          .toBe(1);
+        expect(unchanged.query("SELECT count(*) AS count FROM root_journal_hook_selections").get().count)
+          .toBe(1);
+        expect(unchanged.query("SELECT count(*) AS count FROM root_journal_closures").get().count)
+          .toBe(1);
+      } finally { unchanged.close(true); }
+    } finally {
+      await coordinator?.dispose();
+      await fixture.dispose();
+    }
+  }, 60_000);
+
+  test("fails closed on canonical Hook meaning and closing-attribution corruption", async () => {
+    const meaningFixture = await createFixture();
+    try {
+      await applyLatestCandidate(meaningFixture);
+      await installHookCandidate(meaningFixture, { enabled: true });
+      await applyLatestCandidate(meaningFixture);
+      const stored = readHookRevisionRows(meaningFixture.database)[0]!;
+      const revision = decodePrivateHookRevision(stored.revision_bytes);
+      const meaning = {
+        ...revision.meaning,
+        target: {
+          ...revision.meaning.target,
+          dispositionDigest: digest("forged-target-disposition"),
+        },
+      };
+      const forged = normalizePrivateHookRevision({
+        ...revision,
+        meaning,
+        meaningDigest: privateHookMeaningDigest(meaning),
+      });
+      const forgedDigest = privateHookRevisionDigest(forged);
+      const corruptor = openSqlite(meaningFixture.database, "readwrite");
+      try {
+        corruptor.query([
+          "UPDATE hook_revisions SET revision_digest = ?1, meaning_digest = ?2, revision_bytes = ?3",
+          "WHERE revision_digest = ?4",
+        ].join(" ")).run(
+          forgedDigest,
+          forged.meaningDigest,
+          encodePrivateHookRevision(forged),
+          stored.revision_digest,
+        );
+      } finally { corruptor.close(true); }
+      await expect(loadPrivateActiveActivation({
+        projectRoot: meaningFixture.root,
+        packageStoreRoot: meaningFixture.store,
+      })).rejects.toMatchObject({ code: "ADMISSION_STATE_CORRUPT" });
+    } finally {
+      await meaningFixture.dispose();
+    }
+
+    const closingFixture = await createFixture();
+    try {
+      await applyLatestCandidate(closingFixture);
+      await installHookCandidate(closingFixture, { enabled: true });
+      await applyLatestCandidate(closingFixture);
+      await installHookCandidate(closingFixture, {
+        enabled: true,
+        extraEventTypes: ["https://example.org/events/unrelated"],
+      });
+      const unchanged = await applyLatestCandidate(closingFixture);
+      const stored = readHookRevisionRows(closingFixture.database)[0]!;
+      const corruptor = openSqlite(closingFixture.database, "readwrite");
+      try {
+        corruptor.query([
+          "UPDATE hook_revisions SET closing_admission_digest = ?1, end_position = 1",
+          "WHERE revision_digest = ?2",
+        ].join(" ")).run(unchanged.admissionDigest, stored.revision_digest);
+      } finally { corruptor.close(true); }
+      await expect(loadPrivateActiveActivation({
+        projectRoot: closingFixture.root,
+        packageStoreRoot: closingFixture.store,
+      })).rejects.toMatchObject({ code: "ADMISSION_STATE_CORRUPT" });
+    } finally {
+      await closingFixture.dispose();
+    }
+  }, 60_000);
+
+  test("reconstructs rooted Hook history and rejects deletion, boundary forgery, and gaps", async () => {
+    const deletion = await createFixture();
+    try {
+      await applyLatestCandidate(deletion);
+      await installHookCandidate(deletion, { enabled: true });
+      await applyLatestCandidate(deletion);
+      await installHookCandidate(deletion, {
+        enabled: true,
+        dispositionEvidence: "close-the-first-revision",
+      });
+      await applyLatestCandidate(deletion);
+      const closed = readHookRevisionRows(deletion.database).find(
+        (row) => row.end_position !== null,
+      )!;
+      const corruptor = openSqlite(deletion.database, "readwrite");
+      try {
+        corruptor.query("DELETE FROM hook_revisions WHERE revision_digest = ?1")
+          .run(closed.revision_digest);
+      } finally { corruptor.close(true); }
+      await expect(loadPrivateActiveActivation({
+        projectRoot: deletion.root,
+        packageStoreRoot: deletion.store,
+      })).rejects.toMatchObject({ code: "ADMISSION_STATE_CORRUPT" });
+    } finally { await deletion.dispose(); }
+
+    const missingBoundary = await createFixture();
+    try {
+      const admitted = await applyLatestCandidate(missingBoundary);
+      const corruptor = openSqlite(missingBoundary.database, "readwrite");
+      try {
+        corruptor.query(
+          "DELETE FROM hook_admission_boundaries WHERE admission_digest = ?1",
+        ).run(admitted.admissionDigest);
+      } finally { corruptor.close(true); }
+      await expect(loadPrivateActiveActivation({
+        projectRoot: missingBoundary.root,
+        packageStoreRoot: missingBoundary.store,
+      })).rejects.toMatchObject({ code: "ADMISSION_STATE_CORRUPT" });
+    } finally { await missingBoundary.dispose(); }
+
+    const boundaryForgery = await createFixture();
+    try {
+      await applyLatestCandidate(boundaryForgery);
+      await installHookCandidate(boundaryForgery, { enabled: true });
+      const added = await applyLatestCandidate(boundaryForgery);
+      const stored = readHookBoundaryRows(boundaryForgery.database).find(
+        (row) => row.admission_digest === added.admissionDigest,
+      )!;
+      const forged = normalizePrivateHookAdmissionBoundary({
+        ...stored.boundary,
+        observedJournalPosition: stored.boundary.observedJournalPosition + 1,
+        observedJournalEventDigest: digest("forged-observed-event"),
+        boundaryPosition: stored.boundary.boundaryPosition + 1,
+      });
+      const corruptor = openSqlite(boundaryForgery.database, "readwrite");
+      try {
+        corruptor.query([
+          "UPDATE hook_admission_boundaries SET boundary_digest = ?1, boundary_bytes = ?2",
+          "WHERE admission_digest = ?3",
+        ].join(" ")).run(
+          privateHookAdmissionBoundaryDigest(forged),
+          encodePrivateHookAdmissionBoundary(forged),
+          added.admissionDigest,
+        );
+      } finally { corruptor.close(true); }
+      await expect(loadPrivateActiveActivation({
+        projectRoot: boundaryForgery.root,
+        packageStoreRoot: boundaryForgery.store,
+      })).rejects.toMatchObject({ code: "ADMISSION_STATE_CORRUPT" });
+    } finally { await boundaryForgery.dispose(); }
+
+    const gap = await createFixture();
+    try {
+      await applyLatestCandidate(gap);
+      await installHookCandidate(gap, { enabled: true });
+      await applyLatestCandidate(gap);
+      await installHookCandidate(gap, {
+        enabled: true,
+        dispositionEvidence: "open-after-gap",
+      });
+      await applyLatestCandidate(gap);
+      const stored = readHookRevisionRows(gap.database).find(
+        (row) => row.end_position === null,
+      )!;
+      const revision = decodePrivateHookRevision(stored.revision_bytes);
+      const forged = normalizePrivateHookRevision({
+        ...revision,
+        startPosition: revision.startPosition + 1,
+      });
+      const corruptor = openSqlite(gap.database, "readwrite");
+      try {
+        corruptor.query([
+          "UPDATE hook_revisions SET revision_digest = ?1, start_position = ?2, revision_bytes = ?3",
+          "WHERE revision_digest = ?4",
+        ].join(" ")).run(
+          privateHookRevisionDigest(forged),
+          forged.startPosition,
+          encodePrivateHookRevision(forged),
+          stored.revision_digest,
+        );
+      } finally { corruptor.close(true); }
+      await expect(loadPrivateActiveActivation({
+        projectRoot: gap.root,
+        packageStoreRoot: gap.store,
+      })).rejects.toMatchObject({ code: "ADMISSION_STATE_CORRUPT" });
+    } finally { await gap.dispose(); }
+  }, 90_000);
+
+  test("refuses Hook-boundary Journal exhaustion before publishing the visible lock", async () => {
+    const fixture = await createFixture();
+    try {
+      await applyLatestCandidate(fixture);
+      const visibleBefore = new Uint8Array(await readFile(join(fixture.root, "jig.lock")));
+      await installHookCandidate(fixture, { enabled: true });
+
+      const sqlite = createRequire(import.meta.url)("bun:sqlite") as any;
+      const probe = sqlite.Database.open(":memory:");
+      const prototype = Object.getPrototypeOf(probe) as any;
+      probe.close(true);
+      const original = prototype.query;
+      prototype.query = function queryWithExhaustedJournal(sql: string): any {
+        let rows: readonly Record<string, bigint>[] | undefined;
+        if (sql === "SELECT singleton, position FROM journal_head") {
+          rows = [{ singleton: 1n, position: BigInt(Number.MAX_SAFE_INTEGER) }];
+        } else if (sql === [
+          "SELECT count(*) AS count, min(position) AS minimum, max(position) AS maximum",
+          "FROM journal_events",
+        ].join(" ")) {
+          rows = [{
+            count: BigInt(Number.MAX_SAFE_INTEGER),
+            minimum: 1n,
+            maximum: BigInt(Number.MAX_SAFE_INTEGER),
+          }];
+        }
+        if (rows === undefined) return original.call(this, sql);
+        const fake = {
+          safeIntegers(): typeof fake { return fake; },
+          get(): Record<string, bigint> | null { return rows![0] ?? null; },
+          all(): readonly Record<string, bigint>[] { return rows!; },
+          finalize(): void {},
+        };
+        return fake;
+      };
+      try {
+        await expect(applyLatestCandidate(fixture)).rejects.toMatchObject({
+          code: "RESOURCE_EXHAUSTED",
+        });
+      } finally {
+        prototype.query = original;
+      }
+
+      expect(new Uint8Array(await readFile(join(fixture.root, "jig.lock"))))
+        .toEqual(visibleBefore);
+      const database = openSqlite(fixture.database, "readonly");
+      try {
+        expect(database.query("SELECT count(*) AS count FROM admissions").get().count).toBe(1);
+        expect(database.query("SELECT count(*) AS count FROM hook_revisions").get().count).toBe(0);
+        expect(database.query("SELECT count(*) AS count FROM hook_admission_boundaries").get().count)
+          .toBe(1);
+      } finally { database.close(true); }
+    } finally { await fixture.dispose(); }
+  }, 30_000);
+
   test("fails closed on the preceding private schema instead of migrating it", async () => {
     const fixture = await createFixture();
     try {
@@ -271,7 +768,7 @@ describe.serial("private activation admission SQLite store", () => {
         lockMode: "update",
       });
       const database = openSqlite(fixture.database, "readwrite");
-      database.exec("PRAGMA user_version=10");
+      database.exec("PRAGMA user_version=11");
       database.close(true);
 
       await expect(loadPrivateActivationReviewPlan({
@@ -282,7 +779,7 @@ describe.serial("private activation admission SQLite store", () => {
 
       const unchanged = openSqlite(fixture.database, "readonly");
       try {
-        expect(unchanged.query("PRAGMA user_version").get().user_version).toBe(10);
+        expect(unchanged.query("PRAGMA user_version").get().user_version).toBe(11);
       } finally { unchanged.close(true); }
     } finally {
       await fixture.dispose();
@@ -1618,7 +2115,7 @@ async function createFixture(
     const encoded = encodePrivateActivationCandidate(candidate);
 
     const state = join(root, ".jig");
-    const databasePath = join(state, "private-activation-admission-v11.sqlite3");
+    const databasePath = join(state, "private-activation-admission-v12.sqlite3");
     await mkdir(state, { mode: 0o700 });
     const databaseFile = await open(
       databasePath,
@@ -1647,6 +2144,9 @@ async function createFixture(
         CREATE_ROOT_FLOW_CALL_CLOSURES,
         CREATE_JOURNAL_HEAD,
         CREATE_JOURNAL_EVENTS,
+        CREATE_HOOK_ADMISSION_BOUNDARIES,
+        CREATE_HOOK_REVISIONS,
+        CREATE_HOOK_REVISIONS_ONE_OPEN,
         CREATE_ROOT_JOURNAL_APPENDS,
         CREATE_ROOT_JOURNAL_TERMINALS,
         CREATE_ROOT_JOURNAL_HOOK_SELECTIONS,
@@ -1657,7 +2157,7 @@ async function createFixture(
         "INSERT INTO coordinator_head(singleton, epoch) VALUES (1, 0)",
         "INSERT INTO journal_head(singleton, position) VALUES (1, 0)",
         "PRAGMA application_id=1246316353",
-        "PRAGMA user_version=11",
+        "PRAGMA user_version=12",
       ].join(";"));
       database.exec("BEGIN IMMEDIATE");
       database.query(
@@ -1678,6 +2178,151 @@ async function createFixture(
   } catch (error) {
     await rm(base, { recursive: true, force: true });
     throw error;
+  }
+}
+
+async function applyLatestCandidate(
+  fixture: Fixture,
+): Promise<Awaited<ReturnType<typeof applyPrivateActivationReviewPlan>>> {
+  const plan = await createPrivateActivationReviewPlan({
+    projectRoot: fixture.root,
+    packageStoreRoot: fixture.store,
+    lockMode: "update",
+  });
+  return applyPrivateActivationReviewPlan({
+    projectRoot: fixture.root,
+    packageStoreRoot: fixture.store,
+    planDigest: plan.planDigest,
+    baseGeneration: plan.plan.baseGeneration,
+  });
+}
+
+async function installHookCandidate(
+  fixture: Fixture,
+  options: {
+    readonly enabled: boolean;
+    readonly extraEventTypes?: readonly string[];
+    readonly dispositionEvidence?: string;
+  },
+): Promise<void> {
+  const database = openSqlite(fixture.database, "readwrite");
+  try {
+    const head = database.query(
+      "SELECT revision FROM candidate_head WHERE singleton = 1",
+    ).get().revision as number;
+    const stored = database.query(
+      "SELECT candidate_bytes, lock_bytes FROM candidates WHERE revision = ?1",
+    ).get(head) as { readonly candidate_bytes: Uint8Array; readonly lock_bytes: Uint8Array };
+    const candidateValue = decodeJson1(stored.candidate_bytes) as any;
+    const lockValue = decodeJson1(stored.lock_bytes) as any;
+    const target = Object.hasOwn(lockValue.bindings, "producer")
+      ? { kind: "binding" as const, id: "producer" }
+      : { kind: "flow" as const, path: "flows/run" };
+    const selectedType = "https://example.org/events/work-created";
+    const eventTypes = [selectedType, ...(options.extraEventTypes ?? [])].sort();
+    const relationDigest = privateHookRelationDigest({
+      id: "on-work",
+      declarationPath: "hooks/on-work.ts",
+      source: "binding:publisher",
+      publisherBinding: "publisher",
+      type: selectedType,
+      target,
+    });
+    const lockBytes = json1({
+      ...lockValue,
+      journalPublishers: {
+        publisher: {
+          source: "binding:publisher",
+          contract: {
+            id: "https://jig.dev/contracts/journal",
+            version: "1.0.0",
+            digest: "sha256:dd749f53de3a5f80e02386699355e28c1fd7e707b2b12bdf2d5c725eb436ddf9",
+          },
+          eventTypes,
+        },
+      },
+      hooks: options.enabled ? {
+        "on-work": {
+          declarationPath: "hooks/on-work.ts",
+          source: "binding:publisher",
+          publisherBinding: "publisher",
+          type: selectedType,
+          target,
+          relationDigest,
+        },
+      } : {},
+    } as JsonValue);
+    const lock = decodePrivateProjectLocalLock(lockBytes);
+    const disposition = options.dispositionEvidence === undefined
+      ? candidateValue.targets[0].disposition
+      : {
+          state: "unavailable",
+          code: "RUNTIME_UNAVAILABLE",
+          evidenceDigests: [digest(options.dispositionEvidence)],
+        };
+    const next = head + 1;
+    const candidate = decodePrivateActivationCandidate({
+      candidate: json1({
+        ...candidateValue,
+        semanticDigest: digest(`hook-semantic-${next}`),
+        lockDigest: privateProjectLocalLockDigest(lock),
+        targets: [{
+          ...candidateValue.targets[0],
+          disposition,
+        }],
+      } as JsonValue),
+      lock: lockBytes,
+    });
+    const encoded = encodePrivateActivationCandidate(candidate);
+    database.exec("BEGIN IMMEDIATE");
+    try {
+      database.query(
+        "INSERT INTO candidates(revision, candidate_digest, candidate_bytes, lock_bytes) VALUES (?1, ?2, ?3, ?4)",
+      ).run(next, privateActivationCandidateDigest(candidate), encoded.candidate, encoded.lock);
+      const changed = database.query(
+        "UPDATE candidate_head SET revision = ?1 WHERE singleton = 1 AND revision = ?2",
+      ).run(next, head).changes;
+      if (changed !== 1) throw new Error("test candidate head changed concurrently");
+      database.exec("COMMIT");
+    } catch (error) {
+      if (database.inTransaction) database.exec("ROLLBACK");
+      throw error;
+    }
+  } finally {
+    database.close(true);
+  }
+}
+
+function readHookRevisionRows(databasePath: string): readonly any[] {
+  const database = openSqlite(databasePath, "readonly");
+  try {
+    return database.query([
+      "SELECT revision_digest, hook_id, meaning_digest, opening_admission_digest,",
+      "opening_candidate_revision, start_position, closing_admission_digest, end_position, revision_bytes",
+      "FROM hook_revisions ORDER BY opening_candidate_revision",
+    ].join(" ")).all().map((row: any) => ({
+      ...row,
+      revision_bytes: Uint8Array.from(row.revision_bytes),
+    }));
+  } finally {
+    database.close(true);
+  }
+}
+
+function readHookBoundaryRows(databasePath: string): readonly any[] {
+  const database = openSqlite(databasePath, "readonly");
+  try {
+    return database.query([
+      "SELECT hook_admission_boundaries.admission_digest, boundary_digest, boundary_bytes",
+      "FROM hook_admission_boundaries JOIN admissions USING (admission_digest)",
+      "ORDER BY admissions.revision",
+    ].join(" ")).all().map((row: any) => ({
+      ...row,
+      boundary_bytes: Uint8Array.from(row.boundary_bytes),
+      boundary: decodePrivateHookAdmissionBoundary(Uint8Array.from(row.boundary_bytes)),
+    }));
+  } finally {
+    database.close(true);
   }
 }
 
@@ -1833,7 +2478,7 @@ async function createComposedFixture(): Promise<Fixture> {
     });
     const encoded = encodePrivateActivationCandidate(candidate);
     const state = join(root, ".jig");
-    const databasePath = join(state, "private-activation-admission-v11.sqlite3");
+    const databasePath = join(state, "private-activation-admission-v12.sqlite3");
     await mkdir(state, { mode: 0o700 });
     const databaseFile = await open(
       databasePath,
@@ -1862,6 +2507,9 @@ async function createComposedFixture(): Promise<Fixture> {
         CREATE_ROOT_FLOW_CALL_CLOSURES,
         CREATE_JOURNAL_HEAD,
         CREATE_JOURNAL_EVENTS,
+        CREATE_HOOK_ADMISSION_BOUNDARIES,
+        CREATE_HOOK_REVISIONS,
+        CREATE_HOOK_REVISIONS_ONE_OPEN,
         CREATE_ROOT_JOURNAL_APPENDS,
         CREATE_ROOT_JOURNAL_TERMINALS,
         CREATE_ROOT_JOURNAL_HOOK_SELECTIONS,
@@ -1872,7 +2520,7 @@ async function createComposedFixture(): Promise<Fixture> {
         "INSERT INTO coordinator_head(singleton, epoch) VALUES (1, 0)",
         "INSERT INTO journal_head(singleton, position) VALUES (1, 0)",
         "PRAGMA application_id=1246316353",
-        "PRAGMA user_version=11",
+        "PRAGMA user_version=12",
       ].join(";"));
       database.exec("BEGIN IMMEDIATE");
       database.query(

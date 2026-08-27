@@ -43,7 +43,7 @@ import {
 
 const KIND = "private-activation-candidate/4";
 const PLAN_KIND = "private-activation-plan/1";
-const ADMISSION_KIND = "private-activation-admission/1";
+const ADMISSION_KIND = "private-activation-admission/2";
 const DIGEST = /^sha256:[0-9a-f]{64}$/;
 const LOCAL_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const UNSIGNED_64 = /^(?:0|[1-9][0-9]{0,19})$/;
@@ -120,6 +120,7 @@ export interface PrivateActivationAdmission {
   readonly candidateRevision: number;
   readonly candidateDigest: string;
   readonly lockDigest: string;
+  readonly hookBoundaryDigest: string;
 }
 
 /**
@@ -283,6 +284,7 @@ export function createPrivateActivationAdmission(input: {
   readonly candidateRevision: number;
   readonly candidateDigest: string;
   readonly lockDigest: string;
+  readonly hookBoundaryDigest: string;
 }): PrivateActivationAdmission {
   return normalizeAdmission({ kind: ADMISSION_KIND, ...input });
 }
@@ -302,7 +304,7 @@ export function encodePrivateActivationAdmission(value: unknown): Uint8Array {
 
 export function privateActivationAdmissionDigest(value: unknown): string {
   return privateDomainDigest(
-    "JIG-Private-Activation-Admission/1",
+    "JIG-Private-Activation-Admission/2",
     normalizeAdmission(value) as unknown as JsonValue,
   );
 }
@@ -438,6 +440,7 @@ function normalizeAdmission(input: unknown): PrivateActivationAdmission {
     "candidateRevision",
     "candidateDigest",
     "lockDigest",
+    "hookBoundaryDigest",
   ], "activation admission");
   if (root.kind !== ADMISSION_KIND) {
     throw new TypeError(`activation admission kind must be ${ADMISSION_KIND}`);
@@ -455,6 +458,7 @@ function normalizeAdmission(input: unknown): PrivateActivationAdmission {
     ),
     candidateDigest: requireDigest(root.candidateDigest, "admission candidate"),
     lockDigest: requireDigest(root.lockDigest, "admission lock"),
+    hookBoundaryDigest: requireDigest(root.hookBoundaryDigest, "admission Hook boundary"),
   });
 }
 

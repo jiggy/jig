@@ -62,6 +62,19 @@ new or changed Hook       open new startPosition at B
 unchanged Hook            preserve its original revision and opening pin
 ```
 
+Every admission roots one canonical Hook-boundary fact. The fact records the
+Journal head position observed inside that transaction and, except at genesis,
+the digest of the exact canonical Event already stored at that position. A
+meaning change must use `boundaryPosition = observedJournalPosition + 1`; an
+unchanged meaning set records no boundary position. Strict reload checks the
+named predecessor Event and reconstructs the complete revision set from every
+admission.
+
+The transaction establishes that the observation was the temporal Journal
+head. The durable fact authenticates that exact observation and existing
+Event; it does not claim a total cross-table chronology that SQLite does not
+independently preserve.
+
 There is exactly one open revision per Hook ID. Both positions use the
 half-open interval `[startPosition, endPosition)`. Admission cannot publish a
 new head without its complete interval update, and an append cannot allocate a
@@ -116,10 +129,13 @@ until a later control-plane inspection design earns it.
 ## 6. Recovery and refusal
 
 The project controller pumps durable pending Hook roots after append and after
-restart. Dispatch ownership still uses the coordinator epoch, spawn intent is
-durable before package execution, success is never inferred from process
-disappearance, and possibly dispatched older work becomes the already defined
-honest loss terminal rather than automatic replay.
+any lost wake while the same coordinator still owns the epoch. On coordinator
+restart it preserves the existing conservative rule: unresolved older-epoch
+work becomes the already defined honest `COORDINATOR_LOST` terminal because
+the store cannot prove whether dispatch began. Dispatch ownership still uses
+the coordinator epoch, spawn intent is durable before package execution,
+success is never inferred from process disappearance, and Hook work receives
+no special replay loophole.
 
 This slice fails closed on:
 
@@ -144,7 +160,9 @@ The focused corpus must prove:
    selected target/package/dependency changes;
 5. identical Event bytes as target input;
 6. terminal invalid-input and unavailable derived Runs without reselection;
-7. restart dispatch with no duplicate Run or operation;
+7. same-coordinator lost-wake dispatch with no duplicate Run or operation,
+   plus conservative `COORDINATOR_LOST` reconciliation after coordinator
+   restart;
 8. coordinator-loss fencing and zero process/cgroup/device/materialization
    residue; and
 9. preservation of the frozen Project Authoring SDK/1 boundary.

@@ -67,6 +67,22 @@ export interface PrivateHookRevision {
   readonly startPosition: number;
 }
 
+/**
+ * The Hook-transition fact rooted by one activation admission. A null
+ * position proves that admission preserved the preceding open Hook meanings.
+ */
+export interface PrivateHookAdmissionBoundary {
+  readonly kind: "private-hook-admission-boundary/1";
+  readonly baseGeneration: string | null;
+  readonly planDigest: string;
+  readonly candidateRevision: number;
+  readonly candidateDigest: string;
+  readonly lockDigest: string;
+  readonly observedJournalPosition: number;
+  readonly observedJournalEventDigest: string | null;
+  readonly boundaryPosition: number | null;
+}
+
 export interface PrivateHookSelection {
   readonly hookId: string;
   readonly hookRevisionDigest: string;
@@ -220,6 +236,98 @@ export function privateHookRevisionDigest(value: unknown): string {
     "JIG-Private-Hook-Revision/1",
     normalizePrivateHookRevision(value) as unknown as JsonValue,
   );
+}
+
+export function normalizePrivateHookAdmissionBoundary(
+  value: unknown,
+): PrivateHookAdmissionBoundary {
+  const root = exactObject(value, [
+    "baseGeneration",
+    "boundaryPosition",
+    "candidateDigest",
+    "candidateRevision",
+    "kind",
+    "lockDigest",
+    "observedJournalEventDigest",
+    "observedJournalPosition",
+    "planDigest",
+  ], "Hook admission boundary");
+  if (root.kind !== "private-hook-admission-boundary/1") {
+    throw new TypeError("Hook admission boundary kind is invalid");
+  }
+  const observedJournalPosition = nonnegativeSafeInteger(
+    root.observedJournalPosition,
+    "Hook admission observed Journal position",
+  );
+  const observedJournalEventDigest = root.observedJournalEventDigest === null
+    ? null
+    : digest(root.observedJournalEventDigest, "Hook admission observed Journal Event");
+  if ((observedJournalPosition === 0) !== (observedJournalEventDigest === null)) {
+    throw new TypeError("Hook admission observed Journal Event must be null exactly at genesis");
+  }
+  const boundaryPosition = root.boundaryPosition === null
+    ? null
+    : positiveSafeInteger(root.boundaryPosition, "Hook admission boundary position");
+  if (boundaryPosition !== null && (
+    observedJournalPosition === Number.MAX_SAFE_INTEGER ||
+    boundaryPosition !== observedJournalPosition + 1
+  )) {
+    throw new TypeError("Hook admission boundary must immediately follow its observed Journal position");
+  }
+  const boundary = Object.freeze({
+    kind: "private-hook-admission-boundary/1" as const,
+    baseGeneration: root.baseGeneration === null
+      ? null
+      : digest(root.baseGeneration, "Hook admission base generation"),
+    planDigest: digest(root.planDigest, "Hook admission plan"),
+    candidateRevision: positiveSafeInteger(
+      root.candidateRevision,
+      "Hook admission candidate revision",
+    ),
+    candidateDigest: digest(root.candidateDigest, "Hook admission candidate"),
+    lockDigest: digest(root.lockDigest, "Hook admission lock"),
+    observedJournalPosition,
+    observedJournalEventDigest,
+    boundaryPosition,
+  });
+  validateJson1(boundary as unknown as JsonValue);
+  return boundary;
+}
+
+export function encodePrivateHookAdmissionBoundary(value: unknown): Uint8Array {
+  return canonicalJson(normalizePrivateHookAdmissionBoundary(value) as unknown as JsonValue);
+}
+
+export function decodePrivateHookAdmissionBoundary(
+  bytes: Uint8Array,
+): PrivateHookAdmissionBoundary {
+  return decodeCanonical(bytes, normalizePrivateHookAdmissionBoundary, "Hook admission boundary");
+}
+
+export function privateHookAdmissionBoundaryDigest(value: unknown): string {
+  return privateDomainDigest(
+    "JIG-Private-Hook-Admission-Boundary/1",
+    normalizePrivateHookAdmissionBoundary(value) as unknown as JsonValue,
+  );
+}
+
+/** Close the Journal-position arithmetic before any visible lock mutation. */
+export function privateHookAdmissionBoundaryPosition(
+  currentPosition: bigint,
+  changesMeaning: boolean,
+): number | null {
+  if (typeof currentPosition !== "bigint" || currentPosition < 0n ||
+      currentPosition > BigInt(Number.MAX_SAFE_INTEGER)) {
+    throw new TypeError("current Journal position is invalid");
+  }
+  if (typeof changesMeaning !== "boolean") {
+    throw new TypeError("Hook admission change flag is invalid");
+  }
+  if (!changesMeaning) return null;
+  if (currentPosition === BigInt(Number.MAX_SAFE_INTEGER)) {
+    throw new RangeError("Journal position space is exhausted");
+  }
+  return Number(currentPosition + 1n);
 }
 
 export function normalizePrivateHookSelectionSet(value: unknown): PrivateHookSelectionSet {
@@ -471,6 +579,13 @@ function exactString(value: unknown, expected: string, label: string): string {
 
 function positiveSafeInteger(value: unknown, label: string): number {
   if (!Number.isSafeInteger(value) || (value as number) < 1) {
+    throw new TypeError(`${label} is invalid`);
+  }
+  return value as number;
+}
+
+function nonnegativeSafeInteger(value: unknown, label: string): number {
+  if (!Number.isSafeInteger(value) || (value as number) < 0) {
     throw new TypeError(`${label} is invalid`);
   }
   return value as number;

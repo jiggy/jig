@@ -3,15 +3,20 @@ import { createHash } from "node:crypto";
 
 import {
   decodePrivateHookMeaning,
+  decodePrivateHookAdmissionBoundary,
   decodePrivateHookRevision,
   decodePrivateHookSelectionSet,
   encodePrivateHookMeaning,
+  encodePrivateHookAdmissionBoundary,
   encodePrivateHookRevision,
   encodePrivateHookSelectionSet,
   normalizePrivateHookMeaning,
+  normalizePrivateHookAdmissionBoundary,
   normalizePrivateHookRevision,
   normalizePrivateHookSelectionSet,
   privateHookMeaningDigest,
+  privateHookAdmissionBoundaryDigest,
+  privateHookAdmissionBoundaryPosition,
   privateHookRevisionDigest,
   privateHookSelectionSetDigest,
   privateHookTargetDispositionDigest,
@@ -23,6 +28,50 @@ const encoder = new TextEncoder();
 const eventType = "https://example.org/events/work-created";
 
 describe("private Hook runtime state", () => {
+  test("canonically roots one admission-local Hook boundary without a digest cycle", () => {
+    const boundary = normalizePrivateHookAdmissionBoundary({
+      kind: "private-hook-admission-boundary/1",
+      baseGeneration: digest("base"),
+      planDigest: digest("plan"),
+      candidateRevision: 7,
+      candidateDigest: digest("candidate"),
+      lockDigest: digest("lock"),
+      observedJournalPosition: 12,
+      observedJournalEventDigest: digest("event-12"),
+      boundaryPosition: 13,
+    });
+    expect(decodePrivateHookAdmissionBoundary(
+      encodePrivateHookAdmissionBoundary(boundary),
+    )).toEqual(boundary);
+    expect(privateHookAdmissionBoundaryDigest(boundary)).toMatch(/^sha256:[0-9a-f]{64}$/);
+    expect(Object.hasOwn(boundary, "admissionDigest")).toBeFalse();
+    expect(Object.hasOwn(boundary, "revisionDigest")).toBeFalse();
+    expect(normalizePrivateHookAdmissionBoundary({
+      ...boundary,
+      boundaryPosition: null,
+    }).boundaryPosition).toBeNull();
+    expect(() => normalizePrivateHookAdmissionBoundary({
+      ...boundary,
+      boundaryPosition: 0,
+    })).toThrow("invalid");
+    expect(() => normalizePrivateHookAdmissionBoundary({
+      ...boundary,
+      boundaryPosition: 14,
+    })).toThrow("immediately follow");
+    expect(() => normalizePrivateHookAdmissionBoundary({
+      ...boundary,
+      observedJournalPosition: 0,
+    })).toThrow("null exactly at genesis");
+    expect(privateHookAdmissionBoundaryPosition(0n, true)).toBe(1);
+    expect(privateHookAdmissionBoundaryPosition(12n, true)).toBe(13);
+    expect(privateHookAdmissionBoundaryPosition(12n, false)).toBeNull();
+    expect(privateHookAdmissionBoundaryPosition(BigInt(Number.MAX_SAFE_INTEGER), false)).toBeNull();
+    expect(() => privateHookAdmissionBoundaryPosition(
+      BigInt(Number.MAX_SAFE_INTEGER),
+      true,
+    )).toThrow("exhausted");
+  });
+
   test("normalizes and canonically round-trips one exact Hook meaning", () => {
     const meaning = normalizePrivateHookMeaning(meaningValue());
     expect(meaning).toEqual({

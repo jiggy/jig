@@ -90,6 +90,24 @@ import {
   type PrivateRootJournalAppendReceipt,
 } from "./root-journal-effect-state.js";
 import type { RunHostEffectResult } from "../run/session.js";
+import {
+  decodePrivateHookRevision,
+  decodePrivateHookAdmissionBoundary,
+  encodePrivateHookAdmissionBoundary,
+  encodePrivateHookMeaning,
+  encodePrivateHookRevision,
+  normalizePrivateHookMeaning,
+  normalizePrivateHookAdmissionBoundary,
+  normalizePrivateHookRevision,
+  privateHookMeaningDigest,
+  privateHookAdmissionBoundaryDigest,
+  privateHookAdmissionBoundaryPosition,
+  privateHookRevisionDigest,
+  privateHookTargetDispositionDigest,
+  type PrivateHookMeaning,
+  type PrivateHookAdmissionBoundary,
+  type PrivateHookRevision,
+} from "./hook-runtime-state.js";
 
 export type {
   PrivateRootRunSnapshot,
@@ -98,12 +116,12 @@ export type {
 } from "./root-run-state.js";
 
 const STATE_DIRECTORY = ".jig";
-const DATABASE_NAME = "private-activation-admission-v11.sqlite3";
+const DATABASE_NAME = "private-activation-admission-v12.sqlite3";
 const COORDINATOR_DATABASE_NAME = "private-project-coordinator-v1.sqlite3";
 const LOCK_NAME = "jig.lock";
 const LOCK_STAGE_NAME = "private-activation-jig-lock-v1.stage";
-const SCHEMA_VERSION = 11n;
-const APPLICATION_ID = 0x4a494741n; // JIGA: schema 11
+const SCHEMA_VERSION = 12n;
+const APPLICATION_ID = 0x4a494741n; // JIGA: schema 12
 const COORDINATOR_SCHEMA_VERSION = 1n;
 const COORDINATOR_APPLICATION_ID = 0x4a494743n; // JIGC
 const BUSY_TIMEOUT_MS = 250;
@@ -128,6 +146,9 @@ const CREATE_ROOT_FLOW_CALL_FACTS = "CREATE TABLE root_flow_call_facts (parent_r
 const CREATE_ROOT_FLOW_CALL_CLOSURES = "CREATE TABLE root_flow_call_closures (parent_run_id TEXT PRIMARY KEY REFERENCES root_flow_calls(parent_run_id), closure_digest TEXT NOT NULL UNIQUE, closure_bytes BLOB NOT NULL CHECK (length(closure_bytes) BETWEEN 1 AND 16777216), UNIQUE (parent_run_id, closure_digest)) STRICT";
 const CREATE_JOURNAL_HEAD = "CREATE TABLE journal_head (singleton INTEGER PRIMARY KEY CHECK (singleton = 1), position INTEGER NOT NULL CHECK (position BETWEEN 0 AND 9007199254740991)) STRICT";
 const CREATE_JOURNAL_EVENTS = "CREATE TABLE journal_events (position INTEGER PRIMARY KEY CHECK (position BETWEEN 1 AND 9007199254740991), event_id TEXT NOT NULL UNIQUE, event_digest TEXT NOT NULL UNIQUE, event_bytes BLOB NOT NULL CHECK (length(event_bytes) BETWEEN 1 AND 16777216)) STRICT";
+const CREATE_HOOK_ADMISSION_BOUNDARIES = "CREATE TABLE hook_admission_boundaries (admission_digest TEXT PRIMARY KEY REFERENCES admissions(admission_digest), boundary_digest TEXT NOT NULL UNIQUE, boundary_bytes BLOB NOT NULL CHECK (length(boundary_bytes) BETWEEN 1 AND 16777216)) STRICT";
+const CREATE_HOOK_REVISIONS = "CREATE TABLE hook_revisions (revision_digest TEXT PRIMARY KEY, hook_id TEXT NOT NULL, meaning_digest TEXT NOT NULL, opening_admission_digest TEXT NOT NULL REFERENCES admissions(admission_digest), opening_candidate_revision INTEGER NOT NULL REFERENCES candidates(revision), start_position INTEGER NOT NULL CHECK (start_position BETWEEN 1 AND 9007199254740991), closing_admission_digest TEXT REFERENCES admissions(admission_digest), end_position INTEGER CHECK (end_position IS NULL OR end_position BETWEEN start_position AND 9007199254740991), revision_bytes BLOB NOT NULL CHECK (length(revision_bytes) BETWEEN 1 AND 16777216), CHECK ((closing_admission_digest IS NULL) = (end_position IS NULL))) STRICT";
+const CREATE_HOOK_REVISIONS_ONE_OPEN = "CREATE UNIQUE INDEX hook_revisions_one_open ON hook_revisions(hook_id) WHERE end_position IS NULL";
 const CREATE_ROOT_JOURNAL_APPENDS = "CREATE TABLE root_journal_appends (parent_run_id TEXT NOT NULL REFERENCES root_spawn_intents(run_id), operation_id TEXT NOT NULL, event_position INTEGER NOT NULL UNIQUE REFERENCES journal_events(position), allocation_digest TEXT NOT NULL UNIQUE, allocation_bytes BLOB NOT NULL CHECK (length(allocation_bytes) BETWEEN 1 AND 16777216), PRIMARY KEY (parent_run_id, operation_id)) WITHOUT ROWID, STRICT";
 const CREATE_ROOT_JOURNAL_TERMINALS = "CREATE TABLE root_journal_terminals (parent_run_id TEXT NOT NULL, operation_id TEXT NOT NULL, terminal_digest TEXT NOT NULL UNIQUE, terminal_bytes BLOB NOT NULL CHECK (length(terminal_bytes) BETWEEN 1 AND 16777216), PRIMARY KEY (parent_run_id, operation_id), FOREIGN KEY (parent_run_id, operation_id) REFERENCES root_journal_appends(parent_run_id, operation_id)) WITHOUT ROWID, STRICT";
 const CREATE_ROOT_JOURNAL_HOOK_SELECTIONS = "CREATE TABLE root_journal_hook_selections (parent_run_id TEXT NOT NULL, operation_id TEXT NOT NULL, selection_digest TEXT NOT NULL UNIQUE, selection_bytes BLOB NOT NULL CHECK (length(selection_bytes) BETWEEN 1 AND 16777216), PRIMARY KEY (parent_run_id, operation_id), FOREIGN KEY (parent_run_id, operation_id) REFERENCES root_journal_appends(parent_run_id, operation_id)) WITHOUT ROWID, STRICT";
@@ -140,6 +161,9 @@ const EXPECTED_SCHEMA = Object.freeze([
   Object.freeze({ type: "table", name: "candidate_head", table: "candidate_head", sql: CREATE_CANDIDATE_HEAD }),
   Object.freeze({ type: "table", name: "candidates", table: "candidates", sql: CREATE_CANDIDATES }),
   Object.freeze({ type: "table", name: "coordinator_head", table: "coordinator_head", sql: CREATE_COORDINATOR_HEAD }),
+  Object.freeze({ type: "table", name: "hook_admission_boundaries", table: "hook_admission_boundaries", sql: CREATE_HOOK_ADMISSION_BOUNDARIES }),
+  Object.freeze({ type: "table", name: "hook_revisions", table: "hook_revisions", sql: CREATE_HOOK_REVISIONS }),
+  Object.freeze({ type: "index", name: "hook_revisions_one_open", table: "hook_revisions", sql: CREATE_HOOK_REVISIONS_ONE_OPEN }),
   Object.freeze({ type: "table", name: "journal_events", table: "journal_events", sql: CREATE_JOURNAL_EVENTS }),
   Object.freeze({ type: "table", name: "journal_head", table: "journal_head", sql: CREATE_JOURNAL_HEAD }),
   Object.freeze({ type: "table", name: "review_plans", table: "review_plans", sql: CREATE_REVIEW_PLANS }),
@@ -345,6 +369,40 @@ interface JournalEventRow {
   readonly event_id: string;
   readonly event_digest: string;
   readonly event_bytes: Uint8Array;
+}
+
+interface HookRevisionRow {
+  readonly revision_digest: string;
+  readonly hook_id: string;
+  readonly meaning_digest: string;
+  readonly opening_admission_digest: string;
+  readonly opening_candidate_revision: bigint;
+  readonly start_position: bigint;
+  readonly closing_admission_digest: string | null;
+  readonly end_position: bigint | null;
+  readonly revision_bytes: Uint8Array;
+}
+
+interface HookAdmissionBoundaryRow {
+  readonly admission_digest: string;
+  readonly boundary_digest: string;
+  readonly boundary_bytes: Uint8Array;
+}
+
+interface PreparedHookAdmissionTransition {
+  readonly boundary: PrivateHookAdmissionBoundary;
+  readonly boundaryDigest: string;
+  readonly boundaryBytes: Uint8Array;
+  readonly closes: readonly LoadedHookRevision[];
+  readonly opens: ReadonlyMap<string, PrivateHookMeaning>;
+}
+
+interface LoadedHookRevision {
+  readonly revisionDigest: string;
+  readonly revision: PrivateHookRevision;
+  readonly endPosition: number | null;
+  readonly openingAdmissionRevision: number;
+  readonly closingAdmissionRevision: number | null;
 }
 
 interface RootJournalTerminalRow {
@@ -1685,6 +1743,30 @@ export async function applyPrivateActivationReviewPlan(input: {
         : requireAdmissionRow(owner.database, admissionHead.revision).admission_digest;
       if (currentBase !== plan.baseGeneration) stale("reviewed base generation is no longer active");
 
+      const transition = preparePrivateHookAdmissionTransition(owner.database, {
+        baseGeneration: plan.baseGeneration,
+        planDigest: input.planDigest,
+        candidateRevision: safeRevision(currentCandidateRow.revision),
+        candidateDigest: currentCandidateRow.candidate_digest,
+        lockDigest: candidate.candidate.lockDigest,
+        candidate,
+      });
+      const admission = createPrivateActivationAdmission({
+        baseGeneration: plan.baseGeneration,
+        planDigest: input.planDigest,
+        candidateRevision: safeRevision(currentCandidateRow.revision),
+        candidateDigest: currentCandidateRow.candidate_digest,
+        lockDigest: candidate.candidate.lockDigest,
+        hookBoundaryDigest: transition.boundaryDigest,
+      });
+      const admissionBytes = encodePrivateActivationAdmission(admission);
+      requireStoredSize(admissionBytes, "activation admission");
+      const admissionDigest = privateActivationAdmissionDigest(admission);
+      const next = admissionHead.revision === null ? 1n : admissionHead.revision + 1n;
+      if (next > MAX_SAFE_REVISION) {
+        unavailable("ADMISSION_REVISION_EXHAUSTED", "private admission generation revision is exhausted");
+      }
+
       const proposedLock = encodePrivateProjectLocalLock(candidate.lock);
       await convergeVisibleLock(owner, plan, proposedLock);
 
@@ -1701,24 +1783,11 @@ export async function applyPrivateActivationReviewPlan(input: {
       requireSamePlanRow(currentPlanRow, finalPlanRow);
       requireSameCandidateRow(currentCandidateRow, finalCandidateRow);
 
-      const admission = createPrivateActivationAdmission({
-        baseGeneration: plan.baseGeneration,
-        planDigest: input.planDigest,
-        candidateRevision: safeRevision(finalCandidateRow.revision),
-        candidateDigest: finalCandidateRow.candidate_digest,
-        lockDigest: candidate.candidate.lockDigest,
-      });
-      const admissionBytes = encodePrivateActivationAdmission(admission);
-      requireStoredSize(admissionBytes, "activation admission");
-      const admissionDigest = privateActivationAdmissionDigest(admission);
-      const next = admissionHead.revision === null ? 1n : admissionHead.revision + 1n;
-      if (next > MAX_SAFE_REVISION) {
-        unavailable("ADMISSION_REVISION_EXHAUSTED", "private admission generation revision is exhausted");
-      }
       runFinalized(owner.database,
         "INSERT INTO admissions(revision, admission_digest, base_generation, plan_digest, admission_bytes) VALUES (?1, ?2, ?3, ?4, ?5)",
         [next, admissionDigest, plan.baseGeneration, input.planDigest, admissionBytes],
       );
+      persistPrivateHookAdmissionTransition(owner.database, admissionDigest, transition);
       const changed = runFinalized(owner.database,
         "UPDATE admission_head SET revision = ?1 WHERE singleton = 1 AND revision IS ?2",
         [next, admissionHead.revision],
@@ -1984,6 +2053,29 @@ function requireRootJournalAppend(
   return row;
 }
 
+function requireRootJournalAppendByEventPosition(
+  database: SqliteDatabase,
+  position: bigint,
+): RootJournalAppendRow {
+  const query = statement<RootJournalAppendRow>(database, [
+    "SELECT parent_run_id, operation_id, event_position, allocation_digest, allocation_bytes",
+    "FROM root_journal_appends WHERE event_position = ?1",
+  ].join(" "));
+  try {
+    const rows = query.all(position).map((row) => Object.freeze({
+      parent_run_id: row.parent_run_id,
+      operation_id: row.operation_id,
+      event_position: row.event_position,
+      allocation_digest: row.allocation_digest,
+      allocation_bytes: copiedBlob(row.allocation_bytes, "stored root Journal append allocation"),
+    }));
+    if (rows.length !== 1) {
+      corrupt("observed Journal Event has no unique root append");
+    }
+    return rows[0]!;
+  } finally { query.finalize(); }
+}
+
 function requireJournalEvent(database: SqliteDatabase, position: bigint): JournalEventRow {
   const query = statement<JournalEventRow>(database, [
     "SELECT position, event_id, event_digest, event_bytes",
@@ -1999,6 +2091,28 @@ function requireJournalEvent(database: SqliteDatabase, position: bigint): Journa
       event_bytes: copiedBlob(row.event_bytes, "stored Journal Event"),
     });
   } finally { query.finalize(); }
+}
+
+/**
+ * Authenticate the exact existing Event named by an admission's Journal-head
+ * observation. The surrounding admission transaction establishes that the
+ * observed position was the head; this durable witness roots that position
+ * and its canonical Event, not a total chronology across SQLite tables.
+ */
+function requireCanonicalJournalEventDigest(
+  database: SqliteDatabase,
+  position: bigint,
+): string {
+  if (position < 1n || position > MAX_SAFE_REVISION) {
+    corrupt("Hook admission observes an invalid Journal position");
+  }
+  const append = requireRootJournalAppendByEventPosition(database, position);
+  const run = requireRootRunRow(database, append.parent_run_id);
+  const receipt = loadRootJournalAppendReceipt(database, append, run);
+  if (receipt.event.journalPosition !== safeRevision(position)) {
+    corrupt("observed Journal Event differs from its root append position");
+  }
+  return receipt.eventDigest;
 }
 
 function requireRootJournalTerminal(
@@ -3358,6 +3472,9 @@ function initializeOrVerifySchema(database: SqliteDatabase, root: PrivateProject
       database.exec(CREATE_ROOT_FLOW_CALL_CLOSURES);
       database.exec(CREATE_JOURNAL_HEAD);
       database.exec(CREATE_JOURNAL_EVENTS);
+      database.exec(CREATE_HOOK_ADMISSION_BOUNDARIES);
+      database.exec(CREATE_HOOK_REVISIONS);
+      database.exec(CREATE_HOOK_REVISIONS_ONE_OPEN);
       database.exec(CREATE_ROOT_JOURNAL_APPENDS);
       database.exec(CREATE_ROOT_JOURNAL_TERMINALS);
       database.exec(CREATE_ROOT_JOURNAL_HOOK_SELECTIONS);
@@ -3382,7 +3499,7 @@ function verifySchema(database: SqliteDatabase, root: PrivateProjectRoot): void 
   if (actual.length !== EXPECTED_SCHEMA.length || actual.some((row, index) => {
     const expected = EXPECTED_SCHEMA[index]!;
     return row.type !== expected.type || row.name !== expected.name || row.table !== expected.table || row.sql !== expected.sql;
-  })) corrupt("private admission database schema differs from version 11");
+  })) corrupt("private admission database schema differs from version 12");
   if (statement<Record<string, unknown>>(database, "PRAGMA foreign_key_check").all().length !== 0) {
     corrupt("private admission database has broken foreign keys");
   }
@@ -3455,15 +3572,14 @@ function readAdmissionHead(database: SqliteDatabase, root: PrivateProjectRoot): 
       head.revision !== null || count.minimum !== null || count.maximum !== null ||
       (count.roots !== 0n && count.roots !== null)
     ) corrupt("empty admission store has a non-empty head");
+    readAndCrossCheckPrivateHookRevisions(database, root, head);
     return head;
   }
   if (
     head.revision === null || count.minimum !== 1n || count.maximum !== head.revision ||
     count.count !== head.revision || count.roots !== 1n || head.revision > MAX_SAFE_REVISION
   ) corrupt("admission revisions are not one contiguous linear head");
-  for (let revision = 1n; revision <= head.revision; revision += 1n) {
-    loadAndCrossCheckAdmission(database, requireAdmissionRow(database, revision), root);
-  }
+  readAndCrossCheckPrivateHookRevisions(database, root, head);
   return head;
 }
 
@@ -3506,6 +3622,401 @@ function readJournalHead(database: SqliteDatabase): JournalHeadRow {
     corrupt("Journal positions are not one contiguous monotonic head");
   }
   return head;
+}
+
+function privateHookMeaningsForCandidate(
+  candidate: PrivateActivationCandidateArtifact,
+): ReadonlyMap<string, PrivateHookMeaning> {
+  const meanings = new Map<string, PrivateHookMeaning>();
+  for (const [hookId, hook] of Object.entries(candidate.lock.hooks)) {
+    const publisher = candidate.lock.journalPublishers[hook.publisherBinding];
+    if (publisher === undefined || publisher.source !== hook.source ||
+        !publisher.eventTypes.includes(hook.type)) {
+      corrupt(`Hook ${hookId} is not authorized by its pinned Journal publisher`);
+    }
+    const target = findPrivateActivationCandidateTarget(candidate, hook.target);
+    if (target === undefined) {
+      corrupt(`Hook ${hookId} target is absent from its pinned candidate`);
+    }
+    if (target.request.mode !== "run") {
+      corrupt(`Hook ${hookId} target is not a Run activation`);
+    }
+    const meaning = normalizePrivateHookMeaning({
+      kind: "private-hook-meaning/1",
+      hookId,
+      relationDigest: hook.relationDigest,
+      journalAuthority: {
+        publisherBinding: hook.publisherBinding,
+        source: publisher.source,
+        contract: publisher.contract,
+        type: hook.type,
+      },
+      target: {
+        identity: hook.target,
+        requestDigest: target.request.digest,
+        dispositionDigest: privateHookTargetDispositionDigest(target.disposition),
+      },
+    });
+    meanings.set(hookId, meaning);
+  }
+  return meanings;
+}
+
+function preparePrivateHookAdmissionTransition(
+  database: SqliteDatabase,
+  input: {
+    readonly baseGeneration: string | null;
+    readonly planDigest: string;
+    readonly candidateRevision: number;
+    readonly candidateDigest: string;
+    readonly lockDigest: string;
+    readonly candidate: PrivateActivationCandidateArtifact;
+  },
+): PreparedHookAdmissionTransition {
+  const journal = readJournalHead(database);
+  const desired = new Map(privateHookMeaningsForCandidate(input.candidate));
+  const current = requireOpenPrivateHookRevisions(database);
+  const preserved = new Set<string>();
+
+  for (const [hookId, opened] of current) {
+    const next = desired.get(hookId);
+    if (next !== undefined && privateHookMeaningDigest(next) === opened.revision.meaningDigest &&
+        sameBytes(encodePrivateHookMeaning(next), encodePrivateHookMeaning(opened.revision.meaning))) {
+      desired.delete(hookId);
+      preserved.add(hookId);
+    }
+  }
+  const closes = [...current.entries()].filter(([hookId]) => !preserved.has(hookId));
+  const changed = closes.length !== 0 || desired.size !== 0;
+  let boundaryPosition: number | null;
+  try { boundaryPosition = privateHookAdmissionBoundaryPosition(journal.position, changed); }
+  catch (error) {
+    if (error instanceof RangeError) {
+      invalid("RESOURCE_EXHAUSTED", "Journal position space is exhausted");
+    }
+    throw error;
+  }
+  const observedJournalEventDigest = journal.position === 0n
+    ? null
+    : requireCanonicalJournalEventDigest(database, journal.position);
+  const boundary = normalizePrivateHookAdmissionBoundary({
+    kind: "private-hook-admission-boundary/1",
+    baseGeneration: input.baseGeneration,
+    planDigest: input.planDigest,
+    candidateRevision: input.candidateRevision,
+    candidateDigest: input.candidateDigest,
+    lockDigest: input.lockDigest,
+    observedJournalPosition: Number(journal.position),
+    observedJournalEventDigest,
+    boundaryPosition,
+  });
+  const boundaryBytes = encodePrivateHookAdmissionBoundary(boundary);
+  requireStoredSize(boundaryBytes, "Hook admission boundary");
+  return Object.freeze({
+    boundary,
+    boundaryDigest: privateHookAdmissionBoundaryDigest(boundary),
+    boundaryBytes,
+    closes: Object.freeze(closes.map(([, opened]) => opened)),
+    opens: desired,
+  });
+}
+
+function persistPrivateHookAdmissionTransition(
+  database: SqliteDatabase,
+  admissionDigest: string,
+  transition: PreparedHookAdmissionTransition,
+): void {
+  runFinalized(database, [
+    "INSERT INTO hook_admission_boundaries(",
+    "admission_digest, boundary_digest, boundary_bytes",
+    ") VALUES (?1, ?2, ?3)",
+  ].join(" "), [admissionDigest, transition.boundaryDigest, transition.boundaryBytes]);
+
+  const boundary = transition.boundary.boundaryPosition;
+  if (boundary === null) {
+    if (transition.closes.length !== 0 || transition.opens.size !== 0) {
+      corrupt("null Hook admission boundary carries a transition");
+    }
+    return;
+  }
+
+  for (const opened of transition.closes) {
+    const changed = runFinalized(database,
+      "UPDATE hook_revisions SET closing_admission_digest = ?1, end_position = ?2 WHERE revision_digest = ?3 AND closing_admission_digest IS NULL AND end_position IS NULL",
+      [admissionDigest, boundary, opened.revisionDigest],
+    ).changes;
+    if (changed !== 1) corrupt(`open Hook revision ${opened.revisionDigest} was not closed exactly once`);
+  }
+
+  for (const [hookId, meaning] of transition.opens) {
+    const revision = normalizePrivateHookRevision({
+      kind: "private-hook-revision/1",
+      meaning,
+      meaningDigest: privateHookMeaningDigest(meaning),
+      openingAdmissionDigest: admissionDigest,
+      openingCandidateRevision: transition.boundary.candidateRevision,
+      openingCandidateDigest: transition.boundary.candidateDigest,
+      startPosition: boundary,
+    });
+    const revisionDigest = privateHookRevisionDigest(revision);
+    const revisionBytes = encodePrivateHookRevision(revision);
+    requireStoredSize(revisionBytes, `Hook ${hookId} revision`);
+    runFinalized(database, [
+      "INSERT INTO hook_revisions(",
+      "revision_digest, hook_id, meaning_digest, opening_admission_digest,",
+      "opening_candidate_revision, start_position, closing_admission_digest, end_position, revision_bytes",
+      ") VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, NULL, ?7)",
+    ].join(" "), [
+      revisionDigest,
+      hookId,
+      revision.meaningDigest,
+      admissionDigest,
+      transition.boundary.candidateRevision,
+      boundary,
+      revisionBytes,
+    ]);
+  }
+}
+
+function requireOpenPrivateHookRevisions(
+  database: SqliteDatabase,
+): Map<string, LoadedHookRevision> {
+  const query = statement<HookRevisionRow>(database, [
+    "SELECT revision_digest, hook_id, meaning_digest, opening_admission_digest,",
+    "opening_candidate_revision, start_position, closing_admission_digest, end_position, revision_bytes",
+    "FROM hook_revisions WHERE end_position IS NULL ORDER BY hook_id",
+  ].join(" "));
+  let rows: readonly HookRevisionRow[];
+  try { rows = query.all().map(copiedHookRevisionRow); }
+  finally { query.finalize(); }
+  const opened = new Map<string, LoadedHookRevision>();
+  for (const row of rows) {
+    const loaded = decodeAndCrossCheckHookRevisionRow(database, row);
+    if (opened.has(loaded.revision.meaning.hookId)) {
+      corrupt(`Hook ${loaded.revision.meaning.hookId} has multiple open revisions`);
+    }
+    opened.set(loaded.revision.meaning.hookId, loaded);
+  }
+  return opened;
+}
+
+function readPrivateHookAdmissionBoundaryRows(
+  database: SqliteDatabase,
+): Map<string, HookAdmissionBoundaryRow> {
+  const query = statement<HookAdmissionBoundaryRow>(database, [
+    "SELECT admission_digest, boundary_digest, boundary_bytes",
+    "FROM hook_admission_boundaries ORDER BY admission_digest",
+  ].join(" "));
+  let rows: readonly HookAdmissionBoundaryRow[];
+  try {
+    rows = query.all().map((row) => Object.freeze({
+      admission_digest: row.admission_digest,
+      boundary_digest: row.boundary_digest,
+      boundary_bytes: copiedBlob(row.boundary_bytes, "stored Hook admission boundary"),
+    }));
+  } finally { query.finalize(); }
+  return new Map(rows.map((row) => [row.admission_digest, row] as const));
+}
+
+function decodeAndCrossCheckHookAdmissionBoundaryRow(
+  database: SqliteDatabase,
+  row: HookAdmissionBoundaryRow,
+  admission: PrivateActivationAdmission,
+): PrivateHookAdmissionBoundary {
+  requireStoredSize(row.boundary_bytes, "stored Hook admission boundary");
+  const boundary = decodePrivateHookAdmissionBoundary(row.boundary_bytes);
+  const digest = privateHookAdmissionBoundaryDigest(boundary);
+  if (row.boundary_digest !== digest || admission.hookBoundaryDigest !== digest ||
+      boundary.baseGeneration !== admission.baseGeneration ||
+      boundary.planDigest !== admission.planDigest ||
+      boundary.candidateRevision !== admission.candidateRevision ||
+      boundary.candidateDigest !== admission.candidateDigest ||
+      boundary.lockDigest !== admission.lockDigest) {
+    corrupt("stored Hook admission boundary differs from its rooted admission");
+  }
+  if (boundary.observedJournalPosition === 0) {
+    if (boundary.observedJournalEventDigest !== null) {
+      corrupt("genesis Hook admission boundary observes a Journal Event");
+    }
+  } else if (boundary.observedJournalEventDigest !== requireCanonicalJournalEventDigest(
+    database,
+    BigInt(boundary.observedJournalPosition),
+  )) {
+    corrupt("stored Hook admission boundary differs from its observed Journal Event");
+  }
+  return boundary;
+}
+
+function readAndCrossCheckPrivateHookRevisions(
+  database: SqliteDatabase,
+  root: PrivateProjectRoot,
+  admissionHead: AdmissionHeadRow,
+): readonly LoadedHookRevision[] {
+  const query = statement<HookRevisionRow>(database, [
+    "SELECT revision_digest, hook_id, meaning_digest, opening_admission_digest,",
+    "opening_candidate_revision, start_position, closing_admission_digest, end_position, revision_bytes",
+    "FROM hook_revisions ORDER BY hook_id, start_position, revision_digest",
+  ].join(" "));
+  let rows: readonly HookRevisionRow[];
+  try { rows = query.all().map(copiedHookRevisionRow); }
+  finally { query.finalize(); }
+  const boundaryRows = readPrivateHookAdmissionBoundaryRows(database);
+  if (admissionHead.revision === null) {
+    if (rows.length !== 0 || boundaryRows.size !== 0) {
+      corrupt("Hook history exists before the first admission");
+    }
+    return Object.freeze([]);
+  }
+
+  readJournalHead(database);
+  const expected = new Map<string, LoadedHookRevision>();
+  const open = new Map<string, LoadedHookRevision>();
+  let lastObservedJournalPosition = 0;
+
+  for (let admissionRevision = 1n; admissionRevision <= admissionHead.revision; admissionRevision += 1n) {
+    const admissionRow = requireAdmissionRow(database, admissionRevision);
+    const admission = loadAndCrossCheckAdmission(database, admissionRow, root).admission;
+    const boundaryRow = boundaryRows.get(admissionRow.admission_digest);
+    if (boundaryRow === undefined) {
+      corrupt(`admission ${admissionRow.admission_digest} has no Hook boundary fact`);
+    }
+    boundaryRows.delete(admissionRow.admission_digest);
+    const boundary = decodeAndCrossCheckHookAdmissionBoundaryRow(database, boundaryRow, admission);
+    if (boundary.observedJournalPosition < lastObservedJournalPosition) {
+      corrupt(`admission ${admissionRow.admission_digest} observes Journal history before its predecessor`);
+    }
+    lastObservedJournalPosition = boundary.observedJournalPosition;
+    const candidate = loadCandidateRow(requireCandidateRow(
+      database,
+      BigInt(admission.candidateRevision),
+    ));
+    const desired = new Map(privateHookMeaningsForCandidate(candidate));
+    const preserved = new Set<string>();
+    for (const [hookId, entry] of open) {
+      const next = desired.get(hookId);
+      if (next !== undefined && privateHookMeaningDigest(next) === entry.revision.meaningDigest &&
+          sameBytes(encodePrivateHookMeaning(next), encodePrivateHookMeaning(entry.revision.meaning))) {
+        preserved.add(hookId);
+        desired.delete(hookId);
+      }
+    }
+    const closes = [...open.entries()].filter(([hookId]) => !preserved.has(hookId));
+    const changed = closes.length !== 0 || desired.size !== 0;
+    if ((boundary.boundaryPosition === null) !== !changed) {
+      corrupt(`admission ${admissionRow.admission_digest} Hook boundary does not describe its transition`);
+    }
+    if (!changed) continue;
+    const position = boundary.boundaryPosition!;
+    if (position !== boundary.observedJournalPosition + 1) {
+      corrupt(`admission ${admissionRow.admission_digest} Hook boundary is not its observed Journal successor`);
+    }
+
+    for (const [hookId, entry] of closes) {
+      const closed = Object.freeze({
+        ...entry,
+        endPosition: position,
+        closingAdmissionRevision: Number(admissionRevision),
+      });
+      expected.set(entry.revisionDigest, closed);
+      open.delete(hookId);
+    }
+    for (const [hookId, meaning] of desired) {
+      const revision = normalizePrivateHookRevision({
+        kind: "private-hook-revision/1",
+        meaning,
+        meaningDigest: privateHookMeaningDigest(meaning),
+        openingAdmissionDigest: admissionRow.admission_digest,
+        openingCandidateRevision: admission.candidateRevision,
+        openingCandidateDigest: admission.candidateDigest,
+        startPosition: position,
+      });
+      const entry = Object.freeze({
+        revisionDigest: privateHookRevisionDigest(revision),
+        revision,
+        endPosition: null,
+        openingAdmissionRevision: Number(admissionRevision),
+        closingAdmissionRevision: null,
+      });
+      expected.set(entry.revisionDigest, entry);
+      open.set(hookId, entry);
+    }
+  }
+  if (boundaryRows.size !== 0) corrupt("Hook boundary facts exist outside admission history");
+  if (rows.length !== expected.size) corrupt("stored Hook revision set is incomplete or excessive");
+
+  const loaded: LoadedHookRevision[] = [];
+  for (const row of rows) {
+    const actual = decodeAndCrossCheckHookRevisionRow(database, row);
+    const wanted = expected.get(actual.revisionDigest);
+    if (wanted === undefined ||
+        !sameBytes(encodePrivateHookRevision(actual.revision), encodePrivateHookRevision(wanted.revision)) ||
+        actual.endPosition !== wanted.endPosition ||
+        actual.openingAdmissionRevision !== wanted.openingAdmissionRevision ||
+        actual.closingAdmissionRevision !== wanted.closingAdmissionRevision ||
+        row.closing_admission_digest !== (wanted.closingAdmissionRevision === null
+          ? null
+          : requireAdmissionRow(database, BigInt(wanted.closingAdmissionRevision)).admission_digest)) {
+      corrupt(`stored Hook revision ${actual.revisionDigest} differs from rooted admission history`);
+    }
+    loaded.push(actual);
+  }
+  return Object.freeze(loaded);
+}
+
+function decodeAndCrossCheckHookRevisionRow(
+  database: SqliteDatabase,
+  row: HookRevisionRow,
+): LoadedHookRevision {
+  requireStoredSize(row.revision_bytes, "stored Hook revision");
+  const revision = decodePrivateHookRevision(row.revision_bytes);
+  const revisionDigest = privateHookRevisionDigest(revision);
+  if (row.revision_digest !== revisionDigest ||
+      row.hook_id !== revision.meaning.hookId ||
+      row.meaning_digest !== revision.meaningDigest ||
+      row.opening_admission_digest !== revision.openingAdmissionDigest ||
+      safeRevision(row.opening_candidate_revision) !== revision.openingCandidateRevision ||
+      safeRevision(row.start_position) !== revision.startPosition) {
+    corrupt("stored Hook revision columns differ from their canonical revision");
+  }
+  const endPosition = row.end_position === null ? null : safeRevision(row.end_position);
+  if ((row.closing_admission_digest === null) !== (endPosition === null)) {
+    corrupt(`Hook ${revision.meaning.hookId} closing admission and interval end differ`);
+  }
+  if (endPosition !== null && endPosition < revision.startPosition) {
+    corrupt(`Hook ${revision.meaning.hookId} has an inverted revision interval`);
+  }
+
+  const admissionRow = requireAdmissionByDigest(database, revision.openingAdmissionDigest);
+  const openingAdmissionRevision = safeRevision(admissionRow.revision);
+  let closingAdmissionRevision: number | null = null;
+  if (row.closing_admission_digest !== null) {
+    const closingRow = requireAdmissionByDigest(database, row.closing_admission_digest);
+    closingAdmissionRevision = safeRevision(closingRow.revision);
+    if (closingAdmissionRevision <= openingAdmissionRevision) {
+      corrupt(`Hook ${revision.meaning.hookId} closes before its opening admission`);
+    }
+  }
+  return Object.freeze({
+    revisionDigest,
+    revision,
+    endPosition,
+    openingAdmissionRevision,
+    closingAdmissionRevision,
+  });
+}
+
+function copiedHookRevisionRow(row: HookRevisionRow): HookRevisionRow {
+  return Object.freeze({
+    revision_digest: row.revision_digest,
+    hook_id: row.hook_id,
+    meaning_digest: row.meaning_digest,
+    opening_admission_digest: row.opening_admission_digest,
+    opening_candidate_revision: row.opening_candidate_revision,
+    start_position: row.start_position,
+    closing_admission_digest: row.closing_admission_digest,
+    end_position: row.end_position,
+    revision_bytes: copiedBlob(row.revision_bytes, "stored Hook revision"),
+  });
 }
 
 function requireCandidateRow(database: SqliteDatabase, revision: bigint): CandidateRow {
