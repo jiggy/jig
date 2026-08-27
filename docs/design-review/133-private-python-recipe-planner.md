@@ -2,8 +2,9 @@
 
 **Status:** implemented private planning checkpoint. It converts one authentic
 zero-configuration `flow.py` activation request into a re-plannable exact
-recipe and executes only protected Package/1 bytes. It is not a public Runtime
-Adapter, `READY` admission, or durable root-Run API.
+recipe and executes only protected Package/1 bytes. Review 134 now admits that
+recipe as one private `READY` generation. Neither checkpoint is a public
+Runtime Adapter or durable root-Run API.
 
 ## 1. Planning boundary
 
@@ -62,7 +63,7 @@ it is intentionally not serializable. Admission may persist only its stable
 observation identity. After restart, the host must re-plan from the authentic
 activation request and compare the new observation with the admitted one.
 
-The next checkpoint is the smallest generalization of the existing
-unavailable-only candidate/store that can represent this one planned target
-without weakening lock-first review, generation CAS, or exact unavailable
-semantics.
+The next checkpoint described here is complete in
+[review 134](134-private-ready-activation-admission.md): one activation
+candidate/store now represents both exact `READY` and exact `UNAVAILABLE`
+without weakening lock-first review, generation CAS, or unavailable semantics.

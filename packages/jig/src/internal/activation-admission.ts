@@ -16,6 +16,10 @@ import {
   type PrivateProjectLocalLock,
 } from "./project-local-lock.js";
 import {
+  requirePrivatePythonDirectRecipe,
+  type PrivatePythonDirectRecipe,
+} from "./python-direct-run.js";
+import {
   canonicalJson,
   decodeJson1,
   JSON_1_LIMITS,
@@ -35,9 +39,9 @@ import {
   type PrivateRetainedPackageProject,
 } from "../project/retained-project.js";
 
-const KIND = "private-unavailable-candidate/1";
-const PLAN_KIND = "private-unavailable-plan/1";
-const ADMISSION_KIND = "private-unavailable-admission/1";
+const KIND = "private-activation-candidate/1";
+const PLAN_KIND = "private-activation-plan/1";
+const ADMISSION_KIND = "private-activation-admission/1";
 const DIGEST = /^sha256:[0-9a-f]{64}$/;
 const LOCAL_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const UNSIGNED_64 = /^(?:0|[1-9][0-9]{0,19})$/;
@@ -45,7 +49,7 @@ const MAX_UNSIGNED_64 = (1n << 64n) - 1n;
 const MAX_EVIDENCE = 64;
 const createdCandidates = new WeakSet<object>();
 
-export interface PrivateUnavailableCandidate {
+export interface PrivateActivationCandidate {
   readonly kind: typeof KIND;
   readonly projectRoot: {
     readonly device: string;
@@ -64,21 +68,27 @@ export interface PrivateUnavailableCandidate {
   readonly target: {
     readonly identity: RunTargetIdentity;
     readonly requestDigest: string;
-    readonly disposition: {
-      readonly state: "unavailable";
-      readonly code: PrivateResolutionUnavailableCode;
-      readonly evidenceDigests: readonly string[];
-    };
+    readonly disposition:
+      | {
+          readonly state: "ready";
+          readonly recipeDigest: string;
+          readonly observationDigest: string;
+        }
+      | {
+          readonly state: "unavailable";
+          readonly code: PrivateResolutionUnavailableCode;
+          readonly evidenceDigests: readonly string[];
+        };
   };
 }
 
 /** One inert admission candidate and the exact portable lock it commits. */
-export interface PrivateUnavailableCandidateArtifact {
-  readonly candidate: PrivateUnavailableCandidate;
+export interface PrivateActivationCandidateArtifact {
+  readonly candidate: PrivateActivationCandidate;
   readonly lock: PrivateProjectLocalLock;
 }
 
-export interface PrivateUnavailableCandidateEncoding {
+export interface PrivateActivationCandidateEncoding {
   readonly candidate: Uint8Array;
   readonly lock: Uint8Array;
 }
@@ -87,7 +97,7 @@ export type PrivateObservedLock =
   | { readonly state: "absent" }
   | { readonly state: "present"; readonly digest: string };
 
-export interface PrivateUnavailablePlan {
+export interface PrivateActivationPlan {
   readonly kind: typeof PLAN_KIND;
   readonly candidateDigest: string;
   readonly candidateRevision: number;
@@ -97,10 +107,10 @@ export interface PrivateUnavailablePlan {
 }
 
 /**
- * One locally admitted project-policy generation whose sole target remains
- * unavailable. The stored record is also the idempotent apply receipt.
+ * One locally admitted project-policy generation. The stored record is also
+ * the idempotent apply receipt.
  */
-export interface PrivateUnavailableAdmission {
+export interface PrivateActivationAdmission {
   readonly kind: typeof ADMISSION_KIND;
   readonly baseGeneration: string | null;
   readonly planDigest: string;
@@ -110,24 +120,37 @@ export interface PrivateUnavailableAdmission {
 }
 
 /**
- * Build the one deliberately narrow admission record supported by this
- * checkpoint. It cannot represent READY, a recipe, or more than one target.
+ * Build the one-target activation record supported by this checkpoint.
  */
-export function createPrivateUnavailableCandidate(
+export function createPrivateActivationCandidate(
   project: PrivateRetainedPackageProject,
   resolutionValue: unknown,
-): PrivateUnavailableCandidateArtifact {
+  recipeValue?: PrivatePythonDirectRecipe,
+): PrivateActivationCandidateArtifact {
   const retained = requirePrivateRetainedPackageProject(project);
   const resolution = requirePrivateRetainedResolutionObservation(resolutionValue);
   if (resolution.captureDigest !== retained.captureDigest) {
     throw new TypeError("resolution observation belongs to a different retained project capture");
   }
   if (resolution.targets.length !== 1) {
-    throw new TypeError("private unavailable admission requires exactly one target");
+    throw new TypeError("private activation admission requires exactly one target");
   }
   const target = resolution.targets[0]!;
-  if (target.disposition.state !== "unavailable") {
-    throw new TypeError("private unavailable admission cannot contain a planned target");
+  let disposition: PrivateActivationCandidate["target"]["disposition"];
+  if (target.disposition.state === "planned") {
+    const recipe = requirePrivatePythonDirectRecipe(recipeValue);
+    if (recipe.request.digest !== target.request.digest ||
+        recipe.observation.digest !== target.disposition.observation.digest) {
+      throw new TypeError("ready recipe does not match the retained planned target");
+    }
+    disposition = Object.freeze({
+      state: "ready" as const,
+      recipeDigest: recipe.digest,
+      observationDigest: recipe.observation.digest,
+    });
+  } else {
+    if (recipeValue !== undefined) throw new TypeError("unavailable target cannot carry a ready recipe");
+    disposition = target.disposition;
   }
 
   const lock = createPrivateProjectLocalLock(retained.linked);
@@ -143,7 +166,7 @@ export function createPrivateUnavailableCandidate(
     target: {
       identity: target.request.target,
       requestDigest: target.request.digest,
-      disposition: target.disposition,
+      disposition,
     },
   }, lock);
   encodeCandidate(candidate);
@@ -154,23 +177,23 @@ export function createPrivateUnavailableCandidate(
  * Strictly decode and cross-check inert persisted bytes after restart. This
  * does not authenticate their storage provenance or make them admissible.
  */
-export function decodePrivateUnavailableCandidate(
+export function decodePrivateActivationCandidate(
   input: unknown,
-): PrivateUnavailableCandidateArtifact {
+): PrivateActivationCandidateArtifact {
   const encoded = exactObject(input, ["candidate", "lock"], "candidate encoding");
   const lockBytes = copiedBytes(encoded.lock, "candidate lock bytes");
   const candidateBytes = copiedBytes(encoded.candidate, "candidate bytes");
   const lock = decodePrivateProjectLocalLock(lockBytes);
   const candidate = normalizeCandidate(decodeJson1(candidateBytes), lock);
   if (!sameBytes(candidateBytes, encodeCandidate(candidate))) {
-    throw new TypeError("private unavailable candidate is not in canonical JSON/1 + LF form");
+    throw new TypeError("private activation candidate is not in canonical JSON/1 + LF form");
   }
   return Object.freeze({ candidate, lock });
 }
 
-export function encodePrivateUnavailableCandidate(
+export function encodePrivateActivationCandidate(
   value: unknown,
-): PrivateUnavailableCandidateEncoding {
+): PrivateActivationCandidateEncoding {
   const artifact = normalizeArtifact(value);
   return Object.freeze({
     candidate: encodeCandidate(artifact.candidate),
@@ -178,84 +201,84 @@ export function encodePrivateUnavailableCandidate(
   });
 }
 
-export function privateUnavailableCandidateDigest(
+export function privateActivationCandidateDigest(
   value: unknown,
 ): string {
   const artifact = normalizeArtifact(value);
   return privateDomainDigest(
-    "JIG-Private-Unavailable-Candidate/1",
+    "JIG-Private-Activation-Candidate/1",
     artifact.candidate as unknown as JsonValue,
   );
 }
 
 /** Require the invocation-local factory result; strict decoding alone cannot mint it. */
-export function requirePrivateCreatedUnavailableCandidate(
+export function requirePrivateCreatedActivationCandidate(
   value: unknown,
-): PrivateUnavailableCandidateArtifact {
+): PrivateActivationCandidateArtifact {
   if (value === null || typeof value !== "object" || !createdCandidates.has(value)) {
-    throw new TypeError("unavailable candidate was not built from a retained project and resolution");
+    throw new TypeError("activation candidate was not built from a retained project and resolution");
   }
-  return value as PrivateUnavailableCandidateArtifact;
+  return value as PrivateActivationCandidateArtifact;
 }
 
 /** Build an inert review plan from facts already observed by protected storage. */
-export function createPrivateUnavailablePlan(input: {
+export function createPrivateActivationPlan(input: {
   readonly candidateDigest: string;
   readonly candidateRevision: number;
   readonly baseGeneration: string | null;
   readonly lockMode: "update" | "locked";
   readonly observedLock: PrivateObservedLock;
-}): PrivateUnavailablePlan {
+}): PrivateActivationPlan {
   return normalizePlan({ kind: PLAN_KIND, ...input });
 }
 
-export function decodePrivateUnavailablePlan(bytesValue: unknown): PrivateUnavailablePlan {
-  const bytes = copiedBytes(bytesValue, "unavailable plan bytes");
+export function decodePrivateActivationPlan(bytesValue: unknown): PrivateActivationPlan {
+  const bytes = copiedBytes(bytesValue, "activation plan bytes");
   const plan = normalizePlan(decodeJson1(bytes));
-  if (!sameBytes(bytes, encodePrivateUnavailablePlan(plan))) {
-    throw new TypeError("private unavailable plan is not in canonical JSON/1 + LF form");
+  if (!sameBytes(bytes, encodePrivateActivationPlan(plan))) {
+    throw new TypeError("private activation plan is not in canonical JSON/1 + LF form");
   }
   return plan;
 }
 
-export function encodePrivateUnavailablePlan(value: unknown): Uint8Array {
-  return encodeRecord(normalizePlan(value), "private unavailable plan");
+export function encodePrivateActivationPlan(value: unknown): Uint8Array {
+  return encodeRecord(normalizePlan(value), "private activation plan");
 }
 
-export function privateUnavailablePlanDigest(value: unknown): string {
+export function privateActivationPlanDigest(value: unknown): string {
   return privateDomainDigest(
-    "JIG-Private-Unavailable-Plan/1",
+    "JIG-Private-Activation-Plan/1",
     normalizePlan(value) as unknown as JsonValue,
   );
 }
 
 /** Build the closed admission record after protected storage wins its CAS. */
-export function createPrivateUnavailableAdmission(input: {
+export function createPrivateActivationAdmission(input: {
   readonly baseGeneration: string | null;
   readonly planDigest: string;
   readonly candidateRevision: number;
   readonly candidateDigest: string;
   readonly lockDigest: string;
-}): PrivateUnavailableAdmission {
+}): PrivateActivationAdmission {
   return normalizeAdmission({ kind: ADMISSION_KIND, ...input });
 }
 
-export function decodePrivateUnavailableAdmission(bytesValue: unknown): PrivateUnavailableAdmission {
-  const bytes = copiedBytes(bytesValue, "unavailable admission bytes");
+export function decodePrivateActivationAdmission(bytesValue: unknown): PrivateActivationAdmission {
+  const bytes = copiedBytes(bytesValue, "activation admission bytes");
   const admission = normalizeAdmission(decodeJson1(bytes));
-  if (!sameBytes(bytes, encodePrivateUnavailableAdmission(admission))) {
-    throw new TypeError("private unavailable admission is not in canonical JSON/1 + LF form");
+  if (!sameBytes(bytes, encodePrivateActivationAdmission(admission))) {
+    throw new TypeError("private activation admission is not in canonical JSON/1 + LF form");
   }
   return admission;
 }
 
-export function encodePrivateUnavailableAdmission(value: unknown): Uint8Array {
-  return encodeRecord(normalizeAdmission(value), "private unavailable admission");
+export function encodePrivateActivationAdmission(value: unknown): Uint8Array {
+  return encodeRecord(normalizeAdmission(value), "private activation admission");
 }
 
-export function privateUnavailableAdmissionDigest(value: unknown): string {
+export function privateActivationAdmissionDigest(value: unknown): string {
   return privateDomainDigest(
-    "JIG-Private-Unavailable-Admission/1",
+    "JIG-Private-Activation-Admission/1",
     normalizeAdmission(value) as unknown as JsonValue,
   );
 }
@@ -263,7 +286,7 @@ export function privateUnavailableAdmissionDigest(value: unknown): string {
 function normalizeCandidate(
   input: unknown,
   lock: PrivateProjectLocalLock,
-): PrivateUnavailableCandidate {
+): PrivateActivationCandidate {
   const root = exactObject(input, [
     "kind",
     "projectRoot",
@@ -274,8 +297,8 @@ function normalizeCandidate(
     "lockDigest",
     "declarationArtifact",
     "target",
-  ], "unavailable candidate");
-  if (root.kind !== KIND) throw new TypeError(`unavailable candidate kind must be ${KIND}`);
+  ], "activation candidate");
+  if (root.kind !== KIND) throw new TypeError(`activation candidate kind must be ${KIND}`);
 
   const projectRoot = exactObject(root.projectRoot, ["device", "inode"], "project root");
   const captureDigest = requireDigest(root.captureDigest, "capture");
@@ -294,7 +317,7 @@ function normalizeCandidate(
 
   const lockDigest = requireDigest(root.lockDigest, "lock");
   if (lockDigest !== privateProjectLocalLockDigest(lock)) {
-    throw new TypeError("unavailable candidate lock digest does not match lock bytes");
+    throw new TypeError("activation candidate lock digest does not match lock bytes");
   }
 
   const declaration = exactObject(
@@ -308,8 +331,9 @@ function normalizeCandidate(
 
   const target = normalizeTarget(root.target);
   requireExactTargetSet(target.identity, lock);
-  if (target.disposition.code === "DEPENDENCY_UNAVAILABLE") {
-    throw new TypeError("single-target unavailable admission cannot represent dependency unavailability");
+  if (target.disposition.state === "unavailable" &&
+      target.disposition.code === "DEPENDENCY_UNAVAILABLE") {
+    throw new TypeError("single-target activation admission cannot represent dependency unavailability");
   }
   return Object.freeze({
     kind: KIND,
@@ -331,7 +355,7 @@ function normalizeCandidate(
   });
 }
 
-function normalizePlan(input: unknown): PrivateUnavailablePlan {
+function normalizePlan(input: unknown): PrivateActivationPlan {
   const root = exactObject(input, [
     "kind",
     "candidateDigest",
@@ -339,14 +363,14 @@ function normalizePlan(input: unknown): PrivateUnavailablePlan {
     "baseGeneration",
     "lockMode",
     "observedLock",
-  ], "unavailable plan");
-  if (root.kind !== PLAN_KIND) throw new TypeError(`unavailable plan kind must be ${PLAN_KIND}`);
+  ], "activation plan");
+  if (root.kind !== PLAN_KIND) throw new TypeError(`activation plan kind must be ${PLAN_KIND}`);
   const candidateRevision = requirePositiveSafeInteger(
     root.candidateRevision,
-    "unavailable plan candidate revision",
+    "activation plan candidate revision",
   );
   if (root.lockMode !== "update" && root.lockMode !== "locked") {
-    throw new TypeError("unavailable plan lock mode must be update or locked");
+    throw new TypeError("activation plan lock mode must be update or locked");
   }
   const observed = plainObject(root.observedLock, "observed lock");
   const state = dataField(observed, "state", "observed lock");
@@ -375,7 +399,7 @@ function normalizePlan(input: unknown): PrivateUnavailablePlan {
   });
 }
 
-function normalizeAdmission(input: unknown): PrivateUnavailableAdmission {
+function normalizeAdmission(input: unknown): PrivateActivationAdmission {
   const root = exactObject(input, [
     "kind",
     "baseGeneration",
@@ -383,9 +407,9 @@ function normalizeAdmission(input: unknown): PrivateUnavailableAdmission {
     "candidateRevision",
     "candidateDigest",
     "lockDigest",
-  ], "unavailable admission");
+  ], "activation admission");
   if (root.kind !== ADMISSION_KIND) {
-    throw new TypeError(`unavailable admission kind must be ${ADMISSION_KIND}`);
+    throw new TypeError(`activation admission kind must be ${ADMISSION_KIND}`);
   }
   const baseGeneration = root.baseGeneration === null
     ? null
@@ -396,23 +420,44 @@ function normalizeAdmission(input: unknown): PrivateUnavailableAdmission {
     planDigest: requireDigest(root.planDigest, "plan"),
     candidateRevision: requirePositiveSafeInteger(
       root.candidateRevision,
-      "unavailable admission candidate revision",
+      "activation admission candidate revision",
     ),
     candidateDigest: requireDigest(root.candidateDigest, "admission candidate"),
     lockDigest: requireDigest(root.lockDigest, "admission lock"),
   });
 }
 
-function normalizeTarget(input: unknown): PrivateUnavailableCandidate["target"] {
+function normalizeTarget(input: unknown): PrivateActivationCandidate["target"] {
   const value = exactObject(input, ["identity", "requestDigest", "disposition"], "target");
   const identity = normalizeIdentity(value.identity);
+  const state = dataField(
+    plainObject(value.disposition, "target disposition"),
+    "state",
+    "target disposition",
+  );
+  if (state === "ready") {
+    const ready = exactObject(
+      value.disposition,
+      ["state", "recipeDigest", "observationDigest"],
+      "target disposition",
+    );
+    return Object.freeze({
+      identity,
+      requestDigest: requireDigest(value.requestDigest, "target request"),
+      disposition: Object.freeze({
+        state: "ready" as const,
+        recipeDigest: requireDigest(ready.recipeDigest, "target recipe"),
+        observationDigest: requireDigest(ready.observationDigest, "target observation"),
+      }),
+    });
+  }
   const disposition = exactObject(
     value.disposition,
     ["state", "code", "evidenceDigests"],
     "target disposition",
   );
   if (disposition.state !== "unavailable") {
-    throw new TypeError("target disposition must be unavailable");
+    throw new TypeError("target disposition must be ready or unavailable");
   }
   if (!isUnavailableCode(disposition.code)) {
     throw new TypeError("target disposition has an invalid unavailable code");
@@ -470,23 +515,23 @@ function requireExactTargetSet(
   ].sort();
   const expected = privateActivationTargetKey(target);
   if (keys.length !== 1 || keys[0] !== expected) {
-    throw new TypeError("unavailable candidate and lock must contain the same single activation target");
+    throw new TypeError("activation candidate and lock must contain the same single activation target");
   }
 }
 
 function markCreated(
-  candidate: PrivateUnavailableCandidate,
+  candidate: PrivateActivationCandidate,
   lock: PrivateProjectLocalLock,
-): PrivateUnavailableCandidateArtifact {
+): PrivateActivationCandidateArtifact {
   const artifact = Object.freeze({ candidate, lock });
   createdCandidates.add(artifact);
   return artifact;
 }
 
-function normalizeArtifact(value: unknown): PrivateUnavailableCandidateArtifact {
-  const root = exactObject(value, ["candidate", "lock"], "unavailable candidate artifact");
+function normalizeArtifact(value: unknown): PrivateActivationCandidateArtifact {
+  const root = exactObject(value, ["candidate", "lock"], "activation candidate artifact");
   if (root.lock === null || typeof root.lock !== "object") {
-    throw new TypeError("unavailable candidate lock must be an object");
+    throw new TypeError("activation candidate lock must be an object");
   }
   const lock = decodePrivateProjectLocalLock(encodePrivateProjectLocalLock(
     root.lock as PrivateProjectLocalLock,
@@ -494,8 +539,8 @@ function normalizeArtifact(value: unknown): PrivateUnavailableCandidateArtifact 
   return Object.freeze({ candidate: normalizeCandidate(root.candidate, lock), lock });
 }
 
-function encodeCandidate(value: PrivateUnavailableCandidate): Uint8Array {
-  return encodeRecord(value, "private unavailable candidate");
+function encodeCandidate(value: PrivateActivationCandidate): Uint8Array {
+  return encodeRecord(value, "private activation candidate");
 }
 
 function encodeRecord(value: object, label: string): Uint8Array {

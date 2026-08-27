@@ -16,29 +16,29 @@ import {
   type PrivateLockPackage,
 } from "./project-local-lock.js";
 import {
-  createPrivateUnavailableAdmission,
-  createPrivateUnavailablePlan,
-  decodePrivateUnavailableAdmission,
-  decodePrivateUnavailableCandidate,
-  decodePrivateUnavailablePlan,
-  encodePrivateUnavailableAdmission,
-  encodePrivateUnavailableCandidate,
-  encodePrivateUnavailablePlan,
-  privateUnavailableAdmissionDigest,
-  privateUnavailableCandidateDigest,
-  privateUnavailablePlanDigest,
-  requirePrivateCreatedUnavailableCandidate,
-  type PrivateUnavailableAdmission,
-  type PrivateUnavailableCandidateArtifact,
-  type PrivateUnavailablePlan,
-} from "./unavailable-admission.js";
+  createPrivateActivationAdmission,
+  createPrivateActivationPlan,
+  decodePrivateActivationAdmission,
+  decodePrivateActivationCandidate,
+  decodePrivateActivationPlan,
+  encodePrivateActivationAdmission,
+  encodePrivateActivationCandidate,
+  encodePrivateActivationPlan,
+  privateActivationAdmissionDigest,
+  privateActivationCandidateDigest,
+  privateActivationPlanDigest,
+  requirePrivateCreatedActivationCandidate,
+  type PrivateActivationAdmission,
+  type PrivateActivationCandidateArtifact,
+  type PrivateActivationPlan,
+} from "./activation-admission.js";
 
 const STATE_DIRECTORY = ".jig";
-const DATABASE_NAME = "private-unavailable-admission-v2.sqlite3";
+const DATABASE_NAME = "private-activation-admission-v3.sqlite3";
 const LOCK_NAME = "jig.lock";
-const LOCK_STAGE_NAME = "private-unavailable-jig-lock-v1.stage";
-const SCHEMA_VERSION = 2n;
-const APPLICATION_ID = 0x4a494732n; // JIG2
+const LOCK_STAGE_NAME = "private-activation-jig-lock-v1.stage";
+const SCHEMA_VERSION = 3n;
+const APPLICATION_ID = 0x4a494733n; // JIG3
 const BUSY_TIMEOUT_MS = 250;
 const MAX_STORED_BYTES = 16_777_216;
 const MAX_SAFE_REVISION = BigInt(Number.MAX_SAFE_INTEGER);
@@ -144,35 +144,35 @@ interface StateOwner {
 
 interface ReacquiredArtifacts { dispose(): Promise<void> }
 
-export interface PrivateUnavailableCandidateHead {
+export interface PrivateActivationCandidateHead {
   readonly candidateRevision: number;
   readonly candidateDigest: string;
 }
 
-export interface PrivateUnavailableReviewPlan {
-  readonly plan: PrivateUnavailablePlan;
+export interface PrivateActivationReviewPlan {
+  readonly plan: PrivateActivationPlan;
   readonly planBytes: Uint8Array;
   readonly planDigest: string;
-  readonly candidate: PrivateUnavailableCandidateArtifact;
+  readonly candidate: PrivateActivationCandidateArtifact;
 }
 
-export interface PrivateUnavailableAdmissionReceipt {
-  readonly admission: PrivateUnavailableAdmission;
+export interface PrivateActivationAdmissionReceipt {
+  readonly admission: PrivateActivationAdmission;
   readonly admissionBytes: Uint8Array;
   readonly admissionDigest: string;
 }
 
-/** Persist a factory-produced proposal as the monotonic unavailable head. */
-export async function publishPrivateUnavailableCandidate(input: {
+/** Persist a factory-produced proposal as the monotonic activation head. */
+export async function publishPrivateActivationCandidate(input: {
   readonly projectRoot: string;
   readonly packageStoreRoot: string;
-  readonly candidate: PrivateUnavailableCandidateArtifact;
-}): Promise<PrivateUnavailableCandidateHead> {
-  const created = requirePrivateCreatedUnavailableCandidate(input.candidate);
-  const encoded = encodePrivateUnavailableCandidate(created);
+  readonly candidate: PrivateActivationCandidateArtifact;
+}): Promise<PrivateActivationCandidateHead> {
+  const created = requirePrivateCreatedActivationCandidate(input.candidate);
+  const encoded = encodePrivateActivationCandidate(created);
   requireStoredSize(encoded.candidate, "candidate");
   requireStoredSize(encoded.lock, "candidate lock");
-  const candidateDigest = privateUnavailableCandidateDigest(created);
+  const candidateDigest = privateActivationCandidateDigest(created);
   const owner = await openStateOwner(input.projectRoot, true);
   let artifacts: ReacquiredArtifacts | undefined;
   let failure: unknown;
@@ -186,7 +186,7 @@ export async function publishPrivateUnavailableCandidate(input: {
         const latest = loadCandidateRow(latestRow);
         requireCandidateRoot(latest, owner.root);
         if (latestRow.candidate_digest === candidateDigest) {
-          const prior = encodePrivateUnavailableCandidate(latest);
+          const prior = encodePrivateActivationCandidate(latest);
           if (!sameBytes(prior.candidate, encoded.candidate) || !sameBytes(prior.lock, encoded.lock)) {
             corrupt("latest candidate digest names different canonical bytes");
           }
@@ -220,12 +220,12 @@ export async function publishPrivateUnavailableCandidate(input: {
   }
 }
 
-/** Observe and persist one inert plan for the current unavailable head. */
-export async function createPrivateUnavailableReviewPlan(input: {
+/** Observe and persist one inert plan for the current activation head. */
+export async function createPrivateActivationReviewPlan(input: {
   readonly projectRoot: string;
   readonly packageStoreRoot: string;
   readonly lockMode: "update" | "locked";
-}): Promise<PrivateUnavailableReviewPlan> {
+}): Promise<PrivateActivationReviewPlan> {
   requireLockMode(input.lockMode);
   const owner = await openStateOwner(input.projectRoot, false);
   let artifacts: ReacquiredArtifacts | undefined;
@@ -233,7 +233,7 @@ export async function createPrivateUnavailableReviewPlan(input: {
   try {
     const initialHead = readCandidateHead(owner.database, owner.root);
     if (initialHead.revision === null) {
-      unavailable("ADMISSION_CANDIDATE_MISSING", "no unavailable candidate has been published");
+      unavailable("ADMISSION_CANDIDATE_MISSING", "no activation candidate has been published");
     }
     const initialRow = requireCandidateRow(owner.database, initialHead.revision);
     const candidate = loadCandidateRow(initialRow);
@@ -252,7 +252,7 @@ export async function createPrivateUnavailableReviewPlan(input: {
       )) {
         invalid("LOCK_MISMATCH", "locked planning requires the exact proposed jig.lock bytes");
       }
-      const plan = createPrivateUnavailablePlan({
+      const plan = createPrivateActivationPlan({
         candidateDigest: currentRow.candidate_digest,
         candidateRevision: safeRevision(currentRow.revision),
         baseGeneration: admissionHead.revision === null
@@ -263,9 +263,9 @@ export async function createPrivateUnavailableReviewPlan(input: {
           ? { state: "absent" }
           : { state: "present", digest: observed.digest },
       });
-      const planBytes = encodePrivateUnavailablePlan(plan);
+      const planBytes = encodePrivateActivationPlan(plan);
       requireStoredSize(planBytes, "review plan");
-      const planDigest = privateUnavailablePlanDigest(plan);
+      const planDigest = privateActivationPlanDigest(plan);
       persistReviewPlan(owner.database, {
         plan_digest: planDigest,
         candidate_revision: currentRow.revision,
@@ -284,11 +284,11 @@ export async function createPrivateUnavailableReviewPlan(input: {
 }
 
 /** Reopen one persisted plan and reprove its candidate's protected artifacts. */
-export async function loadPrivateUnavailableReviewPlan(input: {
+export async function loadPrivateActivationReviewPlan(input: {
   readonly projectRoot: string;
   readonly packageStoreRoot: string;
   readonly planDigest: string;
-}): Promise<PrivateUnavailableReviewPlan> {
+}): Promise<PrivateActivationReviewPlan> {
   requireDigest(input.planDigest, "review plan");
   const owner = await openStateOwner(input.projectRoot, false);
   let artifacts: ReacquiredArtifacts | undefined;
@@ -330,15 +330,15 @@ export async function loadPrivateUnavailableReviewPlan(input: {
 }
 
 /**
- * Durably converge the visible lock, then advance one unavailable admission
+ * Durably converge the visible lock, then advance one activation admission
  * generation. The returned canonical record is the idempotent receipt.
  */
-export async function applyPrivateUnavailableReviewPlan(input: {
+export async function applyPrivateActivationReviewPlan(input: {
   readonly projectRoot: string;
   readonly packageStoreRoot: string;
   readonly planDigest: string;
   readonly baseGeneration: string | null;
-}): Promise<PrivateUnavailableAdmissionReceipt> {
+}): Promise<PrivateActivationAdmissionReceipt> {
   requireDigest(input.planDigest, "review plan");
   if (input.baseGeneration !== null) requireDigest(input.baseGeneration, "expected base generation");
   const owner = await openStateOwner(input.projectRoot, false);
@@ -401,16 +401,16 @@ export async function applyPrivateUnavailableReviewPlan(input: {
       requireSamePlanRow(currentPlanRow, finalPlanRow);
       requireSameCandidateRow(currentCandidateRow, finalCandidateRow);
 
-      const admission = createPrivateUnavailableAdmission({
+      const admission = createPrivateActivationAdmission({
         baseGeneration: plan.baseGeneration,
         planDigest: input.planDigest,
         candidateRevision: safeRevision(finalCandidateRow.revision),
         candidateDigest: finalCandidateRow.candidate_digest,
         lockDigest: candidate.candidate.lockDigest,
       });
-      const admissionBytes = encodePrivateUnavailableAdmission(admission);
-      requireStoredSize(admissionBytes, "unavailable admission");
-      const admissionDigest = privateUnavailableAdmissionDigest(admission);
+      const admissionBytes = encodePrivateActivationAdmission(admission);
+      requireStoredSize(admissionBytes, "activation admission");
+      const admissionDigest = privateActivationAdmissionDigest(admission);
       const next = admissionHead.revision === null ? 1n : admissionHead.revision + 1n;
       if (next > MAX_SAFE_REVISION) {
         unavailable("ADMISSION_REVISION_EXHAUSTED", "private admission generation revision is exhausted");
@@ -444,11 +444,11 @@ export async function applyPrivateUnavailableReviewPlan(input: {
 }
 
 /** Require restart provenance minted by this store, not by the byte decoder. */
-export function requirePrivateStoredUnavailableCandidate(value: unknown): PrivateUnavailableCandidateArtifact {
+export function requirePrivateStoredActivationCandidate(value: unknown): PrivateActivationCandidateArtifact {
   if (value === null || typeof value !== "object" || !storedCandidates.has(value)) {
-    throw new TypeError("unavailable candidate has not been reverified from protected storage");
+    throw new TypeError("activation candidate has not been reverified from protected storage");
   }
-  return value as PrivateUnavailableCandidateArtifact;
+  return value as PrivateActivationCandidateArtifact;
 }
 
 async function openStateOwner(projectRoot: string, create: boolean): Promise<StateOwner> {
@@ -624,7 +624,7 @@ async function ensureDatabaseFile(
   try {
     observed = await lstat(path, { bigint: true });
   } catch (error) {
-    if (hasCode(error, "ENOENT")) unavailable("ADMISSION_STATE_MISSING", "private unavailable admission database does not exist");
+    if (hasCode(error, "ENOENT")) unavailable("ADMISSION_STATE_MISSING", "private activation admission database does not exist");
     throw error;
   }
   requireDatabaseFile(observed, expectedDevice);
@@ -632,7 +632,7 @@ async function ensureDatabaseFile(
   try {
     const information = await handle.stat({ bigint: true });
     requireDatabaseFile(information, expectedDevice);
-    if (!sameIdentity(observed, information)) invalid("ADMISSION_STATE_CHANGED", "private unavailable admission database changed while opening");
+    if (!sameIdentity(observed, information)) invalid("ADMISSION_STATE_CHANGED", "private activation admission database changed while opening");
     if (create) await handle.sync();
     return information;
   } finally {
@@ -647,7 +647,7 @@ function requireDatabaseFile(information: BigIntStats, expectedDevice: bigint): 
     information.uid !== BigInt(currentEuid()) || (information.mode & 0o7777n) !== 0o600n ||
     information.dev !== expectedDevice
   ) {
-    invalid("ADMISSION_DATABASE_PERMISSIONS", "private unavailable admission database must be a single-link owner-only mode 0600 regular file");
+    invalid("ADMISSION_DATABASE_PERMISSIONS", "private activation admission database must be a single-link owner-only mode 0600 regular file");
   }
 }
 
@@ -714,7 +714,7 @@ function verifySchema(database: SqliteDatabase, root: PrivateProjectRoot): void 
   if (actual.length !== EXPECTED_SCHEMA.length || actual.some((row, index) => {
     const expected = EXPECTED_SCHEMA[index]!;
     return row.type !== expected.type || row.name !== expected.name || row.table !== expected.table || row.sql !== expected.sql;
-  })) corrupt("private admission database schema differs from version 2");
+  })) corrupt("private admission database schema differs from version 3");
   if (statement<Record<string, unknown>>(database, "PRAGMA foreign_key_check").all().length !== 0) {
     corrupt("private admission database has broken foreign keys");
   }
@@ -838,36 +838,36 @@ function requireAdmissionByDigest(database: SqliteDatabase, digest: string): Adm
   return rows[0]!;
 }
 
-function loadCandidateRow(row: CandidateRow): PrivateUnavailableCandidateArtifact {
+function loadCandidateRow(row: CandidateRow): PrivateActivationCandidateArtifact {
   safeRevision(row.revision);
   const candidate = copiedBlob(row.candidate_bytes, "stored candidate");
   const lock = copiedBlob(row.lock_bytes, "stored candidate lock");
   requireStoredSize(candidate, "stored candidate");
   requireStoredSize(lock, "stored candidate lock");
-  const decoded = decodePrivateUnavailableCandidate({ candidate, lock });
-  if (privateUnavailableCandidateDigest(decoded) !== row.candidate_digest) corrupt("stored candidate row digest does not match canonical bytes");
+  const decoded = decodePrivateActivationCandidate({ candidate, lock });
+  if (privateActivationCandidateDigest(decoded) !== row.candidate_digest) corrupt("stored candidate row digest does not match canonical bytes");
   return decoded;
 }
 
-function loadPlanRow(row: PlanRow): PrivateUnavailablePlan {
+function loadPlanRow(row: PlanRow): PrivateActivationPlan {
   safeRevision(row.candidate_revision);
   requireDigest(row.plan_digest, "stored review plan");
   const bytes = copiedBlob(row.plan_bytes, "stored review plan");
   requireStoredSize(bytes, "stored review plan");
-  const plan = decodePrivateUnavailablePlan(bytes);
-  if (privateUnavailablePlanDigest(plan) !== row.plan_digest) corrupt("stored review plan digest does not match canonical bytes");
+  const plan = decodePrivateActivationPlan(bytes);
+  if (privateActivationPlanDigest(plan) !== row.plan_digest) corrupt("stored review plan digest does not match canonical bytes");
   return plan;
 }
 
-function loadAdmissionRow(row: AdmissionRow): PrivateUnavailableAdmission {
+function loadAdmissionRow(row: AdmissionRow): PrivateActivationAdmission {
   safeRevision(row.revision);
   requireDigest(row.admission_digest, "stored admission");
   if (row.base_generation !== null) requireDigest(row.base_generation, "stored admission base");
   requireDigest(row.plan_digest, "stored admission plan");
-  const bytes = copiedBlob(row.admission_bytes, "stored unavailable admission");
-  requireStoredSize(bytes, "stored unavailable admission");
-  const admission = decodePrivateUnavailableAdmission(bytes);
-  if (privateUnavailableAdmissionDigest(admission) !== row.admission_digest) {
+  const bytes = copiedBlob(row.admission_bytes, "stored activation admission");
+  requireStoredSize(bytes, "stored activation admission");
+  const admission = decodePrivateActivationAdmission(bytes);
+  if (privateActivationAdmissionDigest(admission) !== row.admission_digest) {
     corrupt("stored admission row digest does not match canonical bytes");
   }
   return admission;
@@ -887,7 +887,7 @@ function persistReviewPlan(database: SqliteDatabase, row: PlanRow): void {
   ).run(row.plan_digest, row.candidate_revision, row.plan_bytes);
 }
 
-function crossCheckPlanCandidate(plan: PrivateUnavailablePlan, planRow: PlanRow, candidate: CandidateRow): void {
+function crossCheckPlanCandidate(plan: PrivateActivationPlan, planRow: PlanRow, candidate: CandidateRow): void {
   if (
     plan.candidateRevision !== safeRevision(planRow.candidate_revision) || planRow.candidate_revision !== candidate.revision ||
     plan.candidateDigest !== candidate.candidate_digest
@@ -896,7 +896,7 @@ function crossCheckPlanCandidate(plan: PrivateUnavailablePlan, planRow: PlanRow,
 
 function requirePlanBase(
   database: SqliteDatabase,
-  plan: PrivateUnavailablePlan,
+  plan: PrivateActivationPlan,
   root: PrivateProjectRoot,
 ): void {
   if (plan.baseGeneration === null) return;
@@ -908,7 +908,7 @@ function loadAndCrossCheckAdmission(
   database: SqliteDatabase,
   row: AdmissionRow,
   root: PrivateProjectRoot,
-): PrivateUnavailableAdmissionReceipt {
+): PrivateActivationAdmissionReceipt {
   const admission = loadAdmissionRow(row);
   const planRow = requirePlanRow(database, row.plan_digest);
   const plan = loadPlanRow(planRow);
@@ -937,7 +937,7 @@ function loadAndCrossCheckAdmission(
   }
   return Object.freeze({
     admission,
-    admissionBytes: copiedBlob(row.admission_bytes, "stored unavailable admission"),
+    admissionBytes: copiedBlob(row.admission_bytes, "stored activation admission"),
     admissionDigest: row.admission_digest,
   });
 }
@@ -988,7 +988,7 @@ async function observeVisibleLock(root: PrivateProjectRoot): Promise<
 
 async function convergeVisibleLock(
   owner: StateOwner,
-  plan: PrivateUnavailablePlan,
+  plan: PrivateActivationPlan,
   proposed: Uint8Array,
 ): Promise<void> {
   const observed = await observeVisibleLock(owner.root);
@@ -1011,7 +1011,7 @@ async function convergeVisibleLock(
 }
 
 function matchesObservedLock(
-  plan: PrivateUnavailablePlan,
+  plan: PrivateActivationPlan,
   observed: Awaited<ReturnType<typeof observeVisibleLock>>,
 ): boolean {
   if (plan.observedLock.state === "absent") return observed.state === "absent";
@@ -1047,7 +1047,7 @@ async function synchronizeExactVisibleLock(owner: StateOwner, proposed: Uint8Arr
 
 async function publishVisibleLock(
   owner: StateOwner,
-  plan: PrivateUnavailablePlan,
+  plan: PrivateActivationPlan,
   proposed: Uint8Array,
 ): Promise<void> {
   await clearSafeLockStage(owner);
@@ -1185,7 +1185,7 @@ function requireVisibleLockFile(information: BigIntStats, expectedDevice: bigint
 
 async function reacquireCandidateArtifacts(
   packageStoreRoot: string,
-  candidate: PrivateUnavailableCandidateArtifact,
+  candidate: PrivateActivationCandidateArtifact,
 ): Promise<ReacquiredArtifacts> {
   const captures = new Map<string, Awaited<ReturnType<typeof captureStoredPackage>>>();
   let failure: unknown;
@@ -1276,10 +1276,10 @@ async function disposeCaptures(captures: readonly Awaited<ReturnType<typeof capt
   return failures.length === 0 ? undefined : new AggregateError(failures, "Package/1 captures did not all close");
 }
 
-function requireCandidateRoot(candidate: PrivateUnavailableCandidateArtifact, root: PrivateProjectRoot): void {
+function requireCandidateRoot(candidate: PrivateActivationCandidateArtifact, root: PrivateProjectRoot): void {
   const expected = candidate.candidate.projectRoot;
   if (root.information.dev.toString() !== expected.device || root.information.ino.toString() !== expected.inode) {
-    invalid("ADMISSION_PROJECT_CHANGED", "unavailable candidate belongs to a different project root");
+    invalid("ADMISSION_PROJECT_CHANGED", "activation candidate belongs to a different project root");
   }
 }
 
@@ -1327,7 +1327,7 @@ async function disposeOperation(owner: StateOwner, artifacts: ReacquiredArtifact
   throw new AggregateError(cleanup, "private admission operation and cleanup did not both complete");
 }
 
-function markStored(candidate: PrivateUnavailableCandidateArtifact): PrivateUnavailableCandidateArtifact {
+function markStored(candidate: PrivateActivationCandidateArtifact): PrivateActivationCandidateArtifact {
   storedCandidates.add(candidate);
   return candidate;
 }
@@ -1373,7 +1373,7 @@ function requireDigest(value: unknown, label: string): asserts value is string {
 }
 
 function requireLockMode(value: unknown): asserts value is "update" | "locked" {
-  if (value !== "update" && value !== "locked") throw new TypeError("private unavailable plan lock mode must be update or locked");
+  if (value !== "update" && value !== "locked") throw new TypeError("private activation plan lock mode must be update or locked");
 }
 
 async function readBounded(handle: FileHandle, initialSize: number, limit: number): Promise<Uint8Array> {
@@ -1427,7 +1427,7 @@ function isSqliteBusy(error: unknown): boolean {
 }
 
 function busy(): never { unavailable("ADMISSION_STATE_BUSY", "private admission state is busy; retry the complete operation"); }
-function candidateChanged(): never { unavailable("ADMISSION_CANDIDATE_CHANGED", "unavailable candidate head changed; retry planning"); }
+function candidateChanged(): never { unavailable("ADMISSION_CANDIDATE_CHANGED", "activation candidate head changed; retry planning"); }
 function stale(message: string): never { unavailable("STALE_PLAN", message); }
 function corrupt(message: string): never { invalid("ADMISSION_STATE_CORRUPT", message); }
 function hasCode(error: unknown, code: string): boolean {

@@ -8,35 +8,35 @@ import {
   privateProjectLocalLockDigest,
 } from "../src/internal/project-local-lock.js";
 import {
-  createPrivateUnavailableAdmission,
-  createPrivateUnavailablePlan,
-  decodePrivateUnavailableAdmission,
-  decodePrivateUnavailablePlan,
-  decodePrivateUnavailableCandidate,
-  encodePrivateUnavailableAdmission,
-  encodePrivateUnavailableCandidate,
-  encodePrivateUnavailablePlan,
-  privateUnavailableAdmissionDigest,
-  privateUnavailableCandidateDigest,
-  privateUnavailablePlanDigest,
-  requirePrivateCreatedUnavailableCandidate,
-} from "../src/internal/unavailable-admission.js";
+  createPrivateActivationAdmission,
+  createPrivateActivationPlan,
+  decodePrivateActivationAdmission,
+  decodePrivateActivationPlan,
+  decodePrivateActivationCandidate,
+  encodePrivateActivationAdmission,
+  encodePrivateActivationCandidate,
+  encodePrivateActivationPlan,
+  privateActivationAdmissionDigest,
+  privateActivationCandidateDigest,
+  privateActivationPlanDigest,
+  requirePrivateCreatedActivationCandidate,
+} from "../src/internal/activation-admission.js";
 
 const encoder = new TextEncoder();
 
-describe("private unavailable admission candidate", () => {
+describe("private activation admission candidate", () => {
   test("has one canonical restart representation and external identity", () => {
     const bytes = fixture();
-    const artifact = decodePrivateUnavailableCandidate(bytes);
+    const artifact = decodePrivateActivationCandidate(bytes);
 
-    expect(encodePrivateUnavailableCandidate(artifact)).toEqual(bytes);
-    expect(privateUnavailableCandidateDigest(artifact)).toBe(
-      "sha256:e893ffacf24d02996c3ba99e66cf515e094e36c97aeb37ffdb45f2c1a50afd1e",
+    expect(encodePrivateActivationCandidate(artifact)).toEqual(bytes);
+    expect(privateActivationCandidateDigest(artifact)).toBe(
+      "sha256:81eb31892bc0679c9ac762655b39907c6de8586f5c824753ab8c77c0ef2a82d7",
     );
     expect(Object.isFrozen(artifact)).toBeTrue();
     expect(Object.isFrozen(artifact.candidate)).toBeTrue();
     expect(Object.isFrozen(artifact.candidate.target.disposition.evidenceDigests)).toBeTrue();
-    expect(() => requirePrivateCreatedUnavailableCandidate(artifact)).toThrow(
+    expect(() => requirePrivateCreatedActivationCandidate(artifact)).toThrow(
       "was not built from a retained project",
     );
   });
@@ -67,7 +67,7 @@ describe("private unavailable admission candidate", () => {
 
     const nonDirectLock = decodeJson(valid.lock);
     (nonDirectLock.packages as any)["flows/run"].directRun = false;
-    expect(() => decodePrivateUnavailableCandidate({
+    expect(() => decodePrivateActivationCandidate({
       candidate: candidateBytes({
         ...candidate,
         lockDigest: privateProjectLocalLockDigest(decodePrivateProjectLocalLock(lockBytes(nonDirectLock))),
@@ -102,13 +102,13 @@ describe("private unavailable admission candidate", () => {
     }, "cannot represent dependency unavailability");
 
     const binding = bindingFixture();
-    expect(decodePrivateUnavailableCandidate(binding).candidate.target.identity).toEqual({
+    expect(decodePrivateActivationCandidate(binding).candidate.target.identity).toEqual({
       kind: "binding",
       id: "run",
     });
   });
 
-  test("cannot spell READY, planned work, recipes, or admission authority", () => {
+  test("represents READY only as closed recipe and observation identities", () => {
     const valid = fixture();
     const candidate = decodeJson(valid.candidate);
 
@@ -121,14 +121,30 @@ describe("private unavailable admission candidate", () => {
       expectInvalid(valid, { ...candidate, [field]: value }, "must contain exactly");
     }
 
-    expectInvalid(valid, {
+    const ready = {
       ...candidate,
       target: {
         ...candidate.target as object,
         disposition: {
-          state: "planned",
-          observation: { digest: digest("recipe") },
+          state: "ready",
+          recipeDigest: digest("recipe"),
+          observationDigest: digest("observation"),
         },
+      },
+    };
+    expect(decodePrivateActivationCandidate({
+      ...valid,
+      candidate: candidateBytes(ready),
+    }).candidate.target.disposition).toEqual({
+      state: "ready",
+      recipeDigest: digest("recipe"),
+      observationDigest: digest("observation"),
+    });
+    expectInvalid(valid, {
+      ...ready,
+      target: {
+        ...ready.target,
+        disposition: { state: "ready", recipeDigest: digest("recipe") },
       },
     }, "must contain exactly");
   });
@@ -137,23 +153,23 @@ describe("private unavailable admission candidate", () => {
     const valid = fixture();
     const candidate = decodeJson(valid.candidate);
 
-    expect(() => decodePrivateUnavailableCandidate({
+    expect(() => decodePrivateActivationCandidate({
       ...valid,
       candidate: valid.candidate.subarray(0, valid.candidate.length - 1),
     })).toThrow("not in canonical");
-    expect(() => decodePrivateUnavailableCandidate({
+    expect(() => decodePrivateActivationCandidate({
       ...valid,
       candidate: encoder.encode(JSON.stringify(candidate, null, 2) + "\n"),
     })).toThrow("not in canonical");
-    expect(() => decodePrivateUnavailableCandidate({
+    expect(() => decodePrivateActivationCandidate({
       ...valid,
       candidate: Uint8Array.from([0xef, 0xbb, 0xbf, ...valid.candidate]),
     })).toThrow("BOM is not allowed");
-    expect(() => decodePrivateUnavailableCandidate({
+    expect(() => decodePrivateActivationCandidate({
       ...valid,
       candidate: encoder.encode(validString(valid.candidate).replace(
-        '"kind":"private-unavailable-candidate/1"',
-        '"kind":"private-unavailable-candidate/1","kind":"private-unavailable-candidate/1"',
+        '"kind":"private-activation-candidate/1"',
+        '"kind":"private-activation-candidate/1","kind":"private-activation-candidate/1"',
       )),
     })).toThrow("duplicate object member");
 
@@ -213,7 +229,7 @@ describe("private unavailable admission candidate", () => {
         return valid.candidate;
       },
     });
-    expect(() => decodePrivateUnavailableCandidate(accessor)).toThrow(
+    expect(() => decodePrivateActivationCandidate(accessor)).toThrow(
       "candidate encoding.candidate must be an enumerable data property",
     );
     expect(getterCalls).toBe(0);
@@ -225,35 +241,35 @@ describe("private unavailable admission candidate", () => {
         return [];
       },
     });
-    expect(() => decodePrivateUnavailableCandidate(proxy)).toThrow("must not be a Proxy");
+    expect(() => decodePrivateActivationCandidate(proxy)).toThrow("must not be a Proxy");
     expect(proxyTraps).toBe(0);
   });
 });
 
-describe("private unavailable review plan", () => {
+describe("private activation review plan", () => {
   test("has one canonical review representation and identity", () => {
-    const plan = createPrivateUnavailablePlan({
+    const plan = createPrivateActivationPlan({
       candidateDigest: digest("candidate"),
       candidateRevision: 7,
       baseGeneration: digest("base-generation"),
       lockMode: "update",
       observedLock: { state: "present", digest: digest("visible-lock") },
     });
-    const bytes = encodePrivateUnavailablePlan(plan);
+    const bytes = encodePrivateActivationPlan(plan);
     expect(new TextDecoder().decode(bytes)).toBe(
-      '{"baseGeneration":"sha256:d7bb43beeee67aacf5f0ae376511b9a632f0dd0923a3c37a06e8edd607687b28","candidateDigest":"sha256:dda18a0e21ae47c53b4309434cbc02ae8bf764fa83a6defbb719431242722aa7","candidateRevision":7,"kind":"private-unavailable-plan/1","lockMode":"update","observedLock":{"digest":"sha256:9aefe3acf56aead5d1e689677c1655dfb7218b2ccabc3bd88322cbfe3ebaa11a","state":"present"}}\n',
+      '{"baseGeneration":"sha256:d7bb43beeee67aacf5f0ae376511b9a632f0dd0923a3c37a06e8edd607687b28","candidateDigest":"sha256:dda18a0e21ae47c53b4309434cbc02ae8bf764fa83a6defbb719431242722aa7","candidateRevision":7,"kind":"private-activation-plan/1","lockMode":"update","observedLock":{"digest":"sha256:9aefe3acf56aead5d1e689677c1655dfb7218b2ccabc3bd88322cbfe3ebaa11a","state":"present"}}\n',
     );
-    expect(privateUnavailablePlanDigest(plan)).toBe(
-      "sha256:cfc33a795843fc5cd40992fd59d45167891498da51e68897969638b56c3e6249",
+    expect(privateActivationPlanDigest(plan)).toBe(
+      "sha256:342bcaceb5b61cd3b421cab586fcf89665233791c21dfd94be4cd643ef72a1c8",
     );
-    expect(decodePrivateUnavailablePlan(bytes)).toEqual(plan);
+    expect(decodePrivateActivationPlan(bytes)).toEqual(plan);
     expect(Object.isFrozen(plan)).toBeTrue();
     expect(Object.isFrozen(plan.observedLock)).toBeTrue();
   });
 
   test("closes revisions, lock modes, observations, and alternate spelling", () => {
     const candidateDigest = digest("candidate");
-    const plan = createPrivateUnavailablePlan({
+    const plan = createPrivateActivationPlan({
       candidateDigest,
       candidateRevision: 1,
       baseGeneration: null,
@@ -261,7 +277,7 @@ describe("private unavailable review plan", () => {
       observedLock: { state: "absent" },
     });
     expect(plan).toEqual({
-      kind: "private-unavailable-plan/1",
+      kind: "private-activation-plan/1",
       candidateDigest,
       candidateRevision: 1,
       baseGeneration: null,
@@ -269,59 +285,59 @@ describe("private unavailable review plan", () => {
       observedLock: { state: "absent" },
     });
     for (const revision of [0, -1, 1.5, Number.MAX_SAFE_INTEGER + 1]) {
-      expect(() => createPrivateUnavailablePlan({ ...plan, candidateRevision: revision } as any)).toThrow(
+      expect(() => createPrivateActivationPlan({ ...plan, candidateRevision: revision } as any)).toThrow(
         "positive safe integer",
       );
     }
-    expect(() => createPrivateUnavailablePlan({ ...plan, lockMode: "merge" } as any)).toThrow(
+    expect(() => createPrivateActivationPlan({ ...plan, lockMode: "merge" } as any)).toThrow(
       "update or locked",
     );
-    expect(() => createPrivateUnavailablePlan({
+    expect(() => createPrivateActivationPlan({
       ...plan,
       observedLock: { state: "absent", digest: digest("extra") } as any,
     })).toThrow("must contain exactly");
-    expect(() => createPrivateUnavailablePlan({
+    expect(() => createPrivateActivationPlan({
       ...plan,
       observedLock: { state: "present" } as any,
     })).toThrow("must contain exactly");
-    expect(() => createPrivateUnavailablePlan({
+    expect(() => createPrivateActivationPlan({
       ...plan,
       baseGeneration: "latest",
     })).toThrow("base generation digest");
 
-    const bytes = encodePrivateUnavailablePlan(plan);
-    expect(() => decodePrivateUnavailablePlan(bytes.subarray(0, bytes.length - 1))).toThrow(
+    const bytes = encodePrivateActivationPlan(plan);
+    expect(() => decodePrivateActivationPlan(bytes.subarray(0, bytes.length - 1))).toThrow(
       "not in canonical",
     );
-    expect(() => decodePrivateUnavailablePlan(encoder.encode(JSON.stringify(plan, null, 2) + "\n"))).toThrow(
+    expect(() => decodePrivateActivationPlan(encoder.encode(JSON.stringify(plan, null, 2) + "\n"))).toThrow(
       "not in canonical",
     );
-    expect(() => decodePrivateUnavailablePlan(Buffer.from(bytes))).toThrow("ordinary Uint8Array");
+    expect(() => decodePrivateActivationPlan(Buffer.from(bytes))).toThrow("ordinary Uint8Array");
   });
 });
 
-describe("private unavailable admission", () => {
+describe("private activation admission", () => {
   test("is one canonical generation record and idempotent receipt", () => {
-    const admission = createPrivateUnavailableAdmission({
+    const admission = createPrivateActivationAdmission({
       baseGeneration: digest("base-generation"),
       planDigest: digest("plan"),
       candidateRevision: 7,
       candidateDigest: digest("candidate"),
       lockDigest: digest("lock"),
     });
-    const bytes = encodePrivateUnavailableAdmission(admission);
+    const bytes = encodePrivateActivationAdmission(admission);
     expect(new TextDecoder().decode(bytes)).toBe(
-      '{"baseGeneration":"sha256:d7bb43beeee67aacf5f0ae376511b9a632f0dd0923a3c37a06e8edd607687b28","candidateDigest":"sha256:dda18a0e21ae47c53b4309434cbc02ae8bf764fa83a6defbb719431242722aa7","candidateRevision":7,"kind":"private-unavailable-admission/1","lockDigest":"sha256:0c030586945fe504b604ecc2e875c38ede400cd5cd73da9730302162e6b02c6f","planDigest":"sha256:64879f7d6b960a01909762d911a32d4582c20010c5641ee90278b644a9e3b525"}\n',
+      '{"baseGeneration":"sha256:d7bb43beeee67aacf5f0ae376511b9a632f0dd0923a3c37a06e8edd607687b28","candidateDigest":"sha256:dda18a0e21ae47c53b4309434cbc02ae8bf764fa83a6defbb719431242722aa7","candidateRevision":7,"kind":"private-activation-admission/1","lockDigest":"sha256:0c030586945fe504b604ecc2e875c38ede400cd5cd73da9730302162e6b02c6f","planDigest":"sha256:64879f7d6b960a01909762d911a32d4582c20010c5641ee90278b644a9e3b525"}\n',
     );
-    expect(privateUnavailableAdmissionDigest(admission)).toBe(
-      "sha256:c6911fcffd9e72d3f7d5295de9f59c0261005b2ddb904485fdd9b921ba97b0cc",
+    expect(privateActivationAdmissionDigest(admission)).toBe(
+      "sha256:a7f0a1115724f67009eb877b36708411b03b2d5b6e5757e6ef80fbb4d39d59e5",
     );
-    expect(decodePrivateUnavailableAdmission(bytes)).toEqual(admission);
+    expect(decodePrivateActivationAdmission(bytes)).toEqual(admission);
     expect(Object.isFrozen(admission)).toBeTrue();
   });
 
   test("closes generation lineage, references, and alternate spelling", () => {
-    const first = createPrivateUnavailableAdmission({
+    const first = createPrivateActivationAdmission({
       baseGeneration: null,
       planDigest: digest("first-plan"),
       candidateRevision: 1,
@@ -329,26 +345,26 @@ describe("private unavailable admission", () => {
       lockDigest: digest("first-lock"),
     });
     expect(first.baseGeneration).toBeNull();
-    expect(createPrivateUnavailableAdmission({
+    expect(createPrivateActivationAdmission({
       ...first,
       baseGeneration: digest("prior-generation"),
     }).baseGeneration).toBe(digest("prior-generation"));
-    expect(() => createPrivateUnavailableAdmission({
+    expect(() => createPrivateActivationAdmission({
       ...first,
       candidateRevision: Number.MAX_SAFE_INTEGER + 1,
     })).toThrow("positive safe integer");
-    expect(() => createPrivateUnavailableAdmission({
+    expect(() => createPrivateActivationAdmission({
       ...first,
       planDigest: "plan",
     })).toThrow("plan digest");
 
-    const bytes = encodePrivateUnavailableAdmission(first);
-    expect(() => decodePrivateUnavailableAdmission(bytes.subarray(0, bytes.length - 1))).toThrow(
+    const bytes = encodePrivateActivationAdmission(first);
+    expect(() => decodePrivateActivationAdmission(bytes.subarray(0, bytes.length - 1))).toThrow(
       "not in canonical",
     );
-    expect(() => decodePrivateUnavailableAdmission(encoder.encode(JSON.stringify(first, null, 2) + "\n")))
+    expect(() => decodePrivateActivationAdmission(encoder.encode(JSON.stringify(first, null, 2) + "\n")))
       .toThrow("not in canonical");
-    expect(() => decodePrivateUnavailableAdmission(Buffer.from(bytes))).toThrow("ordinary Uint8Array");
+    expect(() => decodePrivateActivationAdmission(Buffer.from(bytes))).toThrow("ordinary Uint8Array");
   });
 });
 
@@ -373,7 +389,7 @@ function fixture() {
   const captureDigest = digest("capture");
   const planningObservationDigest = digest("planning");
   const candidate = {
-    kind: "private-unavailable-candidate/1",
+    kind: "private-activation-candidate/1",
     projectRoot: { device: "64768", inode: "123456" },
     captureDigest,
     semanticDigest: digest("semantics"),
@@ -406,7 +422,7 @@ function expectInvalid(
   candidate: unknown,
   message: string,
 ): void {
-  expect(() => decodePrivateUnavailableCandidate({
+  expect(() => decodePrivateActivationCandidate({
     ...valid,
     candidate: candidateBytes(candidate),
   })).toThrow(message);
@@ -419,7 +435,7 @@ function expectLockTargetMismatch(
 ): void {
   const lockEncoding = lockBytes(lock);
   const lockValue = decodePrivateProjectLocalLock(lockEncoding);
-  expect(() => decodePrivateUnavailableCandidate({
+  expect(() => decodePrivateActivationCandidate({
     candidate: candidateBytes({
       ...candidate,
       lockDigest: privateProjectLocalLockDigest(lockValue),
@@ -451,7 +467,7 @@ function bindingFixture() {
   const planningObservationDigest = digest("binding-planning");
   return {
     candidate: candidateBytes({
-      kind: "private-unavailable-candidate/1",
+      kind: "private-activation-candidate/1",
       projectRoot: { device: "64768", inode: "654321" },
       captureDigest,
       semanticDigest: digest("binding-semantics"),

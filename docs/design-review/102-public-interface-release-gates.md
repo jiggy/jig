@@ -293,8 +293,10 @@ Before an independent probe consumes it, the candidate must prove:
 
 1. generic retained author-evaluator support on the selected host;
 2. deterministic Adapter and Backend selection from explicit host policy;
-3. one retained generic `READY` recipe beside the exact unavailable branch;
-4. stale-plan rejection and lock-first admission;
+3. one retained generic `READY` recipe beside the exact unavailable branch
+   (the narrower private exact-Python proof is complete in review 134);
+4. stale-plan rejection and lock-first admission (complete for that private
+   proof);
 5. idempotent root submission and durable Run identity;
 6. restart reconciliation around spawn intent and terminal publication; and
 7. cancellation, deadline, whole-tree fencing, and zero residue.

@@ -93,8 +93,8 @@ Adapter or a retained `READY` recipe.
 | Sley compatibility | One real Run/1 integration proves the lower boundary; Jig Graph's definition/compiler interface remains open. |
 | Linux containment | Strong private cgroup-v2/Bubblewrap evidence exists; no public Sandbox Backend interface is claimed. |
 | Project authoring and capture | Inert authoring, capture, retention, and linking are generic private proofs. The private evaluator now consumes an authenticated sandbox-lifetime runtime-support receipt rather than a Nix lifetime observation; the agent-sandbox observer remains one proof-host input rather than a public host interface. |
-| Lock and admission | Private portable projection and durable exact-`UNAVAILABLE` plan/apply path are complete. |
-| Runnable admission | No generic retained `READY` recipe or restart-safe spawn lifecycle exists. |
+| Lock and admission | Private portable projection and one durable activation plan/apply path covering exact `READY` and exact `UNAVAILABLE` are complete. |
+| Runnable admission | One exact Python recipe is privately admitted and re-planned into a contained Run/1 execution. No generic Runtime Adapter model or restart-safe root spawn lifecycle exists. |
 | Public Jig administration | Plan, apply, root-Run, authentication, status, and error interfaces remain release-gated. |
 | Journal/Hooks, Agents/Semantic Choice, updates, and Starters | Reviewed semantics exist; implementation/public projections remain later slices. |
 
@@ -160,8 +160,9 @@ Before expansion, the slice must prove:
 2. deterministic Adapter and Backend selection from explicit host policy
    (**one private exact Python request-to-recipe planner and execution path
    proven in reviews 132–133; no admission or public SPI claimed**);
-3. one generic retained `READY` disposition beside the existing exact
-   `UNAVAILABLE` branch;
+3. one retained `READY` disposition beside the existing exact `UNAVAILABLE`
+   branch (**private exact-Python proof complete in review 134; generic host
+   extension models remain intentionally unclaimed**);
 4. reviewed-plan staleness and lock-first admission;
 5. idempotent root submission against one admitted generation and durable Run
    identity;

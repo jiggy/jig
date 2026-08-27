@@ -52,12 +52,12 @@ Current implementation frontier:
   descriptor-confined source capture, retained Package/1 artifacts, pure
   package/Binding linking, one sandboxed static-import evaluator, and one
   retained package-only project aggregate; deterministic non-admissible
-  resolution; a strict portable lock projection; and durable lock-first
-  admission of one exact unavailable target. Author-code execution in this
-  chain is still a Nix-backed proof-host fixture, not a generic evaluator
-  recipe. Generic retained evaluator support, a retained `READY` recipe,
-  public host-extension models, and the public plan/apply/root-Run interface
-  are the next boundary.
+  resolution; a strict portable lock projection; one durable activation store
+  spanning exact `READY` and `UNAVAILABLE`; and lock-first admission of one
+  exact Python target. The evaluator and Run consume authenticated
+  sandbox-lifetime runtime support, while Jig remains outside runtime retention
+  and package-manager lifecycle. Generic host-extension models and the public
+  plan/apply/root-Run interface remain the next boundary.
 
 The focused Run/1 specification owns its finite wire surface. The remaining
 cross-cutting system rules are in the canonical architecture:

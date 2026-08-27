@@ -26,19 +26,19 @@ import {
   runPrivatePythonDirectRecipe,
 } from "../src/internal/python-direct-run.js";
 import {
-  createPrivateUnavailableCandidate,
-  decodePrivateUnavailableCandidate,
-  encodePrivateUnavailableCandidate,
-  privateUnavailableCandidateDigest,
-  requirePrivateCreatedUnavailableCandidate,
-} from "../src/internal/unavailable-admission.js";
+  createPrivateActivationCandidate,
+  decodePrivateActivationCandidate,
+  encodePrivateActivationCandidate,
+  privateActivationCandidateDigest,
+  requirePrivateCreatedActivationCandidate,
+} from "../src/internal/activation-admission.js";
 import {
-  applyPrivateUnavailableReviewPlan,
-  createPrivateUnavailableReviewPlan,
-  loadPrivateUnavailableReviewPlan,
-  publishPrivateUnavailableCandidate,
-  requirePrivateStoredUnavailableCandidate,
-} from "../src/internal/unavailable-admission-store.js";
+  applyPrivateActivationReviewPlan,
+  createPrivateActivationReviewPlan,
+  loadPrivateActivationReviewPlan,
+  publishPrivateActivationCandidate,
+  requirePrivateStoredActivationCandidate,
+} from "../src/internal/activation-admission-store.js";
 import { evaluateAuthorClosure } from "../src/project/author-evaluator.js";
 import { captureAuthorClosure } from "../src/project/author-module.js";
 import { defineJig } from "../src/project/author.js";
@@ -464,6 +464,7 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
   test("evaluates one captured project declaration in a root-only Bun envelope", async () => {
     host = await hostConfiguration();
     const bun = await proofHostBunClosure();
+    const python = await proofHostPythonClosure();
     const distribution = await realpath(join(import.meta.dir, "..", "dist"));
     const root = await mkdtemp(join(tmpdir(), "jig-evaluator-proof-"));
     const evaluator = {
@@ -639,6 +640,16 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
     const distribution = await realpath(join(import.meta.dir, "..", "dist"));
     const root = await mkdtemp(join(tmpdir(), "jig-retained-project-"));
     const store = await mkdtemp(join(tmpdir(), "jig-retained-store-"));
+    const evaluator = {
+      backend: backend(host),
+      bunPath: bun.executable,
+      runtimeMounts: bun.runtimeSupport.closureSources.map((source) => ({
+        source,
+        destination: source,
+      })),
+      runtimeSupport: bun.runtimeSupport,
+      jigDistributionPath: distribution,
+    } as const;
     try {
       await mkdir(join(root, "bindings"));
       await mkdir(join(root, "flows", "run"), { recursive: true });
@@ -668,16 +679,7 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
       const aggregate = await retainPackageProject({
         projectRoot: root,
         storeRoot: store,
-        evaluator: {
-          backend: backend(host),
-          bunPath: bun.executable,
-          runtimeMounts: bun.runtimeSupport.closureSources.map((source) => ({
-            source,
-            destination: source,
-          })),
-          runtimeSupport: bun.runtimeSupport,
-          jigDistributionPath: distribution,
-        },
+        evaluator,
       });
 
       expect(aggregate.captureDigest).toMatch(/^sha256:[0-9a-f]{64}$/);
@@ -705,38 +707,38 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
       });
       const resolution = resolveRetainedPackageProjectObservation(aggregate, planning);
       expect(requirePrivateRetainedResolutionObservation(resolution)).toBe(resolution);
-      const unavailable = createPrivateUnavailableCandidate(aggregate, resolution);
-      expect(requirePrivateCreatedUnavailableCandidate(unavailable)).toBe(unavailable);
-      expect(privateUnavailableCandidateDigest(unavailable)).toMatch(/^sha256:[0-9a-f]{64}$/);
-      const persisted = encodePrivateUnavailableCandidate(unavailable);
-      const restarted = decodePrivateUnavailableCandidate(persisted);
-      expect(encodePrivateUnavailableCandidate(restarted)).toEqual(persisted);
-      expect(() => requirePrivateCreatedUnavailableCandidate(restarted)).toThrow(
+      const unavailable = createPrivateActivationCandidate(aggregate, resolution);
+      expect(requirePrivateCreatedActivationCandidate(unavailable)).toBe(unavailable);
+      expect(privateActivationCandidateDigest(unavailable)).toMatch(/^sha256:[0-9a-f]{64}$/);
+      const persisted = encodePrivateActivationCandidate(unavailable);
+      const restarted = decodePrivateActivationCandidate(persisted);
+      expect(encodePrivateActivationCandidate(restarted)).toEqual(persisted);
+      expect(() => requirePrivateCreatedActivationCandidate(restarted)).toThrow(
         "was not built from a retained project",
       );
 
-      const firstHead = await publishPrivateUnavailableCandidate({
+      const firstHead = await publishPrivateActivationCandidate({
         projectRoot: root,
         packageStoreRoot: store,
         candidate: unavailable,
       });
       expect(firstHead).toEqual({
         candidateRevision: 1,
-        candidateDigest: privateUnavailableCandidateDigest(unavailable),
+        candidateDigest: privateActivationCandidateDigest(unavailable),
       });
-      expect(await publishPrivateUnavailableCandidate({
+      expect(await publishPrivateActivationCandidate({
         projectRoot: root,
         packageStoreRoot: store,
         candidate: unavailable,
       })).toEqual(firstHead);
       expect(await Promise.all(Array.from({ length: 4 }, () => retryAdmissionBusy(
-        () => publishPrivateUnavailableCandidate({
+        () => publishPrivateActivationCandidate({
           projectRoot: root,
           packageStoreRoot: store,
           candidate: unavailable,
         }),
       )))).toEqual(Array.from({ length: 4 }, () => firstHead));
-      const firstPlan = await createPrivateUnavailableReviewPlan({
+      const firstPlan = await createPrivateActivationReviewPlan({
         projectRoot: root,
         packageStoreRoot: store,
         lockMode: "update",
@@ -748,27 +750,27 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         lockMode: "update",
         observedLock: { state: "absent" },
       });
-      expect(requirePrivateStoredUnavailableCandidate(firstPlan.candidate)).toBe(firstPlan.candidate);
-      expect(() => requirePrivateCreatedUnavailableCandidate(firstPlan.candidate)).toThrow(
+      expect(requirePrivateStoredActivationCandidate(firstPlan.candidate)).toBe(firstPlan.candidate);
+      expect(() => requirePrivateCreatedActivationCandidate(firstPlan.candidate)).toThrow(
         "was not built from a retained project",
       );
-      const loadedFirstPlan = await loadPrivateUnavailableReviewPlan({
+      const loadedFirstPlan = await loadPrivateActivationReviewPlan({
         projectRoot: root,
         packageStoreRoot: store,
         planDigest: firstPlan.planDigest,
       });
       expect(loadedFirstPlan.plan).toEqual(firstPlan.plan);
       expect(loadedFirstPlan.planBytes).toEqual(firstPlan.planBytes);
-      expect(requirePrivateStoredUnavailableCandidate(loadedFirstPlan.candidate)).toBe(
+      expect(requirePrivateStoredActivationCandidate(loadedFirstPlan.candidate)).toBe(
         loadedFirstPlan.candidate,
       );
-      expect((await createPrivateUnavailableReviewPlan({
+      expect((await createPrivateActivationReviewPlan({
         projectRoot: root,
         packageStoreRoot: store,
         lockMode: "update",
       })).planDigest).toBe(firstPlan.planDigest);
       expect(await Promise.all(Array.from({ length: 4 }, async () => (
-        await retryAdmissionBusy(() => createPrivateUnavailableReviewPlan({
+        await retryAdmissionBusy(() => createPrivateActivationReviewPlan({
           projectRoot: root,
           packageStoreRoot: store,
           lockMode: "update",
@@ -776,13 +778,13 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
       ).planDigest))).toEqual(
         Array.from({ length: 4 }, () => firstPlan.planDigest),
       );
-      await expect(createPrivateUnavailableReviewPlan({
+      await expect(createPrivateActivationReviewPlan({
         projectRoot: root,
         packageStoreRoot: store,
         lockMode: "locked",
       }))
         .rejects.toMatchObject({ code: "LOCK_MISMATCH" });
-      const admissionDatabase = join(root, ".jig", "private-unavailable-admission-v2.sqlite3");
+      const admissionDatabase = join(root, ".jig", "private-activation-admission-v3.sqlite3");
       await writeFile(join(root, "jig.lock"), persisted.lock, { mode: 0o644 });
       const crashSqlite = createRequire(import.meta.url)("bun:sqlite") as any;
       const recovered = crashSqlite.Database.open(
@@ -793,20 +795,20 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
       expect(recovered.query("SELECT revision FROM admission_head WHERE singleton = 1").get().revision)
         .toBeNull();
       recovered.close(true);
-      const firstAdmission = await applyPrivateUnavailableReviewPlan({
+      const firstAdmission = await applyPrivateActivationReviewPlan({
         projectRoot: root,
         packageStoreRoot: store,
         planDigest: firstPlan.planDigest,
         baseGeneration: null,
       });
-      expect(await applyPrivateUnavailableReviewPlan({
+      expect(await applyPrivateActivationReviewPlan({
         projectRoot: root,
         packageStoreRoot: store,
         planDigest: firstPlan.planDigest,
         baseGeneration: null,
       })).toEqual(firstAdmission);
       expect(new Uint8Array(await readFile(join(root, "jig.lock")))).toEqual(persisted.lock);
-      const lockedPlan = await createPrivateUnavailableReviewPlan({
+      const lockedPlan = await createPrivateActivationReviewPlan({
         projectRoot: root,
         packageStoreRoot: store,
         lockMode: "locked",
@@ -831,24 +833,24 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
           },
         })),
       });
-      const second = createPrivateUnavailableCandidate(
+      const second = createPrivateActivationCandidate(
         aggregate,
         resolveRetainedPackageProjectObservation(aggregate, secondPlanning),
       );
-      const secondHead = await publishPrivateUnavailableCandidate({
+      const secondHead = await publishPrivateActivationCandidate({
         projectRoot: root,
         packageStoreRoot: store,
         candidate: second,
       });
       expect(secondHead.candidateRevision).toBe(2);
       expect(secondHead.candidateDigest).not.toBe(firstHead.candidateDigest);
-      const replayedHead = await publishPrivateUnavailableCandidate({
+      const replayedHead = await publishPrivateActivationCandidate({
         projectRoot: root,
         packageStoreRoot: store,
         candidate: unavailable,
       });
       expect(replayedHead).toEqual({ candidateRevision: 3, candidateDigest: firstHead.candidateDigest });
-      const replayedPlan = await createPrivateUnavailableReviewPlan({
+      const replayedPlan = await createPrivateActivationReviewPlan({
         projectRoot: root,
         packageStoreRoot: store,
         lockMode: "update",
@@ -857,7 +859,7 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         candidateRevision: 3,
         candidateDigest: firstHead.candidateDigest,
       });
-      expect((await loadPrivateUnavailableReviewPlan({
+      expect((await loadPrivateActivationReviewPlan({
         projectRoot: root,
         packageStoreRoot: store,
         planDigest: firstPlan.planDigest,
@@ -885,7 +887,7 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
       }, 2_000);
       interruptedWriter.kill("SIGKILL");
       expect((await childExit(interruptedWriter)).signal).toBe("SIGKILL");
-      expect((await loadPrivateUnavailableReviewPlan({
+      expect((await loadPrivateActivationReviewPlan({
         projectRoot: root,
         packageStoreRoot: store,
         planDigest: replayedPlan.planDigest,
@@ -893,21 +895,21 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
       const rollbackJournal = `${admissionDatabase}-journal`;
       const nonHotJournal = new Uint8Array(512);
       await writeFile(rollbackJournal, nonHotJournal, { mode: 0o600 });
-      expect((await loadPrivateUnavailableReviewPlan({
+      expect((await loadPrivateActivationReviewPlan({
         projectRoot: root,
         packageStoreRoot: store,
         planDigest: replayedPlan.planDigest,
       })).plan).toEqual(replayedPlan.plan);
       expect(new Uint8Array(await readFile(rollbackJournal))).toEqual(nonHotJournal);
       await chmod(rollbackJournal, 0o644);
-      await expect(loadPrivateUnavailableReviewPlan({
+      await expect(loadPrivateActivationReviewPlan({
         projectRoot: root,
         packageStoreRoot: store,
         planDigest: replayedPlan.planDigest,
       })).rejects.toMatchObject({ code: "ADMISSION_SQLITE_SIDECAR" });
       await rm(rollbackJournal);
       await writeFile(`${admissionDatabase}-wal`, new Uint8Array(), { mode: 0o600 });
-      await expect(loadPrivateUnavailableReviewPlan({
+      await expect(loadPrivateActivationReviewPlan({
         projectRoot: root,
         packageStoreRoot: store,
         planDigest: replayedPlan.planDigest,
@@ -928,8 +930,8 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
           "candidates",
           "review_plans",
         ]);
-        expect(database.query("PRAGMA application_id").get().application_id).toBe(0x4a494732);
-        expect(database.query("PRAGMA user_version").get().user_version).toBe(2);
+        expect(database.query("PRAGMA application_id").get().application_id).toBe(0x4a494733);
+        expect(database.query("PRAGMA user_version").get().user_version).toBe(3);
         expect(database.query("PRAGMA journal_mode").get().journal_mode).toBe("delete");
         expect(database.query("SELECT revision FROM candidate_head WHERE singleton = 1").get().revision).toBe(3);
         expect(database.query("SELECT count(*) AS count FROM candidates").get().count).toBe(3);
@@ -961,7 +963,7 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
       };
       corruptor.query("DELETE FROM candidates WHERE revision = 2").run();
       corruptor.close(true);
-      await expect(loadPrivateUnavailableReviewPlan({
+      await expect(loadPrivateActivationReviewPlan({
         projectRoot: root,
         packageStoreRoot: store,
         planDigest: firstPlan.planDigest,
@@ -972,37 +974,143 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         "INSERT INTO candidates(revision, candidate_digest, candidate_bytes, lock_bytes) VALUES (2, ?1, ?2, ?3)",
       ).run(retainedSecondRow.candidateDigest, retainedSecondRow.candidateBytes, retainedSecondRow.lockBytes);
       corruptor.close(true);
-      expect((await loadPrivateUnavailableReviewPlan({
+      expect((await loadPrivateActivationReviewPlan({
         projectRoot: root,
         packageStoreRoot: store,
         planDigest: firstPlan.planDigest,
       })).plan).toEqual(firstPlan.plan);
 
-      const secondAdmission = await applyPrivateUnavailableReviewPlan({
+      const secondAdmission = await applyPrivateActivationReviewPlan({
         projectRoot: root,
         packageStoreRoot: store,
         planDigest: replayedPlan.planDigest,
         baseGeneration: firstAdmission.admissionDigest,
       });
       expect(secondAdmission.admission.baseGeneration).toBe(firstAdmission.admissionDigest);
-      expect(await applyPrivateUnavailableReviewPlan({
+      expect(await applyPrivateActivationReviewPlan({
         projectRoot: root,
         packageStoreRoot: store,
         planDigest: firstPlan.planDigest,
         baseGeneration: null,
       })).toEqual(firstAdmission);
-      await expect(applyPrivateUnavailableReviewPlan({
+      await expect(applyPrivateActivationReviewPlan({
         projectRoot: root,
         packageStoreRoot: store,
         planDigest: lockedPlan.planDigest,
         baseGeneration: firstAdmission.admissionDigest,
       })).rejects.toMatchObject({ code: "STALE_PLAN" });
 
+      await writeFile(join(root, "jig.ts"), [
+        'import { defineJig } from "@jigging/jig";',
+        'export default defineJig({ flows: ["flows/run"] });',
+        "",
+      ].join("\n"));
+      await writeFile(join(root, "flows", "run", "FLOW.md"), [
+        "---",
+        "name: ready-run",
+        "description: Admitted retained Python Run fixture.",
+        "---",
+        "",
+      ].join("\n"));
+      await rm(join(root, "flows", "run", "flow.ts"));
+      const readySdk = join(root, "flows", "run", "flowmd_sdk");
+      await mkdir(readySdk);
+      for (const name of ["__init__.py", "_json.py", "_runtime.py", "_service.py", "_types.py"]) {
+        await writeFile(
+          join(readySdk, name),
+          await readFile(join(import.meta.dir, "..", "..", "flowmd-sdk", "src", "flowmd_sdk", name)),
+        );
+      }
+      await writeFile(join(root, "flows", "run", "flow.py"), [
+        "#!/usr/bin/env python",
+        "from flowmd_sdk import serve",
+        "",
+        "async def run(context):",
+        '    return {"outcome": "done", "output": {"admitted": context.input}}',
+        "",
+        "serve(run)",
+        "",
+      ].join("\n"));
+      const readyAggregate = await retainPackageProject({
+        projectRoot: root,
+        storeRoot: store,
+        evaluator,
+      });
+      const [readyRequest] = buildPrivateActivationRequests(readyAggregate.linked);
+      const readyPython = await proofHostPythonClosure();
+      const readyRecipe = await planPrivatePythonDirectRun({
+        request: readyRequest!,
+        runtimeSupport: readyPython.runtimeSupport,
+        backend: backend(host),
+      });
+      const readyPlanning = createPrivateActivationPlanningObservation({
+        policyDigest: testDigest("ready-policy"),
+        mechanismDigest: readyRecipe.mechanismDigest,
+        entries: [{
+          target: readyRequest!.target,
+          requestDigest: readyRequest!.digest,
+          disposition: { state: "planned" as const, observation: readyRecipe.observation },
+        }],
+      });
+      const readyResolution = resolveRetainedPackageProjectObservation(readyAggregate, readyPlanning);
+      const readyCandidate = createPrivateActivationCandidate(
+        readyAggregate,
+        readyResolution,
+        readyRecipe,
+      );
+      expect(readyCandidate.candidate.target.disposition).toEqual({
+        state: "ready",
+        recipeDigest: readyRecipe.digest,
+        observationDigest: readyRecipe.observation.digest,
+      });
+      const readyHead = await publishPrivateActivationCandidate({
+        projectRoot: root,
+        packageStoreRoot: store,
+        candidate: readyCandidate,
+      });
+      expect(readyHead.candidateRevision).toBe(4);
+      const readyPlan = await createPrivateActivationReviewPlan({
+        projectRoot: root,
+        packageStoreRoot: store,
+        lockMode: "update",
+      });
+      expect(readyPlan.candidate.candidate.target.disposition.state).toBe("ready");
+      const readyAdmission = await applyPrivateActivationReviewPlan({
+        projectRoot: root,
+        packageStoreRoot: store,
+        planDigest: readyPlan.planDigest,
+        baseGeneration: secondAdmission.admissionDigest,
+      });
+      expect(readyAdmission.admission.baseGeneration).toBe(secondAdmission.admissionDigest);
+
+      const reacquiredPython = await proofHostPythonClosure();
+      const replannedRecipe = await planPrivatePythonDirectRun({
+        request: readyRequest!,
+        runtimeSupport: reacquiredPython.runtimeSupport,
+        backend: backend(host),
+      });
+      expect(replannedRecipe.digest).toBe(readyRecipe.digest);
+      expect(replannedRecipe.observation.digest).toBe(readyRecipe.observation.digest);
+      expect((await runPrivatePythonDirectRecipe({
+        recipe: replannedRecipe,
+        packageStoreRoot: store,
+        runId: "admitted-python",
+        invocation: {
+          input: { ticket: "T-1" },
+          settings: {},
+          attachments: {},
+          deadlineUnixMs: Date.now() + 20_000,
+        },
+      })).terminal).toMatchObject({
+        status: "succeeded",
+        result: { outcome: "done", output: { admitted: { ticket: "T-1" } } },
+      });
+
       corruptor = sqlite.Database.open(admissionDatabase, writableFlags);
       corruptor.query("UPDATE candidates SET candidate_digest = ?1 WHERE revision = 1")
         .run(`sha256:${"0".repeat(64)}`);
       corruptor.close(true);
-      await expect(loadPrivateUnavailableReviewPlan({
+      await expect(loadPrivateActivationReviewPlan({
         projectRoot: root,
         packageStoreRoot: store,
         planDigest: firstPlan.planDigest,
