@@ -22,6 +22,7 @@ import {
   requirePrivateActivationRequest,
   type PrivateActivationRequest,
 } from "../project/package-resolution.js";
+import { PRIVATE_CANONICAL_JOURNAL_CONTRACT } from "../project/package-project.js";
 import {
   RunHostSession,
   type RunHostInvocation,
@@ -106,10 +107,9 @@ export async function planPrivateBunDirectRun(input: {
     }
   } else {
     const slots = Object.values(request.slots);
-    if (slots.length !== 1 || slots[0]!.kind !== "flow-call" ||
-        slots[0]!.targets.length !== 1 || slots[0]!.targets[0]!.kind !== "flow") {
+    if (slots.length !== 1 || !isSupportedPrivateBindingSlot(slots[0]!)) {
       throw new TypeError(
-        "private Bun Binding recipe requires one exact direct-Flow call slot",
+        "private Bun Binding recipe requires one exact direct-Flow call or canonical Journal slot",
       );
     }
   }
@@ -172,6 +172,18 @@ export async function planPrivateBunDirectRun(input: {
   });
   authenticRecipes.add(recipe);
   return recipe;
+}
+
+function isSupportedPrivateBindingSlot(
+  slot: PrivateActivationRequest["slots"][string],
+): boolean {
+  if (slot.kind === "flow-call") {
+    return slot.targets.length === 1 && slot.targets[0]!.kind === "flow";
+  }
+  return slot.provider.export === "journal" &&
+    slot.contract.id === PRIVATE_CANONICAL_JOURNAL_CONTRACT.id &&
+    slot.contract.version === PRIVATE_CANONICAL_JOURNAL_CONTRACT.version &&
+    slot.contract.digest === PRIVATE_CANONICAL_JOURNAL_CONTRACT.digest;
 }
 
 export function requirePrivateBunDirectRecipe(value: unknown): PrivateBunDirectRecipe {

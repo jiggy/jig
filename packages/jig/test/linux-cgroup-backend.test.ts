@@ -1823,6 +1823,254 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
     }
   });
 
+  test("runs canonical Journal effects through one admitted Bun root", async () => {
+    host = await hostConfiguration();
+    const bun = await proofHostBunClosure();
+    const distribution = await realpath(join(import.meta.dir, "..", "dist"));
+    const root = await mkdtemp(join(tmpdir(), "jig-journal-project-"));
+    const store = await mkdtemp(join(tmpdir(), "jig-journal-store-"));
+    const rootBackend = backend(host);
+    const evaluator = {
+      backend: rootBackend,
+      bunPath: bun.executable,
+      runtimeMounts: bun.runtimeSupport.closureSources.map((source) => ({ source, destination: source })),
+      runtimeSupport: bun.runtimeSupport,
+      jigDistributionPath: distribution,
+    } as const;
+    let controller: Awaited<ReturnType<typeof openPrivateRootAdministrationController>> | undefined;
+    let crashed: ReturnType<typeof spawn> | undefined;
+    try {
+      await mkdir(join(root, "bindings"));
+      await mkdir(join(root, "flows", "journal-run"), { recursive: true });
+      await writeFile(join(root, "jig.ts"), [
+        'import { defineJig, discover } from "@jigging/jig";',
+        'export default defineJig({ flows: discover("flows"), bindings: discover("bindings") });',
+        "",
+      ].join("\n"));
+      await writeFile(join(root, "bindings", "publisher.ts"), [
+        'import { defineJournalPublisher } from "@jigging/jig";',
+        "export default defineJournalPublisher({",
+        "  eventTypes: [",
+        '    "https://example.test/events/first",',
+        '    "https://example.test/events/second",',
+        "  ],",
+        "});",
+        "",
+      ].join("\n"));
+      await writeFile(join(root, "bindings", "journal-run.ts"), [
+        'import { bindingRef, defineBinding } from "@jigging/jig";',
+        "export default defineBinding({",
+        '  package: "flows/journal-run",',
+        '  slots: { journal: bindingRef("publisher") },',
+        "});",
+        "",
+      ].join("\n"));
+
+      const flow = join(root, "flows", "journal-run");
+      await mkdir(join(flow, "contracts"));
+      await writeFile(join(flow, "FLOW.md"), [
+        "---",
+        "name: journal-run",
+        "description: Publishes two exact Events through the canonical Journal.",
+        "uses:",
+        "  journal:",
+        "    contract: ./contracts/journal.capability.json",
+        "---",
+        "",
+      ].join("\n"));
+      await writeFile(
+        join(flow, "contracts", "journal.capability.json"),
+        await readFile(new URL("../../../docs/spec/contracts/jig/journal.capability.json", import.meta.url)),
+      );
+      const sdk = join(flow, "flow-sdk");
+      await mkdir(sdk);
+      for (const name of [
+        "index.ts", "json.ts", "protocol.ts", "service-session.ts", "session.ts", "transport.ts", "types.ts",
+      ]) {
+        await writeFile(join(sdk, name), await readFile(join(import.meta.dir, "..", "..", "flow-sdk", "src", name)));
+      }
+      await writeFile(join(flow, "flow.ts"), [
+        "#!/usr/bin/env bun",
+        'import { OperationError, serve } from "./flow-sdk/index.ts";',
+        "",
+        "const observed = async (operation) => {",
+        "  try { return { result: await operation }; }",
+        '  catch (error) { return { error: error instanceof OperationError ? error.code : "unexpected" }; }',
+        "};",
+        "",
+        "await serve(async (context) => {",
+        "  const firstCall = {",
+        '    operationId: "publish-first", slot: "journal", method: "append",',
+        '    input: { type: "https://example.test/events/first", data: { value: 1 } },',
+        "  };",
+        "  const first = await context.callEffect(firstCall);",
+        "  const replay = await context.callEffect(firstCall);",
+        "  const conflict = await observed(context.callEffect({",
+        "    ...firstCall,",
+        '    input: { type: "https://example.test/events/first", data: { value: 2 } },',
+        "  }));",
+        "  const second = await context.callEffect({",
+        '    operationId: "publish-second", slot: "journal", method: "append",',
+        '    input: { type: "https://example.test/events/second", data: { value: 2 } },',
+        "  });",
+        "  const denied = await observed(context.callEffect({",
+        '    operationId: "publish-denied", slot: "journal", method: "append",',
+        '    input: { type: "https://jig.dev/events/run-completed", data: null },',
+        "  }));",
+        "  const forgedSource = await observed(context.callEffect({",
+        '    operationId: "publish-forged-source", slot: "journal", method: "append",',
+        '    input: { type: "https://example.test/events/first", data: null, source: "kernel:jig" },',
+        "  }));",
+        '  if (context.input && typeof context.input === "object" && "delayMs" in context.input) {',
+        "    await Bun.sleep(context.input.delayMs);",
+        "  }",
+        '  return { outcome: "done", output: { first, replay, conflict, second, denied, forgedSource } };',
+        "});",
+        "",
+      ].join("\n"));
+
+      const aggregate = await retainPackageProject({ projectRoot: root, storeRoot: store, evaluator });
+      expect(aggregate.linked.bindings).toHaveLength(1);
+      expect(aggregate.linked.journalPublishers).toHaveLength(1);
+      const [request] = buildPrivateActivationRequests(aggregate.linked);
+      expect(request!.target).toEqual({ kind: "binding", id: "journal-run" });
+      const recipe = await planPrivateDirectRun({
+        request: request!,
+        runtimeSupport: bun.runtimeSupport,
+        backend: rootBackend,
+      });
+      const planning = createPrivateActivationPlanningObservation({
+        policyDigest: testDigest("journal-policy"),
+        mechanismDigest: recipe.mechanismDigest,
+        entries: [{
+          target: request!.target,
+          requestDigest: request!.digest,
+          disposition: { state: "planned" as const, observation: recipe.observation },
+        }],
+      });
+      const candidate = createPrivateActivationCandidate(
+        aggregate,
+        resolveRetainedPackageProjectObservation(aggregate, planning),
+        recipe,
+      );
+      await publishPrivateActivationCandidate({ projectRoot: root, packageStoreRoot: store, candidate });
+      const review = await createPrivateActivationReviewPlan({
+        projectRoot: root,
+        packageStoreRoot: store,
+        lockMode: "update",
+      });
+      await applyPrivateActivationReviewPlan({
+        projectRoot: root,
+        packageStoreRoot: store,
+        planDigest: review.planDigest,
+        baseGeneration: null,
+      });
+      const runtimeSupport = Object.freeze({ bun: bun.runtimeSupport });
+      const openController = async () => await openPrivateRootAdministrationController({
+        projectRoot: root,
+        packageStoreRoot: store,
+        runTimeoutMs: 45_000,
+        execute: (runId, coordinator, signal) => executePrivateRootRunLaunch({
+          projectRoot: root,
+          packageStoreRoot: store,
+          runId,
+          coordinator,
+          runtimeSupport,
+          backend: rootBackend,
+          signal,
+        }),
+      });
+
+      controller = await openController();
+      const submitted = await controller.administration.startRun({
+        submissionId: "journal-success",
+        target: request!.target,
+        input: {},
+      });
+      await controller.drain();
+      const status = await controller.administration.runStatus(submitted);
+      expect(status).toMatchObject({
+        state: "terminal",
+        terminal: {
+          status: "succeeded",
+          outcome: "done",
+          output: {
+            first: { journalPosition: 1, source: "binding:publisher" },
+            replay: { journalPosition: 1, source: "binding:publisher" },
+            conflict: { error: "OPERATION_CONFLICT" },
+            second: { journalPosition: 2, source: "binding:publisher" },
+            denied: { error: "PERMISSION_DENIED" },
+            forgedSource: { error: "INVALID_INPUT" },
+          },
+        },
+      });
+
+      const databasePath = join(root, ".jig", "private-activation-admission-v10.sqlite3");
+      const sqlite = createRequire(import.meta.url)("bun:sqlite") as any;
+      const database = sqlite.Database.open(
+        databasePath,
+        sqlite.constants.SQLITE_OPEN_READONLY | sqlite.constants.SQLITE_OPEN_NOFOLLOW,
+      );
+      try {
+        expect(database.query(
+          "SELECT count(*) AS count FROM root_journal_appends WHERE parent_run_id = ?1",
+        ).get(submitted.runId).count).toBe(2);
+        expect(database.query(
+          "SELECT count(*) AS count FROM root_journal_closures WHERE parent_run_id = ?1",
+        ).get(submitted.runId).count).toBe(2);
+        const release = JSON.parse(new TextDecoder().decode(database.query(
+          "SELECT release_bytes FROM root_execution_lifecycles WHERE run_id = ?1",
+        ).get(submitted.runId).release_bytes)) as {
+          readonly value?: { readonly journalClosureDigest?: unknown };
+        };
+        expect(release.value?.journalClosureDigest).toMatch(/^sha256:[0-9a-f]{64}$/);
+      } finally { database.close(true); }
+      await controller.dispose();
+      controller = undefined;
+
+      crashed = spawn(process.execPath, [
+        join(import.meta.dir, "fixtures", "composed-root-run-controller.ts"),
+        root,
+        store,
+        "journal-crash",
+        "journal-run",
+      ], { stdio: ["ignore", "pipe", "pipe"] });
+      const diagnostics = collect(crashed.stderr!);
+      const abandoned = JSON.parse(await firstLine(crashed.stdout!)) as { readonly runId: string };
+      await waitForRootJournalAppends(databasePath, abandoned.runId, 2).catch(async (error) => {
+        crashed!.kill("SIGKILL");
+        await childExit(crashed!);
+        throw new Error(`${String(error)}: ${await diagnostics}`);
+      });
+      crashed.kill("SIGKILL");
+      expect((await childExit(crashed)).signal).toBe("SIGKILL");
+      crashed = undefined;
+
+      controller = await openController();
+      expect(await controller.administration.runStatus(abandoned)).toMatchObject({
+        state: "terminal",
+        terminal: { status: "lost", code: "COORDINATOR_LOST" },
+      });
+      expect(await rootJournalAppendCount(databasePath, abandoned.runId)).toBe(2);
+      await controller.dispose();
+      controller = undefined;
+      expect(await jigCgroups(host.scope)).toEqual([]);
+      expect(await listOrEmpty(join(root, ".jig", "private-root-materializations"))).toEqual([]);
+      expect(await listOrEmpty(join(root, ".jig", "private-root-linux-owners"))).toEqual([]);
+      expect((await readdir("/dev")).filter(
+        (name) => name.startsWith(".jig-jig-run-") && name.endsWith("-devices"),
+      )).toEqual([]);
+    } finally {
+      if (crashed !== undefined && crashed.exitCode === null && crashed.signalCode === null) {
+        crashed.kill("SIGKILL");
+        await childExit(crashed).catch(() => undefined);
+      }
+      await controller?.dispose();
+      await rm(root, { recursive: true, force: true });
+      await rm(store, { recursive: true, force: true });
+    }
+  }, 180_000);
+
   test("runs one admitted Bun parent through one exact Python child Flow", async () => {
     host = await hostConfiguration();
     const [bun, python] = await Promise.all([
@@ -2101,7 +2349,9 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
               request,
               runtimeSupport,
               backend: rootBackend,
-            })).rejects.toThrow("private Bun Binding recipe requires one exact direct-Flow call slot");
+            })).rejects.toThrow(
+              "private Bun Binding recipe requires one exact direct-Flow call or canonical Journal slot",
+            );
           }
           entries.push({
             target: request.target,
@@ -2742,6 +2992,32 @@ async function countRootFlowCallClosures(
   return await queryAdmissionCount(
     databasePath,
     "SELECT count(*) AS count FROM root_flow_call_closures WHERE parent_run_id = ?1",
+    parentRunId,
+  );
+}
+
+async function waitForRootJournalAppends(
+  databasePath: string,
+  parentRunId: string,
+  expected: number,
+  timeoutMs = 20_000,
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (await rootJournalAppendCount(databasePath, parentRunId) !== expected) {
+    if (Date.now() >= deadline) {
+      throw new Error(`root Run did not commit ${expected} Journal appends before timeout`);
+    }
+    await Bun.sleep(50);
+  }
+}
+
+async function rootJournalAppendCount(
+  databasePath: string,
+  parentRunId: string,
+): Promise<number> {
+  return await queryAdmissionCount(
+    databasePath,
+    "SELECT count(*) AS count FROM root_journal_appends WHERE parent_run_id = ?1",
     parentRunId,
   );
 }
