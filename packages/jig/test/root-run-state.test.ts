@@ -4,7 +4,7 @@ import { createHash } from "node:crypto";
 import {
   createPrivateExternalSubmissionOrigin,
   createPrivateHookDerivedOrigin,
-  createPrivateRootSubmissionRequest,
+  createPrivateRootRunRequest,
   decodePrivateRootRunOrigin,
   encodePrivateRootRunOrigin,
   normalizePrivateRootRunIdentityInput,
@@ -103,20 +103,20 @@ describe("private root Run origin state", () => {
     }
   });
 
-  test("keeps the existing external RootAdministration request projection unchanged", () => {
-    const request = createPrivateRootSubmissionRequest({
-      submissionId: "ticket-1",
+  test("constructs one origin-neutral root Run request without a submission ID", () => {
+    const request = createPrivateRootRunRequest({
       target: { kind: "binding", id: "review" },
       input: { ticket: 1 },
       deadlineUnixMs: 12_345,
     });
     expect(request).toEqual({
-      kind: "private-root-submission/1",
+      kind: "private-root-run-request/1",
       target: { kind: "binding", id: "review" },
       input: { ticket: 1 },
       deadlineUnixMs: 12_345,
     });
     expect(Object.hasOwn(request, "origin")).toBeFalse();
+    expect(Object.hasOwn(request, "submissionId")).toBeFalse();
   });
 
   test("rejects open, noncanonical, or out-of-bound origins", () => {

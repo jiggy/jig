@@ -25,8 +25,8 @@ const RUN_HOST_FAILURE_CODES = new Set([
   "CHANNEL_LOST",
 ]);
 
-export interface PrivateRootSubmissionRequest {
-  readonly kind: "private-root-submission/1";
+export interface PrivateRootRunRequest {
+  readonly kind: "private-root-run-request/1";
   readonly target: RunTargetIdentity;
   readonly input: JsonValue;
   readonly deadlineUnixMs: number;
@@ -87,18 +87,16 @@ export interface PrivateRootRunSpawnIntent {
   readonly deadlineUnixMs: number;
 }
 
-export function createPrivateRootSubmissionRequest(input: {
-  readonly submissionId: string;
+export function createPrivateRootRunRequest(input: {
   readonly target: RunTargetIdentity;
   readonly input: JsonValue;
   readonly deadlineUnixMs: number;
-}): PrivateRootSubmissionRequest {
-  requirePrivateRootSubmissionId(input.submissionId);
+}): PrivateRootRunRequest {
   if (!Number.isSafeInteger(input.deadlineUnixMs) || input.deadlineUnixMs < 0) {
     invalid("RUN_DEADLINE_INVALID", "root Run deadline must be a non-negative safe Unix millisecond value");
   }
   return Object.freeze({
-    kind: "private-root-submission/1" as const,
+    kind: "private-root-run-request/1" as const,
     target: normalizeTarget(input.target),
     input: decodeJson1(canonicalJson(input.input)),
     deadlineUnixMs: input.deadlineUnixMs,
@@ -226,11 +224,10 @@ export function requirePrivateRootSubmissionId(value: unknown): asserts value is
   }
 }
 
-export function decodePrivateRootSubmissionRequest(bytes: Uint8Array): PrivateRootSubmissionRequest {
+export function decodePrivateRootRunRequest(bytes: Uint8Array): PrivateRootRunRequest {
   const value = exactRecord(decodeJson1(bytes), ["kind", "target", "input", "deadlineUnixMs"], "root Run request");
-  if (value.kind !== "private-root-submission/1") throw new TypeError("root Run request kind is invalid");
-  const request = createPrivateRootSubmissionRequest({
-    submissionId: "stored",
+  if (value.kind !== "private-root-run-request/1") throw new TypeError("root Run request kind is invalid");
+  const request = createPrivateRootRunRequest({
     target: value.target as RunTargetIdentity,
     input: value.input as JsonValue,
     deadlineUnixMs: value.deadlineUnixMs as number,
@@ -241,14 +238,14 @@ export function decodePrivateRootSubmissionRequest(bytes: Uint8Array): PrivateRo
   return request;
 }
 
-export function privateRootSubmissionDigest(request: PrivateRootSubmissionRequest): string {
+export function privateRootSubmissionDigest(request: PrivateRootRunRequest): string {
   return privateDomainDigest(
     "JIG-Private-Root-Submission/1",
     { target: request.target, input: request.input } as unknown as JsonValue,
   );
 }
 
-export function privateRootRequestDigest(request: PrivateRootSubmissionRequest): string {
+export function privateRootRequestDigest(request: PrivateRootRunRequest): string {
   return privateDomainDigest(
     "JIG-Private-Root-Request/1",
     request as unknown as JsonValue,

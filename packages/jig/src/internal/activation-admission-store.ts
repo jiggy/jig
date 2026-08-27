@@ -39,9 +39,9 @@ import {
 } from "./activation-admission.js";
 import {
   createPrivateExternalSubmissionOrigin,
-  createPrivateRootSubmissionRequest,
+  createPrivateRootRunRequest,
   decodePrivateRootRunOrigin,
-  decodePrivateRootSubmissionRequest,
+  decodePrivateRootRunRequest,
   encodePrivateRootRunOrigin,
   failedPrivateRootTerminal,
   normalizePrivateRootSpawnIntent,
@@ -56,7 +56,7 @@ import {
   type PrivateRootRunSnapshot,
   type PrivateRootRunSpawnIntent,
   type PrivateRootRunTerminal,
-  type PrivateRootSubmissionRequest,
+  type PrivateRootRunRequest,
 } from "./root-run-state.js";
 import {
   decodePrivateRootFlowCallAllocation,
@@ -749,8 +749,8 @@ export async function submitPrivateRootRun(input: {
 }): Promise<PrivateRootRunSubmission> {
   const coordinator = requirePrivateProjectCoordinator(input.coordinator);
   await coordinator.verify();
-  const request = createPrivateRootSubmissionRequest(input);
   const origin = createPrivateExternalSubmissionOrigin(input.submissionId);
+  const request = createPrivateRootRunRequest(input);
   const originDigest = privateRootRunOriginDigest(origin);
   const submissionDigest = privateRootSubmissionDigest(request);
   const owner = await openStateOwner(input.projectRoot, false);
@@ -1749,7 +1749,7 @@ export function requirePrivateStoredActivationCandidate(value: unknown): Private
 
 function rootPreflightTerminal(
   candidate: PrivateActivationCandidateArtifact,
-  request: PrivateRootSubmissionRequest,
+  request: PrivateRootRunRequest,
   artifacts: ReacquiredArtifacts,
 ): PrivateRootRunTerminal | undefined {
   const target = findPrivateActivationCandidateTarget(candidate, request.target);
@@ -2162,7 +2162,7 @@ function requireRootJournalAppendCandidate(
       allocation.coordinatorEpoch !== safeRevision(run.coordinator_epoch)) {
     corrupt("root Journal append allocation differs from its parent Run");
   }
-  const request = decodePrivateRootSubmissionRequest(run.request_bytes);
+  const request = decodePrivateRootRunRequest(run.request_bytes);
   const candidate = loadCandidateRow(requireCandidateRow(database, run.candidate_revision));
   const parent = findPrivateActivationCandidateTarget(candidate, request.target);
   const slot = parent?.request.slots[allocation.call.slot];
@@ -2324,7 +2324,7 @@ function requireRootFlowCallAllocationCandidate(
       allocation.coordinatorEpoch !== safeRevision(run.coordinator_epoch)) {
     corrupt("root Flow call allocation differs from its parent Run");
   }
-  const request = decodePrivateRootSubmissionRequest(run.request_bytes);
+  const request = decodePrivateRootRunRequest(run.request_bytes);
   if (allocation.effectiveDeadlineUnixMs > request.deadlineUnixMs) {
     invalid("RUN_DEADLINE_INVALID", "child Flow deadline exceeds its parent root Run deadline");
   }
@@ -2494,8 +2494,8 @@ function loadRootRunSnapshot(
       privateRootRunOriginDigest(origin) !== row.origin_digest) {
     corrupt("stored root Run origin differs from its durable identity");
   }
-  let request: PrivateRootSubmissionRequest;
-  try { request = decodePrivateRootSubmissionRequest(copiedBlob(row.request_bytes, "stored root Run request")); }
+  let request: PrivateRootRunRequest;
+  try { request = decodePrivateRootRunRequest(copiedBlob(row.request_bytes, "stored root Run request")); }
   catch { corrupt("stored root Run request is invalid"); }
   const expectedRunId = privateRootRunIdentityDigest({
     project: {
@@ -2556,8 +2556,7 @@ function requireSameExternalSubmission(run: PrivateRootRunSnapshot, submissionDi
   if (run.origin.kind !== "private-root-external-submission-origin/1") {
     invalid("SUBMISSION_CONFLICT", "root submission ID collides with a non-submission Run origin");
   }
-  const durableRequest = createPrivateRootSubmissionRequest({
-    submissionId: run.origin.submissionId,
+  const durableRequest = createPrivateRootRunRequest({
     target: run.target,
     input: run.input,
     deadlineUnixMs: run.deadlineUnixMs,
