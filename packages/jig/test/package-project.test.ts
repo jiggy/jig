@@ -279,7 +279,7 @@ uses:
     });
   });
 
-  test("links one exact inert Hook and binds its revision to resolved publisher meaning", async () => {
+  test("links one exact inert Hook relation without admitting an executable revision", async () => {
     await withFlows({ "flows/triage": run("triage") }, async (flows) => {
       const definition = defineHook({
         on: {
@@ -303,7 +303,7 @@ uses:
         publisherBinding: "publisher",
         type: "https://example.org/events/work-created",
         target: { kind: "flow", path: "flows/triage" },
-        definitionDigest: expect.stringMatching(/^sha256:[0-9a-f]{64}$/),
+        relationDigest: expect.stringMatching(/^sha256:[0-9a-f]{64}$/),
       }]);
       const changedPublisher = linkPackageProject({
         flows,
@@ -315,8 +315,28 @@ uses:
         }))],
         hooks: [{ sourcePath: "hooks/on-work.ts", definition }],
       });
-      expect(changedPublisher.hooks[0]!.definitionDigest)
-        .not.toBe(linked.hooks[0]!.definitionDigest);
+      expect(changedPublisher.hooks[0]!.relationDigest)
+        .toBe(linked.hooks[0]!.relationDigest);
+      const changedRelation = linkPackageProject({
+        flows,
+        bindings: [binding("bindings/publisher.ts", defineJournalPublisher({
+          eventTypes: [
+            "https://example.org/events/work-created",
+            "https://example.org/events/work-finished",
+          ],
+        }))],
+        hooks: [{
+          sourcePath: "hooks/on-work.ts",
+          definition: defineHook({
+            on: {
+              publisher: bindingRef("publisher"),
+              type: "https://example.org/events/work-finished",
+            },
+            run: flowRef("flows/triage"),
+          }),
+        }],
+      });
+      expect(changedRelation.hooks[0]!.relationDigest).not.toBe(linked.hooks[0]!.relationDigest);
     });
   });
 

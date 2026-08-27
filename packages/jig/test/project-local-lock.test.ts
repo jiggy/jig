@@ -15,6 +15,7 @@ import { bindingRef, candidates, defineHook, defineJig, defineJournalPublisher, 
 import { captureFlowSource } from "../src/project/flow-source.js";
 import {
   linkPackageProject,
+  privateHookRelationDigest,
   type InjectedBindingDeclaration,
   type PackageProjectValue,
 } from "../src/project/package-project.js";
@@ -172,7 +173,10 @@ uses:
         type: "https://example.org/events/work-created",
         target: { kind: "binding", id: "producer" },
       });
-      expect(lock.hooks["on-work"]!.definitionDigest).toMatch(/^sha256:[0-9a-f]{64}$/);
+      expect(lock.hooks["on-work"]!.relationDigest).toMatch(/^sha256:[0-9a-f]{64}$/);
+      expectInvalid(structuredClone(lock) as any, (value) => {
+        value.hooks["on-work"].relationDigest = `sha256:${"0".repeat(64)}`;
+      }, "does not match");
       const decoded = decodePrivateProjectLocalLock(encodePrivateProjectLocalLock(lock));
       expect(decoded).toEqual(lock);
       const base = structuredClone(lock) as any;
@@ -187,9 +191,11 @@ uses:
       }, "canonical Journal contract");
       expectInvalid(base, (value) => {
         value.hooks["on-work"].type = "https://example.org/events/unknown";
+        refreshHookRelation(value, "on-work");
       }, "not authorized");
       expectInvalid(base, (value) => {
         value.hooks["on-work"].target = { kind: "binding", id: "missing" };
+        refreshHookRelation(value, "on-work");
       }, "non-Run Binding");
     });
   });
@@ -587,4 +593,16 @@ function expectInvalid(base: unknown, change: (value: any) => void, message: str
   const value = structuredClone(base);
   change(value);
   expect(() => decodePrivateProjectLocalLock(lockBytes(value))).toThrow(message);
+}
+
+function refreshHookRelation(value: any, id: string): void {
+  const hook = value.hooks[id];
+  hook.relationDigest = privateHookRelationDigest({
+    id,
+    declarationPath: hook.declarationPath,
+    source: hook.source,
+    publisherBinding: hook.publisherBinding,
+    type: hook.type,
+    target: hook.target,
+  });
 }

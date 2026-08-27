@@ -111,10 +111,12 @@ The selector reacts to facts produced elsewhere. It fixes an authenticated
 producer and exact Event type. The producer resolves to an exact admitted
 provider identity, and the target resolves to an exact admitted Run target.
 Normalization pins both revisions to the admission generation. The current
-TypeScript helper and machine schema are private pre-release authoring
-surfaces; they accept one Journal-publisher `bindingRef()` and one exact Run
-`flowRef()` or `bindingRef()`. They do not make the Hook a portable FLOW
-interface or require every Hook target to be represented as a Binding.
+TypeScript helper and machine schema live only in the explicitly unstable
+`@jigging/jig/experimental/hooks` overlay; Project Authoring SDK/1 remains
+closed without Hooks. The overlay accepts one Journal-publisher `bindingRef()`
+and one exact Run `flowRef()` or `bindingRef()`. It does not make the Hook a
+portable FLOW interface or require every Hook target to be represented as a
+Binding.
 
 A filesystem watcher, webhook ingress, timer, or similar producer is outside
 the Hook abstraction. It may be application code, protected host machinery, or

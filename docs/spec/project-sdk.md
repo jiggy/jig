@@ -178,10 +178,12 @@ normalized JSON Pointer. The shape schema alone is never admission evidence.
 
 ## 5. Deliberate exclusions
 
-Project Authoring SDK/1 does not yet expose Hooks, Service export references,
+Project Authoring SDK/1 does not expose Hooks, Service export references,
 instruction Agent selection, `semanticChoice`, generic host-capability Bindings,
 registration-defined grants, open catalogue views, or runtime/sandbox
-selection. The canonical Journal publisher above is an intentional
+selection. Private Hook work uses a separately named experimental overlay and
+machine schema; those are not members of SDK/1 and carry no compatibility
+promise. The canonical Journal publisher above is an intentional
 Journal-specific exception, not a provider SPI. Each remaining projection has an explicit unresolved
 prerequisite. It deliberately never exposes administration APIs. Root
 Administration/1 is a separate host-side control-plane candidate outside every

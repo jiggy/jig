@@ -23,13 +23,13 @@ import {
 import { compileEmbeddedSchema } from "../schema/index.js";
 import { capturePackageDirectory } from "../package/capture.js";
 import {
-  type JigDefinition,
   type HookDefinition,
   normalizeHookDefinition,
   normalizeJournalPublisherDefinition,
-  normalizeJigDefinition,
+  normalizePrivateHookJigDefinition,
   normalizePackageBindingDefinition,
   type BindingDefinition,
+  type PrivateHookJigDefinition,
 } from "./author.js";
 import {
   isCapturedAuthorClosure,
@@ -64,6 +64,7 @@ export interface EvaluatorProfile {
   readonly protocol: typeof PROTOCOL;
   readonly evaluatorDigest: string;
   readonly authoringSdkDigest: string;
+  readonly experimentalHookAuthoringSdkDigest: string;
   readonly schemaDigest: string;
   readonly evaluatorPackageDigest: string;
   readonly runtimeExecutable: string;
@@ -94,7 +95,7 @@ export interface EvaluatorProfile {
 }
 
 export interface EvaluatedAuthorDeclaration<
-  Value extends JigDefinition | BindingDefinition | HookDefinition = JigDefinition | BindingDefinition | HookDefinition,
+  Value extends PrivateHookJigDefinition | BindingDefinition | HookDefinition = PrivateHookJigDefinition | BindingDefinition | HookDefinition,
 > {
   readonly expected: "project" | "binding" | "hook";
   readonly source: {
@@ -172,11 +173,12 @@ export async function evaluateAuthorClosure(
 
   let evaluationFailure: unknown;
   try {
-    const [workerBytes, helperBytes, sdkBytes, schemaBytes, runtimeDigest] = await Promise.all([
+    const [workerBytes, helperBytes, sdkBytes, hookSdkBytes, schemaBytes, runtimeDigest] = await Promise.all([
       toolchain.read("internal/project-evaluator-worker.js"),
       toolchain.read("internal/linux-cgroup-helper.js"),
       toolchain.read("internal/project-evaluator-sdk.bundle.js"),
-      toolchain.read("project-authoring-1.schema.json"),
+      toolchain.read("internal/experimental-hook-evaluator-sdk.bundle.js"),
+      toolchain.read("internal/private-project-authoring-hooks-1.schema.json"),
       digestFile(bunPath),
     ]).catch((error) => unavailable(
       "PROJECT_EVALUATOR_UNAVAILABLE",
@@ -186,6 +188,7 @@ export async function evaluateAuthorClosure(
       protocol: PROTOCOL,
       evaluatorDigest: digestBytes(workerBytes),
       authoringSdkDigest: digestBytes(sdkBytes),
+      experimentalHookAuthoringSdkDigest: digestBytes(hookSdkBytes),
       schemaDigest: digestBytes(schemaBytes),
       evaluatorPackageDigest: toolchain.digest,
       runtimeExecutable: bunPath,
@@ -323,10 +326,10 @@ export async function evaluateAuthorClosure(
         value,
         "PROJECT_AUTHORING_SCHEMA_INVALID",
       );
-      let normalized: JigDefinition | BindingDefinition | HookDefinition;
+      let normalized: PrivateHookJigDefinition | BindingDefinition | HookDefinition;
       try {
         normalized = expected === "project"
-          ? normalizeJigDefinition(value)
+          ? normalizePrivateHookJigDefinition(value)
           : expected === "binding"
             ? normalizeBindingDefinition(value)
             : normalizeHookDefinition(value);
@@ -450,7 +453,7 @@ function contextualAuthorSchema(bytes: Uint8Array, expected: "project" | "bindin
     return compileEmbeddedSchema(
       Object.freeze({ $ref: `#/$defs/${definition}` }),
       {
-        path: "project-authoring-1.schema.json",
+        path: "private-project-authoring-hooks-1.schema.json",
         rootDefs: document.$defs as JsonObject,
       },
     );

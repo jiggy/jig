@@ -81,10 +81,12 @@ The values are closed and JSON-like. Structural omissions normalize as
 provider, Agent, runtime, sandbox, authority, fallback, environment value, or
 candidate.
 
-Later gated additions include `defineHook`, `serviceExportRef`, instruction
+Later gated public additions include `defineHook`, `serviceExportRef`, instruction
 Agent selection, `semanticChoice`, and the host-capability Binding branch.
 Their reviewed semantics remain in the domain specifications, but they must
-not be added merely to make an example compile.
+not be added merely to make an example compile. A separately named private
+experimental Hook overlay may test the later shape without changing this
+frozen profile.
 
 ## Representation rules
 

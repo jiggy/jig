@@ -3,8 +3,10 @@
 **Status:** reviewed host semantics. The first package-only TypeScript authoring,
 capture, static-import evaluation, retention, and pure-link aggregate are
 implemented privately. One Journal-specific publisher declaration is also a
-closed candidate; generic host-capability registration, Hooks, Agent, and
-open-candidate slices remain release-gated.
+closed candidate. An explicitly experimental Hook authoring overlay now proves
+inert capture/link evidence, while Hook runtime/admission, generic
+host-capability registration, Agent, and open-candidate slices remain
+release-gated.
 
 Project files express desired state. They do not become live authority merely
 because a watcher observed them. Jig captures one candidate, resolves it,
@@ -30,7 +32,6 @@ A generated project uses ordinary files:
 jig.ts
 flows/
 bindings/
-hooks/
 jig.lock
 .jig/          host-owned and uncommitted
 ```
@@ -42,6 +43,18 @@ import {
   defineJig,
   discover,
 } from "@jigging/jig";
+
+export default defineJig({
+  flows: discover("./flows"),
+  bindings: discover("./bindings"),
+});
+```
+
+The private Hook experiment adds `hooks/` only through its separately named
+overlay:
+
+```ts
+import { defineJig, discover } from "@jigging/jig/experimental/hooks";
 
 export default defineJig({
   flows: discover("./flows"),
@@ -98,18 +111,20 @@ bindings: [
 ],
 ```
 
-For `flows`, an exact member is a package directory; for `bindings` and
-`hooks`, it is a declaration file. Discovery and exact-list forms are mutually
-exclusive for one field. V1 does not mix them or add an `include()` wrapper.
+For `flows`, an exact member is a package directory; for `bindings` and the
+experimental `hooks` field, it is a declaration file. Discovery and exact-list
+forms are mutually exclusive for one field. Neither profile mixes them or adds
+an `include()` wrapper.
 Both forms change membership only; declarations keep the same format and
 admission rules. One optional leading `./` is normalized as above. Unlike a
 missing discovery root, any missing, duplicate, wrong-kind, escaping,
 symlinked, NFC-colliding, or case-fold-colliding exact member invalidates the
 complete aggregate candidate.
 
-`flows`, `bindings`, and `hooks` are independently optional. Omission means no
-source of that kind, never implicit directory discovery. References to an
-omitted or empty source still fail normally. A project which wants semantic
+`flows` and `bindings` are independently optional in SDK/1; `hooks` is likewise
+optional only in the experimental overlay. Omission means no source of that
+kind, never implicit directory discovery. References to an omitted or empty
+source still fail normally. A project which wants semantic
 ranking after deterministic `flow/call` filtering may additionally name one
 exact Binding directly. This field belongs to a later authoring slice and is
 not part of the first package-only `@jigging/jig` surface:
@@ -367,9 +382,15 @@ rename is one removal plus one addition.
 
 A Binding file default-exports exactly one inert Binding declaration. A Hook
 file default-exports exactly one inert Hook declaration. The private
-pre-release authoring projection is deliberately limited to:
+pre-release authoring projection is deliberately separate from the frozen
+Project Authoring SDK/1. Hook-bearing sources import the explicitly unstable
+`@jigging/jig/experimental/hooks` overlay, whose shape is checked by
+`machine/private-project-authoring-hooks-1.schema.json`. It is deliberately
+limited to:
 
 ```ts
+import { bindingRef, defineHook, flowRef } from "@jigging/jig/experimental/hooks";
+
 export default defineHook({
   on: {
     publisher: bindingRef("work-events"),
@@ -378,6 +399,11 @@ export default defineHook({
   run: flowRef("./flows/triage"), // or one exact Run bindingRef(...)
 });
 ```
+
+The package root, `defineJig`, and `project-authoring-1.schema.json` remain
+unchanged and reject Hook fields. The experimental overlay earns no public
+compatibility promise until Hook admission/runtime and an independent consumer
+close a later profile.
 
 It must identify one exact producer, one exact
 1–512 character Event type, and one exact admitted Run target without

@@ -1,7 +1,7 @@
 import { invalid } from "../diagnostics.js";
 import { privateDomainDigest } from "../internal/identity.js";
 import type { JsonValue } from "../json.js";
-import type { BindingDefinition, HookDefinition, JigDefinition } from "./author.js";
+import type { BindingDefinition, HookDefinition, PrivateHookJigDefinition } from "./author.js";
 import {
   evaluateAuthorClosure,
   type EvaluatedAuthorDeclaration,
@@ -48,7 +48,7 @@ export interface PrivateRetainedPackageProject {
     readonly inode: string;
   };
   readonly declarationArtifact: RetainedAuthorClosure;
-  readonly project: EvaluatedAuthorDeclaration<JigDefinition>;
+  readonly project: EvaluatedAuthorDeclaration<PrivateHookJigDefinition>;
   readonly flowSource: readonly (FlowDiscoveryObservation | FlowExactObservation)[];
   readonly bindingSource: readonly DeclarationSourceObservation[];
   readonly hookSource: readonly DeclarationSourceObservation[];
@@ -80,7 +80,7 @@ export async function retainPackageProject(
       entry,
       "project",
       signal,
-    ) as EvaluatedAuthorDeclaration<JigDefinition>;
+    ) as EvaluatedAuthorDeclaration<PrivateHookJigDefinition>;
 
     const bindingSource = await captureDeclarationSource(root, bootstrapProject.value.bindings);
     const hookSource = await captureDeclarationSource(root, bootstrapProject.value.hooks);
@@ -96,7 +96,7 @@ export async function retainPackageProject(
       entry,
       "project",
       signal,
-    ) as EvaluatedAuthorDeclaration<JigDefinition>;
+    ) as EvaluatedAuthorDeclaration<PrivateHookJigDefinition>;
     if (project.outputDigest !== bootstrapProject.outputDigest) {
       invalid("PROJECT_SOURCE_CHANGED", "project definition changed while its complete declaration closure was captured", entry);
     }
@@ -211,7 +211,7 @@ function assertBootstrapPreserved(bootstrap: CapturedAuthorClosure, complete: Ca
 function digestCapture(input: {
   readonly root: { readonly device: string; readonly inode: string };
   readonly declarationArtifact: RetainedAuthorClosure;
-  readonly project: EvaluatedAuthorDeclaration<JigDefinition>;
+  readonly project: EvaluatedAuthorDeclaration<PrivateHookJigDefinition>;
   readonly flowSource: readonly (FlowDiscoveryObservation | FlowExactObservation)[];
   readonly bindingSource: readonly DeclarationSourceObservation[];
   readonly hookSource: readonly DeclarationSourceObservation[];
@@ -239,7 +239,7 @@ function digestCapture(input: {
     })),
   };
   return privateDomainDigest(
-    "JIG-Package-Project-Capture/1",
+    "JIG-Package-Project-Capture/2",
     value as unknown as JsonValue,
   );
 }

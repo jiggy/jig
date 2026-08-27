@@ -25,12 +25,20 @@ export type ProjectSourceInput = DiscoverySource | readonly string[];
 export interface JigDefinition {
   readonly flows?: ProjectSource;
   readonly bindings?: ProjectSource;
-  readonly hooks?: ProjectSource;
 }
 
 export interface JigDefinitionInput {
   readonly flows?: ProjectSourceInput;
   readonly bindings?: ProjectSourceInput;
+}
+
+/** Private experimental overlay; not part of Project Authoring SDK/1. */
+export interface PrivateHookJigDefinition extends JigDefinition {
+  readonly hooks?: ProjectSource;
+}
+
+/** Private experimental overlay; not part of Project Authoring SDK/1. */
+export interface PrivateHookJigDefinitionInput extends JigDefinitionInput {
   readonly hooks?: ProjectSourceInput;
 }
 
@@ -118,8 +126,8 @@ export function normalizeJigDefinition(input: unknown): JigDefinition {
 
 function normalizeJig(input: JigDefinitionInput, canonical: boolean): JigDefinition {
   const captured = snapshotJsonObject(input, "Jig definition");
-  assertClosedObject(captured, ["flows", "bindings", "hooks"], "Jig definition");
-  const output: { flows?: ProjectSource; bindings?: ProjectSource; hooks?: ProjectSource } = {};
+  assertClosedObject(captured, ["flows", "bindings"], "Jig definition");
+  const output: { flows?: ProjectSource; bindings?: ProjectSource } = {};
   if (Object.hasOwn(captured, "flows")) {
     output.flows = normalizeSource(
       captured.flows as unknown as ProjectSourceInput,
@@ -134,14 +142,35 @@ function normalizeJig(input: JigDefinitionInput, canonical: boolean): JigDefinit
       canonical,
     );
   }
-  if (Object.hasOwn(captured, "hooks")) {
-    output.hooks = normalizeSource(
-      captured.hooks as unknown as ProjectSourceInput,
-      "hooks",
-      canonical,
-    );
-  }
   return record(output) as unknown as JigDefinition;
+}
+
+/** Private experimental project helper used only by the Hook vertical. */
+export function definePrivateHookJig(input: PrivateHookJigDefinitionInput): PrivateHookJigDefinition {
+  return normalizePrivateHookJig(input, false);
+}
+
+/** Evaluator-only normalization for the private Hook authoring overlay. */
+export function normalizePrivateHookJigDefinition(input: unknown): PrivateHookJigDefinition {
+  return normalizePrivateHookJig(input as PrivateHookJigDefinitionInput, true);
+}
+
+function normalizePrivateHookJig(
+  input: PrivateHookJigDefinitionInput,
+  canonical: boolean,
+): PrivateHookJigDefinition {
+  const captured = snapshotJsonObject(input, "experimental Hook Jig definition");
+  assertClosedObject(captured, ["flows", "bindings", "hooks"], "experimental Hook Jig definition");
+  const baseInput: JigDefinitionInput = {
+    ...(Object.hasOwn(captured, "flows") ? { flows: captured.flows as unknown as ProjectSourceInput } : {}),
+    ...(Object.hasOwn(captured, "bindings") ? { bindings: captured.bindings as unknown as ProjectSourceInput } : {}),
+  };
+  const base = normalizeJig(baseInput, canonical);
+  const output: { flows?: ProjectSource; bindings?: ProjectSource; hooks?: ProjectSource } = { ...base };
+  if (Object.hasOwn(captured, "hooks")) {
+    output.hooks = normalizeSource(captured.hooks as unknown as ProjectSourceInput, "hooks", canonical);
+  }
+  return record(output) as unknown as PrivateHookJigDefinition;
 }
 
 export function defineBinding(input: PackageBindingInput): PackageBindingDefinition {

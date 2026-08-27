@@ -27,9 +27,13 @@ try {
 
   await writeFile(join(consumer, "smoke.mjs"), `
 import { defineBinding, defineJig, discover, flowRef } from "@jigging/jig";
+import { bindingRef, defineHook, defineJig as defineHookJig } from "@jigging/jig/experimental/hooks";
 const project = defineJig({ flows: discover("./flows") });
 const binding = defineBinding({ package: "./flows/review", slots: { child: flowRef("./flows/child") } });
-if (project.flows.roots[0] !== "flows" || binding.package !== "flows/review") throw new Error("bad package exports");
+const hookProject = defineHookJig({ hooks: discover("./hooks") });
+const hook = defineHook({ on: { publisher: bindingRef("events"), type: "https://example.org/events/work" }, run: flowRef("./flows/review") });
+if (project.flows.roots[0] !== "flows" || binding.package !== "flows/review" ||
+    hookProject.hooks.roots[0] !== "hooks" || hook.kind !== "hook") throw new Error("bad package exports");
 `);
   const node = Bun.which("node");
   if (node === null) throw new Error("Node is required for package smoke");
@@ -63,12 +67,17 @@ if (!administration.$defs?.startRunRequest) throw new Error("bad packaged admini
 
   await writeFile(join(consumer, "smoke.ts"), `
 import { defineJig, discover, type JigDefinitionInput } from "@jigging/jig";
+import { defineHook, defineJig as defineHookJig, bindingRef, flowRef } from "@jigging/jig/experimental/hooks";
 import type { RootAdministration, RootRunStatus } from "@jigging/jig/administration";
 const input: JigDefinitionInput = { flows: discover("./flows") };
 const project = defineJig(input);
+const hookProject = defineHookJig({ hooks: discover("./hooks") });
+const hook = defineHook({ on: { publisher: bindingRef("events"), type: "https://example.org/events/work" }, run: flowRef("./flows/review") });
 declare const administration: RootAdministration;
 const status: Promise<RootRunStatus> = administration.runStatus({ runId: "sha256:${"a".repeat(64)}" });
 void project;
+void hookProject;
+void hook;
 void status;
 `);
   await writeFile(

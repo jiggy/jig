@@ -5,16 +5,20 @@ import {
   candidates,
   defineBinding,
   defineJig,
-  defineHook,
   defineJournalPublisher,
   discover,
   flowRef,
 } from "../src/index.js";
 import {
+  defineHook,
+  defineJig as defineHookJig,
+} from "../src/experimental/hooks.js";
+import {
   normalizeJigDefinition,
   normalizeHookDefinition,
   normalizeJournalPublisherDefinition,
   normalizePackageBindingDefinition,
+  normalizePrivateHookJigDefinition,
 } from "../src/project/author.js";
 
 describe("Jig project authoring SDK/1", () => {
@@ -30,7 +34,7 @@ describe("Jig project authoring SDK/1", () => {
       kind: "discover",
       roots: ["flows", "vendor"],
     });
-    const project = defineJig({
+    const project = defineHookJig({
       bindings: ["./bindings/z.ts", "./bindings/a.ts"],
       hooks: discover("./hooks"),
     });
@@ -41,7 +45,8 @@ describe("Jig project authoring SDK/1", () => {
       },
       hooks: { kind: "discover", roots: ["hooks"] },
     });
-    expect(normalizeJigDefinition(project)).toEqual(project);
+    expect(normalizePrivateHookJigDefinition(project)).toEqual(project);
+    expect(() => normalizeJigDefinition(project)).toThrow();
     expect(() => defineJig(project as never)).toThrow();
   });
 

@@ -205,6 +205,8 @@ SPI.
 
 Hooks, Service export references, instruction Agent selection,
 `semanticChoice`, and host-capability Bindings remain later gated slices. The
+private `@jigging/jig/experimental/hooks` overlay is implementation evidence,
+not a reopened Project Authoring SDK/1 or a satisfied Hook runtime gate. The
 zero-boilerplate target is resolved; only the changing admitted routing
 universe remains open in
 [`101-default-targets-and-open-routing-candidate.md`](101-default-targets-and-open-routing-candidate.md).

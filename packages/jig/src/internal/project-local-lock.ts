@@ -10,6 +10,7 @@ import {
   type JsonValue,
 } from "../json.js";
 import {
+  privateHookRelationDigest,
   requirePackageProjectValue,
   PRIVATE_CANONICAL_JOURNAL_CONTRACT,
   type ContractIdentity,
@@ -79,7 +80,7 @@ export interface PrivateLockHook {
   readonly publisherBinding: string;
   readonly type: string;
   readonly target: RunTargetIdentity;
-  readonly definitionDigest: string;
+  readonly relationDigest: string;
 }
 
 /**
@@ -165,7 +166,7 @@ export function createPrivateProjectLocalLock(
       publisherBinding: hook.publisherBinding,
       type: hook.type,
       target: { ...hook.target },
-      definitionDigest: hook.definitionDigest,
+      relationDigest: hook.relationDigest,
     };
   }
 
@@ -224,7 +225,7 @@ function normalizeHooks(value: unknown): PrivateProjectLocalLock["hooks"] {
     localName(id, `Hook ${JSON.stringify(id)}`);
     const item = exactObject(
       input[id],
-      ["declarationPath", "source", "publisherBinding", "type", "target", "definitionDigest"],
+      ["declarationPath", "source", "publisherBinding", "type", "target", "relationDigest"],
       `Hook ${id}`,
     );
     const declarationPath = projectPath(item.declarationPath, `Hook ${id} declarationPath`);
@@ -238,14 +239,25 @@ function normalizeHooks(value: unknown): PrivateProjectLocalLock["hooks"] {
     if (typeof item.type !== "string" || [...item.type].length === 0 || [...item.type].length > 512) {
       throw new TypeError(`Hook ${id} type must be a non-empty string of at most 512 characters`);
     }
-    output[id] = Object.freeze({
+    const hook = Object.freeze({
       declarationPath,
       source: item.source,
       publisherBinding,
       type: item.type,
       target: normalizeTarget(item.target, `Hook ${id} target`),
-      definitionDigest: digest(item.definitionDigest, `Hook ${id} definition`),
+      relationDigest: digest(item.relationDigest, `Hook ${id} relation`),
     });
+    if (hook.relationDigest !== privateHookRelationDigest({
+      id,
+      declarationPath: hook.declarationPath,
+      source: hook.source,
+      publisherBinding: hook.publisherBinding,
+      type: hook.type,
+      target: hook.target,
+    })) {
+      throw new TypeError(`Hook ${id} relation digest does not match its declared relation`);
+    }
+    output[id] = hook;
   }
   return Object.freeze(output);
 }

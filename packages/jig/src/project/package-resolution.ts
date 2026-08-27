@@ -448,7 +448,7 @@ function semanticProject(project: PackageProjectValue): JsonValue {
       publisherBinding: hook.publisherBinding,
       type: hook.type,
       target: hook.target,
-      definitionDigest: hook.definitionDigest,
+      relationDigest: hook.relationDigest,
     })),
   } as unknown as JsonValue;
 }

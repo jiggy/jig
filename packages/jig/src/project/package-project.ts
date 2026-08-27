@@ -119,7 +119,7 @@ export interface LinkedHook {
   readonly publisherBinding: string;
   readonly type: string;
   readonly target: RunTargetIdentity;
-  readonly definitionDigest: string;
+  readonly relationDigest: string;
 }
 
 export interface PackageProjectValue {
@@ -248,42 +248,14 @@ function prepareHooks(
       declarationPath,
       "/run",
     );
-    const targetMeaning = target.kind === "flow"
-      ? (() => {
-          const flow = flowByPath.get(target.path)!;
-          return {
-            target,
-            packageDigest: flow.value.package.digest,
-            mode: flow.value.mode,
-            directRun: flow.value.directRun,
-          };
-        })()
-      : (() => {
-          const binding = bindingById.get(target.id)!;
-          return {
-            target,
-            declarationPath: binding.declarationPath,
-            definition: binding.definition,
-            packageDigest: binding.flow.value.package.digest,
-            mode: binding.flow.value.mode,
-          };
-        })();
-    const definitionDigest = privateDomainDigest(
-      "JIG-Hook-Resolved-Definition/1",
-      {
-        id,
-        declarationPath,
-        source: `binding:${publisher.id}`,
-        publisher: {
-          id: publisher.id,
-          declarationPath: publisher.declarationPath,
-          definition: publisher.definition,
-          contract: PRIVATE_CANONICAL_JOURNAL_CONTRACT,
-        },
-        type: definition.on.type,
-        target: targetMeaning,
-      } as unknown as JsonValue,
-    );
+    const relationDigest = privateHookRelationDigest({
+      id,
+      declarationPath,
+      source: `binding:${publisher.id}`,
+      publisherBinding: publisher.id,
+      type: definition.on.type,
+      target,
+    });
     return Object.freeze({
       kind: "hook" as const,
       id,
@@ -292,7 +264,7 @@ function prepareHooks(
       publisherBinding: publisher.id,
       type: definition.on.type,
       target,
-      definitionDigest,
+      relationDigest,
     });
   });
   hooks.sort((left, right) => compareProjectPaths(left.id, right.id));
@@ -309,6 +281,18 @@ function prepareHooks(
     invalid("PROJECT_HOOK_COLLISION", errorText(error));
   }
   return Object.freeze(hooks);
+}
+
+/** Identity of the inert declaration; executable Hook revisions are derived only at admission. */
+export function privateHookRelationDigest(input: {
+  readonly id: string;
+  readonly declarationPath: string;
+  readonly source: string;
+  readonly publisherBinding: string;
+  readonly type: string;
+  readonly target: RunTargetIdentity;
+}): string {
+  return privateDomainDigest("JIG-Hook-Declared-Relation/1", input as unknown as JsonValue);
 }
 
 export function requirePackageProjectValue(value: unknown): PackageProjectValue {

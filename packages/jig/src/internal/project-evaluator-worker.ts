@@ -6,6 +6,7 @@ const PROTOCOL = "jig-author-evaluator/1";
 const MAX_REQUEST_BYTES = 2 * 1024 * 1024;
 const VM_TIMEOUT_MS = 1_000;
 const SDK_ENTRY = "/jig-evaluator/internal/project-evaluator-sdk.bundle.js";
+const HOOK_SDK_ENTRY = "/jig-evaluator/internal/experimental-hook-evaluator-sdk.bundle.js";
 const EVALUATION_CODES = new Set([
   "PROJECT_AUTHORING_VALUE",
   "PROJECT_DEFAULT_EXPORT",
@@ -161,6 +162,7 @@ async function readRequest(): Promise<WorkerRequest> {
 
 async function build(request: WorkerRequest): Promise<string> {
   const sdkSource = await runtime.file(SDK_ENTRY).text();
+  const hookSdkSource = await runtime.file(HOOK_SDK_ENTRY).text();
   const modules = new Map(request.modules.map((module) => [module.projectPath, module]));
   const edges = new Map<string, string>();
   for (const module of request.modules) {
@@ -220,9 +222,20 @@ async function build(request: WorkerRequest): Promise<string> {
           }
           return { path: "sdk", namespace: "jig-sealed" };
         });
+        builder.onResolve({ filter: /^@jigging\/jig\/experimental\/hooks$/ }, (arguments_) => {
+          if (arguments_.kind !== "import-statement" ||
+              !modules.has(arguments_.importer)) {
+            throw deniedImport(arguments_.path);
+          }
+          return { path: "hook-sdk", namespace: "jig-sealed" };
+        });
         builder.onLoad({ filter: /^sdk$/, namespace: "jig-sealed" }, () => ({
           loader: "js",
           contents: sdkSource,
+        }));
+        builder.onLoad({ filter: /^hook-sdk$/, namespace: "jig-sealed" }, () => ({
+          loader: "js",
+          contents: hookSdkSource,
         }));
         builder.onResolve({ filter: /.*/, namespace: "jig-sealed" }, (arguments_) => {
           throw deniedImport(arguments_.path);
