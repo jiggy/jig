@@ -366,8 +366,20 @@ The basename is the `LocalName` identity. There is no duplicate `id` field. A
 rename is one removal plus one addition.
 
 A Binding file default-exports exactly one inert Binding declaration. A Hook
-file default-exports exactly one inert Hook declaration. The later
-authoring projection for a Hook must identify one exact producer, one exact
+file default-exports exactly one inert Hook declaration. The private
+pre-release authoring projection is deliberately limited to:
+
+```ts
+export default defineHook({
+  on: {
+    publisher: bindingRef("work-events"),
+    type: "https://example.org/events/work-created",
+  },
+  run: flowRef("./flows/triage"), // or one exact Run bindingRef(...)
+});
+```
+
+It must identify one exact producer, one exact
 1–512 character Event type, and one exact admitted Run target without
 importing a live object. Flow and Binding target references are explicitly
 tagged; no namespace precedence resolves a raw string.

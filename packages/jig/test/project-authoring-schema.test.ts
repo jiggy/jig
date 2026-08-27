@@ -6,6 +6,7 @@ import {
   candidates,
   defineBinding,
   defineJig,
+  defineHook,
   defineJournalPublisher,
   discover,
   flowRef,
@@ -21,6 +22,7 @@ const schema = compileSchemaFile(schemaBytes, "project-authoring-1.schema.json")
 const project = defineJig({
   flows: discover("./flows"),
   bindings: ["./bindings/review.ts"],
+  hooks: discover("./hooks"),
 });
 const binding = defineBinding({
   package: "./flows/review",
@@ -38,6 +40,13 @@ const binding = defineBinding({
 const publisher = defineJournalPublisher({
   eventTypes: ["https://example.org/events/work-created"],
 });
+const hook = defineHook({
+  on: {
+    publisher: bindingRef("publisher"),
+    type: "https://example.org/events/work-created",
+  },
+  run: flowRef("flows/review"),
+});
 
 function changed(value: unknown, mutator: (copy: Record<string, any>) => void): unknown {
   const copy = structuredClone(value) as Record<string, any>;
@@ -50,10 +59,11 @@ describe("Project Authoring SDK/1 shape schema", () => {
     expect(() => schema.validate(project, "INVALID_PROJECT_AUTHORING")).not.toThrow();
     expect(() => schema.validate(binding, "INVALID_PROJECT_AUTHORING")).not.toThrow();
     expect(() => schema.validate(publisher, "INVALID_PROJECT_AUTHORING")).not.toThrow();
+    expect(() => schema.validate(hook, "INVALID_PROJECT_AUTHORING")).not.toThrow();
   });
 
   for (const [name, value] of [
-    ["unknown project field", changed(project, (item) => { item.hooks = {}; })],
+    ["unknown project field", changed(project, (item) => { item.extra = {}; })],
     ["unknown source kind", changed(project, (item) => { item.flows.kind = "glob"; })],
     ["missing discovery roots", changed(project, (item) => { delete item.flows.roots; })],
     ["unknown Binding field", changed(binding, (item) => { item.grants = {}; })],
@@ -75,6 +85,15 @@ describe("Project Authoring SDK/1 shape schema", () => {
     })],
     ["unknown Journal publisher field", changed(publisher, (item) => {
       item.grants = {};
+    })],
+    ["raw Hook publisher", changed(hook, (item) => {
+      item.on.publisher = "publisher";
+    })],
+    ["candidate Hook target", changed(hook, (item) => {
+      item.run = { kind: "candidates", targets: [flowRef("flows/a"), flowRef("flows/b")] };
+    })],
+    ["unknown Hook field", changed(hook, (item) => {
+      item.filter = {};
     })],
   ] as const) {
     test(`rejects ${name}`, () => {

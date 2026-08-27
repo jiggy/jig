@@ -1287,10 +1287,11 @@ describe.serial("private activation admission SQLite store", () => {
         lockMode: "update",
       });
       await writeFile(join(drift.root, "jig.lock"), json1({
-        kind: "private-package-project-lock/1",
+        kind: "private-package-project-lock/2",
         packages: {},
         bindings: {},
         journalPublishers: {},
+        hooks: {},
       }));
       await expect(applyPrivateActivationReviewPlan({
         projectRoot: drift.root,
@@ -1438,7 +1439,7 @@ async function createFixture(
     const declaration = await retainPackage(store, declarationSource);
     const rootInformation = await stat(root, { bigint: true });
     const lockBytes = json1({
-      kind: "private-package-project-lock/1",
+      kind: "private-package-project-lock/2",
       packages: {
         "flows/run": {
           digest: flow.digest,
@@ -1479,13 +1480,14 @@ async function createFixture(
           eventTypes: ["https://example.org/events/work-created"],
         },
       } : {},
+      hooks: {},
     });
     const lock = decodePrivateProjectLocalLock(lockBytes);
     const captureDigest = digest("capture");
     const planningObservationDigest = digest("planning");
     const candidate = decodePrivateActivationCandidate({
       candidate: json1({
-        kind: "private-activation-candidate/3",
+        kind: "private-activation-candidate/4",
         projectRoot: {
           device: rootInformation.dev.toString(),
           inode: rootInformation.ino.toString(),
@@ -1654,7 +1656,7 @@ async function createComposedFixture(): Promise<Fixture> {
     ]);
     const rootInformation = await stat(root, { bigint: true });
     const lockBytes = json1({
-      kind: "private-package-project-lock/1",
+      kind: "private-package-project-lock/2",
       packages: {
         "flows/child": {
           digest: childPackage.digest,
@@ -1686,6 +1688,7 @@ async function createComposedFixture(): Promise<Fixture> {
         },
       },
       journalPublishers: {},
+      hooks: {},
     });
     const lock = decodePrivateProjectLocalLock(lockBytes);
     const captureDigest = digest("composed-capture");
@@ -1717,7 +1720,7 @@ async function createComposedFixture(): Promise<Fixture> {
     });
     const candidate = decodePrivateActivationCandidate({
       candidate: json1({
-        kind: "private-activation-candidate/3",
+        kind: "private-activation-candidate/4",
         projectRoot: {
           device: rootInformation.dev.toString(),
           inode: rootInformation.ino.toString(),

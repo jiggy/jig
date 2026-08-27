@@ -11,7 +11,7 @@ import {
   privateProjectLocalLockDigest,
   requirePrivateProjectLocalLock,
 } from "../src/internal/project-local-lock.js";
-import { bindingRef, candidates, defineJig, defineJournalPublisher, flowRef } from "../src/project/author.js";
+import { bindingRef, candidates, defineHook, defineJig, defineJournalPublisher, flowRef } from "../src/project/author.js";
 import { captureFlowSource } from "../src/project/flow-source.js";
 import {
   linkPackageProject,
@@ -33,13 +33,13 @@ const journalContract = await readFile(new URL(
 describe("private package-project portable lock projection", () => {
   test("has one empty canonical byte vector and external identity", () => {
     const bytes = encoder.encode(
-      '{"bindings":{},"journalPublishers":{},"kind":"private-package-project-lock/1","packages":{}}\n',
+      '{"bindings":{},"hooks":{},"journalPublishers":{},"kind":"private-package-project-lock/2","packages":{}}\n',
     );
     const value = decodePrivateProjectLocalLock(bytes);
 
     expect(encodePrivateProjectLocalLock(value)).toEqual(bytes);
     expect(privateProjectLocalLockDigest(value)).toBe(
-      "sha256:4087e05c54765291bd843b95879f6318214dd035616674d36547c75a702964ea",
+      "sha256:7098068bee74344e9f58b96af9c26d5d284a8d61a67703d66ef6031b5bc8c017",
     );
     // Strict decoding validates inert spelling and relations; it does not
     // prove that these portable bytes came from captured package sources.
@@ -143,6 +143,16 @@ uses:
             slots: { journal: bindingRef("publisher") },
           }),
         ],
+        hooks: [{
+          sourcePath: "hooks/on-work.ts",
+          definition: defineHook({
+            on: {
+              publisher: bindingRef("publisher"),
+              type: "https://example.org/events/work-created",
+            },
+            run: bindingRef("producer"),
+          }),
+        }],
       });
       const lock = createPrivateProjectLocalLock(linked);
       expect(Object.keys(lock.bindings)).toEqual(["producer"]);
@@ -155,6 +165,14 @@ uses:
         },
         eventTypes: ["https://example.org/events/work-created"],
       });
+      expect(lock.hooks["on-work"]).toMatchObject({
+        declarationPath: "hooks/on-work.ts",
+        source: "binding:publisher",
+        publisherBinding: "publisher",
+        type: "https://example.org/events/work-created",
+        target: { kind: "binding", id: "producer" },
+      });
+      expect(lock.hooks["on-work"]!.definitionDigest).toMatch(/^sha256:[0-9a-f]{64}$/);
       const decoded = decodePrivateProjectLocalLock(encodePrivateProjectLocalLock(lock));
       expect(decoded).toEqual(lock);
       const base = structuredClone(lock) as any;
@@ -167,15 +185,22 @@ uses:
       expectInvalid(base, (value) => {
         value.journalPublishers.publisher.contract.digest = `sha256:${"0".repeat(64)}`;
       }, "canonical Journal contract");
+      expectInvalid(base, (value) => {
+        value.hooks["on-work"].type = "https://example.org/events/unknown";
+      }, "not authorized");
+      expectInvalid(base, (value) => {
+        value.hooks["on-work"].target = { kind: "binding", id: "missing" };
+      }, "non-Run Binding");
     });
   });
 
   test("rejects every alternate spelling and forged host evidence", () => {
     const canonical = {
-      kind: "private-package-project-lock/1",
+      kind: "private-package-project-lock/2",
       packages: {},
       bindings: {},
       journalPublishers: {},
+      hooks: {},
     };
     const valid = lockBytes(canonical);
     expect(() => decodePrivateProjectLocalLock(valid)).not.toThrow();
@@ -186,7 +211,7 @@ uses:
       "not in canonical",
     );
     expect(() => decodePrivateProjectLocalLock(encoder.encode(
-      '{"kind":"private-package-project-lock/1","kind":"private-package-project-lock/1","packages":{},"bindings":{},"journalPublishers":{}}\n',
+      '{"kind":"private-package-project-lock/2","kind":"private-package-project-lock/2","packages":{},"bindings":{},"journalPublishers":{},"hooks":{}}\n',
     ))).toThrow("duplicate object member");
     expect(() => decodePrivateProjectLocalLock(lockBytes({
       ...canonical,
@@ -347,7 +372,7 @@ function metadataBoundLock(
     return [`slot-${index}`, index === 0 && malformedFirst ? null : value];
   }));
   return {
-    kind: "private-package-project-lock/1",
+    kind: "private-package-project-lock/2",
     packages: {
       "flows/bounded": {
         digest: `sha256:${"b".repeat(64)}`,
@@ -360,6 +385,7 @@ function metadataBoundLock(
     },
     bindings: {},
     journalPublishers: {},
+    hooks: {},
   };
 }
 
@@ -375,7 +401,7 @@ function rootPackageCollection(count: number): unknown {
       provides: {},
     },
   ]));
-  return { kind: "private-package-project-lock/1", packages, bindings: {}, journalPublishers: {} };
+  return { kind: "private-package-project-lock/2", packages, bindings: {}, journalPublishers: {}, hooks: {} };
 }
 
 function serviceGraph(count: number, cyclic: boolean): unknown {
@@ -408,7 +434,7 @@ function serviceGraph(count: number, cyclic: boolean): unknown {
       },
     };
   }
-  return { kind: "private-package-project-lock/1", packages, bindings, journalPublishers: {} };
+  return { kind: "private-package-project-lock/2", packages, bindings, journalPublishers: {}, hooks: {} };
 }
 
 function lockAtCanonicalBodySize(target: number): unknown {
@@ -434,7 +460,7 @@ function lockAtCanonicalBodySize(target: number): unknown {
         provides: { api: contract },
       };
     }
-    return { kind: "private-package-project-lock/1", packages, bindings: {}, journalPublishers: {} };
+    return { kind: "private-package-project-lock/2", packages, bindings: {}, journalPublishers: {}, hooks: {} };
   };
 
   const minimum = canonicalJson(make(1, 0) as JsonValue).byteLength;

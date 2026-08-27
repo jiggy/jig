@@ -24,6 +24,8 @@ import { compileEmbeddedSchema } from "../schema/index.js";
 import { capturePackageDirectory } from "../package/capture.js";
 import {
   type JigDefinition,
+  type HookDefinition,
+  normalizeHookDefinition,
   normalizeJournalPublisherDefinition,
   normalizeJigDefinition,
   normalizePackageBindingDefinition,
@@ -92,9 +94,9 @@ export interface EvaluatorProfile {
 }
 
 export interface EvaluatedAuthorDeclaration<
-  Value extends JigDefinition | BindingDefinition = JigDefinition | BindingDefinition,
+  Value extends JigDefinition | BindingDefinition | HookDefinition = JigDefinition | BindingDefinition | HookDefinition,
 > {
-  readonly expected: "project" | "binding";
+  readonly expected: "project" | "binding" | "hook";
   readonly source: {
     readonly entryProjectPath: string;
     readonly bytes: number;
@@ -135,7 +137,7 @@ export async function evaluateAuthorClosure(
   options: PrivateAuthorEvaluatorOptions,
   captured: CapturedAuthorClosure,
   entryProjectPath: string,
-  expected: "project" | "binding",
+  expected: "project" | "binding" | "hook",
   signal?: AbortSignal,
 ): Promise<EvaluatedAuthorDeclaration> {
   if (!isCapturedAuthorClosure(captured)) {
@@ -321,11 +323,13 @@ export async function evaluateAuthorClosure(
         value,
         "PROJECT_AUTHORING_SCHEMA_INVALID",
       );
-      let normalized: JigDefinition | BindingDefinition;
+      let normalized: JigDefinition | BindingDefinition | HookDefinition;
       try {
         normalized = expected === "project"
           ? normalizeJigDefinition(value)
-          : normalizeBindingDefinition(value);
+          : expected === "binding"
+            ? normalizeBindingDefinition(value)
+            : normalizeHookDefinition(value);
       } catch (error) {
         invalid(
           "PROJECT_DECLARATION_INVALID",
@@ -424,7 +428,7 @@ function checkedResponse(response: JsonValue, projectPath: string): JsonValue {
   return response.value!;
 }
 
-function contextualAuthorSchema(bytes: Uint8Array, expected: "project" | "binding") {
+function contextualAuthorSchema(bytes: Uint8Array, expected: "project" | "binding" | "hook") {
   let document: JsonValue;
   try {
     document = decodeJson1(bytes);
@@ -437,7 +441,11 @@ function contextualAuthorSchema(bytes: Uint8Array, expected: "project" | "bindin
   if (!isRecord(document) || !isRecord(document.$defs)) {
     unavailable("PROJECT_EVALUATOR_UNAVAILABLE", "captured authoring schema has no definitions");
   }
-  const definition = expected === "project" ? "project" : "bindingDefinition";
+  const definition = expected === "project"
+    ? "project"
+    : expected === "binding"
+      ? "bindingDefinition"
+      : "hookDefinition";
   try {
     return compileEmbeddedSchema(
       Object.freeze({ $ref: `#/$defs/${definition}` }),

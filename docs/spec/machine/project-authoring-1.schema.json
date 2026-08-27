@@ -3,7 +3,8 @@
   "title": "Jig project authoring value/1",
   "oneOf": [
     { "$ref": "#/$defs/project" },
-    { "$ref": "#/$defs/bindingDefinition" }
+    { "$ref": "#/$defs/bindingDefinition" },
+    { "$ref": "#/$defs/hookDefinition" }
   ],
   "$defs": {
     "localName": {
@@ -53,7 +54,8 @@
       "type": "object",
       "properties": {
         "flows": { "$ref": "#/$defs/source" },
-        "bindings": { "$ref": "#/$defs/source" }
+        "bindings": { "$ref": "#/$defs/source" },
+        "hooks": { "$ref": "#/$defs/source" }
       },
       "additionalProperties": false
     },
@@ -144,6 +146,28 @@
         { "$ref": "#/$defs/packageBinding" },
         { "$ref": "#/$defs/journalPublisher" }
       ]
+    },
+    "hookDefinition": {
+      "type": "object",
+      "properties": {
+        "kind": { "const": "hook" },
+        "on": {
+          "type": "object",
+          "properties": {
+            "publisher": { "$ref": "#/$defs/bindingRef" },
+            "type": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            }
+          },
+          "required": ["publisher", "type"],
+          "additionalProperties": false
+        },
+        "run": { "$ref": "#/$defs/runTargetRef" }
+      },
+      "required": ["kind", "on", "run"],
+      "additionalProperties": false
     }
   }
 }

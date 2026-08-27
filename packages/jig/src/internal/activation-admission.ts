@@ -41,7 +41,7 @@ import {
   type PrivateRetainedPackageProject,
 } from "../project/retained-project.js";
 
-const KIND = "private-activation-candidate/3";
+const KIND = "private-activation-candidate/4";
 const PLAN_KIND = "private-activation-plan/1";
 const ADMISSION_KIND = "private-activation-admission/1";
 const DIGEST = /^sha256:[0-9a-f]{64}$/;
@@ -218,7 +218,7 @@ export function privateActivationCandidateDigest(
 ): string {
   const artifact = normalizeArtifact(value);
   return privateDomainDigest(
-    "JIG-Private-Activation-Candidate/3",
+    "JIG-Private-Activation-Candidate/4",
     artifact.candidate as unknown as JsonValue,
   );
 }

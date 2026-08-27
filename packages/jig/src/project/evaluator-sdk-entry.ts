@@ -3,6 +3,7 @@ export {
   candidates,
   defineBinding,
   defineJig,
+  defineHook,
   defineJournalPublisher,
   discover,
   flowRef,

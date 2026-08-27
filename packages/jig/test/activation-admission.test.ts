@@ -147,7 +147,7 @@ describe("private activation admission candidate", () => {
     const childPackage = digest("child-package");
     const parentPackage = digest("parent-package");
     const lock = {
-      kind: "private-package-project-lock/1",
+      kind: "private-package-project-lock/2",
       packages: {
         "flows/child": {
           digest: childPackage,
@@ -179,6 +179,7 @@ describe("private activation admission candidate", () => {
         },
       },
       journalPublishers: {},
+      hooks: {},
     };
     const lockEncoding = lockBytes(lock);
     const lockValue = decodePrivateProjectLocalLock(lockEncoding);
@@ -225,7 +226,7 @@ describe("private activation admission candidate", () => {
     };
     const artifact = decodePrivateActivationCandidate({
       candidate: candidateBytes({
-        kind: "private-activation-candidate/3",
+        kind: "private-activation-candidate/4",
         projectRoot: { device: "64768", inode: "999999" },
         captureDigest,
         semanticDigest: digest("composed-semantics"),
@@ -275,8 +276,8 @@ describe("private activation admission candidate", () => {
     expect(() => decodePrivateActivationCandidate({
       ...valid,
       candidate: encoder.encode(validString(valid.candidate).replace(
-        '"kind":"private-activation-candidate/3"',
-        '"kind":"private-activation-candidate/3","kind":"private-activation-candidate/3"',
+        '"kind":"private-activation-candidate/4"',
+        '"kind":"private-activation-candidate/4","kind":"private-activation-candidate/4"',
       )),
     })).toThrow("duplicate object member");
 
@@ -478,7 +479,7 @@ describe("private activation admission", () => {
 function fixture() {
   const packageDigest = digest("run-package");
   const lock = {
-    kind: "private-package-project-lock/1",
+    kind: "private-package-project-lock/2",
     packages: {
       "flows/run": {
         digest: packageDigest,
@@ -491,13 +492,14 @@ function fixture() {
     },
     bindings: {},
     journalPublishers: {},
+    hooks: {},
   };
   const canonicalLock = lockBytes(lock);
   const decodedLock = decodePrivateProjectLocalLock(canonicalLock);
   const captureDigest = digest("capture");
   const planningObservationDigest = digest("planning");
   const candidate = {
-    kind: "private-activation-candidate/3",
+    kind: "private-activation-candidate/4",
     projectRoot: { device: "64768", inode: "123456" },
     captureDigest,
     semanticDigest: digest("semantics"),
@@ -562,7 +564,7 @@ function expectLockTargetMismatch(
 
 function bindingFixture() {
   const lock = {
-    kind: "private-package-project-lock/1",
+    kind: "private-package-project-lock/2",
     packages: {
       "flows/run": {
         digest: digest("binding-package"),
@@ -577,6 +579,7 @@ function bindingFixture() {
       run: { packagePath: "flows/run", attachments: {}, slots: {} },
     },
     journalPublishers: {},
+    hooks: {},
   };
   const lockEncoding = lockBytes(lock);
   const lockValue = decodePrivateProjectLocalLock(lockEncoding);
@@ -584,7 +587,7 @@ function bindingFixture() {
   const planningObservationDigest = digest("binding-planning");
   return {
     candidate: candidateBytes({
-      kind: "private-activation-candidate/3",
+      kind: "private-activation-candidate/4",
       projectRoot: { device: "64768", inode: "654321" },
       captureDigest,
       semanticDigest: digest("binding-semantics"),

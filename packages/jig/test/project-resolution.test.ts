@@ -12,12 +12,13 @@ import {
   type PrivateActivationRecipeObservationInput,
 } from "../src/internal/activation-planning.js";
 import { privateDomainDigest } from "../src/internal/identity.js";
-import { bindingRef, defineBinding, defineJig, defineJournalPublisher, flowRef } from "../src/project/author.js";
+import { bindingRef, defineBinding, defineHook, defineJig, defineJournalPublisher, flowRef } from "../src/project/author.js";
 import { captureFlowSource } from "../src/project/flow-source.js";
 import {
   linkPackageProject,
   requirePackageProjectValue,
   type InjectedBindingDeclaration,
+  type InjectedHookDeclaration,
   type PackageProjectValue,
   type RunTargetIdentity,
 } from "../src/project/package-project.js";
@@ -141,6 +142,47 @@ uses:
         eventTypes: ["https://example.org/events/work-created"],
       });
     });
+  });
+
+  test("commits linked Hooks to semantic identity without creating activation targets", async () => {
+    const trees = { "flows/triage": run("triage") };
+    const bindings = [{
+      sourcePath: "bindings/publisher.ts",
+      definition: defineJournalPublisher({
+        eventTypes: ["https://example.org/events/work-created"],
+      }),
+    }];
+    let withoutHook: string | undefined;
+    await withProject(trees, bindings, async (project) => {
+      const requests = buildPrivateActivationRequests(project);
+      withoutHook = resolveLinkedPackageProjectObservation(
+        project,
+        digest("hook-capture"),
+        planning(requests, () => "planned"),
+      ).semanticDigest;
+    });
+    await withProject(trees, bindings, async (project) => {
+      const requests = buildPrivateActivationRequests(project);
+      expect(requests.map(({ target }) => target)).toEqual([
+        { kind: "flow", path: "flows/triage" },
+      ]);
+      expect(project.hooks).toHaveLength(1);
+      const withHook = resolveLinkedPackageProjectObservation(
+        project,
+        digest("hook-capture"),
+        planning(requests, () => "planned"),
+      );
+      expect(withHook.semanticDigest).not.toBe(withoutHook);
+    }, [{
+      sourcePath: "hooks/on-work.ts",
+      definition: defineHook({
+        on: {
+          publisher: bindingRef("publisher"),
+          type: "https://example.org/events/work-created",
+        },
+        run: flowRef("flows/triage"),
+      }),
+    }]);
   });
 
   test("requires an exact request-matched planning answer for every target", async () => {
@@ -494,6 +536,7 @@ async function withProject(
   trees: Readonly<Record<string, Readonly<Record<string, string>>>>,
   bindings: readonly InjectedBindingDeclaration[],
   action: (project: PackageProjectValue) => Promise<void> | void,
+  hooks: readonly InjectedHookDeclaration[] = [],
 ): Promise<void> {
   const root = await mkdtemp(join(tmpdir(), "jig-project-resolution-"));
   const store = join(root, "store");
@@ -509,7 +552,7 @@ async function withProject(
     }
     source = await captureFlowSource(root, defineJig({ flows: Object.keys(trees) }).flows);
     const flows = await retainFlowSourcePackages(store, source);
-    await action(linkPackageProject({ flows, bindings }));
+    await action(linkPackageProject({ flows, bindings, hooks }));
   } finally {
     await source?.dispose();
     await rm(root, { recursive: true, force: true });

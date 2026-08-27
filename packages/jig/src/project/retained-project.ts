@@ -1,7 +1,7 @@
 import { invalid } from "../diagnostics.js";
 import { privateDomainDigest } from "../internal/identity.js";
 import type { JsonValue } from "../json.js";
-import type { BindingDefinition, JigDefinition } from "./author.js";
+import type { BindingDefinition, HookDefinition, JigDefinition } from "./author.js";
 import {
   evaluateAuthorClosure,
   type EvaluatedAuthorDeclaration,
@@ -35,6 +35,12 @@ export interface RetainedBindingDeclaration {
   readonly evaluation: EvaluatedAuthorDeclaration<BindingDefinition>;
 }
 
+export interface RetainedHookDeclaration {
+  readonly id: string;
+  readonly sourcePath: string;
+  readonly evaluation: EvaluatedAuthorDeclaration<HookDefinition>;
+}
+
 export interface PrivateRetainedPackageProject {
   readonly captureDigest: string;
   readonly root: {
@@ -45,8 +51,10 @@ export interface PrivateRetainedPackageProject {
   readonly project: EvaluatedAuthorDeclaration<JigDefinition>;
   readonly flowSource: readonly (FlowDiscoveryObservation | FlowExactObservation)[];
   readonly bindingSource: readonly DeclarationSourceObservation[];
+  readonly hookSource: readonly DeclarationSourceObservation[];
   readonly flows: readonly RetainedFlowInput[];
   readonly bindings: readonly RetainedBindingDeclaration[];
+  readonly hooks: readonly RetainedHookDeclaration[];
   readonly linked: PackageProjectValue;
 }
 
@@ -75,9 +83,11 @@ export async function retainPackageProject(
     ) as EvaluatedAuthorDeclaration<JigDefinition>;
 
     const bindingSource = await captureDeclarationSource(root, bootstrapProject.value.bindings);
+    const hookSource = await captureDeclarationSource(root, bootstrapProject.value.hooks);
     closure = await captureOpenedAuthorClosure(root, [
       entry,
       ...bindingSource.members.map(({ projectPath }) => projectPath),
+      ...hookSource.members.map(({ projectPath }) => projectPath),
     ]);
     assertBootstrapPreserved(bootstrap, closure);
     const project = await evaluateAuthorClosure(
@@ -102,17 +112,31 @@ export async function retainPackageProject(
       ) as EvaluatedAuthorDeclaration<BindingDefinition>;
       bindings.push(Object.freeze({ id: member.id, sourcePath: member.projectPath, evaluation }));
     }
+    const hooks: RetainedHookDeclaration[] = [];
+    for (const member of hookSource.members) {
+      const evaluation = await evaluateAuthorClosure(
+        options.evaluator,
+        closure,
+        member.projectPath,
+        "hook",
+        signal,
+      ) as EvaluatedAuthorDeclaration<HookDefinition>;
+      hooks.push(Object.freeze({ id: member.id, sourcePath: member.projectPath, evaluation }));
+    }
     await bindingSource.verify();
+    await hookSource.verify();
 
     flowSource = await captureOpenedFlowSource(root, project.value.flows);
     const retainedFlows = await retainFlowSourcePackages(options.storeRoot, flowSource);
     const declarationArtifact = await retainAuthorClosure(options.storeRoot, closure);
     await bindingSource.verify();
+    await hookSource.verify();
     await root.verify();
 
     const linked = linkPackageProject({
       flows: retainedFlows,
       bindings: bindings.map(({ sourcePath, evaluation }) => ({ sourcePath, definition: evaluation.value })),
+      hooks: hooks.map(({ sourcePath, evaluation }) => ({ sourcePath, definition: evaluation.value })),
     });
     const rootIdentity = Object.freeze({
       device: root.information.dev.toString(),
@@ -124,8 +148,10 @@ export async function retainPackageProject(
       project,
       flowSource: flowSource.observations,
       bindingSource: bindingSource.observations,
+      hookSource: hookSource.observations,
       flows: retainedFlows,
       bindings,
+      hooks,
     });
     const value = Object.freeze({
       captureDigest,
@@ -134,8 +160,10 @@ export async function retainPackageProject(
       project,
       flowSource: flowSource.observations,
       bindingSource: bindingSource.observations,
+      hookSource: hookSource.observations,
       flows: retainedFlows,
       bindings: Object.freeze(bindings),
+      hooks: Object.freeze(hooks),
       linked,
     });
     authenticProjects.add(value);
@@ -186,8 +214,10 @@ function digestCapture(input: {
   readonly project: EvaluatedAuthorDeclaration<JigDefinition>;
   readonly flowSource: readonly (FlowDiscoveryObservation | FlowExactObservation)[];
   readonly bindingSource: readonly DeclarationSourceObservation[];
+  readonly hookSource: readonly DeclarationSourceObservation[];
   readonly flows: readonly RetainedFlowInput[];
   readonly bindings: readonly RetainedBindingDeclaration[];
+  readonly hooks: readonly RetainedHookDeclaration[];
 }): string {
   const value = {
     root: input.root,
@@ -195,11 +225,17 @@ function digestCapture(input: {
     project: evaluationIdentity(input.project),
     flowSource: input.flowSource,
     bindingSource: input.bindingSource,
+    hookSource: input.hookSource,
     flows: input.flows.map((flow) => ({ provenance: flow.provenance, package: flow.package })),
     bindings: input.bindings.map((binding) => ({
       id: binding.id,
       sourcePath: binding.sourcePath,
       evaluation: evaluationIdentity(binding.evaluation),
+    })),
+    hooks: input.hooks.map((hook) => ({
+      id: hook.id,
+      sourcePath: hook.sourcePath,
+      evaluation: evaluationIdentity(hook.evaluation),
     })),
   };
   return privateDomainDigest(

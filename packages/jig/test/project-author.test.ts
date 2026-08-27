@@ -5,12 +5,14 @@ import {
   candidates,
   defineBinding,
   defineJig,
+  defineHook,
   defineJournalPublisher,
   discover,
   flowRef,
 } from "../src/index.js";
 import {
   normalizeJigDefinition,
+  normalizeHookDefinition,
   normalizeJournalPublisherDefinition,
   normalizePackageBindingDefinition,
 } from "../src/project/author.js";
@@ -28,12 +30,16 @@ describe("Jig project authoring SDK/1", () => {
       kind: "discover",
       roots: ["flows", "vendor"],
     });
-    const project = defineJig({ bindings: ["./bindings/z.ts", "./bindings/a.ts"] });
+    const project = defineJig({
+      bindings: ["./bindings/z.ts", "./bindings/a.ts"],
+      hooks: discover("./hooks"),
+    });
     expect(project).toEqual({
       bindings: {
         kind: "members",
         paths: ["bindings/a.ts", "bindings/z.ts"],
       },
+      hooks: { kind: "discover", roots: ["hooks"] },
     });
     expect(normalizeJigDefinition(project)).toEqual(project);
     expect(() => defineJig(project as never)).toThrow();
@@ -100,6 +106,42 @@ describe("Jig project authoring SDK/1", () => {
     expect(Object.isFrozen(publisher.eventTypes)).toBeTrue();
     expect(normalizeJournalPublisherDefinition(publisher)).toEqual(publisher);
     expect(() => defineJournalPublisher(publisher as never)).toThrow();
+  });
+
+  test("captures one exact inert Hook relation", () => {
+    const hook = defineHook({
+      on: {
+        publisher: bindingRef("work-events"),
+        type: "https://example.org/events/work-created",
+      },
+      run: flowRef("flows/triage"),
+    });
+    expect(hook).toEqual({
+      kind: "hook",
+      on: {
+        publisher: { kind: "binding", id: "work-events" },
+        type: "https://example.org/events/work-created",
+      },
+      run: { kind: "flow", path: "flows/triage" },
+    });
+    expect(Object.isFrozen(hook.on)).toBeTrue();
+    expect(normalizeHookDefinition(hook)).toEqual(hook);
+    expect(() => defineHook(hook as never)).toThrow();
+  });
+
+  test("rejects active, loose, or extended Hook policy", () => {
+    const base = {
+      on: {
+        publisher: bindingRef("work-events"),
+        type: "https://example.org/events/work-created",
+      },
+      run: flowRef("flows/triage"),
+    };
+    expect(() => defineHook({ ...base, callback: () => undefined } as never)).toThrow();
+    expect(() => defineHook({ ...base, on: { ...base.on, publisher: flowRef("flows/events") } } as never)).toThrow();
+    expect(() => defineHook({ ...base, on: [base.on] } as never)).toThrow();
+    expect(() => defineHook({ ...base, run: candidates([flowRef("flows/a"), flowRef("flows/b")]) } as never)).toThrow();
+    expect(() => defineHook({ ...base, run: "flows/triage" } as never)).toThrow();
   });
 
   test("rejects ambiguous or protected Journal publication authority", () => {

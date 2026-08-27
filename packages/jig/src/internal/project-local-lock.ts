@@ -24,7 +24,7 @@ import {
 } from "../project/paths.js";
 import { privateDomainDigest } from "./identity.js";
 
-const KIND = "private-package-project-lock/1";
+const KIND = "private-package-project-lock/2";
 const DIGEST = /^sha256:[0-9a-f]{64}$/;
 const LOCAL_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const MAX_METADATA_MEMBERS = 256;
@@ -73,17 +73,27 @@ export interface PrivateLockJournalPublisher {
   readonly eventTypes: readonly string[];
 }
 
+export interface PrivateLockHook {
+  readonly declarationPath: string;
+  readonly source: string;
+  readonly publisherBinding: string;
+  readonly type: string;
+  readonly target: RunTargetIdentity;
+  readonly definitionDigest: string;
+}
+
 /**
  * Package-project-only portable evidence. This is deliberately not the public
- * jig.lock schema: upstream source revisions, Hooks, Semantic Choice, and
- * generic host-capability registrations do not have closed models yet. The
- * one Journal-specific publisher declaration is closed here explicitly.
+ * jig.lock schema: upstream source revisions, Semantic Choice, and generic
+ * host-capability registrations do not have closed models yet. Its one inert
+ * Hook relation is closed here only as private candidate evidence.
  */
 export interface PrivateProjectLocalLock {
   readonly kind: typeof KIND;
   readonly packages: Readonly<Record<string, PrivateLockPackage>>;
   readonly bindings: Readonly<Record<string, PrivateLockBinding>>;
   readonly journalPublishers: Readonly<Record<string, PrivateLockJournalPublisher>>;
+  readonly hooks: Readonly<Record<string, PrivateLockHook>>;
 }
 
 /** Project portable package/contract choices, with no host activation data. */
@@ -147,7 +157,19 @@ export function createPrivateProjectLocalLock(
     };
   }
 
-  const lock = normalizeLock({ kind: KIND, packages, bindings, journalPublishers });
+  const hooks: Record<string, JsonValue> = Object.create(null) as Record<string, JsonValue>;
+  for (const hook of linked.hooks) {
+    hooks[hook.id] = {
+      declarationPath: hook.declarationPath,
+      source: hook.source,
+      publisherBinding: hook.publisherBinding,
+      type: hook.type,
+      target: { ...hook.target },
+      definitionDigest: hook.definitionDigest,
+    };
+  }
+
+  const lock = normalizeLock({ kind: KIND, packages, bindings, journalPublishers, hooks });
   // The guarded value must already satisfy the same persisted byte budget its
   // strict decoder enforces; a later encode is not allowed to discover this.
   encodeNormalized(lock);
@@ -172,7 +194,7 @@ export function decodePrivateProjectLocalLock(bytes: Uint8Array): PrivateProject
 /** External evidence identity; it is intentionally not embedded in the lock. */
 export function privateProjectLocalLockDigest(value: PrivateProjectLocalLock): string {
   return privateDomainDigest(
-    "JIG-Private-Package-Project-Lock/1",
+    "JIG-Private-Package-Project-Lock/2",
     requirePrivateProjectLocalLock(value) as unknown as JsonValue,
   );
 }
@@ -185,13 +207,47 @@ export function requirePrivateProjectLocalLock(value: unknown): PrivateProjectLo
 }
 
 function normalizeLock(value: unknown): PrivateProjectLocalLock {
-  const root = exactObject(value, ["kind", "packages", "bindings", "journalPublishers"], "lock");
+  const root = exactObject(value, ["kind", "packages", "bindings", "journalPublishers", "hooks"], "lock");
   if (root.kind !== KIND) throw new TypeError(`lock kind must be ${KIND}`);
   const packages = normalizePackages(root.packages);
   const bindings = normalizeBindings(root.bindings);
   const journalPublishers = normalizeJournalPublishers(root.journalPublishers);
-  validateReferences(packages, bindings, journalPublishers);
-  return Object.freeze({ kind: KIND, packages, bindings, journalPublishers });
+  const hooks = normalizeHooks(root.hooks);
+  validateReferences(packages, bindings, journalPublishers, hooks);
+  return Object.freeze({ kind: KIND, packages, bindings, journalPublishers, hooks });
+}
+
+function normalizeHooks(value: unknown): PrivateProjectLocalLock["hooks"] {
+  const input = object(value, "hooks");
+  const output: Record<string, PrivateLockHook> = Object.create(null) as Record<string, PrivateLockHook>;
+  for (const id of Object.keys(input).sort()) {
+    localName(id, `Hook ${JSON.stringify(id)}`);
+    const item = exactObject(
+      input[id],
+      ["declarationPath", "source", "publisherBinding", "type", "target", "definitionDigest"],
+      `Hook ${id}`,
+    );
+    const declarationPath = projectPath(item.declarationPath, `Hook ${id} declarationPath`);
+    if (!declarationPath.endsWith(`/${id}.ts`) && declarationPath !== `${id}.ts`) {
+      throw new TypeError(`Hook ${id} declaration path must end in ${id}.ts`);
+    }
+    const publisherBinding = localName(item.publisherBinding, `Hook ${id} publisherBinding`);
+    if (item.source !== `binding:${publisherBinding}`) {
+      throw new TypeError(`Hook ${id} source must name its publisher Binding`);
+    }
+    if (typeof item.type !== "string" || [...item.type].length === 0 || [...item.type].length > 512) {
+      throw new TypeError(`Hook ${id} type must be a non-empty string of at most 512 characters`);
+    }
+    output[id] = Object.freeze({
+      declarationPath,
+      source: item.source,
+      publisherBinding,
+      type: item.type,
+      target: normalizeTarget(item.target, `Hook ${id} target`),
+      definitionDigest: digest(item.definitionDigest, `Hook ${id} definition`),
+    });
+  }
+  return Object.freeze(output);
 }
 
 function normalizeJournalPublishers(value: unknown): PrivateProjectLocalLock["journalPublishers"] {
@@ -349,6 +405,7 @@ function validateReferences(
   packages: PrivateProjectLocalLock["packages"],
   bindings: PrivateProjectLocalLock["bindings"],
   journalPublishers: PrivateProjectLocalLock["journalPublishers"],
+  hooks: PrivateProjectLocalLock["hooks"],
 ): void {
   for (const [id, binding] of Object.entries(bindings)) {
     const consumer = packages[binding.packagePath];
@@ -407,6 +464,14 @@ function validateReferences(
   }
   for (const id of Object.keys(journalPublishers)) {
     if (Object.hasOwn(bindings, id)) throw new TypeError(`duplicate Binding ID ${id}`);
+  }
+  for (const [id, hook] of Object.entries(hooks)) {
+    const publisher = journalPublishers[hook.publisherBinding];
+    if (publisher === undefined) throw new TypeError(`Hook ${id} selects an unknown Journal publisher`);
+    if (!publisher.eventTypes.includes(hook.type)) {
+      throw new TypeError(`Hook ${id} type is not authorized by its Journal publisher`);
+    }
+    validateRunTarget(hook.target, packages, bindings, `Hook ${id}`);
   }
   rejectServiceCycles(packages, bindings);
 }

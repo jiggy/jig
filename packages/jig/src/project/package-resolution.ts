@@ -440,6 +440,16 @@ function semanticProject(project: PackageProjectValue): JsonValue {
       contract: publisher.contract,
       eventTypes: publisher.eventTypes,
     })),
+    hooks: project.hooks.map((hook) => ({
+      kind: hook.kind,
+      id: hook.id,
+      declarationPath: hook.declarationPath,
+      source: hook.source,
+      publisherBinding: hook.publisherBinding,
+      type: hook.type,
+      target: hook.target,
+      definitionDigest: hook.definitionDigest,
+    })),
   } as unknown as JsonValue;
 }
 

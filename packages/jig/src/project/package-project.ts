@@ -1,12 +1,15 @@
 import { CheckError, invalid } from "../diagnostics.js";
+import { privateDomainDigest } from "../internal/identity.js";
 import type { JsonObject, JsonValue } from "../json.js";
 import type { CheckedContractReference, InspectedPackage } from "../package/inspect.js";
 import { SchemaDiagnostic } from "../schema/index.js";
 import {
   defineBinding,
   normalizeJournalPublisherDefinition,
+  normalizeHookDefinition,
   normalizePackageBindingDefinition,
   type BindingDefinition,
+  type HookDefinition,
   type JournalPublisherDefinition,
   type PackageBindingInput,
   type RunTargetRef,
@@ -39,9 +42,15 @@ export interface InjectedBindingDeclaration {
   readonly definition: unknown;
 }
 
+export interface InjectedHookDeclaration {
+  readonly sourcePath: string;
+  readonly definition: unknown;
+}
+
 export interface PackageProjectInput {
   readonly flows: readonly RetainedFlowInput[];
   readonly bindings: readonly InjectedBindingDeclaration[];
+  readonly hooks?: readonly InjectedHookDeclaration[];
 }
 
 export interface ContractIdentity {
@@ -102,10 +111,22 @@ export interface LinkedJournalPublisher {
   readonly eventTypes: readonly string[];
 }
 
+export interface LinkedHook {
+  readonly kind: "hook";
+  readonly id: string;
+  readonly declarationPath: string;
+  readonly source: string;
+  readonly publisherBinding: string;
+  readonly type: string;
+  readonly target: RunTargetIdentity;
+  readonly definitionDigest: string;
+}
+
 export interface PackageProjectValue {
   readonly flows: readonly LinkedFlow[];
   readonly bindings: readonly LinkedPackageBinding[];
   readonly journalPublishers: readonly LinkedJournalPublisher[];
+  readonly hooks: readonly LinkedHook[];
 }
 
 interface PreparedBinding {
@@ -133,7 +154,11 @@ interface PreparedFlow {
  * without I/O. This is invocation-local meaning, not capture or admission.
  */
 export function linkPackageProject(input: PackageProjectInput): PackageProjectValue {
-  const root = readClosedRecord(input, ["flows", "bindings"], "package project");
+  const root = readClosedRecord(
+    input,
+    Object.hasOwn(input, "hooks") ? ["flows", "bindings", "hooks"] : ["flows", "bindings"],
+    "package project",
+  );
   const budget = new WorkBudget();
   const preparedFlows = prepareFlows(readBoundedArray(root.flows, "flows"), budget);
   const flowByPath = new Map(preparedFlows.map((flow) => [flow.value.provenance.projectPath, flow]));
@@ -151,15 +176,139 @@ export function linkPackageProject(input: PackageProjectInput): PackageProjectVa
     contract: PRIVATE_CANONICAL_JOURNAL_CONTRACT,
     eventTypes: publisher.definition.eventTypes,
   }));
+  const hooks = prepareHooks(
+    root.hooks === undefined ? [] : readBoundedArray(root.hooks, "hooks"),
+    flowByPath,
+    bindingById,
+    publisherById,
+    budget,
+  );
 
   rejectServiceCycles(bindings, flowByPath);
   const value = Object.freeze({
     flows: Object.freeze(preparedFlows.map((flow) => flow.value)),
     bindings: Object.freeze(bindings),
     journalPublishers: Object.freeze(journalPublishers),
+    hooks,
   });
   authenticPackageProjects.add(value);
   return value;
+}
+
+function prepareHooks(
+  values: readonly unknown[],
+  flowByPath: ReadonlyMap<string, PreparedFlow>,
+  bindingById: ReadonlyMap<string, PreparedBinding>,
+  publisherById: ReadonlyMap<string, PreparedJournalPublisher>,
+  budget: WorkBudget,
+): readonly LinkedHook[] {
+  const hooks = values.map((value, index) => {
+    const record = readClosedRecord(value, ["sourcePath", "definition"], `hooks[${index}]`);
+    const declarationPath = normalizeProjectPath(record.sourcePath, `hooks[${index}] source path`);
+    if (isProtectedProjectPath(declarationPath)) {
+      invalid("PROJECT_HOOK_PROTECTED_PATH", "Hook declaration cannot be beneath .jig", declarationPath);
+    }
+    const name = declarationPath.slice(declarationPath.lastIndexOf("/") + 1);
+    if (!name.endsWith(".ts") || name.slice(0, -3).includes(".")) {
+      invalid("PROJECT_HOOK_DECLARATION_PATH", "Hook declaration must be named <LocalName>.ts", declarationPath);
+    }
+    const id = name.slice(0, -3);
+    if (!LOCAL_NAME.test(id) || id.length > 64) {
+      invalid("PROJECT_HOOK_ID", "Hook declaration basename must be a LocalName", declarationPath);
+    }
+    let definition: HookDefinition;
+    try {
+      definition = normalizeHookDefinition(record.definition);
+    } catch (error) {
+      invalid("PROJECT_HOOK_DECLARATION", errorText(error), declarationPath);
+    }
+    budget.consume(jsonWork(definition as unknown as JsonValue));
+    const publisher = publisherById.get(definition.on.publisher.id);
+    if (publisher === undefined) {
+      invalid(
+        "PROJECT_HOOK_PUBLISHER",
+        `Hook ${id} publisher must resolve to one Journal publisher Binding`,
+        declarationPath,
+        "/on/publisher",
+      );
+    }
+    if (!publisher.definition.eventTypes.includes(definition.on.type)) {
+      invalid(
+        "PROJECT_HOOK_EVENT_TYPE",
+        `Hook ${id} event type is not declared by Journal publisher ${publisher.id}`,
+        declarationPath,
+        "/on/type",
+      );
+    }
+    const target = validateRunTarget(
+      `Hook ${id}`,
+      definition.run,
+      flowByPath,
+      bindingById,
+      declarationPath,
+      "/run",
+    );
+    const targetMeaning = target.kind === "flow"
+      ? (() => {
+          const flow = flowByPath.get(target.path)!;
+          return {
+            target,
+            packageDigest: flow.value.package.digest,
+            mode: flow.value.mode,
+            directRun: flow.value.directRun,
+          };
+        })()
+      : (() => {
+          const binding = bindingById.get(target.id)!;
+          return {
+            target,
+            declarationPath: binding.declarationPath,
+            definition: binding.definition,
+            packageDigest: binding.flow.value.package.digest,
+            mode: binding.flow.value.mode,
+          };
+        })();
+    const definitionDigest = privateDomainDigest(
+      "JIG-Hook-Resolved-Definition/1",
+      {
+        id,
+        declarationPath,
+        source: `binding:${publisher.id}`,
+        publisher: {
+          id: publisher.id,
+          declarationPath: publisher.declarationPath,
+          definition: publisher.definition,
+          contract: PRIVATE_CANONICAL_JOURNAL_CONTRACT,
+        },
+        type: definition.on.type,
+        target: targetMeaning,
+      } as unknown as JsonValue,
+    );
+    return Object.freeze({
+      kind: "hook" as const,
+      id,
+      declarationPath,
+      source: `binding:${publisher.id}`,
+      publisherBinding: publisher.id,
+      type: definition.on.type,
+      target,
+      definitionDigest,
+    });
+  });
+  hooks.sort((left, right) => compareProjectPaths(left.id, right.id));
+  const ids = new Set<string>();
+  const paths: string[] = [];
+  for (const hook of hooks) {
+    if (ids.has(hook.id)) invalid("PROJECT_HOOK_COLLISION", `duplicate Hook ID ${hook.id}`, hook.declarationPath);
+    ids.add(hook.id);
+    paths.push(hook.declarationPath);
+  }
+  try {
+    assertNoProjectPathCollisions(paths, "Hook declaration");
+  } catch (error) {
+    invalid("PROJECT_HOOK_COLLISION", errorText(error));
+  }
+  return Object.freeze(hooks);
 }
 
 export function requirePackageProjectValue(value: unknown): PackageProjectValue {

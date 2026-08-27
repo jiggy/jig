@@ -25,11 +25,13 @@ export type ProjectSourceInput = DiscoverySource | readonly string[];
 export interface JigDefinition {
   readonly flows?: ProjectSource;
   readonly bindings?: ProjectSource;
+  readonly hooks?: ProjectSource;
 }
 
 export interface JigDefinitionInput {
   readonly flows?: ProjectSourceInput;
   readonly bindings?: ProjectSourceInput;
+  readonly hooks?: ProjectSourceInput;
 }
 
 export interface FlowRef {
@@ -75,6 +77,23 @@ export interface JournalPublisherInput {
   readonly eventTypes: readonly string[];
 }
 
+export interface HookDefinition {
+  readonly kind: "hook";
+  readonly on: {
+    readonly publisher: BindingRef;
+    readonly type: string;
+  };
+  readonly run: RunTargetRef;
+}
+
+export interface HookInput {
+  readonly on: {
+    readonly publisher: BindingRef;
+    readonly type: string;
+  };
+  readonly run: RunTargetRef;
+}
+
 export type BindingDefinition = PackageBindingDefinition | JournalPublisherDefinition;
 
 export function discover(roots: string | readonly string[]): DiscoverySource {
@@ -99,8 +118,8 @@ export function normalizeJigDefinition(input: unknown): JigDefinition {
 
 function normalizeJig(input: JigDefinitionInput, canonical: boolean): JigDefinition {
   const captured = snapshotJsonObject(input, "Jig definition");
-  assertClosedObject(captured, ["flows", "bindings"], "Jig definition");
-  const output: { flows?: ProjectSource; bindings?: ProjectSource } = {};
+  assertClosedObject(captured, ["flows", "bindings", "hooks"], "Jig definition");
+  const output: { flows?: ProjectSource; bindings?: ProjectSource; hooks?: ProjectSource } = {};
   if (Object.hasOwn(captured, "flows")) {
     output.flows = normalizeSource(
       captured.flows as unknown as ProjectSourceInput,
@@ -112,6 +131,13 @@ function normalizeJig(input: JigDefinitionInput, canonical: boolean): JigDefinit
     output.bindings = normalizeSource(
       captured.bindings as unknown as ProjectSourceInput,
       "bindings",
+      canonical,
+    );
+  }
+  if (Object.hasOwn(captured, "hooks")) {
+    output.hooks = normalizeSource(
+      captured.hooks as unknown as ProjectSourceInput,
+      "hooks",
       canonical,
     );
   }
@@ -130,6 +156,39 @@ export function defineJournalPublisher(input: JournalPublisherInput): JournalPub
 /** Evaluator-only canonical re-normalization; absent from the package root. */
 export function normalizeJournalPublisherDefinition(input: unknown): JournalPublisherDefinition {
   return normalizeJournalPublisher(input as JournalPublisherInput, true);
+}
+
+/** Declare one exact inert Event-to-Run relation. */
+export function defineHook(input: HookInput): HookDefinition {
+  return normalizeHook(input, false);
+}
+
+/** Evaluator-only canonical re-normalization; absent from the package root. */
+export function normalizeHookDefinition(input: unknown): HookDefinition {
+  return normalizeHook(input as HookInput, true);
+}
+
+function normalizeHook(input: HookInput, canonical: boolean): HookDefinition {
+  const captured = snapshotJsonObject(input, "Hook definition");
+  assertClosedObject(captured, canonical ? ["kind", "on", "run"] : ["on", "run"], "Hook definition");
+  if (canonical && captured.kind !== "hook") throw new TypeError("Hook kind must be hook");
+  if (!Object.hasOwn(captured, "on") || !Object.hasOwn(captured, "run")) {
+    throw new TypeError("Hook on and run are required");
+  }
+  const on = assertRecord(captured.on as unknown as HookInput["on"], "Hook on");
+  assertClosedObject(on, ["publisher", "type"], "Hook on");
+  if (!Object.hasOwn(on, "publisher") || !Object.hasOwn(on, "type")) {
+    throw new TypeError("Hook on.publisher and on.type are required");
+  }
+  const publisher = normalizeRunTarget(on.publisher as RunTargetRef);
+  if (publisher.kind !== "binding") throw new TypeError("Hook publisher must be a bindingRef()");
+  const type = validateEventType(on.type);
+  const run = normalizeRunTarget(captured.run as unknown as RunTargetRef);
+  return record({
+    kind: "hook",
+    on: record({ publisher, type }),
+    run,
+  }) as unknown as HookDefinition;
 }
 
 function normalizeJournalPublisher(

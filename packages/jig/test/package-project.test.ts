@@ -7,7 +7,7 @@ import {
   captureStoredPackage,
   type PackageArtifactRef,
 } from "../src/internal/package-artifact-store.js";
-import { bindingRef, candidates, defineJig, defineJournalPublisher, flowRef } from "../src/project/author.js";
+import { bindingRef, candidates, defineHook, defineJig, defineJournalPublisher, flowRef } from "../src/project/author.js";
 import { captureFlowSource } from "../src/project/flow-source.js";
 import {
   linkPackageProject,
@@ -276,6 +276,111 @@ uses:
         contract: value.journalPublishers[0]!.contract,
         provider: { binding: "publisher", export: "journal" },
       });
+    });
+  });
+
+  test("links one exact inert Hook and binds its revision to resolved publisher meaning", async () => {
+    await withFlows({ "flows/triage": run("triage") }, async (flows) => {
+      const definition = defineHook({
+        on: {
+          publisher: bindingRef("publisher"),
+          type: "https://example.org/events/work-created",
+        },
+        run: flowRef("flows/triage"),
+      });
+      const linked = linkPackageProject({
+        flows,
+        bindings: [binding("bindings/publisher.ts", defineJournalPublisher({
+          eventTypes: ["https://example.org/events/work-created"],
+        }))],
+        hooks: [{ sourcePath: "hooks/on-work.ts", definition }],
+      });
+      expect(linked.hooks).toEqual([{
+        kind: "hook",
+        id: "on-work",
+        declarationPath: "hooks/on-work.ts",
+        source: "binding:publisher",
+        publisherBinding: "publisher",
+        type: "https://example.org/events/work-created",
+        target: { kind: "flow", path: "flows/triage" },
+        definitionDigest: expect.stringMatching(/^sha256:[0-9a-f]{64}$/),
+      }]);
+      const changedPublisher = linkPackageProject({
+        flows,
+        bindings: [binding("bindings/publisher.ts", defineJournalPublisher({
+          eventTypes: [
+            "https://example.org/events/work-created",
+            "https://example.org/events/work-finished",
+          ],
+        }))],
+        hooks: [{ sourcePath: "hooks/on-work.ts", definition }],
+      });
+      expect(changedPublisher.hooks[0]!.definitionDigest)
+        .not.toBe(linked.hooks[0]!.definitionDigest);
+    });
+  });
+
+  test("rejects Hook publisher, type, and Run-target ambiguity", async () => {
+    await withFlows({
+      "flows/triage": run("triage"),
+      "flows/service": {
+        "FLOW.md": metadata("name: service\ndescription: Service.\nservice: 1"),
+        "flow.ts": "export {};\n",
+      },
+    }, async (flows) => {
+      const publisher = binding("bindings/publisher.ts", defineJournalPublisher({
+        eventTypes: ["https://example.org/events/work-created"],
+      }));
+      const exactHook = defineHook({
+        on: { publisher: bindingRef("publisher"), type: "https://example.org/events/work-created" },
+        run: flowRef("flows/triage"),
+      });
+      expectCode(() => linkPackageProject({
+        flows,
+        bindings: [publisher],
+        hooks: [{ sourcePath: "hooks/missing.ts", definition: defineHook({
+          on: { publisher: bindingRef("unknown"), type: "https://example.org/events/work-created" },
+          run: flowRef("flows/triage"),
+        }) }],
+      }), "PROJECT_HOOK_PUBLISHER");
+      expectCode(() => linkPackageProject({
+        flows,
+        bindings: [publisher],
+        hooks: [{ sourcePath: "hooks/type.ts", definition: defineHook({
+          on: { publisher: bindingRef("publisher"), type: "https://example.org/events/other" },
+          run: flowRef("flows/triage"),
+        }) }],
+      }), "PROJECT_HOOK_EVENT_TYPE");
+      expectCode(() => linkPackageProject({
+        flows,
+        bindings: [
+          publisher,
+          binding("bindings/triage.ts", { package: "flows/triage" }),
+        ],
+        hooks: [{ sourcePath: "hooks/package-publisher.ts", definition: defineHook({
+          on: { publisher: bindingRef("triage"), type: "https://example.org/events/work-created" },
+          run: flowRef("flows/triage"),
+        }) }],
+      }), "PROJECT_HOOK_PUBLISHER");
+      expectCode(() => linkPackageProject({
+        flows,
+        bindings: [
+          publisher,
+          binding("bindings/service.ts", { package: "flows/service" }),
+        ],
+        hooks: [{ sourcePath: "hooks/service.ts", definition: defineHook({
+          on: { publisher: bindingRef("publisher"), type: "https://example.org/events/work-created" },
+          run: bindingRef("service"),
+        }) }],
+      }), "PROJECT_BINDING_RUN_MODE");
+      expectCode(() => linkPackageProject({
+        flows,
+        bindings: [publisher],
+        hooks: [
+          { sourcePath: "hooks/on-work.ts", definition: exactHook },
+          { sourcePath: "other/on-work.ts", definition: exactHook },
+        ],
+      }), "PROJECT_HOOK_COLLISION");
     });
   });
 
