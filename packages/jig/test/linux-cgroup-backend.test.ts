@@ -1495,7 +1495,7 @@ async function proofHostPythonClosure(): Promise<{
       selected_out_path?: unknown;
     };
     if (value.kind === "need-materialization" &&
-        value.installable === "github:NixOS/nixpkgs/nixos-unstable#python314" &&
+        value.installable === "nixpkgs#python314" &&
         typeof value.selected_out_path === "string") {
       candidates.push({
         receiptName,
