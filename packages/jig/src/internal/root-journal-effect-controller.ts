@@ -62,6 +62,7 @@ export async function executePrivateRootJournalEffect(
     const receipt = await appendPrivateRootJournalEvent({
       coordinator: input.coordinator,
       projectRoot: input.projectRoot,
+      packageStoreRoot: input.packageStoreRoot,
       allocation: normalizePrivateRootJournalAppendAllocation({
         kind: "private-root-journal-append-allocation/1",
         parentRunId: input.parent.run.runId,

@@ -87,6 +87,11 @@ transaction against one authenticated snapshot of the active matching
 revisions and Journal head. The transaction rechecks that snapshot. Drift
 causes bounded repreparation, never use of stale compiled policy.
 
+The private store bounds one Event to at most 256 matching revisions before
+it performs any target Package I/O. Every derived request inherits the exact
+finite deadline already admitted for its publisher root; neither the Event nor
+Hook-controlled data can extend host-owned execution time.
+
 One accepted append transaction commits all of:
 
 ```text
@@ -97,6 +102,13 @@ unique (Hook revision, Event) derivation
 one derived root Run per selection
 append closure
 ```
+
+Schema 13 stores the derivation as an exact relation between the selected Hook
+revision, Event, and root Run. Strict reads compare the complete relation set
+with the canonical ordered selection, and every Hook-origin root must resolve
+back to exactly one selected entry rooted by that append's closure. A root
+outside a committed selection is corrupt and cannot enter execution-work
+enumeration.
 
 The Event is the derived Run's exact input. Input-schema failure allocates that
 same deterministic Run and terminates it with `INVALID_INPUT`. A target whose

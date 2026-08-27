@@ -20,12 +20,15 @@ import {
   decodePrivateHookRevision,
   decodePrivateHookAdmissionBoundary,
   encodePrivateHookAdmissionBoundary,
+  encodePrivateHookSelectionSet,
   encodePrivateHookRevision,
   normalizePrivateHookRevision,
   normalizePrivateHookAdmissionBoundary,
+  normalizePrivateHookSelectionSet,
   privateHookAdmissionBoundaryDigest,
   privateHookMeaningDigest,
   privateHookRevisionDigest,
+  privateHookSelectionSetDigest,
 } from "../src/internal/hook-runtime-state.js";
 import {
   publishCapturedPackage,
@@ -67,6 +70,7 @@ import {
 } from "../src/internal/root-journal-effect-state.js";
 import {
   createPrivateExternalSubmissionOrigin,
+  decodePrivateRootRunRequest,
   encodePrivateRootRunOrigin,
   privateRootRunOriginDigest,
 } from "../src/internal/root-run-state.js";
@@ -101,6 +105,7 @@ const CREATE_JOURNAL_EVENTS = "CREATE TABLE journal_events (position INTEGER PRI
 const CREATE_HOOK_ADMISSION_BOUNDARIES = "CREATE TABLE hook_admission_boundaries (admission_digest TEXT PRIMARY KEY REFERENCES admissions(admission_digest), boundary_digest TEXT NOT NULL UNIQUE, boundary_bytes BLOB NOT NULL CHECK (length(boundary_bytes) BETWEEN 1 AND 16777216)) STRICT";
 const CREATE_HOOK_REVISIONS = "CREATE TABLE hook_revisions (revision_digest TEXT PRIMARY KEY, hook_id TEXT NOT NULL, meaning_digest TEXT NOT NULL, opening_admission_digest TEXT NOT NULL REFERENCES admissions(admission_digest), opening_candidate_revision INTEGER NOT NULL REFERENCES candidates(revision), start_position INTEGER NOT NULL CHECK (start_position BETWEEN 1 AND 9007199254740991), closing_admission_digest TEXT REFERENCES admissions(admission_digest), end_position INTEGER CHECK (end_position IS NULL OR end_position BETWEEN start_position AND 9007199254740991), revision_bytes BLOB NOT NULL CHECK (length(revision_bytes) BETWEEN 1 AND 16777216), CHECK ((closing_admission_digest IS NULL) = (end_position IS NULL))) STRICT";
 const CREATE_HOOK_REVISIONS_ONE_OPEN = "CREATE UNIQUE INDEX hook_revisions_one_open ON hook_revisions(hook_id) WHERE end_position IS NULL";
+const CREATE_HOOK_DERIVATIONS = "CREATE TABLE hook_derivations (hook_revision_digest TEXT NOT NULL REFERENCES hook_revisions(revision_digest), event_id TEXT NOT NULL REFERENCES journal_events(event_id), run_id TEXT NOT NULL UNIQUE REFERENCES root_runs(run_id), PRIMARY KEY (hook_revision_digest, event_id)) WITHOUT ROWID, STRICT";
 const CREATE_ROOT_JOURNAL_APPENDS = "CREATE TABLE root_journal_appends (parent_run_id TEXT NOT NULL REFERENCES root_spawn_intents(run_id), operation_id TEXT NOT NULL, event_position INTEGER NOT NULL UNIQUE REFERENCES journal_events(position), allocation_digest TEXT NOT NULL UNIQUE, allocation_bytes BLOB NOT NULL CHECK (length(allocation_bytes) BETWEEN 1 AND 16777216), PRIMARY KEY (parent_run_id, operation_id)) WITHOUT ROWID, STRICT";
 const CREATE_ROOT_JOURNAL_TERMINALS = "CREATE TABLE root_journal_terminals (parent_run_id TEXT NOT NULL, operation_id TEXT NOT NULL, terminal_digest TEXT NOT NULL UNIQUE, terminal_bytes BLOB NOT NULL CHECK (length(terminal_bytes) BETWEEN 1 AND 16777216), PRIMARY KEY (parent_run_id, operation_id), FOREIGN KEY (parent_run_id, operation_id) REFERENCES root_journal_appends(parent_run_id, operation_id)) WITHOUT ROWID, STRICT";
 const CREATE_ROOT_JOURNAL_HOOK_SELECTIONS = "CREATE TABLE root_journal_hook_selections (parent_run_id TEXT NOT NULL, operation_id TEXT NOT NULL, selection_digest TEXT NOT NULL UNIQUE, selection_bytes BLOB NOT NULL CHECK (length(selection_bytes) BETWEEN 1 AND 16777216), PRIMARY KEY (parent_run_id, operation_id), FOREIGN KEY (parent_run_id, operation_id) REFERENCES root_journal_appends(parent_run_id, operation_id)) WITHOUT ROWID, STRICT";
@@ -110,6 +115,38 @@ const CREATE_ROOT_TERMINALS = "CREATE TABLE root_terminals (run_id TEXT PRIMARY 
 setDefaultTimeout(30_000);
 
 describe.serial("private activation admission SQLite store", () => {
+  test("initializes one complete fresh schema before reporting a missing candidate", async () => {
+    const base = await mkdtemp(join(tmpdir(), "jig-admission-fresh-"));
+    const root = join(base, "project");
+    const store = join(base, "store");
+    const state = join(root, ".jig");
+    const databasePath = join(state, "private-activation-admission-v13.sqlite3");
+    try {
+      await mkdir(root, { mode: 0o700 });
+      await mkdir(store, { mode: 0o700 });
+      await mkdir(state, { mode: 0o700 });
+      const file = await open(
+        databasePath,
+        constants.O_RDWR | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW,
+        0o600,
+      );
+      await file.close();
+      await expect(createPrivateActivationReviewPlan({
+        projectRoot: root,
+        packageStoreRoot: store,
+        lockMode: "update",
+      })).rejects.toMatchObject({ code: "ADMISSION_CANDIDATE_MISSING" });
+      const database = openSqlite(databasePath, "readonly");
+      try {
+        expect(database.query(
+          "SELECT name FROM sqlite_schema WHERE type = 'table' AND name = 'hook_derivations'",
+        ).get()).toEqual({ name: "hook_derivations" });
+        expect(database.query("PRAGMA user_version").get().user_version).toBe(13);
+        expect(database.query("PRAGMA foreign_key_check").all()).toEqual([]);
+      } finally { database.close(true); }
+    } finally { await rm(base, { recursive: true, force: true }); }
+  });
+
   test("creates and reloads one immutable plan under ordinary Linux CI", async () => {
     const fixture = await createFixture();
     try {
@@ -159,6 +196,7 @@ describe.serial("private activation admission SQLite store", () => {
           "candidates",
           "coordinator_head",
           "hook_admission_boundaries",
+          "hook_derivations",
           "hook_revisions",
           "journal_events",
           "journal_head",
@@ -182,7 +220,7 @@ describe.serial("private activation admission SQLite store", () => {
           "hook_revisions_one_open",
         ]);
         expect(database.query("PRAGMA application_id").get().application_id).toBe(0x4a494741);
-        expect(database.query("PRAGMA user_version").get().user_version).toBe(12);
+        expect(database.query("PRAGMA user_version").get().user_version).toBe(13);
         expect(database.query("SELECT count(*) AS count FROM review_plans").get().count).toBe(1);
       } finally {
         database.close(true);
@@ -386,6 +424,7 @@ describe.serial("private activation admission SQLite store", () => {
       const event = await appendPrivateRootJournalEvent({
         coordinator,
         projectRoot: fixture.root,
+        packageStoreRoot: fixture.store,
         allocation: normalizePrivateRootJournalAppendAllocation({
           kind: "private-root-journal-append-allocation/1",
           parentRunId: submission.run.runId,
@@ -472,6 +511,7 @@ describe.serial("private activation admission SQLite store", () => {
       const receipt = await appendPrivateRootJournalEvent({
         coordinator,
         projectRoot: fixture.root,
+        packageStoreRoot: fixture.store,
         allocation: normalizePrivateRootJournalAppendAllocation({
           kind: "private-root-journal-append-allocation/1",
           parentRunId: submission.run.runId,
@@ -768,7 +808,7 @@ describe.serial("private activation admission SQLite store", () => {
         lockMode: "update",
       });
       const database = openSqlite(fixture.database, "readwrite");
-      database.exec("PRAGMA user_version=11");
+      database.exec("PRAGMA user_version=12");
       database.close(true);
 
       await expect(loadPrivateActivationReviewPlan({
@@ -779,7 +819,7 @@ describe.serial("private activation admission SQLite store", () => {
 
       const unchanged = openSqlite(fixture.database, "readonly");
       try {
-        expect(unchanged.query("PRAGMA user_version").get().user_version).toBe(11);
+        expect(unchanged.query("PRAGMA user_version").get().user_version).toBe(12);
       } finally { unchanged.close(true); }
     } finally {
       await fixture.dispose();
@@ -1461,6 +1501,7 @@ describe.serial("private activation admission SQLite store", () => {
       const first = await appendPrivateRootJournalEvent({
         coordinator,
         projectRoot: fixture.root,
+        packageStoreRoot: fixture.store,
         allocation: firstAllocation,
         committedAtUnixMs: 1_000,
       });
@@ -1468,18 +1509,21 @@ describe.serial("private activation admission SQLite store", () => {
       expect(await appendPrivateRootJournalEvent({
         coordinator,
         projectRoot: fixture.root,
+        packageStoreRoot: fixture.store,
         allocation: firstAllocation,
         committedAtUnixMs: 9_999,
       })).toEqual(first);
       await expect(appendPrivateRootJournalEvent({
         coordinator,
         projectRoot: fixture.root,
+        packageStoreRoot: fixture.store,
         allocation: allocation("journal:1", 2),
         committedAtUnixMs: 2_000,
       })).rejects.toMatchObject({ code: "OPERATION_CONFLICT" });
       const second = await appendPrivateRootJournalEvent({
         coordinator,
         projectRoot: fixture.root,
+        packageStoreRoot: fixture.store,
         allocation: allocation("journal:2", 2),
         committedAtUnixMs: 2_000,
       });
@@ -1511,6 +1555,543 @@ describe.serial("private activation admission SQLite store", () => {
       await fixture.dispose();
     }
   });
+
+  test("atomically selects ordered Hooks and allocates exact derived root Runs", async () => {
+    const fixture = await createFixture("ready", true);
+    let coordinator: PrivateProjectCoordinator | undefined;
+    try {
+      await applyLatestCandidate(fixture);
+      coordinator = await openPrivateProjectCoordinator({ projectRoot: fixture.root });
+      const parent = await submitPrivateRootRun({
+        coordinator,
+        projectRoot: fixture.root,
+        packageStoreRoot: fixture.store,
+        submissionId: "hook-fanout-parent",
+        target: { kind: "binding", id: "producer" },
+        input: { value: "root" },
+        deadlineUnixMs: 50_000,
+      });
+      await installHookCandidate(fixture, {
+        enabled: true,
+        hookIds: ["zeta-work", "alpha-work"],
+      });
+      await applyLatestCandidate(fixture);
+      const allocation = normalizePrivateRootJournalAppendAllocation({
+        kind: "private-root-journal-append-allocation/1",
+        parentRunId: parent.run.runId,
+        coordinatorEpoch: coordinator.epoch,
+        publisherBinding: "publisher",
+        eventTypes: ["https://example.org/events/work-created"],
+        call: {
+          operationId: "hook-fanout:1",
+          slot: "journal",
+          method: "append",
+          input: {
+            type: "https://example.org/events/work-created",
+            data: { ticket: 1 },
+          },
+        },
+      });
+      const racedReceipts = await Promise.all([10_000, 10_000].map((committedAtUnixMs) =>
+        retryBusy(() => appendPrivateRootJournalEvent({
+          coordinator: coordinator!,
+          projectRoot: fixture.root,
+          packageStoreRoot: fixture.store,
+          allocation,
+          committedAtUnixMs,
+        }))
+      ));
+      const receipt = racedReceipts[0]!;
+      expect(racedReceipts[1]).toEqual(receipt);
+      expect(receipt.hookSelection.entries.map((entry) => entry.hookId)).toEqual([
+        "alpha-work",
+        "zeta-work",
+      ]);
+      expect(receipt.derivedRuns.map((run) => run.runId)).toEqual(
+        receipt.hookSelection.entries.map((entry) => entry.runId),
+      );
+      for (const run of receipt.derivedRuns) {
+        expect(run).toMatchObject({
+          origin: {
+            kind: "private-root-hook-derived-origin/1",
+            eventId: receipt.event.eventId,
+          },
+          input: receipt.event,
+          target: { kind: "binding", id: "producer" },
+          deadlineUnixMs: 50_000,
+          state: "spawn-intent",
+        });
+      }
+      expect(await appendPrivateRootJournalEvent({
+        coordinator,
+        projectRoot: fixture.root,
+        packageStoreRoot: fixture.store,
+        allocation,
+        committedAtUnixMs: 99_999,
+      })).toEqual(receipt);
+      await expect(appendPrivateRootJournalEvent({
+        coordinator,
+        projectRoot: fixture.root,
+        packageStoreRoot: fixture.store,
+        allocation: normalizePrivateRootJournalAppendAllocation({
+          ...allocation,
+          call: { ...allocation.call, input: { ...allocation.call.input, data: { ticket: 2 } } },
+        }),
+        committedAtUnixMs: 10_000,
+      })).rejects.toMatchObject({ code: "OPERATION_CONFLICT" });
+
+      const pending = await listPrivateRootExecutionWork({
+        coordinator,
+        projectRoot: fixture.root,
+        epoch: "current",
+      });
+      expect(pending.filter(({ run }) =>
+        run.origin.kind === "private-root-hook-derived-origin/1",
+      ).map(({ run }) => run.runId).sort()).toEqual(
+        receipt.derivedRuns.map((run) => run.runId).sort(),
+      );
+      const database = openSqlite(fixture.database, "readonly");
+      try {
+        expect(database.query("SELECT count(*) AS count FROM hook_derivations").get().count).toBe(2);
+      } finally { database.close(true); }
+
+      const corruptor = openSqlite(fixture.database, "readwrite");
+      try {
+        corruptor.query("DELETE FROM hook_derivations WHERE run_id = ?1")
+          .run(receipt.derivedRuns[0]!.runId);
+      } finally { corruptor.close(true); }
+      await expect(loadPrivateRootJournalAppend({
+        coordinator,
+        projectRoot: fixture.root,
+        parentRunId: parent.run.runId,
+        operationId: "hook-fanout:1",
+      })).rejects.toMatchObject({ code: "ADMISSION_STATE_CORRUPT" });
+      await expect(listPrivateRootExecutionWork({
+        coordinator,
+        projectRoot: fixture.root,
+        epoch: "current",
+      })).rejects.toMatchObject({ code: "ADMISSION_STATE_CORRUPT" });
+    } finally {
+      await coordinator?.dispose();
+      await fixture.dispose();
+    }
+  }, 60_000);
+
+  test("refuses partial or coherently stale append evidence before derived execution", async () => {
+    const fixture = await createFixture("ready", true);
+    let coordinator: PrivateProjectCoordinator | undefined;
+    try {
+      await applyLatestCandidate(fixture);
+      coordinator = await openPrivateProjectCoordinator({ projectRoot: fixture.root });
+      const parent = await submitPrivateRootRun({
+        coordinator,
+        projectRoot: fixture.root,
+        packageStoreRoot: fixture.store,
+        submissionId: "hook-corruption-parent",
+        target: { kind: "binding", id: "producer" },
+        input: { value: "root" },
+        deadlineUnixMs: 50_000,
+      });
+      await installHookCandidate(fixture, { enabled: true, hookIds: ["work"] });
+      await applyLatestCandidate(fixture);
+      const allocation = normalizePrivateRootJournalAppendAllocation({
+        kind: "private-root-journal-append-allocation/1",
+        parentRunId: parent.run.runId,
+        coordinatorEpoch: coordinator.epoch,
+        publisherBinding: "publisher",
+        eventTypes: ["https://example.org/events/work-created"],
+        call: {
+          operationId: "hook-corruption:1",
+          slot: "journal",
+          method: "append",
+          input: { type: "https://example.org/events/work-created", data: { ticket: 1 } },
+        },
+      });
+      const receipt = await appendPrivateRootJournalEvent({
+        coordinator,
+        projectRoot: fixture.root,
+        packageStoreRoot: fixture.store,
+        allocation,
+        committedAtUnixMs: 10_000,
+      });
+      const runId = receipt.derivedRuns[0]!.runId;
+      const expectExecutionCorrupt = async (): Promise<void> => {
+        await expect(listPrivateRootExecutionWork({
+          coordinator: coordinator!,
+          projectRoot: fixture.root,
+          epoch: "current",
+        })).rejects.toMatchObject({ code: "ADMISSION_STATE_CORRUPT" });
+      };
+
+      let database = openSqlite(fixture.database, "readwrite");
+      const parentStored = database.query([
+        "SELECT origin_bytes, request_bytes, admission_digest FROM root_runs",
+        "WHERE run_id = ?1",
+      ].join(" ")).get(parent.run.runId);
+      const latestAdmission = database.query(
+        "SELECT admission_digest FROM admissions ORDER BY revision DESC LIMIT 1",
+      ).get();
+      database.query("UPDATE root_runs SET origin_bytes = ?1 WHERE run_id = ?2").run(
+        encodePrivateRootRunOrigin(createPrivateExternalSubmissionOrigin("forged-parent")),
+        parent.run.runId,
+      );
+      database.close(true);
+      await expectExecutionCorrupt();
+      database = openSqlite(fixture.database, "readwrite");
+      database.query("UPDATE root_runs SET origin_bytes = ?1 WHERE run_id = ?2")
+        .run(parentStored.origin_bytes, parent.run.runId);
+      const parentRequest = decodePrivateRootRunRequest(parentStored.request_bytes);
+      database.query("UPDATE root_runs SET request_bytes = ?1 WHERE run_id = ?2").run(
+        canonicalJson({ ...parentRequest, deadlineUnixMs: parentRequest.deadlineUnixMs + 1 } as JsonValue),
+        parent.run.runId,
+      );
+      database.close(true);
+      await expectExecutionCorrupt();
+      database = openSqlite(fixture.database, "readwrite");
+      database.query("UPDATE root_runs SET request_bytes = ?1 WHERE run_id = ?2")
+        .run(parentStored.request_bytes, parent.run.runId);
+      database.query("UPDATE root_runs SET admission_digest = ?1 WHERE run_id = ?2")
+        .run(latestAdmission.admission_digest, parent.run.runId);
+      database.close(true);
+      await expectExecutionCorrupt();
+      database = openSqlite(fixture.database, "readwrite");
+      database.query("UPDATE root_runs SET admission_digest = ?1 WHERE run_id = ?2")
+        .run(parentStored.admission_digest, parent.run.runId);
+      database.query("UPDATE journal_head SET position = 0 WHERE singleton = 1").run();
+      database.close(true);
+      await expectExecutionCorrupt();
+      database = openSqlite(fixture.database, "readwrite");
+      database.query("UPDATE journal_head SET position = 1 WHERE singleton = 1").run();
+      const closure = database.query(
+        "SELECT closure_digest, closure_bytes FROM root_journal_closures WHERE parent_run_id = ?1 AND operation_id = ?2",
+      ).get(parent.run.runId, allocation.call.operationId);
+      database.query(
+        "DELETE FROM root_journal_closures WHERE parent_run_id = ?1 AND operation_id = ?2",
+      ).run(parent.run.runId, allocation.call.operationId);
+      database.close(true);
+      await expectExecutionCorrupt();
+      database = openSqlite(fixture.database, "readwrite");
+      database.query(
+        "INSERT INTO root_journal_closures(parent_run_id, operation_id, closure_digest, closure_bytes) VALUES (?1, ?2, ?3, ?4)",
+      ).run(parent.run.runId, allocation.call.operationId, closure.closure_digest, closure.closure_bytes);
+      const staleSelection = normalizePrivateHookSelectionSet({
+        kind: "private-hook-selection-set/1",
+        eventId: receipt.event.eventId,
+        entries: [],
+      });
+      database.query([
+        "UPDATE root_journal_hook_selections SET selection_digest = ?1, selection_bytes = ?2",
+        "WHERE parent_run_id = ?3 AND operation_id = ?4",
+      ].join(" ")).run(
+        privateHookSelectionSetDigest(staleSelection),
+        encodePrivateHookSelectionSet(staleSelection),
+        parent.run.runId,
+        allocation.call.operationId,
+      );
+      database.close(true);
+      await expectExecutionCorrupt();
+
+      database = openSqlite(fixture.database, "readwrite");
+      database.query([
+        "UPDATE root_journal_hook_selections SET selection_digest = ?1, selection_bytes = ?2",
+        "WHERE parent_run_id = ?3 AND operation_id = ?4",
+      ].join(" ")).run(
+        receipt.hookSelectionDigest,
+        encodePrivateHookSelectionSet(receipt.hookSelection),
+        parent.run.runId,
+        allocation.call.operationId,
+      );
+      const storedRequest = database.query("SELECT request_bytes FROM root_runs WHERE run_id = ?1").get(runId);
+      const request = decodePrivateRootRunRequest(storedRequest.request_bytes);
+      database.close(true);
+      for (const forged of [
+        { ...request, target: { kind: "flow", path: "flows/run" } },
+        { ...request, input: { forged: true } },
+        { ...request, deadlineUnixMs: request.deadlineUnixMs + 1 },
+      ] as const) {
+        database = openSqlite(fixture.database, "readwrite");
+        database.query("UPDATE root_runs SET request_bytes = ?1 WHERE run_id = ?2")
+          .run(canonicalJson(forged as unknown as JsonValue), runId);
+        database.close(true);
+        await expectExecutionCorrupt();
+      }
+      database = openSqlite(fixture.database, "readwrite");
+      database.query("UPDATE root_runs SET request_bytes = ?1 WHERE run_id = ?2")
+        .run(storedRequest.request_bytes, runId);
+      database.close(true);
+      expect(await loadPrivateRootJournalAppend({
+        coordinator,
+        projectRoot: fixture.root,
+        parentRunId: parent.run.runId,
+        operationId: allocation.call.operationId,
+      })).toEqual(receipt);
+    } finally {
+      await coordinator?.dispose();
+      await fixture.dispose();
+    }
+  }, 90_000);
+
+  test("refuses excessive Hook fanout before target Package inspection", async () => {
+    const fixture = await createFixture("ready", true);
+    let coordinator: PrivateProjectCoordinator | undefined;
+    try {
+      await applyLatestCandidate(fixture);
+      coordinator = await openPrivateProjectCoordinator({ projectRoot: fixture.root });
+      const parent = await submitPrivateRootRun({
+        coordinator,
+        projectRoot: fixture.root,
+        packageStoreRoot: fixture.store,
+        submissionId: "hook-fanout-bound-parent",
+        target: { kind: "binding", id: "producer" },
+        input: { value: "root" },
+        deadlineUnixMs: 50_000,
+      });
+      await installHookCandidate(fixture, {
+        enabled: true,
+        hookIds: Array.from({ length: 257 }, (_, index) =>
+          `hook-${index.toString().padStart(3, "0")}`),
+      });
+      await applyLatestCandidate(fixture);
+      await rm(fixture.store, { recursive: true, force: true });
+      await expect(appendPrivateRootJournalEvent({
+        coordinator,
+        projectRoot: fixture.root,
+        packageStoreRoot: fixture.store,
+        allocation: normalizePrivateRootJournalAppendAllocation({
+          kind: "private-root-journal-append-allocation/1",
+          parentRunId: parent.run.runId,
+          coordinatorEpoch: coordinator.epoch,
+          publisherBinding: "publisher",
+          eventTypes: ["https://example.org/events/work-created"],
+          call: {
+            operationId: "hook-fanout-bound:1",
+            slot: "journal",
+            method: "append",
+            input: { type: "https://example.org/events/work-created", data: null },
+          },
+        }),
+        committedAtUnixMs: 10_000,
+      })).rejects.toMatchObject({ code: "RESOURCE_EXHAUSTED" });
+    } finally {
+      await coordinator?.dispose();
+      await fixture.dispose();
+    }
+  }, 60_000);
+
+  test("reprepares concurrent distinct Journal operations without losing either append", async () => {
+    const fixture = await createFixture("ready", true);
+    let coordinator: PrivateProjectCoordinator | undefined;
+    try {
+      await applyLatestCandidate(fixture);
+      coordinator = await openPrivateProjectCoordinator({ projectRoot: fixture.root });
+      const parent = await submitPrivateRootRun({
+        coordinator,
+        projectRoot: fixture.root,
+        packageStoreRoot: fixture.store,
+        submissionId: "hook-distinct-race-parent",
+        target: { kind: "binding", id: "producer" },
+        input: { value: "root" },
+        deadlineUnixMs: 50_000,
+      });
+      await installHookCandidate(fixture, { enabled: true, hookIds: ["work"] });
+      await applyLatestCandidate(fixture);
+      const append = (operationId: string, ticket: number) => retryBusy(() =>
+        appendPrivateRootJournalEvent({
+          coordinator: coordinator!,
+          projectRoot: fixture.root,
+          packageStoreRoot: fixture.store,
+          allocation: normalizePrivateRootJournalAppendAllocation({
+            kind: "private-root-journal-append-allocation/1",
+            parentRunId: parent.run.runId,
+            coordinatorEpoch: coordinator!.epoch,
+            publisherBinding: "publisher",
+            eventTypes: ["https://example.org/events/work-created"],
+            call: {
+              operationId,
+              slot: "journal",
+              method: "append",
+              input: { type: "https://example.org/events/work-created", data: { ticket } },
+            },
+          }),
+          committedAtUnixMs: 10_000 + ticket,
+        })
+      );
+      const receipts = await Promise.all([
+        append("hook-distinct-race:1", 1),
+        append("hook-distinct-race:2", 2),
+      ]);
+      expect(receipts.map(({ event }) => event.journalPosition).sort()).toEqual([1, 2]);
+      expect(receipts.flatMap(({ hookSelection }) =>
+        hookSelection.entries.map(({ hookId }) => hookId),
+      )).toEqual(["work", "work"]);
+      expect(new Set(receipts.flatMap(({ derivedRuns }) =>
+        derivedRuns.map(({ runId }) => runId),
+      )).size).toBe(2);
+    } finally {
+      await coordinator?.dispose();
+      await fixture.dispose();
+    }
+  }, 90_000);
+
+  test("keeps an admission race on one side of the exact Event boundary", async () => {
+    const fixture = await createFixture("ready", true);
+    let coordinator: PrivateProjectCoordinator | undefined;
+    try {
+      await applyLatestCandidate(fixture);
+      coordinator = await openPrivateProjectCoordinator({ projectRoot: fixture.root });
+      const parent = await submitPrivateRootRun({
+        coordinator,
+        projectRoot: fixture.root,
+        packageStoreRoot: fixture.store,
+        submissionId: "hook-admission-race-parent",
+        target: { kind: "binding", id: "producer" },
+        input: { value: "root" },
+        deadlineUnixMs: 50_000,
+      });
+      await installHookCandidate(fixture, { enabled: true, hookIds: ["raced"] });
+      const allocation = (operationId: string) => normalizePrivateRootJournalAppendAllocation({
+        kind: "private-root-journal-append-allocation/1",
+        parentRunId: parent.run.runId,
+        coordinatorEpoch: coordinator!.epoch,
+        publisherBinding: "publisher",
+        eventTypes: ["https://example.org/events/work-created"],
+        call: {
+          operationId,
+          slot: "journal",
+          method: "append",
+          input: { type: "https://example.org/events/work-created", data: null },
+        },
+      });
+      const [raced] = await Promise.all([
+        retryBusy(() => appendPrivateRootJournalEvent({
+          coordinator: coordinator!,
+          projectRoot: fixture.root,
+          packageStoreRoot: fixture.store,
+          allocation: allocation("hook-admission-race:1"),
+          committedAtUnixMs: 10_000,
+        })),
+        retryBusy(() => applyLatestCandidate(fixture)),
+      ]);
+      expect([[], ["raced"]]).toContainEqual(
+        raced.hookSelection.entries.map(({ hookId }) => hookId),
+      );
+      const after = await appendPrivateRootJournalEvent({
+        coordinator,
+        projectRoot: fixture.root,
+        packageStoreRoot: fixture.store,
+        allocation: allocation("hook-admission-race:2"),
+        committedAtUnixMs: 10_001,
+      });
+      expect(after.hookSelection.entries.map(({ hookId }) => hookId)).toEqual(["raced"]);
+      expect(after.event.journalPosition).toBe(2);
+    } finally {
+      await coordinator?.dispose();
+      await fixture.dispose();
+    }
+  }, 90_000);
+
+  test("matches Hook source and type exactly and persists terminal derivations", async () => {
+    const noMatch = await createFixture("ready", true);
+    let noMatchCoordinator: PrivateProjectCoordinator | undefined;
+    try {
+      await applyLatestCandidate(noMatch);
+      noMatchCoordinator = await openPrivateProjectCoordinator({ projectRoot: noMatch.root });
+      const parent = await submitPrivateRootRun({
+        coordinator: noMatchCoordinator,
+        projectRoot: noMatch.root,
+        packageStoreRoot: noMatch.store,
+        submissionId: "hook-no-match-parent",
+        target: { kind: "binding", id: "producer" },
+        input: { value: "root" },
+        deadlineUnixMs: 50_000,
+      });
+      await installHookCandidate(noMatch, {
+        enabled: true,
+        publisherBinding: "other-publisher",
+        hookType: "https://example.org/events/other",
+      });
+      await applyLatestCandidate(noMatch);
+      const receipt = await appendPrivateRootJournalEvent({
+        coordinator: noMatchCoordinator,
+        projectRoot: noMatch.root,
+        packageStoreRoot: noMatch.store,
+        allocation: normalizePrivateRootJournalAppendAllocation({
+          kind: "private-root-journal-append-allocation/1",
+          parentRunId: parent.run.runId,
+          coordinatorEpoch: noMatchCoordinator.epoch,
+          publisherBinding: "publisher",
+          eventTypes: ["https://example.org/events/work-created"],
+          call: {
+            operationId: "hook-no-match:1",
+            slot: "journal",
+            method: "append",
+            input: { type: "https://example.org/events/work-created", data: null },
+          },
+        }),
+        committedAtUnixMs: 10_000,
+      });
+      expect(receipt.hookSelection.entries).toEqual([]);
+      expect(receipt.derivedRuns).toEqual([]);
+    } finally {
+      await noMatchCoordinator?.dispose();
+      await noMatch.dispose();
+    }
+
+    for (const testCase of [
+      { name: "unavailable", fixture: await createFixture("ready", true), evidence: "unavailable-target" },
+      { name: "invalid", fixture: await createFixture("ready", true, true), evidence: undefined },
+    ] as const) {
+      let coordinator: PrivateProjectCoordinator | undefined;
+      try {
+        await applyLatestCandidate(testCase.fixture);
+        coordinator = await openPrivateProjectCoordinator({ projectRoot: testCase.fixture.root });
+        const parent = await submitPrivateRootRun({
+          coordinator,
+          projectRoot: testCase.fixture.root,
+          packageStoreRoot: testCase.fixture.store,
+          submissionId: `hook-${testCase.name}-parent`,
+          target: { kind: "binding", id: "producer" },
+          input: { value: "root" },
+          deadlineUnixMs: 50_000,
+        });
+        await installHookCandidate(testCase.fixture, {
+          enabled: true,
+          ...(testCase.evidence === undefined ? {} : { dispositionEvidence: testCase.evidence }),
+        });
+        await applyLatestCandidate(testCase.fixture);
+        const receipt = await appendPrivateRootJournalEvent({
+          coordinator,
+          projectRoot: testCase.fixture.root,
+          packageStoreRoot: testCase.fixture.store,
+          allocation: normalizePrivateRootJournalAppendAllocation({
+            kind: "private-root-journal-append-allocation/1",
+            parentRunId: parent.run.runId,
+            coordinatorEpoch: coordinator.epoch,
+            publisherBinding: "publisher",
+            eventTypes: ["https://example.org/events/work-created"],
+            call: {
+              operationId: `hook-${testCase.name}:1`,
+              slot: "journal",
+              method: "append",
+              input: { type: "https://example.org/events/work-created", data: null },
+            },
+          }),
+          committedAtUnixMs: 10_000,
+        });
+        expect(receipt.derivedRuns).toHaveLength(1);
+        expect(receipt.derivedRuns[0]).toMatchObject({
+          state: "terminal",
+          terminal: {
+            status: "failed",
+            code: testCase.name === "invalid" ? "INVALID_INPUT" : "UNAVAILABLE",
+          },
+        });
+      } finally {
+        await coordinator?.dispose();
+        await testCase.fixture.dispose();
+      }
+    }
+  }, 90_000);
 
   test("projects durable root Runs through the closed administration authority", async () => {
     const fixture = await createFixture("ready");
@@ -1963,6 +2544,7 @@ interface Fixture {
 async function createFixture(
   disposition: "unavailable" | "ready" = "unavailable",
   journal = false,
+  rejectDerivedEventInput = false,
 ): Promise<Fixture> {
   const base = await mkdtemp(join(tmpdir(), "jig-admission-store-"));
   const root = join(base, "project");
@@ -1997,9 +2579,11 @@ async function createFixture(
       await writeFile(join(flowSource, "input.schema.json"), JSON.stringify({
         $schema: "https://flow.dev/schemas/schema-1.json",
         type: "object",
-        properties: { value: { type: "string" } },
-        required: ["value"],
-        additionalProperties: false,
+        properties: journal && !rejectDerivedEventInput
+          ? {}
+          : { value: { type: "string" } },
+        required: journal && !rejectDerivedEventInput ? [] : ["value"],
+        additionalProperties: journal && !rejectDerivedEventInput,
       }));
     }
     await writeFile(join(declarationSource, "jig.ts"), "export default {};\n");
@@ -2115,7 +2699,7 @@ async function createFixture(
     const encoded = encodePrivateActivationCandidate(candidate);
 
     const state = join(root, ".jig");
-    const databasePath = join(state, "private-activation-admission-v12.sqlite3");
+    const databasePath = join(state, "private-activation-admission-v13.sqlite3");
     await mkdir(state, { mode: 0o700 });
     const databaseFile = await open(
       databasePath,
@@ -2145,6 +2729,7 @@ async function createFixture(
         CREATE_JOURNAL_HEAD,
         CREATE_JOURNAL_EVENTS,
         CREATE_HOOK_ADMISSION_BOUNDARIES,
+        CREATE_HOOK_DERIVATIONS,
         CREATE_HOOK_REVISIONS,
         CREATE_HOOK_REVISIONS_ONE_OPEN,
         CREATE_ROOT_JOURNAL_APPENDS,
@@ -2157,7 +2742,7 @@ async function createFixture(
         "INSERT INTO coordinator_head(singleton, epoch) VALUES (1, 0)",
         "INSERT INTO journal_head(singleton, position) VALUES (1, 0)",
         "PRAGMA application_id=1246316353",
-        "PRAGMA user_version=12",
+        "PRAGMA user_version=13",
       ].join(";"));
       database.exec("BEGIN IMMEDIATE");
       database.query(
@@ -2203,6 +2788,9 @@ async function installHookCandidate(
     readonly enabled: boolean;
     readonly extraEventTypes?: readonly string[];
     readonly dispositionEvidence?: string;
+    readonly hookIds?: readonly string[];
+    readonly hookType?: string;
+    readonly publisherBinding?: string;
   },
 ): Promise<void> {
   const database = openSqlite(fixture.database, "readwrite");
@@ -2218,21 +2806,16 @@ async function installHookCandidate(
     const target = Object.hasOwn(lockValue.bindings, "producer")
       ? { kind: "binding" as const, id: "producer" }
       : { kind: "flow" as const, path: "flows/run" };
-    const selectedType = "https://example.org/events/work-created";
+    const selectedType = options.hookType ?? "https://example.org/events/work-created";
+    const publisherBinding = options.publisherBinding ?? "publisher";
     const eventTypes = [selectedType, ...(options.extraEventTypes ?? [])].sort();
-    const relationDigest = privateHookRelationDigest({
-      id: "on-work",
-      declarationPath: "hooks/on-work.ts",
-      source: "binding:publisher",
-      publisherBinding: "publisher",
-      type: selectedType,
-      target,
-    });
+    const hookIds = options.hookIds ?? ["on-work"];
     const lockBytes = json1({
       ...lockValue,
       journalPublishers: {
-        publisher: {
-          source: "binding:publisher",
+        ...lockValue.journalPublishers,
+        [publisherBinding]: {
+          source: `binding:${publisherBinding}`,
           contract: {
             id: "https://jig.dev/contracts/journal",
             version: "1.0.0",
@@ -2241,16 +2824,21 @@ async function installHookCandidate(
           eventTypes,
         },
       },
-      hooks: options.enabled ? {
-        "on-work": {
-          declarationPath: "hooks/on-work.ts",
-          source: "binding:publisher",
-          publisherBinding: "publisher",
+      hooks: options.enabled ? Object.fromEntries(hookIds.map((hookId) => [hookId, {
+        declarationPath: `hooks/${hookId}.ts`,
+        source: `binding:${publisherBinding}`,
+        publisherBinding,
+        type: selectedType,
+        target,
+        relationDigest: privateHookRelationDigest({
+          id: hookId,
+          declarationPath: `hooks/${hookId}.ts`,
+          source: `binding:${publisherBinding}`,
+          publisherBinding,
           type: selectedType,
           target,
-          relationDigest,
-        },
-      } : {},
+        }),
+      }])) : {},
     } as JsonValue);
     const lock = decodePrivateProjectLocalLock(lockBytes);
     const disposition = options.dispositionEvidence === undefined
@@ -2478,7 +3066,7 @@ async function createComposedFixture(): Promise<Fixture> {
     });
     const encoded = encodePrivateActivationCandidate(candidate);
     const state = join(root, ".jig");
-    const databasePath = join(state, "private-activation-admission-v12.sqlite3");
+    const databasePath = join(state, "private-activation-admission-v13.sqlite3");
     await mkdir(state, { mode: 0o700 });
     const databaseFile = await open(
       databasePath,
@@ -2508,6 +3096,7 @@ async function createComposedFixture(): Promise<Fixture> {
         CREATE_JOURNAL_HEAD,
         CREATE_JOURNAL_EVENTS,
         CREATE_HOOK_ADMISSION_BOUNDARIES,
+        CREATE_HOOK_DERIVATIONS,
         CREATE_HOOK_REVISIONS,
         CREATE_HOOK_REVISIONS_ONE_OPEN,
         CREATE_ROOT_JOURNAL_APPENDS,
@@ -2520,7 +3109,7 @@ async function createComposedFixture(): Promise<Fixture> {
         "INSERT INTO coordinator_head(singleton, epoch) VALUES (1, 0)",
         "INSERT INTO journal_head(singleton, position) VALUES (1, 0)",
         "PRAGMA application_id=1246316353",
-        "PRAGMA user_version=12",
+        "PRAGMA user_version=13",
       ].join(";"));
       database.exec("BEGIN IMMEDIATE");
       database.query(

@@ -10,7 +10,9 @@ import type { RunHostEffectCall, RunHostEffectResult } from "../run/session.js";
 import {
   normalizePrivateHookSelectionSet,
   privateHookSelectionSetDigest,
+  type PrivateHookSelectionSet,
 } from "./hook-runtime-state.js";
+import type { PrivateRootRunSnapshot } from "./root-run-state.js";
 import { privateDomainDigest } from "./identity.js";
 
 const DIGEST = /^sha256:[0-9a-f]{64}$/;
@@ -55,7 +57,9 @@ export interface PrivateRootJournalAppendReceipt {
   readonly eventDigest: string;
   readonly terminal: RunHostEffectResult;
   readonly terminalDigest: string;
+  readonly hookSelection: PrivateHookSelectionSet;
   readonly hookSelectionDigest: string;
+  readonly derivedRuns: readonly PrivateRootRunSnapshot[];
   readonly closureDigest: string;
 }
 
