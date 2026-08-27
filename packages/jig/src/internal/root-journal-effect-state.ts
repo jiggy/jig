@@ -7,6 +7,10 @@ import {
   type JsonValue,
 } from "../json.js";
 import type { RunHostEffectCall, RunHostEffectResult } from "../run/session.js";
+import {
+  normalizePrivateHookSelectionSet,
+  privateHookSelectionSetDigest,
+} from "./hook-runtime-state.js";
 import { privateDomainDigest } from "./identity.js";
 
 const DIGEST = /^sha256:[0-9a-f]{64}$/;
@@ -186,16 +190,15 @@ export function privateRootJournalEffectTerminalDigest(value: RunHostEffectResul
 }
 
 export function privateEmptyHookSelectionDigest(event: PrivateJournalEvent): string {
-  return privateDomainDigest("JIG-Private-Hook-Selection-Set/1", privateEmptyHookSelection(event));
+  return privateHookSelectionSetDigest(privateEmptyHookSelection(event));
 }
 
 export function privateEmptyHookSelection(event: PrivateJournalEvent): JsonObject {
-  return Object.freeze({
+  return normalizePrivateHookSelectionSet({
     kind: "private-hook-selection-set/1",
     eventId: event.eventId,
-    hookRevisions: [],
-    derivedRuns: [],
-  });
+    entries: [],
+  }) as unknown as JsonObject;
 }
 
 export function normalizePrivateRootJournalAppendClosure(

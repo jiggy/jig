@@ -6,6 +6,7 @@ import {
   normalizePrivateRootJournalAppendAllocation,
   normalizePrivateRootJournalAppendClosure,
   normalizePrivateRootJournalEffectsClosure,
+  privateEmptyHookSelection,
   privateEmptyHookSelectionDigest,
   privateJournalEventDigest,
   privateRootJournalAppendAllocationDigest,
@@ -14,6 +15,7 @@ import {
   privateRootJournalEffectTerminalDigest,
   type PrivateRootJournalAppendReceipt,
 } from "../src/internal/root-journal-effect-state.js";
+import { privateHookSelectionSetDigest } from "../src/internal/hook-runtime-state.js";
 
 const runId = `sha256:${"1".repeat(64)}`;
 
@@ -77,7 +79,15 @@ describe("private root Journal effect state", () => {
     });
     expect(privateRootJournalAppendAllocationDigest(allocation)).toMatch(/^sha256:[0-9a-f]{64}$/);
     expect(privateJournalEventDigest(event)).toMatch(/^sha256:[0-9a-f]{64}$/);
-    expect(privateEmptyHookSelectionDigest(event)).toMatch(/^sha256:[0-9a-f]{64}$/);
+    const emptySelection = privateEmptyHookSelection(event);
+    expect(emptySelection).toEqual({
+      kind: "private-hook-selection-set/1",
+      eventId: event.eventId,
+      entries: [],
+    });
+    expect(privateEmptyHookSelectionDigest(event)).toBe(
+      privateHookSelectionSetDigest(emptySelection),
+    );
     expect(privateRootJournalEffectTerminalDigest({ value: event })).toMatch(/^sha256:[0-9a-f]{64}$/);
   });
 
