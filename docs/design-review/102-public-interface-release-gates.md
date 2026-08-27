@@ -29,12 +29,17 @@ envelope, terminal persistence, and exclusive local coordinator takeover. One
 private admitted Bun Binding can now perform one deterministic `flow/call` to
 one exact Python direct Flow in the same pinned generation, with durable
 operation identity, child-first fencing, cancellation/deadline propagation,
-coordinator-loss recovery without replay, and complete cleanup. This is not yet
-a published Jig SDK or complete product control plane: Root Administration/1,
-its machine schema, and its private controller cover in-process start/status,
-while generic Runtime Adapter and Sandbox Backend models, `effect/call`,
-project-authority issuance, authentication/transport, and public plan/apply
-remain unfinished seams. The intended package names are:
+coordinator-loss recovery without replay, and complete cleanup. A second
+private Bun Binding can now invoke the exact canonical Journal `append`
+effect, with protected contract validation, attenuated producer/type
+authority, durable multi-operation replay/conflict semantics, atomic Event and
+operation closure, parent-release evidence, and restart recovery without
+redispatch. This is not yet a published Jig SDK or complete product control
+plane: Root Administration/1, its machine schema, and its private controller
+cover in-process start/status, while generic Runtime Adapter and Sandbox
+Backend models, non-Journal effects, project-authority issuance,
+authentication/transport, and public plan/apply remain unfinished seams. The
+intended package names are:
 
 ```text
 @jigging/jig    Jig TypeScript package
