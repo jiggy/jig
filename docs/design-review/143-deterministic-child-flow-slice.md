@@ -1,9 +1,10 @@
 # Deterministic child-Flow slice
 
-**Status:** selected implementation frontier on 2026-08-27. This checkpoint
-authorizes one private vertical proof. It does not add or publish a FLOW field,
-Run/1 method, Root Administration member, Runtime Adapter SPI, Sandbox Backend
-SPI, or general scheduler API.
+**Status:** closed on 2026-08-27. The selected private proof is complete; its
+implementation evidence and preserved limits are recorded in
+[`144-deterministic-child-flow-closure.md`](144-deterministic-child-flow-closure.md).
+This checkpoint added no FLOW field, Run/1 method, Root Administration member,
+Runtime Adapter SPI, Sandbox Backend SPI, or general scheduler API.
 
 ## 1. Why this slice comes next
 

@@ -860,3 +860,18 @@ Binding revision.
     host-policy ceilings. Omission normalizes to `{}`/least optional authority,
     never the registration ceiling. Inspection distinguishes requested,
     `wouldGrant`, planned, and realized authority.
+35. A `flow/call` resolves only against the caller's pinned admission
+    generation. Missing, wrong-kind, incompatible, unavailable, and ambiguous
+    slots fail before child package execution; current visible source, a later
+    generation, and semantic similarity cannot retarget the operation.
+36. One child operation is durably allocated before package execution. Equal
+    operation identity and canonical params join or replay one terminal;
+    changed params conflict without redispatch. Cancelling one waiter preserves
+    shared work while another remains, and loss of the final waiter requests
+    cancellation of the child owner.
+37. A parent Run cannot publish its terminal before every allocated child is
+    closed behind a confirmed fence. Parent cancellation and deadline bound
+    children during both preparation and execution. Coordinator replacement
+    reacquires recorded child ownership, never automatically redispatches
+    uncertain work, and releases exact backing only after fencing or proved
+    non-admission.

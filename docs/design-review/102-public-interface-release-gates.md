@@ -23,15 +23,18 @@ Contract validation, captured-package materialization, and one Run/1 host
 session whose private input is a Backend-supplied exact-component process
 seam. The private project path now continues through static declaration
 evaluation, a retained package-only aggregate, strict portable-lock projection,
-lock-first durable admission of exact `UNAVAILABLE` and one exact Python
-`READY` target, idempotent root-Run dispatch through the proven Linux envelope,
-terminal persistence, and exclusive local coordinator takeover. This is not
-yet a published Jig SDK or complete product control plane: Root
-Administration/1, its machine schema, and its private controller now cover
-in-process start/status, while generic Runtime Adapter and Sandbox Backend
-models, child-Flow/effect dispatch, project-authority issuance,
-authentication/transport, and plan/apply remain unfinished seams. The intended
-package names are:
+lock-first durable admission of exact `UNAVAILABLE` plus exact Python and Bun
+`READY` targets, idempotent root-Run dispatch through the proven Linux
+envelope, terminal persistence, and exclusive local coordinator takeover. One
+private admitted Bun Binding can now perform one deterministic `flow/call` to
+one exact Python direct Flow in the same pinned generation, with durable
+operation identity, child-first fencing, cancellation/deadline propagation,
+coordinator-loss recovery without replay, and complete cleanup. This is not yet
+a published Jig SDK or complete product control plane: Root Administration/1,
+its machine schema, and its private controller cover in-process start/status,
+while generic Runtime Adapter and Sandbox Backend models, `effect/call`,
+project-authority issuance, authentication/transport, and public plan/apply
+remain unfinished seams. The intended package names are:
 
 ```text
 @jigging/jig    Jig TypeScript package
@@ -291,9 +294,9 @@ This model is not automatically a second user-authored workflow DSL or a
 universal graph schema. Expose only the authoring surface real Jig Graph users
 need; keep compiler IR private when possible.
 
-## Next public vertical slice
+## Closed private execution slices and open phase boundary
 
-The private direct-root chain is complete for one exact Python mechanism: one
+The private direct-root chain is complete for exact Python and Bun recipes: one
 discovered zero-configuration Run package records `READY` or exact
 `UNAVAILABLE`, applies lock-first, accepts one idempotent root submission under
 an exclusive local coordinator epoch, executes inside the Backend-owned
@@ -305,10 +308,17 @@ consumer review of the installed tarball passes. None of this pretends the one
 proof mechanism has established a generic Runtime Adapter or Sandbox Backend
 SPI.
 
-This slice intentionally adds no Binding requirement, Service, Hook, Agent,
-Semantic Choice, child Flow, Jig Graph compiler, update watcher, Nix
-dependency, or ambient runtime fallback. It closes only the host-extension,
-host-policy, lock, administration, and Run models required for that path.
+The succeeding deterministic-composition slice is also complete. It adds one
+private Binding with one exact child-Flow slot, one durable Run/1 operation,
+same-generation resolution, child result admission, child-first fencing, and
+replacement-coordinator cleanup without redispatch. It intentionally adds no
+public child-Run administration or general dispatcher/scheduler surface. The
+complete evidence and limits are in
+[`144-deterministic-child-flow-closure.md`](144-deterministic-child-flow-closure.md).
+
+Neither slice adds a Service, Hook, Agent, Semantic Choice, Jig Graph compiler,
+update watcher, Nix dependency, ambient runtime fallback, or public Backend or
+Runtime Adapter SPI.
 
 Before an independent probe consumes it, the candidate must prove:
 
@@ -320,14 +330,19 @@ Before an independent probe consumes it, the candidate must prove:
 6. exclusive coordinator takeover and terminal reconciliation; and
 7. cancellation, deadline, whole-tree fencing, and zero residue.
 
-All seven are privately proven for the selected host path. The closed root
+All seven are privately proven for the selected host path, and the child-Flow
+closure additionally proves deterministic refusal, operation replay/conflict,
+parent cancellation and deadlines before and after child admission, and
+coordinator loss on both sides of admission. The closed root
 request/result/error model is routed through the coordinator-owned controller,
 passes a clean external-module consumer, and clears the independent consumer
 review recorded in review 139. Publication remains a product release decision,
 not a claim implied by this checkpoint.
 
-The complete status and Nix decontamination boundary are in
-[`130-nix-experiment-disposition-and-next-slice.md`](130-nix-experiment-disposition-and-next-slice.md).
+No next product phase is selected by this inventory. The Nix decontamination
+boundary remains in
+[`130-nix-experiment-disposition-and-next-slice.md`](130-nix-experiment-disposition-and-next-slice.md);
+the latest completed execution boundary is review 144.
 
 ## Machine-readable release gates
 
