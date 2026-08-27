@@ -14,9 +14,9 @@ fresh temporary pack/install project.
 
 The review built and packed `@jigging/jig`, installed the tarball without
 scripts, compiled the unchanged checked-in consumer under strict TypeScript,
-and authored separate Bun probes for public exports, values, replay,
-concurrency, and closure. Bare implementation deep imports remained blocked by
-the package export map.
+and authored separate host-side Bun API probes for public exports, values,
+replay, concurrency, and closure. These were not Bun-backed FLOW Runs. Bare
+implementation deep imports remained blocked by the package export map.
 
 ## 2. Initial rejection
 

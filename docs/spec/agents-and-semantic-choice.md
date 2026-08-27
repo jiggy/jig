@@ -537,8 +537,9 @@ Flow may search, generate, test, and propose a candidate, but cannot insert it
 into the terminal failed operation. Zero candidates commit terminal
 `BINDING_MISSING`; later admission never resumes, mutates, or semantically
 ranks that operation again. After the proposal passes ordinary plan, review,
-and apply, a person or application starts a deliberate new root attempt with a
-new submission key. Reusing the old key returns the old terminal Run.
+and apply, a person or trusted host-side application outside every FLOW
+activation starts a deliberate new root attempt with a new submission key.
+Reusing the old key returns the old terminal Run.
 
 ## 7. Required conformance cases
 

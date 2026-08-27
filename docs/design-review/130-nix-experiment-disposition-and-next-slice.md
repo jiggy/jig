@@ -94,8 +94,8 @@ Adapter or a retained `READY` recipe.
 | Linux containment | Strong private cgroup-v2/Bubblewrap evidence exists; no public Sandbox Backend interface is claimed. |
 | Project authoring and capture | Inert authoring, capture, retention, and linking are generic private proofs. The private evaluator now consumes an authenticated sandbox-lifetime runtime-support receipt rather than a Nix lifetime observation; the agent-sandbox observer remains one proof-host input rather than a public host interface. |
 | Lock and admission | Private portable projection and one durable activation plan/apply path covering exact `READY` and exact `UNAVAILABLE` are complete. |
-| Runnable admission | One exact Python recipe is privately admitted, allocated through an idempotent durable root submission under an exclusive local coordinator epoch, executed through the contained Run/1 path, and reopened with its terminal. Replacement reconciles unknown older-epoch work to `COORDINATOR_LOST`; no generic Runtime Adapter model or public administration surface exists. |
-| Public Jig administration | Plan, apply, root-Run, authentication, status, and error interfaces remain release-gated. |
+| Runnable admission | One exact Python recipe is privately admitted, allocated through an idempotent durable root submission under an exclusive local coordinator epoch, executed through the contained Run/1 path, and reopened with its terminal. Replacement reconciles unknown older-epoch work to `COORDINATOR_LOST`; no generic Runtime Adapter model exists. |
+| Public Jig administration | The closed Root Administration/1 in-process start/status candidate, machine schema, private controller, and consumer gates now pass. Publication, project-authority issuance, authentication/transport, plan/apply, and broader administration remain release-gated. |
 | Journal/Hooks, Agents/Semantic Choice, updates, and Starters | Reviewed semantics exist; implementation/public projections remain later slices. |
 
 ## 5. Direct-root vertical slice

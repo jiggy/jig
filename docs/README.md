@@ -46,6 +46,9 @@ Current implementation frontier:
 - [`design-review/105-phase-2-linux-cgroup-proof.md`](design-review/105-phase-2-linux-cgroup-proof.md)
   records the private cgroup-v2/Bubblewrap implementation, hostile proof, and
   remaining Bun descendant blocker.
+- [`design-review/140-root-administration-and-bun-boundary.md`](design-review/140-root-administration-and-bun-boundary.md)
+  makes the host-control-plane/FLOW boundary explicit and scopes the Bun
+  blocker to the current general descendant-capable recipe construction.
 - [`design-review/106-service-wire-and-provider-sdk.md`](design-review/106-service-wire-and-provider-sdk.md)
   records the closed Service/1 wire candidate and Provider projections; the
   session-local TypeScript/Python/independent matrix is complete while durable

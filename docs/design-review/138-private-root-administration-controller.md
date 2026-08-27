@@ -16,10 +16,12 @@ RootAdministrationError
 closed request, receipt, status, terminal, and error types
 ```
 
-The host hands an already-open project authority to application code. The
+The host hands an already-open project authority to a trusted host-side
+frontend or control-plane integration outside every FLOW activation. The
 consumer cannot choose or inspect the project path, coordinator, deadline,
 admission, Runtime Adapter, Sandbox Backend, process, cgroup, environment, or
-grants. The machine schema is packaged at
+grants. Root Administration is not injected through Run/1. The machine schema
+is packaged at
 `@jigging/jig/schema/root-administration-1`.
 
 ## 2. Private ownership model
@@ -62,9 +64,9 @@ cleanup, and the next coordinator reconciles the unresolved old epoch to
   Python Run/1 component through the administration controller. It still uses
   the cgroup-v2/Bubblewrap envelope and leaves no Run cgroup or process residue.
 - `conformance/root-administration-1/consumer.ts` imports only the public
-  administration subpath and supplies application-owned polling policy. The
-  private host injects the real authority, and package smoke compiles the same
-  source against the packed artifact.
+  administration subpath and supplies host-side consumer-owned polling policy.
+  The private host injects the real authority, and package smoke compiles the
+  same source against the packed artifact.
 
 The checked-in consumer is a clean public-surface gate, not an independently
 authored implementation. A separate reviewer then packed and installed the

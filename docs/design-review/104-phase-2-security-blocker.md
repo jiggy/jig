@@ -7,10 +7,11 @@ evidence below remains the reason weaker fallbacks were rejected.
 
 ## Decision
 
-Phase 2 cannot honestly publish a live secure Bun root Run on the current host.
-The reviewed planning disposition is `SANDBOX_UNAVAILABLE`; this record does
-not freeze a public error envelope or Backend API. Jig must not substitute an
-advisory sandbox or issue an `enforced` receipt for predicates it cannot prove.
+Phase 2 could not honestly publish a live secure Bun root Run on that earlier
+host profile. The reviewed planning disposition was `SANDBOX_UNAVAILABLE`;
+this record does not freeze a public error envelope or Backend API. Jig must
+not substitute an advisory sandbox or issue an `enforced` receipt for
+predicates it cannot prove.
 
 The first sufficient blocker is owner-wide resource control and fencing. The
 current process is at the root relative to its visible cgroup namespace, but
@@ -165,11 +166,12 @@ must not make cgroup v2 part of the portable contract.
 
 These are the complete resource-ownership and fencing acceptance conditions,
 not claims that every item independently failed. Even after a trusted
-aggregate controller becomes available, a complete secure Bun Run remains
-unproven until aggregate CPU semantics are closed, atomic placement and
-post-crash fencing are demonstrated, the entropy/device seam is resolved, and
-an arbitrary JavaScript Run is exercised with its prepared package tree,
-scratch, protocol descriptors, cancellation, descendants, and cleanup.
+aggregate controller becomes available, a general descendant-capable Bun FLOW
+Run under that construction remains unproven until aggregate CPU semantics are
+closed, atomic placement and post-crash fencing are demonstrated, the
+entropy/device seam is resolved, and an arbitrary JavaScript Run is exercised
+with its prepared package tree, scratch, protocol descriptors, cancellation,
+descendants, and cleanup.
 
 ## Scope of the stop
 

@@ -1,15 +1,21 @@
 # Jig Root Administration/1
 
-**Status:** closed candidate for the first consumer-facing Jig administration
-slice. This document fixes the interface before a controller or probe consumes
-it; it does not claim publication or define an IPC transport.
+**Status:** closed host-control-plane candidate. Its private controller and
+clean and independent consumer gates pass; it does not claim publication or
+define an IPC transport.
 
 ## 1. Authority and construction
 
 The TypeScript entry point is `@jigging/jig/administration`. A trusted Jig host
-hands application code one `RootAdministration` object for one already-open
-project. Possession of that object is the in-process authority to submit and
-inspect root Runs for that project.
+hands a trusted host-side frontend or control-plane integration, outside every
+FLOW activation, one `RootAdministration` object for one already-open project.
+Possession of that object is the in-process authority to submit and inspect
+root Runs for that project.
+
+`RootAdministration` is not a FLOW capability and is never injected through
+Run/1. Portable FLOW code uses `flow/call` for child Flows and `effect/call` for
+bound capabilities. A package which depends on a host-specific administrative
+bridge is outside the portable FLOW contract.
 
 The package exposes no constructor, `openProject`, project path, daemon
 locator, credential, or ambient singleton. A future CLI, GUI, or remote client
@@ -108,7 +114,7 @@ UNAVAILABLE
 INTERNAL
 ```
 
-Applications branch on `code`, never the human message. `details`, when
+Host-side consumers branch on `code`, never the human message. `details`, when
 present, is FLOW JSON/1. Run failures are not converted into administration
 errors.
 

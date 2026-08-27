@@ -92,7 +92,8 @@ hostile expect calls all satisfied
 That matrix includes PID storms, aggregate memory exhaustion, CPU throttling
 and accounting independently from hard wall termination, startup/shutdown
 cancellation, orphan/grandchild cleanup,
-coordinator death, repeated Runs, Bun unavailability, project evaluation,
+coordinator death, repeated Runs, the negative general-Bun-Run descendant gate,
+project evaluation,
 retained package resolution, an exact Python Run/1 invocation, and a Python
 Service/1 Mount. The preflight reported cgroup v2 plus cpu/memory/pids controls,
 KVM and TUN separately available, and all test cgroups removed.

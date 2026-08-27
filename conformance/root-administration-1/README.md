@@ -3,7 +3,8 @@
 This directory contains one deliberately small consumer of the closed
 [`Root Administration/1`](../../docs/spec/root-administration.md) candidate.
 It imports only `@jigging/jig/administration`, starts one Run, and polls its
-status using application-owned wait policy.
+status using host-side consumer-owned wait policy. It executes outside every
+FLOW activation; Root Administration is not a FLOW capability.
 
 The private Jig test host injects a real controller-backed object capability.
 The consumer cannot import or name project roots, coordinator epochs,

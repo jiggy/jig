@@ -688,15 +688,17 @@ Services always require explicit Bindings.
 
 ## 10. Root Run admission
 
-Jig exposes one host-local operation for a person, CLI, GUI, or trusted module
-to request root work:
+Jig exposes one host-local operation for a person, CLI, GUI, or trusted
+host-side module outside every FLOW activation to request root work:
 
 ```text
 startRun(target, input, submissionId) -> durable Run identity
 ```
 
-`startRun` is semantic shorthand. Its transport, authentication, request and
-result schemas, and SDK/CLI spelling remain host-interface release gates.
+`startRun` is projected by the closed Root Administration/1 in-process
+candidate and its machine value schema. Publication, project-authority
+issuance, transport, authentication, and exact CLI spelling remain
+host-interface release gates.
 
 `target` is one explicit tagged Flow or Binding reference. `submissionId` is an
 opaque project-local retry key. Jig first validates that

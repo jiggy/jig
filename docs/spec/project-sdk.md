@@ -147,6 +147,8 @@ normalized JSON Pointer. The shape schema alone is never admission evidence.
 
 Project Authoring SDK/1 does not yet expose Hooks, Service export references,
 instruction Agent selection, `semanticChoice`, host-capability Bindings,
-registration-defined grants, open catalogue views, runtime/sandbox selection,
-or administration APIs. Their host semantics remain reviewed, but each public
-projection has an explicit unresolved prerequisite.
+registration-defined grants, open catalogue views, or runtime/sandbox
+selection. Each of those remaining projections has an explicit unresolved
+prerequisite. It deliberately never exposes administration APIs. Root
+Administration/1 is a separate host-side control-plane candidate outside every
+FLOW activation; it is not a project authoring or FLOW API.

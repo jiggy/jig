@@ -7,7 +7,7 @@ import type {
 export interface AwaitRootRunOptions {
   readonly administration: RootAdministration;
   readonly request: StartRootRunRequest;
-  /** Application-owned wait policy; Root Administration/1 has no watch API. */
+  /** Host-side consumer-owned wait policy; Root Administration/1 has no watch API. */
   readonly wait: () => Promise<void>;
   readonly signal?: AbortSignal;
 }

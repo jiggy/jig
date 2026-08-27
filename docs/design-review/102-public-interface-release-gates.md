@@ -26,10 +26,12 @@ evaluation, a retained package-only aggregate, strict portable-lock projection,
 lock-first durable admission of exact `UNAVAILABLE` and one exact Python
 `READY` target, idempotent root-Run dispatch through the proven Linux envelope,
 terminal persistence, and exclusive local coordinator takeover. This is not
-yet a public Jig SDK or complete controller: generic Runtime Adapter and
-Sandbox Backend models, child-Flow/effect dispatch, and the host administration
-interface remain unfinished seams. The intended package
-names are:
+yet a published Jig SDK or complete product control plane: Root
+Administration/1, its machine schema, and its private controller now cover
+in-process start/status, while generic Runtime Adapter and Sandbox Backend
+models, child-Flow/effect dispatch, project-authority issuance,
+authentication/transport, and plan/apply remain unfinished seams. The intended
+package names are:
 
 ```text
 @jigging/jig    Jig TypeScript package
@@ -204,11 +206,13 @@ universe remains open in
 The smallest library-facing root slice is now closed as the
 [`Root Administration/1`](../spec/root-administration.md) candidate and its
 [`machine value schema`](../spec/machine/root-administration-1.schema.json).
-A trusted host hands one object-capability to application code for one
-already-open project. Its complete surface is `startRun` and `runStatus`; the
-host, rather than the caller, supplies policy, authority, deadline, and launch
-mechanism. The candidate deliberately excludes project location and opening,
-transport authentication, list/watch/cancel, and authority inspection.
+A trusted host hands one object-capability to a trusted host-side frontend or
+control-plane integration, outside every FLOW activation, for one already-open
+project. Its complete surface is `startRun` and `runStatus`; the host, rather
+than the caller, supplies policy, authority, deadline, and launch mechanism.
+The candidate deliberately excludes project location and opening, transport
+authentication, list/watch/cancel, and authority inspection. It is not a FLOW
+capability; portable packages continue to use Run/1 calls and effects.
 
 Before CLI or GUI clients can consume equivalent authority, Jig must still
 define authentication and closed request/result/error models for:

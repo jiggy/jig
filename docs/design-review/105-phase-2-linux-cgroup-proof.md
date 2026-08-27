@@ -140,7 +140,8 @@ cpu.max throttles while the trusted wall deadline terminates the tree
 cancellation during startup and shutdown leaves no owner
 orphaned grandchildren are fenced after activation-root exit
 coordinator SIGKILL recovery plus eight repeated Runs leave no residue
-Bun remains unavailable when a descendant cannot use root-pinned mappings
+the general descendant-capable Bun-backed Flow Run recipe remains unavailable
+under the root-pinned-mappings construction when it starts a Bun descendant
 one captured project declaration executes in the proof-host evaluator
 one retained project reaches deterministic unavailable lock-first admission
 ```
@@ -154,7 +155,7 @@ or `READY` claim.
 The suite's final `afterAll` enumerates the delegated scope and requires zero
 `jig-run-*` cgroups. A separate post-run inspection also found none.
 
-## Bun entropy exception and unavailable Runtime Support Closure
+## Bun evaluator exceptions and unavailable general Bun-backed Flow Run recipe
 
 The Backend itself does not expose general `/proc` or `/dev`. The Bun proof
 uses two private switches:
@@ -183,9 +184,9 @@ kernel surface expressly excluded from v1.
 Therefore:
 
 ```text
-Bun root proof:       pass
-Bun descendant proof: fail (exit 134 under root-pinned mappings)
-Bun recipe status:    unavailable
+Activation-root Bun process proof: pass
+Bun-child process proof:           fail (exit 134 under root-pinned mappings)
+General descendant-capable Bun-backed Flow Run recipe under this construction: unavailable
 ```
 
 The hostile suite preserves this as a passing negative gate. No insecure Bun

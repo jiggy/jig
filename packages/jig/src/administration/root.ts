@@ -91,8 +91,10 @@ export type RootRunStatus =
     });
 
 /**
- * A host-issued authority for one already-open project. It is not a project
- * locator, transport, global singleton, or sandbox configuration surface.
+ * A host-issued authority for trusted host-side control-plane code outside
+ * every FLOW activation. It names one already-open project and is not a FLOW
+ * capability, project locator, transport, global singleton, or sandbox
+ * configuration surface.
  */
 export interface RootAdministration {
   startRun(request: StartRootRunRequest): Promise<StartRootRunReceipt>;

@@ -1479,8 +1479,9 @@ operation's resolution, ranks it again, or creates its child.
 A user-owned `create-missing-flow` maintenance Flow is an independent admitted
 root Run. It may search, generate, test, and stage a proposal, but its output
 remains inert until ordinary plan, review, and apply admit a new generation.
-After admission, a person or application deliberately starts new root work
-with a new submission key. The prior Run is never resumed, retargeted, or
+After admission, a person or trusted host-side application outside every FLOW
+activation deliberately starts new root work with a new submission key. The
+prior Run is never resumed, retargeted, or
 replayed. This is less seamless than retaining an opaque live runner, but it is
 durable across crashes, releases resident capacity, and keeps one recovery
 model in v1.
@@ -1847,10 +1848,12 @@ existing owners retain theirs. A Run's later unresolved discovery uses its
 pinned catalogue and policy generation. Later maintenance and admission never
 extend, heal, or retarget an existing owner's binding table.
 
-Every user, CLI, GUI, or trusted module requests root work through the same
-host-local operation: one active admitted Run target ID, actual Run
-input, and a project-local idempotency key. Jig validates the FLOW JSON/1
-boundary first. An existing same-key/same-content record returns its Run
+Every user, CLI, GUI, or trusted host-side module outside every FLOW activation
+requests root work through the same host-local operation: one active admitted
+Run target ID, actual Run input, and a project-local idempotency key. Portable
+FLOW code instead uses `flow/call` and `effect/call`; Root Administration is
+never injected through Run/1. Jig validates the FLOW JSON/1 boundary first. An
+existing same-key/same-content record returns its Run
 without consulting newer policy; changed content conflicts. For a previously
 unseen key, one transaction resolves and pins the current admission generation
 and exact Run target, checks its gate and revocation state, and inserts the root
@@ -1859,9 +1862,10 @@ reference CLI is `jig run <target-id> --input <json-file>`; it generates and
 retains the key. Schema-invalid JSON/1 then terminates the allocated Run as
 `INVALID_INPUT`; invalid JSON/1 allocates nothing.
 
-This specifies admission and idempotency semantics, not a published host API.
-Transport, authentication, closed request/result models, and exact CLI spelling
-remain release gates.
+Root Administration/1 now closes the in-process start/status request, result,
+error, and value-schema candidate. It remains unpublished. Project-authority
+issuance, transport, authentication, plan/apply, and exact CLI spelling remain
+release gates.
 
 Hook delivery shares the internal admission primitive but not the external
 operation: it supplies the Hook revision's already-pinned target/generation

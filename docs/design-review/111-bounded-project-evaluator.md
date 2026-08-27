@@ -12,9 +12,10 @@ that JavaScript evaluation is deterministic.
 
 The first evaluator uses one fresh root activation of an exact JavaScript
 runtime recipe inside the already proven private Linux cgroup-v2 and
-Bubblewrap envelope. Bun is the first candidate, but remains unavailable as a
-general Runtime Adapter and is not qualified for this narrower evaluator role
-until its dedicated hostile gates pass. That envelope can prove
+Bubblewrap envelope. Bun is qualified only for this root-only evaluator tuple.
+It remains unqualified for a general Bun-backed Flow Run recipe: the
+descendant mapping gate fails, and the evaluator-only entropy-device exception
+is not an admitted production predicate. That envelope can prove
 that package-controlled code cannot reach the visible project, undeclared or
 unmounted host files, host environment, network, secrets, Jig Services,
 cgroup controls, or another Run.
@@ -22,8 +23,9 @@ It also bounds aggregate memory, PIDs, CPU rate, wall time, diagnostics, and
 output, and fences the complete process tree on every terminal path.
 
 It cannot honestly prove that a JavaScript engine has no clock or randomness.
-Bun, in particular, needs the exact entropy device during startup, and realms contain several
-time-related intrinsics. The old wording that evaluation has no clock or
+The tested Bun 1.3.3 evaluator tuple needs access afforded by the exact entropy
+device bind in this construction, and realms contain several time-related
+intrinsics. The old wording that evaluation has no clock or
 randomness is therefore removed. Evaluation may be nondeterministic; the exact
 captured output is normalized, identified, reviewed, and never recomputed by
 resolution or apply.

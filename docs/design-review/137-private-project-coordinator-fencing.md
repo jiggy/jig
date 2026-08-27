@@ -73,6 +73,10 @@ administration surface. Before public release, one controller must own those
 mutations behind the same coordinator and an independent consumer must use
 only the proposed public plan/apply/start/status/error subset.
 
+Reviews 138 and 139 subsequently satisfy the controller and independent
+start/status consumer gates. Plan/apply, authority issuance, transport, and
+publication remain separate gates.
+
 This is a single-host V1 mechanism. It is not HA consensus, distributed
 leadership, a generic lease SPI, or permission for several Jig daemons to
 share one project over a network filesystem.

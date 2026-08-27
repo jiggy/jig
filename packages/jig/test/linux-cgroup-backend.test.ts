@@ -431,7 +431,7 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
     expect(await jigCgroups(host.scope)).toEqual([]);
   });
 
-  test("keeps the Bun recipe unavailable when a descendant cannot use root-pinned mappings", async () => {
+  test("keeps the general descendant-capable Bun recipe unavailable under root-pinned mappings", async () => {
     host = await hostConfiguration();
     const bun = await proofHostBunClosure();
     const component = await backend(host).launch({
