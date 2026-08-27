@@ -70,10 +70,6 @@ Current implementation frontier:
   hostile path. Independent packed-package consumer review also passes after
   rejecting and forcing closure of three ambiguous semantics. Generic
   host-extension and public plan/apply models remain later gates.
-- [`design-review/142-deterministic-composition-frontier.md`](design-review/142-deterministic-composition-frontier.md)
-  is the current implementation frontier: one ownership-safe private operation
-  dispatcher and one exact admitted child Flow, before effects, semantic
-  routing, Agents, Hooks, or Services expand the surface.
 
 The focused Run/1 specification owns its finite wire surface. The remaining
 cross-cutting system rules are in the canonical architecture:

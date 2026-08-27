@@ -3,8 +3,8 @@
 **Status:** reviewed roadmap correction after the host-runtime retention
 experiment. This record changes implementation priority, not the canonical
 Jig or FLOW architecture. The selected direct-root slice is now complete;
-reviews 141 and 142 record its containment closure and the succeeding
-deterministic-composition frontier.
+review 141 records its containment closure. This record does not select the
+succeeding phase.
 
 ## 1. Disposition
 
