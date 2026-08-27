@@ -409,6 +409,23 @@ describe("private RunHostSession", () => {
     deadline.finish(0);
     expect(await deadlineRun).toMatchObject({ status: "failed", code: "DEADLINE_EXCEEDED" });
   });
+
+  test("uses a hard-deadline receipt only before a committed root response", async () => {
+    const unanswered = new FakeProcess();
+    const unansweredRun = new RunHostSession(unanswered, invocation(Date.now() + 10_000)).run();
+    await unanswered.nextHost();
+    unanswered.closeStdout();
+    unanswered.finish(null, "SIGKILL", "deadline");
+    expect(await unansweredRun).toMatchObject({ status: "failed", code: "DEADLINE_EXCEEDED" });
+
+    const answered = new FakeProcess();
+    const answeredRun = new RunHostSession(answered, invocation(Date.now() + 10_000)).run();
+    await answered.nextHost();
+    answered.emit(result("settled"));
+    await tick();
+    answered.finish(null, "SIGKILL", "deadline");
+    expect(await answeredRun).toMatchObject({ status: "failed", code: "EXECUTION_FAILED" });
+  });
 });
 
 function invocation(deadlineUnixMs = Date.now() + 10_000): RunHostInvocation {
@@ -555,13 +572,17 @@ class FakeProcess implements ExactComponentProcess {
     this.rejectCompletion(error);
   }
 
-  finish(exitCode: number | null, signal: string | null = null): void {
+  finish(
+    exitCode: number | null,
+    signal: string | null = null,
+    stopReason?: ExactComponentExit["stopReason"],
+  ): void {
     if (this.finished) return;
     this.finished = true;
     this.releaseWrites();
     this.stdout.end();
     this.stderr.end();
-    this.complete({ exitCode, signal, fenced: true });
+    this.complete({ exitCode, signal, fenced: true, ...(stopReason === undefined ? {} : { stopReason }) });
   }
 }
 

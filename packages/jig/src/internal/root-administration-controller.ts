@@ -11,14 +11,14 @@ import {
 } from "../administration/root.js";
 import { CheckError } from "../diagnostics.js";
 import {
-  completePrivateRootRun,
+  listPrivateRootExecutionWork,
   loadPrivateRootRun,
   openPrivateProjectCoordinator,
   submitPrivateRootRun,
   type PrivateProjectCoordinator,
-  type PrivateRootRunLaunch,
   type PrivateRootRunSnapshot,
 } from "./activation-admission-store.js";
+import type { PrivateRootExecutionDisposition } from "./root-run-controller.js";
 
 const MAX_RUN_TIMEOUT_MS = 86_400_000;
 
@@ -31,7 +31,11 @@ export interface PrivateRootAdministrationController {
 }
 
 export interface PrivateRootLaunchExecutor {
-  (launch: PrivateRootRunLaunch, signal: AbortSignal): Promise<PrivateRootRunSnapshot>;
+  (
+    runId: string,
+    coordinator: PrivateProjectCoordinator,
+    signal: AbortSignal,
+  ): Promise<PrivateRootExecutionDisposition>;
 }
 
 /**
@@ -55,10 +59,13 @@ export async function openPrivateRootAdministrationController(input: {
     throw administrationError(error, "open project coordinator");
   }
   try {
-    return createController({ ...input, coordinator });
+    const created = createController({ ...input, coordinator });
+    await created.recoverOlder();
+    await created.pumpCurrent();
+    return created.controller;
   } catch (error) {
     await coordinator.dispose();
-    throw error;
+    throw administrationError(error, "recover project coordinator");
   }
 }
 
@@ -68,10 +75,14 @@ function createController(input: {
   readonly runTimeoutMs: number;
   readonly execute: PrivateRootLaunchExecutor;
   readonly coordinator: PrivateProjectCoordinator;
-}): PrivateRootAdministrationController {
+}): {
+  readonly controller: PrivateRootAdministrationController;
+  recoverOlder(): Promise<void>;
+  pumpCurrent(): Promise<void>;
+} {
   const cancellation = new AbortController();
   const submissions = new Set<Promise<void>>();
-  const tasks = new Set<Promise<void>>();
+  const tasks = new Map<string, Promise<void>>();
   const failures: unknown[] = [];
   let closed = false;
   let disposal: Promise<void> | undefined;
@@ -94,11 +105,11 @@ function createController(input: {
           input: request.input,
           deadlineUnixMs,
         }));
-        if (submission.launch !== undefined) schedule(submission.launch);
         return Object.freeze({ runId: submission.run.runId });
       } catch (error) {
         throw administrationError(error, "start root Run");
       } finally {
+        try { await pumpCurrent(); } catch (error) { failures.push(error); }
         submissions.delete(unsettled);
         markSettled();
       }
@@ -108,6 +119,7 @@ function createController(input: {
       requireOpen(closed);
       const request = normalizeRootRunStatusRequest(value);
       try {
+        await pumpCurrent();
         return projectStatus(await retryPrivateBusy(() => loadPrivateRootRun({
           projectRoot: input.projectRoot,
           runId: request.runId,
@@ -118,44 +130,56 @@ function createController(input: {
     },
   });
 
-  function schedule(launch: PrivateRootRunLaunch): void {
+  function schedule(runId: string): void {
+    if (tasks.has(runId)) return;
     let task: Promise<void>;
-    task = settleLaunch(launch)
+    task = settleRun(runId)
       .catch((error) => { failures.push(error); })
-      .finally(() => { tasks.delete(task); });
-    tasks.add(task);
+      .finally(() => { tasks.delete(runId); });
+    tasks.set(runId, task);
   }
 
-  async function settleLaunch(launch: PrivateRootRunLaunch): Promise<void> {
-    try {
-      const completed = await input.execute(launch, cancellation.signal);
-      if (completed.runId !== launch.run.runId || completed.state !== "terminal") {
-        throw new Error("trusted root Run executor returned no matching terminal");
+  async function settleRun(runId: string): Promise<void> {
+    const settled = await input.execute(runId, input.coordinator, cancellation.signal);
+    if (settled.state === "pending") return;
+    if (settled.run.runId !== runId || settled.run.state !== "terminal") {
+      throw new Error("trusted root Run executor returned no matching terminal");
+    }
+  }
+
+  async function pumpCurrent(): Promise<void> {
+    const work = await retryPrivateBusy(() => listPrivateRootExecutionWork({
+      coordinator: input.coordinator,
+      projectRoot: input.projectRoot,
+      epoch: "current",
+    }));
+    for (const item of work) schedule(item.run.runId);
+  }
+
+  async function recoverOlder(): Promise<void> {
+    const work = await retryPrivateBusy(() => listPrivateRootExecutionWork({
+      coordinator: input.coordinator,
+      projectRoot: input.projectRoot,
+      epoch: "older",
+    }));
+    for (const item of work) {
+      const settled = await input.execute(item.run.runId, input.coordinator, cancellation.signal);
+      if (settled.state === "pending") {
+        throw new RootAdministrationError(
+          "PROJECT_BUSY",
+          "a prior root Run still has unconfirmed execution ownership",
+        );
       }
-    } catch {
-      const current = await retryPrivateBusy(() => loadPrivateRootRun({
-        projectRoot: input.projectRoot,
-        runId: launch.run.runId,
-      }));
-      if (current.state === "terminal") return;
-      await retryPrivateBusy(() => completePrivateRootRun({
-        projectRoot: input.projectRoot,
-        launch,
-        terminal: {
-          status: "failed",
-          code: cancellation.signal.aborted ? "CANCELLED" : "EXECUTION_FAILED",
-          message: cancellation.signal.aborted
-            ? "the root Run controller was closed"
-            : "the trusted root Run executor failed before publishing a terminal",
-          diagnostics: { stderr: "", stderrBytes: 0, stderrTruncated: false },
-        },
-      }));
+      if (settled.run.runId !== item.run.runId || settled.run.state !== "terminal") {
+        throw new Error("trusted root Run recovery returned no matching terminal");
+      }
     }
   }
 
   async function drain(): Promise<void> {
     while (submissions.size > 0) await Promise.all([...submissions]);
-    while (tasks.size > 0) await Promise.all([...tasks]);
+    await pumpCurrent();
+    while (tasks.size > 0) await Promise.all([...tasks.values()]);
     if (failures.length > 0) {
       const captured = failures.splice(0, failures.length);
       throw new AggregateError(captured, "root Run controller did not settle cleanly");
@@ -173,7 +197,7 @@ function createController(input: {
       return disposal;
     },
   });
-  return controller;
+  return Object.freeze({ controller, recoverOlder, pumpCurrent });
 }
 
 async function disposeController(

@@ -1,7 +1,7 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { access, chmod, mkdir, mkdtemp, readFile, readdir, realpath, rm, stat, symlink, writeFile } from "node:fs/promises";
+import { access, chmod, mkdir, mkdtemp, readFile, readdir, realpath, rm, rmdir, stat, symlink, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
@@ -25,9 +25,14 @@ import {
   runPrivateDirectRunRecipe,
 } from "../src/internal/direct-run.js";
 import {
+  cancelPrivateLinuxOwnerStateAllocation,
+  planPrivateLinuxOwnerStateAllocation,
   PrivateLinuxCgroupBackend,
+  releasePrivateLinuxOwnerState,
   requirePrivateLinuxCgroupBackend,
+  type PrivateLinuxPreparedOwnerIdentity,
   type PrivateLinuxLaunchPlan,
+  type PrivateLinuxOwnerStateAllocationIdentity,
 } from "../src/internal/linux-cgroup-backend.js";
 import { captureStoredPackage } from "../src/internal/package-artifact-store.js";
 import {
@@ -47,7 +52,6 @@ import {
   createPrivateActivationReviewPlan,
   loadPrivateActiveActivation,
   loadPrivateActivationReviewPlan,
-  openPrivateProjectCoordinator,
   publishPrivateActivationCandidate,
   requirePrivateStoredActivationCandidate,
 } from "../src/internal/activation-admission-store.js";
@@ -79,8 +83,8 @@ describe("private Linux cgroup-v2 plan boundary", () => {
       bunPath: "/usr/bin/bun",
       bubblewrapPath: "/usr/bin/bwrap",
       bashPath: "/usr/bin/bash",
-      payloadUid: 1000,
-      payloadGid: 1000,
+      payloadUid: process.getuid!(),
+      payloadGid: process.getgid!(),
     });
     expect(requirePrivateLinuxCgroupBackend(backend)).toBe(backend);
     expect(Object.isFrozen(backend)).toBe(true);
@@ -465,6 +469,78 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
     await expect(access(result.cgroup.parentCgroup)).rejects.toBeDefined();
   });
 
+  test("mounts an exact source beneath a protected 0700 ancestor", async () => {
+    host = await hostConfiguration();
+    const protectedRoot = await mkdtemp(join(tmpdir(), "jig-protected-mount-"));
+    await chmod(protectedRoot, 0o700);
+    try {
+      const source = join(protectedRoot, "captured-package");
+      await mkdir(source, { mode: 0o755 });
+      await writeFile(join(source, "value.txt"), "descriptor-pinned\n", { mode: 0o644 });
+      const base = plan(host, "protected-mount", [
+        "set -eu",
+        "test \"$(< /sealed-input/value.txt)\" = descriptor-pinned",
+        `test ! -e ${shellQuote(source)}`,
+        "! { printf changed > /sealed-input/value.txt; } 2>/tmp/write-denied",
+        "printf protected-mount-ok",
+      ].join("\n"), {
+        ...limits(),
+        deadlineUnixMs: Date.now() + 10_000,
+      });
+      const component = await backend(host).launch({
+        ...base,
+        privateProcessFilesystem: true,
+        readOnlyMounts: [
+          ...base.readOnlyMounts,
+          { source, destination: "/sealed-input" },
+        ],
+      });
+      const stdout = collect(component.stdout);
+      const stderr = collect(component.stderr);
+      await component.closeInput();
+      expect({
+        exit: await component.completion,
+        stdout: await stdout,
+        stderr: await stderr,
+      }).toMatchObject({
+        exit: { exitCode: 0, signal: null, fenced: true },
+        stdout: "protected-mount-ok",
+        stderr: "",
+      });
+      expect(await readFile(join(source, "value.txt"), "utf8")).toBe("descriptor-pinned\n");
+    } finally {
+      await rm(protectedRoot, { recursive: true, force: true });
+    }
+  });
+
+  test("seals one deep launch snapshot before asynchronous observation", async () => {
+    host = await hostConfiguration();
+    const mutable = plan(host, "sealed-snapshot", "printf snapshot-ok", {
+      ...limits(),
+      deadlineUnixMs: Date.now() + 10_000,
+    }) as {
+      runId: string;
+      limits: { memoryBytes: number } & PrivateLinuxLaunchPlan["limits"];
+      readOnlyMounts: Array<{ source: string; destination: string }>;
+      command: [string, ...string[]];
+    };
+    const sealing = backend(host).seal(mutable);
+    mutable.runId = "mutated-run";
+    mutable.limits.memoryBytes = 1;
+    mutable.readOnlyMounts[0]!.source = "/sys/fs/cgroup";
+    mutable.command[2] = "printf mutation-leaked";
+
+    const sealed = await sealing;
+    expect(sealed.identity.runId).toBe("sealed-snapshot");
+    const component = await sealed.admit();
+    const stdout = collect(component.stdout);
+    const stderr = collect(component.stderr);
+    await component.closeInput();
+    expect(await component.completion).toMatchObject({ exitCode: 0, fenced: true });
+    expect(await stdout).toBe("snapshot-ok");
+    expect(await stderr).toBe("");
+  });
+
   test("contains a fork storm with aggregate pids.max", async () => {
     host = await hostConfiguration();
     const result = await run(host, "fork-storm", [
@@ -474,7 +550,8 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
     ].join("\n"), {
       ...limits(),
       pids: 12,
-      wallClockMs: 500,
+      deadlineUnixMs: Date.now() + 2_000,
+      cancellationGraceMs: 100,
     });
 
     expect(result.exit.fenced).toBe(true);
@@ -490,7 +567,8 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
     ].join("\n"), {
       ...limits(),
       memoryBytes: 32 * 1024 * 1024,
-      wallClockMs: 1_500,
+      deadlineUnixMs: Date.now() + 1_500,
+      cancellationGraceMs: 100,
     });
 
     expect(result.exit.fenced).toBe(true);
@@ -502,12 +580,13 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
 
     const throttled = await run(host, "cpu-throttling", [
       "SECONDS=0",
-      "while (( SECONDS < 2 )); do :; done",
+      "while (( SECONDS < 1 )); do :; done",
     ].join("\n"), {
       ...limits(),
       cpuQuotaMicros: 10_000,
       cpuPeriodMicros: 100_000,
-      wallClockMs: 5_000,
+      deadlineUnixMs: Date.now() + 3_500,
+      cancellationGraceMs: 100,
     });
 
     expect(throttled.exit).toMatchObject({ exitCode: 0, signal: null, fenced: true });
@@ -519,16 +598,24 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
       ...limits(),
       cpuQuotaMicros: 10_000,
       cpuPeriodMicros: 100_000,
-      wallClockMs: 500,
+      deadlineUnixMs: Date.now() + 1_500,
+      cancellationGraceMs: 100,
     });
 
-    expect(performance.now() - started).toBeLessThan(2_000);
+    expect(performance.now() - started).toBeLessThan(3_500);
     expect(terminated.exit).toMatchObject({ signal: "SIGKILL", fenced: true });
-  });
+  }, 10_000);
 
   test("cancels during startup and shutdown without leaking ownership", async () => {
     host = await hostConfiguration();
     const before = new Set(await jigCgroups(host.scope));
+    await expect(backend(host).launch(plan(host, "expired-before-admission", "printf must-not-run", {
+      ...limits(),
+      deadlineUnixMs: 0,
+      cancellationGraceMs: 1,
+    }))).rejects.toBeDefined();
+    await waitUntil(async () => sameMembers(before, new Set(await jigCgroups(host.scope))), 5_000);
+
     const alreadyAborted = new AbortController();
     alreadyAborted.abort();
     await expect(backend(host).launch(
@@ -551,6 +638,216 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
     await expect(access(process.cgroup.parentCgroup)).rejects.toBeDefined();
   });
 
+  test("cancellation during private-device setup cannot cross the admission fence", async () => {
+    host = await hostConfiguration();
+    const before = new Set(await jigCgroups(host.scope));
+    const fixture = await mkdtemp(join(tmpdir(), "jig-mknod-barrier-"));
+    const marker = join(fixture, "entered");
+    const release = join(fixture, "release");
+    const mknod = join(fixture, "mknod");
+    const bubblewrap = join(fixture, "bwrap");
+    const spawned = join(fixture, "payload-spawned");
+    const exactMknod = await realpath("/bin/mknod");
+    await writeFile(mknod, [
+      `#!${host.bash}`,
+      "set -eu",
+      `printf entered > ${shellQuote(marker)}`,
+      `while [[ ! -e ${shellQuote(release)} ]]; do :; done`,
+      `exec -a mknod ${shellQuote(exactMknod)} "$@"`,
+      "",
+    ].join("\n"), { mode: 0o755 });
+    await writeFile(bubblewrap, [
+      `#!${host.bash}`,
+      "set -eu",
+      `printf spawned > ${shellQuote(spawned)}`,
+      "exit 70",
+      "",
+    ].join("\n"), { mode: 0o755 });
+    const guardedBackend = new PrivateLinuxCgroupBackend({
+      cgroupScope: host.scope,
+      sudoPath: "/agent-sudo/bin/sudo",
+      subreaperPath: "/run/podman-init",
+      mknodPath: mknod,
+      bunPath: "/bin/bun",
+      bubblewrapPath: bubblewrap,
+      bashPath: host.bash,
+      payloadUid: 1000,
+      payloadGid: 100,
+    });
+    const abort = new AbortController();
+    try {
+      const launching = guardedBackend.launch({
+        ...plan(host, "device-setup-cancel", "printf must-not-run", {
+          ...limits(),
+          deadlineUnixMs: Date.now() + 10_000,
+        }),
+        privateProcessFilesystem: true,
+        privateRuntimeDevices: true,
+      }, abort.signal);
+      await waitUntil(async () => await exists(marker), 5_000);
+      abort.abort();
+      await writeFile(release, "release\n", { mode: 0o600 });
+      await expect(launching).rejects.toBeDefined();
+      expect(await exists(spawned)).toBe(false);
+      await waitUntil(async () => sameMembers(before, new Set(await jigCgroups(host.scope))), 5_000);
+    } finally {
+      await rm(fixture, { recursive: true, force: true });
+    }
+  });
+
+  test("persists preparation before admission and leaves root receipts readable to the coordinator", async () => {
+    host = await hostConfiguration();
+    const ownerParent = await mkdtemp(join(tmpdir(), "jig-owner-readable-"));
+    await chmod(ownerParent, 0o700);
+    try {
+      const allocation = await planPrivateLinuxOwnerStateAllocation({
+        parent: ownerParent,
+        name: "prepared-owner",
+      });
+      const launchPlan = plan(host, "prepared-owner", "printf owner-state-ok");
+      const sealed = await backend(host).seal(launchPlan, allocation);
+      let continueAdmission!: () => void;
+      const admissionBarrier = new Promise<void>((resolveAdmission) => {
+        continueAdmission = resolveAdmission;
+      });
+      let reportPrepared!: (value: PrivateLinuxPreparedOwnerIdentity) => void;
+      const prepared = new Promise<PrivateLinuxPreparedOwnerIdentity>((resolvePrepared) => {
+        reportPrepared = resolvePrepared;
+      });
+      const launching = sealed.admit(undefined, async (identity) => {
+        reportPrepared(identity);
+        await admissionBarrier;
+      });
+      const preparedIdentity = await prepared;
+      const owner = preparedIdentity.owner;
+      expect((await readFile(join(owner.supervisorCgroup, "cgroup.procs"), "utf8")).trim()).not.toBe("");
+      expect((await readFile(join(owner.runCgroup, "cgroup.procs"), "utf8")).trim()).toBe("");
+      expect((await readFile(join(owner.runCgroup, "memory.max"), "utf8")).trim()).toBe(
+        String(launchPlan.limits.memoryBytes),
+      );
+      const activeClaim = join(owner.ownerStateDirectory, "claim.json");
+      expect(JSON.parse(await readFile(activeClaim, "utf8"))).toMatchObject({ state: "active" });
+      expect((await stat(activeClaim)).mode & 0o777).toBe(0o644);
+
+      continueAdmission();
+      const component = await launching;
+      const stdout = collect(component.stdout);
+      const stderr = collect(component.stderr);
+      await component.closeInput();
+      const enforcement = await component.enforcement;
+      expect(await component.completion).toMatchObject({ exitCode: 0, fenced: true });
+      expect(await stdout).toBe("owner-state-ok");
+      expect(await stderr).toBe("");
+      expect(enforcement.stopReason).toBe("payload_exit");
+      const finalReceipt = join(owner.ownerStateDirectory, "final.json");
+      expect(JSON.parse(await readFile(finalReceipt, "utf8"))).toMatchObject({
+        fenced: true,
+        ownerDigest: preparedIdentity.digest,
+      });
+      expect((await stat(finalReceipt)).mode & 0o777).toBe(0o644);
+      await releasePrivateLinuxOwnerState(preparedIdentity, enforcement);
+      await expect(access(owner.ownerStateDirectory)).rejects.toBeDefined();
+    } finally {
+      await rm(ownerParent, { recursive: true, force: true });
+    }
+  });
+
+  test("a cancelled durable allocation defeats a delayed trusted wrapper before host mutation", async () => {
+    host = await hostConfiguration();
+    const before = new Set(await jigCgroups(host.scope));
+    const ownerParent = await mkdtemp(join(tmpdir(), "jig-owner-cancelled-"));
+    await chmod(ownerParent, 0o700);
+    const sentinel = join(ownerParent, "must-not-exist");
+    try {
+      const allocation = await planPrivateLinuxOwnerStateAllocation({
+        parent: ownerParent,
+        name: "cancelled-owner",
+      });
+      const cancellation = await cancelPrivateLinuxOwnerStateAllocation(allocation);
+      await expect(backend(host).seal(
+        plan(host, "cancelled-seal", "printf must-not-run"),
+        allocation,
+      )).rejects.toThrow("sealed Linux owner path already exists");
+      expect(await exists(allocation.directory)).toBe(true);
+      const wrapper = join(import.meta.dir, "..", "src", "internal", "linux-cgroup-launch-wrapper.ts");
+      const result = await invoke("/agent-sudo/bin/sudo", [
+        "-n", "--", "/run/podman-init", "--", host.bash,
+        "--noprofile", "--norc", "-p", "-c", 'cd -- / && exec -c -- "$@"',
+        "jig-cgroup-wrapper", "/bin/bun", "--no-env-file", "--no-install", "--config=/dev/null",
+        wrapper,
+        "--owner-dir", allocation.directory,
+        "--owner-digest", testDigest("cancelled-wrapper"),
+        "--allocation-digest", allocation.digest,
+        "--owner-token", allocation.ownerToken,
+        "--helper", host.bash, "-c", `printf ran > ${shellQuote(sentinel)}`,
+        "--finalizer", "/bin/false",
+      ]);
+      expect(result).toEqual({ code: 0, stdout: "", stderr: "" });
+      expect(await exists(sentinel)).toBe(false);
+      expect(new Set(await jigCgroups(host.scope))).toEqual(before);
+      await releasePrivateLinuxOwnerState(allocation, cancellation);
+    } finally {
+      await rm(ownerParent, { recursive: true, force: true });
+    }
+  });
+
+  test("the outside owner finalizes an active claim even when helper spawn fails", async () => {
+    host = await hostConfiguration();
+    const before = new Set(await jigCgroups(host.scope));
+    const ownerParent = await mkdtemp(join(tmpdir(), "jig-owner-helper-failure-"));
+    await chmod(ownerParent, 0o700);
+    try {
+      const allocation = await planPrivateLinuxOwnerStateAllocation({
+        parent: ownerParent,
+        name: "failed-helper-owner",
+      });
+      await mkdir(allocation.directory, { mode: 0o700 });
+      await writeFile(join(allocation.directory, "owner.json"), `${JSON.stringify({
+        allocationDigest: allocation.digest,
+        kind: "private-linux-owner-state/1",
+        token: allocation.ownerToken,
+      })}\n`, { mode: 0o600 });
+      const ownerDigest = testDigest("failed-helper-wrapper");
+      const finalizerReceipt = JSON.stringify({ fenced: true, ownerDigest });
+      const wrapper = join(import.meta.dir, "..", "src", "internal", "linux-cgroup-launch-wrapper.ts");
+      const result = await invoke("/agent-sudo/bin/sudo", [
+        "-n", "--", "/run/podman-init", "--", host.bash,
+        "--noprofile", "--norc", "-p", "-c", 'cd -- / && exec -c -- "$@"',
+        "jig-cgroup-wrapper", "/bin/bun", "--no-env-file", "--no-install", "--config=/dev/null",
+        wrapper,
+        "--owner-dir", allocation.directory,
+        "--owner-digest", ownerDigest,
+        "--allocation-digest", allocation.digest,
+        "--owner-token", allocation.ownerToken,
+        "--helper", "/jig-intentionally-missing-helper", "unused",
+        "--finalizer", host.bash, "-c", `printf '%s\\n' ${shellQuote(finalizerReceipt)}`,
+      ]);
+      expect(result.code).toBe(70);
+      expect(result.stderr).toContain("trusted cgroup launch helper failed");
+      expect(JSON.parse(await readFile(join(allocation.directory, "final.json"), "utf8"))).toEqual({
+        fenced: true,
+        ownerDigest,
+      });
+      expect((await stat(join(allocation.directory, "final.json"))).mode & 0o777).toBe(0o644);
+      expect(new Set(await jigCgroups(host.scope))).toEqual(before);
+    } finally {
+      await rm(ownerParent, { recursive: true, force: true });
+    }
+  });
+
+  test("settles concurrent sibling owners without migrating a helper into the shared scope", async () => {
+    host = await hostConfiguration();
+    const [first, second] = await Promise.all([
+      run(host, "concurrent-owner-a", "/bin/sleep 0.2; printf a"),
+      run(host, "concurrent-owner-b", "/bin/sleep 0.2; printf b"),
+    ]);
+    expect([first.stdout, second.stdout]).toEqual(["a", "b"]);
+    expect(first.exit.fenced).toBe(true);
+    expect(second.exit.fenced).toBe(true);
+    expect((await readFile(join(host.scope, "cgroup.procs"), "utf8")).trim()).toBe("");
+    expect(await jigCgroups(host.scope)).toEqual([]);
+  });
+
   test("fences orphaned grandchildren after the activation root exits", async () => {
     host = await hostConfiguration();
     const zombiesBefore = await zombiePids();
@@ -564,6 +861,47 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
     expect(result.exit).toMatchObject({ exitCode: 0, signal: null, fenced: true });
     await expect(access(result.cgroup.parentCgroup)).rejects.toBeDefined();
     expect(await zombiePids()).toEqual(zombiesBefore);
+  });
+
+  test("reacquires an exact fence after coordinator loss at the prepared admission barrier", async () => {
+    host = await hostConfiguration();
+    const fixture = spawn(
+      "/bin/bun",
+      [join(import.meta.dir, "fixtures", "linux-cgroup-prepared-coordinator.ts")],
+      {
+        env: {
+          ...process.env,
+          JIG_TEST_SCOPE: host.scope,
+          JIG_TEST_BASH: host.bash,
+        },
+        stdio: ["ignore", "pipe", "pipe"],
+      },
+    );
+    const diagnostics = collect(fixture.stderr!);
+    const announced = JSON.parse(await firstLine(fixture.stdout!)) as {
+      allocation: PrivateLinuxOwnerStateAllocationIdentity;
+      ownerParent: string;
+      prepared: PrivateLinuxPreparedOwnerIdentity;
+    };
+    expect((await readFile(join(announced.prepared.owner.runCgroup, "cgroup.procs"), "utf8")).trim()).toBe("");
+    fixture.kill("SIGKILL");
+    expect((await childExit(fixture)).signal).toBe("SIGKILL");
+    expect(await diagnostics).toBe("");
+
+    const successor = backend(host);
+    let recovered: Awaited<ReturnType<PrivateLinuxCgroupBackend["recoverFence"]>> | undefined;
+    await waitUntil(async () => {
+      try {
+        recovered = await successor.recoverFence(announced.prepared);
+        return true;
+      } catch {
+        return false;
+      }
+    }, 5_000);
+    expect(recovered).toMatchObject({ fenced: true, stopReason: "recovered" });
+    await releasePrivateLinuxOwnerState(announced.prepared, recovered);
+    await rmdir(announced.ownerParent);
+    expect(await exists(announced.prepared.owner.parentCgroup)).toBe(false);
   });
 
   test("reaps after coordinator SIGKILL and remains leak-free across repeated Runs", async () => {
@@ -582,11 +920,29 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
       },
     );
     const line = await firstLine(fixture.stdout!);
-    const announced = JSON.parse(line) as { parentCgroup: string };
+    const announced = JSON.parse(line) as {
+      allocation: PrivateLinuxOwnerStateAllocationIdentity;
+      owner: PrivateLinuxPreparedOwnerIdentity;
+      ownerParent: string;
+      parentCgroup: string;
+    };
     const privateDevices = join("/dev", `.jig-${basename(announced.parentCgroup)}-devices`);
     fixture.kill("SIGKILL");
     await waitUntil(async () => !(await exists(announced.parentCgroup)), 5_000);
     await waitUntil(async () => !(await exists(privateDevices)), 5_000);
+    const successor = backend(host);
+    let recovered: Awaited<ReturnType<PrivateLinuxCgroupBackend["recoverFence"]>> | undefined;
+    await waitUntil(async () => {
+      try {
+        recovered = await successor.recoverFence(announced.owner);
+        return true;
+      } catch {
+        return false;
+      }
+    }, 5_000);
+    expect(recovered).toMatchObject({ fenced: true, stopReason: "recovered" });
+    await releasePrivateLinuxOwnerState(announced.owner, recovered);
+    await rmdir(announced.ownerParent);
 
     for (let index = 0; index < 8; index += 1) {
       const result = await run(host, `repeat-${index}`, "exit 0");
@@ -638,7 +994,8 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
       limits: {
         ...limits(),
         memoryBytes: 256 * 1024 * 1024,
-        wallClockMs: 10_000,
+        deadlineUnixMs: Date.now() + 10_000,
+        cancellationGraceMs: 1_000,
       },
       readOnlyMounts: bun.runtimeSupport.closureSources.map((source) => ({
         source,
@@ -651,9 +1008,14 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
     const stdout = collect(component.stdout);
     const stderr = collect(component.stderr);
     await component.closeInput();
-    expect(await component.completion).toMatchObject({ exitCode: 0, fenced: true });
-    expect(await stderr).toBe("");
-    const result = JSON.parse((await stdout).trim()) as {
+    const completed = await component.completion;
+    const diagnostics = await stderr;
+    const output = await stdout;
+    expect({ completed, diagnostics }).toMatchObject({
+      completed: { exitCode: 0, fenced: true },
+      diagnostics: "",
+    });
+    const result = JSON.parse(output.trim()) as {
       readonly pid: number;
       readonly outerVisible: boolean;
       readonly procMount: string;
@@ -783,7 +1145,8 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
             limits: {
               memoryBytes: 256 * 1024 * 1024,
               pids: 32,
-              wallClockMs: 3_000,
+              deadlineUnixMs: expect.any(Number),
+              cancellationGraceMs: 1_000,
             },
           },
         });
@@ -887,7 +1250,6 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
     const root = await mkdtemp(join(tmpdir(), "jig-retained-project-"));
     const store = await mkdtemp(join(tmpdir(), "jig-retained-store-"));
     let rootController: Awaited<ReturnType<typeof openPrivateRootAdministrationController>> | undefined;
-    let rootCoordinator: Awaited<ReturnType<typeof openPrivateProjectCoordinator>> | undefined;
     const evaluator = {
       backend: backend(host),
       bunPath: bun.executable,
@@ -1032,7 +1394,7 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         lockMode: "locked",
       }))
         .rejects.toMatchObject({ code: "LOCK_MISMATCH" });
-      const admissionDatabase = join(root, ".jig", "private-activation-admission-v6.sqlite3");
+      const admissionDatabase = join(root, ".jig", "private-activation-admission-v7.sqlite3");
       await writeFile(join(root, "jig.lock"), persisted.lock, { mode: 0o644 });
       const crashSqlite = createRequire(import.meta.url)("bun:sqlite") as any;
       const recovered = crashSqlite.Database.open(
@@ -1178,12 +1540,14 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
           "candidates",
           "coordinator_head",
           "review_plans",
+          "root_execution_closures",
+          "root_execution_lifecycles",
           "root_runs",
           "root_spawn_intents",
           "root_terminals",
         ]);
-        expect(database.query("PRAGMA application_id").get().application_id).toBe(0x4a494736);
-        expect(database.query("PRAGMA user_version").get().user_version).toBe(6);
+        expect(database.query("PRAGMA application_id").get().application_id).toBe(0x4a494737);
+        expect(database.query("PRAGMA user_version").get().user_version).toBe(7);
         expect(database.query("PRAGMA journal_mode").get().journal_mode).toBe("delete");
         expect(database.query("SELECT revision FROM candidate_head WHERE singleton = 1").get().revision).toBe(3);
         expect(database.query("SELECT count(*) AS count FROM candidates").get().count).toBe(3);
@@ -1354,10 +1718,11 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         projectRoot: root,
         packageStoreRoot: store,
         runTimeoutMs: 20_000,
-        execute: (launch, signal) => executePrivateRootRunLaunch({
+        execute: (runId, coordinator, signal) => executePrivateRootRunLaunch({
           projectRoot: root,
           packageStoreRoot: store,
-          launch,
+          runId,
+          coordinator,
           runtimeSupport: reacquiredBun.runtimeSupport,
           backend: rootBackend,
           signal,
@@ -1411,12 +1776,27 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
       const abandoned = JSON.parse(await firstLine(lostCoordinator.stdout!)) as { readonly runId: string };
       lostCoordinator.kill("SIGKILL");
       expect((await childExit(lostCoordinator)).signal).toBe("SIGKILL");
-      rootCoordinator = await openPrivateProjectCoordinator({ projectRoot: root });
-      expect(rootCoordinator.recoveredRootRuns).toMatchObject([{
+      rootController = await openPrivateRootAdministrationController({
+        projectRoot: root,
+        packageStoreRoot: store,
+        runTimeoutMs: 20_000,
+        execute: (runId, coordinator, signal) => executePrivateRootRunLaunch({
+          projectRoot: root,
+          packageStoreRoot: store,
+          runId,
+          coordinator,
+          runtimeSupport: reacquiredBun.runtimeSupport,
+          backend: rootBackend,
+          signal,
+        }),
+      });
+      expect(await rootController.administration.runStatus(abandoned)).toMatchObject({
         runId: abandoned.runId,
         state: "terminal",
         terminal: { status: "lost", code: "COORDINATOR_LOST" },
-      }]);
+      });
+      await rootController.dispose();
+      rootController = undefined;
 
       corruptor = sqlite.Database.open(admissionDatabase, writableFlags);
       corruptor.query("UPDATE candidates SET candidate_digest = ?1 WHERE revision = 1")
@@ -1429,7 +1809,6 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
       })).rejects.toMatchObject({ code: "ADMISSION_STATE_CORRUPT" });
     } finally {
       await rootController?.dispose();
-      await rootCoordinator?.dispose();
       await rm(root, { recursive: true, force: true });
       await rm(store, { recursive: true, force: true });
     }
@@ -1575,7 +1954,8 @@ function limits(): PrivateLinuxLaunchPlan["limits"] {
     pids: 24,
     cpuQuotaMicros: 50_000,
     cpuPeriodMicros: 100_000,
-    wallClockMs: 2_000,
+    deadlineUnixMs: Date.now() + 2_000,
+    cancellationGraceMs: 1_000,
     cleanupTimeoutMs: 5_000,
   };
 }

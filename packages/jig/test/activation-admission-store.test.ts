@@ -39,6 +39,8 @@ import {
   recordPrivateRootExecutionCheckpoint,
   requirePrivateStoredActivationCandidate,
   submitPrivateRootRun,
+  type PrivateProjectCoordinator,
+  type PrivateRootRunTerminal,
 } from "../src/internal/activation-admission-store.js";
 import {
   decodePrivateActivationCandidate,
@@ -726,27 +728,47 @@ describe.serial("private activation admission SQLite store", () => {
         projectRoot: fixture.root,
         packageStoreRoot: fixture.store,
         runTimeoutMs: 60_000,
-        execute: async (launch, signal) => {
+        execute: async (runId, coordinator, signal) => {
           executions += 1;
-          const value = (launch.run.input as { readonly value: string }).value;
-          if (value === "fail") throw new Error("simulated executor failure");
+          const work = await reacquirePrivateRootExecutionWork({
+            coordinator,
+            projectRoot: fixture.root,
+            packageStoreRoot: fixture.store,
+            runId,
+          });
+          const value = (work.run.input as { readonly value: string }).value;
+          let terminal: PrivateRootRunTerminal;
+          if (value === "fail") {
+            terminal = {
+              status: "failed",
+              code: "EXECUTION_FAILED",
+              message: "simulated executor failure",
+              diagnostics: { stderr: "", stderrBytes: 0, stderrTruncated: false },
+            };
+            return await closeTestRootExecution(fixture.root, coordinator, runId, terminal);
+          }
           if (value === "cancel") {
             cancellationStarted();
-            if (signal.aborted) throw signal.reason;
-            await new Promise<never>((_resolve, reject) => {
-              signal.addEventListener("abort", () => reject(signal.reason), { once: true });
-            });
+            if (!signal.aborted) {
+              await new Promise<void>((resolve) => {
+                signal.addEventListener("abort", () => resolve(), { once: true });
+              });
+            }
+            terminal = {
+              status: "failed",
+              code: "CANCELLED",
+              message: "simulated executor cancellation",
+              diagnostics: { stderr: "", stderrBytes: 0, stderrTruncated: false },
+            };
+            return await closeTestRootExecution(fixture.root, coordinator, runId, terminal);
           }
           await gate;
-          return completePrivateRootRun({
-            projectRoot: fixture.root,
-            launch,
-            terminal: {
-              status: "succeeded",
-              result: { outcome: "done", output: { accepted: launch.run.input } },
-              diagnostics: { stderr: "", stderrBytes: 0, stderrTruncated: false },
-            },
-          });
+          terminal = {
+            status: "succeeded",
+            result: { outcome: "done", output: { accepted: work.run.input } },
+            diagnostics: { stderr: "", stderrBytes: 0, stderrTruncated: false },
+          };
+          return await closeTestRootExecution(fixture.root, coordinator, runId, terminal);
         },
       });
       await expect(openPrivateRootAdministrationController({
@@ -1278,6 +1300,36 @@ async function createFixture(disposition: "unavailable" | "ready" = "unavailable
     await rm(base, { recursive: true, force: true });
     throw error;
   }
+}
+
+async function closeTestRootExecution(
+  projectRoot: string,
+  coordinator: PrivateProjectCoordinator,
+  runId: string,
+  terminal: PrivateRootRunTerminal,
+): Promise<{ readonly state: "terminal"; readonly run: Awaited<ReturnType<typeof closePrivateRootExecution>> }> {
+  for (const [checkpoint, value] of [
+    ["plan", { kind: "test-plan/1", runId }],
+    ["backing", { kind: "test-backing/1", runId }],
+    ["sandbox", { kind: "test-sandbox/1", runId }],
+    ["prepared", { kind: "test-prepared/1", runId }],
+    ["provisional", terminal],
+    ["fence", { kind: "test-fence/1", runId }],
+    ["release", { kind: "test-release/1", runId }],
+    ["admitted", terminal],
+  ] as const) {
+    await recordPrivateRootExecutionCheckpoint({
+      coordinator,
+      projectRoot,
+      runId,
+      checkpoint,
+      value: value as JsonValue,
+    });
+  }
+  return Object.freeze({
+    state: "terminal" as const,
+    run: await closePrivateRootExecution({ coordinator, projectRoot, runId, terminal }),
+  });
 }
 
 function activationRequest(content: Record<string, unknown>): Record<string, unknown> {

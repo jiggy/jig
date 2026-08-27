@@ -464,7 +464,8 @@ function evaluatorLimits() {
     pids: 32,
     cpuQuotaMicros: 50_000,
     cpuPeriodMicros: 100_000,
-    wallClockMs: 3_000,
+    deadlineUnixMs: Date.now() + 3_000,
+    cancellationGraceMs: 1_000,
     cleanupTimeoutMs: 5_000,
   });
 }

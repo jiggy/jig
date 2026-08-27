@@ -33,6 +33,7 @@ const DEFAULT_SELECTOR = "python";
 const PACKAGE_DESTINATION = "/package";
 const SCRATCH = "/work";
 const MAX_WALL_CLOCK_MS = 30_000;
+const CANCELLATION_GRACE_MS = 1_000;
 const authenticRecipes = new WeakSet<object>();
 
 const RESOURCE_CEILINGS = Object.freeze({
@@ -54,6 +55,7 @@ export interface PrivatePythonDirectRecipe {
   readonly executablePath: string;
   readonly packageDestination: "/package";
   readonly scratch: "/work";
+  readonly wallClockCeilingMs: number;
   readonly resourceCeilings: typeof RESOURCE_CEILINGS;
 }
 
@@ -151,6 +153,7 @@ export async function planPrivatePythonDirectRun(input: {
     executablePath: runtimeSupport.executablePath,
     packageDestination: PACKAGE_DESTINATION,
     scratch: SCRATCH,
+    wallClockCeilingMs: MAX_WALL_CLOCK_MS,
     resourceCeilings: RESOURCE_CEILINGS,
   });
   authenticRecipes.add(recipe);
@@ -172,6 +175,11 @@ export async function runPrivatePythonDirectRecipe(input: {
   readonly invocation: Omit<RunHostInvocation, "scratch">;
 }): Promise<PrivatePythonDirectRunResult> {
   const recipe = requirePrivatePythonDirectRecipe(input.recipe);
+  const activationStartedUnixMs = Date.now();
+  const effectiveDeadlineUnixMs = Math.min(
+    input.invocation.deadlineUnixMs,
+    activationStartedUnixMs + recipe.wallClockCeilingMs,
+  );
   canonicalJson(input.invocation.input);
   const invocationConfiguration = privateDomainDigest("JIG-Private-Python-Invocation-Configuration/1", {
     settings: input.invocation.settings,
@@ -184,7 +192,7 @@ export async function runPrivatePythonDirectRecipe(input: {
   if (invocationConfiguration !== plannedConfiguration) {
     throw new TypeError("Python Run invocation differs from its admitted settings or attachments");
   }
-  const remaining = input.invocation.deadlineUnixMs - Date.now();
+  const remaining = effectiveDeadlineUnixMs - Date.now();
   if (!Number.isSafeInteger(remaining) || remaining <= 0) {
     throw new RangeError("Python Run deadline elapsed before activation");
   }
@@ -207,7 +215,8 @@ export async function runPrivatePythonDirectRecipe(input: {
   try {
     const limits: PrivateLinuxCgroupLimits = Object.freeze({
       ...recipe.resourceCeilings,
-      wallClockMs: Math.min(remaining, MAX_WALL_CLOCK_MS),
+      deadlineUnixMs: effectiveDeadlineUnixMs,
+      cancellationGraceMs: CANCELLATION_GRACE_MS,
     });
     const component = await recipe.backend.launch({
       runId: input.runId,
@@ -221,6 +230,7 @@ export async function runPrivatePythonDirectRecipe(input: {
     const terminal = await new RunHostSession(component, {
       ...input.invocation,
       scratch: recipe.scratch,
+      deadlineUnixMs: effectiveDeadlineUnixMs,
     }).run();
     return Object.freeze({
       terminal,
@@ -250,6 +260,7 @@ function logicalLaunchDigest(
     packageDestination: PACKAGE_DESTINATION,
     scratch: SCRATCH,
     resourceCeilings: RESOURCE_CEILINGS,
+    wallClockCeilingMs: MAX_WALL_CLOCK_MS,
     environment: {},
     runtimePredicates: [],
   } as unknown as JsonValue);

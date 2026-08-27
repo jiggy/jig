@@ -24,8 +24,14 @@ const backend = new PrivateLinuxCgroupBackend({
   payloadUid: 1000,
   payloadGid: 100,
 });
-const launchPlan = {
-  runId: "coordinator-failure",
+const ownerParent = await mkdtemp(join(tmpdir(), "jig-prepared-owner-"));
+await chmod(ownerParent, 0o700);
+const allocation = await planPrivateLinuxOwnerStateAllocation({
+  parent: ownerParent,
+  name: "prepared-coordinator-failure",
+});
+const sealed = await backend.seal({
+  runId: "prepared-coordinator-failure",
   limits: {
     memoryBytes: 64 * 1024 * 1024,
     pids: 16,
@@ -35,27 +41,11 @@ const launchPlan = {
     cancellationGraceMs: 1_000,
     cleanupTimeoutMs: 5_000,
   },
-  // Proof-host fixture only: Bash resolves into this host's Nix store. This is
-  // not a portable Backend default or a FLOW package capability.
   readOnlyMounts: [{ source: "/nix/store", destination: "/nix/store" }],
-  privateProcessFilesystem: true,
-  privateRuntimeDevices: true,
-  command: [bash, "-c", "while :; do :; done"],
-} as const;
-const ownerParent = await mkdtemp(join(tmpdir(), "jig-coordinator-owner-"));
-await chmod(ownerParent, 0o700);
-const allocation = await planPrivateLinuxOwnerStateAllocation({
-  parent: ownerParent,
-  name: "coordinator-failure",
-});
-const sealed = await backend.seal(launchPlan, allocation);
-const component = await sealed.admit();
-void (async () => { for await (const _ of component.stdout) {} })();
-void (async () => { for await (const _ of component.stderr) {} })();
-console.log(JSON.stringify({
-  allocation,
-  owner: component.owner,
-  ownerParent,
-  parentCgroup: component.cgroup.parentCgroup,
-}));
+  command: [bash, "-c", "printf package-must-not-start"],
+}, allocation);
+void sealed.admit(undefined, async (prepared) => {
+  console.log(JSON.stringify({ allocation, ownerParent, prepared }));
+  await new Promise(() => undefined);
+}).catch(() => undefined);
 await new Promise(() => undefined);

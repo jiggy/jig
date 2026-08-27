@@ -33,6 +33,7 @@ const DEFAULT_SELECTOR = "bun";
 const PACKAGE_DESTINATION = "/package";
 const SCRATCH = "/work";
 const MAX_WALL_CLOCK_MS = 30_000;
+const CANCELLATION_GRACE_MS = 1_000;
 const BUN_POLICY = Object.freeze([
   "--no-env-file",
   "--no-install",
@@ -63,6 +64,7 @@ export interface PrivateBunDirectRecipe {
   readonly executablePath: string;
   readonly packageDestination: "/package";
   readonly scratch: "/work";
+  readonly wallClockCeilingMs: number;
   readonly resourceCeilings: typeof RESOURCE_CEILINGS;
 }
 
@@ -153,6 +155,7 @@ export async function planPrivateBunDirectRun(input: {
     executablePath: runtimeSupport.executablePath,
     packageDestination: PACKAGE_DESTINATION,
     scratch: SCRATCH,
+    wallClockCeilingMs: MAX_WALL_CLOCK_MS,
     resourceCeilings: RESOURCE_CEILINGS,
   });
   authenticRecipes.add(recipe);
@@ -174,6 +177,11 @@ export async function runPrivateBunDirectRecipe(input: {
   readonly invocation: Omit<RunHostInvocation, "scratch">;
 }): Promise<PrivateBunDirectRunResult> {
   const recipe = requirePrivateBunDirectRecipe(input.recipe);
+  const activationStartedUnixMs = Date.now();
+  const effectiveDeadlineUnixMs = Math.min(
+    input.invocation.deadlineUnixMs,
+    activationStartedUnixMs + recipe.wallClockCeilingMs,
+  );
   canonicalJson(input.invocation.input);
   const invocationConfiguration = privateDomainDigest("JIG-Private-Bun-Invocation-Configuration/1", {
     settings: input.invocation.settings,
@@ -186,7 +194,7 @@ export async function runPrivateBunDirectRecipe(input: {
   if (invocationConfiguration !== plannedConfiguration) {
     throw new TypeError("Bun Run invocation differs from its admitted settings or attachments");
   }
-  const remaining = input.invocation.deadlineUnixMs - Date.now();
+  const remaining = effectiveDeadlineUnixMs - Date.now();
   if (!Number.isSafeInteger(remaining) || remaining <= 0) {
     throw new RangeError("Bun Run deadline elapsed before activation");
   }
@@ -209,7 +217,8 @@ export async function runPrivateBunDirectRecipe(input: {
   try {
     const limits: PrivateLinuxCgroupLimits = Object.freeze({
       ...recipe.resourceCeilings,
-      wallClockMs: Math.min(remaining, MAX_WALL_CLOCK_MS),
+      deadlineUnixMs: effectiveDeadlineUnixMs,
+      cancellationGraceMs: CANCELLATION_GRACE_MS,
     });
     const component = await recipe.backend.launch({
       runId: input.runId,
@@ -229,6 +238,7 @@ export async function runPrivateBunDirectRecipe(input: {
     const terminal = await new RunHostSession(component, {
       ...input.invocation,
       scratch: recipe.scratch,
+      deadlineUnixMs: effectiveDeadlineUnixMs,
     }).run();
     return Object.freeze({
       terminal,
@@ -258,6 +268,7 @@ function logicalLaunchDigest(
     packageDestination: PACKAGE_DESTINATION,
     scratch: SCRATCH,
     resourceCeilings: RESOURCE_CEILINGS,
+    wallClockCeilingMs: MAX_WALL_CLOCK_MS,
     environment: {},
     bunPolicy: BUN_POLICY,
     runtimePredicates: RUNTIME_PREDICATES,

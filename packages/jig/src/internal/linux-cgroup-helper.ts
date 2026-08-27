@@ -12,13 +12,15 @@ interface Configuration {
   readonly pids: string;
   readonly cpuQuota: string;
   readonly cpuPeriod: string;
-  readonly wallMs: number;
+  readonly deadlineUnixMs: number;
+  readonly cancellationGraceMs: number;
   readonly cleanupMs: number;
   readonly uid: string;
   readonly gid: string;
   readonly bubblewrap: string;
   readonly mknod: string;
   readonly bash: string;
+  readonly launcher: string;
   readonly bubblewrapArguments: readonly string[];
 }
 
@@ -31,22 +33,25 @@ const HELPER_BUN_POLICY = Object.freeze([
 ] as const);
 const HELPER_FIELDS = new Set([
   "bubblewrap",
+  "cancellation-grace-ms",
   "cleanup-ms",
   "control",
   "cpu-period",
   "cpu-quota",
+  "deadline-unix-ms",
   "gid",
   "memory",
   "mknod",
+  "launcher",
   "parent",
   "pids",
   "scope",
   "bash",
   "uid",
-  "wall-ms",
 ]);
 const PRIVATE_NULL_SOURCE = "@jig-private-null@";
 const PRIVATE_URANDOM_SOURCE = "@jig-private-urandom@";
+const EMPTY_ENVIRONMENT = 'cd -- / && exec -c -- "$@"';
 
 const ENTER_SCRIPT = [
   "set -eu",
@@ -75,10 +80,10 @@ async function main(): Promise<void> {
   const config = parseArguments(process.argv.slice(2));
 
   const parentCgroup = join(config.scope, config.parent);
+  const supervisorCgroup = join(parentCgroup, "supervisor");
   const runCgroup = join(parentCgroup, "run");
   const control = await connectControl(config.control);
   let child: ChildProcessWithoutNullStreams | undefined;
-  let parentCreated = false;
   let runCreated = false;
   let stopping: StopReason | undefined;
   let terminalSent = false;
@@ -141,21 +146,36 @@ async function main(): Promise<void> {
   process.once("SIGTERM", () => requestStop("cancelled"));
   process.once("SIGINT", () => requestStop("cancelled"));
 
-  const deadline = setTimeout(() => requestStop("deadline"), config.wallMs);
+  const hardDeadlineUnixMs = config.deadlineUnixMs + config.cancellationGraceMs;
+  const hardDeadlineDelayMs = Math.max(0, hardDeadlineUnixMs - Date.now());
+  let deadline: ReturnType<typeof setTimeout> | undefined = setTimeout(
+    () => requestStop("deadline"),
+    hardDeadlineDelayMs,
+  );
   try {
-    await admission;
-    if (stopping !== undefined) throw new Error(`launch cancelled before admission: ${stopping}`);
     await requireScope(config.scope);
     await mkdir(parentCgroup, { mode: 0o755 });
-    parentCreated = true;
     await requireControllers(parentCgroup, ["cpu", "memory", "pids"]);
     await writeFile(join(parentCgroup, "cgroup.subtree_control"), "+cpu +memory +pids");
+    await mkdir(supervisorCgroup, { mode: 0o755 });
     await mkdir(runCgroup, { mode: 0o755 });
     runCreated = true;
     await writeFile(join(runCgroup, "memory.max"), config.memory);
     await writeFile(join(runCgroup, "pids.max"), config.pids);
     await writeFile(join(runCgroup, "cpu.max"), `${config.cpuQuota} ${config.cpuPeriod}`);
-    if (stopping !== undefined) throw new Error(`launch cancelled during setup: ${stopping}`);
+    // The trusted Bun helper becomes the exact recoverable owner before it
+    // reports preparation. Package execution is still impossible because the
+    // admission message has not been received.
+    await writeFile(join(supervisorCgroup, "cgroup.procs"), String(process.pid));
+    send(control, {
+      type: "prepared",
+      parentCgroup,
+      supervisorCgroup,
+      runCgroup,
+    });
+
+    await admission;
+    if (stopping !== undefined) throw new Error(`launch cancelled before admission: ${stopping}`);
 
     const nullSources = config.bubblewrapArguments.filter((value) => value === PRIVATE_NULL_SOURCE);
     const entropySources = config.bubblewrapArguments.filter((value) => value === PRIVATE_URANDOM_SOURCE);
@@ -167,7 +187,11 @@ async function main(): Promise<void> {
       const deviceDirectory = join("/dev", `.jig-${config.parent}-devices`);
       const nullSource = join(deviceDirectory, "null");
       const entropySource = join(deviceDirectory, "urandom");
-      await mkdir(deviceDirectory, { mode: 0o700 });
+      // The setup process now runs Bubblewrap as the package owner's host
+      // identity so it can traverse the protected captured package tree.
+      // This root-owned directory is searchable but never writable by that
+      // identity; it contains only the two freshly-created least-mode devices.
+      await mkdir(deviceDirectory, { mode: 0o711 });
       privateDeviceDirectory = deviceDirectory;
       await runMknod(config.mknod, nullSource, "0666", "3");
       await runMknod(config.mknod, entropySource, "0444", "9");
@@ -176,6 +200,12 @@ async function main(): Promise<void> {
           value === PRIVATE_URANDOM_SOURCE ? entropySource : value,
       );
     }
+
+    // Device construction contains asynchronous trusted work. A cancellation,
+    // coordinator loss, or hard deadline may have fenced the then-empty Run
+    // cgroup while that work was pending. Recheck immediately before the
+    // synchronous spawn so no payload can enter after that completed fence.
+    if (stopping !== undefined) throw new Error(`launch cancelled during setup: ${stopping}`);
 
     const launched = spawn(
       config.bash,
@@ -188,10 +218,28 @@ async function main(): Promise<void> {
         ENTER_SCRIPT,
         "jig-cgroup-enter",
         runCgroup,
+        config.launcher,
+        "-n",
+        "-u", `#${config.uid}`,
+        "-g", `#${config.gid}`,
+        "--",
+        config.bash,
+        "--noprofile",
+        "--norc",
+        "-p",
+        "-c",
+        EMPTY_ENVIRONMENT,
+        "jig-bubblewrap",
         config.bubblewrap,
         ...bubblewrapArguments,
       ],
-      { cwd: "/", env: {}, stdio: ["pipe", "pipe", "pipe", "pipe"] },
+      {
+        cwd: "/",
+        env: {},
+        // fd 3 proves the root trampoline entered the Run cgroup before the
+        // exact launcher drops to the package owner's host identity.
+        stdio: ["pipe", "pipe", "pipe", "pipe"],
+      },
     );
     if (launched.stdin === null || launched.stdout === null || launched.stderr === null) {
       throw new Error("payload process pipes were unavailable");
@@ -223,18 +271,19 @@ async function main(): Promise<void> {
     await captureKillFailure(runCgroup, (error) => {
       requestedKillError ??= error;
     });
-    const cleanupResult = await cleanup(runCgroup, parentCgroup, config.cleanupMs);
+    const cleanupResult = await cleanup(runCgroup, undefined, config.cleanupMs);
     const deviceCleanupError = await cleanupPrivateDevices(privateDeviceDirectory);
     privateDeviceDirectory = deviceCleanupError === undefined ? undefined : privateDeviceDirectory;
     const cleanupError = joinErrors(cleanupResult.error, deviceCleanupError);
     runCreated = cleanupError !== undefined;
-    parentCreated = cleanupError !== undefined;
     const receipt = {
       type: "terminal",
       exitCode: exit.code,
       signal: exit.signal,
       reason: stopping,
-      fenced: cleanupError === undefined,
+      // The outside-owner wrapper removes supervisor/parent only after this
+      // helper exits. This is a preliminary terminal, not the atomic fence.
+      fenced: false,
       ...(requestedKillError === undefined ? {} : { killError: errorText(requestedKillError) }),
       ...(cleanupError === undefined ? {} : { cleanupError }),
       evidence: cleanupResult.evidence,
@@ -251,7 +300,7 @@ async function main(): Promise<void> {
     }
     const cleanupResult = await cleanup(
       runCreated ? runCgroup : undefined,
-      parentCreated ? parentCgroup : undefined,
+      undefined,
       config.cleanupMs,
     );
     const deviceCleanupError = await cleanupPrivateDevices(privateDeviceDirectory);
@@ -264,7 +313,7 @@ async function main(): Promise<void> {
         exitCode: null,
         signal: null,
         reason: stopping,
-        fenced: cleanupError === undefined,
+        fenced: false,
         setupError: message,
         ...(requestedKillError === undefined ? {} : { killError: errorText(requestedKillError) }),
         ...(cleanupError === undefined ? {} : { cleanupError }),
@@ -275,7 +324,7 @@ async function main(): Promise<void> {
     if (cleanupError !== undefined) throw new Error(`${message}; cleanup: ${cleanupError}`);
     if (child === undefined) throw error;
   } finally {
-    clearTimeout(deadline);
+    if (deadline !== undefined) clearTimeout(deadline);
     control.end();
     if (privateDeviceDirectory !== undefined) {
       const error = await cleanupPrivateDevices(privateDeviceDirectory);
@@ -311,6 +360,11 @@ function parseArguments(arguments_: readonly string[]): Configuration {
     if (!Number.isSafeInteger(value) || value <= 0) throw new Error(`invalid helper argument --${name}`);
     return value;
   };
+  const nonnegativeSafeInteger = (name: string): number => {
+    const value = Number(required(name));
+    if (!Number.isSafeInteger(value) || value < 0) throw new Error(`invalid helper argument --${name}`);
+    return value;
+  };
   const nonnegativeInteger = (name: string): string => {
     const value = Number(required(name));
     if (!Number.isSafeInteger(value) || value < 0) throw new Error(`invalid helper argument --${name}`);
@@ -324,9 +378,18 @@ function parseArguments(arguments_: readonly string[]): Configuration {
   const bubblewrap = required("bubblewrap");
   const mknod = required("mknod");
   const bash = required("bash");
+  const launcher = required("launcher");
   if (!bubblewrap.startsWith("/") || !mknod.startsWith("/") || !bash.startsWith("/") ||
+      !launcher.startsWith("/") ||
       bubblewrapArguments.length === 0) {
     throw new Error("invalid Bubblewrap launch");
+  }
+  const deadlineUnixMs = nonnegativeSafeInteger("deadline-unix-ms");
+  const cancellationGraceMs = integer("cancellation-grace-ms");
+  const hardDeadlineUnixMs = deadlineUnixMs + cancellationGraceMs;
+  if (!Number.isSafeInteger(hardDeadlineUnixMs) ||
+      hardDeadlineUnixMs - Date.now() > 2_147_483_647) {
+    throw new Error("helper hard deadline is outside the supported timer range");
   }
   return {
     control: required("control"),
@@ -336,13 +399,15 @@ function parseArguments(arguments_: readonly string[]): Configuration {
     pids: String(integer("pids")),
     cpuQuota: String(integer("cpu-quota")),
     cpuPeriod: String(integer("cpu-period")),
-    wallMs: integer("wall-ms"),
+    deadlineUnixMs,
+    cancellationGraceMs,
     cleanupMs: integer("cleanup-ms"),
     uid: nonnegativeInteger("uid"),
     gid: nonnegativeInteger("gid"),
     bubblewrap,
     mknod,
     bash,
+    launcher,
     bubblewrapArguments,
   };
 }
@@ -354,6 +419,10 @@ async function runMknod(
   minor: "3" | "9",
 ): Promise<void> {
   const child = spawn(executable, ["-m", mode, path, "c", "1", minor], {
+    // The proof host may provide GNU coreutils as one canonical multicall
+    // executable. Preserve the exact digested target while selecting its
+    // mknod applet without returning to a retargetable symlink.
+    argv0: "mknod",
     cwd: "/",
     env: {},
     stdio: ["ignore", "ignore", "pipe"],

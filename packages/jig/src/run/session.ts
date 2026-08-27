@@ -77,6 +77,7 @@ export interface ExactComponentExit {
   readonly exitCode: number | null;
   readonly signal: string | null;
   readonly fenced: boolean;
+  readonly stopReason?: "cancelled" | "coordinator_lost" | "deadline" | "payload_exit" | "setup_failed" | "recovered";
   readonly cleanupError?: unknown;
 }
 
@@ -672,6 +673,9 @@ export class RunHostSession {
       return failure("PROTOCOL_ERROR", this.protocolFailure);
     }
     if (this.channelFailure !== undefined) {
+      if (this.rootResponse === undefined && exit?.stopReason === "deadline") {
+        return failure("DEADLINE_EXCEEDED", "root Run hard deadline elapsed before a terminal response");
+      }
       return failure("CHANNEL_LOST", this.channelFailure);
     }
     if (exit === undefined) {
@@ -693,6 +697,9 @@ export class RunHostSession {
       );
     }
     if (this.rootResponse === undefined) {
+      if (exit.stopReason === "deadline") {
+        return failure("DEADLINE_EXCEEDED", "root Run hard deadline elapsed before a terminal response");
+      }
       return failure("CHANNEL_LOST", "component exited before a root response");
     }
     if (this.pendingResponses !== 0) {
