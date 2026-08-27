@@ -37,8 +37,8 @@ import {
   createPrivateActivationReviewPlan,
   loadPrivateActiveActivation,
   loadPrivateActivationReviewPlan,
+  openPrivateProjectCoordinator,
   publishPrivateActivationCandidate,
-  reconcilePrivateRootRunsExclusive,
   requirePrivateStoredActivationCandidate,
   submitPrivateRootRun,
 } from "../src/internal/activation-admission-store.js";
@@ -644,6 +644,7 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
     const distribution = await realpath(join(import.meta.dir, "..", "dist"));
     const root = await mkdtemp(join(tmpdir(), "jig-retained-project-"));
     const store = await mkdtemp(join(tmpdir(), "jig-retained-store-"));
+    let rootCoordinator: Awaited<ReturnType<typeof openPrivateProjectCoordinator>> | undefined;
     const evaluator = {
       backend: backend(host),
       bunPath: bun.executable,
@@ -788,7 +789,7 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         lockMode: "locked",
       }))
         .rejects.toMatchObject({ code: "LOCK_MISMATCH" });
-      const admissionDatabase = join(root, ".jig", "private-activation-admission-v5.sqlite3");
+      const admissionDatabase = join(root, ".jig", "private-activation-admission-v6.sqlite3");
       await writeFile(join(root, "jig.lock"), persisted.lock, { mode: 0o644 });
       const crashSqlite = createRequire(import.meta.url)("bun:sqlite") as any;
       const recovered = crashSqlite.Database.open(
@@ -932,13 +933,14 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
           "admissions",
           "candidate_head",
           "candidates",
+          "coordinator_head",
           "review_plans",
           "root_runs",
           "root_spawn_intents",
           "root_terminals",
         ]);
-        expect(database.query("PRAGMA application_id").get().application_id).toBe(0x4a494735);
-        expect(database.query("PRAGMA user_version").get().user_version).toBe(5);
+        expect(database.query("PRAGMA application_id").get().application_id).toBe(0x4a494736);
+        expect(database.query("PRAGMA user_version").get().user_version).toBe(6);
         expect(database.query("PRAGMA journal_mode").get().journal_mode).toBe("delete");
         expect(database.query("SELECT revision FROM candidate_head WHERE singleton = 1").get().revision).toBe(3);
         expect(database.query("SELECT count(*) AS count FROM candidates").get().count).toBe(3);
@@ -1099,7 +1101,9 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
       expect(admittedRequest.digest).toBe(readyRequest!.digest);
       const reacquiredPython = await proofHostPythonClosure();
       const rootDeadline = Date.now() + 20_000;
+      rootCoordinator = await openPrivateProjectCoordinator({ projectRoot: root });
       const submitted = await submitPrivateRootRun({
+        coordinator: rootCoordinator,
         projectRoot: root,
         packageStoreRoot: store,
         submissionId: "ticket-T-1",
@@ -1110,6 +1114,7 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
       expect(submitted.run.state).toBe("spawn-intent");
       expect(submitted.launch).toBeDefined();
       expect((await submitPrivateRootRun({
+        coordinator: rootCoordinator,
         projectRoot: root,
         packageStoreRoot: store,
         submissionId: "ticket-T-1",
@@ -1132,6 +1137,7 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         },
       });
       expect((await submitPrivateRootRun({
+        coordinator: rootCoordinator,
         projectRoot: root,
         packageStoreRoot: store,
         submissionId: "ticket-T-1",
@@ -1140,6 +1146,18 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         deadlineUnixMs: rootDeadline,
       })).run).toEqual(completed);
 
+      const competingCoordinator = spawn(process.execPath, [
+        join(import.meta.dir, "fixtures", "root-run-submitter.ts"),
+        root,
+        store,
+        "ticket-blocked",
+      ], { stdio: ["ignore", "ignore", "pipe"] });
+      const competingDiagnostics = collect(competingCoordinator.stderr!);
+      expect((await childExit(competingCoordinator)).code).not.toBe(0);
+      expect(await competingDiagnostics).toContain("another coordinator owns this project");
+
+      await rootCoordinator.dispose();
+      rootCoordinator = undefined;
       const lostCoordinator = spawn(process.execPath, [
         join(import.meta.dir, "fixtures", "root-run-submitter.ts"),
         root,
@@ -1149,7 +1167,8 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
       const abandoned = JSON.parse(await firstLine(lostCoordinator.stdout!)) as { readonly runId: string };
       lostCoordinator.kill("SIGKILL");
       expect((await childExit(lostCoordinator)).signal).toBe("SIGKILL");
-      expect(await reconcilePrivateRootRunsExclusive({ projectRoot: root })).toMatchObject([{
+      rootCoordinator = await openPrivateProjectCoordinator({ projectRoot: root });
+      expect(rootCoordinator.recoveredRootRuns).toMatchObject([{
         runId: abandoned.runId,
         state: "terminal",
         terminal: { status: "lost", code: "COORDINATOR_LOST" },
@@ -1165,6 +1184,7 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         planDigest: firstPlan.planDigest,
       })).rejects.toMatchObject({ code: "ADMISSION_STATE_CORRUPT" });
     } finally {
+      await rootCoordinator?.dispose();
       await rm(root, { recursive: true, force: true });
       await rm(store, { recursive: true, force: true });
     }

@@ -1,11 +1,16 @@
-import { submitPrivateRootRun } from "../../src/internal/activation-admission-store.js";
+import {
+  openPrivateProjectCoordinator,
+  submitPrivateRootRun,
+} from "../../src/internal/activation-admission-store.js";
 
 const [projectRoot, packageStoreRoot, submissionId] = process.argv.slice(2);
 if (projectRoot === undefined || packageStoreRoot === undefined || submissionId === undefined) {
   throw new Error("usage: root-run-submitter <project-root> <package-store-root> <submission-id>");
 }
 
+const coordinator = await openPrivateProjectCoordinator({ projectRoot });
 const submitted = await submitPrivateRootRun({
+  coordinator,
   projectRoot,
   packageStoreRoot,
   submissionId,

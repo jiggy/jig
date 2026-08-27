@@ -60,11 +60,14 @@ export type {
 } from "./root-run-state.js";
 
 const STATE_DIRECTORY = ".jig";
-const DATABASE_NAME = "private-activation-admission-v5.sqlite3";
+const DATABASE_NAME = "private-activation-admission-v6.sqlite3";
+const COORDINATOR_DATABASE_NAME = "private-project-coordinator-v1.sqlite3";
 const LOCK_NAME = "jig.lock";
 const LOCK_STAGE_NAME = "private-activation-jig-lock-v1.stage";
-const SCHEMA_VERSION = 5n;
-const APPLICATION_ID = 0x4a494735n; // JIG5
+const SCHEMA_VERSION = 6n;
+const APPLICATION_ID = 0x4a494736n; // JIG6
+const COORDINATOR_SCHEMA_VERSION = 1n;
+const COORDINATOR_APPLICATION_ID = 0x4a494743n; // JIGC
 const BUSY_TIMEOUT_MS = 250;
 const MAX_STORED_BYTES = 16_777_216;
 const MAX_SAFE_REVISION = BigInt(Number.MAX_SAFE_INTEGER);
@@ -75,14 +78,17 @@ const CREATE_CANDIDATE_HEAD = "CREATE TABLE candidate_head (singleton INTEGER PR
 const CREATE_REVIEW_PLANS = "CREATE TABLE review_plans (plan_digest TEXT PRIMARY KEY, candidate_revision INTEGER NOT NULL REFERENCES candidates(revision), plan_bytes BLOB NOT NULL CHECK (length(plan_bytes) BETWEEN 1 AND 16777216)) STRICT";
 const CREATE_ADMISSIONS = "CREATE TABLE admissions (revision INTEGER PRIMARY KEY CHECK (revision BETWEEN 1 AND 9007199254740991), admission_digest TEXT NOT NULL UNIQUE, base_generation TEXT UNIQUE REFERENCES admissions(admission_digest), plan_digest TEXT NOT NULL UNIQUE REFERENCES review_plans(plan_digest), admission_bytes BLOB NOT NULL CHECK (length(admission_bytes) BETWEEN 1 AND 16777216)) STRICT";
 const CREATE_ADMISSION_HEAD = "CREATE TABLE admission_head (singleton INTEGER PRIMARY KEY CHECK (singleton = 1), revision INTEGER REFERENCES admissions(revision)) STRICT";
-const CREATE_ROOT_RUNS = "CREATE TABLE root_runs (run_id TEXT PRIMARY KEY, submission_id TEXT NOT NULL UNIQUE, submission_digest TEXT NOT NULL, admission_digest TEXT NOT NULL REFERENCES admissions(admission_digest), candidate_revision INTEGER NOT NULL REFERENCES candidates(revision), request_bytes BLOB NOT NULL CHECK (length(request_bytes) BETWEEN 1 AND 16777216)) STRICT";
+const CREATE_COORDINATOR_HEAD = "CREATE TABLE coordinator_head (singleton INTEGER PRIMARY KEY CHECK (singleton = 1), epoch INTEGER NOT NULL CHECK (epoch BETWEEN 0 AND 9007199254740991)) STRICT";
+const CREATE_ROOT_RUNS = "CREATE TABLE root_runs (run_id TEXT PRIMARY KEY, submission_id TEXT NOT NULL UNIQUE, submission_digest TEXT NOT NULL, admission_digest TEXT NOT NULL REFERENCES admissions(admission_digest), candidate_revision INTEGER NOT NULL REFERENCES candidates(revision), coordinator_epoch INTEGER NOT NULL CHECK (coordinator_epoch BETWEEN 1 AND 9007199254740991), request_bytes BLOB NOT NULL CHECK (length(request_bytes) BETWEEN 1 AND 16777216)) STRICT";
 const CREATE_ROOT_SPAWN_INTENTS = "CREATE TABLE root_spawn_intents (run_id TEXT PRIMARY KEY REFERENCES root_runs(run_id), intent_digest TEXT NOT NULL UNIQUE, intent_bytes BLOB NOT NULL CHECK (length(intent_bytes) BETWEEN 1 AND 16777216)) STRICT";
 const CREATE_ROOT_TERMINALS = "CREATE TABLE root_terminals (run_id TEXT PRIMARY KEY REFERENCES root_runs(run_id), terminal_digest TEXT NOT NULL, terminal_bytes BLOB NOT NULL CHECK (length(terminal_bytes) BETWEEN 1 AND 16777216)) STRICT";
+const CREATE_COORDINATOR_LOCK = "CREATE TABLE coordinator_lock (singleton INTEGER PRIMARY KEY CHECK (singleton = 1)) STRICT";
 const EXPECTED_SCHEMA = Object.freeze([
   Object.freeze({ type: "table", name: "admission_head", table: "admission_head", sql: CREATE_ADMISSION_HEAD }),
   Object.freeze({ type: "table", name: "admissions", table: "admissions", sql: CREATE_ADMISSIONS }),
   Object.freeze({ type: "table", name: "candidate_head", table: "candidate_head", sql: CREATE_CANDIDATE_HEAD }),
   Object.freeze({ type: "table", name: "candidates", table: "candidates", sql: CREATE_CANDIDATES }),
+  Object.freeze({ type: "table", name: "coordinator_head", table: "coordinator_head", sql: CREATE_COORDINATOR_HEAD }),
   Object.freeze({ type: "table", name: "review_plans", table: "review_plans", sql: CREATE_REVIEW_PLANS }),
   Object.freeze({ type: "table", name: "root_runs", table: "root_runs", sql: CREATE_ROOT_RUNS }),
   Object.freeze({ type: "table", name: "root_spawn_intents", table: "root_spawn_intents", sql: CREATE_ROOT_SPAWN_INTENTS }),
@@ -92,6 +98,7 @@ const EXPECTED_SCHEMA = Object.freeze([
 const storedCandidates = new WeakSet<object>();
 const authenticRootRunLaunches = new WeakSet<object>();
 const claimedRootRunLaunches = new WeakSet<object>();
+const authenticCoordinators = new WeakSet<object>();
 
 interface SqliteRunResult {
   readonly changes: number;
@@ -177,6 +184,12 @@ interface StateOwner {
   dispose(): Promise<void>;
 }
 
+interface CoordinatorLock {
+  readonly database: SqliteDatabase;
+  verify(): Promise<void>;
+  dispose(): Promise<void>;
+}
+
 interface ReacquiredArtifacts {
   inspection(digest: string): InspectedPackage;
   dispose(): Promise<void>;
@@ -188,6 +201,7 @@ interface RootRunRow {
   readonly submission_digest: string;
   readonly admission_digest: string;
   readonly candidate_revision: bigint;
+  readonly coordinator_epoch: bigint;
   readonly request_bytes: Uint8Array;
 }
 
@@ -226,10 +240,20 @@ export interface PrivateActiveActivation {
   readonly candidate: PrivateActivationCandidateArtifact;
 }
 
+/** Exclusive, process-held authority for one project coordinator generation. */
+export interface PrivateProjectCoordinator {
+  readonly projectRoot: string;
+  readonly epoch: number;
+  readonly recoveredRootRuns: readonly PrivateRootRunSnapshot[];
+  verify(): Promise<void>;
+  dispose(): Promise<void>;
+}
+
 export interface PrivateRootRunLaunch {
   readonly run: PrivateRootRunSnapshot;
   readonly intent: PrivateRootRunSpawnIntent;
   readonly candidate: PrivateActivationCandidateArtifact;
+  readonly coordinator: PrivateProjectCoordinator;
 }
 
 export interface PrivateRootRunSubmission {
@@ -276,12 +300,14 @@ export async function publishPrivateActivationCandidate(input: {
       if (next > MAX_SAFE_REVISION) {
         unavailable("ADMISSION_REVISION_EXHAUSTED", "private admission candidate revision is exhausted");
       }
-      statement<never>(owner.database,
+      runFinalized(owner.database,
         "INSERT INTO candidates(revision, candidate_digest, candidate_bytes, lock_bytes) VALUES (?1, ?2, ?3, ?4)",
-      ).run(next, candidateDigest, encoded.candidate, encoded.lock);
-      const changed = statement<never>(owner.database,
+        [next, candidateDigest, encoded.candidate, encoded.lock],
+      );
+      const changed = runFinalized(owner.database,
         "UPDATE candidate_head SET revision = ?1 WHERE singleton = 1 AND revision IS ?2",
-      ).run(next, head.revision).changes;
+        [next, head.revision],
+      ).changes;
       if (changed !== 1) corrupt("candidate head compare-and-set did not update exactly one row");
       readCandidateHead(owner.database, owner.root);
       return Object.freeze({ candidateRevision: Number(next), candidateDigest });
@@ -446,11 +472,82 @@ export async function loadPrivateActiveActivation(input: {
 }
 
 /**
+ * Take the single local coordinator lease, advance its durable epoch, and
+ * close every unresolved spawn intent from an older epoch before returning.
+ */
+export async function openPrivateProjectCoordinator(input: {
+  readonly projectRoot: string;
+}): Promise<PrivateProjectCoordinator> {
+  const owner = await openStateOwner(input.projectRoot, false);
+  let lock: CoordinatorLock | undefined;
+  try {
+    lock = await openCoordinatorLock(owner);
+    try { lock.database.exec("BEGIN EXCLUSIVE"); }
+    catch (error) {
+      if (isSqliteBusy(error)) unavailable("COORDINATOR_BUSY", "another coordinator owns this project");
+      throw error;
+    }
+    const recovered = await immediate(owner, () => {
+      const current = readCoordinatorEpoch(owner.database);
+      if (current >= MAX_SAFE_REVISION) {
+        unavailable("COORDINATOR_EPOCH_EXHAUSTED", "project coordinator epoch is exhausted");
+      }
+      const epoch = current + 1n;
+      const changed = runFinalized(owner.database,
+        "UPDATE coordinator_head SET epoch = ?1 WHERE singleton = 1 AND epoch = ?2",
+        [epoch, current],
+      ).changes;
+      if (changed !== 1) corrupt("coordinator epoch compare-and-set did not update exactly one row");
+      return Object.freeze({
+        epoch: safeRevision(epoch),
+        runs: reconcileRootRunsBeforeEpoch(owner.database, owner.root, epoch),
+      });
+    });
+
+    let disposed = false;
+    const coordinator: PrivateProjectCoordinator = Object.freeze({
+      projectRoot: owner.root.requestedPath,
+      epoch: recovered.epoch,
+      recoveredRootRuns: recovered.runs,
+      async verify(): Promise<void> {
+        if (disposed || !lock!.database.inTransaction) {
+          unavailable("COORDINATOR_CLOSED", "project coordinator lease is no longer held");
+        }
+        await owner.verify();
+        await lock!.verify();
+      },
+      async dispose(): Promise<void> {
+        if (disposed) return;
+        disposed = true;
+        const failures: unknown[] = [];
+        try { await lock!.dispose(); } catch (error) { failures.push(error); }
+        try { await owner.dispose(); } catch (error) { failures.push(error); }
+        if (failures.length > 0) {
+          throw new AggregateError(failures, "project coordinator cleanup did not complete");
+        }
+      },
+    });
+    authenticCoordinators.add(coordinator);
+    await coordinator.verify();
+    return coordinator;
+  } catch (error) {
+    const failures: unknown[] = [error];
+    try { await lock?.dispose(); } catch (cleanup) { failures.push(cleanup); }
+    try { await owner.dispose(); } catch (cleanup) { failures.push(cleanup); }
+    if (failures.length > 1) {
+      throw new AggregateError(failures, "project coordinator acquisition and cleanup did not both complete");
+    }
+    throw error;
+  }
+}
+
+/**
  * Allocate or replay one root Run under the currently admitted generation.
  * Only the invocation which inserts a READY spawn intent receives launch
  * authority; duplicate submissions can observe state but cannot redispatch it.
  */
 export async function submitPrivateRootRun(input: {
+  readonly coordinator: PrivateProjectCoordinator;
   readonly projectRoot: string;
   readonly packageStoreRoot: string;
   readonly submissionId: string;
@@ -458,12 +555,15 @@ export async function submitPrivateRootRun(input: {
   readonly input: JsonValue;
   readonly deadlineUnixMs: number;
 }): Promise<PrivateRootRunSubmission> {
+  const coordinator = requirePrivateProjectCoordinator(input.coordinator);
+  await coordinator.verify();
   const request = createPrivateRootSubmissionRequest(input);
   const submissionDigest = privateRootSubmissionDigest(request);
   const owner = await openStateOwner(input.projectRoot, false);
   let artifacts: ReacquiredArtifacts | undefined;
   let failure: unknown;
   try {
+    requireCoordinatorRoot(coordinator, owner.root);
     const replay = findRootRunBySubmission(owner.database, input.submissionId);
     if (replay !== null) {
       const run = loadRootRunSnapshot(owner.database, replay, owner.root);
@@ -490,11 +590,13 @@ export async function submitPrivateRootRun(input: {
       submissionId: input.submissionId,
       submissionDigest,
       requestDigest: privateRootRequestDigest(request),
+      coordinatorEpoch: coordinator.epoch,
     });
     const requestBytes = canonicalJson(request as unknown as JsonValue);
     requireStoredSize(requestBytes, "root Run request");
 
-    const created = await immediate(owner, () => {
+    const created = await immediate(owner, async () => {
+      await coordinator.verify();
       const raced = findRootRunBySubmission(owner.database, input.submissionId);
       if (raced !== null) {
         const run = loadRootRunSnapshot(owner.database, raced, owner.root);
@@ -510,13 +612,14 @@ export async function submitPrivateRootRun(input: {
       loadAndCrossCheckAdmission(owner.database, currentAdmission, owner.root);
 
       runFinalized(owner.database,
-        "INSERT INTO root_runs(run_id, submission_id, submission_digest, admission_digest, candidate_revision, request_bytes) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        "INSERT INTO root_runs(run_id, submission_id, submission_digest, admission_digest, candidate_revision, coordinator_epoch, request_bytes) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
         [
         runId,
         input.submissionId,
         submissionDigest,
         admission.admissionDigest,
         candidateRow.revision,
+        coordinator.epoch,
         requestBytes,
         ],
       );
@@ -535,6 +638,7 @@ export async function submitPrivateRootRun(input: {
         runId,
         admissionDigest: admission.admissionDigest,
         candidateRevision: safeRevision(candidateRow.revision),
+        coordinatorEpoch: coordinator.epoch,
         requestDigest: candidate.candidate.target.request.digest,
         recipeDigest: candidate.candidate.target.disposition.recipeDigest,
         observationDigest: candidate.candidate.target.disposition.observationDigest,
@@ -548,7 +652,7 @@ export async function submitPrivateRootRun(input: {
         [runId, intentDigest, intentBytes],
       );
       const run = loadRootRunSnapshot(owner.database, requireRootRunRow(owner.database, runId), owner.root);
-      const launch = Object.freeze({ run, intent, candidate: markStored(candidate) });
+      const launch = Object.freeze({ run, intent, candidate: markStored(candidate), coordinator });
       authenticRootRunLaunches.add(launch);
       return Object.freeze({ run, launch });
     });
@@ -593,11 +697,14 @@ export async function completePrivateRootRun(input: {
   readonly terminal: PrivateRootRunTerminal;
 }): Promise<PrivateRootRunSnapshot> {
   const launch = requirePrivateRootRunLaunch(input.launch);
+  await launch.coordinator.verify();
   const terminal = normalizePrivateRootTerminal(input.terminal);
   const owner = await openStateOwner(input.projectRoot, false);
   let failure: unknown;
   try {
-    const run = await immediate(owner, () => {
+    requireCoordinatorRoot(launch.coordinator, owner.root);
+    const run = await immediate(owner, async () => {
+      await launch.coordinator.verify();
       const row = requireRootRunRow(owner.database, launch.run.runId);
       const before = loadRootRunSnapshot(owner.database, row, owner.root);
       requireLaunchMatches(launch, before, owner.database);
@@ -612,49 +719,6 @@ export async function completePrivateRootRun(input: {
     });
     await owner.finish();
     return run;
-  } catch (error) {
-    failure = error;
-    throw error;
-  } finally {
-    await disposeOperation(owner, undefined, failure);
-  }
-}
-
-/**
- * Fail closed all unresolved spawn intents after coordinator replacement.
- * The caller must hold exclusive coordinator ownership for this project;
- * this private store deliberately does not yet publish that lease mechanism.
- */
-export async function reconcilePrivateRootRunsExclusive(input: {
-  readonly projectRoot: string;
-}): Promise<readonly PrivateRootRunSnapshot[]> {
-  const owner = await openStateOwner(input.projectRoot, false);
-  let failure: unknown;
-  try {
-    const reconciled = await immediate(owner, () => {
-      const query = statement<RootRunRow>(owner.database, [
-        "SELECT root_runs.run_id, root_runs.submission_id, root_runs.submission_digest,",
-        "root_runs.admission_digest, root_runs.candidate_revision, root_runs.request_bytes",
-        "FROM root_runs JOIN root_spawn_intents USING (run_id)",
-        "LEFT JOIN root_terminals USING (run_id)",
-        "WHERE root_terminals.run_id IS NULL ORDER BY root_runs.run_id",
-      ].join(" ")).safeIntegers(true);
-      let rows: readonly RootRunRow[];
-      try { rows = query.all().map(copiedRootRunRow); }
-      finally { query.finalize(); }
-      const result: PrivateRootRunSnapshot[] = [];
-      for (const row of rows) {
-        persistRootTerminal(owner.database, row.run_id, Object.freeze({
-          status: "lost" as const,
-          code: "COORDINATOR_LOST" as const,
-          message: "the exclusive coordinator was replaced before a terminal was durably published",
-        }));
-        result.push(loadRootRunSnapshot(owner.database, row, owner.root));
-      }
-      return Object.freeze(result);
-    });
-    await owner.finish();
-    return reconciled;
   } catch (error) {
     failure = error;
     throw error;
@@ -679,6 +743,19 @@ export function claimPrivateRootRunLaunch(value: unknown): PrivateRootRunLaunch 
   }
   claimedRootRunLaunches.add(launch);
   return launch;
+}
+
+function requirePrivateProjectCoordinator(value: unknown): PrivateProjectCoordinator {
+  if (value === null || typeof value !== "object" || !authenticCoordinators.has(value)) {
+    throw new TypeError("project coordinator was not produced by the private lease boundary");
+  }
+  return value as PrivateProjectCoordinator;
+}
+
+function requireCoordinatorRoot(coordinator: PrivateProjectCoordinator, root: PrivateProjectRoot): void {
+  if (coordinator.projectRoot !== root.requestedPath) {
+    invalid("COORDINATOR_PROJECT_MISMATCH", "project coordinator belongs to a different project root");
+  }
 }
 
 /**
@@ -767,18 +844,14 @@ export async function applyPrivateActivationReviewPlan(input: {
       if (next > MAX_SAFE_REVISION) {
         unavailable("ADMISSION_REVISION_EXHAUSTED", "private admission generation revision is exhausted");
       }
-      statement<never>(owner.database,
+      runFinalized(owner.database,
         "INSERT INTO admissions(revision, admission_digest, base_generation, plan_digest, admission_bytes) VALUES (?1, ?2, ?3, ?4, ?5)",
-      ).run(
-        next,
-        admissionDigest,
-        plan.baseGeneration,
-        input.planDigest,
-        admissionBytes,
+        [next, admissionDigest, plan.baseGeneration, input.planDigest, admissionBytes],
       );
-      const changed = statement<never>(owner.database,
+      const changed = runFinalized(owner.database,
         "UPDATE admission_head SET revision = ?1 WHERE singleton = 1 AND revision IS ?2",
-      ).run(next, admissionHead.revision).changes;
+        [next, admissionHead.revision],
+      ).changes;
       if (changed !== 1) corrupt("admission head compare-and-set did not update exactly one row");
       const applied = requireAdmissionRow(owner.database, next);
       const stored = loadAndCrossCheckAdmission(owner.database, applied, owner.root);
@@ -834,7 +907,7 @@ function rootPreflightTerminal(
 
 function findRootRunBySubmission(database: SqliteDatabase, submissionId: string): RootRunRow | null {
   const query = statement<RootRunRow>(database, [
-    "SELECT run_id, submission_id, submission_digest, admission_digest, candidate_revision, request_bytes",
+    "SELECT run_id, submission_id, submission_digest, admission_digest, candidate_revision, coordinator_epoch, request_bytes",
     "FROM root_runs WHERE submission_id = ?1",
   ].join(" ")).safeIntegers(true);
   try {
@@ -845,7 +918,7 @@ function findRootRunBySubmission(database: SqliteDatabase, submissionId: string)
 
 function requireRootRunRow(database: SqliteDatabase, runId: string): RootRunRow {
   const query = statement<RootRunRow>(database, [
-    "SELECT run_id, submission_id, submission_digest, admission_digest, candidate_revision, request_bytes",
+    "SELECT run_id, submission_id, submission_digest, admission_digest, candidate_revision, coordinator_epoch, request_bytes",
     "FROM root_runs WHERE run_id = ?1",
   ].join(" ")).safeIntegers(true);
   let row: RootRunRow | null;
@@ -892,6 +965,7 @@ function copiedRootRunRow(row: RootRunRow): RootRunRow {
     submission_digest: row.submission_digest,
     admission_digest: row.admission_digest,
     candidate_revision: row.candidate_revision,
+    coordinator_epoch: row.coordinator_epoch,
     request_bytes: copiedBlob(row.request_bytes, "stored root Run request"),
   });
 }
@@ -906,6 +980,10 @@ function loadRootRunSnapshot(
   catch { corrupt("stored root submission ID is invalid"); }
   requireDigest(row.submission_digest, "stored root submission");
   requireDigest(row.admission_digest, "stored root admission");
+  const coordinatorEpoch = safeRevision(row.coordinator_epoch);
+  if (row.coordinator_epoch > readCoordinatorEpoch(database)) {
+    corrupt("stored root Run names a future coordinator epoch");
+  }
   let request: PrivateRootSubmissionRequest;
   try { request = decodePrivateRootSubmissionRequest(copiedBlob(row.request_bytes, "stored root Run request")); }
   catch { corrupt("stored root Run request is invalid"); }
@@ -918,6 +996,7 @@ function loadRootRunSnapshot(
     submissionId: row.submission_id,
     submissionDigest: row.submission_digest,
     requestDigest: privateRootRequestDigest(request),
+    coordinatorEpoch,
   });
   if (row.run_id !== expectedRunId) corrupt("stored root Run ID differs from its submission identity");
   const admissionRow = requireAdmissionByDigest(database, row.admission_digest);
@@ -939,6 +1018,7 @@ function loadRootRunSnapshot(
     submissionDigest: row.submission_digest,
     admissionDigest: row.admission_digest,
     candidateRevision,
+    coordinatorEpoch,
     target: request.target,
     input: request.input,
     deadlineUnixMs: request.deadlineUnixMs,
@@ -953,6 +1033,40 @@ function requireSameSubmission(run: PrivateRootRunSnapshot, submissionDigest: st
   }
 }
 
+function reconcileRootRunsBeforeEpoch(
+  database: SqliteDatabase,
+  root: PrivateProjectRoot,
+  epoch: bigint,
+): readonly PrivateRootRunSnapshot[] {
+  const future = statement<{ readonly count: bigint }>(database,
+    "SELECT count(*) AS count FROM root_runs WHERE coordinator_epoch >= ?1",
+  ).safeIntegers(true);
+  let futureCount: bigint | undefined;
+  try { futureCount = future.get(epoch)?.count; }
+  finally { future.finalize(); }
+  if (futureCount !== 0n) corrupt("a root Run names the new or a future coordinator epoch before takeover");
+  const query = statement<RootRunRow>(database, [
+    "SELECT root_runs.run_id, root_runs.submission_id, root_runs.submission_digest,",
+    "root_runs.admission_digest, root_runs.candidate_revision, root_runs.coordinator_epoch, root_runs.request_bytes",
+    "FROM root_runs JOIN root_spawn_intents USING (run_id)",
+    "LEFT JOIN root_terminals USING (run_id)",
+    "WHERE root_terminals.run_id IS NULL AND root_runs.coordinator_epoch < ?1 ORDER BY root_runs.run_id",
+  ].join(" ")).safeIntegers(true);
+  let rows: readonly RootRunRow[];
+  try { rows = query.all(epoch).map(copiedRootRunRow); }
+  finally { query.finalize(); }
+  const result: PrivateRootRunSnapshot[] = [];
+  for (const row of rows) {
+    persistRootTerminal(database, row.run_id, Object.freeze({
+      status: "lost" as const,
+      code: "COORDINATOR_LOST" as const,
+      message: "the exclusive coordinator was replaced before a terminal was durably published",
+    }));
+    result.push(loadRootRunSnapshot(database, row, root));
+  }
+  return Object.freeze(result);
+}
+
 function loadRootSpawnRow(row: RootSpawnRow, run: RootRunRow): PrivateRootRunSpawnIntent {
   if (row.run_id !== run.run_id) corrupt("stored root spawn intent names a different Run");
   requireDigest(row.intent_digest, "stored root spawn intent");
@@ -964,7 +1078,8 @@ function loadRootSpawnRow(row: RootSpawnRow, run: RootRunRow): PrivateRootRunSpa
       privateRootSpawnIntentDigest(intent) !== row.intent_digest ||
       intent.runId !== run.run_id ||
       intent.admissionDigest !== run.admission_digest ||
-      intent.candidateRevision !== safeRevision(run.candidate_revision)) {
+      intent.candidateRevision !== safeRevision(run.candidate_revision) ||
+      intent.coordinatorEpoch !== safeRevision(run.coordinator_epoch)) {
     corrupt("stored root spawn intent differs from its durable identity");
   }
   return intent;
@@ -985,9 +1100,9 @@ function persistRootTerminal(
   );
 }
 
-function runFinalized(database: SqliteDatabase, sql: string, bindings: readonly unknown[]): void {
+function runFinalized(database: SqliteDatabase, sql: string, bindings: readonly unknown[]): SqliteRunResult {
   const query = statement<never>(database, sql);
-  try { query.run(...bindings); }
+  try { return query.run(...bindings); }
   finally { query.finalize(); }
 }
 
@@ -1020,6 +1135,111 @@ function requireLaunchMatches(
   if (privateRootSpawnIntentDigest(intent) !== privateRootSpawnIntentDigest(launch.intent)) {
     invalid("RUN_LAUNCH_CONFLICT", "root Run launch differs from its durable spawn intent");
   }
+  if (run.coordinatorEpoch !== launch.coordinator.epoch || intent.coordinatorEpoch !== launch.coordinator.epoch) {
+    invalid("RUN_COORDINATOR_STALE", "root Run launch belongs to a different coordinator epoch");
+  }
+}
+
+async function openCoordinatorLock(owner: StateOwner): Promise<CoordinatorLock> {
+  const databasePath = descriptorChild(owner.directory, COORDINATOR_DATABASE_NAME);
+  const directoryInformation = await owner.directory.stat({ bigint: true });
+  const databaseInformation = await ensureDatabaseFile(
+    databasePath,
+    owner.directory,
+    directoryInformation.dev,
+    true,
+    COORDINATOR_DATABASE_NAME,
+  );
+  await validateSidecars(owner.directory, databaseInformation.dev, COORDINATOR_DATABASE_NAME);
+  const visibleStatePath = join(owner.root.requestedPath, STATE_DIRECTORY);
+  const visibleDatabasePath = join(visibleStatePath, COORDINATOR_DATABASE_NAME);
+  await verifyVisibleHierarchy(
+    owner.root,
+    visibleStatePath,
+    directoryInformation,
+    visibleDatabasePath,
+    databaseInformation,
+  );
+  const sqlite = loadSqlite();
+  const flags = sqliteFlag(sqlite, "SQLITE_OPEN_READWRITE") |
+    sqliteFlag(sqlite, "SQLITE_OPEN_NOFOLLOW");
+  const database = sqlite.Database.open(visibleDatabasePath, flags);
+  try {
+    configureConnection(database);
+    initializeOrVerifyCoordinatorSchema(database);
+    let disposed = false;
+    const lock: CoordinatorLock = Object.freeze({
+      database,
+      async verify(): Promise<void> {
+        if (disposed) unavailable("COORDINATOR_CLOSED", "project coordinator lock has been disposed");
+        await owner.verify();
+        await verifyPathIdentity(
+          databasePath,
+          databaseInformation,
+          "coordinator database",
+          (information) => requireDatabaseFile(information, directoryInformation.dev),
+        );
+        await verifyVisibleHierarchy(
+          owner.root,
+          visibleStatePath,
+          directoryInformation,
+          visibleDatabasePath,
+          databaseInformation,
+        );
+        await validateSidecars(owner.directory, databaseInformation.dev, COORDINATOR_DATABASE_NAME);
+      },
+      async dispose(): Promise<void> {
+        if (disposed) return;
+        disposed = true;
+        const failures: unknown[] = [];
+        if (database.inTransaction) {
+          try { database.exec("ROLLBACK"); } catch (error) { failures.push(error); }
+        }
+        try { database.close(true); } catch (error) { failures.push(error); }
+        if (failures.length > 0) throw new AggregateError(failures, "coordinator lock cleanup did not complete");
+      },
+    });
+    await lock.verify();
+    return lock;
+  } catch (error) {
+    try { database.close(true); } catch { /* preserve the primary open failure */ }
+    if (isSqliteBusy(error)) unavailable("COORDINATOR_BUSY", "another coordinator owns this project");
+    throw error;
+  }
+}
+
+function initializeOrVerifyCoordinatorSchema(database: SqliteDatabase): void {
+  try { database.exec("BEGIN IMMEDIATE"); }
+  catch (error) {
+    if (isSqliteBusy(error)) unavailable("COORDINATOR_BUSY", "another coordinator owns this project");
+    throw error;
+  }
+  try {
+    const version = pragmaInteger(database, "user_version");
+    const application = pragmaInteger(database, "application_id");
+    const existing = schemaRows(database);
+    if (version === 0n && application === 0n && existing.length === 0) {
+      database.exec(CREATE_COORDINATOR_LOCK);
+      database.exec("INSERT INTO coordinator_lock(singleton) VALUES (1)");
+      database.exec(`PRAGMA application_id=${COORDINATOR_APPLICATION_ID}`);
+      database.exec(`PRAGMA user_version=${COORDINATOR_SCHEMA_VERSION}`);
+    } else if (version !== COORDINATOR_SCHEMA_VERSION || application !== COORDINATOR_APPLICATION_ID) {
+      invalid("COORDINATOR_SCHEMA_VERSION", "private coordinator database has an unsupported format identity");
+    }
+    const rows = schemaRows(database);
+    if (rows.length !== 1 || rows[0]!.type !== "table" || rows[0]!.name !== "coordinator_lock" ||
+        rows[0]!.table !== "coordinator_lock" || rows[0]!.sql !== CREATE_COORDINATOR_LOCK) {
+      corrupt("private coordinator database schema differs from version 1");
+    }
+    const holderQuery = statement<{ readonly singleton: bigint }>(database,
+      "SELECT singleton FROM coordinator_lock",
+    ).safeIntegers(true);
+    let holders: readonly { readonly singleton: bigint }[];
+    try { holders = holderQuery.all(); }
+    finally { holderQuery.finalize(); }
+    if (holders.length !== 1 || holders[0]!.singleton !== 1n) corrupt("private coordinator lock row is invalid");
+    database.exec("COMMIT");
+  } catch (error) { rollback(database, error); }
 }
 
 async function openStateOwner(projectRoot: string, create: boolean): Promise<StateOwner> {
@@ -1177,6 +1397,7 @@ async function ensureDatabaseFile(
   directory: FileHandle,
   expectedDevice: bigint,
   create: boolean,
+  databaseName = DATABASE_NAME,
 ): Promise<BigIntStats> {
   if (create) {
     let handle: FileHandle | undefined;
@@ -1195,7 +1416,7 @@ async function ensureDatabaseFile(
   try {
     observed = await lstat(path, { bigint: true });
   } catch (error) {
-    if (hasCode(error, "ENOENT")) unavailable("ADMISSION_STATE_MISSING", "private activation admission database does not exist");
+    if (hasCode(error, "ENOENT")) unavailable("ADMISSION_STATE_MISSING", `${databaseName} does not exist`);
     throw error;
   }
   requireDatabaseFile(observed, expectedDevice);
@@ -1222,13 +1443,17 @@ function requireDatabaseFile(information: BigIntStats, expectedDevice: bigint): 
   }
 }
 
-async function validateSidecars(directory: FileHandle, expectedDevice: bigint): Promise<void> {
+async function validateSidecars(
+  directory: FileHandle,
+  expectedDevice: bigint,
+  databaseName = DATABASE_NAME,
+): Promise<void> {
   for (const suffix of ["-wal", "-shm"] as const) {
-    if (await pathExists(descriptorChild(directory, `${DATABASE_NAME}${suffix}`))) {
+    if (await pathExists(descriptorChild(directory, `${databaseName}${suffix}`))) {
       invalid("ADMISSION_SQLITE_SIDECAR", `private admission database must not use SQLite ${suffix.slice(1).toUpperCase()} state`);
     }
   }
-  const journalPath = descriptorChild(directory, `${DATABASE_NAME}-journal`);
+  const journalPath = descriptorChild(directory, `${databaseName}-journal`);
   let journal: BigIntStats;
   try {
     journal = await lstat(journalPath, { bigint: true });
@@ -1268,11 +1493,13 @@ function initializeOrVerifySchema(database: SqliteDatabase, root: PrivateProject
       database.exec(CREATE_REVIEW_PLANS);
       database.exec(CREATE_ADMISSIONS);
       database.exec(CREATE_ADMISSION_HEAD);
+      database.exec(CREATE_COORDINATOR_HEAD);
       database.exec(CREATE_ROOT_RUNS);
       database.exec(CREATE_ROOT_SPAWN_INTENTS);
       database.exec(CREATE_ROOT_TERMINALS);
       database.exec("INSERT INTO candidate_head(singleton, revision) VALUES (1, NULL)");
       database.exec("INSERT INTO admission_head(singleton, revision) VALUES (1, NULL)");
+      database.exec("INSERT INTO coordinator_head(singleton, epoch) VALUES (1, 0)");
       database.exec(`PRAGMA application_id=${APPLICATION_ID}`);
       database.exec(`PRAGMA user_version=${SCHEMA_VERSION}`);
     } else if (version !== SCHEMA_VERSION || application !== APPLICATION_ID) {
@@ -1288,12 +1515,13 @@ function verifySchema(database: SqliteDatabase, root: PrivateProjectRoot): void 
   if (actual.length !== EXPECTED_SCHEMA.length || actual.some((row, index) => {
     const expected = EXPECTED_SCHEMA[index]!;
     return row.type !== expected.type || row.name !== expected.name || row.table !== expected.table || row.sql !== expected.sql;
-  })) corrupt("private admission database schema differs from version 5");
+  })) corrupt("private admission database schema differs from version 6");
   if (statement<Record<string, unknown>>(database, "PRAGMA foreign_key_check").all().length !== 0) {
     corrupt("private admission database has broken foreign keys");
   }
   readCandidateHead(database, root);
   readAdmissionHead(database, root);
+  readCoordinatorEpoch(database);
 }
 
 function schemaRows(database: SqliteDatabase): readonly { readonly type: string; readonly name: string; readonly table: string; readonly sql: string }[] {
@@ -1369,6 +1597,19 @@ function readAdmissionHead(database: SqliteDatabase, root: PrivateProjectRoot): 
     loadAndCrossCheckAdmission(database, requireAdmissionRow(database, revision), root);
   }
   return head;
+}
+
+function readCoordinatorEpoch(database: SqliteDatabase): bigint {
+  const query = statement<{ readonly singleton: bigint; readonly epoch: bigint }>(database,
+    "SELECT singleton, epoch FROM coordinator_head",
+  ).safeIntegers(true);
+  let rows: readonly { readonly singleton: bigint; readonly epoch: bigint }[];
+  try { rows = query.all(); }
+  finally { query.finalize(); }
+  if (rows.length !== 1 || rows[0]!.singleton !== 1n || rows[0]!.epoch < 0n || rows[0]!.epoch > MAX_SAFE_REVISION) {
+    corrupt("coordinator head singleton is invalid");
+  }
+  return rows[0]!.epoch;
 }
 
 function requireCandidateRow(database: SqliteDatabase, revision: bigint): CandidateRow {
@@ -1490,17 +1731,23 @@ function loadAdmissionRow(row: AdmissionRow): PrivateActivationAdmission {
 }
 
 function persistReviewPlan(database: SqliteDatabase, row: PlanRow): void {
-  const existing = statement<PlanRow>(database,
+  const query = statement<PlanRow>(database,
     "SELECT plan_digest, candidate_revision, plan_bytes FROM review_plans WHERE plan_digest = ?1",
-  ).get(row.plan_digest);
+  );
+  let existing: PlanRow | null;
+  try {
+    const selected = query.get(row.plan_digest);
+    existing = selected === null ? null : copiedPlanRow(selected);
+  } finally { query.finalize(); }
   if (existing !== null) {
     requireSamePlanRow(existing, row);
     loadPlanRow(existing);
     return;
   }
-  statement<never>(database,
+  runFinalized(database,
     "INSERT INTO review_plans(plan_digest, candidate_revision, plan_bytes) VALUES (?1, ?2, ?3)",
-  ).run(row.plan_digest, row.candidate_revision, row.plan_bytes);
+    [row.plan_digest, row.candidate_revision, row.plan_bytes],
+  );
 }
 
 function crossCheckPlanCandidate(plan: PrivateActivationPlan, planRow: PlanRow, candidate: CandidateRow): void {

@@ -43,6 +43,7 @@ export interface PrivateRootRunSnapshot {
   readonly submissionDigest: string;
   readonly admissionDigest: string;
   readonly candidateRevision: number;
+  readonly coordinatorEpoch: number;
   readonly target: RunTargetIdentity;
   readonly input: JsonValue;
   readonly deadlineUnixMs: number;
@@ -55,6 +56,7 @@ export interface PrivateRootRunSpawnIntent {
   readonly runId: string;
   readonly admissionDigest: string;
   readonly candidateRevision: number;
+  readonly coordinatorEpoch: number;
   readonly requestDigest: string;
   readonly recipeDigest: string;
   readonly observationDigest: string;
@@ -120,6 +122,7 @@ export function normalizePrivateRootSpawnIntent(value: unknown): PrivateRootRunS
     "runId",
     "admissionDigest",
     "candidateRevision",
+    "coordinatorEpoch",
     "requestDigest",
     "recipeDigest",
     "observationDigest",
@@ -127,12 +130,14 @@ export function normalizePrivateRootSpawnIntent(value: unknown): PrivateRootRunS
   ], "root Run spawn intent");
   if (root.kind !== "private-root-spawn-intent/1") throw new TypeError("root Run spawn intent kind is invalid");
   const candidateRevision = positiveSafeInteger(root.candidateRevision, "root Run candidate revision");
+  const coordinatorEpoch = positiveSafeInteger(root.coordinatorEpoch, "root Run coordinator epoch");
   const deadlineUnixMs = nonnegativeSafeInteger(root.deadlineUnixMs, "root Run spawn intent deadline");
   return Object.freeze({
     kind: "private-root-spawn-intent/1" as const,
     runId: digest(root.runId, "root Run spawn intent run"),
     admissionDigest: digest(root.admissionDigest, "root Run spawn intent admission"),
     candidateRevision,
+    coordinatorEpoch,
     requestDigest: digest(root.requestDigest, "root Run spawn intent request"),
     recipeDigest: digest(root.recipeDigest, "root Run spawn intent recipe"),
     observationDigest: digest(root.observationDigest, "root Run spawn intent observation"),

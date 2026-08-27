@@ -24,6 +24,7 @@ export async function executePrivateRootRunLaunch(input: {
   readonly backend: PrivateLinuxCgroupBackend;
   readonly signal?: AbortSignal;
 }): Promise<PrivateRootRunSnapshot> {
+  await input.launch.coordinator.verify();
   const launch = claimPrivateRootRunLaunch(input.launch);
   let terminal: PrivateRootRunTerminal;
   try {

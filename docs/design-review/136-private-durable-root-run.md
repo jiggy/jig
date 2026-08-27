@@ -8,8 +8,7 @@ Adapter SPI, or Sandbox Backend SPI.
 
 ## 1. Minimal durable state
 
-The protected activation database advances to private schema version 5 and
-adds only three relations:
+Private schema version 5 added only three relations:
 
 ```text
 root_runs
@@ -54,8 +53,8 @@ recipe.
 
 This gives one live coordinator at-most-one dispatch for the supported path.
 It does not pretend that SQLite alone fences two simultaneous coordinators.
-The public controller remains gated on an enforceable exclusive project
-coordinator lease.
+Review 137 adds the enforceable private project-coordinator lease and epoch
+fence without changing this Run record model.
 
 ## 3. Restart rule
 
@@ -91,6 +90,6 @@ coordinator, and reconciles the Run to `COORDINATOR_LOST`.
 This checkpoint does not add a public `startRun`, queue, retry policy, child
 Flow dispatch, effects, Hooks, Services, or semantic choice. It also does not
 publish a generic execution extension interface after proving only one Python
-Adapter and one Linux Backend. The next release gate is exclusive coordinator
-ownership and an independent consumer of the smallest administration surface,
-not more execution features.
+Adapter and one Linux Backend. Review 137 satisfies private coordinator
+ownership; the next release gate is an independent consumer of the smallest
+administration surface, not more execution features.

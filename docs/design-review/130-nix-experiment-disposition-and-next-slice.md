@@ -94,13 +94,14 @@ Adapter or a retained `READY` recipe.
 | Linux containment | Strong private cgroup-v2/Bubblewrap evidence exists; no public Sandbox Backend interface is claimed. |
 | Project authoring and capture | Inert authoring, capture, retention, and linking are generic private proofs. The private evaluator now consumes an authenticated sandbox-lifetime runtime-support receipt rather than a Nix lifetime observation; the agent-sandbox observer remains one proof-host input rather than a public host interface. |
 | Lock and admission | Private portable projection and one durable activation plan/apply path covering exact `READY` and exact `UNAVAILABLE` are complete. |
-| Runnable admission | One exact Python recipe is privately admitted, allocated through an idempotent durable root submission, executed through the contained Run/1 path, and reopened with its terminal. Unknown post-intent coordinator loss becomes `COORDINATOR_LOST`; no generic Runtime Adapter model or public coordinator lease exists. |
+| Runnable admission | One exact Python recipe is privately admitted, allocated through an idempotent durable root submission under an exclusive local coordinator epoch, executed through the contained Run/1 path, and reopened with its terminal. Replacement reconciles unknown older-epoch work to `COORDINATOR_LOST`; no generic Runtime Adapter model or public administration surface exists. |
 | Public Jig administration | Plan, apply, root-Run, authentication, status, and error interfaces remain release-gated. |
 | Journal/Hooks, Agents/Semantic Choice, updates, and Starters | Reviewed semantics exist; implementation/public projections remain later slices. |
 
-## 5. Next vertical slice
+## 5. Direct-root vertical slice
 
-The next milestone is one direct exact root Run, not a Nix feature:
+The milestone selected after decontamination was one direct exact root Run,
+not a Nix feature:
 
 ```text
 one immutable captured project through a retained generic author evaluator
@@ -114,7 +115,9 @@ one immutable captured project through a retained generic author evaluator
     -> durable terminal result and complete cleanup
 ```
 
-The slice deliberately excludes Bindings, Services, Hooks, Agents, Semantic
+Reviews 131–137 now complete that chain privately for one exact Python recipe
+and one cgroup-v2/Bubblewrap Backend. The slice deliberately excludes Bindings,
+Services, Hooks, Agents, Semantic
 Choice, child Flows, Jig Graph, update watching, and any ambient runtime
 fallback. It must close only the candidate host-extension registration,
 planning, receipt, policy, lock, and plan/apply/run models needed for this one
@@ -151,7 +154,9 @@ in [review 131](131-private-runtime-lease-observation.md) now proves retained
 author evaluation and fresh-process reacquisition without giving Jig Nix
 lifecycle authority. The host's isolated live-GC/teardown exercise remains a
 deployment check. A narrowly installed production launcher and one retained
-Flow execution recipe remain open; the lease does not manufacture either.
+Flow execution recipe remain future productization gates; reviews 132–137 use
+the lease only to prove one private exact-Python recipe. The lease does not
+manufacture a generic runtime or Backend interface.
 
 Before expansion, the slice must prove:
 
@@ -169,7 +174,8 @@ Before expansion, the slice must prove:
 6. restart reconciliation around spawn intent and terminal publication,
    recording `lost` or failure when success bytes cannot be recovered and
    never inferring or replaying successful work (**private proof complete in
-   review 136; public exclusive coordinator ownership remains gated**);
+   reviews 136–137; the lease remains private pending the administration
+   surface proof**);
 7. cancellation, deadline, process-tree fencing, and zero residue (**private
    Linux proof complete in reviews 105, 123, and 136**); and
 8. an independent consumer probe using only the frozen public subset.

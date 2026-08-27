@@ -22,12 +22,13 @@ private Jig slices for Package capture and inspection, Schema and Capability
 Contract validation, captured-package materialization, and one Run/1 host
 session whose private input is a Backend-supplied exact-component process
 seam. The private project path now continues through static declaration
-evaluation, a retained package-only aggregate, deterministic non-admissible
-resolution, strict portable-lock projection, and lock-first durable admission
-of one exact `UNAVAILABLE` target. This is not yet a public Jig SDK or complete
-controller: a generic retained `READY` recipe, public Runtime Adapter and
-Sandbox Backend models, root-Run dispatch, child-Flow/effect dispatch, and the
-host administration interface remain unfinished seams. The intended package
+evaluation, a retained package-only aggregate, strict portable-lock projection,
+lock-first durable admission of exact `UNAVAILABLE` and one exact Python
+`READY` target, idempotent root-Run dispatch through the proven Linux envelope,
+terminal persistence, and exclusive local coordinator takeover. This is not
+yet a public Jig SDK or complete controller: generic Runtime Adapter and
+Sandbox Backend models, child-Flow/effect dispatch, and the host administration
+interface remain unfinished seams. The intended package
 names are:
 
 ```text
@@ -172,8 +173,9 @@ bounded evaluator checkpoint in
 [`111-bounded-project-evaluator.md`](111-bounded-project-evaluator.md) now
 proves captured-source evaluation, a closed `@jigging/jig` resolver, bounded
 JSON transport, host-side schema validation and canonical re-normalization,
-and complete cgroup/Bubblewrap fencing on the current Nix-backed proof-host
-fixture. It is not a generic retained evaluator recipe. The following
+and complete cgroup/Bubblewrap fencing using the current proof host's
+authenticated sandbox-lifetime runtime-support receipt. It is not a generic
+retained evaluator recipe. The following
 [`112-static-author-closure.md`](112-static-author-closure.md) checkpoint adds
 one candidate-wide, captured, explicit static `.ts` import graph and makes the
 evaluator resolve only its recorded edges. No aggregate schema or evaluator API
@@ -182,12 +184,14 @@ is public.
 The subsequent private checkpoints retain the complete package-only aggregate,
 reduce it with one closed host-planning observation without making that
 observation executable, project canonical portable lock evidence while
-excluding host state, and durably publish/replay one lock-first unavailable
-admission. They prove restart and compare-and-set mechanics, not a public lock
-schema, public administration API, or runnable generation. The next path must
-first replace the evaluator's proof-host runtime fixture with generic retained
-support. A `READY` candidate must additionally retain and reacquire one generic
-Adapter/Backend recipe and own its spawn lifecycle across restart.
+excluding host state, and now durably publish/replay both exact unavailable
+admission and one exact Python `READY` recipe. The READY path allocates one
+idempotent root Run under a process-held coordinator epoch, executes Run/1
+through the cgroup-v2/Bubblewrap proof Backend, persists the terminal after
+cleanup, and reconciles an unknown older-epoch result to `COORDINATOR_LOST`.
+Reviews 131–137 record that chain. It proves one concrete vertical path, not a
+public lock schema, administration API, Runtime Adapter SPI, or Sandbox Backend
+SPI.
 
 Hooks, Service export references, instruction Agent selection,
 `semanticChoice`, and host-capability Bindings remain later gated slices. The
@@ -273,16 +277,16 @@ need; keep compiler IR private when possible.
 
 ## Next public vertical slice
 
-The next slice is one direct exact root Run. It begins with one discovered
-zero-configuration Run package, resolves one explicitly installed Runtime
-Adapter and Sandbox Backend, records `READY` or exact `UNAVAILABLE`, applies
-the reviewed candidate lock-first, accepts one idempotent root Run submission
-against that admitted generation, executes Run/1 inside the Backend-owned
-envelope, and publishes one durable terminal result after complete cleanup.
+The private direct-root chain is complete for one exact Python mechanism: one
+discovered zero-configuration Run package records `READY` or exact
+`UNAVAILABLE`, applies lock-first, accepts one idempotent root submission under
+an exclusive local coordinator epoch, executes inside the Backend-owned
+envelope, and publishes one durable terminal after cleanup.
 
-Before that chain can be generic, it must retain one exact author-evaluator
-support closure or an equivalently narrow host mechanism. The current
-Nix-backed evaluator remains proof evidence only.
+The next slice is the smallest closed administration interface and one
+independent consumer of it. That interface may expose the proven behavior; it
+must not pretend the one proof mechanism has established a generic Runtime
+Adapter or Sandbox Backend SPI.
 
 This slice intentionally adds no Binding requirement, Service, Hook, Agent,
 Semantic Choice, child Flow, Jig Graph compiler, update watcher, Nix
@@ -291,15 +295,18 @@ host-policy, lock, administration, and Run models required for that path.
 
 Before an independent probe consumes it, the candidate must prove:
 
-1. generic retained author-evaluator support on the selected host;
-2. deterministic Adapter and Backend selection from explicit host policy;
-3. one retained generic `READY` recipe beside the exact unavailable branch
-   (the narrower private exact-Python proof is complete in review 134);
-4. stale-plan rejection and lock-first admission (complete for that private
-   proof);
+1. one exact retained author-evaluator and runtime-support closure;
+2. deterministic recipe and Backend selection from trusted host evidence;
+3. one retained `READY` recipe beside exact unavailable admission;
+4. stale-plan rejection and lock-first admission;
 5. idempotent root submission and durable Run identity;
-6. restart reconciliation around spawn intent and terminal publication; and
+6. exclusive coordinator takeover and terminal reconciliation; and
 7. cancellation, deadline, whole-tree fencing, and zero residue.
+
+All seven are privately proven for the selected host path. Public release now
+depends on closing the request/result/error models, routing all mutation
+through the coordinator-owned controller, and passing the independent
+consumer experiment.
 
 The complete status and Nix decontamination boundary are in
 [`130-nix-experiment-disposition-and-next-slice.md`](130-nix-experiment-disposition-and-next-slice.md).
@@ -310,8 +317,9 @@ The repository still needs:
 
 - the complete Service/1 Host/Provider cross-language black-box corpus and
   durable Jig hosting integration;
-- Runtime Adapter and Sandbox Backend schemas;
-- the host-policy document schema and extension-registration identity model;
+- a closed host-policy/configuration document for supported mechanisms;
+- Runtime Adapter and Sandbox Backend schemas only after a second independent
+  mechanism proves those abstractions;
 - the canonical `jig.lock` schema; and
 - cross-language fixtures for every claimed stable boundary.
 
