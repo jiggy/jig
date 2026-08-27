@@ -34,11 +34,11 @@ import {
 } from "./activation-admission.js";
 
 const STATE_DIRECTORY = ".jig";
-const DATABASE_NAME = "private-activation-admission-v3.sqlite3";
+const DATABASE_NAME = "private-activation-admission-v4.sqlite3";
 const LOCK_NAME = "jig.lock";
 const LOCK_STAGE_NAME = "private-activation-jig-lock-v1.stage";
-const SCHEMA_VERSION = 3n;
-const APPLICATION_ID = 0x4a494733n; // JIG3
+const SCHEMA_VERSION = 4n;
+const APPLICATION_ID = 0x4a494734n; // JIG4
 const BUSY_TIMEOUT_MS = 250;
 const MAX_STORED_BYTES = 16_777_216;
 const MAX_SAFE_REVISION = BigInt(Number.MAX_SAFE_INTEGER);
@@ -160,6 +160,11 @@ export interface PrivateActivationAdmissionReceipt {
   readonly admission: PrivateActivationAdmission;
   readonly admissionBytes: Uint8Array;
   readonly admissionDigest: string;
+}
+
+export interface PrivateActiveActivation {
+  readonly admission: PrivateActivationAdmissionReceipt;
+  readonly candidate: PrivateActivationCandidateArtifact;
 }
 
 /** Persist a factory-produced proposal as the monotonic activation head. */
@@ -321,6 +326,46 @@ export async function loadPrivateActivationReviewPlan(input: {
       planDigest: input.planDigest,
       candidate: markStored(candidate),
     });
+  } catch (error) {
+    failure = error;
+    throw error;
+  } finally {
+    await disposeOperation(owner, artifacts, failure);
+  }
+}
+
+/** Reopen the exact active generation and reprove its protected packages. */
+export async function loadPrivateActiveActivation(input: {
+  readonly projectRoot: string;
+  readonly packageStoreRoot: string;
+}): Promise<PrivateActiveActivation> {
+  const owner = await openStateOwner(input.projectRoot, false);
+  let artifacts: ReacquiredArtifacts | undefined;
+  let failure: unknown;
+  try {
+    const initialHead = readAdmissionHead(owner.database, owner.root);
+    if (initialHead.revision === null) {
+      unavailable("ADMISSION_MISSING", "no activation generation is active");
+    }
+    const initialAdmissionRow = requireAdmissionRow(owner.database, initialHead.revision);
+    const admission = loadAndCrossCheckAdmission(owner.database, initialAdmissionRow, owner.root);
+    const planRow = requirePlanRow(owner.database, admission.admission.planDigest);
+    const candidateRow = requireCandidateRow(owner.database, planRow.candidate_revision);
+    const candidate = loadCandidateRow(candidateRow);
+    artifacts = await reacquireCandidateArtifacts(input.packageStoreRoot, candidate);
+    await immediate(owner, () => {
+      const currentHead = readAdmissionHead(owner.database, owner.root);
+      if (currentHead.revision !== initialHead.revision) {
+        stale("active generation changed while it was reopened");
+      }
+      const currentAdmissionRow = requireAdmissionRow(owner.database, initialHead.revision!);
+      const currentCandidateRow = requireCandidateRow(owner.database, candidateRow.revision);
+      requireSameAdmissionRow(initialAdmissionRow, currentAdmissionRow);
+      requireSameCandidateRow(candidateRow, currentCandidateRow);
+      loadAndCrossCheckAdmission(owner.database, currentAdmissionRow, owner.root);
+    });
+    await owner.finish();
+    return Object.freeze({ admission, candidate: markStored(candidate) });
   } catch (error) {
     failure = error;
     throw error;
@@ -714,7 +759,7 @@ function verifySchema(database: SqliteDatabase, root: PrivateProjectRoot): void 
   if (actual.length !== EXPECTED_SCHEMA.length || actual.some((row, index) => {
     const expected = EXPECTED_SCHEMA[index]!;
     return row.type !== expected.type || row.name !== expected.name || row.table !== expected.table || row.sql !== expected.sql;
-  })) corrupt("private admission database schema differs from version 3");
+  })) corrupt("private admission database schema differs from version 4");
   if (statement<Record<string, unknown>>(database, "PRAGMA foreign_key_check").all().length !== 0) {
     corrupt("private admission database has broken foreign keys");
   }
@@ -955,6 +1000,17 @@ function requireSamePlanRow(left: PlanRow, right: PlanRow): void {
     left.plan_digest !== right.plan_digest || left.candidate_revision !== right.candidate_revision ||
     !sameBytes(copiedBlob(left.plan_bytes, "review plan"), copiedBlob(right.plan_bytes, "review plan"))
   ) corrupt("one review-plan identity names different persisted bytes");
+}
+
+function requireSameAdmissionRow(left: AdmissionRow, right: AdmissionRow): void {
+  if (
+    left.revision !== right.revision || left.admission_digest !== right.admission_digest ||
+    left.base_generation !== right.base_generation || left.plan_digest !== right.plan_digest ||
+    !sameBytes(
+      copiedBlob(left.admission_bytes, "activation admission"),
+      copiedBlob(right.admission_bytes, "activation admission"),
+    )
+  ) corrupt("one admission revision changed its immutable persisted row");
 }
 
 async function observeVisibleLock(root: PrivateProjectRoot): Promise<

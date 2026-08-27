@@ -35,6 +35,7 @@ import {
 import {
   applyPrivateActivationReviewPlan,
   createPrivateActivationReviewPlan,
+  loadPrivateActiveActivation,
   loadPrivateActivationReviewPlan,
   publishPrivateActivationCandidate,
   requirePrivateStoredActivationCandidate,
@@ -784,7 +785,7 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         lockMode: "locked",
       }))
         .rejects.toMatchObject({ code: "LOCK_MISMATCH" });
-      const admissionDatabase = join(root, ".jig", "private-activation-admission-v3.sqlite3");
+      const admissionDatabase = join(root, ".jig", "private-activation-admission-v4.sqlite3");
       await writeFile(join(root, "jig.lock"), persisted.lock, { mode: 0o644 });
       const crashSqlite = createRequire(import.meta.url)("bun:sqlite") as any;
       const recovered = crashSqlite.Database.open(
@@ -930,8 +931,8 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
           "candidates",
           "review_plans",
         ]);
-        expect(database.query("PRAGMA application_id").get().application_id).toBe(0x4a494733);
-        expect(database.query("PRAGMA user_version").get().user_version).toBe(3);
+        expect(database.query("PRAGMA application_id").get().application_id).toBe(0x4a494734);
+        expect(database.query("PRAGMA user_version").get().user_version).toBe(4);
         expect(database.query("PRAGMA journal_mode").get().journal_mode).toBe("delete");
         expect(database.query("SELECT revision FROM candidate_head WHERE singleton = 1").get().revision).toBe(3);
         expect(database.query("SELECT count(*) AS count FROM candidates").get().count).toBe(3);
@@ -1083,9 +1084,16 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
       });
       expect(readyAdmission.admission.baseGeneration).toBe(secondAdmission.admissionDigest);
 
+      const restartedActivation = await loadPrivateActiveActivation({
+        projectRoot: root,
+        packageStoreRoot: store,
+      });
+      expect(restartedActivation.admission).toEqual(readyAdmission);
+      const admittedRequest = restartedActivation.candidate.candidate.target.request;
+      expect(admittedRequest.digest).toBe(readyRequest!.digest);
       const reacquiredPython = await proofHostPythonClosure();
       const replannedRecipe = await planPrivatePythonDirectRun({
-        request: readyRequest!,
+        request: admittedRequest,
         runtimeSupport: reacquiredPython.runtimeSupport,
         backend: backend(host),
       });

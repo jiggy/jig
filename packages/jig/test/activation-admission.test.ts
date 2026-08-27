@@ -31,10 +31,12 @@ describe("private activation admission candidate", () => {
 
     expect(encodePrivateActivationCandidate(artifact)).toEqual(bytes);
     expect(privateActivationCandidateDigest(artifact)).toBe(
-      "sha256:81eb31892bc0679c9ac762655b39907c6de8586f5c824753ab8c77c0ef2a82d7",
+      "sha256:5f27bc86a32b6caa1216b4daf63246abb17b41de8c624892d7512692aff5dcb1",
     );
     expect(Object.isFrozen(artifact)).toBeTrue();
     expect(Object.isFrozen(artifact.candidate)).toBeTrue();
+    expect(Object.isFrozen(artifact.candidate.target.request)).toBeTrue();
+    expect(Object.isFrozen(artifact.candidate.target.request.settings)).toBeTrue();
     expect(Object.isFrozen(artifact.candidate.target.disposition.evidenceDigests)).toBeTrue();
     expect(() => requirePrivateCreatedActivationCandidate(artifact)).toThrow(
       "was not built from a retained project",
@@ -61,7 +63,11 @@ describe("private activation admission candidate", () => {
       ...candidate,
       target: {
         ...candidate.target as object,
-        identity: { kind: "flow", path: "flows/missing" },
+        request: activationRequest({
+          ...(candidate.target as any).request,
+          target: { kind: "flow", path: "flows/missing" },
+          packagePath: "flows/missing",
+        }),
       },
     }, "same single activation target");
 
@@ -102,7 +108,7 @@ describe("private activation admission candidate", () => {
     }, "cannot represent dependency unavailability");
 
     const binding = bindingFixture();
-    expect(decodePrivateActivationCandidate(binding).candidate.target.identity).toEqual({
+    expect(decodePrivateActivationCandidate(binding).candidate.target.request.target).toEqual({
       kind: "binding",
       id: "run",
     });
@@ -168,8 +174,8 @@ describe("private activation admission candidate", () => {
     expect(() => decodePrivateActivationCandidate({
       ...valid,
       candidate: encoder.encode(validString(valid.candidate).replace(
-        '"kind":"private-activation-candidate/1"',
-        '"kind":"private-activation-candidate/1","kind":"private-activation-candidate/1"',
+        '"kind":"private-activation-candidate/2"',
+        '"kind":"private-activation-candidate/2","kind":"private-activation-candidate/2"',
       )),
     })).toThrow("duplicate object member");
 
@@ -389,7 +395,7 @@ function fixture() {
   const captureDigest = digest("capture");
   const planningObservationDigest = digest("planning");
   const candidate = {
-    kind: "private-activation-candidate/1",
+    kind: "private-activation-candidate/2",
     projectRoot: { device: "64768", inode: "123456" },
     captureDigest,
     semanticDigest: digest("semantics"),
@@ -405,8 +411,16 @@ function fixture() {
       package: { kind: "flow-package/1", digest: digest("declarations") },
     },
     target: {
-      identity: { kind: "flow", path: "flows/run" },
-      requestDigest: digest("request"),
+      request: activationRequest({
+        target: { kind: "flow", path: "flows/run" },
+        mode: "run",
+        packagePath: "flows/run",
+        package: { kind: "flow-package/1", digest: packageDigest },
+        entrypoint: { path: "flow.py", suffix: "py" },
+        settings: {},
+        attachments: {},
+        slots: {},
+      }),
       disposition: {
         state: "unavailable",
         code: "RUNTIME_UNAVAILABLE",
@@ -467,7 +481,7 @@ function bindingFixture() {
   const planningObservationDigest = digest("binding-planning");
   return {
     candidate: candidateBytes({
-      kind: "private-activation-candidate/1",
+      kind: "private-activation-candidate/2",
       projectRoot: { device: "64768", inode: "654321" },
       captureDigest,
       semanticDigest: digest("binding-semantics"),
@@ -483,8 +497,16 @@ function bindingFixture() {
         package: { kind: "flow-package/1", digest: digest("binding-declarations") },
       },
       target: {
-        identity: { kind: "binding", id: "run" },
-        requestDigest: digest("binding-request"),
+        request: activationRequest({
+          target: { kind: "binding", id: "run" },
+          mode: "run",
+          packagePath: "flows/run",
+          package: { kind: "flow-package/1", digest: digest("binding-package") },
+          entrypoint: { path: "flow.py", suffix: "py" },
+          settings: {},
+          attachments: {},
+          slots: {},
+        }),
         disposition: {
           state: "unavailable",
           code: "RUNTIME_UNAVAILABLE",
@@ -493,6 +515,15 @@ function bindingFixture() {
       },
     }),
     lock: lockEncoding,
+  };
+}
+
+function activationRequest(value: Record<string, unknown>): Record<string, unknown> {
+  const { digest: _discarded, kind: _kind, ...content } = value;
+  const request = { kind: "activation-request/1", ...content };
+  return {
+    ...request,
+    digest: privateDomainDigest("JIG-Activation-Request/1", request as unknown as JsonValue),
   };
 }
 

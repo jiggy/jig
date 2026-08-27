@@ -27,6 +27,8 @@ import {
 } from "../json.js";
 import type { RunTargetIdentity } from "../project/package-project.js";
 import {
+  restorePrivateActivationRequest,
+  type PrivateActivationRequest,
   requirePrivateRetainedResolutionObservation,
   type PrivateResolutionUnavailableCode,
 } from "../project/package-resolution.js";
@@ -39,7 +41,7 @@ import {
   type PrivateRetainedPackageProject,
 } from "../project/retained-project.js";
 
-const KIND = "private-activation-candidate/1";
+const KIND = "private-activation-candidate/2";
 const PLAN_KIND = "private-activation-plan/1";
 const ADMISSION_KIND = "private-activation-admission/1";
 const DIGEST = /^sha256:[0-9a-f]{64}$/;
@@ -66,8 +68,7 @@ export interface PrivateActivationCandidate {
     readonly package: PackageArtifactRef;
   };
   readonly target: {
-    readonly identity: RunTargetIdentity;
-    readonly requestDigest: string;
+    readonly request: PrivateActivationRequest;
     readonly disposition:
       | {
           readonly state: "ready";
@@ -164,8 +165,7 @@ export function createPrivateActivationCandidate(
     lockDigest: privateProjectLocalLockDigest(lock),
     declarationArtifact: retained.declarationArtifact,
     target: {
-      identity: target.request.target,
-      requestDigest: target.request.digest,
+      request: target.request,
       disposition,
     },
   }, lock);
@@ -206,7 +206,7 @@ export function privateActivationCandidateDigest(
 ): string {
   const artifact = normalizeArtifact(value);
   return privateDomainDigest(
-    "JIG-Private-Activation-Candidate/1",
+    "JIG-Private-Activation-Candidate/2",
     artifact.candidate as unknown as JsonValue,
   );
 }
@@ -330,7 +330,8 @@ function normalizeCandidate(
   }
 
   const target = normalizeTarget(root.target);
-  requireExactTargetSet(target.identity, lock);
+  requireExactTargetSet(target.request.target, lock);
+  requireRequestLockProjection(target.request, lock);
   if (target.disposition.state === "unavailable" &&
       target.disposition.code === "DEPENDENCY_UNAVAILABLE") {
     throw new TypeError("single-target activation admission cannot represent dependency unavailability");
@@ -428,8 +429,8 @@ function normalizeAdmission(input: unknown): PrivateActivationAdmission {
 }
 
 function normalizeTarget(input: unknown): PrivateActivationCandidate["target"] {
-  const value = exactObject(input, ["identity", "requestDigest", "disposition"], "target");
-  const identity = normalizeIdentity(value.identity);
+  const value = exactObject(input, ["request", "disposition"], "target");
+  const request = restorePrivateActivationRequest(value.request);
   const state = dataField(
     plainObject(value.disposition, "target disposition"),
     "state",
@@ -442,8 +443,7 @@ function normalizeTarget(input: unknown): PrivateActivationCandidate["target"] {
       "target disposition",
     );
     return Object.freeze({
-      identity,
-      requestDigest: requireDigest(value.requestDigest, "target request"),
+      request,
       disposition: Object.freeze({
         state: "ready" as const,
         recipeDigest: requireDigest(ready.recipeDigest, "target recipe"),
@@ -472,14 +472,30 @@ function normalizeTarget(input: unknown): PrivateActivationCandidate["target"] {
     }
   }
   return Object.freeze({
-    identity,
-    requestDigest: requireDigest(value.requestDigest, "target request"),
+    request,
     disposition: Object.freeze({
       state: "unavailable" as const,
       code: disposition.code,
       evidenceDigests: Object.freeze(evidence),
     }),
   });
+}
+
+function requireRequestLockProjection(
+  request: PrivateActivationRequest,
+  lock: PrivateProjectLocalLock,
+): void {
+  const expectedPath = request.target.kind === "flow"
+    ? request.target.path
+    : lock.bindings[request.target.id]?.packagePath;
+  if (expectedPath === undefined || request.packagePath !== expectedPath) {
+    throw new TypeError("activation request package path does not match its lock target");
+  }
+  const packageValue = lock.packages[request.packagePath];
+  if (packageValue === undefined || packageValue.digest !== request.package.digest ||
+      packageValue.mode !== request.mode) {
+    throw new TypeError("activation request package does not match its lock projection");
+  }
 }
 
 function normalizeIdentity(value: unknown): RunTargetIdentity {

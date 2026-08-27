@@ -94,7 +94,7 @@ Adapter or a retained `READY` recipe.
 | Linux containment | Strong private cgroup-v2/Bubblewrap evidence exists; no public Sandbox Backend interface is claimed. |
 | Project authoring and capture | Inert authoring, capture, retention, and linking are generic private proofs. The private evaluator now consumes an authenticated sandbox-lifetime runtime-support receipt rather than a Nix lifetime observation; the agent-sandbox observer remains one proof-host input rather than a public host interface. |
 | Lock and admission | Private portable projection and one durable activation plan/apply path covering exact `READY` and exact `UNAVAILABLE` are complete. |
-| Runnable admission | One exact Python recipe is privately admitted and re-planned into a contained Run/1 execution. No generic Runtime Adapter model or restart-safe root spawn lifecycle exists. |
+| Runnable admission | One exact Python recipe and its complete activation request are privately admitted, reopened after invocation-memory loss, and re-planned into a contained Run/1 execution. No generic Runtime Adapter model or restart-safe root spawn lifecycle exists. |
 | Public Jig administration | Plan, apply, root-Run, authentication, status, and error interfaces remain release-gated. |
 | Journal/Hooks, Agents/Semantic Choice, updates, and Starters | Reviewed semantics exist; implementation/public projections remain later slices. |
 

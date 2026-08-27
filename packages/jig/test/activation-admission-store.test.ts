@@ -28,6 +28,7 @@ import {
 import {
   applyPrivateActivationReviewPlan,
   createPrivateActivationReviewPlan,
+  loadPrivateActiveActivation,
   loadPrivateActivationReviewPlan,
   requirePrivateStoredActivationCandidate,
 } from "../src/internal/activation-admission-store.js";
@@ -98,8 +99,8 @@ describe.serial("private activation admission SQLite store", () => {
           "candidates",
           "review_plans",
         ]);
-        expect(database.query("PRAGMA application_id").get().application_id).toBe(0x4a494733);
-        expect(database.query("PRAGMA user_version").get().user_version).toBe(3);
+        expect(database.query("PRAGMA application_id").get().application_id).toBe(0x4a494734);
+        expect(database.query("PRAGMA user_version").get().user_version).toBe(4);
         expect(database.query("SELECT count(*) AS count FROM review_plans").get().count).toBe(1);
       } finally {
         database.close(true);
@@ -166,6 +167,18 @@ describe.serial("private activation admission SQLite store", () => {
         planDigest: firstPlan.planDigest,
         baseGeneration: null,
       })).toEqual(first);
+
+      const active = await loadPrivateActiveActivation({
+        projectRoot: fixture.root,
+        packageStoreRoot: fixture.store,
+      });
+      expect(active.admission).toEqual(second);
+      expect(active.candidate.candidate.target.request).toMatchObject({
+        target: { kind: "flow", path: "flows/run" },
+        packagePath: "flows/run",
+        entrypoint: { path: "flow.py", suffix: "py" },
+      });
+      expect(requirePrivateStoredActivationCandidate(active.candidate)).toBe(active.candidate);
 
       const database = openSqlite(fixture.database, "readonly");
       try {
@@ -489,7 +502,7 @@ async function createFixture(): Promise<Fixture> {
     const planningObservationDigest = digest("planning");
     const candidate = decodePrivateActivationCandidate({
       candidate: json1({
-        kind: "private-activation-candidate/1",
+        kind: "private-activation-candidate/2",
         projectRoot: {
           device: rootInformation.dev.toString(),
           inode: rootInformation.ino.toString(),
@@ -508,8 +521,16 @@ async function createFixture(): Promise<Fixture> {
           package: declaration,
         },
         target: {
-          identity: { kind: "flow", path: "flows/run" },
-          requestDigest: digest("request"),
+          request: activationRequest({
+            target: { kind: "flow", path: "flows/run" },
+            mode: "run",
+            packagePath: "flows/run",
+            package: flow,
+            entrypoint: { path: "flow.py", suffix: "py" },
+            settings: {},
+            attachments: {},
+            slots: {},
+          }),
           disposition: {
             state: "unavailable",
             code: "RUNTIME_UNAVAILABLE",
@@ -522,7 +543,7 @@ async function createFixture(): Promise<Fixture> {
     const encoded = encodePrivateActivationCandidate(candidate);
 
     const state = join(root, ".jig");
-    const databasePath = join(state, "private-activation-admission-v3.sqlite3");
+    const databasePath = join(state, "private-activation-admission-v4.sqlite3");
     await mkdir(state, { mode: 0o700 });
     const databaseFile = await open(
       databasePath,
@@ -543,8 +564,8 @@ async function createFixture(): Promise<Fixture> {
         CREATE_ADMISSION_HEAD,
         "INSERT INTO candidate_head(singleton, revision) VALUES (1, NULL)",
         "INSERT INTO admission_head(singleton, revision) VALUES (1, NULL)",
-        "PRAGMA application_id=1246316339",
-        "PRAGMA user_version=3",
+        "PRAGMA application_id=1246316340",
+        "PRAGMA user_version=4",
       ].join(";"));
       database.exec("BEGIN IMMEDIATE");
       database.query(
@@ -566,6 +587,14 @@ async function createFixture(): Promise<Fixture> {
     await rm(base, { recursive: true, force: true });
     throw error;
   }
+}
+
+function activationRequest(content: Record<string, unknown>): Record<string, unknown> {
+  const request = { kind: "activation-request/1", ...content };
+  return {
+    ...request,
+    digest: privateDomainDigest("JIG-Activation-Request/1", request as unknown as JsonValue),
+  };
 }
 
 async function retainPackage(store: string, source: string): Promise<PackageArtifactRef> {

@@ -8,8 +8,16 @@ import {
   type PrivateActivationUnavailableCode,
 } from "../internal/activation-planning.js";
 import { privateDomainDigest } from "../internal/identity.js";
-import type { PackageArtifactRef } from "../internal/package-artifact-store.js";
-import type { JsonObject, JsonValue } from "../json.js";
+import {
+  normalizePackageArtifactRef,
+  type PackageArtifactRef,
+} from "../internal/package-artifact-store.js";
+import {
+  canonicalJson,
+  decodeJson1,
+  type JsonObject,
+  type JsonValue,
+} from "../json.js";
 import type { PackageEntrypoint } from "../package/inspect.js";
 import {
   requirePackageProjectValue,
@@ -21,6 +29,7 @@ import {
   requirePrivateRetainedPackageProject,
   type PrivateRetainedPackageProject,
 } from "./retained-project.js";
+import { normalizeProjectPath } from "./paths.js";
 
 const DIGEST = /^sha256:[0-9a-f]{64}$/;
 const authenticRetainedObservations = new WeakSet<object>();
@@ -132,6 +141,89 @@ export function requirePrivateActivationRequest(value: unknown): PrivateActivati
     throw new TypeError("activation request was not produced from a linked package project");
   }
   return value as PrivateActivationRequest;
+}
+
+/**
+ * Rebuild an authenticated request from a protected persisted snapshot. The
+ * caller remains responsible for proving that storage provenance; this
+ * function proves only the closed request shape and its self-identity.
+ */
+export function restorePrivateActivationRequest(value: unknown): PrivateActivationRequest {
+  const root = exactObject(value, [
+    "kind",
+    "digest",
+    "target",
+    "mode",
+    "packagePath",
+    "package",
+    "entrypoint",
+    "settings",
+    "attachments",
+    "slots",
+  ], "activation request");
+  if (root.kind !== "activation-request/1") {
+    throw new TypeError("activation request kind must be activation-request/1");
+  }
+  const targetValue = exactRecord(root.target, "activation target");
+  const target = targetValue.kind === "flow"
+    ? Object.freeze({
+        kind: "flow" as const,
+        path: normalizeProjectPath(
+          exactObject(targetValue, ["kind", "path"], "Flow activation target").path,
+          "Flow activation target",
+        ),
+      })
+    : Object.freeze({
+        kind: "binding" as const,
+        id: requireLocalName(
+          exactObject(targetValue, ["kind", "id"], "Binding activation target").id,
+          "Binding activation target",
+        ),
+      });
+  if (root.mode !== "run" && root.mode !== "service") {
+    throw new TypeError("activation request mode must be run or service");
+  }
+  const packagePath = normalizeProjectPath(root.packagePath, "activation package path");
+  const entrypointValue = exactObject(
+    root.entrypoint,
+    root.entrypoint !== null && typeof root.entrypoint === "object" &&
+      Object.prototype.hasOwnProperty.call(root.entrypoint, "selector")
+      ? ["path", "suffix", "selector"]
+      : ["path", "suffix"],
+    "activation entrypoint",
+  );
+  if (typeof entrypointValue.path !== "string" ||
+      typeof entrypointValue.suffix !== "string" ||
+      !/^flow\.[a-z0-9]{1,16}$/.test(entrypointValue.path) ||
+      entrypointValue.path !== `flow.${entrypointValue.suffix}`) {
+    throw new TypeError("activation entrypoint must be one canonical flow.<suffix>");
+  }
+  if (entrypointValue.selector !== undefined &&
+      (typeof entrypointValue.selector !== "string" ||
+       !/^[A-Za-z0-9][A-Za-z0-9._+-]{0,63}$/.test(entrypointValue.selector))) {
+    throw new TypeError("activation entrypoint selector is invalid");
+  }
+  const request = createRequest({
+    target,
+    mode: root.mode,
+    packagePath,
+    package: normalizePackageArtifactRef(root.package),
+    entrypoint: Object.freeze({
+      path: entrypointValue.path,
+      suffix: entrypointValue.suffix,
+      ...(entrypointValue.selector === undefined ? {} : { selector: entrypointValue.selector }),
+    }),
+    settings: snapshotJsonObject(root.settings, "activation settings"),
+    attachments: snapshotJsonObject(
+      root.attachments,
+      "activation attachments",
+    ) as LinkedPackageBinding["attachments"],
+    slots: snapshotJsonObject(root.slots, "activation slots") as LinkedPackageBinding["slots"],
+  });
+  if (root.digest !== request.digest) {
+    throw new TypeError("activation request digest does not match its canonical content");
+  }
+  return request;
 }
 
 /**
@@ -372,6 +464,55 @@ function compareTargets(left: RunTargetIdentity, right: RunTargetIdentity): numb
 function requireDigest(value: string, label: string): string {
   if (typeof value !== "string" || !DIGEST.test(value)) {
     throw new TypeError(`${label} digest must be sha256: followed by 64 lowercase hexadecimal digits`);
+  }
+  return value;
+}
+
+function exactRecord(value: unknown, label: string): Record<string, unknown> {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    throw new TypeError(`${label} must be an object`);
+  }
+  return value as Record<string, unknown>;
+}
+
+function exactObject(
+  value: unknown,
+  keys: readonly string[],
+  label: string,
+): Record<string, unknown> {
+  const record = exactRecord(value, label);
+  const actual = Object.keys(record).sort();
+  const expected = [...keys].sort();
+  if (actual.length !== expected.length || actual.some((key, index) => key !== expected[index])) {
+    throw new TypeError(`${label} must contain exactly ${expected.join(", ")}`);
+  }
+  return record;
+}
+
+function requireLocalName(value: unknown, label: string): string {
+  if (typeof value !== "string" || value.length > 64 ||
+      !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value)) {
+    throw new TypeError(`${label} must be a LocalName`);
+  }
+  return value;
+}
+
+function snapshotJsonObject(value: unknown, label: string): JsonObject {
+  const bytes = canonicalJson(value as JsonValue);
+  const snapshot = freezeJson(decodeJson1(bytes));
+  if (snapshot === null || typeof snapshot !== "object" || Array.isArray(snapshot)) {
+    throw new TypeError(`${label} must be an object`);
+  }
+  return snapshot as JsonObject;
+}
+
+function freezeJson(value: JsonValue): JsonValue {
+  if (Array.isArray(value)) return Object.freeze(value.map((item) => freezeJson(item)));
+  if (value !== null && typeof value === "object") {
+    const source = value as Readonly<Record<string, JsonValue>>;
+    const output: Record<string, JsonValue> = Object.create(null) as Record<string, JsonValue>;
+    for (const key of Object.keys(source)) output[key] = freezeJson(source[key]!);
+    return Object.freeze(output);
   }
   return value;
 }

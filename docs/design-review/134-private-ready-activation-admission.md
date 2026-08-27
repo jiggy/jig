@@ -50,8 +50,10 @@ The executable package vendors the real Python FLOW SDK and receives no
 settings, attachments, capability slots, network, ambient environment, or
 writable host path. After admission, a fresh observation must reproduce the
 admitted recipe and planning-observation identities before package code may
-start. Runtime bytes remain owned and retained by the sandbox host lease; Jig
-only authenticates the read-only receipt.
+start. Review 135 also persists the complete closed activation request, so a
+fresh coordinator no longer depends on the original planner's in-memory
+request object. Runtime bytes remain owned and retained by the sandbox host
+lease; Jig only authenticates the read-only receipt.
 
 ## 3. Validation
 
