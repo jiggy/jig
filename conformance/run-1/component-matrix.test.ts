@@ -729,7 +729,6 @@ async function withPeer(
 ): Promise<void> {
   const peer = new ComponentPeer(command, {
     PYTHONPATH: resolve(root, "packages/flowmd-sdk/src"),
-    XDG_CACHE_HOME: resolve(root, ".tmp/need-cache"),
   });
   try {
     await action(peer);

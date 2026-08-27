@@ -32,7 +32,6 @@ async function runGoldenConversation(command: readonly string[]) {
   const scratch = await mkdtemp(join(tmpdir(), "flow-run-1-"));
   const peer = new ComponentPeer(command, {
     PYTHONPATH: resolve(root, "packages/flowmd-sdk/src"),
-    XDG_CACHE_HOME: resolve(root, ".tmp/need-cache"),
   });
   const trace: Array<Record<string, unknown>> = [];
 
