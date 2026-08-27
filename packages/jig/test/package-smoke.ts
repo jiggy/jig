@@ -71,12 +71,19 @@ const status: Promise<RootRunStatus> = administration.runStatus({ runId: "sha256
 void project;
 void status;
 `);
+  await writeFile(
+    join(consumer, "root-administration-consumer.ts"),
+    await readFile(resolve(
+      packageRoot,
+      "../../conformance/root-administration-1/consumer.ts",
+    ), "utf8"),
+  );
   await writeFile(join(consumer, "tsconfig.json"), JSON.stringify({
     compilerOptions: {
       target: "ES2022", module: "NodeNext", moduleResolution: "NodeNext",
       strict: true, noEmit: true,
     },
-    files: ["smoke.ts"],
+    files: ["smoke.ts", "root-administration-consumer.ts"],
   }));
   await run(["bunx", "--bun", "tsc", "-p", join(consumer, "tsconfig.json")], packageRoot);
 } finally {

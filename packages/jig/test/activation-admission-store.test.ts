@@ -44,6 +44,9 @@ import {
 } from "../src/internal/activation-admission.js";
 import { canonicalJson, type JsonValue } from "../src/json.js";
 import { capturePackageDirectory } from "../src/package/capture.js";
+import { RootAdministrationError } from "../src/administration/root.js";
+import { openPrivateRootAdministrationController } from "../src/internal/root-administration-controller.js";
+import { awaitRootRun } from "../../../conformance/root-administration-1/consumer.js";
 
 const CREATE_CANDIDATES = "CREATE TABLE candidates (revision INTEGER PRIMARY KEY CHECK (revision BETWEEN 1 AND 9007199254740991), candidate_digest TEXT NOT NULL, candidate_bytes BLOB NOT NULL CHECK (length(candidate_bytes) BETWEEN 1 AND 16777216), lock_bytes BLOB NOT NULL CHECK (length(lock_bytes) BETWEEN 1 AND 16777216)) STRICT";
 const CREATE_CANDIDATE_HEAD = "CREATE TABLE candidate_head (singleton INTEGER PRIMARY KEY CHECK (singleton = 1), revision INTEGER REFERENCES candidates(revision)) STRICT";
@@ -351,6 +354,166 @@ describe.serial("private activation admission SQLite store", () => {
       })).rejects.toMatchObject({ code: "ADMISSION_STATE_CORRUPT" });
     } finally {
       await coordinator?.dispose();
+      await fixture.dispose();
+    }
+  });
+
+  test("projects durable root Runs through the closed administration authority", async () => {
+    const fixture = await createFixture("ready");
+    let controller: Awaited<ReturnType<typeof openPrivateRootAdministrationController>> | undefined;
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    let cancellationStarted!: () => void;
+    const cancellationReady = new Promise<void>((resolve) => { cancellationStarted = resolve; });
+    let executions = 0;
+    try {
+      const plan = await createPrivateActivationReviewPlan({
+        projectRoot: fixture.root,
+        packageStoreRoot: fixture.store,
+        lockMode: "update",
+      });
+      await applyPrivateActivationReviewPlan({
+        projectRoot: fixture.root,
+        packageStoreRoot: fixture.store,
+        planDigest: plan.planDigest,
+        baseGeneration: null,
+      });
+      controller = await openPrivateRootAdministrationController({
+        projectRoot: fixture.root,
+        packageStoreRoot: fixture.store,
+        runTimeoutMs: 60_000,
+        execute: async (launch, signal) => {
+          executions += 1;
+          const value = (launch.run.input as { readonly value: string }).value;
+          if (value === "fail") throw new Error("simulated executor failure");
+          if (value === "cancel") {
+            cancellationStarted();
+            if (signal.aborted) throw signal.reason;
+            await new Promise<never>((_resolve, reject) => {
+              signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+            });
+          }
+          await gate;
+          return completePrivateRootRun({
+            projectRoot: fixture.root,
+            launch,
+            terminal: {
+              status: "succeeded",
+              result: { outcome: "done", output: { accepted: launch.run.input } },
+              diagnostics: { stderr: "", stderrBytes: 0, stderrTruncated: false },
+            },
+          });
+        },
+      });
+      await expect(openPrivateRootAdministrationController({
+        projectRoot: fixture.root,
+        packageStoreRoot: fixture.store,
+        runTimeoutMs: 60_000,
+        execute: async () => { throw new Error("must not execute"); },
+      })).rejects.toMatchObject({ name: "RootAdministrationError", code: "PROJECT_BUSY" });
+      await expect(controller.administration.startRun({
+        submissionId: "invalid",
+        target: { kind: "flow", path: "flows/run" },
+        input: undefined,
+      } as any)).rejects.toMatchObject({ code: "INVALID_REQUEST" });
+      await controller.drain();
+
+      const mutable = { value: "first" };
+      let waits = 0;
+      const completion = awaitRootRun({
+        administration: controller.administration,
+        request: {
+          submissionId: "ticket-admin-1",
+          target: { kind: "flow", path: "flows/run" },
+          input: mutable,
+        },
+        wait: async () => {
+          waits += 1;
+          mutable.value = "changed";
+          release();
+          await Bun.sleep(1);
+        },
+      });
+      const completed = await completion;
+      expect(waits).toBeGreaterThan(0);
+      expect(await controller.administration.startRun({
+        submissionId: "ticket-admin-1",
+        target: { kind: "flow", path: "flows/run" },
+        input: { value: "first" },
+      })).toEqual({ runId: completed.runId });
+      expect(executions).toBe(1);
+
+      await expect(controller.administration.startRun({
+        submissionId: "ticket-admin-1",
+        target: { kind: "flow", path: "flows/run" },
+        input: { value: "different" },
+      })).rejects.toMatchObject({
+        name: "RootAdministrationError",
+        code: "SUBMISSION_CONFLICT",
+      });
+      await expect(controller.administration.runStatus({
+        runId: `sha256:${"0".repeat(64)}`,
+      })).rejects.toMatchObject({
+        name: "RootAdministrationError",
+        code: "RUN_NOT_FOUND",
+      });
+
+      await controller.drain();
+      expect(completed).toEqual({
+        runId: completed.runId,
+        submissionId: "ticket-admin-1",
+        target: { kind: "flow", path: "flows/run" },
+        state: "terminal",
+        terminal: {
+          status: "succeeded",
+          outcome: "done",
+          output: { accepted: { value: "first" } },
+          diagnostics: { stderr: "", stderrBytes: 0, stderrTruncated: false },
+        },
+      });
+      expect(Object.keys(completed).sort()).toEqual([
+        "runId", "state", "submissionId", "target", "terminal",
+      ]);
+      expect(Object.isFrozen(completed)).toBe(true);
+      expect(Object.isFrozen(completed.terminal)).toBe(true);
+
+      const failed = await controller.administration.startRun({
+        submissionId: "ticket-admin-fail",
+        target: { kind: "flow", path: "flows/run" },
+        input: { value: "fail" },
+      });
+      await controller.drain();
+      expect(await controller.administration.runStatus(failed)).toMatchObject({
+        state: "terminal",
+        terminal: { status: "failed", code: "EXECUTION_FAILED" },
+      });
+
+      const cancelledSubmission = controller.administration.startRun({
+        submissionId: "ticket-admin-cancel",
+        target: { kind: "flow", path: "flows/run" },
+        input: { value: "cancel" },
+      });
+      const disposing = controller.dispose();
+      const cancelled = await cancelledSubmission;
+      await Promise.all([cancellationReady, disposing]);
+      expect(await loadPrivateRootRun({
+        projectRoot: fixture.root,
+        runId: cancelled.runId,
+      })).toMatchObject({
+        state: "terminal",
+        terminal: { status: "failed", code: "CANCELLED" },
+      });
+      await expect(controller.administration.startRun({
+        submissionId: "ticket-closed",
+        target: { kind: "flow", path: "flows/run" },
+        input: { value: "closed" },
+      })).rejects.toBeInstanceOf(RootAdministrationError);
+      await expect(controller.administration.runStatus({ runId: completed.runId })).rejects.toMatchObject({
+        code: "PROJECT_CLOSED",
+      });
+    } finally {
+      release();
+      await controller?.dispose();
       await fixture.dispose();
     }
   });

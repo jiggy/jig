@@ -40,8 +40,8 @@ import {
   openPrivateProjectCoordinator,
   publishPrivateActivationCandidate,
   requirePrivateStoredActivationCandidate,
-  submitPrivateRootRun,
 } from "../src/internal/activation-admission-store.js";
+import { openPrivateRootAdministrationController } from "../src/internal/root-administration-controller.js";
 import { executePrivateRootRunLaunch } from "../src/internal/root-run-controller.js";
 import { evaluateAuthorClosure } from "../src/project/author-evaluator.js";
 import { captureAuthorClosure } from "../src/project/author-module.js";
@@ -644,6 +644,7 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
     const distribution = await realpath(join(import.meta.dir, "..", "dist"));
     const root = await mkdtemp(join(tmpdir(), "jig-retained-project-"));
     const store = await mkdtemp(join(tmpdir(), "jig-retained-store-"));
+    let rootController: Awaited<ReturnType<typeof openPrivateRootAdministrationController>> | undefined;
     let rootCoordinator: Awaited<ReturnType<typeof openPrivateProjectCoordinator>> | undefined;
     const evaluator = {
       backend: backend(host),
@@ -1100,51 +1101,46 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
       const admittedRequest = restartedActivation.candidate.candidate.target.request;
       expect(admittedRequest.digest).toBe(readyRequest!.digest);
       const reacquiredPython = await proofHostPythonClosure();
-      const rootDeadline = Date.now() + 20_000;
-      rootCoordinator = await openPrivateProjectCoordinator({ projectRoot: root });
-      const submitted = await submitPrivateRootRun({
-        coordinator: rootCoordinator,
+      const rootBackend = backend(host);
+      rootController = await openPrivateRootAdministrationController({
         projectRoot: root,
         packageStoreRoot: store,
+        runTimeoutMs: 20_000,
+        execute: (launch, signal) => executePrivateRootRunLaunch({
+          projectRoot: root,
+          packageStoreRoot: store,
+          launch,
+          runtimeSupport: reacquiredPython.runtimeSupport,
+          backend: rootBackend,
+          signal,
+        }),
+      });
+      const submitted = await rootController.administration.startRun({
         submissionId: "ticket-T-1",
         target: admittedRequest.target,
         input: { ticket: "T-1" },
-        deadlineUnixMs: rootDeadline,
       });
-      expect(submitted.run.state).toBe("spawn-intent");
-      expect(submitted.launch).toBeDefined();
-      expect((await submitPrivateRootRun({
-        coordinator: rootCoordinator,
-        projectRoot: root,
-        packageStoreRoot: store,
+      expect((await rootController.administration.runStatus(submitted)).runId).toBe(submitted.runId);
+      expect(await rootController.administration.startRun({
         submissionId: "ticket-T-1",
         target: admittedRequest.target,
         input: { ticket: "T-1" },
-        deadlineUnixMs: rootDeadline,
-      })).launch).toBeUndefined();
-      const completed = await executePrivateRootRunLaunch({
-        projectRoot: root,
-        packageStoreRoot: store,
-        launch: submitted.launch!,
-        runtimeSupport: reacquiredPython.runtimeSupport,
-        backend: backend(host),
-      });
+      })).toEqual(submitted);
+      await rootController.drain();
+      const completed = await rootController.administration.runStatus(submitted);
       expect(completed).toMatchObject({
         state: "terminal",
         terminal: {
           status: "succeeded",
-          result: { outcome: "done", output: { admitted: { ticket: "T-1" } } },
+          outcome: "done",
+          output: { admitted: { ticket: "T-1" } },
         },
       });
-      expect((await submitPrivateRootRun({
-        coordinator: rootCoordinator,
-        projectRoot: root,
-        packageStoreRoot: store,
+      expect(await rootController.administration.startRun({
         submissionId: "ticket-T-1",
         target: admittedRequest.target,
         input: { ticket: "T-1" },
-        deadlineUnixMs: rootDeadline,
-      })).run).toEqual(completed);
+      })).toEqual(submitted);
 
       const competingCoordinator = spawn(process.execPath, [
         join(import.meta.dir, "fixtures", "root-run-submitter.ts"),
@@ -1156,8 +1152,8 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
       expect((await childExit(competingCoordinator)).code).not.toBe(0);
       expect(await competingDiagnostics).toContain("another coordinator owns this project");
 
-      await rootCoordinator.dispose();
-      rootCoordinator = undefined;
+      await rootController.dispose();
+      rootController = undefined;
       const lostCoordinator = spawn(process.execPath, [
         join(import.meta.dir, "fixtures", "root-run-submitter.ts"),
         root,
@@ -1184,6 +1180,7 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         planDigest: firstPlan.planDigest,
       })).rejects.toMatchObject({ code: "ADMISSION_STATE_CORRUPT" });
     } finally {
+      await rootController?.dispose();
       await rootCoordinator?.dispose();
       await rm(root, { recursive: true, force: true });
       await rm(store, { recursive: true, force: true });

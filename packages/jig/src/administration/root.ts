@@ -167,6 +167,11 @@ function snapshotJson(value: unknown, label: string): JsonValue {
   return snapshot;
 }
 
+/** Package-private immutable JSON/1 projection for trusted controller output. */
+export function snapshotRootAdministrationJson(value: unknown, label: string): JsonValue {
+  return snapshotJson(value, label);
+}
+
 function copyJson(
   value: unknown,
   label: string,

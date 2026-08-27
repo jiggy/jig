@@ -220,8 +220,9 @@ define authentication and closed request/result/error models for:
 
 No `RunSnapshot`, `openProject`, `getRun`, or `cancelRun` interface is part of
 Jig/1. The root administration candidate does not become published merely by
-having checked-in declarations; a private coordinator-owned controller and an
-independent consumer must pass first.
+having checked-in declarations. Its private coordinator-owned controller and a
+clean public-surface consumer now pass; independent authorship remains the
+release gate.
 
 ### Trusted host extension interfaces
 
@@ -293,10 +294,10 @@ discovered zero-configuration Run package records `READY` or exact
 an exclusive local coordinator epoch, executes inside the Backend-owned
 envelope, and publishes one durable terminal after cleanup.
 
-The smallest administration interface is now closed. The next slice is one
-private controller implementing it and one independent consumer using only the
-published subpath. Neither may pretend the one proof mechanism has established
-a generic Runtime Adapter or Sandbox Backend SPI.
+The smallest administration interface and its private controller are now
+closed. A clean consumer uses only the packed public subpath; independent
+authorship is the remaining slice gate. None of this pretends the one proof
+mechanism has established a generic Runtime Adapter or Sandbox Backend SPI.
 
 This slice intentionally adds no Binding requirement, Service, Hook, Agent,
 Semantic Choice, child Flow, Jig Graph compiler, update watcher, Nix
@@ -313,10 +314,10 @@ Before an independent probe consumes it, the candidate must prove:
 6. exclusive coordinator takeover and terminal reconciliation; and
 7. cancellation, deadline, whole-tree fencing, and zero residue.
 
-All seven are privately proven for the selected host path, and the root
-request/result/error model is now closed. Public release depends on routing the
-surface through the coordinator-owned controller and passing the independent
-consumer experiment.
+All seven are privately proven for the selected host path. The closed root
+request/result/error model is routed through the coordinator-owned controller
+and passes a clean external-module consumer. Public release depends on an
+independently authored consumer review.
 
 The complete status and Nix decontamination boundary are in
 [`130-nix-experiment-disposition-and-next-slice.md`](130-nix-experiment-disposition-and-next-slice.md).
