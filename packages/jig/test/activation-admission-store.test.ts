@@ -26,22 +26,27 @@ import {
   privateProjectLocalLockDigest,
 } from "../src/internal/project-local-lock.js";
 import {
+  allocatePrivateRootFlowCall,
   applyPrivateActivationReviewPlan,
+  closePrivateRootFlowCall,
   closePrivateRootExecution,
   completePrivateRootRun,
   createPrivateActivationReviewPlan,
   loadPrivateActiveActivation,
   loadPrivateActivationReviewPlan,
   loadPrivateRootRun,
+  loadPrivateRootFlowCall,
   listPrivateRootExecutionWork,
   openPrivateProjectCoordinator,
   reacquirePrivateRootExecutionWork,
   recordPrivateRootExecutionCheckpoint,
+  recordPrivateRootFlowCallCheckpoint,
   requirePrivateStoredActivationCandidate,
   submitPrivateRootRun,
   type PrivateProjectCoordinator,
   type PrivateRootRunTerminal,
 } from "../src/internal/activation-admission-store.js";
+import { normalizePrivateRootFlowCallAllocation } from "../src/internal/root-flow-call-state.js";
 import {
   decodePrivateActivationCandidate,
   encodePrivateActivationCandidate,
@@ -64,6 +69,9 @@ const CREATE_ROOT_RUNS = "CREATE TABLE root_runs (run_id TEXT PRIMARY KEY, submi
 const CREATE_ROOT_SPAWN_INTENTS = "CREATE TABLE root_spawn_intents (run_id TEXT PRIMARY KEY REFERENCES root_runs(run_id), intent_digest TEXT NOT NULL UNIQUE, intent_bytes BLOB NOT NULL CHECK (length(intent_bytes) BETWEEN 1 AND 16777216)) STRICT";
 const CREATE_ROOT_EXECUTION_LIFECYCLES = "CREATE TABLE root_execution_lifecycles (run_id TEXT PRIMARY KEY REFERENCES root_spawn_intents(run_id), allocation_digest TEXT NOT NULL UNIQUE, allocation_bytes BLOB NOT NULL CHECK (length(allocation_bytes) BETWEEN 1 AND 16777216), plan_digest TEXT UNIQUE, plan_bytes BLOB, backing_digest TEXT UNIQUE, backing_bytes BLOB, sandbox_digest TEXT UNIQUE, sandbox_bytes BLOB, prepared_digest TEXT UNIQUE, prepared_bytes BLOB, provisional_digest TEXT UNIQUE, provisional_bytes BLOB, fence_digest TEXT UNIQUE, fence_bytes BLOB, release_digest TEXT UNIQUE, release_bytes BLOB, admitted_digest TEXT UNIQUE, admitted_bytes BLOB, CHECK ((plan_digest IS NULL) = (plan_bytes IS NULL)), CHECK ((backing_digest IS NULL) = (backing_bytes IS NULL)), CHECK ((sandbox_digest IS NULL) = (sandbox_bytes IS NULL)), CHECK ((prepared_digest IS NULL) = (prepared_bytes IS NULL)), CHECK ((provisional_digest IS NULL) = (provisional_bytes IS NULL)), CHECK ((fence_digest IS NULL) = (fence_bytes IS NULL)), CHECK ((release_digest IS NULL) = (release_bytes IS NULL)), CHECK ((admitted_digest IS NULL) = (admitted_bytes IS NULL)), CHECK (backing_digest IS NULL OR plan_digest IS NOT NULL), CHECK (sandbox_digest IS NULL OR backing_digest IS NOT NULL), CHECK (prepared_digest IS NULL OR sandbox_digest IS NOT NULL), CHECK (fence_digest IS NULL OR sandbox_digest IS NOT NULL), CHECK (admitted_digest IS NULL OR (provisional_digest IS NOT NULL AND release_digest IS NOT NULL))) STRICT";
 const CREATE_ROOT_EXECUTION_CLOSURES = "CREATE TABLE root_execution_closures (run_id TEXT PRIMARY KEY REFERENCES root_execution_lifecycles(run_id), closure_digest TEXT NOT NULL UNIQUE, closure_bytes BLOB NOT NULL CHECK (length(closure_bytes) BETWEEN 1 AND 16777216), UNIQUE (run_id, closure_digest)) STRICT";
+const CREATE_ROOT_FLOW_CALLS = "CREATE TABLE root_flow_calls (parent_run_id TEXT PRIMARY KEY REFERENCES root_spawn_intents(run_id), allocation_digest TEXT NOT NULL UNIQUE, allocation_bytes BLOB NOT NULL CHECK (length(allocation_bytes) BETWEEN 1 AND 16777216)) STRICT";
+const CREATE_ROOT_FLOW_CALL_FACTS = "CREATE TABLE root_flow_call_facts (parent_run_id TEXT NOT NULL REFERENCES root_flow_calls(parent_run_id), fact_name TEXT NOT NULL CHECK (fact_name IN ('plan','backing','sandbox','prepared','provisional','fence','release','admitted')), fact_digest TEXT NOT NULL UNIQUE, fact_bytes BLOB NOT NULL CHECK (length(fact_bytes) BETWEEN 1 AND 16777216), PRIMARY KEY (parent_run_id, fact_name)) WITHOUT ROWID, STRICT";
+const CREATE_ROOT_FLOW_CALL_CLOSURES = "CREATE TABLE root_flow_call_closures (parent_run_id TEXT PRIMARY KEY REFERENCES root_flow_calls(parent_run_id), closure_digest TEXT NOT NULL UNIQUE, closure_bytes BLOB NOT NULL CHECK (length(closure_bytes) BETWEEN 1 AND 16777216), UNIQUE (parent_run_id, closure_digest)) STRICT";
 const CREATE_ROOT_TERMINALS = "CREATE TABLE root_terminals (run_id TEXT PRIMARY KEY REFERENCES root_runs(run_id), execution_closure_digest TEXT, terminal_digest TEXT NOT NULL, terminal_bytes BLOB NOT NULL CHECK (length(terminal_bytes) BETWEEN 1 AND 16777216), FOREIGN KEY (run_id, execution_closure_digest) REFERENCES root_execution_closures(run_id, closure_digest)) STRICT";
 
 setDefaultTimeout(20_000);
@@ -120,12 +128,15 @@ describe.serial("private activation admission SQLite store", () => {
           "review_plans",
           "root_execution_closures",
           "root_execution_lifecycles",
+          "root_flow_call_closures",
+          "root_flow_call_facts",
+          "root_flow_calls",
           "root_runs",
           "root_spawn_intents",
           "root_terminals",
         ]);
-        expect(database.query("PRAGMA application_id").get().application_id).toBe(0x4a494738);
-        expect(database.query("PRAGMA user_version").get().user_version).toBe(8);
+        expect(database.query("PRAGMA application_id").get().application_id).toBe(0x4a494739);
+        expect(database.query("PRAGMA user_version").get().user_version).toBe(9);
         expect(database.query("SELECT count(*) AS count FROM review_plans").get().count).toBe(1);
       } finally {
         database.close(true);
@@ -704,6 +715,121 @@ describe.serial("private activation admission SQLite store", () => {
     }
   });
 
+  test("persists one closed child Flow operation beneath its parent root Run", async () => {
+    const fixture = await createComposedFixture();
+    let coordinator: PrivateProjectCoordinator | undefined;
+    try {
+      const plan = await createPrivateActivationReviewPlan({
+        projectRoot: fixture.root,
+        packageStoreRoot: fixture.store,
+        lockMode: "update",
+      });
+      await applyPrivateActivationReviewPlan({
+        projectRoot: fixture.root,
+        packageStoreRoot: fixture.store,
+        planDigest: plan.planDigest,
+        baseGeneration: null,
+      });
+      coordinator = await openPrivateProjectCoordinator({ projectRoot: fixture.root });
+      const deadlineUnixMs = Date.now() + 30_000;
+      const submission = await submitPrivateRootRun({
+        coordinator,
+        projectRoot: fixture.root,
+        packageStoreRoot: fixture.store,
+        submissionId: "composed-root",
+        target: { kind: "binding", id: "parent" },
+        input: { value: "parent" },
+        deadlineUnixMs,
+      });
+      expect(submission.launch).toBeDefined();
+      const child = fixture.candidate.candidate.targets.find(
+        ({ request }) => request.target.kind === "flow",
+      )!;
+      expect(child.disposition.state).toBe("ready");
+      if (child.disposition.state !== "ready") throw new Error("fixture child is not READY");
+      const allocation = normalizePrivateRootFlowCallAllocation({
+        kind: "private-root-flow-call-allocation/1",
+        parentRunId: submission.run.runId,
+        coordinatorEpoch: coordinator.epoch,
+        call: {
+          operationId: "child:1",
+          slot: "child",
+          intent: "Run the exact admitted child",
+          input: { value: "child" },
+        },
+        target: child.request.target,
+        requestDigest: child.request.digest,
+        recipeDigest: child.disposition.recipeDigest,
+        observationDigest: child.disposition.observationDigest,
+        effectiveDeadlineUnixMs: deadlineUnixMs,
+      });
+      const allocated = await allocatePrivateRootFlowCall({
+        coordinator,
+        projectRoot: fixture.root,
+        allocation,
+      });
+      expect(allocated.allocation).toEqual(allocation);
+      expect((await loadPrivateRootFlowCall({
+        coordinator,
+        projectRoot: fixture.root,
+        parentRunId: submission.run.runId,
+      }))?.allocation).toEqual(allocation);
+      await expect(allocatePrivateRootFlowCall({
+        coordinator,
+        projectRoot: fixture.root,
+        allocation: normalizePrivateRootFlowCallAllocation({
+          ...allocation,
+          call: { ...allocation.call, operationId: "child:2" },
+        }),
+      })).rejects.toMatchObject({ code: "RESOURCE_EXHAUSTED" });
+      await expect(recordPrivateRootFlowCallCheckpoint({
+        coordinator,
+        projectRoot: fixture.root,
+        parentRunId: submission.run.runId,
+        checkpoint: "release",
+        value: { released: true },
+      })).rejects.toMatchObject({ code: "RUN_EXECUTION_CHECKPOINT_ORDER" });
+
+      const terminal: PrivateRootRunTerminal = {
+        status: "succeeded",
+        result: { outcome: "done", output: { value: "child" } },
+        diagnostics: { stderr: "", stderrBytes: 0, stderrTruncated: false },
+      };
+      for (const [checkpoint, value] of [
+        ["plan", { planned: true }],
+        ["backing", { retained: true }],
+        ["sandbox", { sealed: true }],
+        ["prepared", { prepared: true }],
+        ["provisional", terminal],
+        ["fence", { populated: false }],
+        ["release", { released: true }],
+        ["admitted", terminal],
+      ] as const) {
+        await recordPrivateRootFlowCallCheckpoint({
+          coordinator,
+          projectRoot: fixture.root,
+          parentRunId: submission.run.runId,
+          checkpoint,
+          value: value as JsonValue,
+        });
+      }
+      const closed = await closePrivateRootFlowCall({
+        coordinator,
+        projectRoot: fixture.root,
+        parentRunId: submission.run.runId,
+      });
+      expect(closed.closureDigest).toMatch(/^sha256:[0-9a-f]{64}$/);
+      expect((await closePrivateRootFlowCall({
+        coordinator,
+        projectRoot: fixture.root,
+        parentRunId: submission.run.runId,
+      })).closureDigest).toBe(closed.closureDigest);
+    } finally {
+      await coordinator?.dispose();
+      await fixture.dispose();
+    }
+  });
+
   test("projects durable root Runs through the closed administration authority", async () => {
     const fixture = await createFixture("ready");
     let controller: Awaited<ReturnType<typeof openPrivateRootAdministrationController>> | undefined;
@@ -1249,7 +1375,7 @@ async function createFixture(disposition: "unavailable" | "ready" = "unavailable
     const encoded = encodePrivateActivationCandidate(candidate);
 
     const state = join(root, ".jig");
-    const databasePath = join(state, "private-activation-admission-v8.sqlite3");
+    const databasePath = join(state, "private-activation-admission-v9.sqlite3");
     await mkdir(state, { mode: 0o700 });
     const databaseFile = await open(
       databasePath,
@@ -1273,12 +1399,221 @@ async function createFixture(disposition: "unavailable" | "ready" = "unavailable
         CREATE_ROOT_SPAWN_INTENTS,
         CREATE_ROOT_EXECUTION_LIFECYCLES,
         CREATE_ROOT_EXECUTION_CLOSURES,
+        CREATE_ROOT_FLOW_CALLS,
+        CREATE_ROOT_FLOW_CALL_FACTS,
+        CREATE_ROOT_FLOW_CALL_CLOSURES,
         CREATE_ROOT_TERMINALS,
         "INSERT INTO candidate_head(singleton, revision) VALUES (1, NULL)",
         "INSERT INTO admission_head(singleton, revision) VALUES (1, NULL)",
         "INSERT INTO coordinator_head(singleton, epoch) VALUES (1, 0)",
-        "PRAGMA application_id=1246316344",
-        "PRAGMA user_version=8",
+        "PRAGMA application_id=1246316345",
+        "PRAGMA user_version=9",
+      ].join(";"));
+      database.exec("BEGIN IMMEDIATE");
+      database.query(
+        "INSERT INTO candidates(revision, candidate_digest, candidate_bytes, lock_bytes) VALUES (1, ?1, ?2, ?3)",
+      ).run(privateActivationCandidateDigest(candidate), encoded.candidate, encoded.lock);
+      database.query("UPDATE candidate_head SET revision = 1 WHERE singleton = 1").run();
+      database.exec("COMMIT");
+    } finally {
+      database.close(true);
+    }
+    return Object.freeze({
+      root,
+      store,
+      database: databasePath,
+      candidate,
+      async dispose(): Promise<void> { await rm(base, { recursive: true, force: true }); },
+    });
+  } catch (error) {
+    await rm(base, { recursive: true, force: true });
+    throw error;
+  }
+}
+
+async function createComposedFixture(): Promise<Fixture> {
+  const base = await mkdtemp(join(tmpdir(), "jig-composed-admission-store-"));
+  const root = join(base, "project");
+  const store = join(base, "store");
+  const parentSource = join(base, "parent-flow");
+  const childSource = join(base, "child-flow");
+  const declarationSource = join(base, "declaration");
+  try {
+    await Promise.all([
+      mkdir(root, { mode: 0o700 }),
+      mkdir(store, { mode: 0o700 }),
+      mkdir(parentSource),
+      mkdir(childSource),
+      mkdir(declarationSource),
+    ]);
+    await writeFile(join(parentSource, "FLOW.md"), [
+      "---",
+      "name: parent",
+      "description: Composed parent fixture.",
+      "---",
+      "",
+    ].join("\n"));
+    await writeFile(join(parentSource, "flow.ts"), "export {};\n");
+    await writeFile(join(parentSource, "settings.schema.json"), JSON.stringify({
+      $schema: "https://flow.dev/schemas/schema-1.json",
+      type: "object",
+      properties: { label: { type: "string" } },
+      required: ["label"],
+      additionalProperties: false,
+    }));
+    await writeFile(join(childSource, "FLOW.md"), [
+      "---",
+      "name: child",
+      "description: Composed child fixture.",
+      "---",
+      "",
+    ].join("\n"));
+    await writeFile(join(childSource, "flow.py"), "print('unused')\n");
+    await writeFile(join(declarationSource, "jig.ts"), "export default {};\n");
+
+    const [parentPackage, childPackage, declaration] = await Promise.all([
+      retainPackage(store, parentSource),
+      retainPackage(store, childSource),
+      retainPackage(store, declarationSource),
+    ]);
+    const rootInformation = await stat(root, { bigint: true });
+    const lockBytes = json1({
+      kind: "private-package-project-lock/1",
+      packages: {
+        "flows/child": {
+          digest: childPackage.digest,
+          mode: "run",
+          directRun: true,
+          attachments: {},
+          uses: {},
+          provides: {},
+        },
+        "flows/parent": {
+          digest: parentPackage.digest,
+          mode: "run",
+          directRun: false,
+          attachments: {},
+          uses: {},
+          provides: {},
+        },
+      },
+      bindings: {
+        parent: {
+          packagePath: "flows/parent",
+          attachments: {},
+          slots: {
+            child: {
+              kind: "flow-call",
+              targets: [{ kind: "flow", path: "flows/child" }],
+            },
+          },
+        },
+      },
+    });
+    const lock = decodePrivateProjectLocalLock(lockBytes);
+    const captureDigest = digest("composed-capture");
+    const planningObservationDigest = digest("composed-planning");
+    const parentRequest = activationRequest({
+      target: { kind: "binding", id: "parent" },
+      mode: "run",
+      packagePath: "flows/parent",
+      package: parentPackage,
+      entrypoint: { path: "flow.ts", suffix: "ts" },
+      settings: { label: "closed" },
+      attachments: {},
+      slots: {
+        child: {
+          kind: "flow-call",
+          targets: [{ kind: "flow", path: "flows/child" }],
+        },
+      },
+    });
+    const childRequest = activationRequest({
+      target: { kind: "flow", path: "flows/child" },
+      mode: "run",
+      packagePath: "flows/child",
+      package: childPackage,
+      entrypoint: { path: "flow.py", suffix: "py" },
+      settings: {},
+      attachments: {},
+      slots: {},
+    });
+    const candidate = decodePrivateActivationCandidate({
+      candidate: json1({
+        kind: "private-activation-candidate/3",
+        projectRoot: {
+          device: rootInformation.dev.toString(),
+          inode: rootInformation.ino.toString(),
+        },
+        captureDigest,
+        semanticDigest: digest("composed-semantic"),
+        resolutionInputDigest: privateDomainDigest(
+          "JIG-Package-Project-Resolution-Input/1",
+          { captureDigest, planningObservationDigest },
+        ),
+        planningObservationDigest,
+        lockDigest: privateProjectLocalLockDigest(lock),
+        declarationArtifact: {
+          kind: "author-closure/1",
+          closureDigest: digest("composed-declaration-closure"),
+          package: declaration,
+        },
+        targets: [
+          {
+            request: parentRequest,
+            disposition: {
+              state: "ready",
+              recipeDigest: digest("parent-recipe"),
+              observationDigest: digest("parent-observation"),
+            },
+          },
+          {
+            request: childRequest,
+            disposition: {
+              state: "ready",
+              recipeDigest: digest("child-recipe"),
+              observationDigest: digest("child-observation"),
+            },
+          },
+        ],
+      }),
+      lock: lockBytes,
+    });
+    const encoded = encodePrivateActivationCandidate(candidate);
+    const state = join(root, ".jig");
+    const databasePath = join(state, "private-activation-admission-v9.sqlite3");
+    await mkdir(state, { mode: 0o700 });
+    const databaseFile = await open(
+      databasePath,
+      constants.O_RDWR | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW,
+      0o600,
+    );
+    await databaseFile.close();
+    const database = openSqlite(databasePath, "readwrite");
+    try {
+      database.exec([
+        "PRAGMA journal_mode=DELETE",
+        "PRAGMA synchronous=EXTRA",
+        "PRAGMA foreign_keys=ON",
+        CREATE_CANDIDATES,
+        CREATE_CANDIDATE_HEAD,
+        CREATE_REVIEW_PLANS,
+        CREATE_ADMISSIONS,
+        CREATE_ADMISSION_HEAD,
+        CREATE_COORDINATOR_HEAD,
+        CREATE_ROOT_RUNS,
+        CREATE_ROOT_SPAWN_INTENTS,
+        CREATE_ROOT_EXECUTION_LIFECYCLES,
+        CREATE_ROOT_EXECUTION_CLOSURES,
+        CREATE_ROOT_FLOW_CALLS,
+        CREATE_ROOT_FLOW_CALL_FACTS,
+        CREATE_ROOT_FLOW_CALL_CLOSURES,
+        CREATE_ROOT_TERMINALS,
+        "INSERT INTO candidate_head(singleton, revision) VALUES (1, NULL)",
+        "INSERT INTO admission_head(singleton, revision) VALUES (1, NULL)",
+        "INSERT INTO coordinator_head(singleton, epoch) VALUES (1, 0)",
+        "PRAGMA application_id=1246316345",
+        "PRAGMA user_version=9",
       ].join(";"));
       database.exec("BEGIN IMMEDIATE");
       database.query(

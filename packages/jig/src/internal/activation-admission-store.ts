@@ -10,6 +10,7 @@ import { inspectCapturedPackage, type InspectedPackage } from "../package/inspec
 import { SchemaDiagnostic } from "../schema/index.js";
 import type { RunTargetIdentity } from "../project/package-project.js";
 import { isDirectRunEligible } from "../project/flow-source.js";
+import { privateActivationTargetKey } from "./activation-planning.js";
 import { privateDomainDigest } from "./identity.js";
 import { openPrivateProjectRoot, type PrivateProjectRoot } from "../project/root.js";
 import { captureStoredPackage, normalizePackageArtifactRef } from "./package-artifact-store.js";
@@ -52,6 +53,21 @@ import {
   type PrivateRootRunTerminal,
   type PrivateRootSubmissionRequest,
 } from "./root-run-state.js";
+import {
+  decodePrivateRootFlowCallAllocation,
+  encodePrivateRootFlowCallAllocation,
+  normalizePrivateRootFlowCallAllocation,
+  normalizePrivateRootFlowCallCheckpoint,
+  normalizePrivateRootFlowCallClosure,
+  privateRootFlowCallAllocationDigest,
+  privateRootFlowCallCheckpointDigest,
+  privateRootFlowCallClosureDigest,
+  requirePrivateRootFlowCallCheckpointName,
+  type PrivateRootFlowCallAllocation,
+  type PrivateRootFlowCallCheckpointName,
+  type PrivateRootFlowCallFact,
+  type PrivateRootFlowCallLifecycle,
+} from "./root-flow-call-state.js";
 
 export type {
   PrivateRootRunSnapshot,
@@ -60,12 +76,12 @@ export type {
 } from "./root-run-state.js";
 
 const STATE_DIRECTORY = ".jig";
-const DATABASE_NAME = "private-activation-admission-v8.sqlite3";
+const DATABASE_NAME = "private-activation-admission-v9.sqlite3";
 const COORDINATOR_DATABASE_NAME = "private-project-coordinator-v1.sqlite3";
 const LOCK_NAME = "jig.lock";
 const LOCK_STAGE_NAME = "private-activation-jig-lock-v1.stage";
-const SCHEMA_VERSION = 8n;
-const APPLICATION_ID = 0x4a494738n; // JIG8
+const SCHEMA_VERSION = 9n;
+const APPLICATION_ID = 0x4a494739n; // JIG9
 const COORDINATOR_SCHEMA_VERSION = 1n;
 const COORDINATOR_APPLICATION_ID = 0x4a494743n; // JIGC
 const BUSY_TIMEOUT_MS = 250;
@@ -83,6 +99,9 @@ const CREATE_ROOT_RUNS = "CREATE TABLE root_runs (run_id TEXT PRIMARY KEY, submi
 const CREATE_ROOT_SPAWN_INTENTS = "CREATE TABLE root_spawn_intents (run_id TEXT PRIMARY KEY REFERENCES root_runs(run_id), intent_digest TEXT NOT NULL UNIQUE, intent_bytes BLOB NOT NULL CHECK (length(intent_bytes) BETWEEN 1 AND 16777216)) STRICT";
 const CREATE_ROOT_EXECUTION_LIFECYCLES = "CREATE TABLE root_execution_lifecycles (run_id TEXT PRIMARY KEY REFERENCES root_spawn_intents(run_id), allocation_digest TEXT NOT NULL UNIQUE, allocation_bytes BLOB NOT NULL CHECK (length(allocation_bytes) BETWEEN 1 AND 16777216), plan_digest TEXT UNIQUE, plan_bytes BLOB, backing_digest TEXT UNIQUE, backing_bytes BLOB, sandbox_digest TEXT UNIQUE, sandbox_bytes BLOB, prepared_digest TEXT UNIQUE, prepared_bytes BLOB, provisional_digest TEXT UNIQUE, provisional_bytes BLOB, fence_digest TEXT UNIQUE, fence_bytes BLOB, release_digest TEXT UNIQUE, release_bytes BLOB, admitted_digest TEXT UNIQUE, admitted_bytes BLOB, CHECK ((plan_digest IS NULL) = (plan_bytes IS NULL)), CHECK ((backing_digest IS NULL) = (backing_bytes IS NULL)), CHECK ((sandbox_digest IS NULL) = (sandbox_bytes IS NULL)), CHECK ((prepared_digest IS NULL) = (prepared_bytes IS NULL)), CHECK ((provisional_digest IS NULL) = (provisional_bytes IS NULL)), CHECK ((fence_digest IS NULL) = (fence_bytes IS NULL)), CHECK ((release_digest IS NULL) = (release_bytes IS NULL)), CHECK ((admitted_digest IS NULL) = (admitted_bytes IS NULL)), CHECK (backing_digest IS NULL OR plan_digest IS NOT NULL), CHECK (sandbox_digest IS NULL OR backing_digest IS NOT NULL), CHECK (prepared_digest IS NULL OR sandbox_digest IS NOT NULL), CHECK (fence_digest IS NULL OR sandbox_digest IS NOT NULL), CHECK (admitted_digest IS NULL OR (provisional_digest IS NOT NULL AND release_digest IS NOT NULL))) STRICT";
 const CREATE_ROOT_EXECUTION_CLOSURES = "CREATE TABLE root_execution_closures (run_id TEXT PRIMARY KEY REFERENCES root_execution_lifecycles(run_id), closure_digest TEXT NOT NULL UNIQUE, closure_bytes BLOB NOT NULL CHECK (length(closure_bytes) BETWEEN 1 AND 16777216), UNIQUE (run_id, closure_digest)) STRICT";
+const CREATE_ROOT_FLOW_CALLS = "CREATE TABLE root_flow_calls (parent_run_id TEXT PRIMARY KEY REFERENCES root_spawn_intents(run_id), allocation_digest TEXT NOT NULL UNIQUE, allocation_bytes BLOB NOT NULL CHECK (length(allocation_bytes) BETWEEN 1 AND 16777216)) STRICT";
+const CREATE_ROOT_FLOW_CALL_FACTS = "CREATE TABLE root_flow_call_facts (parent_run_id TEXT NOT NULL REFERENCES root_flow_calls(parent_run_id), fact_name TEXT NOT NULL CHECK (fact_name IN ('plan','backing','sandbox','prepared','provisional','fence','release','admitted')), fact_digest TEXT NOT NULL UNIQUE, fact_bytes BLOB NOT NULL CHECK (length(fact_bytes) BETWEEN 1 AND 16777216), PRIMARY KEY (parent_run_id, fact_name)) WITHOUT ROWID, STRICT";
+const CREATE_ROOT_FLOW_CALL_CLOSURES = "CREATE TABLE root_flow_call_closures (parent_run_id TEXT PRIMARY KEY REFERENCES root_flow_calls(parent_run_id), closure_digest TEXT NOT NULL UNIQUE, closure_bytes BLOB NOT NULL CHECK (length(closure_bytes) BETWEEN 1 AND 16777216), UNIQUE (parent_run_id, closure_digest)) STRICT";
 const CREATE_ROOT_TERMINALS = "CREATE TABLE root_terminals (run_id TEXT PRIMARY KEY REFERENCES root_runs(run_id), execution_closure_digest TEXT, terminal_digest TEXT NOT NULL, terminal_bytes BLOB NOT NULL CHECK (length(terminal_bytes) BETWEEN 1 AND 16777216), FOREIGN KEY (run_id, execution_closure_digest) REFERENCES root_execution_closures(run_id, closure_digest)) STRICT";
 const CREATE_COORDINATOR_LOCK = "CREATE TABLE coordinator_lock (singleton INTEGER PRIMARY KEY CHECK (singleton = 1)) STRICT";
 const EXPECTED_SCHEMA = Object.freeze([
@@ -94,6 +113,9 @@ const EXPECTED_SCHEMA = Object.freeze([
   Object.freeze({ type: "table", name: "review_plans", table: "review_plans", sql: CREATE_REVIEW_PLANS }),
   Object.freeze({ type: "table", name: "root_execution_closures", table: "root_execution_closures", sql: CREATE_ROOT_EXECUTION_CLOSURES }),
   Object.freeze({ type: "table", name: "root_execution_lifecycles", table: "root_execution_lifecycles", sql: CREATE_ROOT_EXECUTION_LIFECYCLES }),
+  Object.freeze({ type: "table", name: "root_flow_call_closures", table: "root_flow_call_closures", sql: CREATE_ROOT_FLOW_CALL_CLOSURES }),
+  Object.freeze({ type: "table", name: "root_flow_call_facts", table: "root_flow_call_facts", sql: CREATE_ROOT_FLOW_CALL_FACTS }),
+  Object.freeze({ type: "table", name: "root_flow_calls", table: "root_flow_calls", sql: CREATE_ROOT_FLOW_CALLS }),
   Object.freeze({ type: "table", name: "root_runs", table: "root_runs", sql: CREATE_ROOT_RUNS }),
   Object.freeze({ type: "table", name: "root_spawn_intents", table: "root_spawn_intents", sql: CREATE_ROOT_SPAWN_INTENTS }),
   Object.freeze({ type: "table", name: "root_terminals", table: "root_terminals", sql: CREATE_ROOT_TERMINALS }),
@@ -246,6 +268,25 @@ interface RootExecutionLifecycleRow {
 
 interface RootExecutionClosureRow {
   readonly run_id: string;
+  readonly closure_digest: string;
+  readonly closure_bytes: Uint8Array;
+}
+
+interface RootFlowCallRow {
+  readonly parent_run_id: string;
+  readonly allocation_digest: string;
+  readonly allocation_bytes: Uint8Array;
+}
+
+interface RootFlowCallFactRow {
+  readonly parent_run_id: string;
+  readonly fact_name: string;
+  readonly fact_digest: string;
+  readonly fact_bytes: Uint8Array;
+}
+
+interface RootFlowCallClosureRow {
+  readonly parent_run_id: string;
   readonly closure_digest: string;
   readonly closure_bytes: Uint8Array;
 }
@@ -809,6 +850,209 @@ export async function recordPrivateRootExecutionCheckpoint(input: {
         requireRootExecutionLifecycle(owner.database, input.runId),
         runRow,
       );
+    });
+    await owner.finish();
+    return lifecycle;
+  } catch (error) {
+    failure = error;
+    throw error;
+  } finally {
+    await disposeOperation(owner, undefined, failure);
+  }
+}
+
+/**
+ * Allocate the single exact child Flow operation allowed beneath one root
+ * Run. The active transport may join duplicate waiters; durable state admits
+ * no second distinct operation and never consults the current generation.
+ */
+export async function allocatePrivateRootFlowCall(input: {
+  readonly coordinator: PrivateProjectCoordinator;
+  readonly projectRoot: string;
+  readonly allocation: PrivateRootFlowCallAllocation;
+}): Promise<PrivateRootFlowCallLifecycle> {
+  const coordinator = requirePrivateProjectCoordinator(input.coordinator);
+  await coordinator.verify();
+  const allocation = normalizePrivateRootFlowCallAllocation(input.allocation);
+  const allocationBytes = encodePrivateRootFlowCallAllocation(allocation);
+  requireStoredSize(allocationBytes, "root Flow call allocation");
+  const allocationDigest = privateRootFlowCallAllocationDigest(allocation);
+  const owner = await openStateOwner(input.projectRoot, false);
+  let failure: unknown;
+  try {
+    requireCoordinatorRoot(coordinator, owner.root);
+    const lifecycle = await immediate(owner, async () => {
+      await coordinator.verify();
+      const runRow = requireRootRunRow(owner.database, allocation.parentRunId);
+      const run = loadRootRunSnapshot(owner.database, runRow, owner.root);
+      if (run.state === "terminal") invalid("RUN_ALREADY_TERMINAL", "root Run is already terminal");
+      if (run.coordinatorEpoch !== coordinator.epoch || allocation.coordinatorEpoch !== coordinator.epoch) {
+        invalid("RUN_COORDINATOR_STALE", "only the current root coordinator may allocate a child Flow call");
+      }
+      requireRootFlowCallAllocationCandidate(owner.database, runRow, allocation);
+      const prior = findRootFlowCall(owner.database, allocation.parentRunId);
+      if (prior !== null) {
+        if (prior.allocation_digest !== allocationDigest ||
+            !sameBytes(prior.allocation_bytes, allocationBytes)) {
+          invalid("RESOURCE_EXHAUSTED", "this root Run already allocated its one child Flow operation");
+        }
+        return loadRootFlowCallLifecycle(owner.database, prior, runRow);
+      }
+      runFinalized(owner.database,
+        "INSERT INTO root_flow_calls(parent_run_id, allocation_digest, allocation_bytes) VALUES (?1, ?2, ?3)",
+        [allocation.parentRunId, allocationDigest, allocationBytes],
+      );
+      return loadRootFlowCallLifecycle(
+        owner.database,
+        requireRootFlowCall(owner.database, allocation.parentRunId),
+        runRow,
+      );
+    });
+    await owner.finish();
+    return lifecycle;
+  } catch (error) {
+    failure = error;
+    throw error;
+  } finally {
+    await disposeOperation(owner, undefined, failure);
+  }
+}
+
+/** Persist one immutable child-operation fact under the parent Run owner. */
+export async function recordPrivateRootFlowCallCheckpoint(input: {
+  readonly coordinator: PrivateProjectCoordinator;
+  readonly projectRoot: string;
+  readonly parentRunId: string;
+  readonly checkpoint: PrivateRootFlowCallCheckpointName;
+  readonly value: JsonValue;
+}): Promise<PrivateRootFlowCallLifecycle> {
+  const coordinator = requirePrivateProjectCoordinator(input.coordinator);
+  await coordinator.verify();
+  requireDigest(input.parentRunId, "root Flow call parent Run");
+  const checkpoint = requirePrivateRootFlowCallCheckpointName(input.checkpoint);
+  const owner = await openStateOwner(input.projectRoot, false);
+  let failure: unknown;
+  try {
+    requireCoordinatorRoot(coordinator, owner.root);
+    const lifecycle = await immediate(owner, async () => {
+      await coordinator.verify();
+      const runRow = requireRootRunRow(owner.database, input.parentRunId);
+      const run = loadRootRunSnapshot(owner.database, runRow, owner.root);
+      if (run.state === "terminal") invalid("RUN_ALREADY_TERMINAL", "root Run is already terminal");
+      if (run.coordinatorEpoch > coordinator.epoch) corrupt("root Flow call belongs to a future coordinator epoch");
+      const row = requireRootFlowCall(owner.database, input.parentRunId);
+      const before = loadRootFlowCallLifecycle(owner.database, row, runRow);
+      const envelope = normalizePrivateRootFlowCallCheckpoint({
+        kind: `private-root-flow-call-${checkpoint}/1`,
+        parentRunId: input.parentRunId,
+        allocationDigest: before.allocationDigest,
+        value: input.value,
+      }, checkpoint);
+      const bytes = canonicalJson(envelope as unknown as JsonValue);
+      requireStoredSize(bytes, `root Flow call ${checkpoint}`);
+      const digest = privateRootFlowCallCheckpointDigest(checkpoint, envelope);
+      const current = before[checkpoint];
+      if (current !== undefined) {
+        const stored = requireRootFlowCallFact(owner.database, input.parentRunId, checkpoint);
+        if (current.digest !== digest || !sameBytes(stored.fact_bytes, bytes)) {
+          invalid("RUN_EXECUTION_CHECKPOINT_CONFLICT", `root Flow call ${checkpoint} checkpoint differs`);
+        }
+        return before;
+      }
+      requireRootFlowCallCheckpointAuthority(run, coordinator, checkpoint);
+      requireRootFlowCallCheckpointOrder(before, checkpoint);
+      runFinalized(owner.database,
+        "INSERT INTO root_flow_call_facts(parent_run_id, fact_name, fact_digest, fact_bytes) VALUES (?1, ?2, ?3, ?4)",
+        [input.parentRunId, checkpoint, digest, bytes],
+      );
+      return loadRootFlowCallLifecycle(owner.database, row, runRow);
+    });
+    await owner.finish();
+    return lifecycle;
+  } catch (error) {
+    failure = error;
+    throw error;
+  } finally {
+    await disposeOperation(owner, undefined, failure);
+  }
+}
+
+/** Reopen the optional child-operation lifecycle pinned beneath one root Run. */
+export async function loadPrivateRootFlowCall(input: {
+  readonly coordinator: PrivateProjectCoordinator;
+  readonly projectRoot: string;
+  readonly parentRunId: string;
+}): Promise<PrivateRootFlowCallLifecycle | undefined> {
+  const coordinator = requirePrivateProjectCoordinator(input.coordinator);
+  await coordinator.verify();
+  requireDigest(input.parentRunId, "root Flow call parent Run");
+  const owner = await openStateOwner(input.projectRoot, false);
+  let failure: unknown;
+  try {
+    requireCoordinatorRoot(coordinator, owner.root);
+    const lifecycle = await immediate(owner, async () => {
+      await coordinator.verify();
+      const runRow = requireRootRunRow(owner.database, input.parentRunId);
+      if (runRow.coordinator_epoch > BigInt(coordinator.epoch)) {
+        corrupt("root Flow call belongs to a future coordinator epoch");
+      }
+      const row = findRootFlowCall(owner.database, input.parentRunId);
+      return row === null ? undefined : loadRootFlowCallLifecycle(owner.database, row, runRow);
+    });
+    await owner.finish();
+    return lifecycle;
+  } catch (error) {
+    failure = error;
+    throw error;
+  } finally {
+    await disposeOperation(owner, undefined, failure);
+  }
+}
+
+/** Bind the admitted child terminal to its complete release evidence. */
+export async function closePrivateRootFlowCall(input: {
+  readonly coordinator: PrivateProjectCoordinator;
+  readonly projectRoot: string;
+  readonly parentRunId: string;
+}): Promise<PrivateRootFlowCallLifecycle> {
+  const coordinator = requirePrivateProjectCoordinator(input.coordinator);
+  await coordinator.verify();
+  requireDigest(input.parentRunId, "root Flow call parent Run");
+  const owner = await openStateOwner(input.projectRoot, false);
+  let failure: unknown;
+  try {
+    requireCoordinatorRoot(coordinator, owner.root);
+    const lifecycle = await immediate(owner, async () => {
+      await coordinator.verify();
+      const runRow = requireRootRunRow(owner.database, input.parentRunId);
+      if (runRow.coordinator_epoch > BigInt(coordinator.epoch)) {
+        corrupt("root Flow call belongs to a future coordinator epoch");
+      }
+      const row = requireRootFlowCall(owner.database, input.parentRunId);
+      const before = loadRootFlowCallLifecycle(owner.database, row, runRow);
+      requireRootFlowCallClosable(before);
+      const closure = normalizePrivateRootFlowCallClosure({
+        kind: "private-root-flow-call-closure/1",
+        parentRunId: input.parentRunId,
+        allocationDigest: before.allocationDigest,
+        provisionalDigest: before.provisional!.digest,
+        fenceDigest: before.fence?.digest ?? null,
+        releaseDigest: before.release!.digest,
+        admittedDigest: before.admitted!.digest,
+      });
+      const bytes = canonicalJson(closure as unknown as JsonValue);
+      requireStoredSize(bytes, "root Flow call closure");
+      const digest = privateRootFlowCallClosureDigest(closure);
+      const prior = findRootFlowCallClosure(owner.database, input.parentRunId);
+      if (prior === null) {
+        runFinalized(owner.database,
+          "INSERT INTO root_flow_call_closures(parent_run_id, closure_digest, closure_bytes) VALUES (?1, ?2, ?3)",
+          [input.parentRunId, digest, bytes],
+        );
+      } else if (prior.closure_digest !== digest || !sameBytes(prior.closure_bytes, bytes)) {
+        corrupt("root Flow call already has a different closure");
+      }
+      return loadRootFlowCallLifecycle(owner.database, row, runRow);
     });
     await owner.finish();
     return lifecycle;
@@ -1419,6 +1663,251 @@ function loadOptionalExecutionFact(
     envelope = Object.freeze({ ...envelope, value: terminal as unknown as JsonValue });
   }
   return { [checkpoint]: Object.freeze({ digest, value: envelope.value }) };
+}
+
+function findRootFlowCall(database: SqliteDatabase, parentRunId: string): RootFlowCallRow | null {
+  const query = statement<RootFlowCallRow>(database, [
+    "SELECT parent_run_id, allocation_digest, allocation_bytes",
+    "FROM root_flow_calls WHERE parent_run_id = ?1",
+  ].join(" "));
+  try {
+    const row = query.get(parentRunId);
+    return row === null ? null : Object.freeze({
+      parent_run_id: row.parent_run_id,
+      allocation_digest: row.allocation_digest,
+      allocation_bytes: copiedBlob(row.allocation_bytes, "stored root Flow call allocation"),
+    });
+  } finally { query.finalize(); }
+}
+
+function requireRootFlowCall(database: SqliteDatabase, parentRunId: string): RootFlowCallRow {
+  const row = findRootFlowCall(database, parentRunId);
+  if (row === null) corrupt("root Run has no allocated child Flow call");
+  return row;
+}
+
+function findRootFlowCallFact(
+  database: SqliteDatabase,
+  parentRunId: string,
+  checkpoint: PrivateRootFlowCallCheckpointName,
+): RootFlowCallFactRow | null {
+  const query = statement<RootFlowCallFactRow>(database, [
+    "SELECT parent_run_id, fact_name, fact_digest, fact_bytes",
+    "FROM root_flow_call_facts WHERE parent_run_id = ?1 AND fact_name = ?2",
+  ].join(" "));
+  try {
+    const row = query.get(parentRunId, checkpoint);
+    return row === null ? null : Object.freeze({
+      parent_run_id: row.parent_run_id,
+      fact_name: row.fact_name,
+      fact_digest: row.fact_digest,
+      fact_bytes: copiedBlob(row.fact_bytes, `stored root Flow call ${checkpoint}`),
+    });
+  } finally { query.finalize(); }
+}
+
+function requireRootFlowCallFact(
+  database: SqliteDatabase,
+  parentRunId: string,
+  checkpoint: PrivateRootFlowCallCheckpointName,
+): RootFlowCallFactRow {
+  const row = findRootFlowCallFact(database, parentRunId, checkpoint);
+  if (row === null) corrupt(`root Flow call has no ${checkpoint} fact`);
+  return row;
+}
+
+function findRootFlowCallClosure(
+  database: SqliteDatabase,
+  parentRunId: string,
+): RootFlowCallClosureRow | null {
+  const query = statement<RootFlowCallClosureRow>(database, [
+    "SELECT parent_run_id, closure_digest, closure_bytes",
+    "FROM root_flow_call_closures WHERE parent_run_id = ?1",
+  ].join(" "));
+  try {
+    const row = query.get(parentRunId);
+    return row === null ? null : Object.freeze({
+      parent_run_id: row.parent_run_id,
+      closure_digest: row.closure_digest,
+      closure_bytes: copiedBlob(row.closure_bytes, "stored root Flow call closure"),
+    });
+  } finally { query.finalize(); }
+}
+
+function loadRootFlowCallLifecycle(
+  database: SqliteDatabase,
+  row: RootFlowCallRow,
+  run: RootRunRow,
+): PrivateRootFlowCallLifecycle {
+  if (row.parent_run_id !== run.run_id) corrupt("stored root Flow call names a different parent Run");
+  requireDigest(row.allocation_digest, "stored root Flow call allocation");
+  const allocationBytes = copiedBlob(row.allocation_bytes, "stored root Flow call allocation");
+  let allocation: PrivateRootFlowCallAllocation;
+  try { allocation = decodePrivateRootFlowCallAllocation(allocationBytes); }
+  catch { corrupt("stored root Flow call allocation is invalid"); }
+  if (privateRootFlowCallAllocationDigest(allocation) !== row.allocation_digest ||
+      allocation.parentRunId !== run.run_id ||
+      allocation.coordinatorEpoch !== safeRevision(run.coordinator_epoch)) {
+    corrupt("stored root Flow call allocation differs from its durable identity");
+  }
+  const result: PrivateRootFlowCallLifecycle = {
+    allocation,
+    allocationDigest: row.allocation_digest,
+  };
+  const query = statement<RootFlowCallFactRow>(database, [
+    "SELECT parent_run_id, fact_name, fact_digest, fact_bytes",
+    "FROM root_flow_call_facts WHERE parent_run_id = ?1 ORDER BY fact_name",
+  ].join(" "));
+  let facts: readonly RootFlowCallFactRow[];
+  try { facts = query.all(run.run_id); }
+  finally { query.finalize(); }
+  for (const raw of facts) {
+    let checkpoint: PrivateRootFlowCallCheckpointName;
+    try { checkpoint = requirePrivateRootFlowCallCheckpointName(raw.fact_name); }
+    catch { corrupt("stored root Flow call fact name is invalid"); }
+    requireDigest(raw.fact_digest, `stored root Flow call ${checkpoint}`);
+    const bytes = copiedBlob(raw.fact_bytes, `stored root Flow call ${checkpoint}`);
+    let envelope: ReturnType<typeof normalizePrivateRootFlowCallCheckpoint>;
+    try { envelope = normalizePrivateRootFlowCallCheckpoint(decodeJson1(bytes), checkpoint); }
+    catch { corrupt(`stored root Flow call ${checkpoint} fact is invalid`); }
+    if (!sameBytes(bytes, canonicalJson(envelope as unknown as JsonValue)) ||
+        privateRootFlowCallCheckpointDigest(checkpoint, envelope) !== raw.fact_digest ||
+        envelope.parentRunId !== run.run_id ||
+        envelope.allocationDigest !== row.allocation_digest) {
+      corrupt(`stored root Flow call ${checkpoint} fact differs from its durable identity`);
+    }
+    (result as unknown as Record<string, unknown>)[checkpoint] = Object.freeze({
+      digest: raw.fact_digest,
+      value: envelope.value,
+    } satisfies PrivateRootFlowCallFact);
+  }
+  validateRootFlowCallLifecycle(result);
+  const closureRow = findRootFlowCallClosure(database, run.run_id);
+  if (closureRow === null) return Object.freeze(result);
+  requireRootFlowCallClosable(result);
+  requireDigest(closureRow.closure_digest, "stored root Flow call closure");
+  let closure: ReturnType<typeof normalizePrivateRootFlowCallClosure>;
+  try { closure = normalizePrivateRootFlowCallClosure(decodeJson1(closureRow.closure_bytes)); }
+  catch { corrupt("stored root Flow call closure is invalid"); }
+  if (!sameBytes(closureRow.closure_bytes, canonicalJson(closure as unknown as JsonValue)) ||
+      privateRootFlowCallClosureDigest(closure) !== closureRow.closure_digest ||
+      closure.parentRunId !== run.run_id ||
+      closure.allocationDigest !== result.allocationDigest ||
+      closure.provisionalDigest !== result.provisional!.digest ||
+      closure.fenceDigest !== (result.fence?.digest ?? null) ||
+      closure.releaseDigest !== result.release!.digest ||
+      closure.admittedDigest !== result.admitted!.digest) {
+    corrupt("stored root Flow call closure differs from its durable evidence");
+  }
+  return Object.freeze({ ...result, closureDigest: closureRow.closure_digest });
+}
+
+function requireRootFlowCallAllocationCandidate(
+  database: SqliteDatabase,
+  run: RootRunRow,
+  allocation: PrivateRootFlowCallAllocation,
+): void {
+  if (allocation.parentRunId !== run.run_id ||
+      allocation.coordinatorEpoch !== safeRevision(run.coordinator_epoch)) {
+    corrupt("root Flow call allocation differs from its parent Run");
+  }
+  const request = decodePrivateRootSubmissionRequest(run.request_bytes);
+  if (allocation.effectiveDeadlineUnixMs > request.deadlineUnixMs) {
+    invalid("RUN_DEADLINE_INVALID", "child Flow deadline exceeds its parent root Run deadline");
+  }
+  const candidate = loadCandidateRow(requireCandidateRow(database, run.candidate_revision));
+  const parent = findPrivateActivationCandidateTarget(candidate, request.target);
+  const child = findPrivateActivationCandidateTarget(candidate, allocation.target);
+  if (parent === undefined || child === undefined || child.disposition.state !== "ready") {
+    corrupt("root Flow call allocation is absent from its pinned candidate");
+  }
+  const slot = parent.request.slots[allocation.call.slot];
+  if (slot?.kind !== "flow-call" || slot.targets.length !== 1 ||
+      privateActivationTargetKey(slot.targets[0]!) !== privateActivationTargetKey(allocation.target)) {
+    invalid("UNAVAILABLE", "root Flow call slot does not select the admitted child target");
+  }
+  if (allocation.target.kind !== "flow" ||
+      allocation.requestDigest !== child.request.digest ||
+      allocation.recipeDigest !== child.disposition.recipeDigest ||
+      allocation.observationDigest !== child.disposition.observationDigest) {
+    corrupt("root Flow call allocation differs from its admitted child recipe");
+  }
+}
+
+function requireRootFlowCallCheckpointAuthority(
+  run: PrivateRootRunSnapshot,
+  coordinator: PrivateProjectCoordinator,
+  checkpoint: PrivateRootFlowCallCheckpointName,
+): void {
+  if (run.coordinatorEpoch === coordinator.epoch) return;
+  if (checkpoint === "provisional" || checkpoint === "fence" ||
+      checkpoint === "release" || checkpoint === "admitted") return;
+  invalid("RUN_COORDINATOR_STALE", `replacement coordinator cannot create child Flow ${checkpoint} work`);
+}
+
+function requireRootFlowCallCheckpointOrder(
+  before: PrivateRootFlowCallLifecycle,
+  checkpoint: PrivateRootFlowCallCheckpointName,
+): void {
+  if (before.closureDigest !== undefined) invalid("RUN_ALREADY_TERMINAL", "root Flow call is already closed");
+  const has = (name: PrivateRootFlowCallCheckpointName): boolean => before[name] !== undefined;
+  if (checkpoint === "plan") {
+    if (has("provisional") || has("release") || has("admitted")) orderError(checkpoint);
+    return;
+  }
+  if (checkpoint === "backing") {
+    if (!has("plan") || has("provisional") || has("release") || has("admitted")) orderError(checkpoint);
+    return;
+  }
+  if (checkpoint === "sandbox") {
+    if (!has("backing") || has("provisional") || has("release") || has("admitted")) orderError(checkpoint);
+    return;
+  }
+  if (checkpoint === "prepared") {
+    if (!has("sandbox") || has("provisional") || has("release") || has("admitted")) orderError(checkpoint);
+    return;
+  }
+  if (checkpoint === "provisional") {
+    if (has("release") || has("admitted")) orderError(checkpoint);
+    return;
+  }
+  if (checkpoint === "fence") {
+    if (!has("sandbox") || has("release") || has("admitted")) orderError(checkpoint);
+    return;
+  }
+  if (checkpoint === "release") {
+    if (!has("provisional") || has("admitted") || (has("sandbox") && !has("fence"))) orderError(checkpoint);
+    return;
+  }
+  if (!has("provisional") || !has("release")) orderError(checkpoint);
+}
+
+function validateRootFlowCallLifecycle(lifecycle: PrivateRootFlowCallLifecycle): void {
+  const ordered: readonly PrivateRootFlowCallCheckpointName[] = [
+    "plan", "backing", "sandbox", "prepared", "provisional", "fence", "release", "admitted",
+  ];
+  const replay: PrivateRootFlowCallLifecycle = {
+    allocation: lifecycle.allocation,
+    allocationDigest: lifecycle.allocationDigest,
+  };
+  for (const checkpoint of ordered) {
+    const fact = lifecycle[checkpoint];
+    if (fact === undefined) continue;
+    requireRootFlowCallCheckpointOrder(replay, checkpoint);
+    (replay as unknown as Record<string, unknown>)[checkpoint] = fact;
+  }
+}
+
+function requireRootFlowCallClosable(lifecycle: PrivateRootFlowCallLifecycle): void {
+  if (lifecycle.provisional === undefined || lifecycle.release === undefined ||
+      lifecycle.admitted === undefined ||
+      (lifecycle.sandbox !== undefined && lifecycle.fence === undefined)) {
+    invalid("RUN_EXECUTION_INCOMPLETE", "root Flow call cannot close before terminal admission and release");
+  }
+}
+
+function orderError(checkpoint: PrivateRootFlowCallCheckpointName): never {
+  invalid("RUN_EXECUTION_CHECKPOINT_ORDER", `root Flow call ${checkpoint} checkpoint is out of order`);
 }
 
 function loadRootExecutionClosure(
@@ -2339,6 +2828,9 @@ function initializeOrVerifySchema(database: SqliteDatabase, root: PrivateProject
       database.exec(CREATE_ROOT_SPAWN_INTENTS);
       database.exec(CREATE_ROOT_EXECUTION_LIFECYCLES);
       database.exec(CREATE_ROOT_EXECUTION_CLOSURES);
+      database.exec(CREATE_ROOT_FLOW_CALLS);
+      database.exec(CREATE_ROOT_FLOW_CALL_FACTS);
+      database.exec(CREATE_ROOT_FLOW_CALL_CLOSURES);
       database.exec(CREATE_ROOT_TERMINALS);
       database.exec("INSERT INTO candidate_head(singleton, revision) VALUES (1, NULL)");
       database.exec("INSERT INTO admission_head(singleton, revision) VALUES (1, NULL)");

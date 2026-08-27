@@ -1394,7 +1394,7 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         lockMode: "locked",
       }))
         .rejects.toMatchObject({ code: "LOCK_MISMATCH" });
-      const admissionDatabase = join(root, ".jig", "private-activation-admission-v8.sqlite3");
+      const admissionDatabase = join(root, ".jig", "private-activation-admission-v9.sqlite3");
       await writeFile(join(root, "jig.lock"), persisted.lock, { mode: 0o644 });
       const crashSqlite = createRequire(import.meta.url)("bun:sqlite") as any;
       const recovered = crashSqlite.Database.open(
@@ -1542,12 +1542,15 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
           "review_plans",
           "root_execution_closures",
           "root_execution_lifecycles",
+          "root_flow_call_closures",
+          "root_flow_call_facts",
+          "root_flow_calls",
           "root_runs",
           "root_spawn_intents",
           "root_terminals",
         ]);
-        expect(database.query("PRAGMA application_id").get().application_id).toBe(0x4a494738);
-        expect(database.query("PRAGMA user_version").get().user_version).toBe(8);
+        expect(database.query("PRAGMA application_id").get().application_id).toBe(0x4a494739);
+        expect(database.query("PRAGMA user_version").get().user_version).toBe(9);
         expect(database.query("PRAGMA journal_mode").get().journal_mode).toBe("delete");
         expect(database.query("SELECT revision FROM candidate_head WHERE singleton = 1").get().revision).toBe(3);
         expect(database.query("SELECT count(*) AS count FROM candidates").get().count).toBe(3);
