@@ -362,6 +362,9 @@ function propagateServiceAvailability(
       for (const slot of Object.keys(binding.slots).sort()) {
         const value = binding.slots[slot]!;
         if (value.kind !== "capability") continue;
+        // Canonical host publishers are admitted generation dependencies, not
+        // executable Service targets whose runtime availability propagates.
+        if (!bindingById.has(value.provider.binding)) continue;
         const provider = visit(value.provider.binding);
         if (provider.disposition.state === "unavailable") {
           unavailableDependencies.push(privateDomainDigest(
@@ -429,6 +432,13 @@ function semanticProject(project: PackageProjectValue): JsonValue {
       settings: binding.settings,
       attachments: binding.attachments,
       slots: binding.slots,
+    })),
+    journalPublishers: project.journalPublishers.map((publisher) => ({
+      kind: publisher.kind,
+      id: publisher.id,
+      source: publisher.source,
+      contract: publisher.contract,
+      eventTypes: publisher.eventTypes,
     })),
   } as unknown as JsonValue;
 }

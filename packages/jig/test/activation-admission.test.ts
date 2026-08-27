@@ -178,6 +178,7 @@ describe("private activation admission candidate", () => {
           },
         },
       },
+      journalPublishers: {},
     };
     const lockEncoding = lockBytes(lock);
     const lockValue = decodePrivateProjectLocalLock(lockEncoding);
@@ -489,6 +490,7 @@ function fixture() {
       },
     },
     bindings: {},
+    journalPublishers: {},
   };
   const canonicalLock = lockBytes(lock);
   const decodedLock = decodePrivateProjectLocalLock(canonicalLock);
@@ -574,6 +576,7 @@ function bindingFixture() {
     bindings: {
       run: { packagePath: "flows/run", attachments: {}, slots: {} },
     },
+    journalPublishers: {},
   };
   const lockEncoding = lockBytes(lock);
   const lockValue = decodePrivateProjectLocalLock(lockEncoding);

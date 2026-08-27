@@ -5,11 +5,13 @@ import {
   candidates,
   defineBinding,
   defineJig,
+  defineJournalPublisher,
   discover,
   flowRef,
 } from "../src/index.js";
 import {
   normalizeJigDefinition,
+  normalizeJournalPublisherDefinition,
   normalizePackageBindingDefinition,
 } from "../src/project/author.js";
 
@@ -79,6 +81,36 @@ describe("Jig project authoring SDK/1", () => {
       slots: {},
       attachments: {},
     });
+  });
+
+  test("captures one exact canonical Journal publisher", () => {
+    const publisher = defineJournalPublisher({
+      eventTypes: [
+        "https://example.org/events/work-finished",
+        "https://example.org/events/work-created",
+      ],
+    });
+    expect(publisher).toEqual({
+      kind: "journal-publisher",
+      eventTypes: [
+        "https://example.org/events/work-created",
+        "https://example.org/events/work-finished",
+      ],
+    });
+    expect(Object.isFrozen(publisher.eventTypes)).toBeTrue();
+    expect(normalizeJournalPublisherDefinition(publisher)).toEqual(publisher);
+    expect(() => defineJournalPublisher(publisher as never)).toThrow();
+  });
+
+  test("rejects ambiguous or protected Journal publication authority", () => {
+    for (const eventTypes of [
+      [],
+      ["https://example.org/events/same", "https://example.org/events/same"],
+      ["https://jig.dev/events/run-completed"],
+      ["x".repeat(513)],
+    ]) {
+      expect(() => defineJournalPublisher({ eventTypes })).toThrow();
+    }
   });
 
   for (const [name, action] of [

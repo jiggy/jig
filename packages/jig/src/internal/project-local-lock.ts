@@ -11,6 +11,7 @@ import {
 } from "../json.js";
 import {
   requirePackageProjectValue,
+  PRIVATE_CANONICAL_JOURNAL_CONTRACT,
   type ContractIdentity,
   type PackageProjectValue,
   type RunTargetIdentity,
@@ -66,15 +67,23 @@ export interface PrivateLockBinding {
   readonly slots: Readonly<Record<string, PrivateLockSlot>>;
 }
 
+export interface PrivateLockJournalPublisher {
+  readonly source: string;
+  readonly contract: PrivateLockContractIdentity;
+  readonly eventTypes: readonly string[];
+}
+
 /**
  * Package-project-only portable evidence. This is deliberately not the public
  * jig.lock schema: upstream source revisions, Hooks, Semantic Choice, and
- * host-capability registrations do not have closed models yet.
+ * generic host-capability registrations do not have closed models yet. The
+ * one Journal-specific publisher declaration is closed here explicitly.
  */
 export interface PrivateProjectLocalLock {
   readonly kind: typeof KIND;
   readonly packages: Readonly<Record<string, PrivateLockPackage>>;
   readonly bindings: Readonly<Record<string, PrivateLockBinding>>;
+  readonly journalPublishers: Readonly<Record<string, PrivateLockJournalPublisher>>;
 }
 
 /** Project portable package/contract choices, with no host activation data. */
@@ -129,7 +138,16 @@ export function createPrivateProjectLocalLock(
     };
   }
 
-  const lock = normalizeLock({ kind: KIND, packages, bindings });
+  const journalPublishers: Record<string, JsonValue> = Object.create(null) as Record<string, JsonValue>;
+  for (const publisher of linked.journalPublishers) {
+    journalPublishers[publisher.id] = {
+      source: publisher.source,
+      contract: { ...publisher.contract },
+      eventTypes: [...publisher.eventTypes],
+    };
+  }
+
+  const lock = normalizeLock({ kind: KIND, packages, bindings, journalPublishers });
   // The guarded value must already satisfy the same persisted byte budget its
   // strict decoder enforces; a later encode is not allowed to discover this.
   encodeNormalized(lock);
@@ -167,12 +185,52 @@ export function requirePrivateProjectLocalLock(value: unknown): PrivateProjectLo
 }
 
 function normalizeLock(value: unknown): PrivateProjectLocalLock {
-  const root = exactObject(value, ["kind", "packages", "bindings"], "lock");
+  const root = exactObject(value, ["kind", "packages", "bindings", "journalPublishers"], "lock");
   if (root.kind !== KIND) throw new TypeError(`lock kind must be ${KIND}`);
   const packages = normalizePackages(root.packages);
   const bindings = normalizeBindings(root.bindings);
-  validateReferences(packages, bindings);
-  return Object.freeze({ kind: KIND, packages, bindings });
+  const journalPublishers = normalizeJournalPublishers(root.journalPublishers);
+  validateReferences(packages, bindings, journalPublishers);
+  return Object.freeze({ kind: KIND, packages, bindings, journalPublishers });
+}
+
+function normalizeJournalPublishers(value: unknown): PrivateProjectLocalLock["journalPublishers"] {
+  const input = object(value, "journalPublishers");
+  const output: Record<string, PrivateLockJournalPublisher> = Object.create(null) as Record<string, PrivateLockJournalPublisher>;
+  for (const id of Object.keys(input).sort()) {
+    localName(id, `Journal publisher ${JSON.stringify(id)}`);
+    const item = exactObject(input[id], ["source", "contract", "eventTypes"], `Journal publisher ${id}`);
+    if (item.source !== `binding:${id}`) {
+      throw new TypeError(`Journal publisher ${id} source must be binding:${id}`);
+    }
+    const contract = contractIdentity(
+      exactObject(item.contract, ["id", "version", "digest"], `Journal publisher ${id} contract`),
+      `Journal publisher ${id} contract`,
+    );
+    if (contractKey(contract) !== contractKey(PRIVATE_CANONICAL_JOURNAL_CONTRACT)) {
+      throw new TypeError(`Journal publisher ${id} must implement the canonical Journal contract`);
+    }
+    const values = array(item.eventTypes, `Journal publisher ${id} eventTypes`);
+    if (values.length === 0 || values.length > JSON_1_LIMITS.containerEntries) {
+      throw new TypeError(`Journal publisher ${id} eventTypes must contain 1..${JSON_1_LIMITS.containerEntries} values`);
+    }
+    const eventTypes = values.map((eventType) => {
+      if (typeof eventType !== "string" || [...eventType].length === 0 || [...eventType].length > 512) {
+        throw new TypeError(`Journal publisher ${id} event type must be a non-empty string of at most 512 characters`);
+      }
+      if (eventType.startsWith("https://jig.dev/events/")) {
+        throw new TypeError(`Journal publisher ${id} event type uses Jig's protected lifecycle namespace`);
+      }
+      return eventType;
+    });
+    for (let index = 1; index < eventTypes.length; index += 1) {
+      if (eventTypes[index - 1]! >= eventTypes[index]!) {
+        throw new TypeError(`Journal publisher ${id} eventTypes are not strictly ordered`);
+      }
+    }
+    output[id] = Object.freeze({ source: item.source, contract, eventTypes: Object.freeze(eventTypes) });
+  }
+  return Object.freeze(output);
 }
 
 function normalizePackages(value: unknown): PrivateProjectLocalLock["packages"] {
@@ -290,6 +348,7 @@ function normalizeBindings(value: unknown): PrivateProjectLocalLock["bindings"] 
 function validateReferences(
   packages: PrivateProjectLocalLock["packages"],
   bindings: PrivateProjectLocalLock["bindings"],
+  journalPublishers: PrivateProjectLocalLock["journalPublishers"],
 ): void {
   for (const [id, binding] of Object.entries(bindings)) {
     const consumer = packages[binding.packagePath];
@@ -326,7 +385,15 @@ function validateReferences(
       }
       const providerBinding = bindings[slot.provider.binding];
       if (providerBinding === undefined) {
-        throw new TypeError(`Binding ${id} capability ${name} selects unknown provider Binding`);
+        const publisher = journalPublishers[slot.provider.binding];
+        if (publisher === undefined) {
+          throw new TypeError(`Binding ${id} capability ${name} selects unknown provider Binding`);
+        }
+        if (slot.provider.export !== "journal" ||
+            contractKey(publisher.contract) !== contractKey(required)) {
+          throw new TypeError(`Binding ${id} capability ${name} selects an incompatible Journal publisher`);
+        }
+        continue;
       }
       const providerPackage = packages[providerBinding.packagePath];
       if (providerPackage === undefined || providerPackage.mode !== "service") {
@@ -337,6 +404,9 @@ function validateReferences(
         throw new TypeError(`Binding ${id} capability ${name} selects an incompatible provider export`);
       }
     }
+  }
+  for (const id of Object.keys(journalPublishers)) {
+    if (Object.hasOwn(bindings, id)) throw new TypeError(`duplicate Binding ID ${id}`);
   }
   rejectServiceCycles(packages, bindings);
 }

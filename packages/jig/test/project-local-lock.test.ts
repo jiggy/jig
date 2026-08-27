@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
@@ -11,7 +11,7 @@ import {
   privateProjectLocalLockDigest,
   requirePrivateProjectLocalLock,
 } from "../src/internal/project-local-lock.js";
-import { bindingRef, candidates, defineJig, flowRef } from "../src/project/author.js";
+import { bindingRef, candidates, defineJig, defineJournalPublisher, flowRef } from "../src/project/author.js";
 import { captureFlowSource } from "../src/project/flow-source.js";
 import {
   linkPackageProject,
@@ -25,17 +25,21 @@ import {
 
 const encoder = new TextEncoder();
 const schemaUri = "https://flow.dev/schemas/schema-1.json";
+const journalContract = await readFile(new URL(
+  "../../../docs/spec/contracts/jig/journal.capability.json",
+  import.meta.url,
+), "utf8");
 
 describe("private package-project portable lock projection", () => {
   test("has one empty canonical byte vector and external identity", () => {
     const bytes = encoder.encode(
-      '{"bindings":{},"kind":"private-package-project-lock/1","packages":{}}\n',
+      '{"bindings":{},"journalPublishers":{},"kind":"private-package-project-lock/1","packages":{}}\n',
     );
     const value = decodePrivateProjectLocalLock(bytes);
 
     expect(encodePrivateProjectLocalLock(value)).toEqual(bytes);
     expect(privateProjectLocalLockDigest(value)).toBe(
-      "sha256:db900dd30f1c77b3919b023cb6370478d10fb74d34c3f2fd190deb468e7376ba",
+      "sha256:4087e05c54765291bd843b95879f6318214dd035616674d36547c75a702964ea",
     );
     // Strict decoding validates inert spelling and relations; it does not
     // prove that these portable bytes came from captured package sources.
@@ -116,11 +120,62 @@ describe("private package-project portable lock projection", () => {
     });
   }, 15_000);
 
+  test("projects one canonical Journal publisher without making it an activation Binding", async () => {
+    await withFlows({
+      "flows/producer": {
+        "FLOW.md": metadata(`name: producer
+description: Producer.
+uses:
+  journal:
+    contract: ./contracts/journal.capability.json`),
+        "flow.ts": "export {};\n",
+        "contracts/journal.capability.json": journalContract,
+      },
+    }, async (flows) => {
+      const linked = linkPackageProject({
+        flows,
+        bindings: [
+          binding("bindings/publisher.ts", defineJournalPublisher({
+            eventTypes: ["https://example.org/events/work-created"],
+          })),
+          binding("bindings/producer.ts", {
+            package: "flows/producer",
+            slots: { journal: bindingRef("publisher") },
+          }),
+        ],
+      });
+      const lock = createPrivateProjectLocalLock(linked);
+      expect(Object.keys(lock.bindings)).toEqual(["producer"]);
+      expect(lock.journalPublishers.publisher).toEqual({
+        source: "binding:publisher",
+        contract: {
+          id: "https://jig.dev/contracts/journal",
+          version: "1.0.0",
+          digest: "sha256:dd749f53de3a5f80e02386699355e28c1fd7e707b2b12bdf2d5c725eb436ddf9",
+        },
+        eventTypes: ["https://example.org/events/work-created"],
+      });
+      const decoded = decodePrivateProjectLocalLock(encodePrivateProjectLocalLock(lock));
+      expect(decoded).toEqual(lock);
+      const base = structuredClone(lock) as any;
+      expectInvalid(base, (value) => {
+        value.journalPublishers.publisher.source = "binding:other";
+      }, "source must be binding:publisher");
+      expectInvalid(base, (value) => {
+        value.journalPublishers.publisher.eventTypes = ["https://jig.dev/events/run-completed"];
+      }, "protected lifecycle namespace");
+      expectInvalid(base, (value) => {
+        value.journalPublishers.publisher.contract.digest = `sha256:${"0".repeat(64)}`;
+      }, "canonical Journal contract");
+    });
+  });
+
   test("rejects every alternate spelling and forged host evidence", () => {
     const canonical = {
       kind: "private-package-project-lock/1",
       packages: {},
       bindings: {},
+      journalPublishers: {},
     };
     const valid = lockBytes(canonical);
     expect(() => decodePrivateProjectLocalLock(valid)).not.toThrow();
@@ -131,7 +186,7 @@ describe("private package-project portable lock projection", () => {
       "not in canonical",
     );
     expect(() => decodePrivateProjectLocalLock(encoder.encode(
-      '{"kind":"private-package-project-lock/1","kind":"private-package-project-lock/1","packages":{},"bindings":{}}\n',
+      '{"kind":"private-package-project-lock/1","kind":"private-package-project-lock/1","packages":{},"bindings":{},"journalPublishers":{}}\n',
     ))).toThrow("duplicate object member");
     expect(() => decodePrivateProjectLocalLock(lockBytes({
       ...canonical,
@@ -304,6 +359,7 @@ function metadataBoundLock(
       },
     },
     bindings: {},
+    journalPublishers: {},
   };
 }
 
@@ -319,7 +375,7 @@ function rootPackageCollection(count: number): unknown {
       provides: {},
     },
   ]));
-  return { kind: "private-package-project-lock/1", packages, bindings: {} };
+  return { kind: "private-package-project-lock/1", packages, bindings: {}, journalPublishers: {} };
 }
 
 function serviceGraph(count: number, cyclic: boolean): unknown {
@@ -352,7 +408,7 @@ function serviceGraph(count: number, cyclic: boolean): unknown {
       },
     };
   }
-  return { kind: "private-package-project-lock/1", packages, bindings };
+  return { kind: "private-package-project-lock/1", packages, bindings, journalPublishers: {} };
 }
 
 function lockAtCanonicalBodySize(target: number): unknown {
@@ -378,7 +434,7 @@ function lockAtCanonicalBodySize(target: number): unknown {
         provides: { api: contract },
       };
     }
-    return { kind: "private-package-project-lock/1", packages, bindings: {} };
+    return { kind: "private-package-project-lock/1", packages, bindings: {}, journalPublishers: {} };
   };
 
   const minimum = canonicalJson(make(1, 0) as JsonValue).byteLength;

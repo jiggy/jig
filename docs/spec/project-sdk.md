@@ -16,6 +16,7 @@ import {
   candidates,
   defineBinding,
   defineJig,
+  defineJournalPublisher,
   discover,
   flowRef,
 } from "@jigging/jig";
@@ -80,6 +81,37 @@ candidates([flowRef("./flows/fast"), bindingRef("deep")])
 References are tagged plain data. Raw target strings are not accepted and one
 namespace never silently wins over another.
 
+### `defineJournalPublisher`
+
+```ts
+export default defineJournalPublisher({
+  eventTypes: [
+    "https://example.org/events/work-created",
+  ],
+});
+```
+
+This is the one deliberately narrow trusted-host declaration in the current
+candidate. It authorizes Jig's canonical Journal publisher for an exact,
+non-empty finite set of Event type strings. Normalization sorts the set,
+rejects duplicates, bounds each value to the Journal contract's 512-character
+limit, and rejects Jig's protected `https://jig.dev/events/` lifecycle
+namespace. It does not name a provider module, grant host authority, expose a
+read API, or create a Run/Service activation target.
+
+A package Binding maps its exact Journal capability slot in the ordinary way:
+
+```ts
+slots: {
+  journal: bindingRef("publisher"),
+}
+```
+
+where `bindings/publisher.ts` exports the publisher declaration. Admission
+pins source identity `binding:publisher`, the canonical Journal contract, and
+the exact Event-type set. Other host capabilities still have no authoring
+surface.
+
 ## 2. Direct admitted Flow targets
 
 A discovered Run package which is valid with `{}` settings, declares no
@@ -130,7 +162,8 @@ It validates either one `defineJig()` value:
 }
 ```
 
-or one normalized `defineBinding()` value. Authors do not add a redundant
+or one normalized `defineBinding()` / `defineJournalPublisher()` value.
+Authors do not add a redundant
 `jig: 1` or `$schema` field to either declaration.
 
 Schema/1 validates closed shape and local type/size bounds. The private staged
@@ -146,9 +179,10 @@ normalized JSON Pointer. The shape schema alone is never admission evidence.
 ## 5. Deliberate exclusions
 
 Project Authoring SDK/1 does not yet expose Hooks, Service export references,
-instruction Agent selection, `semanticChoice`, host-capability Bindings,
+instruction Agent selection, `semanticChoice`, generic host-capability Bindings,
 registration-defined grants, open catalogue views, or runtime/sandbox
-selection. Each of those remaining projections has an explicit unresolved
+selection. The canonical Journal publisher above is an intentional
+Journal-specific exception, not a provider SPI. Each remaining projection has an explicit unresolved
 prerequisite. It deliberately never exposes administration APIs. Root
 Administration/1 is a separate host-side control-plane candidate outside every
 FLOW activation; it is not a project authoring or FLOW API.

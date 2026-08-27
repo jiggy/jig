@@ -4,7 +4,10 @@ import type { CheckedContractReference, InspectedPackage } from "../package/insp
 import { SchemaDiagnostic } from "../schema/index.js";
 import {
   defineBinding,
+  normalizeJournalPublisherDefinition,
   normalizePackageBindingDefinition,
+  type BindingDefinition,
+  type JournalPublisherDefinition,
   type PackageBindingInput,
   type RunTargetRef,
   type SlotRef,
@@ -25,6 +28,11 @@ const LOCAL_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const MAX_MEMBERS = 65_536;
 const MAX_SEMANTIC_WORK = 1_000_000;
 const authenticPackageProjects = new WeakSet<object>();
+export const PRIVATE_CANONICAL_JOURNAL_CONTRACT = Object.freeze({
+  id: "https://jig.dev/contracts/journal",
+  version: "1.0.0",
+  digest: "sha256:dd749f53de3a5f80e02386699355e28c1fd7e707b2b12bdf2d5c725eb436ddf9",
+});
 
 export interface InjectedBindingDeclaration {
   readonly sourcePath: string;
@@ -85,9 +93,19 @@ export interface LinkedPackageBinding {
   readonly slots: Readonly<Record<string, LinkedSlot>>;
 }
 
+export interface LinkedJournalPublisher {
+  readonly kind: "journal-publisher";
+  readonly id: string;
+  readonly declarationPath: string;
+  readonly source: string;
+  readonly contract: ContractIdentity;
+  readonly eventTypes: readonly string[];
+}
+
 export interface PackageProjectValue {
   readonly flows: readonly LinkedFlow[];
   readonly bindings: readonly LinkedPackageBinding[];
+  readonly journalPublishers: readonly LinkedJournalPublisher[];
 }
 
 interface PreparedBinding {
@@ -95,6 +113,12 @@ interface PreparedBinding {
   readonly declarationPath: string;
   readonly definition: ReturnType<typeof defineBinding>;
   readonly flow: PreparedFlow;
+}
+
+interface PreparedJournalPublisher {
+  readonly id: string;
+  readonly declarationPath: string;
+  readonly definition: JournalPublisherDefinition;
 }
 
 interface PreparedFlow {
@@ -113,14 +137,26 @@ export function linkPackageProject(input: PackageProjectInput): PackageProjectVa
   const budget = new WorkBudget();
   const preparedFlows = prepareFlows(readBoundedArray(root.flows, "flows"), budget);
   const flowByPath = new Map(preparedFlows.map((flow) => [flow.value.provenance.projectPath, flow]));
-  const prepared = prepareBindings(readBoundedArray(root.bindings, "bindings"), flowByPath, budget);
+  const declarations = prepareBindings(readBoundedArray(root.bindings, "bindings"), flowByPath, budget);
+  const prepared = declarations.filter((value): value is PreparedBinding => "flow" in value);
+  const publishers = declarations.filter((value): value is PreparedJournalPublisher => !("flow" in value));
   const bindingById = new Map(prepared.map((binding) => [binding.id, binding]));
-  const bindings = prepared.map((binding) => linkBinding(binding, flowByPath, bindingById));
+  const publisherById = new Map(publishers.map((publisher) => [publisher.id, publisher]));
+  const bindings = prepared.map((binding) => linkBinding(binding, flowByPath, bindingById, publisherById));
+  const journalPublishers = publishers.map((publisher) => Object.freeze({
+    kind: "journal-publisher" as const,
+    id: publisher.id,
+    declarationPath: publisher.declarationPath,
+    source: `binding:${publisher.id}`,
+    contract: PRIVATE_CANONICAL_JOURNAL_CONTRACT,
+    eventTypes: publisher.definition.eventTypes,
+  }));
 
   rejectServiceCycles(bindings, flowByPath);
   const value = Object.freeze({
     flows: Object.freeze(preparedFlows.map((flow) => flow.value)),
     bindings: Object.freeze(bindings),
+    journalPublishers: Object.freeze(journalPublishers),
   });
   authenticPackageProjects.add(value);
   return value;
@@ -197,7 +233,7 @@ function prepareBindings(
   values: readonly unknown[],
   flowByPath: ReadonlyMap<string, PreparedFlow>,
   budget: WorkBudget,
-): readonly PreparedBinding[] {
+): readonly (PreparedBinding | PreparedJournalPublisher)[] {
   const bindings = values.map((value, index) => {
     const record = readClosedRecord(value, ["sourcePath", "definition"], `bindings[${index}]`);
     const declarationPath = normalizeProjectPath(
@@ -216,17 +252,24 @@ function prepareBindings(
       invalid("PROJECT_BINDING_ID", "Binding declaration basename must be a LocalName", declarationPath);
     }
 
-    let definition: ReturnType<typeof defineBinding>;
+    let definition: BindingDefinition;
     try {
       const candidate = record.definition;
-      definition = typeof candidate === "object" && candidate !== null &&
-          Object.hasOwn(candidate, "kind")
-        ? normalizePackageBindingDefinition(candidate)
-        : defineBinding(candidate as PackageBindingInput);
+      if (typeof candidate === "object" && candidate !== null &&
+          Object.hasOwn(candidate, "kind")) {
+        definition = (candidate as { readonly kind?: unknown }).kind === "journal-publisher"
+          ? normalizeJournalPublisherDefinition(candidate)
+          : normalizePackageBindingDefinition(candidate);
+      } else {
+        definition = defineBinding(candidate as PackageBindingInput);
+      }
     } catch (error) {
       invalid("PROJECT_BINDING_DECLARATION", errorText(error), declarationPath);
     }
     budget.consume(jsonWork(definition as unknown as JsonValue));
+    if (definition.kind === "journal-publisher") {
+      return Object.freeze({ id, declarationPath, definition });
+    }
     const flow = flowByPath.get(definition.package);
     if (flow === undefined) {
       invalid(
@@ -256,6 +299,7 @@ function linkBinding(
   prepared: PreparedBinding,
   flowByPath: ReadonlyMap<string, PreparedFlow>,
   bindingById: ReadonlyMap<string, PreparedBinding>,
+  publisherById: ReadonlyMap<string, PreparedJournalPublisher>,
 ): LinkedPackageBinding {
   const { id, declarationPath, definition, flow } = prepared;
   const slots: Record<string, LinkedSlot> = Object.create(null) as Record<string, LinkedSlot>;
@@ -266,7 +310,7 @@ function linkBinding(
     if (configured === undefined) {
       invalid("PROJECT_BINDING_CAPABILITY_MISSING", `Binding ${id} does not configure required capability ${slot}`, declarationPath, slotPointer(slot));
     }
-    slots[slot] = linkCapability(id, slot, configured, flow, bindingById, declarationPath);
+    slots[slot] = linkCapability(id, slot, configured, flow, bindingById, publisherById, declarationPath);
   }
   for (const slot of Object.keys(definition.slots).sort(compareProjectPaths)) {
     if (Object.hasOwn(uses, slot)) continue;
@@ -290,6 +334,7 @@ function linkCapability(
   configured: SlotRef,
   consumer: PreparedFlow,
   bindingById: ReadonlyMap<string, PreparedBinding>,
+  publisherById: ReadonlyMap<string, PreparedJournalPublisher>,
   path: string,
 ): Extract<LinkedSlot, { readonly kind: "capability" }> {
   const declaration = consumer.inspected.metadata.uses![slot]!;
@@ -297,7 +342,25 @@ function linkCapability(
     invalid("PROJECT_BINDING_LOCAL_CAPABILITY_UNSUPPORTED", `Binding ${consumerId} requires unsupported local capability ${slot}`, path, slotPointer(slot));
   }
   if (configured.kind !== "binding") {
-    invalid("PROJECT_BINDING_CAPABILITY_TARGET", `capability ${slot} must target one Service Binding`, path, slotPointer(slot));
+    invalid("PROJECT_BINDING_CAPABILITY_TARGET", `capability ${slot} must target one exact provider Binding`, path, slotPointer(slot));
+  }
+  const publisher = publisherById.get(configured.id);
+  if (publisher !== undefined) {
+    const required = consumer.usedContractBySlot.get(slot);
+    if (required === undefined) throw new Error(`inspector omitted public capability ${slot}`);
+    if (contractKey(required) !== contractIdentityKey(PRIVATE_CANONICAL_JOURNAL_CONTRACT)) {
+      invalid(
+        "PROJECT_BINDING_CAPABILITY_INCOMPATIBLE",
+        `Journal publisher Binding ${configured.id} does not implement capability ${slot}`,
+        path,
+        slotPointer(slot),
+      );
+    }
+    return Object.freeze({
+      kind: "capability" as const,
+      contract: contractIdentity(required),
+      provider: Object.freeze({ binding: configured.id, export: "journal" }),
+    });
   }
   const provider = bindingById.get(configured.id);
   if (provider === undefined) {
@@ -322,6 +385,10 @@ function linkCapability(
     contract: contractIdentity(required),
     provider: Object.freeze({ binding: configured.id, export: matches[0]!.slot }),
   });
+}
+
+function contractIdentityKey(value: ContractIdentity): string {
+  return `${value.id}\0${value.version}\0${value.digest}`;
 }
 
 function linkFlowCall(
@@ -531,7 +598,7 @@ function jsonWork(value: JsonValue): number {
   return work;
 }
 
-function assertUniqueBindings(bindings: readonly PreparedBinding[]): void {
+function assertUniqueBindings(bindings: readonly (PreparedBinding | PreparedJournalPublisher)[]): void {
   const ids = new Set<string>();
   const paths: string[] = [];
   for (const binding of bindings) {

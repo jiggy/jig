@@ -66,6 +66,17 @@ export interface PackageBindingInput {
   readonly attachments?: Readonly<Record<string, string>>;
 }
 
+export interface JournalPublisherDefinition {
+  readonly kind: "journal-publisher";
+  readonly eventTypes: readonly string[];
+}
+
+export interface JournalPublisherInput {
+  readonly eventTypes: readonly string[];
+}
+
+export type BindingDefinition = PackageBindingDefinition | JournalPublisherDefinition;
+
 export function discover(roots: string | readonly string[]): DiscoverySource {
   const values = typeof roots === "string"
     ? [roots]
@@ -109,6 +120,52 @@ function normalizeJig(input: JigDefinitionInput, canonical: boolean): JigDefinit
 
 export function defineBinding(input: PackageBindingInput): PackageBindingDefinition {
   return normalizeBinding(input, false);
+}
+
+/** Declare one canonical Jig Journal publisher with an exact authority ceiling. */
+export function defineJournalPublisher(input: JournalPublisherInput): JournalPublisherDefinition {
+  return normalizeJournalPublisher(input, false);
+}
+
+/** Evaluator-only canonical re-normalization; absent from the package root. */
+export function normalizeJournalPublisherDefinition(input: unknown): JournalPublisherDefinition {
+  return normalizeJournalPublisher(input as JournalPublisherInput, true);
+}
+
+function normalizeJournalPublisher(
+  input: JournalPublisherInput,
+  canonical: boolean,
+): JournalPublisherDefinition {
+  const captured = snapshotJsonObject(input, "Journal publisher definition");
+  assertClosedObject(
+    captured,
+    canonical ? ["kind", "eventTypes"] : ["eventTypes"],
+    "Journal publisher definition",
+  );
+  if (canonical && captured.kind !== "journal-publisher") {
+    throw new TypeError("Journal publisher kind must be journal-publisher");
+  }
+  if (!Object.hasOwn(captured, "eventTypes")) {
+    throw new TypeError("Journal publisher eventTypes are required");
+  }
+  const values = snapshotStringArray(
+    captured.eventTypes as unknown as readonly string[],
+    "Journal publisher eventTypes",
+  );
+  if (values.length === 0) {
+    throw new TypeError("Journal publisher requires at least one event type");
+  }
+  if (values.length > JSON_1_LIMITS.containerEntries) {
+    throw new TypeError("Journal publisher eventTypes exceed the JSON/1 container bound");
+  }
+  const eventTypes = values.map((value) => validateEventType(value));
+  eventTypes.sort();
+  for (let index = 1; index < eventTypes.length; index += 1) {
+    if (eventTypes[index - 1] === eventTypes[index]) {
+      throw new TypeError(`duplicate Journal event type ${eventTypes[index]}`);
+    }
+  }
+  return record({ kind: "journal-publisher", eventTypes: Object.freeze(eventTypes) }) as unknown as JournalPublisherDefinition;
 }
 
 /** Evaluator-only canonical re-normalization; absent from the package root. */
@@ -275,6 +332,16 @@ function normalizeUniquePaths(
 function validateLocalName(value: unknown, label: string): string {
   if (typeof value !== "string" || value.length > 64 || !LOCAL_NAME.test(value)) {
     throw new TypeError(`${label} must be a LocalName`);
+  }
+  return value;
+}
+
+function validateEventType(value: unknown): string {
+  if (typeof value !== "string" || [...value].length === 0 || [...value].length > 512) {
+    throw new TypeError("Journal event type must be a non-empty string of at most 512 characters");
+  }
+  if (value.startsWith("https://jig.dev/events/")) {
+    throw new TypeError("Journal event type uses Jig's protected lifecycle namespace");
   }
   return value;
 }

@@ -1177,6 +1177,7 @@ describe.serial("private activation admission SQLite store", () => {
         kind: "private-package-project-lock/1",
         packages: {},
         bindings: {},
+        journalPublishers: {},
       }));
       await expect(applyPrivateActivationReviewPlan({
         projectRoot: drift.root,
@@ -1322,6 +1323,7 @@ async function createFixture(disposition: "unavailable" | "ready" = "unavailable
         },
       },
       bindings: {},
+      journalPublishers: {},
     });
     const lock = decodePrivateProjectLocalLock(lockBytes);
     const captureDigest = digest("capture");
@@ -1509,6 +1511,7 @@ async function createComposedFixture(): Promise<Fixture> {
           },
         },
       },
+      journalPublishers: {},
     });
     const lock = decodePrivateProjectLocalLock(lockBytes);
     const captureDigest = digest("composed-capture");

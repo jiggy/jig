@@ -3,7 +3,7 @@
   "title": "Jig project authoring value/1",
   "oneOf": [
     { "$ref": "#/$defs/project" },
-    { "$ref": "#/$defs/packageBinding" }
+    { "$ref": "#/$defs/bindingDefinition" }
   ],
   "$defs": {
     "localName": {
@@ -120,6 +120,30 @@
       },
       "required": ["kind", "package", "settings", "slots", "attachments"],
       "additionalProperties": false
+    },
+    "journalPublisher": {
+      "type": "object",
+      "properties": {
+        "kind": { "const": "journal-publisher" },
+        "eventTypes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "minItems": 1,
+          "maxItems": 65536
+        }
+      },
+      "required": ["kind", "eventTypes"],
+      "additionalProperties": false
+    },
+    "bindingDefinition": {
+      "oneOf": [
+        { "$ref": "#/$defs/packageBinding" },
+        { "$ref": "#/$defs/journalPublisher" }
+      ]
     }
   }
 }

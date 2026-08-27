@@ -24,9 +24,10 @@ import { compileEmbeddedSchema } from "../schema/index.js";
 import { capturePackageDirectory } from "../package/capture.js";
 import {
   type JigDefinition,
+  normalizeJournalPublisherDefinition,
   normalizeJigDefinition,
   normalizePackageBindingDefinition,
-  type PackageBindingDefinition,
+  type BindingDefinition,
 } from "./author.js";
 import {
   isCapturedAuthorClosure,
@@ -91,7 +92,7 @@ export interface EvaluatorProfile {
 }
 
 export interface EvaluatedAuthorDeclaration<
-  Value extends JigDefinition | PackageBindingDefinition = JigDefinition | PackageBindingDefinition,
+  Value extends JigDefinition | BindingDefinition = JigDefinition | BindingDefinition,
 > {
   readonly expected: "project" | "binding";
   readonly source: {
@@ -320,11 +321,11 @@ export async function evaluateAuthorClosure(
         value,
         "PROJECT_AUTHORING_SCHEMA_INVALID",
       );
-      let normalized: JigDefinition | PackageBindingDefinition;
+      let normalized: JigDefinition | BindingDefinition;
       try {
         normalized = expected === "project"
           ? normalizeJigDefinition(value)
-          : normalizePackageBindingDefinition(value);
+          : normalizeBindingDefinition(value);
       } catch (error) {
         invalid(
           "PROJECT_DECLARATION_INVALID",
@@ -436,7 +437,7 @@ function contextualAuthorSchema(bytes: Uint8Array, expected: "project" | "bindin
   if (!isRecord(document) || !isRecord(document.$defs)) {
     unavailable("PROJECT_EVALUATOR_UNAVAILABLE", "captured authoring schema has no definitions");
   }
-  const definition = expected === "project" ? "project" : "packageBinding";
+  const definition = expected === "project" ? "project" : "bindingDefinition";
   try {
     return compileEmbeddedSchema(
       Object.freeze({ $ref: `#/$defs/${definition}` }),
@@ -451,6 +452,13 @@ function contextualAuthorSchema(bytes: Uint8Array, expected: "project" | "bindin
       `captured authoring schema cannot compile: ${errorText(error)}`,
     );
   }
+}
+
+function normalizeBindingDefinition(value: JsonValue): BindingDefinition {
+  if (isRecord(value) && value.kind === "journal-publisher") {
+    return normalizeJournalPublisherDefinition(value);
+  }
+  return normalizePackageBindingDefinition(value);
 }
 
 function exactKeys(value: object, expected: readonly string[]): boolean {

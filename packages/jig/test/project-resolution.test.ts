@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
@@ -12,7 +12,7 @@ import {
   type PrivateActivationRecipeObservationInput,
 } from "../src/internal/activation-planning.js";
 import { privateDomainDigest } from "../src/internal/identity.js";
-import { bindingRef, defineBinding, defineJig, flowRef } from "../src/project/author.js";
+import { bindingRef, defineBinding, defineJig, defineJournalPublisher, flowRef } from "../src/project/author.js";
 import { captureFlowSource } from "../src/project/flow-source.js";
 import {
   linkPackageProject,
@@ -29,6 +29,11 @@ import {
   type PrivateActivationRequest,
 } from "../src/project/package-resolution.js";
 import { retainFlowSourcePackages } from "../src/project/retained-flow.js";
+
+const journalContract = await readFile(new URL(
+  "../../../docs/spec/contracts/jig/journal.capability.json",
+  import.meta.url,
+), "utf8");
 
 describe("private package resolution", () => {
   test("authenticates inputs, canonically orders targets, and freezes results", async () => {
@@ -97,6 +102,44 @@ describe("private package resolution", () => {
       });
       const recipeResult = resolveLinkedPackageProjectObservation(project, digest("capture-a"), otherRecipe);
       expect(recipeResult.semanticDigest).not.toBe(captureA.semanticDigest);
+    });
+  });
+
+  test("keeps Journal publishers in semantics but outside the activation target set", async () => {
+    await withProject({
+      "flows/producer": {
+        "FLOW.md": metadata(`name: producer
+description: Producer.
+uses:
+  journal:
+    contract: ./contracts/journal.capability.json`),
+        "flow.ts": "export {};\n",
+        "contracts/journal.capability.json": journalContract,
+      },
+    }, [
+      { sourcePath: "bindings/publisher.ts", definition: defineJournalPublisher({
+        eventTypes: ["https://example.org/events/work-created"],
+      }) },
+      binding("bindings/producer.ts", {
+        package: "flows/producer",
+        slots: { journal: bindingRef("publisher") },
+      }),
+    ], async (project) => {
+      const requests = buildPrivateActivationRequests(project);
+      expect(requests.map(({ target }) => target)).toEqual([
+        { kind: "binding", id: "producer" },
+      ]);
+      const resolution = resolveLinkedPackageProjectObservation(
+        project,
+        digest("journal-capture"),
+        planning(requests, () => "planned"),
+      );
+      expect(resolution.targets).toHaveLength(1);
+      expect(project.journalPublishers[0]).toMatchObject({
+        id: "publisher",
+        source: "binding:publisher",
+        eventTypes: ["https://example.org/events/work-created"],
+      });
     });
   });
 

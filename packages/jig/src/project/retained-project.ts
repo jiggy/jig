@@ -1,7 +1,7 @@
 import { invalid } from "../diagnostics.js";
 import { privateDomainDigest } from "../internal/identity.js";
 import type { JsonValue } from "../json.js";
-import type { JigDefinition, PackageBindingDefinition } from "./author.js";
+import type { BindingDefinition, JigDefinition } from "./author.js";
 import {
   evaluateAuthorClosure,
   type EvaluatedAuthorDeclaration,
@@ -32,7 +32,7 @@ export interface PrivateRetainedProjectOptions {
 export interface RetainedBindingDeclaration {
   readonly id: string;
   readonly sourcePath: string;
-  readonly evaluation: EvaluatedAuthorDeclaration<PackageBindingDefinition>;
+  readonly evaluation: EvaluatedAuthorDeclaration<BindingDefinition>;
 }
 
 export interface PrivateRetainedPackageProject {
@@ -99,7 +99,7 @@ export async function retainPackageProject(
         member.projectPath,
         "binding",
         signal,
-      ) as EvaluatedAuthorDeclaration<PackageBindingDefinition>;
+      ) as EvaluatedAuthorDeclaration<BindingDefinition>;
       bindings.push(Object.freeze({ id: member.id, sourcePath: member.projectPath, evaluation }));
     }
     await bindingSource.verify();

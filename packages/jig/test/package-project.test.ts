@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
@@ -7,7 +7,7 @@ import {
   captureStoredPackage,
   type PackageArtifactRef,
 } from "../src/internal/package-artifact-store.js";
-import { bindingRef, candidates, defineJig, flowRef } from "../src/project/author.js";
+import { bindingRef, candidates, defineJig, defineJournalPublisher, flowRef } from "../src/project/author.js";
 import { captureFlowSource } from "../src/project/flow-source.js";
 import {
   linkPackageProject,
@@ -19,6 +19,10 @@ import {
 } from "../src/project/retained-flow.js";
 
 const schemaUri = "https://flow.dev/schemas/schema-1.json";
+const journalContract = await readFile(new URL(
+  "../../../docs/spec/contracts/jig/journal.capability.json",
+  import.meta.url,
+), "utf8");
 
 describe("private package-project linker", () => {
   test("retains captured Flow members without taking source ownership", async () => {
@@ -207,6 +211,71 @@ provides:
       expect(Object.isFrozen(value.flows[0]!.metadata.uses!.index)).toBeTrue();
       expect(Object.isFrozen(value.flows[0]!.uses.index)).toBeTrue();
       expect(Object.isFrozen(value.flows[1]!.provides.api)).toBeTrue();
+    });
+  });
+
+  test("links the exact Journal contract through one canonical publisher Binding", async () => {
+    await withFlows({
+      "flows/producer": {
+        "FLOW.md": metadata(`name: producer
+description: Producer.
+uses:
+  journal:
+    contract: ./contracts/journal.capability.json`),
+        "flow.ts": "export {};\n",
+        "contracts/journal.capability.json": journalContract,
+      },
+      "flows/other": {
+        "FLOW.md": metadata(`name: other
+description: Other.
+uses:
+  journal:
+    contract: ./contracts/other.capability.json`),
+        "flow.ts": "export {};\n",
+        "contracts/other.capability.json": capability("https://example.org/contracts/other"),
+      },
+    }, async (flows) => {
+      expectCode(() => linkPackageProject({
+        flows,
+        bindings: [
+          binding("bindings/publisher.ts", defineJournalPublisher({
+            eventTypes: ["https://example.org/events/work-created"],
+          })),
+          binding("bindings/other.ts", {
+            package: "flows/other",
+            slots: { journal: bindingRef("publisher") },
+          }),
+        ],
+      }), "PROJECT_BINDING_CAPABILITY_INCOMPATIBLE", "/slots/journal");
+      const value = linkPackageProject({
+        flows,
+        bindings: [
+          binding("bindings/publisher.ts", defineJournalPublisher({
+            eventTypes: ["https://example.org/events/work-created"],
+          })),
+          binding("bindings/producer.ts", {
+            package: "flows/producer",
+            slots: { journal: bindingRef("publisher") },
+          }),
+        ],
+      });
+      expect(value.journalPublishers).toEqual([{
+        kind: "journal-publisher",
+        id: "publisher",
+        declarationPath: "bindings/publisher.ts",
+        source: "binding:publisher",
+        contract: {
+          id: "https://jig.dev/contracts/journal",
+          version: "1.0.0",
+          digest: "sha256:dd749f53de3a5f80e02386699355e28c1fd7e707b2b12bdf2d5c725eb436ddf9",
+        },
+        eventTypes: ["https://example.org/events/work-created"],
+      }]);
+      expect(value.bindings[0]!.slots.journal).toEqual({
+        kind: "capability",
+        contract: value.journalPublishers[0]!.contract,
+        provider: { binding: "publisher", export: "journal" },
+      });
     });
   });
 

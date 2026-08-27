@@ -1,4 +1,11 @@
-import { canonicalJson, decodeJson1, validateJson1, type JsonObject, type JsonValue } from "../json.js";
+import {
+  JSON_1_LIMITS,
+  canonicalJson,
+  decodeJson1,
+  validateJson1,
+  type JsonObject,
+  type JsonValue,
+} from "../json.js";
 import type { RunHostEffectCall, RunHostEffectResult } from "../run/session.js";
 import { privateDomainDigest } from "./identity.js";
 
@@ -60,7 +67,8 @@ export function normalizePrivateRootJournalAppendAllocation(
   const parentRunId = requireDigest(root.parentRunId, "Journal append parent Run");
   const coordinatorEpoch = requirePositiveInteger(root.coordinatorEpoch, "Journal append coordinator epoch");
   const publisherBinding = requireLocalName(root.publisherBinding, "Journal publisher Binding");
-  if (!Array.isArray(root.eventTypes) || root.eventTypes.length < 1 || root.eventTypes.length > 256) {
+  if (!Array.isArray(root.eventTypes) || root.eventTypes.length < 1 ||
+      root.eventTypes.length > JSON_1_LIMITS.containerEntries) {
     throw new TypeError("Journal publisher eventTypes are invalid");
   }
   const eventTypes = root.eventTypes.map((value) => requireEventType(value));

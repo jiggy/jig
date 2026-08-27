@@ -2,8 +2,9 @@
 
 **Status:** reviewed host semantics. The first package-only TypeScript authoring,
 capture, static-import evaluation, retention, and pure-link aggregate are
-implemented privately. Resolution, admission, Hooks, host-capability, Agent,
-and open-candidate slices remain release-gated.
+implemented privately. One Journal-specific publisher declaration is also a
+closed candidate; generic host-capability registration, Hooks, Agent, and
+open-candidate slices remain release-gated.
 
 Project files express desired state. They do not become live authority merely
 because a watcher observed them. Jig captures one candidate, resolves it,

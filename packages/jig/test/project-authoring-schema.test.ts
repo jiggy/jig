@@ -6,6 +6,7 @@ import {
   candidates,
   defineBinding,
   defineJig,
+  defineJournalPublisher,
   discover,
   flowRef,
 } from "../src/index.js";
@@ -34,6 +35,9 @@ const binding = defineBinding({
   },
   attachments: { source: "./workspace" },
 });
+const publisher = defineJournalPublisher({
+  eventTypes: ["https://example.org/events/work-created"],
+});
 
 function changed(value: unknown, mutator: (copy: Record<string, any>) => void): unknown {
   const copy = structuredClone(value) as Record<string, any>;
@@ -45,6 +49,7 @@ describe("Project Authoring SDK/1 shape schema", () => {
   test("accepts actual helper-produced project and Binding values", () => {
     expect(() => schema.validate(project, "INVALID_PROJECT_AUTHORING")).not.toThrow();
     expect(() => schema.validate(binding, "INVALID_PROJECT_AUTHORING")).not.toThrow();
+    expect(() => schema.validate(publisher, "INVALID_PROJECT_AUTHORING")).not.toThrow();
   });
 
   for (const [name, value] of [
@@ -64,6 +69,12 @@ describe("Project Authoring SDK/1 shape schema", () => {
     })],
     ["oversized project path", changed(binding, (item) => {
       item.package = "a".repeat(1025);
+    })],
+    ["empty Journal publisher authority", changed(publisher, (item) => {
+      item.eventTypes = [];
+    })],
+    ["unknown Journal publisher field", changed(publisher, (item) => {
+      item.grants = {};
     })],
   ] as const) {
     test(`rejects ${name}`, () => {

@@ -63,6 +63,20 @@ authenticated producer identity and may attenuate publication to an exact
 finite set of event types. The caller cannot choose `source`, impersonate a
 kernel producer, or publish into a protected Jig lifecycle namespace.
 
+The first closed project declaration for that attenuation is:
+
+```ts
+export default defineJournalPublisher({
+  eventTypes: ["https://example.org/events/work-created"],
+});
+```
+
+Its declaration filename supplies the Binding LocalName; the authenticated
+source is exactly `binding:<LocalName>`. A consuming package Binding maps its
+Journal use with `bindingRef(<LocalName>)`. This narrow form is not a generic
+host-provider registration, has no settings or grants, and is not an
+activation target.
+
 The enclosing `effect/call` operation ID is append idempotency. Repeating the
 same operation and request digest returns the recorded Event. A different
 operation ID intentionally creates another Event. Jig commits, in one local
