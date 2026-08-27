@@ -3,8 +3,9 @@
 **Status:** reviewed roadmap correction after the host-runtime retention
 experiment. This record changes implementation priority, not the canonical
 Jig or FLOW architecture. The selected direct-root slice is now complete;
-review 142 records its corrected execution and containment closure. This
-record does not select the succeeding phase.
+review 142 records its corrected execution and containment closure. The next
+private frontier is the one-level deterministic `flow/call` proof selected in
+[review 143](143-deterministic-child-flow-slice.md).
 
 ## 1. Disposition
 
@@ -187,5 +188,7 @@ may freeze only the user/admin plan, apply, run, status, and error subset the
 vertical path actually consumes. A public Runtime Adapter or Sandbox Backend
 SPI requires a second independent mechanism to demonstrate the abstraction.
 
-No later subsystem is removed from the roadmap. Its ordering should be chosen
-after this vertical slice reveals which shared foundation is actually needed.
+No later subsystem is removed from the roadmap. After closure of this slice,
+review 143 selects deterministic child-Flow composition before the broader
+product control plane because it tests Jig's defining orchestration boundary
+without freezing project-opening or transport APIs.
