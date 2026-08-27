@@ -68,6 +68,23 @@ import {
   type PrivateRootFlowCallFact,
   type PrivateRootFlowCallLifecycle,
 } from "./root-flow-call-state.js";
+import {
+  createPrivateJournalEvent,
+  decodePrivateRootJournalAppendAllocation,
+  encodePrivateRootJournalAppendAllocation,
+  normalizePrivateRootJournalAppendAllocation,
+  normalizePrivateRootJournalAppendClosure,
+  privateEmptyHookSelection,
+  privateEmptyHookSelectionDigest,
+  privateJournalEventDigest,
+  privateRootJournalAppendAllocationDigest,
+  privateRootJournalAppendClosureDigest,
+  privateRootJournalEffectTerminalDigest,
+  type PrivateJournalEvent,
+  type PrivateRootJournalAppendAllocation,
+  type PrivateRootJournalAppendReceipt,
+} from "./root-journal-effect-state.js";
+import type { RunHostEffectResult } from "../run/session.js";
 
 export type {
   PrivateRootRunSnapshot,
@@ -76,18 +93,20 @@ export type {
 } from "./root-run-state.js";
 
 const STATE_DIRECTORY = ".jig";
-const DATABASE_NAME = "private-activation-admission-v9.sqlite3";
+const DATABASE_NAME = "private-activation-admission-v10.sqlite3";
 const COORDINATOR_DATABASE_NAME = "private-project-coordinator-v1.sqlite3";
 const LOCK_NAME = "jig.lock";
 const LOCK_STAGE_NAME = "private-activation-jig-lock-v1.stage";
-const SCHEMA_VERSION = 9n;
-const APPLICATION_ID = 0x4a494739n; // JIG9
+const SCHEMA_VERSION = 10n;
+const APPLICATION_ID = 0x4a494741n; // JIGA: schema 10
 const COORDINATOR_SCHEMA_VERSION = 1n;
 const COORDINATOR_APPLICATION_ID = 0x4a494743n; // JIGC
 const BUSY_TIMEOUT_MS = 250;
 const MAX_STORED_BYTES = 16_777_216;
 const MAX_SAFE_REVISION = BigInt(Number.MAX_SAFE_INTEGER);
+const MAX_ROOT_JOURNAL_APPENDS = 65_536n;
 const DIGEST = /^sha256:[0-9a-f]{64}$/;
+const WIRE_ID = /^[A-Za-z0-9][A-Za-z0-9._:/-]*$/;
 
 const CREATE_CANDIDATES = "CREATE TABLE candidates (revision INTEGER PRIMARY KEY CHECK (revision BETWEEN 1 AND 9007199254740991), candidate_digest TEXT NOT NULL, candidate_bytes BLOB NOT NULL CHECK (length(candidate_bytes) BETWEEN 1 AND 16777216), lock_bytes BLOB NOT NULL CHECK (length(lock_bytes) BETWEEN 1 AND 16777216)) STRICT";
 const CREATE_CANDIDATE_HEAD = "CREATE TABLE candidate_head (singleton INTEGER PRIMARY KEY CHECK (singleton = 1), revision INTEGER REFERENCES candidates(revision)) STRICT";
@@ -102,6 +121,12 @@ const CREATE_ROOT_EXECUTION_CLOSURES = "CREATE TABLE root_execution_closures (ru
 const CREATE_ROOT_FLOW_CALLS = "CREATE TABLE root_flow_calls (parent_run_id TEXT PRIMARY KEY REFERENCES root_spawn_intents(run_id), allocation_digest TEXT NOT NULL UNIQUE, allocation_bytes BLOB NOT NULL CHECK (length(allocation_bytes) BETWEEN 1 AND 16777216)) STRICT";
 const CREATE_ROOT_FLOW_CALL_FACTS = "CREATE TABLE root_flow_call_facts (parent_run_id TEXT NOT NULL REFERENCES root_flow_calls(parent_run_id), fact_name TEXT NOT NULL CHECK (fact_name IN ('plan','backing','sandbox','prepared','provisional','fence','release','admitted')), fact_digest TEXT NOT NULL UNIQUE, fact_bytes BLOB NOT NULL CHECK (length(fact_bytes) BETWEEN 1 AND 16777216), PRIMARY KEY (parent_run_id, fact_name)) WITHOUT ROWID, STRICT";
 const CREATE_ROOT_FLOW_CALL_CLOSURES = "CREATE TABLE root_flow_call_closures (parent_run_id TEXT PRIMARY KEY REFERENCES root_flow_calls(parent_run_id), closure_digest TEXT NOT NULL UNIQUE, closure_bytes BLOB NOT NULL CHECK (length(closure_bytes) BETWEEN 1 AND 16777216), UNIQUE (parent_run_id, closure_digest)) STRICT";
+const CREATE_JOURNAL_HEAD = "CREATE TABLE journal_head (singleton INTEGER PRIMARY KEY CHECK (singleton = 1), position INTEGER NOT NULL CHECK (position BETWEEN 0 AND 9007199254740991)) STRICT";
+const CREATE_JOURNAL_EVENTS = "CREATE TABLE journal_events (position INTEGER PRIMARY KEY CHECK (position BETWEEN 1 AND 9007199254740991), event_id TEXT NOT NULL UNIQUE, event_digest TEXT NOT NULL UNIQUE, event_bytes BLOB NOT NULL CHECK (length(event_bytes) BETWEEN 1 AND 16777216)) STRICT";
+const CREATE_ROOT_JOURNAL_APPENDS = "CREATE TABLE root_journal_appends (parent_run_id TEXT NOT NULL REFERENCES root_spawn_intents(run_id), operation_id TEXT NOT NULL, event_position INTEGER NOT NULL UNIQUE REFERENCES journal_events(position), allocation_digest TEXT NOT NULL UNIQUE, allocation_bytes BLOB NOT NULL CHECK (length(allocation_bytes) BETWEEN 1 AND 16777216), PRIMARY KEY (parent_run_id, operation_id)) WITHOUT ROWID, STRICT";
+const CREATE_ROOT_JOURNAL_TERMINALS = "CREATE TABLE root_journal_terminals (parent_run_id TEXT NOT NULL, operation_id TEXT NOT NULL, terminal_digest TEXT NOT NULL UNIQUE, terminal_bytes BLOB NOT NULL CHECK (length(terminal_bytes) BETWEEN 1 AND 16777216), PRIMARY KEY (parent_run_id, operation_id), FOREIGN KEY (parent_run_id, operation_id) REFERENCES root_journal_appends(parent_run_id, operation_id)) WITHOUT ROWID, STRICT";
+const CREATE_ROOT_JOURNAL_HOOK_SELECTIONS = "CREATE TABLE root_journal_hook_selections (parent_run_id TEXT NOT NULL, operation_id TEXT NOT NULL, selection_digest TEXT NOT NULL UNIQUE, selection_bytes BLOB NOT NULL CHECK (length(selection_bytes) BETWEEN 1 AND 16777216), PRIMARY KEY (parent_run_id, operation_id), FOREIGN KEY (parent_run_id, operation_id) REFERENCES root_journal_appends(parent_run_id, operation_id)) WITHOUT ROWID, STRICT";
+const CREATE_ROOT_JOURNAL_CLOSURES = "CREATE TABLE root_journal_closures (parent_run_id TEXT NOT NULL, operation_id TEXT NOT NULL, closure_digest TEXT NOT NULL UNIQUE, closure_bytes BLOB NOT NULL CHECK (length(closure_bytes) BETWEEN 1 AND 16777216), PRIMARY KEY (parent_run_id, operation_id), FOREIGN KEY (parent_run_id, operation_id) REFERENCES root_journal_appends(parent_run_id, operation_id)) WITHOUT ROWID, STRICT";
 const CREATE_ROOT_TERMINALS = "CREATE TABLE root_terminals (run_id TEXT PRIMARY KEY REFERENCES root_runs(run_id), execution_closure_digest TEXT, terminal_digest TEXT NOT NULL, terminal_bytes BLOB NOT NULL CHECK (length(terminal_bytes) BETWEEN 1 AND 16777216), FOREIGN KEY (run_id, execution_closure_digest) REFERENCES root_execution_closures(run_id, closure_digest)) STRICT";
 const CREATE_COORDINATOR_LOCK = "CREATE TABLE coordinator_lock (singleton INTEGER PRIMARY KEY CHECK (singleton = 1)) STRICT";
 const EXPECTED_SCHEMA = Object.freeze([
@@ -110,12 +135,18 @@ const EXPECTED_SCHEMA = Object.freeze([
   Object.freeze({ type: "table", name: "candidate_head", table: "candidate_head", sql: CREATE_CANDIDATE_HEAD }),
   Object.freeze({ type: "table", name: "candidates", table: "candidates", sql: CREATE_CANDIDATES }),
   Object.freeze({ type: "table", name: "coordinator_head", table: "coordinator_head", sql: CREATE_COORDINATOR_HEAD }),
+  Object.freeze({ type: "table", name: "journal_events", table: "journal_events", sql: CREATE_JOURNAL_EVENTS }),
+  Object.freeze({ type: "table", name: "journal_head", table: "journal_head", sql: CREATE_JOURNAL_HEAD }),
   Object.freeze({ type: "table", name: "review_plans", table: "review_plans", sql: CREATE_REVIEW_PLANS }),
   Object.freeze({ type: "table", name: "root_execution_closures", table: "root_execution_closures", sql: CREATE_ROOT_EXECUTION_CLOSURES }),
   Object.freeze({ type: "table", name: "root_execution_lifecycles", table: "root_execution_lifecycles", sql: CREATE_ROOT_EXECUTION_LIFECYCLES }),
   Object.freeze({ type: "table", name: "root_flow_call_closures", table: "root_flow_call_closures", sql: CREATE_ROOT_FLOW_CALL_CLOSURES }),
   Object.freeze({ type: "table", name: "root_flow_call_facts", table: "root_flow_call_facts", sql: CREATE_ROOT_FLOW_CALL_FACTS }),
   Object.freeze({ type: "table", name: "root_flow_calls", table: "root_flow_calls", sql: CREATE_ROOT_FLOW_CALLS }),
+  Object.freeze({ type: "table", name: "root_journal_appends", table: "root_journal_appends", sql: CREATE_ROOT_JOURNAL_APPENDS }),
+  Object.freeze({ type: "table", name: "root_journal_closures", table: "root_journal_closures", sql: CREATE_ROOT_JOURNAL_CLOSURES }),
+  Object.freeze({ type: "table", name: "root_journal_hook_selections", table: "root_journal_hook_selections", sql: CREATE_ROOT_JOURNAL_HOOK_SELECTIONS }),
+  Object.freeze({ type: "table", name: "root_journal_terminals", table: "root_journal_terminals", sql: CREATE_ROOT_JOURNAL_TERMINALS }),
   Object.freeze({ type: "table", name: "root_runs", table: "root_runs", sql: CREATE_ROOT_RUNS }),
   Object.freeze({ type: "table", name: "root_spawn_intents", table: "root_spawn_intents", sql: CREATE_ROOT_SPAWN_INTENTS }),
   Object.freeze({ type: "table", name: "root_terminals", table: "root_terminals", sql: CREATE_ROOT_TERMINALS }),
@@ -287,6 +318,47 @@ interface RootFlowCallFactRow {
 
 interface RootFlowCallClosureRow {
   readonly parent_run_id: string;
+  readonly closure_digest: string;
+  readonly closure_bytes: Uint8Array;
+}
+
+interface JournalHeadRow {
+  readonly singleton: bigint;
+  readonly position: bigint;
+}
+
+interface RootJournalAppendRow {
+  readonly parent_run_id: string;
+  readonly operation_id: string;
+  readonly event_position: bigint;
+  readonly allocation_digest: string;
+  readonly allocation_bytes: Uint8Array;
+}
+
+interface JournalEventRow {
+  readonly position: bigint;
+  readonly event_id: string;
+  readonly event_digest: string;
+  readonly event_bytes: Uint8Array;
+}
+
+interface RootJournalTerminalRow {
+  readonly parent_run_id: string;
+  readonly operation_id: string;
+  readonly terminal_digest: string;
+  readonly terminal_bytes: Uint8Array;
+}
+
+interface RootJournalHookSelectionRow {
+  readonly parent_run_id: string;
+  readonly operation_id: string;
+  readonly selection_digest: string;
+  readonly selection_bytes: Uint8Array;
+}
+
+interface RootJournalClosureRow {
+  readonly parent_run_id: string;
+  readonly operation_id: string;
   readonly closure_digest: string;
   readonly closure_bytes: Uint8Array;
 }
@@ -1064,6 +1136,214 @@ export async function closePrivateRootFlowCall(input: {
   }
 }
 
+/**
+ * Commit one canonical Journal append operation admitted beneath a root Run. The
+ * Event, effect result, empty Hook selection, and closure become visible in
+ * the same transaction; an exact retry returns the original receipt.
+ */
+export async function appendPrivateRootJournalEvent(input: {
+  readonly coordinator: PrivateProjectCoordinator;
+  readonly projectRoot: string;
+  readonly allocation: PrivateRootJournalAppendAllocation;
+  readonly committedAtUnixMs: number;
+}): Promise<PrivateRootJournalAppendReceipt> {
+  const coordinator = requirePrivateProjectCoordinator(input.coordinator);
+  await coordinator.verify();
+  const allocation = normalizePrivateRootJournalAppendAllocation(input.allocation);
+  const allocationBytes = encodePrivateRootJournalAppendAllocation(allocation);
+  const allocationDigest = privateRootJournalAppendAllocationDigest(allocation);
+  requireStoredSize(allocationBytes, "root Journal append allocation");
+  const owner = await openStateOwner(input.projectRoot, false);
+  let failure: unknown;
+  try {
+    requireCoordinatorRoot(coordinator, owner.root);
+    const receipt = await immediate(owner, async () => {
+      await coordinator.verify();
+      const runRow = requireRootRunRow(owner.database, allocation.parentRunId);
+      const run = loadRootRunSnapshot(owner.database, runRow, owner.root);
+      if (run.state === "terminal") invalid("RUN_ALREADY_TERMINAL", "root Run is already terminal");
+      if (run.coordinatorEpoch !== coordinator.epoch || allocation.coordinatorEpoch !== coordinator.epoch) {
+        invalid("RUN_COORDINATOR_STALE", "only the current root coordinator may append a Journal Event");
+      }
+      if (findRootSpawn(owner.database, allocation.parentRunId) === null) {
+        corrupt("root Journal append parent has no spawn intent");
+      }
+      requireRootJournalAppendCandidate(owner.database, runRow, allocation);
+      const prior = findRootJournalAppend(owner.database, allocation.parentRunId, allocation.call.operationId);
+      if (prior !== null) {
+        if (prior.allocation_digest !== allocationDigest ||
+            !sameBytes(prior.allocation_bytes, allocationBytes)) {
+          invalid("OPERATION_CONFLICT", "Journal operation ID was reused with different append parameters");
+        }
+        return loadRootJournalAppendReceipt(owner.database, prior, runRow);
+      }
+      const countQuery = statement<{ readonly count: bigint }>(owner.database,
+        "SELECT count(*) AS count FROM root_journal_appends WHERE parent_run_id = ?1",
+      );
+      let appendCount: bigint | undefined;
+      try { appendCount = countQuery.get(allocation.parentRunId)?.count; }
+      finally { countQuery.finalize(); }
+      if (appendCount === undefined) corrupt("root Journal append count is invalid");
+      if (appendCount >= MAX_ROOT_JOURNAL_APPENDS) {
+        invalid("RESOURCE_EXHAUSTED", "root Run exhausted its Journal operation limit");
+      }
+
+      const head = readJournalHead(owner.database);
+      if (head.position >= MAX_SAFE_REVISION) {
+        invalid("RESOURCE_EXHAUSTED", "Journal position space is exhausted");
+      }
+      const position = safeRevision(head.position + 1n);
+      const event = createPrivateJournalEvent({
+        allocation,
+        journalPosition: position,
+        committedAtUnixMs: input.committedAtUnixMs,
+      });
+      const eventBytes = canonicalJson(event as unknown as JsonValue);
+      const eventDigest = privateJournalEventDigest(event);
+      const terminal: RunHostEffectResult = Object.freeze({ value: event as unknown as JsonValue });
+      const terminalBytes = canonicalJson(terminal as unknown as JsonValue);
+      const terminalDigest = privateRootJournalEffectTerminalDigest(terminal);
+      const selection = privateEmptyHookSelection(event);
+      const selectionBytes = canonicalJson(selection);
+      const selectionDigest = privateEmptyHookSelectionDigest(event);
+      const closure = normalizePrivateRootJournalAppendClosure({
+        kind: "private-root-journal-append-closure/1",
+        parentRunId: allocation.parentRunId,
+        allocationDigest,
+        eventDigest,
+        terminalDigest,
+        hookSelectionDigest: selectionDigest,
+      });
+      const closureBytes = canonicalJson(closure as unknown as JsonValue);
+      const closureDigest = privateRootJournalAppendClosureDigest(closure);
+      for (const [bytes, label] of [
+        [eventBytes, "Journal Event"],
+        [terminalBytes, "root Journal effect terminal"],
+        [selectionBytes, "root Journal Hook selection"],
+        [closureBytes, "root Journal append closure"],
+      ] as const) requireStoredSize(bytes, label);
+
+      runFinalized(owner.database,
+        "INSERT INTO journal_events(position, event_id, event_digest, event_bytes) VALUES (?1, ?2, ?3, ?4)",
+        [position, event.eventId, eventDigest, eventBytes],
+      );
+      runFinalized(owner.database,
+        "INSERT INTO root_journal_appends(parent_run_id, operation_id, event_position, allocation_digest, allocation_bytes) VALUES (?1, ?2, ?3, ?4, ?5)",
+        [allocation.parentRunId, allocation.call.operationId, position, allocationDigest, allocationBytes],
+      );
+      runFinalized(owner.database,
+        "INSERT INTO root_journal_terminals(parent_run_id, operation_id, terminal_digest, terminal_bytes) VALUES (?1, ?2, ?3, ?4)",
+        [allocation.parentRunId, allocation.call.operationId, terminalDigest, terminalBytes],
+      );
+      runFinalized(owner.database,
+        "INSERT INTO root_journal_hook_selections(parent_run_id, operation_id, selection_digest, selection_bytes) VALUES (?1, ?2, ?3, ?4)",
+        [allocation.parentRunId, allocation.call.operationId, selectionDigest, selectionBytes],
+      );
+      runFinalized(owner.database,
+        "INSERT INTO root_journal_closures(parent_run_id, operation_id, closure_digest, closure_bytes) VALUES (?1, ?2, ?3, ?4)",
+        [allocation.parentRunId, allocation.call.operationId, closureDigest, closureBytes],
+      );
+      const advanced = runFinalized(owner.database,
+        "UPDATE journal_head SET position = ?1 WHERE singleton = 1 AND position = ?2",
+        [position, head.position],
+      );
+      if (advanced.changes !== 1) corrupt("Journal head did not advance exactly once");
+      return loadRootJournalAppendReceipt(
+        owner.database,
+        requireRootJournalAppend(owner.database, allocation.parentRunId, allocation.call.operationId),
+        runRow,
+      );
+    });
+    await owner.finish();
+    return receipt;
+  } catch (error) {
+    failure = error;
+    throw error;
+  } finally {
+    await disposeOperation(owner, undefined, failure);
+  }
+}
+
+/** Reopen the optional immutable Journal append receipt beneath one root Run. */
+export async function loadPrivateRootJournalAppend(input: {
+  readonly coordinator: PrivateProjectCoordinator;
+  readonly projectRoot: string;
+  readonly parentRunId: string;
+  readonly operationId: string;
+}): Promise<PrivateRootJournalAppendReceipt | undefined> {
+  const coordinator = requirePrivateProjectCoordinator(input.coordinator);
+  await coordinator.verify();
+  requireDigest(input.parentRunId, "root Journal append parent Run");
+  requireWireId(input.operationId, "root Journal operation ID");
+  const owner = await openStateOwner(input.projectRoot, false);
+  let failure: unknown;
+  try {
+    requireCoordinatorRoot(coordinator, owner.root);
+    const receipt = await immediate(owner, async () => {
+      await coordinator.verify();
+      const runRow = requireRootRunRow(owner.database, input.parentRunId);
+      if (runRow.coordinator_epoch > BigInt(coordinator.epoch)) {
+        corrupt("root Journal append belongs to a future coordinator epoch");
+      }
+      const row = findRootJournalAppend(owner.database, input.parentRunId, input.operationId);
+      return row === null ? undefined : loadRootJournalAppendReceipt(owner.database, row, runRow);
+    });
+    await owner.finish();
+    return receipt;
+  } catch (error) {
+    failure = error;
+    throw error;
+  } finally {
+    await disposeOperation(owner, undefined, failure);
+  }
+}
+
+/** List only fully closed Journal operation receipts for one parent Run. */
+export async function listPrivateRootJournalAppends(input: {
+  readonly coordinator: PrivateProjectCoordinator;
+  readonly projectRoot: string;
+  readonly parentRunId: string;
+}): Promise<readonly PrivateRootJournalAppendReceipt[]> {
+  const coordinator = requirePrivateProjectCoordinator(input.coordinator);
+  await coordinator.verify();
+  requireDigest(input.parentRunId, "root Journal append parent Run");
+  const owner = await openStateOwner(input.projectRoot, false);
+  let failure: unknown;
+  try {
+    requireCoordinatorRoot(coordinator, owner.root);
+    const receipts = await immediate(owner, async () => {
+      await coordinator.verify();
+      const runRow = requireRootRunRow(owner.database, input.parentRunId);
+      if (runRow.coordinator_epoch > BigInt(coordinator.epoch)) {
+        corrupt("root Journal appends belong to a future coordinator epoch");
+      }
+      const query = statement<RootJournalAppendRow>(owner.database, [
+        "SELECT parent_run_id, operation_id, event_position, allocation_digest, allocation_bytes",
+        "FROM root_journal_appends WHERE parent_run_id = ?1 ORDER BY event_position",
+      ].join(" "));
+      let rows: readonly RootJournalAppendRow[];
+      try { rows = query.all(input.parentRunId); }
+      finally { query.finalize(); }
+      if (BigInt(rows.length) > MAX_ROOT_JOURNAL_APPENDS) corrupt("root Run exceeds its Journal operation limit");
+      return Object.freeze(rows.map((row) => loadRootJournalAppendReceipt(
+        owner.database,
+        Object.freeze({
+          ...row,
+          allocation_bytes: copiedBlob(row.allocation_bytes, "stored root Journal append allocation"),
+        }),
+        runRow,
+      )));
+    });
+    await owner.finish();
+    return receipts;
+  } catch (error) {
+    failure = error;
+    throw error;
+  } finally {
+    await disposeOperation(owner, undefined, failure);
+  }
+}
+
 /** List unresolved spawn work without granting execution authority. */
 export async function listPrivateRootExecutionWork(input: {
   readonly coordinator: PrivateProjectCoordinator;
@@ -1663,6 +1943,231 @@ function loadOptionalExecutionFact(
     envelope = Object.freeze({ ...envelope, value: terminal as unknown as JsonValue });
   }
   return { [checkpoint]: Object.freeze({ digest, value: envelope.value }) };
+}
+
+function findRootJournalAppend(
+  database: SqliteDatabase,
+  parentRunId: string,
+  operationId: string,
+): RootJournalAppendRow | null {
+  const query = statement<RootJournalAppendRow>(database, [
+    "SELECT parent_run_id, operation_id, event_position, allocation_digest, allocation_bytes",
+    "FROM root_journal_appends WHERE parent_run_id = ?1 AND operation_id = ?2",
+  ].join(" "));
+  try {
+    const row = query.get(parentRunId, operationId);
+    return row === null ? null : Object.freeze({
+      parent_run_id: row.parent_run_id,
+      operation_id: row.operation_id,
+      event_position: row.event_position,
+      allocation_digest: row.allocation_digest,
+      allocation_bytes: copiedBlob(row.allocation_bytes, "stored root Journal append allocation"),
+    });
+  } finally { query.finalize(); }
+}
+
+function requireRootJournalAppend(
+  database: SqliteDatabase,
+  parentRunId: string,
+  operationId: string,
+): RootJournalAppendRow {
+  const row = findRootJournalAppend(database, parentRunId, operationId);
+  if (row === null) corrupt("root Run has no Journal append");
+  return row;
+}
+
+function requireJournalEvent(database: SqliteDatabase, position: bigint): JournalEventRow {
+  const query = statement<JournalEventRow>(database, [
+    "SELECT position, event_id, event_digest, event_bytes",
+    "FROM journal_events WHERE position = ?1",
+  ].join(" "));
+  try {
+    const row = query.get(position);
+    if (row === null) corrupt("root Journal append has no Event");
+    return Object.freeze({
+      position: row.position,
+      event_id: row.event_id,
+      event_digest: row.event_digest,
+      event_bytes: copiedBlob(row.event_bytes, "stored Journal Event"),
+    });
+  } finally { query.finalize(); }
+}
+
+function requireRootJournalTerminal(
+  database: SqliteDatabase,
+  parentRunId: string,
+  operationId: string,
+): RootJournalTerminalRow {
+  const query = statement<RootJournalTerminalRow>(database, [
+    "SELECT parent_run_id, operation_id, terminal_digest, terminal_bytes",
+    "FROM root_journal_terminals WHERE parent_run_id = ?1 AND operation_id = ?2",
+  ].join(" "));
+  try {
+    const row = query.get(parentRunId, operationId);
+    if (row === null) corrupt("root Journal append has no effect terminal");
+    return Object.freeze({
+      parent_run_id: row.parent_run_id,
+      operation_id: row.operation_id,
+      terminal_digest: row.terminal_digest,
+      terminal_bytes: copiedBlob(row.terminal_bytes, "stored root Journal effect terminal"),
+    });
+  } finally { query.finalize(); }
+}
+
+function requireRootJournalHookSelection(
+  database: SqliteDatabase,
+  parentRunId: string,
+  operationId: string,
+): RootJournalHookSelectionRow {
+  const query = statement<RootJournalHookSelectionRow>(database, [
+    "SELECT parent_run_id, operation_id, selection_digest, selection_bytes",
+    "FROM root_journal_hook_selections WHERE parent_run_id = ?1 AND operation_id = ?2",
+  ].join(" "));
+  try {
+    const row = query.get(parentRunId, operationId);
+    if (row === null) corrupt("root Journal append has no Hook-selection completion");
+    return Object.freeze({
+      parent_run_id: row.parent_run_id,
+      operation_id: row.operation_id,
+      selection_digest: row.selection_digest,
+      selection_bytes: copiedBlob(row.selection_bytes, "stored root Journal Hook selection"),
+    });
+  } finally { query.finalize(); }
+}
+
+function requireRootJournalClosure(
+  database: SqliteDatabase,
+  parentRunId: string,
+  operationId: string,
+): RootJournalClosureRow {
+  const query = statement<RootJournalClosureRow>(database, [
+    "SELECT parent_run_id, operation_id, closure_digest, closure_bytes",
+    "FROM root_journal_closures WHERE parent_run_id = ?1 AND operation_id = ?2",
+  ].join(" "));
+  try {
+    const row = query.get(parentRunId, operationId);
+    if (row === null) corrupt("root Journal append has no closure");
+    return Object.freeze({
+      parent_run_id: row.parent_run_id,
+      operation_id: row.operation_id,
+      closure_digest: row.closure_digest,
+      closure_bytes: copiedBlob(row.closure_bytes, "stored root Journal append closure"),
+    });
+  } finally { query.finalize(); }
+}
+
+function loadRootJournalAppendReceipt(
+  database: SqliteDatabase,
+  row: RootJournalAppendRow,
+  run: RootRunRow,
+): PrivateRootJournalAppendReceipt {
+  if (row.parent_run_id !== run.run_id || row.event_position < 1n || row.event_position > MAX_SAFE_REVISION) {
+    corrupt("stored root Journal append names invalid parent evidence");
+  }
+  requireDigest(row.allocation_digest, "stored root Journal append allocation");
+  const allocationBytes = copiedBlob(row.allocation_bytes, "stored root Journal append allocation");
+  let allocation: PrivateRootJournalAppendAllocation;
+  try { allocation = decodePrivateRootJournalAppendAllocation(allocationBytes); }
+  catch { corrupt("stored root Journal append allocation is invalid"); }
+  if (!sameBytes(allocationBytes, encodePrivateRootJournalAppendAllocation(allocation)) ||
+      privateRootJournalAppendAllocationDigest(allocation) !== row.allocation_digest ||
+      allocation.parentRunId !== run.run_id ||
+      allocation.coordinatorEpoch !== safeRevision(run.coordinator_epoch) ||
+      allocation.call.operationId !== row.operation_id) {
+    corrupt("stored root Journal append allocation differs from its durable identity");
+  }
+
+  const eventRow = requireJournalEvent(database, row.event_position);
+  requireDigest(eventRow.event_id, "stored Journal Event ID");
+  requireDigest(eventRow.event_digest, "stored Journal Event");
+  let decodedEvent: JsonValue;
+  try { decodedEvent = decodeJson1(eventRow.event_bytes); }
+  catch { corrupt("stored Journal Event is invalid"); }
+  if (decodedEvent === null || typeof decodedEvent !== "object" || Array.isArray(decodedEvent) ||
+      typeof (decodedEvent as Readonly<Record<string, JsonValue>>).committedAtUnixMs !== "number") {
+    corrupt("stored Journal Event has no valid commit time");
+  }
+  const eventObject = decodedEvent as Readonly<Record<string, JsonValue>>;
+  let event: PrivateJournalEvent;
+  try {
+    event = createPrivateJournalEvent({
+      allocation,
+      journalPosition: safeRevision(eventRow.position),
+      committedAtUnixMs: eventObject.committedAtUnixMs as number,
+    });
+  } catch { corrupt("stored Journal Event cannot be reproduced from its allocation"); }
+  if (eventRow.position !== row.event_position || eventRow.event_id !== event.eventId ||
+      eventRow.event_digest !== privateJournalEventDigest(event) ||
+      !sameBytes(eventRow.event_bytes, canonicalJson(event as unknown as JsonValue))) {
+    corrupt("stored Journal Event differs from its durable identity");
+  }
+
+  const terminal: RunHostEffectResult = Object.freeze({ value: event as unknown as JsonValue });
+  const terminalRow = requireRootJournalTerminal(database, run.run_id, row.operation_id);
+  const terminalDigest = privateRootJournalEffectTerminalDigest(terminal);
+  if (terminalRow.parent_run_id !== run.run_id || terminalRow.operation_id !== row.operation_id ||
+      terminalRow.terminal_digest !== terminalDigest ||
+      !sameBytes(terminalRow.terminal_bytes, canonicalJson(terminal as unknown as JsonValue))) {
+    corrupt("stored root Journal effect terminal differs from its durable identity");
+  }
+  const selection = privateEmptyHookSelection(event);
+  const selectionRow = requireRootJournalHookSelection(database, run.run_id, row.operation_id);
+  const hookSelectionDigest = privateEmptyHookSelectionDigest(event);
+  if (selectionRow.parent_run_id !== run.run_id || selectionRow.operation_id !== row.operation_id ||
+      selectionRow.selection_digest !== hookSelectionDigest ||
+      !sameBytes(selectionRow.selection_bytes, canonicalJson(selection))) {
+    corrupt("stored root Journal Hook selection differs from its durable identity");
+  }
+  const closure = normalizePrivateRootJournalAppendClosure({
+    kind: "private-root-journal-append-closure/1",
+    parentRunId: run.run_id,
+    allocationDigest: row.allocation_digest,
+    eventDigest: eventRow.event_digest,
+    terminalDigest,
+    hookSelectionDigest,
+  });
+  const closureRow = requireRootJournalClosure(database, run.run_id, row.operation_id);
+  const closureDigest = privateRootJournalAppendClosureDigest(closure);
+  if (closureRow.parent_run_id !== run.run_id || closureRow.operation_id !== row.operation_id ||
+      closureRow.closure_digest !== closureDigest ||
+      !sameBytes(closureRow.closure_bytes, canonicalJson(closure as unknown as JsonValue))) {
+    corrupt("stored root Journal append closure differs from its durable identity");
+  }
+  return Object.freeze({
+    allocation,
+    allocationDigest: row.allocation_digest,
+    event,
+    eventDigest: eventRow.event_digest,
+    terminal,
+    terminalDigest,
+    hookSelectionDigest,
+    closureDigest,
+  });
+}
+
+function requireRootJournalAppendCandidate(
+  database: SqliteDatabase,
+  run: RootRunRow,
+  allocation: PrivateRootJournalAppendAllocation,
+): void {
+  if (allocation.parentRunId !== run.run_id ||
+      allocation.coordinatorEpoch !== safeRevision(run.coordinator_epoch)) {
+    corrupt("root Journal append allocation differs from its parent Run");
+  }
+  const request = decodePrivateRootSubmissionRequest(run.request_bytes);
+  const candidate = loadCandidateRow(requireCandidateRow(database, run.candidate_revision));
+  const parent = findPrivateActivationCandidateTarget(candidate, request.target);
+  const slot = parent?.request.slots[allocation.call.slot];
+  if (parent === undefined || slot?.kind !== "capability" ||
+      slot.provider.binding !== allocation.publisherBinding || slot.provider.export !== "journal") {
+    invalid("UNAVAILABLE", "root Journal effect slot does not select the admitted publisher");
+  }
+  const publisher = candidate.lock.journalPublishers[allocation.publisherBinding];
+  if (publisher === undefined || publisher.source !== `binding:${allocation.publisherBinding}` ||
+      publisher.eventTypes.length !== allocation.eventTypes.length ||
+      publisher.eventTypes.some((value, index) => value !== allocation.eventTypes[index])) {
+    invalid("UNAVAILABLE", "root Journal publisher authority differs from the admitted generation");
+  }
 }
 
 function findRootFlowCall(database: SqliteDatabase, parentRunId: string): RootFlowCallRow | null {
@@ -2831,10 +3336,17 @@ function initializeOrVerifySchema(database: SqliteDatabase, root: PrivateProject
       database.exec(CREATE_ROOT_FLOW_CALLS);
       database.exec(CREATE_ROOT_FLOW_CALL_FACTS);
       database.exec(CREATE_ROOT_FLOW_CALL_CLOSURES);
+      database.exec(CREATE_JOURNAL_HEAD);
+      database.exec(CREATE_JOURNAL_EVENTS);
+      database.exec(CREATE_ROOT_JOURNAL_APPENDS);
+      database.exec(CREATE_ROOT_JOURNAL_TERMINALS);
+      database.exec(CREATE_ROOT_JOURNAL_HOOK_SELECTIONS);
+      database.exec(CREATE_ROOT_JOURNAL_CLOSURES);
       database.exec(CREATE_ROOT_TERMINALS);
       database.exec("INSERT INTO candidate_head(singleton, revision) VALUES (1, NULL)");
       database.exec("INSERT INTO admission_head(singleton, revision) VALUES (1, NULL)");
       database.exec("INSERT INTO coordinator_head(singleton, epoch) VALUES (1, 0)");
+      database.exec("INSERT INTO journal_head(singleton, position) VALUES (1, 0)");
       database.exec(`PRAGMA application_id=${APPLICATION_ID}`);
       database.exec(`PRAGMA user_version=${SCHEMA_VERSION}`);
     } else if (version !== SCHEMA_VERSION || application !== APPLICATION_ID) {
@@ -2850,13 +3362,14 @@ function verifySchema(database: SqliteDatabase, root: PrivateProjectRoot): void 
   if (actual.length !== EXPECTED_SCHEMA.length || actual.some((row, index) => {
     const expected = EXPECTED_SCHEMA[index]!;
     return row.type !== expected.type || row.name !== expected.name || row.table !== expected.table || row.sql !== expected.sql;
-  })) corrupt("private admission database schema differs from version 7");
+  })) corrupt("private admission database schema differs from version 10");
   if (statement<Record<string, unknown>>(database, "PRAGMA foreign_key_check").all().length !== 0) {
     corrupt("private admission database has broken foreign keys");
   }
   readCandidateHead(database, root);
   readAdmissionHead(database, root);
   readCoordinatorEpoch(database);
+  readJournalHead(database);
 }
 
 function schemaRows(database: SqliteDatabase): readonly { readonly type: string; readonly name: string; readonly table: string; readonly sql: string }[] {
@@ -2945,6 +3458,34 @@ function readCoordinatorEpoch(database: SqliteDatabase): bigint {
     corrupt("coordinator head singleton is invalid");
   }
   return rows[0]!.epoch;
+}
+
+function readJournalHead(database: SqliteDatabase): JournalHeadRow {
+  const headQuery = statement<JournalHeadRow>(database, "SELECT singleton, position FROM journal_head");
+  let rows: readonly JournalHeadRow[];
+  try { rows = headQuery.all(); }
+  finally { headQuery.finalize(); }
+  if (rows.length !== 1 || rows[0]!.singleton !== 1n || rows[0]!.position < 0n ||
+      rows[0]!.position > MAX_SAFE_REVISION) {
+    corrupt("Journal head singleton is invalid");
+  }
+  const head = rows[0]!;
+  const aggregateQuery = statement<CandidateCountRow>(database,
+    "SELECT count(*) AS count, min(position) AS minimum, max(position) AS maximum FROM journal_events",
+  );
+  let aggregate: CandidateCountRow | null;
+  try { aggregate = aggregateQuery.get(); }
+  finally { aggregateQuery.finalize(); }
+  if (aggregate === null) corrupt("Journal position aggregate is invalid");
+  if (head.position === 0n) {
+    if (aggregate.count !== 0n || aggregate.minimum !== null || aggregate.maximum !== null) {
+      corrupt("empty Journal has persisted Events");
+    }
+  } else if (aggregate.count !== head.position || aggregate.minimum !== 1n ||
+      aggregate.maximum !== head.position) {
+    corrupt("Journal positions are not one contiguous monotonic head");
+  }
+  return head;
 }
 
 function requireCandidateRow(database: SqliteDatabase, revision: bigint): CandidateRow {
@@ -3588,6 +4129,12 @@ function copiedOptionalBlob(value: unknown, label: string): Uint8Array | null {
 
 function requireDigest(value: unknown, label: string): asserts value is string {
   if (typeof value !== "string" || !DIGEST.test(value)) throw new TypeError(`${label} digest must be sha256: followed by 64 lowercase hexadecimal digits`);
+}
+
+function requireWireId(value: unknown, label: string): asserts value is string {
+  if (typeof value !== "string" || value.length > 128 || !WIRE_ID.test(value)) {
+    throw new TypeError(`${label} is invalid`);
+  }
 }
 
 function requireLockMode(value: unknown): asserts value is "update" | "locked" {

@@ -27,6 +27,7 @@ import {
 } from "../src/internal/project-local-lock.js";
 import {
   allocatePrivateRootFlowCall,
+  appendPrivateRootJournalEvent,
   applyPrivateActivationReviewPlan,
   closePrivateRootFlowCall,
   closePrivateRootExecution,
@@ -35,8 +36,10 @@ import {
   loadPrivateActiveActivation,
   loadPrivateActivationReviewPlan,
   loadPrivateRootRun,
+  loadPrivateRootJournalAppend,
   loadPrivateRootFlowCall,
   listPrivateRootExecutionWork,
+  listPrivateRootJournalAppends,
   openPrivateProjectCoordinator,
   reacquirePrivateRootExecutionWork,
   recordPrivateRootExecutionCheckpoint,
@@ -47,6 +50,7 @@ import {
   type PrivateRootRunTerminal,
 } from "../src/internal/activation-admission-store.js";
 import { normalizePrivateRootFlowCallAllocation } from "../src/internal/root-flow-call-state.js";
+import { normalizePrivateRootJournalAppendAllocation } from "../src/internal/root-journal-effect-state.js";
 import {
   decodePrivateActivationCandidate,
   encodePrivateActivationCandidate,
@@ -72,6 +76,12 @@ const CREATE_ROOT_EXECUTION_CLOSURES = "CREATE TABLE root_execution_closures (ru
 const CREATE_ROOT_FLOW_CALLS = "CREATE TABLE root_flow_calls (parent_run_id TEXT PRIMARY KEY REFERENCES root_spawn_intents(run_id), allocation_digest TEXT NOT NULL UNIQUE, allocation_bytes BLOB NOT NULL CHECK (length(allocation_bytes) BETWEEN 1 AND 16777216)) STRICT";
 const CREATE_ROOT_FLOW_CALL_FACTS = "CREATE TABLE root_flow_call_facts (parent_run_id TEXT NOT NULL REFERENCES root_flow_calls(parent_run_id), fact_name TEXT NOT NULL CHECK (fact_name IN ('plan','backing','sandbox','prepared','provisional','fence','release','admitted')), fact_digest TEXT NOT NULL UNIQUE, fact_bytes BLOB NOT NULL CHECK (length(fact_bytes) BETWEEN 1 AND 16777216), PRIMARY KEY (parent_run_id, fact_name)) WITHOUT ROWID, STRICT";
 const CREATE_ROOT_FLOW_CALL_CLOSURES = "CREATE TABLE root_flow_call_closures (parent_run_id TEXT PRIMARY KEY REFERENCES root_flow_calls(parent_run_id), closure_digest TEXT NOT NULL UNIQUE, closure_bytes BLOB NOT NULL CHECK (length(closure_bytes) BETWEEN 1 AND 16777216), UNIQUE (parent_run_id, closure_digest)) STRICT";
+const CREATE_JOURNAL_HEAD = "CREATE TABLE journal_head (singleton INTEGER PRIMARY KEY CHECK (singleton = 1), position INTEGER NOT NULL CHECK (position BETWEEN 0 AND 9007199254740991)) STRICT";
+const CREATE_JOURNAL_EVENTS = "CREATE TABLE journal_events (position INTEGER PRIMARY KEY CHECK (position BETWEEN 1 AND 9007199254740991), event_id TEXT NOT NULL UNIQUE, event_digest TEXT NOT NULL UNIQUE, event_bytes BLOB NOT NULL CHECK (length(event_bytes) BETWEEN 1 AND 16777216)) STRICT";
+const CREATE_ROOT_JOURNAL_APPENDS = "CREATE TABLE root_journal_appends (parent_run_id TEXT NOT NULL REFERENCES root_spawn_intents(run_id), operation_id TEXT NOT NULL, event_position INTEGER NOT NULL UNIQUE REFERENCES journal_events(position), allocation_digest TEXT NOT NULL UNIQUE, allocation_bytes BLOB NOT NULL CHECK (length(allocation_bytes) BETWEEN 1 AND 16777216), PRIMARY KEY (parent_run_id, operation_id)) WITHOUT ROWID, STRICT";
+const CREATE_ROOT_JOURNAL_TERMINALS = "CREATE TABLE root_journal_terminals (parent_run_id TEXT NOT NULL, operation_id TEXT NOT NULL, terminal_digest TEXT NOT NULL UNIQUE, terminal_bytes BLOB NOT NULL CHECK (length(terminal_bytes) BETWEEN 1 AND 16777216), PRIMARY KEY (parent_run_id, operation_id), FOREIGN KEY (parent_run_id, operation_id) REFERENCES root_journal_appends(parent_run_id, operation_id)) WITHOUT ROWID, STRICT";
+const CREATE_ROOT_JOURNAL_HOOK_SELECTIONS = "CREATE TABLE root_journal_hook_selections (parent_run_id TEXT NOT NULL, operation_id TEXT NOT NULL, selection_digest TEXT NOT NULL UNIQUE, selection_bytes BLOB NOT NULL CHECK (length(selection_bytes) BETWEEN 1 AND 16777216), PRIMARY KEY (parent_run_id, operation_id), FOREIGN KEY (parent_run_id, operation_id) REFERENCES root_journal_appends(parent_run_id, operation_id)) WITHOUT ROWID, STRICT";
+const CREATE_ROOT_JOURNAL_CLOSURES = "CREATE TABLE root_journal_closures (parent_run_id TEXT NOT NULL, operation_id TEXT NOT NULL, closure_digest TEXT NOT NULL UNIQUE, closure_bytes BLOB NOT NULL CHECK (length(closure_bytes) BETWEEN 1 AND 16777216), PRIMARY KEY (parent_run_id, operation_id), FOREIGN KEY (parent_run_id, operation_id) REFERENCES root_journal_appends(parent_run_id, operation_id)) WITHOUT ROWID, STRICT";
 const CREATE_ROOT_TERMINALS = "CREATE TABLE root_terminals (run_id TEXT PRIMARY KEY REFERENCES root_runs(run_id), execution_closure_digest TEXT, terminal_digest TEXT NOT NULL, terminal_bytes BLOB NOT NULL CHECK (length(terminal_bytes) BETWEEN 1 AND 16777216), FOREIGN KEY (run_id, execution_closure_digest) REFERENCES root_execution_closures(run_id, closure_digest)) STRICT";
 
 setDefaultTimeout(20_000);
@@ -125,18 +135,24 @@ describe.serial("private activation admission SQLite store", () => {
           "candidate_head",
           "candidates",
           "coordinator_head",
+          "journal_events",
+          "journal_head",
           "review_plans",
           "root_execution_closures",
           "root_execution_lifecycles",
           "root_flow_call_closures",
           "root_flow_call_facts",
           "root_flow_calls",
+          "root_journal_appends",
+          "root_journal_closures",
+          "root_journal_hook_selections",
+          "root_journal_terminals",
           "root_runs",
           "root_spawn_intents",
           "root_terminals",
         ]);
-        expect(database.query("PRAGMA application_id").get().application_id).toBe(0x4a494739);
-        expect(database.query("PRAGMA user_version").get().user_version).toBe(9);
+        expect(database.query("PRAGMA application_id").get().application_id).toBe(0x4a494741);
+        expect(database.query("PRAGMA user_version").get().user_version).toBe(10);
         expect(database.query("SELECT count(*) AS count FROM review_plans").get().count).toBe(1);
       } finally {
         database.close(true);
@@ -830,6 +846,103 @@ describe.serial("private activation admission SQLite store", () => {
     }
   });
 
+  test("atomically commits, replays, and reloads multiple root Journal appends", async () => {
+    const fixture = await createFixture("ready", true);
+    let coordinator: PrivateProjectCoordinator | undefined;
+    try {
+      const plan = await createPrivateActivationReviewPlan({
+        projectRoot: fixture.root,
+        packageStoreRoot: fixture.store,
+        lockMode: "update",
+      });
+      await applyPrivateActivationReviewPlan({
+        projectRoot: fixture.root,
+        packageStoreRoot: fixture.store,
+        planDigest: plan.planDigest,
+        baseGeneration: null,
+      });
+      coordinator = await openPrivateProjectCoordinator({ projectRoot: fixture.root });
+      const submission = await submitPrivateRootRun({
+        coordinator,
+        projectRoot: fixture.root,
+        packageStoreRoot: fixture.store,
+        submissionId: "journal-root",
+        target: { kind: "binding", id: "producer" },
+        input: { value: "root" },
+        deadlineUnixMs: Date.now() + 30_000,
+      });
+      expect(submission.launch).toBeDefined();
+      const allocation = (operationId: string, value: number) => normalizePrivateRootJournalAppendAllocation({
+        kind: "private-root-journal-append-allocation/1",
+        parentRunId: submission.run.runId,
+        coordinatorEpoch: coordinator!.epoch,
+        publisherBinding: "publisher",
+        eventTypes: ["https://example.org/events/work-created"],
+        call: {
+          operationId,
+          slot: "journal",
+          method: "append",
+          input: {
+            type: "https://example.org/events/work-created",
+            data: { value },
+          },
+        },
+      });
+      const firstAllocation = allocation("journal:1", 1);
+      const first = await appendPrivateRootJournalEvent({
+        coordinator,
+        projectRoot: fixture.root,
+        allocation: firstAllocation,
+        committedAtUnixMs: 1_000,
+      });
+      expect(first.event).toMatchObject({ journalPosition: 1, committedAtUnixMs: 1_000, data: { value: 1 } });
+      expect(await appendPrivateRootJournalEvent({
+        coordinator,
+        projectRoot: fixture.root,
+        allocation: firstAllocation,
+        committedAtUnixMs: 9_999,
+      })).toEqual(first);
+      await expect(appendPrivateRootJournalEvent({
+        coordinator,
+        projectRoot: fixture.root,
+        allocation: allocation("journal:1", 2),
+        committedAtUnixMs: 2_000,
+      })).rejects.toMatchObject({ code: "OPERATION_CONFLICT" });
+      const second = await appendPrivateRootJournalEvent({
+        coordinator,
+        projectRoot: fixture.root,
+        allocation: allocation("journal:2", 2),
+        committedAtUnixMs: 2_000,
+      });
+      expect(second.event.journalPosition).toBe(2);
+      expect(await loadPrivateRootJournalAppend({
+        coordinator,
+        projectRoot: fixture.root,
+        parentRunId: submission.run.runId,
+        operationId: "journal:1",
+      })).toEqual(first);
+      expect((await listPrivateRootJournalAppends({
+        coordinator,
+        projectRoot: fixture.root,
+        parentRunId: submission.run.runId,
+      })).map(({ event }) => event.journalPosition)).toEqual([1, 2]);
+
+      const database = openSqlite(fixture.database, "readwrite");
+      database.query("UPDATE journal_events SET event_digest = ?1 WHERE position = 1")
+        .run(`sha256:${"0".repeat(64)}`);
+      database.close(true);
+      await expect(loadPrivateRootJournalAppend({
+        coordinator,
+        projectRoot: fixture.root,
+        parentRunId: submission.run.runId,
+        operationId: "journal:1",
+      })).rejects.toMatchObject({ code: "ADMISSION_STATE_CORRUPT" });
+    } finally {
+      await coordinator?.dispose();
+      await fixture.dispose();
+    }
+  });
+
   test("projects durable root Runs through the closed administration authority", async () => {
     const fixture = await createFixture("ready");
     let controller: Awaited<ReturnType<typeof openPrivateRootAdministrationController>> | undefined;
@@ -1277,7 +1390,10 @@ interface Fixture {
   dispose(): Promise<void>;
 }
 
-async function createFixture(disposition: "unavailable" | "ready" = "unavailable"): Promise<Fixture> {
+async function createFixture(
+  disposition: "unavailable" | "ready" = "unavailable",
+  journal = false,
+): Promise<Fixture> {
   const base = await mkdtemp(join(tmpdir(), "jig-admission-store-"));
   const root = join(base, "project");
   const store = join(base, "store");
@@ -1292,10 +1408,21 @@ async function createFixture(disposition: "unavailable" | "ready" = "unavailable
       "---",
       "name: run",
       "description: Ordinary admission-store fixture.",
+      ...(journal ? [
+        "uses:",
+        "  journal:",
+        "    contract: ./contracts/journal.capability.json",
+      ] : []),
       "---",
       "",
     ].join("\n"));
     await writeFile(join(flowSource, "flow.py"), "print('unused')\n");
+    if (journal) {
+      await mkdir(join(flowSource, "contracts"));
+      await writeFile(join(flowSource, "contracts", "journal.capability.json"), await readFile(
+        new URL("../../../docs/spec/contracts/jig/journal.capability.json", import.meta.url),
+      ));
+    }
     if (disposition === "ready") {
       await writeFile(join(flowSource, "input.schema.json"), JSON.stringify({
         $schema: "https://flow.dev/schemas/schema-1.json",
@@ -1316,14 +1443,42 @@ async function createFixture(disposition: "unavailable" | "ready" = "unavailable
         "flows/run": {
           digest: flow.digest,
           mode: "run",
-          directRun: true,
+          directRun: !journal,
           attachments: {},
-          uses: {},
+          uses: journal ? {
+            journal: {
+              kind: "contract",
+              id: "https://jig.dev/contracts/journal",
+              version: "1.0.0",
+              digest: "sha256:dd749f53de3a5f80e02386699355e28c1fd7e707b2b12bdf2d5c725eb436ddf9",
+            },
+          } : {},
           provides: {},
         },
       },
-      bindings: {},
-      journalPublishers: {},
+      bindings: journal ? {
+        producer: {
+          packagePath: "flows/run",
+          attachments: {},
+          slots: {
+            journal: {
+              kind: "capability",
+              provider: { binding: "publisher", export: "journal" },
+            },
+          },
+        },
+      } : {},
+      journalPublishers: journal ? {
+        publisher: {
+          source: "binding:publisher",
+          contract: {
+            id: "https://jig.dev/contracts/journal",
+            version: "1.0.0",
+            digest: "sha256:dd749f53de3a5f80e02386699355e28c1fd7e707b2b12bdf2d5c725eb436ddf9",
+          },
+          eventTypes: ["https://example.org/events/work-created"],
+        },
+      } : {},
     });
     const lock = decodePrivateProjectLocalLock(lockBytes);
     const captureDigest = digest("capture");
@@ -1350,14 +1505,26 @@ async function createFixture(disposition: "unavailable" | "ready" = "unavailable
         },
         targets: [{
           request: activationRequest({
-            target: { kind: "flow", path: "flows/run" },
+            target: journal
+              ? { kind: "binding", id: "producer" }
+              : { kind: "flow", path: "flows/run" },
             mode: "run",
             packagePath: "flows/run",
             package: flow,
             entrypoint: { path: "flow.py", suffix: "py" },
             settings: {},
             attachments: {},
-            slots: {},
+            slots: journal ? {
+              journal: {
+                kind: "capability",
+                contract: {
+                  id: "https://jig.dev/contracts/journal",
+                  version: "1.0.0",
+                  digest: "sha256:dd749f53de3a5f80e02386699355e28c1fd7e707b2b12bdf2d5c725eb436ddf9",
+                },
+                provider: { binding: "publisher", export: "journal" },
+              },
+            } : {},
           }),
           disposition: disposition === "ready"
             ? {
@@ -1377,7 +1544,7 @@ async function createFixture(disposition: "unavailable" | "ready" = "unavailable
     const encoded = encodePrivateActivationCandidate(candidate);
 
     const state = join(root, ".jig");
-    const databasePath = join(state, "private-activation-admission-v9.sqlite3");
+    const databasePath = join(state, "private-activation-admission-v10.sqlite3");
     await mkdir(state, { mode: 0o700 });
     const databaseFile = await open(
       databasePath,
@@ -1404,12 +1571,19 @@ async function createFixture(disposition: "unavailable" | "ready" = "unavailable
         CREATE_ROOT_FLOW_CALLS,
         CREATE_ROOT_FLOW_CALL_FACTS,
         CREATE_ROOT_FLOW_CALL_CLOSURES,
+        CREATE_JOURNAL_HEAD,
+        CREATE_JOURNAL_EVENTS,
+        CREATE_ROOT_JOURNAL_APPENDS,
+        CREATE_ROOT_JOURNAL_TERMINALS,
+        CREATE_ROOT_JOURNAL_HOOK_SELECTIONS,
+        CREATE_ROOT_JOURNAL_CLOSURES,
         CREATE_ROOT_TERMINALS,
         "INSERT INTO candidate_head(singleton, revision) VALUES (1, NULL)",
         "INSERT INTO admission_head(singleton, revision) VALUES (1, NULL)",
         "INSERT INTO coordinator_head(singleton, epoch) VALUES (1, 0)",
-        "PRAGMA application_id=1246316345",
-        "PRAGMA user_version=9",
+        "INSERT INTO journal_head(singleton, position) VALUES (1, 0)",
+        "PRAGMA application_id=1246316353",
+        "PRAGMA user_version=10",
       ].join(";"));
       database.exec("BEGIN IMMEDIATE");
       database.query(
@@ -1584,7 +1758,7 @@ async function createComposedFixture(): Promise<Fixture> {
     });
     const encoded = encodePrivateActivationCandidate(candidate);
     const state = join(root, ".jig");
-    const databasePath = join(state, "private-activation-admission-v9.sqlite3");
+    const databasePath = join(state, "private-activation-admission-v10.sqlite3");
     await mkdir(state, { mode: 0o700 });
     const databaseFile = await open(
       databasePath,
@@ -1611,12 +1785,19 @@ async function createComposedFixture(): Promise<Fixture> {
         CREATE_ROOT_FLOW_CALLS,
         CREATE_ROOT_FLOW_CALL_FACTS,
         CREATE_ROOT_FLOW_CALL_CLOSURES,
+        CREATE_JOURNAL_HEAD,
+        CREATE_JOURNAL_EVENTS,
+        CREATE_ROOT_JOURNAL_APPENDS,
+        CREATE_ROOT_JOURNAL_TERMINALS,
+        CREATE_ROOT_JOURNAL_HOOK_SELECTIONS,
+        CREATE_ROOT_JOURNAL_CLOSURES,
         CREATE_ROOT_TERMINALS,
         "INSERT INTO candidate_head(singleton, revision) VALUES (1, NULL)",
         "INSERT INTO admission_head(singleton, revision) VALUES (1, NULL)",
         "INSERT INTO coordinator_head(singleton, epoch) VALUES (1, 0)",
-        "PRAGMA application_id=1246316345",
-        "PRAGMA user_version=9",
+        "INSERT INTO journal_head(singleton, position) VALUES (1, 0)",
+        "PRAGMA application_id=1246316353",
+        "PRAGMA user_version=10",
       ].join(";"));
       database.exec("BEGIN IMMEDIATE");
       database.query(
