@@ -5,9 +5,13 @@ import { createRequire } from "node:module";
 import { join } from "node:path";
 
 import { invalid, unavailable } from "../diagnostics.js";
-import { canonicalJson, JSON_1_LIMITS, type JsonValue } from "../json.js";
+import { canonicalJson, decodeJson1, JSON_1_LIMITS, type JsonValue } from "../json.js";
 import { inspectCapturedPackage, type InspectedPackage } from "../package/inspect.js";
+import { SchemaDiagnostic } from "../schema/index.js";
+import type { RunTargetIdentity } from "../project/package-project.js";
 import { isDirectRunEligible } from "../project/flow-source.js";
+import { privateActivationTargetKey } from "./activation-planning.js";
+import { privateDomainDigest } from "./identity.js";
 import { openPrivateProjectRoot, type PrivateProjectRoot } from "../project/root.js";
 import { captureStoredPackage, normalizePackageArtifactRef } from "./package-artifact-store.js";
 import {
@@ -32,13 +36,35 @@ import {
   type PrivateActivationCandidateArtifact,
   type PrivateActivationPlan,
 } from "./activation-admission.js";
+import {
+  createPrivateRootSubmissionRequest,
+  decodePrivateRootSubmissionRequest,
+  failedPrivateRootTerminal,
+  normalizePrivateRootSpawnIntent,
+  normalizePrivateRootTerminal,
+  privateRootSpawnIntentDigest,
+  privateRootRequestDigest,
+  privateRootSubmissionDigest,
+  privateRootTerminalBytes,
+  requirePrivateRootSubmissionId,
+  type PrivateRootRunSnapshot,
+  type PrivateRootRunSpawnIntent,
+  type PrivateRootRunTerminal,
+  type PrivateRootSubmissionRequest,
+} from "./root-run-state.js";
+
+export type {
+  PrivateRootRunSnapshot,
+  PrivateRootRunSpawnIntent,
+  PrivateRootRunTerminal,
+} from "./root-run-state.js";
 
 const STATE_DIRECTORY = ".jig";
-const DATABASE_NAME = "private-activation-admission-v4.sqlite3";
+const DATABASE_NAME = "private-activation-admission-v5.sqlite3";
 const LOCK_NAME = "jig.lock";
 const LOCK_STAGE_NAME = "private-activation-jig-lock-v1.stage";
-const SCHEMA_VERSION = 4n;
-const APPLICATION_ID = 0x4a494734n; // JIG4
+const SCHEMA_VERSION = 5n;
+const APPLICATION_ID = 0x4a494735n; // JIG5
 const BUSY_TIMEOUT_MS = 250;
 const MAX_STORED_BYTES = 16_777_216;
 const MAX_SAFE_REVISION = BigInt(Number.MAX_SAFE_INTEGER);
@@ -49,15 +75,23 @@ const CREATE_CANDIDATE_HEAD = "CREATE TABLE candidate_head (singleton INTEGER PR
 const CREATE_REVIEW_PLANS = "CREATE TABLE review_plans (plan_digest TEXT PRIMARY KEY, candidate_revision INTEGER NOT NULL REFERENCES candidates(revision), plan_bytes BLOB NOT NULL CHECK (length(plan_bytes) BETWEEN 1 AND 16777216)) STRICT";
 const CREATE_ADMISSIONS = "CREATE TABLE admissions (revision INTEGER PRIMARY KEY CHECK (revision BETWEEN 1 AND 9007199254740991), admission_digest TEXT NOT NULL UNIQUE, base_generation TEXT UNIQUE REFERENCES admissions(admission_digest), plan_digest TEXT NOT NULL UNIQUE REFERENCES review_plans(plan_digest), admission_bytes BLOB NOT NULL CHECK (length(admission_bytes) BETWEEN 1 AND 16777216)) STRICT";
 const CREATE_ADMISSION_HEAD = "CREATE TABLE admission_head (singleton INTEGER PRIMARY KEY CHECK (singleton = 1), revision INTEGER REFERENCES admissions(revision)) STRICT";
+const CREATE_ROOT_RUNS = "CREATE TABLE root_runs (run_id TEXT PRIMARY KEY, submission_id TEXT NOT NULL UNIQUE, submission_digest TEXT NOT NULL, admission_digest TEXT NOT NULL REFERENCES admissions(admission_digest), candidate_revision INTEGER NOT NULL REFERENCES candidates(revision), request_bytes BLOB NOT NULL CHECK (length(request_bytes) BETWEEN 1 AND 16777216)) STRICT";
+const CREATE_ROOT_SPAWN_INTENTS = "CREATE TABLE root_spawn_intents (run_id TEXT PRIMARY KEY REFERENCES root_runs(run_id), intent_digest TEXT NOT NULL UNIQUE, intent_bytes BLOB NOT NULL CHECK (length(intent_bytes) BETWEEN 1 AND 16777216)) STRICT";
+const CREATE_ROOT_TERMINALS = "CREATE TABLE root_terminals (run_id TEXT PRIMARY KEY REFERENCES root_runs(run_id), terminal_digest TEXT NOT NULL, terminal_bytes BLOB NOT NULL CHECK (length(terminal_bytes) BETWEEN 1 AND 16777216)) STRICT";
 const EXPECTED_SCHEMA = Object.freeze([
   Object.freeze({ type: "table", name: "admission_head", table: "admission_head", sql: CREATE_ADMISSION_HEAD }),
   Object.freeze({ type: "table", name: "admissions", table: "admissions", sql: CREATE_ADMISSIONS }),
   Object.freeze({ type: "table", name: "candidate_head", table: "candidate_head", sql: CREATE_CANDIDATE_HEAD }),
   Object.freeze({ type: "table", name: "candidates", table: "candidates", sql: CREATE_CANDIDATES }),
   Object.freeze({ type: "table", name: "review_plans", table: "review_plans", sql: CREATE_REVIEW_PLANS }),
+  Object.freeze({ type: "table", name: "root_runs", table: "root_runs", sql: CREATE_ROOT_RUNS }),
+  Object.freeze({ type: "table", name: "root_spawn_intents", table: "root_spawn_intents", sql: CREATE_ROOT_SPAWN_INTENTS }),
+  Object.freeze({ type: "table", name: "root_terminals", table: "root_terminals", sql: CREATE_ROOT_TERMINALS }),
 ]);
 
 const storedCandidates = new WeakSet<object>();
+const authenticRootRunLaunches = new WeakSet<object>();
+const claimedRootRunLaunches = new WeakSet<object>();
 
 interface SqliteRunResult {
   readonly changes: number;
@@ -69,6 +103,7 @@ interface SqliteStatement<Row> {
   get(...bindings: readonly unknown[]): Row | null;
   all(...bindings: readonly unknown[]): Row[];
   run(...bindings: readonly unknown[]): SqliteRunResult;
+  finalize(): void;
 }
 
 interface SqliteDatabase {
@@ -142,7 +177,31 @@ interface StateOwner {
   dispose(): Promise<void>;
 }
 
-interface ReacquiredArtifacts { dispose(): Promise<void> }
+interface ReacquiredArtifacts {
+  inspection(digest: string): InspectedPackage;
+  dispose(): Promise<void>;
+}
+
+interface RootRunRow {
+  readonly run_id: string;
+  readonly submission_id: string;
+  readonly submission_digest: string;
+  readonly admission_digest: string;
+  readonly candidate_revision: bigint;
+  readonly request_bytes: Uint8Array;
+}
+
+interface RootSpawnRow {
+  readonly run_id: string;
+  readonly intent_digest: string;
+  readonly intent_bytes: Uint8Array;
+}
+
+interface RootTerminalRow {
+  readonly run_id: string;
+  readonly terminal_digest: string;
+  readonly terminal_bytes: Uint8Array;
+}
 
 export interface PrivateActivationCandidateHead {
   readonly candidateRevision: number;
@@ -165,6 +224,18 @@ export interface PrivateActivationAdmissionReceipt {
 export interface PrivateActiveActivation {
   readonly admission: PrivateActivationAdmissionReceipt;
   readonly candidate: PrivateActivationCandidateArtifact;
+}
+
+export interface PrivateRootRunLaunch {
+  readonly run: PrivateRootRunSnapshot;
+  readonly intent: PrivateRootRunSpawnIntent;
+  readonly candidate: PrivateActivationCandidateArtifact;
+}
+
+export interface PrivateRootRunSubmission {
+  readonly run: PrivateRootRunSnapshot;
+  /** Present only for the invocation that durably created a READY spawn intent. */
+  readonly launch?: PrivateRootRunLaunch;
 }
 
 /** Persist a factory-produced proposal as the monotonic activation head. */
@@ -375,6 +446,242 @@ export async function loadPrivateActiveActivation(input: {
 }
 
 /**
+ * Allocate or replay one root Run under the currently admitted generation.
+ * Only the invocation which inserts a READY spawn intent receives launch
+ * authority; duplicate submissions can observe state but cannot redispatch it.
+ */
+export async function submitPrivateRootRun(input: {
+  readonly projectRoot: string;
+  readonly packageStoreRoot: string;
+  readonly submissionId: string;
+  readonly target: RunTargetIdentity;
+  readonly input: JsonValue;
+  readonly deadlineUnixMs: number;
+}): Promise<PrivateRootRunSubmission> {
+  const request = createPrivateRootSubmissionRequest(input);
+  const submissionDigest = privateRootSubmissionDigest(request);
+  const owner = await openStateOwner(input.projectRoot, false);
+  let artifacts: ReacquiredArtifacts | undefined;
+  let failure: unknown;
+  try {
+    const replay = findRootRunBySubmission(owner.database, input.submissionId);
+    if (replay !== null) {
+      const run = loadRootRunSnapshot(owner.database, replay, owner.root);
+      requireSameSubmission(run, submissionDigest);
+      await owner.finish();
+      return Object.freeze({ run });
+    }
+
+    const head = readAdmissionHead(owner.database, owner.root);
+    if (head.revision === null) unavailable("ADMISSION_MISSING", "no activation generation is active");
+    const admissionRow = requireAdmissionRow(owner.database, head.revision);
+    const admission = loadAndCrossCheckAdmission(owner.database, admissionRow, owner.root);
+    const candidateRow = requireCandidateRow(owner.database, BigInt(admission.admission.candidateRevision));
+    const candidate = loadCandidateRow(candidateRow);
+    requireCandidateRoot(candidate, owner.root);
+    artifacts = await reacquireCandidateArtifacts(input.packageStoreRoot, candidate);
+
+    const terminal = rootPreflightTerminal(candidate, request, artifacts);
+    const runId = privateDomainDigest("JIG-Private-Root-Run/1", {
+      project: {
+        device: owner.root.information.dev.toString(),
+        inode: owner.root.information.ino.toString(),
+      },
+      submissionId: input.submissionId,
+      submissionDigest,
+      requestDigest: privateRootRequestDigest(request),
+    });
+    const requestBytes = canonicalJson(request as unknown as JsonValue);
+    requireStoredSize(requestBytes, "root Run request");
+
+    const created = await immediate(owner, () => {
+      const raced = findRootRunBySubmission(owner.database, input.submissionId);
+      if (raced !== null) {
+        const run = loadRootRunSnapshot(owner.database, raced, owner.root);
+        requireSameSubmission(run, submissionDigest);
+        return Object.freeze({ run });
+      }
+      const currentHead = readAdmissionHead(owner.database, owner.root);
+      if (currentHead.revision !== head.revision) stale("active generation changed before root Run allocation");
+      const currentAdmission = requireAdmissionRow(owner.database, head.revision!);
+      const currentCandidate = requireCandidateRow(owner.database, candidateRow.revision);
+      requireSameAdmissionRow(admissionRow, currentAdmission);
+      requireSameCandidateRow(candidateRow, currentCandidate);
+      loadAndCrossCheckAdmission(owner.database, currentAdmission, owner.root);
+
+      runFinalized(owner.database,
+        "INSERT INTO root_runs(run_id, submission_id, submission_digest, admission_digest, candidate_revision, request_bytes) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        [
+        runId,
+        input.submissionId,
+        submissionDigest,
+        admission.admissionDigest,
+        candidateRow.revision,
+        requestBytes,
+        ],
+      );
+
+      if (terminal !== undefined) {
+        persistRootTerminal(owner.database, runId, terminal);
+        const row = requireRootRunRow(owner.database, runId);
+        return Object.freeze({ run: loadRootRunSnapshot(owner.database, row, owner.root) });
+      }
+
+      if (candidate.candidate.target.disposition.state !== "ready") {
+        corrupt("root Run preflight omitted an unavailable candidate terminal");
+      }
+      const intent = normalizePrivateRootSpawnIntent({
+        kind: "private-root-spawn-intent/1",
+        runId,
+        admissionDigest: admission.admissionDigest,
+        candidateRevision: safeRevision(candidateRow.revision),
+        requestDigest: candidate.candidate.target.request.digest,
+        recipeDigest: candidate.candidate.target.disposition.recipeDigest,
+        observationDigest: candidate.candidate.target.disposition.observationDigest,
+        deadlineUnixMs: request.deadlineUnixMs,
+      });
+      const intentBytes = canonicalJson(intent as unknown as JsonValue);
+      requireStoredSize(intentBytes, "root Run spawn intent");
+      const intentDigest = privateRootSpawnIntentDigest(intent);
+      runFinalized(owner.database,
+        "INSERT INTO root_spawn_intents(run_id, intent_digest, intent_bytes) VALUES (?1, ?2, ?3)",
+        [runId, intentDigest, intentBytes],
+      );
+      const run = loadRootRunSnapshot(owner.database, requireRootRunRow(owner.database, runId), owner.root);
+      const launch = Object.freeze({ run, intent, candidate: markStored(candidate) });
+      authenticRootRunLaunches.add(launch);
+      return Object.freeze({ run, launch });
+    });
+    await owner.finish();
+    return created;
+  } catch (error) {
+    failure = error;
+    throw error;
+  } finally {
+    await disposeOperation(owner, artifacts, failure);
+  }
+}
+
+/** Reopen one durable root Run without granting launch authority. */
+export async function loadPrivateRootRun(input: {
+  readonly projectRoot: string;
+  readonly runId: string;
+}): Promise<PrivateRootRunSnapshot> {
+  requireDigest(input.runId, "root Run");
+  const owner = await openStateOwner(input.projectRoot, false);
+  let failure: unknown;
+  try {
+    const run = loadRootRunSnapshot(
+      owner.database,
+      requireRootRunRow(owner.database, input.runId),
+      owner.root,
+    );
+    await owner.finish();
+    return run;
+  } catch (error) {
+    failure = error;
+    throw error;
+  } finally {
+    await disposeOperation(owner, undefined, failure);
+  }
+}
+
+/** Publish exactly one terminal for an invocation-local authenticated launch. */
+export async function completePrivateRootRun(input: {
+  readonly projectRoot: string;
+  readonly launch: PrivateRootRunLaunch;
+  readonly terminal: PrivateRootRunTerminal;
+}): Promise<PrivateRootRunSnapshot> {
+  const launch = requirePrivateRootRunLaunch(input.launch);
+  const terminal = normalizePrivateRootTerminal(input.terminal);
+  const owner = await openStateOwner(input.projectRoot, false);
+  let failure: unknown;
+  try {
+    const run = await immediate(owner, () => {
+      const row = requireRootRunRow(owner.database, launch.run.runId);
+      const before = loadRootRunSnapshot(owner.database, row, owner.root);
+      requireLaunchMatches(launch, before, owner.database);
+      if (before.state === "terminal") {
+        if (!sameBytes(privateRootTerminalBytes(before.terminal!), privateRootTerminalBytes(terminal))) {
+          invalid("RUN_TERMINAL_CONFLICT", "root Run already has a different terminal");
+        }
+        return before;
+      }
+      persistRootTerminal(owner.database, before.runId, terminal);
+      return loadRootRunSnapshot(owner.database, row, owner.root);
+    });
+    await owner.finish();
+    return run;
+  } catch (error) {
+    failure = error;
+    throw error;
+  } finally {
+    await disposeOperation(owner, undefined, failure);
+  }
+}
+
+/**
+ * Fail closed all unresolved spawn intents after coordinator replacement.
+ * The caller must hold exclusive coordinator ownership for this project;
+ * this private store deliberately does not yet publish that lease mechanism.
+ */
+export async function reconcilePrivateRootRunsExclusive(input: {
+  readonly projectRoot: string;
+}): Promise<readonly PrivateRootRunSnapshot[]> {
+  const owner = await openStateOwner(input.projectRoot, false);
+  let failure: unknown;
+  try {
+    const reconciled = await immediate(owner, () => {
+      const query = statement<RootRunRow>(owner.database, [
+        "SELECT root_runs.run_id, root_runs.submission_id, root_runs.submission_digest,",
+        "root_runs.admission_digest, root_runs.candidate_revision, root_runs.request_bytes",
+        "FROM root_runs JOIN root_spawn_intents USING (run_id)",
+        "LEFT JOIN root_terminals USING (run_id)",
+        "WHERE root_terminals.run_id IS NULL ORDER BY root_runs.run_id",
+      ].join(" ")).safeIntegers(true);
+      let rows: readonly RootRunRow[];
+      try { rows = query.all().map(copiedRootRunRow); }
+      finally { query.finalize(); }
+      const result: PrivateRootRunSnapshot[] = [];
+      for (const row of rows) {
+        persistRootTerminal(owner.database, row.run_id, Object.freeze({
+          status: "lost" as const,
+          code: "COORDINATOR_LOST" as const,
+          message: "the exclusive coordinator was replaced before a terminal was durably published",
+        }));
+        result.push(loadRootRunSnapshot(owner.database, row, owner.root));
+      }
+      return Object.freeze(result);
+    });
+    await owner.finish();
+    return reconciled;
+  } catch (error) {
+    failure = error;
+    throw error;
+  } finally {
+    await disposeOperation(owner, undefined, failure);
+  }
+}
+
+/** Require launch authority minted only by the successful insert transaction. */
+export function requirePrivateRootRunLaunch(value: unknown): PrivateRootRunLaunch {
+  if (value === null || typeof value !== "object" || !authenticRootRunLaunches.has(value)) {
+    throw new TypeError("root Run launch was not minted by durable submission");
+  }
+  return value as PrivateRootRunLaunch;
+}
+
+/** Consume invocation-local launch authority exactly once in this coordinator. */
+export function claimPrivateRootRunLaunch(value: unknown): PrivateRootRunLaunch {
+  const launch = requirePrivateRootRunLaunch(value);
+  if (claimedRootRunLaunches.has(launch)) {
+    throw new TypeError("root Run launch authority was already consumed");
+  }
+  claimedRootRunLaunches.add(launch);
+  return launch;
+}
+
+/**
  * Durably converge the visible lock, then advance one activation admission
  * generation. The returned canonical record is the idempotent receipt.
  */
@@ -494,6 +801,225 @@ export function requirePrivateStoredActivationCandidate(value: unknown): Private
     throw new TypeError("activation candidate has not been reverified from protected storage");
   }
   return value as PrivateActivationCandidateArtifact;
+}
+
+function rootPreflightTerminal(
+  candidate: PrivateActivationCandidateArtifact,
+  request: PrivateRootSubmissionRequest,
+  artifacts: ReacquiredArtifacts,
+): PrivateRootRunTerminal | undefined {
+  const target = candidate.candidate.target;
+  if (privateActivationTargetKey(target.request.target) !== privateActivationTargetKey(request.target)) {
+    return failedPrivateRootTerminal("UNAVAILABLE", "the active generation does not contain the requested root target");
+  }
+  if (target.disposition.state === "unavailable") {
+    return failedPrivateRootTerminal("UNAVAILABLE", `the admitted target is unavailable: ${target.disposition.code}`, {
+      evidenceDigests: target.disposition.evidenceDigests,
+    });
+  }
+  try {
+    artifacts.inspection(target.request.package.digest).schemas.input?.validate(request.input, "INVALID_INPUT");
+  } catch (error) {
+    if (!(error instanceof SchemaDiagnostic)) throw error;
+    return failedPrivateRootTerminal("INVALID_INPUT", error.message, {
+      code: error.code,
+      instancePointer: error.instancePointer,
+      schemaPointer: error.schemaPointer,
+      path: error.path,
+      ...(error.keyword === undefined ? {} : { keyword: error.keyword }),
+    });
+  }
+  return undefined;
+}
+
+function findRootRunBySubmission(database: SqliteDatabase, submissionId: string): RootRunRow | null {
+  const query = statement<RootRunRow>(database, [
+    "SELECT run_id, submission_id, submission_digest, admission_digest, candidate_revision, request_bytes",
+    "FROM root_runs WHERE submission_id = ?1",
+  ].join(" ")).safeIntegers(true);
+  try {
+    const row = query.get(submissionId);
+    return row === null ? null : copiedRootRunRow(row);
+  } finally { query.finalize(); }
+}
+
+function requireRootRunRow(database: SqliteDatabase, runId: string): RootRunRow {
+  const query = statement<RootRunRow>(database, [
+    "SELECT run_id, submission_id, submission_digest, admission_digest, candidate_revision, request_bytes",
+    "FROM root_runs WHERE run_id = ?1",
+  ].join(" ")).safeIntegers(true);
+  let row: RootRunRow | null;
+  try {
+    const selected = query.get(runId);
+    row = selected === null ? null : copiedRootRunRow(selected);
+  } finally { query.finalize(); }
+  if (row === null) unavailable("RUN_MISSING", "root Run does not exist");
+  return row;
+}
+
+function findRootSpawn(database: SqliteDatabase, runId: string): RootSpawnRow | null {
+  const query = statement<RootSpawnRow>(database,
+    "SELECT run_id, intent_digest, intent_bytes FROM root_spawn_intents WHERE run_id = ?1",
+  );
+  try {
+    const row = query.get(runId);
+    return row === null ? null : Object.freeze({
+      run_id: row.run_id,
+      intent_digest: row.intent_digest,
+      intent_bytes: copiedBlob(row.intent_bytes, "stored root spawn intent"),
+    });
+  } finally { query.finalize(); }
+}
+
+function findRootTerminal(database: SqliteDatabase, runId: string): RootTerminalRow | null {
+  const query = statement<RootTerminalRow>(database,
+    "SELECT run_id, terminal_digest, terminal_bytes FROM root_terminals WHERE run_id = ?1",
+  );
+  try {
+    const row = query.get(runId);
+    return row === null ? null : Object.freeze({
+      run_id: row.run_id,
+      terminal_digest: row.terminal_digest,
+      terminal_bytes: copiedBlob(row.terminal_bytes, "stored root terminal"),
+    });
+  } finally { query.finalize(); }
+}
+
+function copiedRootRunRow(row: RootRunRow): RootRunRow {
+  return Object.freeze({
+    run_id: row.run_id,
+    submission_id: row.submission_id,
+    submission_digest: row.submission_digest,
+    admission_digest: row.admission_digest,
+    candidate_revision: row.candidate_revision,
+    request_bytes: copiedBlob(row.request_bytes, "stored root Run request"),
+  });
+}
+
+function loadRootRunSnapshot(
+  database: SqliteDatabase,
+  row: RootRunRow,
+  root: PrivateProjectRoot,
+): PrivateRootRunSnapshot {
+  requireDigest(row.run_id, "stored root Run");
+  try { requirePrivateRootSubmissionId(row.submission_id); }
+  catch { corrupt("stored root submission ID is invalid"); }
+  requireDigest(row.submission_digest, "stored root submission");
+  requireDigest(row.admission_digest, "stored root admission");
+  let request: PrivateRootSubmissionRequest;
+  try { request = decodePrivateRootSubmissionRequest(copiedBlob(row.request_bytes, "stored root Run request")); }
+  catch { corrupt("stored root Run request is invalid"); }
+  if (privateRootSubmissionDigest(request) !== row.submission_digest) corrupt("stored root submission digest differs from its request");
+  const expectedRunId = privateDomainDigest("JIG-Private-Root-Run/1", {
+    project: {
+      device: root.information.dev.toString(),
+      inode: root.information.ino.toString(),
+    },
+    submissionId: row.submission_id,
+    submissionDigest: row.submission_digest,
+    requestDigest: privateRootRequestDigest(request),
+  });
+  if (row.run_id !== expectedRunId) corrupt("stored root Run ID differs from its submission identity");
+  const admissionRow = requireAdmissionByDigest(database, row.admission_digest);
+  const admission = loadAndCrossCheckAdmission(database, admissionRow, root);
+  const candidateRevision = safeRevision(row.candidate_revision);
+  if (admission.admission.candidateRevision !== candidateRevision) {
+    corrupt("stored root Run candidate differs from its pinned admission");
+  }
+  const spawn = findRootSpawn(database, row.run_id);
+  const terminalRow = findRootTerminal(database, row.run_id);
+  if (spawn === null && terminalRow === null) corrupt("stored root Run has neither a spawn intent nor a terminal");
+  if (spawn !== null && loadRootSpawnRow(spawn, row).deadlineUnixMs !== request.deadlineUnixMs) {
+    corrupt("stored root spawn intent deadline differs from its root request");
+  }
+  const terminal = terminalRow === null ? undefined : loadRootTerminalRow(terminalRow, row.run_id);
+  return Object.freeze({
+    runId: row.run_id,
+    submissionId: row.submission_id,
+    submissionDigest: row.submission_digest,
+    admissionDigest: row.admission_digest,
+    candidateRevision,
+    target: request.target,
+    input: request.input,
+    deadlineUnixMs: request.deadlineUnixMs,
+    state: terminal === undefined ? "spawn-intent" as const : "terminal" as const,
+    ...(terminal === undefined ? {} : { terminal }),
+  });
+}
+
+function requireSameSubmission(run: PrivateRootRunSnapshot, submissionDigest: string): void {
+  if (run.submissionDigest !== submissionDigest) {
+    invalid("SUBMISSION_CONFLICT", "root submission ID already names different immutable content");
+  }
+}
+
+function loadRootSpawnRow(row: RootSpawnRow, run: RootRunRow): PrivateRootRunSpawnIntent {
+  if (row.run_id !== run.run_id) corrupt("stored root spawn intent names a different Run");
+  requireDigest(row.intent_digest, "stored root spawn intent");
+  const bytes = copiedBlob(row.intent_bytes, "stored root spawn intent");
+  let intent: PrivateRootRunSpawnIntent;
+  try { intent = normalizePrivateRootSpawnIntent(decodeJson1(bytes)); }
+  catch { corrupt("stored root spawn intent is invalid"); }
+  if (!sameBytes(bytes, canonicalJson(intent as unknown as JsonValue)) ||
+      privateRootSpawnIntentDigest(intent) !== row.intent_digest ||
+      intent.runId !== run.run_id ||
+      intent.admissionDigest !== run.admission_digest ||
+      intent.candidateRevision !== safeRevision(run.candidate_revision)) {
+    corrupt("stored root spawn intent differs from its durable identity");
+  }
+  return intent;
+}
+
+function persistRootTerminal(
+  database: SqliteDatabase,
+  runId: string,
+  terminalValue: PrivateRootRunTerminal,
+): void {
+  const terminal = normalizePrivateRootTerminal(terminalValue);
+  const bytes = privateRootTerminalBytes(terminal);
+  requireStoredSize(bytes, "root Run terminal");
+  const digest = privateDomainDigest("JIG-Private-Root-Terminal/1", terminal as unknown as JsonValue);
+  runFinalized(database,
+    "INSERT INTO root_terminals(run_id, terminal_digest, terminal_bytes) VALUES (?1, ?2, ?3)",
+    [runId, digest, bytes],
+  );
+}
+
+function runFinalized(database: SqliteDatabase, sql: string, bindings: readonly unknown[]): void {
+  const query = statement<never>(database, sql);
+  try { query.run(...bindings); }
+  finally { query.finalize(); }
+}
+
+function loadRootTerminalRow(row: RootTerminalRow, runId: string): PrivateRootRunTerminal {
+  if (row.run_id !== runId) corrupt("stored root terminal names a different Run");
+  requireDigest(row.terminal_digest, "stored root terminal");
+  const bytes = copiedBlob(row.terminal_bytes, "stored root terminal");
+  let terminal: PrivateRootRunTerminal;
+  try { terminal = normalizePrivateRootTerminal(decodeJson1(bytes)); }
+  catch { corrupt("stored root terminal is invalid"); }
+  if (!sameBytes(bytes, privateRootTerminalBytes(terminal)) ||
+      privateDomainDigest("JIG-Private-Root-Terminal/1", terminal as unknown as JsonValue) !== row.terminal_digest) {
+    corrupt("stored root terminal differs from its durable identity");
+  }
+  return terminal;
+}
+
+function requireLaunchMatches(
+  launch: PrivateRootRunLaunch,
+  run: PrivateRootRunSnapshot,
+  database: SqliteDatabase,
+): void {
+  if (launch.run.runId !== run.runId || launch.run.submissionDigest !== run.submissionDigest) {
+    invalid("RUN_LAUNCH_CONFLICT", "root Run launch does not match durable submission state");
+  }
+  const row = requireRootRunRow(database, run.runId);
+  const spawn = findRootSpawn(database, run.runId);
+  if (spawn === null) corrupt("authenticated root Run launch has no durable spawn intent");
+  const intent = loadRootSpawnRow(spawn, row);
+  if (privateRootSpawnIntentDigest(intent) !== privateRootSpawnIntentDigest(launch.intent)) {
+    invalid("RUN_LAUNCH_CONFLICT", "root Run launch differs from its durable spawn intent");
+  }
 }
 
 async function openStateOwner(projectRoot: string, create: boolean): Promise<StateOwner> {
@@ -742,6 +1268,9 @@ function initializeOrVerifySchema(database: SqliteDatabase, root: PrivateProject
       database.exec(CREATE_REVIEW_PLANS);
       database.exec(CREATE_ADMISSIONS);
       database.exec(CREATE_ADMISSION_HEAD);
+      database.exec(CREATE_ROOT_RUNS);
+      database.exec(CREATE_ROOT_SPAWN_INTENTS);
+      database.exec(CREATE_ROOT_TERMINALS);
       database.exec("INSERT INTO candidate_head(singleton, revision) VALUES (1, NULL)");
       database.exec("INSERT INTO admission_head(singleton, revision) VALUES (1, NULL)");
       database.exec(`PRAGMA application_id=${APPLICATION_ID}`);
@@ -759,7 +1288,7 @@ function verifySchema(database: SqliteDatabase, root: PrivateProjectRoot): void 
   if (actual.length !== EXPECTED_SCHEMA.length || actual.some((row, index) => {
     const expected = EXPECTED_SCHEMA[index]!;
     return row.type !== expected.type || row.name !== expected.name || row.table !== expected.table || row.sql !== expected.sql;
-  })) corrupt("private admission database schema differs from version 4");
+  })) corrupt("private admission database schema differs from version 5");
   if (statement<Record<string, unknown>>(database, "PRAGMA foreign_key_check").all().length !== 0) {
     corrupt("private admission database has broken foreign keys");
   }
@@ -843,44 +1372,86 @@ function readAdmissionHead(database: SqliteDatabase, root: PrivateProjectRoot): 
 }
 
 function requireCandidateRow(database: SqliteDatabase, revision: bigint): CandidateRow {
-  const rows = statement<CandidateRow>(database,
+  const query = statement<CandidateRow>(database,
     "SELECT revision, candidate_digest, candidate_bytes, lock_bytes FROM candidates WHERE revision = ?1",
-  ).all(revision);
+  );
+  let rows: readonly CandidateRow[];
+  try { rows = query.all(revision).map(copiedCandidateRow); }
+  finally { query.finalize(); }
   if (rows.length !== 1) corrupt(`candidate revision ${revision} is missing or duplicated`);
   return rows[0]!;
 }
 
 function requirePlanRow(database: SqliteDatabase, digest: string): PlanRow {
-  const rows = statement<PlanRow>(database,
+  const query = statement<PlanRow>(database,
     "SELECT plan_digest, candidate_revision, plan_bytes FROM review_plans WHERE plan_digest = ?1",
-  ).all(digest);
+  );
+  let rows: readonly PlanRow[];
+  try { rows = query.all(digest).map(copiedPlanRow); }
+  finally { query.finalize(); }
   if (rows.length === 0) unavailable("ADMISSION_PLAN_MISSING", `review plan ${digest} does not exist`);
   if (rows.length !== 1) corrupt(`review plan ${digest} is duplicated`);
   return rows[0]!;
 }
 
 function requireAdmissionRow(database: SqliteDatabase, revision: bigint): AdmissionRow {
-  const rows = statement<AdmissionRow>(database,
+  const query = statement<AdmissionRow>(database,
     "SELECT revision, admission_digest, base_generation, plan_digest, admission_bytes FROM admissions WHERE revision = ?1",
-  ).all(revision);
+  );
+  let rows: readonly AdmissionRow[];
+  try { rows = query.all(revision).map(copiedAdmissionRow); }
+  finally { query.finalize(); }
   if (rows.length !== 1) corrupt(`admission revision ${revision} is missing or duplicated`);
   return rows[0]!;
 }
 
 function findAdmissionByPlan(database: SqliteDatabase, planDigest: string): AdmissionRow | null {
-  const rows = statement<AdmissionRow>(database,
+  const query = statement<AdmissionRow>(database,
     "SELECT revision, admission_digest, base_generation, plan_digest, admission_bytes FROM admissions WHERE plan_digest = ?1",
-  ).all(planDigest);
+  );
+  let rows: readonly AdmissionRow[];
+  try { rows = query.all(planDigest).map(copiedAdmissionRow); }
+  finally { query.finalize(); }
   if (rows.length > 1) corrupt(`plan ${planDigest} names multiple admissions`);
   return rows[0] ?? null;
 }
 
 function requireAdmissionByDigest(database: SqliteDatabase, digest: string): AdmissionRow {
-  const rows = statement<AdmissionRow>(database,
+  const query = statement<AdmissionRow>(database,
     "SELECT revision, admission_digest, base_generation, plan_digest, admission_bytes FROM admissions WHERE admission_digest = ?1",
-  ).all(digest);
+  );
+  let rows: readonly AdmissionRow[];
+  try { rows = query.all(digest).map(copiedAdmissionRow); }
+  finally { query.finalize(); }
   if (rows.length !== 1) corrupt(`base admission ${digest} is missing or duplicated`);
   return rows[0]!;
+}
+
+function copiedCandidateRow(row: CandidateRow): CandidateRow {
+  return Object.freeze({
+    revision: row.revision,
+    candidate_digest: row.candidate_digest,
+    candidate_bytes: copiedBlob(row.candidate_bytes, "stored candidate"),
+    lock_bytes: copiedBlob(row.lock_bytes, "stored candidate lock"),
+  });
+}
+
+function copiedPlanRow(row: PlanRow): PlanRow {
+  return Object.freeze({
+    plan_digest: row.plan_digest,
+    candidate_revision: row.candidate_revision,
+    plan_bytes: copiedBlob(row.plan_bytes, "stored review plan"),
+  });
+}
+
+function copiedAdmissionRow(row: AdmissionRow): AdmissionRow {
+  return Object.freeze({
+    revision: row.revision,
+    admission_digest: row.admission_digest,
+    base_generation: row.base_generation,
+    plan_digest: row.plan_digest,
+    admission_bytes: copiedBlob(row.admission_bytes, "stored admission"),
+  });
 }
 
 function loadCandidateRow(row: CandidateRow): PrivateActivationCandidateArtifact {
@@ -1244,6 +1815,7 @@ async function reacquireCandidateArtifacts(
   candidate: PrivateActivationCandidateArtifact,
 ): Promise<ReacquiredArtifacts> {
   const captures = new Map<string, Awaited<ReturnType<typeof captureStoredPackage>>>();
+  const inspections = new Map<string, InspectedPackage>();
   let failure: unknown;
   try {
     const digests = new Set<string>([
@@ -1254,7 +1826,6 @@ async function reacquireCandidateArtifacts(
       const reference = normalizePackageArtifactRef({ kind: "flow-package/1", digest });
       captures.set(digest, await captureStoredPackage(packageStoreRoot, reference));
     }
-    const inspections = new Map<string, InspectedPackage>();
     for (const [path, expected] of Object.entries(candidate.lock.packages)) {
       const captured = captures.get(expected.digest);
       if (captured === undefined) corrupt(`stored package ${path} was not reacquired`);
@@ -1273,6 +1844,11 @@ async function reacquireCandidateArtifacts(
   }
   let disposed = false;
   return Object.freeze({
+    inspection(digest: string): InspectedPackage {
+      const inspected = inspections.get(digest);
+      if (inspected === undefined) corrupt(`stored package ${digest} has no verified inspection`);
+      return inspected;
+    },
     async dispose(): Promise<void> {
       if (disposed) return;
       disposed = true;

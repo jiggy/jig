@@ -27,10 +27,14 @@ import {
 } from "../src/internal/project-local-lock.js";
 import {
   applyPrivateActivationReviewPlan,
+  completePrivateRootRun,
   createPrivateActivationReviewPlan,
   loadPrivateActiveActivation,
   loadPrivateActivationReviewPlan,
+  loadPrivateRootRun,
+  reconcilePrivateRootRunsExclusive,
   requirePrivateStoredActivationCandidate,
+  submitPrivateRootRun,
 } from "../src/internal/activation-admission-store.js";
 import {
   decodePrivateActivationCandidate,
@@ -46,6 +50,9 @@ const CREATE_CANDIDATE_HEAD = "CREATE TABLE candidate_head (singleton INTEGER PR
 const CREATE_REVIEW_PLANS = "CREATE TABLE review_plans (plan_digest TEXT PRIMARY KEY, candidate_revision INTEGER NOT NULL REFERENCES candidates(revision), plan_bytes BLOB NOT NULL CHECK (length(plan_bytes) BETWEEN 1 AND 16777216)) STRICT";
 const CREATE_ADMISSIONS = "CREATE TABLE admissions (revision INTEGER PRIMARY KEY CHECK (revision BETWEEN 1 AND 9007199254740991), admission_digest TEXT NOT NULL UNIQUE, base_generation TEXT UNIQUE REFERENCES admissions(admission_digest), plan_digest TEXT NOT NULL UNIQUE REFERENCES review_plans(plan_digest), admission_bytes BLOB NOT NULL CHECK (length(admission_bytes) BETWEEN 1 AND 16777216)) STRICT";
 const CREATE_ADMISSION_HEAD = "CREATE TABLE admission_head (singleton INTEGER PRIMARY KEY CHECK (singleton = 1), revision INTEGER REFERENCES admissions(revision)) STRICT";
+const CREATE_ROOT_RUNS = "CREATE TABLE root_runs (run_id TEXT PRIMARY KEY, submission_id TEXT NOT NULL UNIQUE, submission_digest TEXT NOT NULL, admission_digest TEXT NOT NULL REFERENCES admissions(admission_digest), candidate_revision INTEGER NOT NULL REFERENCES candidates(revision), request_bytes BLOB NOT NULL CHECK (length(request_bytes) BETWEEN 1 AND 16777216)) STRICT";
+const CREATE_ROOT_SPAWN_INTENTS = "CREATE TABLE root_spawn_intents (run_id TEXT PRIMARY KEY REFERENCES root_runs(run_id), intent_digest TEXT NOT NULL UNIQUE, intent_bytes BLOB NOT NULL CHECK (length(intent_bytes) BETWEEN 1 AND 16777216)) STRICT";
+const CREATE_ROOT_TERMINALS = "CREATE TABLE root_terminals (run_id TEXT PRIMARY KEY REFERENCES root_runs(run_id), terminal_digest TEXT NOT NULL, terminal_bytes BLOB NOT NULL CHECK (length(terminal_bytes) BETWEEN 1 AND 16777216)) STRICT";
 
 setDefaultTimeout(20_000);
 
@@ -98,9 +105,12 @@ describe.serial("private activation admission SQLite store", () => {
           "candidate_head",
           "candidates",
           "review_plans",
+          "root_runs",
+          "root_spawn_intents",
+          "root_terminals",
         ]);
-        expect(database.query("PRAGMA application_id").get().application_id).toBe(0x4a494734);
-        expect(database.query("PRAGMA user_version").get().user_version).toBe(4);
+        expect(database.query("PRAGMA application_id").get().application_id).toBe(0x4a494735);
+        expect(database.query("PRAGMA user_version").get().user_version).toBe(5);
         expect(database.query("SELECT count(*) AS count FROM review_plans").get().count).toBe(1);
       } finally {
         database.close(true);
@@ -199,6 +209,130 @@ describe.serial("private activation admission SQLite store", () => {
         projectRoot: fixture.root,
         packageStoreRoot: fixture.store,
         planDigest: secondPlan.planDigest,
+      })).rejects.toMatchObject({ code: "ADMISSION_STATE_CORRUPT" });
+    } finally {
+      await fixture.dispose();
+    }
+  });
+
+  test("allocates idempotent root Runs, withholds duplicate launch authority, and fails closed on restart", async () => {
+    const fixture = await createFixture("ready");
+    try {
+      const plan = await createPrivateActivationReviewPlan({
+        projectRoot: fixture.root,
+        packageStoreRoot: fixture.store,
+        lockMode: "update",
+      });
+      await applyPrivateActivationReviewPlan({
+        projectRoot: fixture.root,
+        packageStoreRoot: fixture.store,
+        planDigest: plan.planDigest,
+        baseGeneration: null,
+      });
+      const deadlineUnixMs = Date.now() + 60_000;
+      const attempts = await Promise.all([deadlineUnixMs, deadlineUnixMs + 1].map(
+        (deadline) => retryBusy(() => submitPrivateRootRun({
+          projectRoot: fixture.root,
+          packageStoreRoot: fixture.store,
+          submissionId: "ticket-1",
+          target: { kind: "flow", path: "flows/run" },
+          input: { value: "first" },
+          deadlineUnixMs: deadline,
+        })),
+      ));
+      expect(attempts.filter(({ launch }) => launch !== undefined)).toHaveLength(1);
+      const first = attempts.find(({ launch }) => launch !== undefined)!;
+      expect(first.run).toMatchObject({
+        submissionId: "ticket-1",
+        target: { kind: "flow", path: "flows/run" },
+        input: { value: "first" },
+        state: "spawn-intent",
+      });
+      expect(first.launch?.intent).toMatchObject({
+        runId: first.run.runId,
+        requestDigest: fixture.candidate.candidate.target.request.digest,
+      });
+
+      const duplicate = attempts.find(({ launch }) => launch === undefined)!;
+      expect(duplicate.run).toEqual(first.run);
+      expect(duplicate.launch).toBeUndefined();
+      await expect(submitPrivateRootRun({
+        projectRoot: fixture.root,
+        packageStoreRoot: fixture.store,
+        submissionId: "ticket-1",
+        target: { kind: "flow", path: "flows/run" },
+        input: { value: "changed" },
+        deadlineUnixMs,
+      })).rejects.toMatchObject({ code: "SUBMISSION_CONFLICT" });
+
+      const completed = await completePrivateRootRun({
+        projectRoot: fixture.root,
+        launch: first.launch!,
+        terminal: {
+          status: "succeeded",
+          result: { outcome: "done", output: { accepted: true } },
+          diagnostics: { stderr: "", stderrBytes: 0, stderrTruncated: false },
+        },
+      });
+      expect(completed).toMatchObject({
+        runId: first.run.runId,
+        state: "terminal",
+        terminal: { status: "succeeded", result: { outcome: "done" } },
+      });
+      expect(await loadPrivateRootRun({
+        projectRoot: fixture.root,
+        runId: completed.runId,
+      })).toEqual(completed);
+
+      const invalidInput = await submitPrivateRootRun({
+        projectRoot: fixture.root,
+        packageStoreRoot: fixture.store,
+        submissionId: "ticket-invalid",
+        target: { kind: "flow", path: "flows/run" },
+        input: { unexpected: true },
+        deadlineUnixMs,
+      });
+      expect(invalidInput.launch).toBeUndefined();
+      expect(invalidInput.run).toMatchObject({
+        state: "terminal",
+        terminal: { status: "failed", code: "INVALID_INPUT" },
+      });
+
+      const abandoned = await submitPrivateRootRun({
+        projectRoot: fixture.root,
+        packageStoreRoot: fixture.store,
+        submissionId: "ticket-2",
+        target: { kind: "flow", path: "flows/run" },
+        input: { value: "second" },
+        deadlineUnixMs,
+      });
+      expect(abandoned.launch).toBeDefined();
+      const reconciled = await reconcilePrivateRootRunsExclusive({ projectRoot: fixture.root });
+      expect(reconciled).toHaveLength(1);
+      expect(reconciled[0]).toMatchObject({
+        runId: abandoned.run.runId,
+        state: "terminal",
+        terminal: { status: "lost", code: "COORDINATOR_LOST" },
+      });
+      expect((await reconcilePrivateRootRunsExclusive({ projectRoot: fixture.root }))).toEqual([]);
+      await expect(completePrivateRootRun({
+        projectRoot: fixture.root,
+        launch: abandoned.launch!,
+        terminal: {
+          status: "failed",
+          code: "EXECUTION_FAILED",
+          message: "late completion",
+          diagnostics: { stderr: "", stderrBytes: 0, stderrTruncated: false },
+        },
+      })).rejects.toMatchObject({ code: "RUN_TERMINAL_CONFLICT" });
+
+      const corruptor = openSqlite(fixture.database, "readwrite");
+      corruptor.query("UPDATE root_terminals SET terminal_digest = ?1 WHERE run_id = ?2")
+        .run(`sha256:${"0".repeat(64)}`, completed.runId);
+      corruptor.close(true);
+      await expect(loadPrivateRootRun({
+        projectRoot: fixture.root,
+        runId: completed.runId,
       })).rejects.toMatchObject({ code: "ADMISSION_STATE_CORRUPT" });
     } finally {
       await fixture.dispose();
@@ -459,7 +593,7 @@ interface Fixture {
   dispose(): Promise<void>;
 }
 
-async function createFixture(): Promise<Fixture> {
+async function createFixture(disposition: "unavailable" | "ready" = "unavailable"): Promise<Fixture> {
   const base = await mkdtemp(join(tmpdir(), "jig-admission-store-"));
   const root = join(base, "project");
   const store = join(base, "store");
@@ -478,6 +612,15 @@ async function createFixture(): Promise<Fixture> {
       "",
     ].join("\n"));
     await writeFile(join(flowSource, "flow.py"), "print('unused')\n");
+    if (disposition === "ready") {
+      await writeFile(join(flowSource, "input.schema.json"), JSON.stringify({
+        $schema: "https://flow.dev/schemas/schema-1.json",
+        type: "object",
+        properties: { value: { type: "string" } },
+        required: ["value"],
+        additionalProperties: false,
+      }));
+    }
     await writeFile(join(declarationSource, "jig.ts"), "export default {};\n");
 
     const flow = await retainPackage(store, flowSource);
@@ -531,11 +674,17 @@ async function createFixture(): Promise<Fixture> {
             attachments: {},
             slots: {},
           }),
-          disposition: {
-            state: "unavailable",
-            code: "RUNTIME_UNAVAILABLE",
-            evidenceDigests: [digest("evidence")],
-          },
+          disposition: disposition === "ready"
+            ? {
+                state: "ready",
+                recipeDigest: digest("recipe"),
+                observationDigest: digest("observation"),
+              }
+            : {
+                state: "unavailable",
+                code: "RUNTIME_UNAVAILABLE",
+                evidenceDigests: [digest("evidence")],
+              },
         },
       }),
       lock: lockBytes,
@@ -543,7 +692,7 @@ async function createFixture(): Promise<Fixture> {
     const encoded = encodePrivateActivationCandidate(candidate);
 
     const state = join(root, ".jig");
-    const databasePath = join(state, "private-activation-admission-v4.sqlite3");
+    const databasePath = join(state, "private-activation-admission-v5.sqlite3");
     await mkdir(state, { mode: 0o700 });
     const databaseFile = await open(
       databasePath,
@@ -562,10 +711,13 @@ async function createFixture(): Promise<Fixture> {
         CREATE_REVIEW_PLANS,
         CREATE_ADMISSIONS,
         CREATE_ADMISSION_HEAD,
+        CREATE_ROOT_RUNS,
+        CREATE_ROOT_SPAWN_INTENTS,
+        CREATE_ROOT_TERMINALS,
         "INSERT INTO candidate_head(singleton, revision) VALUES (1, NULL)",
         "INSERT INTO admission_head(singleton, revision) VALUES (1, NULL)",
-        "PRAGMA application_id=1246316340",
-        "PRAGMA user_version=4",
+        "PRAGMA application_id=1246316341",
+        "PRAGMA user_version=5",
       ].join(";"));
       database.exec("BEGIN IMMEDIATE");
       database.query(

@@ -33,8 +33,11 @@ request, reopens the active candidate, re-plans from its stored request plus a
 fresh runtime-support observation, and completes the contained Run/1 path with
 68 expectations.
 
-## Boundary
+## Boundary at this checkpoint
 
 This does not allocate a Run, accept a submission key, record spawn intent, or
 publish a terminal. It removes the last invocation-memory dependency before
 that state machine is introduced.
+
+That state machine is now implemented privately in
+[review 136](136-private-durable-root-run.md).

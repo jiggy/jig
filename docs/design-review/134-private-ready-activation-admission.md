@@ -64,7 +64,7 @@ its 14 hostile cases are intentionally gated. The proof-host suite passes all
 admission and actual contained execution. The final residue audit found no Jig
 test cgroup or temporary control directory.
 
-## 4. Deliberate boundary
+## 4. Deliberate boundary at this checkpoint
 
 This checkpoint does not yet accept a root submission or allocate a durable
 Run identity. It cannot recover an unknown terminal after coordinator loss.
@@ -72,3 +72,6 @@ The next slice is therefore a private idempotent root-Run controller over one
 already admitted generation. It must journal submission, spawn intent, and the
 terminal result; unknown post-spawn state becomes `lost` or failure and is
 never replayed or inferred as success.
+
+The private root-Run boundary is now implemented in
+[review 136](136-private-durable-root-run.md).

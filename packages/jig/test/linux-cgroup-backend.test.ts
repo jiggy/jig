@@ -38,8 +38,11 @@ import {
   loadPrivateActiveActivation,
   loadPrivateActivationReviewPlan,
   publishPrivateActivationCandidate,
+  reconcilePrivateRootRunsExclusive,
   requirePrivateStoredActivationCandidate,
+  submitPrivateRootRun,
 } from "../src/internal/activation-admission-store.js";
+import { executePrivateRootRunLaunch } from "../src/internal/root-run-controller.js";
 import { evaluateAuthorClosure } from "../src/project/author-evaluator.js";
 import { captureAuthorClosure } from "../src/project/author-module.js";
 import { defineJig } from "../src/project/author.js";
@@ -785,7 +788,7 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         lockMode: "locked",
       }))
         .rejects.toMatchObject({ code: "LOCK_MISMATCH" });
-      const admissionDatabase = join(root, ".jig", "private-activation-admission-v4.sqlite3");
+      const admissionDatabase = join(root, ".jig", "private-activation-admission-v5.sqlite3");
       await writeFile(join(root, "jig.lock"), persisted.lock, { mode: 0o644 });
       const crashSqlite = createRequire(import.meta.url)("bun:sqlite") as any;
       const recovered = crashSqlite.Database.open(
@@ -930,9 +933,12 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
           "candidate_head",
           "candidates",
           "review_plans",
+          "root_runs",
+          "root_spawn_intents",
+          "root_terminals",
         ]);
-        expect(database.query("PRAGMA application_id").get().application_id).toBe(0x4a494734);
-        expect(database.query("PRAGMA user_version").get().user_version).toBe(4);
+        expect(database.query("PRAGMA application_id").get().application_id).toBe(0x4a494735);
+        expect(database.query("PRAGMA user_version").get().user_version).toBe(5);
         expect(database.query("PRAGMA journal_mode").get().journal_mode).toBe("delete");
         expect(database.query("SELECT revision FROM candidate_head WHERE singleton = 1").get().revision).toBe(3);
         expect(database.query("SELECT count(*) AS count FROM candidates").get().count).toBe(3);
@@ -1092,27 +1098,62 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
       const admittedRequest = restartedActivation.candidate.candidate.target.request;
       expect(admittedRequest.digest).toBe(readyRequest!.digest);
       const reacquiredPython = await proofHostPythonClosure();
-      const replannedRecipe = await planPrivatePythonDirectRun({
-        request: admittedRequest,
+      const rootDeadline = Date.now() + 20_000;
+      const submitted = await submitPrivateRootRun({
+        projectRoot: root,
+        packageStoreRoot: store,
+        submissionId: "ticket-T-1",
+        target: admittedRequest.target,
+        input: { ticket: "T-1" },
+        deadlineUnixMs: rootDeadline,
+      });
+      expect(submitted.run.state).toBe("spawn-intent");
+      expect(submitted.launch).toBeDefined();
+      expect((await submitPrivateRootRun({
+        projectRoot: root,
+        packageStoreRoot: store,
+        submissionId: "ticket-T-1",
+        target: admittedRequest.target,
+        input: { ticket: "T-1" },
+        deadlineUnixMs: rootDeadline,
+      })).launch).toBeUndefined();
+      const completed = await executePrivateRootRunLaunch({
+        projectRoot: root,
+        packageStoreRoot: store,
+        launch: submitted.launch!,
         runtimeSupport: reacquiredPython.runtimeSupport,
         backend: backend(host),
       });
-      expect(replannedRecipe.digest).toBe(readyRecipe.digest);
-      expect(replannedRecipe.observation.digest).toBe(readyRecipe.observation.digest);
-      expect((await runPrivatePythonDirectRecipe({
-        recipe: replannedRecipe,
-        packageStoreRoot: store,
-        runId: "admitted-python",
-        invocation: {
-          input: { ticket: "T-1" },
-          settings: {},
-          attachments: {},
-          deadlineUnixMs: Date.now() + 20_000,
+      expect(completed).toMatchObject({
+        state: "terminal",
+        terminal: {
+          status: "succeeded",
+          result: { outcome: "done", output: { admitted: { ticket: "T-1" } } },
         },
-      })).terminal).toMatchObject({
-        status: "succeeded",
-        result: { outcome: "done", output: { admitted: { ticket: "T-1" } } },
       });
+      expect((await submitPrivateRootRun({
+        projectRoot: root,
+        packageStoreRoot: store,
+        submissionId: "ticket-T-1",
+        target: admittedRequest.target,
+        input: { ticket: "T-1" },
+        deadlineUnixMs: rootDeadline,
+      })).run).toEqual(completed);
+
+      const lostCoordinator = spawn(process.execPath, [
+        join(import.meta.dir, "fixtures", "root-run-submitter.ts"),
+        root,
+        store,
+        "ticket-T-2",
+      ], { stdio: ["ignore", "pipe", "pipe"] });
+      const abandoned = JSON.parse(await firstLine(lostCoordinator.stdout!)) as { readonly runId: string };
+      lostCoordinator.kill("SIGKILL");
+      expect((await childExit(lostCoordinator)).signal).toBe("SIGKILL");
+      expect(await reconcilePrivateRootRunsExclusive({ projectRoot: root })).toMatchObject([{
+        runId: abandoned.runId,
+        state: "terminal",
+        terminal: { status: "lost", code: "COORDINATOR_LOST" },
+      }]);
 
       corruptor = sqlite.Database.open(admissionDatabase, writableFlags);
       corruptor.query("UPDATE candidates SET candidate_digest = ?1 WHERE revision = 1")

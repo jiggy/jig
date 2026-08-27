@@ -94,7 +94,7 @@ Adapter or a retained `READY` recipe.
 | Linux containment | Strong private cgroup-v2/Bubblewrap evidence exists; no public Sandbox Backend interface is claimed. |
 | Project authoring and capture | Inert authoring, capture, retention, and linking are generic private proofs. The private evaluator now consumes an authenticated sandbox-lifetime runtime-support receipt rather than a Nix lifetime observation; the agent-sandbox observer remains one proof-host input rather than a public host interface. |
 | Lock and admission | Private portable projection and one durable activation plan/apply path covering exact `READY` and exact `UNAVAILABLE` are complete. |
-| Runnable admission | One exact Python recipe and its complete activation request are privately admitted, reopened after invocation-memory loss, and re-planned into a contained Run/1 execution. No generic Runtime Adapter model or restart-safe root spawn lifecycle exists. |
+| Runnable admission | One exact Python recipe is privately admitted, allocated through an idempotent durable root submission, executed through the contained Run/1 path, and reopened with its terminal. Unknown post-intent coordinator loss becomes `COORDINATOR_LOST`; no generic Runtime Adapter model or public coordinator lease exists. |
 | Public Jig administration | Plan, apply, root-Run, authentication, status, and error interfaces remain release-gated. |
 | Journal/Hooks, Agents/Semantic Choice, updates, and Starters | Reviewed semantics exist; implementation/public projections remain later slices. |
 
@@ -165,11 +165,13 @@ Before expansion, the slice must prove:
    extension models remain intentionally unclaimed**);
 4. reviewed-plan staleness and lock-first admission;
 5. idempotent root submission against one admitted generation and durable Run
-   identity;
+   identity (**private proof complete in review 136**);
 6. restart reconciliation around spawn intent and terminal publication,
    recording `lost` or failure when success bytes cannot be recovered and
-   never inferring or replaying successful work;
-7. cancellation, deadline, process-tree fencing, and zero residue; and
+   never inferring or replaying successful work (**private proof complete in
+   review 136; public exclusive coordinator ownership remains gated**);
+7. cancellation, deadline, process-tree fencing, and zero residue (**private
+   Linux proof complete in reviews 105, 123, and 136**); and
 8. an independent consumer probe using only the frozen public subset.
 
 The host-extension plumbing remains private through this proof. The project
