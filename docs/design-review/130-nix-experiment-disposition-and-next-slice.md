@@ -1,8 +1,10 @@
-# Nix experiment disposition and current implementation frontier
+# Nix experiment disposition and direct-root frontier
 
 **Status:** reviewed roadmap correction after the host-runtime retention
 experiment. This record changes implementation priority, not the canonical
-Jig or FLOW architecture.
+Jig or FLOW architecture. The selected direct-root slice is now complete;
+reviews 141 and 142 record its containment closure and the succeeding
+deterministic-composition frontier.
 
 ## 1. Disposition
 
@@ -94,7 +96,7 @@ Adapter or a retained `READY` recipe.
 | Linux containment | Strong private cgroup-v2/Bubblewrap evidence exists; no public Sandbox Backend interface is claimed. |
 | Project authoring and capture | Inert authoring, capture, retention, and linking are generic private proofs. The private evaluator now consumes an authenticated sandbox-lifetime runtime-support receipt rather than a Nix lifetime observation; the agent-sandbox observer remains one proof-host input rather than a public host interface. |
 | Lock and admission | Private portable projection and one durable activation plan/apply path covering exact `READY` and exact `UNAVAILABLE` are complete. |
-| Runnable admission | One exact Python recipe is privately admitted, allocated through an idempotent durable root submission under an exclusive local coordinator epoch, executed through the contained Run/1 path, and reopened with its terminal. Replacement reconciles unknown older-epoch work to `COORDINATOR_LOST`; no generic Runtime Adapter model exists. |
+| Runnable admission | Exact Python and Bun recipes are privately admitted, allocated through idempotent durable root submission under an exclusive local coordinator epoch, executed through the contained Run/1 path, and reopened with their terminals. Replacement reconciles unknown older-epoch work to `COORDINATOR_LOST`; no generic Runtime Adapter model exists. |
 | Public Jig administration | The closed Root Administration/1 in-process start/status candidate, machine schema, private controller, and consumer gates now pass. Publication, project-authority issuance, authentication/transport, plan/apply, and broader administration remain release-gated. |
 | Journal/Hooks, Agents/Semantic Choice, updates, and Starters | Reviewed semantics exist; implementation/public projections remain later slices. |
 
@@ -115,8 +117,8 @@ one immutable captured project through a retained generic author evaluator
     -> durable terminal result and complete cleanup
 ```
 
-Reviews 131–137 now complete that chain privately for one exact Python recipe
-and one cgroup-v2/Bubblewrap Backend. The slice deliberately excludes Bindings,
+Reviews 131–141 now complete that chain privately for exact Python and Bun
+recipes and one cgroup-v2/Bubblewrap Backend. The slice deliberately excludes Bindings,
 Services, Hooks, Agents, Semantic
 Choice, child Flows, Jig Graph, update watching, and any ambient runtime
 fallback. It must close only the candidate host-extension registration,

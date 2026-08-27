@@ -36,16 +36,18 @@ Start here:
 Current implementation frontier:
 
 - [`design-review/130-nix-experiment-disposition-and-next-slice.md`](design-review/130-nix-experiment-disposition-and-next-slice.md)
-  is the authoritative current roadmap and explains why the archived
-  host-runtime Nix experiment is not a Jig or FLOW release gate.
+  explains why the archived host-runtime Nix experiment is not a Jig or FLOW
+  release gate. Its direct-root milestone is complete.
 - [`design-review/103-phase-1-flow-foundations.md`](design-review/103-phase-1-flow-foundations.md)
   records the completed Run/1, two-peer, Package/Schema, and independent
   author/evaluator SDK gate.
 - [`design-review/104-phase-2-security-blocker.md`](design-review/104-phase-2-security-blocker.md)
   preserves the earlier fail-closed environment stop.
 - [`design-review/105-phase-2-linux-cgroup-proof.md`](design-review/105-phase-2-linux-cgroup-proof.md)
-  records the private cgroup-v2/Bubblewrap implementation, hostile proof, and
-  remaining Bun descendant blocker.
+  records the initial private cgroup-v2/Bubblewrap implementation and hostile
+  proof. [`design-review/141-bun-and-run-lifecycle-closure.md`](design-review/141-bun-and-run-lifecycle-closure.md)
+  closes its Bun and descendant-lifecycle blockers with the same containment
+  contract used by Python.
 - [`design-review/140-root-administration-and-bun-boundary.md`](design-review/140-root-administration-and-bun-boundary.md)
   makes the host-control-plane/FLOW boundary explicit and scopes the Bun
   blocker to the current general descendant-capable recipe construction.
@@ -60,14 +62,18 @@ Current implementation frontier:
   package/Binding linking, one sandboxed static-import evaluator, and one
   retained package-only project aggregate; deterministic non-admissible
   resolution; a strict portable lock projection; one durable activation store
-  spanning exact `READY` and `UNAVAILABLE`; and lock-first admission of one
-  exact Python target. The evaluator and Run consume authenticated
+  spanning exact `READY` and `UNAVAILABLE`; and lock-first admission of exact
+  Python and Bun targets. The evaluator and Runs consume authenticated
   sandbox-lifetime runtime support, while Jig remains outside runtime retention
   and package-manager lifecycle. The smallest root start/status interface and
   its private controller now pass a clean public-surface consumer and the real
   hostile path. Independent packed-package consumer review also passes after
   rejecting and forcing closure of three ambiguous semantics. Generic
   host-extension and public plan/apply models remain later gates.
+- [`design-review/142-deterministic-composition-frontier.md`](design-review/142-deterministic-composition-frontier.md)
+  is the current implementation frontier: one ownership-safe private operation
+  dispatcher and one exact admitted child Flow, before effects, semantic
+  routing, Agents, Hooks, or Services expand the surface.
 
 The focused Run/1 specification owns its finite wire surface. The remaining
 cross-cutting system rules are in the canonical architecture:
