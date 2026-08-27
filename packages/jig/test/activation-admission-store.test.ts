@@ -27,12 +27,16 @@ import {
 } from "../src/internal/project-local-lock.js";
 import {
   applyPrivateActivationReviewPlan,
+  closePrivateRootExecution,
   completePrivateRootRun,
   createPrivateActivationReviewPlan,
   loadPrivateActiveActivation,
   loadPrivateActivationReviewPlan,
   loadPrivateRootRun,
+  listPrivateRootExecutionWork,
   openPrivateProjectCoordinator,
+  reacquirePrivateRootExecutionWork,
+  recordPrivateRootExecutionCheckpoint,
   requirePrivateStoredActivationCandidate,
   submitPrivateRootRun,
 } from "../src/internal/activation-admission-store.js";
@@ -56,7 +60,9 @@ const CREATE_ADMISSION_HEAD = "CREATE TABLE admission_head (singleton INTEGER PR
 const CREATE_COORDINATOR_HEAD = "CREATE TABLE coordinator_head (singleton INTEGER PRIMARY KEY CHECK (singleton = 1), epoch INTEGER NOT NULL CHECK (epoch BETWEEN 0 AND 9007199254740991)) STRICT";
 const CREATE_ROOT_RUNS = "CREATE TABLE root_runs (run_id TEXT PRIMARY KEY, submission_id TEXT NOT NULL UNIQUE, submission_digest TEXT NOT NULL, admission_digest TEXT NOT NULL REFERENCES admissions(admission_digest), candidate_revision INTEGER NOT NULL REFERENCES candidates(revision), coordinator_epoch INTEGER NOT NULL CHECK (coordinator_epoch BETWEEN 1 AND 9007199254740991), request_bytes BLOB NOT NULL CHECK (length(request_bytes) BETWEEN 1 AND 16777216)) STRICT";
 const CREATE_ROOT_SPAWN_INTENTS = "CREATE TABLE root_spawn_intents (run_id TEXT PRIMARY KEY REFERENCES root_runs(run_id), intent_digest TEXT NOT NULL UNIQUE, intent_bytes BLOB NOT NULL CHECK (length(intent_bytes) BETWEEN 1 AND 16777216)) STRICT";
-const CREATE_ROOT_TERMINALS = "CREATE TABLE root_terminals (run_id TEXT PRIMARY KEY REFERENCES root_runs(run_id), terminal_digest TEXT NOT NULL, terminal_bytes BLOB NOT NULL CHECK (length(terminal_bytes) BETWEEN 1 AND 16777216)) STRICT";
+const CREATE_ROOT_EXECUTION_LIFECYCLES = "CREATE TABLE root_execution_lifecycles (run_id TEXT PRIMARY KEY REFERENCES root_spawn_intents(run_id), allocation_digest TEXT NOT NULL UNIQUE, allocation_bytes BLOB NOT NULL CHECK (length(allocation_bytes) BETWEEN 1 AND 16777216), plan_digest TEXT UNIQUE, plan_bytes BLOB, backing_digest TEXT UNIQUE, backing_bytes BLOB, sandbox_digest TEXT UNIQUE, sandbox_bytes BLOB, prepared_digest TEXT UNIQUE, prepared_bytes BLOB, provisional_digest TEXT UNIQUE, provisional_bytes BLOB, fence_digest TEXT UNIQUE, fence_bytes BLOB, release_digest TEXT UNIQUE, release_bytes BLOB, admitted_digest TEXT UNIQUE, admitted_bytes BLOB, CHECK ((plan_digest IS NULL) = (plan_bytes IS NULL)), CHECK ((backing_digest IS NULL) = (backing_bytes IS NULL)), CHECK ((sandbox_digest IS NULL) = (sandbox_bytes IS NULL)), CHECK ((prepared_digest IS NULL) = (prepared_bytes IS NULL)), CHECK ((provisional_digest IS NULL) = (provisional_bytes IS NULL)), CHECK ((fence_digest IS NULL) = (fence_bytes IS NULL)), CHECK ((release_digest IS NULL) = (release_bytes IS NULL)), CHECK ((admitted_digest IS NULL) = (admitted_bytes IS NULL)), CHECK (backing_digest IS NULL OR plan_digest IS NOT NULL), CHECK (sandbox_digest IS NULL OR backing_digest IS NOT NULL), CHECK (prepared_digest IS NULL OR sandbox_digest IS NOT NULL), CHECK (fence_digest IS NULL OR sandbox_digest IS NOT NULL), CHECK (admitted_digest IS NULL OR (provisional_digest IS NOT NULL AND release_digest IS NOT NULL))) STRICT";
+const CREATE_ROOT_EXECUTION_CLOSURES = "CREATE TABLE root_execution_closures (run_id TEXT PRIMARY KEY REFERENCES root_execution_lifecycles(run_id), closure_digest TEXT NOT NULL UNIQUE, closure_bytes BLOB NOT NULL CHECK (length(closure_bytes) BETWEEN 1 AND 16777216), UNIQUE (run_id, closure_digest)) STRICT";
+const CREATE_ROOT_TERMINALS = "CREATE TABLE root_terminals (run_id TEXT PRIMARY KEY REFERENCES root_runs(run_id), execution_closure_digest TEXT, terminal_digest TEXT NOT NULL, terminal_bytes BLOB NOT NULL CHECK (length(terminal_bytes) BETWEEN 1 AND 16777216), FOREIGN KEY (run_id, execution_closure_digest) REFERENCES root_execution_closures(run_id, closure_digest)) STRICT";
 
 setDefaultTimeout(20_000);
 
@@ -110,12 +116,14 @@ describe.serial("private activation admission SQLite store", () => {
           "candidates",
           "coordinator_head",
           "review_plans",
+          "root_execution_closures",
+          "root_execution_lifecycles",
           "root_runs",
           "root_spawn_intents",
           "root_terminals",
         ]);
-        expect(database.query("PRAGMA application_id").get().application_id).toBe(0x4a494736);
-        expect(database.query("PRAGMA user_version").get().user_version).toBe(6);
+        expect(database.query("PRAGMA application_id").get().application_id).toBe(0x4a494737);
+        expect(database.query("PRAGMA user_version").get().user_version).toBe(7);
         expect(database.query("SELECT count(*) AS count FROM review_plans").get().count).toBe(1);
       } finally {
         database.close(true);
@@ -220,7 +228,7 @@ describe.serial("private activation admission SQLite store", () => {
     }
   });
 
-  test("allocates idempotent root Runs, withholds duplicate launch authority, and fails closed on restart", async () => {
+  test("persists write-once root execution closure and leaves takeover work pending until fenced", async () => {
     const fixture = await createFixture("ready");
     let coordinator: Awaited<ReturnType<typeof openPrivateProjectCoordinator>> | undefined;
     try {
@@ -279,20 +287,190 @@ describe.serial("private activation admission SQLite store", () => {
         deadlineUnixMs,
       })).rejects.toMatchObject({ code: "SUBMISSION_CONFLICT" });
 
-      const completed = await completePrivateRootRun({
+      const rawSuccess = {
+        status: "succeeded" as const,
+        result: { outcome: "undeclared", output: { accepted: true } },
+        diagnostics: { stderr: "bounded", stderrBytes: 7, stderrTruncated: false },
+      };
+      await expect(completePrivateRootRun({
         projectRoot: fixture.root,
         launch: first.launch!,
-        terminal: {
-          status: "succeeded",
-          result: { outcome: "done", output: { accepted: true } },
-          diagnostics: { stderr: "", stderrBytes: 0, stderrTruncated: false },
+        terminal: rawSuccess,
+      })).rejects.toMatchObject({ code: "RUN_EXECUTION_CLOSURE_REQUIRED" });
+
+      const atomicWork = (await listPrivateRootExecutionWork({
+        coordinator,
+        projectRoot: fixture.root,
+        epoch: "current",
+      })).find(({ run }) => run.runId === first.run.runId);
+      expect(atomicWork?.lifecycle).toMatchObject({
+        runId: first.run.runId,
+        allocation: { value: null },
+      });
+      await expect(recordPrivateRootExecutionCheckpoint({
+        coordinator,
+        projectRoot: fixture.root,
+        runId: first.run.runId,
+        checkpoint: "plan_digest = NULL WHERE 1 = 1 --" as never,
+        value: null,
+      })).rejects.toThrow("root execution checkpoint name is invalid");
+      await expect(listPrivateRootExecutionWork({
+        coordinator,
+        projectRoot: fixture.root,
+        epoch: "future" as never,
+      })).rejects.toThrow("root execution work epoch must be current or older");
+      await expect(recordPrivateRootExecutionCheckpoint({
+        coordinator,
+        projectRoot: fixture.root,
+        runId: first.run.runId,
+        checkpoint: "sandbox",
+        value: { owner: "sandbox-1" },
+      })).rejects.toMatchObject({ code: "RUN_EXECUTION_ORDER" });
+
+      const planCheckpoint = await recordPrivateRootExecutionCheckpoint({
+        coordinator,
+        projectRoot: fixture.root,
+        runId: first.run.runId,
+        checkpoint: "plan",
+        value: { recipe: first.launch!.intent.recipeDigest },
+      });
+      expect(planCheckpoint.plan).toBeDefined();
+      expect(await recordPrivateRootExecutionCheckpoint({
+        coordinator,
+        projectRoot: fixture.root,
+        runId: first.run.runId,
+        checkpoint: "plan",
+        value: { recipe: first.launch!.intent.recipeDigest },
+      })).toEqual(planCheckpoint);
+      await expect(recordPrivateRootExecutionCheckpoint({
+        coordinator,
+        projectRoot: fixture.root,
+        runId: first.run.runId,
+        checkpoint: "plan",
+        value: { recipe: digest("different-recipe") },
+      })).rejects.toMatchObject({ code: "RUN_EXECUTION_CHECKPOINT_CONFLICT" });
+
+      for (const [checkpoint, value] of [
+        ["backing", { package: fixture.candidate.candidate.target.request.package.digest }],
+        ["sandbox", { owner: "sandbox-1" }],
+      ] as const) {
+        await recordPrivateRootExecutionCheckpoint({
+          coordinator,
+          projectRoot: fixture.root,
+          runId: first.run.runId,
+          checkpoint,
+          value,
+        });
+      }
+      await expect(recordPrivateRootExecutionCheckpoint({
+        coordinator,
+        projectRoot: fixture.root,
+        runId: first.run.runId,
+        checkpoint: "provisional",
+        value: rawSuccess,
+      })).rejects.toMatchObject({ code: "RUN_EXECUTION_ORDER" });
+      await recordPrivateRootExecutionCheckpoint({
+        coordinator,
+        projectRoot: fixture.root,
+        runId: first.run.runId,
+        checkpoint: "prepared",
+        value: { prepared: true },
+      });
+      await recordPrivateRootExecutionCheckpoint({
+        coordinator,
+        projectRoot: fixture.root,
+        runId: first.run.runId,
+        checkpoint: "provisional",
+        value: rawSuccess,
+      });
+      await expect(recordPrivateRootExecutionCheckpoint({
+        coordinator,
+        projectRoot: fixture.root,
+        runId: first.run.runId,
+        checkpoint: "release",
+        value: { released: true },
+      })).rejects.toMatchObject({ code: "RUN_EXECUTION_ORDER" });
+      await expect(recordPrivateRootExecutionCheckpoint({
+        coordinator,
+        projectRoot: fixture.root,
+        runId: first.run.runId,
+        checkpoint: "admitted",
+        value: rawSuccess,
+      })).rejects.toMatchObject({ code: "RUN_EXECUTION_ORDER" });
+
+      const pending = await listPrivateRootExecutionWork({
+        coordinator,
+        projectRoot: fixture.root,
+        epoch: "current",
+      });
+      expect(pending.map(({ run }) => run.runId)).toContain(first.run.runId);
+      const reacquired = await reacquirePrivateRootExecutionWork({
+        coordinator,
+        projectRoot: fixture.root,
+        packageStoreRoot: fixture.store,
+        runId: first.run.runId,
+      });
+      expect(reacquired.run).toEqual(first.run);
+      expect(reacquired.intent).toEqual(first.launch!.intent);
+      expect(requirePrivateStoredActivationCandidate(reacquired.candidate)).toBe(reacquired.candidate);
+
+      await recordPrivateRootExecutionCheckpoint({
+        coordinator,
+        projectRoot: fixture.root,
+        runId: first.run.runId,
+        checkpoint: "fence",
+        value: { populated: false },
+      });
+      await recordPrivateRootExecutionCheckpoint({
+        coordinator,
+        projectRoot: fixture.root,
+        runId: first.run.runId,
+        checkpoint: "release",
+        value: { released: true },
+      });
+      await expect(recordPrivateRootExecutionCheckpoint({
+        coordinator,
+        projectRoot: fixture.root,
+        runId: first.run.runId,
+        checkpoint: "admitted",
+        value: {
+          status: "failed",
+          code: "EXECUTION_FAILED",
+          message: "arbitrary drift",
+          diagnostics: rawSuccess.diagnostics,
         },
+      })).rejects.toMatchObject({ code: "RUN_TERMINAL_CONFLICT" });
+      const invalidResult = {
+        status: "failed" as const,
+        code: "INVALID_RESULT" as const,
+        message: "component returned undeclared outcome",
+        details: { outcome: "undeclared" },
+        diagnostics: rawSuccess.diagnostics,
+      };
+      await recordPrivateRootExecutionCheckpoint({
+        coordinator,
+        projectRoot: fixture.root,
+        runId: first.run.runId,
+        checkpoint: "admitted",
+        value: invalidResult,
+      });
+      const completed = await closePrivateRootExecution({
+        coordinator,
+        projectRoot: fixture.root,
+        runId: first.run.runId,
+        terminal: invalidResult,
       });
       expect(completed).toMatchObject({
         runId: first.run.runId,
         state: "terminal",
-        terminal: { status: "succeeded", result: { outcome: "done" } },
+        terminal: { status: "failed", code: "INVALID_RESULT" },
       });
+      expect(await closePrivateRootExecution({
+        coordinator,
+        projectRoot: fixture.root,
+        runId: first.run.runId,
+        terminal: invalidResult,
+      })).toEqual(completed);
       expect(await loadPrivateRootRun({
         projectRoot: fixture.root,
         runId: completed.runId,
@@ -313,6 +491,62 @@ describe.serial("private activation admission SQLite store", () => {
         terminal: { status: "failed", code: "INVALID_INPUT" },
       });
 
+      const fencedBeforePreparation = await submitPrivateRootRun({
+        coordinator,
+        projectRoot: fixture.root,
+        packageStoreRoot: fixture.store,
+        submissionId: "ticket-fenced-before-preparation",
+        target: { kind: "flow", path: "flows/run" },
+        input: { value: "fenced" },
+        deadlineUnixMs,
+      });
+      for (const [checkpoint, value] of [
+        ["plan", { recipe: fencedBeforePreparation.launch!.intent.recipeDigest }],
+        ["backing", { package: fixture.candidate.candidate.target.request.package.digest }],
+        ["sandbox", { owner: "sandbox-fenced" }],
+        ["fence", { populated: false }],
+      ] as const) {
+        await recordPrivateRootExecutionCheckpoint({
+          coordinator,
+          projectRoot: fixture.root,
+          runId: fencedBeforePreparation.run.runId,
+          checkpoint,
+          value,
+        });
+      }
+      await expect(recordPrivateRootExecutionCheckpoint({
+        coordinator,
+        projectRoot: fixture.root,
+        runId: fencedBeforePreparation.run.runId,
+        checkpoint: "prepared",
+        value: { prepared: true },
+      })).rejects.toMatchObject({ code: "RUN_EXECUTION_ORDER" });
+      const fencedFailure = {
+        status: "failed" as const,
+        code: "EXECUTION_FAILED" as const,
+        message: "admission never occurred",
+        diagnostics: { stderr: "", stderrBytes: 0, stderrTruncated: false },
+      };
+      for (const [checkpoint, value] of [
+        ["provisional", fencedFailure],
+        ["release", { released: true }],
+        ["admitted", fencedFailure],
+      ] as const) {
+        await recordPrivateRootExecutionCheckpoint({
+          coordinator,
+          projectRoot: fixture.root,
+          runId: fencedBeforePreparation.run.runId,
+          checkpoint,
+          value,
+        });
+      }
+      await closePrivateRootExecution({
+        coordinator,
+        projectRoot: fixture.root,
+        runId: fencedBeforePreparation.run.runId,
+        terminal: fencedFailure,
+      });
+
       const abandoned = await submitPrivateRootRun({
         coordinator,
         projectRoot: fixture.root,
@@ -323,16 +557,54 @@ describe.serial("private activation admission SQLite store", () => {
         deadlineUnixMs,
       });
       expect(abandoned.launch).toBeDefined();
+      await recordPrivateRootExecutionCheckpoint({
+        coordinator,
+        projectRoot: fixture.root,
+        runId: abandoned.run.runId,
+        checkpoint: "plan",
+        value: { recipe: abandoned.launch!.intent.recipeDigest },
+      });
+      const unallocated = await submitPrivateRootRun({
+        coordinator,
+        projectRoot: fixture.root,
+        packageStoreRoot: fixture.store,
+        submissionId: "ticket-unallocated",
+        target: { kind: "flow", path: "flows/run" },
+        input: { value: "unallocated" },
+        deadlineUnixMs,
+      });
+      expect(unallocated.launch).toBeDefined();
       await coordinator.dispose();
       coordinator = await openPrivateProjectCoordinator({ projectRoot: fixture.root });
       expect(coordinator.epoch).toBe(2);
-      expect(coordinator.recoveredRootRuns).toHaveLength(1);
-      expect(coordinator.recoveredRootRuns[0]).toMatchObject({
-        runId: abandoned.run.runId,
-        coordinatorEpoch: 1,
-        state: "terminal",
-        terminal: { status: "lost", code: "COORDINATOR_LOST" },
+      expect(coordinator.recoveredRootRuns).toHaveLength(2);
+      expect(coordinator.recoveredRootRuns).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          runId: abandoned.run.runId,
+          coordinatorEpoch: 1,
+          state: "spawn-intent",
+        }),
+        expect.objectContaining({
+          runId: unallocated.run.runId,
+          coordinatorEpoch: 1,
+          state: "spawn-intent",
+        }),
+      ]));
+      const older = await listPrivateRootExecutionWork({
+        coordinator,
+        projectRoot: fixture.root,
+        epoch: "older",
       });
+      expect(older.map(({ run }) => run.runId)).toEqual([
+        abandoned.run.runId,
+        unallocated.run.runId,
+      ].sort());
+      expect((await reacquirePrivateRootExecutionWork({
+        coordinator,
+        projectRoot: fixture.root,
+        packageStoreRoot: fixture.store,
+        runId: abandoned.run.runId,
+      })).run).toEqual(abandoned.run);
       await expect(completePrivateRootRun({
         projectRoot: fixture.root,
         launch: abandoned.launch!,
@@ -344,7 +616,79 @@ describe.serial("private activation admission SQLite store", () => {
         },
       })).rejects.toMatchObject({ code: "COORDINATOR_CLOSED" });
 
-      const corruptor = openSqlite(fixture.database, "readwrite");
+      const lost = {
+        status: "lost" as const,
+        code: "COORDINATOR_LOST" as const,
+        message: "the prior coordinator disappeared before an independently proved result",
+      };
+      for (const [checkpoint, value] of [
+        ["provisional", lost],
+        ["release", { released: true }],
+        ["admitted", lost],
+      ] as const) {
+        await recordPrivateRootExecutionCheckpoint({
+          coordinator,
+          projectRoot: fixture.root,
+          runId: abandoned.run.runId,
+          checkpoint,
+          value,
+        });
+      }
+      expect(await closePrivateRootExecution({
+        coordinator,
+        projectRoot: fixture.root,
+        runId: abandoned.run.runId,
+        terminal: lost,
+      })).toMatchObject({ state: "terminal", terminal: lost });
+
+      await expect(recordPrivateRootExecutionCheckpoint({
+        coordinator,
+        projectRoot: fixture.root,
+        runId: unallocated.run.runId,
+        checkpoint: "plan",
+        value: { recipe: unallocated.launch!.intent.recipeDigest },
+      })).rejects.toMatchObject({ code: "RUN_COORDINATOR_STALE" });
+      await expect(recordPrivateRootExecutionCheckpoint({
+        coordinator,
+        projectRoot: fixture.root,
+        runId: unallocated.run.runId,
+        checkpoint: "provisional",
+        value: fencedFailure,
+      })).rejects.toMatchObject({ code: "RUN_COORDINATOR_STALE" });
+      for (const [checkpoint, value] of [
+        ["provisional", lost],
+        ["release", { released: true }],
+        ["admitted", lost],
+      ] as const) {
+        await recordPrivateRootExecutionCheckpoint({
+          coordinator,
+          projectRoot: fixture.root,
+          runId: unallocated.run.runId,
+          checkpoint,
+          value,
+        });
+      }
+      expect(await closePrivateRootExecution({
+        coordinator,
+        projectRoot: fixture.root,
+        runId: unallocated.run.runId,
+        terminal: lost,
+      })).toMatchObject({ state: "terminal", terminal: lost });
+
+      let corruptor = openSqlite(fixture.database, "readwrite");
+      const admittedDigest = corruptor.query(
+        "SELECT admitted_digest FROM root_execution_lifecycles WHERE run_id = ?1",
+      ).get(completed.runId).admitted_digest;
+      corruptor.query("UPDATE root_execution_lifecycles SET admitted_digest = ?1 WHERE run_id = ?2")
+        .run(`sha256:${"0".repeat(64)}`, completed.runId);
+      corruptor.close(true);
+      await expect(loadPrivateRootRun({
+        projectRoot: fixture.root,
+        runId: completed.runId,
+      })).rejects.toMatchObject({ code: "ADMISSION_STATE_CORRUPT" });
+      corruptor = openSqlite(fixture.database, "readwrite");
+      corruptor.query("UPDATE root_execution_lifecycles SET admitted_digest = ?1 WHERE run_id = ?2")
+        .run(admittedDigest, completed.runId);
       corruptor.query("UPDATE root_terminals SET terminal_digest = ?1 WHERE run_id = ?2")
         .run(`sha256:${"0".repeat(64)}`, completed.runId);
       corruptor.close(true);
@@ -883,7 +1227,7 @@ async function createFixture(disposition: "unavailable" | "ready" = "unavailable
     const encoded = encodePrivateActivationCandidate(candidate);
 
     const state = join(root, ".jig");
-    const databasePath = join(state, "private-activation-admission-v6.sqlite3");
+    const databasePath = join(state, "private-activation-admission-v7.sqlite3");
     await mkdir(state, { mode: 0o700 });
     const databaseFile = await open(
       databasePath,
@@ -905,12 +1249,14 @@ async function createFixture(disposition: "unavailable" | "ready" = "unavailable
         CREATE_COORDINATOR_HEAD,
         CREATE_ROOT_RUNS,
         CREATE_ROOT_SPAWN_INTENTS,
+        CREATE_ROOT_EXECUTION_LIFECYCLES,
+        CREATE_ROOT_EXECUTION_CLOSURES,
         CREATE_ROOT_TERMINALS,
         "INSERT INTO candidate_head(singleton, revision) VALUES (1, NULL)",
         "INSERT INTO admission_head(singleton, revision) VALUES (1, NULL)",
         "INSERT INTO coordinator_head(singleton, epoch) VALUES (1, 0)",
-        "PRAGMA application_id=1246316342",
-        "PRAGMA user_version=6",
+        "PRAGMA application_id=1246316343",
+        "PRAGMA user_version=7",
       ].join(";"));
       database.exec("BEGIN IMMEDIATE");
       database.query(
