@@ -1,10 +1,11 @@
 # Private durable root Run
 
-**Status:** implemented vertical checkpoint. One exact admitted Python Run can
-now cross a durable root-submission boundary, execute inside the proven Linux
-envelope, and publish a replayable terminal. This remains private: it does not
-freeze the public administration API, scheduler, coordinator lease, Runtime
-Adapter SPI, or Sandbox Backend SPI.
+**Status:** historical implemented checkpoint, corrected by
+[review 142](142-direct-root-closure-repair.md). One exact admitted Python Run
+first crossed the durable boundary here, but this checkpoint did not yet prove
+recoverable backing ownership, fence-before-release, result admission, or the
+final terminal-close ambiguity. Review 142 is authoritative for those claims.
+The implementation remains private.
 
 ## 1. Minimal durable state
 
@@ -46,10 +47,11 @@ request plus current authenticated runtime/backend observations, and requires
 the recipe and observation identities to reproduce the admission exactly.
 
 The controller then executes the existing Package/1 -> cgroup-v2 -> Bubblewrap
--> Run/1 path. It publishes the terminal only after process-tree fencing and
-materialization cleanup settle. Planning or execution failure becomes a
-durable `EXECUTION_FAILED` terminal; missing machinery never selects another
-recipe.
+-> Run/1 path. The later corrected controller publishes a terminal only after
+durable preparation, a confirmed process-tree fence, backing release, and
+result admission. Planning or execution failure becomes `EXECUTION_FAILED`
+only after the same fence/release boundary; missing machinery never selects
+another recipe.
 
 This gives one live coordinator at-most-one dispatch for the supported path.
 It does not pretend that SQLite alone fences two simultaneous coordinators.
@@ -59,7 +61,8 @@ fence without changing this Run record model.
 ## 3. Restart rule
 
 An exclusive replacement coordinator enumerates spawn intents without
-terminals and publishes:
+terminals. The Root Administration controller then recovers each exact owner,
+confirms fencing, releases backing, and only then may publish:
 
 ```text
 lost / COORDINATOR_LOST

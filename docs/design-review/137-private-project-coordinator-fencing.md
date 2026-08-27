@@ -1,9 +1,9 @@
 # Private project coordinator fencing
 
-**Status:** implemented release-gate checkpoint. Root Run submission and
-completion now require one process-held project coordinator generation. The
-boundary remains private and does not yet freeze a daemon, administration API,
-or multi-host lease protocol.
+**Status:** implemented release-gate checkpoint with takeover completion
+corrected by [review 142](142-direct-root-closure-repair.md). Root Run mutation
+requires one process-held project coordinator generation. The boundary remains
+private and does not freeze a daemon or multi-host lease protocol.
 
 ## 1. One local owner
 
@@ -26,17 +26,20 @@ single `coordinator_head` row stores a monotonic safe-integer epoch, and every
 new root Run and spawn intent records the epoch which created it.
 
 After taking the exclusive lock, a coordinator advances the epoch and, in the
-same durable state transaction, converts every unresolved older-epoch spawn
-intent to:
+same durable state transaction, inventories every unresolved older-epoch spawn
+intent. It does not fabricate a terminal. Before Root Administration returns
+new authority, its private controller recovers each exact execution lifecycle,
+confirms any Backend fence, releases retained backing, and only then records:
 
 ```text
 lost / COORDINATOR_LOST
 ```
 
-Only then is coordinator authority returned. A Run from the newly allocated
-epoch cannot exist before takeover completes, and a persisted future epoch is
-corruption. Successful work is never inferred or replayed after an unknown
-coordinator state.
+Only then is Root Administration authority returned. A Run from the newly
+allocated epoch cannot exist before takeover inventory completes, and a
+persisted future epoch is corruption. Successful work is never inferred or
+replayed after an unknown coordinator state. Unconfirmed fencing keeps project
+opening unavailable rather than manufacturing `COORDINATOR_LOST`.
 
 ## 3. Authority boundary
 
@@ -57,7 +60,8 @@ is durably classified by its new coordinator.
 - Two coordinator connections cannot own one project concurrently.
 - Releasing the first lease permits a second generation and increments the
   epoch exactly once.
-- A replacement automatically reconciles an older unresolved root intent.
+- A replacement inventories an older unresolved root intent; the controller
+  fences, releases, and reconciles it before returning authority.
 - Old launch authority fails after replacement.
 - The proof-host case kills a coordinator process after durable spawn intent,
   reacquires the project lease, and observes `COORDINATOR_LOST` before further

@@ -1,9 +1,10 @@
 # Private Root Administration/1 controller
 
-**Status:** implemented release-gate checkpoint. One private controller now
-implements the closed Root Administration/1 candidate over the fenced durable
-root-Run path. Independent consumer review now passes; the public subpath
-remains a candidate, not a publication claim.
+**Status:** implemented release-gate checkpoint with execution ownership
+corrected by [review 142](142-direct-root-closure-repair.md). One private
+controller implements the closed Root Administration/1 candidate over the
+fenced durable root-Run path. The public subpath remains a candidate, not a
+publication claim.
 
 ## 1. Consumer boundary
 
@@ -26,11 +27,13 @@ is packaged at
 
 ## 2. Private ownership model
 
-Opening the controller acquires the exclusive project coordinator. A start
+Opening the controller acquires the exclusive project coordinator, inventories
+older work, and synchronously recovers it before returning authority. A start
 request is normalized and immutably captured before the controller supplies
-its host-owned deadline and performs durable submission. Only the invocation
-which receives authenticated launch authority schedules execution; an
-idempotent replay returns the prior Run ID without redispatch.
+its host-owned deadline and performs durable submission. Current-epoch work is
+pumped from durable state, including a Run whose submission committed before
+the caller observed its receipt. An idempotent replay returns the prior Run ID
+without redispatching package code.
 
 The controller captures one trusted executor function when it opens. That
 function closes over the admitted runtime and Backend mechanisms. It is not a
@@ -44,16 +47,17 @@ diagnostics. Every projected value is an immutable JSON/1 snapshot.
 
 ## 3. Failure and shutdown
 
-An executor which fails before publishing a terminal is converted to a durable
-`EXECUTION_FAILED` terminal. Controller shutdown first revokes the public
-authority, signals active launches, drains their terminal publication, and
-then releases the coordinator. A launch interrupted by that shutdown receives
-`CANCELLED`. Cleanup errors are retained and surfaced; they are not discarded
-as detached Promise rejections.
+An executor failure becomes a durable failure only after the exact Backend
+owner is fenced and backing is released. An unconfirmed fence remains pending.
+Controller shutdown first revokes the public authority, signals active
+launches, pumps durable work, drains confirmed terminal publication, and then
+releases the coordinator. A launch interrupted before a committed root result
+receives `CANCELLED` after fencing. Cleanup errors are retained and surfaced;
+they are not discarded as detached Promise rejections.
 
-Coordinator death remains a different case. The cgroup helper owns resource
-cleanup, and the next coordinator reconciles the unresolved old epoch to
-`COORDINATOR_LOST` as specified in review 137.
+Coordinator death remains a different case. The outside Backend owner retains
+resource cleanup, and the next controller reconciles the unresolved old epoch
+to `COORDINATOR_LOST` only after it confirms that fence and releases backing.
 
 ## 4. Proof
 

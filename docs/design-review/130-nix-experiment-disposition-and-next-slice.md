@@ -3,8 +3,8 @@
 **Status:** reviewed roadmap correction after the host-runtime retention
 experiment. This record changes implementation priority, not the canonical
 Jig or FLOW architecture. The selected direct-root slice is now complete;
-review 141 records its containment closure. This record does not select the
-succeeding phase.
+review 142 records its corrected execution and containment closure. This
+record does not select the succeeding phase.
 
 ## 1. Disposition
 
@@ -96,7 +96,7 @@ Adapter or a retained `READY` recipe.
 | Linux containment | Strong private cgroup-v2/Bubblewrap evidence exists; no public Sandbox Backend interface is claimed. |
 | Project authoring and capture | Inert authoring, capture, retention, and linking are generic private proofs. The private evaluator now consumes an authenticated sandbox-lifetime runtime-support receipt rather than a Nix lifetime observation; the agent-sandbox observer remains one proof-host input rather than a public host interface. |
 | Lock and admission | Private portable projection and one durable activation plan/apply path covering exact `READY` and exact `UNAVAILABLE` are complete. |
-| Runnable admission | Exact Python and Bun recipes are privately admitted, allocated through idempotent durable root submission under an exclusive local coordinator epoch, executed through the contained Run/1 path, and reopened with their terminals. Replacement reconciles unknown older-epoch work to `COORDINATOR_LOST`; no generic Runtime Adapter model exists. |
+| Runnable admission | Exact Python and Bun recipes are privately admitted, allocated through idempotent durable root submission under an exclusive local coordinator epoch, executed through the contained Run/1 path, and reopened with their admitted terminals. Replacement inventories unresolved older-epoch work; the private controller confirms fencing and releases backing before admitting `COORDINATOR_LOST`. Review 142 closes the corrected lifecycle and result boundary. No generic Runtime Adapter model exists. |
 | Public Jig administration | The closed Root Administration/1 in-process start/status candidate, machine schema, private controller, and consumer gates now pass. Publication, project-authority issuance, authentication/transport, plan/apply, and broader administration remain release-gated. |
 | Journal/Hooks, Agents/Semantic Choice, updates, and Starters | Reviewed semantics exist; implementation/public projections remain later slices. |
 
@@ -117,7 +117,7 @@ one immutable captured project through a retained generic author evaluator
     -> durable terminal result and complete cleanup
 ```
 
-Reviews 131–141 now complete that chain privately for exact Python and Bun
+Reviews 131–142 now complete that chain privately for exact Python and Bun
 recipes and one cgroup-v2/Bubblewrap Backend. The slice deliberately excludes Bindings,
 Services, Hooks, Agents, Semantic
 Choice, child Flows, Jig Graph, update watching, and any ambient runtime
@@ -175,11 +175,11 @@ Before expansion, the slice must prove:
    identity (**private proof complete in review 136**);
 6. restart reconciliation around spawn intent and terminal publication,
    recording `lost` or failure when success bytes cannot be recovered and
-   never inferring or replaying successful work (**private proof complete in
-   reviews 136–137; the lease remains private pending the administration
-   surface proof**);
-7. cancellation, deadline, process-tree fencing, and zero residue (**private
-   Linux proof complete in reviews 105, 123, and 136**); and
+   never inferring or replaying successful work (**private proof corrected and
+   completed in reviews 136–142; the lease remains private**);
+7. cancellation, deadline, process-tree fencing, result admission, backing
+   release, and zero residue (**private Linux proof complete in reviews 105,
+   123, 141, and 142**); and
 8. an independent consumer probe using only the frozen public subset.
 
 The host-extension plumbing remains private through this proof. The project

@@ -1,8 +1,10 @@
 # Bun and Run-lifecycle closure
 
 **Status:** implemented private Linux proof and exact Bun direct-Run recipe.
-This review changes no portable FLOW metadata or wire protocol and does not
-publish a Sandbox Backend SPI.
+The later direct-root ownership and result-admission corrections are recorded
+in [review 142](142-direct-root-closure-repair.md). This review changes no
+portable FLOW metadata or wire protocol and does not publish a Sandbox Backend
+SPI.
 
 ## 1. Closed environmental blocker
 
@@ -39,7 +41,9 @@ The existing placement remains race-free:
 trusted helper creates and configures Run cgroup
     -> child trampoline writes its own PID to cgroup.procs
     -> readiness byte proves placement
-    -> same PID execs Bubblewrap
+    -> same PID execs the exact launcher which drops to coordinator UID/GID
+    -> exact Bash clears cwd and environment
+    -> unprivileged Bubblewrap constructs the namespace
     -> only then can package bytes execute
 ```
 
@@ -54,6 +58,10 @@ The subreaper executable is a private Backend mechanism, not a FLOW dependency
 or a claim that every Backend must use Catatonit. A public replaceable Backend
 interface remains deferred until a second containment implementation proves
 the shared contract.
+
+The protected-package proof assumes one trusted same-UID coordinator and one
+trusted same-UID mutator for its `0700` materialization. That is a private proof
+condition, not a portable launcher or cross-UID Backend contract.
 
 ## 3. Namespace and mount hardening
 
@@ -144,9 +152,13 @@ registry.
 Private activation admission now accepts either authenticated direct recipe.
 The Root Run controller reproduces the admitted exact recipe from the retained
 request and current runtime-support observation before execution. The durable
-Root Administration proof now admits and runs the Bun fixture, persists its
-terminal only after Backend cleanup, preserves idempotent root submission, and
-retains the existing coordinator fencing/recovery behavior.
+Root Administration proof now admits and runs the Bun fixture and preserves
+idempotent root submission. Review 142 closes the more precise ordering:
+durable dispatch ownership, retained Run backing, Backend admission, confirmed
+whole-tree fence, backing release, package-result admission, and only then
+terminal publication. A replacement coordinator inventories older work; the
+Root Administration controller reacquires and fences the exact owner before it
+can publish `COORDINATOR_LOST`.
 
 `RootAdministration` remains a trusted host-side object capability. Portable
 FLOW code receives only Run/1 and its `callFlow`/`callEffect` operations.
