@@ -125,19 +125,23 @@ function activation() {
 function providers(): ReadonlyArray<{
   readonly name: string;
   readonly command: readonly string[];
-  readonly environment: Readonly<Record<string, string>>;
+  readonly environment: Readonly<Record<string, string | undefined>>;
 }> {
   const python = Bun.which("python3");
   if (python === null) throw new Error("Python Provider proof requires python3");
   return [
     { name: "TypeScript", command: [process.execPath, "run", typescriptFixture], environment: {} },
-    { name: "Python", command: [python, pythonFixture], environment: { PYTHONPATH: pythonSource } },
+    {
+      name: "Python",
+      command: [python, pythonFixture],
+      environment: { ...process.env, PYTHONPATH: pythonSource },
+    },
   ];
 }
 
 function spawnProvider(
   command: readonly string[],
-  environment: Readonly<Record<string, string>>,
+  environment: Readonly<Record<string, string | undefined>>,
 ): ExactComponentProcess {
   const child = Bun.spawn(command, {
     stdin: "pipe",
