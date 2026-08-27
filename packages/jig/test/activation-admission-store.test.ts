@@ -443,6 +443,18 @@ describe.serial("private activation admission SQLite store", () => {
       })).toEqual({ runId: completed.runId });
       expect(executions).toBe(1);
 
+      const ordered = await controller.administration.startRun({
+        submissionId: "opaque\0 replay\nkey 🚀",
+        target: { kind: "flow", path: "./flows/run" },
+        input: { value: "first", nested: { a: 1, b: 2 } },
+      });
+      const reordered = await controller.administration.startRun({
+        submissionId: "opaque\0 replay\nkey 🚀",
+        target: { kind: "flow", path: "flows/run" },
+        input: { nested: { b: 2, a: 1 }, value: "first" },
+      });
+      expect(reordered).toEqual(ordered);
+
       await expect(controller.administration.startRun({
         submissionId: "ticket-admin-1",
         target: { kind: "flow", path: "flows/run" },

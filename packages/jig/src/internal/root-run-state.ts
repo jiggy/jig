@@ -1,12 +1,11 @@
 import { invalid } from "../diagnostics.js";
-import { canonicalJson, decodeJson1, type JsonValue } from "../json.js";
+import { canonicalJson, decodeJson1, validateJson1, type JsonValue } from "../json.js";
 import type { RunTargetIdentity } from "../project/package-project.js";
 import { normalizeProjectPath } from "../project/paths.js";
 import type { RunHostTerminal } from "../run/session.js";
 import { privateDomainDigest } from "./identity.js";
 
 const DIGEST = /^sha256:[0-9a-f]{64}$/;
-const SUBMISSION_ID = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,1023}$/;
 const LOCAL_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const RUN_HOST_FAILURE_CODES = new Set([
   "CANCELLED",
@@ -82,8 +81,17 @@ export function createPrivateRootSubmissionRequest(input: {
 }
 
 export function requirePrivateRootSubmissionId(value: unknown): asserts value is string {
-  if (typeof value !== "string" || !SUBMISSION_ID.test(value)) {
-    invalid("SUBMISSION_ID_INVALID", "root submission ID has invalid syntax");
+  if (typeof value !== "string") {
+    invalid("SUBMISSION_ID_INVALID", "root submission ID must be a string");
+  }
+  try {
+    validateJson1(value);
+  } catch {
+    invalid("SUBMISSION_ID_INVALID", "root submission ID must be FLOW JSON/1");
+  }
+  const length = [...value].length;
+  if (length < 1 || length > 1024) {
+    invalid("SUBMISSION_ID_INVALID", "root submission ID must contain 1 to 1024 Unicode scalar values");
   }
 }
 

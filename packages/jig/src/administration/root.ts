@@ -5,7 +5,6 @@ import {
   type RunTargetRef,
 } from "../project/author.js";
 
-const SUBMISSION_ID = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,1023}$/;
 const DIGEST = /^sha256:[0-9a-f]{64}$/;
 
 export type RootAdministrationErrorCode =
@@ -127,8 +126,11 @@ export function normalizeStartRootRunRequest(value: unknown): StartRootRunReques
     "target",
     "input",
   ], "start Run request");
-  if (typeof root.submissionId !== "string" || !SUBMISSION_ID.test(root.submissionId)) {
-    invalidRequest("submissionId has invalid syntax");
+  const submissionLength = typeof root.submissionId === "string"
+    ? scalarLength(root.submissionId)
+    : 0;
+  if (typeof root.submissionId !== "string" || submissionLength < 1 || submissionLength > 1024) {
+    invalidRequest("submissionId must contain 1 to 1024 Unicode scalar values");
   }
   return Object.freeze({
     submissionId: root.submissionId,
@@ -251,4 +253,8 @@ function exactRecord(value: unknown, keys: readonly string[], label: string): Re
 
 function invalidRequest(message: string): never {
   throw new RootAdministrationError("INVALID_REQUEST", message);
+}
+
+function scalarLength(value: string): number {
+  return [...value].length;
 }

@@ -51,7 +51,7 @@ Current implementation frontier:
   session-local TypeScript/Python/independent matrix is complete while durable
   hosting and a portable Host-under-test conformance label remain open.
 - [`design-review/107-project-authoring-sdk-slice.md`](design-review/107-project-authoring-sdk-slice.md)
-  through [`design-review/138-private-root-administration-controller.md`](design-review/138-private-root-administration-controller.md)
+  through [`design-review/139-independent-root-administration-review.md`](design-review/139-independent-root-administration-review.md)
   record the private project pipeline now proven through inert authoring,
   descriptor-confined source capture, retained Package/1 artifacts, pure
   package/Binding linking, one sandboxed static-import evaluator, and one
@@ -62,8 +62,9 @@ Current implementation frontier:
   sandbox-lifetime runtime support, while Jig remains outside runtime retention
   and package-manager lifecycle. The smallest root start/status interface and
   its private controller now pass a clean public-surface consumer and the real
-  hostile path. Independent authorship is the remaining gate for this slice;
-  generic host-extension and public plan/apply models remain later gates.
+  hostile path. Independent packed-package consumer review also passes after
+  rejecting and forcing closure of three ambiguous semantics. Generic
+  host-extension and public plan/apply models remain later gates.
 
 The focused Run/1 specification owns its finite wire surface. The remaining
 cross-cutting system rules are in the canonical architecture:

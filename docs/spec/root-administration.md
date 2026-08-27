@@ -53,10 +53,19 @@ durably published yet.
 The host validates bounded FLOW JSON/1 before allocation. Invalid JSON/1 or an
 invalid closed request produces `INVALID_REQUEST` and allocates no Run.
 
-`submissionId` is opaque and project-local. Repeating the same ID with the
-same target and input returns the original `runId` without consulting newer
-policy or dispatching again. Reusing it for different target or input produces
-`SUBMISSION_CONFLICT`.
+`submissionId` is an opaque, project-local FLOW JSON/1 string containing 1 to
+1,024 Unicode scalar values. Every such string is valid; it has no hidden
+alphabet, prefix, normalization, or embedded semantics.
+
+Requests sharing one `submissionId` are linearized by the atomic durable
+allocation of the first request. That request fixes its normalized target and
+input. A later or concurrent request with the same normalized target and an
+input equal under [FLOW JSON/1 equality](json-values.md#equality-and-canonical-bytes)
+returns the original `runId` without consulting newer policy or dispatching
+again. Object member order and numeric source spelling therefore do not affect
+replay equality. Reusing the ID with a different normalized target or unequal
+input produces `SUBMISSION_CONFLICT`; among conflicting concurrent first uses,
+the durably allocated request wins.
 
 A structurally valid request to an unknown, unavailable, revoked, or
 schema-incompatible admitted target still receives a durable Run. That Run
@@ -103,14 +112,25 @@ Applications branch on `code`, never the human message. `details`, when
 present, is FLOW JSON/1. Run failures are not converted into administration
 errors.
 
+The trusted host may close the already-issued object capability when its
+project administration lifetime ends. Once closed, both `startRun` and
+`runStatus` on that object reject with `PROJECT_CLOSED`; a closed object never
+returns a Run terminal. A start receipt accepted before closure continues to
+name durable project state. When the host closes that project administration
+lifetime, it cancels a still-live launch and durably settles it as `CANCELLED`;
+a later host-issued authority for the same project may observe that terminal.
+`OWNER_CLOSED` remains a Run/1 failure for owned protocol work and is not an
+alternative response from a closed administration object.
+
 ## 6. Machine contract
 
 [`root-administration-1.schema.json`](machine/root-administration-1.schema.json)
 contains closed structural definitions for both requests, the receipt, status,
 terminals, and the serializable error projection. Schema/1 deliberately has no
-regular-expression keyword, so `submissionId`, `runId`, LocalName, and project
-path syntax receive their final check in the SDK normalizer. The TypeScript and
-schema branches otherwise evolve together.
+regular-expression keyword, so `runId`, LocalName, and project path syntax
+receive their final check in the SDK normalizer. `submissionId` deliberately
+has no narrower syntax than the bounds represented by the machine schema. The
+TypeScript and schema branches otherwise evolve together.
 
 This interface is an object-capability API, not JSON-RPC. Reusing the schema in
 a future transport does not define authentication, framing, ordering, or

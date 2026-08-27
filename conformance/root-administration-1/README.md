@@ -11,6 +11,9 @@ admissions, runtime support, Sandbox Backends, process IDs, or cgroups. The Jig
 package smoke test separately compiles this unchanged source against the packed
 package.
 
-This is a public-surface cleanliness gate, not an independent implementation,
-an IPC protocol, or a conformance certification. Independent authorship remains
-a separate release gate.
+This checked-in consumer is a public-surface cleanliness gate, not an
+independent implementation, an IPC protocol, or a conformance certification.
+An independent consumer subsequently packed and installed the package, compiled
+this source unchanged, and exercised separately authored value, replay,
+concurrency, and closure probes. That separate gate is recorded in
+[`design-review/139-independent-root-administration-review.md`](../../docs/design-review/139-independent-root-administration-review.md).

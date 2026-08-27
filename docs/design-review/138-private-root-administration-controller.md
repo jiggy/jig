@@ -2,7 +2,8 @@
 
 **Status:** implemented release-gate checkpoint. One private controller now
 implements the closed Root Administration/1 candidate over the fenced durable
-root-Run path. The public subpath remains a candidate, not a publication claim.
+root-Run path. Independent consumer review now passes; the public subpath
+remains a candidate, not a publication claim.
 
 ## 1. Consumer boundary
 
@@ -65,8 +66,14 @@ cleanup, and the next coordinator reconciles the unresolved old epoch to
   private host injects the real authority, and package smoke compiles the same
   source against the packed artifact.
 
-The consumer is a clean public-surface gate, not an independently authored
-implementation. Independent authorship remains the last gate for this slice.
+The checked-in consumer is a clean public-surface gate, not an independently
+authored implementation. A separate reviewer then packed and installed the
+package and authored counter-probes without using private imports. Its initial
+review found three contract ambiguities: the hidden `submissionId` alphabet,
+undefined replay equality/concurrent linearization, and undefined authority
+closure behavior. The candidate removed the hidden alphabet and closed both
+lifecycle definitions. The same reviewer re-ran the original counterexamples
+and passed the amended candidate. Review 139 records that gate.
 
 ## 5. Deliberate omissions
 

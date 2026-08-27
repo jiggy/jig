@@ -45,6 +45,22 @@ describe("Root Administration/1 contract", () => {
     expect(Object.isFrozen((normalized.input as any).nested[1])).toBe(true);
   });
 
+  test("accepts every bounded opaque JSON/1 submission ID", () => {
+    for (const submissionId of [
+      "contains space", "line\nwith\0nul", "ticket 🚀 / attempt 1",
+      "x".repeat(1024), "🚀".repeat(1024),
+    ]) {
+      const request = { submissionId, target: { kind: "binding", id: "review" }, input: null };
+      expect(normalizeStartRootRunRequest(request).submissionId).toBe(submissionId);
+      expect(() => schema.validate(request, "INVALID_ROOT_ADMINISTRATION")).not.toThrow();
+    }
+    for (const submissionId of ["", "x".repeat(1025), "🚀".repeat(1025)]) {
+      const request = { submissionId, target: { kind: "binding", id: "review" }, input: null };
+      expect(captured(() => normalizeStartRootRunRequest(request)).code).toBe("INVALID_REQUEST");
+      expect(() => schema.validate(request, "INVALID_ROOT_ADMINISTRATION")).toThrow(SchemaDiagnostic);
+    }
+  });
+
   test("does not invoke accessors while rejecting a request", () => {
     let reads = 0;
     const request = {
@@ -64,8 +80,8 @@ describe("Root Administration/1 contract", () => {
       submissionId: "one", target: { kind: "binding", id: "review" }, input: {}, extra: true,
     }],
     ["missing input", { submissionId: "one", target: { kind: "binding", id: "review" } }],
-    ["invalid submission ID", {
-      submissionId: " space", target: { kind: "binding", id: "review" }, input: {},
+    ["empty submission ID", {
+      submissionId: "", target: { kind: "binding", id: "review" }, input: {},
     }],
     ["invalid target tag", { submissionId: "one", target: { kind: "other", id: "review" }, input: {} }],
     ["unknown target member", {
