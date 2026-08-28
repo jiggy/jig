@@ -20,6 +20,10 @@ import {
   type PrivateDirectRunRecipe,
 } from "./direct-run.js";
 import {
+  requirePrivateBunServiceRecipe,
+  type PrivateBunServiceRecipe,
+} from "./bun-service-recipe.js";
+import {
   canonicalJson,
   decodeJson1,
   JSON_1_LIMITS,
@@ -50,6 +54,8 @@ const UNSIGNED_64 = /^(?:0|[1-9][0-9]{0,19})$/;
 const MAX_UNSIGNED_64 = (1n << 64n) - 1n;
 const MAX_EVIDENCE = 64;
 const createdCandidates = new WeakSet<object>();
+
+type PrivateActivationRecipe = PrivateDirectRunRecipe | PrivateBunServiceRecipe;
 
 export interface PrivateActivationCandidateTarget {
   readonly request: PrivateActivationRequest;
@@ -129,19 +135,24 @@ export interface PrivateActivationAdmission {
 export function createPrivateActivationCandidate(
   project: PrivateRetainedPackageProject,
   resolutionValue: unknown,
-  recipeValue?: PrivateDirectRunRecipe | readonly PrivateDirectRunRecipe[],
+  recipeValue?: PrivateActivationRecipe | readonly PrivateActivationRecipe[],
 ): PrivateActivationCandidateArtifact {
   const retained = requirePrivateRetainedPackageProject(project);
   const resolution = requirePrivateRetainedResolutionObservation(resolutionValue);
   if (resolution.captureDigest !== retained.captureDigest) {
     throw new TypeError("resolution observation belongs to a different retained project capture");
   }
-  const recipeValues = recipeValue === undefined
-    ? []
-    : Array.isArray(recipeValue) ? recipeValue : [recipeValue];
-  const recipes = recipeValues.map((recipe) => requirePrivateDirectRunRecipe(recipe));
-  const recipeByRequest = new Map<string, PrivateDirectRunRecipe>();
+  const recipeValues = readPrivateActivationRecipeValues(
+    recipeValue,
+    resolution.targets.length,
+  );
+  const recipes = recipeValues.map(requirePrivateActivationRecipe);
+  const recipeByRequest = new Map<string, PrivateActivationRecipe>();
   for (const recipe of recipes) {
+    const expectedMode = recipe.kind === "private-bun-service-recipe/1" ? "service" : "run";
+    if (recipe.request.mode !== expectedMode) {
+      throw new TypeError("activation recipe kind does not match its request mode");
+    }
     if (recipeByRequest.has(recipe.request.digest)) {
       throw new TypeError("activation candidate contains duplicate recipes for one request");
     }
@@ -184,6 +195,48 @@ export function createPrivateActivationCandidate(
   }, lock);
   encodeCandidate(candidate);
   return markCreated(candidate, lock);
+}
+
+function requirePrivateActivationRecipe(value: unknown): PrivateActivationRecipe {
+  try {
+    return requirePrivateDirectRunRecipe(value);
+  } catch {
+    // Continue to the other closed recipe authority.
+  }
+  try {
+    return requirePrivateBunServiceRecipe(value);
+  } catch {
+    // Reject below without reading attacker-controlled properties.
+  }
+  throw new TypeError("activation recipe was not produced by a private planner");
+}
+
+function readPrivateActivationRecipeValues(
+  value: PrivateActivationRecipe | readonly PrivateActivationRecipe[] | undefined,
+  maximum: number,
+): readonly unknown[] {
+  if (value === undefined) return [];
+  if (value !== null && typeof value === "object" && utilTypes.isProxy(value)) {
+    throw new TypeError("activation recipes must not be a Proxy");
+  }
+  if (!Array.isArray(value)) return [value];
+  if (Object.getPrototypeOf(value) !== Array.prototype || value.length > maximum) {
+    throw new TypeError("activation recipes must be a bounded ordinary array");
+  }
+  const keys = Reflect.ownKeys(value);
+  if (keys.length !== value.length + 1 || keys.some((key) =>
+    typeof key !== "string" || (key !== "length" && !/^(?:0|[1-9][0-9]*)$/.test(key)))) {
+    throw new TypeError("activation recipes must be a dense array without extra properties");
+  }
+  const recipes: unknown[] = [];
+  for (let index = 0; index < value.length; index += 1) {
+    const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
+    if (descriptor === undefined || !("value" in descriptor) || !descriptor.enumerable) {
+      throw new TypeError("activation recipes must contain enumerable data properties");
+    }
+    recipes.push(descriptor.value);
+  }
+  return recipes;
 }
 
 /**

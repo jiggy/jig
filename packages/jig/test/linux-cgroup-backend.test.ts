@@ -20,6 +20,11 @@ import {
   runPrivateBunDirectRecipe,
 } from "../src/internal/bun-direct-run.js";
 import {
+  observePrivateBunServicePackage,
+  planPrivateBunService,
+  type PrivateBunServiceRecipe,
+} from "../src/internal/bun-service-recipe.js";
+import {
   planPrivateDirectRun,
   requirePrivateDirectRunRecipe,
   runPrivateDirectRunRecipe,
@@ -1303,6 +1308,115 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         packagePath: "flows/run",
       });
       const requests = buildPrivateActivationRequests(aggregate.linked);
+      const [serviceRequest] = requests;
+      const servicePackageObservation = await observePrivateBunServicePackage({
+        request: serviceRequest!,
+        packageStoreRoot: store,
+      });
+      const serviceRecipe = await planPrivateBunService({
+        request: serviceRequest!,
+        packageObservation: servicePackageObservation,
+        runtimeSupport: bun.runtimeSupport,
+        backend: evaluator.backend,
+      });
+      const servicePlanning = createPrivateActivationPlanningObservation({
+        policyDigest: testDigest("retained-service-policy"),
+        mechanismDigest: serviceRecipe.mechanismDigest,
+        entries: [{
+          target: serviceRequest!.target,
+          requestDigest: serviceRequest!.digest,
+          disposition: { state: "planned" as const, observation: serviceRecipe.observation },
+        }],
+      });
+      const serviceResolution = resolveRetainedPackageProjectObservation(
+        aggregate,
+        servicePlanning,
+      );
+      expect(createPrivateActivationCandidate(
+        aggregate,
+        serviceResolution,
+        serviceRecipe,
+      ).candidate.targets[0]!.disposition).toEqual({
+        state: "ready",
+        recipeDigest: serviceRecipe.digest,
+        observationDigest: serviceRecipe.observation.digest,
+      });
+      expect(createPrivateActivationCandidate(
+        aggregate,
+        serviceResolution,
+        [serviceRecipe],
+      ).candidate.targets[0]!.disposition.state).toBe("ready");
+      let forgedKindRead = false;
+      const forgedServiceRecipe = Object.defineProperty({}, "kind", {
+        get() {
+          forgedKindRead = true;
+          return "private-bun-service-recipe/1";
+        },
+      });
+      expect(() => createPrivateActivationCandidate(
+        aggregate,
+        serviceResolution,
+        forgedServiceRecipe as never,
+      )).toThrow("activation recipe was not produced by a private planner");
+      expect(forgedKindRead).toBe(false);
+      let recipeArrayTrapRead = false;
+      const proxiedRecipeArray = new Proxy([serviceRecipe], {
+        get() {
+          recipeArrayTrapRead = true;
+          throw new Error("recipe array get trap must not run");
+        },
+        getOwnPropertyDescriptor() {
+          recipeArrayTrapRead = true;
+          throw new Error("recipe array descriptor trap must not run");
+        },
+        getPrototypeOf() {
+          recipeArrayTrapRead = true;
+          throw new Error("recipe array prototype trap must not run");
+        },
+        ownKeys() {
+          recipeArrayTrapRead = true;
+          throw new Error("recipe array ownKeys trap must not run");
+        },
+      });
+      expect(() => createPrivateActivationCandidate(
+        aggregate,
+        serviceResolution,
+        proxiedRecipeArray,
+      )).toThrow("activation recipes must not be a Proxy");
+      expect(recipeArrayTrapRead).toBe(false);
+      let recipeArrayAccessorRead = false;
+      const accessorRecipeArray: PrivateBunServiceRecipe[] = [];
+      Object.defineProperty(accessorRecipeArray, "0", {
+        configurable: true,
+        enumerable: true,
+        get() {
+          recipeArrayAccessorRead = true;
+          return serviceRecipe;
+        },
+      });
+      expect(() => createPrivateActivationCandidate(
+        aggregate,
+        serviceResolution,
+        accessorRecipeArray,
+      )).toThrow("activation recipes must contain enumerable data properties");
+      expect(recipeArrayAccessorRead).toBe(false);
+      expect(() => createPrivateActivationCandidate(
+        aggregate,
+        serviceResolution,
+        new Array<PrivateBunServiceRecipe>(1),
+      )).toThrow("activation recipes must be a dense array");
+      const wrongPrototypeRecipeArray = [serviceRecipe];
+      Object.setPrototypeOf(wrongPrototypeRecipeArray, null);
+      expect(() => createPrivateActivationCandidate(
+        aggregate,
+        serviceResolution,
+        wrongPrototypeRecipeArray,
+      )).toThrow("activation recipes must be a bounded ordinary array");
+      expect(() => createPrivateActivationCandidate(
+        aggregate,
+        serviceResolution,
+        [serviceRecipe, serviceRecipe],
+      )).toThrow("duplicate recipes for one request");
       const planning = createPrivateActivationPlanningObservation({
         policyDigest: testDigest("retained-policy"),
         mechanismDigest: testDigest("retained-mechanisms"),
@@ -1318,6 +1432,11 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
       });
       const resolution = resolveRetainedPackageProjectObservation(aggregate, planning);
       expect(requirePrivateRetainedResolutionObservation(resolution)).toBe(resolution);
+      expect(() => createPrivateActivationCandidate(
+        aggregate,
+        resolution,
+        serviceRecipe,
+      )).toThrow("recipe for an unplanned target");
       const unavailable = createPrivateActivationCandidate(aggregate, resolution);
       expect(requirePrivateCreatedActivationCandidate(unavailable)).toBe(unavailable);
       expect(privateActivationCandidateDigest(unavailable)).toMatch(/^sha256:[0-9a-f]{64}$/);
@@ -1541,6 +1660,7 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
           "candidates",
           "coordinator_head",
           "hook_admission_boundaries",
+          "hook_derivations",
           "hook_revisions",
           "journal_events",
           "journal_head",
@@ -1557,9 +1677,13 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
           "root_runs",
           "root_spawn_intents",
           "root_terminals",
+          "service_invocations",
+          "service_leases",
+          "service_mount_facts",
+          "service_mounts",
         ]);
         expect(database.query("PRAGMA application_id").get().application_id).toBe(0x4a494741);
-        expect(database.query("PRAGMA user_version").get().user_version).toBe(12);
+        expect(database.query("PRAGMA user_version").get().user_version).toBe(14);
         expect(database.query("PRAGMA journal_mode").get().journal_mode).toBe("delete");
         expect(database.query("SELECT revision FROM candidate_head WHERE singleton = 1").get().revision).toBe(3);
         expect(database.query("SELECT count(*) AS count FROM candidates").get().count).toBe(3);
@@ -1687,6 +1811,16 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         }],
       });
       const readyResolution = resolveRetainedPackageProjectObservation(readyAggregate, readyPlanning);
+      expect(() => createPrivateActivationCandidate(
+        readyAggregate,
+        readyResolution,
+        serviceRecipe,
+      )).toThrow("ready recipe does not match the retained planned target");
+      expect(() => createPrivateActivationCandidate(
+        aggregate,
+        serviceResolution,
+        readyRecipe,
+      )).toThrow("ready recipe does not match the retained planned target");
       const readyCandidate = createPrivateActivationCandidate(
         readyAggregate,
         readyResolution,
