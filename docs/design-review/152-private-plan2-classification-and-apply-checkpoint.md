@@ -159,17 +159,18 @@ Before this becomes a public project control plane, Jig still needs:
 6. a reviewed CLI/API plus an independent packed consumer of exactly that
    published surface.
 
-The next foreground product step is a finite, root-only project session over
-the existing coordinator and Root Administration controller. It recovers and
-drains bounded root and Hook work, then closes. It does not mount an eager
-Service or introduce a persistent supervisor: admission is not yet pinned for
-such a supervisor, and Service loss/restart policy has not been earned.
+The finite, root-only foreground product step is now closed in review 153. It
+uses the existing coordinator and Root Administration controller, recovers and
+drains bounded root and Hook work, then closes. It mounts no eager Service and
+introduces no persistent supervisor: admission is not yet pinned for such a
+supervisor, and Service loss/restart policy has not been earned.
 
-The next composition vertical may then join one admitted root `effect/call`
-to one acknowledged Service generation, using the already proved Journal and
-Service ownership substrates. That mixed witness must close root operations
-and Service leases before fencing and releasing the Mount. Persistent
-supervision remains later policy, not an implication of this checkpoint.
+The next composition vertical is mixed composition: join one admitted root
+`effect/call` to one acknowledged Service generation while preserving the
+already proved Journal path and Service ownership substrate. That mixed
+witness must close root operations and Service leases before fencing and
+releasing the Mount. Persistent supervision remains later policy, not an
+implication of this checkpoint.
 
 The boundary is:
 

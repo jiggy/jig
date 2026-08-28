@@ -402,6 +402,16 @@ commuting lock repairs, admission compare-and-set, and mixed-version private
 store refusal have executable evidence. Review 152 records both those results
 and the unimplemented capture-to-plan and public-interface seams.
 
+The private finite foreground path is also closed as product-flow evidence.
+Its `plan`, explicitly confirmed `apply`, and `run` operations remain distinct;
+apply handles both admission and repair, while run opens the existing
+controller, recovers and pumps durable work, executes supplied submissions
+sequentially in this proof, drains, and disposes. The retained-source hostile
+witness passes a direct Python Run and a Bun-to-Python child call and leaves no
+Run cgroup or private-device residue.
+[`Review 153`](153-private-finite-foreground-checkpoint.md) records why this
+remains a script rather than a public CLI, supervisor, or daemon.
+
 None of the closed slices adds a public Service host, Agent, Semantic Choice,
 Jig Graph compiler, update watcher, Nix dependency, ambient runtime fallback,
 or public Backend or Runtime Adapter SPI.
@@ -431,15 +441,15 @@ is closed at the exact substrate boundary recorded in
 [`151-private-service-hosting-checkpoint.md`](151-private-service-hosting-checkpoint.md).
 The Plan/2 classification/apply subset of
 [`150-private-project-admission-frontier.md`](150-private-project-admission-frontier.md)
-is closed in review 152. The next foreground session is finite and root-only,
-using the existing coordinator and Root Administration controller; it does not
-earn a persistent supervisor or start Services. Mixed root/Journal/Service
-composition is the next composition boundary, and must prove authentic
-Root-to-Service dispatch plus phased operation, lease, Mount, and loss cleanup
-before persistent Service policy is considered. Neither checkpoint authorizes
-a public SDK. The Nix decontamination boundary remains in
+is closed in review 152. The finite root-only foreground session using the
+existing coordinator and Root Administration controller is closed in review
+153; it neither earns a persistent supervisor nor starts Services. Mixed
+root/Journal/Service composition is the next composition boundary, and must
+prove authentic Root-to-Service dispatch plus phased operation, lease, Mount,
+and loss cleanup before persistent Service policy is considered. Neither
+checkpoint authorizes a public SDK. The Nix decontamination boundary remains in
 [`130-nix-experiment-disposition-and-next-slice.md`](130-nix-experiment-disposition-and-next-slice.md);
-the latest completed control-plane boundary is review 152.
+the latest completed foreground boundary is review 153.
 
 ## Machine-readable release gates
 

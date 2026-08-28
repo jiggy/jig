@@ -3,7 +3,9 @@
 **Status:** closed on 2026-08-27. This checkpoint adds one repository-only
 operator-shaped path over the already proved private admission and execution
 machinery. It publishes no CLI, project-opening, Runtime Adapter, Sandbox
-Backend, or administration interface.
+Backend, or administration interface. Its disposable combined `apply-run`
+command was later replaced by the separate finite `plan`, `apply`, and `run`
+proof closed in review 153; the original evidence remains historical.
 
 ## 1. Purpose
 
@@ -28,8 +30,8 @@ real jig.ts project
 ## 2. Deliberately private interface
 
 `packages/jig/scripts/private-foreground.ts` lives outside `src/`, is excluded
-from the packed package, and is not wired to the installed `jig` binary. It has
-two proof-host-only commands:
+from the packed package, and is not wired to the installed `jig` binary. At
+this historical checkpoint it had two proof-host-only commands:
 
 ```text
 plan <project-root>

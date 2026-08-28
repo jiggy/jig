@@ -424,12 +424,13 @@ fixed-point scans recover it. Lock repair emits no such wake. Existing Runs
 and Service leases remain pinned to their prior admitted generations.
 
 Unresolved ownership which makes a safe policy transition impossible is
-`PROJECT_BUSY`; apply does not steal, overwrite, or infer completion. The next
-foreground session is finite and root-only: it reuses the existing coordinator
-and Root Administration controller, drains bounded root and Hook work, then
-closes. No persistent Service supervisor is earned by Plan/2. A later mixed
-composition slice must first join one authentic root effect to one acknowledged
-Service generation and prove phased operation, lease, Mount, and loss cleanup.
+`PROJECT_BUSY`; apply does not steal, overwrite, or infer completion. The
+finite root-only foreground session which reuses the existing coordinator and
+Root Administration controller is closed in review 153. It drains bounded
+root and Hook work, then closes. No persistent Service supervisor is earned by
+Plan/2 or that session. The next mixed-composition slice must join one
+authentic root effect to one acknowledged Service generation and prove phased
+operation, lease, Mount, and loss cleanup.
 
 ## 11. Closed errors
 
