@@ -8,6 +8,7 @@ import {
 import {
   applyPrivateActivationReviewPlan,
   createPrivateActivationReviewPlan,
+  loadPrivateActivationReviewPlan,
   publishPrivateActivationCandidate,
 } from "../src/internal/activation-admission-store.js";
 import {
@@ -105,10 +106,23 @@ async function plan(projectPath: string): Promise<object> {
     projectRoot,
     packageStoreRoot,
     lockMode: "update",
+    expectedCandidate: head,
   });
+
+  if (review.state === "unchanged") {
+    return {
+      kind: "private-foreground-plan/1",
+      state: "unchanged",
+      projectRoot,
+      packageStoreRoot,
+      candidateRevision: head.candidateRevision,
+      candidateDigest: head.candidateDigest,
+    };
+  }
 
   return {
     kind: "private-foreground-plan/1",
+    state: "applicable",
     projectRoot,
     packageStoreRoot,
     candidateRevision: head.candidateRevision,
@@ -128,17 +142,24 @@ async function plan(projectPath: string): Promise<object> {
 async function applyRun(input: {
   readonly projectPath: string;
   readonly planDigest: string;
-  readonly baseGeneration: string | null;
   readonly requests: readonly StartRootRunRequest[];
 }): Promise<object> {
   const projectRoot = await realpath(input.projectPath);
   const packageStoreRoot = join(projectRoot, PRIVATE_STORE);
+  const reviewed = await loadPrivateActivationReviewPlan({
+    projectRoot,
+    packageStoreRoot,
+    planDigest: input.planDigest,
+  });
+  if (reviewed.plan.operation !== "admission") {
+    throw new Error("private foreground apply-run does not apply lock-repair Plans");
+  }
   const admission = await applyPrivateActivationReviewPlan({
     projectRoot,
     packageStoreRoot,
     planDigest: input.planDigest,
-    baseGeneration: input.baseGeneration,
   });
+  if (!("admission" in admission)) throw new Error("reviewed admission Plan returned a repair receipt");
   const host = await proofHost();
   const controller = await openPrivateRootAdministrationController({
     projectRoot,
@@ -259,13 +280,11 @@ async function proofHostPython(
 function parseApplyRunArguments(values: readonly string[]): {
   readonly projectPath: string;
   readonly planDigest: string;
-  readonly baseGeneration: string | null;
   readonly requests: readonly StartRootRunRequest[];
 } {
   const projectPath = values[0];
   if (projectPath === undefined) throw new Error("apply-run requires <project-root>");
   let planDigest: string | undefined;
-  let baseGeneration: string | null | undefined;
   let approved = false;
   const requests: StartRootRunRequest[] = [];
   for (let index = 1; index < values.length; index += 1) {
@@ -281,9 +300,6 @@ function parseApplyRunArguments(values: readonly string[]): {
     if (flag === "--plan") {
       if (planDigest !== undefined) throw new Error("--plan was supplied more than once");
       planDigest = value;
-    } else if (flag === "--base") {
-      if (baseGeneration !== undefined) throw new Error("--base was supplied more than once");
-      baseGeneration = value === "null" ? null : value;
     } else if (flag === "--request") {
       requests.push(JSON.parse(value) as StartRootRunRequest);
     } else {
@@ -291,11 +307,11 @@ function parseApplyRunArguments(values: readonly string[]): {
     }
   }
   if (!approved) throw new Error("apply-run requires explicit --yes approval");
-  if (planDigest === undefined || baseGeneration === undefined) {
-    throw new Error("apply-run requires the reviewed --plan and --base pair");
+  if (planDigest === undefined) {
+    throw new Error("apply-run requires the reviewed --plan");
   }
   if (requests.length === 0) throw new Error("apply-run requires at least one --request");
-  return { projectPath, planDigest, baseGeneration, requests };
+  return { projectPath, planDigest, requests };
 }
 
 async function main(values: readonly string[]): Promise<object> {
@@ -306,7 +322,8 @@ async function main(values: readonly string[]): Promise<object> {
   }
   if (command === "apply-run") return await applyRun(parseApplyRunArguments(rest));
   throw new Error(
-    "usage: private-foreground <plan <project-root> | apply-run <project-root> --plan <digest> --base <digest|null> --yes --request <json>...>",
+    "usage: private-foreground <plan <project-root> | apply-run <project-root> --plan <digest> --yes " +
+      "--request <json>...>",
   );
 }
 

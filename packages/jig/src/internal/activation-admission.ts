@@ -50,6 +50,7 @@ const KIND_V5 = "private-activation-candidate/5";
 const PLAN_KIND = "private-activation-plan/1";
 const PLAN_V2_KIND = "private-activation-plan/2";
 const ADMISSION_KIND = "private-activation-admission/2";
+const LOCK_REPAIR_KIND = "private-lock-repair/1";
 const DIGEST = /^sha256:[0-9a-f]{64}$/;
 const LOCAL_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const UNSIGNED_64 = /^(?:0|[1-9][0-9]{0,19})$/;
@@ -195,6 +196,17 @@ export interface PrivateActivationAdmission {
   readonly candidateDigest: string;
   readonly lockDigest: string;
   readonly hookBoundaryDigest: string;
+}
+
+/**
+ * One immutable acknowledgement that a reviewed visible-lock repair
+ * converged without creating a new activation generation.
+ */
+export interface PrivateLockRepair {
+  readonly kind: typeof LOCK_REPAIR_KIND;
+  readonly planDigest: string;
+  readonly activeAdmissionDigest: string;
+  readonly proposedLockDigest: string;
 }
 
 /**
@@ -582,6 +594,35 @@ export function privateActivationPlanDigestV2(value: unknown): string {
   return privateDomainDigest(
     "JIG-Private-Activation-Plan/2",
     requirePrivateInertPlanV2(value) as unknown as JsonValue,
+  );
+}
+
+/** Build the minimal receipt for one committed lock-only repair. */
+export function createPrivateLockRepair(input: {
+  readonly planDigest: string;
+  readonly activeAdmissionDigest: string;
+  readonly proposedLockDigest: string;
+}): PrivateLockRepair {
+  return normalizeLockRepair({ kind: LOCK_REPAIR_KIND, ...input });
+}
+
+export function decodePrivateLockRepair(bytesValue: unknown): PrivateLockRepair {
+  const bytes = copiedBytes(bytesValue, "lock-repair receipt bytes");
+  const receipt = normalizeLockRepair(decodeJson1(bytes));
+  if (!sameBytes(bytes, encodePrivateLockRepair(receipt))) {
+    throw new TypeError("private lock-repair receipt is not in canonical JSON/1 + LF form");
+  }
+  return receipt;
+}
+
+export function encodePrivateLockRepair(value: unknown): Uint8Array {
+  return encodeRecord(normalizeLockRepair(value), "private lock-repair receipt");
+}
+
+export function privateLockRepairDigest(value: unknown): string {
+  return privateDomainDigest(
+    "JIG-Private-Lock-Repair/1",
+    normalizeLockRepair(value) as unknown as JsonValue,
   );
 }
 
@@ -1029,6 +1070,27 @@ function normalizeAdmission(input: unknown): PrivateActivationAdmission {
     candidateDigest: requireDigest(root.candidateDigest, "admission candidate"),
     lockDigest: requireDigest(root.lockDigest, "admission lock"),
     hookBoundaryDigest: requireDigest(root.hookBoundaryDigest, "admission Hook boundary"),
+  });
+}
+
+function normalizeLockRepair(input: unknown): PrivateLockRepair {
+  const root = exactObject(input, [
+    "kind",
+    "planDigest",
+    "activeAdmissionDigest",
+    "proposedLockDigest",
+  ], "lock-repair receipt");
+  if (root.kind !== LOCK_REPAIR_KIND) {
+    throw new TypeError(`lock-repair receipt kind must be ${LOCK_REPAIR_KIND}`);
+  }
+  return Object.freeze({
+    kind: LOCK_REPAIR_KIND,
+    planDigest: requireDigest(root.planDigest, "lock-repair plan"),
+    activeAdmissionDigest: requireDigest(
+      root.activeAdmissionDigest,
+      "lock-repair active admission",
+    ),
+    proposedLockDigest: requireDigest(root.proposedLockDigest, "lock-repair proposed lock"),
   });
 }
 

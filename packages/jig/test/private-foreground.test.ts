@@ -38,8 +38,6 @@ proofDescribe("private foreground project path", () => {
         root,
         "--plan",
         planned.planDigest,
-        "--base",
-        "null",
         "--yes",
         "--request",
         JSON.stringify({

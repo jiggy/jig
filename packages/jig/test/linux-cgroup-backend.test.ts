@@ -1461,7 +1461,6 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         projectRoot: root,
         packageStoreRoot: store,
         planDigest: firstReview.planDigest,
-        baseGeneration: null,
       });
 
       coordinator = await openPrivateProjectCoordinator({ projectRoot: root });
@@ -1897,7 +1896,6 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         projectRoot: root,
         packageStoreRoot: store,
         planDigest: multipleReview.planDigest,
-        baseGeneration: firstAdmission.admissionDigest,
       });
       coordinator = await openPrivateProjectCoordinator({ projectRoot: root });
       await expect(allocatePrivateServiceMount({
@@ -1947,7 +1945,6 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         projectRoot: root,
         packageStoreRoot: store,
         planDigest: secondReview.planDigest,
-        baseGeneration: multipleAdmission.admissionDigest,
       });
       coordinator = await openPrivateProjectCoordinator({ projectRoot: root });
       await expect(allocatePrivateServiceMount({
@@ -2039,7 +2036,6 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         projectRoot: root,
         packageStoreRoot: store,
         planDigest: supersedingReview.planDigest,
-        baseGeneration: secondAdmission.admissionDigest,
       });
       await expect(recordPrivateServiceMountPlan({
         coordinator,
@@ -2223,7 +2219,7 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
       coordinator = undefined;
 
       const sqlite = createRequire(import.meta.url)("bun:sqlite") as any;
-      const databasePath = join(root, ".jig", "private-activation-admission-v15.sqlite3");
+      const databasePath = join(root, ".jig", "private-activation-admission-v16.sqlite3");
       const writable = sqlite.constants.SQLITE_OPEN_READWRITE |
         sqlite.constants.SQLITE_OPEN_NOFOLLOW;
       let corruptor = sqlite.Database.open(databasePath, writable);
@@ -2419,7 +2415,6 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         projectRoot: root,
         packageStoreRoot: store,
         planDigest: review.planDigest,
-        baseGeneration: null,
       });
 
       coordinator = await openPrivateProjectCoordinator({ projectRoot: root });
@@ -2763,7 +2758,7 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         lockMode: "locked",
       }))
         .rejects.toMatchObject({ code: "LOCK_MISMATCH" });
-      const admissionDatabase = join(root, ".jig", "private-activation-admission-v15.sqlite3");
+      const admissionDatabase = join(root, ".jig", "private-activation-admission-v16.sqlite3");
       await writeFile(join(root, "jig.lock"), persisted.lock, { mode: 0o644 });
       const crashSqlite = createRequire(import.meta.url)("bun:sqlite") as any;
       const recovered = crashSqlite.Database.open(
@@ -2778,13 +2773,11 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         projectRoot: root,
         packageStoreRoot: store,
         planDigest: firstPlan.planDigest,
-        baseGeneration: null,
       });
       expect(await applyPrivateActivationReviewPlan({
         projectRoot: root,
         packageStoreRoot: store,
         planDigest: firstPlan.planDigest,
-        baseGeneration: null,
       })).toEqual(firstAdmission);
       expect(new Uint8Array(await readFile(join(root, "jig.lock")))).toEqual(persisted.lock);
       const lockedPlan = await createPrivateActivationReviewPlan({
@@ -2792,13 +2785,16 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         packageStoreRoot: store,
         lockMode: "locked",
       });
-      expect(lockedPlan.plan.observedLock).toEqual({
-        state: "present",
-        digest: lockedPlan.candidate.candidate.lockDigest,
-        lock: lockedPlan.candidate.lock,
-      });
-      expect(lockedPlan.plan.baseGeneration).toBe(firstAdmission.admissionDigest);
+      expect(lockedPlan).toEqual({ state: "unchanged" });
       await rm(join(root, "jig.lock"));
+      const staleRepairPlan = await createPrivateActivationReviewPlan({
+        projectRoot: root,
+        packageStoreRoot: store,
+        lockMode: "update",
+      });
+      if (staleRepairPlan.state !== "applicable" || staleRepairPlan.plan.operation !== "lock-repair") {
+        throw new Error("hostile fixture expected one retained lock-repair Plan");
+      }
 
       const secondPlanning = createPrivateActivationPlanningObservation({
         policyDigest: testDigest("retained-policy-2"),
@@ -2824,6 +2820,22 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
       });
       expect(secondHead.candidateRevision).toBe(2);
       expect(secondHead.candidateDigest).not.toBe(firstHead.candidateDigest);
+      const changedPlan = await createPrivateActivationReviewPlan({
+        projectRoot: root,
+        packageStoreRoot: store,
+        lockMode: "update",
+      });
+      if (changedPlan.state !== "applicable" || changedPlan.plan.operation !== "admission") {
+        throw new Error("hostile fixture expected the changed candidate to require admission");
+      }
+      const changedAdmission = await applyPrivateActivationReviewPlan({
+        projectRoot: root,
+        packageStoreRoot: store,
+        planDigest: changedPlan.planDigest,
+      });
+      if (!("admission" in changedAdmission)) {
+        throw new Error("hostile fixture expected an admission receipt");
+      }
       const replayedHead = await publishPrivateActivationCandidate({
         projectRoot: root,
         packageStoreRoot: store,
@@ -2914,6 +2926,7 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
           "hook_revisions",
           "journal_events",
           "journal_head",
+          "lock_repairs",
           "review_plans",
           "root_execution_closures",
           "root_execution_lifecycles",
@@ -2933,12 +2946,12 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
           "service_mounts",
         ]);
         expect(database.query("PRAGMA application_id").get().application_id).toBe(0x4a494741);
-        expect(database.query("PRAGMA user_version").get().user_version).toBe(15);
+        expect(database.query("PRAGMA user_version").get().user_version).toBe(16);
         expect(database.query("PRAGMA journal_mode").get().journal_mode).toBe("delete");
         expect(database.query("SELECT revision FROM candidate_head WHERE singleton = 1").get().revision).toBe(3);
         expect(database.query("SELECT count(*) AS count FROM candidates").get().count).toBe(3);
-        expect(database.query("SELECT count(*) AS count FROM review_plans").get().count).toBe(3);
-        expect(database.query("SELECT count(*) AS count FROM admissions").get().count).toBe(1);
+        expect(database.query("SELECT count(*) AS count FROM review_plans").get().count).toBe(4);
+        expect(database.query("SELECT count(*) AS count FROM admissions").get().count).toBe(2);
       } finally {
         database.close(true);
       }
@@ -2986,20 +2999,17 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         projectRoot: root,
         packageStoreRoot: store,
         planDigest: replayedPlan.planDigest,
-        baseGeneration: firstAdmission.admissionDigest,
       });
-      expect(secondAdmission.admission.baseGeneration).toBe(firstAdmission.admissionDigest);
+      expect(secondAdmission.admission.baseGeneration).toBe(changedAdmission.admissionDigest);
       expect(await applyPrivateActivationReviewPlan({
         projectRoot: root,
         packageStoreRoot: store,
         planDigest: firstPlan.planDigest,
-        baseGeneration: null,
       })).toEqual(firstAdmission);
       await expect(applyPrivateActivationReviewPlan({
         projectRoot: root,
         packageStoreRoot: store,
-        planDigest: lockedPlan.planDigest,
-        baseGeneration: firstAdmission.admissionDigest,
+        planDigest: staleRepairPlan.planDigest,
       })).rejects.toMatchObject({ code: "STALE_PLAN" });
 
       await writeFile(join(root, "jig.ts"), [
@@ -3097,7 +3107,6 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         projectRoot: root,
         packageStoreRoot: store,
         planDigest: readyPlan.planDigest,
-        baseGeneration: secondAdmission.admissionDigest,
       });
       expect(readyAdmission.admission.baseGeneration).toBe(secondAdmission.admissionDigest);
 
@@ -3450,7 +3459,6 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         projectRoot: root,
         packageStoreRoot: store,
         planDigest: review.planDigest,
-        baseGeneration: null,
       });
       const openController = async () => await openPrivateRootAdministrationController({
         projectRoot: root,
@@ -3468,7 +3476,7 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         }),
       });
 
-      const databasePath = join(root, ".jig", "private-activation-admission-v15.sqlite3");
+      const databasePath = join(root, ".jig", "private-activation-admission-v16.sqlite3");
       controller = await openController();
       const submitted = await controller.administration.startRun({
         submissionId: "journal-success",
@@ -3965,7 +3973,6 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         projectRoot: root,
         packageStoreRoot: store,
         planDigest: review.planDigest,
-        baseGeneration: null,
       });
       const parentTarget = candidate.candidate.targets.find(
         ({ request }) => request.target.kind === "binding" && request.target.id === "parent",
@@ -4113,7 +4120,7 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         },
       });
       const sqlite = createRequire(import.meta.url)("bun:sqlite") as any;
-      const databasePath = join(root, ".jig", "private-activation-admission-v15.sqlite3");
+      const databasePath = join(root, ".jig", "private-activation-admission-v16.sqlite3");
       const database = sqlite.Database.open(
         databasePath,
         sqlite.constants.SQLITE_OPEN_READONLY | sqlite.constants.SQLITE_OPEN_NOFOLLOW,

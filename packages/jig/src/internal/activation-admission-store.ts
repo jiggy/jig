@@ -1,11 +1,11 @@
 import { createHash } from "node:crypto";
 import { constants, type BigIntStats } from "node:fs";
-import { lstat, mkdir, open, rename, unlink, type FileHandle } from "node:fs/promises";
+import { lstat, mkdir, open, readdir, rename, unlink, type FileHandle } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { join } from "node:path";
 
-import { invalid, unavailable } from "../diagnostics.js";
-import { canonicalJson, decodeJson1, JSON_1_LIMITS, type JsonValue } from "../json.js";
+import { CheckError, invalid, unavailable } from "../diagnostics.js";
+import { canonicalJson, decodeJson1, Json1Error, JSON_1_LIMITS, type JsonValue } from "../json.js";
 import { inspectCapturedPackage, type InspectedPackage } from "../package/inspect.js";
 import { SchemaDiagnostic } from "../schema/index.js";
 import type { ContractIdentity, RunTargetIdentity } from "../project/package-project.js";
@@ -141,20 +141,25 @@ import type { ServiceHostTerminal } from "../service/session.js";
 import {
   createPrivateActivationAdmission,
   createPrivateActivationPlanV2,
+  createPrivateLockRepair,
   decodePrivateActivationAdmission,
   decodePrivateActivationCandidateV5,
   decodePrivateActivationPlanV2,
+  decodePrivateLockRepair,
   encodePrivateActivationAdmission,
   encodePrivateActivationCandidateV5,
   encodePrivateActivationPlanV2,
+  encodePrivateLockRepair,
   findPrivateActivationCandidateTargetV5,
   privateActivationAdmissionDigest,
   privateActivationCandidateDigestV5,
   privateActivationPlanDigestV2,
+  privateLockRepairDigest,
   requirePrivateCreatedActivationCandidateV5,
   type PrivateActivationAdmission,
   type PrivateActivationCandidateArtifactV5,
   type PrivateActivationPlanV2,
+  type PrivateLockRepair,
 } from "./activation-admission.js";
 import {
   createPrivateExternalSubmissionOrigin,
@@ -239,13 +244,19 @@ export type {
 } from "./root-run-state.js";
 
 const STATE_DIRECTORY = ".jig";
-const DATABASE_NAME = "private-activation-admission-v15.sqlite3";
-const LEGACY_DATABASE_NAME = "private-activation-admission-v14.sqlite3";
+const DATABASE_NAME = "private-activation-admission-v16.sqlite3";
+const ADMISSION_DATABASE_FAMILY =
+  /^private-activation-admission-v[0-9]+\.sqlite3(?:-journal|-wal|-shm)?$/;
+const CURRENT_DATABASE_SIDECARS = new Set([
+  `${DATABASE_NAME}-journal`,
+  `${DATABASE_NAME}-wal`,
+  `${DATABASE_NAME}-shm`,
+]);
 const COORDINATOR_DATABASE_NAME = "private-project-coordinator-v1.sqlite3";
 const LOCK_NAME = "jig.lock";
 const LOCK_STAGE_NAME = "private-activation-jig-lock-v1.stage";
-const SCHEMA_VERSION = 15n;
-const APPLICATION_ID = 0x4a494741n; // JIGA: schema 15
+const SCHEMA_VERSION = 16n;
+const APPLICATION_ID = 0x4a494741n; // JIGA: schema 16
 const COORDINATOR_SCHEMA_VERSION = 1n;
 const COORDINATOR_APPLICATION_ID = 0x4a494743n; // JIGC
 const BUSY_TIMEOUT_MS = 250;
@@ -260,6 +271,7 @@ const WIRE_ID = /^[A-Za-z0-9][A-Za-z0-9._:/-]*$/;
 const CREATE_CANDIDATES = "CREATE TABLE candidates (revision INTEGER PRIMARY KEY CHECK (revision BETWEEN 1 AND 9007199254740991), candidate_digest TEXT NOT NULL, candidate_bytes BLOB NOT NULL CHECK (length(candidate_bytes) BETWEEN 1 AND 16777216), lock_bytes BLOB NOT NULL CHECK (length(lock_bytes) BETWEEN 1 AND 16777216)) STRICT";
 const CREATE_CANDIDATE_HEAD = "CREATE TABLE candidate_head (singleton INTEGER PRIMARY KEY CHECK (singleton = 1), revision INTEGER REFERENCES candidates(revision)) STRICT";
 const CREATE_REVIEW_PLANS = "CREATE TABLE review_plans (plan_digest TEXT PRIMARY KEY, candidate_revision INTEGER NOT NULL REFERENCES candidates(revision), plan_bytes BLOB NOT NULL CHECK (length(plan_bytes) BETWEEN 1 AND 16777216)) STRICT";
+const CREATE_LOCK_REPAIRS = "CREATE TABLE lock_repairs (plan_digest TEXT PRIMARY KEY REFERENCES review_plans(plan_digest), repair_digest TEXT NOT NULL UNIQUE, repair_bytes BLOB NOT NULL CHECK (length(repair_bytes) BETWEEN 1 AND 16777216)) STRICT";
 const CREATE_ADMISSIONS = "CREATE TABLE admissions (revision INTEGER PRIMARY KEY CHECK (revision BETWEEN 1 AND 9007199254740991), admission_digest TEXT NOT NULL UNIQUE, base_generation TEXT UNIQUE REFERENCES admissions(admission_digest), plan_digest TEXT NOT NULL UNIQUE REFERENCES review_plans(plan_digest), admission_bytes BLOB NOT NULL CHECK (length(admission_bytes) BETWEEN 1 AND 16777216)) STRICT";
 const CREATE_ADMISSION_HEAD = "CREATE TABLE admission_head (singleton INTEGER PRIMARY KEY CHECK (singleton = 1), revision INTEGER REFERENCES admissions(revision)) STRICT";
 const CREATE_COORDINATOR_HEAD = "CREATE TABLE coordinator_head (singleton INTEGER PRIMARY KEY CHECK (singleton = 1), epoch INTEGER NOT NULL CHECK (epoch BETWEEN 0 AND 9007199254740991)) STRICT";
@@ -298,6 +310,7 @@ const EXPECTED_SCHEMA = Object.freeze([
   Object.freeze({ type: "index", name: "hook_revisions_one_open", table: "hook_revisions", sql: CREATE_HOOK_REVISIONS_ONE_OPEN }),
   Object.freeze({ type: "table", name: "journal_events", table: "journal_events", sql: CREATE_JOURNAL_EVENTS }),
   Object.freeze({ type: "table", name: "journal_head", table: "journal_head", sql: CREATE_JOURNAL_HEAD }),
+  Object.freeze({ type: "table", name: "lock_repairs", table: "lock_repairs", sql: CREATE_LOCK_REPAIRS }),
   Object.freeze({ type: "table", name: "review_plans", table: "review_plans", sql: CREATE_REVIEW_PLANS }),
   Object.freeze({ type: "table", name: "root_execution_closures", table: "root_execution_closures", sql: CREATE_ROOT_EXECUTION_CLOSURES }),
   Object.freeze({ type: "table", name: "root_execution_lifecycles", table: "root_execution_lifecycles", sql: CREATE_ROOT_EXECUTION_LIFECYCLES }),
@@ -377,6 +390,12 @@ interface PlanRow {
   readonly plan_digest: string;
   readonly candidate_revision: bigint;
   readonly plan_bytes: Uint8Array;
+}
+
+interface LockRepairRow {
+  readonly plan_digest: string;
+  readonly repair_digest: string;
+  readonly repair_bytes: Uint8Array;
 }
 
 interface AdmissionRow {
@@ -668,11 +687,25 @@ export interface PrivateActivationReviewPlan {
   readonly candidate: PrivateActivationCandidateArtifactV5;
 }
 
+export type PrivateActivationPlanResult =
+  | { readonly state: "unchanged" }
+  | ({ readonly state: "applicable" } & PrivateActivationReviewPlan);
+
 export interface PrivateActivationAdmissionReceipt {
   readonly admission: PrivateActivationAdmission;
   readonly admissionBytes: Uint8Array;
   readonly admissionDigest: string;
 }
+
+export interface PrivateLockRepairReceipt {
+  readonly repair: PrivateLockRepair;
+  readonly repairBytes: Uint8Array;
+  readonly repairDigest: string;
+}
+
+export type PrivateActivationApplyReceipt =
+  | PrivateActivationAdmissionReceipt
+  | PrivateLockRepairReceipt;
 
 export interface PrivateActiveActivation {
   readonly admission: PrivateActivationAdmissionReceipt;
@@ -861,44 +894,86 @@ export async function createPrivateActivationReviewPlan(input: {
   readonly projectRoot: string;
   readonly packageStoreRoot: string;
   readonly lockMode: "update" | "locked";
-}): Promise<PrivateActivationReviewPlan> {
+  /** Optional private CAS used by the foreground proof after candidate publication. */
+  readonly expectedCandidate?: PrivateActivationCandidateHead;
+}): Promise<PrivateActivationPlanResult> {
   requireLockMode(input.lockMode);
+  if (input.expectedCandidate !== undefined) {
+    safeRevision(input.expectedCandidate.candidateRevision);
+    requireDigest(input.expectedCandidate.candidateDigest, "expected candidate");
+  }
   const owner = await openStateOwner(input.projectRoot, false);
   let artifacts: ReacquiredArtifacts | undefined;
   let failure: unknown;
   try {
-    const initialHead = readCandidateHead(owner.database, owner.root);
-    if (initialHead.revision === null) {
+    const initialHeads = await immediate(owner, () => Object.freeze({
+      candidate: readCandidateHead(owner.database, owner.root),
+      admission: readAdmissionHead(owner.database, owner.root),
+    }));
+    if (initialHeads.candidate.revision === null) {
       unavailable("ADMISSION_CANDIDATE_MISSING", "no activation candidate has been published");
     }
-    const initialRow = requireCandidateRow(owner.database, initialHead.revision);
+    if (input.expectedCandidate !== undefined && (
+      initialHeads.candidate.revision !== BigInt(input.expectedCandidate.candidateRevision) ||
+      requireCandidateRow(owner.database, initialHeads.candidate.revision).candidate_digest !==
+        input.expectedCandidate.candidateDigest
+    )) projectBusy("published activation candidate is no longer the candidate head");
+    const initialRow = requireCandidateRow(owner.database, initialHeads.candidate.revision);
     const candidate = loadCandidateRow(initialRow);
     requireCandidateRoot(candidate, owner.root);
     artifacts = await reacquireCandidateArtifacts(input.packageStoreRoot, candidate);
     const persisted = await immediate(owner, async () => {
       const currentHead = readCandidateHead(owner.database, owner.root);
-      if (currentHead.revision !== initialRow.revision) candidateChanged();
+      const admissionHead = readAdmissionHead(owner.database, owner.root);
+      if (
+        currentHead.revision !== initialHeads.candidate.revision ||
+        admissionHead.revision !== initialHeads.admission.revision
+      ) projectBusy("activation heads changed while the review plan was prepared");
       const currentRow = requireCandidateRow(owner.database, initialRow.revision);
       requireSameCandidateRow(initialRow, currentRow);
-      const admissionHead = readAdmissionHead(owner.database, owner.root);
-      const observed = await observeVisibleLock(owner.root);
+      const observed = await observeVisibleLockForPlanning(owner.root);
       const proposed = encodePrivateProjectLocalLock(candidate.lock);
-      if (input.lockMode === "locked" && (
-        observed.state !== "present" || !sameBytes(observed.bytes, proposed)
-      )) {
+      const visibleExact = observed.state === "present" && sameBytes(observed.bytes, proposed);
+      if (input.lockMode === "locked" && !visibleExact) {
         invalid("LOCK_MISMATCH", "locked planning requires the exact proposed jig.lock bytes");
+      }
+
+      let baseGeneration: string | null = null;
+      let operation: "admission" | "lock-repair" | "unchanged" = "admission";
+      if (admissionHead.revision !== null) {
+        const activeRow = requireAdmissionRow(owner.database, admissionHead.revision);
+        const active = loadAndCrossCheckAdmission(owner.database, activeRow, owner.root);
+        baseGeneration = active.admissionDigest;
+        const activeCandidateRow = requireCandidateRow(
+          owner.database,
+          BigInt(active.admission.candidateRevision),
+        );
+        const activeCandidate = loadCandidateRow(activeCandidateRow);
+        requireCandidateRoot(activeCandidate, owner.root);
+        const sameMeaning = activeCandidate.candidate.activationMeaningDigest ===
+          candidate.candidate.activationMeaningDigest;
+        const sameLock = activeCandidate.candidate.lockDigest === candidate.candidate.lockDigest &&
+          sameBytes(
+            encodePrivateProjectLocalLock(activeCandidate.lock),
+            encodePrivateProjectLocalLock(candidate.lock),
+          );
+        if (sameMeaning && sameLock) {
+          operation = visibleExact ? "unchanged" : "lock-repair";
+        }
+      }
+
+      if (operation === "unchanged") {
+        return Object.freeze({ state: "unchanged" as const });
       }
       const plan = createPrivateActivationPlanV2({
         candidate,
         candidateRevision: safeRevision(currentRow.revision),
-        baseGeneration: admissionHead.revision === null
-          ? null
-          : requireAdmissionRow(owner.database, admissionHead.revision).admission_digest,
+        baseGeneration,
         lockMode: input.lockMode,
         observedLock: observed.state === "absent"
           ? { state: "absent" }
           : { state: "present", lock: observed.lock },
-        operation: "admission",
+        operation,
       });
       const planBytes = encodePrivateActivationPlanV2(plan);
       requireStoredSize(planBytes, "review plan");
@@ -908,9 +983,10 @@ export async function createPrivateActivationReviewPlan(input: {
         candidate_revision: currentRow.revision,
         plan_bytes: planBytes,
       });
-      return Object.freeze({ plan, planBytes, planDigest, candidate });
+      return Object.freeze({ state: "applicable" as const, plan, planBytes, planDigest, candidate });
     });
     await owner.finish();
+    if (persisted.state === "unchanged") return persisted;
     return Object.freeze({ ...persisted, candidate: markStored(persisted.candidate) });
   } catch (error) {
     failure = error;
@@ -940,6 +1016,7 @@ export async function loadPrivateActivationReviewPlan(input: {
     const candidate = loadCandidateRow(initialCandidateRow);
     crossCheckPlanCandidate(plan, initialPlanRow, initialCandidateRow, candidate);
     requireCandidateRoot(candidate, owner.root);
+    requireDerivedPlanOperation(owner.database, plan, candidate, owner.root);
     artifacts = await reacquireCandidateArtifacts(input.packageStoreRoot, candidate);
     await immediate(owner, () => {
       readCandidateHead(owner.database, owner.root);
@@ -3533,41 +3610,31 @@ export async function applyPrivateActivationReviewPlan(input: {
   readonly projectRoot: string;
   readonly packageStoreRoot: string;
   readonly planDigest: string;
-  readonly baseGeneration: string | null;
-}): Promise<PrivateActivationAdmissionReceipt> {
+}): Promise<PrivateActivationApplyReceipt> {
   requireDigest(input.planDigest, "review plan");
-  if (input.baseGeneration !== null) requireDigest(input.baseGeneration, "expected base generation");
   const owner = await openStateOwner(input.projectRoot, false);
   let artifacts: ReacquiredArtifacts | undefined;
   let failure: unknown;
   try {
+    const historical = loadAppliedPlanReceipt(owner.database, input.planDigest, owner.root);
+    if (historical !== null) {
+      await owner.finish();
+      return historical;
+    }
+
     const initialPlanRow = requirePlanRow(owner.database, input.planDigest);
     const plan = loadPlanRow(initialPlanRow);
-    if (plan.operation !== "admission") {
-      invalid(
-        "ADMISSION_PLAN_OPERATION",
-        "lock-repair review plans require the dedicated repair apply path",
-      );
-    }
-    if (plan.baseGeneration !== input.baseGeneration) stale("apply base differs from the reviewed plan");
-
-    const committed = findAdmissionByPlan(owner.database, input.planDigest);
-    if (committed !== null) {
-      const receipt = loadAndCrossCheckAdmission(owner.database, committed, owner.root);
-      await owner.finish();
-      return receipt;
-    }
-
     const initialCandidateRow = requireCandidateRow(owner.database, initialPlanRow.candidate_revision);
     const candidate = loadCandidateRow(initialCandidateRow);
     crossCheckPlanCandidate(plan, initialPlanRow, initialCandidateRow, candidate);
     requirePlanBase(owner.database, plan, owner.root);
     requireCandidateRoot(candidate, owner.root);
+    requireDerivedPlanOperation(owner.database, plan, candidate, owner.root);
     artifacts = await reacquireCandidateArtifacts(input.packageStoreRoot, candidate);
 
     const receipt = await immediate(owner, async () => {
-      const raced = findAdmissionByPlan(owner.database, input.planDigest);
-      if (raced !== null) return loadAndCrossCheckAdmission(owner.database, raced, owner.root);
+      const raced = loadAppliedPlanReceipt(owner.database, input.planDigest, owner.root);
+      if (raced !== null) return raced;
 
       const currentPlanRow = requirePlanRow(owner.database, input.planDigest);
       const currentCandidateRow = requireCandidateRow(owner.database, initialPlanRow.candidate_revision);
@@ -3577,15 +3644,70 @@ export async function applyPrivateActivationReviewPlan(input: {
       requirePlanBase(owner.database, plan, owner.root);
 
       const candidateHead = readCandidateHead(owner.database, owner.root);
-      if (
+      if (plan.operation === "admission" && (
         candidateHead.revision !== currentCandidateRow.revision ||
         currentCandidateRow.candidate_digest !== plan.candidateDigest
-      ) stale("reviewed candidate is no longer the candidate head");
+      )) stale("reviewed candidate is no longer the candidate head");
       const admissionHead = readAdmissionHead(owner.database, owner.root);
       const currentBase = admissionHead.revision === null
         ? null
         : requireAdmissionRow(owner.database, admissionHead.revision).admission_digest;
       if (currentBase !== plan.baseGeneration) stale("reviewed base generation is no longer active");
+
+      const proposedLock = encodePrivateProjectLocalLock(candidate.lock);
+      if (plan.operation === "lock-repair") {
+        if (plan.baseGeneration === null || admissionHead.revision === null) {
+          corrupt("lock-repair plan has no active admission base");
+        }
+        const activeRow = requireAdmissionRow(owner.database, admissionHead.revision);
+        const active = loadAndCrossCheckAdmission(owner.database, activeRow, owner.root);
+        if (active.admissionDigest !== plan.baseGeneration) {
+          stale("reviewed lock-repair base is no longer active");
+        }
+        const activeCandidateRow = requireCandidateRow(
+          owner.database,
+          BigInt(active.admission.candidateRevision),
+        );
+        const activeCandidate = loadCandidateRow(activeCandidateRow);
+        requireCandidateRoot(activeCandidate, owner.root);
+        if (
+          activeCandidate.candidate.activationMeaningDigest !== plan.activationMeaningDigest ||
+          activeCandidate.candidate.lockDigest !== plan.proposed.lockDigest ||
+          !sameBytes(
+            encodePrivateProjectLocalLock(activeCandidate.lock),
+            encodePrivateProjectLocalLock(plan.proposed.lock),
+          )
+        ) corrupt("reviewed lock repair differs from its protected active activation meaning");
+
+        await convergeVisibleLock(owner, plan, proposedLock);
+
+        const finalAdmissionHead = readAdmissionHead(owner.database, owner.root);
+        if (finalAdmissionHead.revision !== admissionHead.revision) {
+          stale("admission head changed during lock repair");
+        }
+        const finalPlanRow = requirePlanRow(owner.database, input.planDigest);
+        const finalCandidateRow = requireCandidateRow(owner.database, currentCandidateRow.revision);
+        requireSamePlanRow(currentPlanRow, finalPlanRow);
+        requireSameCandidateRow(currentCandidateRow, finalCandidateRow);
+
+        const repair = createPrivateLockRepair({
+          planDigest: input.planDigest,
+          activeAdmissionDigest: active.admissionDigest,
+          proposedLockDigest: plan.proposed.lockDigest,
+        });
+        const repairBytes = encodePrivateLockRepair(repair);
+        requireStoredSize(repairBytes, "lock-repair receipt");
+        const repairDigest = privateLockRepairDigest(repair);
+        runFinalized(owner.database,
+          "INSERT INTO lock_repairs(plan_digest, repair_digest, repair_bytes) VALUES (?1, ?2, ?3)",
+          [input.planDigest, repairDigest, repairBytes],
+        );
+        return loadAndCrossCheckLockRepair(
+          owner.database,
+          requireLockRepairRow(owner.database, input.planDigest),
+          owner.root,
+        );
+      }
 
       const transition = preparePrivateHookAdmissionTransition(owner.database, {
         root: owner.root,
@@ -3612,7 +3734,6 @@ export async function applyPrivateActivationReviewPlan(input: {
         unavailable("ADMISSION_REVISION_EXHAUSTED", "private admission generation revision is exhausted");
       }
 
-      const proposedLock = encodePrivateProjectLocalLock(candidate.lock);
       await convergeVisibleLock(owner, plan, proposedLock);
 
       const finalCandidateHead = readCandidateHead(owner.database, owner.root);
@@ -5426,10 +5547,15 @@ async function openStateOwner(projectRoot: string, create: boolean): Promise<Sta
     if (create) await root.handle.sync();
     const databasePath = descriptorChild(directory, DATABASE_NAME);
     const databaseExists = await pathExists(databasePath);
-    if (!databaseExists && await pathExists(descriptorChild(directory, LEGACY_DATABASE_NAME))) {
+    const alternates = (await readdir(descriptorChild(directory, "")))
+      .filter((name) => ADMISSION_DATABASE_FAMILY.test(name))
+      .filter((name) => name !== DATABASE_NAME)
+      .filter((name) => !databaseExists || !CURRENT_DATABASE_SIDECARS.has(name))
+      .sort();
+    if (alternates.length !== 0) {
       invalid(
         "ADMISSION_SCHEMA_VERSION",
-        `${LEGACY_DATABASE_NAME} is an unsupported private admission format`,
+        `${alternates[0]} is an unsupported private admission format`,
       );
     }
     const databaseInformation = await ensureDatabaseFile(
@@ -5663,6 +5789,7 @@ function initializeOrVerifySchema(database: SqliteDatabase, root: PrivateProject
       database.exec(CREATE_CANDIDATES);
       database.exec(CREATE_CANDIDATE_HEAD);
       database.exec(CREATE_REVIEW_PLANS);
+      database.exec(CREATE_LOCK_REPAIRS);
       database.exec(CREATE_ADMISSIONS);
       database.exec(CREATE_ADMISSION_HEAD);
       database.exec(CREATE_COORDINATOR_HEAD);
@@ -5707,7 +5834,7 @@ function verifySchema(database: SqliteDatabase, root: PrivateProjectRoot): void 
   if (actual.length !== EXPECTED_SCHEMA.length || actual.some((row, index) => {
     const expected = EXPECTED_SCHEMA[index]!;
     return row.type !== expected.type || row.name !== expected.name || row.table !== expected.table || row.sql !== expected.sql;
-  })) corrupt("private admission database schema differs from version 15");
+  })) corrupt("private admission database schema differs from version 16");
   if (statement<Record<string, unknown>>(database, "PRAGMA foreign_key_check").all().length !== 0) {
     corrupt("private admission database has broken foreign keys");
   }
@@ -8037,6 +8164,16 @@ function sameCanonical(left: unknown, right: unknown): boolean {
   return sameBytes(canonicalJson(left as JsonValue), canonicalJson(right as JsonValue));
 }
 
+function decodeProtectedRecord<Value>(label: string, decode: () => Value): Value {
+  try { return decode(); }
+  catch (error) {
+    if (error instanceof Json1Error || error instanceof TypeError) {
+      corrupt(`${label} is not a valid canonical protected value`);
+    }
+    throw error;
+  }
+}
+
 function serviceMountFact(
   snapshot: PrivateServiceMountSnapshot,
   name: ServiceMountFactName,
@@ -8158,6 +8295,28 @@ function findAdmissionByPlan(database: SqliteDatabase, planDigest: string): Admi
   return rows[0] ?? null;
 }
 
+function findLockRepairByPlan(database: SqliteDatabase, planDigest: string): LockRepairRow | null {
+  const query = statement<LockRepairRow>(database,
+    "SELECT plan_digest, repair_digest, repair_bytes FROM lock_repairs WHERE plan_digest = ?1",
+  );
+  let rows: readonly LockRepairRow[];
+  try {
+    rows = query.all(planDigest).map((row) => Object.freeze({
+      plan_digest: row.plan_digest,
+      repair_digest: row.repair_digest,
+      repair_bytes: copiedBlob(row.repair_bytes, "stored lock-repair receipt"),
+    }));
+  } finally { query.finalize(); }
+  if (rows.length > 1) corrupt(`plan ${planDigest} names multiple lock repairs`);
+  return rows[0] ?? null;
+}
+
+function requireLockRepairRow(database: SqliteDatabase, planDigest: string): LockRepairRow {
+  const row = findLockRepairByPlan(database, planDigest);
+  if (row === null) corrupt(`committed lock repair ${planDigest} is missing`);
+  return row;
+}
+
 function requireAdmissionByDigest(database: SqliteDatabase, digest: string): AdmissionRow {
   const query = statement<AdmissionRow>(database,
     "SELECT revision, admission_digest, base_generation, plan_digest, admission_bytes FROM admissions WHERE admission_digest = ?1",
@@ -8202,33 +8361,112 @@ function loadCandidateRow(row: CandidateRow): PrivateActivationCandidateArtifact
   const lock = copiedBlob(row.lock_bytes, "stored candidate lock");
   requireStoredSize(candidate, "stored candidate");
   requireStoredSize(lock, "stored candidate lock");
-  const decoded = decodePrivateActivationCandidateV5({ candidate, lock });
+  const decoded = decodeProtectedRecord(
+    "stored candidate",
+    () => decodePrivateActivationCandidateV5({ candidate, lock }),
+  );
   if (privateActivationCandidateDigestV5(decoded) !== row.candidate_digest) corrupt("stored candidate row digest does not match canonical bytes");
   return decoded;
 }
 
 function loadPlanRow(row: PlanRow): PrivateActivationPlanV2 {
   safeRevision(row.candidate_revision);
-  requireDigest(row.plan_digest, "stored review plan");
+  requireProtectedDigest(row.plan_digest, "stored review plan");
   const bytes = copiedBlob(row.plan_bytes, "stored review plan");
   requireStoredSize(bytes, "stored review plan");
-  const plan = decodePrivateActivationPlanV2(bytes);
+  const plan = decodeProtectedRecord(
+    "stored review plan",
+    () => decodePrivateActivationPlanV2(bytes),
+  );
   if (privateActivationPlanDigestV2(plan) !== row.plan_digest) corrupt("stored review plan digest does not match canonical bytes");
   return plan;
 }
 
 function loadAdmissionRow(row: AdmissionRow): PrivateActivationAdmission {
   safeRevision(row.revision);
-  requireDigest(row.admission_digest, "stored admission");
-  if (row.base_generation !== null) requireDigest(row.base_generation, "stored admission base");
-  requireDigest(row.plan_digest, "stored admission plan");
+  requireProtectedDigest(row.admission_digest, "stored admission");
+  if (row.base_generation !== null) requireProtectedDigest(row.base_generation, "stored admission base");
+  requireProtectedDigest(row.plan_digest, "stored admission plan");
   const bytes = copiedBlob(row.admission_bytes, "stored activation admission");
   requireStoredSize(bytes, "stored activation admission");
-  const admission = decodePrivateActivationAdmission(bytes);
+  const admission = decodeProtectedRecord(
+    "stored activation admission",
+    () => decodePrivateActivationAdmission(bytes),
+  );
   if (privateActivationAdmissionDigest(admission) !== row.admission_digest) {
     corrupt("stored admission row digest does not match canonical bytes");
   }
   return admission;
+}
+
+function loadAndCrossCheckLockRepair(
+  database: SqliteDatabase,
+  row: LockRepairRow,
+  root: PrivateProjectRoot,
+): PrivateLockRepairReceipt {
+  requireProtectedDigest(row.plan_digest, "stored lock-repair plan");
+  requireProtectedDigest(row.repair_digest, "stored lock-repair receipt");
+  const bytes = copiedBlob(row.repair_bytes, "stored lock-repair receipt");
+  requireStoredSize(bytes, "stored lock-repair receipt");
+  const repair = decodeProtectedRecord(
+    "stored lock-repair receipt",
+    () => decodePrivateLockRepair(bytes),
+  );
+  if (privateLockRepairDigest(repair) !== row.repair_digest) {
+    corrupt("stored lock-repair digest does not match canonical bytes");
+  }
+  const planRow = requirePlanRow(database, row.plan_digest);
+  const plan = loadPlanRow(planRow);
+  if (
+    plan.operation !== "lock-repair" ||
+    repair.planDigest !== row.plan_digest ||
+    repair.planDigest !== planRow.plan_digest ||
+    repair.activeAdmissionDigest !== plan.baseGeneration ||
+    repair.proposedLockDigest !== plan.proposed.lockDigest
+  ) {
+    corrupt("stored lock-repair receipt does not match its reviewed plan");
+  }
+  const candidateRow = requireCandidateRow(database, planRow.candidate_revision);
+  const candidate = loadCandidateRow(candidateRow);
+  requireCandidateRoot(candidate, root);
+  crossCheckPlanCandidate(plan, planRow, candidateRow, candidate);
+  const activeRow = requireAdmissionByDigest(database, repair.activeAdmissionDigest);
+  const active = loadAndCrossCheckAdmission(database, activeRow, root);
+  const activeCandidate = loadCandidateRow(requireCandidateRow(
+    database,
+    BigInt(active.admission.candidateRevision),
+  ));
+  requireCandidateRoot(activeCandidate, root);
+  if (
+    activeCandidate.candidate.activationMeaningDigest !== plan.activationMeaningDigest ||
+    activeCandidate.candidate.lockDigest !== plan.proposed.lockDigest ||
+    !sameBytes(
+      encodePrivateProjectLocalLock(activeCandidate.lock),
+      encodePrivateProjectLocalLock(plan.proposed.lock),
+    )
+  ) {
+    corrupt("stored lock-repair receipt does not preserve its active admission meaning");
+  }
+  return Object.freeze({
+    repair,
+    repairBytes: bytes,
+    repairDigest: row.repair_digest,
+  });
+}
+
+function loadAppliedPlanReceipt(
+  database: SqliteDatabase,
+  planDigest: string,
+  root: PrivateProjectRoot,
+): PrivateActivationApplyReceipt | null {
+  const admission = findAdmissionByPlan(database, planDigest);
+  const repair = findLockRepairByPlan(database, planDigest);
+  if (admission !== null && repair !== null) {
+    corrupt("one review plan committed both an admission and a lock repair");
+  }
+  if (admission !== null) return loadAndCrossCheckAdmission(database, admission, root);
+  if (repair !== null) return loadAndCrossCheckLockRepair(database, repair, root);
+  return null;
 }
 
 function persistReviewPlan(database: SqliteDatabase, row: PlanRow): void {
@@ -8288,6 +8526,49 @@ function requirePlanBase(
   loadAndCrossCheckAdmission(database, base, root);
 }
 
+function requireDerivedPlanOperation(
+  database: SqliteDatabase,
+  plan: PrivateActivationPlanV2,
+  proposed: PrivateActivationCandidateArtifactV5,
+  root: PrivateProjectRoot,
+): void {
+  let expected: "admission" | "lock-repair" = "admission";
+  if (plan.baseGeneration !== null) {
+    const baseRow = requireAdmissionByDigest(database, plan.baseGeneration);
+    const base = loadAdmissionRow(baseRow);
+    if (baseRow.admission_digest !== plan.baseGeneration) {
+      corrupt("review plan base does not identify one exact admission");
+    }
+    const baseCandidateRow = requireCandidateRow(database, BigInt(base.candidateRevision));
+    const baseCandidate = loadCandidateRow(baseCandidateRow);
+    requireCandidateRoot(baseCandidate, root);
+    if (
+      base.candidateDigest !== baseCandidateRow.candidate_digest ||
+      base.lockDigest !== baseCandidate.candidate.lockDigest
+    ) corrupt("review plan base admission does not match its activation candidate");
+    const sameMeaning = baseCandidate.candidate.activationMeaningDigest ===
+      proposed.candidate.activationMeaningDigest;
+    const sameLock = baseCandidate.candidate.lockDigest === proposed.candidate.lockDigest &&
+      sameBytes(
+        encodePrivateProjectLocalLock(baseCandidate.lock),
+        encodePrivateProjectLocalLock(proposed.lock),
+      );
+    if (sameMeaning && sameLock) {
+      const observedExact = plan.observedLock.state === "present" && sameBytes(
+        encodePrivateProjectLocalLock(plan.observedLock.lock),
+        encodePrivateProjectLocalLock(plan.proposed.lock),
+      );
+      if (observedExact) {
+        corrupt("review plan persisted a normalized unchanged proposal");
+      }
+      expected = "lock-repair";
+    }
+  }
+  if (plan.operation !== expected) {
+    corrupt(`review plan operation is ${plan.operation}, but protected state derives ${expected}`);
+  }
+}
+
 function loadAndCrossCheckAdmission(
   database: SqliteDatabase,
   row: AdmissionRow,
@@ -8313,6 +8594,7 @@ function loadAndCrossCheckAdmission(
     admission.candidateDigest !== plan.candidateDigest ||
     admission.lockDigest !== candidate.candidate.lockDigest
   ) corrupt("stored admission does not match its plan and candidate closure");
+  requireDerivedPlanOperation(database, plan, candidate, root);
   if (row.revision === 1n) {
     if (admission.baseGeneration !== null) corrupt("first admission has a non-null base generation");
   } else {
@@ -8384,7 +8666,14 @@ async function observeVisibleLock(root: PrivateProjectRoot): Promise<
     if (!sameSnapshot(before, after) || !sameSnapshot(after, pathInformation)) {
       invalid("LOCK_CHANGED", "jig.lock changed while it was being observed");
     }
-    const lock = decodePrivateProjectLocalLock(bytes);
+    let lock: PrivateProjectLocalLock;
+    try { lock = decodePrivateProjectLocalLock(bytes); }
+    catch (error) {
+      if (error instanceof Json1Error || error instanceof TypeError) {
+        invalid("LOCK_INVALID", "jig.lock is not a canonical private lock value");
+      }
+      throw error;
+    }
     return Object.freeze({
       state: "present" as const,
       digest: privateProjectLocalLockDigest(lock),
@@ -8394,7 +8683,38 @@ async function observeVisibleLock(root: PrivateProjectRoot): Promise<
   } finally { await handle.close(); }
 }
 
+async function observeVisibleLockForPlanning(
+  root: PrivateProjectRoot,
+): Promise<Awaited<ReturnType<typeof observeVisibleLock>>> {
+  try {
+    return await observeVisibleLock(root);
+  } catch (error) {
+    if (isExpectedLockObservationFailure(error)) {
+      invalid(
+        "LOCK_MISMATCH",
+        "jig.lock is not an exact bounded canonical private lock observation",
+      );
+    }
+    throw error;
+  }
+}
+
 async function convergeVisibleLock(
+  owner: StateOwner,
+  plan: PrivateActivationPlanV2,
+  proposed: Uint8Array,
+): Promise<void> {
+  try {
+    await convergeVisibleLockUnchecked(owner, plan, proposed);
+  } catch (error) {
+    if (isExpectedLockObservationFailure(error)) {
+      stale("jig.lock is no longer the exact reviewed bounded canonical lock state");
+    }
+    throw error;
+  }
+}
+
+async function convergeVisibleLockUnchecked(
   owner: StateOwner,
   plan: PrivateActivationPlanV2,
   proposed: Uint8Array,
@@ -8416,6 +8736,13 @@ async function convergeVisibleLock(
     stale("jig.lock changed after the review plan was created");
   }
   await publishVisibleLock(owner, plan, proposed);
+}
+
+function isExpectedLockObservationFailure(error: unknown): boolean {
+  return (error instanceof CheckError && (
+      error.code === "LOCK_KIND" || error.code === "LOCK_INVALID" ||
+      error.code === "LOCK_CHANGED"
+    )) || hasCode(error, "EACCES") || hasCode(error, "EPERM") || hasCode(error, "ENXIO");
 }
 
 function matchesObservedLock(
@@ -8797,6 +9124,14 @@ function requireDigest(value: unknown, label: string): asserts value is string {
   if (typeof value !== "string" || !DIGEST.test(value)) throw new TypeError(`${label} digest must be sha256: followed by 64 lowercase hexadecimal digits`);
 }
 
+function requireProtectedDigest(value: unknown, label: string): asserts value is string {
+  try { requireDigest(value, label); }
+  catch (error) {
+    if (error instanceof TypeError) corrupt(`${label} digest is invalid protected state`);
+    throw error;
+  }
+}
+
 function requireWireId(value: unknown, label: string): asserts value is string {
   if (typeof value !== "string" || value.length > 128 || !WIRE_ID.test(value)) {
     throw new TypeError(`${label} is invalid`);
@@ -8859,6 +9194,7 @@ function isSqliteBusy(error: unknown): boolean {
 
 function busy(): never { unavailable("ADMISSION_STATE_BUSY", "private admission state is busy; retry the complete operation"); }
 function candidateChanged(): never { unavailable("ADMISSION_CANDIDATE_CHANGED", "activation candidate head changed; retry planning"); }
+function projectBusy(message: string): never { unavailable("PROJECT_BUSY", message); }
 function stale(message: string): never { unavailable("STALE_PLAN", message); }
 function corrupt(message: string): never { invalid("ADMISSION_STATE_CORRUPT", message); }
 function hasCode(error: unknown, code: string): boolean {
