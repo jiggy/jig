@@ -8,7 +8,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { isAbsolute, join, resolve } from "node:path";
 
 const packageRoot = resolve(import.meta.dir, "..");
 const temporary = await mkdtemp(join(tmpdir(), "flow-sdk-package-"));
@@ -96,12 +96,19 @@ if (operation.code !== "UNAVAILABLE" || effect.errorName !== "not-found" || serv
 }
 `,
   );
-  const node = Bun.env.FLOW_NODE ?? Bun.which("node");
-  if (node === null) {
-    throw new Error("Node was not found; set FLOW_NODE to a Node executable");
-  }
-  await run([node, "smoke.mjs"], consumer);
   await run(["bun", "smoke.mjs"], consumer);
+  const node = Bun.env.FLOW_NODE;
+  if (node === undefined || node === "" || !isAbsolute(node)) {
+    throw new Error("Node was not supplied; set FLOW_NODE to its exact executable");
+  }
+  const nodeIdentity = await run([
+    node,
+    "-e",
+    'if (process.release?.name !== "node" || process.versions?.bun !== undefined) process.exit(70); process.stdout.write("FLOW_NODE_OK\\n")',
+  ], packageRoot);
+  assert.equal(nodeIdentity.stdout, "FLOW_NODE_OK\n");
+  assert.equal(nodeIdentity.stderr, "");
+  await run([node, "smoke.mjs"], consumer);
 
   await writeFile(
     join(consumer, "smoke.ts"),
@@ -145,7 +152,10 @@ void new OperationError("UNAVAILABLE");
   await rm(temporary, { recursive: true, force: true });
 }
 
-async function run(command: string[], cwd: string): Promise<void> {
+async function run(command: string[], cwd: string): Promise<{
+  readonly stdout: string;
+  readonly stderr: string;
+}> {
   const process = Bun.spawn(command, {
     cwd,
     stdout: "pipe",
@@ -162,4 +172,5 @@ async function run(command: string[], cwd: string): Promise<void> {
       `${command.join(" ")} failed (${exitCode})\n${stdout}${stderr}`,
     );
   }
+  return { stdout, stderr };
 }

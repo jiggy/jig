@@ -96,6 +96,9 @@ Current implementation frontier:
 - [`design-review/163-private-atomic-plan-publication.md`](design-review/163-private-atomic-plan-publication.md)
   closes the private both-head snapshot and failure-atomic Candidate/Plan
   publication seam while leaving trusted project acquisition public-gated.
+- [`design-review/164-packed-tooling-and-alpha-disposition.md`](design-review/164-packed-tooling-and-alpha-disposition.md)
+  closes package-tree decontamination and separates the private tooling
+  candidate from the still-blocked operational Jig-host alpha.
 
 The focused Run/1 specification owns its finite wire surface. The remaining
 cross-cutting system rules are in the canonical architecture:

@@ -4,6 +4,9 @@ Private pre-release implementation of Jig. The package checker and first pure
 project-authoring slice are development evidence, not a published stable host
 interface.
 
+This artifact does not open projects, issue Root Administration authority,
+plan or apply projects, or execute FLOW packages.
+
 ```console
 bun run src/cli.ts package check ./path/to/package
 ```

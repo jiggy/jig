@@ -1,6 +1,28 @@
 #!/bin/sh
 
+# Unprivileged source and packed-artifact gate only. This does not run the
+# Linux proof-host security suite or establish publication readiness.
+
 set -eu
+
+case ${FLOW_NODE:-} in
+  /*) ;;
+  *)
+    echo "Packed JavaScript release tests require an absolute Node executable; set FLOW_NODE." >&2
+    exit 1
+    ;;
+esac
+node_identity=$(
+  "$FLOW_NODE" -e \
+    'if (process.release?.name !== "node" || process.versions?.bun !== undefined) process.exit(70); process.stdout.write("FLOW_NODE_OK\n")'
+) || {
+  echo "FLOW_NODE did not pass the independent Node identity probe." >&2
+  exit 1
+}
+if [ "$node_identity" != FLOW_NODE_OK ]; then
+  echo "FLOW_NODE returned the wrong identity sentinel." >&2
+  exit 1
+fi
 
 python_bin=${PYTHON:-python3}
 if ! "$python_bin" --version >/dev/null 2>&1; then
@@ -10,6 +32,7 @@ fi
 
 bun test packages/flow-sdk packages/jig conformance/run-1 conformance/service-1
 bun run --cwd packages/flow-sdk test:package
+bun run --cwd packages/jig test:package
 
 PYTHONDONTWRITEBYTECODE=1 \
 PYTHONPATH=packages/flowmd-sdk/src \

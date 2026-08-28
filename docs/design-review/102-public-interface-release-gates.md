@@ -76,6 +76,13 @@ These names are distribution coordinates, not protocol identities. Sley owns
 and publishes its public graph APIs upstream; the Jig and FLOW SDK names remain
 pre-release intent in this repository.
 
+The private packed `@jigging/jig` candidate now contains only its exported
+entrypoints, their required package-local support modules and declarations, the two exported
+schemas, and the inert `jig package check` CLI. It explicitly excludes every
+`dist/internal/**` and private host/controller module. Review 164 records this
+artifact boundary and the exact distinction between a Bun-validated tooling
+candidate and an operational Jig-host alpha.
+
 The former Nix-specific host-runtime retention sequence is preserved on the
 `experiments/nix-runtime-retention` branch and is not the current roadmap. It
 investigated retention of runtimes which happened to be installed in
@@ -511,6 +518,13 @@ The repository still needs:
   project-facing error wrapper;
 - public plan/apply request, result, error, authentication, and CLI/API
   surfaces plus an independent packed consumer;
+- an explicit Bun-only first-release decision or a Package/1-conformant Node
+  normalization path; genuine Node 22 and 24 currently stop on their Unicode
+  17.0 database while the pinned package contract requires Unicode 15.1;
+- license, repository, version, and tested engine metadata before registry
+  publication;
+- one administrator-owned production launcher/runtime-support installation on
+  a fresh supported host rather than the proof sandbox's host controls;
 - the complete Service/1 Host/Provider cross-language black-box corpus and a
   second independent Host;
 - a closed host-policy/configuration document for supported mechanisms;
