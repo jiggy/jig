@@ -7,8 +7,8 @@ import {
 } from "../src/internal/activation-admission.js";
 import {
   applyPrivateActivationReviewPlan,
-  createPrivateActivationReviewPlan,
-  publishPrivateActivationCandidate,
+  capturePrivateActivationPlanningBase,
+  publishPrivateActivationReviewPlan,
 } from "../src/internal/activation-admission-store.js";
 import {
   createPrivateActivationPlanningObservation,
@@ -51,6 +51,7 @@ async function plan(projectPath: string): Promise<object> {
   const projectRoot = await realpath(projectPath);
   const packageStoreRoot = join(projectRoot, PRIVATE_STORE);
   await mkdir(packageStoreRoot, { recursive: true, mode: 0o700 });
+  const planningBase = await capturePrivateActivationPlanningBase({ projectRoot });
   const host = await proofHost();
   const aggregate = await retainPackageProject({
     projectRoot,
@@ -96,16 +97,12 @@ async function plan(projectPath: string): Promise<object> {
     resolveRetainedPackageProjectObservation(aggregate, planning),
     recipes,
   );
-  const head = await publishPrivateActivationCandidate({
+  const review = await publishPrivateActivationReviewPlan({
     projectRoot,
     packageStoreRoot,
+    planningBase,
     candidate,
-  });
-  const review = await createPrivateActivationReviewPlan({
-    projectRoot,
-    packageStoreRoot,
     lockMode: "update",
-    expectedCandidate: head,
   });
 
   if (review.state === "unchanged") {
@@ -114,8 +111,6 @@ async function plan(projectPath: string): Promise<object> {
       state: "unchanged",
       projectRoot,
       packageStoreRoot,
-      candidateRevision: head.candidateRevision,
-      candidateDigest: head.candidateDigest,
     };
   }
 
@@ -124,8 +119,8 @@ async function plan(projectPath: string): Promise<object> {
     state: "applicable",
     projectRoot,
     packageStoreRoot,
-    candidateRevision: head.candidateRevision,
-    candidateDigest: head.candidateDigest,
+    candidateRevision: review.plan.candidateRevision,
+    candidateDigest: review.plan.candidateDigest,
     planDigest: review.planDigest,
     operation: review.plan.operation,
     baseGeneration: review.plan.baseGeneration,

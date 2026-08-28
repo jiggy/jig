@@ -93,6 +93,9 @@ Current implementation frontier:
   records the successful-but-removed router-lowering experiment. A Jig Graph
   compiler now waits for a real stored graph consumer rather than inventing a
   DSL around synthetic terminal nodes.
+- [`design-review/163-private-atomic-plan-publication.md`](design-review/163-private-atomic-plan-publication.md)
+  closes the private both-head snapshot and failure-atomic Candidate/Plan
+  publication seam while leaving trusted project acquisition public-gated.
 
 The focused Run/1 specification owns its finite wire surface. The remaining
 cross-cutting system rules are in the canonical architecture:

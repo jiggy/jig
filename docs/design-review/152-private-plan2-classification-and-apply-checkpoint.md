@@ -24,13 +24,14 @@ one retained Plan/2 digest
        or publish lock-first and advance admission + Hook time
 ```
 
-The private foreground tool still publishes a candidate first and then asks
-the classifier to bind exactly that candidate head. This closes the
-interleaving between those two private calls, but it is not the complete
-capture-to-plan snapshot described in review 150. A production `plan()` must
-still own project acquisition, capture, declaration evaluation, package
-retention, resolution, runtime observation, classification, and final
-publication under one reviewed retry and error boundary.
+This checkpoint originally left the private foreground tool publishing a
+candidate and then binding classification to that head. Review 163 supersedes
+that seam: the foreground planner now captures both policy heads first and
+publishes Candidate/5 plus an applicable Plan/2 in one final transaction.
+That still is not the complete trusted `plan()` capability described in review
+150. A production operation must own project acquisition, capture, declaration
+evaluation, package retention, resolution, runtime observation, classification,
+and its reviewed retry and public error boundary.
 
 ## 2. Classification is semantic, not capture-based
 
@@ -52,10 +53,11 @@ different meaning or proposed lock
 ```
 
 Equivalent recapture may advance the diagnostic candidate head without
-creating authority. The foreground classifier takes an expected Candidate/5
-head and returns `PROJECT_BUSY` when another publication wins between the
-private publish and plan calls, so it never silently reviews a different
-candidate.
+creating authority. At this checkpoint, the legacy private classifier took an
+expected Candidate/5 head and refused a different publication. Review 163
+supersedes the foreground two-call seam with an opaque both-head base and one
+final Candidate/Plan publication transaction. The legacy helper remains only
+as a private implementation/test seam.
 
 Plan/2 stores an explicit operation only for review. Apply independently
 derives `admission` or `lock-repair` from the protected base and proposed
@@ -147,8 +149,9 @@ of that promotes Plan/2 or the foreground script to a public interface.
 
 Before this becomes a public project control plane, Jig still needs:
 
-1. one complete capture-to-plan operation which owns project acquisition and
-   the full source/evaluator/resolver/host-observation snapshot;
+1. trusted project acquisition and one closed project-facing operation around
+   the private source/evaluator/resolver/host-observation pipeline whose final
+   Candidate/Plan publication is now failure-atomic;
 2. the remaining classifier and authority proof matrix from review 150,
    including complete intrinsic/effective disposition and authority views;
 3. one closed public error wrapper which maps private store/runtime failures
@@ -159,18 +162,12 @@ Before this becomes a public project control plane, Jig still needs:
 6. a reviewed CLI/API plus an independent packed consumer of exactly that
    published surface.
 
-The finite, root-only foreground product step is now closed in review 153. It
-uses the existing coordinator and Root Administration controller, recovers and
-drains bounded root and Hook work, then closes. It mounts no eager Service and
-introduces no persistent supervisor: admission is not yet pinned for such a
-supervisor, and Service loss/restart policy has not been earned.
-
-The next composition vertical is mixed composition: join one admitted root
-`effect/call` to one acknowledged Service generation while preserving the
-already proved Journal path and Service ownership substrate. That mixed
-witness must close root operations and Service leases before fencing and
-releasing the Mount. Persistent supervision remains later policy, not an
-implication of this checkpoint.
+The finite, root-only foreground product step is closed in review 153. Reviews
+155 and 162 subsequently add one bounded mixed Root/child/Journal/Service
+witness and one manual provider/coordinator-loss witness. They close root
+operations and Service leases before Mount finalization without redispatch.
+Persistent supervision remains later policy, not an implication of this
+checkpoint.
 
 The boundary is:
 

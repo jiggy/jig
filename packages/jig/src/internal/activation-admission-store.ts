@@ -331,6 +331,7 @@ const EXPECTED_SCHEMA = Object.freeze([
 ]);
 
 const storedCandidates = new WeakSet<object>();
+const authenticPlanningBases = new WeakMap<object, PrivateActivationPlanningSnapshot>();
 const authenticRootRunLaunches = new WeakSet<object>();
 const claimedRootRunLaunches = new WeakSet<object>();
 const authenticCreatedServiceMountAllocations = new WeakSet<object>();
@@ -680,6 +681,32 @@ export interface PrivateActivationCandidateHead {
   readonly candidateDigest: string;
 }
 
+/**
+ * Invocation-local compare-and-set token for an activation-planning attempt.
+ * It is deliberately neither serializable authority nor a public project
+ * revision.
+ */
+declare const PRIVATE_ACTIVATION_PLANNING_BASE: unique symbol;
+
+export interface PrivateActivationPlanningBase {
+  readonly [PRIVATE_ACTIVATION_PLANNING_BASE]: true;
+}
+
+interface PrivateActivationPlanningSnapshot {
+  readonly projectRoot: {
+    readonly device: string;
+    readonly inode: string;
+  };
+  readonly candidate: {
+    readonly revision: number | null;
+    readonly digest: string | null;
+  };
+  readonly admission: {
+    readonly revision: number | null;
+    readonly digest: string | null;
+  };
+}
+
 export interface PrivateActivationReviewPlan {
   readonly plan: PrivateActivationPlanV2;
   readonly planBytes: Uint8Array;
@@ -829,6 +856,51 @@ export interface PrivateReacquiredRootExecutionWork extends PrivateRootExecution
   readonly candidate: PrivateActivationCandidateArtifactV5;
 }
 
+/**
+ * Snapshot both policy heads for a later atomic publication attempt. The
+ * returned capability is invocation-local and exposes none of those facts.
+ */
+export async function capturePrivateActivationPlanningBase(input: {
+  readonly projectRoot: string;
+}): Promise<PrivateActivationPlanningBase> {
+  const owner = await openStateOwner(input.projectRoot, true);
+  let failure: unknown;
+  try {
+    const base = await immediate(owner, () => {
+      const candidate = readCandidateHead(owner.database, owner.root);
+      const admission = readAdmissionHead(owner.database, owner.root);
+      const snapshot = Object.freeze({
+        projectRoot: Object.freeze({
+          device: owner.root.information.dev.toString(),
+          inode: owner.root.information.ino.toString(),
+        }),
+        candidate: Object.freeze({
+          revision: candidate.revision === null ? null : safeRevision(candidate.revision),
+          digest: candidate.revision === null
+            ? null
+            : requireCandidateRow(owner.database, candidate.revision).candidate_digest,
+        }),
+        admission: Object.freeze({
+          revision: admission.revision === null ? null : safeRevision(admission.revision),
+          digest: admission.revision === null
+            ? null
+            : requireAdmissionRow(owner.database, admission.revision).admission_digest,
+        }),
+      });
+      const token = Object.freeze({}) as PrivateActivationPlanningBase;
+      authenticPlanningBases.set(token, snapshot);
+      return token;
+    });
+    await owner.finish();
+    return base;
+  } catch (error) {
+    failure = error;
+    throw error;
+  } finally {
+    await disposeOperation(owner, undefined, failure);
+  }
+}
+
 /** Persist a factory-produced proposal as the monotonic activation head. */
 export async function publishPrivateActivationCandidate(input: {
   readonly projectRoot: string;
@@ -848,39 +920,96 @@ export async function publishPrivateActivationCandidate(input: {
     artifacts = await reacquireCandidateArtifacts(input.packageStoreRoot, created);
     const result = await immediate(owner, () => {
       const head = readCandidateHead(owner.database, owner.root);
-      if (head.revision !== null) {
-        const latestRow = requireCandidateRow(owner.database, head.revision);
-        const latest = loadCandidateRow(latestRow);
-        requireCandidateRoot(latest, owner.root);
-        if (latestRow.candidate_digest === candidateDigest) {
-          const prior = encodePrivateActivationCandidateV5(latest);
-          if (!sameBytes(prior.candidate, encoded.candidate) || !sameBytes(prior.lock, encoded.lock)) {
-            corrupt("latest candidate digest names different canonical bytes");
-          }
-          return Object.freeze({
-            candidateRevision: safeRevision(latestRow.revision),
-            candidateDigest,
-          });
-        }
-      }
-      const next = head.revision === null ? 1n : head.revision + 1n;
-      if (next > MAX_SAFE_REVISION) {
-        unavailable("ADMISSION_REVISION_EXHAUSTED", "private admission candidate revision is exhausted");
-      }
-      runFinalized(owner.database,
-        "INSERT INTO candidates(revision, candidate_digest, candidate_bytes, lock_bytes) VALUES (?1, ?2, ?3, ?4)",
-        [next, candidateDigest, encoded.candidate, encoded.lock],
+      const published = insertOrReuseCandidate(
+        owner.database,
+        owner.root,
+        head,
+        created,
+        encoded,
+        candidateDigest,
       );
-      const changed = runFinalized(owner.database,
-        "UPDATE candidate_head SET revision = ?1 WHERE singleton = 1 AND revision IS ?2",
-        [next, head.revision],
-      ).changes;
-      if (changed !== 1) corrupt("candidate head compare-and-set did not update exactly one row");
+      if (published.inserted) advanceCandidateHead(owner.database, head, published.row);
       readCandidateHead(owner.database, owner.root);
-      return Object.freeze({ candidateRevision: Number(next), candidateDigest });
+      return Object.freeze({
+        candidateRevision: safeRevision(published.row.revision),
+        candidateDigest,
+      });
     });
     await owner.finish();
     return result;
+  } catch (error) {
+    failure = error;
+    throw error;
+  } finally {
+    await disposeOperation(owner, artifacts, failure);
+  }
+}
+
+/**
+ * Failure-atomically publish one factory Candidate/5 and its classification
+ * against an earlier opaque head snapshot. No candidate or Plan becomes
+ * visible when either head changed or classification fails.
+ */
+export async function publishPrivateActivationReviewPlan(input: {
+  readonly projectRoot: string;
+  readonly packageStoreRoot: string;
+  readonly planningBase: PrivateActivationPlanningBase;
+  readonly candidate: PrivateActivationCandidateArtifactV5;
+  readonly lockMode: "update" | "locked";
+}): Promise<PrivateActivationPlanResult> {
+  requireLockMode(input.lockMode);
+  const planningBase = requirePrivateActivationPlanningBase(input.planningBase);
+  const created = requirePrivateCreatedActivationCandidateV5(input.candidate);
+  const encoded = encodePrivateActivationCandidateV5(created);
+  requireStoredSize(encoded.candidate, "candidate");
+  requireStoredSize(encoded.lock, "candidate lock");
+  const candidateDigest = privateActivationCandidateDigestV5(created);
+  const owner = await openStateOwner(input.projectRoot, false);
+  let artifacts: ReacquiredArtifacts | undefined;
+  let failure: unknown;
+  try {
+    requirePlanningBaseRoot(planningBase, owner.root);
+    requireCandidateRoot(created, owner.root);
+    artifacts = await reacquireCandidateArtifacts(input.packageStoreRoot, created);
+    const persisted = await immediate(owner, async () => {
+      const candidateHead = readCandidateHead(owner.database, owner.root);
+      const admissionHead = readAdmissionHead(owner.database, owner.root);
+      requirePlanningBaseHeads(
+        owner.database,
+        planningBase,
+        candidateHead,
+        admissionHead,
+      );
+
+      const published = insertOrReuseCandidate(
+        owner.database,
+        owner.root,
+        candidateHead,
+        created,
+        encoded,
+        candidateDigest,
+      );
+
+      const classified = await classifyAndPersistPrivateActivationReview(
+        owner,
+        published.row,
+        created,
+        admissionHead,
+        input.lockMode,
+      );
+      if (published.inserted) advanceCandidateHead(owner.database, candidateHead, published.row);
+      const finalHead = readCandidateHead(owner.database, owner.root);
+      if (finalHead.revision !== published.row.revision) {
+        corrupt("integrated planning did not publish its exact candidate head");
+      }
+      if (classified.state === "unchanged") return classified;
+      const storedCandidate = loadCandidateRow(published.row);
+      requireCandidateRoot(storedCandidate, owner.root);
+      return Object.freeze({ ...classified, candidate: storedCandidate });
+    });
+    await owner.finish();
+    if (persisted.state === "unchanged") return persisted;
+    return Object.freeze({ ...persisted, candidate: markStored(persisted.candidate) });
   } catch (error) {
     failure = error;
     throw error;
@@ -931,59 +1060,13 @@ export async function createPrivateActivationReviewPlan(input: {
       ) projectBusy("activation heads changed while the review plan was prepared");
       const currentRow = requireCandidateRow(owner.database, initialRow.revision);
       requireSameCandidateRow(initialRow, currentRow);
-      const observed = await observeVisibleLockForPlanning(owner.root);
-      const proposed = encodePrivateProjectLocalLock(candidate.lock);
-      const visibleExact = observed.state === "present" && sameBytes(observed.bytes, proposed);
-      if (input.lockMode === "locked" && !visibleExact) {
-        invalid("LOCK_MISMATCH", "locked planning requires the exact proposed jig.lock bytes");
-      }
-
-      let baseGeneration: string | null = null;
-      let operation: "admission" | "lock-repair" | "unchanged" = "admission";
-      if (admissionHead.revision !== null) {
-        const activeRow = requireAdmissionRow(owner.database, admissionHead.revision);
-        const active = loadAndCrossCheckAdmission(owner.database, activeRow, owner.root);
-        baseGeneration = active.admissionDigest;
-        const activeCandidateRow = requireCandidateRow(
-          owner.database,
-          BigInt(active.admission.candidateRevision),
-        );
-        const activeCandidate = loadCandidateRow(activeCandidateRow);
-        requireCandidateRoot(activeCandidate, owner.root);
-        const sameMeaning = activeCandidate.candidate.activationMeaningDigest ===
-          candidate.candidate.activationMeaningDigest;
-        const sameLock = activeCandidate.candidate.lockDigest === candidate.candidate.lockDigest &&
-          sameBytes(
-            encodePrivateProjectLocalLock(activeCandidate.lock),
-            encodePrivateProjectLocalLock(candidate.lock),
-          );
-        if (sameMeaning && sameLock) {
-          operation = visibleExact ? "unchanged" : "lock-repair";
-        }
-      }
-
-      if (operation === "unchanged") {
-        return Object.freeze({ state: "unchanged" as const });
-      }
-      const plan = createPrivateActivationPlanV2({
+      return await classifyAndPersistPrivateActivationReview(
+        owner,
+        currentRow,
         candidate,
-        candidateRevision: safeRevision(currentRow.revision),
-        baseGeneration,
-        lockMode: input.lockMode,
-        observedLock: observed.state === "absent"
-          ? { state: "absent" }
-          : { state: "present", lock: observed.lock },
-        operation,
-      });
-      const planBytes = encodePrivateActivationPlanV2(plan);
-      requireStoredSize(planBytes, "review plan");
-      const planDigest = privateActivationPlanDigestV2(plan);
-      persistReviewPlan(owner.database, {
-        plan_digest: planDigest,
-        candidate_revision: currentRow.revision,
-        plan_bytes: planBytes,
-      });
-      return Object.freeze({ state: "applicable" as const, plan, planBytes, planDigest, candidate });
+        admissionHead,
+        input.lockMode,
+      );
     });
     await owner.finish();
     if (persisted.state === "unchanged") return persisted;
@@ -8485,6 +8568,125 @@ function loadAppliedPlanReceipt(
   return null;
 }
 
+function insertOrReuseCandidate(
+  database: SqliteDatabase,
+  root: PrivateProjectRoot,
+  head: CandidateHeadRow,
+  candidate: PrivateActivationCandidateArtifactV5,
+  encoded: ReturnType<typeof encodePrivateActivationCandidateV5>,
+  candidateDigest: string,
+): { readonly row: CandidateRow; readonly inserted: boolean } {
+  if (head.revision !== null) {
+    const current = requireCandidateRow(database, head.revision);
+    const prior = loadCandidateRow(current);
+    requireCandidateRoot(prior, root);
+    if (current.candidate_digest === candidateDigest) {
+      const priorEncoding = encodePrivateActivationCandidateV5(prior);
+      if (!sameBytes(priorEncoding.candidate, encoded.candidate) ||
+          !sameBytes(priorEncoding.lock, encoded.lock)) {
+        corrupt("candidate digest names different canonical bytes");
+      }
+      return Object.freeze({ row: current, inserted: false });
+    }
+  }
+  const revision = head.revision === null ? 1n : head.revision + 1n;
+  if (revision > MAX_SAFE_REVISION) {
+    unavailable("ADMISSION_REVISION_EXHAUSTED", "private admission candidate revision is exhausted");
+  }
+  if (privateActivationCandidateDigestV5(candidate) !== candidateDigest) {
+    corrupt("candidate changed while its publication was prepared");
+  }
+  runFinalized(database,
+    "INSERT INTO candidates(revision, candidate_digest, candidate_bytes, lock_bytes) VALUES (?1, ?2, ?3, ?4)",
+    [revision, candidateDigest, encoded.candidate, encoded.lock],
+  );
+  return Object.freeze({ row: requireCandidateRow(database, revision), inserted: true });
+}
+
+function advanceCandidateHead(
+  database: SqliteDatabase,
+  previous: CandidateHeadRow,
+  candidate: CandidateRow,
+): void {
+  const changed = runFinalized(database,
+    "UPDATE candidate_head SET revision = ?1 WHERE singleton = 1 AND revision IS ?2",
+    [candidate.revision, previous.revision],
+  ).changes;
+  if (changed !== 1) corrupt("candidate head compare-and-set did not update exactly one row");
+}
+
+/**
+ * The one classification path shared by legacy current-head review and the
+ * pre-capture-base atomic publication path. The caller owns the surrounding
+ * immediate transaction and has already authenticated the proposed row.
+ */
+async function classifyAndPersistPrivateActivationReview(
+  owner: StateOwner,
+  candidateRow: CandidateRow,
+  candidate: PrivateActivationCandidateArtifactV5,
+  admissionHead: AdmissionHeadRow,
+  lockMode: "update" | "locked",
+): Promise<PrivateActivationPlanResult> {
+  if (candidateRow.candidate_digest !== privateActivationCandidateDigestV5(candidate)) {
+    corrupt("review classification candidate row differs from its proposed Candidate/5");
+  }
+  const observed = await observeVisibleLockForPlanning(owner.root);
+  const proposed = encodePrivateProjectLocalLock(candidate.lock);
+  const visibleExact = observed.state === "present" && sameBytes(observed.bytes, proposed);
+  if (lockMode === "locked" && !visibleExact) {
+    invalid("LOCK_MISMATCH", "locked planning requires the exact proposed jig.lock bytes");
+  }
+
+  let baseGeneration: string | null = null;
+  let operation: "admission" | "lock-repair" | "unchanged" = "admission";
+  if (admissionHead.revision !== null) {
+    const activeRow = requireAdmissionRow(owner.database, admissionHead.revision);
+    const active = loadAndCrossCheckAdmission(owner.database, activeRow, owner.root);
+    baseGeneration = active.admissionDigest;
+    const activeCandidateRow = requireCandidateRow(
+      owner.database,
+      BigInt(active.admission.candidateRevision),
+    );
+    const activeCandidate = loadCandidateRow(activeCandidateRow);
+    requireCandidateRoot(activeCandidate, owner.root);
+    const sameMeaning = activeCandidate.candidate.activationMeaningDigest ===
+      candidate.candidate.activationMeaningDigest;
+    const sameLock = activeCandidate.candidate.lockDigest === candidate.candidate.lockDigest &&
+      sameBytes(
+        encodePrivateProjectLocalLock(activeCandidate.lock),
+        encodePrivateProjectLocalLock(candidate.lock),
+      );
+    if (sameMeaning && sameLock) operation = visibleExact ? "unchanged" : "lock-repair";
+  }
+
+  if (operation === "unchanged") return Object.freeze({ state: "unchanged" as const });
+  const plan = createPrivateActivationPlanV2({
+    candidate,
+    candidateRevision: safeRevision(candidateRow.revision),
+    baseGeneration,
+    lockMode,
+    observedLock: observed.state === "absent"
+      ? { state: "absent" }
+      : { state: "present", lock: observed.lock },
+    operation,
+  });
+  const planBytes = encodePrivateActivationPlanV2(plan);
+  requireStoredSize(planBytes, "review plan");
+  const planDigest = privateActivationPlanDigestV2(plan);
+  persistReviewPlan(owner.database, {
+    plan_digest: planDigest,
+    candidate_revision: candidateRow.revision,
+    plan_bytes: planBytes,
+  });
+  return Object.freeze({
+    state: "applicable" as const,
+    plan,
+    planBytes,
+    planDigest,
+    candidate,
+  });
+}
+
 function persistReviewPlan(database: SqliteDatabase, row: PlanRow): void {
   const query = statement<PlanRow>(database,
     "SELECT plan_digest, candidate_revision, plan_bytes FROM review_plans WHERE plan_digest = ?1",
@@ -9094,6 +9296,49 @@ async function disposeOperation(
 function markStored(candidate: PrivateActivationCandidateArtifactV5): PrivateActivationCandidateArtifactV5 {
   storedCandidates.add(candidate);
   return candidate;
+}
+
+function requirePrivateActivationPlanningBase(
+  value: unknown,
+): PrivateActivationPlanningSnapshot {
+  if (value === null || typeof value !== "object") {
+    throw new TypeError("activation planning base was not captured by protected storage");
+  }
+  const snapshot = authenticPlanningBases.get(value);
+  if (snapshot === undefined) {
+    throw new TypeError("activation planning base was not captured by protected storage");
+  }
+  return snapshot;
+}
+
+function requirePlanningBaseRoot(
+  base: PrivateActivationPlanningSnapshot,
+  root: PrivateProjectRoot,
+): void {
+  if (base.projectRoot.device !== root.information.dev.toString() ||
+      base.projectRoot.inode !== root.information.ino.toString()) {
+    projectBusy("planning base belongs to a different project root");
+  }
+}
+
+function requirePlanningBaseHeads(
+  database: SqliteDatabase,
+  base: PrivateActivationPlanningSnapshot,
+  candidate: CandidateHeadRow,
+  admission: AdmissionHeadRow,
+): void {
+  const candidateRevision = candidate.revision === null ? null : safeRevision(candidate.revision);
+  const candidateDigest = candidate.revision === null
+    ? null
+    : requireCandidateRow(database, candidate.revision).candidate_digest;
+  const admissionRevision = admission.revision === null ? null : safeRevision(admission.revision);
+  const admissionDigest = admission.revision === null
+    ? null
+    : requireAdmissionRow(database, admission.revision).admission_digest;
+  if (candidateRevision !== base.candidate.revision || candidateDigest !== base.candidate.digest ||
+      admissionRevision !== base.admission.revision || admissionDigest !== base.admission.digest) {
+    projectBusy("activation heads changed while project meaning was acquired");
+  }
 }
 
 function statement<Row>(database: SqliteDatabase, sql: string): SqliteStatement<Row> {

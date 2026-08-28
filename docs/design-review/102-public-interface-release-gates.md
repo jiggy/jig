@@ -55,11 +55,13 @@ provider/invocation/lease/root/Mount settlement without redispatch. The private
 Candidate/5-to-Plan/2 path now
 also classifies normalized no-op, inert lock repair, and authority-changing
 admission, persists canonical applicable Plans, and applies them using only
-their digest. Admission retains candidate-head compare-and-set; repairs ignore
+their digest. Its foreground planner now captures both protected heads before
+source evaluation and atomically publishes the factory Candidate and
+applicable Plan only after both still match. Admission retains candidate-head compare-and-set; repairs ignore
 inert candidate-head movement, stale on active-admission movement, commute
 when equivalent, and advance no Hook or Service authority. This is a private
-classification/apply checkpoint rather than a complete capture-to-plan product
-operation. The intended package names are:
+classification/apply and private atomic-publication checkpoint rather than a
+trusted public project-planning operation. The intended package names are:
 
 ```text
 @jigging/jig    Jig TypeScript package
@@ -286,12 +288,13 @@ admission generation, Hook transition, or Service wake. Distinct equivalent
 repair Plans commute and may each record their own receipt; later candidate
 observations do not stale them, while a new active admission does.
 
-The implementation does **not** yet provide the complete source-capture,
-evaluation, resolution, host-observation, classification, and Plan-publication
-operation promised by a product `plan()`. The current private foreground path
-publishes Candidate/5 and then binds classification to that expected head. A
-closed project-facing error wrapper, the remaining classifier/authority proof
-matrix, public lock and Plan schemas, project opening,
+The private foreground path now captures both policy heads before source
+evaluation and atomically persists Candidate/5 and an applicable Plan/2 in its
+final protected publication transaction after rechecking both. Review 163
+records that narrowly failure-atomic publication proof. It
+still does **not** provide the trusted project acquisition and closed
+project-facing operation promised by a product `plan()`. A closed error
+wrapper, the remaining classifier/authority proof matrix, public lock and Plan schemas, project opening,
 authentication/transport, and a public CLI/API remain release gates.
 
 No `RunSnapshot`, `openProject`, `getRun`, or `cancelRun` interface is part of
@@ -427,16 +430,17 @@ The private Service-hosting substrate is also complete. One real admitted Bun
 Service reaches acknowledged readiness and clean or recovered closure inside
 the proven Linux envelope. Durable generations, owner-slot leases, invocation
 allocation and dispatch evidence, terminals, operation closures, fence-based
-recovery, and ordered release are closed and tamper-checked. This does not yet
-claim a live Root-to-Service invocation controller; review 151 records that
-deliberate boundary.
+recovery, and ordered release are closed and tamper-checked. Review 151 stopped
+before a live Root-to-Service invocation controller; reviews 155 and 162 later
+closed one finite normal invocation path and one manual loss-recovery path.
 
 The private Plan/2 classification/apply substrate is likewise complete at its
 deliberately smaller boundary. Candidate/5 classification, canonical Plan/2
 persistence, digest-only apply, historical replay, no-op normalization,
 commuting lock repairs, admission compare-and-set, and mixed-version private
-store refusal have executable evidence. Review 152 records both those results
-and the unimplemented capture-to-plan and public-interface seams.
+store refusal have executable evidence. Review 163 additionally closes the
+private both-head snapshot and atomic Candidate-plus-Plan publication seam.
+Trusted project acquisition and the public-interface seam remain open.
 
 The private finite foreground path is also closed as product-flow evidence.
 Its `plan`, explicitly confirmed `apply`, and `run` operations remain distinct;
@@ -500,8 +504,9 @@ the latest completed composition boundary is review 162.
 
 The repository still needs:
 
-- one complete capture-to-plan snapshot owned by a trusted project-opening
-  path, rather than the current private publish-then-classify seam;
+- one trusted project-opening/authority boundary and closed project-facing
+  operation around the private pipeline whose final Candidate/Plan publication
+  is now failure-atomic;
 - the remaining Plan/2 classifier/authority proof matrix and one closed public
   project-facing error wrapper;
 - public plan/apply request, result, error, authentication, and CLI/API

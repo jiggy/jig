@@ -5,6 +5,10 @@ commit `e7bf8d9`. This checkpoint composes already earned private mechanisms;
 it does not publish a CLI, project API, daemon, supervisor, Service host, or
 runtime/sandbox extension interface.
 
+Review 163 supersedes the `plan` sequence below with an opaque both-head base
+and failure-atomic final Candidate/Plan publication. Reviews 155 and 162 close
+the mixed-composition seam which this dated checkpoint still names as next.
+
 ## 1. Three operations stay distinct
 
 The private foreground script now exposes three deliberately separate

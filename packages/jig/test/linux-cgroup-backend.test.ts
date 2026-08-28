@@ -64,6 +64,7 @@ import {
 import {
   allocatePrivateServiceMount,
   applyPrivateActivationReviewPlan,
+  capturePrivateActivationPlanningBase,
   closePrivateServiceMount,
   createPrivateActivationReviewPlan,
   listPrivateServiceInvocations,
@@ -76,6 +77,7 @@ import {
   loadPrivateRootRun,
   openPrivateProjectCoordinator,
   publishPrivateActivationCandidate,
+  publishPrivateActivationReviewPlan,
   recordPrivateServiceMountAcknowledged,
   recordPrivateServiceMountBacking,
   recordPrivateServiceMountFence,
@@ -2548,6 +2550,7 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
     const bun = await proofHostBunClosure();
     const distribution = await realpath(join(import.meta.dir, "..", "dist"));
     const root = await mkdtemp(join(tmpdir(), "jig-retained-project-"));
+    const foreignRoot = await mkdtemp(join(tmpdir(), "jig-retained-foreign-project-"));
     const store = await mkdtemp(join(tmpdir(), "jig-retained-store-"));
     let rootController: Awaited<ReturnType<typeof openPrivateRootAdministrationController>> | undefined;
     const evaluator = {
@@ -2585,6 +2588,13 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         "",
       ].join("\n"));
       await writeFile(join(root, "flows", "run", "flow.ts"), "export {};\n");
+
+      const initialPlanningBase = await capturePrivateActivationPlanningBase({ projectRoot: root });
+      const foreignPlanningBase = await capturePrivateActivationPlanningBase({
+        projectRoot: foreignRoot,
+      });
+      const admissionDatabase = join(root, ".jig", "private-activation-admission-v17.sqlite3");
+      const sqlite = createRequire(import.meta.url)("bun:sqlite") as any;
 
       const aggregate = await retainPackageProject({
         projectRoot: root,
@@ -2741,11 +2751,53 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         "was not built from a retained project",
       );
 
-      const firstHead = await publishPrivateActivationCandidate({
+      await expect(publishPrivateActivationReviewPlan({
         projectRoot: root,
         packageStoreRoot: store,
+        planningBase: {} as never,
         candidate: unavailable,
+        lockMode: "update",
+      })).rejects.toThrow("activation planning base was not captured by protected storage");
+      await expect(publishPrivateActivationReviewPlan({
+        projectRoot: root,
+        packageStoreRoot: store,
+        planningBase: foreignPlanningBase,
+        candidate: unavailable,
+        lockMode: "update",
+      })).rejects.toMatchObject({ code: "PROJECT_BUSY" });
+      await expect(publishPrivateActivationReviewPlan({
+        projectRoot: root,
+        packageStoreRoot: store,
+        planningBase: initialPlanningBase,
+        candidate: unavailable,
+        lockMode: "locked",
+      })).rejects.toMatchObject({ code: "LOCK_MISMATCH" });
+      let atomicState = sqlite.Database.open(
+        admissionDatabase,
+        sqlite.constants.SQLITE_OPEN_READONLY | sqlite.constants.SQLITE_OPEN_NOFOLLOW,
+      );
+      expect(atomicState.query(
+        "SELECT revision FROM candidate_head WHERE singleton = 1",
+      ).get().revision).toBeNull();
+      expect(atomicState.query("SELECT count(*) AS count FROM candidates").get().count).toBe(0);
+      expect(atomicState.query("SELECT count(*) AS count FROM review_plans").get().count).toBe(0);
+      atomicState.close(true);
+
+      const firstPlanResult = await publishPrivateActivationReviewPlan({
+        projectRoot: root,
+        packageStoreRoot: store,
+        planningBase: initialPlanningBase,
+        candidate: unavailable,
+        lockMode: "update",
       });
+      if (firstPlanResult.state !== "applicable") {
+        throw new Error("hostile fixture expected one atomically published Plan");
+      }
+      const firstPlan = firstPlanResult;
+      const firstHead = {
+        candidateRevision: firstPlan.plan.candidateRevision,
+        candidateDigest: firstPlan.plan.candidateDigest,
+      };
       expect(firstHead).toEqual({
         candidateRevision: 1,
         candidateDigest: privateActivationCandidateDigestV5(unavailable),
@@ -2762,11 +2814,6 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
           candidate: unavailable,
         }),
       )))).toEqual(Array.from({ length: 4 }, () => firstHead));
-      const firstPlan = await createPrivateActivationReviewPlan({
-        projectRoot: root,
-        packageStoreRoot: store,
-        lockMode: "update",
-      });
       expect(firstPlan.plan).toMatchObject({
         candidateRevision: 1,
         candidateDigest: firstHead.candidateDigest,
@@ -2808,17 +2855,16 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         lockMode: "locked",
       }))
         .rejects.toMatchObject({ code: "LOCK_MISMATCH" });
-      const admissionDatabase = join(root, ".jig", "private-activation-admission-v17.sqlite3");
       await writeFile(join(root, "jig.lock"), persisted.lock, { mode: 0o644 });
-      const crashSqlite = createRequire(import.meta.url)("bun:sqlite") as any;
-      const recovered = crashSqlite.Database.open(
+      const recovered = sqlite.Database.open(
         admissionDatabase,
-        crashSqlite.constants.SQLITE_OPEN_READONLY | crashSqlite.constants.SQLITE_OPEN_NOFOLLOW,
+        sqlite.constants.SQLITE_OPEN_READONLY | sqlite.constants.SQLITE_OPEN_NOFOLLOW,
       );
       expect(recovered.query("SELECT count(*) AS count FROM admissions").get().count).toBe(0);
       expect(recovered.query("SELECT revision FROM admission_head WHERE singleton = 1").get().revision)
         .toBeNull();
       recovered.close(true);
+      const admissionRaceBase = await capturePrivateActivationPlanningBase({ projectRoot: root });
       const firstAdmission = await applyPrivateActivationReviewPlan({
         projectRoot: root,
         packageStoreRoot: store,
@@ -2863,6 +2909,24 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         aggregate,
         resolveRetainedPackageProjectObservation(aggregate, secondPlanning),
       );
+      await expect(publishPrivateActivationReviewPlan({
+        projectRoot: root,
+        packageStoreRoot: store,
+        planningBase: admissionRaceBase,
+        candidate: second,
+        lockMode: "update",
+      })).rejects.toMatchObject({ code: "PROJECT_BUSY" });
+      atomicState = sqlite.Database.open(
+        admissionDatabase,
+        sqlite.constants.SQLITE_OPEN_READONLY | sqlite.constants.SQLITE_OPEN_NOFOLLOW,
+      );
+      expect(atomicState.query(
+        "SELECT revision FROM candidate_head WHERE singleton = 1",
+      ).get().revision).toBe(1);
+      expect(atomicState.query("SELECT count(*) AS count FROM candidates").get().count).toBe(1);
+      atomicState.close(true);
+
+      const candidateRaceBase = await capturePrivateActivationPlanningBase({ projectRoot: root });
       const secondHead = await publishPrivateActivationCandidate({
         projectRoot: root,
         packageStoreRoot: store,
@@ -2870,6 +2934,22 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
       });
       expect(secondHead.candidateRevision).toBe(2);
       expect(secondHead.candidateDigest).not.toBe(firstHead.candidateDigest);
+      await expect(publishPrivateActivationReviewPlan({
+        projectRoot: root,
+        packageStoreRoot: store,
+        planningBase: candidateRaceBase,
+        candidate: unavailable,
+        lockMode: "update",
+      })).rejects.toMatchObject({ code: "PROJECT_BUSY" });
+      atomicState = sqlite.Database.open(
+        admissionDatabase,
+        sqlite.constants.SQLITE_OPEN_READONLY | sqlite.constants.SQLITE_OPEN_NOFOLLOW,
+      );
+      expect(atomicState.query(
+        "SELECT revision FROM candidate_head WHERE singleton = 1",
+      ).get().revision).toBe(2);
+      expect(atomicState.query("SELECT count(*) AS count FROM candidates").get().count).toBe(2);
+      atomicState.close(true);
       const changedPlan = await createPrivateActivationReviewPlan({
         projectRoot: root,
         packageStoreRoot: store,
@@ -2957,7 +3037,6 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         planDigest: replayedPlan.planDigest,
       })).rejects.toMatchObject({ code: "ADMISSION_SQLITE_SIDECAR" });
       await rm(`${admissionDatabase}-wal`);
-      const sqlite = createRequire(import.meta.url)("bun:sqlite") as any;
       const database = sqlite.Database.open(
         admissionDatabase,
         sqlite.constants.SQLITE_OPEN_READONLY | sqlite.constants.SQLITE_OPEN_NOFOLLOW,
@@ -3267,6 +3346,7 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
     } finally {
       await rootController?.dispose();
       await rm(root, { recursive: true, force: true });
+      await rm(foreignRoot, { recursive: true, force: true });
       await rm(store, { recursive: true, force: true });
     }
   });

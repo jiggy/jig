@@ -2,11 +2,14 @@
 
 **Status:** reviewed on 2026-08-28 as the normative private frontier. The
 Candidate/5-to-Plan/2 classification and Plan/2-to-apply subset is closed in
-review 152. Complete capture-to-plan acquisition and the public control-plane
-surface remain gated. The deferred Root-to-Service invocation controller is
-not a prerequisite for reviewing and applying inert project meaning. This
-record publishes no project opening, daemon transport, CLI compatibility
-promise, administration API, lock schema, or machine schema.
+review 152. Review 163 additionally closes the private final
+Candidate/5-plus-Plan/2 publication transaction and both-head staleness proof.
+Trusted project acquisition, the remaining inspection matrix, and the public
+control-plane surface remain gated. Root-to-Service invocation was independent
+of this admission checkpoint and is now closed only at the finite boundaries
+in reviews 155 and 162. This record publishes no project opening, daemon
+transport, CLI compatibility promise, administration API, lock schema, or
+machine schema.
 
 ## 1. Exact private boundary
 
@@ -428,9 +431,9 @@ Unresolved ownership which makes a safe policy transition impossible is
 finite root-only foreground session which reuses the existing coordinator and
 Root Administration controller is closed in review 153. It drains bounded
 root and Hook work, then closes. No persistent Service supervisor is earned by
-Plan/2 or that session. The next mixed-composition slice must join one
-authentic root effect to one acknowledged Service generation and prove phased
-operation, lease, Mount, and loss cleanup.
+Plan/2 or that session. Reviews 155 and 162 subsequently joined one authentic
+root effect to one acknowledged Service generation and proved finite normal
+and manual loss cleanup. They did not add automatic supervision.
 
 ## 11. Closed errors
 
