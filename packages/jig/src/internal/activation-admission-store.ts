@@ -24,12 +24,85 @@ import {
   type PrivateBunServiceRecipe,
 } from "./bun-service-recipe.js";
 import {
+  decodePrivateServiceMountAcknowledged,
   decodePrivateServiceMountAllocation,
+  decodePrivateServiceMountBacking,
+  decodePrivateServiceMountClosure,
+  decodePrivateServiceMountFence,
+  decodePrivateServiceMountGeneration,
+  decodePrivateServiceMountPlan,
+  decodePrivateServiceMountPrepared,
+  decodePrivateServiceMountProvisional,
+  decodePrivateServiceMountRelease,
+  decodePrivateServiceMountSandbox,
+  encodePrivateServiceMountAcknowledged,
   encodePrivateServiceMountAllocation,
+  encodePrivateServiceMountBacking,
+  encodePrivateServiceMountClosure,
+  encodePrivateServiceMountFence,
+  encodePrivateServiceMountGeneration,
+  encodePrivateServiceMountPlan,
+  encodePrivateServiceMountPrepared,
+  encodePrivateServiceMountProvisional,
+  encodePrivateServiceMountRelease,
+  encodePrivateServiceMountSandbox,
+  normalizePrivateServiceMountAcknowledged,
   normalizePrivateServiceMountAllocation,
+  normalizePrivateServiceMountBacking,
+  normalizePrivateServiceMountClosure,
+  normalizePrivateServiceMountFence,
+  normalizePrivateServiceMountGeneration,
+  normalizePrivateServiceMountPlan,
+  normalizePrivateServiceMountPrepared,
+  normalizePrivateServiceMountProvisional,
+  normalizePrivateServiceMountRelease,
+  normalizePrivateServiceMountSandbox,
+  privateServiceMountAcknowledgedDigest,
   privateServiceMountAllocationDigest,
+  privateServiceMountBackingDigest,
+  privateServiceMountClosureDigest,
+  privateServiceMountFenceDigest,
+  privateServiceMountGenerationDigest,
+  privateServiceMountPlanDigest,
+  privateServiceMountPreparedDigest,
+  privateServiceMountProvisionalDigest,
+  privateServiceMountReleaseDigest,
+  privateServiceMountSandboxDigest,
+  type PrivateServiceMountAcknowledged,
   type PrivateServiceMountAllocation,
+  type PrivateServiceMountBacking,
+  type PrivateServiceMountClosure,
+  type PrivateServiceMountFence,
+  type PrivateServiceMountFenceProof,
+  type PrivateServiceMountGeneration,
+  type PrivateServiceMountPlan,
+  type PrivateServiceMountPrepared,
+  type PrivateServiceMountProvisional,
+  type PrivateServiceMountRelease,
+  type PrivateServiceMountSandbox,
+  type PrivateServiceMountClassification,
 } from "./private-service-state.js";
+import {
+  normalizePrivateLinuxConfirmedEnforcementReceipt,
+  normalizePrivateLinuxOwnerStateAllocationIdentity,
+  normalizePrivateLinuxOwnerStateCancellation,
+  normalizePrivateLinuxOwnerStateReleaseReceipt,
+  normalizePrivateLinuxPreparedOwnerIdentity,
+  normalizePrivateLinuxSealedOwnerIdentity,
+  type PrivateLinuxConfirmedEnforcementReceipt,
+  type PrivateLinuxOwnerStateAllocationIdentity,
+  type PrivateLinuxOwnerStateCancellation,
+  type PrivateLinuxOwnerStateReleaseReceipt,
+  type PrivateLinuxPreparedOwnerIdentity,
+  type PrivateLinuxSealedOwnerIdentity,
+} from "./linux-cgroup-backend.js";
+import {
+  normalizePrivatePackageMaterializationAllocationIdentity,
+  normalizePrivatePackageMaterializationLeaseIdentity,
+  type PrivatePackageMaterializationAllocationIdentity,
+  type PrivatePackageMaterializationLeaseIdentity,
+} from "./package-materialization.js";
+import type { ServiceHostTerminal } from "../service/session.js";
 import {
   createPrivateActivationAdmission,
   createPrivateActivationPlan,
@@ -290,6 +363,25 @@ interface ServiceMountRow {
   readonly allocation_bytes: Uint8Array;
 }
 
+type ServiceMountFactName =
+  | "plan"
+  | "backing"
+  | "sandbox"
+  | "prepared"
+  | "generation"
+  | "acknowledged"
+  | "provisional"
+  | "fence"
+  | "release"
+  | "closure";
+
+interface ServiceMountFactRow {
+  readonly mount_id: string;
+  readonly fact_name: ServiceMountFactName;
+  readonly fact_digest: string;
+  readonly fact_bytes: Uint8Array;
+}
+
 interface AdmissionCountRow {
   readonly count: bigint;
   readonly minimum: bigint | null;
@@ -520,11 +612,26 @@ export interface PrivateActiveActivation {
   readonly candidate: PrivateActivationCandidateArtifact;
 }
 
-/** Exact immutable Mount allocation, classified against the owning coordinator. */
+export interface PrivateServiceMountFact<Value> {
+  readonly digest: string;
+  readonly value: Value;
+}
+
+/** Exact immutable Mount lifecycle, classified against the owning coordinator. */
 export interface PrivateServiceMountSnapshot {
   readonly allocation: PrivateServiceMountAllocation;
   readonly allocationDigest: string;
   readonly coordinator: "current" | "older";
+  readonly plan?: PrivateServiceMountFact<PrivateServiceMountPlan>;
+  readonly backing?: PrivateServiceMountFact<PrivateServiceMountBacking>;
+  readonly sandbox?: PrivateServiceMountFact<PrivateServiceMountSandbox>;
+  readonly prepared?: PrivateServiceMountFact<PrivateServiceMountPrepared>;
+  readonly generation?: PrivateServiceMountFact<PrivateServiceMountGeneration>;
+  readonly acknowledged?: PrivateServiceMountFact<PrivateServiceMountAcknowledged>;
+  readonly provisional?: PrivateServiceMountFact<PrivateServiceMountProvisional>;
+  readonly fence?: PrivateServiceMountFact<PrivateServiceMountFence>;
+  readonly release?: PrivateServiceMountFact<PrivateServiceMountRelease>;
+  readonly closure?: PrivateServiceMountFact<PrivateServiceMountClosure>;
 }
 
 /** Exclusive, process-held authority for one project coordinator generation. */
@@ -949,6 +1056,7 @@ export async function allocatePrivateServiceMount(input: {
           coordinator,
           candidate,
           artifacts!,
+          recipe,
         );
         if (replay.coordinator !== "current" || serviceMountHasRelease(owner.database, mountId)) {
           invalid(
@@ -977,6 +1085,7 @@ export async function allocatePrivateServiceMount(input: {
         coordinator,
         candidate,
         artifacts!,
+        recipe,
       );
     });
     await owner.finish();
@@ -995,8 +1104,12 @@ export async function loadPrivateServiceMount(input: {
   readonly projectRoot: string;
   readonly packageStoreRoot: string;
   readonly mountId: string;
+  readonly recipe?: PrivateBunServiceRecipe;
 }): Promise<PrivateServiceMountSnapshot> {
   const coordinator = requirePrivateProjectCoordinator(input.coordinator);
+  const recipe = input.recipe === undefined
+    ? undefined
+    : requirePrivateBunServiceRecipe(input.recipe);
   await coordinator.verify();
   requireDigest(input.mountId, "Service Mount");
   const owner = await openStateOwner(input.projectRoot, false);
@@ -1031,6 +1144,7 @@ export async function loadPrivateServiceMount(input: {
         coordinator,
         candidate,
         artifacts!,
+        recipe,
       );
     });
     await owner.finish();
@@ -1041,6 +1155,17 @@ export async function loadPrivateServiceMount(input: {
   } finally {
     await disposeOperation(owner, artifacts, failure);
   }
+}
+
+/** Reproduce and authenticate the exact recipe-specific Mount lifecycle. */
+export async function reacquirePrivateServiceMount(input: {
+  readonly coordinator: PrivateProjectCoordinator;
+  readonly projectRoot: string;
+  readonly packageStoreRoot: string;
+  readonly mountId: string;
+  readonly recipe: PrivateBunServiceRecipe;
+}): Promise<PrivateServiceMountSnapshot> {
+  return await loadPrivateServiceMount(input);
 }
 
 /** List authenticated Mount allocations from this or an older coordinator epoch. */
@@ -1096,6 +1221,312 @@ export async function listPrivateServiceMounts(input: {
     }));
   }
   return Object.freeze(snapshots);
+}
+
+/**
+ * Enumerate only unresolved Mounts from protected durable state. This grants
+ * cleanup/recovery evidence, never launch authority, and deliberately does
+ * not depend on the admitted runtime or retained Package/1 bytes remaining
+ * available.
+ */
+export async function listPrivateServiceMountRecoveryWork(input: {
+  readonly coordinator: PrivateProjectCoordinator;
+  readonly projectRoot: string;
+  readonly epoch: "current" | "older";
+}): Promise<readonly PrivateServiceMountSnapshot[]> {
+  const coordinator = requirePrivateProjectCoordinator(input.coordinator);
+  await coordinator.verify();
+  if (input.epoch !== "current" && input.epoch !== "older") {
+    throw new TypeError("Service Mount recovery epoch must be current or older");
+  }
+  const owner = await openStateOwner(input.projectRoot, false);
+  let failure: unknown;
+  try {
+    requireCoordinatorRoot(coordinator, owner.root);
+    const snapshots = await immediate(owner, async () => {
+      await coordinator.verify();
+      const future = statement<{ readonly count: bigint }>(owner.database,
+        "SELECT count(*) AS count FROM service_mounts WHERE coordinator_epoch > ?1",
+      ).safeIntegers(true);
+      try {
+        const aggregate = future.get(BigInt(coordinator.epoch));
+        if (aggregate === null || aggregate.count !== 0n) {
+          corrupt("Service Mount belongs to a future coordinator epoch");
+        }
+      } finally { future.finalize(); }
+      const comparison = input.epoch === "current" ? "=" : "<";
+      const query = statement<ServiceMountRow>(owner.database, [
+        "SELECT mount_id, binding_id, admission_digest, coordinator_epoch, allocation_digest, allocation_bytes",
+        "FROM service_mounts WHERE coordinator_epoch", comparison, "?1",
+        "ORDER BY mount_id",
+      ].join(" ")).safeIntegers(true);
+      let rows: readonly ServiceMountRow[];
+      try { rows = query.all(BigInt(coordinator.epoch)).map(copiedServiceMountRow); }
+      finally { query.finalize(); }
+      const loaded = rows.map((row) => {
+        const admissionRow = requireAdmissionByDigest(owner.database, row.admission_digest);
+        const admission = loadAndCrossCheckAdmission(owner.database, admissionRow, owner.root);
+        const candidate = loadCandidateRow(requireCandidateRow(
+          owner.database,
+          BigInt(admission.admission.candidateRevision),
+        ));
+        requireCandidateRoot(candidate, owner.root);
+        return loadServiceMountSnapshot(
+          owner.database,
+          row,
+          owner.root,
+          coordinator,
+          candidate,
+        );
+      });
+      return Object.freeze(loaded.filter((snapshot) => snapshot.closure === undefined));
+    });
+    await owner.finish();
+    return snapshots;
+  } catch (error) {
+    failure = error;
+    throw error;
+  } finally {
+    await disposeOperation(owner, undefined, failure);
+  }
+}
+
+interface PrivateServiceMountTransitionInput {
+  readonly coordinator: PrivateProjectCoordinator;
+  readonly projectRoot: string;
+  readonly packageStoreRoot?: string;
+  readonly mountId: string;
+  readonly recipe?: PrivateBunServiceRecipe;
+}
+
+interface PrivateServiceMountAdvanceInput extends PrivateServiceMountTransitionInput {
+  readonly packageStoreRoot: string;
+  readonly recipe: PrivateBunServiceRecipe;
+}
+
+/** Persist the exact no-effect package and sandbox-owner allocations for one Mount. */
+export async function recordPrivateServiceMountPlan(input: PrivateServiceMountAdvanceInput & {
+  readonly packageAllocation: PrivatePackageMaterializationAllocationIdentity;
+  readonly ownerAllocation: PrivateLinuxOwnerStateAllocationIdentity;
+}): Promise<PrivateServiceMountSnapshot> {
+  const packageAllocation = normalizePrivatePackageMaterializationAllocationIdentity(
+    input.packageAllocation,
+  );
+  const ownerAllocation = normalizePrivateLinuxOwnerStateAllocationIdentity(input.ownerAllocation);
+  return await transitionPrivateServiceMount(input, "advance", (database, before, context) => {
+    const value = normalizePrivateServiceMountPlan({
+      kind: "private-service-mount-plan/1",
+      mountId: before.allocation.mountId,
+      allocationDigest: before.allocationDigest,
+      cancellationGraceMs: requireServiceMountTransitionRecipe(context).cancellationGraceMs,
+      packageAllocation,
+      ownerAllocation,
+    });
+    requireServiceMountPlanCorrelation(
+      context.root,
+      before,
+      value,
+      context.packageDigest,
+      requireServiceMountTransitionRecipe(context),
+    );
+    requireServiceMountFactOrder(before, "plan");
+    writeServiceMountFact(database, before, "plan", value, context);
+  });
+}
+
+/** Persist the exact retained-package lease before sealing a sandbox owner. */
+export async function recordPrivateServiceMountBacking(input: PrivateServiceMountAdvanceInput & {
+  readonly lease: PrivatePackageMaterializationLeaseIdentity;
+}): Promise<PrivateServiceMountSnapshot> {
+  const lease = normalizePrivatePackageMaterializationLeaseIdentity(input.lease);
+  return await transitionPrivateServiceMount(input, "advance", (database, before, context) => {
+    const plan = requireServiceMountFact(before.plan, "plan");
+    const value = normalizePrivateServiceMountBacking({
+      kind: "private-service-mount-backing/1",
+      mountId: before.allocation.mountId,
+      allocationDigest: before.allocationDigest,
+      planDigest: plan.digest,
+      lease,
+    });
+    requireServiceMountBackingCorrelation(before, value);
+    requireServiceMountFactOrder(before, "backing");
+    writeServiceMountFact(database, before, "backing", value, context);
+  });
+}
+
+/** Persist the exact sealed owner before package bytes may execute. */
+export async function recordPrivateServiceMountSandbox(input: PrivateServiceMountAdvanceInput & {
+  readonly owner: PrivateLinuxSealedOwnerIdentity;
+}): Promise<PrivateServiceMountSnapshot> {
+  const sealed = normalizePrivateLinuxSealedOwnerIdentity(input.owner);
+  return await transitionPrivateServiceMount(input, "advance", (database, before, context) => {
+    const backing = requireServiceMountFact(before.backing, "backing");
+    const value = normalizePrivateServiceMountSandbox({
+      kind: "private-service-mount-sandbox/1",
+      mountId: before.allocation.mountId,
+      allocationDigest: before.allocationDigest,
+      backingDigest: backing.digest,
+      owner: sealed,
+    });
+    requireServiceMountSandboxCorrelation(before, value, requireServiceMountTransitionRecipe(context));
+    requireServiceMountFactOrder(before, "sandbox");
+    writeServiceMountFact(database, before, "sandbox", value, context);
+  });
+}
+
+/** Persist the trusted helper's exact prepared-owner observation. */
+export async function recordPrivateServiceMountPrepared(input: PrivateServiceMountAdvanceInput & {
+  readonly prepared: PrivateLinuxPreparedOwnerIdentity;
+}): Promise<PrivateServiceMountSnapshot> {
+  const prepared = normalizePrivateLinuxPreparedOwnerIdentity(input.prepared);
+  return await transitionPrivateServiceMount(input, "advance", (database, before, context) => {
+    const sandbox = requireServiceMountFact(before.sandbox, "sandbox");
+    const value = normalizePrivateServiceMountPrepared({
+      kind: "private-service-mount-prepared/1",
+      mountId: before.allocation.mountId,
+      allocationDigest: before.allocationDigest,
+      sandboxDigest: sandbox.digest,
+      prepared,
+    });
+    requireServiceMountPreparedCorrelation(before, value);
+    requireServiceMountFactOrder(before, "prepared");
+    writeServiceMountFact(database, before, "prepared", value, context);
+  });
+}
+
+/** Allocate one fresh generation from an exact validated readiness export set. */
+export async function recordPrivateServiceMountGeneration(input: PrivateServiceMountAdvanceInput & {
+  readonly exports: readonly string[];
+}): Promise<PrivateServiceMountSnapshot> {
+  return await transitionPrivateServiceMount(input, "advance", (database, before, context) => {
+    const prepared = requireServiceMountFact(before.prepared, "prepared");
+    const generationId = privateDomainDigest("JIG-Private-Service-Generation-ID/1", {
+      mountId: before.allocation.mountId,
+      allocationDigest: before.allocationDigest,
+      preparedDigest: prepared.digest,
+    });
+    const value = normalizePrivateServiceMountGeneration({
+      kind: "private-service-mount-generation/1",
+      mountId: before.allocation.mountId,
+      allocationDigest: before.allocationDigest,
+      preparedDigest: prepared.digest,
+      generationId,
+      exports: input.exports,
+    });
+    requireServiceMountGenerationCorrelation(before, value);
+    requireServiceMountFactOrder(before, "generation");
+    writeServiceMountFact(database, before, "generation", value, context);
+  });
+}
+
+/** Record that the exact generation's empty readiness acknowledgement was flushed. */
+export async function recordPrivateServiceMountAcknowledged(
+  input: PrivateServiceMountAdvanceInput,
+): Promise<PrivateServiceMountSnapshot> {
+  return await transitionPrivateServiceMount(input, "advance", (database, before, context) => {
+    const generation = requireServiceMountFact(before.generation, "generation");
+    const value = normalizePrivateServiceMountAcknowledged({
+      kind: "private-service-mount-acknowledged/1",
+      mountId: before.allocation.mountId,
+      allocationDigest: before.allocationDigest,
+      generationDigest: generation.digest,
+    });
+    requireServiceMountAcknowledgedCorrelation(before, value);
+    requireServiceMountFactOrder(before, "acknowledged");
+    writeServiceMountFact(database, before, "acknowledged", value, context);
+  });
+}
+
+/** Stop admission and retain one exact terminal classification before fencing. */
+export async function recordPrivateServiceMountProvisional(
+  input: PrivateServiceMountTransitionInput & {
+    readonly classification: PrivateServiceMountClassification;
+    readonly terminal: ServiceHostTerminal;
+  },
+): Promise<PrivateServiceMountSnapshot> {
+  return await transitionPrivateServiceMount(input, "settle", (database, before, context) => {
+    const value = normalizePrivateServiceMountProvisional({
+      kind: "private-service-mount-provisional/1",
+      mountId: before.allocation.mountId,
+      allocationDigest: before.allocationDigest,
+      generationDigest: before.generation?.digest ?? null,
+      acknowledgedDigest: before.acknowledged?.digest ?? null,
+      classification: input.classification,
+      terminal: input.terminal,
+    });
+    requireServiceMountProvisionalCorrelation(before, value);
+    requireServiceMountFactOrder(before, "provisional");
+    writeServiceMountFact(database, before, "provisional", value, context);
+  });
+}
+
+/** Persist exact no-start cancellation or complete-tree enforcement evidence. */
+export async function recordPrivateServiceMountFence(input: PrivateServiceMountTransitionInput & {
+  readonly proof: PrivateServiceMountFenceProof;
+}): Promise<PrivateServiceMountSnapshot> {
+  return await transitionPrivateServiceMount(input, "settle", (database, before, context) => {
+    const provisional = requireServiceMountFact(before.provisional, "provisional");
+    const plan = requireServiceMountFact(before.plan, "plan");
+    const value = normalizePrivateServiceMountFence({
+      kind: "private-service-mount-fence/1",
+      mountId: before.allocation.mountId,
+      allocationDigest: before.allocationDigest,
+      provisionalDigest: provisional.digest,
+      planDigest: plan.digest,
+      proof: input.proof,
+    });
+    requireServiceMountFenceCorrelation(before, value);
+    requireServiceMountFactOrder(before, "fence");
+    writeServiceMountFact(database, before, "fence", value, context);
+  });
+}
+
+/** Retain exact package/owner disposal only while this checkpoint has no Service leases. */
+export async function recordPrivateServiceMountRelease(input: PrivateServiceMountTransitionInput & {
+  readonly packageReleased: true;
+  readonly ownerRelease: PrivateLinuxOwnerStateReleaseReceipt | null;
+}): Promise<PrivateServiceMountSnapshot> {
+  const ownerRelease = input.ownerRelease === null
+    ? null
+    : normalizePrivateLinuxOwnerStateReleaseReceipt(input.ownerRelease);
+  return await transitionPrivateServiceMount(input, "settle", (database, before, context) => {
+    requireNoServiceLeases(database, before.allocation.mountId);
+    const value = normalizePrivateServiceMountRelease({
+      kind: "private-service-mount-release/1",
+      mountId: before.allocation.mountId,
+      allocationDigest: before.allocationDigest,
+      provisionalDigest: requireServiceMountFact(before.provisional, "provisional").digest,
+      planDigest: before.plan?.digest ?? null,
+      backingDigest: before.backing?.digest ?? null,
+      fenceDigest: before.fence?.digest ?? null,
+      packageReleased: input.packageReleased,
+      ownerRelease,
+      leaseReleases: [],
+    });
+    requireServiceMountReleaseCorrelation(database, before, value);
+    requireServiceMountFactOrder(before, "release");
+    writeServiceMountFact(database, before, "release", value, context);
+  });
+}
+
+/** Close one fully released Mount without creating a replacement attempt. */
+export async function closePrivateServiceMount(
+  input: PrivateServiceMountTransitionInput,
+): Promise<PrivateServiceMountSnapshot> {
+  return await transitionPrivateServiceMount(input, "settle", (database, before, context) => {
+    const provisional = requireServiceMountFact(before.provisional, "provisional");
+    const release = requireServiceMountFact(before.release, "release");
+    const value = normalizePrivateServiceMountClosure({
+      kind: "private-service-mount-closure/1",
+      mountId: before.allocation.mountId,
+      allocationDigest: before.allocationDigest,
+      provisionalDigest: provisional.digest,
+      releaseDigest: release.digest,
+    });
+    requireServiceMountClosureCorrelation(before, value);
+    requireServiceMountFactOrder(before, "closure");
+    writeServiceMountFact(database, before, "closure", value, context);
+  });
 }
 
 /**
@@ -5095,7 +5526,7 @@ function requireServicePackageEvidence(
   packagePath: string,
   bindingId: string,
   expectedExports: readonly string[],
-  artifacts: ReacquiredArtifacts,
+  artifacts?: ReacquiredArtifacts,
 ): void {
   const binding = candidate.lock.bindings[bindingId];
   const lockedPackage = candidate.lock.packages[packagePath];
@@ -5104,12 +5535,15 @@ function requireServicePackageEvidence(
       Object.keys(binding.attachments).length !== 0 || Object.keys(binding.slots).length !== 0) {
     corrupt("stored Service Mount Binding differs from its candidate lock");
   }
-  const inspected = artifacts.inspection(lockedPackage.digest);
   const exports = Object.keys(lockedPackage.provides).sort();
-  if (inspected.digest !== lockedPackage.digest || inspected.mode !== "service" ||
-      exports.length !== expectedExports.length ||
+  if (exports.length !== expectedExports.length ||
       exports.some((value, index) => value !== expectedExports[index])) {
     corrupt("stored Service Mount exports differ from their protected Package/1");
+  }
+  if (artifacts === undefined) return;
+  const inspected = artifacts.inspection(lockedPackage.digest);
+  if (inspected.digest !== lockedPackage.digest || inspected.mode !== "service") {
+    corrupt("stored Service Mount Package/1 evidence differs from its candidate lock");
   }
 }
 
@@ -5119,7 +5553,8 @@ function loadServiceMountSnapshot(
   root: PrivateProjectRoot,
   coordinator: PrivateProjectCoordinator,
   candidate: PrivateActivationCandidateArtifact,
-  artifacts: ReacquiredArtifacts,
+  artifacts?: ReacquiredArtifacts,
+  recipe?: PrivateBunServiceRecipe,
 ): PrivateServiceMountSnapshot {
   requireDigest(row.mount_id, "stored Service Mount");
   requireDigest(row.admission_digest, "stored Service Mount admission");
@@ -5168,11 +5603,796 @@ function loadServiceMountSnapshot(
     allocation.expectedExports,
     artifacts,
   );
+  if (recipe !== undefined) {
+    if (artifacts === undefined) corrupt("exact Service Mount recipe load has no Package/1 evidence");
+    requireCurrentServiceRecipe(candidate, recipe, artifacts);
+    requireServiceMountAllocationRecipe(allocation, recipe);
+  }
+  const lifecycle = loadServiceMountLifecycleFacts(
+    database,
+    root,
+    allocation,
+    row.allocation_digest,
+    selected.request.package.digest,
+    recipe,
+  );
   return Object.freeze({
     allocation,
     allocationDigest: row.allocation_digest,
     coordinator: epoch === coordinator.epoch ? "current" : "older",
+    ...lifecycle,
   });
+}
+
+interface ServiceMountTransitionContext {
+  readonly coordinator: PrivateProjectCoordinator;
+  readonly root: PrivateProjectRoot;
+  readonly recipe: PrivateBunServiceRecipe | undefined;
+  readonly packageDigest: string;
+  readonly mode: "advance" | "settle";
+  readonly database: SqliteDatabase;
+}
+
+async function transitionPrivateServiceMount(
+  input: PrivateServiceMountTransitionInput,
+  mode: "advance" | "settle",
+  transition: (
+    database: SqliteDatabase,
+    before: PrivateServiceMountSnapshot,
+    context: ServiceMountTransitionContext,
+  ) => void,
+): Promise<PrivateServiceMountSnapshot> {
+  const coordinator = requirePrivateProjectCoordinator(input.coordinator);
+  const recipe = input.recipe === undefined
+    ? undefined
+    : requirePrivateBunServiceRecipe(input.recipe);
+  if (mode === "advance" && recipe === undefined) {
+    throw new TypeError("Service Mount forward transition requires its exact recipe");
+  }
+  await coordinator.verify();
+  requireDigest(input.mountId, "Service Mount");
+  const owner = await openStateOwner(input.projectRoot, false);
+  let artifacts: ReacquiredArtifacts | undefined;
+  let failure: unknown;
+  try {
+    requireCoordinatorRoot(coordinator, owner.root);
+    const initialRow = requireServiceMountRow(owner.database, input.mountId);
+    const admissionRow = requireAdmissionByDigest(owner.database, initialRow.admission_digest);
+    const admission = loadAndCrossCheckAdmission(owner.database, admissionRow, owner.root);
+    const candidateRow = requireCandidateRow(
+      owner.database,
+      BigInt(admission.admission.candidateRevision),
+    );
+    const candidate = loadCandidateRow(candidateRow);
+    requireCandidateRoot(candidate, owner.root);
+    if (mode === "advance") {
+      artifacts = await reacquireCandidateArtifacts(input.packageStoreRoot!, candidate);
+      requireCurrentServiceRecipe(candidate, recipe!, artifacts);
+    }
+
+    const result = await immediate(owner, async () => {
+      await coordinator.verify();
+      const currentRow = requireServiceMountRow(owner.database, input.mountId);
+      const currentAdmission = requireAdmissionByDigest(owner.database, initialRow.admission_digest);
+      const currentCandidate = requireCandidateRow(owner.database, candidateRow.revision);
+      requireSameServiceMountRow(initialRow, currentRow);
+      requireSameAdmissionRow(admissionRow, currentAdmission);
+      requireSameCandidateRow(candidateRow, currentCandidate);
+      loadAndCrossCheckAdmission(owner.database, currentAdmission, owner.root);
+      const before = loadServiceMountSnapshot(
+        owner.database,
+        currentRow,
+        owner.root,
+        coordinator,
+        candidate,
+        artifacts,
+        mode === "advance" ? recipe : undefined,
+      );
+      const selected = findPrivateActivationCandidateTarget(candidate, {
+        kind: "binding",
+        id: currentRow.binding_id,
+      });
+      if (selected === undefined || selected.request.mode !== "service") {
+        corrupt("Service Mount recipe target disappeared from its pinned candidate");
+      }
+      const context: ServiceMountTransitionContext = Object.freeze({
+        coordinator,
+        root: owner.root,
+        recipe,
+        packageDigest: selected.request.package.digest,
+        mode,
+        database: owner.database,
+      });
+      transition(owner.database, before, context);
+      return loadServiceMountSnapshot(
+        owner.database,
+        requireServiceMountRow(owner.database, input.mountId),
+        owner.root,
+        coordinator,
+        candidate,
+        artifacts,
+        mode === "advance" ? recipe : undefined,
+      );
+    });
+    await owner.finish();
+    return result;
+  } catch (error) {
+    failure = error;
+    throw error;
+  } finally {
+    await disposeOperation(owner, artifacts, failure);
+  }
+}
+
+function loadServiceMountLifecycleFacts(
+  database: SqliteDatabase,
+  root: PrivateProjectRoot,
+  allocation: PrivateServiceMountAllocation,
+  allocationDigest: string,
+  packageDigest: string,
+  recipe?: PrivateBunServiceRecipe,
+): Omit<PrivateServiceMountSnapshot, "allocation" | "allocationDigest" | "coordinator"> {
+  const query = statement<ServiceMountFactRow>(database, [
+    "SELECT mount_id, fact_name, fact_digest, fact_bytes FROM service_mount_facts",
+    "WHERE mount_id = ?1 ORDER BY fact_name",
+  ].join(" ")).safeIntegers(true);
+  let rows: readonly ServiceMountFactRow[];
+  try { rows = query.all(allocation.mountId).map(copiedServiceMountFactRow); }
+  finally { query.finalize(); }
+  if (rows.length > 10) corrupt("Service Mount has too many lifecycle facts");
+  const byName = new Map<ServiceMountFactName, ServiceMountFactRow>();
+  for (const row of rows) {
+    if (row.mount_id !== allocation.mountId || !isServiceMountFactName(row.fact_name) ||
+        byName.has(row.fact_name)) {
+      corrupt("Service Mount lifecycle fact identity is invalid or duplicated");
+    }
+    byName.set(row.fact_name, row);
+  }
+  const lifecycle = Object.freeze({
+    ...loadTypedServiceMountFact(byName.get("plan"), "plan", decodePrivateServiceMountPlan,
+      encodePrivateServiceMountPlan, privateServiceMountPlanDigest),
+    ...loadTypedServiceMountFact(byName.get("backing"), "backing", decodePrivateServiceMountBacking,
+      encodePrivateServiceMountBacking, privateServiceMountBackingDigest),
+    ...loadTypedServiceMountFact(byName.get("sandbox"), "sandbox", decodePrivateServiceMountSandbox,
+      encodePrivateServiceMountSandbox, privateServiceMountSandboxDigest),
+    ...loadTypedServiceMountFact(byName.get("prepared"), "prepared", decodePrivateServiceMountPrepared,
+      encodePrivateServiceMountPrepared, privateServiceMountPreparedDigest),
+    ...loadTypedServiceMountFact(byName.get("generation"), "generation", decodePrivateServiceMountGeneration,
+      encodePrivateServiceMountGeneration, privateServiceMountGenerationDigest),
+    ...loadTypedServiceMountFact(byName.get("acknowledged"), "acknowledged",
+      decodePrivateServiceMountAcknowledged, encodePrivateServiceMountAcknowledged,
+      privateServiceMountAcknowledgedDigest),
+    ...loadTypedServiceMountFact(byName.get("provisional"), "provisional",
+      decodePrivateServiceMountProvisional, encodePrivateServiceMountProvisional,
+      privateServiceMountProvisionalDigest),
+    ...loadTypedServiceMountFact(byName.get("fence"), "fence", decodePrivateServiceMountFence,
+      encodePrivateServiceMountFence, privateServiceMountFenceDigest),
+    ...loadTypedServiceMountFact(byName.get("release"), "release", decodePrivateServiceMountRelease,
+      encodePrivateServiceMountRelease, privateServiceMountReleaseDigest),
+    ...loadTypedServiceMountFact(byName.get("closure"), "closure", decodePrivateServiceMountClosure,
+      encodePrivateServiceMountClosure, privateServiceMountClosureDigest),
+  }) as Omit<PrivateServiceMountSnapshot, "allocation" | "allocationDigest" | "coordinator">;
+  const snapshot = Object.freeze({
+    allocation,
+    allocationDigest,
+    coordinator: "current" as const,
+    ...lifecycle,
+  });
+  validateLoadedServiceMountLifecycle(database, root, snapshot, packageDigest, recipe);
+  return lifecycle;
+}
+
+function loadTypedServiceMountFact<Name extends ServiceMountFactName, Value>(
+  row: ServiceMountFactRow | undefined,
+  name: Name,
+  decode: (bytes: Uint8Array) => Value,
+  encode: (value: unknown) => Uint8Array,
+  digest: (value: unknown) => string,
+): Partial<Record<Name, PrivateServiceMountFact<Value>>> {
+  if (row === undefined) return {};
+  requireDigest(row.fact_digest, `stored Service Mount ${name}`);
+  const bytes = copiedBlob(row.fact_bytes, `stored Service Mount ${name}`);
+  requireStoredSize(bytes, `stored Service Mount ${name}`);
+  let value: Value;
+  try { value = decode(bytes); }
+  catch { corrupt(`stored Service Mount ${name} fact is invalid`); }
+  if (!sameBytes(bytes, encode(value)) || digest(value) !== row.fact_digest) {
+    corrupt(`stored Service Mount ${name} fact differs from its durable identity`);
+  }
+  return { [name]: Object.freeze({ digest: row.fact_digest, value }) } as Partial<
+    Record<Name, PrivateServiceMountFact<Value>>
+  >;
+}
+
+function validateLoadedServiceMountLifecycle(
+  database: SqliteDatabase,
+  root: PrivateProjectRoot,
+  snapshot: PrivateServiceMountSnapshot,
+  packageDigest: string,
+  recipe?: PrivateBunServiceRecipe,
+): void {
+  if (snapshot.plan !== undefined) {
+    requireServiceMountPlanCorrelation(root, snapshot, snapshot.plan.value, packageDigest, recipe);
+  }
+  if (snapshot.backing !== undefined) requireServiceMountBackingCorrelation(snapshot, snapshot.backing.value);
+  if (snapshot.sandbox !== undefined) {
+    requireServiceMountSandboxCorrelation(snapshot, snapshot.sandbox.value, recipe);
+  }
+  if (snapshot.prepared !== undefined) {
+    requireServiceMountPreparedCorrelation(snapshot, snapshot.prepared.value);
+  }
+  if (snapshot.generation !== undefined) {
+    requireServiceMountGenerationCorrelation(snapshot, snapshot.generation.value);
+  }
+  if (snapshot.acknowledged !== undefined) {
+    requireServiceMountAcknowledgedCorrelation(snapshot, snapshot.acknowledged.value);
+  }
+  if (snapshot.provisional !== undefined) {
+    requireServiceMountProvisionalCorrelation(snapshot, snapshot.provisional.value);
+  }
+  if (snapshot.fence !== undefined) requireServiceMountFenceCorrelation(snapshot, snapshot.fence.value);
+  if (snapshot.release !== undefined) {
+    requireServiceMountReleaseCorrelation(database, snapshot, snapshot.release.value);
+  }
+  if (snapshot.closure !== undefined) {
+    requireServiceMountClosureCorrelation(snapshot, snapshot.closure.value);
+  }
+  requireLoadedServiceMountOrder(snapshot);
+}
+
+function requireServiceMountAllocationRecipe(
+  allocation: PrivateServiceMountAllocation,
+  recipe: PrivateBunServiceRecipe,
+): void {
+  if (allocation.bindingId !== serviceRecipeBindingId(recipe) ||
+      allocation.requestDigest !== recipe.request.digest || allocation.recipeDigest !== recipe.digest ||
+      allocation.observationDigest !== recipe.observation.digest ||
+      allocation.expectedExports.length !== recipe.expectedExports.length ||
+      allocation.expectedExports.some((value, index) => value !== recipe.expectedExports[index])) {
+    invalid("SERVICE_MOUNT_RECIPE_MISMATCH", "Service Mount allocation differs from its exact recipe");
+  }
+}
+
+function requireServiceMountPlanCorrelation(
+  root: PrivateProjectRoot,
+  snapshot: PrivateServiceMountSnapshot,
+  value: PrivateServiceMountPlan,
+  packageDigest: string,
+  recipe?: PrivateBunServiceRecipe,
+): void {
+  requireMountFactBase(snapshot, value.mountId, value.allocationDigest, "plan");
+  const roots = serviceMountProtectedRoots(root);
+  const hexadecimal = serviceMountHex(snapshot.allocation.mountId);
+  const packageAllocation = normalizePrivatePackageMaterializationAllocationIdentity(
+    value.packageAllocation,
+  );
+  const ownerAllocation = normalizePrivateLinuxOwnerStateAllocationIdentity(value.ownerAllocation);
+  if (packageAllocation.parent.path !== roots.materializations ||
+      packageAllocation.name !== `service-${hexadecimal}` ||
+      packageAllocation.path !== join(roots.materializations, `service-${hexadecimal}`) ||
+      packageAllocation.packageDigest !== packageDigest ||
+      packageAllocation.ownerToken !== snapshot.allocationDigest ||
+      ownerAllocation.parent !== roots.owners || ownerAllocation.name !== `s-${hexadecimal.slice(0, 62)}` ||
+      ownerAllocation.directory !== join(roots.owners, `s-${hexadecimal.slice(0, 62)}`)) {
+    corrupt("Service Mount plan resource identities are not rooted in its exact allocation");
+  }
+  if (recipe !== undefined && value.cancellationGraceMs !== recipe.cancellationGraceMs) {
+    corrupt("Service Mount plan cancellation grace differs from its exact recipe");
+  }
+}
+
+function requireServiceMountBackingCorrelation(
+  snapshot: PrivateServiceMountSnapshot,
+  value: PrivateServiceMountBacking,
+): void {
+  requireMountFactBase(snapshot, value.mountId, value.allocationDigest, "backing");
+  const plan = requireServiceMountFact(snapshot.plan, "plan");
+  if (value.planDigest !== plan.digest || !sameCanonical(
+    normalizePrivatePackageMaterializationLeaseIdentity(value.lease).allocation,
+    plan.value.packageAllocation,
+  )) corrupt("Service Mount backing differs from its plan allocation");
+}
+
+function requireServiceMountSandboxCorrelation(
+  snapshot: PrivateServiceMountSnapshot,
+  value: PrivateServiceMountSandbox,
+  recipe?: PrivateBunServiceRecipe,
+): void {
+  requireMountFactBase(snapshot, value.mountId, value.allocationDigest, "sandbox");
+  const plan = requireServiceMountFact(snapshot.plan, "plan");
+  const backing = requireServiceMountFact(snapshot.backing, "backing");
+  const owner = normalizePrivateLinuxSealedOwnerIdentity(value.owner);
+  if (value.backingDigest !== backing.digest || owner.runId !== serviceMountRunId(value.mountId) ||
+      owner.deadlineUnixMs !== snapshot.allocation.effectiveDeadlineUnixMs ||
+      owner.cancellationGraceMs !== plan.value.cancellationGraceMs ||
+      owner.ownerStateParent !== plan.value.ownerAllocation.parent ||
+      owner.ownerStateParentDevice !== plan.value.ownerAllocation.parentDevice ||
+      owner.ownerStateParentInode !== plan.value.ownerAllocation.parentInode ||
+      owner.ownerStateName !== plan.value.ownerAllocation.name ||
+      owner.ownerStateDirectory !== plan.value.ownerAllocation.directory ||
+      owner.ownerStateAllocationDigest !== plan.value.ownerAllocation.digest ||
+      owner.ownerToken !== plan.value.ownerAllocation.ownerToken) {
+    corrupt("Service Mount sandbox owner differs from its exact plan");
+  }
+  if (recipe !== undefined && (owner.mechanismDigest !== recipe.mechanismDigest ||
+      owner.cleanupTimeoutMs !== recipe.resourceCeilings.cleanupTimeoutMs)) {
+    corrupt("Service Mount sandbox mechanism differs from its exact recipe");
+  }
+}
+
+function requireServiceMountPreparedCorrelation(
+  snapshot: PrivateServiceMountSnapshot,
+  value: PrivateServiceMountPrepared,
+): void {
+  requireMountFactBase(snapshot, value.mountId, value.allocationDigest, "prepared");
+  const sandbox = requireServiceMountFact(snapshot.sandbox, "sandbox");
+  const prepared = normalizePrivateLinuxPreparedOwnerIdentity(value.prepared);
+  if (value.sandboxDigest !== sandbox.digest || !sameCanonical(prepared.owner, sandbox.value.owner)) {
+    corrupt("Service Mount prepared owner differs from its sandbox owner");
+  }
+}
+
+function requireServiceMountGenerationCorrelation(
+  snapshot: PrivateServiceMountSnapshot,
+  value: PrivateServiceMountGeneration,
+): void {
+  requireMountFactBase(snapshot, value.mountId, value.allocationDigest, "generation");
+  const prepared = requireServiceMountFact(snapshot.prepared, "prepared");
+  const generationId = privateDomainDigest("JIG-Private-Service-Generation-ID/1", {
+    mountId: snapshot.allocation.mountId,
+    allocationDigest: snapshot.allocationDigest,
+    preparedDigest: prepared.digest,
+  });
+  if (value.preparedDigest !== prepared.digest || value.generationId !== generationId ||
+      value.exports.length !== snapshot.allocation.expectedExports.length ||
+      value.exports.some((entry, index) => entry !== snapshot.allocation.expectedExports[index])) {
+    corrupt("Service Mount generation differs from exact readiness evidence");
+  }
+}
+
+function requireServiceMountAcknowledgedCorrelation(
+  snapshot: PrivateServiceMountSnapshot,
+  value: PrivateServiceMountAcknowledged,
+): void {
+  requireMountFactBase(snapshot, value.mountId, value.allocationDigest, "acknowledgement");
+  if (value.generationDigest !== requireServiceMountFact(snapshot.generation, "generation").digest) {
+    corrupt("Service Mount acknowledgement names a different generation");
+  }
+}
+
+function requireServiceMountProvisionalCorrelation(
+  snapshot: PrivateServiceMountSnapshot,
+  value: PrivateServiceMountProvisional,
+): void {
+  requireMountFactBase(snapshot, value.mountId, value.allocationDigest, "provisional terminal");
+  if (value.generationDigest !== (snapshot.generation?.digest ?? null) ||
+      value.acknowledgedDigest !== (snapshot.acknowledged?.digest ?? null)) {
+    corrupt("Service Mount provisional terminal differs from its readiness prefix");
+  }
+}
+
+function requireServiceMountFenceCorrelation(
+  snapshot: PrivateServiceMountSnapshot,
+  value: PrivateServiceMountFence,
+): void {
+  requireMountFactBase(snapshot, value.mountId, value.allocationDigest, "fence");
+  const plan = requireServiceMountFact(snapshot.plan, "plan");
+  const provisional = requireServiceMountFact(snapshot.provisional, "provisional");
+  if (value.planDigest !== plan.digest || value.provisionalDigest !== provisional.digest) {
+    corrupt("Service Mount fence differs from its exact plan or terminal");
+  }
+  if (value.proof.kind === "allocation-cancelled") {
+    const cancellation = normalizePrivateLinuxOwnerStateCancellation(value.proof.cancellation);
+    if (snapshot.prepared !== undefined || cancellation.allocationDigest !== plan.value.ownerAllocation.digest ||
+        (provisional.value.classification !== "startup-cancelled" &&
+         provisional.value.classification !== "coordinator-loss")) {
+      corrupt("Service Mount allocation fence does not prove an unprepared owner");
+    }
+    if (snapshot.sandbox !== undefined &&
+        (cancellation.directoryDevice !== snapshot.sandbox.value.owner.ownerStateDevice ||
+         cancellation.directoryInode !== snapshot.sandbox.value.owner.ownerStateInode)) {
+      corrupt("Service Mount allocation fence differs from its sealed owner-state directory");
+    }
+    return;
+  }
+  const sandbox = requireServiceMountFact(snapshot.sandbox, "sandbox");
+  if (value.proof.sandboxDigest !== sandbox.digest) {
+    corrupt("Service Mount enforcement fence names a different sandbox");
+  }
+  const receipt = normalizePrivateLinuxConfirmedEnforcementReceipt(value.proof.receipt);
+  const prepared = preparedIdentityForServiceSandbox(sandbox.value.owner);
+  if (receipt.ownerDigest !== prepared.digest) {
+    corrupt("Service Mount enforcement receipt belongs to another prepared owner");
+  }
+  requireServiceMountFenceClassification(provisional.value.classification, receipt);
+}
+
+function requireServiceMountReleaseCorrelation(
+  database: SqliteDatabase,
+  snapshot: PrivateServiceMountSnapshot,
+  value: PrivateServiceMountRelease,
+): void {
+  requireMountFactBase(snapshot, value.mountId, value.allocationDigest, "release");
+  const provisional = requireServiceMountFact(snapshot.provisional, "provisional");
+  if (value.provisionalDigest !== provisional.digest) {
+    corrupt("Service Mount release names a different provisional terminal");
+  }
+  requireNoServiceLeases(database, snapshot.allocation.mountId);
+  if (value.leaseReleases.length !== 0) {
+    corrupt("Service Mount release carries unsupported lease-release evidence");
+  }
+  if (snapshot.plan === undefined) {
+    if (value.planDigest !== null || value.backingDigest !== null || value.fenceDigest !== null ||
+        value.ownerRelease !== null || snapshot.backing !== undefined || snapshot.sandbox !== undefined ||
+        snapshot.prepared !== undefined || snapshot.fence !== undefined) {
+      corrupt("unplanned Service Mount release carries resource evidence");
+    }
+    return;
+  }
+  const fence = requireServiceMountFact(snapshot.fence, "fence");
+  const ownerRelease = value.ownerRelease === null
+    ? corrupt("planned Service Mount release omits owner disposal")
+    : normalizePrivateLinuxOwnerStateReleaseReceipt(value.ownerRelease);
+  if (value.planDigest !== snapshot.plan.digest ||
+      value.backingDigest !== (snapshot.backing?.digest ?? null) || value.fenceDigest !== fence.digest ||
+      ownerRelease.allocationDigest !== snapshot.plan.value.ownerAllocation.digest) {
+    corrupt("Service Mount release differs from its resource lifecycle");
+  }
+  if (fence.value.proof.kind === "allocation-cancelled") {
+    const cancellation = fence.value.proof.cancellation;
+    if (ownerRelease.directoryDevice !== cancellation.directoryDevice ||
+        ownerRelease.directoryInode !== cancellation.directoryInode) {
+      corrupt("Service Mount owner release differs from allocation cancellation evidence");
+    }
+  } else {
+    const sandbox = requireServiceMountFact(snapshot.sandbox, "sandbox");
+    if (ownerRelease.directoryDevice !== sandbox.value.owner.ownerStateDevice ||
+        ownerRelease.directoryInode !== sandbox.value.owner.ownerStateInode) {
+      corrupt("Service Mount owner release differs from sandbox owner evidence");
+    }
+  }
+}
+
+function requireServiceMountClosureCorrelation(
+  snapshot: PrivateServiceMountSnapshot,
+  value: PrivateServiceMountClosure,
+): void {
+  requireMountFactBase(snapshot, value.mountId, value.allocationDigest, "closure");
+  if (value.provisionalDigest !== requireServiceMountFact(snapshot.provisional, "provisional").digest ||
+      value.releaseDigest !== requireServiceMountFact(snapshot.release, "release").digest) {
+    corrupt("Service Mount closure differs from its terminal release");
+  }
+}
+
+function writeServiceMountFact(
+  database: SqliteDatabase,
+  before: PrivateServiceMountSnapshot,
+  name: ServiceMountFactName,
+  value: unknown,
+  context: ServiceMountTransitionContext,
+): void {
+  const encoded = encodeAndDigestServiceMountFact(name, value);
+  requireStoredSize(encoded.bytes, `Service Mount ${name}`);
+  const prior = findServiceMountFactRow(database, before.allocation.mountId, name);
+  if (prior !== null) {
+    if (prior.fact_digest !== encoded.digest || !sameBytes(prior.fact_bytes, encoded.bytes)) {
+      invalid("SERVICE_MOUNT_FACT_CONFLICT", `Service Mount ${name} fact differs from its replay`);
+    }
+    return;
+  }
+  if (context.mode === "advance") requireServiceMountAdvanceAuthority(before, context);
+  if (context.mode === "settle" && name === "provisional") {
+    requireServiceMountSettlementAuthority(
+      before,
+      context.coordinator,
+      normalizePrivateServiceMountProvisional(value).classification,
+    );
+  }
+  runFinalized(database, [
+    "INSERT INTO service_mount_facts(mount_id, fact_name, fact_digest, fact_bytes)",
+    "VALUES (?1, ?2, ?3, ?4)",
+  ].join(" "), [before.allocation.mountId, name, encoded.digest, encoded.bytes]);
+}
+
+function encodeAndDigestServiceMountFact(
+  name: ServiceMountFactName,
+  value: unknown,
+): { readonly bytes: Uint8Array; readonly digest: string } {
+  switch (name) {
+    case "plan": return { bytes: encodePrivateServiceMountPlan(value), digest: privateServiceMountPlanDigest(value) };
+    case "backing": return { bytes: encodePrivateServiceMountBacking(value), digest: privateServiceMountBackingDigest(value) };
+    case "sandbox": return { bytes: encodePrivateServiceMountSandbox(value), digest: privateServiceMountSandboxDigest(value) };
+    case "prepared": return { bytes: encodePrivateServiceMountPrepared(value), digest: privateServiceMountPreparedDigest(value) };
+    case "generation": return { bytes: encodePrivateServiceMountGeneration(value), digest: privateServiceMountGenerationDigest(value) };
+    case "acknowledged": return { bytes: encodePrivateServiceMountAcknowledged(value), digest: privateServiceMountAcknowledgedDigest(value) };
+    case "provisional": return { bytes: encodePrivateServiceMountProvisional(value), digest: privateServiceMountProvisionalDigest(value) };
+    case "fence": return { bytes: encodePrivateServiceMountFence(value), digest: privateServiceMountFenceDigest(value) };
+    case "release": return { bytes: encodePrivateServiceMountRelease(value), digest: privateServiceMountReleaseDigest(value) };
+    case "closure": return { bytes: encodePrivateServiceMountClosure(value), digest: privateServiceMountClosureDigest(value) };
+  }
+}
+
+function findServiceMountFactRow(
+  database: SqliteDatabase,
+  mountId: string,
+  name: ServiceMountFactName,
+): ServiceMountFactRow | null {
+  const query = statement<ServiceMountFactRow>(database, [
+    "SELECT mount_id, fact_name, fact_digest, fact_bytes FROM service_mount_facts",
+    "WHERE mount_id = ?1 AND fact_name = ?2",
+  ].join(" ")).safeIntegers(true);
+  try {
+    const row = query.get(mountId, name);
+    return row === null ? null : copiedServiceMountFactRow(row);
+  } finally { query.finalize(); }
+}
+
+function copiedServiceMountFactRow(row: ServiceMountFactRow): ServiceMountFactRow {
+  return Object.freeze({
+    mount_id: row.mount_id,
+    fact_name: row.fact_name,
+    fact_digest: row.fact_digest,
+    fact_bytes: copiedBlob(row.fact_bytes, `stored Service Mount ${row.fact_name}`),
+  });
+}
+
+function requireServiceMountFact<Value>(
+  fact: PrivateServiceMountFact<Value> | undefined,
+  name: string,
+): PrivateServiceMountFact<Value> {
+  if (fact === undefined) invalid("SERVICE_MOUNT_FACT_ORDER", `Service Mount ${name} fact is missing`);
+  return fact;
+}
+
+function requireMountFactBase(
+  snapshot: PrivateServiceMountSnapshot,
+  mountId: string,
+  allocationDigest: string,
+  label: string,
+): void {
+  if (mountId !== snapshot.allocation.mountId || allocationDigest !== snapshot.allocationDigest) {
+    corrupt(`Service Mount ${label} belongs to another Mount allocation`);
+  }
+}
+
+function requireServiceMountFactOrder(
+  snapshot: PrivateServiceMountSnapshot,
+  name: ServiceMountFactName,
+): void {
+  if (serviceMountFact(snapshot, name) !== undefined) return;
+  if (snapshot.closure !== undefined) {
+    invalid("SERVICE_MOUNT_CLOSED", "Service Mount lifecycle is already closed");
+  }
+  if (name === "plan") {
+    if (snapshot.provisional !== undefined || snapshot.backing !== undefined || snapshot.sandbox !== undefined ||
+        snapshot.prepared !== undefined || snapshot.generation !== undefined || snapshot.acknowledged !== undefined ||
+        snapshot.fence !== undefined || snapshot.release !== undefined) {
+      invalid("SERVICE_MOUNT_FACT_ORDER", "Service Mount plan cannot be added after later evidence");
+    }
+    return;
+  }
+  if (name === "backing") {
+    requireServiceMountFact(snapshot.plan, "plan");
+    requireNoServiceMountSettlement(snapshot, "backing");
+    if (snapshot.sandbox !== undefined || snapshot.prepared !== undefined || snapshot.generation !== undefined ||
+        snapshot.acknowledged !== undefined) {
+      invalid("SERVICE_MOUNT_FACT_ORDER", "Service Mount backing cannot follow later startup evidence");
+    }
+    return;
+  }
+  if (name === "sandbox") {
+    requireServiceMountFact(snapshot.backing, "backing");
+    requireNoServiceMountSettlement(snapshot, "sandbox");
+    if (snapshot.prepared !== undefined || snapshot.generation !== undefined || snapshot.acknowledged !== undefined) {
+      invalid("SERVICE_MOUNT_FACT_ORDER", "Service Mount sandbox cannot follow later startup evidence");
+    }
+    return;
+  }
+  if (name === "prepared") {
+    requireServiceMountFact(snapshot.sandbox, "sandbox");
+    requireNoServiceMountSettlement(snapshot, "prepared");
+    if (snapshot.generation !== undefined || snapshot.acknowledged !== undefined) {
+      invalid("SERVICE_MOUNT_FACT_ORDER", "Service Mount preparation cannot follow readiness evidence");
+    }
+    return;
+  }
+  if (name === "generation") {
+    requireServiceMountFact(snapshot.prepared, "prepared");
+    requireNoServiceMountSettlement(snapshot, "generation");
+    if (snapshot.acknowledged !== undefined) {
+      invalid("SERVICE_MOUNT_FACT_ORDER", "Service Mount generation cannot follow acknowledgement");
+    }
+    return;
+  }
+  if (name === "acknowledged") {
+    requireServiceMountFact(snapshot.generation, "generation");
+    requireNoServiceMountSettlement(snapshot, "acknowledgement");
+    return;
+  }
+  if (name === "provisional") {
+    if (snapshot.fence !== undefined || snapshot.release !== undefined) {
+      invalid("SERVICE_MOUNT_FACT_ORDER", "Service Mount provisional terminal cannot follow cleanup evidence");
+    }
+    return;
+  }
+  if (name === "fence") {
+    requireServiceMountFact(snapshot.plan, "plan");
+    requireServiceMountFact(snapshot.provisional, "provisional");
+    if (snapshot.release !== undefined) {
+      invalid("SERVICE_MOUNT_FACT_ORDER", "Service Mount fence cannot follow release");
+    }
+    return;
+  }
+  if (name === "release") {
+    requireServiceMountFact(snapshot.provisional, "provisional");
+    if (snapshot.plan !== undefined) requireServiceMountFact(snapshot.fence, "fence");
+    return;
+  }
+  requireServiceMountFact(snapshot.release, "release");
+}
+
+function requireLoadedServiceMountOrder(snapshot: PrivateServiceMountSnapshot): void {
+  if (snapshot.plan === undefined) {
+    if (snapshot.backing !== undefined || snapshot.sandbox !== undefined || snapshot.prepared !== undefined ||
+        snapshot.generation !== undefined || snapshot.acknowledged !== undefined || snapshot.fence !== undefined) {
+      corrupt("unplanned Service Mount contains resource lifecycle evidence");
+    }
+  } else {
+    if (snapshot.sandbox !== undefined && snapshot.backing === undefined) {
+      corrupt("Service Mount sandbox has no package backing");
+    }
+    if (snapshot.prepared !== undefined && snapshot.sandbox === undefined) {
+      corrupt("Service Mount preparation has no sandbox owner");
+    }
+    if (snapshot.generation !== undefined && snapshot.prepared === undefined) {
+      corrupt("Service Mount generation has no prepared owner");
+    }
+    if (snapshot.acknowledged !== undefined && snapshot.generation === undefined) {
+      corrupt("Service Mount acknowledgement has no generation");
+    }
+  }
+  if (snapshot.provisional === undefined &&
+      (snapshot.fence !== undefined || snapshot.release !== undefined || snapshot.closure !== undefined)) {
+    corrupt("Service Mount cleanup precedes its provisional terminal");
+  }
+  if (snapshot.fence !== undefined && snapshot.plan === undefined) {
+    corrupt("Service Mount fence has no plan");
+  }
+  if (snapshot.release === undefined && snapshot.closure !== undefined) {
+    corrupt("Service Mount closure has no release");
+  }
+}
+
+function requireNoServiceMountSettlement(snapshot: PrivateServiceMountSnapshot, label: string): void {
+  if (snapshot.provisional !== undefined || snapshot.fence !== undefined || snapshot.release !== undefined) {
+    invalid("SERVICE_MOUNT_FACT_ORDER", `Service Mount ${label} cannot advance after settlement began`);
+  }
+}
+
+function requireServiceMountAdvanceAuthority(
+  snapshot: PrivateServiceMountSnapshot,
+  context: ServiceMountTransitionContext,
+): void {
+  if (snapshot.coordinator !== "current") {
+    invalid("SERVICE_MOUNT_OLD_COORDINATOR", "older Service Mounts may only be settled and released");
+  }
+  const head = readAdmissionHead(context.database, context.root);
+  if (head.revision === null) {
+    invalid("SERVICE_MOUNT_SUPERSEDED", "Service Mount admission is no longer active");
+  }
+  const active = requireAdmissionRow(context.database, head.revision);
+  if (active.admission_digest !== snapshot.allocation.admissionDigest) {
+    invalid("SERVICE_MOUNT_SUPERSEDED", "Service Mount admission was replaced before readiness");
+  }
+  loadAndCrossCheckAdmission(context.database, active, context.root);
+}
+
+function requireServiceMountTransitionRecipe(
+  context: ServiceMountTransitionContext,
+): PrivateBunServiceRecipe {
+  if (context.recipe === undefined) corrupt("Service Mount forward transition lost its exact recipe");
+  return context.recipe;
+}
+
+function requireServiceMountSettlementAuthority(
+  snapshot: PrivateServiceMountSnapshot,
+  coordinator: PrivateProjectCoordinator,
+  classification: PrivateServiceMountClassification,
+): void {
+  if (snapshot.allocation.coordinatorEpoch > coordinator.epoch) {
+    corrupt("Service Mount belongs to a future coordinator epoch");
+  }
+  if (snapshot.coordinator === "older" && classification !== "coordinator-loss") {
+    invalid("SERVICE_MOUNT_RECOVERY_CLASSIFICATION", "older Service Mount requires coordinator-loss settlement");
+  }
+  if (snapshot.coordinator === "current" && classification === "coordinator-loss") {
+    invalid("SERVICE_MOUNT_RECOVERY_CLASSIFICATION", "current coordinator cannot claim its own loss");
+  }
+}
+
+function requireServiceMountFenceClassification(
+  classification: PrivateServiceMountClassification,
+  receipt: PrivateLinuxConfirmedEnforcementReceipt,
+): void {
+  const accepted: Readonly<Record<PrivateServiceMountClassification,
+    readonly PrivateLinuxConfirmedEnforcementReceipt["stopReason"][]>> = Object.freeze({
+      "startup-cancelled": ["cancelled", "setup_failed", "recovered"],
+      "readiness-timeout": ["deadline", "cancelled", "recovered"],
+      "host-lifetime": ["deadline", "cancelled", "recovered"],
+      "voluntary-exit": ["payload_exit", "recovered"],
+      "provider-loss": ["payload_exit", "setup_failed", "cancelled", "recovered"],
+      "coordinator-loss": ["coordinator_lost", "recovered"],
+    });
+  if (!accepted[classification].includes(receipt.stopReason)) {
+    corrupt(`Service Mount ${classification} fence has incompatible enforcement evidence`);
+  }
+}
+
+function requireNoServiceLeases(database: SqliteDatabase, mountId: string): void {
+  const query = statement<{ readonly count: bigint }>(database,
+    "SELECT count(*) AS count FROM service_leases WHERE mount_id = ?1",
+  ).safeIntegers(true);
+  try {
+    const aggregate = query.get(mountId);
+    if (aggregate === null) corrupt("Service Mount lease aggregate is missing");
+    if (aggregate.count !== 0n) {
+      invalid(
+        "SERVICE_LEASE_STATE_UNSUPPORTED",
+        "Service Mount release waits for durable Service lease and invocation closure support",
+      );
+    }
+  } finally { query.finalize(); }
+}
+
+function preparedIdentityForServiceSandbox(
+  ownerValue: PrivateLinuxSealedOwnerIdentity,
+): PrivateLinuxPreparedOwnerIdentity {
+  const owner = normalizePrivateLinuxSealedOwnerIdentity(ownerValue);
+  return normalizePrivateLinuxPreparedOwnerIdentity({
+    kind: "private-linux-prepared-owner/1",
+    digest: privateDomainDigest(
+      "JIG-Private-Linux-Prepared-Owner/1",
+      owner as unknown as JsonValue,
+    ),
+    owner,
+  });
+}
+
+function serviceMountProtectedRoots(root: PrivateProjectRoot): {
+  readonly materializations: string;
+  readonly owners: string;
+} {
+  const state = join(root.requestedPath, STATE_DIRECTORY);
+  return Object.freeze({
+    materializations: join(state, "private-root-materializations"),
+    owners: join(state, "private-root-linux-owners"),
+  });
+}
+
+function serviceMountHex(mountId: string): string {
+  requireDigest(mountId, "Service Mount");
+  return mountId.slice("sha256:".length);
+}
+
+function serviceMountRunId(mountId: string): string {
+  return `service-${serviceMountHex(mountId).slice(0, 40)}`;
+}
+
+function sameCanonical(left: unknown, right: unknown): boolean {
+  return sameBytes(canonicalJson(left as JsonValue), canonicalJson(right as JsonValue));
+}
+
+function serviceMountFact(
+  snapshot: PrivateServiceMountSnapshot,
+  name: ServiceMountFactName,
+): PrivateServiceMountFact<unknown> | undefined {
+  return snapshot[name] as PrivateServiceMountFact<unknown> | undefined;
+}
+
+function isServiceMountFactName(value: unknown): value is ServiceMountFactName {
+  return value === "plan" || value === "backing" || value === "sandbox" || value === "prepared" ||
+    value === "generation" || value === "acknowledged" || value === "provisional" ||
+    value === "fence" || value === "release" || value === "closure";
 }
 
 function findServiceMountByAdmissionBinding(

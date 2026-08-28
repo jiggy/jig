@@ -33,6 +33,7 @@ import {
   cancelPrivateLinuxOwnerStateAllocation,
   normalizePrivateLinuxConfirmedEnforcementReceipt,
   normalizePrivateLinuxOwnerStateReleaseReceipt,
+  normalizePrivateLinuxPreparedOwnerIdentity,
   planPrivateLinuxOwnerStateAllocation,
   PrivateLinuxCgroupBackend,
   releasePrivateLinuxOwnerState,
@@ -43,6 +44,10 @@ import {
 } from "../src/internal/linux-cgroup-backend.js";
 import { privateDomainDigest } from "../src/internal/identity.js";
 import { captureStoredPackage } from "../src/internal/package-artifact-store.js";
+import {
+  allocatePrivatePackageMaterialization,
+  materializePrivatePackageLease,
+} from "../src/internal/package-materialization.js";
 import {
   planPrivatePythonDirectRun,
   requirePrivatePythonDirectRecipe,
@@ -58,14 +63,25 @@ import {
 import {
   allocatePrivateServiceMount,
   applyPrivateActivationReviewPlan,
+  closePrivateServiceMount,
   createPrivateActivationReviewPlan,
   listPrivateServiceMounts,
+  listPrivateServiceMountRecoveryWork,
   loadPrivateActiveActivation,
   loadPrivateActivationReviewPlan,
   loadPrivateServiceMount,
   loadPrivateRootRun,
   openPrivateProjectCoordinator,
   publishPrivateActivationCandidate,
+  recordPrivateServiceMountAcknowledged,
+  recordPrivateServiceMountBacking,
+  recordPrivateServiceMountFence,
+  recordPrivateServiceMountGeneration,
+  recordPrivateServiceMountPlan,
+  recordPrivateServiceMountPrepared,
+  recordPrivateServiceMountProvisional,
+  recordPrivateServiceMountRelease,
+  recordPrivateServiceMountSandbox,
   requirePrivateStoredActivationCandidate,
 } from "../src/internal/activation-admission-store.js";
 import { openPrivateRootAdministrationController } from "../src/internal/root-administration-controller.js";
@@ -1341,6 +1357,9 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
     const root = await mkdtemp(join(tmpdir(), "jig-service-mount-store-"));
     const store = await mkdtemp(join(tmpdir(), "jig-service-mount-packages-"));
     let coordinator: Awaited<ReturnType<typeof openPrivateProjectCoordinator>> | undefined;
+    let firstPackageLease: Awaited<ReturnType<typeof materializePrivatePackageLease>> | undefined;
+    let thirdPackageLease: Awaited<ReturnType<typeof materializePrivatePackageLease>> | undefined;
+    let firstPrepared: ReturnType<typeof normalizePrivateLinuxPreparedOwnerIdentity> | undefined;
     const evaluator = {
       backend: backend(host),
       bunPath: bun.executable,
@@ -1503,6 +1522,151 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         packageStoreRoot: store,
         epoch: "older",
       })).toEqual([]);
+
+      const serviceState = join(root, ".jig");
+      const materializations = join(serviceState, "private-root-materializations");
+      const owners = join(serviceState, "private-root-linux-owners");
+      await mkdir(materializations, { mode: 0o700 });
+      await mkdir(owners, { mode: 0o700 });
+      const mountHex = firstMount.allocation.mountId.slice("sha256:".length);
+      const packageAllocation = await allocatePrivatePackageMaterialization({
+        protectedParent: materializations,
+        name: `service-${mountHex}`,
+        packageDigest: firstRecipe.request.package.digest,
+        ownerToken: firstMount.allocationDigest,
+      });
+      const ownerAllocation = await planPrivateLinuxOwnerStateAllocation({
+        parent: owners,
+        name: `s-${mountHex.slice(0, 62)}`,
+      });
+      const plannedMount = await recordPrivateServiceMountPlan({
+        coordinator,
+        projectRoot: root,
+        packageStoreRoot: store,
+        mountId: firstMount.allocation.mountId,
+        recipe: firstRecipe,
+        packageAllocation,
+        ownerAllocation,
+      });
+      expect(plannedMount.plan?.value.packageAllocation).toEqual(packageAllocation);
+      await expect(recordPrivateServiceMountGeneration({
+        coordinator,
+        projectRoot: root,
+        packageStoreRoot: store,
+        mountId: firstMount.allocation.mountId,
+        recipe: firstRecipe,
+        exports: firstRecipe.expectedExports,
+      })).rejects.toMatchObject({ code: "SERVICE_MOUNT_FACT_ORDER" });
+      const capturedService = await captureStoredPackage(store, firstRecipe.request.package);
+      try {
+        firstPackageLease = await materializePrivatePackageLease(capturedService, packageAllocation);
+      } finally {
+        await capturedService.dispose();
+      }
+      const backedMount = await recordPrivateServiceMountBacking({
+        coordinator,
+        projectRoot: root,
+        packageStoreRoot: store,
+        mountId: firstMount.allocation.mountId,
+        recipe: firstRecipe,
+        lease: firstPackageLease.identity,
+      });
+      const sealed = await firstRecipe.backend.seal({
+        runId: `service-${mountHex.slice(0, 40)}`,
+        limits: {
+          ...firstRecipe.resourceCeilings,
+          deadlineUnixMs: firstDeadline,
+          cancellationGraceMs: firstRecipe.cancellationGraceMs,
+        },
+        readOnlyMounts: [
+          ...firstRecipe.runtimeSupport.closureSources.map((source) => ({ source, destination: source })),
+          { source: firstPackageLease.root, destination: firstRecipe.packageDestination },
+        ],
+        privateProcessFilesystem: true,
+        privateRuntimeDevices: true,
+        command: [
+          firstRecipe.executablePath,
+          ...firstRecipe.bunPolicy,
+          `${firstRecipe.packageDestination}/${firstRecipe.request.entrypoint.path}`,
+        ],
+      }, ownerAllocation);
+      const sandboxedMount = await recordPrivateServiceMountSandbox({
+        coordinator,
+        projectRoot: root,
+        packageStoreRoot: store,
+        mountId: firstMount.allocation.mountId,
+        recipe: firstRecipe,
+        owner: sealed.identity,
+      });
+      firstPrepared = normalizePrivateLinuxPreparedOwnerIdentity({
+        kind: "private-linux-prepared-owner/1",
+        digest: privateDomainDigest(
+          "JIG-Private-Linux-Prepared-Owner/1",
+          sealed.identity,
+        ),
+        owner: sealed.identity,
+      });
+      const preparedMount = await recordPrivateServiceMountPrepared({
+        coordinator,
+        projectRoot: root,
+        packageStoreRoot: store,
+        mountId: firstMount.allocation.mountId,
+        recipe: firstRecipe,
+        prepared: firstPrepared,
+      });
+      const generatedMount = await recordPrivateServiceMountGeneration({
+        coordinator,
+        projectRoot: root,
+        packageStoreRoot: store,
+        mountId: firstMount.allocation.mountId,
+        recipe: firstRecipe,
+        exports: firstRecipe.expectedExports,
+      });
+      expect(generatedMount.generation?.value.exports).toEqual(["counter"]);
+      await expect(recordPrivateServiceMountGeneration({
+        coordinator,
+        projectRoot: root,
+        packageStoreRoot: store,
+        mountId: firstMount.allocation.mountId,
+        recipe: firstRecipe,
+        exports: [],
+      })).rejects.toMatchObject({ code: "ADMISSION_STATE_CORRUPT" });
+      const acknowledgedMount = await recordPrivateServiceMountAcknowledged({
+        coordinator,
+        projectRoot: root,
+        packageStoreRoot: store,
+        mountId: firstMount.allocation.mountId,
+        recipe: firstRecipe,
+      });
+      expect(acknowledgedMount).toMatchObject({
+        plan: { digest: expect.any(String) },
+        backing: { digest: expect.any(String) },
+        sandbox: { digest: expect.any(String) },
+        prepared: { digest: expect.any(String) },
+        generation: { digest: expect.any(String) },
+        acknowledged: { digest: expect.any(String) },
+      });
+      expect((await listPrivateServiceMountRecoveryWork({
+        coordinator,
+        projectRoot: root,
+        epoch: "current",
+      })).map(({ allocation }) => allocation.mountId)).toEqual([firstMount.allocation.mountId]);
+      expect(await recordPrivateServiceMountAcknowledged({
+        coordinator,
+        projectRoot: root,
+        packageStoreRoot: store,
+        mountId: firstMount.allocation.mountId,
+        recipe: firstRecipe,
+      })).toEqual(acknowledgedMount);
+      expect(await recordPrivateServiceMountPlan({
+        coordinator,
+        projectRoot: root,
+        packageStoreRoot: store,
+        mountId: firstMount.allocation.mountId,
+        recipe: firstRecipe,
+        packageAllocation,
+        ownerAllocation,
+      })).toEqual(acknowledgedMount);
       await coordinator.dispose();
       coordinator = undefined;
 
@@ -1519,6 +1683,11 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         packageStoreRoot: store,
         epoch: "older",
       })).map(({ allocation }) => allocation.mountId)).toEqual([firstMount.allocation.mountId]);
+      expect((await listPrivateServiceMountRecoveryWork({
+        coordinator,
+        projectRoot: root,
+        epoch: "older",
+      })).map(({ allocation }) => allocation.mountId)).toEqual([firstMount.allocation.mountId]);
       await expect(allocatePrivateServiceMount({
         coordinator,
         projectRoot: root,
@@ -1526,6 +1695,90 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         recipe: firstRecipe,
         effectiveDeadlineUnixMs: firstDeadline,
       })).rejects.toMatchObject({ code: "SERVICE_MOUNT_ALREADY_ATTEMPTED" });
+
+      const coordinatorLossTerminal = {
+        status: "failed" as const,
+        code: "UNCERTAIN" as const,
+        message: "coordinator ownership was lost",
+        diagnostics: { stderr: "", stderrBytes: 0, stderrTruncated: false },
+      };
+      const provisionalMount = await recordPrivateServiceMountProvisional({
+        coordinator,
+        projectRoot: root,
+        packageStoreRoot: store,
+        mountId: firstMount.allocation.mountId,
+        classification: "coordinator-loss",
+        terminal: coordinatorLossTerminal,
+      });
+      const enforcement = normalizePrivateLinuxConfirmedEnforcementReceipt({
+        kind: "private-linux-confirmed-enforcement/1",
+        ownerDigest: firstPrepared!.digest,
+        stopReason: "recovered",
+        exitCode: null,
+        signal: null,
+        fenced: true,
+        evidence: { cpuStat: {}, memoryEvents: {}, pidsEvents: {} },
+      });
+      const fencedMount = await recordPrivateServiceMountFence({
+        coordinator,
+        projectRoot: root,
+        packageStoreRoot: store,
+        mountId: firstMount.allocation.mountId,
+        proof: {
+          kind: "enforcement-confirmed",
+          sandboxDigest: provisionalMount.sandbox!.digest,
+          receipt: enforcement,
+        },
+      });
+      await firstPackageLease!.dispose();
+      firstPackageLease = undefined;
+      const releaseFields = {
+        kind: "private-linux-owner-state-release/1" as const,
+        allocationDigest: fencedMount.plan!.value.ownerAllocation.digest,
+        directoryDevice: fencedMount.sandbox!.value.owner.ownerStateDevice,
+        directoryInode: fencedMount.sandbox!.value.owner.ownerStateInode,
+        released: true as const,
+      };
+      const ownerRelease = normalizePrivateLinuxOwnerStateReleaseReceipt({
+        ...releaseFields,
+        digest: privateDomainDigest(
+          "JIG-Private-Linux-Owner-State-Release/1",
+          releaseFields,
+        ),
+      });
+      const releasedMount = await recordPrivateServiceMountRelease({
+        coordinator,
+        projectRoot: root,
+        packageStoreRoot: store,
+        mountId: firstMount.allocation.mountId,
+        packageReleased: true,
+        ownerRelease,
+      });
+      const closedMount = await closePrivateServiceMount({
+        coordinator,
+        projectRoot: root,
+        packageStoreRoot: store,
+        mountId: firstMount.allocation.mountId,
+      });
+      expect(closedMount).toMatchObject({
+        coordinator: "older",
+        provisional: { value: { classification: "coordinator-loss" } },
+        fence: { digest: expect.any(String) },
+        release: { digest: releasedMount.release!.digest },
+        closure: { digest: expect.any(String) },
+      });
+      expect((await recordPrivateServiceMountProvisional({
+        coordinator,
+        projectRoot: root,
+        mountId: firstMount.allocation.mountId,
+        classification: "coordinator-loss",
+        terminal: coordinatorLossTerminal,
+      })).closure?.digest).toMatch(/^sha256:[0-9a-f]{64}$/);
+      expect(await listPrivateServiceMountRecoveryWork({
+        coordinator,
+        projectRoot: root,
+        epoch: "older",
+      })).toEqual([]);
 
       await writeFile(join(root, "bindings", "other.ts"), [
         'import { defineBinding } from "@jigging/jig";',
@@ -1689,6 +1942,237 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         packageStoreRoot: store,
         epoch: "older",
       })).map(({ allocation }) => allocation.mountId)).toEqual([firstMount.allocation.mountId]);
+      await expect(recordPrivateServiceMountPlan({
+        coordinator,
+        projectRoot: root,
+        packageStoreRoot: store,
+        mountId: secondMount.allocation.mountId,
+        recipe: otherRecipe,
+        packageAllocation,
+        ownerAllocation,
+      })).rejects.toMatchObject({ code: "ADMISSION_STATE_CORRUPT" });
+      const secondHex = secondMount.allocation.mountId.slice("sha256:".length);
+      const secondPackageAllocation = await allocatePrivatePackageMaterialization({
+        protectedParent: materializations,
+        name: `service-${secondHex}`,
+        packageDigest: otherRecipe.request.package.digest,
+        ownerToken: secondMount.allocationDigest,
+      });
+      const secondOwnerAllocation = await planPrivateLinuxOwnerStateAllocation({
+        parent: owners,
+        name: `s-${secondHex.slice(0, 62)}`,
+      });
+      const supersedingPlanning = createPrivateActivationPlanningObservation({
+        policyDigest: testDigest("service-mount-policy-superseding"),
+        mechanismDigest: otherRecipe.mechanismDigest,
+        entries: secondRequests.map((request) => request.target.kind === "binding" &&
+          request.target.id === "other" ? {
+            target: request.target,
+            requestDigest: request.digest,
+            disposition: { state: "planned" as const, observation: otherRecipe.observation },
+          } : {
+            target: request.target,
+            requestDigest: request.digest,
+            disposition: {
+              state: "unavailable" as const,
+              code: "RUNTIME_UNAVAILABLE" as const,
+              evidenceDigests: [testDigest(`service-mount-superseded:${request.digest}`)],
+            },
+          }),
+      });
+      const supersedingCandidate = createPrivateActivationCandidate(
+        secondAggregate,
+        resolveRetainedPackageProjectObservation(secondAggregate, supersedingPlanning),
+        otherRecipe,
+      );
+      await publishPrivateActivationCandidate({
+        projectRoot: root,
+        packageStoreRoot: store,
+        candidate: supersedingCandidate,
+      });
+      const supersedingReview = await createPrivateActivationReviewPlan({
+        projectRoot: root,
+        packageStoreRoot: store,
+        lockMode: "update",
+      });
+      await applyPrivateActivationReviewPlan({
+        projectRoot: root,
+        packageStoreRoot: store,
+        planDigest: supersedingReview.planDigest,
+        baseGeneration: secondAdmission.admissionDigest,
+      });
+      await expect(recordPrivateServiceMountPlan({
+        coordinator,
+        projectRoot: root,
+        packageStoreRoot: store,
+        mountId: secondMount.allocation.mountId,
+        recipe: otherRecipe,
+        packageAllocation: secondPackageAllocation,
+        ownerAllocation: secondOwnerAllocation,
+      })).rejects.toMatchObject({ code: "SERVICE_MOUNT_SUPERSEDED" });
+      const earlyTerminal = {
+        status: "failed" as const,
+        code: "CANCELLED" as const,
+        message: "cancelled before resource allocation",
+        diagnostics: { stderr: "", stderrBytes: 0, stderrTruncated: false },
+      };
+      const earlyProvisional = await recordPrivateServiceMountProvisional({
+        coordinator,
+        projectRoot: root,
+        packageStoreRoot: store,
+        mountId: secondMount.allocation.mountId,
+        classification: "startup-cancelled",
+        terminal: earlyTerminal,
+      });
+      await expect(recordPrivateServiceMountFence({
+        coordinator,
+        projectRoot: root,
+        packageStoreRoot: store,
+        mountId: secondMount.allocation.mountId,
+        proof: {
+          kind: "allocation-cancelled",
+          cancellation: {
+            kind: "private-linux-owner-state-cancellation/1",
+            digest: testDigest("unreachable-cancellation"),
+            allocationDigest: testDigest("unreachable-allocation"),
+            directoryDevice: "1",
+            directoryInode: "2",
+            state: "cancelled",
+          },
+        },
+      })).rejects.toMatchObject({ code: "SERVICE_MOUNT_FACT_ORDER" });
+      const earlyRelease = await recordPrivateServiceMountRelease({
+        coordinator,
+        projectRoot: root,
+        packageStoreRoot: store,
+        mountId: secondMount.allocation.mountId,
+        packageReleased: true,
+        ownerRelease: null,
+      });
+      const earlyClosed = await closePrivateServiceMount({
+        coordinator,
+        projectRoot: root,
+        packageStoreRoot: store,
+        mountId: secondMount.allocation.mountId,
+      });
+      expect(earlyClosed).toMatchObject({
+        provisional: { digest: earlyProvisional.provisional!.digest },
+        release: { digest: earlyRelease.release!.digest },
+        closure: { digest: expect.any(String) },
+      });
+      expect(earlyClosed.plan).toBeUndefined();
+      expect(earlyClosed.fence).toBeUndefined();
+
+      const thirdDeadline = Date.now() + 20_000;
+      const thirdMount = await allocatePrivateServiceMount({
+        coordinator,
+        projectRoot: root,
+        packageStoreRoot: store,
+        recipe: otherRecipe,
+        effectiveDeadlineUnixMs: thirdDeadline,
+      });
+      const thirdHex = thirdMount.allocation.mountId.slice("sha256:".length);
+      const thirdPackageAllocation = await allocatePrivatePackageMaterialization({
+        protectedParent: materializations,
+        name: `service-${thirdHex}`,
+        packageDigest: otherRecipe.request.package.digest,
+        ownerToken: thirdMount.allocationDigest,
+      });
+      const thirdOwnerAllocation = await planPrivateLinuxOwnerStateAllocation({
+        parent: owners,
+        name: `s-${thirdHex.slice(0, 62)}`,
+      });
+      await recordPrivateServiceMountPlan({
+        coordinator,
+        projectRoot: root,
+        packageStoreRoot: store,
+        mountId: thirdMount.allocation.mountId,
+        recipe: otherRecipe,
+        packageAllocation: thirdPackageAllocation,
+        ownerAllocation: thirdOwnerAllocation,
+      });
+      const thirdCaptured = await captureStoredPackage(store, otherRecipe.request.package);
+      try {
+        thirdPackageLease = await materializePrivatePackageLease(
+          thirdCaptured,
+          thirdPackageAllocation,
+        );
+      } finally {
+        await thirdCaptured.dispose();
+      }
+      await recordPrivateServiceMountBacking({
+        coordinator,
+        projectRoot: root,
+        packageStoreRoot: store,
+        mountId: thirdMount.allocation.mountId,
+        recipe: otherRecipe,
+        lease: thirdPackageLease.identity,
+      });
+      const thirdSealed = await otherRecipe.backend.seal({
+        runId: `service-${thirdHex.slice(0, 40)}`,
+        limits: {
+          ...otherRecipe.resourceCeilings,
+          deadlineUnixMs: thirdDeadline,
+          cancellationGraceMs: otherRecipe.cancellationGraceMs,
+        },
+        readOnlyMounts: [
+          ...otherRecipe.runtimeSupport.closureSources.map((source) => ({ source, destination: source })),
+          { source: thirdPackageLease.root, destination: otherRecipe.packageDestination },
+        ],
+        privateProcessFilesystem: true,
+        privateRuntimeDevices: true,
+        command: [
+          otherRecipe.executablePath,
+          ...otherRecipe.bunPolicy,
+          `${otherRecipe.packageDestination}/${otherRecipe.request.entrypoint.path}`,
+        ],
+      }, thirdOwnerAllocation);
+      const thirdSandbox = await recordPrivateServiceMountSandbox({
+        coordinator,
+        projectRoot: root,
+        packageStoreRoot: store,
+        mountId: thirdMount.allocation.mountId,
+        recipe: otherRecipe,
+        owner: thirdSealed.identity,
+      });
+      const thirdProvisional = await recordPrivateServiceMountProvisional({
+        coordinator,
+        projectRoot: root,
+        mountId: thirdMount.allocation.mountId,
+        classification: "startup-cancelled",
+        terminal: earlyTerminal,
+      });
+      const thirdCancellation = await cancelPrivateLinuxOwnerStateAllocation(thirdOwnerAllocation);
+      const thirdFence = await recordPrivateServiceMountFence({
+        coordinator,
+        projectRoot: root,
+        mountId: thirdMount.allocation.mountId,
+        proof: { kind: "allocation-cancelled", cancellation: thirdCancellation },
+      });
+      expect(thirdFence).toMatchObject({
+        sandbox: { digest: thirdSandbox.sandbox!.digest },
+        provisional: { digest: thirdProvisional.provisional!.digest },
+        fence: { value: { proof: { kind: "allocation-cancelled" } } },
+      });
+      expect(thirdFence.prepared).toBeUndefined();
+      await thirdPackageLease.dispose();
+      thirdPackageLease = undefined;
+      const thirdOwnerRelease = await releasePrivateLinuxOwnerState(
+        thirdOwnerAllocation,
+        thirdCancellation,
+      );
+      await recordPrivateServiceMountRelease({
+        coordinator,
+        projectRoot: root,
+        mountId: thirdMount.allocation.mountId,
+        packageReleased: true,
+        ownerRelease: thirdOwnerRelease,
+      });
+      await closePrivateServiceMount({
+        coordinator,
+        projectRoot: root,
+        mountId: thirdMount.allocation.mountId,
+      });
       await coordinator.dispose();
       coordinator = undefined;
 
@@ -1726,7 +2210,44 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         packageStoreRoot: store,
         mountId: secondMount.allocation.mountId,
       })).allocation).toEqual(secondMount.allocation);
+      await coordinator.dispose();
+      coordinator = undefined;
+
+      corruptor = sqlite.Database.open(databasePath, writable);
+      const retainedPlan = Uint8Array.from(corruptor.query([
+        "SELECT fact_bytes FROM service_mount_facts",
+        "WHERE mount_id = ?1 AND fact_name = 'plan'",
+      ].join(" ")).get(firstMount.allocation.mountId).fact_bytes);
+      corruptor.query([
+        "UPDATE service_mount_facts SET fact_bytes = ?1",
+        "WHERE mount_id = ?2 AND fact_name = 'plan'",
+      ].join(" ")).run(new TextEncoder().encode("{}"), firstMount.allocation.mountId);
+      corruptor.close(true);
+      coordinator = await openPrivateProjectCoordinator({ projectRoot: root });
+      await expect(loadPrivateServiceMount({
+        coordinator,
+        projectRoot: root,
+        packageStoreRoot: store,
+        mountId: firstMount.allocation.mountId,
+      })).rejects.toMatchObject({ code: "ADMISSION_STATE_CORRUPT" });
+      await coordinator.dispose();
+      coordinator = undefined;
+      corruptor = sqlite.Database.open(databasePath, writable);
+      corruptor.query([
+        "UPDATE service_mount_facts SET fact_bytes = ?1",
+        "WHERE mount_id = ?2 AND fact_name = 'plan'",
+      ].join(" ")).run(retainedPlan, firstMount.allocation.mountId);
+      corruptor.close(true);
+      coordinator = await openPrivateProjectCoordinator({ projectRoot: root });
+      expect((await loadPrivateServiceMount({
+        coordinator,
+        projectRoot: root,
+        packageStoreRoot: store,
+        mountId: firstMount.allocation.mountId,
+      })).closure?.digest).toMatch(/^sha256:[0-9a-f]{64}$/);
     } finally {
+      await firstPackageLease?.dispose();
+      await thirdPackageLease?.dispose();
       await coordinator?.dispose();
       await rm(root, { recursive: true, force: true });
       await rm(store, { recursive: true, force: true });
