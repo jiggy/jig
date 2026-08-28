@@ -333,7 +333,8 @@ boundary with a synchronous deterministic test chooser. Resolver integration
 still requires a distinct durable decision operation, exact survivor and
 rejection evidence, committed-result reuse, and uncertainty without reranking.
 Project `semanticChoice` authoring, a qualifying provider Binding, an
-Agent-backed chooser, and changing-universe authoring remain release gates.
+Agent-backed chooser, and implementation of the reviewed
+`projectRunTargets()` expansion/lock/Plan semantics remain release gates.
 
 The former Linux `SANDBOX_UNAVAILABLE` stop is historical. The private proof
 now has a delegated aggregate owner, pre-exec placement, entropy and

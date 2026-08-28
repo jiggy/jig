@@ -179,8 +179,8 @@ normalized JSON Pointer. The shape schema alone is never admission evidence.
 ## 5. Deliberate exclusions
 
 Project Authoring SDK/1 does not expose Hooks, Service export references,
-instruction Agent selection, `semanticChoice`, generic host-capability Bindings,
-registration-defined grants, open catalogue views, or runtime/sandbox
+instruction Agent selection, `semanticChoice`, `projectRunTargets()`, generic
+host-capability Bindings, registration-defined grants, or runtime/sandbox
 selection. Private Hook work uses a separately named experimental overlay and
 machine schema; those are not members of SDK/1 and carry no compatibility
 promise. The canonical Journal publisher above is an intentional

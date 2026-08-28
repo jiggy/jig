@@ -84,6 +84,9 @@ Current implementation frontier:
 - [`design-review/159-private-semantic-choice-checkpoint.md`](design-review/159-private-semantic-choice-checkpoint.md)
   closes the pure canonical closed-choice value boundary without wiring it
   into resolution, durability, project policy, Agents, Services, or Sley.
+- [`design-review/160-changing-run-universe-disposition.md`](design-review/160-changing-run-universe-disposition.md)
+  selects the minimal `projectRunTargets()` authoring direction after two
+  frozen-interface clean-room consumers, while keeping implementation gated.
 
 The focused Run/1 specification owns its finite wire surface. The remaining
 cross-cutting system rules are in the canonical architecture:

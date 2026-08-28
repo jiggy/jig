@@ -154,6 +154,33 @@ local Binding ID—such as `offline-choice` or `company-choice`—whose exact ex
 implements the Semantic Choice contract. It is never a strategy name, Flow ID,
 model name, prompt, or algorithm literal.
 
+A later authoring slice also permits one explicit changing source in a
+Flow-call slot:
+
+```ts
+slots: {
+  work: projectRunTargets(),
+},
+```
+
+Planning expands this marker against the complete immutable project candidate
+to every direct-eligible Run Flow and Run-capable package Binding, including
+structurally valid unavailable targets. It retains the source kind beside the
+exact canonical target set. Services, Journal publishers, host capabilities,
+and invalid declarations never enter it. An unmapped slot remains missing.
+
+Expansion includes the consuming Run Binding itself. Runtime filtering removes
+every exact target already present in the active owner chain, then applies
+actual input, readiness, authority, resource, liveness, and wait-graph rules
+over the admitted frozen set. V1 has no recursive cross-Flow calls. Source additions, removals, and
+same-identity meaning or disposition changes require a new reviewed Plan and
+apply; existing operations never re-expand.
+
+This uses the existing project work, activation-target, retained-capture,
+candidate-identity, lock, and admission machinery. It adds no named view,
+query language, independent universe digest, live catalogue handle, or silent
+limit. A TypeScript constant can reuse the inert marker.
+
 ## 2. One closed normalized Binding union
 
 A Binding is one immutable admitted project-local configured use. It has
@@ -431,10 +458,11 @@ none of these helpers imports or captures a live provider object.
 
 An ordinary zero-configuration discovered Run Flow is now a tagged direct
 admitted target and enters the same execution path as an admitted Run Binding.
-The remaining unresolved ergonomic requirement is a changing but reviewable
-candidate universe for semantic dispatch. Alternatives are compared in the
-[open target and routing note](../design-review/101-default-targets-and-open-routing-candidate.md)
-and are not part of the first authoring slice.
+The reviewed changing-universe direction is the explicit per-slot
+`projectRunTargets()` marker described above and in the
+[target and routing disposition](../design-review/101-default-targets-and-open-routing-candidate.md).
+It remains outside the first authoring slice until its private expansion,
+lock, and Plan-delta evidence pass.
 
 Aggregate normalization also computes the transitive authority reachable
 through those exact dependencies. Provider-owned attachments and effect

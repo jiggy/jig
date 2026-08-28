@@ -997,10 +997,11 @@ a FLOW Service package instead.
 
 The optional intent carried by the actual `flow/call` is its discovery meaning.
 A project may exact-bind its slot or configure a closed approved
-`candidates()` snapshot. An unmapped slot is always missing; it never opens the
-catalogue implicitly. Applications still need an intentional, reviewable way
-to admit a changing catalogue-wide candidate universe, but its declaration and
-normalization are unresolved. The project cannot rewrite call intent or select a
+`candidates()` snapshot. The later `projectRunTargets()` marker explicitly
+requests expansion to the complete Run catalogue of one immutable project
+candidate; planning freezes its exact set and later source changes require
+review and apply. An unmapped slot is always missing and never opens the
+catalogue implicitly. The project cannot rewrite call intent or select a
 per-slot semantic engine. Missing or ambiguous resolution fails the operation.
 One optional
 Semantic Choice Binding, selected by the project's `semanticChoice` field, and
@@ -1445,9 +1446,12 @@ confidence-based authority, installation request, or generated code. A graph
 Router and Jig's open-ended Resolver may intentionally use the same contract
 without becoming the same control-flow mechanism.
 
-The candidate set is finite and completely frozen before ranking. A host limit
-may reject an oversized set explicitly, but v1 does not standardize an
-arbitrary universal count or permit silent truncation, sampling, or batching.
+The candidate set is finite and completely frozen before ranking. Semantic
+Choice/1 deliberately admits 2-256 candidates per call. That is not a
+catalogue-universe cap: existing project limits may reject an oversized
+candidate explicitly, and more than 256 eligible survivors makes the chooser
+inapplicable. No layer may silently truncate, sample, retrieve, or batch the
+set.
 
 Semantic ranking is itself a journaled child operation, never invisible
 middleware. Resolution intent freezes the exact ordered candidate IDs and

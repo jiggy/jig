@@ -149,8 +149,9 @@ does not replace the Resolver or configure a runner-local Router.
 
 Flow-call candidate authority is explicit. The reviewed surface supports one
 exact reference or a closed candidate set; an unmapped slot is missing rather
-than implicitly catalogue-wide. The ergonomic declaration, normalization, and
-resource policy for a changing but reviewed candidate universe remain open.
+than implicitly catalogue-wide. This historical question was later resolved
+by the explicit `projectRunTargets()` disposition in review 160; the public
+SDK remains gated on its private expansion and Plan evidence.
 
 One leading `./` in a discovery root or exact member path is authoring sugar
 and is stripped before confined segment validation. A missing discovery root

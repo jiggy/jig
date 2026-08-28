@@ -1,8 +1,10 @@
 # Open candidate: default Run targets and catalogue-wide routing
 
-**Status:** Question A is resolved by the direct admitted Flow target; Question
-B remains open. The failed design probes exposed both requirements but did not
-earn a catalogue-wide routing mechanism.
+**Status:** both questions are resolved at the design level. Question A uses a
+direct admitted Flow target. Question B uses the explicit per-slot
+`projectRunTargets()` source selected by the clean-room experiment in review
+160. The latter remains outside the public SDK until its private expansion and
+Plan evidence pass.
 
 ## Requirements which survive
 
@@ -40,39 +42,25 @@ plain meaning: one tailored configured use.
 The complete disposition is in
 [`107-project-authoring-sdk-slice.md`](107-project-authoring-sdk-slice.md).
 
-## Question B: the open candidate universe
+## Resolved B: the changing project Run source
 
-Two plausible declarations remain:
+`projectRunTargets()` is an explicit Flow-call slot marker. Planning expands it
+once against the complete immutable project candidate to direct-eligible Run
+Flows and Run-capable package Bindings, retains the source kind, and freezes
+the exact sorted targets for admission. Discovery alone changes nothing.
 
-### Explicit catalogue-wide source
+The competing named-view model added a namespace and string reference without
+earning useful selection semantics. Named views, tags, filters, predicates,
+and composition remain deferred. Ordinary TypeScript constants can reuse the
+marker.
 
-A small helper denotes every eligible admitted Run target in a named catalogue
-or view. The project plan expands and freezes it before activation.
+Expansion includes a consuming Run Binding itself; invocation-local filtering
+removes every exact target already in the active owner chain, while the wait
+graph rejects remaining non-runnable cycles. Existing
+project work and activation limits reject oversized candidates atomically.
+Semantic Choice/1's 256-candidate call bound is separate: more surviving
+candidates makes ranking inapplicable rather than permitting truncation,
+sampling, retrieval, or implicit batching.
 
-### Named admitted view
-
-Project policy separately declares a reusable candidate view; Flow-call slots
-reference that view. This is more explicit and extensible, but risks creating a
-query language and additional files before they are needed.
-
-The probe spelling `allRuns()` is not reserved. A future design must specify:
-
-- where the candidate boundary is authored;
-- how additions/removals appear in the approval delta;
-- collision, recursion, and liveness filtering;
-- what portable identity enters `jig.lock`; and
-- how large sets fail or are deliberately staged without silent truncation.
-
-Semantic Choice/1 now deliberately limits one ranking call to 256 candidates.
-That is not a candidate-universe cap: expansion and deterministic filtering
-remain exact, and more than 256 surviving candidates makes the chooser
-inapplicable rather than permitting truncation, sampling, retrieval, or
-implicit batching.
-
-## Acceptance method for Question B
-
-Do not settle the remaining question inside another probe. First publish two
-minimal, competing authoring interfaces with their normalized data models.
-Give only those interfaces and the stable platform documentation to independent
-consumers. Choose the smaller model that supports a changing reviewed universe
-without granting discovery or Semantic Choice admission power.
+The full rationale, probe evidence, normalized identity reuse, and
+implementation gate are in review 160.
