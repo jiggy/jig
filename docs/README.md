@@ -74,6 +74,10 @@ Current implementation frontier:
   hostile path. Independent packed-package consumer review also passes after
   rejecting and forcing closure of three ambiguous semantics. Generic
   host-extension and public plan/apply models remain later gates.
+- [`design-review/157-private-agent-projection-checkpoint.md`](design-review/157-private-agent-projection-checkpoint.md)
+  closes the first private Agent Run value and Flow-local skill-projection
+  proof. It deliberately leaves provider registration, real containment,
+  durable effect ownership, and the public provider ABI open.
 
 The focused Run/1 specification owns its finite wire surface. The remaining
 cross-cutting system rules are in the canonical architecture:

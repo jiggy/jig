@@ -319,6 +319,15 @@ The behavioral requirements are reviewed, but examples must not invent provider
 package names, tokens, receipts, or launch structures before these interfaces
 exist.
 
+The private logical Agent checkpoint in review 157 now reparses the canonical
+Agent Run descriptor, validates request/result and response Schema/1 values,
+and projects only selected exact package-local skill subtrees through a
+revocable path-free object capability. Its deterministic callback is injected
+test machinery, not an installed provider or security boundary. Provider
+registration/generation identity, one real out-of-process realization,
+durable effect ownership, and a second independent integration remain the
+release gates for an Agent-provider interface.
+
 The former Linux `SANDBOX_UNAVAILABLE` stop is historical. The private proof
 now has a delegated aggregate owner, pre-exec placement, entropy and
 root-mapping evidence, coordinator-independent cleanup, and a hostile corpus.
