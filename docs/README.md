@@ -30,13 +30,20 @@ Start here:
      [`authoring-value schema`](spec/machine/project-authoring-1.schema.json)
    - [`spec/root-administration.md`](spec/root-administration.md), with its
      [`administration-value schema`](spec/machine/root-administration-1.schema.json)
+   - [`spec/project-administration.md`](spec/project-administration.md), with its
+     [`project-value schema`](spec/machine/project-administration-1.schema.json)
    - [`spec/journal-and-hooks.md`](spec/journal-and-hooks.md)
    - [`spec/agents-and-semantic-choice.md`](spec/agents-and-semantic-choice.md)
 
 Current implementation frontier:
 
+- [`design-review/167-finite-project-session-checkpoint.md`](design-review/167-finite-project-session-checkpoint.md)
+  closes the private descriptor-held project session, display-safe pre-commit
+  review, digest-only apply, session-owned Root Administration, close/recovery
+  semantics, packed injected-session consumer, and real hostile lifecycle
+  proof while keeping project acquisition and host installation unpublished.
 - [`design-review/166-finite-project-session-frontier.md`](design-review/166-finite-project-session-frontier.md)
-  freezes the active finite project-session boundary: one descriptor-held
+  is the superseded selection record for that boundary: one descriptor-held
   identity and coordinator, authority-neutral plan, retained-digest apply,
   unchanged Root Administration, exact close/recovery semantics, and a
   public-surface gate which refuses to expose private Plan/lock/host records.

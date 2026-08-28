@@ -40,10 +40,11 @@ coalesces append wakes with durable rescans, executes one exact Python consumer
 from a Bun publisher, drains to a fixed point, and reconciles unresolved
 older-epoch Hook work to `COORDINATOR_LOST` without another append or dispatch.
 This is not yet a published Jig SDK or complete product control
-plane: Root Administration/1, its machine schema, and its private controller
-cover in-process start/status, while generic Runtime Adapter and Sandbox
-Backend models, broader effect/provider forms, project-authority issuance,
-authentication/transport, and public plan/apply remain unfinished seams. The
+plane: Root Administration/1 and Project Administration/1 now have machine
+schemas, packed value/type candidates, private controllers, and independent
+injected-object consumers, while the project opener, production host trust
+root, authentication/transport, generic Runtime Adapter and Sandbox Backend
+models, and broader effect/provider forms remain unfinished seams. The
 private Service path now also admits and hosts one exact Bun Service Binding,
 persists its complete Mount/generation lifecycle, and proves exact leases,
 invocation allocation, possible-dispatch admission, terminal/closure evidence,
@@ -77,8 +78,9 @@ and publishes its public graph APIs upstream; the Jig and FLOW SDK names remain
 pre-release intent in this repository.
 
 The private packed `@jigging/jig` candidate now contains only its exported
-entrypoints, their required package-local support modules and declarations, the two exported
-schemas, and the inert `jig package check` CLI. It explicitly excludes every
+entrypoints, their required package-local support modules and declarations,
+the three exported value schemas, and the inert
+`jig package check` CLI. It explicitly excludes every
 `dist/internal/**` and private host/controller module. Review 164 records this
 artifact boundary and the exact distinction between a Bun-validated tooling
 candidate and an operational Jig-host alpha.
@@ -273,13 +275,18 @@ The candidate deliberately excludes project location and opening, transport
 authentication, list/watch/cancel, and authority inspection. It is not a FLOW
 capability; portable packages continue to use Run/1 calls and effects.
 
-Before CLI or GUI clients can consume equivalent authority, Jig must still
-define authentication and closed request/result/error models for:
-
-- candidate inspection, plan, apply, and stale-plan handling;
-- project selection and authority issuance;
-- plan/apply and authority evidence; and
-- any later inspection or cancellation operations.
+The finite [`Project Administration/1`](../spec/project-administration.md)
+candidate now wraps one already acquired project with authority-neutral plan,
+display-safe pre-commit review, retained-digest apply, the unchanged Root
+Administration object, and deterministic close. Its
+[`machine schema`](../spec/machine/project-administration-1.schema.json) and
+packed injected-session consumer pass. It deliberately defines neither
+project selection/acquisition nor a transport. Before a CLI or GUI becomes an
+operational alpha, Jig must still close the production host installation,
+authenticate project selection and authority issuance, strengthen review with
+current-to-proposed delta evidence, and freeze the actual acquisition/CLI
+spelling. Later inspection, list/watch/cancel, and remote transport remain
+separate demand-gated surfaces.
 
 The first private local admission boundary is defined in
 [`150-private-project-admission-frontier.md`](150-private-project-admission-frontier.md).
@@ -300,10 +307,13 @@ The private foreground path now captures both policy heads before source
 evaluation and atomically persists Candidate/5 and an applicable Plan/2 in its
 final protected publication transaction after rechecking both. Review 163
 records that narrowly failure-atomic publication proof. It
-still does **not** provide the trusted project acquisition and closed
-project-facing operation promised by a product `plan()`. A closed error
-wrapper, the remaining classifier/authority proof matrix, public lock and Plan schemas, project opening,
-authentication/transport, and a public CLI/API remain release gates.
+is now wrapped by the finite private project session recorded in review 167.
+The closed plan/apply/error values and injected object-capability consumer no
+longer gate one another. Production project opening, authentication/transport,
+a public CLI/API, a public lock schema, review-delta evidence, and the remaining
+classifier/authority debt remain release gates. Review
+[`167`](167-finite-project-session-checkpoint.md) records the exact closure and
+nonclaims.
 
 No `RunSnapshot`, `openProject`, `getRun`, or `cancelRun` interface is part of
 Jig/1. The root administration candidate does not become published merely by
@@ -503,7 +513,8 @@ existing coordinator and Root Administration controller is closed in review
 153. The normal mixed root/child/Journal/Service path is closed in review 155;
 its manual provider/coordinator-loss proof and phased invocation, lease/root,
 and Mount finalization without redispatch or rebinding are closed in review
-162. No checkpoint authorizes a public SDK or persistent supervisor. The Nix
+162. The finite project-session boundary is closed in review 167. No checkpoint
+authorizes a public opener, operational host, or persistent supervisor. The Nix
 decontamination boundary remains in
 [`130-nix-experiment-disposition-and-next-slice.md`](130-nix-experiment-disposition-and-next-slice.md);
 the latest completed composition boundary is review 162.
@@ -512,13 +523,10 @@ the latest completed composition boundary is review 162.
 
 The repository still needs:
 
-- one trusted project-opening/authority boundary and closed project-facing
-  operation around the private pipeline whose final Candidate/Plan publication
-  is now failure-atomic;
-- the remaining Plan/2 classifier/authority proof matrix and one closed public
-  project-facing error wrapper;
-- public plan/apply request, result, error, authentication, and CLI/API
-  surfaces plus an independent packed consumer;
+- one production trusted project-opening/authority issuer around the now-closed
+  finite session, without exposing state paths or host machinery;
+- authentication plus a finite CLI/API transport surface, current-to-proposed
+  review evidence, and the remaining Plan/2 classifier/authority proof debt;
 - a finite tested Bun support range for the selected Bun-only first preview;
   genuine Node 22 and 24 stop on their Unicode 17.0 database while the pinned
   package contract requires Unicode 15.1 and are not claimed Jig runtimes;
