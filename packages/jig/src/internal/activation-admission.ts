@@ -448,6 +448,18 @@ export function findPrivateActivationCandidateTarget(
   );
 }
 
+/** Candidate/5 counterpart retained separately during the private store cutover. */
+export function findPrivateActivationCandidateTargetV5(
+  value: PrivateActivationCandidateArtifactV5,
+  identity: RunTargetIdentity,
+): PrivateActivationCandidateTarget | undefined {
+  const artifact = requirePrivateInertActivationCandidateV5(value);
+  const key = privateActivationTargetKey(normalizeIdentity(identity));
+  return artifact.candidate.targets.find(
+    (target) => privateActivationTargetKey(target.request.target) === key,
+  );
+}
+
 /** Build an inert review plan from facts already observed by protected storage. */
 export function createPrivateActivationPlan(input: {
   readonly candidateDigest: string;

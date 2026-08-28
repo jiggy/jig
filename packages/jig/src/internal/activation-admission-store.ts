@@ -17,7 +17,9 @@ import { captureStoredPackage, normalizePackageArtifactRef } from "./package-art
 import {
   decodePrivateProjectLocalLock,
   encodePrivateProjectLocalLock,
+  privateProjectLocalLockDigest,
   type PrivateLockPackage,
+  type PrivateProjectLocalLock,
 } from "./project-local-lock.js";
 import {
   requirePrivateBunServiceRecipe,
@@ -138,21 +140,21 @@ import {
 import type { ServiceHostTerminal } from "../service/session.js";
 import {
   createPrivateActivationAdmission,
-  createPrivateActivationPlan,
+  createPrivateActivationPlanV2,
   decodePrivateActivationAdmission,
-  decodePrivateActivationCandidate,
-  decodePrivateActivationPlan,
+  decodePrivateActivationCandidateV5,
+  decodePrivateActivationPlanV2,
   encodePrivateActivationAdmission,
-  encodePrivateActivationCandidate,
-  encodePrivateActivationPlan,
-  findPrivateActivationCandidateTarget,
+  encodePrivateActivationCandidateV5,
+  encodePrivateActivationPlanV2,
+  findPrivateActivationCandidateTargetV5,
   privateActivationAdmissionDigest,
-  privateActivationCandidateDigest,
-  privateActivationPlanDigest,
-  requirePrivateCreatedActivationCandidate,
+  privateActivationCandidateDigestV5,
+  privateActivationPlanDigestV2,
+  requirePrivateCreatedActivationCandidateV5,
   type PrivateActivationAdmission,
-  type PrivateActivationCandidateArtifact,
-  type PrivateActivationPlan,
+  type PrivateActivationCandidateArtifactV5,
+  type PrivateActivationPlanV2,
 } from "./activation-admission.js";
 import {
   createPrivateExternalSubmissionOrigin,
@@ -237,12 +239,13 @@ export type {
 } from "./root-run-state.js";
 
 const STATE_DIRECTORY = ".jig";
-const DATABASE_NAME = "private-activation-admission-v14.sqlite3";
+const DATABASE_NAME = "private-activation-admission-v15.sqlite3";
+const LEGACY_DATABASE_NAME = "private-activation-admission-v14.sqlite3";
 const COORDINATOR_DATABASE_NAME = "private-project-coordinator-v1.sqlite3";
 const LOCK_NAME = "jig.lock";
 const LOCK_STAGE_NAME = "private-activation-jig-lock-v1.stage";
-const SCHEMA_VERSION = 14n;
-const APPLICATION_ID = 0x4a494741n; // JIGA: schema 14
+const SCHEMA_VERSION = 15n;
+const APPLICATION_ID = 0x4a494741n; // JIGA: schema 15
 const COORDINATOR_SCHEMA_VERSION = 1n;
 const COORDINATOR_APPLICATION_ID = 0x4a494743n; // JIGC
 const BUSY_TIMEOUT_MS = 250;
@@ -659,10 +662,10 @@ export interface PrivateActivationCandidateHead {
 }
 
 export interface PrivateActivationReviewPlan {
-  readonly plan: PrivateActivationPlan;
+  readonly plan: PrivateActivationPlanV2;
   readonly planBytes: Uint8Array;
   readonly planDigest: string;
-  readonly candidate: PrivateActivationCandidateArtifact;
+  readonly candidate: PrivateActivationCandidateArtifactV5;
 }
 
 export interface PrivateActivationAdmissionReceipt {
@@ -673,7 +676,7 @@ export interface PrivateActivationAdmissionReceipt {
 
 export interface PrivateActiveActivation {
   readonly admission: PrivateActivationAdmissionReceipt;
-  readonly candidate: PrivateActivationCandidateArtifact;
+  readonly candidate: PrivateActivationCandidateArtifactV5;
 }
 
 export interface PrivateServiceMountFact<Value> {
@@ -744,7 +747,7 @@ export interface PrivateProjectCoordinator {
 export interface PrivateRootRunLaunch {
   readonly run: PrivateRootRunSnapshot;
   readonly intent: PrivateRootRunSpawnIntent;
-  readonly candidate: PrivateActivationCandidateArtifact;
+  readonly candidate: PrivateActivationCandidateArtifactV5;
   readonly coordinator: PrivateProjectCoordinator;
 }
 
@@ -790,20 +793,20 @@ export interface PrivateRootExecutionWork {
 }
 
 export interface PrivateReacquiredRootExecutionWork extends PrivateRootExecutionWork {
-  readonly candidate: PrivateActivationCandidateArtifact;
+  readonly candidate: PrivateActivationCandidateArtifactV5;
 }
 
 /** Persist a factory-produced proposal as the monotonic activation head. */
 export async function publishPrivateActivationCandidate(input: {
   readonly projectRoot: string;
   readonly packageStoreRoot: string;
-  readonly candidate: PrivateActivationCandidateArtifact;
+  readonly candidate: PrivateActivationCandidateArtifactV5;
 }): Promise<PrivateActivationCandidateHead> {
-  const created = requirePrivateCreatedActivationCandidate(input.candidate);
-  const encoded = encodePrivateActivationCandidate(created);
+  const created = requirePrivateCreatedActivationCandidateV5(input.candidate);
+  const encoded = encodePrivateActivationCandidateV5(created);
   requireStoredSize(encoded.candidate, "candidate");
   requireStoredSize(encoded.lock, "candidate lock");
-  const candidateDigest = privateActivationCandidateDigest(created);
+  const candidateDigest = privateActivationCandidateDigestV5(created);
   const owner = await openStateOwner(input.projectRoot, true);
   let artifacts: ReacquiredArtifacts | undefined;
   let failure: unknown;
@@ -817,7 +820,7 @@ export async function publishPrivateActivationCandidate(input: {
         const latest = loadCandidateRow(latestRow);
         requireCandidateRoot(latest, owner.root);
         if (latestRow.candidate_digest === candidateDigest) {
-          const prior = encodePrivateActivationCandidate(latest);
+          const prior = encodePrivateActivationCandidateV5(latest);
           if (!sameBytes(prior.candidate, encoded.candidate) || !sameBytes(prior.lock, encoded.lock)) {
             corrupt("latest candidate digest names different canonical bytes");
           }
@@ -885,8 +888,8 @@ export async function createPrivateActivationReviewPlan(input: {
       )) {
         invalid("LOCK_MISMATCH", "locked planning requires the exact proposed jig.lock bytes");
       }
-      const plan = createPrivateActivationPlan({
-        candidateDigest: currentRow.candidate_digest,
+      const plan = createPrivateActivationPlanV2({
+        candidate,
         candidateRevision: safeRevision(currentRow.revision),
         baseGeneration: admissionHead.revision === null
           ? null
@@ -894,11 +897,12 @@ export async function createPrivateActivationReviewPlan(input: {
         lockMode: input.lockMode,
         observedLock: observed.state === "absent"
           ? { state: "absent" }
-          : { state: "present", digest: observed.digest },
+          : { state: "present", lock: observed.lock },
+        operation: "admission",
       });
-      const planBytes = encodePrivateActivationPlan(plan);
+      const planBytes = encodePrivateActivationPlanV2(plan);
       requireStoredSize(planBytes, "review plan");
-      const planDigest = privateActivationPlanDigest(plan);
+      const planDigest = privateActivationPlanDigestV2(plan);
       persistReviewPlan(owner.database, {
         plan_digest: planDigest,
         candidate_revision: currentRow.revision,
@@ -934,7 +938,7 @@ export async function loadPrivateActivationReviewPlan(input: {
     requirePlanBase(owner.database, plan, owner.root);
     const initialCandidateRow = requireCandidateRow(owner.database, initialPlanRow.candidate_revision);
     const candidate = loadCandidateRow(initialCandidateRow);
-    crossCheckPlanCandidate(plan, initialPlanRow, initialCandidateRow);
+    crossCheckPlanCandidate(plan, initialPlanRow, initialCandidateRow, candidate);
     requireCandidateRoot(candidate, owner.root);
     artifacts = await reacquireCandidateArtifacts(input.packageStoreRoot, candidate);
     await immediate(owner, () => {
@@ -944,7 +948,7 @@ export async function loadPrivateActivationReviewPlan(input: {
       const currentCandidateRow = requireCandidateRow(owner.database, initialPlanRow.candidate_revision);
       requireSamePlanRow(initialPlanRow, currentPlanRow);
       requireSameCandidateRow(initialCandidateRow, currentCandidateRow);
-      crossCheckPlanCandidate(plan, currentPlanRow, currentCandidateRow);
+      crossCheckPlanCandidate(plan, currentPlanRow, currentCandidateRow, candidate);
       requirePlanBase(owner.database, plan, owner.root);
     });
     await owner.finish();
@@ -2387,7 +2391,7 @@ export async function submitPrivateRootRun(input: {
         return Object.freeze({ run: loadRootRunSnapshot(owner.database, row, owner.root) });
       }
 
-      const selectedTarget = findPrivateActivationCandidateTarget(candidate, request.target);
+      const selectedTarget = findPrivateActivationCandidateTargetV5(candidate, request.target);
       if (selectedTarget === undefined || selectedTarget.disposition.state !== "ready") {
         corrupt("root Run preflight omitted an unavailable candidate terminal");
       }
@@ -2742,7 +2746,7 @@ async function preparePrivateHookDerivations(input: {
   }
   const candidates = new Map<number, {
     readonly row: CandidateRow;
-    readonly value: PrivateActivationCandidateArtifact;
+    readonly value: PrivateActivationCandidateArtifactV5;
     readonly artifacts: ReacquiredArtifacts;
   }>();
   const runs: PreparedHookDerivedRun[] = [];
@@ -2768,7 +2772,7 @@ async function preparePrivateHookDerivations(input: {
       preparedCandidate = Object.freeze({ row, value, artifacts });
       candidates.set(revision.openingCandidateRevision, preparedCandidate);
     }
-    const target = findPrivateActivationCandidateTarget(
+    const target = findPrivateActivationCandidateTargetV5(
       preparedCandidate.value,
       revision.meaning.target.identity,
     );
@@ -3539,6 +3543,12 @@ export async function applyPrivateActivationReviewPlan(input: {
   try {
     const initialPlanRow = requirePlanRow(owner.database, input.planDigest);
     const plan = loadPlanRow(initialPlanRow);
+    if (plan.operation !== "admission") {
+      invalid(
+        "ADMISSION_PLAN_OPERATION",
+        "lock-repair review plans require the dedicated repair apply path",
+      );
+    }
     if (plan.baseGeneration !== input.baseGeneration) stale("apply base differs from the reviewed plan");
 
     const committed = findAdmissionByPlan(owner.database, input.planDigest);
@@ -3550,7 +3560,7 @@ export async function applyPrivateActivationReviewPlan(input: {
 
     const initialCandidateRow = requireCandidateRow(owner.database, initialPlanRow.candidate_revision);
     const candidate = loadCandidateRow(initialCandidateRow);
-    crossCheckPlanCandidate(plan, initialPlanRow, initialCandidateRow);
+    crossCheckPlanCandidate(plan, initialPlanRow, initialCandidateRow, candidate);
     requirePlanBase(owner.database, plan, owner.root);
     requireCandidateRoot(candidate, owner.root);
     artifacts = await reacquireCandidateArtifacts(input.packageStoreRoot, candidate);
@@ -3563,7 +3573,7 @@ export async function applyPrivateActivationReviewPlan(input: {
       const currentCandidateRow = requireCandidateRow(owner.database, initialPlanRow.candidate_revision);
       requireSamePlanRow(initialPlanRow, currentPlanRow);
       requireSameCandidateRow(initialCandidateRow, currentCandidateRow);
-      crossCheckPlanCandidate(plan, currentPlanRow, currentCandidateRow);
+      crossCheckPlanCandidate(plan, currentPlanRow, currentCandidateRow, candidate);
       requirePlanBase(owner.database, plan, owner.root);
 
       const candidateHead = readCandidateHead(owner.database, owner.root);
@@ -3644,19 +3654,19 @@ export async function applyPrivateActivationReviewPlan(input: {
 }
 
 /** Require restart provenance minted by this store, not by the byte decoder. */
-export function requirePrivateStoredActivationCandidate(value: unknown): PrivateActivationCandidateArtifact {
+export function requirePrivateStoredActivationCandidate(value: unknown): PrivateActivationCandidateArtifactV5 {
   if (value === null || typeof value !== "object" || !storedCandidates.has(value)) {
     throw new TypeError("activation candidate has not been reverified from protected storage");
   }
-  return value as PrivateActivationCandidateArtifact;
+  return value as PrivateActivationCandidateArtifactV5;
 }
 
 function rootPreflightTerminal(
-  candidate: PrivateActivationCandidateArtifact,
+  candidate: PrivateActivationCandidateArtifactV5,
   request: PrivateRootRunRequest,
   artifacts: ReacquiredArtifacts,
 ): PrivateRootRunTerminal | undefined {
-  const target = findPrivateActivationCandidateTarget(candidate, request.target);
+  const target = findPrivateActivationCandidateTargetV5(candidate, request.target);
   if (target === undefined) {
     return failedPrivateRootTerminal("UNAVAILABLE", "the active generation does not contain the requested root target");
   }
@@ -4214,7 +4224,7 @@ function loadImmutableRootParentEvidence(
     corrupt("stored Journal publisher candidate differs from its admission");
   }
   const candidate = loadCandidateRow(requireCandidateRow(database, row.candidate_revision));
-  const target = findPrivateActivationCandidateTarget(candidate, request.target);
+  const target = findPrivateActivationCandidateTargetV5(candidate, request.target);
   const spawnRow = findRootSpawn(database, row.run_id);
   if (spawnRow === null) corrupt("stored Journal publisher has no spawn intent");
   const spawn = loadRootSpawnRow(spawnRow, row);
@@ -4399,7 +4409,7 @@ function requireRootJournalAppendCandidate(
   }
   const request = decodePrivateRootRunRequest(run.request_bytes);
   const candidate = loadCandidateRow(requireCandidateRow(database, run.candidate_revision));
-  const parent = findPrivateActivationCandidateTarget(candidate, request.target);
+  const parent = findPrivateActivationCandidateTargetV5(candidate, request.target);
   const slot = parent?.request.slots[allocation.call.slot];
   if (parent === undefined || slot?.kind !== "capability" ||
       slot.provider.binding !== allocation.publisherBinding || slot.provider.export !== "journal") {
@@ -4564,8 +4574,8 @@ function requireRootFlowCallAllocationCandidate(
     invalid("RUN_DEADLINE_INVALID", "child Flow deadline exceeds its parent root Run deadline");
   }
   const candidate = loadCandidateRow(requireCandidateRow(database, run.candidate_revision));
-  const parent = findPrivateActivationCandidateTarget(candidate, request.target);
-  const child = findPrivateActivationCandidateTarget(candidate, allocation.target);
+  const parent = findPrivateActivationCandidateTargetV5(candidate, request.target);
+  const child = findPrivateActivationCandidateTargetV5(candidate, allocation.target);
   if (parent === undefined || child === undefined || child.disposition.state !== "ready") {
     corrupt("root Flow call allocation is absent from its pinned candidate");
   }
@@ -5415,11 +5425,18 @@ async function openStateOwner(projectRoot: string, create: boolean): Promise<Sta
     const directoryInformation = await directory.stat({ bigint: true });
     if (create) await root.handle.sync();
     const databasePath = descriptorChild(directory, DATABASE_NAME);
+    const databaseExists = await pathExists(databasePath);
+    if (!databaseExists && await pathExists(descriptorChild(directory, LEGACY_DATABASE_NAME))) {
+      invalid(
+        "ADMISSION_SCHEMA_VERSION",
+        `${LEGACY_DATABASE_NAME} is an unsupported private admission format`,
+      );
+    }
     const databaseInformation = await ensureDatabaseFile(
       databasePath,
       directory,
       directoryInformation.dev,
-      create,
+      create && !databaseExists,
     );
     await validateSidecars(directory, databaseInformation.dev);
     const visibleStatePath = join(root.requestedPath, STATE_DIRECTORY);
@@ -5690,7 +5707,7 @@ function verifySchema(database: SqliteDatabase, root: PrivateProjectRoot): void 
   if (actual.length !== EXPECTED_SCHEMA.length || actual.some((row, index) => {
     const expected = EXPECTED_SCHEMA[index]!;
     return row.type !== expected.type || row.name !== expected.name || row.table !== expected.table || row.sql !== expected.sql;
-  })) corrupt("private admission database schema differs from version 14");
+  })) corrupt("private admission database schema differs from version 15");
   if (statement<Record<string, unknown>>(database, "PRAGMA foreign_key_check").all().length !== 0) {
     corrupt("private admission database has broken foreign keys");
   }
@@ -5816,7 +5833,7 @@ function readJournalHead(database: SqliteDatabase): JournalHeadRow {
 }
 
 function privateHookMeaningsForCandidate(
-  candidate: PrivateActivationCandidateArtifact,
+  candidate: PrivateActivationCandidateArtifactV5,
 ): ReadonlyMap<string, PrivateHookMeaning> {
   const meanings = new Map<string, PrivateHookMeaning>();
   for (const [hookId, hook] of Object.entries(candidate.lock.hooks)) {
@@ -5825,7 +5842,7 @@ function privateHookMeaningsForCandidate(
         !publisher.eventTypes.includes(hook.type)) {
       corrupt(`Hook ${hookId} is not authorized by its pinned Journal publisher`);
     }
-    const target = findPrivateActivationCandidateTarget(candidate, hook.target);
+    const target = findPrivateActivationCandidateTargetV5(candidate, hook.target);
     if (target === undefined) {
       corrupt(`Hook ${hookId} target is absent from its pinned candidate`);
     }
@@ -5862,7 +5879,7 @@ function preparePrivateHookAdmissionTransition(
     readonly candidateRevision: number;
     readonly candidateDigest: string;
     readonly lockDigest: string;
-    readonly candidate: PrivateActivationCandidateArtifact;
+    readonly candidate: PrivateActivationCandidateArtifactV5;
   },
 ): PreparedHookAdmissionTransition {
   const journal = readJournalHead(database);
@@ -6233,7 +6250,7 @@ function privateServiceMountId(admissionDigest: string, bindingId: string): stri
 }
 
 function requireCurrentServiceRecipe(
-  candidate: PrivateActivationCandidateArtifact,
+  candidate: PrivateActivationCandidateArtifactV5,
   recipe: PrivateBunServiceRecipe,
   artifacts: ReacquiredArtifacts,
 ): void {
@@ -6246,7 +6263,7 @@ function requireCurrentServiceRecipe(
     );
   }
   const bindingId = serviceRecipeBindingId(recipe);
-  const selected = findPrivateActivationCandidateTarget(candidate, recipe.request.target);
+  const selected = findPrivateActivationCandidateTargetV5(candidate, recipe.request.target);
   if (selected === undefined || readyServices.length !== 1 ||
       readyServices[0]!.request.digest !== selected.request.digest ||
       selected.request.mode !== "service" || selected.request.target.kind !== "binding" ||
@@ -6288,7 +6305,7 @@ function requireCurrentServiceRecipe(
 }
 
 function requireServicePackageEvidence(
-  candidate: PrivateActivationCandidateArtifact,
+  candidate: PrivateActivationCandidateArtifactV5,
   packagePath: string,
   bindingId: string,
   expectedExports: readonly string[],
@@ -6318,7 +6335,7 @@ function loadServiceMountSnapshot(
   row: ServiceMountRow,
   root: PrivateProjectRoot,
   coordinator: PrivateProjectCoordinator,
-  candidate: PrivateActivationCandidateArtifact,
+  candidate: PrivateActivationCandidateArtifactV5,
   artifacts?: ReacquiredArtifacts,
   recipe?: PrivateBunServiceRecipe,
 ): PrivateServiceMountSnapshot {
@@ -6344,12 +6361,12 @@ function loadServiceMountSnapshot(
   const admission = loadAndCrossCheckAdmission(database, admissionRow, root).admission;
   if (allocation.candidateRevision !== admission.candidateRevision ||
       candidate.candidate.lockDigest !== admission.lockDigest ||
-      privateActivationCandidateDigest(candidate) !== admission.candidateDigest) {
+      privateActivationCandidateDigestV5(candidate) !== admission.candidateDigest) {
     corrupt("stored Service Mount candidate differs from its admission");
   }
   const readyServices = candidate.candidate.targets.filter((target) =>
     target.request.mode === "service" && target.disposition.state === "ready");
-  const selected = findPrivateActivationCandidateTarget(candidate, {
+  const selected = findPrivateActivationCandidateTargetV5(candidate, {
     kind: "binding",
     id: allocation.bindingId,
   });
@@ -6395,7 +6412,7 @@ function loadServiceMountSnapshot(
 interface ServiceMountTransitionContext {
   readonly coordinator: PrivateProjectCoordinator;
   readonly root: PrivateProjectRoot;
-  readonly candidate: PrivateActivationCandidateArtifact;
+  readonly candidate: PrivateActivationCandidateArtifactV5;
   readonly recipe: PrivateBunServiceRecipe | undefined;
   readonly packageDigest: string;
   readonly mode: "advance" | "settle";
@@ -6465,7 +6482,7 @@ async function transitionPrivateServiceMount(
       if (startupOwner !== undefined) {
         requireServiceMountStartupOwner(startupOwner, before, coordinator);
       }
-      const selected = findPrivateActivationCandidateTarget(candidate, {
+      const selected = findPrivateActivationCandidateTargetV5(candidate, {
         kind: "binding",
         id: currentRow.binding_id,
       });
@@ -6532,7 +6549,7 @@ function loadServiceMountLifecycleFacts(
   database: SqliteDatabase,
   root: PrivateProjectRoot,
   coordinator: PrivateProjectCoordinator,
-  candidate: PrivateActivationCandidateArtifact,
+  candidate: PrivateActivationCandidateArtifactV5,
   allocation: PrivateServiceMountAllocation,
   allocationDigest: string,
   packageDigest: string,
@@ -6622,7 +6639,7 @@ function validateLoadedServiceMountLifecycle(
   database: SqliteDatabase,
   root: PrivateProjectRoot,
   coordinator: PrivateProjectCoordinator,
-  candidate: PrivateActivationCandidateArtifact,
+  candidate: PrivateActivationCandidateArtifactV5,
   snapshot: PrivateServiceMountSnapshot,
   packageDigest: string,
   recipe?: PrivateBunServiceRecipe,
@@ -6834,7 +6851,7 @@ function requireServiceMountReleaseCorrelation(
   database: SqliteDatabase,
   root: PrivateProjectRoot,
   coordinator: PrivateProjectCoordinator,
-  candidate: PrivateActivationCandidateArtifact,
+  candidate: PrivateActivationCandidateArtifactV5,
   snapshot: PrivateServiceMountSnapshot,
   value: PrivateServiceMountRelease,
 ): void {
@@ -7165,7 +7182,7 @@ function requireReleasedServiceLeases(
   mount: PrivateServiceMountSnapshot,
   root: PrivateProjectRoot,
   coordinator: PrivateProjectCoordinator,
-  candidate: PrivateActivationCandidateArtifact,
+  candidate: PrivateActivationCandidateArtifactV5,
 ): readonly { readonly ownerRunId: string; readonly slot: string; readonly releaseDigest: string }[] {
   const query = statement<ServiceLeaseRow>(database, [
     "SELECT owner_run_id, slot, mount_id, generation_fact_name, generation_digest,",
@@ -7338,7 +7355,7 @@ function requireServiceLeaseReleaseCorrelation(
   release: PrivateServiceMountFact<PrivateServiceLeaseRelease>,
   root: PrivateProjectRoot,
   coordinator: PrivateProjectCoordinator,
-  candidate: PrivateActivationCandidateArtifact,
+  candidate: PrivateActivationCandidateArtifactV5,
 ): void {
   if (release.value.ownerRunId !== allocation.ownerRunId ||
       release.value.slot !== allocation.slot ||
@@ -7385,7 +7402,7 @@ function serviceLeaseMountReasonMatches(
 }
 
 function requireServiceLeaseLink(
-  candidate: PrivateActivationCandidateArtifact,
+  candidate: PrivateActivationCandidateArtifactV5,
   ownerTarget: RunTargetIdentity,
   slot: string,
 ): ServiceLeaseLink {
@@ -7402,7 +7419,7 @@ function requireServiceLeaseLink(
       required?.kind !== "contract") {
     invalid("SERVICE_LEASE_SLOT_UNAVAILABLE", "owner Run does not bind the requested capability slot");
   }
-  const admittedTarget = findPrivateActivationCandidateTarget(candidate, ownerTarget);
+  const admittedTarget = findPrivateActivationCandidateTargetV5(candidate, ownerTarget);
   const admittedSlot = admittedTarget?.request.slots[slot];
   const contract = Object.freeze({ id: required.id, version: required.version, digest: required.digest });
   if (admittedTarget === undefined || admittedTarget.request.mode !== "run" ||
@@ -7433,7 +7450,7 @@ function loadServiceLeaseSnapshot(
   row: ServiceLeaseRow,
   root: PrivateProjectRoot,
   coordinator: PrivateProjectCoordinator,
-  candidate: PrivateActivationCandidateArtifact,
+  candidate: PrivateActivationCandidateArtifactV5,
 ): PrivateServiceLeaseSnapshot {
   const allocation = loadServiceLeaseAllocation(row);
   const mount = loadServiceMountSnapshot(
@@ -7480,7 +7497,7 @@ function requireServiceLeaseAllocationCorrelation(
   mount: PrivateServiceMountSnapshot,
   root: PrivateProjectRoot,
   coordinator: PrivateProjectCoordinator,
-  candidate: PrivateActivationCandidateArtifact,
+  candidate: PrivateActivationCandidateArtifactV5,
 ): PrivateRootRunSnapshot {
   requireDigest(allocationDigest, "stored Service lease allocation");
   if (allocation.coordinatorEpoch > coordinator.epoch) {
@@ -7494,7 +7511,7 @@ function requireServiceLeaseAllocationCorrelation(
   }
   const ownerCandidate = loadCandidateRow(requireCandidateRow(database, ownerRow.candidate_revision));
   requireCandidateRoot(ownerCandidate, root);
-  if (privateActivationCandidateDigest(ownerCandidate) !== privateActivationCandidateDigest(candidate)) {
+  if (privateActivationCandidateDigestV5(ownerCandidate) !== privateActivationCandidateDigestV5(candidate)) {
     corrupt("stored Service lease owner differs from its Mount candidate");
   }
   const link = requireServiceLeaseLink(candidate, ownerRun.target, allocation.slot);
@@ -7523,7 +7540,7 @@ function requireNewServiceLeaseContext(
   ownerRow: RootRunRow,
   root: PrivateProjectRoot,
   coordinator: PrivateProjectCoordinator,
-  candidate: PrivateActivationCandidateArtifact,
+  candidate: PrivateActivationCandidateArtifactV5,
   artifacts: ReacquiredArtifacts,
   slot: string,
 ): NewServiceLeaseContext {
@@ -7718,7 +7735,7 @@ function serviceInvocationClosureReferences(
   mount: PrivateServiceMountSnapshot,
   root: PrivateProjectRoot,
   coordinator: PrivateProjectCoordinator,
-  candidate: PrivateActivationCandidateArtifact,
+  candidate: PrivateActivationCandidateArtifactV5,
 ): readonly { readonly operationId: string; readonly closureDigest: string }[] {
   return Object.freeze(listAllServiceInvocationRows(database)
     .map((row) => {
@@ -7799,7 +7816,7 @@ function requireServiceInvocationAllocationCorrelation(
   mount: PrivateServiceMountSnapshot,
   root: PrivateProjectRoot,
   coordinator: PrivateProjectCoordinator,
-  candidate: PrivateActivationCandidateArtifact,
+  candidate: PrivateActivationCandidateArtifactV5,
 ): void {
   if (allocation.coordinatorEpoch > coordinator.epoch) {
     corrupt("Service invocation belongs to a future coordinator epoch");
@@ -8179,24 +8196,24 @@ function copiedAdmissionRow(row: AdmissionRow): AdmissionRow {
   });
 }
 
-function loadCandidateRow(row: CandidateRow): PrivateActivationCandidateArtifact {
+function loadCandidateRow(row: CandidateRow): PrivateActivationCandidateArtifactV5 {
   safeRevision(row.revision);
   const candidate = copiedBlob(row.candidate_bytes, "stored candidate");
   const lock = copiedBlob(row.lock_bytes, "stored candidate lock");
   requireStoredSize(candidate, "stored candidate");
   requireStoredSize(lock, "stored candidate lock");
-  const decoded = decodePrivateActivationCandidate({ candidate, lock });
-  if (privateActivationCandidateDigest(decoded) !== row.candidate_digest) corrupt("stored candidate row digest does not match canonical bytes");
+  const decoded = decodePrivateActivationCandidateV5({ candidate, lock });
+  if (privateActivationCandidateDigestV5(decoded) !== row.candidate_digest) corrupt("stored candidate row digest does not match canonical bytes");
   return decoded;
 }
 
-function loadPlanRow(row: PlanRow): PrivateActivationPlan {
+function loadPlanRow(row: PlanRow): PrivateActivationPlanV2 {
   safeRevision(row.candidate_revision);
   requireDigest(row.plan_digest, "stored review plan");
   const bytes = copiedBlob(row.plan_bytes, "stored review plan");
   requireStoredSize(bytes, "stored review plan");
-  const plan = decodePrivateActivationPlan(bytes);
-  if (privateActivationPlanDigest(plan) !== row.plan_digest) corrupt("stored review plan digest does not match canonical bytes");
+  const plan = decodePrivateActivationPlanV2(bytes);
+  if (privateActivationPlanDigestV2(plan) !== row.plan_digest) corrupt("stored review plan digest does not match canonical bytes");
   return plan;
 }
 
@@ -8234,16 +8251,36 @@ function persistReviewPlan(database: SqliteDatabase, row: PlanRow): void {
   );
 }
 
-function crossCheckPlanCandidate(plan: PrivateActivationPlan, planRow: PlanRow, candidate: CandidateRow): void {
+function crossCheckPlanCandidate(
+  plan: PrivateActivationPlanV2,
+  planRow: PlanRow,
+  candidate: CandidateRow,
+  artifact: PrivateActivationCandidateArtifactV5,
+): void {
   if (
     plan.candidateRevision !== safeRevision(planRow.candidate_revision) || planRow.candidate_revision !== candidate.revision ||
-    plan.candidateDigest !== candidate.candidate_digest
-  ) corrupt("review plan does not name its stored candidate row exactly");
+    plan.candidateDigest !== candidate.candidate_digest ||
+    privateActivationCandidateDigestV5(artifact) !== candidate.candidate_digest ||
+    plan.captureDigest !== artifact.candidate.captureDigest ||
+    plan.resolutionInputDigest !== artifact.candidate.resolutionInputDigest ||
+    plan.planningObservationDigest !== artifact.candidate.planningObservationDigest ||
+    plan.observedSemanticDigest !== artifact.candidate.observedSemanticDigest ||
+    plan.activationMeaningDigest !== artifact.candidate.activationMeaningDigest ||
+    plan.proposed.lockDigest !== artifact.candidate.lockDigest ||
+    !sameBytes(
+      encodePrivateProjectLocalLock(plan.proposed.lock),
+      encodePrivateProjectLocalLock(artifact.lock),
+    ) ||
+    !sameBytes(
+      canonicalJson(plan.proposed.targets as unknown as JsonValue),
+      canonicalJson(artifact.candidate.targets as unknown as JsonValue),
+    )
+  ) corrupt("review plan does not name its stored candidate row and proposal exactly");
 }
 
 function requirePlanBase(
   database: SqliteDatabase,
-  plan: PrivateActivationPlan,
+  plan: PrivateActivationPlanV2,
   root: PrivateProjectRoot,
 ): void {
   if (plan.baseGeneration === null) return;
@@ -8262,7 +8299,10 @@ function loadAndCrossCheckAdmission(
   const candidateRow = requireCandidateRow(database, planRow.candidate_revision);
   const candidate = loadCandidateRow(candidateRow);
   requireCandidateRoot(candidate, root);
-  crossCheckPlanCandidate(plan, planRow, candidateRow);
+  crossCheckPlanCandidate(plan, planRow, candidateRow, candidate);
+  if (plan.operation !== "admission") {
+    corrupt("stored admission refers to a non-admission review plan");
+  }
   if (
     admission.baseGeneration !== row.base_generation ||
     admission.baseGeneration !== plan.baseGeneration ||
@@ -8317,7 +8357,12 @@ function requireSameAdmissionRow(left: AdmissionRow, right: AdmissionRow): void 
 
 async function observeVisibleLock(root: PrivateProjectRoot): Promise<
   | { readonly state: "absent" }
-  | { readonly state: "present"; readonly digest: string; readonly bytes: Uint8Array }
+  | {
+      readonly state: "present";
+      readonly digest: string;
+      readonly lock: PrivateProjectLocalLock;
+      readonly bytes: Uint8Array;
+    }
 > {
   const path = descriptorChild(root.handle, LOCK_NAME);
   let handle: FileHandle;
@@ -8339,14 +8384,19 @@ async function observeVisibleLock(root: PrivateProjectRoot): Promise<
     if (!sameSnapshot(before, after) || !sameSnapshot(after, pathInformation)) {
       invalid("LOCK_CHANGED", "jig.lock changed while it was being observed");
     }
-    decodePrivateProjectLocalLock(bytes);
-    return Object.freeze({ state: "present" as const, digest: rawDigest(bytes), bytes });
+    const lock = decodePrivateProjectLocalLock(bytes);
+    return Object.freeze({
+      state: "present" as const,
+      digest: privateProjectLocalLockDigest(lock),
+      lock,
+      bytes,
+    });
   } finally { await handle.close(); }
 }
 
 async function convergeVisibleLock(
   owner: StateOwner,
-  plan: PrivateActivationPlan,
+  plan: PrivateActivationPlanV2,
   proposed: Uint8Array,
 ): Promise<void> {
   const observed = await observeVisibleLock(owner.root);
@@ -8369,11 +8419,12 @@ async function convergeVisibleLock(
 }
 
 function matchesObservedLock(
-  plan: PrivateActivationPlan,
+  plan: PrivateActivationPlanV2,
   observed: Awaited<ReturnType<typeof observeVisibleLock>>,
 ): boolean {
   if (plan.observedLock.state === "absent") return observed.state === "absent";
-  return observed.state === "present" && observed.digest === plan.observedLock.digest;
+  return observed.state === "present" && observed.digest === plan.observedLock.digest &&
+    sameBytes(observed.bytes, encodePrivateProjectLocalLock(plan.observedLock.lock));
 }
 
 async function synchronizeExactVisibleLock(owner: StateOwner, proposed: Uint8Array): Promise<void> {
@@ -8405,7 +8456,7 @@ async function synchronizeExactVisibleLock(owner: StateOwner, proposed: Uint8Arr
 
 async function publishVisibleLock(
   owner: StateOwner,
-  plan: PrivateActivationPlan,
+  plan: PrivateActivationPlanV2,
   proposed: Uint8Array,
 ): Promise<void> {
   await clearSafeLockStage(owner);
@@ -8543,7 +8594,7 @@ function requireVisibleLockFile(information: BigIntStats, expectedDevice: bigint
 
 async function reacquireCandidateArtifacts(
   packageStoreRoot: string,
-  candidate: PrivateActivationCandidateArtifact,
+  candidate: PrivateActivationCandidateArtifactV5,
 ): Promise<ReacquiredArtifacts> {
   const captures = new Map<string, Awaited<ReturnType<typeof captureStoredPackage>>>();
   const inspections = new Map<string, InspectedPackage>();
@@ -8639,7 +8690,7 @@ async function disposeCaptures(captures: readonly Awaited<ReturnType<typeof capt
   return failures.length === 0 ? undefined : new AggregateError(failures, "Package/1 captures did not all close");
 }
 
-function requireCandidateRoot(candidate: PrivateActivationCandidateArtifact, root: PrivateProjectRoot): void {
+function requireCandidateRoot(candidate: PrivateActivationCandidateArtifactV5, root: PrivateProjectRoot): void {
   const expected = candidate.candidate.projectRoot;
   if (root.information.dev.toString() !== expected.device || root.information.ino.toString() !== expected.inode) {
     invalid("ADMISSION_PROJECT_CHANGED", "activation candidate belongs to a different project root");
@@ -8697,7 +8748,7 @@ async function disposeOperation(
   throw new AggregateError(cleanup, "private admission operation and cleanup did not both complete");
 }
 
-function markStored(candidate: PrivateActivationCandidateArtifact): PrivateActivationCandidateArtifact {
+function markStored(candidate: PrivateActivationCandidateArtifactV5): PrivateActivationCandidateArtifactV5 {
   storedCandidates.add(candidate);
   return candidate;
 }

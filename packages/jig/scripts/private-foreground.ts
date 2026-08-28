@@ -3,7 +3,7 @@ import { dirname, join } from "node:path";
 
 import type { StartRootRunRequest } from "../src/administration/root.js";
 import {
-  createPrivateActivationCandidate,
+  createPrivateActivationCandidateV5,
 } from "../src/internal/activation-admission.js";
 import {
   applyPrivateActivationReviewPlan,
@@ -91,7 +91,7 @@ async function plan(projectPath: string): Promise<object> {
       disposition: { state: "planned" as const, observation: recipe.observation },
     })),
   });
-  const candidate = createPrivateActivationCandidate(
+  const candidate = createPrivateActivationCandidateV5(
     aggregate,
     resolveRetainedPackageProjectObservation(aggregate, planning),
     recipes,

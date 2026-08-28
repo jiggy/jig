@@ -12,7 +12,7 @@ import {
   type PrivateProjectCoordinator,
   type PrivateReacquiredRootExecutionWork,
 } from "./activation-admission-store.js";
-import { findPrivateActivationCandidateTarget } from "./activation-admission.js";
+import { findPrivateActivationCandidateTargetV5 } from "./activation-admission.js";
 import { captureStoredPackage } from "./package-artifact-store.js";
 import type { PrivateProjectLocalLock } from "./project-local-lock.js";
 import {
@@ -194,7 +194,7 @@ async function inspectParentPackage(input: JournalEffectInput): Promise<Inspecte
 }
 
 function parentRequest(parent: PrivateReacquiredRootExecutionWork): PrivateActivationRequest {
-  const selected = findPrivateActivationCandidateTarget(parent.candidate, parent.run.target);
+  const selected = findPrivateActivationCandidateTargetV5(parent.candidate, parent.run.target);
   if (selected === undefined || selected.request.digest !== parent.intent.requestDigest) {
     throw new Error("durable root Run differs from its pinned Journal consumer");
   }

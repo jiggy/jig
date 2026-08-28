@@ -124,10 +124,12 @@ import {
   privateRootRunOriginDigest,
 } from "../src/internal/root-run-state.js";
 import {
-  decodePrivateActivationCandidate,
-  encodePrivateActivationCandidate,
-  privateActivationCandidateDigest,
-  requirePrivateCreatedActivationCandidate,
+  decodePrivateActivationCandidateV5,
+  decodePrivateActivationPlanV2,
+  encodePrivateActivationCandidateV5,
+  privateActivationCandidateDigestV5,
+  privateActivationPlanDigestV2,
+  requirePrivateCreatedActivationCandidateV5,
 } from "../src/internal/activation-admission.js";
 import { canonicalJson, decodeJson1, type JsonValue } from "../src/json.js";
 import { capturePackageDirectory } from "../src/package/capture.js";
@@ -173,7 +175,7 @@ describe.serial("private activation admission SQLite store", () => {
     const root = join(base, "project");
     const store = join(base, "store");
     const state = join(root, ".jig");
-    const databasePath = join(state, "private-activation-admission-v14.sqlite3");
+    const databasePath = join(state, "private-activation-admission-v15.sqlite3");
     try {
       await mkdir(root, { mode: 0o700 });
       await mkdir(store, { mode: 0o700 });
@@ -194,7 +196,7 @@ describe.serial("private activation admission SQLite store", () => {
         expect(database.query(
           "SELECT name FROM sqlite_schema WHERE type = 'table' AND name = 'hook_derivations'",
         ).get()).toEqual({ name: "hook_derivations" });
-        expect(database.query("PRAGMA user_version").get().user_version).toBe(14);
+        expect(database.query("PRAGMA user_version").get().user_version).toBe(15);
         for (const table of [
           "service_mounts",
           "service_mount_facts",
@@ -206,6 +208,50 @@ describe.serial("private activation admission SQLite store", () => {
         expect(database.query("PRAGMA foreign_key_check").all()).toEqual([]);
       } finally { database.close(true); }
     } finally { await rm(base, { recursive: true, force: true }); }
+  });
+
+  test("rejects the exact legacy database path without creating v15 state", async () => {
+    const base = await mkdtemp(join(tmpdir(), "jig-admission-legacy-"));
+    const root = join(base, "project");
+    const store = join(base, "store");
+    const state = join(root, ".jig");
+    const legacy = join(state, "private-activation-admission-v14.sqlite3");
+    const current = join(state, "private-activation-admission-v15.sqlite3");
+    const sentinel = new TextEncoder().encode("legacy-private-state\n");
+    try {
+      await mkdir(state, { recursive: true, mode: 0o700 });
+      await mkdir(store, { mode: 0o700 });
+      await writeFile(legacy, sentinel, { mode: 0o600 });
+
+      await expect(createPrivateActivationReviewPlan({
+        projectRoot: root,
+        packageStoreRoot: store,
+        lockMode: "update",
+      })).rejects.toMatchObject({ code: "ADMISSION_SCHEMA_VERSION" });
+
+      expect(new Uint8Array(await readFile(legacy))).toEqual(sentinel);
+      await expect(stat(current)).rejects.toMatchObject({ code: "ENOENT" });
+    } finally {
+      await rm(base, { recursive: true, force: true });
+    }
+  });
+
+  test("keeps an existing valid v15 store authoritative when a legacy file coexists", async () => {
+    const fixture = await createFixture();
+    const legacy = join(fixture.root, ".jig", "private-activation-admission-v14.sqlite3");
+    const sentinel = new TextEncoder().encode("ignored-legacy-state\n");
+    try {
+      await writeFile(legacy, sentinel, { mode: 0o600 });
+      const plan = await createPrivateActivationReviewPlan({
+        projectRoot: fixture.root,
+        packageStoreRoot: fixture.store,
+        lockMode: "update",
+      });
+      expect(plan.plan.kind).toBe("private-activation-plan/2");
+      expect(new Uint8Array(await readFile(legacy))).toEqual(sentinel);
+    } finally {
+      await fixture.dispose();
+    }
   });
 
   test("enforces exact Service fact, lease, and invocation relations while still inert", async () => {
@@ -1069,7 +1115,7 @@ describe.serial("private activation admission SQLite store", () => {
   test("creates and reloads one immutable plan under ordinary Linux CI", async () => {
     const fixture = await createFixture();
     try {
-      expect(() => requirePrivateCreatedActivationCandidate(fixture.candidate)).toThrow(
+      expect(() => requirePrivateCreatedActivationCandidateV5(fixture.candidate)).toThrow(
         "was not built from a retained project",
       );
       expect(() => requirePrivateStoredActivationCandidate(fixture.candidate)).toThrow(
@@ -1084,11 +1130,19 @@ describe.serial("private activation admission SQLite store", () => {
       )));
       expect(new Set(plans.map(({ planDigest }) => planDigest)).size).toBe(1);
       expect(plans[0]!.plan).toMatchObject({
+        kind: "private-activation-plan/2",
         candidateRevision: 1,
-        candidateDigest: privateActivationCandidateDigest(fixture.candidate),
+        candidateDigest: privateActivationCandidateDigestV5(fixture.candidate),
         baseGeneration: null,
+        observedSemanticDigest: fixture.candidate.candidate.observedSemanticDigest,
+        activationMeaningDigest: fixture.candidate.candidate.activationMeaningDigest,
         lockMode: "update",
         observedLock: { state: "absent" },
+        operation: "admission",
+        proposed: {
+          lockDigest: fixture.candidate.candidate.lockDigest,
+          targets: fixture.candidate.candidate.targets,
+        },
       });
       expect(requirePrivateStoredActivationCandidate(plans[0]!.candidate)).toBe(
         plans[0]!.candidate,
@@ -1143,7 +1197,7 @@ describe.serial("private activation admission SQLite store", () => {
           "hook_revisions_one_open",
         ]);
         expect(database.query("PRAGMA application_id").get().application_id).toBe(0x4a494741);
-        expect(database.query("PRAGMA user_version").get().user_version).toBe(14);
+        expect(database.query("PRAGMA user_version").get().user_version).toBe(15);
         expect(database.query("SELECT count(*) AS count FROM review_plans").get().count).toBe(1);
       } finally {
         database.close(true);
@@ -3522,6 +3576,91 @@ describe.serial("private activation admission SQLite store", () => {
     }
   });
 
+  test("rejects a codec-valid Plan whose proposal differs from its named candidate", async () => {
+    const fixture = await createFixture();
+    try {
+      const retained = await createPrivateActivationReviewPlan({
+        projectRoot: fixture.root,
+        packageStoreRoot: fixture.store,
+        lockMode: "update",
+      });
+      const value = decodeJson1(retained.planBytes) as any;
+      const targets = value.proposed.targets.map((target: any, index: number) => index === 0
+        ? {
+            ...target,
+            disposition: {
+              state: "unavailable",
+              code: "RUNTIME_UNAVAILABLE",
+              evidenceDigests: [digest("tampered-plan-proposal")],
+            },
+          }
+        : target);
+      const tamperedBytes = json1({
+        ...value,
+        activationMeaningDigest: privateDomainDigest(
+          "JIG-Private-Activation-Meaning/1",
+          { observedSemanticDigest: value.observedSemanticDigest, targets },
+        ),
+        proposed: { ...value.proposed, targets },
+      });
+      const tampered = decodePrivateActivationPlanV2(tamperedBytes);
+      const tamperedDigest = privateActivationPlanDigestV2(tampered);
+      const database = openSqlite(fixture.database, "readwrite");
+      database.query(
+        "UPDATE review_plans SET plan_digest = ?1, plan_bytes = ?2 WHERE plan_digest = ?3",
+      ).run(tamperedDigest, tamperedBytes, retained.planDigest);
+      database.close(true);
+
+      await expect(loadPrivateActivationReviewPlan({
+        projectRoot: fixture.root,
+        packageStoreRoot: fixture.store,
+        planDigest: tamperedDigest,
+      })).rejects.toMatchObject({ code: "ADMISSION_STATE_CORRUPT" });
+    } finally {
+      await fixture.dispose();
+    }
+  });
+
+  test("rejects a lock-repair Plan before the admission apply path mutates authority", async () => {
+    const fixture = await createFixture();
+    try {
+      const admission = await applyLatestCandidate(fixture);
+      await rm(join(fixture.root, "jig.lock"));
+      const retained = await createPrivateActivationReviewPlan({
+        projectRoot: fixture.root,
+        packageStoreRoot: fixture.store,
+        lockMode: "update",
+      });
+      const value = decodeJson1(retained.planBytes) as any;
+      const repairBytes = json1({ ...value, operation: "lock-repair" });
+      const repair = decodePrivateActivationPlanV2(repairBytes);
+      const repairDigest = privateActivationPlanDigestV2(repair);
+      const database = openSqlite(fixture.database, "readwrite");
+      database.query(
+        "UPDATE review_plans SET plan_digest = ?1, plan_bytes = ?2 WHERE plan_digest = ?3",
+      ).run(repairDigest, repairBytes, retained.planDigest);
+      database.close(true);
+
+      await expect(applyPrivateActivationReviewPlan({
+        projectRoot: fixture.root,
+        packageStoreRoot: fixture.store,
+        planDigest: repairDigest,
+        baseGeneration: admission.admissionDigest,
+      })).rejects.toMatchObject({ code: "ADMISSION_PLAN_OPERATION" });
+      await expect(stat(join(fixture.root, "jig.lock"))).rejects.toMatchObject({ code: "ENOENT" });
+      const unchanged = openSqlite(fixture.database, "readonly");
+      try {
+        expect(unchanged.query("SELECT count(*) AS count FROM admissions").get().count).toBe(1);
+        expect(unchanged.query("SELECT revision FROM admission_head WHERE singleton = 1").get())
+          .toEqual({ revision: 1 });
+      } finally {
+        unchanged.close(true);
+      }
+    } finally {
+      await fixture.dispose();
+    }
+  });
+
   test("rejects current-head corruption and weakened protected paths", async () => {
     const fixture = await createFixture();
     try {
@@ -3542,7 +3681,7 @@ describe.serial("private activation admission SQLite store", () => {
 
       database = openSqlite(fixture.database, "readwrite");
       database.query("UPDATE candidates SET candidate_digest = ?1 WHERE revision = 1")
-        .run(privateActivationCandidateDigest(fixture.candidate));
+        .run(privateActivationCandidateDigestV5(fixture.candidate));
       database.close(true);
       await chmod(fixture.database, 0o644);
       await expect(loadPrivateActivationReviewPlan({
@@ -3567,7 +3706,7 @@ interface Fixture {
   readonly root: string;
   readonly store: string;
   readonly database: string;
-  readonly candidate: ReturnType<typeof decodePrivateActivationCandidate>;
+  readonly candidate: ReturnType<typeof decodePrivateActivationCandidateV5>;
   dispose(): Promise<void>;
 }
 
@@ -3734,8 +3873,8 @@ async function createFixture(
     const lock = decodePrivateProjectLocalLock(lockBytes);
     const captureDigest = digest("capture");
     const planningObservationDigest = digest("planning");
-    const candidate = decodePrivateActivationCandidate({
-      candidate: json1({
+    const candidate = decodePrivateActivationCandidateV5({
+      candidate: json1(candidateV5({
         kind: "private-activation-candidate/4",
         projectRoot: {
           device: rootInformation.dev.toString(),
@@ -3813,13 +3952,13 @@ async function createFixture(
             observationDigest: digest("service-observation"),
           },
         }] : [])],
-      }),
+      })),
       lock: lockBytes,
     });
-    const encoded = encodePrivateActivationCandidate(candidate);
+    const encoded = encodePrivateActivationCandidateV5(candidate);
 
     const state = join(root, ".jig");
-    const databasePath = join(state, "private-activation-admission-v14.sqlite3");
+    const databasePath = join(state, "private-activation-admission-v15.sqlite3");
     await mkdir(state, { mode: 0o700 });
     const databaseFile = await open(
       databasePath,
@@ -3866,12 +4005,12 @@ async function createFixture(
         "INSERT INTO coordinator_head(singleton, epoch) VALUES (1, 0)",
         "INSERT INTO journal_head(singleton, position) VALUES (1, 0)",
         "PRAGMA application_id=1246316353",
-        "PRAGMA user_version=14",
+        "PRAGMA user_version=15",
       ].join(";"));
       database.exec("BEGIN IMMEDIATE");
       database.query(
         "INSERT INTO candidates(revision, candidate_digest, candidate_bytes, lock_bytes) VALUES (1, ?1, ?2, ?3)",
-      ).run(privateActivationCandidateDigest(candidate), encoded.candidate, encoded.lock);
+      ).run(privateActivationCandidateDigestV5(candidate), encoded.candidate, encoded.lock);
       database.query("UPDATE candidate_head SET revision = 1 WHERE singleton = 1").run();
       database.exec("COMMIT");
     } finally {
@@ -4232,8 +4371,8 @@ async function installHookCandidate(
           evidenceDigests: [digest(options.dispositionEvidence)],
         };
     const next = head + 1;
-    const candidate = decodePrivateActivationCandidate({
-      candidate: json1({
+    const candidate = decodePrivateActivationCandidateV5({
+      candidate: json1(candidateV5({
         ...candidateValue,
         semanticDigest: digest(`hook-semantic-${next}`),
         lockDigest: privateProjectLocalLockDigest(lock),
@@ -4241,15 +4380,15 @@ async function installHookCandidate(
           ...candidateValue.targets[0],
           disposition,
         }],
-      } as JsonValue),
+      } as Record<string, JsonValue>)),
       lock: lockBytes,
     });
-    const encoded = encodePrivateActivationCandidate(candidate);
+    const encoded = encodePrivateActivationCandidateV5(candidate);
     database.exec("BEGIN IMMEDIATE");
     try {
       database.query(
         "INSERT INTO candidates(revision, candidate_digest, candidate_bytes, lock_bytes) VALUES (?1, ?2, ?3, ?4)",
-      ).run(next, privateActivationCandidateDigest(candidate), encoded.candidate, encoded.lock);
+      ).run(next, privateActivationCandidateDigestV5(candidate), encoded.candidate, encoded.lock);
       const changed = database.query(
         "UPDATE candidate_head SET revision = ?1 WHERE singleton = 1 AND revision = ?2",
       ).run(next, head).changes;
@@ -4406,8 +4545,8 @@ async function createComposedFixture(): Promise<Fixture> {
       attachments: {},
       slots: {},
     });
-    const candidate = decodePrivateActivationCandidate({
-      candidate: json1({
+    const candidate = decodePrivateActivationCandidateV5({
+      candidate: json1(candidateV5({
         kind: "private-activation-candidate/4",
         projectRoot: {
           device: rootInformation.dev.toString(),
@@ -4444,12 +4583,12 @@ async function createComposedFixture(): Promise<Fixture> {
             },
           },
         ],
-      }),
+      })),
       lock: lockBytes,
     });
-    const encoded = encodePrivateActivationCandidate(candidate);
+    const encoded = encodePrivateActivationCandidateV5(candidate);
     const state = join(root, ".jig");
-    const databasePath = join(state, "private-activation-admission-v14.sqlite3");
+    const databasePath = join(state, "private-activation-admission-v15.sqlite3");
     await mkdir(state, { mode: 0o700 });
     const databaseFile = await open(
       databasePath,
@@ -4496,12 +4635,12 @@ async function createComposedFixture(): Promise<Fixture> {
         "INSERT INTO coordinator_head(singleton, epoch) VALUES (1, 0)",
         "INSERT INTO journal_head(singleton, position) VALUES (1, 0)",
         "PRAGMA application_id=1246316353",
-        "PRAGMA user_version=14",
+        "PRAGMA user_version=15",
       ].join(";"));
       database.exec("BEGIN IMMEDIATE");
       database.query(
         "INSERT INTO candidates(revision, candidate_digest, candidate_bytes, lock_bytes) VALUES (1, ?1, ?2, ?3)",
-      ).run(privateActivationCandidateDigest(candidate), encoded.candidate, encoded.lock);
+      ).run(privateActivationCandidateDigestV5(candidate), encoded.candidate, encoded.lock);
       database.query("UPDATE candidate_head SET revision = 1 WHERE singleton = 1").run();
       database.exec("COMMIT");
     } finally {
@@ -4575,6 +4714,27 @@ function openSqlite(path: string, mode: "readonly" | "readwrite"): any {
 function json1(value: JsonValue): Uint8Array {
   const canonical = canonicalJson(value);
   return Uint8Array.from([...canonical, 0x0a]);
+}
+
+function candidateV5(value: Record<string, JsonValue>): JsonValue {
+  const {
+    semanticDigest,
+    observedSemanticDigest: _observedSemanticDigest,
+    activationMeaningDigest: _activationMeaningDigest,
+    ...rest
+  } = value;
+  if (typeof semanticDigest !== "string" || !Array.isArray(value.targets)) {
+    throw new TypeError("candidate fixture requires observed semantics and targets");
+  }
+  return {
+    ...rest,
+    kind: "private-activation-candidate/5",
+    observedSemanticDigest: semanticDigest,
+    activationMeaningDigest: privateDomainDigest(
+      "JIG-Private-Activation-Meaning/1",
+      { observedSemanticDigest: semanticDigest, targets: value.targets },
+    ),
+  } as JsonValue;
 }
 
 function digest(label: string): string {

@@ -19,7 +19,7 @@ import {
   type PrivateProjectCoordinator,
   type PrivateReacquiredRootExecutionWork,
 } from "./activation-admission-store.js";
-import { findPrivateActivationCandidateTarget } from "./activation-admission.js";
+import { findPrivateActivationCandidateTargetV5 } from "./activation-admission.js";
 import type { PrivateBunDirectRecipe } from "./bun-direct-run.js";
 import {
   planPrivateDirectRun,
@@ -425,7 +425,7 @@ async function admitChildResult(
   lifecycle: PrivateRootFlowCallLifecycle,
   provisional: Extract<RunHostTerminal, { readonly status: "succeeded" }>,
 ): Promise<RunHostTerminal> {
-  const selected = findPrivateActivationCandidateTarget(
+  const selected = findPrivateActivationCandidateTargetV5(
     input.parent.candidate,
     lifecycle.allocation.target,
   );
@@ -458,16 +458,16 @@ async function validateChildInput(
 }
 
 function selectChild(parent: PrivateReacquiredRootExecutionWork, call: RunHostFlowCall): Readonly<{
-  readonly request: NonNullable<ReturnType<typeof findPrivateActivationCandidateTarget>>["request"];
+  readonly request: NonNullable<ReturnType<typeof findPrivateActivationCandidateTargetV5>>["request"];
   readonly recipeDigest: string;
   readonly observationDigest: string;
 }> {
-  const parentTarget = findPrivateActivationCandidateTarget(parent.candidate, parent.run.target);
+  const parentTarget = findPrivateActivationCandidateTargetV5(parent.candidate, parent.run.target);
   const slot = parentTarget?.request.slots[call.slot];
   if (slot?.kind !== "flow-call" || slot.targets.length !== 1 || slot.targets[0]!.kind !== "flow") {
     throw new CheckError("unavailable", "UNAVAILABLE", "the requested slot has no exact admitted child Flow");
   }
-  const child = findPrivateActivationCandidateTarget(parent.candidate, slot.targets[0]!);
+  const child = findPrivateActivationCandidateTargetV5(parent.candidate, slot.targets[0]!);
   if (child === undefined || child.disposition.state !== "ready") {
     throw new CheckError("unavailable", "UNAVAILABLE", "the exact child Flow is not READY in this generation");
   }

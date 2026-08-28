@@ -54,11 +54,11 @@ import {
   runPrivatePythonDirectRecipe,
 } from "../src/internal/python-direct-run.js";
 import {
-  createPrivateActivationCandidate,
-  decodePrivateActivationCandidate,
-  encodePrivateActivationCandidate,
-  privateActivationCandidateDigest,
-  requirePrivateCreatedActivationCandidate,
+  createPrivateActivationCandidateV5,
+  decodePrivateActivationCandidateV5,
+  encodePrivateActivationCandidateV5,
+  privateActivationCandidateDigestV5,
+  requirePrivateCreatedActivationCandidateV5,
 } from "../src/internal/activation-admission.js";
 import {
   allocatePrivateServiceMount,
@@ -1442,7 +1442,7 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
           disposition: { state: "planned" as const, observation: firstRecipe.observation },
         }],
       });
-      const firstCandidate = createPrivateActivationCandidate(
+      const firstCandidate = createPrivateActivationCandidateV5(
         firstAggregate,
         resolveRetainedPackageProjectObservation(firstAggregate, firstPlanning),
         firstRecipe,
@@ -1878,7 +1878,7 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
           },
         })),
       });
-      const multipleCandidate = createPrivateActivationCandidate(
+      const multipleCandidate = createPrivateActivationCandidateV5(
         secondAggregate,
         resolveRetainedPackageProjectObservation(secondAggregate, multiplePlanning),
         [currentRecipe, otherRecipe],
@@ -1928,7 +1928,7 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
             },
           }),
       });
-      const secondCandidate = createPrivateActivationCandidate(
+      const secondCandidate = createPrivateActivationCandidateV5(
         secondAggregate,
         resolveRetainedPackageProjectObservation(secondAggregate, secondPlanning),
         otherRecipe,
@@ -2020,7 +2020,7 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
             },
           }),
       });
-      const supersedingCandidate = createPrivateActivationCandidate(
+      const supersedingCandidate = createPrivateActivationCandidateV5(
         secondAggregate,
         resolveRetainedPackageProjectObservation(secondAggregate, supersedingPlanning),
         otherRecipe,
@@ -2223,7 +2223,7 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
       coordinator = undefined;
 
       const sqlite = createRequire(import.meta.url)("bun:sqlite") as any;
-      const databasePath = join(root, ".jig", "private-activation-admission-v14.sqlite3");
+      const databasePath = join(root, ".jig", "private-activation-admission-v15.sqlite3");
       const writable = sqlite.constants.SQLITE_OPEN_READWRITE |
         sqlite.constants.SQLITE_OPEN_NOFOLLOW;
       let corruptor = sqlite.Database.open(databasePath, writable);
@@ -2400,7 +2400,7 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
           disposition: { state: "planned", observation: recipe.observation },
         }],
       });
-      const candidate = createPrivateActivationCandidate(
+      const candidate = createPrivateActivationCandidateV5(
         aggregate,
         resolveRetainedPackageProjectObservation(aggregate, planning),
         recipe,
@@ -2581,7 +2581,7 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         aggregate,
         servicePlanning,
       );
-      expect(createPrivateActivationCandidate(
+      expect(createPrivateActivationCandidateV5(
         aggregate,
         serviceResolution,
         serviceRecipe,
@@ -2590,7 +2590,7 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         recipeDigest: serviceRecipe.digest,
         observationDigest: serviceRecipe.observation.digest,
       });
-      expect(createPrivateActivationCandidate(
+      expect(createPrivateActivationCandidateV5(
         aggregate,
         serviceResolution,
         [serviceRecipe],
@@ -2602,7 +2602,7 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
           return "private-bun-service-recipe/1";
         },
       });
-      expect(() => createPrivateActivationCandidate(
+      expect(() => createPrivateActivationCandidateV5(
         aggregate,
         serviceResolution,
         forgedServiceRecipe as never,
@@ -2627,7 +2627,7 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
           throw new Error("recipe array ownKeys trap must not run");
         },
       });
-      expect(() => createPrivateActivationCandidate(
+      expect(() => createPrivateActivationCandidateV5(
         aggregate,
         serviceResolution,
         proxiedRecipeArray,
@@ -2643,29 +2643,29 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
           return serviceRecipe;
         },
       });
-      expect(() => createPrivateActivationCandidate(
+      expect(() => createPrivateActivationCandidateV5(
         aggregate,
         serviceResolution,
         accessorRecipeArray,
       )).toThrow("activation recipes must contain enumerable data properties");
       expect(recipeArrayAccessorRead).toBe(false);
-      expect(() => createPrivateActivationCandidate(
+      expect(() => createPrivateActivationCandidateV5(
         aggregate,
         serviceResolution,
         new Array<PrivateBunServiceRecipe>(1),
       )).toThrow("activation recipes must be a dense array");
       const wrongPrototypeRecipeArray = [serviceRecipe];
       Object.setPrototypeOf(wrongPrototypeRecipeArray, null);
-      expect(() => createPrivateActivationCandidate(
+      expect(() => createPrivateActivationCandidateV5(
         aggregate,
         serviceResolution,
         wrongPrototypeRecipeArray,
       )).toThrow("activation recipes must be a bounded ordinary array");
-      expect(() => createPrivateActivationCandidate(
+      expect(() => createPrivateActivationCandidateV5(
         aggregate,
         serviceResolution,
         [serviceRecipe, serviceRecipe],
-      )).toThrow("duplicate recipes for one request");
+      )).toThrow("activation recipes must be a bounded ordinary array");
       const planning = createPrivateActivationPlanningObservation({
         policyDigest: testDigest("retained-policy"),
         mechanismDigest: testDigest("retained-mechanisms"),
@@ -2681,18 +2681,18 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
       });
       const resolution = resolveRetainedPackageProjectObservation(aggregate, planning);
       expect(requirePrivateRetainedResolutionObservation(resolution)).toBe(resolution);
-      expect(() => createPrivateActivationCandidate(
+      expect(() => createPrivateActivationCandidateV5(
         aggregate,
         resolution,
         serviceRecipe,
       )).toThrow("recipe for an unplanned target");
-      const unavailable = createPrivateActivationCandidate(aggregate, resolution);
-      expect(requirePrivateCreatedActivationCandidate(unavailable)).toBe(unavailable);
-      expect(privateActivationCandidateDigest(unavailable)).toMatch(/^sha256:[0-9a-f]{64}$/);
-      const persisted = encodePrivateActivationCandidate(unavailable);
-      const restarted = decodePrivateActivationCandidate(persisted);
-      expect(encodePrivateActivationCandidate(restarted)).toEqual(persisted);
-      expect(() => requirePrivateCreatedActivationCandidate(restarted)).toThrow(
+      const unavailable = createPrivateActivationCandidateV5(aggregate, resolution);
+      expect(requirePrivateCreatedActivationCandidateV5(unavailable)).toBe(unavailable);
+      expect(privateActivationCandidateDigestV5(unavailable)).toMatch(/^sha256:[0-9a-f]{64}$/);
+      const persisted = encodePrivateActivationCandidateV5(unavailable);
+      const restarted = decodePrivateActivationCandidateV5(persisted);
+      expect(encodePrivateActivationCandidateV5(restarted)).toEqual(persisted);
+      expect(() => requirePrivateCreatedActivationCandidateV5(restarted)).toThrow(
         "was not built from a retained project",
       );
 
@@ -2703,7 +2703,7 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
       });
       expect(firstHead).toEqual({
         candidateRevision: 1,
-        candidateDigest: privateActivationCandidateDigest(unavailable),
+        candidateDigest: privateActivationCandidateDigestV5(unavailable),
       });
       expect(await publishPrivateActivationCandidate({
         projectRoot: root,
@@ -2730,7 +2730,7 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         observedLock: { state: "absent" },
       });
       expect(requirePrivateStoredActivationCandidate(firstPlan.candidate)).toBe(firstPlan.candidate);
-      expect(() => requirePrivateCreatedActivationCandidate(firstPlan.candidate)).toThrow(
+      expect(() => requirePrivateCreatedActivationCandidateV5(firstPlan.candidate)).toThrow(
         "was not built from a retained project",
       );
       const loadedFirstPlan = await loadPrivateActivationReviewPlan({
@@ -2763,7 +2763,7 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         lockMode: "locked",
       }))
         .rejects.toMatchObject({ code: "LOCK_MISMATCH" });
-      const admissionDatabase = join(root, ".jig", "private-activation-admission-v14.sqlite3");
+      const admissionDatabase = join(root, ".jig", "private-activation-admission-v15.sqlite3");
       await writeFile(join(root, "jig.lock"), persisted.lock, { mode: 0o644 });
       const crashSqlite = createRequire(import.meta.url)("bun:sqlite") as any;
       const recovered = crashSqlite.Database.open(
@@ -2794,7 +2794,8 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
       });
       expect(lockedPlan.plan.observedLock).toEqual({
         state: "present",
-        digest: `sha256:${createHash("sha256").update(persisted.lock).digest("hex")}`,
+        digest: lockedPlan.candidate.candidate.lockDigest,
+        lock: lockedPlan.candidate.lock,
       });
       expect(lockedPlan.plan.baseGeneration).toBe(firstAdmission.admissionDigest);
       await rm(join(root, "jig.lock"));
@@ -2812,7 +2813,7 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
           },
         })),
       });
-      const second = createPrivateActivationCandidate(
+      const second = createPrivateActivationCandidateV5(
         aggregate,
         resolveRetainedPackageProjectObservation(aggregate, secondPlanning),
       );
@@ -2932,7 +2933,7 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
           "service_mounts",
         ]);
         expect(database.query("PRAGMA application_id").get().application_id).toBe(0x4a494741);
-        expect(database.query("PRAGMA user_version").get().user_version).toBe(14);
+        expect(database.query("PRAGMA user_version").get().user_version).toBe(15);
         expect(database.query("PRAGMA journal_mode").get().journal_mode).toBe("delete");
         expect(database.query("SELECT revision FROM candidate_head WHERE singleton = 1").get().revision).toBe(3);
         expect(database.query("SELECT count(*) AS count FROM candidates").get().count).toBe(3);
@@ -3060,17 +3061,17 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         }],
       });
       const readyResolution = resolveRetainedPackageProjectObservation(readyAggregate, readyPlanning);
-      expect(() => createPrivateActivationCandidate(
+      expect(() => createPrivateActivationCandidateV5(
         readyAggregate,
         readyResolution,
         serviceRecipe,
       )).toThrow("ready recipe does not match the retained planned target");
-      expect(() => createPrivateActivationCandidate(
+      expect(() => createPrivateActivationCandidateV5(
         aggregate,
         serviceResolution,
         readyRecipe,
       )).toThrow("ready recipe does not match the retained planned target");
-      const readyCandidate = createPrivateActivationCandidate(
+      const readyCandidate = createPrivateActivationCandidateV5(
         readyAggregate,
         readyResolution,
         readyRecipe,
@@ -3428,7 +3429,13 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
           disposition: { state: "planned" as const, observation: recipes[index]!.observation },
         })),
       });
-      const candidate = createPrivateActivationCandidate(
+      expect(recipes.length).toBeGreaterThanOrEqual(2);
+      expect(() => createPrivateActivationCandidateV5(
+        aggregate,
+        resolveRetainedPackageProjectObservation(aggregate, planning),
+        [recipes[0]!, recipes[0]!],
+      )).toThrow("duplicate recipes for one request");
+      const candidate = createPrivateActivationCandidateV5(
         aggregate,
         resolveRetainedPackageProjectObservation(aggregate, planning),
         recipes,
@@ -3461,7 +3468,7 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         }),
       });
 
-      const databasePath = join(root, ".jig", "private-activation-admission-v14.sqlite3");
+      const databasePath = join(root, ".jig", "private-activation-admission-v15.sqlite3");
       controller = await openController();
       const submitted = await controller.administration.startRun({
         submissionId: "journal-success",
@@ -3939,7 +3946,7 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         mechanismDigest: recipes[0]!.mechanismDigest,
         entries,
       });
-      const candidate = createPrivateActivationCandidate(
+      const candidate = createPrivateActivationCandidateV5(
         aggregate,
         resolveRetainedPackageProjectObservation(aggregate, planning),
         recipes,
@@ -4106,7 +4113,7 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         },
       });
       const sqlite = createRequire(import.meta.url)("bun:sqlite") as any;
-      const databasePath = join(root, ".jig", "private-activation-admission-v14.sqlite3");
+      const databasePath = join(root, ".jig", "private-activation-admission-v15.sqlite3");
       const database = sqlite.Database.open(
         databasePath,
         sqlite.constants.SQLITE_OPEN_READONLY | sqlite.constants.SQLITE_OPEN_NOFOLLOW,
