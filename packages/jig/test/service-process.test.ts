@@ -97,7 +97,7 @@ describe("private Service/1 process integration", () => {
       method: "read",
       input: null,
       deadlineUnixMs: Date.now() + 5_000,
-    })).toMatchObject({ status: "failed", code: "UNAVAILABLE" });
+    })).toMatchObject({ status: "failed", code: "UNCERTAIN" });
     expect(await service.result()).toMatchObject({ status: "failed", code: "CHANNEL_LOST" });
   });
 

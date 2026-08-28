@@ -378,7 +378,10 @@ export class ServiceHostSession {
       }
       this.finishInvocation(
         record,
-        failedInvocation("CHANNEL_LOST", `failed to write service/invoke: ${errorText(error)}`),
+        failedInvocation(
+          "UNCERTAIN",
+          `Service invocation may have been dispatched before the channel failed: ${errorText(error)}`,
+        ),
         "provider-loss",
       );
       this.fail("CHANNEL_LOST", `failed to write service/invoke: ${errorText(error)}`);
@@ -432,13 +435,16 @@ export class ServiceHostSession {
     );
     if (!this.readinessDurable || terminal.status === "failed") this.readyDeferred.reject(readinessError);
     for (const invocation of [...this.invocations.values()]) {
-      this.finishInvocation(
-        invocation,
-        invocation.cancellation === undefined || invocation.mountFailed === true
-          ? failedInvocation("UNAVAILABLE", "Service Provider was lost")
-          : failedInvocation(invocation.cancellation.code, invocation.cancellation.message),
-        "provider-loss",
-      );
+      if (invocation.phase === "open") {
+        this.finishInvocation(
+          invocation,
+          failedInvocation("UNCERTAIN", "Service invocation may have completed before Provider loss"),
+          "provider-loss",
+        );
+        continue;
+      }
+      invocation.mountFailed = true;
+      this.finishPrewriteInvocation(invocation);
     }
     this.completionDeferred.resolve(terminal);
   }

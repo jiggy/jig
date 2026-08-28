@@ -575,8 +575,86 @@ describe("private ServiceHostSession", () => {
     process.finish(9);
     expect(await lost).toMatchObject({
       source: "provider-loss",
-      terminal: { status: "failed", code: "UNAVAILABLE" },
+      terminal: { status: "failed", code: "UNCERTAIN" },
     });
+    expect(await service.result()).toMatchObject({ status: "failed" });
+  });
+
+  test("treats a failed invocation write as possible dispatch", async () => {
+    const process = new FakeProcess();
+    const service = new ServiceHostSession(process, activation());
+    await startReady(service, process);
+
+    process.rejectNextWrite(new Error("write outcome unknown"));
+    const invoked = await service.invokeDetailed(invocation("read", "ambiguous"));
+
+    expect(invoked).toEqual({
+      source: "provider-loss",
+      terminal: {
+        status: "failed",
+        code: "UNCERTAIN",
+        message: "Service invocation may have been dispatched before the channel failed: write outcome unknown",
+      },
+    });
+    expect(await service.result()).toMatchObject({ status: "failed", code: "CHANNEL_LOST" });
+  });
+
+  test("does not let cancellation hide loss after possible dispatch", async () => {
+    const process = new FakeProcess();
+    const service = new ServiceHostSession(process, activation());
+    await startReady(service, process);
+    const cancellation = new AbortController();
+
+    const invoked = service.invokeDetailed({
+      ...invocation("read", "possibly-applied"),
+      signal: cancellation.signal,
+    });
+    expect(await process.nextHost()).toMatchObject({ id: "host:2", method: "service/invoke" });
+    cancellation.abort();
+    expect(await process.nextHost()).toEqual(cancel("host:2"));
+    process.finish(9);
+
+    expect(await invoked).toEqual({
+      source: "provider-loss",
+      terminal: {
+        status: "failed",
+        code: "UNCERTAIN",
+        message: "Service invocation may have completed before Provider loss",
+      },
+    });
+    expect(await service.result()).toMatchObject({ status: "failed" });
+  });
+
+  test("keeps Provider loss during dispatch gating safely prewrite", async () => {
+    const process = new FakeProcess();
+    const service = new ServiceHostSession(process, activation());
+    await startReady(service, process);
+    const entered = controlled<void>();
+    let gateAborted = false;
+
+    const invoked = service.invokeDetailed(invocation("read", "never-written"), invocationGate({
+      async beforeDispatch(signal) {
+        entered.resolve();
+        await new Promise<void>((resolve) => {
+          if (signal.aborted) resolve();
+          else signal.addEventListener("abort", () => resolve(), { once: true });
+        });
+        gateAborted = true;
+      },
+    }));
+    await entered.promise;
+    process.finish(9);
+
+    expect(await invoked).toEqual({
+      source: "host-prewrite",
+      terminal: {
+        status: "failed",
+        code: "UNAVAILABLE",
+        message: "Service Provider was lost before invocation dispatch",
+      },
+    });
+    expect(gateAborted).toBe(true);
+    expect(process.writes().some(isInvocation)).toBe(false);
     expect(await service.result()).toMatchObject({ status: "failed" });
   });
 
