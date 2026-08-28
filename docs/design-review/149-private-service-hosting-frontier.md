@@ -1,8 +1,12 @@
 # Private Service-hosting frontier
 
-**Status:** selected for one private vertical proof after the Hook runtime
-checkpoint. This record does not publish a Service controller, Runtime Adapter,
-Sandbox Backend, provider registry, or new Root Administration method.
+**Status:** closed on 2026-08-28 at the private Service-hosting substrate
+boundary. The real Root-to-Service invocation witness described below remains
+deferred until an admitted Run can carry the required capability-backed effect
+slot. The exact disposition and executable evidence are recorded in
+[`151-private-service-hosting-checkpoint.md`](151-private-service-hosting-checkpoint.md).
+This record does not publish a Service controller, Runtime Adapter, Sandbox
+Backend, provider registry, or new Root Administration method.
 
 ## 1. Why this is the next Service proof
 
@@ -163,7 +167,7 @@ The proof stops rather than broadens if it would require:
 Directly submitting a Service target as a root Run remains a deterministic
 refusal. Run/1 and its smaller conformance claim do not wait for Service/1.
 
-## 6. Proof gates
+## 6. Original proof gates
 
 The private vertical must prove:
 
@@ -195,5 +199,12 @@ The private vertical must prove:
 9. no public control-plane or host-extension interface grew to support the
    witness.
 
-After this proof, development moves to the smallest local project control
-plane. Additional Service features require a second concrete need.
+The hosting, generation, lease, invocation-state, and recovery parts of these
+gates are now proved. The live Root A/replay/Root B path through a contained
+Mount is not: the current admitted direct-Run recipes correctly reject the
+capability-backed Binding needed to reach that Service. Rather than add an
+unreachable controller or silently widen effect dispatch, the checkpoint
+stops at that exact boundary. Development may proceed to the smallest local
+project control plane without claiming end-to-end Service invocation. The
+later mixed-effect vertical must re-use these durable records and complete the
+stateful counter witness before Jig can claim a real Service consumer path.

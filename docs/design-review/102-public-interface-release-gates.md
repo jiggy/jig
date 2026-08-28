@@ -44,7 +44,11 @@ plane: Root Administration/1, its machine schema, and its private controller
 cover in-process start/status, while generic Runtime Adapter and Sandbox
 Backend models, non-Journal effects, project-authority issuance,
 authentication/transport, and public plan/apply remain unfinished seams. The
-intended package names are:
+private Service path now also admits and hosts one exact Bun Service Binding,
+persists its complete Mount/generation lifecycle, and proves exact leases,
+invocation allocation, possible-dispatch admission, terminal/closure evidence,
+fenced recovery, and ordered release. It does not yet connect a root
+`effect/call` to that live Mount. The intended package names are:
 
 ```text
 @jigging/jig    Jig TypeScript package
@@ -156,11 +160,21 @@ cancellation, and terminal quiescence. A private Jig Host drives both real
 Provider processes, and an independent Bun peer runs the first shared Provider
 matrix. An archived host-specific witness also completed one real Python Mount
 inside the private Linux cgroup-v2 envelope; that Nix-runtime fixture is no
-longer in main's current hostile corpus. Every session-local required case has
-executable evidence, but
-the cases are not yet one portable Host-under-test corpus. Durable Jig provider
-generations/Bindings, a second independent Host, and the resulting conformance
-label remain release gates. Run/1 does not wait for them.
+longer in main's current hostile corpus. Main now contains a real exact Bun
+Mount under that envelope, including durable readiness acknowledgement,
+generation, fencing, release, closure, and restart recovery. The private store
+also proves generation-pinned owner leases and invocation allocation,
+dispatch, terminal, operation closure, ordered release, and fence-based
+`UNAVAILABLE` versus `UNCERTAIN` recovery. A separate stateful process witness
+preserves counter state across sequential Service/1 invocations.
+
+These cases are not yet one portable Host-under-test corpus, and the durable
+state is not yet joined to a live root `effect/call`: current direct-Run
+recipes truthfully reject the capability-backed Service Binding until mixed
+effect dispatch is earned. A second independent Host, that real
+Root-to-Service path, and the resulting conformance label remain release
+gates. Run/1 does not wait for them. The exact checkpoint is
+[`151-private-service-hosting-checkpoint.md`](151-private-service-hosting-checkpoint.md).
 
 ### Jig project authoring SDK
 
@@ -356,6 +370,14 @@ evidence and limits are in
 and
 [`148-private-hook-runtime-frontier.md`](148-private-hook-runtime-frontier.md).
 
+The private Service-hosting substrate is also complete. One real admitted Bun
+Service reaches acknowledged readiness and clean or recovered closure inside
+the proven Linux envelope. Durable generations, owner-slot leases, invocation
+allocation and dispatch evidence, terminals, operation closures, fence-based
+recovery, and ordered release are closed and tamper-checked. This does not yet
+claim a live Root-to-Service invocation controller; review 151 records that
+deliberate boundary.
+
 None of the closed slices adds a public Service host, Agent, Semantic Choice,
 Jig Graph compiler, update watcher, Nix dependency, ambient runtime fallback,
 or public Backend or Runtime Adapter SPI.
@@ -379,23 +401,24 @@ passes a clean external-module consumer, and clears the independent consumer
 review recorded in review 139. Publication remains a product release decision,
 not a claim implied by this checkpoint.
 
-The next selected private phase is the deliberately bounded Service-hosting
-proof in
-[`149-private-service-hosting-frontier.md`](149-private-service-hosting-frontier.md).
-That selection does not publish a Service controller or change the completed
-Hook boundary. After that proof, the selected local control-plane slice is the
-still-private Plan/2 boundary in
+The Service-hosting frontier in
+[`149-private-service-hosting-frontier.md`](149-private-service-hosting-frontier.md)
+is closed at the exact substrate boundary recorded in
+[`151-private-service-hosting-checkpoint.md`](151-private-service-hosting-checkpoint.md).
+The selected next local control-plane slice is the still-private Plan/2 boundary in
 [`150-private-project-admission-frontier.md`](150-private-project-admission-frontier.md).
-Neither selection authorizes a public SDK. The Nix decontamination boundary remains in
+That selection does not authorize a public SDK or silently widen Service
+effect dispatch. The Nix decontamination boundary remains in
 [`130-nix-experiment-disposition-and-next-slice.md`](130-nix-experiment-disposition-and-next-slice.md);
-the latest completed execution boundary is review 148.
+the latest completed Service boundary is review 151.
 
 ## Machine-readable release gates
 
 The repository still needs:
 
-- the complete Service/1 Host/Provider cross-language black-box corpus and
-  durable Jig hosting integration;
+- the complete Service/1 Host/Provider cross-language black-box corpus, a
+  second independent Host, and one real Root-to-Service invocation through
+  admitted mixed effect dispatch;
 - a closed host-policy/configuration document for supported mechanisms;
 - Runtime Adapter and Sandbox Backend schemas only after a second independent
   mechanism proves those abstractions;

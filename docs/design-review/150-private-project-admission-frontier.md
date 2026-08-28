@@ -1,10 +1,12 @@
 # Private project admission frontier
 
-**Status:** reviewed on 2026-08-28 and selected for the first local
-control-plane slice after the private Service proof. This record corrects the
-earlier sketch before implementation. It publishes no project opening,
-daemon transport, CLI compatibility promise, administration API, lock schema,
-or machine schema.
+**Status:** reviewed on 2026-08-28 and selected as the next local control-plane
+slice after closure of the private Service-hosting substrate in review 151.
+The deferred Root-to-Service invocation controller is not a prerequisite for
+reviewing and applying inert project meaning. This record corrects the earlier
+sketch before implementation. It publishes no project opening, daemon
+transport, CLI compatibility promise, administration API, lock schema, or
+machine schema.
 
 ## 1. Exact private boundary
 
