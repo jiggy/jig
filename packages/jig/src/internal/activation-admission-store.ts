@@ -82,10 +82,15 @@ import {
   type PrivateServiceMountSandbox,
   type PrivateServiceMountClassification,
   decodePrivateServiceLeaseAllocation,
+  decodePrivateServiceLeaseRelease,
   encodePrivateServiceLeaseAllocation,
+  encodePrivateServiceLeaseRelease,
   normalizePrivateServiceLeaseAllocation,
+  normalizePrivateServiceLeaseRelease,
   privateServiceLeaseAllocationDigest,
+  privateServiceLeaseReleaseDigest,
   type PrivateServiceLeaseAllocation,
+  type PrivateServiceLeaseRelease,
   decodePrivateServiceInvocationAllocation,
   encodePrivateServiceInvocationAllocation,
   normalizePrivateServiceInvocationAllocation,
@@ -704,6 +709,7 @@ export interface PrivateServiceLeaseSnapshot {
   readonly allocation: PrivateServiceLeaseAllocation;
   readonly allocationDigest: string;
   readonly coordinator: "current" | "older";
+  readonly release?: PrivateServiceMountFact<PrivateServiceLeaseRelease>;
 }
 
 /** One immutable Service operation allocation, before dispatch ownership exists. */
@@ -1509,6 +1515,109 @@ export async function listPrivateServiceLeases(input: {
   }
 }
 
+/**
+ * Close one exact owner-slot lease after every operation using it has a
+ * durable closure. This records no Provider action: Mount-driven reasons are
+ * admissible only after the exact Mount fence is already durable.
+ */
+export async function recordPrivateServiceLeaseRelease(input: {
+  readonly coordinator: PrivateProjectCoordinator;
+  readonly projectRoot: string;
+  readonly ownerRunId: string;
+  readonly slot: string;
+  readonly reason: PrivateServiceLeaseRelease["reason"];
+  readonly mountFenceDigest?: string;
+}): Promise<PrivateServiceLeaseSnapshot> {
+  const coordinator = requirePrivateProjectCoordinator(input.coordinator);
+  await coordinator.verify();
+  requireDigest(input.ownerRunId, "Service lease release owner Run");
+  const slot = requireServiceLeaseSlot(input.slot);
+  if (input.reason === "owner-closed" && input.mountFenceDigest !== undefined) {
+    throw new TypeError("owner-closed Service lease release cannot name a Mount fence");
+  }
+  const owner = await openStateOwner(input.projectRoot, false);
+  let failure: unknown;
+  try {
+    requireCoordinatorRoot(coordinator, owner.root);
+    const snapshot = await immediate(owner, async () => {
+      await coordinator.verify();
+      const ownerRow = requireRootRunRow(owner.database, input.ownerRunId);
+      const candidate = loadCandidateRow(requireCandidateRow(owner.database, ownerRow.candidate_revision));
+      requireCandidateRoot(candidate, owner.root);
+      const row = requireServiceLease(owner.database, input.ownerRunId, slot);
+      const before = loadServiceLeaseSnapshot(owner.database, row, owner.root, coordinator, candidate);
+      const mount = loadServiceMountSnapshot(
+        owner.database,
+        requireServiceMountRow(owner.database, before.allocation.mountId),
+        owner.root,
+        coordinator,
+        candidate,
+      );
+      const value = normalizePrivateServiceLeaseRelease({
+        kind: "private-service-lease-release/1",
+        ownerRunId: before.allocation.ownerRunId,
+        slot: before.allocation.slot,
+        allocationDigest: before.allocationDigest,
+        reason: input.reason,
+        mountFenceDigest: input.reason === "owner-closed" ? null : input.mountFenceDigest ?? null,
+        invocations: serviceInvocationClosureReferences(
+          owner.database,
+          before.allocation,
+          before.allocationDigest,
+          mount,
+          owner.root,
+          coordinator,
+          candidate,
+        ),
+      });
+      const bytes = encodePrivateServiceLeaseRelease(value);
+      const digest = privateServiceLeaseReleaseDigest(value);
+      requireStoredSize(bytes, "Service lease release");
+      if (before.release !== undefined) {
+        if (before.release.digest !== digest || !sameCanonical(before.release.value, value)) {
+          invalid("OPERATION_CONFLICT", "Service lease already has a different release");
+        }
+        return before;
+      }
+      if (input.reason === "owner-closed") {
+        if (before.coordinator !== "current") {
+          invalid("SERVICE_LEASE_OWNER_INACTIVE", "owner-closed release requires a current owner Run");
+        }
+        if (mount.provisional !== undefined || mount.fence !== undefined) {
+          invalid("SERVICE_PROVIDER_UNAVAILABLE", "owner-closed release requires its Provider to remain active");
+        }
+      } else {
+        const fence = requireServiceMountFact(mount.fence, "fence");
+        if (input.mountFenceDigest !== fence.digest) {
+          invalid("SERVICE_LEASE_FENCE_MISMATCH", "Service lease release names a different Mount fence");
+        }
+        if (!serviceLeaseMountReasonMatches(input.reason, mount)) {
+          invalid("SERVICE_LEASE_REASON_MISMATCH", "Service lease release reason differs from its Mount terminal");
+        }
+      }
+      const changed = runFinalized(owner.database, [
+        "UPDATE service_leases SET release_digest = ?1, release_bytes = ?2",
+        "WHERE owner_run_id = ?3 AND slot = ?4 AND release_digest IS NULL AND release_bytes IS NULL",
+      ].join(" "), [digest, bytes, value.ownerRunId, value.slot]).changes;
+      if (changed !== 1) corrupt("Service lease release compare-and-set failed");
+      return loadServiceLeaseSnapshot(
+        owner.database,
+        requireServiceLease(owner.database, value.ownerRunId, value.slot),
+        owner.root,
+        coordinator,
+        candidate,
+      );
+    });
+    await owner.finish();
+    return snapshot;
+  } catch (error) {
+    failure = error;
+    throw error;
+  } finally {
+    await disposeOperation(owner, undefined, failure);
+  }
+}
+
 /** Allocate one immutable Service operation without granting dispatch authority. */
 export async function allocatePrivateServiceInvocation(input: {
   readonly coordinator: PrivateProjectCoordinator;
@@ -2096,7 +2205,7 @@ export async function recordPrivateServiceMountFence(input: PrivateServiceMountT
   });
 }
 
-/** Retain exact package/owner disposal only while this checkpoint has no Service leases. */
+/** Retain exact package/owner disposal after every linked Service lease closed. */
 export async function recordPrivateServiceMountRelease(input: PrivateServiceMountTransitionInput & {
   readonly packageReleased: true;
   readonly ownerRelease: PrivateLinuxOwnerStateReleaseReceipt | null;
@@ -2105,7 +2214,13 @@ export async function recordPrivateServiceMountRelease(input: PrivateServiceMoun
     ? null
     : normalizePrivateLinuxOwnerStateReleaseReceipt(input.ownerRelease);
   return await transitionPrivateServiceMount(input, "settle", (database, before, context) => {
-    requireNoServiceLeases(database, before.allocation.mountId);
+    const leaseReleases = requireReleasedServiceLeases(
+      database,
+      before,
+      context.root,
+      context.coordinator,
+      context.candidate,
+    );
     const value = normalizePrivateServiceMountRelease({
       kind: "private-service-mount-release/1",
       mountId: before.allocation.mountId,
@@ -2116,9 +2231,16 @@ export async function recordPrivateServiceMountRelease(input: PrivateServiceMoun
       fenceDigest: before.fence?.digest ?? null,
       packageReleased: input.packageReleased,
       ownerRelease,
-      leaseReleases: [],
+      leaseReleases,
     });
-    requireServiceMountReleaseCorrelation(database, before, value);
+    requireServiceMountReleaseCorrelation(
+      database,
+      context.root,
+      context.coordinator,
+      context.candidate,
+      before,
+      value,
+    );
     requireServiceMountFactOrder(before, "release");
     writeServiceMountFact(database, before, "release", value, context);
   });
@@ -6226,6 +6348,8 @@ function loadServiceMountSnapshot(
   const lifecycle = loadServiceMountLifecycleFacts(
     database,
     root,
+    coordinator,
+    candidate,
     allocation,
     row.allocation_digest,
     selected.request.package.digest,
@@ -6242,6 +6366,7 @@ function loadServiceMountSnapshot(
 interface ServiceMountTransitionContext {
   readonly coordinator: PrivateProjectCoordinator;
   readonly root: PrivateProjectRoot;
+  readonly candidate: PrivateActivationCandidateArtifact;
   readonly recipe: PrivateBunServiceRecipe | undefined;
   readonly packageDigest: string;
   readonly mode: "advance" | "settle";
@@ -6321,6 +6446,7 @@ async function transitionPrivateServiceMount(
       const context: ServiceMountTransitionContext = Object.freeze({
         coordinator,
         root: owner.root,
+        candidate,
         recipe,
         packageDigest: selected.request.package.digest,
         mode,
@@ -6376,6 +6502,8 @@ function requireServiceMountStartupOwner(
 function loadServiceMountLifecycleFacts(
   database: SqliteDatabase,
   root: PrivateProjectRoot,
+  coordinator: PrivateProjectCoordinator,
+  candidate: PrivateActivationCandidateArtifact,
   allocation: PrivateServiceMountAllocation,
   allocationDigest: string,
   packageDigest: string,
@@ -6427,7 +6555,15 @@ function loadServiceMountLifecycleFacts(
     coordinator: "current" as const,
     ...lifecycle,
   });
-  validateLoadedServiceMountLifecycle(database, root, snapshot, packageDigest, recipe);
+  validateLoadedServiceMountLifecycle(
+    database,
+    root,
+    coordinator,
+    candidate,
+    snapshot,
+    packageDigest,
+    recipe,
+  );
   return lifecycle;
 }
 
@@ -6456,6 +6592,8 @@ function loadTypedServiceMountFact<Name extends ServiceMountFactName, Value>(
 function validateLoadedServiceMountLifecycle(
   database: SqliteDatabase,
   root: PrivateProjectRoot,
+  coordinator: PrivateProjectCoordinator,
+  candidate: PrivateActivationCandidateArtifact,
   snapshot: PrivateServiceMountSnapshot,
   packageDigest: string,
   recipe?: PrivateBunServiceRecipe,
@@ -6481,7 +6619,14 @@ function validateLoadedServiceMountLifecycle(
   }
   if (snapshot.fence !== undefined) requireServiceMountFenceCorrelation(snapshot, snapshot.fence.value);
   if (snapshot.release !== undefined) {
-    requireServiceMountReleaseCorrelation(database, snapshot, snapshot.release.value);
+    requireServiceMountReleaseCorrelation(
+      database,
+      root,
+      coordinator,
+      candidate,
+      snapshot,
+      snapshot.release.value,
+    );
   }
   if (snapshot.closure !== undefined) {
     requireServiceMountClosureCorrelation(snapshot, snapshot.closure.value);
@@ -6658,6 +6803,9 @@ function requireServiceMountFenceCorrelation(
 
 function requireServiceMountReleaseCorrelation(
   database: SqliteDatabase,
+  root: PrivateProjectRoot,
+  coordinator: PrivateProjectCoordinator,
+  candidate: PrivateActivationCandidateArtifact,
   snapshot: PrivateServiceMountSnapshot,
   value: PrivateServiceMountRelease,
 ): void {
@@ -6666,9 +6814,15 @@ function requireServiceMountReleaseCorrelation(
   if (value.provisionalDigest !== provisional.digest) {
     corrupt("Service Mount release names a different provisional terminal");
   }
-  requireNoServiceLeases(database, snapshot.allocation.mountId);
-  if (value.leaseReleases.length !== 0) {
-    corrupt("Service Mount release carries unsupported lease-release evidence");
+  const leaseReleases = requireReleasedServiceLeases(
+    database,
+    snapshot,
+    root,
+    coordinator,
+    candidate,
+  );
+  if (!sameCanonical(value.leaseReleases, leaseReleases)) {
+    corrupt("Service Mount release differs from its linked lease releases");
   }
   if (snapshot.plan === undefined) {
     if (value.planDigest !== null || value.backingDigest !== null || value.fenceDigest !== null ||
@@ -6977,20 +7131,53 @@ function requireServiceMountFenceClassification(
   }
 }
 
-function requireNoServiceLeases(database: SqliteDatabase, mountId: string): void {
-  const query = statement<{ readonly count: bigint }>(database,
-    "SELECT count(*) AS count FROM service_leases WHERE mount_id = ?1",
-  ).safeIntegers(true);
-  try {
-    const aggregate = query.get(mountId);
-    if (aggregate === null) corrupt("Service Mount lease aggregate is missing");
-    if (aggregate.count !== 0n) {
-      invalid(
-        "SERVICE_LEASE_STATE_UNSUPPORTED",
-        "Service Mount release waits for durable Service lease and invocation closure support",
-      );
+function requireReleasedServiceLeases(
+  database: SqliteDatabase,
+  mount: PrivateServiceMountSnapshot,
+  root: PrivateProjectRoot,
+  coordinator: PrivateProjectCoordinator,
+  candidate: PrivateActivationCandidateArtifact,
+): readonly { readonly ownerRunId: string; readonly slot: string; readonly releaseDigest: string }[] {
+  const query = statement<ServiceLeaseRow>(database, [
+    "SELECT owner_run_id, slot, mount_id, generation_fact_name, generation_digest,",
+    "acknowledged_fact_name, acknowledged_digest, allocation_digest, allocation_bytes,",
+    "release_digest, release_bytes FROM service_leases ORDER BY owner_run_id, slot",
+  ].join(" ")).safeIntegers(true);
+  let rows: readonly ServiceLeaseRow[];
+  try { rows = Object.freeze(query.all().map(copiedServiceLeaseRow)); }
+  finally { query.finalize(); }
+  return Object.freeze(rows.map((row) => {
+    const allocation = loadServiceLeaseAllocation(row);
+    if (allocation.mountId !== mount.allocation.mountId) return undefined;
+    requireServiceLeaseAllocationCorrelation(
+      database,
+      allocation,
+      row.allocation_digest,
+      mount,
+      root,
+      coordinator,
+      candidate,
+    );
+    const release = loadServiceLeaseReleaseFact(row);
+    if (release === undefined) {
+      invalid("SERVICE_LEASE_UNRELEASED", "Service Mount has an unreleased owner lease");
     }
-  } finally { query.finalize(); }
+    requireServiceLeaseReleaseCorrelation(
+      database,
+      allocation,
+      row.allocation_digest,
+      mount,
+      release,
+      root,
+      coordinator,
+      candidate,
+    );
+    return Object.freeze({
+      ownerRunId: row.owner_run_id,
+      slot: row.slot,
+      releaseDigest: release.digest,
+    });
+  }).filter((reference) => reference !== undefined));
 }
 
 interface ServiceLeaseLink {
@@ -7067,6 +7254,107 @@ function copiedServiceLeaseRow(row: ServiceLeaseRow): ServiceLeaseRow {
   });
 }
 
+function loadServiceLeaseAllocation(row: ServiceLeaseRow): PrivateServiceLeaseAllocation {
+  requireDigest(row.owner_run_id, "stored Service lease owner Run");
+  const slot = requireServiceLeaseSlot(row.slot);
+  requireDigest(row.mount_id, "stored Service lease Mount");
+  requireDigest(row.generation_digest, "stored Service lease generation");
+  requireDigest(row.acknowledged_digest, "stored Service lease acknowledgement");
+  requireDigest(row.allocation_digest, "stored Service lease allocation");
+  if (row.generation_fact_name !== "generation" || row.acknowledged_fact_name !== "acknowledged") {
+    corrupt("stored Service lease fact names are invalid");
+  }
+  const bytes = copiedBlob(row.allocation_bytes, "stored Service lease allocation");
+  requireStoredSize(bytes, "stored Service lease allocation");
+  let allocation: PrivateServiceLeaseAllocation;
+  try { allocation = decodePrivateServiceLeaseAllocation(bytes); }
+  catch { corrupt("stored Service lease allocation is invalid"); }
+  if (!sameBytes(bytes, encodePrivateServiceLeaseAllocation(allocation)) ||
+      privateServiceLeaseAllocationDigest(allocation) !== row.allocation_digest ||
+      allocation.ownerRunId !== row.owner_run_id || allocation.slot !== slot ||
+      allocation.mountId !== row.mount_id || allocation.generationDigest !== row.generation_digest ||
+      allocation.acknowledgedDigest !== row.acknowledged_digest) {
+    corrupt("stored Service lease allocation differs from its durable identity");
+  }
+  return allocation;
+}
+
+function loadServiceLeaseReleaseFact(
+  row: ServiceLeaseRow,
+): PrivateServiceMountFact<PrivateServiceLeaseRelease> | undefined {
+  if ((row.release_digest === null) !== (row.release_bytes === null)) {
+    corrupt("stored Service lease release columns are incomplete");
+  }
+  if (row.release_digest === null || row.release_bytes === null) return undefined;
+  requireDigest(row.release_digest, "stored Service lease release");
+  const bytes = copiedBlob(row.release_bytes, "stored Service lease release");
+  requireStoredSize(bytes, "stored Service lease release");
+  let value: PrivateServiceLeaseRelease;
+  try { value = decodePrivateServiceLeaseRelease(bytes); }
+  catch { corrupt("stored Service lease release is invalid"); }
+  if (!sameBytes(bytes, encodePrivateServiceLeaseRelease(value)) ||
+      privateServiceLeaseReleaseDigest(value) !== row.release_digest ||
+      value.ownerRunId !== row.owner_run_id || value.slot !== row.slot ||
+      value.allocationDigest !== row.allocation_digest) {
+    corrupt("stored Service lease release differs from its durable identity");
+  }
+  return Object.freeze({ digest: row.release_digest, value });
+}
+
+function requireServiceLeaseReleaseCorrelation(
+  database: SqliteDatabase,
+  allocation: PrivateServiceLeaseAllocation,
+  allocationDigest: string,
+  mount: PrivateServiceMountSnapshot,
+  release: PrivateServiceMountFact<PrivateServiceLeaseRelease>,
+  root: PrivateProjectRoot,
+  coordinator: PrivateProjectCoordinator,
+  candidate: PrivateActivationCandidateArtifact,
+): void {
+  if (release.value.ownerRunId !== allocation.ownerRunId ||
+      release.value.slot !== allocation.slot ||
+      release.value.allocationDigest !== allocationDigest) {
+    corrupt("stored Service lease release differs from its allocation");
+  }
+  if (!sameCanonical(
+        release.value.invocations,
+        serviceInvocationClosureReferences(
+          database,
+          allocation,
+          allocationDigest,
+          mount,
+          root,
+          coordinator,
+          candidate,
+        ),
+      )) {
+    corrupt("stored Service lease release differs from its owner, Mount, or invocation closures");
+  }
+  if (release.value.reason === "owner-closed") {
+    if (release.value.mountFenceDigest !== null) {
+      corrupt("owner-closed Service lease release carries Mount fence evidence");
+    }
+    return;
+  }
+  const fence = requireServiceMountFact(mount.fence, "fence");
+  if (release.value.mountFenceDigest !== fence.digest) {
+    corrupt("stored Service lease release differs from its Mount fence");
+  }
+  if (!serviceLeaseMountReasonMatches(release.value.reason, mount)) {
+    corrupt(`stored Service lease ${release.value.reason} release conflicts with its Mount terminal`);
+  }
+}
+
+function serviceLeaseMountReasonMatches(
+  reason: Exclude<PrivateServiceLeaseRelease["reason"], "owner-closed">,
+  mount: PrivateServiceMountSnapshot,
+): boolean {
+  const classification = requireServiceMountFact(mount.provisional, "provisional").value.classification;
+  return reason === "provider-lost"
+    ? classification === "provider-loss" || classification === "coordinator-loss"
+    : classification === "host-lifetime" || classification === "voluntary-exit";
+}
+
 function requireServiceLeaseLink(
   candidate: PrivateActivationCandidateArtifact,
   ownerTarget: RunTargetIdentity,
@@ -7118,46 +7406,7 @@ function loadServiceLeaseSnapshot(
   coordinator: PrivateProjectCoordinator,
   candidate: PrivateActivationCandidateArtifact,
 ): PrivateServiceLeaseSnapshot {
-  requireDigest(row.owner_run_id, "stored Service lease owner Run");
-  const slot = requireServiceLeaseSlot(row.slot);
-  requireDigest(row.mount_id, "stored Service lease Mount");
-  requireDigest(row.generation_digest, "stored Service lease generation");
-  requireDigest(row.acknowledged_digest, "stored Service lease acknowledgement");
-  requireDigest(row.allocation_digest, "stored Service lease allocation");
-  if (row.generation_fact_name !== "generation" || row.acknowledged_fact_name !== "acknowledged") {
-    corrupt("stored Service lease fact names are invalid");
-  }
-  if (row.release_digest !== null || row.release_bytes !== null) {
-    corrupt("stored Service lease release is unsupported in this checkpoint");
-  }
-  const bytes = copiedBlob(row.allocation_bytes, "stored Service lease allocation");
-  requireStoredSize(bytes, "stored Service lease allocation");
-  let allocation: PrivateServiceLeaseAllocation;
-  try { allocation = decodePrivateServiceLeaseAllocation(bytes); }
-  catch { corrupt("stored Service lease allocation is invalid"); }
-  if (!sameBytes(bytes, encodePrivateServiceLeaseAllocation(allocation)) ||
-      privateServiceLeaseAllocationDigest(allocation) !== row.allocation_digest ||
-      allocation.ownerRunId !== row.owner_run_id || allocation.slot !== slot ||
-      allocation.mountId !== row.mount_id || allocation.generationDigest !== row.generation_digest ||
-      allocation.acknowledgedDigest !== row.acknowledged_digest) {
-    corrupt("stored Service lease allocation differs from its durable identity");
-  }
-  if (allocation.coordinatorEpoch > coordinator.epoch) {
-    corrupt("Service lease belongs to a future coordinator epoch");
-  }
-
-  const ownerRow = requireRootRunRow(database, allocation.ownerRunId);
-  const ownerRun = loadRootRunSnapshot(database, ownerRow, root);
-  if (ownerRow.candidate_revision !== BigInt(ownerRun.candidateRevision) ||
-      ownerRun.coordinatorEpoch !== allocation.coordinatorEpoch) {
-    corrupt("stored Service lease owner differs from its pinned Run");
-  }
-  const link = requireServiceLeaseLink(candidate, ownerRun.target, allocation.slot);
-  if (allocation.providerBinding !== link.providerBinding ||
-      allocation.providerExport !== link.providerExport ||
-      !sameCanonical(allocation.contract, link.contract)) {
-    corrupt("stored Service lease differs from its owner capability link");
-  }
+  const allocation = loadServiceLeaseAllocation(row);
   const mount = loadServiceMountSnapshot(
     database,
     requireServiceMountRow(database, allocation.mountId),
@@ -7165,24 +7414,79 @@ function loadServiceLeaseSnapshot(
     coordinator,
     candidate,
   );
-  const generation = mount.generation;
-  const acknowledged = mount.acknowledged;
-  if (mount.allocation.admissionDigest !== ownerRun.admissionDigest ||
-      mount.allocation.bindingId !== allocation.providerBinding ||
-      mount.allocationDigest !== allocation.mountAllocationDigest ||
-      generation === undefined || acknowledged === undefined ||
-      generation.digest !== allocation.generationDigest ||
-      generation.value.generationId !== allocation.generationId ||
-      acknowledged.digest !== allocation.acknowledgedDigest ||
-      acknowledged.value.generationDigest !== generation.digest ||
-      !generation.value.exports.includes(allocation.providerExport)) {
-    corrupt("stored Service lease differs from its acknowledged provider generation");
+  requireServiceLeaseAllocationCorrelation(
+    database,
+    allocation,
+    row.allocation_digest,
+    mount,
+    root,
+    coordinator,
+    candidate,
+  );
+  const release = loadServiceLeaseReleaseFact(row);
+  if (release !== undefined) {
+    requireServiceLeaseReleaseCorrelation(
+      database,
+      allocation,
+      row.allocation_digest,
+      mount,
+      release,
+      root,
+      coordinator,
+      candidate,
+    );
   }
   return Object.freeze({
     allocation,
     allocationDigest: row.allocation_digest,
     coordinator: allocation.coordinatorEpoch === coordinator.epoch ? "current" : "older",
+    ...(release === undefined ? {} : { release }),
   });
+}
+
+function requireServiceLeaseAllocationCorrelation(
+  database: SqliteDatabase,
+  allocation: PrivateServiceLeaseAllocation,
+  allocationDigest: string,
+  mount: PrivateServiceMountSnapshot,
+  root: PrivateProjectRoot,
+  coordinator: PrivateProjectCoordinator,
+  candidate: PrivateActivationCandidateArtifact,
+): PrivateRootRunSnapshot {
+  requireDigest(allocationDigest, "stored Service lease allocation");
+  if (allocation.coordinatorEpoch > coordinator.epoch) {
+    corrupt("Service lease belongs to a future coordinator epoch");
+  }
+  const ownerRow = requireRootRunRow(database, allocation.ownerRunId);
+  const ownerRun = loadRootRunSnapshot(database, ownerRow, root);
+  if (ownerRow.candidate_revision !== BigInt(ownerRun.candidateRevision) ||
+      ownerRun.coordinatorEpoch !== allocation.coordinatorEpoch) {
+    corrupt("stored Service lease owner differs from its pinned Run");
+  }
+  const ownerCandidate = loadCandidateRow(requireCandidateRow(database, ownerRow.candidate_revision));
+  requireCandidateRoot(ownerCandidate, root);
+  if (privateActivationCandidateDigest(ownerCandidate) !== privateActivationCandidateDigest(candidate)) {
+    corrupt("stored Service lease owner differs from its Mount candidate");
+  }
+  const link = requireServiceLeaseLink(candidate, ownerRun.target, allocation.slot);
+  const generation = requireServiceMountFact(mount.generation, "generation");
+  const acknowledged = requireServiceMountFact(mount.acknowledged, "acknowledged");
+  if (allocation.providerBinding !== link.providerBinding ||
+      allocation.providerExport !== link.providerExport ||
+      !sameCanonical(allocation.contract, link.contract) ||
+      mount.allocation.admissionDigest !== ownerRun.admissionDigest ||
+      allocation.mountId !== mount.allocation.mountId ||
+      allocation.coordinatorEpoch !== mount.allocation.coordinatorEpoch ||
+      mount.allocation.bindingId !== allocation.providerBinding ||
+      mount.allocationDigest !== allocation.mountAllocationDigest ||
+      generation.digest !== allocation.generationDigest ||
+      generation.value.generationId !== allocation.generationId ||
+      acknowledged.digest !== allocation.acknowledgedDigest ||
+      acknowledged.value.generationDigest !== generation.digest ||
+      !generation.value.exports.includes(allocation.providerExport)) {
+    corrupt("stored Service lease differs from its owner or acknowledged provider generation");
+  }
+  return ownerRun;
 }
 
 function requireNewServiceLeaseContext(
@@ -7270,6 +7574,16 @@ function listServiceInvocationRows(
   finally { query.finalize(); }
 }
 
+function listAllServiceInvocationRows(database: SqliteDatabase): readonly ServiceInvocationRow[] {
+  const query = statement<ServiceInvocationRow>(database, [
+    "SELECT owner_run_id, operation_id, slot, request_digest, allocation_digest, allocation_bytes,",
+    "dispatch_digest, dispatch_bytes, terminal_digest, terminal_bytes, closure_digest, closure_bytes",
+    "FROM service_invocations ORDER BY owner_run_id, operation_id",
+  ].join(" ")).safeIntegers(true);
+  try { return Object.freeze(query.all().map(copiedServiceInvocationRow)); }
+  finally { query.finalize(); }
+}
+
 function copiedServiceInvocationRow(row: ServiceInvocationRow): ServiceInvocationRow {
   return Object.freeze({
     owner_run_id: row.owner_run_id,
@@ -7287,12 +7601,14 @@ function copiedServiceInvocationRow(row: ServiceInvocationRow): ServiceInvocatio
   });
 }
 
-function loadServiceInvocationSnapshot(
-  database: SqliteDatabase,
-  row: ServiceInvocationRow,
-  root: PrivateProjectRoot,
-  coordinator: PrivateProjectCoordinator,
-): PrivateServiceInvocationSnapshot {
+interface LoadedServiceInvocationProgress {
+  readonly allocation: PrivateServiceInvocationAllocation;
+  readonly dispatch?: PrivateServiceMountFact<PrivateServiceInvocationDispatch>;
+  readonly terminal?: PrivateServiceMountFact<PrivateServiceInvocationTerminal>;
+  readonly closure?: PrivateServiceMountFact<PrivateServiceInvocationClosure>;
+}
+
+function loadServiceInvocationProgress(row: ServiceInvocationRow): LoadedServiceInvocationProgress {
   requireDigest(row.owner_run_id, "stored Service invocation owner Run");
   requireWireId(row.operation_id, "stored Service invocation operation ID");
   const slot = requireServiceLeaseSlot(row.slot);
@@ -7314,9 +7630,6 @@ function loadServiceInvocationSnapshot(
       allocation.ownerRunId !== row.owner_run_id || allocation.call.operationId !== row.operation_id ||
       allocation.call.slot !== slot || allocation.requestDigest !== row.request_digest) {
     corrupt("stored Service invocation allocation differs from its durable identity");
-  }
-  if (allocation.coordinatorEpoch > coordinator.epoch) {
-    corrupt("Service invocation belongs to a future coordinator epoch");
   }
   const dispatch = loadServiceInvocationFact(
     row.dispatch_digest,
@@ -7350,7 +7663,7 @@ function loadServiceInvocationSnapshot(
   if (terminal !== undefined && (terminal.value.ownerRunId !== allocation.ownerRunId ||
       terminal.value.operationId !== allocation.call.operationId ||
       terminal.value.allocationDigest !== row.allocation_digest ||
-      (terminal.value.dispatchDigest !== null && terminal.value.dispatchDigest !== dispatch?.digest))) {
+      terminal.value.dispatchDigest !== (dispatch?.digest ?? null))) {
     corrupt("stored Service invocation terminal differs from its allocation and dispatch");
   }
   if (closure !== undefined && (terminal === undefined ||
@@ -7361,12 +7674,58 @@ function loadServiceInvocationSnapshot(
       closure.value.terminalDigest !== terminal.digest)) {
     corrupt("stored Service invocation closure differs from its terminal");
   }
+  return Object.freeze({
+    allocation,
+    ...(dispatch === undefined ? {} : { dispatch }),
+    ...(terminal === undefined ? {} : { terminal }),
+    ...(closure === undefined ? {} : { closure }),
+  });
+}
 
+function serviceInvocationClosureReferences(
+  database: SqliteDatabase,
+  leaseAllocation: PrivateServiceLeaseAllocation,
+  leaseDigest: string,
+  mount: PrivateServiceMountSnapshot,
+  root: PrivateProjectRoot,
+  coordinator: PrivateProjectCoordinator,
+  candidate: PrivateActivationCandidateArtifact,
+): readonly { readonly operationId: string; readonly closureDigest: string }[] {
+  return Object.freeze(listAllServiceInvocationRows(database)
+    .map((row) => {
+      const progress = loadServiceInvocationProgress(row);
+      if (progress.allocation.ownerRunId !== leaseAllocation.ownerRunId) return undefined;
+      if (progress.allocation.call.slot !== leaseAllocation.slot) return undefined;
+      requireServiceInvocationAllocationCorrelation(
+        database,
+        progress.allocation,
+        leaseAllocation,
+        leaseDigest,
+        mount,
+        root,
+        coordinator,
+        candidate,
+      );
+      if (progress.closure === undefined) {
+        invalid("SERVICE_INVOCATION_UNCLOSED", "Service lease has an unresolved invocation");
+      }
+      return Object.freeze({
+        operationId: progress.allocation.call.operationId,
+        closureDigest: progress.closure.digest,
+      });
+    })
+    .filter((reference) => reference !== undefined));
+}
+
+function loadServiceInvocationSnapshot(
+  database: SqliteDatabase,
+  row: ServiceInvocationRow,
+  root: PrivateProjectRoot,
+  coordinator: PrivateProjectCoordinator,
+): PrivateServiceInvocationSnapshot {
+  const progress = loadServiceInvocationProgress(row);
+  const { allocation, dispatch, terminal, closure } = progress;
   const ownerRow = requireRootRunRow(database, allocation.ownerRunId);
-  const ownerRun = loadRootRunSnapshot(database, ownerRow, root);
-  if (ownerRun.coordinatorEpoch !== allocation.coordinatorEpoch) {
-    corrupt("stored Service invocation differs from its owner Run generation");
-  }
   const candidate = loadCandidateRow(requireCandidateRow(database, ownerRow.candidate_revision));
   requireCandidateRoot(candidate, root);
   const lease = loadServiceLeaseSnapshot(
@@ -7383,16 +7742,16 @@ function loadServiceInvocationSnapshot(
     coordinator,
     candidate,
   );
-  if (allocation.leaseDigest !== lease.allocationDigest ||
-      allocation.mountId !== lease.allocation.mountId ||
-      allocation.generationId !== lease.allocation.generationId ||
-      allocation.exportName !== lease.allocation.providerExport ||
-      allocation.deadlineUnixMs !== Math.min(
-        ownerRun.deadlineUnixMs,
-        mount.allocation.effectiveDeadlineUnixMs,
-      )) {
-    corrupt("stored Service invocation differs from its pinned lease and deadline");
-  }
+  requireServiceInvocationAllocationCorrelation(
+    database,
+    allocation,
+    lease.allocation,
+    lease.allocationDigest,
+    mount,
+    root,
+    coordinator,
+    candidate,
+  );
   return Object.freeze({
     allocation,
     allocationDigest: row.allocation_digest,
@@ -7401,6 +7760,43 @@ function loadServiceInvocationSnapshot(
     ...(terminal === undefined ? {} : { terminal }),
     ...(closure === undefined ? {} : { closure }),
   });
+}
+
+function requireServiceInvocationAllocationCorrelation(
+  database: SqliteDatabase,
+  allocation: PrivateServiceInvocationAllocation,
+  leaseAllocation: PrivateServiceLeaseAllocation,
+  leaseDigest: string,
+  mount: PrivateServiceMountSnapshot,
+  root: PrivateProjectRoot,
+  coordinator: PrivateProjectCoordinator,
+  candidate: PrivateActivationCandidateArtifact,
+): void {
+  if (allocation.coordinatorEpoch > coordinator.epoch) {
+    corrupt("Service invocation belongs to a future coordinator epoch");
+  }
+  const ownerRun = requireServiceLeaseAllocationCorrelation(
+    database,
+    leaseAllocation,
+    leaseDigest,
+    mount,
+    root,
+    coordinator,
+    candidate,
+  );
+  if (allocation.ownerRunId !== leaseAllocation.ownerRunId ||
+      ownerRun.coordinatorEpoch !== allocation.coordinatorEpoch ||
+      allocation.leaseDigest !== leaseDigest ||
+      allocation.mountId !== leaseAllocation.mountId ||
+      allocation.generationId !== leaseAllocation.generationId ||
+      allocation.exportName !== leaseAllocation.providerExport ||
+      allocation.call.slot !== leaseAllocation.slot ||
+      allocation.deadlineUnixMs !== Math.min(
+        ownerRun.deadlineUnixMs,
+        mount.allocation.effectiveDeadlineUnixMs,
+      )) {
+    corrupt("stored Service invocation differs from its owner, lease, generation, export, or deadline");
+  }
 }
 
 function loadServiceInvocationFact<Value>(
@@ -7489,7 +7885,7 @@ function requireNewServiceInvocationContext(
     coordinator,
     candidate,
   );
-  if (lease.coordinator !== "current" || mount.coordinator !== "current" ||
+  if (lease.coordinator !== "current" || lease.release !== undefined || mount.coordinator !== "current" ||
       mount.generation?.digest !== lease.allocation.generationDigest ||
       mount.acknowledged?.digest !== lease.allocation.acknowledgedDigest ||
       mount.provisional !== undefined || mount.fence !== undefined ||

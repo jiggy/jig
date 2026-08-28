@@ -68,32 +68,47 @@ import {
   recordPrivateRootExecutionCheckpoint,
   recordPrivateRootFlowCallCheckpoint,
   recordPrivateServiceInvocationDispatch,
+  recordPrivateServiceLeaseRelease,
+  recordPrivateServiceMountRelease,
   requirePrivateStoredActivationCandidate,
   submitPrivateRootRun,
   type PrivateProjectCoordinator,
   type PrivateRootRunTerminal,
 } from "../src/internal/activation-admission-store.js";
 import {
+  encodePrivateServiceLeaseAllocation,
+  encodePrivateServiceInvocationClosure,
+  encodePrivateServiceInvocationTerminal,
   encodePrivateServiceMountAcknowledged,
   encodePrivateServiceMountAllocation,
   encodePrivateServiceMountBacking,
   encodePrivateServiceMountGeneration,
+  encodePrivateServiceMountFence,
   encodePrivateServiceMountPlan,
   encodePrivateServiceMountPrepared,
+  encodePrivateServiceMountProvisional,
   encodePrivateServiceMountSandbox,
   normalizePrivateServiceMountAcknowledged,
+  normalizePrivateServiceInvocationClosure,
+  normalizePrivateServiceInvocationTerminal,
   normalizePrivateServiceMountAllocation,
   normalizePrivateServiceMountBacking,
   normalizePrivateServiceMountGeneration,
+  normalizePrivateServiceMountFence,
   normalizePrivateServiceMountPlan,
   normalizePrivateServiceMountPrepared,
+  normalizePrivateServiceMountProvisional,
   normalizePrivateServiceMountSandbox,
   privateServiceMountAcknowledgedDigest,
+  privateServiceInvocationClosureDigest,
+  privateServiceInvocationTerminalDigest,
   privateServiceMountAllocationDigest,
   privateServiceMountBackingDigest,
   privateServiceMountGenerationDigest,
+  privateServiceMountFenceDigest,
   privateServiceMountPlanDigest,
   privateServiceMountPreparedDigest,
+  privateServiceMountProvisionalDigest,
   privateServiceMountSandboxDigest,
 } from "../src/internal/private-service-state.js";
 import { normalizePrivateRootFlowCallAllocation } from "../src/internal/root-flow-call-state.js";
@@ -628,6 +643,13 @@ describe.serial("private activation admission SQLite store", () => {
         input: {},
       });
       expect(second.created).toBeTrue();
+      await expect(recordPrivateServiceLeaseRelease({
+        coordinator,
+        projectRoot: fixture.root,
+        ownerRunId: submission.run.runId,
+        slot: "counter",
+        reason: "owner-closed",
+      })).rejects.toMatchObject({ code: "SERVICE_INVOCATION_UNCLOSED" });
       await expect(completePrivateServiceInvocation({
         coordinator,
         projectRoot: fixture.root,
@@ -650,6 +672,56 @@ describe.serial("private activation admission SQLite store", () => {
         terminal: { value: { dispatchDigest: null } },
         closure: { value: { dispatchDigest: null } },
       });
+      await expect(recordPrivateServiceLeaseRelease({
+        coordinator,
+        projectRoot: fixture.root,
+        ownerRunId: submission.run.runId,
+        slot: "counter",
+        reason: "owner-closed",
+        mountFenceDigest: digest("forbidden-owner-fence"),
+      })).rejects.toThrow("cannot name a Mount fence");
+      const released = await recordPrivateServiceLeaseRelease({
+        coordinator,
+        projectRoot: fixture.root,
+        ownerRunId: submission.run.runId,
+        slot: "counter",
+        reason: "owner-closed",
+      });
+      expect(released.release).toMatchObject({
+        digest: expect.any(String),
+        value: {
+          reason: "owner-closed",
+          mountFenceDigest: null,
+          invocations: [
+            { operationId: "counter:a", closureDigest: prewrite.closure!.digest },
+            { operationId: "counter:z", closureDigest: completed.closure!.digest },
+          ],
+        },
+      });
+      expect(await recordPrivateServiceLeaseRelease({
+        coordinator,
+        projectRoot: fixture.root,
+        ownerRunId: submission.run.runId,
+        slot: "counter",
+        reason: "owner-closed",
+      })).toEqual(released);
+      await expect(recordPrivateServiceLeaseRelease({
+        coordinator,
+        projectRoot: fixture.root,
+        ownerRunId: submission.run.runId,
+        slot: "counter",
+        reason: "mount-closed",
+        mountFenceDigest: digest("different-release"),
+      })).rejects.toMatchObject({ code: "OPERATION_CONFLICT" });
+      await expect(allocatePrivateServiceInvocation({
+        coordinator,
+        projectRoot: fixture.root,
+        ownerRunId: submission.run.runId,
+        operationId: "counter:after-release",
+        slot: "counter",
+        method: "next",
+        input: {},
+      })).rejects.toMatchObject({ code: "SERVICE_PROVIDER_UNAVAILABLE" });
       expect((await listPrivateServiceInvocations({
         coordinator,
         projectRoot: fixture.root,
@@ -684,6 +756,188 @@ describe.serial("private activation admission SQLite store", () => {
         operationId: "counter:z",
         observation: { source: "provider-response", terminal: { status: "succeeded", value: 1 } },
       })).toMatchObject({ coordinator: "older", terminal: { digest: completed.terminal!.digest } });
+      expect(await recordPrivateServiceLeaseRelease({
+        coordinator,
+        projectRoot: fixture.root,
+        ownerRunId: submission.run.runId,
+        slot: "counter",
+        reason: "owner-closed",
+      })).toMatchObject({
+        coordinator: "older",
+        release: { digest: released.release!.digest },
+      });
+      const impossibleTerminal = normalizePrivateServiceInvocationTerminal({
+        ...completed.terminal!.value,
+        dispatchDigest: null,
+        observation: {
+          source: "host-prewrite",
+          terminal: { status: "failed", code: "UNAVAILABLE", message: "impossible after dispatch" },
+        },
+      });
+      const impossibleTerminalDigest = privateServiceInvocationTerminalDigest(impossibleTerminal);
+      const impossibleClosure = normalizePrivateServiceInvocationClosure({
+        ...completed.closure!.value,
+        dispatchDigest: null,
+        terminalDigest: impossibleTerminalDigest,
+      });
+      const corruptTerminal = openSqlite(fixture.database, "readwrite");
+      corruptTerminal.query([
+        "UPDATE service_invocations SET terminal_digest = ?1, terminal_bytes = ?2,",
+        "closure_digest = ?3, closure_bytes = ?4",
+        "WHERE owner_run_id = ?5 AND operation_id = 'counter:z'",
+      ].join(" ")).run(
+        impossibleTerminalDigest,
+        encodePrivateServiceInvocationTerminal(impossibleTerminal),
+        privateServiceInvocationClosureDigest(impossibleClosure),
+        encodePrivateServiceInvocationClosure(impossibleClosure),
+        submission.run.runId,
+      );
+      corruptTerminal.close(true);
+      await expect(loadPrivateServiceInvocation({
+        coordinator,
+        projectRoot: fixture.root,
+        ownerRunId: submission.run.runId,
+        operationId: "counter:z",
+      })).rejects.toMatchObject({ code: "ADMISSION_STATE_CORRUPT" });
+    } finally {
+      await coordinator?.dispose();
+      await fixture.dispose();
+    }
+  }, 30_000);
+
+  test("releases closed Service leases before their fenced Mount", async () => {
+    const fixture = await createFixture("ready", false, false, true);
+    let coordinator: PrivateProjectCoordinator | undefined;
+    try {
+      const admission = await applyLatestCandidate(fixture);
+      coordinator = await openPrivateProjectCoordinator({ projectRoot: fixture.root });
+      const submission = await submitPrivateRootRun({
+        coordinator,
+        projectRoot: fixture.root,
+        packageStoreRoot: fixture.store,
+        submissionId: "service-mount-release-owner",
+        target: { kind: "binding", id: "app" },
+        input: { value: "owner" },
+        deadlineUnixMs: Date.now() + 60_000,
+      });
+      const installed = installAcknowledgedServiceMount(
+        fixture,
+        admission.admissionDigest,
+        coordinator.epoch,
+      );
+      const lease = await allocatePrivateServiceLease({
+        coordinator,
+        projectRoot: fixture.root,
+        packageStoreRoot: fixture.store,
+        ownerRunId: submission.run.runId,
+        slot: "counter",
+      });
+      const allocation = await allocatePrivateServiceInvocation({
+        coordinator,
+        projectRoot: fixture.root,
+        ownerRunId: submission.run.runId,
+        operationId: "counter:closed",
+        slot: "counter",
+        method: "next",
+        input: {},
+      });
+      const invocation = await completePrivateServiceInvocation({
+        coordinator,
+        projectRoot: fixture.root,
+        ownerRunId: submission.run.runId,
+        operationId: "counter:closed",
+        observation: {
+          source: "host-prewrite",
+          terminal: { status: "failed", code: "UNAVAILABLE", message: "not dispatched" },
+        },
+      });
+      expect(allocation.created).toBeTrue();
+      const fence = installServiceMountFence(fixture, installed, "host-lifetime");
+      await expect(recordPrivateServiceMountRelease({
+        coordinator,
+        projectRoot: fixture.root,
+        mountId: installed.mountId,
+        packageReleased: true,
+        ownerRelease: ownerReleaseForInstalledMount(installed),
+      })).rejects.toMatchObject({ code: "SERVICE_LEASE_UNRELEASED" });
+      await expect(recordPrivateServiceLeaseRelease({
+        coordinator,
+        projectRoot: fixture.root,
+        ownerRunId: submission.run.runId,
+        slot: "counter",
+        reason: "mount-closed",
+        mountFenceDigest: digest("wrong-fence"),
+      })).rejects.toMatchObject({ code: "SERVICE_LEASE_FENCE_MISMATCH" });
+      await expect(recordPrivateServiceLeaseRelease({
+        coordinator,
+        projectRoot: fixture.root,
+        ownerRunId: submission.run.runId,
+        slot: "counter",
+        reason: "provider-lost",
+        mountFenceDigest: privateServiceMountFenceDigest(fence),
+      })).rejects.toMatchObject({ code: "SERVICE_LEASE_REASON_MISMATCH" });
+      const releasedLease = await recordPrivateServiceLeaseRelease({
+        coordinator,
+        projectRoot: fixture.root,
+        ownerRunId: submission.run.runId,
+        slot: "counter",
+        reason: "mount-closed",
+        mountFenceDigest: privateServiceMountFenceDigest(fence),
+      });
+      expect(releasedLease.release?.value).toMatchObject({
+        reason: "mount-closed",
+        mountFenceDigest: privateServiceMountFenceDigest(fence),
+        invocations: [{ operationId: "counter:closed", closureDigest: invocation.closure!.digest }],
+      });
+
+      const database = openSqlite(fixture.database, "readwrite");
+      database.query(
+        "UPDATE service_leases SET allocation_bytes = ?1 WHERE owner_run_id = ?2 AND slot = 'counter'",
+      ).run(json1({ corrupt: true }), submission.run.runId);
+      database.close(true);
+      await expect(recordPrivateServiceMountRelease({
+        coordinator,
+        projectRoot: fixture.root,
+        mountId: installed.mountId,
+        packageReleased: true,
+        ownerRelease: ownerReleaseForInstalledMount(installed),
+      })).rejects.toMatchObject({ code: "ADMISSION_STATE_CORRUPT" });
+      const repair = openSqlite(fixture.database, "readwrite");
+      repair.query(
+        "UPDATE service_leases SET allocation_bytes = ?1 WHERE owner_run_id = ?2 AND slot = 'counter'",
+      ).run(encodePrivateServiceLeaseAllocation(lease.allocation), submission.run.runId);
+      repair.close(true);
+
+      const corruptInvocation = openSqlite(fixture.database, "readwrite");
+      corruptInvocation.query(
+        "UPDATE service_invocations SET slot = 'other' WHERE owner_run_id = ?1 AND operation_id = 'counter:closed'",
+      ).run(submission.run.runId);
+      corruptInvocation.close(true);
+      await expect(recordPrivateServiceMountRelease({
+        coordinator,
+        projectRoot: fixture.root,
+        mountId: installed.mountId,
+        packageReleased: true,
+        ownerRelease: ownerReleaseForInstalledMount(installed),
+      })).rejects.toMatchObject({ code: "ADMISSION_STATE_CORRUPT" });
+      const repairInvocation = openSqlite(fixture.database, "readwrite");
+      repairInvocation.query(
+        "UPDATE service_invocations SET slot = 'counter' WHERE owner_run_id = ?1 AND operation_id = 'counter:closed'",
+      ).run(submission.run.runId);
+      repairInvocation.close(true);
+
+      const releasedMount = await recordPrivateServiceMountRelease({
+        coordinator,
+        projectRoot: fixture.root,
+        mountId: installed.mountId,
+        packageReleased: true,
+        ownerRelease: ownerReleaseForInstalledMount(installed),
+      });
+      expect(releasedMount.release?.value.leaseReleases).toEqual([{
+        ownerRunId: submission.run.runId,
+        slot: "counter",
+        releaseDigest: releasedLease.release!.digest,
+      }]);
     } finally {
       await coordinator?.dispose();
       await fixture.dispose();
@@ -3534,7 +3788,7 @@ function installAcknowledgedServiceMount(
   fixture: Fixture,
   admissionDigest: string,
   coordinatorEpoch: number,
-): void {
+) {
   const target = fixture.candidate.candidate.targets.find(({ request }) => request.mode === "service")!;
   const mountId = privateDomainDigest("JIG-Private-Service-Mount-ID/1", {
     admissionDigest,
@@ -3674,7 +3928,7 @@ function installAcknowledgedServiceMount(
     allocationDigest,
     generationDigest: privateServiceMountGenerationDigest(generation),
   });
-  const facts = [
+  const facts: Array<readonly [string, string, Uint8Array]> = [
     ["plan", privateServiceMountPlanDigest(plan), encodePrivateServiceMountPlan(plan)],
     ["backing", privateServiceMountBackingDigest(backing), encodePrivateServiceMountBacking(backing)],
     ["sandbox", privateServiceMountSandboxDigest(sandbox), encodePrivateServiceMountSandbox(sandbox)],
@@ -3682,7 +3936,7 @@ function installAcknowledgedServiceMount(
     ["generation", privateServiceMountGenerationDigest(generation), encodePrivateServiceMountGeneration(generation)],
     ["acknowledged", privateServiceMountAcknowledgedDigest(acknowledged),
       encodePrivateServiceMountAcknowledged(acknowledged)],
-  ] as const;
+  ];
   const database = openSqlite(fixture.database, "readwrite");
   try {
     database.exec("PRAGMA foreign_keys=ON; BEGIN IMMEDIATE");
@@ -3705,6 +3959,88 @@ function installAcknowledgedServiceMount(
     if (database.inTransaction) database.exec("ROLLBACK");
     throw error;
   } finally { database.close(true); }
+  return Object.freeze({
+    mountId,
+    allocationDigest,
+    plan,
+    sandbox,
+    preparedOwner,
+    generation,
+    acknowledged,
+  });
+}
+
+function installServiceMountFence(
+  fixture: Fixture,
+  installed: ReturnType<typeof installAcknowledgedServiceMount>,
+  classification: "host-lifetime" | "provider-loss",
+) {
+  const provisional = normalizePrivateServiceMountProvisional({
+    kind: "private-service-mount-provisional/1",
+    mountId: installed.mountId,
+    allocationDigest: installed.allocationDigest,
+    generationDigest: privateServiceMountGenerationDigest(installed.generation),
+    acknowledgedDigest: privateServiceMountAcknowledgedDigest(installed.acknowledged),
+    classification,
+    terminal: classification === "host-lifetime"
+      ? { status: "succeeded", diagnostics: { stderr: "", stderrBytes: 0, stderrTruncated: false } }
+      : {
+          status: "failed",
+          code: "CHANNEL_LOST",
+          message: "provider lost",
+          diagnostics: { stderr: "", stderrBytes: 0, stderrTruncated: false },
+        },
+  });
+  const fence = normalizePrivateServiceMountFence({
+    kind: "private-service-mount-fence/1",
+    mountId: installed.mountId,
+    allocationDigest: installed.allocationDigest,
+    provisionalDigest: privateServiceMountProvisionalDigest(provisional),
+    planDigest: privateServiceMountPlanDigest(installed.plan),
+    proof: {
+      kind: "enforcement-confirmed",
+      sandboxDigest: privateServiceMountSandboxDigest(installed.sandbox),
+      receipt: {
+        kind: "private-linux-confirmed-enforcement/1",
+        ownerDigest: installed.preparedOwner.digest,
+        stopReason: "payload_exit",
+        exitCode: classification === "host-lifetime" ? 0 : 1,
+        signal: null,
+        fenced: true,
+        evidence: { cpuStat: {}, memoryEvents: {}, pidsEvents: {} },
+      },
+    },
+  });
+  const database = openSqlite(fixture.database, "readwrite");
+  try {
+    database.exec("BEGIN IMMEDIATE");
+    const insert = database.query(
+      "INSERT INTO service_mount_facts(mount_id, fact_name, fact_digest, fact_bytes) VALUES (?1, ?2, ?3, ?4)",
+    );
+    insert.run(installed.mountId, "provisional", privateServiceMountProvisionalDigest(provisional),
+      encodePrivateServiceMountProvisional(provisional));
+    insert.run(installed.mountId, "fence", privateServiceMountFenceDigest(fence),
+      encodePrivateServiceMountFence(fence));
+    database.exec("COMMIT");
+  } catch (error) {
+    if (database.inTransaction) database.exec("ROLLBACK");
+    throw error;
+  } finally { database.close(true); }
+  return fence;
+}
+
+function ownerReleaseForInstalledMount(installed: ReturnType<typeof installAcknowledgedServiceMount>) {
+  const fields = {
+    kind: "private-linux-owner-state-release/1" as const,
+    allocationDigest: installed.plan.ownerAllocation.digest,
+    directoryDevice: installed.sandbox.owner.ownerStateDevice,
+    directoryInode: installed.sandbox.owner.ownerStateInode,
+    released: true as const,
+  };
+  return Object.freeze({
+    ...fields,
+    digest: privateDomainDigest("JIG-Private-Linux-Owner-State-Release/1", fields),
+  });
 }
 
 async function installHookCandidate(
