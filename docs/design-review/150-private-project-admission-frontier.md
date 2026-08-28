@@ -1,12 +1,12 @@
 # Private project admission frontier
 
-**Status:** reviewed on 2026-08-28 and selected as the next local control-plane
-slice after closure of the private Service-hosting substrate in review 151.
-The deferred Root-to-Service invocation controller is not a prerequisite for
-reviewing and applying inert project meaning. This record corrects the earlier
-sketch before implementation. It publishes no project opening, daemon
-transport, CLI compatibility promise, administration API, lock schema, or
-machine schema.
+**Status:** reviewed on 2026-08-28 as the normative private frontier. The
+Candidate/5-to-Plan/2 classification and Plan/2-to-apply subset is closed in
+review 152. Complete capture-to-plan acquisition and the public control-plane
+surface remain gated. The deferred Root-to-Service invocation controller is
+not a prerequisite for reviewing and applying inert project meaning. This
+record publishes no project opening, daemon transport, CLI compatibility
+promise, administration API, lock schema, or machine schema.
 
 ## 1. Exact private boundary
 
@@ -372,19 +372,25 @@ existing exact repair receipt
     -> return historical receipt before staleness or file checks
 
 otherwise
-    -> require the Plan-bound active generation and candidate heads
+    -> require the Plan-bound active generation
+    -> authenticate the exact Plan and its retained candidate row
     -> require current visible lock to be either the reviewed observation
        or the exact proposed bytes
     -> durably publish/synchronize and reverify exact proposed lock
-    -> recheck protected heads and Plan row
+    -> recheck the active admission and immutable Plan/candidate rows
     -> insert one immutable repair receipt
     -> commit without changing admission_head or Hook state
 ```
 
 It allocates no admission generation, Hook interval, derived Run, Service
-reconciliation, or authority. Competing repair/admission operations serialize
-through the same protected writer boundary; a changed head makes an unapplied
-repair stale.
+reconciliation, or authority. Candidate-head movement is inert with respect to
+an already reviewed repair and does not stale it. A changed active admission
+makes an unapplied repair stale. Equivalent repair Plans based on the same
+active admission and exact proposed lock commute; because their retained lock
+observations and Plan digests differ, each explicitly applied Plan may receive
+its own immutable receipt. Competing authority-changing admission Plans retain
+the candidate-head and admission-head compare-and-set and linearize to one
+winner.
 
 Crash and replay semantics are closed:
 
@@ -418,9 +424,12 @@ fixed-point scans recover it. Lock repair emits no such wake. Existing Runs
 and Service leases remain pinned to their prior admitted generations.
 
 Unresolved ownership which makes a safe policy transition impossible is
-`PROJECT_BUSY`; apply does not steal, overwrite, or infer completion. A later
-persistent supervisor may coordinate this boundary without changing Plan/2
-or the two private operations.
+`PROJECT_BUSY`; apply does not steal, overwrite, or infer completion. The next
+foreground session is finite and root-only: it reuses the existing coordinator
+and Root Administration controller, drains bounded root and Hook work, then
+closes. No persistent Service supervisor is earned by Plan/2. A later mixed
+composition slice must first join one authentic root effect to one acknowledged
+Service generation and prove phased operation, lease, Mount, and loss cleanup.
 
 ## 11. Closed errors
 
@@ -475,10 +484,15 @@ Before freezing any public candidate, the private slice must prove:
    emits no Service wake;
 9. exact intrinsic/effective `UNAVAILABLE` evidence is retained only where the
    implementation actually owns both values;
-10. candidate, base-generation, expected-head, Plan-row, and visible-lock
-    staleness fail closed;
-11. same-Plan admission and repair replay occur before staleness checks, while
-    concurrent competing Plans linearize to one winner;
+10. admission Plans fail closed on candidate-head, base-generation, Plan-row,
+    and visible-lock staleness; lock-repair Plans ignore inert candidate-head
+    movement but require the exact Plan-bound active admission, immutable
+    Plan/candidate rows, and reviewed-or-proposed visible lock;
+11. same-Plan admission and repair replay occur before staleness checks;
+    competing authority-changing admission Plans linearize to one winner,
+    while equivalent repair Plans commute and each explicitly applied Plan may
+    persist its own receipt; an active-admission change stales an unapplied
+    repair;
 12. failure after lock durability but before admission or repair commit
     converges through exact retry;
 13. an admission Plan, and only an admission Plan, establishes its Hook

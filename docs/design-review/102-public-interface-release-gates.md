@@ -48,7 +48,14 @@ private Service path now also admits and hosts one exact Bun Service Binding,
 persists its complete Mount/generation lifecycle, and proves exact leases,
 invocation allocation, possible-dispatch admission, terminal/closure evidence,
 fenced recovery, and ordered release. It does not yet connect a root
-`effect/call` to that live Mount. The intended package names are:
+`effect/call` to that live Mount. The private Candidate/5-to-Plan/2 path now
+also classifies normalized no-op, inert lock repair, and authority-changing
+admission, persists canonical applicable Plans, and applies them using only
+their digest. Admission retains candidate-head compare-and-set; repairs ignore
+inert candidate-head movement, stale on active-admission movement, commute
+when equivalent, and advance no Hook or Service authority. This is a private
+classification/apply checkpoint rather than a complete capture-to-plan product
+operation. The intended package names are:
 
 ```text
 @jigging/jig    Jig TypeScript package
@@ -254,18 +261,28 @@ define authentication and closed request/result/error models for:
 - plan/apply and authority evidence; and
 - any later inspection or cancellation operations.
 
-The first private local admission boundary is now selected in
-[`150-private-project-admission-frontier.md`](150-private-project-admission-frontier.md),
-but not implemented or published. It fixes only a project-bound `plan` and
-`apply` pair. Planning retains one canonical Plan/2 machine review with a
-final `activationMeaningDigest`, authoritative proposed state, a Plan-bound
-prior generation, and exact visible-lock observation. Prior state and delta
-are derived rather than duplicated. Apply accepts only `planDigest`; its
-protected Plan supplies the compare-and-set base. Equivalent final meaning and
-portable lock may durably repair visible `jig.lock` with an idempotent receipt
-but no admission generation, Hook transition, or Service wake. The boundary
-does not add project opening, authentication/transport, a public lock or Plan
-schema, or a general administration API.
+The first private local admission boundary is defined in
+[`150-private-project-admission-frontier.md`](150-private-project-admission-frontier.md).
+Its Candidate/5 classification and Plan/2 apply subset is implemented and
+closed in
+[`152-private-plan2-classification-and-apply-checkpoint.md`](152-private-plan2-classification-and-apply-checkpoint.md).
+It retains one canonical Plan/2 machine review with a final
+`activationMeaningDigest`, authoritative proposed state, a Plan-bound prior
+generation, and exact visible-lock observation. Prior state and delta are
+derived rather than duplicated. Apply accepts only `planDigest`; its protected
+Plan supplies the compare-and-set base. Equivalent final meaning and portable
+lock may durably repair visible `jig.lock` with an idempotent receipt but no
+admission generation, Hook transition, or Service wake. Distinct equivalent
+repair Plans commute and may each record their own receipt; later candidate
+observations do not stale them, while a new active admission does.
+
+The implementation does **not** yet provide the complete source-capture,
+evaluation, resolution, host-observation, classification, and Plan-publication
+operation promised by a product `plan()`. The current private foreground path
+publishes Candidate/5 and then binds classification to that expected head. A
+closed project-facing error wrapper, the remaining classifier/authority proof
+matrix, public lock and Plan schemas, project opening,
+authentication/transport, and a public CLI/API remain release gates.
 
 No `RunSnapshot`, `openProject`, `getRun`, or `cancelRun` interface is part of
 Jig/1. The root administration candidate does not become published merely by
@@ -378,6 +395,13 @@ recovery, and ordered release are closed and tamper-checked. This does not yet
 claim a live Root-to-Service invocation controller; review 151 records that
 deliberate boundary.
 
+The private Plan/2 classification/apply substrate is likewise complete at its
+deliberately smaller boundary. Candidate/5 classification, canonical Plan/2
+persistence, digest-only apply, historical replay, no-op normalization,
+commuting lock repairs, admission compare-and-set, and mixed-version private
+store refusal have executable evidence. Review 152 records both those results
+and the unimplemented capture-to-plan and public-interface seams.
+
 None of the closed slices adds a public Service host, Agent, Semantic Choice,
 Jig Graph compiler, update watcher, Nix dependency, ambient runtime fallback,
 or public Backend or Runtime Adapter SPI.
@@ -405,17 +429,28 @@ The Service-hosting frontier in
 [`149-private-service-hosting-frontier.md`](149-private-service-hosting-frontier.md)
 is closed at the exact substrate boundary recorded in
 [`151-private-service-hosting-checkpoint.md`](151-private-service-hosting-checkpoint.md).
-The selected next local control-plane slice is the still-private Plan/2 boundary in
-[`150-private-project-admission-frontier.md`](150-private-project-admission-frontier.md).
-That selection does not authorize a public SDK or silently widen Service
-effect dispatch. The Nix decontamination boundary remains in
+The Plan/2 classification/apply subset of
+[`150-private-project-admission-frontier.md`](150-private-project-admission-frontier.md)
+is closed in review 152. The next foreground session is finite and root-only,
+using the existing coordinator and Root Administration controller; it does not
+earn a persistent supervisor or start Services. Mixed root/Journal/Service
+composition is the next composition boundary, and must prove authentic
+Root-to-Service dispatch plus phased operation, lease, Mount, and loss cleanup
+before persistent Service policy is considered. Neither checkpoint authorizes
+a public SDK. The Nix decontamination boundary remains in
 [`130-nix-experiment-disposition-and-next-slice.md`](130-nix-experiment-disposition-and-next-slice.md);
-the latest completed Service boundary is review 151.
+the latest completed control-plane boundary is review 152.
 
 ## Machine-readable release gates
 
 The repository still needs:
 
+- one complete capture-to-plan snapshot owned by a trusted project-opening
+  path, rather than the current private publish-then-classify seam;
+- the remaining Plan/2 classifier/authority proof matrix and one closed public
+  project-facing error wrapper;
+- public plan/apply request, result, error, authentication, and CLI/API
+  surfaces plus an independent packed consumer;
 - the complete Service/1 Host/Provider cross-language black-box corpus, a
   second independent Host, and one real Root-to-Service invocation through
   admitted mixed effect dispatch;
