@@ -6,6 +6,27 @@ import { tmpdir } from "node:os";
 const HOSTILE = process.env.JIG_LINUX_CGROUP_HOSTILE === "1";
 const proofDescribe = HOSTILE ? describe.serial : describe.skip;
 
+describe("private foreground command boundary", () => {
+  test("requires explicit approval separately from a reviewed Plan", async () => {
+    const failure = await invokeFailure([
+      "apply",
+      ".",
+      "--plan",
+      `sha256:${"0".repeat(64)}`,
+    ]);
+    expect(failure).toContain("apply requires explicit --yes approval");
+  });
+
+  test("does not combine admission and root execution", async () => {
+    expect(await invokeFailure(["run", ".", "--request"])).toContain(
+      "--request requires a value",
+    );
+    expect(await invokeFailure(["apply-run"])).toContain(
+      "usage: private-foreground",
+    );
+  });
+});
+
 proofDescribe("private foreground project path", () => {
   test("reviews, applies, and runs one direct Python and one composed Bun-to-Python target", async () => {
     const root = await mkdtemp(join(tmpdir(), "jig-private-foreground-"));
@@ -17,11 +38,14 @@ proofDescribe("private foreground project path", () => {
       ]) as {
         kind: string;
         planDigest: string;
+        operation: string;
         baseGeneration: string | null;
         targets: readonly { target: { kind: string; path?: string; id?: string } }[];
       };
       expect(planned).toMatchObject({
         kind: "private-foreground-plan/1",
+        state: "applicable",
+        operation: "admission",
         baseGeneration: null,
       });
       expect(planned.targets.map(({ target }) => target)).toEqual([
@@ -30,15 +54,31 @@ proofDescribe("private foreground project path", () => {
       ]);
       await writeFile(
         join(root, "flows", "child", "flow.py"),
-        "raise RuntimeError('apply-run must use the retained reviewed package')\n",
+        "raise RuntimeError('run must use the retained reviewed package')\n",
       );
 
       const applied = await invoke([
-        "apply-run",
+        "apply",
         root,
         "--plan",
         planned.planDigest,
         "--yes",
+      ]) as {
+        kind: string;
+        planDigest: string;
+        operation: string;
+        receiptDigest: string;
+      };
+      expect(applied).toMatchObject({
+        kind: "private-foreground-apply/1",
+        planDigest: planned.planDigest,
+        operation: "admission",
+      });
+      expect(applied.receiptDigest).toMatch(/^sha256:[0-9a-f]{64}$/);
+
+      const ran = await invoke([
+        "run",
+        root,
         "--request",
         JSON.stringify({
           submissionId: "foreground-direct",
@@ -53,13 +93,10 @@ proofDescribe("private foreground project path", () => {
         }),
       ]) as {
         kind: string;
-        planDigest: string;
-        admissionDigest: string;
         runs: readonly { submissionId: string; status: unknown }[];
       };
-      expect(applied).toMatchObject({
-        kind: "private-foreground-apply-run/1",
-        planDigest: planned.planDigest,
+      expect(ran).toMatchObject({
+        kind: "private-foreground-run/1",
         runs: [
           {
             submissionId: "foreground-direct",
@@ -91,7 +128,27 @@ proofDescribe("private foreground project path", () => {
           },
         ],
       });
-      expect(applied.admissionDigest).toMatch(/^sha256:[0-9a-f]{64}$/);
+
+      await writeFile(join(root, "flows", "child", "flow.py"), pythonChildProgram());
+      await rm(join(root, "jig.lock"));
+      const repairPlan = await invoke(["plan", root]) as {
+        state: string;
+        planDigest: string;
+        operation: string;
+      };
+      expect(repairPlan).toMatchObject({ state: "applicable", operation: "lock-repair" });
+      const repaired = await invoke([
+        "apply",
+        root,
+        "--plan",
+        repairPlan.planDigest,
+        "--yes",
+      ]) as { kind: string; operation: string; receiptDigest: string };
+      expect(repaired).toMatchObject({
+        kind: "private-foreground-apply/1",
+        operation: "lock-repair",
+      });
+      expect(repaired.receiptDigest).toMatch(/^sha256:[0-9a-f]{64}$/);
       expect(await residualCgroups()).toEqual([]);
       expect((await readdir("/dev")).filter(
         (name) => name.startsWith(".jig-jig-run-") && name.endsWith("-devices"),
@@ -200,16 +257,7 @@ async function writeProject(root: string): Promise<void> {
     required: ["outcome", "output"],
     additionalProperties: false,
   }));
-  await writeFile(join(child, "flow.py"), [
-    "#!/usr/bin/env python",
-    "from flowmd_sdk import serve",
-    "",
-    "async def run(context):",
-    '    return {"outcome": "done", "output": {"child": context.input}}',
-    "",
-    "serve(run)",
-    "",
-  ].join("\n"));
+  await writeFile(join(child, "flow.py"), pythonChildProgram());
   const pythonSdk = join(child, "flowmd_sdk");
   await mkdir(pythonSdk);
   for (const name of ["__init__.py", "_json.py", "_runtime.py", "_service.py", "_types.py"]) {
@@ -218,6 +266,19 @@ async function writeProject(root: string): Promise<void> {
       await readFile(join(import.meta.dir, "..", "..", "flowmd-sdk", "src", "flowmd_sdk", name)),
     );
   }
+}
+
+function pythonChildProgram(): string {
+  return [
+    "#!/usr/bin/env python",
+    "from flowmd_sdk import serve",
+    "",
+    "async def run(context):",
+    '    return {"outcome": "done", "output": {"child": context.input}}',
+    "",
+    "serve(run)",
+    "",
+  ].join("\n");
 }
 
 async function invoke(arguments_: readonly string[]): Promise<unknown> {
@@ -239,6 +300,27 @@ async function invoke(arguments_: readonly string[]): Promise<unknown> {
   if (exitCode !== 0) throw new Error(`private foreground failed (${exitCode}): ${stderr}`);
   expect(stderr).toBe("");
   return JSON.parse(stdout);
+}
+
+async function invokeFailure(arguments_: readonly string[]): Promise<string> {
+  const subprocess = Bun.spawn([
+    process.execPath,
+    join(import.meta.dir, "..", "scripts", "private-foreground.ts"),
+    ...arguments_,
+  ], {
+    cwd: join(import.meta.dir, "..", "..", ".."),
+    env: process.env,
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const [stdout, stderr, exitCode] = await Promise.all([
+    new Response(subprocess.stdout).text(),
+    new Response(subprocess.stderr).text(),
+    subprocess.exited,
+  ]);
+  expect(exitCode).not.toBe(0);
+  expect(stdout).toBe("");
+  return stderr;
 }
 
 async function residualCgroups(): Promise<string[]> {
