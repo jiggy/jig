@@ -48,6 +48,7 @@ import {
   appendPrivateRootJournalEvent,
   applyPrivateActivationReviewPlan,
   closePrivateRootFlowCall,
+  completePrivateServiceInvocation,
   closePrivateRootExecution,
   completePrivateRootRun,
   createPrivateActivationReviewPlan,
@@ -66,6 +67,7 @@ import {
   reacquirePrivateRootExecutionWork,
   recordPrivateRootExecutionCheckpoint,
   recordPrivateRootFlowCallCheckpoint,
+  recordPrivateServiceInvocationDispatch,
   requirePrivateStoredActivationCandidate,
   submitPrivateRootRun,
   type PrivateProjectCoordinator,
@@ -506,7 +508,7 @@ describe.serial("private activation admission SQLite store", () => {
     }
   }, 30_000);
 
-  test("allocates and reopens Service operations without dispatch authority", async () => {
+  test("persists Service dispatch and terminal closure", async () => {
     const fixture = await createFixture("ready", false, false, true);
     let coordinator: PrivateProjectCoordinator | undefined;
     try {
@@ -552,7 +554,7 @@ describe.serial("private activation admission SQLite store", () => {
           },
         },
       });
-      expect(await allocatePrivateServiceInvocation({
+      const allocationReplay = await allocatePrivateServiceInvocation({
         coordinator,
         projectRoot: fixture.root,
         ownerRunId: submission.run.runId,
@@ -560,7 +562,13 @@ describe.serial("private activation admission SQLite store", () => {
         slot: "counter",
         method: "next",
         input: { amount: 1 },
-      })).toEqual({ snapshot: first.snapshot, created: false });
+      });
+      expect(allocationReplay).toEqual({ snapshot: first.snapshot, created: false });
+      await expect(recordPrivateServiceInvocationDispatch({
+        coordinator,
+        projectRoot: fixture.root,
+        allocation: allocationReplay,
+      })).rejects.toThrow("did not create dispatch ownership");
       await expect(allocatePrivateServiceInvocation({
         coordinator,
         projectRoot: fixture.root,
@@ -569,6 +577,46 @@ describe.serial("private activation admission SQLite store", () => {
         slot: "counter",
         method: "next",
         input: { amount: 2 },
+      })).rejects.toMatchObject({ code: "OPERATION_CONFLICT" });
+      const dispatched = await recordPrivateServiceInvocationDispatch({
+        coordinator,
+        projectRoot: fixture.root,
+        allocation: first,
+      });
+      expect(dispatched).toMatchObject({
+        created: true,
+        snapshot: { dispatch: { digest: expect.any(String) } },
+      });
+      expect(await recordPrivateServiceInvocationDispatch({
+        coordinator,
+        projectRoot: fixture.root,
+        allocation: first,
+      })).toEqual({ snapshot: dispatched.snapshot, created: false });
+      const completed = await completePrivateServiceInvocation({
+        coordinator,
+        projectRoot: fixture.root,
+        ownerRunId: submission.run.runId,
+        operationId: "counter:z",
+        observation: { source: "provider-response", terminal: { status: "succeeded", value: 1 } },
+      });
+      expect(completed).toMatchObject({
+        dispatch: { digest: dispatched.snapshot.dispatch!.digest },
+        terminal: { digest: expect.any(String) },
+        closure: { digest: expect.any(String) },
+      });
+      expect(await completePrivateServiceInvocation({
+        coordinator,
+        projectRoot: fixture.root,
+        ownerRunId: submission.run.runId,
+        operationId: "counter:z",
+        observation: { source: "provider-response", terminal: { status: "succeeded", value: 1 } },
+      })).toEqual(completed);
+      await expect(completePrivateServiceInvocation({
+        coordinator,
+        projectRoot: fixture.root,
+        ownerRunId: submission.run.runId,
+        operationId: "counter:z",
+        observation: { source: "provider-response", terminal: { status: "succeeded", value: 2 } },
       })).rejects.toMatchObject({ code: "OPERATION_CONFLICT" });
       const second = await allocatePrivateServiceInvocation({
         coordinator,
@@ -580,6 +628,28 @@ describe.serial("private activation admission SQLite store", () => {
         input: {},
       });
       expect(second.created).toBeTrue();
+      await expect(completePrivateServiceInvocation({
+        coordinator,
+        projectRoot: fixture.root,
+        ownerRunId: submission.run.runId,
+        operationId: "counter:a",
+        observation: { source: "provider-response", terminal: { status: "succeeded", value: 2 } },
+      })).rejects.toMatchObject({ code: "SERVICE_INVOCATION_UNDISPATCHED" });
+      const prewrite = await completePrivateServiceInvocation({
+        coordinator,
+        projectRoot: fixture.root,
+        ownerRunId: submission.run.runId,
+        operationId: "counter:a",
+        observation: {
+          source: "host-prewrite",
+          terminal: { status: "failed", code: "UNAVAILABLE", message: "not written" },
+        },
+      });
+      expect(prewrite.dispatch).toBeUndefined();
+      expect(prewrite).toMatchObject({
+        terminal: { value: { dispatchDigest: null } },
+        closure: { value: { dispatchDigest: null } },
+      });
       expect((await listPrivateServiceInvocations({
         coordinator,
         projectRoot: fixture.root,
@@ -590,7 +660,7 @@ describe.serial("private activation admission SQLite store", () => {
         projectRoot: fixture.root,
         ownerRunId: submission.run.runId,
         operationId: "counter:z",
-      })).toEqual(first.snapshot);
+      })).toEqual(completed);
 
       await coordinator.dispose();
       coordinator = await openPrivateProjectCoordinator({ projectRoot: fixture.root });
@@ -603,7 +673,17 @@ describe.serial("private activation admission SQLite store", () => {
         method: "next",
         input: { amount: 1 },
       });
-      expect(replay).toMatchObject({ created: false, snapshot: { coordinator: "older" } });
+      expect(replay).toMatchObject({
+        created: false,
+        snapshot: { coordinator: "older", terminal: { digest: completed.terminal!.digest } },
+      });
+      expect(await completePrivateServiceInvocation({
+        coordinator,
+        projectRoot: fixture.root,
+        ownerRunId: submission.run.runId,
+        operationId: "counter:z",
+        observation: { source: "provider-response", terminal: { status: "succeeded", value: 1 } },
+      })).toMatchObject({ coordinator: "older", terminal: { digest: completed.terminal!.digest } });
     } finally {
       await coordinator?.dispose();
       await fixture.dispose();
