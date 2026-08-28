@@ -31,6 +31,14 @@ export interface PrivateRootAdministrationController {
 }
 
 export interface PrivateRootLaunchExecutor {
+  /**
+   * Drive one durable root execution from its persisted state.
+   *
+   * The controller may repeat the complete invocation after the protected
+   * store reports `ADMISSION_STATE_BUSY`. Implementations must therefore
+   * reacquire durable ownership and resume idempotently; they must not make an
+   * unrecorded external effect and then report that retryable store error.
+   */
   (
     runId: string,
     coordinator: PrivateProjectCoordinator,
@@ -184,12 +192,12 @@ function createController(input: {
   }
 
   async function settleRun(runId: string): Promise<void> {
-    const settled = await input.execute(
+    const settled = await retryPrivateBusy(async () => await input.execute(
       runId,
       input.coordinator,
       cancellation.signal,
       notifyWorkAvailable,
-    );
+    ));
     if (settled.state === "pending") return;
     if (settled.run.runId !== runId || settled.run.state !== "terminal") {
       throw new Error("trusted root Run executor returned no matching terminal");
@@ -242,12 +250,12 @@ function createController(input: {
       epoch: "older",
     }));
     for (const item of work) {
-      const settled = await input.execute(
+      const settled = await retryPrivateBusy(async () => await input.execute(
         item.run.runId,
         input.coordinator,
         cancellation.signal,
         notifyWorkAvailable,
-      );
+      ));
       if (settled.state === "pending") {
         throw new RootAdministrationError(
           "PROJECT_BUSY",

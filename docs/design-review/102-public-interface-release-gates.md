@@ -49,8 +49,10 @@ persists its complete Mount/generation lifecycle, and proves exact leases,
 invocation allocation, possible-dispatch admission, terminal/closure evidence,
 fenced recovery, and ordered release. One finite normal-path witness now
 connects an exact pinned root `effect/call` to that live generation beside a
-Python child and canonical Journal append. Mixed provider/coordinator-loss
-recovery remains open. The private Candidate/5-to-Plan/2 path now
+Python child and canonical Journal append. A separate manual hostile witness
+now kills that owner after durable possible-dispatch and proves fenced
+provider/invocation/lease/root/Mount settlement without redispatch. The private
+Candidate/5-to-Plan/2 path now
 also classifies normalized no-op, inert lock repair, and authority-changing
 admission, persists canonical applicable Plans, and applies them using only
 their digest. Admission retains candidate-head compare-and-set; repairs ignore
@@ -181,13 +183,15 @@ These cases are not yet one portable Host-under-test corpus. The private
 normal path now joins the durable state to a real root `effect/call`: Root A,
 exact replay, and Root B receive `1`, `1`, and `2` from one acknowledged
 generation while root leases close before separate Mount fence/finalization.
-Review 155 records that proof. A second independent Host, mixed
-provider/coordinator-loss recovery, and the resulting conformance label remain
+Review 155 records that proof; review 162 records one manual mixed
+provider/coordinator-loss recovery without redispatch. A second independent
+Host, the complete portable corpus, and the resulting conformance label remain
 release gates. Run/1 does not wait for them. The substrate and composition
 boundaries are recorded in
 [`151-private-service-hosting-checkpoint.md`](151-private-service-hosting-checkpoint.md)
 and
-[`155-private-mixed-composition-checkpoint.md`](155-private-mixed-composition-checkpoint.md).
+[`155-private-mixed-composition-checkpoint.md`](155-private-mixed-composition-checkpoint.md)
+and [`162-private-mixed-loss-checkpoint.md`](162-private-mixed-loss-checkpoint.md).
 
 ### Jig project authoring SDK
 
@@ -449,8 +453,9 @@ shared coordinator owns an acknowledged Bun counter Mount and an attached root
 controller; a Bun root uses the exact Python child, canonical Journal, and
 Service effect branches, and a second root observes the same process-local
 generation. Root operation and lease closure precede separate Mount fencing
-and finalization, with zero containment residue. Review 155 deliberately leaves
-the end-to-end provider/coordinator-loss order open.
+and finalization, with zero containment residue. Review 162 subsequently closes
+one manual end-to-end provider/coordinator-loss order without redispatch, while
+leaving automatic supervision and portable Service conformance open.
 
 None of the closed slices adds a public Service host, Agent, Semantic Choice,
 Jig Graph compiler, update watcher, Nix dependency, ambient runtime fallback,
@@ -484,12 +489,12 @@ The Plan/2 classification/apply subset of
 is closed in review 152. The finite root-only foreground session using the
 existing coordinator and Root Administration controller is closed in review
 153. The normal mixed root/child/Journal/Service path is closed in review 155;
-the next boundary is its provider/coordinator-loss proof, including phased
-invocation, lease/root, and Mount finalization without redispatch or rebinding.
-No checkpoint authorizes a public SDK or persistent supervisor. The Nix
+its manual provider/coordinator-loss proof and phased invocation, lease/root,
+and Mount finalization without redispatch or rebinding are closed in review
+162. No checkpoint authorizes a public SDK or persistent supervisor. The Nix
 decontamination boundary remains in
 [`130-nix-experiment-disposition-and-next-slice.md`](130-nix-experiment-disposition-and-next-slice.md);
-the latest completed composition boundary is review 155.
+the latest completed composition boundary is review 162.
 
 ## Machine-readable release gates
 
@@ -501,9 +506,8 @@ The repository still needs:
   project-facing error wrapper;
 - public plan/apply request, result, error, authentication, and CLI/API
   surfaces plus an independent packed consumer;
-- the complete Service/1 Host/Provider cross-language black-box corpus, a
-  second independent Host, and end-to-end provider/coordinator-loss recovery
-  for admitted mixed effect dispatch;
+- the complete Service/1 Host/Provider cross-language black-box corpus and a
+  second independent Host;
 - a closed host-policy/configuration document for supported mechanisms;
 - Runtime Adapter and Sandbox Backend schemas only after a second independent
   mechanism proves those abstractions;

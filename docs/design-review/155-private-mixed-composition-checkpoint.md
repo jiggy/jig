@@ -104,6 +104,6 @@ That committed witness covers only normal operation. It does **not** prove:
 - a portable Host-under-test corpus or second independent Service Host; or
 - any public Service-host, effect-routing, project, runtime, or sandbox API.
 
-The next valid checkpoint is the missing mixed loss proof. It must use the
-durable v17 facts without redispatching possibly sent work, and must not
-generalize normal composition into persistent Service policy.
+Review 162 closes that next checkpoint with the specified manual private
+restart choreography. It does not retroactively widen this normal-path claim
+or add an automatic restart, persistent supervisor, or Service policy.

@@ -57,8 +57,10 @@ Current implementation frontier:
   [`151`](design-review/151-private-service-hosting-checkpoint.md) closes one
   durable Bun hosting substrate, and review
   [`155`](design-review/155-private-mixed-composition-checkpoint.md) closes its
-  finite normal Root/child/Journal/Service composition. Mixed loss recovery and
-  a portable Host-under-test conformance label remain open.
+  finite normal Root/child/Journal/Service composition, while review
+  [`162`](design-review/162-private-mixed-loss-checkpoint.md) closes one manual
+  provider/coordinator-loss recovery choreography without a supervisor or
+  redispatch. A portable Host-under-test conformance label remains open.
 - [`design-review/107-project-authoring-sdk-slice.md`](design-review/107-project-authoring-sdk-slice.md)
   through [`design-review/139-independent-root-administration-review.md`](design-review/139-independent-root-administration-review.md)
   record the private project pipeline now proven through inert authoring,

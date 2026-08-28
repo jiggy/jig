@@ -36,6 +36,7 @@ import {
   normalizePrivateLinuxPreparedOwnerIdentity,
   planPrivateLinuxOwnerStateAllocation,
   PrivateLinuxCgroupBackend,
+  PrivateLinuxFenceUnconfirmedError,
   releasePrivateLinuxOwnerState,
   requirePrivateLinuxCgroupBackend,
   type PrivateLinuxCgroupBackendOptions,
@@ -65,6 +66,8 @@ import {
   applyPrivateActivationReviewPlan,
   closePrivateServiceMount,
   createPrivateActivationReviewPlan,
+  listPrivateServiceInvocations,
+  listPrivateServiceLeases,
   listPrivateServiceMounts,
   listPrivateServiceMountRecoveryWork,
   loadPrivateActiveActivation,
@@ -94,6 +97,11 @@ import {
   startPrivateBunServiceMount,
 } from "../src/internal/private-service-controller.js";
 import { executePrivateRootRunLaunch } from "../src/internal/root-run-controller.js";
+import {
+  createPrivateRootJournalEffectsClosure,
+  privateRootJournalEffectsClosureDigest,
+} from "../src/internal/root-journal-effect-state.js";
+import { privateServiceOwnerClosureDigest } from "../src/internal/private-service-state.js";
 import { evaluateAuthorClosure } from "../src/project/author-evaluator.js";
 import { captureAuthorClosure } from "../src/project/author-module.js";
 import { defineJig, flowRef } from "../src/project/author.js";
@@ -4370,7 +4378,7 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
     }
   }, 420_000);
 
-  test("runs one pinned Bun root through Python, Journal, and a shared counter Service", async () => {
+  test("runs and manually recovers one private mixed composition across coordinator loss", async () => {
     host = await hostConfiguration();
     const [bun, python] = await Promise.all([
       proofHostBunClosure(),
@@ -4392,6 +4400,8 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
     let coordinator: Awaited<ReturnType<typeof openPrivateProjectCoordinator>> | undefined;
     let controller: Awaited<ReturnType<typeof attachPrivateRootAdministrationController>> | undefined;
     let mounted: Awaited<ReturnType<typeof startPrivateBunServiceMount>> | undefined;
+    let crashed: ReturnType<typeof spawn> | undefined;
+    let crashedExit: ReturnType<typeof childExit> | undefined;
     try {
       await mkdir(join(root, "bindings"));
       await mkdir(join(root, "flows", "mixed", "contracts"), { recursive: true });
@@ -4439,7 +4449,10 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
           next: {
             input: {
               type: "object",
-              properties: { by: { type: "integer", minimum: 1 } },
+              properties: {
+                by: { type: "integer", minimum: 1 },
+                hold: { type: "boolean" },
+              },
               required: ["by"],
               additionalProperties: false,
             },
@@ -4479,6 +4492,10 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         "    counter: async (context) => {",
         '      if (context.method === "malformed") return "not-an-integer";',
         '      if (context.method !== "next") throw new ServiceError("not-found", { method: context.method });',
+        "      if (context.input.hold === true) await new Promise<void>((resolve) => {",
+        "        if (context.signal.aborted) resolve();",
+        '        else context.signal.addEventListener("abort", resolve, { once: true });',
+        "      });",
         "      value += 1;",
         "      return value;",
         "    },",
@@ -4523,7 +4540,8 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         "};",
         "await serve(async (context) => {",
         "  const request = context.input && typeof context.input === \"object\" ? context.input : {};",
-        "  const counterCall = { operationId: \"counter-next\", slot: \"counter\", method: \"next\", input: { by: 1 } };",
+        "  const counterInput = request.counterHold === true ? { by: 1, hold: true } : { by: 1 };",
+        "  const counterCall = { operationId: \"counter-next\", slot: \"counter\", method: \"next\", input: counterInput };",
         "  const [first, joined] = await Promise.all([context.callEffect(counterCall), context.callEffect(counterCall)]);",
         "  const replay = await context.callEffect(counterCall);",
         "  const conflict = await observed(context.callEffect({ ...counterCall, input: { by: 2 } }));",
@@ -4806,20 +4824,340 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
       await coordinator.dispose();
       coordinator = undefined;
 
+      await writeFile(
+        join(mixed, "FLOW.md"),
+        (await readFile(join(mixed, "FLOW.md"), "utf8")).replace(
+          "description: Uses one exact child, Journal, and counter Service.",
+          "description: Uses one exact child, Journal, and counter Service under coordinator loss.",
+        ),
+      );
+      const lossAggregate = await retainPackageProject({
+        projectRoot: root,
+        storeRoot: store,
+        evaluator,
+      });
+      const lossRequests = buildPrivateActivationRequests(lossAggregate.linked);
+      const lossRecipes = [];
+      for (const request of lossRequests) {
+        if (request.mode === "service") {
+          lossRecipes.push(await planPrivateBunService({
+            request,
+            packageObservation: await observePrivateBunServicePackage({
+              request,
+              packageStoreRoot: store,
+            }),
+            runtimeSupport: bun.runtimeSupport,
+            backend: rootBackend,
+          }));
+        } else {
+          lossRecipes.push(await planPrivateDirectRun({
+            request,
+            runtimeSupport,
+            backend: rootBackend,
+          }));
+        }
+      }
+      const lossPlanning = createPrivateActivationPlanningObservation({
+        policyDigest: testDigest("mixed-composition-loss-policy"),
+        mechanismDigest: lossRecipes[0]!.mechanismDigest,
+        entries: lossRequests.map((request, index) => ({
+          target: request.target,
+          requestDigest: request.digest,
+          disposition: {
+            state: "planned" as const,
+            observation: lossRecipes[index]!.observation,
+          },
+        })),
+      });
+      const lossCandidate = createPrivateActivationCandidateV5(
+        lossAggregate,
+        resolveRetainedPackageProjectObservation(lossAggregate, lossPlanning),
+        lossRecipes,
+      );
+      await publishPrivateActivationCandidate({
+        projectRoot: root,
+        packageStoreRoot: store,
+        candidate: lossCandidate,
+      });
+      const lossReview = await createPrivateActivationReviewPlan({
+        projectRoot: root,
+        packageStoreRoot: store,
+        lockMode: "update",
+      });
+      if (lossReview.state !== "applicable") {
+        throw new Error("mixed coordinator-loss candidate did not require admission");
+      }
+      await applyPrivateActivationReviewPlan({
+        projectRoot: root,
+        packageStoreRoot: store,
+        planDigest: lossReview.planDigest,
+      });
+
+      crashed = spawn(process.execPath, [
+        join(import.meta.dir, "fixtures", "mixed-coordinator-loss.ts"),
+        root,
+        store,
+      ], {
+        env: {
+          ...process.env,
+          JIG_TEST_SCOPE: host.scope,
+          JIG_TEST_BASH: host.bash,
+        },
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+      const workerExit = childExit(crashed);
+      crashedExit = workerExit;
+      const crashedDiagnostics = collect(crashed.stderr!);
+      let announcement: string;
+      try {
+        announcement = await firstLine(crashed.stdout!);
+      } catch (error) {
+        const [diagnostics, exit] = await Promise.all([crashedDiagnostics, workerExit]);
+        throw new AggregateError(
+          [
+            error,
+            new Error(`worker exit: code=${String(exit.code)} signal=${String(exit.signal)}`),
+            ...(diagnostics === "" ? [] : [new Error(diagnostics.trimEnd())]),
+          ],
+          "mixed coordinator-loss worker exited before durable possible-dispatch",
+        );
+      }
+      const abandoned = JSON.parse(announcement) as {
+        readonly runId: string;
+        readonly mountId: string;
+        readonly dispatchDigest: string;
+      };
+      crashed.kill("SIGKILL");
+      expect((await workerExit).signal).toBe("SIGKILL");
+      expect(await crashedDiagnostics).toBe("");
+      await waitUntil(async () => (
+        (await jigCgroups(host.scope)).length === 0 &&
+        (await jigPrivateDeviceDirectories()).length === 0
+      ), 15_000);
+      crashed = undefined;
+      crashedExit = undefined;
+
+      coordinator = await openPrivateProjectCoordinator({ projectRoot: root });
+      let recoveredMounts:
+        | Awaited<ReturnType<typeof recoverPrivateServiceMountFences>>
+        | undefined;
+      await waitUntil(async () => {
+        try {
+          recoveredMounts = await recoverPrivateServiceMountFences({
+            coordinator: coordinator!,
+            projectRoot: root,
+            backend: rootBackend,
+          });
+          return true;
+        } catch (error) {
+          if (!(error instanceof PrivateLinuxFenceUnconfirmedError)) throw error;
+          return false;
+        }
+      }, 10_000);
+      expect(recoveredMounts).toHaveLength(1);
+      const recoveredMount = recoveredMounts![0]!;
+      expect(recoveredMount).toMatchObject({
+        allocation: { mountId: abandoned.mountId },
+        coordinator: "older",
+        provisional: {
+          value: {
+            classification: "coordinator-loss",
+            terminal: { status: "failed", code: "UNCERTAIN" },
+          },
+        },
+        fence: {
+          value: {
+            proof: {
+              kind: "enforcement-confirmed",
+              receipt: { fenced: true },
+            },
+          },
+        },
+      });
+      expect(recoveredMount.release).toBeUndefined();
+      expect(recoveredMount.closure).toBeUndefined();
+
+      controller = await attachPrivateRootAdministrationController({
+        coordinator,
+        projectRoot: root,
+        packageStoreRoot: store,
+        runTimeoutMs: 45_000,
+        execute: (runId, sharedCoordinator, signal, notifyWorkAvailable) =>
+          executePrivateRootRunLaunch({
+            projectRoot: root,
+            packageStoreRoot: store,
+            runId,
+            coordinator: sharedCoordinator,
+            runtimeSupport,
+            backend: rootBackend,
+            notifyWorkAvailable,
+            signal,
+          }),
+      });
+      expect(await controller.administration.runStatus({ runId: abandoned.runId })).toMatchObject({
+        state: "terminal",
+        terminal: { status: "lost", code: "COORDINATOR_LOST" },
+      });
+
+      const recoveredInvocations = await listPrivateServiceInvocations({
+        coordinator,
+        projectRoot: root,
+        ownerRunId: abandoned.runId,
+      });
+      expect(recoveredInvocations).toHaveLength(1);
+      expect(recoveredInvocations[0]).toMatchObject({
+        allocation: { call: { operationId: "counter-next" } },
+        coordinator: "older",
+        dispatch: { digest: abandoned.dispatchDigest },
+        terminal: {
+          value: {
+            dispatchDigest: abandoned.dispatchDigest,
+            observation: {
+              source: "coordinator-loss",
+              terminal: { status: "failed", code: "UNCERTAIN" },
+            },
+          },
+        },
+        closure: {
+          value: { dispatchDigest: abandoned.dispatchDigest },
+        },
+      });
+      const recoveredLeases = await listPrivateServiceLeases({
+        coordinator,
+        projectRoot: root,
+        ownerRunId: abandoned.runId,
+      });
+      expect(recoveredLeases).toHaveLength(1);
+      expect(recoveredLeases[0]).toMatchObject({
+        allocation: {
+          ownerRunId: abandoned.runId,
+          slot: "counter",
+          mountId: abandoned.mountId,
+        },
+        coordinator: "older",
+        release: {
+          value: {
+            reason: "provider-lost",
+            mountFenceDigest: recoveredMount.fence!.digest,
+            invocations: [{
+              operationId: "counter-next",
+              closureDigest: recoveredInvocations[0]!.closure!.digest,
+            }],
+          },
+        },
+      });
+      const expectedServiceClosureDigest = privateServiceOwnerClosureDigest({
+        kind: "private-service-owner-closure/1",
+        ownerRunId: abandoned.runId,
+        leases: [{
+          slot: "counter",
+          releaseDigest: recoveredLeases[0]!.release!.digest,
+        }],
+      });
+      const expectedJournalClosureDigest = privateRootJournalEffectsClosureDigest(
+        createPrivateRootJournalEffectsClosure({
+          parentRunId: abandoned.runId,
+          receipts: [],
+        }),
+      );
+      const recoveryDatabase = sqlite.Database.open(
+        databasePath,
+        sqlite.constants.SQLITE_OPEN_READONLY | sqlite.constants.SQLITE_OPEN_NOFOLLOW,
+      );
+      try {
+        const release = JSON.parse(new TextDecoder().decode(recoveryDatabase.query(
+          "SELECT release_bytes FROM root_execution_lifecycles WHERE run_id = ?1",
+        ).get(abandoned.runId).release_bytes)) as {
+          readonly value?: {
+            readonly kind?: unknown;
+            readonly childClosureDigest?: unknown;
+            readonly journalClosureDigest?: unknown;
+            readonly serviceClosureDigest?: unknown;
+          };
+        };
+        expect(release.value).toMatchObject({
+          kind: "private-direct-root-release/2",
+          childClosureDigest: null,
+          journalClosureDigest: expectedJournalClosureDigest,
+          serviceClosureDigest: expectedServiceClosureDigest,
+        });
+      } finally { recoveryDatabase.close(true); }
+      const awaitingFinalization = await loadPrivateServiceMount({
+        coordinator,
+        projectRoot: root,
+        packageStoreRoot: store,
+        mountId: abandoned.mountId,
+      });
+      expect(awaitingFinalization.release).toBeUndefined();
+      expect(awaitingFinalization.closure).toBeUndefined();
+
+      await controller.dispose();
+      controller = undefined;
+      const finalizedMounts = await finalizeRecoveredPrivateServiceMounts({
+        coordinator,
+        projectRoot: root,
+      });
+      expect(finalizedMounts).toHaveLength(1);
+      expect(finalizedMounts[0]).toMatchObject({
+        allocation: { mountId: abandoned.mountId },
+        release: {
+          value: {
+            packageReleased: true,
+            leaseReleases: [{
+              ownerRunId: abandoned.runId,
+              slot: "counter",
+              releaseDigest: recoveredLeases[0]!.release!.digest,
+            }],
+          },
+        },
+        closure: { digest: expect.any(String) },
+      });
+      await coordinator.dispose();
+      coordinator = undefined;
+
       expect(await jigCgroups(host.scope)).toEqual([]);
       expect(await listOrEmpty(join(root, ".jig", "private-root-materializations"))).toEqual([]);
       expect(await listOrEmpty(join(root, ".jig", "private-root-linux-owners"))).toEqual([]);
-      expect((await readdir("/dev")).filter(
-        (name) => name.startsWith(".jig-jig-run-") && name.endsWith("-devices"),
-      )).toEqual([]);
+      expect(await jigPrivateDeviceDirectories()).toEqual([]);
       const entropy = await stat("/dev/urandom");
       expect(entropy.mode & 0o777).toBe(0o666);
       expect(entropy.rdev).not.toBe(0);
     } finally {
-      await controller?.dispose().catch(() => undefined);
-      await mounted?.fence().catch(() => undefined);
-      await mounted?.stop().catch(() => undefined);
-      await coordinator?.dispose().catch(() => undefined);
+      const cleanupFailures: unknown[] = [];
+      if (crashed !== undefined) {
+        try {
+          if (crashed.exitCode === null && crashed.signalCode === null) {
+            crashed.kill("SIGKILL");
+          }
+          await (crashedExit ?? childExit(crashed));
+          await waitUntil(async () => (
+            (await jigCgroups(host.scope)).length === 0 &&
+            (await jigPrivateDeviceDirectories()).length === 0
+          ), 15_000);
+          crashed = undefined;
+          crashedExit = undefined;
+        } catch (error) {
+          cleanupFailures.push(error);
+        }
+      }
+      try { await controller?.dispose(); } catch (error) { cleanupFailures.push(error); }
+      try { await mounted?.fence(); } catch (error) { cleanupFailures.push(error); }
+      try { await mounted?.stop(); } catch (error) { cleanupFailures.push(error); }
+      try { await coordinator?.dispose(); } catch (error) { cleanupFailures.push(error); }
+      try {
+        await waitUntil(async () => (
+          (await jigCgroups(host.scope)).length === 0 &&
+          (await jigPrivateDeviceDirectories()).length === 0
+        ), 15_000);
+      } catch (error) {
+        cleanupFailures.push(error);
+      }
+      if (cleanupFailures.length !== 0) {
+        throw new AggregateError(
+          cleanupFailures,
+          "mixed coordinator-loss cleanup did not reach zero residue",
+        );
+      }
       await rm(root, { recursive: true, force: true });
       await rm(store, { recursive: true, force: true });
     }
@@ -5033,6 +5371,12 @@ async function drain(source: AsyncIterable<Uint8Array>): Promise<void> {
 
 async function jigCgroups(scope: string): Promise<string[]> {
   return (await readdir(scope)).filter((name) => name.startsWith("jig-run-")).sort();
+}
+
+async function jigPrivateDeviceDirectories(): Promise<string[]> {
+  return (await readdir("/dev")).filter(
+    (name) => name.startsWith(".jig-jig-run-") && name.endsWith("-devices"),
+  ).sort();
 }
 
 async function waitForRootFlowCallFact(

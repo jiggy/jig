@@ -135,6 +135,7 @@ import {
 import { canonicalJson, decodeJson1, type JsonValue } from "../src/json.js";
 import { capturePackageDirectory } from "../src/package/capture.js";
 import { RootAdministrationError } from "../src/administration/root.js";
+import { CheckError } from "../src/diagnostics.js";
 import {
   attachPrivateRootAdministrationController,
   openPrivateRootAdministrationController,
@@ -3349,6 +3350,143 @@ describe.serial("private activation admission SQLite store", () => {
     }
   }, 90_000);
 
+  test("retries only store-busy durable root executors", async () => {
+    for (const testCase of [
+      { name: "busy-once", expectedAttempts: 2, succeeds: true },
+      { name: "non-busy", expectedAttempts: null, succeeds: false },
+      { name: "busy-exhausted", expectedAttempts: 8, succeeds: false },
+    ] as const) {
+      const fixture = await createFixture("ready");
+      let controller: Awaited<ReturnType<typeof openPrivateRootAdministrationController>> | undefined;
+      let attempts = 0;
+      let releaseFailure!: () => void;
+      const failureGate = new Promise<void>((resolve) => { releaseFailure = resolve; });
+      let markFailureEntered!: () => void;
+      const failureEntered = new Promise<void>((resolve) => { markFailureEntered = resolve; });
+      try {
+        await applyLatestCandidate(fixture);
+        controller = await openPrivateRootAdministrationController({
+          projectRoot: fixture.root,
+          packageStoreRoot: fixture.store,
+          runTimeoutMs: 60_000,
+          execute: async (runId, coordinator) => {
+            attempts += 1;
+            if (testCase.name === "busy-exhausted" ||
+                (testCase.name === "busy-once" && attempts === 1)) {
+              throw new CheckError(
+                "unavailable",
+                "ADMISSION_STATE_BUSY",
+                "retry the complete durable root operation",
+              );
+            }
+            if (testCase.name === "non-busy") {
+              markFailureEntered();
+              await failureGate;
+              throw new Error("non-retryable executor failure");
+            }
+            return await closeTestRootExecution(fixture.root, coordinator, runId, {
+              status: "succeeded",
+              result: { outcome: "done", output: { attempts } },
+              diagnostics: { stderr: "", stderrBytes: 0, stderrTruncated: false },
+            });
+          },
+        });
+        const submitted = await controller.administration.startRun({
+          submissionId: `executor-retry-${testCase.name}`,
+          target: { kind: "flow", path: "flows/run" },
+          input: { value: testCase.name },
+        });
+        if (testCase.succeeds) {
+          releaseFailure();
+          await controller.drain();
+          expect(await controller.administration.runStatus(submitted)).toMatchObject({
+            state: "terminal",
+            terminal: { status: "succeeded", output: { attempts: 2 } },
+          });
+        } else if (testCase.name === "non-busy") {
+          await failureEntered;
+          const disposing = controller.dispose();
+          await Bun.sleep(0);
+          releaseFailure();
+          await expect(disposing).rejects.toThrow(
+            "root Run controller cleanup failed",
+          );
+          controller = undefined;
+        } else {
+          releaseFailure();
+          await expect(controller.drain()).rejects.toThrow(
+            "root Run controller did not settle cleanly",
+          );
+        }
+        if (testCase.expectedAttempts === null) {
+          // The controller's pre-existing fixed-point rescan may schedule an
+          // unresolved failed Run again. A non-busy error must still avoid
+          // the bounded eight-attempt store-contention retry burst.
+          expect(attempts).toBeGreaterThan(0);
+          expect(attempts).toBeLessThan(8);
+        } else {
+          expect(attempts).toBe(testCase.expectedAttempts);
+        }
+      } finally {
+        releaseFailure();
+        await controller?.dispose().catch(() => undefined);
+        await fixture.dispose();
+      }
+    }
+  }, 90_000);
+
+  test("retries a store-busy durable executor during older-epoch recovery", async () => {
+    const fixture = await createFixture("ready");
+    let prior: PrivateProjectCoordinator | undefined;
+    let recovered: Awaited<ReturnType<typeof openPrivateRootAdministrationController>> | undefined;
+    let attempts = 0;
+    try {
+      await applyLatestCandidate(fixture);
+      prior = await openPrivateProjectCoordinator({ projectRoot: fixture.root });
+      const abandoned = await submitPrivateRootRun({
+        coordinator: prior,
+        projectRoot: fixture.root,
+        packageStoreRoot: fixture.store,
+        submissionId: "executor-retry-older",
+        target: { kind: "flow", path: "flows/run" },
+        input: { value: "older" },
+        deadlineUnixMs: Date.now() + 60_000,
+      });
+      await prior.dispose();
+      prior = undefined;
+
+      recovered = await openPrivateRootAdministrationController({
+        projectRoot: fixture.root,
+        packageStoreRoot: fixture.store,
+        runTimeoutMs: 60_000,
+        execute: async (runId, coordinator) => {
+          attempts += 1;
+          if (attempts === 1) {
+            throw new CheckError(
+              "unavailable",
+              "ADMISSION_STATE_BUSY",
+              "retry the complete durable recovery operation",
+            );
+          }
+          return await closeTestRootExecutionWithoutPlan(fixture.root, coordinator, runId, {
+            status: "lost",
+            code: "COORDINATOR_LOST",
+            message: "the prior coordinator disappeared before a proved result",
+          });
+        },
+      });
+      expect(attempts).toBe(2);
+      expect(await recovered.administration.runStatus({ runId: abandoned.run.runId })).toMatchObject({
+        state: "terminal",
+        terminal: { status: "lost", code: "COORDINATOR_LOST" },
+      });
+    } finally {
+      await recovered?.dispose().catch(() => undefined);
+      await prior?.dispose().catch(() => undefined);
+      await fixture.dispose();
+    }
+  }, 90_000);
+
   test("projects durable root Runs through the closed administration authority", async () => {
     const fixture = await createFixture("ready");
     let controller: Awaited<ReturnType<typeof openPrivateRootAdministrationController>> | undefined;
@@ -5231,6 +5369,31 @@ async function closeTestRootExecution(
     ["provisional", terminal],
     ["fence", { kind: "test-fence/1", runId }],
     ["release", { kind: "test-release/1", runId }],
+    ["admitted", terminal],
+  ] as const) {
+    await recordPrivateRootExecutionCheckpoint({
+      coordinator,
+      projectRoot,
+      runId,
+      checkpoint,
+      value: value as JsonValue,
+    });
+  }
+  return Object.freeze({
+    state: "terminal" as const,
+    run: await closePrivateRootExecution({ coordinator, projectRoot, runId, terminal }),
+  });
+}
+
+async function closeTestRootExecutionWithoutPlan(
+  projectRoot: string,
+  coordinator: PrivateProjectCoordinator,
+  runId: string,
+  terminal: PrivateRootRunTerminal,
+): Promise<{ readonly state: "terminal"; readonly run: Awaited<ReturnType<typeof closePrivateRootExecution>> }> {
+  for (const [checkpoint, value] of [
+    ["provisional", terminal],
+    ["release", { kind: "test-release-without-plan/1", runId }],
     ["admitted", terminal],
   ] as const) {
     await recordPrivateRootExecutionCheckpoint({

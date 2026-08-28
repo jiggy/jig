@@ -1,6 +1,7 @@
 import { lstat, mkdir, realpath } from "node:fs/promises";
 import { join } from "node:path";
 
+import { CheckError } from "../diagnostics.js";
 import { type JsonValue } from "../json.js";
 import { inspectCapturedPackage } from "../package/inspect.js";
 import { findPrivateActivationCandidateTargetV5 } from "./activation-admission.js";
@@ -306,11 +307,22 @@ async function startOrResumeCurrentExecution(
         throw error;
       }
     } catch (error) {
+      let retryableBusy = isAdmissionStateBusy(error) ? error : undefined;
       const knownTerminal = observedTerminal ?? stop.terminal;
       if (knownTerminal !== undefined) {
         // Persist a known protocol/cancellation/deadline result before a
         // possibly unconfirmed fence can make this invocation return pending.
-        await recordCheckpoint(input, work.run.runId, "provisional", knownTerminal as unknown as JsonValue);
+        try {
+          await recordCheckpoint(
+            input,
+            work.run.runId,
+            "provisional",
+            knownTerminal as unknown as JsonValue,
+          );
+        } catch (terminalError) {
+          if (!isAdmissionStateBusy(terminalError)) throw terminalError;
+          retryableBusy = terminalError;
+        }
       }
       try {
         fence = await input.backend.recoverFence(sealed.identity);
@@ -319,6 +331,19 @@ async function startOrResumeCurrentExecution(
           return Object.freeze({ state: "pending", reason: "fence-unconfirmed" });
         }
         throw fenceError;
+      }
+      if (retryableBusy !== undefined) {
+        // A sealed owner has existed, so publish its confirmed fence before
+        // asking the durable controller to repeat this complete operation.
+        // If the known terminal could not be recorded, the retry will recover
+        // conservatively as UNCERTAIN; it must never infer success from the
+        // fence alone. Sandbox state prevents another component launch and
+        // durable operation identities prevent effect redispatch.
+        await recordCheckpoint(input, work.run.runId, "fence", {
+          kind: FENCE_KIND,
+          receipt: fence,
+        } as unknown as JsonValue);
+        throw retryableBusy;
       }
       // A helper hard deadline can win while the coordinator event loop is
       // delayed. Its confirmed typed receipt outranks a generic startup error.
@@ -338,6 +363,7 @@ async function startOrResumeCurrentExecution(
     if (error instanceof PrivateLinuxFenceUnconfirmedError) {
       return Object.freeze({ state: "pending", reason: "fence-unconfirmed" });
     }
+    if (isAdmissionStateBusy(error)) throw error;
     work = await reacquire(input);
     if (work.lifecycle.sandbox !== undefined || work.lifecycle.provisional !== undefined) {
       return await recoverCurrentExecution(
@@ -910,6 +936,10 @@ function terminal(run: PrivateRootRunSnapshot): PrivateRootExecutionDisposition 
 
 function executionFailed(error: unknown): RunHostTerminal {
   return failedPrivateRootTerminal("EXECUTION_FAILED", boundedErrorMessage(error));
+}
+
+function isAdmissionStateBusy(error: unknown): error is CheckError {
+  return error instanceof CheckError && error.code === "ADMISSION_STATE_BUSY";
 }
 
 function deadlineExceededTerminal(): RunHostTerminal {
