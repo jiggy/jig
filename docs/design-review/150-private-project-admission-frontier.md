@@ -1,13 +1,15 @@
 # Private project admission frontier
 
 **Status:** reviewed on 2026-08-28 and selected for the first local
-control-plane slice after the private Service proof. This record does not
-publish project opening, a daemon transport, a general administration API, or
-new Root Administration methods.
+control-plane slice after the private Service proof. This record corrects the
+earlier sketch before implementation. It publishes no project opening,
+daemon transport, CLI compatibility promise, administration API, lock schema,
+or machine schema.
 
-## 1. Exact boundary
+## 1. Exact private boundary
 
-The first usable local control plane needs only two project-bound operations:
+Trusted host code has already opened and authenticated one project before it
+issues this private object capability:
 
 ```ts
 interface AdmissionAdministration {
@@ -17,125 +19,291 @@ interface AdmissionAdministration {
 
   apply(request: {
     planDigest: string;
-    baseGeneration: string | null;
-  }): Promise<AdmissionReceipt>;
+  }): Promise<AdmissionApplyReceipt>;
 }
 ```
 
-Trusted host code has already opened and authenticated one project before it
-issues this object capability. Neither method accepts a project path, runtime,
-Sandbox Backend, grants, launch command, candidate, source path, Hook control,
-or Service control. This is distinct from `RootAdministration`; portable FLOW
-code can invoke neither object.
+Neither method accepts a project path, runtime, Sandbox Backend, grant,
+launch command, candidate, source path, Hook control, Service control, or
+base-generation override. The immutable Plan already commits its base. A
+second caller-supplied base would add no compare-and-set protection and would
+make exact replay needlessly fragile.
 
 The first private CLI uses the same value model:
 
 ```text
 jig plan [root] [--locked] [--json]
-jig apply [root] --plan <digest> --base-generation <digest-or-null>
-                       [--yes] [--json]
+jig apply [root] --plan <digest> [--yes] [--json]
 ```
 
-The optional root belongs only to trusted CLI project acquisition. Interactive
-apply redisplays the exact persisted review and asks for confirmation;
-non-interactive apply requires `--yes`. Confirmation is local UX, not an
-authentication identity.
+The optional root belongs only to trusted CLI project acquisition.
+Interactive apply reloads and displays the exact retained Plan before asking
+for confirmation; non-interactive apply requires `--yes`. Confirmation is
+local UX, not an actor-authentication record. `AdmissionAdministration` and
+`RootAdministration` remain distinct trusted host objects. Portable FLOW code
+can invoke neither.
 
-## 2. Planning always creates one fresh proposal
+## 2. Planning creates one bounded proposal from current source
 
-`plan()` does not review whichever candidate a watcher happened to publish.
-It performs the complete bounded proposal path against current visible source:
+`plan()` performs the complete proposal path rather than reviewing whichever
+candidate a watcher happened to publish:
 
 ```text
-descriptor-confined capture
+open or safely bootstrap protected private state
+    -> snapshot candidate and admission heads
+    -> descriptor-confined source capture
     -> bounded declaration evaluation
     -> package inspection and deterministic linking
     -> retain every exact Package/1 artifact
     -> trusted runtime/Backend planning observation
     -> deterministic dependency resolution
-    -> publish one immutable candidate
-    -> build one complete canonical review
-    -> persist candidate + review + plan digest
+    -> create one complete candidate and portable lock
+    -> normalize final activation meaning
+    -> classify admission, lock repair, or unchanged
+    -> build one canonical Plan/2 review when apply is required
+    -> recheck the expected heads
+    -> atomically persist the candidate observation and applicable Plan/2
     -> release temporary captures and leases
 ```
 
-The response is not returned until protected candidate, package artifacts,
-review bytes, and plan bytes are durable. A candidate-head race before the
-review is committed is `PROJECT_BUSY`; Jig never silently reviews a different
-candidate.
+When apply is required, the response is not returned until protected
+candidate, Package/1 artifacts, visible-lock observation, and canonical Plan
+bytes are durable. An exact unchanged result has no applicable Plan digest and
+grants no authority; Jig may retain its equivalent candidate observation for
+diagnostics. Planning does not hold a SQLite transaction while capturing or
+evaluating editable source.
+Instead, it snapshots both protected heads first and rechecks both in the
+short final transaction. If either head changed, planning returns
+`PROJECT_BUSY`; it never silently changes the proposal's base or overwrites a
+concurrent candidate.
 
-Target-level `UNAVAILABLE` is reviewable proposal content. It does not by
-itself make planning fail. `locked` planning requires visible `jig.lock` to be
-byte-identical to the proposal; absence or difference is `LOCK_MISMATCH`.
+Target-level `UNAVAILABLE` is exact reviewable proposal content. It does not
+make planning fail. Structurally invalid package meaning, requested authority,
+settings, references, or contracts remains `INVALID_CANDIDATE` rather than an
+admissible unavailable target. `locked` planning requires visible `jig.lock`
+to be byte-identical to the proposal; absence or difference is
+`LOCK_MISMATCH`.
 
-## 3. One complete, bounded review document
+## 3. Safe empty-store bootstrap
 
-The plan digest commits one canonical review document containing every fact a
-user must approve:
+Planning, not apply, may create the first private project state. Trusted
+project acquisition authenticates and pins the project root, then creates the
+protected `.jig` owner and exact private database before source capture so
+Jig's own directory creation cannot race its capture.
 
-- capture, semantic, resolution-input, candidate, plan, and base-generation
-  identities;
-- observed and proposed portable lock values and their deterministic delta;
-- package additions, removals, and replacements;
-- direct targets and Bindings, including Run versus Service mode;
-- settings, attachments, exact dependencies, and closed candidate sets;
-- Hook add/change/remove with publisher, Event type, and exact target;
-- each target's intrinsic planning observation and effective READY or
-  UNAVAILABLE disposition;
-- selected runtime, Backend, and provider identities without host paths,
-  commands, cgroup names, or credentials; and
-- requested, `wouldGrant`, and planned logical authority.
+Bootstrap uses the existing descriptor-confined, owner-only, no-follow
+boundary and one exact pre-release schema identity. It creates null candidate
+and admission heads and grants no execution authority. It never:
 
-Service additions state explicitly that admission permits eager activation
-only after commit; plan/apply does not claim provider readiness. Hook additions
-state that only future matching Journal positions enter the new interval.
+- interprets a partial or different schema as the current format;
+- migrates an unknown private store in place;
+- replaces an unsafe link, non-directory, wrong-owner object, or unrelated
+  file;
+- infers a candidate, consent, or admission from visible source or
+  `jig.lock`; or
+- lets `apply()` manufacture a missing Plan or store.
 
-The delta is a deterministic index into complete before/after values, not a
-second truth. The first version is one bounded value, not a pagination or
-partial-approval protocol. Protected storage persists its exact bytes; later
-code must not re-render changed prose and call it the same approval.
+Concurrent creators converge only when they observe the same exact initialized
+store. Otherwise the operation fails closed. Because these formats are still
+private, the implementation may replace its prior test schema deliberately;
+it must not call that replacement a public migration path.
 
-For the current mechanisms, requested, `wouldGrant`, and planned logical
-authority are equal. A future planner which attenuates them must supply a
-richer exact review value or fail rather than misrepresent the difference.
+## 4. Final activation meaning is distinct from observed semantics
 
-## 4. Semantic no-op
+The current resolution `semanticDigest` describes package meaning plus
+**observed** planning dispositions. A planned target is represented there by
+its observation digest. Candidate construction later promotes it to exact
+`READY(recipeDigest, observationDigest)`. The observed semantic digest and
+portable lock therefore do not by themselves identify the final admissible
+activation.
 
-Comment, formatting, or declaration-spelling changes which preserve the
-admitted normalized meaning and proposed lock do not require a new generation.
-`plan()` returns a closed `unchanged` result with the active generation and no
-applicable plan digest. Capture digest equality is neither required nor
-sufficient.
-
-Visible lock drift remains separately actionable even when project meaning is
-unchanged: `locked` rejects it, while `update` may produce a plan whose only
-reviewed change restores the exact portable lock.
-
-## 5. Apply consumes only retained facts
-
-`apply()` performs no source discovery, capture, declaration evaluation,
-resolution, or runtime replanning. It may reauthenticate the project identity,
-protected plan, candidate, package artifacts, and visible lock, but it never
-opens current project source as a substitute for the reviewed proposal.
+The corrected candidate adds a domain-separated final identity:
 
 ```text
-normalize digest and base
-    -> load exact plan and canonical review
-    -> replay an already committed plan before staleness checks
+activationMeaningDigest = digest(
+    observed normalized project semantics,
+    ordered final target meanings:
+        exact activation request,
+        READY(recipe digest, observation digest)
+        or
+        UNAVAILABLE(code, evidence digests)
+)
+```
+
+The existing digest should be named or documented as
+`observedSemanticDigest`; it must not be used as final admission meaning.
+Runtime paths, commands, PIDs, live Mount generations, and realized receipts
+remain outside `activationMeaningDigest`. A Service restart against the same
+admitted recipe does not change project meaning.
+
+### 4.1 Exact `UNAVAILABLE`
+
+An unavailable final target commits its exact code and sorted unique evidence
+digests into `activationMeaningDigest` and Plan/2. No runtime, Backend, recipe,
+provider readiness, `wouldGrant`, or planned authority is inferred when its
+closed record does not contain those facts. Dependency-derived unavailability
+commits the exact provider-dependency evidence used by deterministic
+propagation. Machinery becoming available later never promotes an admitted
+target; a fresh Plan and admission are required. Conversely, machinery loss
+after an exact `READY` recipe was selected never turns apply or execution into
+fallback selection.
+
+## 5. Plan/2 is the one canonical machine review
+
+`Plan/2` is one bounded canonical JSON/1 value. Its digest commits:
+
+- the exact base admission digest or null;
+- its exact persisted candidate revision and digest;
+- capture, resolution-input, and planning-observation identities;
+- `observedSemanticDigest` and final `activationMeaningDigest`;
+- lock mode and complete proposed portable-lock identity/value;
+- the exact visible-lock observation at planning time;
+- the complete authoritative **proposed** review state;
+- ordered final target dispositions; and
+- whether applying the Plan can create an admission or only repair the
+  visible lock.
+
+The proposed review state contains all currently earned normalized package,
+Binding, settings, attachment, dependency, closed candidate-set, Hook,
+logical provider, activation-disposition, and authority facts. Canonical
+ordering and closed unions make its bytes the review authority; explanatory
+CLI prose is not part of Plan identity.
+
+The active `before` state is not duplicated in Plan bytes. It is derived from
+the immutable admission named by `baseGeneration`, or from the specified empty
+state when the base is null. The delta is likewise a deterministic view of
+that derived prior state and Plan's authoritative proposed state. A decoder
+or renderer which cannot reopen and validate the bound base fails; it does not
+substitute current source or another generation. Persisting `before`, `after`,
+and `delta` as three truths would enlarge the corruption and consistency
+surface without granting more authority.
+
+The visible lock is the exception because it is mutable and cannot be derived
+from the active admission. Plan storage retains its exact canonical bytes (or
+exact absence) and digest, not merely a digest which becomes unauditable after
+the file changes. The complete Plan and retained observation must remain
+within the private bounded-value limits or planning fails rather than
+truncating review evidence.
+
+Later UI changes may render the same canonical facts differently. If exact
+display retention becomes a compliance requirement, that display belongs in
+a separate observational journal; it must not become duplicated policy truth.
+
+## 6. Exact authority and provider claims
+
+The review must not expand opaque digests into facts the implementation has
+not earned.
+
+### 6.1 Requested
+
+Current project evidence can report exact requested logical authority from:
+
+- package attachment ceilings and Binding attachment projections;
+- exact Flow-call candidate sets;
+- exact capability contract dependencies and provider Binding/export edges;
+- the transitive mediated authority reachable through those exact
+  dependencies; and
+- the fixed portable denied-by-default baseline, shown separately from
+  requested additions.
+
+Settings participate in admitted meaning but are not authority.
+
+### 6.2 `wouldGrant`
+
+For the currently supported exact `READY` recipes, host policy either accepts
+the complete narrow logical request or makes the target unavailable. Only for
+those recipes may Plan/2 show `wouldGrant` equal to requested logical
+authority. This is not a generic attenuation model. An unavailable target
+without an accepted recipe has no invented `wouldGrant` projection.
+
+### 6.3 planned and realized
+
+The present `plannedAuthorityDigest` repeats the logical attachments/slots
+digest; it is not a structured description of every containment predicate.
+Plan/2 may separately retain the facts actually authenticated by the closed
+recipe boundary:
+
+- recipe and planning-observation identities;
+- fixed runtime-support/executable identity without host paths;
+- exact private Adapter and Backend artifact/revision identities;
+- fixed package/runtime visibility, scratch, empty environment, resource
+  ceilings, and required Backend mechanisms; and
+- exact mediated Flow/Journal/Service edges supported by that recipe.
+
+It must not claim a general planned-authority projection merely from one
+opaque digest. Realized authority never appears in a Plan; only execution-time
+Backend or provider receipts can establish it.
+
+### 6.4 providers and Services
+
+Currently earned provider facts are limited to:
+
+- portable logical provider Binding/export and exact contract selection;
+- Service Package/1 and export identity;
+- exact selected Service recipe identity for a `READY` target; and
+- the canonical Journal publisher Binding, contract, and Event allowlist.
+
+Admission permits later eager Service activation. It does not prove a live
+Service generation, readiness, Mount, lease, credential, or projected
+resource. Generic host-capability and Agent provider registrations remain
+release-gated and cannot appear as if selected.
+
+For dependency-derived unavailability, Plan/2 may show both intrinsic and
+effective dispositions only after the resolution/candidate path retains both
+exact values. The current effective-only value does not justify reconstructing
+an intrinsic recipe after the fact.
+
+## 7. Normalized no-op matrix
+
+Capture equality is neither required nor sufficient. Planning compares final
+admitted meaning and the proposed portable lock:
+
+| Final meaning | Proposed lock vs active | Visible lock and mode | Result |
+|---|---|---|---|
+| same | same | exact, either mode | `unchanged`; no applicable Plan |
+| same | same | absent/drifted, update | persist a lock-repair Plan/2 |
+| same | same | absent/drifted, locked | `LOCK_MISMATCH` |
+| changed or same | changed | any valid observation, update | persist an admission Plan/2 |
+| changed | same | any valid observation, update | persist an admission Plan/2 |
+| changed or proposed lock changed | either | exact proposed, locked | persist an admission Plan/2 |
+| changed or proposed lock changed | either | absent/drifted, locked | `LOCK_MISMATCH` |
+
+A formatting, comment, declaration-location, or equivalent-capture change
+which preserves final meaning and portable lock is a no-op. A different exact
+recipe, READY/UNAVAILABLE transition, unavailable evidence change, settings or
+Hook meaning change, or provider selection is not. Visible lock repair never
+retargets an outstanding Plan to a later capture.
+
+## 8. Apply consumes only the retained Plan
+
+`apply({ planDigest })` performs no source discovery, capture, declaration
+evaluation, resolution, or runtime replanning. It may reauthenticate project
+identity, protected Plan/candidate/base rows, Package/1 artifacts, and visible
+lock state, but it never opens current project source as a substitute for the
+reviewed proposal.
+
+For an admission Plan:
+
+```text
+normalize digest
+    -> load and strictly verify exact Plan/2
+    -> replay a committed admission before staleness checks
+    -> reopen the Plan-bound base and proposed candidate
     -> reacquire every retained Package/1 artifact by identity
-    -> recheck reviewed candidate, base, and visible lock
-    -> prepare Hook interval transition at the current Journal head
-    -> durably publish exact jig.lock first
-    -> recheck protected heads
+    -> require current candidate/admission heads to match the Plan
+    -> prepare the Hook interval transition at current Journal head
+    -> durably converge exact jig.lock first
+    -> recheck protected heads and immutable rows
     -> atomically insert admission + Hook transition and advance head
     -> return immutable admission receipt
 ```
 
-A crash after lock publication but before the SQLite admission commit may
-leave the reviewed lock visible. Retrying the same retained plan converges
-those exact bytes and completes the admission; it does not reread source.
+The protected Plan base supplies the compare-and-set value. A separate caller
+base neither strengthens the race check nor proves review. A committed Plan is
+replayed before current-head or visible-lock checks so acknowledgement loss
+returns its immutable historical receipt without reactivation.
 
-The receipt contains the existing closed admission evidence:
+The admission receipt remains the existing closed evidence:
 
 ```text
 admission digest
@@ -146,27 +314,83 @@ lock digest
 Hook boundary digest
 ```
 
-It reports admission, not Run completion, Hook-derived completion, or Service
-readiness.
+It reports admission, not Run completion, derived Hook completion, Service
+readiness, or realized authority.
 
-## 6. Ownership and post-commit work
+## 9. Lock repair is durable but creates no generation
 
-Admission apply does not seize the long-lived Run coordinator merely to mutate
-project policy. SQLite serializes admission writers, and no Flow or Service
-bytes execute inside the transaction.
+A lock-repair Plan applies through a separate append-only protected table
+keyed uniquely by `planDigest`. Its canonical private receipt contains only:
 
-After commit, a powerless best-effort wake may notify the current controller
-to pump pending Hook roots and reconcile eager Services. Wake failure never
-rewrites a committed apply as failure; startup and explicit fixed-point scans
-recover it. Existing Runs and Service leases remain pinned to their previously
-admitted generations.
+```text
+kind: private-lock-repair/1
+plan digest
+active admission digest
+proposed lock digest
+```
+
+The Plan already commits the exact observed-lock evidence, candidate, and
+proposed review; duplicating them in the receipt would create drift. The
+receipt's domain-separated digest is its identity.
+
+Apply ordering is:
+
+```text
+existing exact repair receipt
+    -> return historical receipt before staleness or file checks
+
+otherwise
+    -> require the Plan-bound active generation and candidate heads
+    -> require current visible lock to be either the reviewed observation
+       or the exact proposed bytes
+    -> durably publish/synchronize and reverify exact proposed lock
+    -> recheck protected heads and Plan row
+    -> insert one immutable repair receipt
+    -> commit without changing admission_head or Hook state
+```
+
+It allocates no admission generation, Hook interval, derived Run, Service
+reconciliation, or authority. Competing repair/admission operations serialize
+through the same protected writer boundary; a changed head makes an unapplied
+repair stale.
+
+Crash and replay semantics are closed:
+
+```text
+before lock replacement
+    reviewed old lock + no receipt
+
+after replacement, before receipt commit
+    exact proposed inert lock + no receipt; exact retry converges
+
+during receipt commit
+    no receipt or one complete receipt
+
+after commit, before response
+    complete receipt; replay returns it without inspecting the current lock
+```
+
+Startup never infers approval from exact visible bytes and never auto-applies
+the repair. The explicit retained Plan retry is the only convergence action.
+
+## 10. Ownership and post-commit work
+
+Admission apply and lock repair do not seize the long-lived Run coordinator
+merely to mutate policy. SQLite serializes cooperating admission writers, and
+no Flow or Service bytes execute inside either transaction.
+
+After an **admission** commit, a powerless best-effort wake may notify the
+current controller to pump pending Hook roots and reconcile eager Services.
+Wake failure never rewrites committed apply as failure; startup and explicit
+fixed-point scans recover it. Lock repair emits no such wake. Existing Runs
+and Service leases remain pinned to their prior admitted generations.
 
 Unresolved ownership which makes a safe policy transition impossible is
 `PROJECT_BUSY`; apply does not steal, overwrite, or infer completion. A later
-persistent supervisor may coordinate this boundary without changing the two
-values above.
+persistent supervisor may coordinate this boundary without changing Plan/2
+or the two private operations.
 
-## 7. Closed errors
+## 11. Closed errors
 
 The object uses only:
 
@@ -183,50 +407,69 @@ INTERNAL
 ```
 
 - malformed values or digest syntax are `INVALID_REQUEST`;
-- an unknown valid digest is `PLAN_NOT_FOUND`;
-- a supplied base differing from the stored plan, changed candidate/base, or
-  visible-lock drift during apply is `STALE_PLAN`;
+- an unknown valid Plan digest is `PLAN_NOT_FOUND`;
+- changed expected heads, Plan-bound base, candidate, immutable Plan evidence,
+  or visible-lock state during apply is `STALE_PLAN`;
 - absent or differing lock under locked planning is `LOCK_MISMATCH`;
-- invalid changing or inconsistent authored meaning is `INVALID_CANDIDATE`;
+- invalid or inconsistent authored meaning is `INVALID_CANDIDATE`;
 - a missing retained artifact or required host substrate is `UNAVAILABLE`;
 - protected-state corruption and violated invariants are `INTERNAL`; and
 - calls after object revocation are `PROJECT_CLOSED`.
 
 Project-not-found and unsafe-project-location failures belong to trusted CLI
-acquisition, not this object's method union. Bounded error details may name an
+acquisition, not this object's method union. Bounded details may name an
 underlying code and target, but never host paths, commands, secrets, or stacks.
 
-## 8. Private-first implementation gates
+## 12. Corrected private-first proof gates
 
-Before freezing a public candidate, the private slice must prove:
+Before freezing any public candidate, the private slice must prove:
 
-1. plan captures current source and reopens byte-identical complete review
-   evidence after a separate process restart;
-2. source, declarations, Bindings, Hooks, and packages changed after planning
-   are never read by apply;
-3. missing or changed retained artifacts fail without recapture;
-4. update, locked, absent-lock, lock-only repair, and normalized no-op behavior;
-5. candidate, base-generation, and visible-lock staleness;
-6. replay-first same-plan apply and concurrent-apply linearization;
-7. failure after lock durability but before admission commit converges on
-   exact retry;
-8. Hook add/change/remove establishes its Journal boundary in the admission
-   transaction;
-9. apply returns independently of Service readiness and only wakes Service
-   reconciliation after commit;
-10. object closure and project-busy behavior;
-11. one CLI plan process and separate CLI apply process use only the retained
-    digest/base pair; and
-12. an independent consumer uses only the frozen two-operation subset before
-    any package export or machine schema is added.
+1. safe first-plan bootstrap creates only exact empty protected state and
+   rejects unsafe, partial, or different stores;
+2. planning captures current source and reopens byte-identical Plan/2,
+   proposed state, Plan-bound base, and exact visible-lock evidence after a
+   separate process restart;
+3. candidate-head and admission-head changes during planning return
+   `PROJECT_BUSY` without publishing a mismatched Plan;
+4. source, declarations, Bindings, Hooks, packages, and host policy changed
+   after planning are never re-read or substituted by apply;
+5. missing or changed retained artifacts fail without recapture;
+6. final `activationMeaningDigest` changes for recipe and final-disposition
+   changes while equivalent captures remain no-ops;
+7. the complete no-op matrix covers update, locked, absent lock, exact lock,
+   normalized equivalence, and meaningful change;
+8. lock-only repair persists and replays one receipt, survives the exact
+   lock/no-receipt crash state, creates no admission or Hook transition, and
+   emits no Service wake;
+9. exact intrinsic/effective `UNAVAILABLE` evidence is retained only where the
+   implementation actually owns both values;
+10. candidate, base-generation, expected-head, Plan-row, and visible-lock
+    staleness fail closed;
+11. same-Plan admission and repair replay occur before staleness checks, while
+    concurrent competing Plans linearize to one winner;
+12. failure after lock durability but before admission or repair commit
+    converges through exact retry;
+13. an admission Plan, and only an admission Plan, establishes its Hook
+    boundary in the admission transaction and may wake Service reconciliation
+    after commit;
+14. requested, `wouldGrant`, planned, provider, Service, and realized facts are
+    inspected at the honest limits in section 6;
+15. object closure, project-busy behavior, bounded review values, and corrupt
+    base-chain rejection are exact;
+16. one CLI plan process and a separate CLI apply process communicate only the
+    retained `planDigest`; and
+17. an independent consumer uses only the frozen two-operation subset before
+    any package export or public machine schema is added.
 
-The implementation remains private until those gates pass. It adds no
+Implementation remains private until those gates pass. It adds no
 `openProject`, daemon, socket, list/watch/cancel, remote authentication,
-provider management, or public project-control schema.
+provider management, public lock schema, public Plan schema, or public
+administration package.
 
 The invariant is:
 
 > Planning turns editable source and current trusted observations into one
-> durable, fully reviewable immutable proposal. Apply consumes only that
-> proposal, publishes its portable lock first, and atomically advances
-> admission and Hook time. It never reinterprets the project.
+> durable canonical proposal. Apply consumes only that proposal. Meaningful
+> policy change publishes the portable lock first and atomically advances
+> admission and Hook time; equivalent meaning may only repair the inert lock
+> and record that repair. Neither path reinterprets the project.

@@ -240,6 +240,19 @@ define authentication and closed request/result/error models for:
 - plan/apply and authority evidence; and
 - any later inspection or cancellation operations.
 
+The first private local admission boundary is now selected in
+[`150-private-project-admission-frontier.md`](150-private-project-admission-frontier.md),
+but not implemented or published. It fixes only a project-bound `plan` and
+`apply` pair. Planning retains one canonical Plan/2 machine review with a
+final `activationMeaningDigest`, authoritative proposed state, a Plan-bound
+prior generation, and exact visible-lock observation. Prior state and delta
+are derived rather than duplicated. Apply accepts only `planDigest`; its
+protected Plan supplies the compare-and-set base. Equivalent final meaning and
+portable lock may durably repair visible `jig.lock` with an idempotent receipt
+but no admission generation, Hook transition, or Service wake. The boundary
+does not add project opening, authentication/transport, a public lock or Plan
+schema, or a general administration API.
+
 No `RunSnapshot`, `openProject`, `getRun`, or `cancelRun` interface is part of
 Jig/1. The root administration candidate does not become published merely by
 having checked-in declarations. Its private coordinator-owned controller, clean
@@ -370,7 +383,10 @@ The next selected private phase is the deliberately bounded Service-hosting
 proof in
 [`149-private-service-hosting-frontier.md`](149-private-service-hosting-frontier.md).
 That selection does not publish a Service controller or change the completed
-Hook boundary. The Nix decontamination boundary remains in
+Hook boundary. After that proof, the selected local control-plane slice is the
+still-private Plan/2 boundary in
+[`150-private-project-admission-frontier.md`](150-private-project-admission-frontier.md).
+Neither selection authorizes a public SDK. The Nix decontamination boundary remains in
 [`130-nix-experiment-disposition-and-next-slice.md`](130-nix-experiment-disposition-and-next-slice.md);
 the latest completed execution boundary is review 148.
 
