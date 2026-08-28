@@ -8,6 +8,7 @@ import { ServiceHostSession } from "../src/service/session.js";
 const testDirectory = dirname(fileURLToPath(import.meta.url));
 const typescriptFixture = join(testDirectory, "fixtures", "service-provider.ts");
 const pythonFixture = join(testDirectory, "fixtures", "service-provider.py");
+const counterFixture = join(testDirectory, "fixtures", "service-counter.ts");
 const maliciousFixture = join(testDirectory, "fixtures", "service-malicious.ts");
 const pythonSource = join(testDirectory, "..", "..", "flowmd-sdk", "src");
 
@@ -61,6 +62,38 @@ describe("private Service/1 process integration", () => {
       });
     });
   }
+
+  test("keeps Service state across sequential invocations", async () => {
+    const service = new ServiceHostSession(
+      spawnProvider([process.execPath, "run", counterFixture], {}),
+      {
+        settings: {},
+        attachments: {},
+        scratch: "/scratch",
+        startupDeadlineUnixMs: Date.now() + 5_000,
+        exports: ["counter"],
+      },
+    );
+    await service.start();
+
+    expect(await service.invoke({
+      exportName: "counter",
+      method: "next",
+      input: null,
+      deadlineUnixMs: Date.now() + 5_000,
+    })).toEqual({ status: "succeeded", value: 1 });
+    expect(await service.invoke({
+      exportName: "counter",
+      method: "next",
+      input: null,
+      deadlineUnixMs: Date.now() + 5_000,
+    })).toEqual({ status: "succeeded", value: 2 });
+
+    expect(await service.stop()).toMatchObject({
+      status: "succeeded",
+      diagnostics: { stderrBytes: 0 },
+    });
+  });
 
   for (const [scenario, code] of [
     ["trailing-frame", "PROTOCOL_ERROR"],
