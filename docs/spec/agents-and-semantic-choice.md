@@ -447,6 +447,12 @@ Candidate IDs are unique, decision-local opaque values. The deterministic
 caller freezes their order and exact candidate revisions before dispatch, maps
 IDs host-side, and rejects a duplicate input ID or unknown result.
 
+One Semantic Choice/1 request deliberately carries 2-256 candidates. This is
+an operation bound, not a catalogue or admitted-universe limit. The caller
+must not truncate, sample, retrieve, or batch an exact survivor set to fit the
+bound. More than 256 survivors makes this chooser inapplicable and produces an
+explicit deterministic failure or ambiguity under caller policy.
+
 The chooser cannot:
 
 ```text
@@ -491,9 +497,9 @@ remain ambiguous.
 
 Applications also need an intentional way to route across a changing,
 reviewed catalogue without granting the chooser discovery or admission power.
-The candidate-universe declaration and normalization algorithm are still open;
-an arbitrary universal candidate cap is not reviewed. The eventual interface
-must freeze an admitted finite set before
+The candidate-universe declaration and normalization algorithm are still open.
+The 256-item Semantic Choice call bound does not cap that universe. The
+eventual interface must freeze an admitted finite set before
 Semantic Choice and must never truncate it invisibly.
 
 A project opts into the optional ranker by naming one exact Binding directly:

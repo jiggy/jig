@@ -328,6 +328,13 @@ registration/generation identity, one real out-of-process realization,
 durable effect ownership, and a second independent integration remain the
 release gates for an Agent-provider interface.
 
+Review 159 separately closes only the pure canonical Semantic Choice value
+boundary with a synchronous deterministic test chooser. Resolver integration
+still requires a distinct durable decision operation, exact survivor and
+rejection evidence, committed-result reuse, and uncertainty without reranking.
+Project `semanticChoice` authoring, a qualifying provider Binding, an
+Agent-backed chooser, and changing-universe authoring remain release gates.
+
 The former Linux `SANDBOX_UNAVAILABLE` stop is historical. The private proof
 now has a delegated aggregate owner, pre-exec placement, entropy and
 root-mapping evidence, coordinator-independent cleanup, and a hostile corpus.

@@ -81,6 +81,9 @@ Current implementation frontier:
 - [`design-review/158-agent-provider-boundary.md`](design-review/158-agent-provider-boundary.md)
   records why the next contained Agent-provider checkpoint cannot honestly be
   derived from a mutable fixture or an absent operator registration substrate.
+- [`design-review/159-private-semantic-choice-checkpoint.md`](design-review/159-private-semantic-choice-checkpoint.md)
+  closes the pure canonical closed-choice value boundary without wiring it
+  into resolution, durability, project policy, Agents, Services, or Sley.
 
 The focused Run/1 specification owns its finite wire surface. The remaining
 cross-cutting system rules are in the canonical architecture:

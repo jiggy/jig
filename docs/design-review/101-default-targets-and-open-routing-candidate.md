@@ -63,6 +63,12 @@ The probe spelling `allRuns()` is not reserved. A future design must specify:
 - what portable identity enters `jig.lock`; and
 - how large sets fail or are deliberately staged without silent truncation.
 
+Semantic Choice/1 now deliberately limits one ranking call to 256 candidates.
+That is not a candidate-universe cap: expansion and deterministic filtering
+remain exact, and more than 256 surviving candidates makes the chooser
+inapplicable rather than permitting truncation, sampling, retrieval, or
+implicit batching.
+
 ## Acceptance method for Question B
 
 Do not settle the remaining question inside another probe. First publish two
