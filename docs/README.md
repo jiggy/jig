@@ -53,8 +53,12 @@ Current implementation frontier:
   blocker to the current general descendant-capable recipe construction.
 - [`design-review/106-service-wire-and-provider-sdk.md`](design-review/106-service-wire-and-provider-sdk.md)
   records the closed Service/1 wire candidate and Provider projections; the
-  session-local TypeScript/Python/independent matrix is complete while durable
-  hosting and a portable Host-under-test conformance label remain open.
+  session-local TypeScript/Python/independent matrix is complete. Review
+  [`151`](design-review/151-private-service-hosting-checkpoint.md) closes one
+  durable Bun hosting substrate, and review
+  [`155`](design-review/155-private-mixed-composition-checkpoint.md) closes its
+  finite normal Root/child/Journal/Service composition. Mixed loss recovery and
+  a portable Host-under-test conformance label remain open.
 - [`design-review/107-project-authoring-sdk-slice.md`](design-review/107-project-authoring-sdk-slice.md)
   through [`design-review/139-independent-root-administration-review.md`](design-review/139-independent-root-administration-review.md)
   record the private project pipeline now proven through inert authoring,

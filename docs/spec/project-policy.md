@@ -916,9 +916,9 @@ Binding revision.
     receipt; candidate-head movement does not stale them, while an
     active-admission change does. A lock-written/no-receipt crash state
     converges only through explicit Plan replay.
-34. During the current private pre-release schema checkpoint, a v16 admission
+34. During the current private pre-release schema checkpoint, a v17 admission
     store rejects every other `private-activation-admission-v*.sqlite3`
-    database or sidecar, including beside a valid v16 database. It never
+    database or sidecar, including beside a valid v17 database. It never
     migrates, merges, or silently chooses around mixed protected authority.
 35. Aggregate authority inspection includes the fixed attachment and effect
     authority reachable through every exact dependency Binding; it never
@@ -953,3 +953,19 @@ Binding revision.
     reacquires recorded child ownership, never automatically redispatches
     uncertain work, and releases exact backing only after fencing or proved
     non-admission.
+41. An `effect/call` to a Service resolves the exact contract, Provider
+    Binding/export, Mount, and acknowledged generation from the owner Run's
+    pinned admission. Movement of the current admission head cannot retarget or
+    invalidate that live owner lease. Unknown methods and invalid inputs fail
+    before Provider dispatch; results and declared application errors are
+    schema-validated before their durable terminal is returned.
+42. Equal Service operation identity and canonical input join or replay one
+    durable invocation terminal; changed reuse is `OPERATION_CONFLICT`. The
+    possible-dispatch fact is committed before the first Provider request byte,
+    and possibly dispatched work is never automatically sent again.
+43. A root using a Service cannot publish its terminal until all of its Service
+    invocations are durably closed and its owner-slot leases are released. A
+    Mount may be fenced before that settlement, but finalization and protected
+    backing release require every linked lease release. The current private
+    mixed checkpoint proves this order for normal shutdown; end-to-end Provider
+    and coordinator-loss recovery remains an explicit gate.

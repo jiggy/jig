@@ -1,9 +1,11 @@
 # Private mixed-composition frontier
 
-**Status:** selected on 2026-08-28 as the next private vertical. This record
-freezes the boundary before implementation. It does not publish a supervisor,
-Service controller, effect registry, project API, Runtime Adapter, or Sandbox
-Backend interface.
+**Status:** partially closed on 2026-08-28. The finite normal path is implemented
+in commit `3f84952` and recorded in
+[`155-private-mixed-composition-checkpoint.md`](155-private-mixed-composition-checkpoint.md).
+The provider-loss and coordinator-replacement proof gates below remain open.
+This record publishes no supervisor, Service controller, effect registry,
+project API, Runtime Adapter, or Sandbox Backend interface.
 
 ## 1. One bounded composition witness
 

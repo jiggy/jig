@@ -42,13 +42,15 @@ older-epoch Hook work to `COORDINATOR_LOST` without another append or dispatch.
 This is not yet a published Jig SDK or complete product control
 plane: Root Administration/1, its machine schema, and its private controller
 cover in-process start/status, while generic Runtime Adapter and Sandbox
-Backend models, non-Journal effects, project-authority issuance,
+Backend models, broader effect/provider forms, project-authority issuance,
 authentication/transport, and public plan/apply remain unfinished seams. The
 private Service path now also admits and hosts one exact Bun Service Binding,
 persists its complete Mount/generation lifecycle, and proves exact leases,
 invocation allocation, possible-dispatch admission, terminal/closure evidence,
-fenced recovery, and ordered release. It does not yet connect a root
-`effect/call` to that live Mount. The private Candidate/5-to-Plan/2 path now
+fenced recovery, and ordered release. One finite normal-path witness now
+connects an exact pinned root `effect/call` to that live generation beside a
+Python child and canonical Journal append. Mixed provider/coordinator-loss
+recovery remains open. The private Candidate/5-to-Plan/2 path now
 also classifies normalized no-op, inert lock repair, and authority-changing
 admission, persists canonical applicable Plans, and applies them using only
 their digest. Admission retains candidate-head compare-and-set; repairs ignore
@@ -175,13 +177,17 @@ dispatch, terminal, operation closure, ordered release, and fence-based
 `UNAVAILABLE` versus `UNCERTAIN` recovery. A separate stateful process witness
 preserves counter state across sequential Service/1 invocations.
 
-These cases are not yet one portable Host-under-test corpus, and the durable
-state is not yet joined to a live root `effect/call`: current direct-Run
-recipes truthfully reject the capability-backed Service Binding until mixed
-effect dispatch is earned. A second independent Host, that real
-Root-to-Service path, and the resulting conformance label remain release
-gates. Run/1 does not wait for them. The exact checkpoint is
-[`151-private-service-hosting-checkpoint.md`](151-private-service-hosting-checkpoint.md).
+These cases are not yet one portable Host-under-test corpus. The private
+normal path now joins the durable state to a real root `effect/call`: Root A,
+exact replay, and Root B receive `1`, `1`, and `2` from one acknowledged
+generation while root leases close before separate Mount fence/finalization.
+Review 155 records that proof. A second independent Host, mixed
+provider/coordinator-loss recovery, and the resulting conformance label remain
+release gates. Run/1 does not wait for them. The substrate and composition
+boundaries are recorded in
+[`151-private-service-hosting-checkpoint.md`](151-private-service-hosting-checkpoint.md)
+and
+[`155-private-mixed-composition-checkpoint.md`](155-private-mixed-composition-checkpoint.md).
 
 ### Jig project authoring SDK
 
@@ -412,6 +418,14 @@ Run cgroup or private-device residue.
 [`Review 153`](153-private-finite-foreground-checkpoint.md) records why this
 remains a script rather than a public CLI, supervisor, or daemon.
 
+The private mixed-composition normal path is closed in commit `3f84952`. One
+shared coordinator owns an acknowledged Bun counter Mount and an attached root
+controller; a Bun root uses the exact Python child, canonical Journal, and
+Service effect branches, and a second root observes the same process-local
+generation. Root operation and lease closure precede separate Mount fencing
+and finalization, with zero containment residue. Review 155 deliberately leaves
+the end-to-end provider/coordinator-loss order open.
+
 None of the closed slices adds a public Service host, Agent, Semantic Choice,
 Jig Graph compiler, update watcher, Nix dependency, ambient runtime fallback,
 or public Backend or Runtime Adapter SPI.
@@ -443,13 +457,13 @@ The Plan/2 classification/apply subset of
 [`150-private-project-admission-frontier.md`](150-private-project-admission-frontier.md)
 is closed in review 152. The finite root-only foreground session using the
 existing coordinator and Root Administration controller is closed in review
-153; it neither earns a persistent supervisor nor starts Services. Mixed
-root/Journal/Service composition is the next composition boundary, and must
-prove authentic Root-to-Service dispatch plus phased operation, lease, Mount,
-and loss cleanup before persistent Service policy is considered. Neither
-checkpoint authorizes a public SDK. The Nix decontamination boundary remains in
+153. The normal mixed root/child/Journal/Service path is closed in review 155;
+the next boundary is its provider/coordinator-loss proof, including phased
+invocation, lease/root, and Mount finalization without redispatch or rebinding.
+No checkpoint authorizes a public SDK or persistent supervisor. The Nix
+decontamination boundary remains in
 [`130-nix-experiment-disposition-and-next-slice.md`](130-nix-experiment-disposition-and-next-slice.md);
-the latest completed foreground boundary is review 153.
+the latest completed composition boundary is review 155.
 
 ## Machine-readable release gates
 
@@ -462,8 +476,8 @@ The repository still needs:
 - public plan/apply request, result, error, authentication, and CLI/API
   surfaces plus an independent packed consumer;
 - the complete Service/1 Host/Provider cross-language black-box corpus, a
-  second independent Host, and one real Root-to-Service invocation through
-  admitted mixed effect dispatch;
+  second independent Host, and end-to-end provider/coordinator-loss recovery
+  for admitted mixed effect dispatch;
 - a closed host-policy/configuration document for supported mechanisms;
 - Runtime Adapter and Sandbox Backend schemas only after a second independent
   mechanism proves those abstractions;
