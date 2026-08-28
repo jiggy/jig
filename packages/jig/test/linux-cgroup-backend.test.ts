@@ -1334,6 +1334,405 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
     }
   });
 
+  test("allocates one authenticated Service Mount attempt per admitted generation", async () => {
+    host = await hostConfiguration();
+    const bun = await proofHostBunClosure();
+    const distribution = await realpath(join(import.meta.dir, "..", "dist"));
+    const root = await mkdtemp(join(tmpdir(), "jig-service-mount-store-"));
+    const store = await mkdtemp(join(tmpdir(), "jig-service-mount-packages-"));
+    let coordinator: Awaited<ReturnType<typeof openPrivateProjectCoordinator>> | undefined;
+    const evaluator = {
+      backend: backend(host),
+      bunPath: bun.executable,
+      runtimeMounts: bun.runtimeSupport.closureSources.map((source) => ({
+        source,
+        destination: source,
+      })),
+      runtimeSupport: bun.runtimeSupport,
+      jigDistributionPath: distribution,
+    } as const;
+    try {
+      await mkdir(join(root, "bindings"));
+      await mkdir(join(root, "flows", "counter", "contracts"), { recursive: true });
+      await writeFile(join(root, "jig.ts"), [
+        'import { defineJig, discover } from "@jigging/jig";',
+        'export default defineJig({ flows: discover("flows"), bindings: discover("bindings") });',
+        "",
+      ].join("\n"));
+      await writeFile(join(root, "bindings", "counter.ts"), [
+        'import { defineBinding } from "@jigging/jig";',
+        'export default defineBinding({ package: "flows/counter" });',
+        "",
+      ].join("\n"));
+      await writeFile(join(root, "flows", "counter", "FLOW.md"), [
+        "---",
+        "name: counter",
+        "description: Durable Service Mount allocation fixture.",
+        "service: 1",
+        "provides:",
+        "  counter: ./contracts/counter.capability.json",
+        "---",
+        "",
+      ].join("\n"));
+      await writeFile(join(root, "flows", "counter", "contracts", "counter.capability.json"),
+        JSON.stringify({
+          $schema: "https://flow.dev/schemas/capability-contract-1.schema.json",
+          flowCapabilityContract: 1,
+          id: "https://example.test/capabilities/counter",
+          version: "1.0.0",
+          methods: {
+            next: {
+              input: { type: "object", additionalProperties: false },
+              output: { type: "integer" },
+              errors: {},
+            },
+          },
+        }));
+      await writeFile(
+        join(root, "flows", "counter", "flow.ts"),
+        "#!/usr/bin/env bun\nexport {};\n",
+      );
+
+      const firstAggregate = await retainPackageProject({
+        projectRoot: root,
+        storeRoot: store,
+        evaluator,
+      });
+      const [firstRequest] = buildPrivateActivationRequests(firstAggregate.linked);
+      expect(firstRequest?.target).toEqual({ kind: "binding", id: "counter" });
+      const firstObservation = await observePrivateBunServicePackage({
+        request: firstRequest!,
+        packageStoreRoot: store,
+      });
+      const firstRecipe = await planPrivateBunService({
+        request: firstRequest!,
+        packageObservation: firstObservation,
+        runtimeSupport: bun.runtimeSupport,
+        backend: evaluator.backend,
+      });
+      const firstPlanning = createPrivateActivationPlanningObservation({
+        policyDigest: testDigest("service-mount-policy-1"),
+        mechanismDigest: firstRecipe.mechanismDigest,
+        entries: [{
+          target: firstRequest!.target,
+          requestDigest: firstRequest!.digest,
+          disposition: { state: "planned" as const, observation: firstRecipe.observation },
+        }],
+      });
+      const firstCandidate = createPrivateActivationCandidate(
+        firstAggregate,
+        resolveRetainedPackageProjectObservation(firstAggregate, firstPlanning),
+        firstRecipe,
+      );
+      await publishPrivateActivationCandidate({
+        projectRoot: root,
+        packageStoreRoot: store,
+        candidate: firstCandidate,
+      });
+      const firstReview = await createPrivateActivationReviewPlan({
+        projectRoot: root,
+        packageStoreRoot: store,
+        lockMode: "update",
+      });
+      const firstAdmission = await applyPrivateActivationReviewPlan({
+        projectRoot: root,
+        packageStoreRoot: store,
+        planDigest: firstReview.planDigest,
+        baseGeneration: null,
+      });
+
+      coordinator = await openPrivateProjectCoordinator({ projectRoot: root });
+      const firstDeadline = Date.now() + 20_000;
+      const firstMount = await allocatePrivateServiceMount({
+        coordinator,
+        projectRoot: root,
+        packageStoreRoot: store,
+        recipe: firstRecipe,
+        effectiveDeadlineUnixMs: firstDeadline,
+      });
+      expect(firstMount).toMatchObject({
+        coordinator: "current",
+        allocation: {
+          coordinatorEpoch: coordinator.epoch,
+          admissionDigest: firstAdmission.admissionDigest,
+          candidateRevision: firstAdmission.admission.candidateRevision,
+          bindingId: "counter",
+          requestDigest: firstRecipe.request.digest,
+          recipeDigest: firstRecipe.digest,
+          observationDigest: firstRecipe.observation.digest,
+          expectedExports: ["counter"],
+          effectiveDeadlineUnixMs: firstDeadline,
+        },
+      });
+      expect(await allocatePrivateServiceMount({
+        coordinator,
+        projectRoot: root,
+        packageStoreRoot: store,
+        recipe: firstRecipe,
+        effectiveDeadlineUnixMs: firstDeadline,
+      })).toEqual(firstMount);
+      await expect(allocatePrivateServiceMount({
+        coordinator,
+        projectRoot: root,
+        packageStoreRoot: store,
+        recipe: firstRecipe,
+        effectiveDeadlineUnixMs: firstDeadline + 1,
+      })).rejects.toMatchObject({ code: "SERVICE_MOUNT_CONFLICT" });
+      await expect(allocatePrivateServiceMount({
+        coordinator,
+        projectRoot: root,
+        packageStoreRoot: store,
+        recipe: { ...firstRecipe } as PrivateBunServiceRecipe,
+        effectiveDeadlineUnixMs: firstDeadline,
+      })).rejects.toThrow("Bun Service recipe was not produced by the private planner");
+      expect(await loadPrivateServiceMount({
+        coordinator,
+        projectRoot: root,
+        packageStoreRoot: store,
+        mountId: firstMount.allocation.mountId,
+      })).toEqual(firstMount);
+      expect(await listPrivateServiceMounts({
+        coordinator,
+        projectRoot: root,
+        packageStoreRoot: store,
+        epoch: "current",
+      })).toEqual([firstMount]);
+      expect(await listPrivateServiceMounts({
+        coordinator,
+        projectRoot: root,
+        packageStoreRoot: store,
+        epoch: "older",
+      })).toEqual([]);
+      await coordinator.dispose();
+      coordinator = undefined;
+
+      coordinator = await openPrivateProjectCoordinator({ projectRoot: root });
+      expect((await loadPrivateServiceMount({
+        coordinator,
+        projectRoot: root,
+        packageStoreRoot: store,
+        mountId: firstMount.allocation.mountId,
+      })).coordinator).toBe("older");
+      expect((await listPrivateServiceMounts({
+        coordinator,
+        projectRoot: root,
+        packageStoreRoot: store,
+        epoch: "older",
+      })).map(({ allocation }) => allocation.mountId)).toEqual([firstMount.allocation.mountId]);
+      await expect(allocatePrivateServiceMount({
+        coordinator,
+        projectRoot: root,
+        packageStoreRoot: store,
+        recipe: firstRecipe,
+        effectiveDeadlineUnixMs: firstDeadline,
+      })).rejects.toMatchObject({ code: "SERVICE_MOUNT_ALREADY_ATTEMPTED" });
+
+      await writeFile(join(root, "bindings", "other.ts"), [
+        'import { defineBinding } from "@jigging/jig";',
+        'export default defineBinding({ package: "flows/counter" });',
+        "",
+      ].join("\n"));
+      const secondAggregate = await retainPackageProject({
+        projectRoot: root,
+        storeRoot: store,
+        evaluator,
+      });
+      const secondRequests = buildPrivateActivationRequests(secondAggregate.linked);
+      const otherRequest = secondRequests.find(({ target }) =>
+        target.kind === "binding" && target.id === "other");
+      const currentRequest = secondRequests.find(({ target }) =>
+        target.kind === "binding" && target.id === "counter");
+      expect(otherRequest?.target).toEqual({ kind: "binding", id: "other" });
+      expect(currentRequest?.target).toEqual({ kind: "binding", id: "counter" });
+      const otherObservation = await observePrivateBunServicePackage({
+        request: otherRequest!,
+        packageStoreRoot: store,
+      });
+      const otherRecipe = await planPrivateBunService({
+        request: otherRequest!,
+        packageObservation: otherObservation,
+        runtimeSupport: bun.runtimeSupport,
+        backend: evaluator.backend,
+      });
+      const currentObservation = await observePrivateBunServicePackage({
+        request: currentRequest!,
+        packageStoreRoot: store,
+      });
+      const currentRecipe = await planPrivateBunService({
+        request: currentRequest!,
+        packageObservation: currentObservation,
+        runtimeSupport: bun.runtimeSupport,
+        backend: evaluator.backend,
+      });
+      await expect(allocatePrivateServiceMount({
+        coordinator,
+        projectRoot: root,
+        packageStoreRoot: store,
+        recipe: otherRecipe,
+        effectiveDeadlineUnixMs: Date.now() + 20_000,
+      })).rejects.toMatchObject({ code: "SERVICE_MOUNT_TARGET_MISMATCH" });
+      await coordinator.dispose();
+      coordinator = undefined;
+
+      const multiplePlanning = createPrivateActivationPlanningObservation({
+        policyDigest: testDigest("service-mount-policy-multiple"),
+        mechanismDigest: otherRecipe.mechanismDigest,
+        entries: secondRequests.map((request) => ({
+          target: request.target,
+          requestDigest: request.digest,
+          disposition: {
+            state: "planned" as const,
+            observation: request.target.kind === "binding" && request.target.id === "other"
+              ? otherRecipe.observation
+              : currentRecipe.observation,
+          },
+        })),
+      });
+      const multipleCandidate = createPrivateActivationCandidate(
+        secondAggregate,
+        resolveRetainedPackageProjectObservation(secondAggregate, multiplePlanning),
+        [currentRecipe, otherRecipe],
+      );
+      await publishPrivateActivationCandidate({
+        projectRoot: root,
+        packageStoreRoot: store,
+        candidate: multipleCandidate,
+      });
+      const multipleReview = await createPrivateActivationReviewPlan({
+        projectRoot: root,
+        packageStoreRoot: store,
+        lockMode: "update",
+      });
+      const multipleAdmission = await applyPrivateActivationReviewPlan({
+        projectRoot: root,
+        packageStoreRoot: store,
+        planDigest: multipleReview.planDigest,
+        baseGeneration: firstAdmission.admissionDigest,
+      });
+      coordinator = await openPrivateProjectCoordinator({ projectRoot: root });
+      await expect(allocatePrivateServiceMount({
+        coordinator,
+        projectRoot: root,
+        packageStoreRoot: store,
+        recipe: otherRecipe,
+        effectiveDeadlineUnixMs: Date.now() + 20_000,
+      })).rejects.toMatchObject({ code: "SERVICE_SCOPE_UNSUPPORTED" });
+      await coordinator.dispose();
+      coordinator = undefined;
+
+      const secondPlanning = createPrivateActivationPlanningObservation({
+        policyDigest: testDigest("service-mount-policy-2"),
+        mechanismDigest: otherRecipe.mechanismDigest,
+        entries: secondRequests.map((request) => request.target.kind === "binding" &&
+          request.target.id === "other" ? {
+            target: request.target,
+            requestDigest: request.digest,
+            disposition: { state: "planned" as const, observation: otherRecipe.observation },
+          } : {
+            target: request.target,
+            requestDigest: request.digest,
+            disposition: {
+              state: "unavailable" as const,
+              code: "RUNTIME_UNAVAILABLE" as const,
+              evidenceDigests: [testDigest(`service-mount-unavailable:${request.digest}`)],
+            },
+          }),
+      });
+      const secondCandidate = createPrivateActivationCandidate(
+        secondAggregate,
+        resolveRetainedPackageProjectObservation(secondAggregate, secondPlanning),
+        otherRecipe,
+      );
+      await publishPrivateActivationCandidate({
+        projectRoot: root,
+        packageStoreRoot: store,
+        candidate: secondCandidate,
+      });
+      const secondReview = await createPrivateActivationReviewPlan({
+        projectRoot: root,
+        packageStoreRoot: store,
+        lockMode: "update",
+      });
+      const secondAdmission = await applyPrivateActivationReviewPlan({
+        projectRoot: root,
+        packageStoreRoot: store,
+        planDigest: secondReview.planDigest,
+        baseGeneration: multipleAdmission.admissionDigest,
+      });
+      coordinator = await openPrivateProjectCoordinator({ projectRoot: root });
+      await expect(allocatePrivateServiceMount({
+        coordinator,
+        projectRoot: root,
+        packageStoreRoot: store,
+        recipe: firstRecipe,
+        effectiveDeadlineUnixMs: Date.now() + 20_000,
+      })).rejects.toMatchObject({ code: "SERVICE_MOUNT_TARGET_MISMATCH" });
+      const secondDeadline = Date.now() + 20_000;
+      const secondMount = await allocatePrivateServiceMount({
+        coordinator,
+        projectRoot: root,
+        packageStoreRoot: store,
+        recipe: otherRecipe,
+        effectiveDeadlineUnixMs: secondDeadline,
+      });
+      expect(secondMount.allocation.admissionDigest).toBe(secondAdmission.admissionDigest);
+      expect(secondMount.allocation.mountId).not.toBe(firstMount.allocation.mountId);
+      expect((await listPrivateServiceMounts({
+        coordinator,
+        projectRoot: root,
+        packageStoreRoot: store,
+        epoch: "current",
+      })).map(({ allocation }) => allocation.mountId)).toEqual([secondMount.allocation.mountId]);
+      expect((await listPrivateServiceMounts({
+        coordinator,
+        projectRoot: root,
+        packageStoreRoot: store,
+        epoch: "older",
+      })).map(({ allocation }) => allocation.mountId)).toEqual([firstMount.allocation.mountId]);
+      await coordinator.dispose();
+      coordinator = undefined;
+
+      const sqlite = createRequire(import.meta.url)("bun:sqlite") as any;
+      const databasePath = join(root, ".jig", "private-activation-admission-v14.sqlite3");
+      const writable = sqlite.constants.SQLITE_OPEN_READWRITE |
+        sqlite.constants.SQLITE_OPEN_NOFOLLOW;
+      let corruptor = sqlite.Database.open(databasePath, writable);
+      const retainedAllocation = Uint8Array.from(corruptor.query(
+        "SELECT allocation_bytes FROM service_mounts WHERE mount_id = ?1",
+      ).get(secondMount.allocation.mountId).allocation_bytes);
+      corruptor.query(
+        "UPDATE service_mounts SET allocation_bytes = ?1 WHERE mount_id = ?2",
+      ).run(new TextEncoder().encode("{}"), secondMount.allocation.mountId);
+      corruptor.close(true);
+      coordinator = await openPrivateProjectCoordinator({ projectRoot: root });
+      await expect(loadPrivateServiceMount({
+        coordinator,
+        projectRoot: root,
+        packageStoreRoot: store,
+        mountId: secondMount.allocation.mountId,
+      })).rejects.toMatchObject({ code: "ADMISSION_STATE_CORRUPT" });
+      await coordinator.dispose();
+      coordinator = undefined;
+
+      corruptor = sqlite.Database.open(databasePath, writable);
+      corruptor.query(
+        "UPDATE service_mounts SET allocation_bytes = ?1 WHERE mount_id = ?2",
+      ).run(retainedAllocation, secondMount.allocation.mountId);
+      corruptor.close(true);
+      coordinator = await openPrivateProjectCoordinator({ projectRoot: root });
+      expect((await loadPrivateServiceMount({
+        coordinator,
+        projectRoot: root,
+        packageStoreRoot: store,
+        mountId: secondMount.allocation.mountId,
+      })).allocation).toEqual(secondMount.allocation);
+    } finally {
+      await coordinator?.dispose();
+      await rm(root, { recursive: true, force: true });
+      await rm(store, { recursive: true, force: true });
+    }
+  }, 120_000);
+
   test("publishes one complete retained package project from a shared root owner", async () => {
     host = await hostConfiguration();
     const bun = await proofHostBunClosure();

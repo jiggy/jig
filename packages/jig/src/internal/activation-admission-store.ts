@@ -20,6 +20,17 @@ import {
   type PrivateLockPackage,
 } from "./project-local-lock.js";
 import {
+  requirePrivateBunServiceRecipe,
+  type PrivateBunServiceRecipe,
+} from "./bun-service-recipe.js";
+import {
+  decodePrivateServiceMountAllocation,
+  encodePrivateServiceMountAllocation,
+  normalizePrivateServiceMountAllocation,
+  privateServiceMountAllocationDigest,
+  type PrivateServiceMountAllocation,
+} from "./private-service-state.js";
+import {
   createPrivateActivationAdmission,
   createPrivateActivationPlan,
   decodePrivateActivationAdmission,
@@ -270,6 +281,15 @@ interface AdmissionHeadRow {
   readonly revision: bigint | null;
 }
 
+interface ServiceMountRow {
+  readonly mount_id: string;
+  readonly binding_id: string;
+  readonly admission_digest: string;
+  readonly coordinator_epoch: bigint;
+  readonly allocation_digest: string;
+  readonly allocation_bytes: Uint8Array;
+}
+
 interface AdmissionCountRow {
   readonly count: bigint;
   readonly minimum: bigint | null;
@@ -498,6 +518,13 @@ export interface PrivateActivationAdmissionReceipt {
 export interface PrivateActiveActivation {
   readonly admission: PrivateActivationAdmissionReceipt;
   readonly candidate: PrivateActivationCandidateArtifact;
+}
+
+/** Exact immutable Mount allocation, classified against the owning coordinator. */
+export interface PrivateServiceMountSnapshot {
+  readonly allocation: PrivateServiceMountAllocation;
+  readonly allocationDigest: string;
+  readonly coordinator: "current" | "older";
 }
 
 /** Exclusive, process-held authority for one project coordinator generation. */
@@ -840,6 +867,235 @@ export async function openPrivateProjectCoordinator(input: {
     }
     throw error;
   }
+}
+
+/**
+ * Allocate the one exact Mount attempt for the active admission's supported
+ * Service Binding. This records no readiness or launch authority.
+ */
+export async function allocatePrivateServiceMount(input: {
+  readonly coordinator: PrivateProjectCoordinator;
+  readonly projectRoot: string;
+  readonly packageStoreRoot: string;
+  readonly recipe: PrivateBunServiceRecipe;
+  readonly effectiveDeadlineUnixMs: number;
+}): Promise<PrivateServiceMountSnapshot> {
+  const coordinator = requirePrivateProjectCoordinator(input.coordinator);
+  const recipe = requirePrivateBunServiceRecipe(input.recipe);
+  await coordinator.verify();
+  if (!Number.isSafeInteger(input.effectiveDeadlineUnixMs) || input.effectiveDeadlineUnixMs < 0 ||
+      input.effectiveDeadlineUnixMs > Date.now() + recipe.mountLifetimeCeilingMs) {
+    throw new TypeError("Service Mount deadline exceeds the admitted lifetime ceiling");
+  }
+  const owner = await openStateOwner(input.projectRoot, false);
+  let artifacts: ReacquiredArtifacts | undefined;
+  let failure: unknown;
+  try {
+    requireCoordinatorRoot(coordinator, owner.root);
+    const head = readAdmissionHead(owner.database, owner.root);
+    if (head.revision === null) unavailable("ADMISSION_MISSING", "no activation generation is active");
+    const admissionRow = requireAdmissionRow(owner.database, head.revision);
+    const admission = loadAndCrossCheckAdmission(owner.database, admissionRow, owner.root);
+    const candidateRow = requireCandidateRow(
+      owner.database,
+      BigInt(admission.admission.candidateRevision),
+    );
+    const candidate = loadCandidateRow(candidateRow);
+    requireCandidateRoot(candidate, owner.root);
+    artifacts = await reacquireCandidateArtifacts(input.packageStoreRoot, candidate);
+    requireCurrentServiceRecipe(candidate, recipe, artifacts);
+
+    const bindingId = serviceRecipeBindingId(recipe);
+    const mountId = privateServiceMountId(admission.admissionDigest, bindingId);
+    const allocation = normalizePrivateServiceMountAllocation({
+      kind: "private-service-mount-allocation/1",
+      mountId,
+      coordinatorEpoch: coordinator.epoch,
+      admissionDigest: admission.admissionDigest,
+      candidateRevision: admission.admission.candidateRevision,
+      bindingId,
+      requestDigest: recipe.request.digest,
+      recipeDigest: recipe.digest,
+      observationDigest: recipe.observation.digest,
+      expectedExports: recipe.expectedExports,
+      effectiveDeadlineUnixMs: input.effectiveDeadlineUnixMs,
+    });
+    const allocationBytes = encodePrivateServiceMountAllocation(allocation);
+    const allocationDigest = privateServiceMountAllocationDigest(allocation);
+    requireStoredSize(allocationBytes, "Service Mount allocation");
+
+    const snapshot = await immediate(owner, async () => {
+      await coordinator.verify();
+      const currentHead = readAdmissionHead(owner.database, owner.root);
+      if (currentHead.revision !== head.revision) {
+        stale("active generation changed before Service Mount allocation");
+      }
+      const currentAdmission = requireAdmissionRow(owner.database, head.revision!);
+      const currentCandidate = requireCandidateRow(owner.database, candidateRow.revision);
+      requireSameAdmissionRow(admissionRow, currentAdmission);
+      requireSameCandidateRow(candidateRow, currentCandidate);
+      loadAndCrossCheckAdmission(owner.database, currentAdmission, owner.root);
+
+      const prior = findServiceMountByAdmissionBinding(
+        owner.database,
+        admission.admissionDigest,
+        bindingId,
+      );
+      if (prior !== null) {
+        const replay = loadServiceMountSnapshot(
+          owner.database,
+          prior,
+          owner.root,
+          coordinator,
+          candidate,
+          artifacts!,
+        );
+        if (replay.coordinator !== "current" || serviceMountHasRelease(owner.database, mountId)) {
+          invalid(
+            "SERVICE_MOUNT_ALREADY_ATTEMPTED",
+            "this admission and Service Binding already consumed its Mount attempt",
+          );
+        }
+        if (replay.allocationDigest !== allocationDigest ||
+            !sameBytes(prior.allocation_bytes, allocationBytes)) {
+          invalid(
+            "SERVICE_MOUNT_CONFLICT",
+            "Service Mount allocation was replayed with different parameters",
+          );
+        }
+        return replay;
+      }
+
+      runFinalized(owner.database,
+        "INSERT INTO service_mounts(mount_id, binding_id, admission_digest, coordinator_epoch, allocation_digest, allocation_bytes) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        [mountId, bindingId, admission.admissionDigest, coordinator.epoch, allocationDigest, allocationBytes],
+      );
+      return loadServiceMountSnapshot(
+        owner.database,
+        requireServiceMountRow(owner.database, mountId),
+        owner.root,
+        coordinator,
+        candidate,
+        artifacts!,
+      );
+    });
+    await owner.finish();
+    return snapshot;
+  } catch (error) {
+    failure = error;
+    throw error;
+  } finally {
+    await disposeOperation(owner, artifacts, failure);
+  }
+}
+
+/** Reopen one immutable Mount allocation and authenticate its full pinned closure. */
+export async function loadPrivateServiceMount(input: {
+  readonly coordinator: PrivateProjectCoordinator;
+  readonly projectRoot: string;
+  readonly packageStoreRoot: string;
+  readonly mountId: string;
+}): Promise<PrivateServiceMountSnapshot> {
+  const coordinator = requirePrivateProjectCoordinator(input.coordinator);
+  await coordinator.verify();
+  requireDigest(input.mountId, "Service Mount");
+  const owner = await openStateOwner(input.projectRoot, false);
+  let artifacts: ReacquiredArtifacts | undefined;
+  let failure: unknown;
+  try {
+    requireCoordinatorRoot(coordinator, owner.root);
+    const initialRow = requireServiceMountRow(owner.database, input.mountId);
+    const admissionRow = requireAdmissionByDigest(owner.database, initialRow.admission_digest);
+    const admission = loadAndCrossCheckAdmission(owner.database, admissionRow, owner.root);
+    const candidateRow = requireCandidateRow(
+      owner.database,
+      BigInt(admission.admission.candidateRevision),
+    );
+    const candidate = loadCandidateRow(candidateRow);
+    requireCandidateRoot(candidate, owner.root);
+    artifacts = await reacquireCandidateArtifacts(input.packageStoreRoot, candidate);
+
+    const snapshot = await immediate(owner, async () => {
+      await coordinator.verify();
+      const currentRow = requireServiceMountRow(owner.database, input.mountId);
+      const currentAdmission = requireAdmissionByDigest(owner.database, initialRow.admission_digest);
+      const currentCandidate = requireCandidateRow(owner.database, candidateRow.revision);
+      requireSameServiceMountRow(initialRow, currentRow);
+      requireSameAdmissionRow(admissionRow, currentAdmission);
+      requireSameCandidateRow(candidateRow, currentCandidate);
+      loadAndCrossCheckAdmission(owner.database, currentAdmission, owner.root);
+      return loadServiceMountSnapshot(
+        owner.database,
+        currentRow,
+        owner.root,
+        coordinator,
+        candidate,
+        artifacts!,
+      );
+    });
+    await owner.finish();
+    return snapshot;
+  } catch (error) {
+    failure = error;
+    throw error;
+  } finally {
+    await disposeOperation(owner, artifacts, failure);
+  }
+}
+
+/** List authenticated Mount allocations from this or an older coordinator epoch. */
+export async function listPrivateServiceMounts(input: {
+  readonly coordinator: PrivateProjectCoordinator;
+  readonly projectRoot: string;
+  readonly packageStoreRoot: string;
+  readonly epoch: "current" | "older";
+}): Promise<readonly PrivateServiceMountSnapshot[]> {
+  const coordinator = requirePrivateProjectCoordinator(input.coordinator);
+  await coordinator.verify();
+  if (input.epoch !== "current" && input.epoch !== "older") {
+    throw new TypeError("Service Mount epoch must be current or older");
+  }
+  const owner = await openStateOwner(input.projectRoot, false);
+  let failure: unknown;
+  let mountIds: readonly string[] = [];
+  try {
+    requireCoordinatorRoot(coordinator, owner.root);
+    mountIds = await immediate(owner, async () => {
+      await coordinator.verify();
+      const future = statement<{ readonly count: bigint }>(owner.database,
+        "SELECT count(*) AS count FROM service_mounts WHERE coordinator_epoch > ?1",
+      ).safeIntegers(true);
+      try {
+        const aggregate = future.get(BigInt(coordinator.epoch));
+        if (aggregate === null || aggregate.count !== 0n) {
+          corrupt("Service Mount belongs to a future coordinator epoch");
+        }
+      } finally { future.finalize(); }
+      const comparison = input.epoch === "current" ? "=" : "<";
+      const query = statement<{ readonly mount_id: string }>(owner.database, [
+        "SELECT mount_id FROM service_mounts",
+        `WHERE coordinator_epoch ${comparison} ?1 ORDER BY mount_id`,
+      ].join(" ")).safeIntegers(true);
+      try { return Object.freeze(query.all(BigInt(coordinator.epoch)).map((row) => row.mount_id)); }
+      finally { query.finalize(); }
+    });
+    await owner.finish();
+  } catch (error) {
+    failure = error;
+    throw error;
+  } finally {
+    await disposeOperation(owner, undefined, failure);
+  }
+  const snapshots: PrivateServiceMountSnapshot[] = [];
+  for (const mountId of mountIds) {
+    snapshots.push(await loadPrivateServiceMount({
+      coordinator,
+      projectRoot: input.projectRoot,
+      packageStoreRoot: input.packageStoreRoot,
+      mountId,
+    }));
+  }
+  return Object.freeze(snapshots);
 }
 
 /**
@@ -4763,6 +5019,223 @@ function copiedHookRevisionRow(row: HookRevisionRow): HookRevisionRow {
     end_position: row.end_position,
     revision_bytes: copiedBlob(row.revision_bytes, "stored Hook revision"),
   });
+}
+
+function serviceRecipeBindingId(recipe: PrivateBunServiceRecipe): string {
+  if (recipe.request.mode !== "service" || recipe.request.target.kind !== "binding") {
+    throw new TypeError("Bun Service recipe does not name a Service Binding");
+  }
+  return recipe.request.target.id;
+}
+
+function privateServiceMountId(admissionDigest: string, bindingId: string): string {
+  return privateDomainDigest("JIG-Private-Service-Mount-ID/1", {
+    admissionDigest,
+    bindingId,
+  });
+}
+
+function requireCurrentServiceRecipe(
+  candidate: PrivateActivationCandidateArtifact,
+  recipe: PrivateBunServiceRecipe,
+  artifacts: ReacquiredArtifacts,
+): void {
+  const readyServices = candidate.candidate.targets.filter((target) =>
+    target.request.mode === "service" && target.disposition.state === "ready");
+  if (readyServices.length > 1) {
+    invalid(
+      "SERVICE_SCOPE_UNSUPPORTED",
+      "the private Service proof supports at most one READY Service Binding",
+    );
+  }
+  const bindingId = serviceRecipeBindingId(recipe);
+  const selected = findPrivateActivationCandidateTarget(candidate, recipe.request.target);
+  if (selected === undefined || readyServices.length !== 1 ||
+      readyServices[0]!.request.digest !== selected.request.digest ||
+      selected.request.mode !== "service" || selected.request.target.kind !== "binding" ||
+      selected.request.target.id !== bindingId ||
+      selected.request.digest !== recipe.request.digest ||
+      !sameBytes(
+        canonicalJson(selected.request as unknown as JsonValue),
+        canonicalJson(recipe.request as unknown as JsonValue),
+      ) ||
+      selected.disposition.state !== "ready" ||
+      selected.disposition.recipeDigest !== recipe.digest ||
+      selected.disposition.observationDigest !== recipe.observation.digest) {
+    invalid(
+      "SERVICE_MOUNT_TARGET_MISMATCH",
+      "Bun Service recipe differs from the active READY Service Binding",
+    );
+  }
+  requireServicePackageEvidence(candidate, selected.request.packagePath, bindingId, recipe.expectedExports, artifacts);
+  const inspected = artifacts.inspection(selected.request.package.digest);
+  const observedExports = inspected.providedContracts.map((entry) => ({
+    name: entry.slot,
+    contract: {
+      id: entry.contract.descriptor.id,
+      version: entry.contract.descriptor.version,
+      digest: entry.contract.digest,
+    },
+  })).sort((left, right) => left.name < right.name ? -1 : left.name > right.name ? 1 : 0);
+  if (recipe.packageObservation.requestDigest !== recipe.request.digest ||
+      recipe.packageObservation.packageDigest !== recipe.request.package.digest ||
+      !sameBytes(
+        canonicalJson(observedExports as unknown as JsonValue),
+        canonicalJson(recipe.packageObservation.exports as unknown as JsonValue),
+      )) {
+    invalid(
+      "ADMISSION_ARTIFACT_MISMATCH",
+      "Bun Service recipe export evidence differs from its retained Package/1",
+    );
+  }
+}
+
+function requireServicePackageEvidence(
+  candidate: PrivateActivationCandidateArtifact,
+  packagePath: string,
+  bindingId: string,
+  expectedExports: readonly string[],
+  artifacts: ReacquiredArtifacts,
+): void {
+  const binding = candidate.lock.bindings[bindingId];
+  const lockedPackage = candidate.lock.packages[packagePath];
+  if (binding === undefined || binding.packagePath !== packagePath ||
+      lockedPackage === undefined || lockedPackage.mode !== "service" ||
+      Object.keys(binding.attachments).length !== 0 || Object.keys(binding.slots).length !== 0) {
+    corrupt("stored Service Mount Binding differs from its candidate lock");
+  }
+  const inspected = artifacts.inspection(lockedPackage.digest);
+  const exports = Object.keys(lockedPackage.provides).sort();
+  if (inspected.digest !== lockedPackage.digest || inspected.mode !== "service" ||
+      exports.length !== expectedExports.length ||
+      exports.some((value, index) => value !== expectedExports[index])) {
+    corrupt("stored Service Mount exports differ from their protected Package/1");
+  }
+}
+
+function loadServiceMountSnapshot(
+  database: SqliteDatabase,
+  row: ServiceMountRow,
+  root: PrivateProjectRoot,
+  coordinator: PrivateProjectCoordinator,
+  candidate: PrivateActivationCandidateArtifact,
+  artifacts: ReacquiredArtifacts,
+): PrivateServiceMountSnapshot {
+  requireDigest(row.mount_id, "stored Service Mount");
+  requireDigest(row.admission_digest, "stored Service Mount admission");
+  requireDigest(row.allocation_digest, "stored Service Mount allocation");
+  const epoch = safeRevision(row.coordinator_epoch);
+  if (epoch > coordinator.epoch) corrupt("Service Mount belongs to a future coordinator epoch");
+  const bytes = copiedBlob(row.allocation_bytes, "stored Service Mount allocation");
+  requireStoredSize(bytes, "stored Service Mount allocation");
+  let allocation: PrivateServiceMountAllocation;
+  try { allocation = decodePrivateServiceMountAllocation(bytes); }
+  catch { corrupt("stored Service Mount allocation is invalid"); }
+  if (!sameBytes(bytes, encodePrivateServiceMountAllocation(allocation)) ||
+      privateServiceMountAllocationDigest(allocation) !== row.allocation_digest ||
+      allocation.mountId !== row.mount_id || allocation.bindingId !== row.binding_id ||
+      allocation.admissionDigest !== row.admission_digest || allocation.coordinatorEpoch !== epoch ||
+      allocation.mountId !== privateServiceMountId(allocation.admissionDigest, allocation.bindingId)) {
+    corrupt("stored Service Mount allocation differs from its durable identity");
+  }
+
+  const admissionRow = requireAdmissionByDigest(database, row.admission_digest);
+  const admission = loadAndCrossCheckAdmission(database, admissionRow, root).admission;
+  if (allocation.candidateRevision !== admission.candidateRevision ||
+      candidate.candidate.lockDigest !== admission.lockDigest ||
+      privateActivationCandidateDigest(candidate) !== admission.candidateDigest) {
+    corrupt("stored Service Mount candidate differs from its admission");
+  }
+  const readyServices = candidate.candidate.targets.filter((target) =>
+    target.request.mode === "service" && target.disposition.state === "ready");
+  const selected = findPrivateActivationCandidateTarget(candidate, {
+    kind: "binding",
+    id: allocation.bindingId,
+  });
+  if (selected === undefined || readyServices.length !== 1 ||
+      readyServices[0]!.request.digest !== selected.request.digest ||
+      selected.request.mode !== "service" || selected.request.target.kind !== "binding" ||
+      selected.request.digest !== allocation.requestDigest ||
+      selected.disposition.state !== "ready" ||
+      selected.disposition.recipeDigest !== allocation.recipeDigest ||
+      selected.disposition.observationDigest !== allocation.observationDigest) {
+    corrupt("stored Service Mount differs from its pinned READY target");
+  }
+  requireServicePackageEvidence(
+    candidate,
+    selected.request.packagePath,
+    allocation.bindingId,
+    allocation.expectedExports,
+    artifacts,
+  );
+  return Object.freeze({
+    allocation,
+    allocationDigest: row.allocation_digest,
+    coordinator: epoch === coordinator.epoch ? "current" : "older",
+  });
+}
+
+function findServiceMountByAdmissionBinding(
+  database: SqliteDatabase,
+  admissionDigest: string,
+  bindingId: string,
+): ServiceMountRow | null {
+  const query = statement<ServiceMountRow>(database, [
+    "SELECT mount_id, binding_id, admission_digest, coordinator_epoch, allocation_digest, allocation_bytes",
+    "FROM service_mounts WHERE admission_digest = ?1 AND binding_id = ?2",
+  ].join(" ")).safeIntegers(true);
+  let rows: readonly ServiceMountRow[];
+  try { rows = query.all(admissionDigest, bindingId).map(copiedServiceMountRow); }
+  finally { query.finalize(); }
+  if (rows.length > 1) corrupt("one admission and Service Binding name multiple Mount allocations");
+  return rows[0] ?? null;
+}
+
+function requireServiceMountRow(database: SqliteDatabase, mountId: string): ServiceMountRow {
+  const query = statement<ServiceMountRow>(database, [
+    "SELECT mount_id, binding_id, admission_digest, coordinator_epoch, allocation_digest, allocation_bytes",
+    "FROM service_mounts WHERE mount_id = ?1",
+  ].join(" ")).safeIntegers(true);
+  let rows: readonly ServiceMountRow[];
+  try { rows = query.all(mountId).map(copiedServiceMountRow); }
+  finally { query.finalize(); }
+  if (rows.length === 0) unavailable("SERVICE_MOUNT_MISSING", "Service Mount does not exist");
+  if (rows.length !== 1) corrupt("Service Mount identity is duplicated");
+  return rows[0]!;
+}
+
+function copiedServiceMountRow(row: ServiceMountRow): ServiceMountRow {
+  return Object.freeze({
+    mount_id: row.mount_id,
+    binding_id: row.binding_id,
+    admission_digest: row.admission_digest,
+    coordinator_epoch: row.coordinator_epoch,
+    allocation_digest: row.allocation_digest,
+    allocation_bytes: copiedBlob(row.allocation_bytes, "stored Service Mount allocation"),
+  });
+}
+
+function requireSameServiceMountRow(left: ServiceMountRow, right: ServiceMountRow): void {
+  if (left.mount_id !== right.mount_id || left.binding_id !== right.binding_id ||
+      left.admission_digest !== right.admission_digest ||
+      left.coordinator_epoch !== right.coordinator_epoch ||
+      left.allocation_digest !== right.allocation_digest ||
+      !sameBytes(left.allocation_bytes, right.allocation_bytes)) {
+    corrupt("Service Mount allocation changed after durable insertion");
+  }
+}
+
+function serviceMountHasRelease(database: SqliteDatabase, mountId: string): boolean {
+  const query = statement<{ readonly count: bigint }>(database, [
+    "SELECT count(*) AS count FROM service_mount_facts",
+    "WHERE mount_id = ?1 AND fact_name IN ('release', 'closure')",
+  ].join(" ")).safeIntegers(true);
+  try {
+    const aggregate = query.get(mountId);
+    if (aggregate === null) corrupt("Service Mount release aggregate is missing");
+    return aggregate.count !== 0n;
+  }
+  finally { query.finalize(); }
 }
 
 function requireCandidateRow(database: SqliteDatabase, revision: bigint): CandidateRow {
