@@ -214,6 +214,15 @@ export interface PrivateServiceLeaseRelease {
   }[];
 }
 
+export interface PrivateServiceOwnerClosure {
+  readonly kind: "private-service-owner-closure/1";
+  readonly ownerRunId: string;
+  readonly leases: readonly {
+    readonly slot: string;
+    readonly releaseDigest: string;
+  }[];
+}
+
 export interface PrivateServiceInvocationCall {
   readonly operationId: string;
   readonly slot: string;
@@ -895,6 +904,49 @@ export function privateServiceLeaseReleaseDigest(value: unknown): string {
   return privateDomainDigest(
     "JIG-Private-Service-Lease-Release/1",
     normalizePrivateServiceLeaseRelease(value) as unknown as JsonValue,
+  );
+}
+
+export function normalizePrivateServiceOwnerClosure(value: unknown): PrivateServiceOwnerClosure {
+  const root = exactObject(value, ["kind", "leases", "ownerRunId"], "Service owner closure");
+  if (root.kind !== "private-service-owner-closure/1") {
+    throw new TypeError("Service owner closure kind is invalid");
+  }
+  const leases = ordinaryArray(
+    root.leases,
+    JSON_1_LIMITS.containerEntries,
+    "Service owner closure leases",
+  ).map((value) => {
+    const item = exactObject(value, ["releaseDigest", "slot"], "Service owner closure lease");
+    return Object.freeze({
+      slot: localName(item.slot, "Service owner closure lease slot"),
+      releaseDigest: digest(item.releaseDigest, "Service owner closure lease release"),
+    });
+  });
+  for (let index = 1; index < leases.length; index += 1) {
+    if (leases[index - 1]!.slot >= leases[index]!.slot) {
+      throw new TypeError("Service owner closure leases must have unique, sorted slots");
+    }
+  }
+  return Object.freeze({
+    kind: "private-service-owner-closure/1",
+    ownerRunId: digest(root.ownerRunId, "Service owner closure Run"),
+    leases: Object.freeze(leases),
+  });
+}
+
+export function encodePrivateServiceOwnerClosure(value: unknown): Uint8Array {
+  return canonicalJson(normalizePrivateServiceOwnerClosure(value) as unknown as JsonValue);
+}
+
+export function decodePrivateServiceOwnerClosure(bytes: Uint8Array): PrivateServiceOwnerClosure {
+  return decodeCanonical(bytes, normalizePrivateServiceOwnerClosure, "Service owner closure");
+}
+
+export function privateServiceOwnerClosureDigest(value: unknown): string {
+  return privateDomainDigest(
+    "JIG-Private-Service-Owner-Closure/1",
+    normalizePrivateServiceOwnerClosure(value) as unknown as JsonValue,
   );
 }
 

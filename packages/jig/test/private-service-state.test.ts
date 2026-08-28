@@ -17,6 +17,7 @@ import {
   decodePrivateServiceInvocationTerminal,
   decodePrivateServiceLeaseAllocation,
   decodePrivateServiceLeaseRelease,
+  decodePrivateServiceOwnerClosure,
   decodePrivateServiceMountAllocation,
   encodePrivateServiceMountAcknowledged,
   encodePrivateServiceMountBacking,
@@ -34,6 +35,7 @@ import {
   encodePrivateServiceInvocationTerminal,
   encodePrivateServiceLeaseAllocation,
   encodePrivateServiceLeaseRelease,
+  encodePrivateServiceOwnerClosure,
   encodePrivateServiceMountAllocation,
   normalizePrivateServiceMountAcknowledged,
   normalizePrivateServiceMountBacking,
@@ -51,6 +53,7 @@ import {
   normalizePrivateServiceInvocationTerminal,
   normalizePrivateServiceLeaseAllocation,
   normalizePrivateServiceLeaseRelease,
+  normalizePrivateServiceOwnerClosure,
   normalizePrivateServiceMountAllocation,
   privateServiceMountAcknowledgedDigest,
   privateServiceMountBackingDigest,
@@ -69,6 +72,7 @@ import {
   privateServiceInvocationTerminalDigest,
   privateServiceLeaseAllocationDigest,
   privateServiceLeaseReleaseDigest,
+  privateServiceOwnerClosureDigest,
   privateServiceMountAllocationDigest,
 } from "../src/internal/private-service-state.js";
 import { privateDomainDigest } from "../src/internal/identity.js";
@@ -358,6 +362,48 @@ describe("private Service durable state", () => {
       ...release,
       mountFenceDigest: id("e"),
     })).toThrow("cannot carry Mount fence evidence");
+  });
+
+  test("closes one Service owner over its complete sorted lease set", () => {
+    const closure = normalizePrivateServiceOwnerClosure({
+      kind: "private-service-owner-closure/1",
+      ownerRunId: id("a"),
+      leases: [
+        { slot: "audit", releaseDigest: id("b") },
+        { slot: "counter", releaseDigest: id("c") },
+      ],
+    });
+    expect(Object.isFrozen(closure.leases)).toBeTrue();
+    expect(Object.isFrozen(closure.leases[0])).toBeTrue();
+    expect(decodePrivateServiceOwnerClosure(encodePrivateServiceOwnerClosure(closure)))
+      .toEqual(closure);
+    expect(privateServiceOwnerClosureDigest(closure)).toMatch(/^sha256:[0-9a-f]{64}$/);
+    expect(privateServiceOwnerClosureDigest({ ...closure, leases: [] }))
+      .not.toBe(privateServiceOwnerClosureDigest(closure));
+
+    expect(() => normalizePrivateServiceOwnerClosure({
+      ...closure,
+      leases: [...closure.leases].reverse(),
+    })).toThrow("unique, sorted slots");
+    expect(() => normalizePrivateServiceOwnerClosure({
+      ...closure,
+      leases: [closure.leases[0], { ...closure.leases[0], releaseDigest: id("d") }],
+    })).toThrow("unique, sorted slots");
+    expect(() => normalizePrivateServiceOwnerClosure({
+      ...closure,
+      leases: new Proxy([...closure.leases], {}),
+    })).toThrow("ordinary array");
+    expect(() => normalizePrivateServiceOwnerClosure({
+      ...closure,
+      leases: [Object.defineProperty(
+        { slot: "audit", releaseDigest: id("b") },
+        "releaseDigest",
+        { enumerable: true, get: () => id("b") },
+      )],
+    })).toThrow("data properties");
+    const sparse = new Array(1);
+    expect(() => normalizePrivateServiceOwnerClosure({ ...closure, leases: sparse }))
+      .toThrow("dense");
   });
 
   test("separates caller replay equality from the host-owned invocation deadline", () => {
