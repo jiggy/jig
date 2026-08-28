@@ -87,6 +87,10 @@ Current implementation frontier:
 - [`design-review/160-changing-run-universe-disposition.md`](design-review/160-changing-run-universe-disposition.md)
   selects the minimal `projectRunTargets()` authoring direction after two
   frozen-interface clean-room consumers, while keeping implementation gated.
+- [`design-review/161-private-jig-route-lowering.md`](design-review/161-private-jig-route-lowering.md)
+  records the successful-but-removed router-lowering experiment. A Jig Graph
+  compiler now waits for a real stored graph consumer rather than inventing a
+  DSL around synthetic terminal nodes.
 
 The focused Run/1 specification owns its finite wire surface. The remaining
 cross-cutting system rules are in the canonical architecture:

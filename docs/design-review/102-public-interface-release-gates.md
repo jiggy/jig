@@ -376,6 +376,15 @@ This model is not automatically a second user-authored workflow DSL or a
 universal graph schema. Expose only the authoring surface real Jig Graph users
 need; keep compiler IR private when possible.
 
+Review 161 tested the tempting router-only compiler before retaining it. The
+candidate passed real Sley selection, validation, and static-correlation tests,
+but required 821 lines around a graph expressible directly in roughly 45 and
+had no real consumer for its serialized definition or receipt. It was removed.
+Jig Graph implementation is now gated on one real Jig-owned graph artifact
+which must be stored or validated independently of code and contains meaningful
+non-router work or nested composition. That consumer—not a synthetic compiler
+probe—must freeze the next minimal model.
+
 ## Closed private execution slices and open phase boundary
 
 The private direct-root chain is complete for exact Python and Bun recipes: one
