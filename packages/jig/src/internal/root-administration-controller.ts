@@ -58,6 +58,7 @@ export async function openPrivateRootAdministrationController(input: {
   readonly packageStoreRoot: string;
   readonly runTimeoutMs: number;
   readonly execute: PrivateRootLaunchExecutor;
+  readonly onProjectIdentityLoss?: () => void;
 }): Promise<PrivateRootAdministrationController> {
   requireRunTimeout(input.runTimeoutMs);
   if (typeof input.execute !== "function") throw new TypeError("root Run executor is required");
@@ -97,6 +98,7 @@ export async function attachPrivateRootAdministrationController(input: {
   readonly packageStoreRoot: string;
   readonly runTimeoutMs: number;
   readonly execute: PrivateRootLaunchExecutor;
+  readonly onProjectIdentityLoss?: () => void;
 }): Promise<PrivateRootAdministrationController> {
   requireRunTimeout(input.runTimeoutMs);
   if (typeof input.execute !== "function") throw new TypeError("root Run executor is required");
@@ -123,11 +125,15 @@ function createController(input: {
   readonly runTimeoutMs: number;
   readonly execute: PrivateRootLaunchExecutor;
   readonly coordinator: PrivateProjectCoordinator;
+  readonly onProjectIdentityLoss?: () => void;
 }): {
   readonly controller: PrivateRootAdministrationController;
   recoverOlder(): Promise<void>;
   pumpCurrent(): Promise<void>;
 } {
+  if (input.onProjectIdentityLoss !== undefined && typeof input.onProjectIdentityLoss !== "function") {
+    throw new TypeError("project identity-loss callback must be a function");
+  }
   const cancellation = new AbortController();
   const operations = new Set<Promise<void>>();
   const tasks = new Map<string, Promise<void>>();
@@ -135,6 +141,7 @@ function createController(input: {
   let backgroundPump: Promise<void> | undefined;
   let pumpRequested = false;
   let closed = false;
+  let identityLossNotified = false;
   let disposal: Promise<void> | undefined;
 
   const administration: RootAdministration = Object.freeze({
@@ -157,9 +164,10 @@ function createController(input: {
         }));
         return Object.freeze({ runId: submission.run.runId });
       } catch (error) {
+        observeFailure(error);
         throw administrationError(error, "start root Run");
       } finally {
-        try { await pumpCurrent(); } catch (error) { failures.push(error); }
+        try { await pumpCurrent(); } catch (error) { observeFailure(error); failures.push(error); }
         operations.delete(unsettled);
         markSettled();
       }
@@ -179,6 +187,7 @@ function createController(input: {
           runId: request.runId,
         })));
       } catch (error) {
+        observeFailure(error);
         throw administrationError(error, "read root Run status");
       } finally {
         operations.delete(unsettled);
@@ -191,7 +200,7 @@ function createController(input: {
     if (tasks.has(runId)) return;
     let task: Promise<void>;
     task = settleRun(runId)
-      .catch((error) => { failures.push(error); })
+      .catch((error) => { observeFailure(error); failures.push(error); })
       .finally(() => {
         if (tasks.get(runId) === task) tasks.delete(runId);
       });
@@ -241,7 +250,7 @@ function createController(input: {
     pumpRequested = true;
     if (backgroundPump !== undefined) return;
     backgroundPump = drainPumpRequests()
-      .catch((error) => { failures.push(error); })
+      .catch((error) => { observeFailure(error); failures.push(error); })
       .finally(() => {
         backgroundPump = undefined;
         if (pumpRequested) notifyWorkAvailable();
@@ -256,28 +265,42 @@ function createController(input: {
   }
 
   async function recoverOlder(): Promise<void> {
-    const work = await retryPrivateBusy(() => listPrivateRootExecutionWork({
-      coordinator: input.coordinator,
-      projectRoot: input.projectRoot,
-      epoch: "older",
-    }));
-    for (const item of work) {
-      const settled = await retryPrivateBusy(async () => await input.execute(
-        item.run.runId,
-        input.coordinator,
-        cancellation.signal,
-        notifyWorkAvailable,
-      ));
-      if (settled.state === "pending") {
-        throw new RootAdministrationError(
-          "PROJECT_BUSY",
-          "a prior root Run still has unconfirmed execution ownership",
-        );
+    try {
+      const work = await retryPrivateBusy(() => listPrivateRootExecutionWork({
+        coordinator: input.coordinator,
+        projectRoot: input.projectRoot,
+        epoch: "older",
+      }));
+      for (const item of work) {
+        const settled = await retryPrivateBusy(async () => await input.execute(
+          item.run.runId,
+          input.coordinator,
+          cancellation.signal,
+          notifyWorkAvailable,
+        ));
+        if (settled.state === "pending") {
+          throw new RootAdministrationError(
+            "PROJECT_BUSY",
+            "a prior root Run still has unconfirmed execution ownership",
+          );
+        }
+        if (settled.run.runId !== item.run.runId || settled.run.state !== "terminal") {
+          throw new Error("trusted root Run recovery returned no matching terminal");
+        }
       }
-      if (settled.run.runId !== item.run.runId || settled.run.state !== "terminal") {
-        throw new Error("trusted root Run recovery returned no matching terminal");
-      }
+    } catch (error) {
+      observeFailure(error);
+      throw error;
     }
+  }
+
+  function observeFailure(error: unknown): void {
+    if (identityLossNotified || !isProjectIdentityLoss(error)) return;
+    identityLossNotified = true;
+    closed = true;
+    cancellation.abort(new Error("project identity was lost"));
+    try { input.onProjectIdentityLoss?.(); }
+    catch (callbackError) { failures.push(callbackError); }
   }
 
   async function drain(): Promise<void> {
@@ -388,6 +411,8 @@ function administrationError(error: unknown, operation: string): RootAdministrat
       case "ADMISSION_STATE_BUSY":
         return new RootAdministrationError("PROJECT_BUSY", "project is temporarily busy");
       case "COORDINATOR_CLOSED":
+      case "COORDINATOR_PROJECT_MISMATCH":
+      case "PROJECT_SOURCE_CHANGED":
         return new RootAdministrationError("PROJECT_CLOSED", "project authority is closed");
       case "ADMISSION_MISSING":
       case "STALE_PLAN":
@@ -399,4 +424,11 @@ function administrationError(error: unknown, operation: string): RootAdministrat
     }
   }
   return new RootAdministrationError("INTERNAL", `${operation} failed`);
+}
+
+function isProjectIdentityLoss(error: unknown): boolean {
+  return error instanceof CheckError && (
+    error.code === "COORDINATOR_PROJECT_MISMATCH" ||
+    error.code === "PROJECT_SOURCE_CHANGED"
+  );
 }

@@ -1,0 +1,104 @@
+{
+  "$schema": "https://flow.dev/schemas/schema-1.json",
+  "title": "Jig project administration value/1",
+  "anyOf": [
+    { "$ref": "#/$defs/planRequest" },
+    { "$ref": "#/$defs/planResult" },
+    { "$ref": "#/$defs/applyRequest" },
+    { "$ref": "#/$defs/applyReceipt" },
+    { "$ref": "#/$defs/administrationError" }
+  ],
+  "$defs": {
+    "digest": {
+      "description": "A lowercase sha256: digest. Schema/1 checks length; the Project Administration normalizer checks the exact sha256:[0-9a-f]{64} grammar.",
+      "type": "string",
+      "minLength": 71,
+      "maxLength": 71
+    },
+    "planRequest": {
+      "type": "object",
+      "properties": {
+        "lockMode": {
+          "description": "update may publish the reviewed lock; locked requires the exact reviewed lock to remain present and never writes it.",
+          "enum": ["update", "locked"]
+        }
+      },
+      "required": ["lockMode"],
+      "additionalProperties": false
+    },
+    "review": {
+      "type": "object",
+      "properties": {
+        "mediaType": { "const": "text/plain; charset=utf-8" },
+        "text": { "type": "string", "maxLength": 4194304 }
+      },
+      "required": ["mediaType", "text"],
+      "additionalProperties": false
+    },
+    "unchangedPlanResult": {
+      "type": "object",
+      "properties": {
+        "state": { "const": "unchanged" }
+      },
+      "required": ["state"],
+      "additionalProperties": false
+    },
+    "applicablePlanResult": {
+      "type": "object",
+      "properties": {
+        "state": { "const": "applicable" },
+        "operation": { "enum": ["admission", "lock-repair"] },
+        "planDigest": { "$ref": "#/$defs/digest" },
+        "review": { "$ref": "#/$defs/review" }
+      },
+      "required": ["state", "operation", "planDigest", "review"],
+      "additionalProperties": false
+    },
+    "planResult": {
+      "oneOf": [
+        { "$ref": "#/$defs/unchangedPlanResult" },
+        { "$ref": "#/$defs/applicablePlanResult" }
+      ]
+    },
+    "applyRequest": {
+      "type": "object",
+      "properties": {
+        "planDigest": { "$ref": "#/$defs/digest" }
+      },
+      "required": ["planDigest"],
+      "additionalProperties": false
+    },
+    "applyReceipt": {
+      "type": "object",
+      "properties": {
+        "operation": { "enum": ["admission", "lock-repair"] },
+        "planDigest": { "$ref": "#/$defs/digest" }
+      },
+      "required": ["operation", "planDigest"],
+      "additionalProperties": false
+    },
+    "administrationError": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "enum": [
+            "INVALID_REQUEST",
+            "PROJECT_NOT_FOUND",
+            "PROJECT_UNSAFE",
+            "INVALID_CANDIDATE",
+            "LOCK_MISMATCH",
+            "PLAN_NOT_FOUND",
+            "STALE_PLAN",
+            "PROJECT_BUSY",
+            "PROJECT_CLOSED",
+            "UNAVAILABLE",
+            "INTERNAL"
+          ]
+        },
+        "message": { "type": "string", "minLength": 1, "maxLength": 1024 }
+      },
+      "required": ["code", "message"],
+      "additionalProperties": false
+    }
+  }
+}

@@ -5,6 +5,7 @@ import { realpath } from "node:fs/promises";
 import { invalid, unavailable } from "../diagnostics.js";
 import {
   PrivateLinuxCgroupBackend,
+  type PrivateLinuxCgroupLimits,
   type PrivateLinuxReadOnlyMount,
 } from "../internal/linux-cgroup-backend.js";
 import {
@@ -39,6 +40,15 @@ import {
 const PROTOCOL = "jig-author-evaluator/1";
 const MAX_STDERR_BYTES = 64 * 1024;
 const MAX_STDOUT_BYTES = JSON_1_LIMITS.bytes + 16 * 1024;
+const EVALUATOR_LIMIT_POLICY = Object.freeze({
+  memoryBytes: 256 * 1024 * 1024,
+  pids: 32,
+  cpuQuotaMicros: 50_000,
+  cpuPeriodMicros: 100_000,
+  wallClockCeilingMs: 3_000,
+  cancellationGraceMs: 1_000,
+  cleanupTimeoutMs: 5_000,
+});
 const EVALUATION_CODES = new Set([
   "PROJECT_AUTHORING_VALUE",
   "PROJECT_DEFAULT_EXPORT",
@@ -88,7 +98,8 @@ export interface EvaluatorProfile {
     readonly trustedLauncherDigest: string;
     readonly payloadUid: number;
     readonly payloadGid: number;
-    readonly limits: ReturnType<typeof evaluatorLimits>;
+    /** Stable policy only; invocation-local absolute deadlines are enforcement evidence. */
+    readonly limits: typeof EVALUATOR_LIMIT_POLICY;
     readonly privateProcessFilesystem: true;
     readonly privateRuntimeDevices: true;
   };
@@ -220,9 +231,10 @@ export async function evaluateAuthorClosure(
       modules,
     });
     const runId = `config-${process.pid.toString(36)}-${(++evaluationSequence).toString(36)}`;
+    const limits = evaluatorLimits();
     const component = await options.backend.launch({
       runId,
-      limits: evaluatorLimits(),
+      limits,
       readOnlyMounts: [
         ...runtimeMounts,
         { source: materialized.root, destination: "/jig-evaluator" },
@@ -236,6 +248,7 @@ export async function evaluateAuthorClosure(
       `cannot launch evaluator envelope: ${errorText(error)}`,
     ));
     if (!component.envelope.privateProcessFilesystem || !component.envelope.privateRuntimeDevices ||
+        !sameEvaluatorLimits(component.envelope.limits, limits) ||
         component.envelope.trustedHelperDigest !== digestBytes(helperBytes) ||
         component.envelope.trustedCoordinatorBunDigest !== runtimeDigest) {
       await component.terminate().catch(() => undefined);
@@ -267,7 +280,7 @@ export async function evaluateAuthorClosure(
         trustedLauncherDigest: component.envelope.trustedLauncherDigest,
         payloadUid: component.envelope.payloadUid,
         payloadGid: component.envelope.payloadGid,
-        limits: component.envelope.limits as ReturnType<typeof evaluatorLimits>,
+        limits: EVALUATOR_LIMIT_POLICY,
         privateProcessFilesystem: component.envelope.privateProcessFilesystem,
         privateRuntimeDevices: component.envelope.privateRuntimeDevices,
       }),
@@ -479,14 +492,27 @@ function exactKeys(value: object, expected: readonly string[]): boolean {
 
 function evaluatorLimits() {
   return Object.freeze({
-    memoryBytes: 256 * 1024 * 1024,
-    pids: 32,
-    cpuQuotaMicros: 50_000,
-    cpuPeriodMicros: 100_000,
-    deadlineUnixMs: Date.now() + 3_000,
-    cancellationGraceMs: 1_000,
-    cleanupTimeoutMs: 5_000,
+    memoryBytes: EVALUATOR_LIMIT_POLICY.memoryBytes,
+    pids: EVALUATOR_LIMIT_POLICY.pids,
+    cpuQuotaMicros: EVALUATOR_LIMIT_POLICY.cpuQuotaMicros,
+    cpuPeriodMicros: EVALUATOR_LIMIT_POLICY.cpuPeriodMicros,
+    deadlineUnixMs: Date.now() + EVALUATOR_LIMIT_POLICY.wallClockCeilingMs,
+    cancellationGraceMs: EVALUATOR_LIMIT_POLICY.cancellationGraceMs,
+    cleanupTimeoutMs: EVALUATOR_LIMIT_POLICY.cleanupTimeoutMs,
   });
+}
+
+function sameEvaluatorLimits(
+  actual: PrivateLinuxCgroupLimits,
+  expected: ReturnType<typeof evaluatorLimits>,
+): boolean {
+  return actual.memoryBytes === expected.memoryBytes &&
+    actual.pids === expected.pids &&
+    actual.cpuQuotaMicros === expected.cpuQuotaMicros &&
+    actual.cpuPeriodMicros === expected.cpuPeriodMicros &&
+    actual.deadlineUnixMs === expected.deadlineUnixMs &&
+    actual.cancellationGraceMs === expected.cancellationGraceMs &&
+    actual.cleanupTimeoutMs === expected.cleanupTimeoutMs;
 }
 
 async function checkedRuntimeMounts(

@@ -11,3 +11,13 @@ export {
   type StartRootRunReceipt,
   type StartRootRunRequest,
 } from "./administration/root.js";
+export {
+  ProjectAdministrationError,
+  type ProjectAdministrationErrorCode,
+  type ProjectAdministrationErrorValue,
+  type ProjectApplyReceipt,
+  type ProjectApplyRequest,
+  type ProjectPlanRequest,
+  type ProjectPlanResult,
+  type ProjectSession,
+} from "./administration/project.js";

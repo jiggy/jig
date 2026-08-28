@@ -1270,8 +1270,11 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
             limits: {
               memoryBytes: 256 * 1024 * 1024,
               pids: 32,
-              deadlineUnixMs: expect.any(Number),
+              cpuQuotaMicros: 50_000,
+              cpuPeriodMicros: 100_000,
+              wallClockCeilingMs: 3_000,
               cancellationGraceMs: 1_000,
+              cleanupTimeoutMs: 5_000,
             },
           },
         });
@@ -2772,6 +2775,16 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         candidate: unavailable,
         lockMode: "locked",
       })).rejects.toMatchObject({ code: "LOCK_MISMATCH" });
+      await expect(publishPrivateActivationReviewPlan({
+        projectRoot: root,
+        packageStoreRoot: store,
+        planningBase: initialPlanningBase,
+        candidate: unavailable,
+        lockMode: "update",
+        beforePersistApplicable(): void {
+          throw new Error("display gate rejected the complete review");
+        },
+      })).rejects.toThrow("display gate rejected the complete review");
       let atomicState = sqlite.Database.open(
         admissionDatabase,
         sqlite.constants.SQLITE_OPEN_READONLY | sqlite.constants.SQLITE_OPEN_NOFOLLOW,

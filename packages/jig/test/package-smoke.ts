@@ -11,6 +11,8 @@ const expectedInstalledFiles = [
   "dist/administration.js",
   "dist/administration/root.d.ts",
   "dist/administration/root.js",
+  "dist/administration/project.d.ts",
+  "dist/administration/project.js",
   "dist/capability/index.js",
   "dist/cli.js",
   "dist/diagnostics.js",
@@ -27,6 +29,7 @@ const expectedInstalledFiles = [
   "dist/package/metadata.js",
   "dist/package/paths.js",
   "dist/project-authoring-1.schema.json",
+  "dist/project-administration-1.schema.json",
   "dist/project/author.d.ts",
   "dist/project/author.js",
   "dist/project/paths.js",
@@ -90,8 +93,11 @@ if (project.flows.roots[0] !== "flows" || binding.package !== "flows/review" ||
 
   await writeFile(join(consumer, "administration-smoke.mjs"), `
 import { RootAdministrationError } from "@jigging/jig/administration";
+import { ProjectAdministrationError } from "@jigging/jig/administration";
 const error = new RootAdministrationError("PROJECT_BUSY", "busy");
 if (error.code !== "PROJECT_BUSY" || error.toJSON().message !== "busy") throw new Error("bad administration export");
+const projectError = new ProjectAdministrationError("STALE_PLAN", "stale");
+if (projectError.code !== "STALE_PLAN" || projectError.toJSON().message !== "stale") throw new Error("bad project administration export");
 `);
   await run(["bun", "administration-smoke.mjs"], consumer);
 
@@ -103,6 +109,9 @@ if (schema.$schema !== "https://flow.dev/schemas/schema-1.json") throw new Error
 const administrationPath = import.meta.resolve("@jigging/jig/schema/root-administration-1");
 const administration = JSON.parse(await readFile(new URL(administrationPath), "utf8"));
 if (!administration.$defs?.startRunRequest) throw new Error("bad packaged administration schema");
+const projectAdministrationPath = import.meta.resolve("@jigging/jig/schema/project-administration-1");
+const projectAdministration = JSON.parse(await readFile(new URL(projectAdministrationPath), "utf8"));
+if (!projectAdministration.$defs?.planResult) throw new Error("bad packaged project administration schema");
 `);
   await run(["bun", "schema-smoke.mjs"], consumer);
 
@@ -112,17 +121,20 @@ if (!administration.$defs?.startRunRequest) throw new Error("bad packaged admini
   await writeFile(join(consumer, "smoke.ts"), `
 import { defineJig, discover, type JigDefinitionInput } from "@jigging/jig";
 import { defineHook, defineJig as defineHookJig, bindingRef, flowRef } from "@jigging/jig/experimental/hooks";
-import type { RootAdministration, RootRunStatus } from "@jigging/jig/administration";
+import type { ProjectSession, RootAdministration, RootRunStatus } from "@jigging/jig/administration";
 const input: JigDefinitionInput = { flows: discover("./flows") };
 const project = defineJig(input);
 const hookProject = defineHookJig({ hooks: discover("./hooks") });
 const hook = defineHook({ on: { publisher: bindingRef("events"), type: "https://example.org/events/work" }, run: flowRef("./flows/review") });
 declare const administration: RootAdministration;
+declare const session: ProjectSession;
 const status: Promise<RootRunStatus> = administration.runStatus({ runId: "sha256:${"a".repeat(64)}" });
+const planned = session.plan({ lockMode: "update" });
 void project;
 void hookProject;
 void hook;
 void status;
+void planned;
 `);
   await writeFile(
     join(consumer, "root-administration-consumer.ts"),
@@ -131,12 +143,19 @@ void status;
       "../../conformance/root-administration-1/consumer.ts",
     ), "utf8"),
   );
+  await writeFile(
+    join(consumer, "project-administration-consumer.ts"),
+    await readFile(resolve(
+      packageRoot,
+      "../../conformance/project-administration-1/consumer.ts",
+    ), "utf8"),
+  );
   await writeFile(join(consumer, "tsconfig.json"), JSON.stringify({
     compilerOptions: {
       target: "ES2022", module: "NodeNext", moduleResolution: "NodeNext",
       strict: true, noEmit: true,
     },
-    files: ["smoke.ts", "root-administration-consumer.ts"],
+    files: ["smoke.ts", "root-administration-consumer.ts", "project-administration-consumer.ts"],
   }));
   await run(["bunx", "--bun", "tsc", "-p", join(consumer, "tsconfig.json")], packageRoot);
 

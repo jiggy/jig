@@ -21,7 +21,8 @@
       "import": "./dist/experimental/hooks.js"
     },
     "./schema/project-authoring-1": "./dist/project-authoring-1.schema.json",
-    "./schema/root-administration-1": "./dist/root-administration-1.schema.json"
+    "./schema/root-administration-1": "./dist/root-administration-1.schema.json",
+    "./schema/project-administration-1": "./dist/project-administration-1.schema.json"
   },
   "bin": {
     "jig": "./dist/cli.js"
@@ -33,6 +34,8 @@
     "dist/administration.d.ts",
     "dist/administration/root.js",
     "dist/administration/root.d.ts",
+    "dist/administration/project.js",
+    "dist/administration/project.d.ts",
     "dist/experimental/hooks.js",
     "dist/experimental/hooks.d.ts",
     "dist/project/author.js",
@@ -54,10 +57,11 @@
     "dist/capability/index.js",
     "dist/project-authoring-1.schema.json",
     "dist/root-administration-1.schema.json",
+    "dist/project-administration-1.schema.json",
     "README.md"
   ],
   "scripts": {
-    "build": "bun run clean && bun node_modules/typescript/bin/tsc -p tsconfig.json && bun build src/project/evaluator-sdk-entry.ts --target=bun --format=esm --outfile=dist/internal/project-evaluator-sdk.bundle.js && bun build src/project/experimental-hook-evaluator-sdk-entry.ts --target=bun --format=esm --outfile=dist/internal/experimental-hook-evaluator-sdk.bundle.js && cp ../../docs/spec/machine/project-authoring-1.schema.json dist/project-authoring-1.schema.json && cp ../../docs/spec/machine/private-project-authoring-hooks-1.schema.json dist/internal/private-project-authoring-hooks-1.schema.json && cp ../../docs/spec/machine/root-administration-1.schema.json dist/root-administration-1.schema.json",
+    "build": "bun run clean && bun node_modules/typescript/bin/tsc -p tsconfig.json && bun build src/project/evaluator-sdk-entry.ts --target=bun --format=esm --outfile=dist/internal/project-evaluator-sdk.bundle.js && bun build src/project/experimental-hook-evaluator-sdk-entry.ts --target=bun --format=esm --outfile=dist/internal/experimental-hook-evaluator-sdk.bundle.js && cp ../../docs/spec/machine/project-authoring-1.schema.json dist/project-authoring-1.schema.json && cp ../../docs/spec/machine/private-project-authoring-hooks-1.schema.json dist/internal/private-project-authoring-hooks-1.schema.json && cp ../../docs/spec/machine/root-administration-1.schema.json dist/root-administration-1.schema.json && cp ../../docs/spec/machine/project-administration-1.schema.json dist/project-administration-1.schema.json",
     "clean": "bun -e \"import { rm } from 'node:fs/promises'; await rm('dist', { recursive: true, force: true })\"",
     "prepack": "bun run build",
     "test": "bun test",

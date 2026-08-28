@@ -981,6 +981,8 @@ export async function publishPrivateActivationReviewPlan(input: {
   readonly planningBase: PrivateActivationPlanningBase;
   readonly candidate: PrivateActivationCandidateArtifactV5;
   readonly lockMode: "update" | "locked";
+  /** A private pre-commit display gate. Throwing rolls back Candidate and Plan publication. */
+  readonly beforePersistApplicable?: (review: PrivateActivationReviewPlan) => void;
 }): Promise<PrivateActivationPlanResult> {
   requireLockMode(input.lockMode);
   const planningBase = requirePrivateActivationPlanningBase(input.planningBase);
@@ -1021,6 +1023,7 @@ export async function publishPrivateActivationReviewPlan(input: {
         created,
         admissionHead,
         input.lockMode,
+        input.beforePersistApplicable,
       );
       if (published.inserted) advanceCandidateHead(owner.database, candidateHead, published.row);
       const finalHead = readCandidateHead(owner.database, owner.root);
@@ -8690,6 +8693,7 @@ async function classifyAndPersistPrivateActivationReview(
   candidate: PrivateActivationCandidateArtifactV5,
   admissionHead: AdmissionHeadRow,
   lockMode: "update" | "locked",
+  beforePersistApplicable?: (review: PrivateActivationReviewPlan) => void,
 ): Promise<PrivateActivationPlanResult> {
   if (candidateRow.candidate_digest !== privateActivationCandidateDigestV5(candidate)) {
     corrupt("review classification candidate row differs from its proposed Candidate/5");
@@ -8737,18 +8741,20 @@ async function classifyAndPersistPrivateActivationReview(
   const planBytes = encodePrivateActivationPlanV2(plan);
   requireStoredSize(planBytes, "review plan");
   const planDigest = privateActivationPlanDigestV2(plan);
-  persistReviewPlan(owner.database, {
-    plan_digest: planDigest,
-    candidate_revision: candidateRow.revision,
-    plan_bytes: planBytes,
-  });
-  return Object.freeze({
+  const applicable = Object.freeze({
     state: "applicable" as const,
     plan,
     planBytes,
     planDigest,
     candidate,
   });
+  beforePersistApplicable?.(applicable);
+  persistReviewPlan(owner.database, {
+    plan_digest: planDigest,
+    candidate_revision: candidateRow.revision,
+    plan_bytes: planBytes,
+  });
+  return applicable;
 }
 
 function persistReviewPlan(database: SqliteDatabase, row: PlanRow): void {

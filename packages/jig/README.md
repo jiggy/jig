@@ -7,6 +7,11 @@ interface.
 This artifact does not open projects, issue Root Administration authority,
 plan or apply projects, or execute FLOW packages.
 
+The `@jigging/jig/administration` path also exports the inert
+Project Administration/1 and Root Administration/1 value/type candidates for
+trusted-host injection and packed-consumer testing. It exports no project
+opener or host implementation.
+
 ```console
 bun run src/cli.ts package check ./path/to/package
 ```
