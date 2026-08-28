@@ -3,7 +3,9 @@
 **Status:** partially closed on 2026-08-28. The finite normal path is implemented
 in commit `3f84952` and recorded in
 [`155-private-mixed-composition-checkpoint.md`](155-private-mixed-composition-checkpoint.md).
-The provider-loss and coordinator-replacement proof gates below remain open.
+Review 162 closes coordinator replacement and the post-dispatch provider-loss
+case. The pre-dispatch provider-loss half and the remaining mixed
+cancellation/deadline gates below remain open.
 This record publishes no supervisor, Service controller, effect registry,
 project API, Runtime Adapter, or Sandbox Backend interface.
 

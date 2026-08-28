@@ -35,6 +35,10 @@ Start here:
 
 Current implementation frontier:
 
+- [`design-review/165-roadmap-closure-and-product-frontier.md`](design-review/165-roadmap-closure-and-product-frontier.md)
+  consolidates every completed, blocked, open, and negative vertical, selects
+  the Bun-only first Jig posture, and fixes the finite trusted local project
+  session as the next product code boundary.
 - [`design-review/130-nix-experiment-disposition-and-next-slice.md`](design-review/130-nix-experiment-disposition-and-next-slice.md)
   explains why the archived host-runtime Nix experiment is not a Jig or FLOW
   release gate. Its direct-root milestone is complete.
