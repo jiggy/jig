@@ -85,6 +85,10 @@ import {
   requirePrivateStoredActivationCandidate,
 } from "../src/internal/activation-admission-store.js";
 import { openPrivateRootAdministrationController } from "../src/internal/root-administration-controller.js";
+import {
+  recoverPrivateServiceMounts,
+  startPrivateBunServiceMount,
+} from "../src/internal/private-service-controller.js";
 import { executePrivateRootRunLaunch } from "../src/internal/root-run-controller.js";
 import { evaluateAuthorClosure } from "../src/project/author-evaluator.js";
 import { captureAuthorClosure } from "../src/project/author-module.js";
@@ -1462,13 +1466,26 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
 
       coordinator = await openPrivateProjectCoordinator({ projectRoot: root });
       const firstDeadline = Date.now() + 20_000;
-      const firstMount = await allocatePrivateServiceMount({
-        coordinator,
-        projectRoot: root,
-        packageStoreRoot: store,
-        recipe: firstRecipe,
-        effectiveDeadlineUnixMs: firstDeadline,
-      });
+      const firstAllocations = await Promise.all([
+        retryAdmissionBusy(async () => await allocatePrivateServiceMount({
+          coordinator,
+          projectRoot: root,
+          packageStoreRoot: store,
+          recipe: firstRecipe,
+          effectiveDeadlineUnixMs: firstDeadline,
+        })),
+        retryAdmissionBusy(async () => await allocatePrivateServiceMount({
+          coordinator,
+          projectRoot: root,
+          packageStoreRoot: store,
+          recipe: firstRecipe,
+          effectiveDeadlineUnixMs: firstDeadline,
+        })),
+      ]);
+      expect(firstAllocations.filter(({ created }) => created)).toHaveLength(1);
+      const firstAllocation = firstAllocations.find(({ created }) => created)!;
+      const firstReplay = firstAllocations.find(({ created }) => !created)!;
+      const firstMount = firstAllocation.snapshot;
       expect(firstMount).toMatchObject({
         coordinator: "current",
         allocation: {
@@ -1483,13 +1500,7 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
           effectiveDeadlineUnixMs: firstDeadline,
         },
       });
-      expect(await allocatePrivateServiceMount({
-        coordinator,
-        projectRoot: root,
-        packageStoreRoot: store,
-        recipe: firstRecipe,
-        effectiveDeadlineUnixMs: firstDeadline,
-      })).toEqual(firstMount);
+      expect(firstReplay).toEqual({ snapshot: firstMount, created: false });
       await expect(allocatePrivateServiceMount({
         coordinator,
         projectRoot: root,
@@ -1539,12 +1550,29 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         parent: owners,
         name: `s-${mountHex.slice(0, 62)}`,
       });
+      await expect(recordPrivateServiceMountPlan({
+        coordinator,
+        projectRoot: root,
+        packageStoreRoot: store,
+        mountId: firstMount.allocation.mountId,
+        recipe: firstRecipe,
+        allocation: firstReplay,
+        packageAllocation,
+        ownerAllocation,
+      })).rejects.toThrow("Service Mount allocation did not create startup ownership");
+      expect((await loadPrivateServiceMount({
+        coordinator,
+        projectRoot: root,
+        packageStoreRoot: store,
+        mountId: firstMount.allocation.mountId,
+      })).plan).toBeUndefined();
       const plannedMount = await recordPrivateServiceMountPlan({
         coordinator,
         projectRoot: root,
         packageStoreRoot: store,
         mountId: firstMount.allocation.mountId,
         recipe: firstRecipe,
+        allocation: firstAllocation,
         packageAllocation,
         ownerAllocation,
       });
@@ -1555,6 +1583,7 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         packageStoreRoot: store,
         mountId: firstMount.allocation.mountId,
         recipe: firstRecipe,
+        allocation: firstAllocation,
         exports: firstRecipe.expectedExports,
       })).rejects.toMatchObject({ code: "SERVICE_MOUNT_FACT_ORDER" });
       const capturedService = await captureStoredPackage(store, firstRecipe.request.package);
@@ -1569,6 +1598,7 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         packageStoreRoot: store,
         mountId: firstMount.allocation.mountId,
         recipe: firstRecipe,
+        allocation: firstAllocation,
         lease: firstPackageLease.identity,
       });
       const sealed = await firstRecipe.backend.seal({
@@ -1596,6 +1626,7 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         packageStoreRoot: store,
         mountId: firstMount.allocation.mountId,
         recipe: firstRecipe,
+        allocation: firstAllocation,
         owner: sealed.identity,
       });
       firstPrepared = normalizePrivateLinuxPreparedOwnerIdentity({
@@ -1612,6 +1643,7 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         packageStoreRoot: store,
         mountId: firstMount.allocation.mountId,
         recipe: firstRecipe,
+        allocation: firstAllocation,
         prepared: firstPrepared,
       });
       const generatedMount = await recordPrivateServiceMountGeneration({
@@ -1620,6 +1652,7 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         packageStoreRoot: store,
         mountId: firstMount.allocation.mountId,
         recipe: firstRecipe,
+        allocation: firstAllocation,
         exports: firstRecipe.expectedExports,
       });
       expect(generatedMount.generation?.value.exports).toEqual(["counter"]);
@@ -1629,6 +1662,7 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         packageStoreRoot: store,
         mountId: firstMount.allocation.mountId,
         recipe: firstRecipe,
+        allocation: firstAllocation,
         exports: [],
       })).rejects.toMatchObject({ code: "ADMISSION_STATE_CORRUPT" });
       const acknowledgedMount = await recordPrivateServiceMountAcknowledged({
@@ -1637,6 +1671,7 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         packageStoreRoot: store,
         mountId: firstMount.allocation.mountId,
         recipe: firstRecipe,
+        allocation: firstAllocation,
       });
       expect(acknowledgedMount).toMatchObject({
         plan: { digest: expect.any(String) },
@@ -1657,6 +1692,7 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         packageStoreRoot: store,
         mountId: firstMount.allocation.mountId,
         recipe: firstRecipe,
+        allocation: firstAllocation,
       })).toEqual(acknowledgedMount);
       expect(await recordPrivateServiceMountPlan({
         coordinator,
@@ -1664,6 +1700,7 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         packageStoreRoot: store,
         mountId: firstMount.allocation.mountId,
         recipe: firstRecipe,
+        allocation: firstAllocation,
         packageAllocation,
         ownerAllocation,
       })).toEqual(acknowledgedMount);
@@ -1921,13 +1958,15 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         effectiveDeadlineUnixMs: Date.now() + 20_000,
       })).rejects.toMatchObject({ code: "SERVICE_MOUNT_TARGET_MISMATCH" });
       const secondDeadline = Date.now() + 20_000;
-      const secondMount = await allocatePrivateServiceMount({
+      const secondAllocation = await allocatePrivateServiceMount({
         coordinator,
         projectRoot: root,
         packageStoreRoot: store,
         recipe: otherRecipe,
         effectiveDeadlineUnixMs: secondDeadline,
       });
+      expect(secondAllocation.created).toBeTrue();
+      const secondMount = secondAllocation.snapshot;
       expect(secondMount.allocation.admissionDigest).toBe(secondAdmission.admissionDigest);
       expect(secondMount.allocation.mountId).not.toBe(firstMount.allocation.mountId);
       expect((await listPrivateServiceMounts({
@@ -1948,6 +1987,7 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         packageStoreRoot: store,
         mountId: secondMount.allocation.mountId,
         recipe: otherRecipe,
+        allocation: secondAllocation,
         packageAllocation,
         ownerAllocation,
       })).rejects.toMatchObject({ code: "ADMISSION_STATE_CORRUPT" });
@@ -2007,6 +2047,7 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         packageStoreRoot: store,
         mountId: secondMount.allocation.mountId,
         recipe: otherRecipe,
+        allocation: secondAllocation,
         packageAllocation: secondPackageAllocation,
         ownerAllocation: secondOwnerAllocation,
       })).rejects.toMatchObject({ code: "SERVICE_MOUNT_SUPERSEDED" });
@@ -2064,13 +2105,15 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
       expect(earlyClosed.fence).toBeUndefined();
 
       const thirdDeadline = Date.now() + 20_000;
-      const thirdMount = await allocatePrivateServiceMount({
+      const thirdAllocation = await allocatePrivateServiceMount({
         coordinator,
         projectRoot: root,
         packageStoreRoot: store,
         recipe: otherRecipe,
         effectiveDeadlineUnixMs: thirdDeadline,
       });
+      expect(thirdAllocation.created).toBeTrue();
+      const thirdMount = thirdAllocation.snapshot;
       const thirdHex = thirdMount.allocation.mountId.slice("sha256:".length);
       const thirdPackageAllocation = await allocatePrivatePackageMaterialization({
         protectedParent: materializations,
@@ -2088,6 +2131,7 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         packageStoreRoot: store,
         mountId: thirdMount.allocation.mountId,
         recipe: otherRecipe,
+        allocation: thirdAllocation,
         packageAllocation: thirdPackageAllocation,
         ownerAllocation: thirdOwnerAllocation,
       });
@@ -2106,6 +2150,7 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         packageStoreRoot: store,
         mountId: thirdMount.allocation.mountId,
         recipe: otherRecipe,
+        allocation: thirdAllocation,
         lease: thirdPackageLease.identity,
       });
       const thirdSealed = await otherRecipe.backend.seal({
@@ -2133,6 +2178,7 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         packageStoreRoot: store,
         mountId: thirdMount.allocation.mountId,
         recipe: otherRecipe,
+        allocation: thirdAllocation,
         owner: thirdSealed.identity,
       });
       const thirdProvisional = await recordPrivateServiceMountProvisional({
@@ -2248,6 +2294,204 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
     } finally {
       await firstPackageLease?.dispose();
       await thirdPackageLease?.dispose();
+      await coordinator?.dispose();
+      await rm(root, { recursive: true, force: true });
+      await rm(store, { recursive: true, force: true });
+    }
+  }, 120_000);
+
+  test("starts, acknowledges, and cleanly closes one admitted Bun Service Mount", async () => {
+    host = await hostConfiguration();
+    const bun = await proofHostBunClosure();
+    const distribution = await realpath(join(import.meta.dir, "..", "dist"));
+    const sdkSource = await realpath(join(import.meta.dir, "..", "..", "flow-sdk", "src"));
+    const root = await mkdtemp(join(tmpdir(), "jig-service-controller-"));
+    const store = await mkdtemp(join(tmpdir(), "jig-service-controller-store-"));
+    let coordinator: Awaited<ReturnType<typeof openPrivateProjectCoordinator>> | undefined;
+    let mounted: Awaited<ReturnType<typeof startPrivateBunServiceMount>> | undefined;
+    const evaluator = {
+      backend: backend(host),
+      bunPath: bun.executable,
+      runtimeMounts: bun.runtimeSupport.closureSources.map((source) => ({
+        source,
+        destination: source,
+      })),
+      runtimeSupport: bun.runtimeSupport,
+      jigDistributionPath: distribution,
+    } as const;
+    try {
+      await mkdir(join(root, "bindings"));
+      await mkdir(join(root, "flows", "counter", "contracts"), { recursive: true });
+      await mkdir(join(root, "flows", "counter", "sdk"));
+      await writeFile(join(root, "jig.ts"), [
+        'import { defineJig, discover } from "@jigging/jig";',
+        'export default defineJig({ flows: discover("flows"), bindings: discover("bindings") });',
+        "",
+      ].join("\n"));
+      await writeFile(join(root, "bindings", "counter.ts"), [
+        'import { defineBinding } from "@jigging/jig";',
+        'export default defineBinding({ package: "flows/counter" });',
+        "",
+      ].join("\n"));
+      await writeFile(join(root, "flows", "counter", "FLOW.md"), [
+        "---",
+        "name: counter",
+        "description: Exact controller-owned Service fixture.",
+        "service: 1",
+        "provides:",
+        "  counter: ./contracts/counter.capability.json",
+        "---",
+        "",
+      ].join("\n"));
+      await writeFile(join(root, "flows", "counter", "contracts", "counter.capability.json"),
+        JSON.stringify({
+          $schema: "https://flow.dev/schemas/capability-contract-1.schema.json",
+          flowCapabilityContract: 1,
+          id: "https://example.test/capabilities/controller-counter",
+          version: "1.0.0",
+          methods: {
+            next: {
+              input: { type: "object", additionalProperties: false },
+              output: { type: "integer" },
+              errors: {},
+            },
+          },
+        }));
+      for (const file of [
+        "index.ts", "json.ts", "protocol.ts", "service-session.ts", "session.ts", "transport.ts", "types.ts",
+      ]) {
+        await writeFile(
+          join(root, "flows", "counter", "sdk", file),
+          await readFile(join(sdkSource, file)),
+        );
+      }
+      await writeFile(join(root, "flows", "counter", "flow.ts"), [
+        "#!/usr/bin/env bun",
+        'import { serveService } from "./sdk/index.ts";',
+        "await serveService({",
+        "  exports: { counter: async () => 0 },",
+        "  async mount(context) {",
+        "    await context.ready();",
+        "    await context.cancelled;",
+        "  },",
+        "});",
+        "",
+      ].join("\n"));
+
+      const aggregate = await retainPackageProject({ projectRoot: root, storeRoot: store, evaluator });
+      const [request] = buildPrivateActivationRequests(aggregate.linked);
+      if (request === undefined) throw new Error("missing Service activation request");
+      const observation = await observePrivateBunServicePackage({
+        request,
+        packageStoreRoot: store,
+      });
+      const recipe = await planPrivateBunService({
+        request,
+        packageObservation: observation,
+        runtimeSupport: bun.runtimeSupport,
+        backend: evaluator.backend,
+      });
+      const planning = createPrivateActivationPlanningObservation({
+        policyDigest: testDigest("service-controller-policy"),
+        mechanismDigest: recipe.mechanismDigest,
+        entries: [{
+          target: request.target,
+          requestDigest: request.digest,
+          disposition: { state: "planned", observation: recipe.observation },
+        }],
+      });
+      const candidate = createPrivateActivationCandidate(
+        aggregate,
+        resolveRetainedPackageProjectObservation(aggregate, planning),
+        recipe,
+      );
+      await publishPrivateActivationCandidate({
+        projectRoot: root,
+        packageStoreRoot: store,
+        candidate,
+      });
+      const review = await createPrivateActivationReviewPlan({
+        projectRoot: root,
+        packageStoreRoot: store,
+        lockMode: "update",
+      });
+      await applyPrivateActivationReviewPlan({
+        projectRoot: root,
+        packageStoreRoot: store,
+        planDigest: review.planDigest,
+        baseGeneration: null,
+      });
+
+      coordinator = await openPrivateProjectCoordinator({ projectRoot: root });
+      const mountDeadline = Date.now() + 20_000;
+      mounted = await startPrivateBunServiceMount({
+        coordinator,
+        projectRoot: root,
+        packageStoreRoot: store,
+        recipe,
+        effectiveDeadlineUnixMs: mountDeadline,
+      });
+      expect(mounted.generationId).toMatch(/^sha256:[0-9a-f]{64}$/);
+      await expect(startPrivateBunServiceMount({
+        coordinator,
+        projectRoot: root,
+        packageStoreRoot: store,
+        recipe,
+        effectiveDeadlineUnixMs: mountDeadline,
+      })).rejects.toThrow("Service Mount startup attempt was already allocated");
+      const liveMount = await loadPrivateServiceMount({
+        coordinator,
+        projectRoot: root,
+        packageStoreRoot: store,
+        mountId: mounted.mountId,
+      });
+      expect(liveMount.acknowledged?.digest).toMatch(/^sha256:[0-9a-f]{64}$/);
+      expect(liveMount.provisional).toBeUndefined();
+      expect(liveMount.fence).toBeUndefined();
+      expect(liveMount.release).toBeUndefined();
+      expect(liveMount.closure).toBeUndefined();
+      const closed = await mounted.stop();
+      expect(closed).toMatchObject({
+        generation: {
+          value: { generationId: mounted.generationId, exports: ["counter"] },
+        },
+        acknowledged: { digest: expect.any(String) },
+        provisional: {
+          value: { classification: "host-lifetime", terminal: { status: "succeeded" } },
+        },
+        fence: {
+          value: {
+            proof: {
+              kind: "enforcement-confirmed",
+              receipt: { fenced: true },
+            },
+          },
+        },
+        release: { value: { packageReleased: true, leaseReleases: [] } },
+        closure: { digest: expect.any(String) },
+      });
+      expect(closed.fence!.value.proof.kind).toBe("enforcement-confirmed");
+      if (closed.fence!.value.proof.kind !== "enforcement-confirmed") {
+        throw new Error("expected helper enforcement evidence");
+      }
+      expect(closed.fence!.value.proof.receipt.ownerDigest).toBe(
+        closed.prepared!.value.prepared.digest,
+      );
+      expect(closed.fence!.value.proof.receipt.stopReason).toBe("payload_exit");
+      expect(await mounted.stop()).toEqual(closed);
+      expect(await recoverPrivateServiceMounts({
+        coordinator,
+        projectRoot: root,
+        backend: evaluator.backend,
+      })).toEqual([]);
+      expect(await jigCgroups(host.scope)).toEqual([]);
+      expect(await listOrEmpty(join(root, ".jig", "private-root-materializations"))).toEqual([]);
+      expect(await listOrEmpty(join(root, ".jig", "private-root-linux-owners"))).toEqual([]);
+      expect((await readdir("/dev")).filter((name) =>
+        name.startsWith(".jig-jig-run-") && name.endsWith("-devices")
+      )).toEqual([]);
+    } finally {
+      await mounted?.stop().catch(() => undefined);
       await coordinator?.dispose();
       await rm(root, { recursive: true, force: true });
       await rm(store, { recursive: true, force: true });

@@ -312,6 +312,7 @@ const EXPECTED_SCHEMA = Object.freeze([
 const storedCandidates = new WeakSet<object>();
 const authenticRootRunLaunches = new WeakSet<object>();
 const claimedRootRunLaunches = new WeakSet<object>();
+const authenticCreatedServiceMountAllocations = new WeakSet<object>();
 const authenticCreatedServiceInvocationAllocations = new WeakSet<object>();
 const authenticCoordinators = new WeakSet<object>();
 
@@ -690,6 +691,12 @@ export interface PrivateServiceMountSnapshot {
   readonly fence?: PrivateServiceMountFact<PrivateServiceMountFence>;
   readonly release?: PrivateServiceMountFact<PrivateServiceMountRelease>;
   readonly closure?: PrivateServiceMountFact<PrivateServiceMountClosure>;
+}
+
+/** The only capability which may advance a newly allocated Mount startup. */
+export interface PrivateServiceMountAllocationResult {
+  readonly snapshot: PrivateServiceMountSnapshot;
+  readonly created: boolean;
 }
 
 /** One immutable owner-slot lease pinned to an acknowledged Service generation. */
@@ -1071,7 +1078,7 @@ export async function allocatePrivateServiceMount(input: {
   readonly packageStoreRoot: string;
   readonly recipe: PrivateBunServiceRecipe;
   readonly effectiveDeadlineUnixMs: number;
-}): Promise<PrivateServiceMountSnapshot> {
+}): Promise<PrivateServiceMountAllocationResult> {
   const coordinator = requirePrivateProjectCoordinator(input.coordinator);
   const recipe = requirePrivateBunServiceRecipe(input.recipe);
   await coordinator.verify();
@@ -1116,7 +1123,7 @@ export async function allocatePrivateServiceMount(input: {
     const allocationDigest = privateServiceMountAllocationDigest(allocation);
     requireStoredSize(allocationBytes, "Service Mount allocation");
 
-    const snapshot = await immediate(owner, async () => {
+    const result = await immediate(owner, async () => {
       await coordinator.verify();
       const currentHead = readAdmissionHead(owner.database, owner.root);
       if (currentHead.revision !== head.revision) {
@@ -1156,25 +1163,29 @@ export async function allocatePrivateServiceMount(input: {
             "Service Mount allocation was replayed with different parameters",
           );
         }
-        return replay;
+        return Object.freeze({ snapshot: replay, created: false });
       }
 
       runFinalized(owner.database,
         "INSERT INTO service_mounts(mount_id, binding_id, admission_digest, coordinator_epoch, allocation_digest, allocation_bytes) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
         [mountId, bindingId, admission.admissionDigest, coordinator.epoch, allocationDigest, allocationBytes],
       );
-      return loadServiceMountSnapshot(
-        owner.database,
-        requireServiceMountRow(owner.database, mountId),
-        owner.root,
-        coordinator,
-        candidate,
-        artifacts!,
-        recipe,
-      );
+      return Object.freeze({
+        snapshot: loadServiceMountSnapshot(
+          owner.database,
+          requireServiceMountRow(owner.database, mountId),
+          owner.root,
+          coordinator,
+          candidate,
+          artifacts!,
+          recipe,
+        ),
+        created: true,
+      });
     });
     await owner.finish();
-    return snapshot;
+    if (result.created) authenticCreatedServiceMountAllocations.add(result);
+    return result;
   } catch (error) {
     failure = error;
     throw error;
@@ -1905,6 +1916,7 @@ interface PrivateServiceMountTransitionInput {
 interface PrivateServiceMountAdvanceInput extends PrivateServiceMountTransitionInput {
   readonly packageStoreRoot: string;
   readonly recipe: PrivateBunServiceRecipe;
+  readonly allocation: PrivateServiceMountAllocationResult;
 }
 
 /** Persist the exact no-effect package and sandbox-owner allocations for one Mount. */
@@ -6249,6 +6261,11 @@ async function transitionPrivateServiceMount(
   const recipe = input.recipe === undefined
     ? undefined
     : requirePrivateBunServiceRecipe(input.recipe);
+  const startupOwner = mode === "advance"
+    ? requireCreatedServiceMountAllocation(
+      (input as PrivateServiceMountAdvanceInput).allocation,
+    )
+    : undefined;
   if (mode === "advance" && recipe === undefined) {
     throw new TypeError("Service Mount forward transition requires its exact recipe");
   }
@@ -6291,6 +6308,9 @@ async function transitionPrivateServiceMount(
         artifacts,
         mode === "advance" ? recipe : undefined,
       );
+      if (startupOwner !== undefined) {
+        requireServiceMountStartupOwner(startupOwner, before, coordinator);
+      }
       const selected = findPrivateActivationCandidateTarget(candidate, {
         kind: "binding",
         id: currentRow.binding_id,
@@ -6324,6 +6344,32 @@ async function transitionPrivateServiceMount(
     throw error;
   } finally {
     await disposeOperation(owner, artifacts, failure);
+  }
+}
+
+function requireCreatedServiceMountAllocation(
+  value: unknown,
+): PrivateServiceMountAllocationResult {
+  if (value === null || typeof value !== "object" ||
+      !authenticCreatedServiceMountAllocations.has(value) ||
+      (value as PrivateServiceMountAllocationResult).created !== true) {
+    throw new TypeError("Service Mount allocation did not create startup ownership");
+  }
+  return value as PrivateServiceMountAllocationResult;
+}
+
+function requireServiceMountStartupOwner(
+  owner: PrivateServiceMountAllocationResult,
+  snapshot: PrivateServiceMountSnapshot,
+  coordinator: PrivateProjectCoordinator,
+): void {
+  const allocated = owner.snapshot;
+  if (allocated.coordinator !== "current" ||
+      allocated.allocation.coordinatorEpoch !== coordinator.epoch ||
+      allocated.allocation.mountId !== snapshot.allocation.mountId ||
+      allocated.allocationDigest !== snapshot.allocationDigest ||
+      !sameCanonical(allocated.allocation, snapshot.allocation)) {
+    throw new TypeError("Service Mount startup ownership does not match this Mount");
   }
 }
 
