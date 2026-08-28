@@ -31,9 +31,11 @@ import {
   privateHookSelectionSetDigest,
 } from "../src/internal/hook-runtime-state.js";
 import {
+  captureStoredPackage,
   publishCapturedPackage,
   type PackageArtifactRef,
 } from "../src/internal/package-artifact-store.js";
+import { inspectCapturedPackage } from "../src/package/inspect.js";
 import {
   decodePrivateProjectLocalLock,
   encodePrivateProjectLocalLock,
@@ -41,6 +43,7 @@ import {
 } from "../src/internal/project-local-lock.js";
 import {
   allocatePrivateRootFlowCall,
+  allocatePrivateServiceLease,
   appendPrivateRootJournalEvent,
   applyPrivateActivationReviewPlan,
   closePrivateRootFlowCall,
@@ -54,6 +57,8 @@ import {
   loadPrivateRootFlowCall,
   listPrivateRootExecutionWork,
   listPrivateRootJournalAppends,
+  listPrivateServiceLeases,
+  loadPrivateServiceLease,
   openPrivateProjectCoordinator,
   reacquirePrivateRootExecutionWork,
   recordPrivateRootExecutionCheckpoint,
@@ -63,6 +68,29 @@ import {
   type PrivateProjectCoordinator,
   type PrivateRootRunTerminal,
 } from "../src/internal/activation-admission-store.js";
+import {
+  encodePrivateServiceMountAcknowledged,
+  encodePrivateServiceMountAllocation,
+  encodePrivateServiceMountBacking,
+  encodePrivateServiceMountGeneration,
+  encodePrivateServiceMountPlan,
+  encodePrivateServiceMountPrepared,
+  encodePrivateServiceMountSandbox,
+  normalizePrivateServiceMountAcknowledged,
+  normalizePrivateServiceMountAllocation,
+  normalizePrivateServiceMountBacking,
+  normalizePrivateServiceMountGeneration,
+  normalizePrivateServiceMountPlan,
+  normalizePrivateServiceMountPrepared,
+  normalizePrivateServiceMountSandbox,
+  privateServiceMountAcknowledgedDigest,
+  privateServiceMountAllocationDigest,
+  privateServiceMountBackingDigest,
+  privateServiceMountGenerationDigest,
+  privateServiceMountPlanDigest,
+  privateServiceMountPreparedDigest,
+  privateServiceMountSandboxDigest,
+} from "../src/internal/private-service-state.js";
 import { normalizePrivateRootFlowCallAllocation } from "../src/internal/root-flow-call-state.js";
 import {
   normalizePrivateRootJournalAppendAllocation,
@@ -382,6 +410,93 @@ describe.serial("private activation admission SQLite store", () => {
           .toBe(1);
         expect(database.query("PRAGMA foreign_key_check").all()).toEqual([]);
       } finally { database.close(true); }
+    } finally {
+      await coordinator?.dispose();
+      await fixture.dispose();
+    }
+  }, 30_000);
+
+  test("allocates and reopens one exact acknowledged Service lease", async () => {
+    const fixture = await createFixture("ready", false, false, true);
+    let coordinator: PrivateProjectCoordinator | undefined;
+    try {
+      const admission = await applyLatestCandidate(fixture);
+      coordinator = await openPrivateProjectCoordinator({ projectRoot: fixture.root });
+      const submission = await submitPrivateRootRun({
+        coordinator,
+        projectRoot: fixture.root,
+        packageStoreRoot: fixture.store,
+        submissionId: "service-lease-owner",
+        target: { kind: "binding", id: "app" },
+        input: { value: "owner" },
+        deadlineUnixMs: Date.now() + 60_000,
+      });
+      expect(submission.launch).toBeDefined();
+      installAcknowledgedServiceMount(fixture, admission.admissionDigest, coordinator.epoch);
+
+      const lease = await allocatePrivateServiceLease({
+        coordinator,
+        projectRoot: fixture.root,
+        packageStoreRoot: fixture.store,
+        ownerRunId: submission.run.runId,
+        slot: "counter",
+      });
+      expect(lease).toMatchObject({
+        coordinator: "current",
+        allocation: {
+          ownerRunId: submission.run.runId,
+          coordinatorEpoch: coordinator.epoch,
+          slot: "counter",
+          providerBinding: "counter",
+          providerExport: "counter",
+        },
+      });
+      expect(await allocatePrivateServiceLease({
+        coordinator,
+        projectRoot: fixture.root,
+        packageStoreRoot: fixture.store,
+        ownerRunId: submission.run.runId,
+        slot: "counter",
+      })).toEqual(lease);
+      expect(await loadPrivateServiceLease({
+        coordinator,
+        projectRoot: fixture.root,
+        ownerRunId: submission.run.runId,
+        slot: "counter",
+      })).toEqual(lease);
+      expect(await listPrivateServiceLeases({
+        coordinator,
+        projectRoot: fixture.root,
+        ownerRunId: submission.run.runId,
+      })).toEqual([lease]);
+
+      await coordinator.dispose();
+      coordinator = await openPrivateProjectCoordinator({ projectRoot: fixture.root });
+      expect((await loadPrivateServiceLease({
+        coordinator,
+        projectRoot: fixture.root,
+        ownerRunId: submission.run.runId,
+        slot: "counter",
+      })).coordinator).toBe("older");
+      expect((await allocatePrivateServiceLease({
+        coordinator,
+        projectRoot: fixture.root,
+        packageStoreRoot: join(fixture.root, "missing-store"),
+        ownerRunId: submission.run.runId,
+        slot: "counter",
+      })).coordinator).toBe("older");
+
+      const database = openSqlite(fixture.database, "readwrite");
+      database.query(
+        "UPDATE service_leases SET release_digest = ?1, release_bytes = ?2 WHERE owner_run_id = ?3 AND slot = 'counter'",
+      ).run(digest("unsupported-release"), json1({ unsupported: true }), submission.run.runId);
+      database.close(true);
+      await expect(loadPrivateServiceLease({
+        coordinator,
+        projectRoot: fixture.root,
+        ownerRunId: submission.run.runId,
+        slot: "counter",
+      })).rejects.toMatchObject({ code: "ADMISSION_STATE_CORRUPT" });
     } finally {
       await coordinator?.dispose();
       await fixture.dispose();
@@ -2897,16 +3012,19 @@ async function createFixture(
   disposition: "unavailable" | "ready" = "unavailable",
   journal = false,
   rejectDerivedEventInput = false,
+  service = false,
 ): Promise<Fixture> {
   const base = await mkdtemp(join(tmpdir(), "jig-admission-store-"));
   const root = join(base, "project");
   const store = join(base, "store");
   const flowSource = join(base, "run-flow");
+  const serviceSource = join(base, "service-flow");
   const declarationSource = join(base, "declaration");
   try {
     await mkdir(root, { mode: 0o700 });
     await mkdir(store, { mode: 0o700 });
     await mkdir(flowSource);
+    if (service) await mkdir(join(serviceSource, "contracts"), { recursive: true });
     await mkdir(declarationSource);
     await writeFile(join(flowSource, "FLOW.md"), [
       "---",
@@ -2916,6 +3034,10 @@ async function createFixture(
         "uses:",
         "  journal:",
         "    contract: ./contracts/journal.capability.json",
+      ] : service ? [
+        "uses:",
+        "  counter:",
+        "    contract: ./contracts/counter.capability.json",
       ] : []),
       "---",
       "",
@@ -2926,6 +3048,29 @@ async function createFixture(
       await writeFile(join(flowSource, "contracts", "journal.capability.json"), await readFile(
         new URL("../../../docs/spec/contracts/jig/journal.capability.json", import.meta.url),
       ));
+    }
+    if (service) {
+      await mkdir(join(flowSource, "contracts"));
+      const contractBytes = JSON.stringify({
+        $schema: "https://flow.dev/schemas/capability-contract-1.schema.json",
+        flowCapabilityContract: 1,
+        id: "https://example.test/capabilities/counter",
+        version: "1.0.0",
+        methods: { next: { input: { type: "object" }, output: { type: "integer" }, errors: {} } },
+      });
+      await writeFile(join(flowSource, "contracts", "counter.capability.json"), contractBytes);
+      await writeFile(join(serviceSource, "contracts", "counter.capability.json"), contractBytes);
+      await writeFile(join(serviceSource, "FLOW.md"), [
+        "---",
+        "name: counter",
+        "description: Service lease fixture.",
+        "service: 1",
+        "provides:",
+        "  counter: ./contracts/counter.capability.json",
+        "---",
+        "",
+      ].join("\n"));
+      await writeFile(join(serviceSource, "flow.ts"), "#!/usr/bin/env bun\nexport {};\n");
     }
     if (disposition === "ready") {
       await writeFile(join(flowSource, "input.schema.json"), JSON.stringify({
@@ -2941,7 +3086,21 @@ async function createFixture(
     await writeFile(join(declarationSource, "jig.ts"), "export default {};\n");
 
     const flow = await retainPackage(store, flowSource);
+    const servicePackage = service ? await retainPackage(store, serviceSource) : undefined;
     const declaration = await retainPackage(store, declarationSource);
+    let serviceContract: { readonly id: string; readonly version: string; readonly digest: string } | undefined;
+    if (servicePackage !== undefined) {
+      const captured = await captureStoredPackage(store, servicePackage);
+      try {
+        const inspected = await inspectCapturedPackage(captured);
+        const checked = inspected.providedContracts[0]!;
+        serviceContract = Object.freeze({
+          id: checked.contract.descriptor.id,
+          version: checked.contract.descriptor.version,
+          digest: checked.contract.digest,
+        });
+      } finally { await captured.dispose(); }
+    }
     const rootInformation = await stat(root, { bigint: true });
     const lockBytes = json1({
       kind: "private-package-project-lock/2",
@@ -2949,7 +3108,7 @@ async function createFixture(
         "flows/run": {
           digest: flow.digest,
           mode: "run",
-          directRun: !journal,
+          directRun: !journal && !service,
           attachments: {},
           uses: journal ? {
             journal: {
@@ -2958,9 +3117,19 @@ async function createFixture(
               version: "1.0.0",
               digest: "sha256:dd749f53de3a5f80e02386699355e28c1fd7e707b2b12bdf2d5c725eb436ddf9",
             },
-          } : {},
+          } : service ? { counter: { kind: "contract", ...serviceContract! } } : {},
           provides: {},
         },
+        ...(service ? {
+          "flows/counter": {
+            digest: servicePackage!.digest,
+            mode: "service",
+            directRun: false,
+            attachments: {},
+            uses: {},
+            provides: { counter: serviceContract! },
+          },
+        } : {}),
       },
       bindings: journal ? {
         producer: {
@@ -2973,6 +3142,18 @@ async function createFixture(
             },
           },
         },
+      } : service ? {
+        app: {
+          packagePath: "flows/run",
+          attachments: {},
+          slots: {
+            counter: {
+              kind: "capability",
+              provider: { binding: "counter", export: "counter" },
+            },
+          },
+        },
+        counter: { packagePath: "flows/counter", attachments: {}, slots: {} },
       } : {},
       journalPublishers: journal ? {
         publisher: {
@@ -3014,6 +3195,8 @@ async function createFixture(
           request: activationRequest({
             target: journal
               ? { kind: "binding", id: "producer" }
+              : service
+                ? { kind: "binding", id: "app" }
               : { kind: "flow", path: "flows/run" },
             mode: "run",
             packagePath: "flows/run",
@@ -3031,6 +3214,12 @@ async function createFixture(
                 },
                 provider: { binding: "publisher", export: "journal" },
               },
+            } : service ? {
+              counter: {
+                kind: "capability",
+                contract: serviceContract!,
+                provider: { binding: "counter", export: "counter" },
+              },
             } : {},
           }),
           disposition: disposition === "ready"
@@ -3044,7 +3233,23 @@ async function createFixture(
                 code: "RUNTIME_UNAVAILABLE",
                 evidenceDigests: [digest("evidence")],
               },
-        }],
+        }, ...(service ? [{
+          request: activationRequest({
+            target: { kind: "binding", id: "counter" },
+            mode: "service",
+            packagePath: "flows/counter",
+            package: servicePackage!,
+            entrypoint: { path: "flow.ts", suffix: "ts" },
+            settings: {},
+            attachments: {},
+            slots: {},
+          }),
+          disposition: {
+            state: "ready",
+            recipeDigest: digest("service-recipe"),
+            observationDigest: digest("service-observation"),
+          },
+        }] : [])],
       }),
       lock: lockBytes,
     });
@@ -3136,6 +3341,183 @@ async function applyLatestCandidate(
     planDigest: plan.planDigest,
     baseGeneration: plan.plan.baseGeneration,
   });
+}
+
+function installAcknowledgedServiceMount(
+  fixture: Fixture,
+  admissionDigest: string,
+  coordinatorEpoch: number,
+): void {
+  const target = fixture.candidate.candidate.targets.find(({ request }) => request.mode === "service")!;
+  const mountId = privateDomainDigest("JIG-Private-Service-Mount-ID/1", {
+    admissionDigest,
+    bindingId: "counter",
+  });
+  const allocation = normalizePrivateServiceMountAllocation({
+    kind: "private-service-mount-allocation/1",
+    mountId,
+    coordinatorEpoch,
+    admissionDigest,
+    candidateRevision: 1,
+    bindingId: "counter",
+    requestDigest: target.request.digest,
+    recipeDigest: target.disposition.state === "ready" ? target.disposition.recipeDigest : digest("missing"),
+    observationDigest: target.disposition.state === "ready"
+      ? target.disposition.observationDigest
+      : digest("missing"),
+    expectedExports: ["counter"],
+    effectiveDeadlineUnixMs: Date.now() + 60_000,
+  });
+  const allocationDigest = privateServiceMountAllocationDigest(allocation);
+  const hexadecimal = mountId.slice("sha256:".length);
+  const materializations = join(fixture.root, ".jig", "private-root-materializations");
+  const owners = join(fixture.root, ".jig", "private-root-linux-owners");
+  const ownerFields = {
+    kind: "private-linux-owner-state-allocation/1" as const,
+    parent: owners,
+    parentDevice: "1",
+    parentInode: "2",
+    name: `s-${hexadecimal.slice(0, 62)}`,
+    directory: join(owners, `s-${hexadecimal.slice(0, 62)}`),
+    ownerToken: hexadecimal,
+  };
+  const ownerAllocation = {
+    ...ownerFields,
+    digest: privateDomainDigest("JIG-Private-Linux-Owner-State-Allocation/1", ownerFields),
+  };
+  const packageAllocation = {
+    kind: "private-package-materialization-allocation/1" as const,
+    parent: { path: materializations, dev: "1", ino: "2" },
+    name: `service-${hexadecimal}`,
+    path: join(materializations, `service-${hexadecimal}`),
+    packageDigest: target.request.package.digest,
+    ownerToken: allocationDigest,
+  };
+  const plan = normalizePrivateServiceMountPlan({
+    kind: "private-service-mount-plan/1",
+    mountId,
+    allocationDigest,
+    cancellationGraceMs: 1_000,
+    packageAllocation,
+    ownerAllocation,
+  });
+  const backing = normalizePrivateServiceMountBacking({
+    kind: "private-service-mount-backing/1",
+    mountId,
+    allocationDigest,
+    planDigest: privateServiceMountPlanDigest(plan),
+    lease: {
+      kind: "private-package-materialization-lease/1",
+      allocation: packageAllocation,
+      transaction: { path: packageAllocation.path, dev: "3", ino: "4" },
+      package: { path: join(packageAllocation.path, "package"), dev: "5", ino: "6" },
+    },
+  });
+  const runId = `service-${hexadecimal.slice(0, 40)}`;
+  const nonce = "b".repeat(24);
+  const parentName = `jig-run-${runId}-${nonce}`;
+  const parentCgroup = `/sys/fs/cgroup/jig/${parentName}`;
+  const sealedFields = {
+    kind: "private-linux-sealed-owner/1" as const,
+    runId,
+    nonce,
+    ownerToken: ownerAllocation.ownerToken,
+    mechanismDigest: digest("mechanism"),
+    sealedPlanDigest: digest("sealed-plan"),
+    cgroupScope: "/sys/fs/cgroup/jig",
+    cgroupScopeDevice: "7",
+    cgroupScopeInode: "8",
+    parentName,
+    parentCgroup,
+    supervisorCgroup: `${parentCgroup}/supervisor`,
+    runCgroup: `${parentCgroup}/run`,
+    privateDeviceDirectory: `/dev/.jig-${parentName}-devices`,
+    deadlineUnixMs: allocation.effectiveDeadlineUnixMs,
+    cancellationGraceMs: plan.cancellationGraceMs,
+    cleanupTimeoutMs: 5_000,
+    trustedHelperPath: "/opt/jig/linux-cgroup-helper",
+    trustedHelperDigest: digest("helper"),
+    ownerStateParent: ownerAllocation.parent,
+    ownerStateParentDevice: ownerAllocation.parentDevice,
+    ownerStateParentInode: ownerAllocation.parentInode,
+    ownerStateName: ownerAllocation.name,
+    ownerStateDirectory: ownerAllocation.directory,
+    ownerStateDevice: "9",
+    ownerStateInode: "10",
+    ownerStateAllocationDigest: ownerAllocation.digest,
+  };
+  const sealed = {
+    ...sealedFields,
+    digest: privateDomainDigest("JIG-Private-Linux-Sealed-Owner/1", sealedFields),
+  };
+  const sandbox = normalizePrivateServiceMountSandbox({
+    kind: "private-service-mount-sandbox/1",
+    mountId,
+    allocationDigest,
+    backingDigest: privateServiceMountBackingDigest(backing),
+    owner: sealed,
+  });
+  const preparedOwner = {
+    kind: "private-linux-prepared-owner/1" as const,
+    digest: privateDomainDigest("JIG-Private-Linux-Prepared-Owner/1", sealed),
+    owner: sealed,
+  };
+  const prepared = normalizePrivateServiceMountPrepared({
+    kind: "private-service-mount-prepared/1",
+    mountId,
+    allocationDigest,
+    sandboxDigest: privateServiceMountSandboxDigest(sandbox),
+    prepared: preparedOwner,
+  });
+  const generation = normalizePrivateServiceMountGeneration({
+    kind: "private-service-mount-generation/1",
+    mountId,
+    allocationDigest,
+    preparedDigest: privateServiceMountPreparedDigest(prepared),
+    generationId: privateDomainDigest("JIG-Private-Service-Generation-ID/1", {
+      mountId,
+      allocationDigest,
+      preparedDigest: privateServiceMountPreparedDigest(prepared),
+    }),
+    exports: ["counter"],
+  });
+  const acknowledged = normalizePrivateServiceMountAcknowledged({
+    kind: "private-service-mount-acknowledged/1",
+    mountId,
+    allocationDigest,
+    generationDigest: privateServiceMountGenerationDigest(generation),
+  });
+  const facts = [
+    ["plan", privateServiceMountPlanDigest(plan), encodePrivateServiceMountPlan(plan)],
+    ["backing", privateServiceMountBackingDigest(backing), encodePrivateServiceMountBacking(backing)],
+    ["sandbox", privateServiceMountSandboxDigest(sandbox), encodePrivateServiceMountSandbox(sandbox)],
+    ["prepared", privateServiceMountPreparedDigest(prepared), encodePrivateServiceMountPrepared(prepared)],
+    ["generation", privateServiceMountGenerationDigest(generation), encodePrivateServiceMountGeneration(generation)],
+    ["acknowledged", privateServiceMountAcknowledgedDigest(acknowledged),
+      encodePrivateServiceMountAcknowledged(acknowledged)],
+  ] as const;
+  const database = openSqlite(fixture.database, "readwrite");
+  try {
+    database.exec("PRAGMA foreign_keys=ON; BEGIN IMMEDIATE");
+    database.query([
+      "INSERT INTO service_mounts(mount_id, binding_id, admission_digest, coordinator_epoch,",
+      "allocation_digest, allocation_bytes) VALUES (?1, 'counter', ?2, ?3, ?4, ?5)",
+    ].join(" ")).run(
+      mountId,
+      admissionDigest,
+      coordinatorEpoch,
+      allocationDigest,
+      encodePrivateServiceMountAllocation(allocation),
+    );
+    const insert = database.query(
+      "INSERT INTO service_mount_facts(mount_id, fact_name, fact_digest, fact_bytes) VALUES (?1, ?2, ?3, ?4)",
+    );
+    for (const [name, factDigest, bytes] of facts) insert.run(mountId, name, factDigest, bytes);
+    database.exec("COMMIT");
+  } catch (error) {
+    if (database.inTransaction) database.exec("ROLLBACK");
+    throw error;
+  } finally { database.close(true); }
 }
 
 async function installHookCandidate(
