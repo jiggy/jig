@@ -244,7 +244,7 @@ export type {
 } from "./root-run-state.js";
 
 const STATE_DIRECTORY = ".jig";
-const DATABASE_NAME = "private-activation-admission-v16.sqlite3";
+const DATABASE_NAME = "private-activation-admission-v17.sqlite3";
 const ADMISSION_DATABASE_FAMILY =
   /^private-activation-admission-v[0-9]+\.sqlite3(?:-journal|-wal|-shm)?$/;
 const CURRENT_DATABASE_SIDECARS = new Set([
@@ -255,8 +255,8 @@ const CURRENT_DATABASE_SIDECARS = new Set([
 const COORDINATOR_DATABASE_NAME = "private-project-coordinator-v1.sqlite3";
 const LOCK_NAME = "jig.lock";
 const LOCK_STAGE_NAME = "private-activation-jig-lock-v1.stage";
-const SCHEMA_VERSION = 16n;
-const APPLICATION_ID = 0x4a494741n; // JIGA: schema 16
+const SCHEMA_VERSION = 17n;
+const APPLICATION_ID = 0x4a494741n; // JIGA: schema 17
 const COORDINATOR_SCHEMA_VERSION = 1n;
 const COORDINATOR_APPLICATION_ID = 0x4a494743n; // JIGC
 const BUSY_TIMEOUT_MS = 250;
@@ -2312,6 +2312,27 @@ export async function recordPrivateServiceMountFence(input: PrivateServiceMountT
     requireServiceMountFenceCorrelation(before, value);
     requireServiceMountFactOrder(before, "fence");
     writeServiceMountFact(database, before, "fence", value, context);
+  });
+}
+
+/**
+ * Verify that one fenced Mount has no live generation leases before trusted
+ * machinery starts releasing its package and owner-state resources. A durable
+ * fence prevents new leases, so the successful check remains monotonic.
+ */
+export async function requirePrivateServiceMountFinalizationReady(
+  input: PrivateServiceMountTransitionInput,
+): Promise<PrivateServiceMountSnapshot> {
+  return await transitionPrivateServiceMount(input, "settle", (database, before, context) => {
+    requireServiceMountFact(before.provisional, "provisional");
+    if (before.plan !== undefined) requireServiceMountFact(before.fence, "fence");
+    requireReleasedServiceLeases(
+      database,
+      before,
+      context.root,
+      context.coordinator,
+      context.candidate,
+    );
   });
 }
 
@@ -5834,7 +5855,7 @@ function verifySchema(database: SqliteDatabase, root: PrivateProjectRoot): void 
   if (actual.length !== EXPECTED_SCHEMA.length || actual.some((row, index) => {
     const expected = EXPECTED_SCHEMA[index]!;
     return row.type !== expected.type || row.name !== expected.name || row.table !== expected.table || row.sql !== expected.sql;
-  })) corrupt("private admission database schema differs from version 16");
+  })) corrupt("private admission database schema differs from version 17");
   if (statement<Record<string, unknown>>(database, "PRAGMA foreign_key_check").all().length !== 0) {
     corrupt("private admission database has broken foreign keys");
   }
@@ -7674,11 +7695,6 @@ function requireNewServiceLeaseContext(
   const ownerRun = loadRootRunSnapshot(database, ownerRow, root);
   if (ownerRun.state !== "spawn-intent" || ownerRun.coordinatorEpoch !== coordinator.epoch) {
     invalid("SERVICE_LEASE_OWNER_INACTIVE", "new Service lease requires a live current-coordinator owner Run");
-  }
-  const head = readAdmissionHead(database, root);
-  if (head.revision === null ||
-      requireAdmissionRow(database, head.revision).admission_digest !== ownerRun.admissionDigest) {
-    invalid("SERVICE_LEASE_OWNER_STALE", "new Service lease requires the active admission generation");
   }
   const lifecycle = loadRootExecutionLifecycle(
     database,

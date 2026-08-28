@@ -14,6 +14,7 @@ import {
   recordPrivateServiceMountProvisional,
   recordPrivateServiceMountRelease,
   recordPrivateServiceMountSandbox,
+  requirePrivateServiceMountFinalizationReady,
   type PrivateProjectCoordinator,
   type PrivateServiceMountAllocationResult,
   type PrivateServiceMountSnapshot,
@@ -44,12 +45,21 @@ import {
 import type { PrivateServiceMountClassification } from "./private-service-state.js";
 import {
   ServiceHostSession,
+  type ServiceHostInvocation,
+  type ServiceHostInvocationGate,
+  type ServiceInvocationObservation,
   type ServiceHostTerminal,
 } from "../service/session.js";
 
 export interface PrivateBunServiceMount {
   readonly mountId: string;
+  readonly bindingId: string;
   readonly generationId: string;
+  invokeDetailed(
+    request: ServiceHostInvocation,
+    gate?: ServiceHostInvocationGate,
+  ): Promise<ServiceInvocationObservation>;
+  fence(): Promise<PrivateServiceMountSnapshot>;
   stop(): Promise<PrivateServiceMountSnapshot>;
 }
 
@@ -196,7 +206,7 @@ export async function startPrivateBunServiceMount(input: {
       session,
       snapshot: durable,
       ...(input.signal === undefined ? {} : { signal: input.signal }),
-    }, durable.generation.value.generationId);
+    }, durable.allocation.bindingId, durable.generation.value.generationId);
   } catch (error) {
     let terminal: ServiceHostTerminal;
     if (session !== undefined) {
@@ -205,7 +215,7 @@ export async function startPrivateBunServiceMount(input: {
       await component?.terminate();
       terminal = startupFailure(input.signal, input.effectiveDeadlineUnixMs, error);
     }
-    await settleMount({
+    const fenced = await fenceMount({
       coordinator: input.coordinator,
       projectRoot: input.projectRoot,
       backend: recipe.backend,
@@ -213,18 +223,25 @@ export async function startPrivateBunServiceMount(input: {
       terminal,
       classification: failedClassification(input.signal, input.effectiveDeadlineUnixMs),
       ...(component === undefined ? {} : { enforcement: component.enforcement }),
-      ...(packageLease === undefined ? {} : { packageLease }),
       snapshot: durable,
+    });
+    await finalizeMount({
+      coordinator: input.coordinator,
+      projectRoot: input.projectRoot,
+      mountId,
+      ...(packageLease === undefined ? {} : { packageLease }),
+      snapshot: fenced,
     });
     throw error;
   }
 }
 
 /**
- * Fence and close unresolved current/older Mount attempts. Recovery receives
- * no recipe and therefore cannot restart or replace a Provider generation.
+ * Fence unresolved current/older Mount attempts without releasing their
+ * package or owner resources. Recovery receives no recipe and therefore
+ * cannot restart or replace a Provider generation.
  */
-export async function recoverPrivateServiceMounts(input: {
+export async function recoverPrivateServiceMountFences(input: {
   readonly coordinator: PrivateProjectCoordinator;
   readonly projectRoot: string;
   readonly backend: PrivateLinuxCgroupBackend;
@@ -243,7 +260,7 @@ export async function recoverPrivateServiceMounts(input: {
         : snapshot.acknowledged === undefined && snapshot.sandbox === undefined
           ? "startup-cancelled"
           : "provider-loss";
-      recovered.push(await settleMount({
+      recovered.push(await fenceMount({
         coordinator: input.coordinator,
         projectRoot: input.projectRoot,
         backend,
@@ -257,18 +274,48 @@ export async function recoverPrivateServiceMounts(input: {
   return Object.freeze(recovered);
 }
 
+/**
+ * Release and close already-fenced recovery work after its roots have closed
+ * every generation lease. This never starts or replaces a Provider.
+ */
+export async function finalizeRecoveredPrivateServiceMounts(input: {
+  readonly coordinator: PrivateProjectCoordinator;
+  readonly projectRoot: string;
+}): Promise<readonly PrivateServiceMountSnapshot[]> {
+  const finalized: PrivateServiceMountSnapshot[] = [];
+  for (const epoch of ["older", "current"] as const) {
+    const work = await listPrivateServiceMountRecoveryWork({
+      coordinator: input.coordinator,
+      projectRoot: input.projectRoot,
+      epoch,
+    });
+    for (const snapshot of work) {
+      finalized.push(await finalizeMount({
+        coordinator: input.coordinator,
+        projectRoot: input.projectRoot,
+        mountId: snapshot.allocation.mountId,
+        snapshot,
+      }));
+    }
+  }
+  return Object.freeze(finalized);
+}
+
 class ConcretePrivateBunServiceMount implements PrivateBunServiceMount {
   readonly mountId: string;
-  private settlement?: Promise<PrivateServiceMountSnapshot>;
+  private fencing?: Promise<PrivateServiceMountSnapshot>;
+  private finalization: Promise<PrivateServiceMountSnapshot> | undefined;
+  private stopRequest?: Promise<ServiceHostTerminal>;
   private requestedStop = false;
   private lifetimeTimer?: ReturnType<typeof setTimeout>;
   private readonly cancel = (): void => {
     this.requestedStop = true;
-    void this.stop().catch(() => undefined);
+    void this.fence().catch(() => undefined);
   };
 
   constructor(
     private readonly owner: MountedServiceOwner,
+    readonly bindingId: string,
     readonly generationId: string,
   ) {
     this.mountId = owner.mountId;
@@ -279,20 +326,50 @@ class ConcretePrivateBunServiceMount implements PrivateBunServiceMount {
     const remaining = cooperativeStopAt - Date.now();
     if (remaining <= 0) queueMicrotask(this.cancel);
     else this.lifetimeTimer = setTimeout(this.cancel, remaining);
-    const monitor = owner.session.result().then(async (terminal) => await this.settle(terminal));
+    const monitor = owner.session.result().then(async (terminal) => await this.fenceTerminal(terminal));
     void monitor.catch(() => undefined);
   }
 
-  stop(): Promise<PrivateServiceMountSnapshot> {
+  invokeDetailed(
+    request: ServiceHostInvocation,
+    gate?: ServiceHostInvocationGate,
+  ): Promise<ServiceInvocationObservation> {
+    return gate === undefined
+      ? this.owner.session.invokeDetailed(request)
+      : this.owner.session.invokeDetailed(request, gate);
+  }
+
+  fence(): Promise<PrivateServiceMountSnapshot> {
     this.requestedStop = true;
-    if (this.settlement !== undefined) return this.settlement;
-    const stopping = this.owner.session.stop().then(async (terminal) => await this.settle(terminal));
+    if (this.fencing !== undefined) return this.fencing;
+    this.stopRequest ??= this.owner.session.stop();
+    const stopping = this.stopRequest.then(async (terminal) => await this.fenceTerminal(terminal));
     void stopping.catch(() => undefined);
     return stopping;
   }
 
-  private settle(terminal: ServiceHostTerminal): Promise<PrivateServiceMountSnapshot> {
-    this.settlement ??= settleMount({
+  async stop(): Promise<PrivateServiceMountSnapshot> {
+    this.requestedStop = true;
+    const fenced = await this.fence();
+    if (this.finalization !== undefined) return await this.finalization;
+    const attempt = finalizeMount({
+      coordinator: this.owner.coordinator,
+      projectRoot: this.owner.projectRoot,
+      mountId: this.mountId,
+      packageLease: this.owner.packageLease,
+      snapshot: fenced,
+    });
+    this.finalization = attempt;
+    try {
+      return await attempt;
+    } catch (error) {
+      if (this.finalization === attempt) this.finalization = undefined;
+      throw error;
+    }
+  }
+
+  private fenceTerminal(terminal: ServiceHostTerminal): Promise<PrivateServiceMountSnapshot> {
+    this.fencing ??= fenceMount({
       coordinator: this.owner.coordinator,
       projectRoot: this.owner.projectRoot,
       backend: this.owner.recipe.backend,
@@ -302,17 +379,16 @@ class ConcretePrivateBunServiceMount implements PrivateBunServiceMount {
         ? this.requestedStop ? "host-lifetime" : "voluntary-exit"
         : "provider-loss",
       enforcement: this.owner.component.enforcement,
-      packageLease: this.owner.packageLease,
       snapshot: this.owner.snapshot,
     }).finally(() => {
       if (this.lifetimeTimer !== undefined) clearTimeout(this.lifetimeTimer);
       this.owner.signal?.removeEventListener("abort", this.cancel);
     });
-    return this.settlement;
+    return this.fencing;
   }
 }
 
-async function settleMount(input: {
+async function fenceMount(input: {
   readonly coordinator: PrivateProjectCoordinator;
   readonly projectRoot: string;
   readonly backend: PrivateLinuxCgroupBackend;
@@ -320,13 +396,12 @@ async function settleMount(input: {
   readonly terminal: ServiceHostTerminal;
   readonly classification: PrivateServiceMountClassification;
   readonly enforcement?: Promise<PrivateLinuxConfirmedEnforcementReceipt>;
-  readonly packageLease?: PrivatePackageMaterializationLease;
-  readonly snapshot?: PrivateServiceMountSnapshot;
+  readonly snapshot: PrivateServiceMountSnapshot;
 }): Promise<PrivateServiceMountSnapshot> {
-  if (input.snapshot === undefined) {
-    throw new TypeError("Service Mount settlement requires DB-only recovery evidence");
-  }
   let snapshot = input.snapshot;
+  if (snapshot.allocation.mountId !== input.mountId) {
+    throw new TypeError("Service Mount fencing evidence belongs to another Mount");
+  }
   if (snapshot.provisional === undefined) {
     const classification = snapshot.sandbox === undefined &&
       input.classification === "provider-loss"
@@ -375,6 +450,24 @@ async function settleMount(input: {
     }
   }
 
+  return snapshot;
+}
+
+async function finalizeMount(input: {
+  readonly coordinator: PrivateProjectCoordinator;
+  readonly projectRoot: string;
+  readonly mountId: string;
+  readonly packageLease?: PrivatePackageMaterializationLease;
+  readonly snapshot: PrivateServiceMountSnapshot;
+}): Promise<PrivateServiceMountSnapshot> {
+  if (input.snapshot.allocation.mountId !== input.mountId) {
+    throw new TypeError("Service Mount finalization evidence belongs to another Mount");
+  }
+  let snapshot = await requirePrivateServiceMountFinalizationReady({
+    coordinator: input.coordinator,
+    projectRoot: input.projectRoot,
+    mountId: input.mountId,
+  });
   if (snapshot.release === undefined) {
     let ownerRelease = null;
     if (snapshot.plan !== undefined) {

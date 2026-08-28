@@ -84,9 +84,13 @@ import {
   recordPrivateServiceMountSandbox,
   requirePrivateStoredActivationCandidate,
 } from "../src/internal/activation-admission-store.js";
-import { openPrivateRootAdministrationController } from "../src/internal/root-administration-controller.js";
 import {
-  recoverPrivateServiceMounts,
+  attachPrivateRootAdministrationController,
+  openPrivateRootAdministrationController,
+} from "../src/internal/root-administration-controller.js";
+import {
+  finalizeRecoveredPrivateServiceMounts,
+  recoverPrivateServiceMountFences,
   startPrivateBunServiceMount,
 } from "../src/internal/private-service-controller.js";
 import { executePrivateRootRunLaunch } from "../src/internal/root-run-controller.js";
@@ -2219,7 +2223,7 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
       coordinator = undefined;
 
       const sqlite = createRequire(import.meta.url)("bun:sqlite") as any;
-      const databasePath = join(root, ".jig", "private-activation-admission-v16.sqlite3");
+      const databasePath = join(root, ".jig", "private-activation-admission-v17.sqlite3");
       const writable = sqlite.constants.SQLITE_OPEN_READWRITE |
         sqlite.constants.SQLITE_OPEN_NOFOLLOW;
       let corruptor = sqlite.Database.open(databasePath, writable);
@@ -2426,7 +2430,21 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         recipe,
         effectiveDeadlineUnixMs: mountDeadline,
       });
+      expect(mounted.bindingId).toBe("counter");
       expect(mounted.generationId).toMatch(/^sha256:[0-9a-f]{64}$/);
+      let dispatchAdmitted = false;
+      expect(await mounted.invokeDetailed({
+        exportName: "counter",
+        method: "next",
+        input: {},
+        deadlineUnixMs: mountDeadline,
+      }, {
+        async beforeDispatch(): Promise<void> { dispatchAdmitted = true; },
+      })).toEqual({
+        source: "provider-response",
+        terminal: { status: "succeeded", value: 0 },
+      });
+      expect(dispatchAdmitted).toBeTrue();
       await expect(startPrivateBunServiceMount({
         coordinator,
         projectRoot: root,
@@ -2445,6 +2463,26 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
       expect(liveMount.fence).toBeUndefined();
       expect(liveMount.release).toBeUndefined();
       expect(liveMount.closure).toBeUndefined();
+      const fenced = await mounted.fence();
+      expect(fenced).toMatchObject({
+        provisional: {
+          value: { classification: "host-lifetime", terminal: { status: "succeeded" } },
+        },
+        fence: {
+          value: {
+            proof: {
+              kind: "enforcement-confirmed",
+              receipt: { fenced: true },
+            },
+          },
+        },
+      });
+      expect(fenced.release).toBeUndefined();
+      expect(fenced.closure).toBeUndefined();
+      expect(await jigCgroups(host.scope)).toEqual([]);
+      expect(await listOrEmpty(join(root, ".jig", "private-root-materializations"))).toHaveLength(1);
+      expect(await listOrEmpty(join(root, ".jig", "private-root-linux-owners"))).toHaveLength(1);
+      expect(await mounted.fence()).toEqual(fenced);
       const closed = await mounted.stop();
       expect(closed).toMatchObject({
         generation: {
@@ -2474,10 +2512,14 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
       );
       expect(closed.fence!.value.proof.receipt.stopReason).toBe("payload_exit");
       expect(await mounted.stop()).toEqual(closed);
-      expect(await recoverPrivateServiceMounts({
+      expect(await recoverPrivateServiceMountFences({
         coordinator,
         projectRoot: root,
         backend: evaluator.backend,
+      })).toEqual([]);
+      expect(await finalizeRecoveredPrivateServiceMounts({
+        coordinator,
+        projectRoot: root,
       })).toEqual([]);
       expect(await jigCgroups(host.scope)).toEqual([]);
       expect(await listOrEmpty(join(root, ".jig", "private-root-materializations"))).toEqual([]);
@@ -2758,7 +2800,7 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         lockMode: "locked",
       }))
         .rejects.toMatchObject({ code: "LOCK_MISMATCH" });
-      const admissionDatabase = join(root, ".jig", "private-activation-admission-v16.sqlite3");
+      const admissionDatabase = join(root, ".jig", "private-activation-admission-v17.sqlite3");
       await writeFile(join(root, "jig.lock"), persisted.lock, { mode: 0o644 });
       const crashSqlite = createRequire(import.meta.url)("bun:sqlite") as any;
       const recovered = crashSqlite.Database.open(
@@ -2946,7 +2988,7 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
           "service_mounts",
         ]);
         expect(database.query("PRAGMA application_id").get().application_id).toBe(0x4a494741);
-        expect(database.query("PRAGMA user_version").get().user_version).toBe(16);
+        expect(database.query("PRAGMA user_version").get().user_version).toBe(17);
         expect(database.query("PRAGMA journal_mode").get().journal_mode).toBe("delete");
         expect(database.query("SELECT revision FROM candidate_head WHERE singleton = 1").get().revision).toBe(3);
         expect(database.query("SELECT count(*) AS count FROM candidates").get().count).toBe(3);
@@ -3476,7 +3518,7 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         }),
       });
 
-      const databasePath = join(root, ".jig", "private-activation-admission-v16.sqlite3");
+      const databasePath = join(root, ".jig", "private-activation-admission-v17.sqlite3");
       controller = await openController();
       const submitted = await controller.administration.startRun({
         submissionId: "journal-success",
@@ -3549,9 +3591,15 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         const release = JSON.parse(new TextDecoder().decode(database.query(
           "SELECT release_bytes FROM root_execution_lifecycles WHERE run_id = ?1",
         ).get(submitted.runId).release_bytes)) as {
-          readonly value?: { readonly journalClosureDigest?: unknown };
+          readonly value?: {
+            readonly kind?: unknown;
+            readonly journalClosureDigest?: unknown;
+            readonly serviceClosureDigest?: unknown;
+          };
         };
+        expect(release.value?.kind).toBe("private-direct-root-release/2");
         expect(release.value?.journalClosureDigest).toMatch(/^sha256:[0-9a-f]{64}$/);
+        expect(release.value?.serviceClosureDigest).toBeNull();
       } finally { database.close(true); }
       await controller.dispose();
       controller = undefined;
@@ -3923,7 +3971,7 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
               runtimeSupport,
               backend: rootBackend,
             })).rejects.toThrow(
-              "private Bun Binding recipe requires one exact direct-Flow call or canonical Journal slot",
+              "private Bun Binding recipe requires deterministic direct-Flow or capability slots",
             );
           }
           entries.push({
@@ -4120,7 +4168,7 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         },
       });
       const sqlite = createRequire(import.meta.url)("bun:sqlite") as any;
-      const databasePath = join(root, ".jig", "private-activation-admission-v16.sqlite3");
+      const databasePath = join(root, ".jig", "private-activation-admission-v17.sqlite3");
       const database = sqlite.Database.open(
         databasePath,
         sqlite.constants.SQLITE_OPEN_READONLY | sqlite.constants.SQLITE_OPEN_NOFOLLOW,
@@ -4321,6 +4369,461 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
       await rm(store, { recursive: true, force: true });
     }
   }, 420_000);
+
+  test("runs one pinned Bun root through Python, Journal, and a shared counter Service", async () => {
+    host = await hostConfiguration();
+    const [bun, python] = await Promise.all([
+      proofHostBunClosure(),
+      proofHostPythonClosure(),
+    ]);
+    const distribution = await realpath(join(import.meta.dir, "..", "dist"));
+    const sdkSource = await realpath(join(import.meta.dir, "..", "..", "flow-sdk", "src"));
+    const pythonSdkSource = await realpath(join(import.meta.dir, "..", "..", "flowmd-sdk", "src", "flowmd_sdk"));
+    const root = await mkdtemp(join(tmpdir(), "jig-mixed-composition-project-"));
+    const store = await mkdtemp(join(tmpdir(), "jig-mixed-composition-store-"));
+    const rootBackend = backend(host);
+    const evaluator = {
+      backend: rootBackend,
+      bunPath: bun.executable,
+      runtimeMounts: bun.runtimeSupport.closureSources.map((source) => ({ source, destination: source })),
+      runtimeSupport: bun.runtimeSupport,
+      jigDistributionPath: distribution,
+    } as const;
+    let coordinator: Awaited<ReturnType<typeof openPrivateProjectCoordinator>> | undefined;
+    let controller: Awaited<ReturnType<typeof attachPrivateRootAdministrationController>> | undefined;
+    let mounted: Awaited<ReturnType<typeof startPrivateBunServiceMount>> | undefined;
+    try {
+      await mkdir(join(root, "bindings"));
+      await mkdir(join(root, "flows", "mixed", "contracts"), { recursive: true });
+      await mkdir(join(root, "flows", "mixed", "flow-sdk"));
+      await mkdir(join(root, "flows", "child", "flowmd_sdk"), { recursive: true });
+      await mkdir(join(root, "flows", "counter", "contracts"), { recursive: true });
+      await mkdir(join(root, "flows", "counter", "flow-sdk"));
+
+      await writeFile(join(root, "jig.ts"), [
+        'import { defineJig, discover } from "@jigging/jig";',
+        'export default defineJig({ flows: discover("flows"), bindings: discover("bindings") });',
+        "",
+      ].join("\n"));
+      await writeFile(join(root, "bindings", "publisher.ts"), [
+        'import { defineJournalPublisher } from "@jigging/jig";',
+        "export default defineJournalPublisher({",
+        '  eventTypes: ["https://example.test/events/mixed-completed"],',
+        "});",
+        "",
+      ].join("\n"));
+      await writeFile(join(root, "bindings", "counter.ts"), [
+        'import { defineBinding } from "@jigging/jig";',
+        'export default defineBinding({ package: "flows/counter" });',
+        "",
+      ].join("\n"));
+      await writeFile(join(root, "bindings", "mixed.ts"), [
+        'import { bindingRef, defineBinding, flowRef } from "@jigging/jig";',
+        "export default defineBinding({",
+        '  package: "flows/mixed",',
+        "  slots: {",
+        '    child: flowRef("flows/child"),',
+        '    journal: bindingRef("publisher"),',
+        '    counter: bindingRef("counter"),',
+        "  },",
+        "});",
+        "",
+      ].join("\n"));
+
+      const counterContract = JSON.stringify({
+        $schema: "https://flow.dev/schemas/capability-contract-1.schema.json",
+        flowCapabilityContract: 1,
+        id: "https://example.test/capabilities/mixed-counter",
+        version: "1.0.0",
+        methods: {
+          next: {
+            input: {
+              type: "object",
+              properties: { by: { type: "integer", minimum: 1 } },
+              required: ["by"],
+              additionalProperties: false,
+            },
+            output: { type: "integer", minimum: 1 },
+            errors: {},
+          },
+          malformed: {
+            input: { type: "object", additionalProperties: false },
+            output: { type: "integer" },
+            errors: {},
+          },
+        },
+      });
+      const counter = join(root, "flows", "counter");
+      await writeFile(join(counter, "FLOW.md"), [
+        "---",
+        "name: mixed-counter",
+        "description: One exact process-local counter Service.",
+        "service: 1",
+        "provides:",
+        "  counter: ./contracts/counter.capability.json",
+        "---",
+        "",
+      ].join("\n"));
+      await writeFile(join(counter, "contracts", "counter.capability.json"), counterContract);
+      for (const name of [
+        "index.ts", "json.ts", "protocol.ts", "service-session.ts", "session.ts", "transport.ts", "types.ts",
+      ]) {
+        await writeFile(join(counter, "flow-sdk", name), await readFile(join(sdkSource, name)));
+      }
+      await writeFile(join(counter, "flow.ts"), [
+        "#!/usr/bin/env bun",
+        'import { ServiceError, serveService } from "./flow-sdk/index.ts";',
+        "let value = 0;",
+        "await serveService({",
+        "  exports: {",
+        "    counter: async (context) => {",
+        '      if (context.method === "malformed") return "not-an-integer";',
+        '      if (context.method !== "next") throw new ServiceError("not-found", { method: context.method });',
+        "      value += 1;",
+        "      return value;",
+        "    },",
+        "  },",
+        "  async mount(context) {",
+        "    await context.ready();",
+        "    await context.cancelled;",
+        "  },",
+        "});",
+        "",
+      ].join("\n"));
+
+      const mixed = join(root, "flows", "mixed");
+      await writeFile(join(mixed, "FLOW.md"), [
+        "---",
+        "name: mixed-root",
+        "description: Uses one exact child, Journal, and counter Service.",
+        "uses:",
+        "  journal:",
+        "    contract: ./contracts/journal.capability.json",
+        "  counter:",
+        "    contract: ./contracts/counter.capability.json",
+        "---",
+        "",
+      ].join("\n"));
+      await writeFile(join(mixed, "contracts", "counter.capability.json"), counterContract);
+      await writeFile(
+        join(mixed, "contracts", "journal.capability.json"),
+        await readFile(new URL("../../../docs/spec/contracts/jig/journal.capability.json", import.meta.url)),
+      );
+      for (const name of [
+        "index.ts", "json.ts", "protocol.ts", "service-session.ts", "session.ts", "transport.ts", "types.ts",
+      ]) {
+        await writeFile(join(mixed, "flow-sdk", name), await readFile(join(sdkSource, name)));
+      }
+      await writeFile(join(mixed, "flow.ts"), [
+        "#!/usr/bin/env bun",
+        'import { OperationError, serve } from "./flow-sdk/index.ts";',
+        "const observed = async (operation) => {",
+        "  try { return { result: await operation }; }",
+        '  catch (error) { return { error: error instanceof OperationError ? error.code : "unexpected" }; }',
+        "};",
+        "await serve(async (context) => {",
+        "  const request = context.input && typeof context.input === \"object\" ? context.input : {};",
+        "  const counterCall = { operationId: \"counter-next\", slot: \"counter\", method: \"next\", input: { by: 1 } };",
+        "  const [first, joined] = await Promise.all([context.callEffect(counterCall), context.callEffect(counterCall)]);",
+        "  const replay = await context.callEffect(counterCall);",
+        "  const conflict = await observed(context.callEffect({ ...counterCall, input: { by: 2 } }));",
+        "  const invalid = await observed(context.callEffect({",
+        "    operationId: \"counter-invalid\", slot: \"counter\", method: \"reset\", input: {},",
+        "  }));",
+        "  let child = null;",
+        "  let journal = null;",
+        "  let malformed = null;",
+        "  if (request.full === true) {",
+        "    malformed = await observed(context.callEffect({",
+        "      operationId: \"counter-malformed\", slot: \"counter\", method: \"malformed\", input: {},",
+        "    }));",
+        "    child = await context.callFlow({ operationId: \"child-one\", slot: \"child\", input: { ticket: request.ticket } });",
+        "    journal = await context.callEffect({",
+        "      operationId: \"publish-one\", slot: \"journal\", method: \"append\",",
+        "      input: { type: \"https://example.test/events/mixed-completed\", data: { ticket: request.ticket } },",
+        "    });",
+        "  }",
+        '  if (typeof request.delayMs === "number") await Bun.sleep(request.delayMs);',
+        '  return { outcome: "done", output: { first, joined, replay, conflict, invalid, malformed, child, journal } };',
+        "});",
+        "",
+      ].join("\n"));
+
+      const child = join(root, "flows", "child");
+      await writeFile(join(child, "FLOW.md"), [
+        "---",
+        "name: mixed-python-child",
+        "description: Returns one exact child result.",
+        "---",
+        "",
+      ].join("\n"));
+      await writeFile(join(child, "input.schema.json"), JSON.stringify({
+        $schema: "https://flow.dev/schemas/schema-1.json",
+        type: "object",
+        properties: { ticket: { type: "string" } },
+        required: ["ticket"],
+        additionalProperties: false,
+      }));
+      await writeFile(join(child, "result.schema.json"), JSON.stringify({
+        $schema: "https://flow.dev/schemas/schema-1.json",
+        type: "object",
+        properties: {
+          outcome: { const: "done" },
+          output: {
+            type: "object",
+            properties: { child: { type: "string" } },
+            required: ["child"],
+            additionalProperties: false,
+          },
+        },
+        required: ["outcome", "output"],
+        additionalProperties: false,
+      }));
+      for (const name of ["__init__.py", "_json.py", "_runtime.py", "_service.py", "_types.py"]) {
+        await writeFile(join(child, "flowmd_sdk", name), await readFile(join(pythonSdkSource, name)));
+      }
+      await writeFile(join(child, "flow.py"), [
+        "#!/usr/bin/env python",
+        "from flowmd_sdk import serve",
+        "",
+        "async def run(context):",
+        '    return {"outcome": "done", "output": {"child": context.input["ticket"]}}',
+        "",
+        "serve(run)",
+        "",
+      ].join("\n"));
+
+      const aggregate = await retainPackageProject({ projectRoot: root, storeRoot: store, evaluator });
+      const requests = buildPrivateActivationRequests(aggregate.linked);
+      const runtimeSupport = Object.freeze({ bun: bun.runtimeSupport, python: python.runtimeSupport });
+      const recipes = [];
+      let serviceRecipe: PrivateBunServiceRecipe | undefined;
+      for (const request of requests) {
+        if (request.mode === "service") {
+          const observation = await observePrivateBunServicePackage({
+            request,
+            packageStoreRoot: store,
+          });
+          serviceRecipe = await planPrivateBunService({
+            request,
+            packageObservation: observation,
+            runtimeSupport: bun.runtimeSupport,
+            backend: rootBackend,
+          });
+          recipes.push(serviceRecipe);
+        } else {
+          recipes.push(await planPrivateDirectRun({ request, runtimeSupport, backend: rootBackend }));
+        }
+      }
+      if (serviceRecipe === undefined) throw new Error("mixed project has no Service recipe");
+      const planning = createPrivateActivationPlanningObservation({
+        policyDigest: testDigest("mixed-composition-policy"),
+        mechanismDigest: recipes[0]!.mechanismDigest,
+        entries: requests.map((request, index) => ({
+          target: request.target,
+          requestDigest: request.digest,
+          disposition: { state: "planned" as const, observation: recipes[index]!.observation },
+        })),
+      });
+      const candidate = createPrivateActivationCandidateV5(
+        aggregate,
+        resolveRetainedPackageProjectObservation(aggregate, planning),
+        recipes,
+      );
+      await publishPrivateActivationCandidate({ projectRoot: root, packageStoreRoot: store, candidate });
+      const review = await createPrivateActivationReviewPlan({
+        projectRoot: root,
+        packageStoreRoot: store,
+        lockMode: "update",
+      });
+      await applyPrivateActivationReviewPlan({
+        projectRoot: root,
+        packageStoreRoot: store,
+        planDigest: review.planDigest,
+      });
+      const mixedTarget = candidate.candidate.targets.find(({ request }) =>
+        request.target.kind === "binding" && request.target.id === "mixed"
+      )!.request.target;
+
+      coordinator = await openPrivateProjectCoordinator({ projectRoot: root });
+      mounted = await startPrivateBunServiceMount({
+        coordinator,
+        projectRoot: root,
+        packageStoreRoot: store,
+        recipe: serviceRecipe,
+        effectiveDeadlineUnixMs: Date.now() + 29_950,
+      });
+      controller = await attachPrivateRootAdministrationController({
+        coordinator,
+        projectRoot: root,
+        packageStoreRoot: store,
+        runTimeoutMs: 45_000,
+        execute: (runId, sharedCoordinator, signal, notifyWorkAvailable) => executePrivateRootRunLaunch({
+          projectRoot: root,
+          packageStoreRoot: store,
+          runId,
+          coordinator: sharedCoordinator,
+          runtimeSupport,
+          backend: rootBackend,
+          notifyWorkAvailable,
+          serviceMount: mounted,
+          signal,
+        }),
+      });
+
+      const rootA = await controller.administration.startRun({
+        submissionId: "mixed-root-a",
+        target: mixedTarget,
+        input: { full: true, ticket: "T-mixed" },
+      });
+      await controller.drain();
+      expect(await controller.administration.runStatus(rootA)).toMatchObject({
+        state: "terminal",
+        terminal: {
+          status: "succeeded",
+          outcome: "done",
+          output: {
+            first: 1,
+            joined: 1,
+            replay: 1,
+            conflict: { error: "OPERATION_CONFLICT" },
+            invalid: { error: "UNAVAILABLE" },
+            malformed: { error: "INVALID_RESULT" },
+            child: { outcome: "done", output: { child: "T-mixed" } },
+            journal: { journalPosition: 1, source: "binding:publisher" },
+          },
+        },
+      });
+      const rootB = await controller.administration.startRun({
+        submissionId: "mixed-root-b",
+        target: mixedTarget,
+        input: { full: false, ticket: "T-second" },
+      });
+      await controller.drain();
+      expect(await controller.administration.runStatus(rootB)).toMatchObject({
+        state: "terminal",
+        terminal: {
+          status: "succeeded",
+          outcome: "done",
+          output: {
+            first: 2,
+            joined: 2,
+            replay: 2,
+            conflict: { error: "OPERATION_CONFLICT" },
+            invalid: { error: "UNAVAILABLE" },
+            malformed: null,
+            child: null,
+            journal: null,
+          },
+        },
+      });
+
+      const sqlite = createRequire(import.meta.url)("bun:sqlite") as any;
+      const databasePath = join(root, ".jig", "private-activation-admission-v17.sqlite3");
+      const database = sqlite.Database.open(
+        databasePath,
+        sqlite.constants.SQLITE_OPEN_READONLY | sqlite.constants.SQLITE_OPEN_NOFOLLOW,
+      );
+      let expectedLeaseReleases: readonly {
+        readonly ownerRunId: string;
+        readonly slot: string;
+        readonly releaseDigest: string;
+      }[] = [];
+      try {
+        expect(database.query(
+          "SELECT count(*) AS count FROM service_invocations WHERE terminal_digest IS NOT NULL AND closure_digest IS NOT NULL",
+        ).get().count).toBe(3);
+        expect(database.query("SELECT count(*) AS count FROM service_invocations").get().count).toBe(3);
+        expect(database.query(
+          "SELECT count(*) AS count FROM service_leases WHERE release_digest IS NOT NULL",
+        ).get().count).toBe(2);
+        expect(database.query(
+          "SELECT count(*) AS count FROM root_flow_call_closures WHERE parent_run_id = ?1",
+        ).get(rootA.runId).count).toBe(1);
+        expect(database.query(
+          "SELECT count(*) AS count FROM root_journal_closures WHERE parent_run_id = ?1",
+        ).get(rootA.runId).count).toBe(1);
+        expect(database.query(
+          "SELECT count(*) AS count FROM service_mount_facts WHERE mount_id = ?1 AND fact_name IN ('release','closure')",
+        ).get(mounted.mountId).count).toBe(0);
+        const malformedTerminal = JSON.parse(new TextDecoder().decode(database.query([
+          "SELECT terminal_bytes FROM service_invocations",
+          "WHERE owner_run_id = ?1 AND operation_id = 'counter-malformed'",
+        ].join(" ")).get(rootA.runId).terminal_bytes)) as {
+          readonly observation?: {
+            readonly terminal?: { readonly status?: unknown; readonly code?: unknown };
+          };
+        };
+        expect(malformedTerminal.observation?.terminal).toMatchObject({
+          status: "failed",
+          code: "INVALID_RESULT",
+        });
+        expectedLeaseReleases = (database.query([
+          "SELECT owner_run_id, slot, release_digest FROM service_leases",
+          "WHERE mount_id = ?1 ORDER BY owner_run_id, slot",
+        ].join(" ")).all(mounted.mountId) as readonly {
+          readonly owner_run_id: string;
+          readonly slot: string;
+          readonly release_digest: string;
+        }[]).map((row) => ({
+          ownerRunId: row.owner_run_id,
+          slot: row.slot,
+          releaseDigest: row.release_digest,
+        }));
+        for (const handle of [rootA, rootB]) {
+          const release = JSON.parse(new TextDecoder().decode(database.query(
+            "SELECT release_bytes FROM root_execution_lifecycles WHERE run_id = ?1",
+          ).get(handle.runId).release_bytes)) as {
+            readonly value?: {
+              readonly kind?: unknown;
+              readonly childClosureDigest?: unknown;
+              readonly journalClosureDigest?: unknown;
+              readonly serviceClosureDigest?: unknown;
+            };
+          };
+          expect(release.value?.kind).toBe("private-direct-root-release/2");
+          expect(release.value?.serviceClosureDigest).toMatch(/^sha256:[0-9a-f]{64}$/);
+          if (handle.runId === rootA.runId) {
+            expect(release.value?.childClosureDigest).toMatch(/^sha256:[0-9a-f]{64}$/);
+            expect(release.value?.journalClosureDigest).toMatch(/^sha256:[0-9a-f]{64}$/);
+          } else {
+            expect(release.value?.childClosureDigest).toBeNull();
+            expect(release.value?.journalClosureDigest).toMatch(/^sha256:[0-9a-f]{64}$/);
+          }
+        }
+      } finally { database.close(true); }
+
+      await controller.dispose();
+      controller = undefined;
+      const fenced = await mounted.fence();
+      expect(fenced.fence?.digest).toMatch(/^sha256:[0-9a-f]{64}$/);
+      expect(fenced.release).toBeUndefined();
+      expect(fenced.closure).toBeUndefined();
+      const closed = await mounted.stop();
+      expect(closed.release?.value.leaseReleases).toEqual(expectedLeaseReleases);
+      expect(closed.closure?.digest).toMatch(/^sha256:[0-9a-f]{64}$/);
+      mounted = undefined;
+      await coordinator.dispose();
+      coordinator = undefined;
+
+      expect(await jigCgroups(host.scope)).toEqual([]);
+      expect(await listOrEmpty(join(root, ".jig", "private-root-materializations"))).toEqual([]);
+      expect(await listOrEmpty(join(root, ".jig", "private-root-linux-owners"))).toEqual([]);
+      expect((await readdir("/dev")).filter(
+        (name) => name.startsWith(".jig-jig-run-") && name.endsWith("-devices"),
+      )).toEqual([]);
+      const entropy = await stat("/dev/urandom");
+      expect(entropy.mode & 0o777).toBe(0o666);
+      expect(entropy.rdev).not.toBe(0);
+    } finally {
+      await controller?.dispose().catch(() => undefined);
+      await mounted?.fence().catch(() => undefined);
+      await mounted?.stop().catch(() => undefined);
+      await coordinator?.dispose().catch(() => undefined);
+      await rm(root, { recursive: true, force: true });
+      await rm(store, { recursive: true, force: true });
+    }
+  }, 300_000);
 
 });
 

@@ -71,6 +71,7 @@ import {
   recordPrivateServiceLeaseRelease,
   recordPrivateServiceMountRelease,
   recoverPrivateServiceInvocation,
+  requirePrivateServiceMountFinalizationReady,
   requirePrivateStoredActivationCandidate,
   submitPrivateRootRun,
   type PrivateProjectCoordinator,
@@ -134,7 +135,10 @@ import {
 import { canonicalJson, decodeJson1, type JsonValue } from "../src/json.js";
 import { capturePackageDirectory } from "../src/package/capture.js";
 import { RootAdministrationError } from "../src/administration/root.js";
-import { openPrivateRootAdministrationController } from "../src/internal/root-administration-controller.js";
+import {
+  attachPrivateRootAdministrationController,
+  openPrivateRootAdministrationController,
+} from "../src/internal/root-administration-controller.js";
 import { awaitRootRun } from "../../../conformance/root-administration-1/consumer.js";
 import { privateHookRelationDigest } from "../src/project/package-project.js";
 
@@ -176,7 +180,7 @@ describe.serial("private activation admission SQLite store", () => {
     const root = join(base, "project");
     const store = join(base, "store");
     const state = join(root, ".jig");
-    const databasePath = join(state, "private-activation-admission-v16.sqlite3");
+    const databasePath = join(state, "private-activation-admission-v17.sqlite3");
     try {
       await mkdir(root, { mode: 0o700 });
       await mkdir(store, { mode: 0o700 });
@@ -197,7 +201,7 @@ describe.serial("private activation admission SQLite store", () => {
         expect(database.query(
           "SELECT name FROM sqlite_schema WHERE type = 'table' AND name = 'hook_derivations'",
         ).get()).toEqual({ name: "hook_derivations" });
-        expect(database.query("PRAGMA user_version").get().user_version).toBe(16);
+        expect(database.query("PRAGMA user_version").get().user_version).toBe(17);
         for (const table of [
           "lock_repairs",
           "service_mounts",
@@ -212,14 +216,14 @@ describe.serial("private activation admission SQLite store", () => {
     } finally { await rm(base, { recursive: true, force: true }); }
   });
 
-  test("rejects the exact preceding database path without creating v16 state", async () => {
+  test("rejects the exact preceding database path without creating v17 state", async () => {
     const base = await mkdtemp(join(tmpdir(), "jig-admission-legacy-"));
     const root = join(base, "project");
     const store = join(base, "store");
     const state = join(root, ".jig");
-    const legacy = join(state, "private-activation-admission-v15.sqlite3");
+    const legacy = join(state, "private-activation-admission-v16.sqlite3");
     const oldest = join(state, "private-activation-admission-v3.sqlite3");
-    const current = join(state, "private-activation-admission-v16.sqlite3");
+    const current = join(state, "private-activation-admission-v17.sqlite3");
     const sentinel = new TextEncoder().encode("legacy-private-state\n");
     try {
       await mkdir(state, { recursive: true, mode: 0o700 });
@@ -241,13 +245,13 @@ describe.serial("private activation admission SQLite store", () => {
     }
   });
 
-  test("rejects an abandoned legacy sidecar without creating v16 state", async () => {
+  test("rejects an abandoned legacy sidecar without creating v17 state", async () => {
     const base = await mkdtemp(join(tmpdir(), "jig-admission-legacy-sidecar-"));
     const root = join(base, "project");
     const store = join(base, "store");
     const state = join(root, ".jig");
     const sidecar = join(state, "private-activation-admission-v8.sqlite3-wal");
-    const current = join(state, "private-activation-admission-v16.sqlite3");
+    const current = join(state, "private-activation-admission-v17.sqlite3");
     const sentinel = new TextEncoder().encode("abandoned-private-sidecar\n");
     try {
       await mkdir(state, { recursive: true, mode: 0o700 });
@@ -267,9 +271,9 @@ describe.serial("private activation admission SQLite store", () => {
     }
   });
 
-  test("rejects mixed-version authority beside an existing valid v16 store", async () => {
+  test("rejects mixed-version authority beside an existing valid v17 store", async () => {
     const fixture = await createFixture();
-    const legacy = join(fixture.root, ".jig", "private-activation-admission-v15.sqlite3");
+    const legacy = join(fixture.root, ".jig", "private-activation-admission-v16.sqlite3");
     const sentinel = new TextEncoder().encode("ignored-legacy-state\n");
     try {
       await writeFile(legacy, sentinel, { mode: 0o600 });
@@ -566,6 +570,12 @@ describe.serial("private activation admission SQLite store", () => {
       });
       expect(submission.launch).toBeDefined();
       installAcknowledgedServiceMount(fixture, admission.admissionDigest, coordinator.epoch);
+
+      // A live root is pinned to its own admitted candidate. Later project
+      // admission movement cannot revoke or retarget that immutable owner.
+      await installChangedMeaningCandidate(fixture);
+      const movedAdmission = await applyLatestCandidate(fixture);
+      expect(movedAdmission.admissionDigest).not.toBe(admission.admissionDigest);
 
       const lease = await allocatePrivateServiceLease({
         coordinator,
@@ -1087,6 +1097,11 @@ describe.serial("private activation admission SQLite store", () => {
       });
       expect(allocation.created).toBeTrue();
       const fence = installServiceMountFence(fixture, installed, "host-lifetime");
+      await expect(requirePrivateServiceMountFinalizationReady({
+        coordinator,
+        projectRoot: fixture.root,
+        mountId: installed.mountId,
+      })).rejects.toMatchObject({ code: "SERVICE_LEASE_UNRELEASED" });
       await expect(recordPrivateServiceMountRelease({
         coordinator,
         projectRoot: fixture.root,
@@ -1123,6 +1138,16 @@ describe.serial("private activation admission SQLite store", () => {
         mountFenceDigest: privateServiceMountFenceDigest(fence),
         invocations: [{ operationId: "counter:closed", closureDigest: invocation.closure!.digest }],
       });
+      const finalizationReady = await requirePrivateServiceMountFinalizationReady({
+        coordinator,
+        projectRoot: fixture.root,
+        mountId: installed.mountId,
+      });
+      expect(finalizationReady).toMatchObject({
+        allocation: { mountId: installed.mountId },
+        fence: { digest: privateServiceMountFenceDigest(fence) },
+      });
+      expect(finalizationReady.release).toBeUndefined();
 
       const database = openSqlite(fixture.database, "readwrite");
       database.query(
@@ -1264,7 +1289,7 @@ describe.serial("private activation admission SQLite store", () => {
           "hook_revisions_one_open",
         ]);
         expect(database.query("PRAGMA application_id").get().application_id).toBe(0x4a494741);
-        expect(database.query("PRAGMA user_version").get().user_version).toBe(16);
+        expect(database.query("PRAGMA user_version").get().user_version).toBe(17);
         expect(database.query("SELECT count(*) AS count FROM review_plans").get().count).toBe(1);
       } finally {
         database.close(true);
@@ -3274,6 +3299,56 @@ describe.serial("private activation admission SQLite store", () => {
     }
   }, 90_000);
 
+  test("separates attached root authority disposal from coordinator ownership", async () => {
+    const fixture = await createFixture("ready");
+    let coordinator: PrivateProjectCoordinator | undefined;
+    let attached: Awaited<ReturnType<typeof attachPrivateRootAdministrationController>> | undefined;
+    let owned: Awaited<ReturnType<typeof openPrivateRootAdministrationController>> | undefined;
+    let reopened: PrivateProjectCoordinator | undefined;
+    try {
+      await applyLatestCandidate(fixture);
+      coordinator = await openPrivateProjectCoordinator({ projectRoot: fixture.root });
+      attached = await attachPrivateRootAdministrationController({
+        coordinator,
+        projectRoot: fixture.root,
+        packageStoreRoot: fixture.store,
+        runTimeoutMs: 60_000,
+        execute: async () => { throw new Error("empty project must not execute root work"); },
+      });
+      await attached.dispose();
+      await expect(attached.administration.runStatus({
+        runId: `sha256:${"0".repeat(64)}`,
+      })).rejects.toMatchObject({ code: "PROJECT_CLOSED" });
+      await coordinator.verify();
+      await expect(openPrivateProjectCoordinator({ projectRoot: fixture.root })).rejects.toMatchObject({
+        code: "COORDINATOR_BUSY",
+      });
+
+      await coordinator.dispose();
+      coordinator = undefined;
+      attached = undefined;
+      owned = await openPrivateRootAdministrationController({
+        projectRoot: fixture.root,
+        packageStoreRoot: fixture.store,
+        runTimeoutMs: 60_000,
+        execute: async () => { throw new Error("empty project must not execute root work"); },
+      });
+      await expect(openPrivateProjectCoordinator({ projectRoot: fixture.root })).rejects.toMatchObject({
+        code: "COORDINATOR_BUSY",
+      });
+      await owned.dispose();
+      owned = undefined;
+      reopened = await openPrivateProjectCoordinator({ projectRoot: fixture.root });
+      await reopened.verify();
+    } finally {
+      await reopened?.dispose();
+      await owned?.dispose();
+      await attached?.dispose();
+      await coordinator?.dispose();
+      await fixture.dispose();
+    }
+  }, 90_000);
+
   test("projects durable root Runs through the closed administration authority", async () => {
     const fixture = await createFixture("ready");
     let controller: Awaited<ReturnType<typeof openPrivateRootAdministrationController>> | undefined;
@@ -4339,7 +4414,7 @@ async function createFixture(
     const encoded = encodePrivateActivationCandidateV5(candidate);
 
     const state = join(root, ".jig");
-    const databasePath = join(state, "private-activation-admission-v16.sqlite3");
+    const databasePath = join(state, "private-activation-admission-v17.sqlite3");
     await mkdir(state, { mode: 0o700 });
     const databaseFile = await open(
       databasePath,
@@ -4387,7 +4462,7 @@ async function createFixture(
         "INSERT INTO coordinator_head(singleton, epoch) VALUES (1, 0)",
         "INSERT INTO journal_head(singleton, position) VALUES (1, 0)",
         "PRAGMA application_id=1246316353",
-        "PRAGMA user_version=16",
+        "PRAGMA user_version=17",
       ].join(";"));
       database.exec("BEGIN IMMEDIATE");
       database.query(
@@ -4849,6 +4924,42 @@ async function installEquivalentCaptureCandidate(fixture: Fixture): Promise<void
   }
 }
 
+async function installChangedMeaningCandidate(fixture: Fixture): Promise<void> {
+  const database = openSqlite(fixture.database, "readwrite");
+  try {
+    const head = database.query(
+      "SELECT revision FROM candidate_head WHERE singleton = 1",
+    ).get().revision as number;
+    const stored = database.query(
+      "SELECT candidate_bytes, lock_bytes FROM candidates WHERE revision = ?1",
+    ).get(head) as { readonly candidate_bytes: Uint8Array; readonly lock_bytes: Uint8Array };
+    const candidateValue = decodeJson1(stored.candidate_bytes) as Record<string, JsonValue>;
+    const next = head + 1;
+    const candidate = decodePrivateActivationCandidateV5({
+      candidate: json1(candidateV5({
+        ...candidateValue,
+        semanticDigest: digest(`changed-meaning-${next}`),
+      })),
+      lock: stored.lock_bytes,
+    });
+    const encoded = encodePrivateActivationCandidateV5(candidate);
+    database.exec("BEGIN IMMEDIATE");
+    try {
+      database.query(
+        "INSERT INTO candidates(revision, candidate_digest, candidate_bytes, lock_bytes) VALUES (?1, ?2, ?3, ?4)",
+      ).run(next, privateActivationCandidateDigestV5(candidate), encoded.candidate, encoded.lock);
+      const changed = database.query(
+        "UPDATE candidate_head SET revision = ?1 WHERE singleton = 1 AND revision = ?2",
+      ).run(next, head).changes;
+      if (changed !== 1) throw new Error("test candidate head changed concurrently");
+      database.exec("COMMIT");
+    } catch (error) {
+      if (database.inTransaction) database.exec("ROLLBACK");
+      throw error;
+    }
+  } finally { database.close(true); }
+}
+
 function readHookRevisionRows(databasePath: string): readonly any[] {
   const database = openSqlite(databasePath, "readonly");
   try {
@@ -5034,7 +5145,7 @@ async function createComposedFixture(): Promise<Fixture> {
     });
     const encoded = encodePrivateActivationCandidateV5(candidate);
     const state = join(root, ".jig");
-    const databasePath = join(state, "private-activation-admission-v16.sqlite3");
+    const databasePath = join(state, "private-activation-admission-v17.sqlite3");
     await mkdir(state, { mode: 0o700 });
     const databaseFile = await open(
       databasePath,
@@ -5082,7 +5193,7 @@ async function createComposedFixture(): Promise<Fixture> {
         "INSERT INTO coordinator_head(singleton, epoch) VALUES (1, 0)",
         "INSERT INTO journal_head(singleton, position) VALUES (1, 0)",
         "PRAGMA application_id=1246316353",
-        "PRAGMA user_version=16",
+        "PRAGMA user_version=17",
       ].join(";"));
       database.exec("BEGIN IMMEDIATE");
       database.query(

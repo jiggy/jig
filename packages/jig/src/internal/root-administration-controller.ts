@@ -26,7 +26,7 @@ export interface PrivateRootAdministrationController {
   readonly administration: RootAdministration;
   /** Wait for work already accepted by this controller and surface host failures. */
   drain(): Promise<void>;
-  /** Revoke the authority, cancel active launches, drain, and release ownership. */
+  /** Revoke this authority, cancel its active launches, and drain its work. */
   dispose(): Promise<void>;
 }
 
@@ -60,13 +60,52 @@ export async function openPrivateRootAdministrationController(input: {
     throw administrationError(error, "open project coordinator");
   }
   try {
-    const created = createController({ ...input, coordinator });
+    const attached = await attachPrivateRootAdministrationController({ ...input, coordinator });
+    let disposal: Promise<void> | undefined;
+    return Object.freeze({
+      administration: attached.administration,
+      drain: attached.drain,
+      dispose(): Promise<void> {
+        disposal ??= disposeOwnedController(attached, coordinator);
+        return disposal;
+      },
+    });
+  } catch (error) {
+    await coordinator.dispose();
+    throw administrationError(error, "recover project coordinator");
+  }
+}
+
+/**
+ * Attach finite root work to an already-owned project coordinator.
+ *
+ * The returned controller revokes and drains only its root-work authority.
+ * The caller remains responsible for disposing the coordinator after every
+ * sibling owner using that epoch has settled.
+ */
+export async function attachPrivateRootAdministrationController(input: {
+  readonly coordinator: PrivateProjectCoordinator;
+  readonly projectRoot: string;
+  readonly packageStoreRoot: string;
+  readonly runTimeoutMs: number;
+  readonly execute: PrivateRootLaunchExecutor;
+}): Promise<PrivateRootAdministrationController> {
+  requireRunTimeout(input.runTimeoutMs);
+  if (typeof input.execute !== "function") throw new TypeError("root Run executor is required");
+  const created = createController(input);
+  try {
     await created.recoverOlder();
     await created.pumpCurrent();
     return created.controller;
   } catch (error) {
-    await coordinator.dispose();
-    throw administrationError(error, "recover project coordinator");
+    try { await created.controller.dispose(); }
+    catch (cleanupError) {
+      throw administrationError(
+        new AggregateError([error, cleanupError], "attached root controller recovery failed"),
+        "recover attached root controller",
+      );
+    }
+    throw administrationError(error, "recover attached root controller");
   }
 }
 
@@ -243,19 +282,19 @@ function createController(input: {
       if (disposal !== undefined) return disposal;
       closed = true;
       cancellation.abort(new Error("root Run controller disposed"));
-      disposal = disposeController(drain, input.coordinator);
+      disposal = drain();
       return disposal;
     },
   });
   return Object.freeze({ controller, recoverOlder, pumpCurrent });
 }
 
-async function disposeController(
-  drain: () => Promise<void>,
+async function disposeOwnedController(
+  controller: PrivateRootAdministrationController,
   coordinator: PrivateProjectCoordinator,
 ): Promise<void> {
   const failures: unknown[] = [];
-  try { await drain(); } catch (error) { failures.push(error); }
+  try { await controller.dispose(); } catch (error) { failures.push(error); }
   try { await coordinator.dispose(); } catch (error) { failures.push(error); }
   if (failures.length > 0) throw new AggregateError(failures, "root Run controller cleanup failed");
 }

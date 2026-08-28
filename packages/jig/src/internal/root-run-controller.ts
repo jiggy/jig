@@ -55,8 +55,13 @@ import {
 } from "./root-flow-call-controller.js";
 import {
   closePrivateRootJournalEffectsBeforeParent,
-  executePrivateRootJournalEffect,
 } from "./root-journal-effect-controller.js";
+import { executePrivateRootEffect } from "./root-effect-dispatcher.js";
+import {
+  closePrivateRootServiceEffectsBeforeParent,
+} from "./root-service-effect-controller.js";
+import { privateServiceOwnerClosureDigest } from "./private-service-state.js";
+import type { PrivateBunServiceMount } from "./private-service-controller.js";
 import {
   failedPrivateRootTerminal,
   normalizePrivateRootTerminal,
@@ -67,7 +72,7 @@ const BACKING_KIND = "private-direct-root-backing/1";
 const SANDBOX_KIND = "private-direct-root-sandbox/1";
 const PREPARED_KIND = "private-direct-root-prepared/1";
 const FENCE_KIND = "private-direct-root-fence/1";
-const RELEASE_KIND = "private-direct-root-release/1";
+const RELEASE_KIND = "private-direct-root-release/2";
 const CANCELLATION_GRACE_MS = 1_000;
 const BUN_POLICY = Object.freeze([
   "--no-env-file",
@@ -115,6 +120,8 @@ export async function executePrivateRootRunLaunch(input: {
   readonly runtimeSupport: PrivateDirectRunRuntimeSupport;
   readonly backend: PrivateLinuxCgroupBackend;
   readonly notifyWorkAvailable: () => void;
+  /** One exact acknowledged generation owned by the enclosing finite session. */
+  readonly serviceMount?: PrivateBunServiceMount;
   readonly signal?: AbortSignal;
 }): Promise<PrivateRootExecutionDisposition> {
   await input.coordinator.verify();
@@ -125,6 +132,7 @@ export async function executePrivateRootRunLaunch(input: {
   try {
     await closePrivateRootFlowCallBeforeParent({ ...input, parent: work });
     await closePrivateRootJournalEffectsBeforeParent({ ...input, parent: work });
+    await closePrivateRootServiceEffectsBeforeParent({ ...input, parent: work });
   } catch (error) {
     if (error instanceof PrivateLinuxFenceUnconfirmedError) {
       return Object.freeze({ state: "pending", reason: "fence-unconfirmed" });
@@ -280,7 +288,7 @@ async function startOrResumeCurrentExecution(
           parentDeadlineUnixMs: plan.effectiveDeadlineUnixMs,
           signal,
         }),
-        callEffect: async (call, signal) => await executePrivateRootJournalEffect({
+        callEffect: async (call, signal) => await executePrivateRootEffect({
           ...input,
           parent: work,
           call,
@@ -498,6 +506,7 @@ async function settleWithoutPlan(
     ownerRelease: null,
     childClosureDigest: null,
     journalClosureDigest: null,
+    serviceClosureDigest: null,
   } as unknown as JsonValue);
   work = await reacquire(input);
   const admitted = normalizePrivateRootTerminal(work.lifecycle.provisional!.value);
@@ -514,6 +523,10 @@ async function releaseAdmitAndClose(
   if (work.lifecycle.release === undefined) {
     const childClosureDigest = await closePrivateRootFlowCallBeforeParent({ ...input, parent: work });
     const journalClosureDigest = await closePrivateRootJournalEffectsBeforeParent({ ...input, parent: work });
+    const serviceClosure = await closePrivateRootServiceEffectsBeforeParent({ ...input, parent: work });
+    const serviceClosureDigest = serviceClosure === null
+      ? null
+      : privateServiceOwnerClosureDigest(serviceClosure);
     const plan = work.lifecycle.plan === undefined ? undefined : parsePlan(work.lifecycle.plan.value);
     let ownerRelease: PrivateLinuxOwnerStateReleaseReceipt | null = null;
     if (plan !== undefined) {
@@ -548,6 +561,7 @@ async function releaseAdmitAndClose(
       ownerRelease,
       childClosureDigest,
       journalClosureDigest,
+      serviceClosureDigest,
     } as unknown as JsonValue);
     work = await reacquire(input);
   }
