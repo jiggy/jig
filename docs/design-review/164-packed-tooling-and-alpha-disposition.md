@@ -42,9 +42,7 @@ The installed-artifact smoke test now:
    instruction Flow;
 6. exercises every public JavaScript and schema entrypoint under Bun;
 7. type-checks independent TypeScript consumers against installed
-   declarations; and
-8. exercises the JavaScript and schema entrypoints under a separately supplied
-   Node executable.
+   declarations.
 
 The release script includes this packed Jig gate. It remains an unprivileged
 source/artifact gate; it neither runs the Linux hostile suite nor establishes
@@ -55,28 +53,27 @@ publication readiness.
 The TypeScript build and focused package-check, package-inspection, and Root
 Administration tests pass: 26 tests and 104 assertions. On this host, the
 packed test completes exact-tree, installed-CLI, Bun, schema, and TypeScript
-checks. Both TypeScript package smokes require an absolute `FLOW_NODE`, verify
-an exact Node-only identity sentinel, and do not search `PATH`. This prevents
-`true`, Bun, or Bun's lifecycle-only `node` shim from falsely satisfying an
-independent Node compatibility gate.
+checks. The FLOW SDK package smoke separately requires an absolute
+`FLOW_NODE`, verifies an exact Node-only identity sentinel, and does not search
+`PATH`. This prevents `true`, Bun, or Bun's lifecycle-only `node` shim from
+falsely satisfying the SDK's independent Node compatibility gate.
 
-The FLOW SDK packed artifact passes under a genuine host-supplied Node 24. The
-Jig artifact reaches its genuine Node pass and then correctly refuses both
-available Node 22 and Node 24 builds: each reports Unicode 17.0 while Package/1
-requires Unicode 15.1 NFC. The Bun pass remains valid. Node support therefore
-needs an explicit product decision: ship the first Jig tooling preview as
-Bun-only, or provide a bounded Unicode 15.1 normalization implementation and
-then test supported Node versions. The gate must not weaken Package/1 or call a
-newer Unicode database equivalent.
+The FLOW SDK packed artifact passes under a genuine host-supplied Node 24. A
+separate Jig compatibility experiment reached genuine Node 22 and Node 24 and
+correctly refused both: each reports Unicode 17.0 while Package/1 requires
+Unicode 15.1 NFC. The first Jig tooling and host preview is therefore selected
+as Bun-only. Node is not in its release matrix. Adding Node later requires a
+bounded Unicode 15.1 normalization implementation and the relevant
+conformance corpus; the gate must not weaken Package/1 or call a newer Unicode
+database equivalent.
 
 Host-owned Python and `build` receipts separately pass wheel, source
 distribution, and clean-install smoke. Those are release-environment inputs,
 not Jig runtime discovery or package-manager behavior. The aggregate release
-script remains stopped by the Jig/Node Unicode gate rather than missing Python
-packaging support.
+script retains Node only for the portable FLOW SDK compatibility gate.
 
-That Node compatibility stop is not a defect in the narrow Bun-validated
-artifact, but it forbids a Node support claim.
+The separate Node refusal is not a defect in the narrow Bun-validated artifact
+and does not narrow FLOW, but it forbids a Node support claim for Jig.
 
 ## 3. The only honest preview claim
 
@@ -130,7 +127,7 @@ host alpha. The smallest missing product path remains:
 
 ```text
 trusted local project acquisition
-    -> read-only plan with one closed public result/error model
+    -> authority-neutral plan with one closed public result/error model
     -> explicit apply by retained Plan digest
     -> finite local start/status through already-issued authority
 ```
@@ -150,12 +147,10 @@ This checkpoint earns package hygiene, not publication. Public release remains
 blocked until all of the following are true:
 
 1. an explicit license and registry metadata are selected;
-2. the first release explicitly chooses Bun-only operation or supplies and
-   proves a Package/1-conformant Node normalization path;
-3. every claimed TypeScript runtime plus the Python packed release gate passes
-   in a trusted release environment;
-4. a fresh supported host supplies the production trust-root contract; and
-5. the narrow local project plan/apply/run path passes an independent consumer
+2. the exact claimed Bun Jig gate and every separately claimed FLOW SDK or
+   Flow-runtime gate pass in a trusted release environment;
+3. a fresh supported host supplies the production trust-root contract; and
+4. the narrow local project plan/apply/run path passes an independent consumer
    without importing private modules.
 
 The correct result today is a clean private artifact plus exact blockers, not

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { isAbsolute, join, resolve } from "node:path";
+import { join, resolve } from "node:path";
 
 const packageRoot = resolve(import.meta.dir, "..");
 const temporary = await mkdtemp(join(tmpdir(), "jig-package-"));
@@ -140,20 +140,6 @@ void status;
   }));
   await run(["bunx", "--bun", "tsc", "-p", join(consumer, "tsconfig.json")], packageRoot);
 
-  const node = Bun.env.FLOW_NODE;
-  if (node === undefined || node === "" || !isAbsolute(node)) {
-    throw new Error("Node is required for package smoke; set FLOW_NODE to its exact executable");
-  }
-  const nodeIdentity = await run([
-    node,
-    "-e",
-    'if (process.release?.name !== "node" || process.versions?.bun !== undefined) process.exit(70); process.stdout.write("FLOW_NODE_OK\\n")',
-  ], packageRoot);
-  assert.equal(nodeIdentity.stdout, "FLOW_NODE_OK\n");
-  assert.equal(nodeIdentity.stderr, "");
-  await run([node, "smoke.mjs"], consumer);
-  await run([node, "administration-smoke.mjs"], consumer);
-  await run([node, "schema-smoke.mjs"], consumer);
 } finally {
   await rm(temporary, { recursive: true, force: true });
 }

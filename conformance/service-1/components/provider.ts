@@ -3,7 +3,7 @@ import {
   ServiceError,
   serveService,
   type ServiceDefinition,
-} from "../../../packages/flow-sdk/src/index.ts";
+} from "../../../packages/flow-sdk/src/service.ts";
 
 const service: ServiceDefinition = {
   exports: process.env.FLOWMD_TEST_EMPTY_SERVICE === "1" ? {} : {

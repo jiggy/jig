@@ -173,7 +173,8 @@ Service/1 remains a separate interface slice. The closed
 - distinct Mount-background and invocation-owned clients/lifetimes; and
 - provider readiness and bounded disposal without public remote Scope objects.
 
-The private TypeScript and Python Provider projections implement
+The private TypeScript and Python Provider projections live under the separate
+`@flowmd/sdk/service` and `flowmd_sdk.service` module paths and implement
 `serveService` / `serve_service`, a static `ServiceDefinition`, mount and
 invocation contexts, owner-scoped dependency calls, `ServiceError`, readiness,
 cancellation, and terminal quiescence. A private Jig Host drives both real
@@ -518,9 +519,9 @@ The repository still needs:
   project-facing error wrapper;
 - public plan/apply request, result, error, authentication, and CLI/API
   surfaces plus an independent packed consumer;
-- an explicit Bun-only first-release decision or a Package/1-conformant Node
-  normalization path; genuine Node 22 and 24 currently stop on their Unicode
-  17.0 database while the pinned package contract requires Unicode 15.1;
+- a finite tested Bun support range for the selected Bun-only first preview;
+  genuine Node 22 and 24 stop on their Unicode 17.0 database while the pinned
+  package contract requires Unicode 15.1 and are not claimed Jig runtimes;
 - license, repository, version, and tested engine metadata before registry
   publication;
 - one administrator-owned production launcher/runtime-support installation on

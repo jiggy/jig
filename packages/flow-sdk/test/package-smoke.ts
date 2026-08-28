@@ -68,6 +68,8 @@ try {
       "protocol.js",
       "service-session.d.ts",
       "service-session.js",
+      "service.d.ts",
+      "service.js",
       "session.d.ts",
       "session.js",
       "transport.d.ts",
@@ -87,11 +89,13 @@ try {
 
   await writeFile(
     join(consumer, "smoke.mjs"),
-    `import { EffectError, OperationError, ServiceError } from "@flowmd/sdk";
+    `import * as runSdk from "@flowmd/sdk";
+import { EffectError, OperationError } from "@flowmd/sdk";
+import { ServiceError } from "@flowmd/sdk/service";
 const operation = new OperationError("UNAVAILABLE");
 const effect = new EffectError("not-found", null);
 const service = new ServiceError("not-found", null);
-if (operation.code !== "UNAVAILABLE" || effect.errorName !== "not-found" || service.errorName !== "not-found") {
+if ("serveService" in runSdk || "ServiceError" in runSdk || "ServiceDefinition" in runSdk || operation.code !== "UNAVAILABLE" || effect.errorName !== "not-found" || service.errorName !== "not-found") {
   throw new Error("installed runtime exports are invalid");
 }
 `,
@@ -112,7 +116,14 @@ if (operation.code !== "UNAVAILABLE" || effect.errorName !== "not-found" || serv
 
   await writeFile(
     join(consumer, "smoke.ts"),
-    `import { OperationError, type RunHandler, type ServiceDefinition } from "@flowmd/sdk";
+    `import { OperationError, type RunHandler } from "@flowmd/sdk";
+// @ts-expect-error Service/1 is deliberately absent from the Run SDK root.
+import { serveService as rootServeService } from "@flowmd/sdk";
+// @ts-expect-error Service/1 is deliberately absent from the Run SDK root.
+import { ServiceError as RootServiceError } from "@flowmd/sdk";
+// @ts-expect-error Service/1 is deliberately absent from the Run SDK root.
+import type { ServiceDefinition as RootServiceDefinition } from "@flowmd/sdk";
+import { type ServiceDefinition } from "@flowmd/sdk/service";
 const handler: RunHandler = async (run) => ({
   outcome: "done",
   output: await run.callEffect({
@@ -128,6 +139,10 @@ const service: ServiceDefinition = {
   mount: async context => { await context.ready(); await context.cancelled; },
 };
 void service;
+void rootServeService;
+void RootServiceError;
+const rootServiceDefinition: RootServiceDefinition | undefined = undefined;
+void rootServiceDefinition;
 void new OperationError("UNAVAILABLE");
 `,
   );

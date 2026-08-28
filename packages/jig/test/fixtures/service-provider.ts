@@ -2,7 +2,7 @@ import {
   ServiceError,
   serveService,
   type ServiceDefinition,
-} from "../../../flow-sdk/src/index.ts";
+} from "../../../flow-sdk/src/service.ts";
 
 const service: ServiceDefinition = {
   exports: {

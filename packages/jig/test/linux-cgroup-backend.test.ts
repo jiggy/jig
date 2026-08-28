@@ -2368,7 +2368,7 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
           },
         }));
       for (const file of [
-        "index.ts", "json.ts", "protocol.ts", "service-session.ts", "session.ts", "transport.ts", "types.ts",
+        "index.ts", "json.ts", "protocol.ts", "service-session.ts", "service.ts", "session.ts", "transport.ts", "types.ts",
       ]) {
         await writeFile(
           join(root, "flows", "counter", "sdk", file),
@@ -2377,7 +2377,7 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
       }
       await writeFile(join(root, "flows", "counter", "flow.ts"), [
         "#!/usr/bin/env bun",
-        'import { serveService } from "./sdk/index.ts";',
+        'import { serveService } from "./sdk/service.ts";',
         "await serveService({",
         "  exports: { counter: async () => 0 },",
         "  async mount(context) {",
@@ -4559,13 +4559,13 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
       ].join("\n"));
       await writeFile(join(counter, "contracts", "counter.capability.json"), counterContract);
       for (const name of [
-        "index.ts", "json.ts", "protocol.ts", "service-session.ts", "session.ts", "transport.ts", "types.ts",
+        "index.ts", "json.ts", "protocol.ts", "service-session.ts", "service.ts", "session.ts", "transport.ts", "types.ts",
       ]) {
         await writeFile(join(counter, "flow-sdk", name), await readFile(join(sdkSource, name)));
       }
       await writeFile(join(counter, "flow.ts"), [
         "#!/usr/bin/env bun",
-        'import { ServiceError, serveService } from "./flow-sdk/index.ts";',
+        'import { ServiceError, serveService } from "./flow-sdk/service.ts";',
         "let value = 0;",
         "await serveService({",
         "  exports: {",

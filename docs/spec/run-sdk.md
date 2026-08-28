@@ -12,8 +12,11 @@ Run/1 owns the protocol and this projection must be corrected.
 
 ## 1. Surface and ownership
 
-The TypeScript package is `@flowmd/sdk`. The Python distribution is
-`flowmd-sdk`, imported as `flowmd_sdk`.
+The TypeScript package root is `@flowmd/sdk`. The Python distribution is
+`flowmd-sdk`, imported as `flowmd_sdk`. These root modules expose Run SDK/1
+only. The separately gated Service SDK/1 candidate uses
+`@flowmd/sdk/service` and `flowmd_sdk.service`; importing this Run surface does
+not imply Service/1 conformance.
 
 Both expose only:
 

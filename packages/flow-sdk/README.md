@@ -1,6 +1,7 @@
 # @flowmd/sdk
 
-Minimal, dependency-free TypeScript projection of FLOW Run/1 and Service/1.
+Minimal, dependency-free TypeScript projection of FLOW Run/1. The separately
+gated Service/1 candidate is available from `@flowmd/sdk/service`.
 
 This is a private `0.0.0` candidate, not a stable release. Its authoritative
 source-checkout documents are `docs/spec/run-sdk.md`,
@@ -28,7 +29,7 @@ await serve(async (run: RunContext): Promise<RunResult> => {
 A long-lived provider with a fixed export set uses `serveService()`:
 
 ```ts
-import { serveService, type ServiceDefinition } from "@flowmd/sdk";
+import { serveService, type ServiceDefinition } from "@flowmd/sdk/service";
 
 const service: ServiceDefinition = {
   exports: {

@@ -1,8 +1,11 @@
 # FLOW Service SDK/1
 
-**Status:** closed TypeScript/Python API candidate. It projects
+**Status:** closed TypeScript/Python API candidate, exposed separately as
+`@flowmd/sdk/service` and `flowmd_sdk.service`. It projects
 [Service/1](service-protocol.md) without exposing JSON-RPC, wire owner IDs,
-provider generations, endpoints, bindings, sandboxes, or Jig records.
+provider generations, endpoints, bindings, sandboxes, or Jig records. Its
+presence in the private SDK distributions is not a Service/1 conformance
+label and does not enlarge the Run SDK/1 package root.
 
 ## 1. TypeScript surface
 
@@ -12,7 +15,7 @@ import {
   ServiceError,
   serveService,
   type ServiceDefinition,
-} from "@flowmd/sdk";
+} from "@flowmd/sdk/service";
 
 const service: ServiceDefinition = {
   exports: {
@@ -139,7 +142,7 @@ different invocation is legal and names a different operation.
 Python uses the same concepts and ordinary naming conventions:
 
 ```python
-from flowmd_sdk import OperationError, ServiceDefinition, serve_service
+from flowmd_sdk.service import OperationError, ServiceDefinition, serve_service
 
 
 async def sessions(context):

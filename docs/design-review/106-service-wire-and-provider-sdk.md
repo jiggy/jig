@@ -14,8 +14,9 @@ Service/1 conformance or stability.
   [`service-1-errors.json`](../spec/machine/service-1-errors.json) define the
   closed machine message and operational-error candidates.
 - [`Service SDK/1`](../spec/service-sdk.md) defines the small TypeScript/Python
-  author projection. Both implementations now exist privately in
-  `@flowmd/sdk` and `flowmd-sdk`.
+  author projection. Both implementations now exist privately in the
+  separately gated `@flowmd/sdk/service` and `flowmd_sdk.service` modules.
+  The Run SDK package roots do not export this candidate.
 
 The Provider-facing vocabulary is deliberately limited to:
 

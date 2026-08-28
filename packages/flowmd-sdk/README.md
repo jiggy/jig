@@ -1,6 +1,7 @@
 # flowmd-sdk
 
-Minimal, dependency-free Python projection of FLOW Run/1 and Service/1.
+Minimal, dependency-free Python projection of FLOW Run/1. The separately gated
+Service/1 candidate is available from `flowmd_sdk.service`.
 
 This is a private `0.0.0` candidate, not a stable release. Its authoritative
 source-checkout documents are `docs/spec/run-sdk.md`,
@@ -30,7 +31,7 @@ serve(run)
 A long-lived provider with a fixed export set uses `serve_service()`:
 
 ```python
-from flowmd_sdk import ServiceDefinition, serve_service
+from flowmd_sdk.service import ServiceDefinition, serve_service
 
 
 async def clock(invocation):

@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import os
 
-from flowmd_sdk import OperationError, ServiceDefinition, ServiceError, serve_service
+from flowmd_sdk.service import OperationError, ServiceDefinition, ServiceError, serve_service
 
 
 async def sessions(context):

@@ -1,4 +1,4 @@
-from flowmd_sdk import ServiceDefinition, ServiceError, serve_service
+from flowmd_sdk.service import ServiceDefinition, ServiceError, serve_service
 
 
 async def sessions(context):
