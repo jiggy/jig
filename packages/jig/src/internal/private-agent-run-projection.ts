@@ -4,13 +4,14 @@ import {
   parseCapabilityContract,
   type ParsedCapabilityContract,
 } from "../capability/index.js";
-import { canonicalJson, decodeJson1, type JsonObject, type JsonValue } from "../json.js";
+import { canonicalJson, type JsonValue } from "../json.js";
 import { comparePathBytes, validateLogicalPath } from "../package/paths.js";
 import { compileSchemaFile, type CompiledSchema } from "../schema/index.js";
 import {
   captureStoredPackage,
   type PackageArtifactRef,
 } from "./package-artifact-store.js";
+import { snapshotPrivateOrdinaryJson } from "./private-ordinary-json.js";
 
 const AGENT_RUN_ID = "https://jig.dev/contracts/agent-run";
 const AGENT_RUN_VERSION = "1.0.0";
@@ -278,70 +279,9 @@ function validateStructuredResult(
 }
 
 function snapshotJson(value: unknown, label: string): JsonValue {
-  const ordinary = cloneOrdinaryJson(value, label, new Set());
-  const cloned = decodeJson1(canonicalJson(ordinary));
-  deepFreeze(cloned);
-  return cloned;
-}
-
-function cloneOrdinaryJson(value: unknown, label: string, ancestors: Set<object>): JsonValue {
-  if (value === null || typeof value === "boolean" || typeof value === "string" || typeof value === "number") {
-    return value;
-  }
-  if (typeof value !== "object" || utilTypes.isProxy(value)) {
-    throw new PrivateAgentRunError("AGENT_RUN_JSON_INVALID", `${label} must be ordinary JSON/1 data`);
-  }
-  if (ancestors.has(value)) {
-    throw new PrivateAgentRunError("AGENT_RUN_JSON_INVALID", `${label} must not contain a cycle`);
-  }
-  ancestors.add(value);
-  try {
-    if (Array.isArray(value)) {
-      if (Object.getPrototypeOf(value) !== Array.prototype) {
-        throw new PrivateAgentRunError("AGENT_RUN_JSON_INVALID", `${label} must use ordinary arrays`);
-      }
-      const keys = Reflect.ownKeys(value);
-      if (keys.length !== value.length + 1 || keys.some((key) =>
-        typeof key !== "string" || (key !== "length" && !/^(?:0|[1-9][0-9]*)$/.test(key)))) {
-        throw new PrivateAgentRunError("AGENT_RUN_JSON_INVALID", `${label} must not use sparse or extended arrays`);
-      }
-      const result: JsonValue[] = [];
-      for (let index = 0; index < value.length; index += 1) {
-        const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
-        if (descriptor === undefined || !("value" in descriptor) || !descriptor.enumerable) {
-          throw new PrivateAgentRunError("AGENT_RUN_JSON_INVALID", `${label} must not use array accessors`);
-        }
-        result.push(cloneOrdinaryJson(descriptor.value, `${label}[${index}]`, ancestors));
-      }
-      return result;
-    }
-    const prototype = Object.getPrototypeOf(value);
-    if (prototype !== Object.prototype && prototype !== null) {
-      throw new PrivateAgentRunError("AGENT_RUN_JSON_INVALID", `${label} must use ordinary objects`);
-    }
-    const result: Record<string, JsonValue> = Object.create(null) as Record<string, JsonValue>;
-    for (const key of Reflect.ownKeys(value)) {
-      if (typeof key !== "string") {
-        throw new PrivateAgentRunError("AGENT_RUN_JSON_INVALID", `${label} must not contain symbol properties`);
-      }
-      const descriptor = Object.getOwnPropertyDescriptor(value, key);
-      if (descriptor === undefined || !("value" in descriptor) || !descriptor.enumerable) {
-        throw new PrivateAgentRunError("AGENT_RUN_JSON_INVALID", `${label} must contain enumerable data properties`);
-      }
-      result[key] = cloneOrdinaryJson(descriptor.value, `${label}.${key}`, ancestors);
-    }
-    return result;
-  } finally {
-    ancestors.delete(value);
-  }
-}
-
-function deepFreeze(value: JsonValue): void {
-  if (value === null || typeof value !== "object" || Object.isFrozen(value)) return;
-  if (Array.isArray(value)) {
-    for (const child of value) deepFreeze(child);
-  } else {
-    for (const child of Object.values(value as JsonObject)) deepFreeze(child);
-  }
-  Object.freeze(value);
+  return snapshotPrivateOrdinaryJson(
+    value,
+    label,
+    (message) => new PrivateAgentRunError("AGENT_RUN_JSON_INVALID", message),
+  );
 }
