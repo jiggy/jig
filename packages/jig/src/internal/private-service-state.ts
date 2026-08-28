@@ -17,6 +17,26 @@ import type {
   ServiceInvocationTerminal,
 } from "../service/session.js";
 import { privateDomainDigest } from "./identity.js";
+import {
+  normalizePrivateLinuxConfirmedEnforcementReceipt,
+  normalizePrivateLinuxOwnerStateAllocationIdentity,
+  normalizePrivateLinuxOwnerStateCancellation,
+  normalizePrivateLinuxOwnerStateReleaseReceipt,
+  normalizePrivateLinuxPreparedOwnerIdentity,
+  normalizePrivateLinuxSealedOwnerIdentity,
+  type PrivateLinuxConfirmedEnforcementReceipt,
+  type PrivateLinuxOwnerStateAllocationIdentity,
+  type PrivateLinuxOwnerStateCancellation,
+  type PrivateLinuxOwnerStateReleaseReceipt,
+  type PrivateLinuxPreparedOwnerIdentity,
+  type PrivateLinuxSealedOwnerIdentity,
+} from "./linux-cgroup-backend.js";
+import {
+  normalizePrivatePackageMaterializationAllocationIdentity,
+  normalizePrivatePackageMaterializationLeaseIdentity,
+  type PrivatePackageMaterializationAllocationIdentity,
+  type PrivatePackageMaterializationLeaseIdentity,
+} from "./package-materialization.js";
 
 const DIGEST = /^sha256:[0-9a-f]{64}$/;
 const LOCAL_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -38,11 +58,6 @@ const FAILURE_CODES = new Set([
   "CHANNEL_LOST",
 ]);
 
-export type PrivateServiceMountCheckpointName =
-  | "generation"
-  | "acknowledged"
-  | "provisional";
-
 export interface PrivateServiceMountAllocation {
   readonly kind: "private-service-mount-allocation/1";
   readonly mountId: string;
@@ -57,19 +72,52 @@ export interface PrivateServiceMountAllocation {
   readonly effectiveDeadlineUnixMs: number;
 }
 
-export interface PrivateServiceMountCheckpoint {
-  readonly kind: `private-service-mount-${PrivateServiceMountCheckpointName}/1`;
+export interface PrivateServiceMountPlan {
+  readonly kind: "private-service-mount-plan/1";
   readonly mountId: string;
   readonly allocationDigest: string;
-  readonly value: JsonValue;
+  readonly cancellationGraceMs: number;
+  readonly packageAllocation: PrivatePackageMaterializationAllocationIdentity;
+  readonly ownerAllocation: PrivateLinuxOwnerStateAllocationIdentity;
 }
 
-export interface PrivateServiceGenerationCheckpointValue {
+export interface PrivateServiceMountBacking {
+  readonly kind: "private-service-mount-backing/1";
+  readonly mountId: string;
+  readonly allocationDigest: string;
+  readonly planDigest: string;
+  readonly lease: PrivatePackageMaterializationLeaseIdentity;
+}
+
+export interface PrivateServiceMountSandbox {
+  readonly kind: "private-service-mount-sandbox/1";
+  readonly mountId: string;
+  readonly allocationDigest: string;
+  readonly backingDigest: string;
+  readonly owner: PrivateLinuxSealedOwnerIdentity;
+}
+
+export interface PrivateServiceMountPrepared {
+  readonly kind: "private-service-mount-prepared/1";
+  readonly mountId: string;
+  readonly allocationDigest: string;
+  readonly sandboxDigest: string;
+  readonly prepared: PrivateLinuxPreparedOwnerIdentity;
+}
+
+export interface PrivateServiceMountGeneration {
+  readonly kind: "private-service-mount-generation/1";
+  readonly mountId: string;
+  readonly allocationDigest: string;
+  readonly preparedDigest: string;
   readonly generationId: string;
   readonly exports: readonly string[];
 }
 
-export interface PrivateServiceAcknowledgedCheckpointValue {
+export interface PrivateServiceMountAcknowledged {
+  readonly kind: "private-service-mount-acknowledged/1";
+  readonly mountId: string;
+  readonly allocationDigest: string;
   readonly generationDigest: string;
 }
 
@@ -81,9 +129,61 @@ export type PrivateServiceMountClassification =
   | "provider-loss"
   | "coordinator-loss";
 
-export interface PrivateServiceProvisionalCheckpointValue {
+export interface PrivateServiceMountProvisional {
+  readonly kind: "private-service-mount-provisional/1";
+  readonly mountId: string;
+  readonly allocationDigest: string;
+  readonly generationDigest: string | null;
+  readonly acknowledgedDigest: string | null;
   readonly classification: PrivateServiceMountClassification;
   readonly terminal: ServiceHostTerminal;
+}
+
+export type PrivateServiceMountFenceProof =
+  | {
+      readonly kind: "allocation-cancelled";
+      readonly cancellation: PrivateLinuxOwnerStateCancellation;
+    }
+  | {
+      readonly kind: "enforcement-confirmed";
+      readonly sandboxDigest: string;
+      readonly receipt: PrivateLinuxConfirmedEnforcementReceipt;
+    };
+
+export interface PrivateServiceMountFence {
+  readonly kind: "private-service-mount-fence/1";
+  readonly mountId: string;
+  readonly allocationDigest: string;
+  readonly provisionalDigest: string;
+  readonly planDigest: string;
+  readonly proof: PrivateServiceMountFenceProof;
+}
+
+export interface PrivateServiceMountLeaseReleaseReference {
+  readonly ownerRunId: string;
+  readonly slot: string;
+  readonly releaseDigest: string;
+}
+
+export interface PrivateServiceMountRelease {
+  readonly kind: "private-service-mount-release/1";
+  readonly mountId: string;
+  readonly allocationDigest: string;
+  readonly provisionalDigest: string;
+  readonly planDigest: string | null;
+  readonly backingDigest: string | null;
+  readonly fenceDigest: string | null;
+  readonly packageReleased: true;
+  readonly ownerRelease: PrivateLinuxOwnerStateReleaseReceipt | null;
+  readonly leaseReleases: readonly PrivateServiceMountLeaseReleaseReference[];
+}
+
+export interface PrivateServiceMountClosure {
+  readonly kind: "private-service-mount-closure/1";
+  readonly mountId: string;
+  readonly allocationDigest: string;
+  readonly provisionalDigest: string;
+  readonly releaseDigest: string;
 }
 
 export interface PrivateServiceLeaseAllocation {
@@ -225,92 +325,461 @@ export function privateServiceMountAllocationDigest(value: unknown): string {
   );
 }
 
-export function normalizePrivateServiceMountCheckpoint(
-  value: unknown,
-  checkpoint: PrivateServiceMountCheckpointName,
-): PrivateServiceMountCheckpoint {
-  requireMountCheckpointName(checkpoint);
-  const root = exactObject(
-    value,
-    ["allocationDigest", "kind", "mountId", "value"],
-    `Service Mount ${checkpoint} checkpoint`,
-  );
-  const kind = `private-service-mount-${checkpoint}/1` as const;
-  if (root.kind !== kind) throw new TypeError(`Service Mount ${checkpoint} kind is invalid`);
+export function normalizePrivateServiceMountPlan(value: unknown): PrivateServiceMountPlan {
+  const root = lifecycleObject(value, [
+    "allocationDigest",
+    "cancellationGraceMs",
+    "kind",
+    "mountId",
+    "ownerAllocation",
+    "packageAllocation",
+  ], "Service Mount plan");
+  if (root.kind !== "private-service-mount-plan/1") {
+    throw new TypeError("Service Mount plan kind is invalid");
+  }
   return Object.freeze({
-    kind,
-    mountId: digest(root.mountId, `Service Mount ${checkpoint}`),
-    allocationDigest: digest(root.allocationDigest, `Service Mount ${checkpoint} allocation`),
-    value: normalizeMountCheckpointValue(root.value, checkpoint),
+    kind: "private-service-mount-plan/1",
+    mountId: digest(root.mountId, "Service Mount plan"),
+    allocationDigest: digest(root.allocationDigest, "Service Mount plan allocation"),
+    cancellationGraceMs: positiveSafeInteger(
+      root.cancellationGraceMs,
+      "Service Mount cancellation grace",
+    ),
+    packageAllocation: normalizePrivatePackageMaterializationAllocationIdentity(
+      root.packageAllocation,
+    ),
+    ownerAllocation: normalizePrivateLinuxOwnerStateAllocationIdentity(root.ownerAllocation),
   });
 }
 
-export function encodePrivateServiceMountCheckpoint(
-  value: unknown,
-  checkpoint: PrivateServiceMountCheckpointName,
-): Uint8Array {
-  return canonicalJson(
-    normalizePrivateServiceMountCheckpoint(value, checkpoint) as unknown as JsonValue,
+export function encodePrivateServiceMountPlan(value: unknown): Uint8Array {
+  return encodeNormalized(value, normalizePrivateServiceMountPlan);
+}
+
+export function decodePrivateServiceMountPlan(bytes: Uint8Array): PrivateServiceMountPlan {
+  return decodeCanonical(bytes, normalizePrivateServiceMountPlan, "Service Mount plan");
+}
+
+export function privateServiceMountPlanDigest(value: unknown): string {
+  return normalizedDigest(
+    "JIG-Private-Service-Mount-Plan/1",
+    value,
+    normalizePrivateServiceMountPlan,
   );
 }
 
-export function decodePrivateServiceMountCheckpoint(
-  bytes: Uint8Array,
-  checkpoint: PrivateServiceMountCheckpointName,
-): PrivateServiceMountCheckpoint {
-  return decodeCanonical(
-    bytes,
-    (value) => normalizePrivateServiceMountCheckpoint(value, checkpoint),
-    `Service Mount ${checkpoint} checkpoint`,
-  );
-}
-
-export function privateServiceMountCheckpointDigest(
-  checkpoint: PrivateServiceMountCheckpointName,
-  value: unknown,
-): string {
-  const normalized = normalizePrivateServiceMountCheckpoint(value, checkpoint);
-  return privateDomainDigest(
-    `JIG-Private-Service-Mount-${domainPart(checkpoint)}/1`,
-    normalized as unknown as JsonValue,
-  );
-}
-
-export function normalizePrivateServiceGenerationCheckpointValue(
-  value: unknown,
-): PrivateServiceGenerationCheckpointValue {
-  const root = exactObject(value, ["exports", "generationId"], "Service generation checkpoint value");
+export function normalizePrivateServiceMountBacking(value: unknown): PrivateServiceMountBacking {
+  const root = lifecycleObject(value, [
+    "allocationDigest",
+    "kind",
+    "lease",
+    "mountId",
+    "planDigest",
+  ], "Service Mount backing");
+  if (root.kind !== "private-service-mount-backing/1") {
+    throw new TypeError("Service Mount backing kind is invalid");
+  }
   return Object.freeze({
+    kind: "private-service-mount-backing/1",
+    mountId: digest(root.mountId, "Service Mount backing"),
+    allocationDigest: digest(root.allocationDigest, "Service Mount backing allocation"),
+    planDigest: digest(root.planDigest, "Service Mount backing plan"),
+    lease: normalizePrivatePackageMaterializationLeaseIdentity(root.lease),
+  });
+}
+
+export function encodePrivateServiceMountBacking(value: unknown): Uint8Array {
+  return encodeNormalized(value, normalizePrivateServiceMountBacking);
+}
+
+export function decodePrivateServiceMountBacking(bytes: Uint8Array): PrivateServiceMountBacking {
+  return decodeCanonical(bytes, normalizePrivateServiceMountBacking, "Service Mount backing");
+}
+
+export function privateServiceMountBackingDigest(value: unknown): string {
+  return normalizedDigest(
+    "JIG-Private-Service-Mount-Backing/1",
+    value,
+    normalizePrivateServiceMountBacking,
+  );
+}
+
+export function normalizePrivateServiceMountSandbox(value: unknown): PrivateServiceMountSandbox {
+  const root = lifecycleObject(value, [
+    "allocationDigest",
+    "backingDigest",
+    "kind",
+    "mountId",
+    "owner",
+  ], "Service Mount sandbox");
+  if (root.kind !== "private-service-mount-sandbox/1") {
+    throw new TypeError("Service Mount sandbox kind is invalid");
+  }
+  return Object.freeze({
+    kind: "private-service-mount-sandbox/1",
+    mountId: digest(root.mountId, "Service Mount sandbox"),
+    allocationDigest: digest(root.allocationDigest, "Service Mount sandbox allocation"),
+    backingDigest: digest(root.backingDigest, "Service Mount sandbox backing"),
+    owner: normalizePrivateLinuxSealedOwnerIdentity(root.owner),
+  });
+}
+
+export function encodePrivateServiceMountSandbox(value: unknown): Uint8Array {
+  return encodeNormalized(value, normalizePrivateServiceMountSandbox);
+}
+
+export function decodePrivateServiceMountSandbox(bytes: Uint8Array): PrivateServiceMountSandbox {
+  return decodeCanonical(bytes, normalizePrivateServiceMountSandbox, "Service Mount sandbox");
+}
+
+export function privateServiceMountSandboxDigest(value: unknown): string {
+  return normalizedDigest(
+    "JIG-Private-Service-Mount-Sandbox/1",
+    value,
+    normalizePrivateServiceMountSandbox,
+  );
+}
+
+export function normalizePrivateServiceMountPrepared(value: unknown): PrivateServiceMountPrepared {
+  const root = lifecycleObject(value, [
+    "allocationDigest",
+    "kind",
+    "mountId",
+    "prepared",
+    "sandboxDigest",
+  ], "Service Mount prepared fact");
+  if (root.kind !== "private-service-mount-prepared/1") {
+    throw new TypeError("Service Mount prepared kind is invalid");
+  }
+  return Object.freeze({
+    kind: "private-service-mount-prepared/1",
+    mountId: digest(root.mountId, "Service Mount prepared fact"),
+    allocationDigest: digest(root.allocationDigest, "Service Mount prepared allocation"),
+    sandboxDigest: digest(root.sandboxDigest, "Service Mount prepared sandbox"),
+    prepared: normalizePrivateLinuxPreparedOwnerIdentity(root.prepared),
+  });
+}
+
+export function encodePrivateServiceMountPrepared(value: unknown): Uint8Array {
+  return encodeNormalized(value, normalizePrivateServiceMountPrepared);
+}
+
+export function decodePrivateServiceMountPrepared(bytes: Uint8Array): PrivateServiceMountPrepared {
+  return decodeCanonical(bytes, normalizePrivateServiceMountPrepared, "Service Mount prepared fact");
+}
+
+export function privateServiceMountPreparedDigest(value: unknown): string {
+  return normalizedDigest(
+    "JIG-Private-Service-Mount-Prepared/1",
+    value,
+    normalizePrivateServiceMountPrepared,
+  );
+}
+
+export function normalizePrivateServiceMountGeneration(
+  value: unknown,
+): PrivateServiceMountGeneration {
+  const root = lifecycleObject(value, [
+    "allocationDigest",
+    "exports",
+    "generationId",
+    "kind",
+    "mountId",
+    "preparedDigest",
+  ], "Service Mount generation");
+  if (root.kind !== "private-service-mount-generation/1") {
+    throw new TypeError("Service Mount generation kind is invalid");
+  }
+  return Object.freeze({
+    kind: "private-service-mount-generation/1",
+    mountId: digest(root.mountId, "Service Mount generation"),
+    allocationDigest: digest(root.allocationDigest, "Service Mount generation allocation"),
+    preparedDigest: digest(root.preparedDigest, "Service Mount generation prepared fact"),
     generationId: digest(root.generationId, "Service generation"),
     exports: sortedLocalNames(root.exports, 256, "Service generation exports"),
   });
 }
 
-export function normalizePrivateServiceAcknowledgedCheckpointValue(
+export function encodePrivateServiceMountGeneration(value: unknown): Uint8Array {
+  return encodeNormalized(value, normalizePrivateServiceMountGeneration);
+}
+
+export function decodePrivateServiceMountGeneration(
+  bytes: Uint8Array,
+): PrivateServiceMountGeneration {
+  return decodeCanonical(bytes, normalizePrivateServiceMountGeneration, "Service Mount generation");
+}
+
+export function privateServiceMountGenerationDigest(value: unknown): string {
+  return normalizedDigest(
+    "JIG-Private-Service-Mount-Generation/1",
+    value,
+    normalizePrivateServiceMountGeneration,
+  );
+}
+
+export function normalizePrivateServiceMountAcknowledged(
   value: unknown,
-): PrivateServiceAcknowledgedCheckpointValue {
-  const root = exactObject(value, ["generationDigest"], "Service acknowledged checkpoint value");
+): PrivateServiceMountAcknowledged {
+  const root = lifecycleObject(value, [
+    "allocationDigest",
+    "generationDigest",
+    "kind",
+    "mountId",
+  ], "Service Mount acknowledgement");
+  if (root.kind !== "private-service-mount-acknowledged/1") {
+    throw new TypeError("Service Mount acknowledgement kind is invalid");
+  }
   return Object.freeze({
+    kind: "private-service-mount-acknowledged/1",
+    mountId: digest(root.mountId, "Service Mount acknowledgement"),
+    allocationDigest: digest(root.allocationDigest, "Service Mount acknowledgement allocation"),
     generationDigest: digest(root.generationDigest, "Service acknowledged generation"),
   });
 }
 
-export function normalizePrivateServiceProvisionalCheckpointValue(
+export function encodePrivateServiceMountAcknowledged(value: unknown): Uint8Array {
+  return encodeNormalized(value, normalizePrivateServiceMountAcknowledged);
+}
+
+export function decodePrivateServiceMountAcknowledged(
+  bytes: Uint8Array,
+): PrivateServiceMountAcknowledged {
+  return decodeCanonical(
+    bytes,
+    normalizePrivateServiceMountAcknowledged,
+    "Service Mount acknowledgement",
+  );
+}
+
+export function privateServiceMountAcknowledgedDigest(value: unknown): string {
+  return normalizedDigest(
+    "JIG-Private-Service-Mount-Acknowledged/1",
+    value,
+    normalizePrivateServiceMountAcknowledged,
+  );
+}
+
+export function normalizePrivateServiceMountProvisional(
   value: unknown,
-): PrivateServiceProvisionalCheckpointValue {
-  const root = exactObject(value, ["classification", "terminal"], "Service provisional checkpoint value");
+): PrivateServiceMountProvisional {
+  const root = lifecycleObject(value, [
+    "acknowledgedDigest",
+    "allocationDigest",
+    "classification",
+    "generationDigest",
+    "kind",
+    "mountId",
+    "terminal",
+  ], "Service Mount provisional terminal");
+  if (root.kind !== "private-service-mount-provisional/1") {
+    throw new TypeError("Service Mount provisional kind is invalid");
+  }
+  const generationDigest = nullableDigest(root.generationDigest, "Service Mount generation");
+  const acknowledgedDigest = nullableDigest(
+    root.acknowledgedDigest,
+    "Service Mount acknowledgement",
+  );
+  if (acknowledgedDigest !== null && generationDigest === null) {
+    throw new TypeError("Service Mount acknowledgement requires generation evidence");
+  }
   const classification = mountClassification(root.classification);
   const terminal = normalizeServiceHostTerminal(root.terminal);
+  if ((classification === "startup-cancelled" || classification === "readiness-timeout") &&
+      acknowledgedDigest !== null) {
+    throw new TypeError(`Service Mount ${classification} cannot follow acknowledged readiness`);
+  }
   if ((classification === "startup-cancelled" || classification === "readiness-timeout" ||
       classification === "provider-loss" || classification === "coordinator-loss") &&
       terminal.status !== "failed") {
     throw new TypeError(`Service Mount ${classification} classification requires a failed terminal`);
   }
-  if ((classification === "host-lifetime" || classification === "voluntary-exit") &&
-      terminal.status !== "succeeded") {
-    throw new TypeError(`Service Mount ${classification} classification requires a succeeded terminal`);
+  if (classification === "startup-cancelled" &&
+      (terminal.status !== "failed" || terminal.code !== "CANCELLED")) {
+    throw new TypeError("Service Mount startup-cancelled classification requires a CANCELLED failure");
   }
-  return Object.freeze({ classification, terminal });
+  if (classification === "readiness-timeout" &&
+      (terminal.status !== "failed" || terminal.code !== "DEADLINE_EXCEEDED")) {
+    throw new TypeError("Service Mount readiness-timeout classification requires a DEADLINE_EXCEEDED failure");
+  }
+  if (classification === "coordinator-loss" &&
+      (terminal.status !== "failed" || terminal.code !== "UNCERTAIN")) {
+    throw new TypeError("Service Mount coordinator-loss classification requires an UNCERTAIN failure");
+  }
+  if ((classification === "host-lifetime" || classification === "voluntary-exit") &&
+      (terminal.status !== "succeeded" || generationDigest === null || acknowledgedDigest === null)) {
+    throw new TypeError(
+      `Service Mount ${classification} classification requires acknowledged readiness and a succeeded terminal`,
+    );
+  }
+  return Object.freeze({
+    kind: "private-service-mount-provisional/1",
+    mountId: digest(root.mountId, "Service Mount provisional terminal"),
+    allocationDigest: digest(root.allocationDigest, "Service Mount provisional allocation"),
+    generationDigest,
+    acknowledgedDigest,
+    classification,
+    terminal,
+  });
+}
+
+export function encodePrivateServiceMountProvisional(value: unknown): Uint8Array {
+  return encodeNormalized(value, normalizePrivateServiceMountProvisional);
+}
+
+export function decodePrivateServiceMountProvisional(
+  bytes: Uint8Array,
+): PrivateServiceMountProvisional {
+  return decodeCanonical(
+    bytes,
+    normalizePrivateServiceMountProvisional,
+    "Service Mount provisional terminal",
+  );
+}
+
+export function privateServiceMountProvisionalDigest(value: unknown): string {
+  return normalizedDigest(
+    "JIG-Private-Service-Mount-Provisional/1",
+    value,
+    normalizePrivateServiceMountProvisional,
+  );
+}
+
+export function normalizePrivateServiceMountFence(value: unknown): PrivateServiceMountFence {
+  const root = lifecycleObject(value, [
+    "allocationDigest",
+    "kind",
+    "mountId",
+    "planDigest",
+    "proof",
+    "provisionalDigest",
+  ], "Service Mount fence");
+  if (root.kind !== "private-service-mount-fence/1") {
+    throw new TypeError("Service Mount fence kind is invalid");
+  }
+  return Object.freeze({
+    kind: "private-service-mount-fence/1",
+    mountId: digest(root.mountId, "Service Mount fence"),
+    allocationDigest: digest(root.allocationDigest, "Service Mount fence allocation"),
+    provisionalDigest: digest(root.provisionalDigest, "Service Mount fence provisional terminal"),
+    planDigest: digest(root.planDigest, "Service Mount fence plan"),
+    proof: normalizeMountFenceProof(root.proof),
+  });
+}
+
+export function encodePrivateServiceMountFence(value: unknown): Uint8Array {
+  return encodeNormalized(value, normalizePrivateServiceMountFence);
+}
+
+export function decodePrivateServiceMountFence(bytes: Uint8Array): PrivateServiceMountFence {
+  return decodeCanonical(bytes, normalizePrivateServiceMountFence, "Service Mount fence");
+}
+
+export function privateServiceMountFenceDigest(value: unknown): string {
+  return normalizedDigest(
+    "JIG-Private-Service-Mount-Fence/1",
+    value,
+    normalizePrivateServiceMountFence,
+  );
+}
+
+export function normalizePrivateServiceMountRelease(value: unknown): PrivateServiceMountRelease {
+  const root = lifecycleObject(value, [
+    "allocationDigest",
+    "backingDigest",
+    "fenceDigest",
+    "kind",
+    "leaseReleases",
+    "mountId",
+    "ownerRelease",
+    "packageReleased",
+    "planDigest",
+    "provisionalDigest",
+  ], "Service Mount release");
+  if (root.kind !== "private-service-mount-release/1" || root.packageReleased !== true) {
+    throw new TypeError("Service Mount release is invalid");
+  }
+  const planDigest = nullableDigest(root.planDigest, "Service Mount release plan");
+  const backingDigest = nullableDigest(root.backingDigest, "Service Mount release backing");
+  const fenceDigest = nullableDigest(root.fenceDigest, "Service Mount release fence");
+  const ownerRelease = root.ownerRelease === null
+    ? null
+    : normalizePrivateLinuxOwnerStateReleaseReceipt(root.ownerRelease);
+  const leaseReleases = normalizeMountLeaseReleaseReferences(root.leaseReleases);
+  if (planDigest === null &&
+      (backingDigest !== null || fenceDigest !== null || ownerRelease !== null || leaseReleases.length !== 0)) {
+    throw new TypeError("Service Mount release without a plan cannot carry resource or lease evidence");
+  }
+  if (planDigest !== null && (fenceDigest === null || ownerRelease === null)) {
+    throw new TypeError("planned Service Mount release requires fence and owner-release evidence");
+  }
+  if (backingDigest === null && leaseReleases.length !== 0) {
+    throw new TypeError("Service Mount leases require package backing evidence");
+  }
+  return Object.freeze({
+    kind: "private-service-mount-release/1",
+    mountId: digest(root.mountId, "Service Mount release"),
+    allocationDigest: digest(root.allocationDigest, "Service Mount release allocation"),
+    provisionalDigest: digest(root.provisionalDigest, "Service Mount release provisional terminal"),
+    planDigest,
+    backingDigest,
+    fenceDigest,
+    packageReleased: true,
+    ownerRelease,
+    leaseReleases,
+  });
+}
+
+export function encodePrivateServiceMountRelease(value: unknown): Uint8Array {
+  return encodeNormalized(value, normalizePrivateServiceMountRelease);
+}
+
+export function decodePrivateServiceMountRelease(bytes: Uint8Array): PrivateServiceMountRelease {
+  return decodeCanonical(bytes, normalizePrivateServiceMountRelease, "Service Mount release");
+}
+
+export function privateServiceMountReleaseDigest(value: unknown): string {
+  return normalizedDigest(
+    "JIG-Private-Service-Mount-Release/1",
+    value,
+    normalizePrivateServiceMountRelease,
+  );
+}
+
+export function normalizePrivateServiceMountClosure(value: unknown): PrivateServiceMountClosure {
+  const root = lifecycleObject(value, [
+    "allocationDigest",
+    "kind",
+    "mountId",
+    "provisionalDigest",
+    "releaseDigest",
+  ], "Service Mount closure");
+  if (root.kind !== "private-service-mount-closure/1") {
+    throw new TypeError("Service Mount closure kind is invalid");
+  }
+  return Object.freeze({
+    kind: "private-service-mount-closure/1",
+    mountId: digest(root.mountId, "Service Mount closure"),
+    allocationDigest: digest(root.allocationDigest, "Service Mount closure allocation"),
+    provisionalDigest: digest(root.provisionalDigest, "Service Mount closure provisional terminal"),
+    releaseDigest: digest(root.releaseDigest, "Service Mount closure release"),
+  });
+}
+
+export function encodePrivateServiceMountClosure(value: unknown): Uint8Array {
+  return encodeNormalized(value, normalizePrivateServiceMountClosure);
+}
+
+export function decodePrivateServiceMountClosure(bytes: Uint8Array): PrivateServiceMountClosure {
+  return decodeCanonical(bytes, normalizePrivateServiceMountClosure, "Service Mount closure");
+}
+
+export function privateServiceMountClosureDigest(value: unknown): string {
+  return normalizedDigest(
+    "JIG-Private-Service-Mount-Closure/1",
+    value,
+    normalizePrivateServiceMountClosure,
+  );
 }
 
 export function normalizePrivateServiceLeaseAllocation(
@@ -631,8 +1100,9 @@ export function normalizePrivateServiceInvocationObservation(
   if (source === "host-prewrite" && terminal.status !== "failed") {
     throw new TypeError("host-prewrite Service observation requires a failed terminal");
   }
-  if (source === "provider-loss" && terminal.status !== "failed") {
-    throw new TypeError("provider-loss Service observation requires a failed terminal");
+  if (source === "provider-loss" &&
+      (terminal.status !== "failed" || terminal.code !== "UNCERTAIN")) {
+    throw new TypeError("provider-loss Service observation requires an UNCERTAIN failure");
   }
   if (source === "cooperative-cancellation" &&
       (terminal.status !== "failed" ||
@@ -646,20 +1116,82 @@ export function normalizePrivateServiceInvocationObservation(
   return Object.freeze({ source, terminal });
 }
 
-function normalizeMountCheckpointValue(
+function normalizeMountFenceProof(value: unknown): PrivateServiceMountFenceProof {
+  const kind = objectField(value, "kind", "Service Mount fence proof");
+  if (kind === "allocation-cancelled") {
+    const root = exactObject(
+      value,
+      ["cancellation", "kind"],
+      "Service Mount allocation-cancellation proof",
+    );
+    return Object.freeze({
+      kind: "allocation-cancelled",
+      cancellation: normalizePrivateLinuxOwnerStateCancellation(root.cancellation),
+    });
+  }
+  if (kind === "enforcement-confirmed") {
+    const root = exactObject(
+      value,
+      ["kind", "receipt", "sandboxDigest"],
+      "Service Mount enforcement proof",
+    );
+    return Object.freeze({
+      kind: "enforcement-confirmed",
+      sandboxDigest: digest(root.sandboxDigest, "Service Mount fence sandbox"),
+      receipt: normalizePrivateLinuxConfirmedEnforcementReceipt(root.receipt),
+    });
+  }
+  throw new TypeError("Service Mount fence proof kind is invalid");
+}
+
+function normalizeMountLeaseReleaseReferences(
   value: unknown,
-  checkpoint: PrivateServiceMountCheckpointName,
-): JsonValue {
-  if (checkpoint === "generation") {
-    return normalizePrivateServiceGenerationCheckpointValue(value) as unknown as JsonValue;
+): readonly PrivateServiceMountLeaseReleaseReference[] {
+  const releases = ordinaryArray(
+    value,
+    JSON_1_LIMITS.containerEntries,
+    "Service Mount lease releases",
+  ).map((item) => {
+    const root = exactObject(
+      item,
+      ["ownerRunId", "releaseDigest", "slot"],
+      "Service Mount lease release reference",
+    );
+    return Object.freeze({
+      ownerRunId: digest(root.ownerRunId, "Service Mount lease owner Run"),
+      slot: localName(root.slot, "Service Mount lease slot"),
+      releaseDigest: digest(root.releaseDigest, "Service Mount lease release"),
+    });
+  });
+  for (let index = 1; index < releases.length; index += 1) {
+    const prior = releases[index - 1]!;
+    const current = releases[index]!;
+    if (prior.ownerRunId > current.ownerRunId ||
+        (prior.ownerRunId === current.ownerRunId && prior.slot >= current.slot)) {
+      throw new TypeError("Service Mount lease releases must be unique and sorted by owner and slot");
+    }
   }
-  if (checkpoint === "acknowledged") {
-    return normalizePrivateServiceAcknowledgedCheckpointValue(value) as unknown as JsonValue;
-  }
-  if (checkpoint === "provisional") {
-    return normalizePrivateServiceProvisionalCheckpointValue(value) as unknown as JsonValue;
-  }
-  throw new TypeError("Service Mount checkpoint name is invalid");
+  return Object.freeze(releases);
+}
+
+function lifecycleObject(
+  value: unknown,
+  keys: readonly string[],
+  label: string,
+): Readonly<Record<string, unknown>> {
+  return exactObject(normalizeJson(value), keys, label);
+}
+
+function encodeNormalized<T>(value: unknown, normalize: (candidate: unknown) => T): Uint8Array {
+  return canonicalJson(normalize(value) as unknown as JsonValue);
+}
+
+function normalizedDigest<T>(
+  domain: string,
+  value: unknown,
+  normalize: (candidate: unknown) => T,
+): string {
+  return privateDomainDigest(domain, normalize(value) as unknown as JsonValue);
 }
 
 function normalizeInvocationCall(value: unknown): PrivateServiceInvocationCall {
@@ -1001,11 +1533,6 @@ function decodeCanonical<T>(
   return normalized;
 }
 
-function requireMountCheckpointName(value: unknown): asserts value is PrivateServiceMountCheckpointName {
-  if (value === "generation" || value === "acknowledged" || value === "provisional") return;
-  throw new TypeError("Service Mount checkpoint name is invalid");
-}
-
 function mountClassification(value: unknown): PrivateServiceMountClassification {
   if (value === "startup-cancelled" || value === "readiness-timeout" || value === "host-lifetime" ||
       value === "voluntary-exit" || value === "provider-loss" || value === "coordinator-loss") return value;
@@ -1031,6 +1558,10 @@ function failureCode(value: unknown, label: string): Extract<ServiceInvocationTe
 function digest(value: unknown, label: string): string {
   if (typeof value !== "string" || !DIGEST.test(value)) throw new TypeError(`${label} digest is invalid`);
   return value;
+}
+
+function nullableDigest(value: unknown, label: string): string | null {
+  return value === null ? null : digest(value, label);
 }
 
 function localName(value: unknown, label: string): string {
@@ -1070,10 +1601,6 @@ function positiveSafeInteger(value: unknown, label: string): number {
 function nonnegativeSafeInteger(value: unknown, label: string): number {
   if (!Number.isSafeInteger(value) || (value as number) < 0) throw new TypeError(`${label} is invalid`);
   return value as number;
-}
-
-function domainPart(value: string): string {
-  return value.split("-").map((part) => part[0]!.toUpperCase() + part.slice(1)).join("-");
 }
 
 function compareStrings(left: string, right: string): number {

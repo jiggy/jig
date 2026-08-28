@@ -5,6 +5,7 @@ import { createServer, type Server, type Socket } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, extname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { types as utilTypes } from "node:util";
 
 import { privateDomainDigest, privateFileDigest } from "./identity.js";
 import type { JsonValue } from "../json.js";
@@ -983,16 +984,30 @@ export function normalizePrivateLinuxPreparedOwnerIdentity(
 }
 
 function exactDataRecord(value: unknown, keys: readonly string[], label: string): Record<string, unknown> {
-  if (value === null || typeof value !== "object" || Array.isArray(value) ||
-      (Object.getPrototypeOf(value) !== Object.prototype && Object.getPrototypeOf(value) !== null)) {
+  const record = ordinaryDataRecord(value, label);
+  if (Object.keys(record).sort().join("\0") !== [...keys].sort().join("\0")) {
+    throw new TypeError(`${label} is invalid`);
+  }
+  return record;
+}
+
+function ordinaryDataRecord(value: unknown, label: string): Record<string, unknown> {
+  if (value === null || typeof value !== "object" || Array.isArray(value) || utilTypes.isProxy(value) ||
+      (Object.getPrototypeOf(value) !== Object.prototype && Object.getPrototypeOf(value) !== null) ||
+      Object.getOwnPropertySymbols(value).length !== 0) {
     throw new TypeError(`${label} is invalid`);
   }
   const descriptors = Object.getOwnPropertyDescriptors(value);
-  if (Object.keys(descriptors).sort().join("\0") !== [...keys].sort().join("\0") ||
-      Object.values(descriptors).some((descriptor) => !("value" in descriptor))) {
+  if (Object.values(descriptors).some((descriptor) =>
+    !("value" in descriptor) || descriptor.enumerable !== true
+  )) {
     throw new TypeError(`${label} is invalid`);
   }
-  return value as Record<string, unknown>;
+  const record: Record<string, unknown> = Object.create(null) as Record<string, unknown>;
+  for (const [key, descriptor] of Object.entries(descriptors)) {
+    record[key] = descriptor.value;
+  }
+  return record;
 }
 
 function requireSealedOwner(
@@ -1373,13 +1388,10 @@ function releaseReferenceForConfirmedOwner(
   });
 }
 
-function normalizePrivateLinuxConfirmedEnforcementReceipt(
+export function normalizePrivateLinuxConfirmedEnforcementReceipt(
   value: unknown,
 ): PrivateLinuxConfirmedEnforcementReceipt {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) {
-    throw new TypeError("Linux enforcement receipt is invalid");
-  }
-  const record = value as Record<string, unknown>;
+  const record = ordinaryDataRecord(value, "Linux enforcement receipt");
   const keys = [
     "evidence", "exitCode", "fenced", "kind", "ownerDigest", "signal", "stopReason",
     ...(record.setupError === undefined ? [] : ["setupError"]),
@@ -1408,6 +1420,36 @@ function normalizePrivateLinuxConfirmedEnforcementReceipt(
   });
 }
 
+/** Strictly decode one owner-state release receipt retained by Jig. */
+export function normalizePrivateLinuxOwnerStateReleaseReceipt(
+  value: unknown,
+): PrivateLinuxOwnerStateReleaseReceipt {
+  const record = exactDataRecord(value, [
+    "allocationDigest", "digest", "directoryDevice", "directoryInode", "kind", "released",
+  ], "Linux owner-state release receipt");
+  if (record.kind !== "private-linux-owner-state-release/1" || record.released !== true ||
+      typeof record.digest !== "string" || typeof record.allocationDigest !== "string" ||
+      !DIGEST.test(record.allocationDigest) || typeof record.directoryDevice !== "string" ||
+      !/^(?:0|[1-9][0-9]*)$/.test(record.directoryDevice) ||
+      typeof record.directoryInode !== "string" || !/^[1-9][0-9]*$/.test(record.directoryInode)) {
+    throw new TypeError("Linux owner-state release receipt is invalid");
+  }
+  const fields = {
+    kind: "private-linux-owner-state-release/1" as const,
+    allocationDigest: record.allocationDigest,
+    directoryDevice: record.directoryDevice,
+    directoryInode: record.directoryInode,
+    released: true as const,
+  };
+  if (record.digest !== privateDomainDigest(
+    "JIG-Private-Linux-Owner-State-Release/1",
+    fields as unknown as JsonValue,
+  )) {
+    throw new TypeError("Linux owner-state release receipt digest is invalid");
+  }
+  return Object.freeze({ ...fields, digest: record.digest });
+}
+
 async function requireReleaseParent(reference: PrivateLinuxOwnerStateReleaseReference): Promise<void> {
   const parent = await lstat(reference.parent, { bigint: true });
   if (!parent.isDirectory() || parent.isSymbolicLink() ||
@@ -1427,7 +1469,7 @@ function privateLinuxOwnerStateReleaseReceipt(
     directoryInode: reference.directoryInode,
     released: true as const,
   };
-  return Object.freeze({
+  return normalizePrivateLinuxOwnerStateReleaseReceipt({
     ...fields,
     digest: privateDomainDigest(
       "JIG-Private-Linux-Owner-State-Release/1",
@@ -2582,13 +2624,11 @@ function parseHelperMessage(value: unknown): HelperMessage {
 }
 
 function normalizeEvidence(value: unknown): HelperTerminal["evidence"] {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) {
-    throw new Error("invalid cgroup helper evidence");
-  }
-  const record = value as Record<string, unknown>;
-  if (!exactStringKeys(record, ["cpuStat", "memoryEvents", "pidsEvents"])) {
-    throw new Error("invalid cgroup helper evidence");
-  }
+  const record = exactDataRecord(
+    value,
+    ["cpuStat", "memoryEvents", "pidsEvents"],
+    "cgroup helper evidence",
+  );
   return Object.freeze({
     cpuStat: normalizeCounters(record.cpuStat),
     memoryEvents: normalizeCounters(record.memoryEvents),
@@ -2597,10 +2637,7 @@ function normalizeEvidence(value: unknown): HelperTerminal["evidence"] {
 }
 
 function normalizeCounters(value: unknown): Readonly<Record<string, number>> {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) {
-    throw new Error("invalid cgroup helper counters");
-  }
-  const entries = Object.entries(value);
+  const entries = Object.entries(ordinaryDataRecord(value, "cgroup helper counters"));
   if (entries.length > 64 || entries.some(([name, count]) =>
     !/^[a-z][a-z0-9_.]{0,63}$/.test(name) || !Number.isSafeInteger(count) || Number(count) < 0
   )) {

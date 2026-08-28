@@ -31,6 +31,8 @@ import {
 } from "../src/internal/direct-run.js";
 import {
   cancelPrivateLinuxOwnerStateAllocation,
+  normalizePrivateLinuxConfirmedEnforcementReceipt,
+  normalizePrivateLinuxOwnerStateReleaseReceipt,
   planPrivateLinuxOwnerStateAllocation,
   PrivateLinuxCgroupBackend,
   releasePrivateLinuxOwnerState,
@@ -39,6 +41,7 @@ import {
   type PrivateLinuxLaunchPlan,
   type PrivateLinuxOwnerStateAllocationIdentity,
 } from "../src/internal/linux-cgroup-backend.js";
+import { privateDomainDigest } from "../src/internal/identity.js";
 import { captureStoredPackage } from "../src/internal/package-artifact-store.js";
 import {
   planPrivatePythonDirectRun,
@@ -53,11 +56,15 @@ import {
   requirePrivateCreatedActivationCandidate,
 } from "../src/internal/activation-admission.js";
 import {
+  allocatePrivateServiceMount,
   applyPrivateActivationReviewPlan,
   createPrivateActivationReviewPlan,
+  listPrivateServiceMounts,
   loadPrivateActiveActivation,
   loadPrivateActivationReviewPlan,
+  loadPrivateServiceMount,
   loadPrivateRootRun,
+  openPrivateProjectCoordinator,
   publishPrivateActivationCandidate,
   requirePrivateStoredActivationCandidate,
 } from "../src/internal/activation-admission-store.js";
@@ -142,6 +149,84 @@ describe("private Linux cgroup-v2 plan boundary", () => {
       readOnlyMounts: [],
       command: ["/payload"],
     })).rejects.toThrow("pids must be a positive safe integer");
+  });
+
+  test("durable enforcement normalizers reject hostile shapes without invoking traps", () => {
+    const enforcement = {
+      kind: "private-linux-confirmed-enforcement/1" as const,
+      ownerDigest: `sha256:${"a".repeat(64)}`,
+      stopReason: "payload_exit" as const,
+      exitCode: 0,
+      signal: null,
+      fenced: true as const,
+      evidence: {
+        cpuStat: { usage_usec: 1 },
+        memoryEvents: { oom: 0 },
+        pidsEvents: { max: 0 },
+      },
+    };
+    const releaseFields = {
+      kind: "private-linux-owner-state-release/1" as const,
+      allocationDigest: `sha256:${"b".repeat(64)}`,
+      directoryDevice: "1",
+      directoryInode: "2",
+      released: true as const,
+    };
+    const release = {
+      ...releaseFields,
+      digest: privateDomainDigest(
+        "JIG-Private-Linux-Owner-State-Release/1",
+        releaseFields,
+      ),
+    };
+    expect(normalizePrivateLinuxConfirmedEnforcementReceipt(enforcement)).toEqual(enforcement);
+    expect(normalizePrivateLinuxOwnerStateReleaseReceipt(release)).toEqual(release);
+
+    for (const [valid, normalize] of [
+      [enforcement, normalizePrivateLinuxConfirmedEnforcementReceipt],
+      [release, normalizePrivateLinuxOwnerStateReleaseReceipt],
+    ] as const) {
+      let trapCalls = 0;
+      const proxy = new Proxy(valid, {
+        get() { trapCalls += 1; throw new Error("get trap invoked"); },
+        getOwnPropertyDescriptor() { trapCalls += 1; throw new Error("descriptor trap invoked"); },
+        getPrototypeOf() { trapCalls += 1; throw new Error("prototype trap invoked"); },
+        ownKeys() { trapCalls += 1; throw new Error("keys trap invoked"); },
+      });
+      expect(() => normalize(proxy)).toThrow("invalid");
+      expect(trapCalls).toBe(0);
+
+      let accessorCalls = 0;
+      const accessor = Object.defineProperty({ ...valid }, "kind", {
+        enumerable: true,
+        get() { accessorCalls += 1; throw new Error("accessor invoked"); },
+      });
+      expect(() => normalize(accessor)).toThrow("invalid");
+      expect(accessorCalls).toBe(0);
+
+      const nonenumerable = Object.defineProperty({ ...valid }, "kind", {
+        enumerable: false,
+        value: valid.kind,
+      });
+      expect(() => normalize(nonenumerable)).toThrow("invalid");
+      expect(() => normalize(Object.assign(Object.create({ inherited: true }), valid)))
+        .toThrow("invalid");
+      expect(() => normalize(Object.assign({ ...valid }, { [Symbol("hostile")]: true })))
+        .toThrow("invalid");
+    }
+
+    let nestedTrapCalls = 0;
+    const hostileEvidence = new Proxy(enforcement.evidence, {
+      get() { nestedTrapCalls += 1; throw new Error("get trap invoked"); },
+      getOwnPropertyDescriptor() { nestedTrapCalls += 1; throw new Error("descriptor trap invoked"); },
+      getPrototypeOf() { nestedTrapCalls += 1; throw new Error("prototype trap invoked"); },
+      ownKeys() { nestedTrapCalls += 1; throw new Error("keys trap invoked"); },
+    });
+    expect(() => normalizePrivateLinuxConfirmedEnforcementReceipt({
+      ...enforcement,
+      evidence: hostileEvidence,
+    })).toThrow("invalid");
+    expect(nestedTrapCalls).toBe(0);
   });
 });
 

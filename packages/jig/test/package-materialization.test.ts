@@ -18,6 +18,8 @@ import {
   disposePrivatePackageMaterializationLease,
   materializeCapturedPackage,
   materializePrivatePackageLease,
+  normalizePrivatePackageMaterializationAllocationIdentity,
+  normalizePrivatePackageMaterializationLeaseIdentity,
   reacquirePrivatePackageMaterializationLease,
   recoverPrivatePackageMaterializationAllocation,
   type PrivatePackageMaterializationLease,
@@ -27,6 +29,71 @@ import { capturePackageDirectory } from "../src/package/capture.js";
 const crashFixture = join(import.meta.dir, "fixtures/package-materialization-crash.ts");
 
 describe("private package materialization", () => {
+  test("durable identity normalizers reject hostile object shapes without invoking traps", () => {
+    const allocation = {
+      kind: "private-package-materialization-allocation/1",
+      parent: { path: "/tmp/jig-materializations", dev: "1", ino: "2" },
+      name: "run-hostile",
+      path: "/tmp/jig-materializations/run-hostile",
+      packageDigest: `sha256:${"a".repeat(64)}`,
+      ownerToken: "owner:hostile-normalizer",
+    };
+    const lease = {
+      kind: "private-package-materialization-lease/1",
+      allocation,
+      transaction: { path: allocation.path, dev: "3", ino: "4" },
+      package: { path: `${allocation.path}/package`, dev: "5", ino: "6" },
+    };
+    expect(normalizePrivatePackageMaterializationAllocationIdentity(allocation)).toEqual(allocation);
+    expect(normalizePrivatePackageMaterializationLeaseIdentity(lease)).toEqual(lease);
+
+    for (const [valid, normalize] of [
+      [allocation, normalizePrivatePackageMaterializationAllocationIdentity],
+      [lease, normalizePrivatePackageMaterializationLeaseIdentity],
+    ] as const) {
+      let trapCalls = 0;
+      const proxy = new Proxy(valid, {
+        get() { trapCalls += 1; throw new Error("get trap invoked"); },
+        getOwnPropertyDescriptor() { trapCalls += 1; throw new Error("descriptor trap invoked"); },
+        getPrototypeOf() { trapCalls += 1; throw new Error("prototype trap invoked"); },
+        ownKeys() { trapCalls += 1; throw new Error("keys trap invoked"); },
+      });
+      expect(() => normalize(proxy)).toThrow("ordinary data object");
+      expect(trapCalls).toBe(0);
+
+      let accessorCalls = 0;
+      const accessor = Object.defineProperty({ ...valid }, "kind", {
+        enumerable: true,
+        get() { accessorCalls += 1; throw new Error("accessor invoked"); },
+      });
+      expect(() => normalize(accessor)).toThrow("canonical fields");
+      expect(accessorCalls).toBe(0);
+
+      const nonenumerable = Object.defineProperty({ ...valid }, "kind", {
+        enumerable: false,
+        value: valid.kind,
+      });
+      expect(() => normalize(nonenumerable)).toThrow("canonical fields");
+      expect(() => normalize(Object.assign(Object.create({ inherited: true }), valid)))
+        .toThrow("ordinary data object");
+      expect(() => normalize(Object.assign({ ...valid }, { [Symbol("hostile")]: true })))
+        .toThrow("ordinary data object");
+    }
+
+    let nestedTrapCalls = 0;
+    const hostileAllocation = new Proxy(allocation, {
+      get() { nestedTrapCalls += 1; throw new Error("get trap invoked"); },
+      getOwnPropertyDescriptor() { nestedTrapCalls += 1; throw new Error("descriptor trap invoked"); },
+      getPrototypeOf() { nestedTrapCalls += 1; throw new Error("prototype trap invoked"); },
+      ownKeys() { nestedTrapCalls += 1; throw new Error("keys trap invoked"); },
+    });
+    expect(() => normalizePrivatePackageMaterializationLeaseIdentity({
+      ...lease,
+      allocation: hostileAllocation,
+    })).toThrow("ordinary data object");
+    expect(nestedTrapCalls).toBe(0);
+  });
+
   test("preserves the invocation-local materialization API", async () => {
     const source = await mkdtemp(join(tmpdir(), "jig-materialize-source-"));
     const stagingParent = await mkdtemp(join(tmpdir(), "jig-materialize-parent-"));

@@ -14,6 +14,7 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join, resolve } from "node:path";
+import { types as utilTypes } from "node:util";
 
 import {
   captureOpenedPackageDirectory,
@@ -1008,6 +1009,13 @@ function parseAllocation(value: unknown): PrivatePackageMaterializationAllocatio
   });
 }
 
+/** Strictly decode one allocation identity retained in private durable state. */
+export function normalizePrivatePackageMaterializationAllocationIdentity(
+  value: unknown,
+): PrivatePackageMaterializationAllocationIdentity {
+  return parseAllocation(value);
+}
+
 function parseLease(value: unknown): PrivatePackageMaterializationLeaseIdentity {
   const root = exactRecord(
     value,
@@ -1030,6 +1038,13 @@ function parseLease(value: unknown): PrivatePackageMaterializationLeaseIdentity 
     transaction,
     package: packageDirectory,
   });
+}
+
+/** Strictly decode one materialization lease retained in private durable state. */
+export function normalizePrivatePackageMaterializationLeaseIdentity(
+  value: unknown,
+): PrivatePackageMaterializationLeaseIdentity {
+  return parseLease(value);
 }
 
 function parsePathIdentity(value: unknown, label: string): PrivateMaterializationPathIdentity {
@@ -1077,15 +1092,22 @@ function exactRecord(
   keys: readonly string[],
   label: string,
 ): Record<string, unknown> {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    throw new TypeError(`${label} must be an object`);
+  if (typeof value !== "object" || value === null || Array.isArray(value) || utilTypes.isProxy(value) ||
+      (Object.getPrototypeOf(value) !== Object.prototype && Object.getPrototypeOf(value) !== null) ||
+      Object.getOwnPropertySymbols(value).length !== 0) {
+    throw new TypeError(`${label} must be an ordinary data object`);
   }
-  const record = value as Record<string, unknown>;
-  const actual = Object.keys(record).sort();
+  const descriptors = Object.getOwnPropertyDescriptors(value);
+  const actual = Object.keys(descriptors).sort();
   const expected = [...keys].sort();
-  if (actual.length !== expected.length || actual.some((key, index) => key !== expected[index])) {
+  if (actual.length !== expected.length || actual.some((key, index) => key !== expected[index]) ||
+      Object.values(descriptors).some((descriptor) =>
+        !("value" in descriptor) || descriptor.enumerable !== true
+      )) {
     throw new TypeError(`${label} must have exactly the canonical fields`);
   }
+  const record: Record<string, unknown> = Object.create(null) as Record<string, unknown>;
+  for (const key of actual) record[key] = descriptors[key]!.value;
   return record;
 }
 
