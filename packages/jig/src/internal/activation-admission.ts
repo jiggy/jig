@@ -46,7 +46,9 @@ import {
 } from "../project/retained-project.js";
 
 const KIND = "private-activation-candidate/4";
+const KIND_V5 = "private-activation-candidate/5";
 const PLAN_KIND = "private-activation-plan/1";
+const PLAN_V2_KIND = "private-activation-plan/2";
 const ADMISSION_KIND = "private-activation-admission/2";
 const DIGEST = /^sha256:[0-9a-f]{64}$/;
 const LOCAL_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -54,6 +56,9 @@ const UNSIGNED_64 = /^(?:0|[1-9][0-9]{0,19})$/;
 const MAX_UNSIGNED_64 = (1n << 64n) - 1n;
 const MAX_EVIDENCE = 64;
 const createdCandidates = new WeakSet<object>();
+const createdCandidatesV5 = new WeakSet<object>();
+const inertCandidatesV5 = new WeakSet<object>();
+const inertPlansV2 = new WeakSet<object>();
 
 type PrivateActivationRecipe = PrivateDirectRunRecipe | PrivateBunServiceRecipe;
 
@@ -102,9 +107,72 @@ export interface PrivateActivationCandidateEncoding {
   readonly lock: Uint8Array;
 }
 
+/**
+ * Candidate/5 separates observed planning semantics from final activation
+ * meaning. Candidate/4 remains temporarily available only for the current
+ * private store migration; neither format is a public compatibility promise.
+ */
+export interface PrivateActivationCandidateV5 {
+  readonly kind: typeof KIND_V5;
+  readonly projectRoot: {
+    readonly device: string;
+    readonly inode: string;
+  };
+  readonly captureDigest: string;
+  readonly observedSemanticDigest: string;
+  readonly activationMeaningDigest: string;
+  readonly resolutionInputDigest: string;
+  readonly planningObservationDigest: string;
+  readonly lockDigest: string;
+  readonly declarationArtifact: {
+    readonly kind: "author-closure/1";
+    readonly closureDigest: string;
+    readonly package: PackageArtifactRef;
+  };
+  readonly targets: readonly PrivateActivationCandidateTarget[];
+}
+
+export interface PrivateActivationCandidateArtifactV5 {
+  readonly candidate: PrivateActivationCandidateV5;
+  readonly lock: PrivateProjectLocalLock;
+}
+
+export interface PrivateActivationCandidateEncodingV5 {
+  readonly candidate: Uint8Array;
+  readonly lock: Uint8Array;
+}
+
 export type PrivateObservedLock =
   | { readonly state: "absent" }
   | { readonly state: "present"; readonly digest: string };
+
+export type PrivateObservedLockV2 =
+  | { readonly state: "absent" }
+  | {
+      readonly state: "present";
+      readonly digest: string;
+      readonly lock: PrivateProjectLocalLock;
+    };
+
+export interface PrivateActivationPlanV2 {
+  readonly kind: typeof PLAN_V2_KIND;
+  readonly baseGeneration: string | null;
+  readonly candidateRevision: number;
+  readonly candidateDigest: string;
+  readonly captureDigest: string;
+  readonly resolutionInputDigest: string;
+  readonly planningObservationDigest: string;
+  readonly observedSemanticDigest: string;
+  readonly activationMeaningDigest: string;
+  readonly lockMode: "update" | "locked";
+  readonly observedLock: PrivateObservedLockV2;
+  readonly operation: "admission" | "lock-repair";
+  readonly proposed: {
+    readonly lockDigest: string;
+    readonly lock: PrivateProjectLocalLock;
+    readonly targets: readonly PrivateActivationCandidateTarget[];
+  };
+}
 
 export interface PrivateActivationPlan {
   readonly kind: typeof PLAN_KIND;
@@ -197,6 +265,34 @@ export function createPrivateActivationCandidate(
   return markCreated(candidate, lock);
 }
 
+/** Build the Candidate/5 replacement while Candidate/4 storage is migrated. */
+export function createPrivateActivationCandidateV5(
+  project: PrivateRetainedPackageProject,
+  resolutionValue: unknown,
+  recipeValue?: PrivateActivationRecipe | readonly PrivateActivationRecipe[],
+): PrivateActivationCandidateArtifactV5 {
+  const prior = createPrivateActivationCandidate(project, resolutionValue, recipeValue);
+  const observedSemanticDigest = prior.candidate.semanticDigest;
+  const activationMeaningDigest = computeActivationMeaningDigest(
+    observedSemanticDigest,
+    prior.candidate.targets,
+  );
+  const candidate = normalizeCandidateV5({
+    kind: KIND_V5,
+    projectRoot: prior.candidate.projectRoot,
+    captureDigest: prior.candidate.captureDigest,
+    observedSemanticDigest,
+    activationMeaningDigest,
+    resolutionInputDigest: prior.candidate.resolutionInputDigest,
+    planningObservationDigest: prior.candidate.planningObservationDigest,
+    lockDigest: prior.candidate.lockDigest,
+    declarationArtifact: prior.candidate.declarationArtifact,
+    targets: prior.candidate.targets,
+  }, prior.lock);
+  encodeCandidateV5(candidate);
+  return markCreatedV5(candidate, prior.lock);
+}
+
 function requirePrivateActivationRecipe(value: unknown): PrivateActivationRecipe {
   try {
     return requirePrivateDirectRunRecipe(value);
@@ -277,6 +373,59 @@ export function privateActivationCandidateDigest(
   );
 }
 
+/** Strictly decode inert Candidate/5 bytes; decoding never mints provenance. */
+export function decodePrivateActivationCandidateV5(
+  input: unknown,
+): PrivateActivationCandidateArtifactV5 {
+  const encoded = exactObject(input, ["candidate", "lock"], "candidate/5 encoding");
+  const lockBytes = copiedBytes(encoded.lock, "candidate/5 lock bytes");
+  const candidateBytes = copiedBytes(encoded.candidate, "candidate/5 bytes");
+  const lock = decodePrivateProjectLocalLock(lockBytes);
+  const candidate = normalizeCandidateV5(decodeJson1(candidateBytes), lock);
+  if (!sameBytes(candidateBytes, encodeCandidateV5(candidate))) {
+    throw new TypeError("private activation candidate/5 is not in canonical JSON/1 + LF form");
+  }
+  return markInertCandidateV5(candidate, lock);
+}
+
+export function encodePrivateActivationCandidateV5(
+  value: unknown,
+): PrivateActivationCandidateEncodingV5 {
+  const artifact = requirePrivateInertActivationCandidateV5(value);
+  return Object.freeze({
+    candidate: encodeCandidateV5(artifact.candidate),
+    lock: encodePrivateProjectLocalLock(artifact.lock),
+  });
+}
+
+export function privateActivationCandidateDigestV5(value: unknown): string {
+  const artifact = requirePrivateInertActivationCandidateV5(value);
+  return privateDomainDigest(
+    "JIG-Private-Activation-Candidate/5",
+    artifact.candidate as unknown as JsonValue,
+  );
+}
+
+/** Require only the invocation-local Candidate/5 factory result. */
+export function requirePrivateCreatedActivationCandidateV5(
+  value: unknown,
+): PrivateActivationCandidateArtifactV5 {
+  if (value === null || typeof value !== "object" || !createdCandidatesV5.has(value)) {
+    throw new TypeError("activation candidate/5 was not built from a retained project and resolution");
+  }
+  return value as PrivateActivationCandidateArtifactV5;
+}
+
+/** Require a factory- or strict-decoder-minted descriptor-inert Candidate/5. */
+export function requirePrivateInertActivationCandidateV5(
+  value: unknown,
+): PrivateActivationCandidateArtifactV5 {
+  if (value === null || typeof value !== "object" || !inertCandidatesV5.has(value)) {
+    throw new TypeError("activation candidate/5 was not built or strictly decoded");
+  }
+  return value as PrivateActivationCandidateArtifactV5;
+}
+
 /** Require the invocation-local factory result; strict decoding alone cannot mint it. */
 export function requirePrivateCreatedActivationCandidate(
   value: unknown,
@@ -328,6 +477,108 @@ export function privateActivationPlanDigest(value: unknown): string {
     "JIG-Private-Activation-Plan/1",
     normalizePlan(value) as unknown as JsonValue,
   );
+}
+
+/**
+ * Build Plan/2 from one exact Candidate/5. The duplicated proposal and
+ * evidence fields are always derived here rather than accepted from callers.
+ * The caller must first authenticate the candidate revision, digest, bytes,
+ * and head through protected storage; this value codec does not own that
+ * persistence authority and deliberately remains usable after restart.
+ */
+export function createPrivateActivationPlanV2(input: {
+  readonly candidate: PrivateActivationCandidateArtifactV5;
+  readonly candidateRevision: number;
+  readonly baseGeneration: string | null;
+  readonly lockMode: "update" | "locked";
+  readonly observedLock:
+    | { readonly state: "absent" }
+    | { readonly state: "present"; readonly lock: PrivateProjectLocalLock };
+  readonly operation: "admission" | "lock-repair";
+}): PrivateActivationPlanV2 {
+  const source = exactObject(input, [
+    "candidate",
+    "candidateRevision",
+    "baseGeneration",
+    "lockMode",
+    "observedLock",
+    "operation",
+  ], "activation plan/2 factory input");
+  const artifact = requirePrivateInertActivationCandidateV5(source.candidate);
+  const observedInput = plainObject(source.observedLock, "activation plan/2 observed input");
+  const observedState = dataField(observedInput, "state", "activation plan/2 observed input");
+  let observedLock: PrivateObservedLockV2;
+  if (observedState === "absent") {
+    exactObject(observedInput, ["state"], "activation plan/2 observed input");
+    observedLock = Object.freeze({ state: "absent" as const });
+  } else if (observedState === "present") {
+    const present = exactObject(
+      observedInput,
+      ["state", "lock"],
+      "activation plan/2 observed input",
+    );
+    const lock = decodePrivateProjectLocalLock(encodePrivateProjectLocalLock(
+      present.lock as PrivateProjectLocalLock,
+    ));
+    observedLock = Object.freeze({
+      state: "present" as const,
+      digest: privateProjectLocalLockDigest(lock),
+      lock,
+    });
+  } else {
+    throw new TypeError("activation plan/2 observed input state must be absent or present");
+  }
+  const plan = normalizePlanV2({
+    kind: PLAN_V2_KIND,
+    baseGeneration: source.baseGeneration,
+    candidateRevision: source.candidateRevision,
+    candidateDigest: privateActivationCandidateDigestV5(artifact),
+    captureDigest: artifact.candidate.captureDigest,
+    resolutionInputDigest: artifact.candidate.resolutionInputDigest,
+    planningObservationDigest: artifact.candidate.planningObservationDigest,
+    observedSemanticDigest: artifact.candidate.observedSemanticDigest,
+    activationMeaningDigest: artifact.candidate.activationMeaningDigest,
+    lockMode: source.lockMode,
+    observedLock,
+    operation: source.operation,
+    proposed: {
+      lockDigest: artifact.candidate.lockDigest,
+      lock: artifact.lock,
+      targets: artifact.candidate.targets,
+    },
+  });
+  // Independently valid embedded values may exceed the aggregate JSON/1
+  // budget. Factory success therefore proves the complete Plan encoding too.
+  encodeRecord(plan, "private activation plan/2");
+  return markInertPlanV2(plan);
+}
+
+export function decodePrivateActivationPlanV2(bytesValue: unknown): PrivateActivationPlanV2 {
+  const bytes = copiedBytes(bytesValue, "activation plan/2 bytes");
+  const plan = normalizePlanV2(decodeJson1(bytes), true);
+  if (!sameBytes(bytes, encodeRecord(plan, "private activation plan/2"))) {
+    throw new TypeError("private activation plan/2 is not in canonical JSON/1 + LF form");
+  }
+  return markInertPlanV2(plan);
+}
+
+export function encodePrivateActivationPlanV2(value: unknown): Uint8Array {
+  return encodeRecord(requirePrivateInertPlanV2(value), "private activation plan/2");
+}
+
+export function privateActivationPlanDigestV2(value: unknown): string {
+  return privateDomainDigest(
+    "JIG-Private-Activation-Plan/2",
+    requirePrivateInertPlanV2(value) as unknown as JsonValue,
+  );
+}
+
+/** Require a factory- or strict-decoder-minted descriptor-inert Plan/2. */
+export function requirePrivateInertPlanV2(value: unknown): PrivateActivationPlanV2 {
+  if (value === null || typeof value !== "object" || !inertPlansV2.has(value)) {
+    throw new TypeError("activation plan/2 was not built or strictly decoded");
+  }
+  return value as PrivateActivationPlanV2;
 }
 
 /** Build the closed admission record after protected storage wins its CAS. */
@@ -441,6 +692,122 @@ function normalizeCandidate(
   });
 }
 
+function normalizeCandidateV5(
+  input: unknown,
+  lock: PrivateProjectLocalLock,
+): PrivateActivationCandidateV5 {
+  const root = exactObject(input, [
+    "kind",
+    "projectRoot",
+    "captureDigest",
+    "observedSemanticDigest",
+    "activationMeaningDigest",
+    "resolutionInputDigest",
+    "planningObservationDigest",
+    "lockDigest",
+    "declarationArtifact",
+    "targets",
+  ], "activation candidate/5");
+  if (root.kind !== KIND_V5) {
+    throw new TypeError(`activation candidate/5 kind must be ${KIND_V5}`);
+  }
+
+  const projectRoot = exactObject(root.projectRoot, ["device", "inode"], "project root");
+  const captureDigest = requireDigest(root.captureDigest, "capture");
+  const planningObservationDigest = requireDigest(
+    root.planningObservationDigest,
+    "planning observation",
+  );
+  const resolutionInputDigest = requireDigest(root.resolutionInputDigest, "resolution input");
+  const expectedResolutionInput = privateDomainDigest(
+    "JIG-Package-Project-Resolution-Input/1",
+    { captureDigest, planningObservationDigest },
+  );
+  if (resolutionInputDigest !== expectedResolutionInput) {
+    throw new TypeError("resolution input digest does not match capture and planning observation");
+  }
+
+  const lockDigest = requireDigest(root.lockDigest, "lock");
+  if (lockDigest !== privateProjectLocalLockDigest(lock)) {
+    throw new TypeError("activation candidate/5 lock digest does not match lock bytes");
+  }
+
+  const declaration = exactObject(
+    root.declarationArtifact,
+    ["kind", "closureDigest", "package"],
+    "declaration artifact",
+  );
+  if (declaration.kind !== "author-closure/1") {
+    throw new TypeError("declaration artifact kind must be author-closure/1");
+  }
+
+  const targets = normalizeCandidateTargets(root.targets, lock, "activation candidate/5");
+  const observedSemanticDigest = requireDigest(root.observedSemanticDigest, "observed semantic");
+  const activationMeaningDigest = requireDigest(root.activationMeaningDigest, "activation meaning");
+  const expectedActivationMeaning = computeActivationMeaningDigest(observedSemanticDigest, targets);
+  if (activationMeaningDigest !== expectedActivationMeaning) {
+    throw new TypeError(
+      "activation meaning digest does not match observed semantics and final target meanings",
+    );
+  }
+
+  return Object.freeze({
+    kind: KIND_V5,
+    projectRoot: Object.freeze({
+      device: requireUnsigned64(projectRoot.device, "project root device"),
+      inode: requireUnsigned64(projectRoot.inode, "project root inode"),
+    }),
+    captureDigest,
+    observedSemanticDigest,
+    activationMeaningDigest,
+    resolutionInputDigest,
+    planningObservationDigest,
+    lockDigest,
+    declarationArtifact: Object.freeze({
+      kind: "author-closure/1" as const,
+      closureDigest: requireDigest(declaration.closureDigest, "declaration closure"),
+      package: normalizePackageArtifactRef(declaration.package),
+    }),
+    targets,
+  });
+}
+
+function normalizeCandidateTargets(
+  value: unknown,
+  lock: PrivateProjectLocalLock,
+  label: string,
+): readonly PrivateActivationCandidateTarget[] {
+  const targets = ordinaryArray(value, JSON_1_LIMITS.containerEntries, `${label} targets`)
+    .map((target) => normalizeTarget(target))
+    .sort((left, right) => compareOrdinal(
+      privateActivationTargetKey(left.request.target),
+      privateActivationTargetKey(right.request.target),
+    ));
+  if (targets.length === 0) throw new TypeError(`${label} requires at least one target`);
+  for (let index = 1; index < targets.length; index += 1) {
+    if (privateActivationTargetKey(targets[index - 1]!.request.target) ===
+        privateActivationTargetKey(targets[index]!.request.target)) {
+      throw new TypeError(`${label} contains duplicate targets`);
+    }
+  }
+  requireExactTargetSet(targets.map((target) => target.request.target), lock);
+  for (const target of targets) requireRequestLockProjection(target.request, lock);
+  return Object.freeze(targets);
+}
+
+function computeActivationMeaningDigest(
+  observedSemanticDigest: string,
+  targets: readonly PrivateActivationCandidateTarget[],
+): string {
+  return privateDomainDigest(
+    "JIG-Private-Activation-Meaning/1",
+    {
+      observedSemanticDigest,
+      targets,
+    } as unknown as JsonValue,
+  );
+}
+
 function normalizePlan(input: unknown): PrivateActivationPlan {
   const root = exactObject(input, [
     "kind",
@@ -482,6 +849,144 @@ function normalizePlan(input: unknown): PrivateActivationPlan {
       : requireDigest(root.baseGeneration, "base generation"),
     lockMode: root.lockMode,
     observedLock,
+  });
+}
+
+function normalizePlanV2(input: unknown, decodedLocks = false): PrivateActivationPlanV2 {
+  const root = exactObject(input, [
+    "kind",
+    "baseGeneration",
+    "candidateRevision",
+    "candidateDigest",
+    "captureDigest",
+    "resolutionInputDigest",
+    "planningObservationDigest",
+    "observedSemanticDigest",
+    "activationMeaningDigest",
+    "lockMode",
+    "observedLock",
+    "operation",
+    "proposed",
+  ], "activation plan/2");
+  if (root.kind !== PLAN_V2_KIND) {
+    throw new TypeError(`activation plan/2 kind must be ${PLAN_V2_KIND}`);
+  }
+  if (root.lockMode !== "update" && root.lockMode !== "locked") {
+    throw new TypeError("activation plan/2 lock mode must be update or locked");
+  }
+  if (root.operation !== "admission" && root.operation !== "lock-repair") {
+    throw new TypeError("activation plan/2 operation must be admission or lock-repair");
+  }
+  if (root.operation === "lock-repair" && root.lockMode !== "update") {
+    throw new TypeError("activation plan/2 lock repair requires update lock mode");
+  }
+
+  const proposedInput = exactObject(
+    root.proposed,
+    ["lockDigest", "lock", "targets"],
+    "activation plan/2 proposed state",
+  );
+  const proposedLock = normalizeEmbeddedLock(
+    proposedInput.lock,
+    "activation plan/2 proposed lock",
+    decodedLocks,
+  );
+  const proposedLockDigest = requireDigest(proposedInput.lockDigest, "proposed lock");
+  if (proposedLockDigest !== privateProjectLocalLockDigest(proposedLock)) {
+    throw new TypeError("activation plan/2 proposed lock digest does not match its lock");
+  }
+  const targets = normalizeCandidateTargets(
+    proposedInput.targets,
+    proposedLock,
+    "activation plan/2 proposed state",
+  );
+
+  const observedSemanticDigest = requireDigest(root.observedSemanticDigest, "observed semantic");
+  const activationMeaningDigest = requireDigest(root.activationMeaningDigest, "activation meaning");
+  if (activationMeaningDigest !== computeActivationMeaningDigest(observedSemanticDigest, targets)) {
+    throw new TypeError(
+      "activation plan/2 meaning digest does not match observed semantics and proposed targets",
+    );
+  }
+
+  const captureDigest = requireDigest(root.captureDigest, "capture");
+  const planningObservationDigest = requireDigest(
+    root.planningObservationDigest,
+    "planning observation",
+  );
+  const resolutionInputDigest = requireDigest(root.resolutionInputDigest, "resolution input");
+  if (resolutionInputDigest !== privateDomainDigest(
+    "JIG-Package-Project-Resolution-Input/1",
+    { captureDigest, planningObservationDigest },
+  )) {
+    throw new TypeError(
+      "activation plan/2 resolution input does not match capture and planning observation",
+    );
+  }
+
+  const observedInput = plainObject(root.observedLock, "activation plan/2 observed lock");
+  const observedState = dataField(observedInput, "state", "activation plan/2 observed lock");
+  let observedLock: PrivateObservedLockV2;
+  if (observedState === "absent") {
+    exactObject(observedInput, ["state"], "activation plan/2 observed lock");
+    observedLock = Object.freeze({ state: "absent" as const });
+  } else if (observedState === "present") {
+    const present = exactObject(
+      observedInput,
+      ["state", "digest", "lock"],
+      "activation plan/2 observed lock",
+    );
+    const lock = normalizeEmbeddedLock(
+      present.lock,
+      "activation plan/2 observed lock value",
+      decodedLocks,
+    );
+    const digest = requireDigest(present.digest, "observed lock");
+    if (digest !== privateProjectLocalLockDigest(lock)) {
+      throw new TypeError("activation plan/2 observed lock digest does not match its lock");
+    }
+    observedLock = Object.freeze({ state: "present" as const, digest, lock });
+  } else {
+    throw new TypeError("activation plan/2 observed lock state must be absent or present");
+  }
+  if (root.lockMode === "locked" && (
+    observedLock.state !== "present" || !samePrivateLocks(observedLock.lock, proposedLock)
+  )) {
+    throw new TypeError("locked activation plan/2 requires the exact proposed lock observation");
+  }
+  const baseGeneration = root.baseGeneration === null
+    ? null
+    : requireDigest(root.baseGeneration, "base generation");
+  if (root.operation === "lock-repair") {
+    if (baseGeneration === null) {
+      throw new TypeError("activation plan/2 lock repair requires an active base generation");
+    }
+    if (observedLock.state === "present" && samePrivateLocks(observedLock.lock, proposedLock)) {
+      throw new TypeError("activation plan/2 lock repair requires an absent or drifted visible lock");
+    }
+  }
+
+  return Object.freeze({
+    kind: PLAN_V2_KIND,
+    baseGeneration,
+    candidateRevision: requirePositiveSafeInteger(
+      root.candidateRevision,
+      "activation plan/2 candidate revision",
+    ),
+    candidateDigest: requireDigest(root.candidateDigest, "plan candidate"),
+    captureDigest,
+    resolutionInputDigest,
+    planningObservationDigest,
+    observedSemanticDigest,
+    activationMeaningDigest,
+    lockMode: root.lockMode,
+    observedLock,
+    operation: root.operation,
+    proposed: Object.freeze({
+      lockDigest: proposedLockDigest,
+      lock: proposedLock,
+      targets,
+    }),
   });
 }
 
@@ -631,6 +1136,29 @@ function markCreated(
   return artifact;
 }
 
+function markCreatedV5(
+  candidate: PrivateActivationCandidateV5,
+  lock: PrivateProjectLocalLock,
+): PrivateActivationCandidateArtifactV5 {
+  const artifact = markInertCandidateV5(candidate, lock);
+  createdCandidatesV5.add(artifact);
+  return artifact;
+}
+
+function markInertCandidateV5(
+  candidate: PrivateActivationCandidateV5,
+  lock: PrivateProjectLocalLock,
+): PrivateActivationCandidateArtifactV5 {
+  const artifact = Object.freeze({ candidate, lock });
+  inertCandidatesV5.add(artifact);
+  return artifact;
+}
+
+function markInertPlanV2(plan: PrivateActivationPlanV2): PrivateActivationPlanV2 {
+  inertPlansV2.add(plan);
+  return plan;
+}
+
 function normalizeArtifact(value: unknown): PrivateActivationCandidateArtifact {
   const root = exactObject(value, ["candidate", "lock"], "activation candidate artifact");
   if (root.lock === null || typeof root.lock !== "object") {
@@ -644,6 +1172,38 @@ function normalizeArtifact(value: unknown): PrivateActivationCandidateArtifact {
 
 function encodeCandidate(value: PrivateActivationCandidate): Uint8Array {
   return encodeRecord(value, "private activation candidate");
+}
+
+function encodeCandidateV5(value: PrivateActivationCandidateV5): Uint8Array {
+  return encodeRecord(value, "private activation candidate/5");
+}
+
+function normalizeEmbeddedLock(
+  value: unknown,
+  label: string,
+  decoded: boolean,
+): PrivateProjectLocalLock {
+  if (!decoded) {
+    // Programmatic callers must supply a factory- or decoder-minted lock. This
+    // rejects an untrusted nested Proxy/accessor tree before traversing it.
+    return decodePrivateProjectLocalLock(encodePrivateProjectLocalLock(
+      value as PrivateProjectLocalLock,
+    ));
+  }
+  // decodeJson1 produced this descriptor-inert tree from bounded bytes.
+  const object = plainObject(value, label);
+  return decodePrivateProjectLocalLock(encodeRecord(object, label));
+}
+
+function samePrivateLocks(left: PrivateProjectLocalLock, right: PrivateProjectLocalLock): boolean {
+  return sameBytes(
+    encodePrivateProjectLocalLock(left),
+    encodePrivateProjectLocalLock(right),
+  );
+}
+
+function compareOrdinal(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0;
 }
 
 function encodeRecord(value: object, label: string): Uint8Array {
