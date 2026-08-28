@@ -35,6 +35,11 @@ Start here:
 
 Current implementation frontier:
 
+- [`design-review/166-finite-project-session-frontier.md`](design-review/166-finite-project-session-frontier.md)
+  freezes the active finite project-session boundary: one descriptor-held
+  identity and coordinator, authority-neutral plan, retained-digest apply,
+  unchanged Root Administration, exact close/recovery semantics, and a
+  public-surface gate which refuses to expose private Plan/lock/host records.
 - [`design-review/165-roadmap-closure-and-product-frontier.md`](design-review/165-roadmap-closure-and-product-frontier.md)
   consolidates every completed, blocked, open, and negative vertical, selects
   the Bun-only first Jig posture, and fixes the finite trusted local project
