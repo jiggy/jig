@@ -70,6 +70,7 @@ import {
   recordPrivateServiceInvocationDispatch,
   recordPrivateServiceLeaseRelease,
   recordPrivateServiceMountRelease,
+  recoverPrivateServiceInvocation,
   requirePrivateStoredActivationCandidate,
   submitPrivateRootRun,
   type PrivateProjectCoordinator,
@@ -799,6 +800,127 @@ describe.serial("private activation admission SQLite store", () => {
         ownerRunId: submission.run.runId,
         operationId: "counter:z",
       })).rejects.toMatchObject({ code: "ADMISSION_STATE_CORRUPT" });
+    } finally {
+      await coordinator?.dispose();
+      await fixture.dispose();
+    }
+  }, 30_000);
+
+  test("recovers never-written and possibly-dispatched Service invocations after the Mount fence", async () => {
+    const fixture = await createFixture("ready", false, false, true);
+    let coordinator: PrivateProjectCoordinator | undefined;
+    try {
+      const admission = await applyLatestCandidate(fixture);
+      coordinator = await openPrivateProjectCoordinator({ projectRoot: fixture.root });
+      const submission = await submitPrivateRootRun({
+        coordinator,
+        projectRoot: fixture.root,
+        packageStoreRoot: fixture.store,
+        submissionId: "service-invocation-recovery-owner",
+        target: { kind: "binding", id: "app" },
+        input: { value: "owner" },
+        deadlineUnixMs: Date.now() + 60_000,
+      });
+      const installed = installAcknowledgedServiceMount(
+        fixture,
+        admission.admissionDigest,
+        coordinator.epoch,
+      );
+      await allocatePrivateServiceLease({
+        coordinator,
+        projectRoot: fixture.root,
+        packageStoreRoot: fixture.store,
+        ownerRunId: submission.run.runId,
+        slot: "counter",
+      });
+      await allocatePrivateServiceInvocation({
+        coordinator,
+        projectRoot: fixture.root,
+        ownerRunId: submission.run.runId,
+        operationId: "counter:never-written",
+        slot: "counter",
+        method: "next",
+        input: { amount: 1 },
+      });
+      const possibleDispatch = await allocatePrivateServiceInvocation({
+        coordinator,
+        projectRoot: fixture.root,
+        ownerRunId: submission.run.runId,
+        operationId: "counter:possible-dispatch",
+        slot: "counter",
+        method: "next",
+        input: { amount: 1 },
+      });
+      const dispatched = await recordPrivateServiceInvocationDispatch({
+        coordinator,
+        projectRoot: fixture.root,
+        allocation: possibleDispatch,
+      });
+      const fence = installServiceMountFence(fixture, installed, "provider-loss");
+      const fenceDigest = privateServiceMountFenceDigest(fence);
+
+      await expect(recoverPrivateServiceInvocation({
+        coordinator,
+        projectRoot: fixture.root,
+        ownerRunId: submission.run.runId,
+        operationId: "counter:never-written",
+        mountFenceDigest: digest("wrong-recovery-fence"),
+      })).rejects.toMatchObject({ code: "SERVICE_INVOCATION_FENCE_MISMATCH" });
+      const neverWritten = await recoverPrivateServiceInvocation({
+        coordinator,
+        projectRoot: fixture.root,
+        ownerRunId: submission.run.runId,
+        operationId: "counter:never-written",
+        mountFenceDigest: fenceDigest,
+      });
+      expect(neverWritten).toMatchObject({
+        terminal: {
+          value: {
+            dispatchDigest: null,
+            observation: {
+              source: "host-prewrite",
+              terminal: { status: "failed", code: "UNAVAILABLE" },
+            },
+          },
+        },
+        closure: { value: { dispatchDigest: null } },
+      });
+      expect(neverWritten.dispatch).toBeUndefined();
+      const uncertain = await recoverPrivateServiceInvocation({
+        coordinator,
+        projectRoot: fixture.root,
+        ownerRunId: submission.run.runId,
+        operationId: "counter:possible-dispatch",
+        mountFenceDigest: fenceDigest,
+      });
+      expect(uncertain).toMatchObject({
+        dispatch: { digest: expect.any(String) },
+        terminal: {
+          value: {
+            dispatchDigest: dispatched.snapshot.dispatch!.digest,
+            observation: {
+              source: "provider-loss",
+              terminal: { status: "failed", code: "UNCERTAIN" },
+            },
+          },
+        },
+        closure: { value: { dispatchDigest: expect.any(String) } },
+      });
+      expect(await recoverPrivateServiceInvocation({
+        coordinator,
+        projectRoot: fixture.root,
+        ownerRunId: submission.run.runId,
+        operationId: "counter:possible-dispatch",
+        mountFenceDigest: digest("ignored-after-terminal"),
+      })).toEqual(uncertain);
+      await recordPrivateServiceLeaseRelease({
+        coordinator,
+        projectRoot: fixture.root,
+        ownerRunId: submission.run.runId,
+        slot: "counter",
+        reason: "provider-lost",
+        mountFenceDigest: fenceDigest,
+      });
     } finally {
       await coordinator?.dispose();
       await fixture.dispose();

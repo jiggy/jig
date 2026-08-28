@@ -1879,56 +1879,85 @@ export async function completePrivateServiceInvocation(input: {
       await coordinator.verify();
       const row = requireServiceInvocation(owner.database, input.ownerRunId, input.operationId);
       const before = loadServiceInvocationSnapshot(owner.database, row, owner.root, coordinator);
-      const dispatchDigest = observation.source === "host-prewrite"
-        ? before.dispatch?.digest ?? null
-        : requireServiceInvocationDispatch(before).digest;
-      const terminal = normalizePrivateServiceInvocationTerminal({
-        kind: "private-service-invocation-terminal/1",
-        ownerRunId: before.allocation.ownerRunId,
-        operationId: before.allocation.call.operationId,
-        allocationDigest: before.allocationDigest,
-        dispatchDigest,
-        observation,
-      });
-      const terminalBytes = encodePrivateServiceInvocationTerminal(terminal);
-      const terminalDigest = privateServiceInvocationTerminalDigest(terminal);
-      const closure = normalizePrivateServiceInvocationClosure({
-        kind: "private-service-invocation-closure/1",
-        ownerRunId: before.allocation.ownerRunId,
-        operationId: before.allocation.call.operationId,
-        allocationDigest: before.allocationDigest,
-        dispatchDigest,
-        terminalDigest,
-      });
-      const closureBytes = encodePrivateServiceInvocationClosure(closure);
-      const closureDigest = privateServiceInvocationClosureDigest(closure);
-      requireStoredSize(terminalBytes, "Service invocation terminal");
-      requireStoredSize(closureBytes, "Service invocation closure");
-      if (before.terminal !== undefined || before.closure !== undefined) {
-        if (before.terminal?.digest !== terminalDigest || before.closure?.digest !== closureDigest ||
-            !sameCanonical(before.terminal.value, terminal) ||
-            !sameCanonical(before.closure.value, closure)) {
-          invalid("OPERATION_CONFLICT", "Service operation already has a different terminal");
-        }
-        return before;
+      writeServiceInvocationTerminal(owner.database, before, observation, false);
+      return loadServiceInvocationSnapshot(
+        owner.database,
+        requireServiceInvocation(owner.database, input.ownerRunId, input.operationId),
+        owner.root,
+        coordinator,
+      );
+    });
+    await owner.finish();
+    return snapshot;
+  } catch (error) {
+    failure = error;
+    throw error;
+  } finally {
+    await disposeOperation(owner, undefined, failure);
+  }
+}
+
+/** Close an unresolved operation deterministically after its exact Mount fence is durable. */
+export async function recoverPrivateServiceInvocation(input: {
+  readonly coordinator: PrivateProjectCoordinator;
+  readonly projectRoot: string;
+  readonly ownerRunId: string;
+  readonly operationId: string;
+  readonly mountFenceDigest: string;
+}): Promise<PrivateServiceInvocationSnapshot> {
+  const coordinator = requirePrivateProjectCoordinator(input.coordinator);
+  await coordinator.verify();
+  requireDigest(input.ownerRunId, "Service invocation owner Run");
+  requireWireId(input.operationId, "Service invocation operation ID");
+  requireDigest(input.mountFenceDigest, "Service invocation recovery Mount fence");
+  const owner = await openStateOwner(input.projectRoot, false);
+  let failure: unknown;
+  try {
+    requireCoordinatorRoot(coordinator, owner.root);
+    const snapshot = await immediate(owner, async () => {
+      await coordinator.verify();
+      const row = requireServiceInvocation(owner.database, input.ownerRunId, input.operationId);
+      const before = loadServiceInvocationSnapshot(owner.database, row, owner.root, coordinator);
+      if (before.terminal !== undefined && before.closure !== undefined) return before;
+      const ownerRow = requireRootRunRow(owner.database, before.allocation.ownerRunId);
+      const candidate = loadCandidateRow(requireCandidateRow(owner.database, ownerRow.candidate_revision));
+      requireCandidateRoot(candidate, owner.root);
+      const lease = loadServiceLeaseSnapshot(
+        owner.database,
+        requireServiceLease(owner.database, before.allocation.ownerRunId, before.allocation.call.slot),
+        owner.root,
+        coordinator,
+        candidate,
+      );
+      const mount = loadServiceMountSnapshot(
+        owner.database,
+        requireServiceMountRow(owner.database, lease.allocation.mountId),
+        owner.root,
+        coordinator,
+        candidate,
+      );
+      if (mount.fence?.digest !== input.mountFenceDigest) {
+        invalid("SERVICE_INVOCATION_FENCE_MISMATCH", "Service invocation recovery names another Mount fence");
       }
-      if (before.coordinator !== "current") {
-        invalid("SERVICE_INVOCATION_OWNER_INACTIVE", "older coordinator operation cannot gain a terminal here");
-      }
-      const changed = runFinalized(owner.database, [
-        "UPDATE service_invocations SET terminal_digest = ?1, terminal_bytes = ?2,",
-        "closure_digest = ?3, closure_bytes = ?4",
-        "WHERE owner_run_id = ?5 AND operation_id = ?6",
-        "AND terminal_digest IS NULL AND closure_digest IS NULL",
-      ].join(" "), [
-        terminalDigest,
-        terminalBytes,
-        closureDigest,
-        closureBytes,
-        before.allocation.ownerRunId,
-        before.allocation.call.operationId,
-      ]).changes;
-      if (changed !== 1) corrupt("Service invocation terminal compare-and-set failed");
+      const coordinatorLoss = mount.provisional?.value.classification === "coordinator-loss";
+      const observation = normalizePrivateServiceInvocationObservation(before.dispatch === undefined ? {
+        source: "host-prewrite",
+        terminal: {
+          status: "failed",
+          code: "UNAVAILABLE",
+          message: "Service invocation was never admitted for Provider dispatch",
+        },
+      } : {
+        source: coordinatorLoss ? "coordinator-loss" : "provider-loss",
+        terminal: {
+          status: "failed",
+          code: "UNCERTAIN",
+          message: coordinatorLoss
+            ? "Service invocation dispatch outcome was lost with its coordinator"
+            : "Service invocation dispatch outcome was lost with its Provider lifecycle",
+        },
+      });
+      writeServiceInvocationTerminal(owner.database, before, observation, true);
       return loadServiceInvocationSnapshot(
         owner.database,
         requireServiceInvocation(owner.database, input.ownerRunId, input.operationId),
@@ -7797,6 +7826,64 @@ function requireServiceInvocationAllocationCorrelation(
       )) {
     corrupt("stored Service invocation differs from its owner, lease, generation, export, or deadline");
   }
+}
+
+function writeServiceInvocationTerminal(
+  database: SqliteDatabase,
+  before: PrivateServiceInvocationSnapshot,
+  observation: PrivateServiceInvocationObservation,
+  allowOlderCoordinator: boolean,
+): void {
+  const dispatchDigest = observation.source === "host-prewrite"
+    ? before.dispatch?.digest ?? null
+    : requireServiceInvocationDispatch(before).digest;
+  const terminal = normalizePrivateServiceInvocationTerminal({
+    kind: "private-service-invocation-terminal/1",
+    ownerRunId: before.allocation.ownerRunId,
+    operationId: before.allocation.call.operationId,
+    allocationDigest: before.allocationDigest,
+    dispatchDigest,
+    observation,
+  });
+  const terminalBytes = encodePrivateServiceInvocationTerminal(terminal);
+  const terminalDigest = privateServiceInvocationTerminalDigest(terminal);
+  const closure = normalizePrivateServiceInvocationClosure({
+    kind: "private-service-invocation-closure/1",
+    ownerRunId: before.allocation.ownerRunId,
+    operationId: before.allocation.call.operationId,
+    allocationDigest: before.allocationDigest,
+    dispatchDigest,
+    terminalDigest,
+  });
+  const closureBytes = encodePrivateServiceInvocationClosure(closure);
+  const closureDigest = privateServiceInvocationClosureDigest(closure);
+  requireStoredSize(terminalBytes, "Service invocation terminal");
+  requireStoredSize(closureBytes, "Service invocation closure");
+  if (before.terminal !== undefined || before.closure !== undefined) {
+    if (before.terminal?.digest !== terminalDigest || before.closure?.digest !== closureDigest ||
+        !sameCanonical(before.terminal.value, terminal) ||
+        !sameCanonical(before.closure.value, closure)) {
+      invalid("OPERATION_CONFLICT", "Service operation already has a different terminal");
+    }
+    return;
+  }
+  if (!allowOlderCoordinator && before.coordinator !== "current") {
+    invalid("SERVICE_INVOCATION_OWNER_INACTIVE", "older coordinator operation cannot gain a terminal here");
+  }
+  const changed = runFinalized(database, [
+    "UPDATE service_invocations SET terminal_digest = ?1, terminal_bytes = ?2,",
+    "closure_digest = ?3, closure_bytes = ?4",
+    "WHERE owner_run_id = ?5 AND operation_id = ?6",
+    "AND terminal_digest IS NULL AND closure_digest IS NULL",
+  ].join(" "), [
+    terminalDigest,
+    terminalBytes,
+    closureDigest,
+    closureBytes,
+    before.allocation.ownerRunId,
+    before.allocation.call.operationId,
+  ]).changes;
+  if (changed !== 1) corrupt("Service invocation terminal compare-and-set failed");
 }
 
 function loadServiceInvocationFact<Value>(
