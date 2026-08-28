@@ -42,6 +42,7 @@ interface JournalEffectInput {
   readonly packageStoreRoot: string;
   readonly parent: PrivateReacquiredRootExecutionWork;
   readonly coordinator: PrivateProjectCoordinator;
+  readonly notifyWorkAvailable: () => void;
 }
 
 /** Dispatch the exact host-native Journal append selected by a pinned root Run. */
@@ -59,20 +60,28 @@ export async function executePrivateRootJournalEffect(
     requireEventTypeAuthority(context, input.call.input);
     if (input.signal.aborted) return failed("CANCELLED", "Journal append was cancelled before commit");
 
-    const receipt = await appendPrivateRootJournalEvent({
-      coordinator: input.coordinator,
-      projectRoot: input.projectRoot,
-      packageStoreRoot: input.packageStoreRoot,
-      allocation: normalizePrivateRootJournalAppendAllocation({
-        kind: "private-root-journal-append-allocation/1",
-        parentRunId: input.parent.run.runId,
-        coordinatorEpoch: input.parent.run.coordinatorEpoch,
-        publisherBinding: context.publisherBinding,
-        eventTypes: context.eventTypes,
-        call: input.call,
-      }),
-      committedAtUnixMs: Date.now(),
-    });
+    let receipt;
+    try {
+      receipt = await appendPrivateRootJournalEvent({
+        coordinator: input.coordinator,
+        projectRoot: input.projectRoot,
+        packageStoreRoot: input.packageStoreRoot,
+        allocation: normalizePrivateRootJournalAppendAllocation({
+          kind: "private-root-journal-append-allocation/1",
+          parentRunId: input.parent.run.runId,
+          coordinatorEpoch: input.parent.run.coordinatorEpoch,
+          publisherBinding: context.publisherBinding,
+          eventTypes: context.eventTypes,
+          call: input.call,
+        }),
+        committedAtUnixMs: Date.now(),
+      });
+    } finally {
+      // The append may have committed before a later receipt/read failure.
+      // A spurious scan is harmless; omitting the wake would strand durable
+      // Hook outbox work until another controller boundary happened to scan.
+      input.notifyWorkAvailable();
+    }
     const outputFailure = schemaFailure(context.outputSchema, receipt.event, "INVALID_RESULT");
     if (outputFailure !== undefined) return outputFailure;
     return Object.freeze({ status: "succeeded", result: receipt.terminal });

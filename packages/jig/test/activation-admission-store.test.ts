@@ -2093,6 +2093,113 @@ describe.serial("private activation admission SQLite store", () => {
     }
   }, 90_000);
 
+  test("wakes Hook-derived work before its publisher settles and rescans a lost wake", async () => {
+    const fixture = await createFixture("ready", true);
+    let controller: Awaited<ReturnType<typeof openPrivateRootAdministrationController>> | undefined;
+    let releasePublisher!: () => void;
+    const publisherGate = new Promise<void>((resolve) => { releasePublisher = resolve; });
+    let derivedSettled!: (run: Awaited<ReturnType<typeof loadPrivateRootRun>>) => void;
+    let nextDerived = new Promise<Awaited<ReturnType<typeof loadPrivateRootRun>>>(
+      (resolve) => { derivedSettled = resolve; },
+    );
+    const executions = new Map<string, number>();
+    try {
+      await installHookCandidate(fixture, { enabled: true });
+      await applyLatestCandidate(fixture);
+      controller = await openPrivateRootAdministrationController({
+        projectRoot: fixture.root,
+        packageStoreRoot: fixture.store,
+        runTimeoutMs: 60_000,
+        execute: async (runId, coordinator, _signal, notifyWorkAvailable) => {
+          executions.set(runId, (executions.get(runId) ?? 0) + 1);
+          const work = await reacquirePrivateRootExecutionWork({
+            coordinator,
+            projectRoot: fixture.root,
+            packageStoreRoot: fixture.store,
+            runId,
+          });
+          if (work.run.origin.kind === "private-root-external-submission-origin/1") {
+            const mode = (work.run.input as { readonly mode: string }).mode;
+            await appendPrivateRootJournalEvent({
+              coordinator,
+              projectRoot: fixture.root,
+              packageStoreRoot: fixture.store,
+              allocation: normalizePrivateRootJournalAppendAllocation({
+                kind: "private-root-journal-append-allocation/1",
+                parentRunId: runId,
+                coordinatorEpoch: coordinator.epoch,
+                publisherBinding: "publisher",
+                eventTypes: ["https://example.org/events/work-created"],
+                call: {
+                  operationId: `controller-wake:${mode}`,
+                  slot: "journal",
+                  method: "append",
+                  input: {
+                    type: "https://example.org/events/work-created",
+                    data: { mode },
+                  },
+                },
+              }),
+              committedAtUnixMs: 10_000,
+            });
+            if (mode === "immediate") {
+              notifyWorkAvailable();
+              notifyWorkAvailable();
+              await publisherGate;
+            }
+          }
+          const settled = await closeTestRootExecution(fixture.root, coordinator, runId, {
+            status: "succeeded",
+            result: { outcome: "done", output: { accepted: work.run.input } },
+            diagnostics: { stderr: "", stderrBytes: 0, stderrTruncated: false },
+          });
+          if (work.run.origin.kind === "private-root-hook-derived-origin/1") {
+            derivedSettled(settled.run);
+          }
+          return settled;
+        },
+      });
+
+      const immediate = await controller.administration.startRun({
+        submissionId: "hook-controller-immediate",
+        target: { kind: "binding", id: "producer" },
+        input: { mode: "immediate" },
+      });
+      const immediateDerived = await nextDerived;
+      expect(immediateDerived).toMatchObject({
+        origin: { kind: "private-root-hook-derived-origin/1" },
+        state: "terminal",
+        terminal: { status: "succeeded" },
+      });
+      expect(await controller.administration.runStatus(immediate)).toMatchObject({ state: "pending" });
+      releasePublisher();
+      await controller.drain();
+
+      nextDerived = new Promise((resolve) => { derivedSettled = resolve; });
+      const rescanned = await controller.administration.startRun({
+        submissionId: "hook-controller-terminal-rescan",
+        target: { kind: "binding", id: "producer" },
+        input: { mode: "terminal-rescan" },
+      });
+      const rescannedDerived = await nextDerived;
+      await controller.drain();
+      expect(await controller.administration.runStatus(rescanned)).toMatchObject({
+        state: "terminal",
+        terminal: { status: "succeeded" },
+      });
+      expect(rescannedDerived).toMatchObject({
+        origin: { kind: "private-root-hook-derived-origin/1" },
+        state: "terminal",
+        terminal: { status: "succeeded" },
+      });
+      expect([...executions.values()]).toEqual([1, 1, 1, 1]);
+    } finally {
+      releasePublisher();
+      await controller?.dispose();
+      await fixture.dispose();
+    }
+  }, 90_000);
+
   test("projects durable root Runs through the closed administration authority", async () => {
     const fixture = await createFixture("ready");
     let controller: Awaited<ReturnType<typeof openPrivateRootAdministrationController>> | undefined;

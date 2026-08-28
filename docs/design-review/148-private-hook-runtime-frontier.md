@@ -1,6 +1,6 @@
 # Private Hook runtime frontier
 
-**Status:** selected on 2026-08-27 for one private vertical proof. This record
+**Status:** closed on 2026-08-28 as one private vertical proof. This record
 does not publish Hook authoring, a Journal query API, a scheduler SPI, or a
 general Event-source model.
 
@@ -141,13 +141,21 @@ until a later control-plane inspection design earns it.
 ## 6. Recovery and refusal
 
 The project controller pumps durable pending Hook roots after append and after
-any lost wake while the same coordinator still owns the epoch. On coordinator
-restart it preserves the existing conservative rule: unresolved older-epoch
-work becomes the already defined honest `COORDINATOR_LOST` terminal because
-the store cannot prove whether dispatch began. Dispatch ownership still uses
-the coordinator epoch, spawn intent is durable before package execution,
-success is never inferred from process disappearance, and Hook work receives
-no special replay loophole.
+any lost wake while the same coordinator still owns the epoch. The trusted
+Journal path signals a nonthrowing, coalesced scan after every append attempt;
+signalling from `finally` covers a commit followed by receipt-reconstruction
+failure, while a scan with no committed work is harmless. A terminal root task
+scans again before settling, and controller drain reaches a fixed point across
+accepted submissions, background scans, and all Runs they discover. No timer
+or polling loop is required. A fence-unconfirmed `pending` result does not
+self-reschedule, avoiding an unbounded retry loop.
+
+On coordinator restart the controller preserves the existing conservative
+rule: unresolved older-epoch work becomes the already defined honest
+`COORDINATOR_LOST` terminal because the store cannot prove whether dispatch
+began. Dispatch ownership still uses the coordinator epoch, spawn intent is
+durable before package execution, success is never inferred from process
+disappearance, and Hook work receives no special replay loophole.
 
 This slice fails closed on:
 
@@ -182,3 +190,28 @@ The focused corpus must prove:
 The slice stops after this witness. Hook revocation commands, public Hook
 inspection, Event reads, producer construction, Service providers, Agents,
 Semantic Choice, and Sley remain later verticals.
+
+## 8. Executable controller evidence
+
+The focused non-privileged controller proof commits a real Hook outbox row
+while its publisher task remains gated. Two immediate wake notifications still
+execute the derived Run once, and that Run reaches its durable terminal before
+the publisher is released. A second append deliberately omits its immediate
+wake; the publisher-terminal scan finds and executes the derived Run before
+`drain()` returns. The complete durable-store file passes 26 tests and 219
+assertions, including corruption, fan-out, concurrent append, admission-race,
+and controller cases.
+
+After the full Linux capability preflight, the privileged witness runs one
+admitted Bun publisher through the canonical Journal and one admitted Hook
+into an exact Python consumer. The consumer receives the immutable Event and
+reaches its successful durable terminal while the publisher remains pending.
+The coordinator-loss continuation creates a second exact derivation whose
+Python consumer remains live until the coordinator is killed. Before the kill,
+the proof identifies that Run through the crash publisher, exact Event and Hook
+derivation, observes its durable spawn intent, and confirms one derivation.
+After reopening the project it observes the same Hook origin and byte-identical
+Event input terminated as `COORDINATOR_LOST`; a second reopen proves the append
+count and derivation count remain unchanged and no work is redispatched. The
+focused hostile case passes 25 assertions in 82.6 seconds; an independent
+post-test scan finds zero Jig Run cgroups and zero private device directories.

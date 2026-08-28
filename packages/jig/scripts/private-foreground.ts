@@ -144,13 +144,14 @@ async function applyRun(input: {
     projectRoot,
     packageStoreRoot,
     runTimeoutMs: RUN_TIMEOUT_MS,
-    execute: (runId, coordinator, signal) => executePrivateRootRunLaunch({
+    execute: (runId, coordinator, signal, notifyWorkAvailable) => executePrivateRootRunLaunch({
       projectRoot,
       packageStoreRoot,
       runId,
       coordinator,
       runtimeSupport: host.runtimeSupport,
       backend: host.backend,
+      notifyWorkAvailable,
       signal,
     }),
   });

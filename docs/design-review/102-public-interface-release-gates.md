@@ -34,7 +34,12 @@ private Bun Binding can now invoke the exact canonical Journal `append`
 effect, with protected contract validation, attenuated producer/type
 authority, durable multi-operation replay/conflict semantics, atomic Event and
 operation closure, parent-release evidence, and restart recovery without
-redispatch. This is not yet a published Jig SDK or complete product control
+redispatch. That Journal path now also selects exact admitted Hook revisions
+and atomically allocates their derived root Runs. The project controller
+coalesces append wakes with durable rescans, executes one exact Python consumer
+from a Bun publisher, drains to a fixed point, and reconciles unresolved
+older-epoch Hook work to `COORDINATOR_LOST` without another append or dispatch.
+This is not yet a published Jig SDK or complete product control
 plane: Root Administration/1, its machine schema, and its private controller
 cover in-process start/status, while generic Runtime Adapter and Sandbox
 Backend models, non-Journal effects, project-authority issuance,
@@ -203,11 +208,14 @@ Reviews 131–137 record that chain. It proves one concrete vertical path, not a
 public lock schema, administration API, Runtime Adapter SPI, or Sandbox Backend
 SPI.
 
-Hooks, Service export references, instruction Agent selection,
-`semanticChoice`, and host-capability Bindings remain later gated slices. The
-private `@jigging/jig/experimental/hooks` overlay is implementation evidence,
-not a reopened Project Authoring SDK/1 or a satisfied Hook runtime gate. The
-zero-boilerplate target is resolved; only the changing admitted routing
+Service export references, instruction Agent selection, `semanticChoice`, and
+host-capability Bindings remain later gated slices. The private
+`@jigging/jig/experimental/hooks` overlay and its corresponding admitted
+runtime are now a closed private proof: inert authoring, exact revision
+intervals, atomic derivation, prompt same-epoch execution, and conservative
+restart loss all have executable evidence. They do not reopen Project
+Authoring SDK/1 or publish Hook authoring, inspection, replay, or scheduling.
+The zero-boilerplate target is resolved; only the changing admitted routing
 universe remains open in
 [`101-default-targets-and-open-routing-candidate.md`](101-default-targets-and-open-routing-candidate.md).
 
@@ -315,7 +323,7 @@ consumer review of the installed tarball passes. None of this pretends the one
 proof mechanism has established a generic Runtime Adapter or Sandbox Backend
 SPI.
 
-The succeeding deterministic-composition slice is also complete. It adds one
+The deterministic-composition slice is also complete. It adds one
 private Binding with one exact child-Flow slot, one durable Run/1 operation,
 same-generation resolution, child result admission, child-first fencing, and
 replacement-coordinator cleanup without redispatch. It intentionally adds no
@@ -323,9 +331,21 @@ public child-Run administration or general dispatcher/scheduler surface. The
 complete evidence and limits are in
 [`144-deterministic-child-flow-closure.md`](144-deterministic-child-flow-closure.md).
 
-Neither slice adds a Service, Hook, Agent, Semantic Choice, Jig Graph compiler,
-update watcher, Nix dependency, ambient runtime fallback, or public Backend or
-Runtime Adapter SPI.
+The canonical-Journal and Hook slices are complete as private vertical proofs.
+The first closes one exact `effect/call` append with durable operation and
+parent-aggregate evidence. The second atomically selects admitted Hook
+revisions, allocates derived roots, promptly executes them through the same
+controller, and proves coordinator-loss reconciliation without duplicate
+append, derivation, or dispatch. They add no public Hook SDK, Event query,
+callback, subscription, producer construction, or scheduler SPI. Their exact
+evidence and limits are in
+[`146-private-journal-effect-closure.md`](146-private-journal-effect-closure.md)
+and
+[`148-private-hook-runtime-frontier.md`](148-private-hook-runtime-frontier.md).
+
+None of the closed slices adds a public Service host, Agent, Semantic Choice,
+Jig Graph compiler, update watcher, Nix dependency, ambient runtime fallback,
+or public Backend or Runtime Adapter SPI.
 
 Before an independent probe consumes it, the candidate must prove:
 
@@ -346,10 +366,13 @@ passes a clean external-module consumer, and clears the independent consumer
 review recorded in review 139. Publication remains a product release decision,
 not a claim implied by this checkpoint.
 
-No next product phase is selected by this inventory. The Nix decontamination
-boundary remains in
+The next selected private phase is the deliberately bounded Service-hosting
+proof in
+[`149-private-service-hosting-frontier.md`](149-private-service-hosting-frontier.md).
+That selection does not publish a Service controller or change the completed
+Hook boundary. The Nix decontamination boundary remains in
 [`130-nix-experiment-disposition-and-next-slice.md`](130-nix-experiment-disposition-and-next-slice.md);
-the latest completed execution boundary is review 144.
+the latest completed execution boundary is review 148.
 
 ## Machine-readable release gates
 

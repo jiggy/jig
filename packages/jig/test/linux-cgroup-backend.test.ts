@@ -52,6 +52,7 @@ import {
   createPrivateActivationReviewPlan,
   loadPrivateActiveActivation,
   loadPrivateActivationReviewPlan,
+  loadPrivateRootRun,
   publishPrivateActivationCandidate,
   requirePrivateStoredActivationCandidate,
 } from "../src/internal/activation-admission-store.js";
@@ -1729,13 +1730,14 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         projectRoot: root,
         packageStoreRoot: store,
         runTimeoutMs: 20_000,
-        execute: (runId, coordinator, signal) => executePrivateRootRunLaunch({
+        execute: (runId, coordinator, signal, notifyWorkAvailable) => executePrivateRootRunLaunch({
           projectRoot: root,
           packageStoreRoot: store,
           runId,
           coordinator,
           runtimeSupport: reacquiredBun.runtimeSupport,
           backend: rootBackend,
+          notifyWorkAvailable,
           signal,
         }),
       });
@@ -1791,13 +1793,14 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         projectRoot: root,
         packageStoreRoot: store,
         runTimeoutMs: 20_000,
-        execute: (runId, coordinator, signal) => executePrivateRootRunLaunch({
+        execute: (runId, coordinator, signal, notifyWorkAvailable) => executePrivateRootRunLaunch({
           projectRoot: root,
           packageStoreRoot: store,
           runId,
           coordinator,
           runtimeSupport: reacquiredBun.runtimeSupport,
           backend: rootBackend,
+          notifyWorkAvailable,
           signal,
         }),
       });
@@ -1825,9 +1828,12 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
     }
   });
 
-  test("runs canonical Journal effects through one admitted Bun root", async () => {
+  test("runs canonical Journal effects from one Bun root into one Python Hook Run", async () => {
     host = await hostConfiguration();
-    const bun = await proofHostBunClosure();
+    const [bun, python] = await Promise.all([
+      proofHostBunClosure(),
+      proofHostPythonClosure(),
+    ]);
     const distribution = await realpath(join(import.meta.dir, "..", "dist"));
     const root = await mkdtemp(join(tmpdir(), "jig-journal-project-"));
     const store = await mkdtemp(join(tmpdir(), "jig-journal-store-"));
@@ -1843,10 +1849,16 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
     let crashed: ReturnType<typeof spawn> | undefined;
     try {
       await mkdir(join(root, "bindings"));
+      await mkdir(join(root, "hooks"));
       await mkdir(join(root, "flows", "journal-run"), { recursive: true });
+      await mkdir(join(root, "flows", "journal-consumer"), { recursive: true });
       await writeFile(join(root, "jig.ts"), [
-        'import { defineJig, discover } from "@jigging/jig";',
-        'export default defineJig({ flows: discover("flows"), bindings: discover("bindings") });',
+        'import { defineJig, discover } from "@jigging/jig/experimental/hooks";',
+        'export default defineJig({',
+        '  flows: discover("flows"),',
+        '  bindings: discover("bindings"),',
+        '  hooks: discover("hooks"),',
+        '});',
         "",
       ].join("\n"));
       await writeFile(join(root, "bindings", "publisher.ts"), [
@@ -1864,6 +1876,14 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         "export default defineBinding({",
         '  package: "flows/journal-run",',
         '  slots: { journal: bindingRef("publisher") },',
+        "});",
+        "",
+      ].join("\n"));
+      await writeFile(join(root, "hooks", "on-first.ts"), [
+        'import { bindingRef, defineHook, flowRef } from "@jigging/jig/experimental/hooks";',
+        "export default defineHook({",
+        '  on: { publisher: bindingRef("publisher"), type: "https://example.test/events/first" },',
+        '  run: flowRef("flows/journal-consumer"),',
         "});",
         "",
       ].join("\n"));
@@ -1901,9 +1921,12 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         "};",
         "",
         "await serve(async (context) => {",
+        '  const request = context.input && typeof context.input === "object" ? context.input : {};',
+        '  const hookDelayMs = typeof request.hookDelayMs === "number" ? request.hookDelayMs : 0;',
+        "  const firstData = hookDelayMs > 0 ? { value: 1, hookDelayMs } : { value: 1 };",
         "  const firstCall = {",
         '    operationId: "publish-first", slot: "journal", method: "append",',
-        '    input: { type: "https://example.test/events/first", data: { value: 1 } },',
+        '    input: { type: "https://example.test/events/first", data: firstData },',
         "  };",
         "  const first = await context.callEffect(firstCall);",
         "  const replay = await context.callEffect(firstCall);",
@@ -1931,29 +1954,101 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         "",
       ].join("\n"));
 
+      const consumer = join(root, "flows", "journal-consumer");
+      await writeFile(join(consumer, "FLOW.md"), [
+        "---",
+        "name: journal-consumer",
+        "description: Returns the exact immutable Event from one contained Python Run.",
+        "---",
+        "",
+      ].join("\n"));
+      const eventSchema = {
+        type: "object",
+        properties: {
+          eventId: { type: "string" },
+          journalPosition: { type: "integer" },
+          type: { const: "https://example.test/events/first" },
+          source: { const: "binding:publisher" },
+          committedAtUnixMs: { type: "integer" },
+          data: {},
+          runId: { type: "string" },
+        },
+        required: [
+          "eventId", "journalPosition", "type", "source", "committedAtUnixMs", "data", "runId",
+        ],
+        additionalProperties: false,
+      } as const;
+      await writeFile(join(consumer, "input.schema.json"), JSON.stringify({
+        $schema: "https://flow.dev/schemas/schema-1.json",
+        ...eventSchema,
+      }));
+      await writeFile(join(consumer, "result.schema.json"), JSON.stringify({
+        $schema: "https://flow.dev/schemas/schema-1.json",
+        type: "object",
+        properties: {
+          outcome: { const: "done" },
+          output: {
+            type: "object",
+            properties: { event: eventSchema },
+            required: ["event"],
+            additionalProperties: false,
+          },
+        },
+        required: ["outcome", "output"],
+        additionalProperties: false,
+      }));
+      const pythonSdk = join(consumer, "flowmd_sdk");
+      await mkdir(pythonSdk);
+      for (const name of ["__init__.py", "_json.py", "_runtime.py", "_service.py", "_types.py"]) {
+        await writeFile(
+          join(pythonSdk, name),
+          await readFile(join(import.meta.dir, "..", "..", "flowmd-sdk", "src", "flowmd_sdk", name)),
+        );
+      }
+      await writeFile(join(consumer, "flow.py"), [
+        "#!/usr/bin/env python",
+        "import asyncio",
+        "from flowmd_sdk import serve",
+        "",
+        "async def run(context):",
+        '    data = context.input.get("data") if isinstance(context.input, dict) else None',
+        '    delay_ms = data.get("hookDelayMs") if isinstance(data, dict) else None',
+        "    if isinstance(delay_ms, (int, float)) and delay_ms > 0:",
+        "        await asyncio.sleep(delay_ms / 1000)",
+        '    return {"outcome": "done", "output": {"event": context.input}}',
+        "",
+        "serve(run)",
+        "",
+      ].join("\n"));
+
       const aggregate = await retainPackageProject({ projectRoot: root, storeRoot: store, evaluator });
       expect(aggregate.linked.bindings).toHaveLength(1);
       expect(aggregate.linked.journalPublishers).toHaveLength(1);
-      const [request] = buildPrivateActivationRequests(aggregate.linked);
-      expect(request!.target).toEqual({ kind: "binding", id: "journal-run" });
-      const recipe = await planPrivateDirectRun({
-        request: request!,
-        runtimeSupport: bun.runtimeSupport,
+      expect(aggregate.linked.hooks).toHaveLength(1);
+      const requests = buildPrivateActivationRequests(aggregate.linked);
+      const request = requests.find(({ target }) =>
+        target.kind === "binding" && target.id === "journal-run"
+      );
+      expect(request?.target).toEqual({ kind: "binding", id: "journal-run" });
+      const runtimeSupport = Object.freeze({ bun: bun.runtimeSupport, python: python.runtimeSupport });
+      const recipes = await Promise.all(requests.map(async (candidate) => await planPrivateDirectRun({
+        request: candidate,
+        runtimeSupport,
         backend: rootBackend,
-      });
+      })));
       const planning = createPrivateActivationPlanningObservation({
         policyDigest: testDigest("journal-policy"),
-        mechanismDigest: recipe.mechanismDigest,
-        entries: [{
-          target: request!.target,
-          requestDigest: request!.digest,
-          disposition: { state: "planned" as const, observation: recipe.observation },
-        }],
+        mechanismDigest: recipes[0]!.mechanismDigest,
+        entries: requests.map((candidate, index) => ({
+          target: candidate.target,
+          requestDigest: candidate.digest,
+          disposition: { state: "planned" as const, observation: recipes[index]!.observation },
+        })),
       });
       const candidate = createPrivateActivationCandidate(
         aggregate,
         resolveRetainedPackageProjectObservation(aggregate, planning),
-        recipe,
+        recipes,
       );
       await publishPrivateActivationCandidate({ projectRoot: root, packageStoreRoot: store, candidate });
       const review = await createPrivateActivationReviewPlan({
@@ -1967,28 +2062,62 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         planDigest: review.planDigest,
         baseGeneration: null,
       });
-      const runtimeSupport = Object.freeze({ bun: bun.runtimeSupport });
       const openController = async () => await openPrivateRootAdministrationController({
         projectRoot: root,
         packageStoreRoot: store,
         runTimeoutMs: 45_000,
-        execute: (runId, coordinator, signal) => executePrivateRootRunLaunch({
+        execute: (runId, coordinator, signal, notifyWorkAvailable) => executePrivateRootRunLaunch({
           projectRoot: root,
           packageStoreRoot: store,
           runId,
           coordinator,
           runtimeSupport,
           backend: rootBackend,
+          notifyWorkAvailable,
           signal,
         }),
       });
 
+      const databasePath = join(root, ".jig", "private-activation-admission-v13.sqlite3");
       controller = await openController();
       const submitted = await controller.administration.startRun({
         submissionId: "journal-success",
         target: request!.target,
-        input: {},
+        input: { delayMs: 20_000 },
       });
+      const initialDerivation = await waitForHookDerivedRun(
+        databasePath,
+        submitted.runId,
+        "publish-first",
+      );
+      const derived = await waitForTerminalRootRun(root, initialDerivation.runId, 15_000);
+      expect(derived).toMatchObject({
+        origin: { kind: "private-root-hook-derived-origin/1" },
+        input: {
+          journalPosition: 1,
+          type: "https://example.test/events/first",
+          source: "binding:publisher",
+          data: { value: 1 },
+          runId: submitted.runId,
+        },
+        state: "terminal",
+        terminal: {
+          status: "succeeded",
+          result: {
+            outcome: "done",
+            output: {
+              event: {
+                journalPosition: 1,
+                type: "https://example.test/events/first",
+                source: "binding:publisher",
+                data: { value: 1 },
+                runId: submitted.runId,
+              },
+            },
+          },
+        },
+      });
+      expect(await controller.administration.runStatus(submitted)).toMatchObject({ state: "pending" });
       await controller.drain();
       const status = await controller.administration.runStatus(submitted);
       expect(status).toMatchObject({
@@ -2007,7 +2136,6 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         },
       });
 
-      const databasePath = join(root, ".jig", "private-activation-admission-v13.sqlite3");
       const sqlite = createRequire(import.meta.url)("bun:sqlite") as any;
       const database = sqlite.Database.open(
         databasePath,
@@ -2044,6 +2172,25 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         await childExit(crashed!);
         throw new Error(`${String(error)}: ${await diagnostics}`);
       });
+      const crashDerivation = await waitForHookDerivedRun(
+        databasePath,
+        abandoned.runId,
+        "publish-first",
+      );
+      await waitForRootExecutionPrepared(databasePath, crashDerivation.runId).catch(async (error) => {
+        crashed!.kill("SIGKILL");
+        await childExit(crashed!);
+        throw new Error(`${String(error)}: ${await diagnostics}`);
+      });
+      expect(await loadPrivateRootRun({ projectRoot: root, runId: crashDerivation.runId })).toMatchObject({
+        origin: {
+          kind: "private-root-hook-derived-origin/1",
+          eventId: crashDerivation.eventId,
+        },
+        input: crashDerivation.event,
+        state: "spawn-intent",
+      });
+      expect(await hookDerivationCount(databasePath, crashDerivation.eventId)).toBe(1);
       crashed.kill("SIGKILL");
       expect((await childExit(crashed)).signal).toBe("SIGKILL");
       crashed = undefined;
@@ -2053,7 +2200,33 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         state: "terminal",
         terminal: { status: "lost", code: "COORDINATOR_LOST" },
       });
+      expect(await loadPrivateRootRun({
+        projectRoot: root,
+        runId: crashDerivation.runId,
+      })).toMatchObject({
+        origin: {
+          kind: "private-root-hook-derived-origin/1",
+          eventId: crashDerivation.eventId,
+        },
+        input: crashDerivation.event,
+        state: "terminal",
+        terminal: { status: "lost", code: "COORDINATOR_LOST" },
+      });
       expect(await rootJournalAppendCount(databasePath, abandoned.runId)).toBe(2);
+      expect(await hookDerivationCount(databasePath, crashDerivation.eventId)).toBe(1);
+      await controller.dispose();
+      controller = undefined;
+
+      controller = await openController();
+      expect(await loadPrivateRootRun({
+        projectRoot: root,
+        runId: crashDerivation.runId,
+      })).toMatchObject({
+        state: "terminal",
+        terminal: { status: "lost", code: "COORDINATOR_LOST" },
+      });
+      expect(await rootJournalAppendCount(databasePath, abandoned.runId)).toBe(2);
+      expect(await hookDerivationCount(databasePath, crashDerivation.eventId)).toBe(1);
       await controller.dispose();
       controller = undefined;
       expect(await jigCgroups(host.scope)).toEqual([]);
@@ -2416,13 +2589,14 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         projectRoot: root,
         packageStoreRoot: store,
         runTimeoutMs,
-        execute: (runId, coordinator, signal) => executePrivateRootRunLaunch({
+        execute: (runId, coordinator, signal, notifyWorkAvailable) => executePrivateRootRunLaunch({
           projectRoot: root,
           packageStoreRoot: store,
           runId,
           coordinator,
           runtimeSupport,
           backend: selectedBackend,
+          notifyWorkAvailable,
           signal,
         }),
       });
@@ -3021,6 +3195,91 @@ async function rootJournalAppendCount(
     databasePath,
     "SELECT count(*) AS count FROM root_journal_appends WHERE parent_run_id = ?1",
     parentRunId,
+  );
+}
+
+async function waitForHookDerivedRun(
+  databasePath: string,
+  parentRunId: string,
+  operationId: string,
+  timeoutMs = 20_000,
+): Promise<{
+  readonly runId: string;
+  readonly eventId: string;
+  readonly event: unknown;
+}> {
+  const deadline = Date.now() + timeoutMs;
+  const sqlite = createRequire(import.meta.url)("bun:sqlite") as any;
+  while (true) {
+    let database: any;
+    try {
+      database = sqlite.Database.open(
+        databasePath,
+        sqlite.constants.SQLITE_OPEN_READONLY | sqlite.constants.SQLITE_OPEN_NOFOLLOW,
+      );
+      const rows = database.query([
+        "SELECT hook_derivations.run_id, journal_events.event_id, journal_events.event_bytes",
+        "FROM root_journal_appends",
+        "JOIN journal_events ON journal_events.position = root_journal_appends.event_position",
+        "JOIN hook_derivations ON hook_derivations.event_id = journal_events.event_id",
+        "WHERE root_journal_appends.parent_run_id = ?1 AND root_journal_appends.operation_id = ?2",
+      ].join(" ")).all(parentRunId, operationId) as readonly {
+        readonly run_id: string;
+        readonly event_id: string;
+        readonly event_bytes: Uint8Array;
+      }[];
+      if (rows.length === 1) {
+        return Object.freeze({
+          runId: rows[0]!.run_id,
+          eventId: rows[0]!.event_id,
+          event: JSON.parse(new TextDecoder().decode(rows[0]!.event_bytes)),
+        });
+      }
+      if (rows.length > 1) throw new Error("Hook Event selected more than one identical derivation");
+    } catch (error) {
+      if ((error as { readonly code?: unknown }).code !== "SQLITE_BUSY") throw error;
+    } finally {
+      database?.close(true);
+    }
+    if (Date.now() >= deadline) throw new Error("Hook Event did not allocate its exact derived Run");
+    await Bun.sleep(50);
+  }
+}
+
+async function waitForTerminalRootRun(
+  projectRoot: string,
+  runId: string,
+  timeoutMs: number,
+): Promise<Awaited<ReturnType<typeof loadPrivateRootRun>>> {
+  const deadline = Date.now() + timeoutMs;
+  while (true) {
+    const run = await retryAdmissionBusy(() => loadPrivateRootRun({ projectRoot, runId }));
+    if (run.state === "terminal") return run;
+    if (Date.now() >= deadline) throw new Error("Hook-derived Run did not settle before timeout");
+    await Bun.sleep(50);
+  }
+}
+
+async function waitForRootExecutionPrepared(
+  databasePath: string,
+  runId: string,
+  timeoutMs = 20_000,
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (await queryAdmissionCount(databasePath, [
+    "SELECT count(*) AS count FROM root_execution_lifecycles",
+    "WHERE run_id = ?1 AND prepared_digest IS NOT NULL",
+  ].join(" "), runId) !== 1) {
+    if (Date.now() >= deadline) throw new Error("Hook-derived Run did not reach preparation before timeout");
+    await Bun.sleep(50);
+  }
+}
+
+async function hookDerivationCount(databasePath: string, eventId: string): Promise<number> {
+  return await queryAdmissionCount(
+    databasePath,
+    "SELECT count(*) AS count FROM hook_derivations WHERE event_id = ?1",
+    eventId,
   );
 }
 

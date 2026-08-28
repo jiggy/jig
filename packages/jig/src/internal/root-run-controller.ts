@@ -114,6 +114,7 @@ export async function executePrivateRootRunLaunch(input: {
   readonly coordinator: PrivateProjectCoordinator;
   readonly runtimeSupport: PrivateDirectRunRuntimeSupport;
   readonly backend: PrivateLinuxCgroupBackend;
+  readonly notifyWorkAvailable: () => void;
   readonly signal?: AbortSignal;
 }): Promise<PrivateRootExecutionDisposition> {
   await input.coordinator.verify();

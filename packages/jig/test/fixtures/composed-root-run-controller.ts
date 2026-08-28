@@ -71,20 +71,21 @@ const controller = await openPrivateRootAdministrationController({
   projectRoot,
   packageStoreRoot,
   runTimeoutMs: 60_000,
-  execute: (runId, coordinator, signal) => executePrivateRootRunLaunch({
+  execute: (runId, coordinator, signal, notifyWorkAvailable) => executePrivateRootRunLaunch({
     projectRoot,
     packageStoreRoot,
     runId,
     coordinator,
     runtimeSupport,
     backend,
+    notifyWorkAvailable,
     signal,
   }),
 });
 const handle = await controller.administration.startRun({
   submissionId,
   target: { kind: "binding", id: bindingId },
-  input: { delayMs: 30_000 },
+  input: { delayMs: 30_000, hookDelayMs: 30_000 },
 });
 console.log(JSON.stringify(handle));
 await Bun.sleep(3_600_000);
