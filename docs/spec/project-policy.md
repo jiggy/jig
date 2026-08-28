@@ -522,20 +522,20 @@ The admission operation semantics are summarized as:
 
 ```text
 plan() -> {
-  planDigest,
-  captureDigest,
-  semanticDigest,
-  activeGeneration,
-  normalizedDelta,
-  authorityDelta
+  state: "unchanged" | "applicable",
+  planDigest?
 }
 
-apply(planDigest, activeGeneration) ->
-  admissionReceipt | STALE_PLAN | INVALID_CANDIDATE
+apply(planDigest) ->
+  admissionReceipt | lockRepairReceipt | STALE_PLAN | INVALID_CANDIDATE
 ```
 
-These names are explanatory. Authentication, transport, closed delta/result
-schemas, and the public host SDK/CLI remain release gates.
+The retained Plan itself binds its base generation, exact candidate, proposed
+lock, final activation meaning, and visible-lock observation. A renderer may
+derive capture, before/after, delta, and authority views from that immutable
+Plan and its bound base; those views are not separate policy truths. These
+names are explanatory. Authentication, transport, closed result schemas, and
+the public host SDK/CLI remain release gates.
 
 Three domain-separated identities answer different questions:
 
@@ -544,21 +544,27 @@ captureDigest
     Which exact retained source, membership, evaluator, and toolchain
     observation produced this result?
 
-semanticDigest
-    Which normalized behavior, dependencies, exact executable/provider
-    artifacts, authority, and pinned readiness recipes would be admitted?
+observedSemanticDigest
+    Which normalized behavior and observed planning dispositions produced the
+    proposal before final recipe selection?
+
+activationMeaningDigest
+    Which normalized behavior, exact final READY recipes or UNAVAILABLE
+    evidence, provider edges, settings, and requested authority would be
+    admitted?
 
 planDigest
     Which exact capture, semantic result, resolution-input snapshot, proposed
     portable lock, and active-generation base was reviewed?
 ```
 
-The semantic digest excludes declaration spelling, comments, root inode, and
-per-evaluation enforcement counters. It includes exact executable artifacts,
-so an implementation byte change is never formatting-only. The plan digest
-commits to `captureDigest`, `semanticDigest`, the complete immutable
-resolution-input snapshot identity, proposed lock digest, and base generation.
-All three are internal Jig evidence, not FLOW metadata.
+The final activation-meaning digest excludes declaration spelling, comments,
+root inode, and per-evaluation enforcement counters. It includes exact
+executable artifacts and final dispositions, so an implementation byte change
+is never formatting-only. The plan digest commits to `captureDigest`, both
+semantic identities, the complete immutable resolution-input snapshot,
+proposed lock, exact visible-lock observation, final targets, and base
+generation. All four are internal Jig evidence, not FLOW metadata.
 
 `jig apply` displays one aggregate semantic and authority review. A UI may
 notify that watched changes are pending and offer Apply, but the watcher never
@@ -597,13 +603,14 @@ active generation, Jig may record it as an equivalent observation without new
 consent, without replacing active artifacts, and without advancing the
 generation. It never retargets an outstanding plan for an older capture.
 
-Headless use supplies the exact reviewed pair, for example:
+Headless use supplies the exact reviewed Plan identity, for example:
 
 ```text
-jig apply --plan <digest> --active-generation <generation> --yes
+jig apply --plan <digest> --yes
 ```
 
-Without it, the candidate remains pending.
+The Plan supplies the compare-and-set base. Without an exact retained Plan,
+the candidate remains pending.
 
 ## 7. Consent and the lock
 

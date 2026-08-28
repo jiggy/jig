@@ -84,6 +84,17 @@ admissible unavailable target. `locked` planning requires visible `jig.lock`
 to be byte-identical to the proposal; absence or difference is
 `LOCK_MISMATCH`.
 
+The first planner uses one closed dispatcher over only the exact recipes the
+repository has proved. It maps an authenticated missing runtime to
+`RUNTIME_UNAVAILABLE`, a missing required containment mechanism to
+`SANDBOX_UNAVAILABLE`, and a valid request which the closed recipe cannot
+enforce to `PERMISSION_UNENFORCEABLE`. Those records commit bounded,
+domain-separated evidence identities over the request and authenticated host
+facts. They never contain exception text or host paths. Structurally invalid
+retained meaning fails the whole proposal as `INVALID_CANDIDATE`; an unexpected
+implementation failure is `INTERNAL`. Planning must not turn an arbitrary
+caught error into reviewable unavailability.
+
 ## 3. Safe empty-store bootstrap
 
 Planning, not apply, may create the first private project state. Trusted
@@ -163,11 +174,26 @@ fallback selection.
 - whether applying the Plan can create an admission or only repair the
   visible lock.
 
-The proposed review state contains all currently earned normalized package,
-Binding, settings, attachment, dependency, closed candidate-set, Hook,
-logical provider, activation-disposition, and authority facts. Canonical
-ordering and closed unions make its bytes the review authority; explanatory
-CLI prose is not part of Plan identity.
+The proposed review state is deliberately not a second package, Binding, Hook,
+or authority model. Its complete canonical shape is the proposed private lock
+and the ordered final activation targets:
+
+```text
+proposed
+    lockDigest
+    lock
+    targets
+```
+
+The lock already carries the earned normalized package, Binding, contract,
+provider-edge, Hook, and portable requested-authority facts. Each complete
+activation request carries its settings, attachments, slots, and closed
+candidate sets. Each final disposition carries exact `READY` recipe and
+observation identities or exact `UNAVAILABLE` code and evidence. Expanded
+`before`, delta, authority, and provider views are derived renderings, not
+additional policy truth. Canonical ordering and closed unions make the Plan
+bytes the review authority; explanatory CLI prose is not part of Plan
+identity.
 
 The active `before` state is not duplicated in Plan bytes. It is derived from
 the immutable admission named by `baseGeneration`, or from the specified empty
@@ -179,11 +205,15 @@ and `delta` as three truths would enlarge the corruption and consistency
 surface without granting more authority.
 
 The visible lock is the exception because it is mutable and cannot be derived
-from the active admission. Plan storage retains its exact canonical bytes (or
-exact absence) and digest, not merely a digest which becomes unauditable after
-the file changes. The complete Plan and retained observation must remain
-within the private bounded-value limits or planning fails rather than
-truncating review evidence.
+from the active admission. Plan storage retains exact absence or the complete
+decoded canonical private-lock value and its recomputed digest. In this first
+boundary a present `jig.lock` is reviewable only when its bytes are the one
+bounded canonical serialization of that value. Malformed, noncanonical,
+oversized, unsafe, or unreadable lock state is `LOCK_MISMATCH`; planning does
+not retain arbitrary bytes, guess an encoding, or silently overwrite them.
+The user may remove or repair the file and plan again. The complete Plan and
+retained observation must remain within the private bounded-value limits or
+planning fails rather than truncating review evidence.
 
 Later UI changes may render the same canonical facts differently. If exact
 display retention becomes a compliance requirement, that display belongs in
@@ -456,10 +486,13 @@ Before freezing any public candidate, the private slice must prove:
     inspected at the honest limits in section 6;
 15. object closure, project-busy behavior, bounded review values, and corrupt
     base-chain rejection are exact;
-16. one CLI plan process and a separate CLI apply process communicate only the
-    retained `planDigest`; and
-17. an independent consumer uses only the frozen two-operation subset before
-    any package export or public machine schema is added.
+16. one private plan process and a separate private apply process communicate
+    only the retained `planDigest`; the installed CLI remains gated on a
+    trusted project-opening and host-policy acquisition path; and
+17. a separately compiled test-only consumer uses an explicitly copied closed
+    two-operation candidate surface. A package export and independent packed
+    consumer are later publication gates, not prerequisites which can somehow
+    consume an unexported interface.
 
 Implementation remains private until those gates pass. It adds no
 `openProject`, daemon, socket, list/watch/cancel, remote authentication,
