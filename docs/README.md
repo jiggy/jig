@@ -78,6 +78,9 @@ Current implementation frontier:
   closes the first private Agent Run value and Flow-local skill-projection
   proof. It deliberately leaves provider registration, real containment,
   durable effect ownership, and the public provider ABI open.
+- [`design-review/158-agent-provider-boundary.md`](design-review/158-agent-provider-boundary.md)
+  records why the next contained Agent-provider checkpoint cannot honestly be
+  derived from a mutable fixture or an absent operator registration substrate.
 
 The focused Run/1 specification owns its finite wire surface. The remaining
 cross-cutting system rules are in the canonical architecture:

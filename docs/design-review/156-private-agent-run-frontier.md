@@ -2,7 +2,8 @@
 
 **Status:** the first logical-projection checkpoint is closed on 2026-08-28 in
 commit `66821ba`. Provider registration, real process containment, and durable
-root-effect checkpoints remain open. This record publishes no Agent-provider
+root-effect checkpoints remain blocked at the operator-owned registration
+boundary recorded in review 158. This record publishes no Agent-provider
 SPI, provider registry, Agent Binding, projection ABI, or root effect.
 
 ## 1. Why the vertical is staged
