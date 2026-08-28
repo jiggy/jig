@@ -5,6 +5,8 @@ import type { ExactComponentExit, ExactComponentProcess } from "../src/run/sessi
 import {
   ServiceHostSession,
   type ServiceHostActivation,
+  type ServiceHostInvocationGate,
+  type ServiceHostSessionGates,
 } from "../src/service/session.js";
 
 describe("private ServiceHostSession", () => {
@@ -48,6 +50,534 @@ describe("private ServiceHostSession", () => {
     process.emit({ jsonrpc: "2.0", id: "host:1", result: {} });
     process.finish(0);
     expect(await stopped).toMatchObject({ status: "succeeded" });
+  });
+
+  test("opens readiness only after allocation, acknowledgement write, and acknowledgement persistence", async () => {
+    const process = new FakeProcess();
+    const before = controlled<void>();
+    const after = controlled<void>();
+    const beforeEntered = controlled<void>();
+    const afterEntered = controlled<void>();
+    const events: string[] = [];
+    const service = new ServiceHostSession(process, activation(), {}, gates({
+      async beforeAcknowledgement(exports) {
+        events.push(`allocate:${exports.join(",")}`);
+        expect(Object.isFrozen(exports)).toBe(true);
+        beforeEntered.resolve();
+        await before.promise;
+      },
+      async afterAcknowledgementWrite(exports) {
+        events.push(`ack-complete:${exports.join(",")}`);
+        afterEntered.resolve();
+        await after.promise;
+      },
+    }));
+
+    const started = service.start();
+    await process.nextHost();
+    process.emit(ready("provider:1", ["sessions"]));
+    await beforeEntered.promise;
+    expect(events).toEqual(["allocate:sessions"]);
+    expect(process.writes().some(isReadinessAcknowledgement)).toBe(false);
+    expect(await service.invokeDetailed(invocation("read", null))).toMatchObject({
+      source: "host-prewrite",
+      terminal: { status: "failed", code: "OWNER_CLOSED" },
+    });
+
+    before.resolve();
+    expect(await process.nextHost()).toEqual({ jsonrpc: "2.0", id: "provider:1", result: {} });
+    await afterEntered.promise;
+    expect(events).toEqual(["allocate:sessions", "ack-complete:sessions"]);
+    expect(await service.invokeDetailed(invocation("read", null))).toMatchObject({
+      source: "host-prewrite",
+      terminal: { status: "failed", code: "OWNER_CLOSED" },
+    });
+
+    after.resolve();
+    await started;
+    await cleanStop(service, process);
+  });
+
+  test("fails closed before acknowledgement when durable generation allocation fails", async () => {
+    const process = new FakeProcess();
+    const service = new ServiceHostSession(process, activation(), { cancellationGraceMs: 1 }, gates({
+      async beforeAcknowledgement() {
+        throw new Error("generation store unavailable");
+      },
+    }));
+    const started = service.start();
+    await process.nextHost();
+    process.emit(ready("provider:1", ["sessions"]));
+    await expect(started).rejects.toThrow("EXECUTION_FAILED");
+    expect(process.writes().some(isReadinessAcknowledgement)).toBe(false);
+    expect(await service.result()).toMatchObject({ status: "failed", code: "EXECUTION_FAILED" });
+  });
+
+  test("fences ambiguous readiness after acknowledgement bytes but before durable completion", async () => {
+    const process = new FakeProcess();
+    const service = new ServiceHostSession(process, activation(), { cancellationGraceMs: 1 }, gates({
+      async afterAcknowledgementWrite() {
+        throw new Error("ack completion was not durable");
+      },
+    }));
+    const started = service.start();
+    await process.nextHost();
+    process.emit(ready("provider:1", ["sessions"]));
+    expect(await process.nextHost()).toEqual({ jsonrpc: "2.0", id: "provider:1", result: {} });
+    await expect(started).rejects.toThrow("EXECUTION_FAILED");
+    expect(process.writes().some(isReadinessAcknowledgement)).toBe(true);
+    expect(await service.invokeDetailed(invocation("read", null))).toMatchObject({
+      source: "host-prewrite",
+      terminal: { status: "failed", code: "OWNER_CLOSED" },
+    });
+    expect(await service.result()).toMatchObject({ status: "failed", code: "EXECUTION_FAILED" });
+  });
+
+  test("treats a rejected acknowledgement write as ambiguous and skips durable completion", async () => {
+    const process = new FakeProcess();
+    const events: string[] = [];
+    const service = new ServiceHostSession(process, activation(), { cancellationGraceMs: 1 }, gates({
+      async beforeAcknowledgement() {
+        events.push("allocated");
+      },
+      async afterAcknowledgementWrite() {
+        events.push("ack-complete");
+      },
+    }));
+    const started = service.start();
+    await process.nextHost();
+    process.rejectNextWrite(new Error("transport completion was ambiguous"));
+    process.emit(ready("provider:1", ["sessions"]));
+    await expect(started).rejects.toThrow("CHANNEL_LOST");
+    expect(events).toEqual(["allocated"]);
+    expect(await service.invokeDetailed(invocation("read", null))).toMatchObject({
+      source: "host-prewrite",
+      terminal: { status: "failed", code: "OWNER_CLOSED" },
+    });
+    expect(await service.result()).toMatchObject({ status: "failed", code: "CHANNEL_LOST" });
+  });
+
+  test("accepts an immediate Mount terminal after the acknowledgement while readiness becomes durable", async () => {
+    const process = new FakeProcess();
+    const persist = controlled<void>();
+    const persistEntered = controlled<void>();
+    const service = new ServiceHostSession(process, activation(), {}, gates({
+      async afterAcknowledgementWrite() {
+        persistEntered.resolve();
+        await persist.promise;
+      },
+    }));
+    const started = service.start();
+    await process.nextHost();
+    process.emit(ready("provider:1", ["sessions"]));
+    expect(await process.nextHost()).toEqual({ jsonrpc: "2.0", id: "provider:1", result: {} });
+    await persistEntered.promise;
+
+    process.emit({ jsonrpc: "2.0", id: "host:1", result: {} });
+    process.finish(0);
+    persist.resolve();
+    await started;
+    expect(await service.result()).toMatchObject({ status: "succeeded" });
+  });
+
+  test("keeps the startup bound active while an immediate terminal waits on acknowledgement durability", async () => {
+    const process = new FakeProcess();
+    const entered = controlled<void>();
+    let aborted = false;
+    const service = new ServiceHostSession(process, {
+      ...activation(),
+      startupDeadlineUnixMs: Date.now() + 25,
+    }, { cancellationGraceMs: 1 }, gates({
+      async afterAcknowledgementWrite(_exports, signal) {
+        entered.resolve();
+        await new Promise<void>((resolve) => {
+          if (signal.aborted) resolve();
+          else signal.addEventListener("abort", () => resolve(), { once: true });
+        });
+        aborted = true;
+      },
+    }));
+    const started = service.start();
+    await process.nextHost();
+    process.emit(ready("provider:1", ["sessions"]));
+    await process.nextHost();
+    await entered.promise;
+    process.emit({ jsonrpc: "2.0", id: "host:1", result: {} });
+    await expect(started).rejects.toThrow("DEADLINE_EXCEEDED");
+    expect(aborted).toBe(true);
+    expect(await service.result()).toMatchObject({ status: "failed", code: "DEADLINE_EXCEEDED" });
+  });
+
+  test("preserves an initialization-error Mount terminal across delayed cleanup", async () => {
+    const process = new FakeProcess();
+    const service = new ServiceHostSession(process, {
+      ...activation(),
+      startupDeadlineUnixMs: Date.now() + 15,
+    });
+    const started = service.start();
+    await process.nextHost();
+    process.emit({
+      jsonrpc: "2.0",
+      id: "host:1",
+      error: {
+        code: -32000,
+        message: "Provider initialization was denied",
+        data: { code: "PERMISSION_DENIED" },
+      },
+    });
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    process.finish(0);
+    await expect(started).rejects.toThrow("PERMISSION_DENIED");
+    expect(await service.result()).toMatchObject({
+      status: "failed",
+      code: "PERMISSION_DENIED",
+      message: "Provider initialization was denied",
+    });
+  });
+
+  test("does not re-arm startup after an initialization error races Mount-write completion", async () => {
+    const process = new FakeProcess();
+    const releaseWrite = controlled<void>();
+    process.holdNextWriteUntil(releaseWrite.promise);
+    const service = new ServiceHostSession(process, {
+      ...activation(),
+      startupDeadlineUnixMs: Date.now() + 20,
+    });
+    const started = service.start();
+    await process.nextHost();
+    process.emit({
+      jsonrpc: "2.0",
+      id: "host:1",
+      error: {
+        code: -32000,
+        message: "Provider could not initialize",
+        data: { code: "UNAVAILABLE" },
+      },
+    });
+    await new Promise((resolve) => setTimeout(resolve, 1));
+    releaseWrite.resolve();
+    await new Promise((resolve) => setTimeout(resolve, 45));
+    process.finish(0);
+    await expect(started).rejects.toThrow("UNAVAILABLE");
+    expect(await service.result()).toMatchObject({
+      status: "failed",
+      code: "UNAVAILABLE",
+      message: "Provider could not initialize",
+    });
+  });
+
+  test("does not reopen readiness when stop races a normally resolving post-ack gate", async () => {
+    const process = new FakeProcess();
+    const entered = controlled<void>();
+    const release = controlled<void>();
+    const service = new ServiceHostSession(process, activation(), {}, gates({
+      async afterAcknowledgementWrite(_exports, signal) {
+        entered.resolve();
+        await new Promise<void>((resolve) => {
+          if (signal.aborted) resolve();
+          else signal.addEventListener("abort", () => resolve(), { once: true });
+        });
+        await release.promise;
+      },
+    }));
+    const started = service.start();
+    await process.nextHost();
+    process.emit(ready("provider:1", ["sessions"]));
+    await process.nextHost();
+    await entered.promise;
+    const stopped = service.stop();
+    expect(await process.nextHost()).toEqual(cancel("host:1"));
+    process.emit({ jsonrpc: "2.0", id: "host:1", result: {} });
+    process.finish(0);
+    release.resolve();
+    await expect(started).rejects.toThrow("ended before readiness");
+    expect(await stopped).toMatchObject({ status: "succeeded" });
+  });
+
+  test("aborts every readiness gate on a malformed Provider frame", async () => {
+    for (const stage of ["before", "after"] as const) {
+      const process = new FakeProcess();
+      const entered = controlled<void>();
+      const exited = controlled<void>();
+      const block = async (signal: AbortSignal): Promise<void> => {
+        entered.resolve();
+        await new Promise<void>((resolve) => {
+          if (signal.aborted) resolve();
+          else signal.addEventListener("abort", () => resolve(), { once: true });
+        });
+        exited.resolve();
+      };
+      const service = new ServiceHostSession(process, activation(), {}, gates({
+        ...(stage === "before" ? {
+          beforeAcknowledgement: async (_exports, signal) => block(signal),
+        } : {
+          afterAcknowledgementWrite: async (_exports, signal) => block(signal),
+        }),
+      }));
+      const started = service.start();
+      await process.nextHost();
+      process.emit(ready("provider:1", ["sessions"]));
+      if (stage === "after") await process.nextHost();
+      await entered.promise;
+      process.emit(malformedCancellation());
+      await exited.promise;
+      await expect(started).rejects.toThrow("PROTOCOL_ERROR");
+      expect(await service.result()).toMatchObject({ status: "failed", code: "PROTOCOL_ERROR" });
+    }
+  });
+
+  test("runs the durable dispatch gate directly before the first invocation frame byte", async () => {
+    const process = new FakeProcess();
+    const dispatch = controlled<void>();
+    const entered = controlled<void>();
+    const seen: string[] = [];
+    const service = new ServiceHostSession(process, activation(), {}, gates());
+    const gate = invocationGate({
+      async beforeDispatch() {
+        seen.push("allocation-one");
+        entered.resolve();
+        await dispatch.promise;
+      },
+    });
+    await startReady(service, process);
+    const invoked = service.invokeDetailed(invocation("read", { key: "one" }), gate);
+    await entered.promise;
+    expect(seen).toEqual(["allocation-one"]);
+    expect(process.writes().some(isInvocation)).toBe(false);
+    dispatch.resolve();
+    expect(await process.nextHost()).toMatchObject({ id: "host:2", method: "service/invoke" });
+    process.emit({ jsonrpc: "2.0", id: "host:2", result: { value: "ok" } });
+    expect(await invoked).toEqual({
+      source: "provider-response",
+      terminal: { status: "succeeded", value: "ok" },
+    });
+    await cleanStop(service, process);
+  });
+
+  test("records a rejected dispatch gate as host-prewrite without losing the Provider", async () => {
+    const process = new FakeProcess();
+    let reject = true;
+    const service = new ServiceHostSession(process, activation(), {}, gates());
+    await startReady(service, process);
+    expect(await service.invokeDetailed(invocation("read", "not-sent"), invocationGate({
+      async beforeDispatch() {
+        if (reject) throw new Error("invocation record unavailable");
+      },
+    }))).toMatchObject({
+      source: "host-prewrite",
+      terminal: { status: "failed", code: "UNAVAILABLE" },
+    });
+    expect(process.writes().some(isInvocation)).toBe(false);
+
+    reject = false;
+    const invoked = service.invokeDetailed(invocation("read", "sent"), invocationGate({
+      async beforeDispatch() {
+        if (reject) throw new Error("invocation record unavailable");
+      },
+    }));
+    expect(await process.nextHost()).toMatchObject({ method: "service/invoke", params: { input: "sent" } });
+    process.emit({ jsonrpc: "2.0", id: "host:3", result: { value: null } });
+    expect((await invoked).source).toBe("provider-response");
+    await cleanStop(service, process);
+  });
+
+  test("keeps identical concurrent invocation allocations correlated by their per-call gates", async () => {
+    const process = new FakeProcess();
+    const firstGate = controlled<void>();
+    const secondGate = controlled<void>();
+    const entered: string[] = [];
+    const service = new ServiceHostSession(process, activation());
+    await startReady(service, process);
+
+    const request = invocation("read", { same: true });
+    const first = service.invokeDetailed(request, invocationGate({
+      async beforeDispatch() {
+        entered.push("allocation-a");
+        await firstGate.promise;
+      },
+    }));
+    const second = service.invokeDetailed(request, invocationGate({
+      async beforeDispatch() {
+        entered.push("allocation-b");
+        await secondGate.promise;
+      },
+    }));
+    await until(() => entered.length === 1);
+    expect(entered).toEqual(["allocation-a"]);
+    expect(process.writes().some(isInvocation)).toBe(false);
+    firstGate.resolve();
+    expect(await process.nextHost()).toMatchObject({ id: "host:2", method: "service/invoke" });
+    await until(() => entered.length === 2);
+    expect(entered).toEqual(["allocation-a", "allocation-b"]);
+    secondGate.resolve();
+    expect(await process.nextHost()).toMatchObject({ id: "host:3", method: "service/invoke" });
+    process.emit({ jsonrpc: "2.0", id: "host:2", result: { value: "a" } });
+    process.emit({ jsonrpc: "2.0", id: "host:3", result: { value: "b" } });
+    expect(await first).toMatchObject({ source: "provider-response", terminal: { value: "a" } });
+    expect(await second).toMatchObject({ source: "provider-response", terminal: { value: "b" } });
+    await cleanStop(service, process);
+  });
+
+  test("waits for cancellation-aware dispatch-gate quiescence before closing prewrite work", async () => {
+    const process = new FakeProcess();
+    const entered = controlled<void>();
+    const quiesce = controlled<void>();
+    const observations: string[] = [];
+    const service = new ServiceHostSession(process, activation());
+    await startReady(service, process);
+    const cancellation = new AbortController();
+    const invoked = service.invokeDetailed(
+      { ...invocation("read", "never-dispatched"), signal: cancellation.signal },
+      invocationGate({
+        async beforeDispatch(signal) {
+          expect(signal).not.toBe(cancellation.signal);
+          entered.resolve();
+          await new Promise<void>((resolve) => {
+            if (signal.aborted) resolve();
+            else signal.addEventListener("abort", () => resolve(), { once: true });
+          });
+          observations.push("aborted");
+          await quiesce.promise;
+          observations.push("quiesced");
+        },
+      }),
+    );
+    await entered.promise;
+    let terminalVisible = false;
+    void invoked.then(() => {
+      terminalVisible = true;
+    });
+    cancellation.abort();
+    await until(() => observations.includes("aborted"));
+    expect(terminalVisible).toBe(false);
+    expect(process.writes().some(isInvocation)).toBe(false);
+    quiesce.resolve();
+    expect(await invoked).toMatchObject({
+      source: "host-prewrite",
+      terminal: { status: "failed", code: "CANCELLED" },
+    });
+    expect(observations).toEqual(["aborted", "quiesced"]);
+    expect(process.writes().some(isInvocation)).toBe(false);
+    await cleanStop(service, process);
+  });
+
+  test("aborts and drains a dispatch gate before protocol failure can settle", async () => {
+    const process = new FakeProcess();
+    const entered = controlled<void>();
+    const exited = controlled<void>();
+    const service = new ServiceHostSession(process, activation());
+    await startReady(service, process);
+    const invoked = service.invokeDetailed(invocation("read", "malformed"), invocationGate({
+      async beforeDispatch(signal) {
+        entered.resolve();
+        await new Promise<void>((resolve) => {
+          if (signal.aborted) resolve();
+          else signal.addEventListener("abort", () => resolve(), { once: true });
+        });
+        exited.resolve();
+      },
+    }));
+    await entered.promise;
+    process.emit(malformedCancellation());
+    await exited.promise;
+    expect(await invoked).toMatchObject({ source: "host-prewrite" });
+    expect(await service.result()).toMatchObject({ status: "failed", code: "PROTOCOL_ERROR" });
+    expect(process.writes().some(isInvocation)).toBe(false);
+  });
+
+  test("aborts Host-only prewrite work when the Provider ends its Mount", async () => {
+    const process = new FakeProcess();
+    const entered = controlled<void>();
+    let gateAborted = false;
+    const service = new ServiceHostSession(process, activation());
+    await startReady(service, process);
+    const invoked = service.invokeDetailed(invocation("read", "terminal"), invocationGate({
+      async beforeDispatch(signal) {
+        entered.resolve();
+        await new Promise<void>((resolve) => {
+          if (signal.aborted) resolve();
+          else signal.addEventListener("abort", () => resolve(), { once: true });
+        });
+        gateAborted = true;
+      },
+    }));
+    await entered.promise;
+    process.emit({ jsonrpc: "2.0", id: "host:1", result: {} });
+    process.finish(0);
+    expect(await invoked).toMatchObject({
+      source: "host-prewrite",
+      terminal: { status: "failed", code: "OWNER_CLOSED" },
+    });
+    expect(gateAborted).toBe(true);
+    expect(await service.result()).toMatchObject({ status: "succeeded" });
+    expect(process.writes().some(isInvocation)).toBe(false);
+  });
+
+  test("aborts and drains a prewrite gate before stop can settle the Mount", async () => {
+    const process = new FakeProcess();
+    const entered = controlled<void>();
+    const gateStopped = controlled<void>();
+    const service = new ServiceHostSession(process, activation());
+    await startReady(service, process);
+    const invoked = service.invokeDetailed(invocation("read", "stop"), invocationGate({
+      async beforeDispatch(signal) {
+        entered.resolve();
+        await new Promise<void>((resolve) => {
+          if (signal.aborted) resolve();
+          else signal.addEventListener("abort", () => resolve(), { once: true });
+        });
+        gateStopped.resolve();
+      },
+    }));
+    await entered.promise;
+    const stopped = service.stop();
+    await gateStopped.promise;
+    expect(await invoked).toMatchObject({
+      source: "host-prewrite",
+      terminal: { status: "failed", code: "CANCELLED" },
+    });
+    expect(await process.nextHost()).toEqual(cancel("host:1"));
+    process.emit({ jsonrpc: "2.0", id: "host:1", result: {} });
+    process.finish(0);
+    expect(await stopped).toMatchObject({ status: "succeeded" });
+    expect(process.writes().some(isInvocation)).toBe(false);
+  });
+
+  test("distinguishes Provider response, cooperative cancellation, and Provider loss", async () => {
+    const process = new FakeProcess();
+    const service = new ServiceHostSession(process, activation(), {}, gates());
+    await startReady(service, process);
+
+    const responded = service.invokeDetailed(invocation("read", "response"));
+    await process.nextHost();
+    process.emit({ jsonrpc: "2.0", id: "host:2", result: { value: 1 } });
+    expect(await responded).toEqual({
+      source: "provider-response",
+      terminal: { status: "succeeded", value: 1 },
+    });
+
+    const cancellation = new AbortController();
+    const cancelled = service.invokeDetailed({
+      ...invocation("read", "cancel"),
+      signal: cancellation.signal,
+    });
+    await process.nextHost();
+    cancellation.abort();
+    expect(await process.nextHost()).toEqual(cancel("host:3"));
+    process.emit({ jsonrpc: "2.0", id: "host:3", result: { value: "settled" } });
+    expect(await cancelled).toMatchObject({
+      source: "cooperative-cancellation",
+      terminal: { status: "failed", code: "CANCELLED" },
+    });
+
+    const lost = service.invokeDetailed(invocation("read", "lost"));
+    await process.nextHost();
+    process.finish(9);
+    expect(await lost).toMatchObject({
+      source: "provider-loss",
+      terminal: { status: "failed", code: "UNAVAILABLE" },
+    });
+    expect(await service.result()).toMatchObject({ status: "failed" });
   });
 
   test("rejects a readiness set that differs from admission", async () => {
@@ -421,6 +951,60 @@ function invocation(method: string, input: JsonValue) {
   } as const;
 }
 
+function gates(overrides: Partial<ServiceHostSessionGates> = {}): ServiceHostSessionGates {
+  return {
+    async beforeAcknowledgement(): Promise<void> {},
+    async afterAcknowledgementWrite(): Promise<void> {},
+    ...overrides,
+  };
+}
+
+function invocationGate(overrides: Partial<ServiceHostInvocationGate> = {}): ServiceHostInvocationGate {
+  return {
+    async beforeDispatch(): Promise<void> {},
+    ...overrides,
+  };
+}
+
+function controlled<T>(): {
+  readonly promise: Promise<T>;
+  resolve(value?: T): void;
+} {
+  let resolvePromise!: (value: T) => void;
+  const promise = new Promise<T>((resolve) => {
+    resolvePromise = resolve;
+  });
+  return {
+    promise,
+    resolve(value?: T): void {
+      resolvePromise(value as T);
+    },
+  };
+}
+
+async function until(predicate: () => boolean): Promise<void> {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    if (predicate()) return;
+    await new Promise((resolve) => setTimeout(resolve, 1));
+  }
+  throw new Error("condition was not reached");
+}
+
+function isReadinessAcknowledgement(value: JsonValue): boolean {
+  return value !== null
+    && !Array.isArray(value)
+    && typeof value === "object"
+    && (value as JsonObject).id === "provider:1"
+    && Object.hasOwn(value, "result");
+}
+
+function isInvocation(value: JsonValue): boolean {
+  return value !== null
+    && !Array.isArray(value)
+    && typeof value === "object"
+    && (value as JsonObject).method === "service/invoke";
+}
+
 async function startReady(service: ServiceHostSession, process: FakeProcess): Promise<void> {
   const started = service.start();
   await process.nextHost();
@@ -470,6 +1054,10 @@ function cancel(requestId: string): JsonObject {
   return { jsonrpc: "2.0", method: "request/cancel", params: { requestId } };
 }
 
+function malformedCancellation(): JsonObject {
+  return { jsonrpc: "2.0", method: "request/cancel", params: { requestId: "host:1", extra: true } };
+}
+
 function operationCode(value: JsonValue): string {
   return (((value as JsonObject).error as JsonObject).data as JsonObject).code as string;
 }
@@ -489,7 +1077,10 @@ class FakeProcess implements ExactComponentProcess {
   readonly stderr = new BytePipe();
   readonly completion: Promise<ExactComponentExit>;
   private readonly host = new ValuePipe();
+  private readonly writtenValues: JsonValue[] = [];
   private readonly complete: (exit: ExactComponentExit) => void;
+  private nextWriteFailure?: Error;
+  private nextWriteHold?: Promise<void>;
   private finished = false;
 
   constructor() {
@@ -503,7 +1094,17 @@ class FakeProcess implements ExactComponentProcess {
   async write(bytes: Uint8Array): Promise<void> {
     if (this.finished) throw new Error("process already exited");
     if (bytes.at(-1) !== 0x0a) throw new Error("host write is not framed");
-    this.host.push(decodeJson1(bytes.subarray(0, -1)));
+    if (this.nextWriteFailure !== undefined) {
+      const error = this.nextWriteFailure;
+      this.nextWriteFailure = undefined;
+      throw error;
+    }
+    const value = decodeJson1(bytes.subarray(0, -1));
+    this.writtenValues.push(value);
+    this.host.push(value);
+    const hold = this.nextWriteHold;
+    this.nextWriteHold = undefined;
+    await hold;
   }
 
   async closeInput(): Promise<void> {}
@@ -514,6 +1115,18 @@ class FakeProcess implements ExactComponentProcess {
 
   async nextHost(): Promise<JsonValue> {
     return this.host.next();
+  }
+
+  writes(): readonly JsonValue[] {
+    return this.writtenValues;
+  }
+
+  rejectNextWrite(error: Error): void {
+    this.nextWriteFailure = error;
+  }
+
+  holdNextWriteUntil(release: Promise<void>): void {
+    this.nextWriteHold = release;
   }
 
   emit(value: JsonValue): void {

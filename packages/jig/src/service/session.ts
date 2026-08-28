@@ -67,6 +67,19 @@ export type ServiceInvocationTerminal =
       readonly details?: JsonValue;
     };
 
+/** Private evidence about where one invocation terminal became knowable. */
+export type ServiceInvocationTerminalSource =
+  | "host-prewrite"
+  | "provider-response"
+  | "provider-loss"
+  | "cooperative-cancellation";
+
+/** Private detailed projection used by the durable Service owner. */
+export interface ServiceInvocationObservation {
+  readonly terminal: ServiceInvocationTerminal;
+  readonly source: ServiceInvocationTerminalSource;
+}
+
 export type ServiceHostTerminal =
   | { readonly status: "succeeded"; readonly diagnostics: RunDiagnostics }
   | {
@@ -82,6 +95,32 @@ export interface ServiceHostLimits {
   readonly stdoutBytes: number;
   readonly stderrBytes: number;
   readonly capturedStderrBytes: number;
+}
+
+/**
+ * Private durability gates supplied by the Service owner.
+ *
+ * These callbacks are trusted Host machinery, not Service/1 methods. A
+ * readiness acknowledgement is not admissible until both readiness gates
+ * settle in order. Gates must honor the supplied cancellation signal and the
+ * Host's bound: JavaScript cannot safely abandon a promise which may still
+ * mutate durable state.
+ */
+export interface ServiceHostSessionGates {
+  beforeAcknowledgement(exports: readonly string[], signal: AbortSignal): Promise<void>;
+  afterAcknowledgementWrite(exports: readonly string[], signal: AbortSignal): Promise<void>;
+}
+
+/**
+ * One exact durable invocation allocation, supplied separately per call.
+ * The gate runs in the ordered write queue directly before the first
+ * service/invoke frame byte. It must settle after cancellation before its
+ * durable allocation can be closed. Correlation belongs to the closure: Jig
+ * passes only its own cancellation signal, never mutable caller data or the
+ * caller's AbortSignal.
+ */
+export interface ServiceHostInvocationGate {
+  beforeDispatch(signal: AbortSignal): Promise<void>;
 }
 
 interface ParsedRequest {
@@ -124,8 +163,10 @@ interface Deferred<T> {
 interface InvocationRecord {
   readonly id: string;
   readonly request: ServiceHostInvocation;
-  readonly terminal: Deferred<ServiceInvocationTerminal>;
-  phase: "queued" | "open" | "terminal";
+  readonly terminal: Deferred<ServiceInvocationObservation>;
+  readonly beforeDispatch: ServiceHostInvocationGate["beforeDispatch"];
+  readonly gateAbort: AbortController;
+  phase: "queued" | "gating" | "open" | "terminal";
   cancellation?: { readonly code: "CANCELLED" | "DEADLINE_EXCEEDED"; readonly message: string };
   mountFailed?: boolean;
   abortListener?: () => void;
@@ -144,6 +185,21 @@ const DEFAULT_LIMITS: ServiceHostLimits = Object.freeze({
   capturedStderrBytes: 64 * 1024,
 });
 
+const NOOP_GATES: ServiceHostSessionGates = Object.freeze({
+  async beforeAcknowledgement(): Promise<void> {},
+  async afterAcknowledgementWrite(): Promise<void> {},
+});
+
+const NOOP_INVOCATION_GATE: ServiceHostInvocationGate = Object.freeze({
+  async beforeDispatch(): Promise<void> {},
+});
+
+class ServicePrewriteGateError extends Error {
+  constructor(cause: unknown) {
+    super(`Service invocation dispatch gate failed: ${errorText(cause)}`);
+  }
+}
+
 /** Private Service/1 Host seam over one already selected exact process. */
 export class ServiceHostSession {
   private readonly limits: ServiceHostLimits;
@@ -159,6 +215,9 @@ export class ServiceHostSession {
   private phase: "new" | "starting" | "ready-acking" | "ready" | "stopping" | "terminal" | "failed" = "new";
   private mountWritten = false;
   private readinessSeen = false;
+  private readinessDurable = false;
+  private readinessCancelled = false;
+  private readonly readinessAbort = new AbortController();
   private mountTerminal?: { readonly kind: "success" } | {
     readonly kind: "failure";
     readonly code: WireFailureCode;
@@ -179,15 +238,22 @@ export class ServiceHostSession {
   private mountGraceTimer?: ReturnType<typeof setTimeout>;
   private abortListener?: () => void;
   private readonly activation: ServiceHostActivation;
+  private readonly gates: ServiceHostSessionGates;
 
   constructor(
     private readonly process: ExactComponentProcess,
     activation: ServiceHostActivation,
     limits: Partial<ServiceHostLimits> = {},
+    gates: ServiceHostSessionGates = NOOP_GATES,
   ) {
     this.limits = Object.freeze({ ...DEFAULT_LIMITS, ...limits });
     validateLimits(this.limits);
     validateActivation(activation);
+    validateGates(gates);
+    this.gates = Object.freeze({
+      beforeAcknowledgement: gates.beforeAcknowledgement.bind(gates),
+      afterAcknowledgementWrite: gates.afterAcknowledgementWrite.bind(gates),
+    });
     this.activation = snapshotActivation(activation);
     void this.readyDeferred.promise.catch(() => undefined);
     void this.completionDeferred.promise.catch(() => undefined);
@@ -222,24 +288,50 @@ export class ServiceHostSession {
   }
 
   invoke(request: ServiceHostInvocation): Promise<ServiceInvocationTerminal> {
+    return this.invokeDetailed(request).then((observation) => observation.terminal);
+  }
+
+  invokeDetailed(
+    request: ServiceHostInvocation,
+    gate: ServiceHostInvocationGate = NOOP_INVOCATION_GATE,
+  ): Promise<ServiceInvocationObservation> {
     validateInvocation(request);
+    validateInvocationGate(gate);
     if (request.signal?.aborted) {
-      return Promise.resolve(failedInvocation("CANCELLED", "Service invocation was cancelled before dispatch"));
+      return Promise.resolve(observe(
+        failedInvocation("CANCELLED", "Service invocation was cancelled before dispatch"),
+        "host-prewrite",
+      ));
     }
     if (Date.now() >= request.deadlineUnixMs) {
-      return Promise.resolve(failedInvocation("DEADLINE_EXCEEDED", "Service invocation deadline elapsed before dispatch"));
+      return Promise.resolve(observe(
+        failedInvocation("DEADLINE_EXCEEDED", "Service invocation deadline elapsed before dispatch"),
+        "host-prewrite",
+      ));
     }
     if (this.phase !== "ready") {
-      return Promise.resolve(failedInvocation("OWNER_CLOSED", "Service is not accepting invocations"));
+      return Promise.resolve(observe(
+        failedInvocation("OWNER_CLOSED", "Service is not accepting invocations"),
+        "host-prewrite",
+      ));
     }
     if (!this.activation.exports.includes(request.exportName)) {
-      return Promise.resolve(failedInvocation("INVALID_INPUT", "Service export is not bound by this Mount"));
+      return Promise.resolve(observe(
+        failedInvocation("INVALID_INPUT", "Service export is not bound by this Mount"),
+        "host-prewrite",
+      ));
     }
     if (this.hostIds.size >= MAX_REQUEST_IDS) {
-      return Promise.resolve(failedInvocation("RESOURCE_EXHAUSTED", "Service request-ID lifetime exhausted"));
+      return Promise.resolve(observe(
+        failedInvocation("RESOURCE_EXHAUSTED", "Service request-ID lifetime exhausted"),
+        "host-prewrite",
+      ));
     }
     if (this.invocations.size >= 63) {
-      return Promise.resolve(failedInvocation("RESOURCE_EXHAUSTED", "too many live Service invocations"));
+      return Promise.resolve(observe(
+        failedInvocation("RESOURCE_EXHAUSTED", "too many live Service invocations"),
+        "host-prewrite",
+      ));
     }
     const id = `host:${this.nextHostId}`;
     this.nextHostId += 1;
@@ -247,7 +339,9 @@ export class ServiceHostSession {
     const record: InvocationRecord = {
       id,
       request: snapshotInvocation(request),
-      terminal: deferred<ServiceInvocationTerminal>(),
+      terminal: deferred<ServiceInvocationObservation>(),
+      beforeDispatch: gate.beforeDispatch.bind(gate),
+      gateAbort: new AbortController(),
       phase: "queued",
     };
     this.invocations.set(id, record);
@@ -257,9 +351,36 @@ export class ServiceHostSession {
       () => {
         record.phase = "open";
       },
-      () => record.phase === "queued" && this.phase === "ready",
-    ).catch((error) => {
-      this.finishInvocation(record, failedInvocation("CHANNEL_LOST", `failed to write service/invoke: ${errorText(error)}`));
+      () => (
+        (record.phase === "queued" || record.phase === "gating")
+        && record.cancellation === undefined
+        && this.phase === "ready"
+      ),
+      async () => {
+        record.phase = "gating";
+        try {
+          await record.beforeDispatch(record.gateAbort.signal);
+        } catch (error) {
+          throw new ServicePrewriteGateError(error);
+        }
+      },
+    ).then(() => {
+      if (record.phase === "queued" || record.phase === "gating") this.finishPrewriteInvocation(record);
+    }).catch((error) => {
+      if (error instanceof ServicePrewriteGateError) {
+        if (record.cancellation !== undefined || record.mountFailed === true) this.finishPrewriteInvocation(record);
+        else this.finishInvocation(
+          record,
+          failedInvocation("UNAVAILABLE", error.message),
+          "host-prewrite",
+        );
+        return;
+      }
+      this.finishInvocation(
+        record,
+        failedInvocation("CHANNEL_LOST", `failed to write service/invoke: ${errorText(error)}`),
+        "provider-loss",
+      );
       this.fail("CHANNEL_LOST", `failed to write service/invoke: ${errorText(error)}`);
     });
     this.own(send);
@@ -270,6 +391,8 @@ export class ServiceHostSession {
     if (this.phase === "new") throw new Error("Service has not started");
     if (this.phase === "starting" || this.phase === "ready-acking" || this.phase === "ready") {
       this.phase = "stopping";
+      if (!this.readinessDurable) this.readinessCancelled = true;
+      this.readinessAbort.abort();
       for (const invocation of this.invocations.values()) {
         this.cancelInvocation(invocation, "CANCELLED", "Service Mount is stopping");
       }
@@ -307,13 +430,14 @@ export class ServiceHostSession {
     const readinessError = new Error(
       terminal.status === "failed" ? `${terminal.code}: ${terminal.message}` : "Service ended before readiness",
     );
-    if (!this.readinessSeen || terminal.status === "failed") this.readyDeferred.reject(readinessError);
+    if (!this.readinessDurable || terminal.status === "failed") this.readyDeferred.reject(readinessError);
     for (const invocation of [...this.invocations.values()]) {
       this.finishInvocation(
         invocation,
         invocation.cancellation === undefined || invocation.mountFailed === true
           ? failedInvocation("UNAVAILABLE", "Service Provider was lost")
           : failedInvocation(invocation.cancellation.code, invocation.cancellation.message),
+        "provider-loss",
       );
     }
     this.completionDeferred.resolve(terminal);
@@ -471,11 +595,12 @@ export class ServiceHostSession {
       this.failProtocol("Provider sent readiness outside Mount initialization", errorMessage(request.id, -32600, "Invalid readiness"));
       return;
     }
+    let names: readonly string[];
     try {
       const params = requireObject(request.params, "service/ready params");
       requireExactKeys(params, ["ownerRequestId", "exports"]);
       if (requireWireId(params.ownerRequestId) !== MOUNT_ID) throw new Error("readiness has the wrong owner");
-      const names = requireNameArray(params.exports);
+      names = requireNameArray(params.exports);
       if (!sameStrings(names, this.activation.exports)) throw new Error("readiness export set differs from admission");
     } catch (error) {
       this.failProtocol(errorText(error), errorMessage(request.id, -32602, "Invalid params"));
@@ -484,20 +609,53 @@ export class ServiceHostSession {
     this.readinessSeen = true;
     this.phase = "ready-acking";
     this.pendingProviderResponses += 1;
-    const task = this.sendFrame({ jsonrpc: "2.0", id: request.id, result: {} }).then(
-      () => {
-        this.pendingProviderResponses -= 1;
-        if (this.localFailure !== undefined || this.phase !== "ready-acking") return;
-        this.phase = "ready";
-        if (this.startupTimer !== undefined) clearTimeout(this.startupTimer);
-        this.readyDeferred.resolve();
-      },
-      (error) => {
-        this.pendingProviderResponses -= 1;
-        this.fail("CHANNEL_LOST", `failed to acknowledge Service readiness: ${errorText(error)}`);
-      },
-    );
+    const task = this.acceptReadiness(request.id, Object.freeze([...names]));
     this.own(task);
+  }
+
+  private async acceptReadiness(requestId: string, exports: readonly string[]): Promise<void> {
+    let responsePending = true;
+    const releaseResponse = (): void => {
+      if (!responsePending) return;
+      responsePending = false;
+      this.pendingProviderResponses -= 1;
+    };
+    try {
+      try {
+        await this.gates.beforeAcknowledgement(exports, this.readinessAbort.signal);
+      } catch (error) {
+        if (this.readinessAbort.signal.aborted && this.phase !== "ready-acking") return;
+        this.fail("EXECUTION_FAILED", `Service readiness allocation gate failed: ${errorText(error)}`);
+        return;
+      }
+      if (this.localFailure !== undefined || this.phase !== "ready-acking") return;
+      try {
+        await this.sendFrame(
+          { jsonrpc: "2.0", id: requestId, result: {} },
+          releaseResponse,
+          () => this.localFailure === undefined && this.phase === "ready-acking",
+        );
+      } catch (error) {
+        this.fail("CHANNEL_LOST", `failed to acknowledge Service readiness: ${errorText(error)}`);
+        return;
+      }
+      if (this.localFailure !== undefined) return;
+      try {
+        await this.gates.afterAcknowledgementWrite(exports, this.readinessAbort.signal);
+      } catch (error) {
+        if (this.readinessAbort.signal.aborted && this.phase !== "ready-acking") return;
+        this.fail("EXECUTION_FAILED", `Service readiness acknowledgement gate failed: ${errorText(error)}`);
+        return;
+      }
+      if (this.localFailure !== undefined || this.readinessCancelled) return;
+      if (this.phase !== "ready-acking" && this.mountTerminal === undefined) return;
+      this.readinessDurable = true;
+      if (this.phase === "ready-acking") this.phase = "ready";
+      this.clearActivationWatchers();
+      this.readyDeferred.resolve();
+    } finally {
+      releaseResponse();
+    }
   }
 
   private receiveProviderCall(request: ParsedRequest): void {
@@ -569,7 +727,11 @@ export class ServiceHostSession {
     if (invocation.cancellation !== undefined) {
       terminal = failedInvocation(invocation.cancellation.code, invocation.cancellation.message);
     }
-    this.finishInvocation(invocation, terminal);
+    this.finishInvocation(
+      invocation,
+      terminal,
+      invocation.cancellation === undefined ? "provider-response" : "cooperative-cancellation",
+    );
   }
 
   private receiveMountTerminal(response: ParsedSuccess | ParsedError): void {
@@ -577,7 +739,9 @@ export class ServiceHostSession {
       this.failProtocol("Provider sent an unknown or duplicate Mount response");
       return;
     }
-    if (this.invocations.size !== 0 || this.pendingProviderResponses !== 0) {
+    const hasProviderOwnedInvocation = [...this.invocations.values()]
+      .some((invocation) => invocation.phase === "open");
+    if (hasProviderOwnedInvocation || this.pendingProviderResponses !== 0) {
       this.failProtocol("Provider ended the Mount before owned requests settled");
       return;
     }
@@ -594,8 +758,11 @@ export class ServiceHostSession {
       this.failProtocol(`invalid Mount response: ${errorText(error)}`);
       return;
     }
+    for (const invocation of this.invocations.values()) {
+      if (invocation.phase === "queued" || invocation.phase === "gating") invocation.gateAbort.abort();
+    }
     this.phase = "terminal";
-    this.clearActivationWatchers();
+    if (!this.readinessSeen || this.readinessDurable) this.clearActivationWatchers();
     this.closeProtocolInput();
   }
 
@@ -621,6 +788,17 @@ export class ServiceHostSession {
   }
 
   private armStartupDeadline(): void {
+    const needsStartupBound = (
+      !this.readinessDurable
+      && !this.readinessCancelled
+      && this.localFailure === undefined
+      && (
+        this.phase === "starting"
+        || this.phase === "ready-acking"
+        || this.readinessSeen
+      )
+    );
+    if (!needsStartupBound) return;
     const remaining = this.activation.startupDeadlineUnixMs - Date.now();
     if (remaining <= 0) {
       queueMicrotask(() => this.fail("DEADLINE_EXCEEDED", "Service startup deadline elapsed"));
@@ -657,8 +835,8 @@ export class ServiceHostSession {
   ): void {
     if (invocation.phase === "terminal" || invocation.cancellation !== undefined) return;
     invocation.cancellation = { code, message };
-    if (invocation.phase === "queued") {
-      this.finishInvocation(invocation, failedInvocation(code, message));
+    invocation.gateAbort.abort();
+    if (invocation.phase === "queued" || invocation.phase === "gating") {
       return;
     }
     this.own(this.sendFrame(cancelMessage(invocation.id)).catch((error) => {
@@ -667,7 +845,11 @@ export class ServiceHostSession {
     invocation.graceTimer = setTimeout(() => this.startTermination(), this.limits.cancellationGraceMs);
   }
 
-  private finishInvocation(invocation: InvocationRecord, terminal: ServiceInvocationTerminal): void {
+  private finishInvocation(
+    invocation: InvocationRecord,
+    terminal: ServiceInvocationTerminal,
+    source: ServiceInvocationTerminalSource,
+  ): void {
     if (invocation.phase === "terminal") return;
     invocation.phase = "terminal";
     this.invocations.delete(invocation.id);
@@ -676,7 +858,32 @@ export class ServiceHostSession {
     if (invocation.request.signal !== undefined && invocation.abortListener !== undefined) {
       invocation.request.signal.removeEventListener("abort", invocation.abortListener);
     }
-    invocation.terminal.resolve(terminal);
+    invocation.terminal.resolve(observe(terminal, source));
+  }
+
+  private finishPrewriteInvocation(invocation: InvocationRecord): void {
+    if (invocation.phase !== "queued" && invocation.phase !== "gating") return;
+    if (invocation.mountFailed === true) {
+      this.finishInvocation(
+        invocation,
+        failedInvocation("UNAVAILABLE", "Service Provider was lost before invocation dispatch"),
+        "host-prewrite",
+      );
+      return;
+    }
+    if (invocation.cancellation !== undefined) {
+      this.finishInvocation(
+        invocation,
+        failedInvocation(invocation.cancellation.code, invocation.cancellation.message),
+        "host-prewrite",
+      );
+      return;
+    }
+    this.finishInvocation(
+      invocation,
+      failedInvocation("OWNER_CLOSED", "Service stopped accepting the invocation before dispatch"),
+      "host-prewrite",
+    );
   }
 
   private sendMountCancellation(): void {
@@ -689,6 +896,9 @@ export class ServiceHostSession {
 
   private fail(code: RunHostFailureCode, message: string, details?: JsonValue): void {
     if (this.localFailure !== undefined) return;
+    if (!this.readinessDurable) this.readinessCancelled = true;
+    this.readinessAbort.abort();
+    this.abortInvocationGates();
     if (this.mountTerminal !== undefined) {
       this.recordFailure(code, message, details);
       this.startTermination();
@@ -710,6 +920,9 @@ export class ServiceHostSession {
 
   private failProtocol(message: string, diagnostic?: JsonObject): void {
     if (this.localFailure !== undefined) return;
+    if (!this.readinessDurable) this.readinessCancelled = true;
+    this.readinessAbort.abort();
+    this.abortInvocationGates();
     if (this.mountTerminal !== undefined) {
       this.recordFailure("PROTOCOL_ERROR", message);
       this.startTermination();
@@ -732,6 +945,10 @@ export class ServiceHostSession {
     this.localFailure ??= { code, message, ...(details === undefined ? {} : { details }) };
   }
 
+  private abortInvocationGates(): void {
+    for (const invocation of this.invocations.values()) invocation.gateAbort.abort();
+  }
+
   private hasProtocolFailure(): boolean {
     return this.localFailure?.code === "PROTOCOL_ERROR";
   }
@@ -740,15 +957,18 @@ export class ServiceHostSession {
     value: JsonObject,
     onWriteStart?: () => void,
     shouldWrite: () => boolean = () => true,
+    beforeWrite?: () => Promise<void>,
   ): Promise<void> {
     const payload = canonicalJson(value);
     const line = new Uint8Array(payload.byteLength + 1);
     line.set(payload);
     line[payload.byteLength] = 0x0a;
-    const write = this.writeTail.then(() => {
+    const write = this.writeTail.then(async () => {
+      if (!shouldWrite()) return;
+      await beforeWrite?.();
       if (!shouldWrite()) return;
       onWriteStart?.();
-      return this.process.write(line);
+      await this.process.write(line);
     });
     this.writeTail = write.catch(() => undefined);
     return write;
@@ -946,6 +1166,23 @@ function validateLimits(limits: ServiceHostLimits): void {
   if (limits.cancellationGraceMs > 2_147_483_647) throw new TypeError("cancellationGraceMs exceeds the timer range");
 }
 
+function validateGates(gates: ServiceHostSessionGates): void {
+  if (
+    gates === null
+    || typeof gates !== "object"
+    || typeof gates.beforeAcknowledgement !== "function"
+    || typeof gates.afterAcknowledgementWrite !== "function"
+  ) {
+    throw new TypeError("Service Host gates must provide both readiness callbacks");
+  }
+}
+
+function validateInvocationGate(gate: ServiceHostInvocationGate): void {
+  if (gate === null || typeof gate !== "object" || typeof gate.beforeDispatch !== "function") {
+    throw new TypeError("Service invocation gate must provide beforeDispatch");
+  }
+}
+
 function validateDeadline(value: number, name: string): void {
   if (!Number.isSafeInteger(value) || value < 0) throw new TypeError(`${name} must be a nonnegative safe integer`);
 }
@@ -1028,6 +1265,13 @@ function parseWireFailure(error: ParsedError["error"]): {
 
 function failedInvocation(code: RunHostFailureCode, message: string, details?: JsonValue): ServiceInvocationTerminal {
   return { status: "failed", code, message, ...(details === undefined ? {} : { details }) };
+}
+
+function observe(
+  terminal: ServiceInvocationTerminal,
+  source: ServiceInvocationTerminalSource,
+): ServiceInvocationObservation {
+  return Object.freeze({ terminal: Object.freeze(terminal), source });
 }
 
 function parseEnvelope(value: JsonValue): ParsedEnvelope {
