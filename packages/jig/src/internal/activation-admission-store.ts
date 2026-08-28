@@ -120,12 +120,12 @@ export type {
 } from "./root-run-state.js";
 
 const STATE_DIRECTORY = ".jig";
-const DATABASE_NAME = "private-activation-admission-v13.sqlite3";
+const DATABASE_NAME = "private-activation-admission-v14.sqlite3";
 const COORDINATOR_DATABASE_NAME = "private-project-coordinator-v1.sqlite3";
 const LOCK_NAME = "jig.lock";
 const LOCK_STAGE_NAME = "private-activation-jig-lock-v1.stage";
-const SCHEMA_VERSION = 13n;
-const APPLICATION_ID = 0x4a494741n; // JIGA: schema 13
+const SCHEMA_VERSION = 14n;
+const APPLICATION_ID = 0x4a494741n; // JIGA: schema 14
 const COORDINATOR_SCHEMA_VERSION = 1n;
 const COORDINATOR_APPLICATION_ID = 0x4a494743n; // JIGC
 const BUSY_TIMEOUT_MS = 250;
@@ -161,6 +161,10 @@ const CREATE_ROOT_JOURNAL_TERMINALS = "CREATE TABLE root_journal_terminals (pare
 const CREATE_ROOT_JOURNAL_HOOK_SELECTIONS = "CREATE TABLE root_journal_hook_selections (parent_run_id TEXT NOT NULL, operation_id TEXT NOT NULL, selection_digest TEXT NOT NULL UNIQUE, selection_bytes BLOB NOT NULL CHECK (length(selection_bytes) BETWEEN 1 AND 16777216), PRIMARY KEY (parent_run_id, operation_id), FOREIGN KEY (parent_run_id, operation_id) REFERENCES root_journal_appends(parent_run_id, operation_id)) WITHOUT ROWID, STRICT";
 const CREATE_ROOT_JOURNAL_CLOSURES = "CREATE TABLE root_journal_closures (parent_run_id TEXT NOT NULL, operation_id TEXT NOT NULL, closure_digest TEXT NOT NULL UNIQUE, closure_bytes BLOB NOT NULL CHECK (length(closure_bytes) BETWEEN 1 AND 16777216), PRIMARY KEY (parent_run_id, operation_id), FOREIGN KEY (parent_run_id, operation_id) REFERENCES root_journal_appends(parent_run_id, operation_id)) WITHOUT ROWID, STRICT";
 const CREATE_ROOT_TERMINALS = "CREATE TABLE root_terminals (run_id TEXT PRIMARY KEY REFERENCES root_runs(run_id), execution_closure_digest TEXT, terminal_digest TEXT NOT NULL, terminal_bytes BLOB NOT NULL CHECK (length(terminal_bytes) BETWEEN 1 AND 16777216), FOREIGN KEY (run_id, execution_closure_digest) REFERENCES root_execution_closures(run_id, closure_digest)) STRICT";
+const CREATE_SERVICE_MOUNTS = "CREATE TABLE service_mounts (mount_id TEXT PRIMARY KEY, binding_id TEXT NOT NULL, admission_digest TEXT NOT NULL REFERENCES admissions(admission_digest), coordinator_epoch INTEGER NOT NULL CHECK (coordinator_epoch BETWEEN 1 AND 9007199254740991), allocation_digest TEXT NOT NULL UNIQUE, allocation_bytes BLOB NOT NULL CHECK (length(allocation_bytes) BETWEEN 1 AND 16777216), UNIQUE (admission_digest, binding_id)) STRICT";
+const CREATE_SERVICE_MOUNT_FACTS = "CREATE TABLE service_mount_facts (mount_id TEXT NOT NULL REFERENCES service_mounts(mount_id), fact_name TEXT NOT NULL CHECK (fact_name IN ('plan','backing','sandbox','prepared','generation','acknowledged','provisional','fence','release','closure')), fact_digest TEXT NOT NULL UNIQUE, fact_bytes BLOB NOT NULL CHECK (length(fact_bytes) BETWEEN 1 AND 16777216), PRIMARY KEY (mount_id, fact_name), UNIQUE (mount_id, fact_name, fact_digest)) WITHOUT ROWID, STRICT";
+const CREATE_SERVICE_LEASES = "CREATE TABLE service_leases (owner_run_id TEXT NOT NULL REFERENCES root_spawn_intents(run_id), slot TEXT NOT NULL, mount_id TEXT NOT NULL REFERENCES service_mounts(mount_id), generation_fact_name TEXT NOT NULL CHECK (generation_fact_name = 'generation'), generation_digest TEXT NOT NULL, acknowledged_fact_name TEXT NOT NULL CHECK (acknowledged_fact_name = 'acknowledged'), acknowledged_digest TEXT NOT NULL, allocation_digest TEXT NOT NULL UNIQUE, allocation_bytes BLOB NOT NULL CHECK (length(allocation_bytes) BETWEEN 1 AND 16777216), release_digest TEXT UNIQUE, release_bytes BLOB, PRIMARY KEY (owner_run_id, slot), FOREIGN KEY (mount_id, generation_fact_name, generation_digest) REFERENCES service_mount_facts(mount_id, fact_name, fact_digest), FOREIGN KEY (mount_id, acknowledged_fact_name, acknowledged_digest) REFERENCES service_mount_facts(mount_id, fact_name, fact_digest), CHECK ((release_digest IS NULL) = (release_bytes IS NULL)), CHECK (release_bytes IS NULL OR length(release_bytes) BETWEEN 1 AND 16777216)) WITHOUT ROWID, STRICT";
+const CREATE_SERVICE_INVOCATIONS = "CREATE TABLE service_invocations (owner_run_id TEXT NOT NULL, operation_id TEXT NOT NULL, slot TEXT NOT NULL, request_digest TEXT NOT NULL, allocation_digest TEXT NOT NULL UNIQUE, allocation_bytes BLOB NOT NULL CHECK (length(allocation_bytes) BETWEEN 1 AND 16777216), dispatch_digest TEXT UNIQUE, dispatch_bytes BLOB, terminal_digest TEXT UNIQUE, terminal_bytes BLOB, closure_digest TEXT UNIQUE, closure_bytes BLOB, PRIMARY KEY (owner_run_id, operation_id), FOREIGN KEY (owner_run_id, slot) REFERENCES service_leases(owner_run_id, slot), CHECK ((dispatch_digest IS NULL) = (dispatch_bytes IS NULL)), CHECK ((terminal_digest IS NULL) = (terminal_bytes IS NULL)), CHECK ((closure_digest IS NULL) = (closure_bytes IS NULL)), CHECK ((terminal_digest IS NULL) = (closure_digest IS NULL)), CHECK (dispatch_bytes IS NULL OR length(dispatch_bytes) BETWEEN 1 AND 16777216), CHECK (terminal_bytes IS NULL OR length(terminal_bytes) BETWEEN 1 AND 16777216), CHECK (closure_bytes IS NULL OR length(closure_bytes) BETWEEN 1 AND 16777216)) WITHOUT ROWID, STRICT";
 const CREATE_COORDINATOR_LOCK = "CREATE TABLE coordinator_lock (singleton INTEGER PRIMARY KEY CHECK (singleton = 1)) STRICT";
 const EXPECTED_SCHEMA = Object.freeze([
   Object.freeze({ type: "table", name: "admission_head", table: "admission_head", sql: CREATE_ADMISSION_HEAD }),
@@ -187,6 +191,10 @@ const EXPECTED_SCHEMA = Object.freeze([
   Object.freeze({ type: "table", name: "root_runs", table: "root_runs", sql: CREATE_ROOT_RUNS }),
   Object.freeze({ type: "table", name: "root_spawn_intents", table: "root_spawn_intents", sql: CREATE_ROOT_SPAWN_INTENTS }),
   Object.freeze({ type: "table", name: "root_terminals", table: "root_terminals", sql: CREATE_ROOT_TERMINALS }),
+  Object.freeze({ type: "table", name: "service_invocations", table: "service_invocations", sql: CREATE_SERVICE_INVOCATIONS }),
+  Object.freeze({ type: "table", name: "service_leases", table: "service_leases", sql: CREATE_SERVICE_LEASES }),
+  Object.freeze({ type: "table", name: "service_mount_facts", table: "service_mount_facts", sql: CREATE_SERVICE_MOUNT_FACTS }),
+  Object.freeze({ type: "table", name: "service_mounts", table: "service_mounts", sql: CREATE_SERVICE_MOUNTS }),
 ]);
 
 const storedCandidates = new WeakSet<object>();
@@ -4206,6 +4214,10 @@ function initializeOrVerifySchema(database: SqliteDatabase, root: PrivateProject
       database.exec(CREATE_ROOT_JOURNAL_HOOK_SELECTIONS);
       database.exec(CREATE_ROOT_JOURNAL_CLOSURES);
       database.exec(CREATE_ROOT_TERMINALS);
+      database.exec(CREATE_SERVICE_MOUNTS);
+      database.exec(CREATE_SERVICE_MOUNT_FACTS);
+      database.exec(CREATE_SERVICE_LEASES);
+      database.exec(CREATE_SERVICE_INVOCATIONS);
       database.exec("INSERT INTO candidate_head(singleton, revision) VALUES (1, NULL)");
       database.exec("INSERT INTO admission_head(singleton, revision) VALUES (1, NULL)");
       database.exec("INSERT INTO coordinator_head(singleton, epoch) VALUES (1, 0)");
@@ -4225,7 +4237,7 @@ function verifySchema(database: SqliteDatabase, root: PrivateProjectRoot): void 
   if (actual.length !== EXPECTED_SCHEMA.length || actual.some((row, index) => {
     const expected = EXPECTED_SCHEMA[index]!;
     return row.type !== expected.type || row.name !== expected.name || row.table !== expected.table || row.sql !== expected.sql;
-  })) corrupt("private admission database schema differs from version 13");
+  })) corrupt("private admission database schema differs from version 14");
   if (statement<Record<string, unknown>>(database, "PRAGMA foreign_key_check").all().length !== 0) {
     corrupt("private admission database has broken foreign keys");
   }

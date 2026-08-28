@@ -1395,7 +1395,7 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         lockMode: "locked",
       }))
         .rejects.toMatchObject({ code: "LOCK_MISMATCH" });
-      const admissionDatabase = join(root, ".jig", "private-activation-admission-v13.sqlite3");
+      const admissionDatabase = join(root, ".jig", "private-activation-admission-v14.sqlite3");
       await writeFile(join(root, "jig.lock"), persisted.lock, { mode: 0o644 });
       const crashSqlite = createRequire(import.meta.url)("bun:sqlite") as any;
       const recovered = crashSqlite.Database.open(
@@ -2078,7 +2078,7 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         }),
       });
 
-      const databasePath = join(root, ".jig", "private-activation-admission-v13.sqlite3");
+      const databasePath = join(root, ".jig", "private-activation-admission-v14.sqlite3");
       controller = await openController();
       const submitted = await controller.administration.startRun({
         submissionId: "journal-success",
@@ -2723,7 +2723,7 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         },
       });
       const sqlite = createRequire(import.meta.url)("bun:sqlite") as any;
-      const databasePath = join(root, ".jig", "private-activation-admission-v13.sqlite3");
+      const databasePath = join(root, ".jig", "private-activation-admission-v14.sqlite3");
       const database = sqlite.Database.open(
         databasePath,
         sqlite.constants.SQLITE_OPEN_READONLY | sqlite.constants.SQLITE_OPEN_NOFOLLOW,

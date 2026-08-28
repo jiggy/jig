@@ -111,6 +111,10 @@ const CREATE_ROOT_JOURNAL_TERMINALS = "CREATE TABLE root_journal_terminals (pare
 const CREATE_ROOT_JOURNAL_HOOK_SELECTIONS = "CREATE TABLE root_journal_hook_selections (parent_run_id TEXT NOT NULL, operation_id TEXT NOT NULL, selection_digest TEXT NOT NULL UNIQUE, selection_bytes BLOB NOT NULL CHECK (length(selection_bytes) BETWEEN 1 AND 16777216), PRIMARY KEY (parent_run_id, operation_id), FOREIGN KEY (parent_run_id, operation_id) REFERENCES root_journal_appends(parent_run_id, operation_id)) WITHOUT ROWID, STRICT";
 const CREATE_ROOT_JOURNAL_CLOSURES = "CREATE TABLE root_journal_closures (parent_run_id TEXT NOT NULL, operation_id TEXT NOT NULL, closure_digest TEXT NOT NULL UNIQUE, closure_bytes BLOB NOT NULL CHECK (length(closure_bytes) BETWEEN 1 AND 16777216), PRIMARY KEY (parent_run_id, operation_id), FOREIGN KEY (parent_run_id, operation_id) REFERENCES root_journal_appends(parent_run_id, operation_id)) WITHOUT ROWID, STRICT";
 const CREATE_ROOT_TERMINALS = "CREATE TABLE root_terminals (run_id TEXT PRIMARY KEY REFERENCES root_runs(run_id), execution_closure_digest TEXT, terminal_digest TEXT NOT NULL, terminal_bytes BLOB NOT NULL CHECK (length(terminal_bytes) BETWEEN 1 AND 16777216), FOREIGN KEY (run_id, execution_closure_digest) REFERENCES root_execution_closures(run_id, closure_digest)) STRICT";
+const CREATE_SERVICE_MOUNTS = "CREATE TABLE service_mounts (mount_id TEXT PRIMARY KEY, binding_id TEXT NOT NULL, admission_digest TEXT NOT NULL REFERENCES admissions(admission_digest), coordinator_epoch INTEGER NOT NULL CHECK (coordinator_epoch BETWEEN 1 AND 9007199254740991), allocation_digest TEXT NOT NULL UNIQUE, allocation_bytes BLOB NOT NULL CHECK (length(allocation_bytes) BETWEEN 1 AND 16777216), UNIQUE (admission_digest, binding_id)) STRICT";
+const CREATE_SERVICE_MOUNT_FACTS = "CREATE TABLE service_mount_facts (mount_id TEXT NOT NULL REFERENCES service_mounts(mount_id), fact_name TEXT NOT NULL CHECK (fact_name IN ('plan','backing','sandbox','prepared','generation','acknowledged','provisional','fence','release','closure')), fact_digest TEXT NOT NULL UNIQUE, fact_bytes BLOB NOT NULL CHECK (length(fact_bytes) BETWEEN 1 AND 16777216), PRIMARY KEY (mount_id, fact_name), UNIQUE (mount_id, fact_name, fact_digest)) WITHOUT ROWID, STRICT";
+const CREATE_SERVICE_LEASES = "CREATE TABLE service_leases (owner_run_id TEXT NOT NULL REFERENCES root_spawn_intents(run_id), slot TEXT NOT NULL, mount_id TEXT NOT NULL REFERENCES service_mounts(mount_id), generation_fact_name TEXT NOT NULL CHECK (generation_fact_name = 'generation'), generation_digest TEXT NOT NULL, acknowledged_fact_name TEXT NOT NULL CHECK (acknowledged_fact_name = 'acknowledged'), acknowledged_digest TEXT NOT NULL, allocation_digest TEXT NOT NULL UNIQUE, allocation_bytes BLOB NOT NULL CHECK (length(allocation_bytes) BETWEEN 1 AND 16777216), release_digest TEXT UNIQUE, release_bytes BLOB, PRIMARY KEY (owner_run_id, slot), FOREIGN KEY (mount_id, generation_fact_name, generation_digest) REFERENCES service_mount_facts(mount_id, fact_name, fact_digest), FOREIGN KEY (mount_id, acknowledged_fact_name, acknowledged_digest) REFERENCES service_mount_facts(mount_id, fact_name, fact_digest), CHECK ((release_digest IS NULL) = (release_bytes IS NULL)), CHECK (release_bytes IS NULL OR length(release_bytes) BETWEEN 1 AND 16777216)) WITHOUT ROWID, STRICT";
+const CREATE_SERVICE_INVOCATIONS = "CREATE TABLE service_invocations (owner_run_id TEXT NOT NULL, operation_id TEXT NOT NULL, slot TEXT NOT NULL, request_digest TEXT NOT NULL, allocation_digest TEXT NOT NULL UNIQUE, allocation_bytes BLOB NOT NULL CHECK (length(allocation_bytes) BETWEEN 1 AND 16777216), dispatch_digest TEXT UNIQUE, dispatch_bytes BLOB, terminal_digest TEXT UNIQUE, terminal_bytes BLOB, closure_digest TEXT UNIQUE, closure_bytes BLOB, PRIMARY KEY (owner_run_id, operation_id), FOREIGN KEY (owner_run_id, slot) REFERENCES service_leases(owner_run_id, slot), CHECK ((dispatch_digest IS NULL) = (dispatch_bytes IS NULL)), CHECK ((terminal_digest IS NULL) = (terminal_bytes IS NULL)), CHECK ((closure_digest IS NULL) = (closure_bytes IS NULL)), CHECK ((terminal_digest IS NULL) = (closure_digest IS NULL)), CHECK (dispatch_bytes IS NULL OR length(dispatch_bytes) BETWEEN 1 AND 16777216), CHECK (terminal_bytes IS NULL OR length(terminal_bytes) BETWEEN 1 AND 16777216), CHECK (closure_bytes IS NULL OR length(closure_bytes) BETWEEN 1 AND 16777216)) WITHOUT ROWID, STRICT";
 
 setDefaultTimeout(30_000);
 
@@ -120,7 +124,7 @@ describe.serial("private activation admission SQLite store", () => {
     const root = join(base, "project");
     const store = join(base, "store");
     const state = join(root, ".jig");
-    const databasePath = join(state, "private-activation-admission-v13.sqlite3");
+    const databasePath = join(state, "private-activation-admission-v14.sqlite3");
     try {
       await mkdir(root, { mode: 0o700 });
       await mkdir(store, { mode: 0o700 });
@@ -141,11 +145,248 @@ describe.serial("private activation admission SQLite store", () => {
         expect(database.query(
           "SELECT name FROM sqlite_schema WHERE type = 'table' AND name = 'hook_derivations'",
         ).get()).toEqual({ name: "hook_derivations" });
-        expect(database.query("PRAGMA user_version").get().user_version).toBe(13);
+        expect(database.query("PRAGMA user_version").get().user_version).toBe(14);
+        for (const table of [
+          "service_mounts",
+          "service_mount_facts",
+          "service_leases",
+          "service_invocations",
+        ]) {
+          expect(database.query(`SELECT count(*) AS count FROM ${table}`).get().count).toBe(0);
+        }
         expect(database.query("PRAGMA foreign_key_check").all()).toEqual([]);
       } finally { database.close(true); }
     } finally { await rm(base, { recursive: true, force: true }); }
   });
+
+  test("enforces exact Service fact, lease, and invocation relations while still inert", async () => {
+    const fixture = await createFixture("ready");
+    let coordinator: Awaited<ReturnType<typeof openPrivateProjectCoordinator>> | undefined;
+    try {
+      await applyLatestCandidate(fixture);
+      coordinator = await openPrivateProjectCoordinator({ projectRoot: fixture.root });
+      const submission = await submitPrivateRootRun({
+        coordinator,
+        projectRoot: fixture.root,
+        packageStoreRoot: fixture.store,
+        submissionId: "service-schema-owner",
+        target: { kind: "flow", path: "flows/run" },
+        input: { value: "owner" },
+        deadlineUnixMs: Date.now() + 60_000,
+      });
+      expect(submission.launch).toBeDefined();
+
+      const database = openSqlite(fixture.database, "readwrite");
+      try {
+        database.exec("PRAGMA foreign_keys=ON");
+        const owner = database.query(
+          "SELECT admission_digest, coordinator_epoch FROM root_runs WHERE run_id = ?1",
+        ).get(submission.run.runId) as {
+          admission_digest: string;
+          coordinator_epoch: number;
+        };
+        const mountId = "service-mount-1";
+        const generationDigest = digest("service-generation");
+        const acknowledgedDigest = digest("service-acknowledged");
+        database.query([
+          "INSERT INTO service_mounts(",
+          "mount_id, binding_id, admission_digest, coordinator_epoch,",
+          "allocation_digest, allocation_bytes",
+          ") VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        ].join(" ")).run(
+          mountId,
+          "counter",
+          owner.admission_digest,
+          owner.coordinator_epoch,
+          digest("service-mount-allocation"),
+          json1({ mount: 1 }),
+        );
+        expect(database.query("PRAGMA table_info(service_mounts)").all()
+          .map(({ name }: { name: string }) => name)).toEqual([
+            "mount_id",
+            "binding_id",
+            "admission_digest",
+            "coordinator_epoch",
+            "allocation_digest",
+            "allocation_bytes",
+          ]);
+        const insertFact = database.query([
+          "INSERT INTO service_mount_facts(",
+          "mount_id, fact_name, fact_digest, fact_bytes",
+          ") VALUES (?1, ?2, ?3, ?4)",
+        ].join(" "));
+        insertFact.run(mountId, "generation", generationDigest, json1({ generation: 1 }));
+        insertFact.run(
+          mountId,
+          "acknowledged",
+          acknowledgedDigest,
+          json1({ acknowledged: true }),
+        );
+
+        const insertLease = database.query([
+          "INSERT INTO service_leases(",
+          "owner_run_id, slot, mount_id, generation_fact_name, generation_digest,",
+          "acknowledged_fact_name, acknowledged_digest, allocation_digest, allocation_bytes,",
+          "release_digest, release_bytes",
+          ") VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+        ].join(" "));
+        insertLease.run(
+          submission.run.runId,
+          "counter",
+          mountId,
+          "generation",
+          generationDigest,
+          "acknowledged",
+          acknowledgedDigest,
+          digest("service-lease-allocation"),
+          json1({ lease: 1 }),
+          null,
+          null,
+        );
+
+        const insertInvocation = database.query([
+          "INSERT INTO service_invocations(",
+          "owner_run_id, operation_id, slot, request_digest, allocation_digest, allocation_bytes,",
+          "dispatch_digest, dispatch_bytes, terminal_digest, terminal_bytes, closure_digest, closure_bytes",
+          ") VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+        ].join(" "));
+        insertInvocation.run(
+          submission.run.runId,
+          "next-1",
+          "counter",
+          digest("service-request"),
+          digest("service-invocation-allocation"),
+          json1({ invocation: 1 }),
+          digest("service-dispatch"),
+          json1({ dispatched: true }),
+          digest("service-terminal"),
+          json1({ value: 1 }),
+          digest("service-invocation-closure"),
+          json1({ closed: true }),
+        );
+
+        expect(() => insertLease.run(
+          submission.run.runId,
+          "wrong-kind",
+          mountId,
+          "generation",
+          acknowledgedDigest,
+          "acknowledged",
+          acknowledgedDigest,
+          digest("wrong-kind-lease"),
+          json1({ lease: "wrong-kind" }),
+          null,
+          null,
+        )).toThrow();
+        expect(() => insertLease.run(
+          submission.run.runId,
+          "wrong-mount",
+          "service-mount-2",
+          "generation",
+          generationDigest,
+          "acknowledged",
+          acknowledgedDigest,
+          digest("wrong-mount-lease"),
+          json1({ lease: "wrong-mount" }),
+          null,
+          null,
+        )).toThrow();
+        expect(() => insertLease.run(
+          submission.run.runId,
+          "bad-release-digest",
+          mountId,
+          "generation",
+          generationDigest,
+          "acknowledged",
+          acknowledgedDigest,
+          digest("bad-release-digest-lease"),
+          json1({ lease: "bad-release" }),
+          digest("release-without-bytes"),
+          null,
+        )).toThrow();
+        expect(() => insertLease.run(
+          submission.run.runId,
+          "bad-release-bytes",
+          mountId,
+          "generation",
+          generationDigest,
+          "acknowledged",
+          acknowledgedDigest,
+          digest("bad-release-bytes-lease"),
+          json1({ lease: "bad-release" }),
+          null,
+          json1({ released: true }),
+        )).toThrow();
+        expect(() => insertInvocation.run(
+          submission.run.runId,
+          "without-lease",
+          "missing",
+          digest("without-lease-request"),
+          digest("without-lease-allocation"),
+          json1({ invocation: "without-lease" }),
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+        )).toThrow();
+        expect(() => insertInvocation.run(
+          submission.run.runId,
+          "bad-dispatch-parity",
+          "counter",
+          digest("bad-dispatch-parity-request"),
+          digest("bad-dispatch-parity-allocation"),
+          json1({ invocation: "bad-dispatch-parity" }),
+          digest("dispatch-without-bytes"),
+          null,
+          null,
+          null,
+          null,
+          null,
+        )).toThrow();
+        expect(() => insertInvocation.run(
+          submission.run.runId,
+          "terminal-without-closure",
+          "counter",
+          digest("terminal-without-closure-request"),
+          digest("terminal-without-closure-allocation"),
+          json1({ invocation: "terminal-without-closure" }),
+          null,
+          null,
+          digest("terminal-without-closure"),
+          json1({ terminal: true }),
+          null,
+          null,
+        )).toThrow();
+        expect(() => insertInvocation.run(
+          submission.run.runId,
+          "closure-without-terminal",
+          "counter",
+          digest("closure-without-terminal-request"),
+          digest("closure-without-terminal-allocation"),
+          json1({ invocation: "closure-without-terminal" }),
+          null,
+          null,
+          null,
+          null,
+          digest("closure-without-terminal"),
+          json1({ closure: true }),
+        )).toThrow();
+
+        expect(database.query("SELECT count(*) AS count FROM service_mounts").get().count).toBe(1);
+        expect(database.query("SELECT count(*) AS count FROM service_mount_facts").get().count)
+          .toBe(2);
+        expect(database.query("SELECT count(*) AS count FROM service_leases").get().count).toBe(1);
+        expect(database.query("SELECT count(*) AS count FROM service_invocations").get().count)
+          .toBe(1);
+        expect(database.query("PRAGMA foreign_key_check").all()).toEqual([]);
+      } finally { database.close(true); }
+    } finally {
+      await coordinator?.dispose();
+      await fixture.dispose();
+    }
+  }, 30_000);
 
   test("creates and reloads one immutable plan under ordinary Linux CI", async () => {
     const fixture = await createFixture();
@@ -213,6 +454,10 @@ describe.serial("private activation admission SQLite store", () => {
           "root_runs",
           "root_spawn_intents",
           "root_terminals",
+          "service_invocations",
+          "service_leases",
+          "service_mount_facts",
+          "service_mounts",
         ]);
         expect(database.query(
           "SELECT name FROM sqlite_schema WHERE type = 'index' AND name NOT LIKE 'sqlite_%' ORDER BY name",
@@ -220,7 +465,7 @@ describe.serial("private activation admission SQLite store", () => {
           "hook_revisions_one_open",
         ]);
         expect(database.query("PRAGMA application_id").get().application_id).toBe(0x4a494741);
-        expect(database.query("PRAGMA user_version").get().user_version).toBe(13);
+        expect(database.query("PRAGMA user_version").get().user_version).toBe(14);
         expect(database.query("SELECT count(*) AS count FROM review_plans").get().count).toBe(1);
       } finally {
         database.close(true);
@@ -808,7 +1053,7 @@ describe.serial("private activation admission SQLite store", () => {
         lockMode: "update",
       });
       const database = openSqlite(fixture.database, "readwrite");
-      database.exec("PRAGMA user_version=12");
+      database.exec("PRAGMA user_version=13");
       database.close(true);
 
       await expect(loadPrivateActivationReviewPlan({
@@ -819,7 +1064,7 @@ describe.serial("private activation admission SQLite store", () => {
 
       const unchanged = openSqlite(fixture.database, "readonly");
       try {
-        expect(unchanged.query("PRAGMA user_version").get().user_version).toBe(12);
+        expect(unchanged.query("PRAGMA user_version").get().user_version).toBe(13);
       } finally { unchanged.close(true); }
     } finally {
       await fixture.dispose();
@@ -2806,7 +3051,7 @@ async function createFixture(
     const encoded = encodePrivateActivationCandidate(candidate);
 
     const state = join(root, ".jig");
-    const databasePath = join(state, "private-activation-admission-v13.sqlite3");
+    const databasePath = join(state, "private-activation-admission-v14.sqlite3");
     await mkdir(state, { mode: 0o700 });
     const databaseFile = await open(
       databasePath,
@@ -2844,12 +3089,16 @@ async function createFixture(
         CREATE_ROOT_JOURNAL_HOOK_SELECTIONS,
         CREATE_ROOT_JOURNAL_CLOSURES,
         CREATE_ROOT_TERMINALS,
+        CREATE_SERVICE_MOUNTS,
+        CREATE_SERVICE_MOUNT_FACTS,
+        CREATE_SERVICE_LEASES,
+        CREATE_SERVICE_INVOCATIONS,
         "INSERT INTO candidate_head(singleton, revision) VALUES (1, NULL)",
         "INSERT INTO admission_head(singleton, revision) VALUES (1, NULL)",
         "INSERT INTO coordinator_head(singleton, epoch) VALUES (1, 0)",
         "INSERT INTO journal_head(singleton, position) VALUES (1, 0)",
         "PRAGMA application_id=1246316353",
-        "PRAGMA user_version=13",
+        "PRAGMA user_version=14",
       ].join(";"));
       database.exec("BEGIN IMMEDIATE");
       database.query(
@@ -3173,7 +3422,7 @@ async function createComposedFixture(): Promise<Fixture> {
     });
     const encoded = encodePrivateActivationCandidate(candidate);
     const state = join(root, ".jig");
-    const databasePath = join(state, "private-activation-admission-v13.sqlite3");
+    const databasePath = join(state, "private-activation-admission-v14.sqlite3");
     await mkdir(state, { mode: 0o700 });
     const databaseFile = await open(
       databasePath,
@@ -3211,12 +3460,16 @@ async function createComposedFixture(): Promise<Fixture> {
         CREATE_ROOT_JOURNAL_HOOK_SELECTIONS,
         CREATE_ROOT_JOURNAL_CLOSURES,
         CREATE_ROOT_TERMINALS,
+        CREATE_SERVICE_MOUNTS,
+        CREATE_SERVICE_MOUNT_FACTS,
+        CREATE_SERVICE_LEASES,
+        CREATE_SERVICE_INVOCATIONS,
         "INSERT INTO candidate_head(singleton, revision) VALUES (1, NULL)",
         "INSERT INTO admission_head(singleton, revision) VALUES (1, NULL)",
         "INSERT INTO coordinator_head(singleton, epoch) VALUES (1, 0)",
         "INSERT INTO journal_head(singleton, position) VALUES (1, 0)",
         "PRAGMA application_id=1246316353",
-        "PRAGMA user_version=13",
+        "PRAGMA user_version=14",
       ].join(";"));
       database.exec("BEGIN IMMEDIATE");
       database.query(
