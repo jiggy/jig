@@ -86,6 +86,12 @@ import {
   normalizePrivateServiceLeaseAllocation,
   privateServiceLeaseAllocationDigest,
   type PrivateServiceLeaseAllocation,
+  decodePrivateServiceInvocationAllocation,
+  encodePrivateServiceInvocationAllocation,
+  normalizePrivateServiceInvocationAllocation,
+  privateServiceInvocationAllocationDigest,
+  privateServiceInvocationRequestDigest,
+  type PrivateServiceInvocationAllocation,
 } from "./private-service-state.js";
 import {
   normalizePrivateLinuxConfirmedEnforcementReceipt,
@@ -401,6 +407,21 @@ interface ServiceLeaseRow {
   readonly release_bytes: Uint8Array | null;
 }
 
+interface ServiceInvocationRow {
+  readonly owner_run_id: string;
+  readonly operation_id: string;
+  readonly slot: string;
+  readonly request_digest: string;
+  readonly allocation_digest: string;
+  readonly allocation_bytes: Uint8Array;
+  readonly dispatch_digest: string | null;
+  readonly dispatch_bytes: Uint8Array | null;
+  readonly terminal_digest: string | null;
+  readonly terminal_bytes: Uint8Array | null;
+  readonly closure_digest: string | null;
+  readonly closure_bytes: Uint8Array | null;
+}
+
 interface AdmissionCountRow {
   readonly count: bigint;
   readonly minimum: bigint | null;
@@ -658,6 +679,18 @@ export interface PrivateServiceLeaseSnapshot {
   readonly allocation: PrivateServiceLeaseAllocation;
   readonly allocationDigest: string;
   readonly coordinator: "current" | "older";
+}
+
+/** One immutable Service operation allocation, before dispatch ownership exists. */
+export interface PrivateServiceInvocationSnapshot {
+  readonly allocation: PrivateServiceInvocationAllocation;
+  readonly allocationDigest: string;
+  readonly coordinator: "current" | "older";
+}
+
+export interface PrivateServiceInvocationAllocationResult {
+  readonly snapshot: PrivateServiceInvocationSnapshot;
+  readonly created: boolean;
 }
 
 /** Exclusive, process-held authority for one project coordinator generation. */
@@ -1427,6 +1460,170 @@ export async function listPrivateServiceLeases(input: {
       requireCandidateRoot(candidate, owner.root);
       return Object.freeze(listServiceLeaseRows(owner.database, input.ownerRunId).map((row) =>
         loadServiceLeaseSnapshot(owner.database, row, owner.root, coordinator, candidate)
+      ));
+    });
+    await owner.finish();
+    return snapshots;
+  } catch (error) {
+    failure = error;
+    throw error;
+  } finally {
+    await disposeOperation(owner, undefined, failure);
+  }
+}
+
+/** Allocate one immutable Service operation without granting dispatch authority. */
+export async function allocatePrivateServiceInvocation(input: {
+  readonly coordinator: PrivateProjectCoordinator;
+  readonly projectRoot: string;
+  readonly ownerRunId: string;
+  readonly operationId: string;
+  readonly slot: string;
+  readonly method: string;
+  readonly input: JsonValue;
+}): Promise<PrivateServiceInvocationAllocationResult> {
+  const coordinator = requirePrivateProjectCoordinator(input.coordinator);
+  await coordinator.verify();
+  requireDigest(input.ownerRunId, "Service invocation owner Run");
+  requireWireId(input.operationId, "Service invocation operation ID");
+  const requestDigest = privateServiceInvocationRequestDigest({
+    slot: input.slot,
+    method: input.method,
+    input: input.input,
+  });
+  const owner = await openStateOwner(input.projectRoot, false);
+  let failure: unknown;
+  try {
+    requireCoordinatorRoot(coordinator, owner.root);
+    const result = await immediate(owner, async () => {
+      await coordinator.verify();
+      const prior = findServiceInvocation(owner.database, input.ownerRunId, input.operationId);
+      if (prior !== null) {
+        const snapshot = loadServiceInvocationSnapshot(
+          owner.database,
+          prior,
+          owner.root,
+          coordinator,
+        );
+        if (snapshot.allocation.requestDigest !== requestDigest) {
+          invalid("OPERATION_CONFLICT", "Service operation ID already names a different request");
+        }
+        return Object.freeze({ snapshot, created: false });
+      }
+
+      const context = requireNewServiceInvocationContext(
+        owner.database,
+        owner.root,
+        coordinator,
+        input.ownerRunId,
+        input.slot,
+      );
+      const allocation = normalizePrivateServiceInvocationAllocation({
+        kind: "private-service-invocation-allocation/1",
+        ownerRunId: input.ownerRunId,
+        coordinatorEpoch: coordinator.epoch,
+        call: {
+          operationId: input.operationId,
+          slot: input.slot,
+          method: input.method,
+          input: input.input,
+        },
+        requestDigest,
+        leaseDigest: context.lease.allocationDigest,
+        mountId: context.lease.allocation.mountId,
+        generationId: context.lease.allocation.generationId,
+        exportName: context.lease.allocation.providerExport,
+        deadlineUnixMs: Math.min(
+          context.owner.deadlineUnixMs,
+          context.mount.allocation.effectiveDeadlineUnixMs,
+        ),
+      });
+      const bytes = encodePrivateServiceInvocationAllocation(allocation);
+      const digest = privateServiceInvocationAllocationDigest(allocation);
+      requireStoredSize(bytes, "Service invocation allocation");
+      runFinalized(owner.database, [
+        "INSERT INTO service_invocations(",
+        "owner_run_id, operation_id, slot, request_digest, allocation_digest, allocation_bytes,",
+        "dispatch_digest, dispatch_bytes, terminal_digest, terminal_bytes, closure_digest, closure_bytes",
+        ") VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, NULL, NULL, NULL, NULL, NULL)",
+      ].join(" "), [
+        input.ownerRunId,
+        input.operationId,
+        allocation.call.slot,
+        requestDigest,
+        digest,
+        bytes,
+      ]);
+      const snapshot = loadServiceInvocationSnapshot(
+        owner.database,
+        requireServiceInvocation(owner.database, input.ownerRunId, input.operationId),
+        owner.root,
+        coordinator,
+      );
+      return Object.freeze({ snapshot, created: true });
+    });
+    await owner.finish();
+    return result;
+  } catch (error) {
+    failure = error;
+    throw error;
+  } finally {
+    await disposeOperation(owner, undefined, failure);
+  }
+}
+
+/** Reopen one immutable Service operation allocation. */
+export async function loadPrivateServiceInvocation(input: {
+  readonly coordinator: PrivateProjectCoordinator;
+  readonly projectRoot: string;
+  readonly ownerRunId: string;
+  readonly operationId: string;
+}): Promise<PrivateServiceInvocationSnapshot> {
+  const coordinator = requirePrivateProjectCoordinator(input.coordinator);
+  await coordinator.verify();
+  requireDigest(input.ownerRunId, "Service invocation owner Run");
+  requireWireId(input.operationId, "Service invocation operation ID");
+  const owner = await openStateOwner(input.projectRoot, false);
+  let failure: unknown;
+  try {
+    requireCoordinatorRoot(coordinator, owner.root);
+    const snapshot = await immediate(owner, async () => {
+      await coordinator.verify();
+      return loadServiceInvocationSnapshot(
+        owner.database,
+        requireServiceInvocation(owner.database, input.ownerRunId, input.operationId),
+        owner.root,
+        coordinator,
+      );
+    });
+    await owner.finish();
+    return snapshot;
+  } catch (error) {
+    failure = error;
+    throw error;
+  } finally {
+    await disposeOperation(owner, undefined, failure);
+  }
+}
+
+/** List one owner's immutable Service operation allocations in operation-ID order. */
+export async function listPrivateServiceInvocations(input: {
+  readonly coordinator: PrivateProjectCoordinator;
+  readonly projectRoot: string;
+  readonly ownerRunId: string;
+}): Promise<readonly PrivateServiceInvocationSnapshot[]> {
+  const coordinator = requirePrivateProjectCoordinator(input.coordinator);
+  await coordinator.verify();
+  requireDigest(input.ownerRunId, "Service invocation owner Run");
+  const owner = await openStateOwner(input.projectRoot, false);
+  let failure: unknown;
+  try {
+    requireCoordinatorRoot(coordinator, owner.root);
+    const snapshots = await immediate(owner, async () => {
+      await coordinator.verify();
+      requireRootRunRow(owner.database, input.ownerRunId);
+      return Object.freeze(listServiceInvocationRows(owner.database, input.ownerRunId).map((row) =>
+        loadServiceInvocationSnapshot(owner.database, row, owner.root, coordinator)
       ));
     });
     await owner.finish();
@@ -6534,7 +6731,7 @@ function requireServiceMountFenceClassification(
     readonly PrivateLinuxConfirmedEnforcementReceipt["stopReason"][]>> = Object.freeze({
       "startup-cancelled": ["cancelled", "setup_failed", "recovered"],
       "readiness-timeout": ["deadline", "cancelled", "recovered"],
-      "host-lifetime": ["deadline", "cancelled", "recovered"],
+      "host-lifetime": ["deadline", "cancelled", "payload_exit", "recovered"],
       "voluntary-exit": ["payload_exit", "recovered"],
       "provider-loss": ["payload_exit", "setup_failed", "cancelled", "recovered"],
       "coordinator-loss": ["coordinator_lost", "recovered"],
@@ -6796,6 +6993,186 @@ function requireNewServiceLeaseContext(
     unavailable("SERVICE_PROVIDER_UNAVAILABLE", "capability provider is not an active acknowledged generation");
   }
   return Object.freeze({ ...link, mount, generation, acknowledged });
+}
+
+function findServiceInvocation(
+  database: SqliteDatabase,
+  ownerRunId: string,
+  operationId: string,
+): ServiceInvocationRow | null {
+  const query = statement<ServiceInvocationRow>(database, [
+    "SELECT owner_run_id, operation_id, slot, request_digest, allocation_digest, allocation_bytes,",
+    "dispatch_digest, dispatch_bytes, terminal_digest, terminal_bytes, closure_digest, closure_bytes",
+    "FROM service_invocations WHERE owner_run_id = ?1 AND operation_id = ?2",
+  ].join(" ")).safeIntegers(true);
+  try {
+    const row = query.get(ownerRunId, operationId);
+    return row === null ? null : copiedServiceInvocationRow(row);
+  } finally { query.finalize(); }
+}
+
+function requireServiceInvocation(
+  database: SqliteDatabase,
+  ownerRunId: string,
+  operationId: string,
+): ServiceInvocationRow {
+  const row = findServiceInvocation(database, ownerRunId, operationId);
+  if (row === null) unavailable("SERVICE_INVOCATION_MISSING", "Service invocation does not exist");
+  return row;
+}
+
+function listServiceInvocationRows(
+  database: SqliteDatabase,
+  ownerRunId: string,
+): readonly ServiceInvocationRow[] {
+  const query = statement<ServiceInvocationRow>(database, [
+    "SELECT owner_run_id, operation_id, slot, request_digest, allocation_digest, allocation_bytes,",
+    "dispatch_digest, dispatch_bytes, terminal_digest, terminal_bytes, closure_digest, closure_bytes",
+    "FROM service_invocations WHERE owner_run_id = ?1 ORDER BY operation_id",
+  ].join(" ")).safeIntegers(true);
+  try { return Object.freeze(query.all(ownerRunId).map(copiedServiceInvocationRow)); }
+  finally { query.finalize(); }
+}
+
+function copiedServiceInvocationRow(row: ServiceInvocationRow): ServiceInvocationRow {
+  return Object.freeze({
+    owner_run_id: row.owner_run_id,
+    operation_id: row.operation_id,
+    slot: row.slot,
+    request_digest: row.request_digest,
+    allocation_digest: row.allocation_digest,
+    allocation_bytes: copiedBlob(row.allocation_bytes, "stored Service invocation allocation"),
+    dispatch_digest: row.dispatch_digest,
+    dispatch_bytes: copiedOptionalBlob(row.dispatch_bytes, "stored Service invocation dispatch"),
+    terminal_digest: row.terminal_digest,
+    terminal_bytes: copiedOptionalBlob(row.terminal_bytes, "stored Service invocation terminal"),
+    closure_digest: row.closure_digest,
+    closure_bytes: copiedOptionalBlob(row.closure_bytes, "stored Service invocation closure"),
+  });
+}
+
+function loadServiceInvocationSnapshot(
+  database: SqliteDatabase,
+  row: ServiceInvocationRow,
+  root: PrivateProjectRoot,
+  coordinator: PrivateProjectCoordinator,
+): PrivateServiceInvocationSnapshot {
+  requireDigest(row.owner_run_id, "stored Service invocation owner Run");
+  requireWireId(row.operation_id, "stored Service invocation operation ID");
+  const slot = requireServiceLeaseSlot(row.slot);
+  requireDigest(row.request_digest, "stored Service invocation request");
+  requireDigest(row.allocation_digest, "stored Service invocation allocation");
+  if (row.dispatch_digest !== null || row.dispatch_bytes !== null ||
+      row.terminal_digest !== null || row.terminal_bytes !== null ||
+      row.closure_digest !== null || row.closure_bytes !== null) {
+    corrupt("stored Service invocation progress is unsupported in this checkpoint");
+  }
+  const bytes = copiedBlob(row.allocation_bytes, "stored Service invocation allocation");
+  requireStoredSize(bytes, "stored Service invocation allocation");
+  let allocation: PrivateServiceInvocationAllocation;
+  try { allocation = decodePrivateServiceInvocationAllocation(bytes); }
+  catch { corrupt("stored Service invocation allocation is invalid"); }
+  if (!sameBytes(bytes, encodePrivateServiceInvocationAllocation(allocation)) ||
+      privateServiceInvocationAllocationDigest(allocation) !== row.allocation_digest ||
+      allocation.ownerRunId !== row.owner_run_id || allocation.call.operationId !== row.operation_id ||
+      allocation.call.slot !== slot || allocation.requestDigest !== row.request_digest) {
+    corrupt("stored Service invocation allocation differs from its durable identity");
+  }
+  if (allocation.coordinatorEpoch > coordinator.epoch) {
+    corrupt("Service invocation belongs to a future coordinator epoch");
+  }
+
+  const ownerRow = requireRootRunRow(database, allocation.ownerRunId);
+  const ownerRun = loadRootRunSnapshot(database, ownerRow, root);
+  if (ownerRun.coordinatorEpoch !== allocation.coordinatorEpoch) {
+    corrupt("stored Service invocation differs from its owner Run generation");
+  }
+  const candidate = loadCandidateRow(requireCandidateRow(database, ownerRow.candidate_revision));
+  requireCandidateRoot(candidate, root);
+  const lease = loadServiceLeaseSnapshot(
+    database,
+    requireServiceLease(database, allocation.ownerRunId, allocation.call.slot),
+    root,
+    coordinator,
+    candidate,
+  );
+  const mount = loadServiceMountSnapshot(
+    database,
+    requireServiceMountRow(database, lease.allocation.mountId),
+    root,
+    coordinator,
+    candidate,
+  );
+  if (allocation.leaseDigest !== lease.allocationDigest ||
+      allocation.mountId !== lease.allocation.mountId ||
+      allocation.generationId !== lease.allocation.generationId ||
+      allocation.exportName !== lease.allocation.providerExport ||
+      allocation.deadlineUnixMs !== Math.min(
+        ownerRun.deadlineUnixMs,
+        mount.allocation.effectiveDeadlineUnixMs,
+      )) {
+    corrupt("stored Service invocation differs from its pinned lease and deadline");
+  }
+  return Object.freeze({
+    allocation,
+    allocationDigest: row.allocation_digest,
+    coordinator: allocation.coordinatorEpoch === coordinator.epoch ? "current" : "older",
+  });
+}
+
+function requireNewServiceInvocationContext(
+  database: SqliteDatabase,
+  root: PrivateProjectRoot,
+  coordinator: PrivateProjectCoordinator,
+  ownerRunId: string,
+  slot: string,
+): {
+  readonly owner: PrivateRootRunSnapshot;
+  readonly lease: PrivateServiceLeaseSnapshot;
+  readonly mount: PrivateServiceMountSnapshot;
+} {
+  const ownerRow = requireRootRunRow(database, ownerRunId);
+  const owner = loadRootRunSnapshot(database, ownerRow, root);
+  if (owner.state !== "spawn-intent" || owner.coordinatorEpoch !== coordinator.epoch) {
+    invalid(
+      "SERVICE_INVOCATION_OWNER_INACTIVE",
+      "new Service invocation requires a live current-coordinator owner Run",
+    );
+  }
+  const lifecycle = loadRootExecutionLifecycle(
+    database,
+    requireRootExecutionLifecycle(database, ownerRunId),
+    ownerRow,
+  );
+  if (lifecycle.provisional !== undefined || lifecycle.fence !== undefined ||
+      lifecycle.release !== undefined || lifecycle.admitted !== undefined ||
+      lifecycle.closureDigest !== undefined) {
+    invalid("SERVICE_INVOCATION_OWNER_SETTLING", "settling owner Run cannot allocate a Service operation");
+  }
+  const candidate = loadCandidateRow(requireCandidateRow(database, ownerRow.candidate_revision));
+  requireCandidateRoot(candidate, root);
+  const lease = loadServiceLeaseSnapshot(
+    database,
+    requireServiceLease(database, ownerRunId, requireServiceLeaseSlot(slot)),
+    root,
+    coordinator,
+    candidate,
+  );
+  const mount = loadServiceMountSnapshot(
+    database,
+    requireServiceMountRow(database, lease.allocation.mountId),
+    root,
+    coordinator,
+    candidate,
+  );
+  if (lease.coordinator !== "current" || mount.coordinator !== "current" ||
+      mount.generation?.digest !== lease.allocation.generationDigest ||
+      mount.acknowledged?.digest !== lease.allocation.acknowledgedDigest ||
+      mount.provisional !== undefined || mount.fence !== undefined ||
+      mount.release !== undefined || mount.closure !== undefined) {
+    unavailable("SERVICE_PROVIDER_UNAVAILABLE", "Service lease provider generation is not active");
+  }
+  return Object.freeze({ owner, lease, mount });
 }
 
 function preparedIdentityForServiceSandbox(

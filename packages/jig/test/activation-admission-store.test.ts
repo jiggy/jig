@@ -44,6 +44,7 @@ import {
 import {
   allocatePrivateRootFlowCall,
   allocatePrivateServiceLease,
+  allocatePrivateServiceInvocation,
   appendPrivateRootJournalEvent,
   applyPrivateActivationReviewPlan,
   closePrivateRootFlowCall,
@@ -58,6 +59,8 @@ import {
   listPrivateRootExecutionWork,
   listPrivateRootJournalAppends,
   listPrivateServiceLeases,
+  listPrivateServiceInvocations,
+  loadPrivateServiceInvocation,
   loadPrivateServiceLease,
   openPrivateProjectCoordinator,
   reacquirePrivateRootExecutionWork,
@@ -497,6 +500,110 @@ describe.serial("private activation admission SQLite store", () => {
         ownerRunId: submission.run.runId,
         slot: "counter",
       })).rejects.toMatchObject({ code: "ADMISSION_STATE_CORRUPT" });
+    } finally {
+      await coordinator?.dispose();
+      await fixture.dispose();
+    }
+  }, 30_000);
+
+  test("allocates and reopens Service operations without dispatch authority", async () => {
+    const fixture = await createFixture("ready", false, false, true);
+    let coordinator: PrivateProjectCoordinator | undefined;
+    try {
+      const admission = await applyLatestCandidate(fixture);
+      coordinator = await openPrivateProjectCoordinator({ projectRoot: fixture.root });
+      const deadlineUnixMs = Date.now() + 60_000;
+      const submission = await submitPrivateRootRun({
+        coordinator,
+        projectRoot: fixture.root,
+        packageStoreRoot: fixture.store,
+        submissionId: "service-invocation-owner",
+        target: { kind: "binding", id: "app" },
+        input: { value: "owner" },
+        deadlineUnixMs,
+      });
+      installAcknowledgedServiceMount(fixture, admission.admissionDigest, coordinator.epoch);
+      await allocatePrivateServiceLease({
+        coordinator,
+        projectRoot: fixture.root,
+        packageStoreRoot: fixture.store,
+        ownerRunId: submission.run.runId,
+        slot: "counter",
+      });
+
+      const first = await allocatePrivateServiceInvocation({
+        coordinator,
+        projectRoot: fixture.root,
+        ownerRunId: submission.run.runId,
+        operationId: "counter:z",
+        slot: "counter",
+        method: "next",
+        input: { amount: 1 },
+      });
+      expect(first).toMatchObject({
+        created: true,
+        snapshot: {
+          coordinator: "current",
+          allocation: {
+            ownerRunId: submission.run.runId,
+            coordinatorEpoch: coordinator.epoch,
+            deadlineUnixMs,
+            call: { operationId: "counter:z", slot: "counter", method: "next", input: { amount: 1 } },
+          },
+        },
+      });
+      expect(await allocatePrivateServiceInvocation({
+        coordinator,
+        projectRoot: fixture.root,
+        ownerRunId: submission.run.runId,
+        operationId: "counter:z",
+        slot: "counter",
+        method: "next",
+        input: { amount: 1 },
+      })).toEqual({ snapshot: first.snapshot, created: false });
+      await expect(allocatePrivateServiceInvocation({
+        coordinator,
+        projectRoot: fixture.root,
+        ownerRunId: submission.run.runId,
+        operationId: "counter:z",
+        slot: "counter",
+        method: "next",
+        input: { amount: 2 },
+      })).rejects.toMatchObject({ code: "OPERATION_CONFLICT" });
+      const second = await allocatePrivateServiceInvocation({
+        coordinator,
+        projectRoot: fixture.root,
+        ownerRunId: submission.run.runId,
+        operationId: "counter:a",
+        slot: "counter",
+        method: "next",
+        input: {},
+      });
+      expect(second.created).toBeTrue();
+      expect((await listPrivateServiceInvocations({
+        coordinator,
+        projectRoot: fixture.root,
+        ownerRunId: submission.run.runId,
+      })).map(({ allocation }) => allocation.call.operationId)).toEqual(["counter:a", "counter:z"]);
+      expect(await loadPrivateServiceInvocation({
+        coordinator,
+        projectRoot: fixture.root,
+        ownerRunId: submission.run.runId,
+        operationId: "counter:z",
+      })).toEqual(first.snapshot);
+
+      await coordinator.dispose();
+      coordinator = await openPrivateProjectCoordinator({ projectRoot: fixture.root });
+      const replay = await allocatePrivateServiceInvocation({
+        coordinator,
+        projectRoot: fixture.root,
+        ownerRunId: submission.run.runId,
+        operationId: "counter:z",
+        slot: "counter",
+        method: "next",
+        input: { amount: 1 },
+      });
+      expect(replay).toMatchObject({ created: false, snapshot: { coordinator: "older" } });
     } finally {
       await coordinator?.dispose();
       await fixture.dispose();
