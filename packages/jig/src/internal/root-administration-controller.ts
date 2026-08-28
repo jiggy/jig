@@ -12,7 +12,7 @@ import {
 import { CheckError } from "../diagnostics.js";
 import {
   listPrivateRootExecutionWork,
-  loadPrivateRootRun,
+  loadPrivateRootRunForCoordinator,
   openPrivateProjectCoordinator,
   submitPrivateRootRun,
   type PrivateProjectCoordinator,
@@ -129,7 +129,7 @@ function createController(input: {
   pumpCurrent(): Promise<void>;
 } {
   const cancellation = new AbortController();
-  const submissions = new Set<Promise<void>>();
+  const operations = new Set<Promise<void>>();
   const tasks = new Map<string, Promise<void>>();
   const failures: unknown[] = [];
   let backgroundPump: Promise<void> | undefined;
@@ -142,7 +142,7 @@ function createController(input: {
       requireOpen(closed);
       let markSettled!: () => void;
       const unsettled = new Promise<void>((resolve) => { markSettled = resolve; });
-      submissions.add(unsettled);
+      operations.add(unsettled);
       try {
         const request = normalizeStartRootRunRequest(value);
         const deadlineUnixMs = deadlineFromNow(input.runTimeoutMs);
@@ -160,22 +160,29 @@ function createController(input: {
         throw administrationError(error, "start root Run");
       } finally {
         try { await pumpCurrent(); } catch (error) { failures.push(error); }
-        submissions.delete(unsettled);
+        operations.delete(unsettled);
         markSettled();
       }
     },
 
     async runStatus(value: RootRunStatusRequest): Promise<RootRunStatus> {
       requireOpen(closed);
-      const request = normalizeRootRunStatusRequest(value);
+      let markSettled!: () => void;
+      const unsettled = new Promise<void>((resolve) => { markSettled = resolve; });
+      operations.add(unsettled);
       try {
+        const request = normalizeRootRunStatusRequest(value);
         await pumpCurrent();
-        return projectStatus(await retryPrivateBusy(() => loadPrivateRootRun({
+        return projectStatus(await retryPrivateBusy(() => loadPrivateRootRunForCoordinator({
+          coordinator: input.coordinator,
           projectRoot: input.projectRoot,
           runId: request.runId,
         })));
       } catch (error) {
         throw administrationError(error, "read root Run status");
+      } finally {
+        operations.delete(unsettled);
+        markSettled();
       }
     },
   });
@@ -198,7 +205,12 @@ function createController(input: {
       cancellation.signal,
       notifyWorkAvailable,
     ));
-    if (settled.state === "pending") return;
+    if (settled.state === "pending") {
+      throw new RootAdministrationError(
+        "PROJECT_BUSY",
+        "root Run cleanup has not confirmed its complete execution fence",
+      );
+    }
     if (settled.run.runId !== runId || settled.run.state !== "terminal") {
       throw new Error("trusted root Run executor returned no matching terminal");
     }
@@ -269,7 +281,7 @@ function createController(input: {
   }
 
   async function drain(): Promise<void> {
-    while (submissions.size > 0) await Promise.all([...submissions]);
+    while (operations.size > 0) await Promise.all([...operations]);
     await pumpCurrent();
     while (tasks.size > 0 || backgroundPump !== undefined) {
       await Promise.all([

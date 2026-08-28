@@ -19,12 +19,22 @@ import { captureOpenedFlowSource, type FlowDiscoveryObservation, type FlowExactO
 import { linkPackageProject, type PackageProjectValue } from "./package-project.js";
 import { retainAuthorClosure, type RetainedAuthorClosure } from "./retained-author-closure.js";
 import { retainFlowSourcePackages, type RetainedFlowInput } from "./retained-flow.js";
-import { openPrivateProjectRoot } from "./root.js";
+import {
+  openPrivateProjectRoot,
+  requirePrivateProjectRoot,
+  type PrivateProjectRoot,
+} from "./root.js";
 
 const authenticProjects = new WeakSet<object>();
 
 export interface PrivateRetainedProjectOptions {
   readonly projectRoot: string;
+  readonly storeRoot: string;
+  readonly evaluator: PrivateAuthorEvaluatorOptions;
+}
+
+export interface PrivateRetainedOpenedProjectOptions {
+  readonly projectRoot: PrivateProjectRoot;
   readonly storeRoot: string;
   readonly evaluator: PrivateAuthorEvaluatorOptions;
 }
@@ -66,8 +76,35 @@ export async function retainPackageProject(
   options: PrivateRetainedProjectOptions,
   signal?: AbortSignal,
 ): Promise<PrivateRetainedPackageProject> {
-  const entry = "jig.ts";
   const root = await openPrivateProjectRoot(options.projectRoot);
+  let operationFailure: unknown;
+  try {
+    return await retainOpenedPackageProject({ ...options, projectRoot: root }, signal);
+  } catch (error) {
+    operationFailure = error;
+    throw error;
+  } finally {
+    try {
+      await root.dispose();
+    } catch (error) {
+      throw new AggregateError(
+        operationFailure === undefined ? [error] : [operationFailure, error],
+        "retained project operation and root cleanup did not both complete",
+      );
+    }
+  }
+}
+
+/**
+ * Capture one aggregate beneath a caller-owned project-root descriptor.
+ * The borrowed descriptor remains owned by the caller on every path.
+ */
+export async function retainOpenedPackageProject(
+  options: PrivateRetainedOpenedProjectOptions,
+  signal?: AbortSignal,
+): Promise<PrivateRetainedPackageProject> {
+  const entry = "jig.ts";
+  const root = requirePrivateProjectRoot(options.projectRoot);
   let bootstrap: CapturedAuthorClosure | undefined;
   let closure: CapturedAuthorClosure | undefined;
   let flowSource: Awaited<ReturnType<typeof captureOpenedFlowSource>> | undefined;
@@ -176,7 +213,6 @@ export async function retainPackageProject(
     try { await flowSource?.dispose(); } catch (error) { cleanupFailures.push(error); }
     try { closure?.dispose(); } catch (error) { cleanupFailures.push(error); }
     try { bootstrap?.dispose(); } catch (error) { cleanupFailures.push(error); }
-    try { await root.dispose(); } catch (error) { cleanupFailures.push(error); }
     if (cleanupFailures.length > 0) {
       throw new AggregateError(
         operationFailure === undefined ? cleanupFailures : [operationFailure, ...cleanupFailures],

@@ -12,7 +12,11 @@ import type { ContractIdentity, RunTargetIdentity } from "../project/package-pro
 import { isDirectRunEligible } from "../project/flow-source.js";
 import { privateActivationTargetKey } from "./activation-planning.js";
 import { privateDomainDigest } from "./identity.js";
-import { openPrivateProjectRoot, type PrivateProjectRoot } from "../project/root.js";
+import {
+  openPrivateProjectRoot,
+  requirePrivateProjectRoot,
+  type PrivateProjectRoot,
+} from "../project/root.js";
 import { captureStoredPackage, normalizePackageArtifactRef } from "./package-artifact-store.js";
 import {
   decodePrivateProjectLocalLock,
@@ -336,7 +340,10 @@ const authenticRootRunLaunches = new WeakSet<object>();
 const claimedRootRunLaunches = new WeakSet<object>();
 const authenticCreatedServiceMountAllocations = new WeakSet<object>();
 const authenticCreatedServiceInvocationAllocations = new WeakSet<object>();
-const authenticCoordinators = new WeakSet<object>();
+const authenticCoordinators = new WeakMap<object, {
+  readonly device: bigint;
+  readonly inode: bigint;
+}>();
 
 interface SqliteRunResult {
   readonly changes: number;
@@ -484,6 +491,8 @@ interface StateOwner {
   finish(): Promise<void>;
   dispose(): Promise<void>;
 }
+
+type PrivateProjectRootSource = string | PrivateProjectRoot;
 
 interface CoordinatorLock {
   readonly database: SqliteDatabase;
@@ -852,6 +861,22 @@ export interface PrivateRootExecutionWork {
   readonly lifecycle: PrivateRootExecutionLifecycle;
 }
 
+/** Create or verify inert protected project state without granting authority. */
+export async function initializePrivateActivationState(input: {
+  readonly projectRoot: PrivateProjectRootSource;
+}): Promise<void> {
+  const owner = await openStateOwner(input.projectRoot, true);
+  let failure: unknown;
+  try {
+    await owner.finish();
+  } catch (error) {
+    failure = error;
+    throw error;
+  } finally {
+    await disposeOperation(owner, undefined, failure);
+  }
+}
+
 export interface PrivateReacquiredRootExecutionWork extends PrivateRootExecutionWork {
   readonly candidate: PrivateActivationCandidateArtifactV5;
 }
@@ -861,7 +886,7 @@ export interface PrivateReacquiredRootExecutionWork extends PrivateRootExecution
  * returned capability is invocation-local and exposes none of those facts.
  */
 export async function capturePrivateActivationPlanningBase(input: {
-  readonly projectRoot: string;
+  readonly projectRoot: string | PrivateProjectRoot;
 }): Promise<PrivateActivationPlanningBase> {
   const owner = await openStateOwner(input.projectRoot, true);
   let failure: unknown;
@@ -951,7 +976,7 @@ export async function publishPrivateActivationCandidate(input: {
  * visible when either head changed or classification fails.
  */
 export async function publishPrivateActivationReviewPlan(input: {
-  readonly projectRoot: string;
+  readonly projectRoot: string | PrivateProjectRoot;
   readonly packageStoreRoot: string;
   readonly planningBase: PrivateActivationPlanningBase;
   readonly candidate: PrivateActivationCandidateArtifactV5;
@@ -1081,7 +1106,7 @@ export async function createPrivateActivationReviewPlan(input: {
 
 /** Reopen one persisted plan and reprove its candidate's protected artifacts. */
 export async function loadPrivateActivationReviewPlan(input: {
-  readonly projectRoot: string;
+  readonly projectRoot: string | PrivateProjectRoot;
   readonly packageStoreRoot: string;
   readonly planDigest: string;
 }): Promise<PrivateActivationReviewPlan> {
@@ -1173,7 +1198,7 @@ export async function loadPrivateActiveActivation(input: {
  * terminal before execution ownership has been fenced and released.
  */
 export async function openPrivateProjectCoordinator(input: {
-  readonly projectRoot: string;
+  readonly projectRoot: string | PrivateProjectRoot;
 }): Promise<PrivateProjectCoordinator> {
   const owner = await openStateOwner(input.projectRoot, false);
   let lock: CoordinatorLock | undefined;
@@ -1224,7 +1249,10 @@ export async function openPrivateProjectCoordinator(input: {
         }
       },
     });
-    authenticCoordinators.add(coordinator);
+    authenticCoordinators.set(coordinator, Object.freeze({
+      device: owner.root.information.dev,
+      inode: owner.root.information.ino,
+    }));
     await coordinator.verify();
     return coordinator;
   } catch (error) {
@@ -3636,6 +3664,35 @@ export async function loadPrivateRootRun(input: {
   }
 }
 
+/** Reopen one durable root Run while proving affinity to a live coordinator. */
+export async function loadPrivateRootRunForCoordinator(input: {
+  readonly coordinator: PrivateProjectCoordinator;
+  readonly projectRoot: string;
+  readonly runId: string;
+}): Promise<PrivateRootRunSnapshot> {
+  const coordinator = requirePrivateProjectCoordinator(input.coordinator);
+  await coordinator.verify();
+  requireDigest(input.runId, "root Run");
+  const owner = await openStateOwner(input.projectRoot, false);
+  let failure: unknown;
+  try {
+    requireCoordinatorRoot(coordinator, owner.root);
+    const run = loadRootRunSnapshot(
+      owner.database,
+      requireRootRunRow(owner.database, input.runId),
+      owner.root,
+    );
+    await coordinator.verify();
+    await owner.finish();
+    return run;
+  } catch (error) {
+    failure = error;
+    throw error;
+  } finally {
+    await disposeOperation(owner, undefined, failure);
+  }
+}
+
 /** Publish exactly one terminal for an invocation-local authenticated launch. */
 export async function completePrivateRootRun(input: {
   readonly projectRoot: string;
@@ -3701,7 +3758,8 @@ function requirePrivateProjectCoordinator(value: unknown): PrivateProjectCoordin
 }
 
 function requireCoordinatorRoot(coordinator: PrivateProjectCoordinator, root: PrivateProjectRoot): void {
-  if (coordinator.projectRoot !== root.requestedPath) {
+  const identity = authenticCoordinators.get(requirePrivateProjectCoordinator(coordinator))!;
+  if (identity.device !== root.information.dev || identity.inode !== root.information.ino) {
     invalid("COORDINATOR_PROJECT_MISMATCH", "project coordinator belongs to a different project root");
   }
 }
@@ -3711,7 +3769,7 @@ function requireCoordinatorRoot(coordinator: PrivateProjectCoordinator, root: Pr
  * generation. The returned canonical record is the idempotent receipt.
  */
 export async function applyPrivateActivationReviewPlan(input: {
-  readonly projectRoot: string;
+  readonly projectRoot: string | PrivateProjectRoot;
   readonly packageStoreRoot: string;
   readonly planDigest: string;
 }): Promise<PrivateActivationApplyReceipt> {
@@ -5632,8 +5690,12 @@ function initializeOrVerifyCoordinatorSchema(database: SqliteDatabase): void {
   } catch (error) { rollback(database, error); }
 }
 
-async function openStateOwner(projectRoot: string, create: boolean): Promise<StateOwner> {
-  const root = await openPrivateProjectRoot(projectRoot);
+async function openStateOwner(projectRoot: PrivateProjectRootSource, create: boolean): Promise<StateOwner> {
+  const ownsRoot = typeof projectRoot === "string";
+  const root = ownsRoot
+    ? await openPrivateProjectRoot(projectRoot)
+    : requirePrivateProjectRoot(projectRoot);
+  if (!ownsRoot) await root.verify();
   let directory: FileHandle | undefined;
   let database: SqliteDatabase | undefined;
   try {
@@ -5745,7 +5807,9 @@ async function openStateOwner(projectRoot: string, create: boolean): Promise<Sta
           databaseClosed = true;
         }
         try { await directory!.close(); } catch (error) { failures.push(error); }
-        try { await root.dispose(); } catch (error) { failures.push(error); }
+        if (ownsRoot) {
+          try { await root.dispose(); } catch (error) { failures.push(error); }
+        }
         if (failures.length > 0) throw new AggregateError(failures, "admission state cleanup did not complete");
       },
     });
@@ -5753,7 +5817,7 @@ async function openStateOwner(projectRoot: string, create: boolean): Promise<Sta
   } catch (error) {
     try { database?.close(true); } catch { /* preserve the primary open failure */ }
     await directory?.close().catch(() => undefined);
-    await root.dispose().catch(() => undefined);
+    if (ownsRoot) await root.dispose().catch(() => undefined);
     if (isSqliteBusy(error)) busy();
     throw error;
   }
