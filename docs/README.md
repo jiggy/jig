@@ -37,6 +37,10 @@ Start here:
 
 Current implementation frontier:
 
+- [`design-review/178-project-run-target-review-delta.md`](design-review/178-project-run-target-review-delta.md)
+  adds one bounded navigation delta for changing Run-target slots, including
+  private target-meaning revisions without disclosing their evidence, while
+  leaving filtering and selection separate.
 - [`design-review/177-private-project-run-target-retained-format.md`](design-review/177-private-project-run-target-retained-format.md)
   advances the private lock to Lock/3, activation requests to Request/2, and
   the admission store to v18 so exact source intent and the complete bounded

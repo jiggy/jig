@@ -2,6 +2,8 @@ import type {
   PrivateActivationReviewPlan,
 } from "./activation-admission-store.js";
 import { ProjectAdministrationError } from "../administration/project.js";
+import type { PrivateLockSlot } from "./project-local-lock.js";
+import type { RunTargetIdentity } from "../project/package-project.js";
 
 // Four MiB leaves a conservative JSON/1 envelope after every ASCII backslash
 // and quote in the review string is escaped by the outer value encoding.
@@ -100,6 +102,10 @@ function projectChanges(
   currentTargets: PrivateActivationReviewPlan["candidate"]["candidate"]["targets"],
   proposedTargets: PrivateActivationReviewPlan["candidate"]["candidate"]["targets"],
 ) {
+  const targetChanges = recordChanges(
+    Object.fromEntries(currentTargets.map((target) => [targetKey(target.request.target), target])),
+    Object.fromEntries(proposedTargets.map((target) => [targetKey(target.request.target), target])),
+  );
   return {
     packages: recordChanges(
       current?.portablePolicy.packages ?? {},
@@ -117,11 +123,94 @@ function projectChanges(
       current?.portablePolicy.hooks ?? {},
       proposed.portablePolicy.hooks,
     ),
-    targets: recordChanges(
-      Object.fromEntries(currentTargets.map((target) => [targetKey(target.request.target), target])),
-      Object.fromEntries(proposedTargets.map((target) => [targetKey(target.request.target), target])),
+    flowCallSlots: flowCallSlotChanges(
+      current,
+      proposed,
+      new Set(targetChanges.changed),
     ),
+    targets: targetChanges,
   };
+}
+
+type ReviewedProjectCandidate = ReturnType<typeof projectCandidate>;
+type ReviewedFlowCallSlot = Extract<PrivateLockSlot, { readonly kind: "flow-call" }>;
+
+interface FlowCallSlotChange {
+  readonly source: {
+    readonly current: ReviewedFlowCallSlot["source"] | null;
+    readonly proposed: ReviewedFlowCallSlot["source"] | null;
+  };
+  readonly targets: {
+    readonly added: readonly string[];
+    readonly removed: readonly string[];
+    readonly changed: readonly string[];
+  };
+}
+
+/**
+ * Give a reviewer one bounded navigation index for changing-universe slots.
+ * The exact current/proposed values remain above; this is only a derived
+ * delta and therefore carries no authority of its own.
+ */
+function flowCallSlotChanges(
+  current: ReviewedProjectCandidate | null,
+  proposed: ReviewedProjectCandidate,
+  changedTargetKeys: ReadonlySet<string>,
+) {
+  const currentSlots = flowCallSlots(current?.portablePolicy.bindings ?? {});
+  const proposedSlots = flowCallSlots(proposed.portablePolicy.bindings);
+  const keys = [...new Set([...currentSlots.keys(), ...proposedSlots.keys()])].sort(compareUtf16);
+  const changes: Record<string, FlowCallSlotChange> = Object.create(null) as
+    Record<string, FlowCallSlotChange>;
+
+  for (const key of keys) {
+    const currentSlot = currentSlots.get(key);
+    const proposedSlot = proposedSlots.get(key);
+    if (currentSlot?.source !== "project-run-targets" &&
+        proposedSlot?.source !== "project-run-targets") continue;
+
+    const currentKeys = (currentSlot?.targets ?? []).map(targetKey);
+    const proposedKeys = (proposedSlot?.targets ?? []).map(targetKey);
+    const currentSet = new Set(currentKeys);
+    const proposedSet = new Set(proposedKeys);
+    const targets = {
+      added: proposedKeys.filter((target) => !currentSet.has(target)).sort(compareUtf16),
+      removed: currentKeys.filter((target) => !proposedSet.has(target)).sort(compareUtf16),
+      changed: proposedKeys.filter((target) => {
+        if (!currentSet.has(target)) return false;
+        return changedTargetKeys.has(target);
+      }).sort(compareUtf16),
+    };
+    const source = {
+      current: currentSlot?.source ?? null,
+      proposed: proposedSlot?.source ?? null,
+    };
+    if (source.current === source.proposed &&
+        targets.added.length === 0 &&
+        targets.removed.length === 0 &&
+        targets.changed.length === 0) continue;
+    changes[key] = { source, targets };
+  }
+  return changes;
+}
+
+function flowCallSlots(
+  bindings: ReviewedProjectCandidate["portablePolicy"]["bindings"],
+): ReadonlyMap<string, ReviewedFlowCallSlot> {
+  const output = new Map<string, ReviewedFlowCallSlot>();
+  for (const binding of Object.keys(bindings).sort(compareUtf16)) {
+    for (const name of Object.keys(bindings[binding]!.slots).sort(compareUtf16)) {
+      const slot = bindings[binding]!.slots[name]!;
+      if (slot.kind !== "flow-call") continue;
+      output.set(flowCallSlotKey(binding, name), slot);
+    }
+  }
+  return output;
+}
+
+function flowCallSlotKey(binding: string, slot: string): string {
+  // Binding and slot names are LocalNames, so neither can contain '/'.
+  return `${binding}/${slot}`;
 }
 
 function recordChanges(
@@ -141,7 +230,7 @@ function recordChanges(
 }
 
 function targetKey(
-  target: PrivateActivationReviewPlan["candidate"]["candidate"]["targets"][number]["request"]["target"],
+  target: RunTargetIdentity,
 ): string {
   return target.kind === "flow" ? `flow:${target.path}` : `binding:${target.id}`;
 }

@@ -78,6 +78,12 @@ non-truncated, and ASCII display-safe: project-controlled controls and Unicode
 are emitted as JSON escapes. The active base is loaded from the authenticated
 admission chain inside the same protected transaction; it is review evidence,
 not another field in portable Plan authority. The review is not authority.
+For every slot whose current or proposed source is `project-run-targets`, a
+derived `<binding>/<slot>` navigation entry also shows the source transition
+and added, removed, or changed target IDs. Its changed set is computed from
+the protected Candidate records before redaction, so private recipe or
+evidence revisions remain visible as affected IDs without exposing those
+values.
 Only the retained `planDigest` identifies the exact applicable Plan. Private
 Plan, Candidate, lock, recipe, runtime, Backend, coordinator, database, cgroup,
 and helper representations never cross this boundary.
