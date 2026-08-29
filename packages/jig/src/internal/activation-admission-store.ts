@@ -4869,12 +4869,18 @@ function requireRootFlowCallAllocationCandidate(
     corrupt("root Flow call allocation is absent from its pinned candidate");
   }
   const slot = parent.request.slots[allocation.call.slot];
-  if (slot?.kind !== "flow-call" || slot.targets.length !== 1 ||
-      privateActivationTargetKey(slot.targets[0]!) !== privateActivationTargetKey(allocation.target)) {
+  if (slot?.kind !== "flow-call" || !slot.targets.some(
+    (target) => privateActivationTargetKey(target) === privateActivationTargetKey(allocation.target),
+  )) {
     invalid("UNAVAILABLE", "root Flow call slot does not select the admitted child target");
   }
-  if (allocation.target.kind !== "flow" ||
-      allocation.requestDigest !== child.request.digest ||
+  if (privateActivationTargetKey(allocation.target) === privateActivationTargetKey(parent.request.target)) {
+    invalid("UNAVAILABLE", "root Flow call cannot select its active parent owner");
+  }
+  if (allocation.target.kind !== "flow") {
+    invalid("UNAVAILABLE", "configured Binding child targets are not supported by this Run host");
+  }
+  if (allocation.requestDigest !== child.request.digest ||
       allocation.recipeDigest !== child.disposition.recipeDigest ||
       allocation.observationDigest !== child.disposition.observationDigest) {
     corrupt("root Flow call allocation differs from its admitted child recipe");

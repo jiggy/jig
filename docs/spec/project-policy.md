@@ -193,8 +193,10 @@ and applies actual input compatibility for broad sources over the complete
 admitted frozen set. Exact calls preserve the existing durable
 allocation-before-input-validation order. Configured Bindings, a persisted
 complete ancestor chain, and current authority, resource, liveness, and
-wait-graph filters remain later integration gates. V1 has no recursive
-cross-Flow calls. Source additions, removals, and
+wait-graph filters remain later integration gates. One selected direct Flow
+now enters the existing single-child durable lifecycle; zero or several
+survivors close before allocation as `UNAVAILABLE` on the current Run/1 wire.
+V1 has no recursive cross-Flow calls. Source additions, removals, and
 same-identity meaning or disposition changes require a new reviewed Plan and
 apply; existing operations never re-expand.
 
@@ -1005,6 +1007,11 @@ Binding revision.
     reacquires recorded child ownership, never automatically redispatches
     uncertain work, and releases exact backing only after fencing or proved
     non-admission.
+40a. For the first private broad-slot integration, deterministic filtering is
+    finite but does not yet observe operation cancellation until the complete
+    scan ends. No child is dispatched during that scan. Cancellation-aware
+    filtering remains required before claiming bounded-latency maximum-set
+    routing.
 41. An `effect/call` to a Service resolves the exact contract, Provider
     Binding/export, Mount, and acknowledged generation from the owner Run's
     pinned admission. Movement of the current admission head cannot retarget or

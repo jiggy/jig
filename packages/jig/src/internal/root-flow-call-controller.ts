@@ -58,6 +58,10 @@ import {
   type PrivateRootFlowCallCheckpointName,
   type PrivateRootFlowCallLifecycle,
 } from "./root-flow-call-state.js";
+import {
+  PrivateRootFlowCallResolutionError,
+  resolvePrivateRootFlowCall,
+} from "./root-flow-call-resolution.js";
 import { failedPrivateRootTerminal, normalizePrivateRootTerminal } from "./root-run-state.js";
 
 const PLAN_KIND = "private-root-flow-call-plan/1";
@@ -104,7 +108,7 @@ interface ChildInput {
   readonly backend: PrivateLinuxCgroupBackend;
 }
 
-/** Execute the one exact child selected by the parent Binding's pinned slot. */
+/** Execute one deterministically selected direct child from the parent's pinned slot. */
 export async function executePrivateRootFlowCall(
   input: ChildInput & {
     readonly call: RunHostFlowCall;
@@ -114,14 +118,33 @@ export async function executePrivateRootFlowCall(
 ): Promise<RunHostOperationTerminal> {
   let allocated = false;
   try {
-    const selected = selectChild(input.parent, input.call);
+    const resolution = await resolvePrivateRootFlowCall({
+      parent: input.parent,
+      call: input.call,
+      packageStoreRoot: input.packageStoreRoot,
+    });
+    if (resolution.state === "missing") {
+      throw new CheckError(
+        "unavailable",
+        "UNAVAILABLE",
+        "the requested slot has no compatible admitted child Flow",
+      );
+    }
+    if (resolution.state === "ambiguous") {
+      throw new CheckError(
+        "unavailable",
+        "UNAVAILABLE",
+        "the requested slot has several compatible admitted child Flows",
+      );
+    }
+    const selected = resolution.selected;
     const recipe = await planPrivateDirectRun({
       request: selected.request,
       runtimeSupport: input.runtimeSupport,
       backend: input.backend,
     });
-    if (recipe.digest !== selected.recipeDigest ||
-        recipe.observation.digest !== selected.observationDigest) {
+    if (recipe.digest !== selected.disposition.recipeDigest ||
+        recipe.observation.digest !== selected.disposition.observationDigest) {
       throw new Error("current host mechanisms do not reproduce the admitted child recipe");
     }
     const effectiveDeadlineUnixMs = Math.min(
@@ -457,27 +480,6 @@ async function validateChildInput(
   return undefined;
 }
 
-function selectChild(parent: PrivateReacquiredRootExecutionWork, call: RunHostFlowCall): Readonly<{
-  readonly request: NonNullable<ReturnType<typeof findPrivateActivationCandidateTargetV5>>["request"];
-  readonly recipeDigest: string;
-  readonly observationDigest: string;
-}> {
-  const parentTarget = findPrivateActivationCandidateTargetV5(parent.candidate, parent.run.target);
-  const slot = parentTarget?.request.slots[call.slot];
-  if (slot?.kind !== "flow-call" || slot.targets.length !== 1 || slot.targets[0]!.kind !== "flow") {
-    throw new CheckError("unavailable", "UNAVAILABLE", "the requested slot has no exact admitted child Flow");
-  }
-  const child = findPrivateActivationCandidateTargetV5(parent.candidate, slot.targets[0]!);
-  if (child === undefined || child.disposition.state !== "ready") {
-    throw new CheckError("unavailable", "UNAVAILABLE", "the exact child Flow is not READY in this generation");
-  }
-  return Object.freeze({
-    request: child.request,
-    recipeDigest: child.disposition.recipeDigest,
-    observationDigest: child.disposition.observationDigest,
-  });
-}
-
 async function load(input: ChildInput): Promise<PrivateRootFlowCallLifecycle | undefined> {
   return await loadPrivateRootFlowCall({
     coordinator: input.coordinator,
@@ -522,6 +524,13 @@ function operationTerminal(lifecycle: PrivateRootFlowCallLifecycle): RunHostOper
 }
 
 function preallocationFailure(error: unknown): RunHostOperationTerminal {
+  if (error instanceof PrivateRootFlowCallResolutionError) {
+    return Object.freeze({
+      status: "failed",
+      code: "EXECUTION_FAILED",
+      message: "the admitted child Flow selection could not be verified",
+    });
+  }
   if (error instanceof CheckError && (
     error.code === "UNAVAILABLE" || error.code === "RESOURCE_EXHAUSTED" ||
     error.code === "INVALID_INPUT" || error.code === "PERMISSION_DENIED"

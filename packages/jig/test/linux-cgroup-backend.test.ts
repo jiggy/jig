@@ -3870,7 +3870,7 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
     }
   }, 180_000);
 
-  test("runs one admitted Bun parent through one exact Python child Flow", async () => {
+  test("runs one admitted Bun parent through deterministically selected Python child Flows", async () => {
     host = await hostConfiguration();
     const [bun, python] = await Promise.all([
       proofHostBunClosure(),
@@ -3927,6 +3927,15 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         "});",
         "",
       ].join("\n"));
+      await writeFile(join(root, "bindings", "filtered.ts"), [
+        'import { candidates, defineBinding, flowRef } from "@jigging/jig";',
+        "export default defineBinding({",
+        '  package: "flows/parent",',
+        '  settings: { marker: "filtered" },',
+        '  slots: { child: candidates([flowRef("flows/child"), flowRef("flows/unavailable")]) },',
+        "});",
+        "",
+      ].join("\n"));
       await writeFile(join(root, "bindings", "unavailable.ts"), [
         'import { defineBinding, flowRef } from "@jigging/jig";',
         "export default defineBinding({",
@@ -3958,7 +3967,7 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         $schema: "https://flow.dev/schemas/schema-1.json",
         type: "object",
         properties: {
-          marker: { enum: ["admitted", "missing", "multiple", "unavailable", "starting"] },
+          marker: { enum: ["admitted", "filtered", "missing", "multiple", "unavailable", "starting"] },
         },
         required: ["marker"],
         additionalProperties: false,
@@ -4130,9 +4139,9 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         storeRoot: store,
         evaluator,
       });
-      expect(aggregate.linked.bindings).toHaveLength(5);
+      expect(aggregate.linked.bindings).toHaveLength(6);
       const requests = buildPrivateActivationRequests(aggregate.linked);
-      expect(requests).toHaveLength(9);
+      expect(requests).toHaveLength(10);
       const runtimeSupport = Object.freeze({
         bun: bun.runtimeSupport,
         python: python.runtimeSupport,
@@ -4140,8 +4149,7 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
       const recipes = [];
       const entries = [];
       for (const request of requests) {
-        const unsupportedParent = request.target.kind === "binding" &&
-          (request.target.id === "missing" || request.target.id === "multiple");
+        const unsupportedParent = request.target.kind === "binding" && request.target.id === "missing";
         if (request.entrypoint.path === "flow.sh" || unsupportedParent) {
           if (unsupportedParent) {
             await expect(planPrivateDirectRun({
@@ -4149,7 +4157,7 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
               runtimeSupport,
               backend: rootBackend,
             })).rejects.toThrow(
-              "private Bun Binding recipe requires deterministic direct-Flow or capability slots",
+              "private Bun Binding recipe requires at least one admitted Flow-call or capability slot",
             );
           }
           entries.push({
@@ -4268,15 +4276,40 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
       const multiple = await controller.administration.startRun({
         submissionId: "composed-multiple",
         target: bindingTarget("multiple"),
-        input: {},
+        input: { probe: "composed-multiple", childInput: {} },
       });
       await controller.drain();
-      for (const refused of [missing, multiple]) {
-        expect(await controller.administration.runStatus(refused)).toMatchObject({
-          state: "terminal",
-          terminal: { status: "failed", code: "UNAVAILABLE" },
-        });
-      }
+      expect(await controller.administration.runStatus(missing)).toMatchObject({
+        state: "terminal",
+        terminal: { status: "failed", code: "UNAVAILABLE" },
+      });
+      expect(await controller.administration.runStatus(multiple)).toMatchObject({
+        state: "terminal",
+        terminal: {
+          status: "succeeded",
+          outcome: "done",
+          output: { marker: "multiple", error: "UNAVAILABLE" },
+        },
+      });
+      const filtered = await controller.administration.startRun({
+        submissionId: "composed-filtered",
+        target: bindingTarget("filtered"),
+        input: { ticket: "T-filtered" },
+      });
+      await controller.drain();
+      expect(await controller.administration.runStatus(filtered)).toMatchObject({
+        state: "terminal",
+        terminal: {
+          status: "succeeded",
+          outcome: "done",
+          output: {
+            marker: "filtered",
+            first: { outcome: "done", output: { child: { ticket: "T-filtered" } } },
+            replay: { outcome: "done", output: { child: { ticket: "T-filtered" } } },
+            rejected: "RESOURCE_EXHAUSTED",
+          },
+        },
+      });
       const unavailable = await probe("composed-unavailable", bindingTarget("unavailable"), {});
       expect(unavailable.status).toMatchObject({
         state: "terminal",
@@ -4352,7 +4385,7 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         sqlite.constants.SQLITE_OPEN_READONLY | sqlite.constants.SQLITE_OPEN_NOFOLLOW,
       );
       try {
-        expect(database.query("SELECT count(*) AS count FROM root_flow_calls").get().count).toBe(7);
+        expect(database.query("SELECT count(*) AS count FROM root_flow_calls").get().count).toBe(8);
         for (const refused of [missing, multiple, unavailable.started]) {
           expect(database.query(
             "SELECT count(*) AS count FROM root_flow_calls WHERE parent_run_id = ?1",
@@ -4363,11 +4396,11 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         ).get(invalidInput.started.runId).count).toBe(0);
         expect(database.query(
           "SELECT count(*) AS count FROM root_flow_call_facts WHERE fact_name = 'release'",
-        ).get().count).toBe(7);
+        ).get().count).toBe(8);
         expect(database.query(
           "SELECT count(*) AS count FROM root_flow_call_facts WHERE fact_name = 'admitted'",
-        ).get().count).toBe(7);
-        expect(database.query("SELECT count(*) AS count FROM root_flow_call_closures").get().count).toBe(7);
+        ).get().count).toBe(8);
+        expect(database.query("SELECT count(*) AS count FROM root_flow_call_closures").get().count).toBe(8);
       } finally { database.close(true); }
       await controller.dispose();
       controller = undefined;
@@ -4546,7 +4579,7 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
       await rm(root, { recursive: true, force: true });
       await rm(store, { recursive: true, force: true });
     }
-  }, 420_000);
+  }, 540_000);
 
   test("runs and manually recovers one private mixed composition across coordinator loss", async () => {
     host = await hostConfiguration();

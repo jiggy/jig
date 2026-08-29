@@ -37,6 +37,11 @@ Start here:
 
 Current implementation frontier:
 
+- [`design-review/181-private-deterministic-flow-call-dispatch.md`](design-review/181-private-deterministic-flow-call-dispatch.md)
+  connects one deterministic direct-Flow survivor to the existing durable
+  child lifecycle, proves same-generation allocation authority and contained
+  one-survivor/many-survivor behavior, and keeps configured Bindings and
+  semantic routing gated.
 - [`design-review/180-private-root-flow-call-filtering.md`](design-review/180-private-root-flow-call-filtering.md)
   closes complete invocation-local filtering for direct Flow targets over one
   retained admitted slot, including exact-versus-broad input ordering,

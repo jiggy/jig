@@ -20,6 +20,13 @@ import {
 
 export type PrivateRootFlowCallSource = "exact" | "candidates" | "project-run-targets";
 
+type PrivateReadyActivationCandidateTarget = PrivateActivationCandidateTarget & {
+  readonly disposition: Extract<
+    PrivateActivationCandidateTarget["disposition"],
+    { readonly state: "ready" }
+  >;
+};
+
 export type PrivateRootFlowCallRejection =
   | {
       readonly target: RunTargetIdentity;
@@ -51,7 +58,7 @@ export type PrivateRootFlowCallResolution =
   | {
       readonly state: "selected";
       readonly source: PrivateRootFlowCallSource;
-      readonly selected: PrivateActivationCandidateTarget;
+      readonly selected: PrivateReadyActivationCandidateTarget;
       readonly rejected: readonly PrivateRootFlowCallRejection[];
     }
   | {
@@ -62,7 +69,7 @@ export type PrivateRootFlowCallResolution =
   | {
       readonly state: "ambiguous";
       readonly source: Exclude<PrivateRootFlowCallSource, "exact">;
-      readonly survivors: readonly PrivateActivationCandidateTarget[];
+      readonly survivors: readonly PrivateReadyActivationCandidateTarget[];
       readonly rejected: readonly PrivateRootFlowCallRejection[];
     };
 
@@ -125,7 +132,7 @@ async function resolveWithCache(
   const source = slot.source;
   const parentKey = privateActivationTargetKey(parent.request.target);
   const rejected: PrivateRootFlowCallRejection[] = [];
-  const survivors: PrivateActivationCandidateTarget[] = [];
+  const survivors: PrivateReadyActivationCandidateTarget[] = [];
   const targets = [...slot.targets].sort((left, right) =>
     compareOrdinal(privateActivationTargetKey(left), privateActivationTargetKey(right))
   );
@@ -150,6 +157,7 @@ async function resolveWithCache(
       }));
       continue;
     }
+    const ready = target as PrivateReadyActivationCandidateTarget;
     if (identity.kind === "binding") {
       rejected.push(Object.freeze({
         target: identity,
@@ -163,7 +171,7 @@ async function resolveWithCache(
       target.request.package,
       cache,
     );
-    requireDirectFlowProjection(target, inspected);
+    requireDirectFlowProjection(ready, inspected);
     if (source !== "exact") {
       try {
         inspected.schemas.input?.validate(input.call.input, "INVALID_INPUT");
@@ -178,7 +186,7 @@ async function resolveWithCache(
         continue;
       }
     }
-    survivors.push(target);
+    survivors.push(ready);
   }
 
   rejected.sort((left, right) =>

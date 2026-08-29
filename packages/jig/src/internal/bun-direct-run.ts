@@ -106,9 +106,9 @@ export async function planPrivateBunDirectRun(input: {
     }
   } else {
     const slots = Object.values(request.slots);
-    if (slots.length === 0 || !slots.every(isSupportedPrivateBindingSlot)) {
+    if (slots.length === 0) {
       throw new TypeError(
-        "private Bun Binding recipe requires deterministic direct-Flow or capability slots",
+        "private Bun Binding recipe requires at least one admitted Flow-call or capability slot",
       );
     }
   }
@@ -171,19 +171,6 @@ export async function planPrivateBunDirectRun(input: {
   });
   authenticRecipes.add(recipe);
   return recipe;
-}
-
-function isSupportedPrivateBindingSlot(
-  slot: PrivateActivationRequest["slots"][string],
-): boolean {
-  if (slot.kind === "flow-call") {
-    return slot.targets.length === 1 && slot.targets[0]!.kind === "flow";
-  }
-  // Capability slots already carry one exact protected contract, Provider
-  // Binding, and export. The Run host—not the package or Runtime Adapter—owns
-  // the closed Journal-versus-Service dispatch decision for that admitted
-  // identity.
-  return true;
 }
 
 export function requirePrivateBunDirectRecipe(value: unknown): PrivateBunDirectRecipe {
