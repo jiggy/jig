@@ -37,6 +37,11 @@ Start here:
 
 Current implementation frontier:
 
+- [`design-review/185-first-release-external-join.md`](design-review/185-first-release-external-join.md)
+  records that the next executable critical-path proof has reached its external
+  substrate join after deterministic changing-source hardening, fixes the
+  direct-leaf versus Agent-worker claim, and defers Event Sources until the
+  independent post-routing campaign.
 - [`design-review/184-cancellation-aware-flow-call-resolution.md`](design-review/184-cancellation-aware-flow-call-resolution.md)
   propagates the existing operation signal through complete deterministic
   target filtering, closing a 4,096-target cancellation-latency debt without

@@ -287,10 +287,10 @@ Administration object, and deterministic close. Its
 packed injected-session consumer pass. It deliberately defines neither
 project selection/acquisition nor a transport. Before a CLI or GUI becomes an
 operational alpha, Jig must still close the production host installation,
-authenticate project selection and authority issuance, strengthen review with
-current-to-proposed delta evidence, and freeze the actual acquisition/CLI
-spelling. Later inspection, list/watch/cancel, and remote transport remain
-separate demand-gated surfaces.
+authenticate project selection and authority issuance, and freeze the actual
+acquisition/finite-CLI spelling through an independent installed consumer.
+Current-to-proposed review evidence is closed in review 169. Later inspection,
+list/watch/cancel, and remote transport remain separate demand-gated surfaces.
 
 The first private local admission boundary is defined in
 [`150-private-project-admission-frontier.md`](150-private-project-admission-frontier.md).
@@ -314,8 +314,10 @@ records that narrowly failure-atomic publication proof. It
 is now wrapped by the finite private project session recorded in review 167.
 The closed plan/apply/error values and injected object-capability consumer no
 longer gate one another. Production project opening, authentication/transport,
-a public CLI/API, a public lock schema, review-delta evidence, and the remaining
-classifier/authority debt remain release gates. Review
+a finite public CLI/API, a public lock schema, and the remaining
+classifier/authority debt remain release gates. Review 169 closes the
+proof-independent command seam and review delta without claiming installed
+acquisition. Review
 [`167`](167-finite-project-session-checkpoint.md) records the exact closure and
 nonclaims.
 
@@ -326,27 +328,29 @@ public-surface consumer, and independent packed-package consumer review now
 pass. The independent review first rejected three ambiguous semantics and
 cleared the amended candidate only after its original counterexamples passed.
 
-### Trusted host extension interfaces
+### Trusted host installation and later extension interfaces
 
-The host must define closed registration and call models for:
+The first alpha needs one closed administrator-owned installation contract for
+the exact mechanisms it ships. It does **not** need public Runtime Adapter,
+Sandbox Backend, Event Source, or provider-plugin SPIs. One Linux Backend and
+one Agent integration cannot establish portable extension abstractions.
 
-- Runtime Adapters;
-- Sandbox Backends;
-- host-capability provider registrations;
-- authenticated Journal producer registration/lifecycle for protected host
-  producers;
-- Agent per-owner resource/tool projection; and
-- instruction-runtime conductors.
+The installed host policy must authenticate its exact launcher, runtime
+support, retained first-party artifacts, and provider registration; support
+restart reacquisition and drift refusal; and keep every resulting handle
+outside project and FLOW authority. The project cannot name paths, commands,
+receipts, provider artifacts, containment arguments, or host-policy tokens.
 
-It must also publish the closed host-policy document schema, the module or
-artifact identity used to name installed extensions, deterministic registration
-lookup, and the management interface which inspects or changes that host-local
-policy. These are operator surfaces; project source cannot supply or override
-them.
+The first alpha needs one exact private operator registration record and
+inspection path for its selected Agent integration. That record is closed,
+authenticated, restart-reacquirable host policy; it is not a generic or public
+provider SPI.
 
-The behavioral requirements are reviewed, but examples must not invent provider
-package names, tokens, receipts, or launch structures before these interfaces
-exist.
+A future public extension interface requires a second genuinely independent
+mechanism and consumer. Only then should Jig define registration/plan schemas,
+artifact identities, deterministic lookup, and management operations for that
+specific family. Examples must not invent provider package names, tokens,
+receipts, or launch structures before the evidence exists.
 
 The private logical Agent checkpoint in review 157 now reparses the canonical
 Agent Run descriptor, validates request/result and response Schema/1 values,
@@ -365,7 +369,9 @@ Project `semanticChoice` authoring, a qualifying provider Binding, and an
 Agent-backed chooser remain release gates. Review 183 publishes only the inert
 `projectRunTargets()` authoring marker. The private host expands and retains it,
 filters complete pinned direct-Flow survivors, and can durably dispatch one
-survivor; complete runtime filtering and Agent-backed routing remain gated.
+survivor. Capability-bearing Agent workers, their child-owned effect path, and
+Agent-backed routing remain gated. Review 185 records why that distinction and
+the Event Source ordering are now first-release stop conditions.
 
 The former Linux `SANDBOX_UNAVAILABLE` stop is historical. The private proof
 now has a delegated aggregate owner, pre-exec placement, entropy and
@@ -525,28 +531,43 @@ decontamination boundary remains in
 [`130-nix-experiment-disposition-and-next-slice.md`](130-nix-experiment-disposition-and-next-slice.md);
 the latest completed composition boundary is review 162.
 
-## Machine-readable release gates
+## First-release gates
 
-The repository still needs:
+The critical path still needs:
 
-- one production trusted project-opening/authority issuer around the now-closed
-  finite session, without exposing state paths or host machinery;
-- authentication plus a finite CLI/API transport surface, current-to-proposed
-  review evidence, and the remaining Plan/2 classifier/authority proof debt;
-- a finite tested Bun support range for the selected Bun-only first preview;
-  genuine Node 22 and 24 stop on their Unicode 17.0 database while the pinned
-  package contract requires Unicode 15.1 and are not claimed Jig runtimes;
-- license, repository, version, and tested engine metadata before registry
-  publication;
+- license, repository, version, finite Bun range, and release metadata chosen
+  by the product owner before registry publication;
 - one administrator-owned production launcher/runtime-support installation on
-  a fresh supported host rather than the proof sandbox's host controls;
-- the complete Service/1 Host/Provider cross-language black-box corpus and a
-  second independent Host;
-- a closed host-policy/configuration document for supported mechanisms;
-- Runtime Adapter and Sandbox Backend schemas only after a second independent
-  mechanism proves those abstractions;
-- the canonical `jig.lock` schema; and
-- cross-language fixtures for every claimed stable boundary.
+  a fresh supported host rather than the proof sandbox's controls;
+- one authenticated retained and restart-reacquirable record for the exact
+  first-party TypeScript FLOW SDK archive used by native preparation;
+- authenticated project acquisition and one finite installed CLI/API consumer
+  around the closed Project Session, without exposing state paths or host
+  machinery;
+- the canonical public `jig.lock` schema, frozen with that consumer;
+- Operational Baseline/1 on that fresh host;
+- one operator-owned exact Agent Run provider registration and contained
+  no-redispatch proof;
+- the private Agent-to-Semantic-Choice composition and durable decision owner;
+  and
+- the independent Agentic Routing/1 campaign.
+
+Genuine Node 22 and 24 remain unclaimed Jig runtimes: their Unicode 17.0
+database cannot satisfy Package/1's pinned Unicode 15.1 normalization.
+
+The following are independent or demand-gated rather than first-release
+blockers:
+
+- complete Service/1 Host/Provider conformance and a second Host;
+- the remaining Plan/classifier authority matrix and maximum-size Plan fault
+  injection beyond the subset claimed by the first finite operation;
+- Runtime Adapter and Sandbox Backend schemas, which require a second
+  independent mechanism;
+- Event Source/Hook and software-factory campaigns after Agentic Routing/1;
+  and
+- cross-language fixtures only for each boundary actually labelled portable.
+
+Review 185 is the current dependency and stop-boundary record.
 
 ## Rule for the next experiment
 
