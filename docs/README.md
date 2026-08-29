@@ -37,6 +37,10 @@ Start here:
 
 Current implementation frontier:
 
+- [`design-review/179-native-preparation-artifact-boundary.md`](design-review/179-native-preparation-artifact-boundary.md)
+  records the exact retained SDK artifact substrate missing from the selected
+  native-preparation proof after rejecting caller-asserted path, digest, and
+  lifetime claims without growing Jig into a package manager.
 - [`design-review/178-project-run-target-review-delta.md`](design-review/178-project-run-target-review-delta.md)
   adds one bounded navigation delta for changing Run-target slots, including
   private target-meaning revisions without disclosing their evidence, while

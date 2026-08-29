@@ -3,7 +3,10 @@
 **Status:** selected on 2026-08-29 after the clean-room Project Authoring
 campaign exposed the missing SDK installations and an adversarial comparison
 of native installers versus a Jig-owned archive extractor. No preparation
-implementation is claimed by this record.
+implementation is claimed by this record. The subsequent
+[artifact-boundary review](179-native-preparation-artifact-boundary.md) rejects
+caller-asserted archive evidence and records the exact host-owned substrate
+required before this implementation may begin.
 
 ## 1. The exact gap
 
