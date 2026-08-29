@@ -21,6 +21,7 @@ import {
 } from "./activation-admission-store.js";
 import { findPrivateActivationCandidateTargetV5 } from "./activation-admission.js";
 import type { PrivateBunDirectRecipe } from "./bun-direct-run.js";
+import { revalidatePrivateBunNativeRunRecipe } from "./bun-native-run-recipe.js";
 import {
   planPrivateDirectRun,
   type PrivateDirectRunRecipe,
@@ -143,7 +144,11 @@ export async function executePrivateRootFlowCall(
       request: selected.request,
       runtimeSupport: input.runtimeSupport,
       backend: input.backend,
+      packageStoreRoot: input.packageStoreRoot,
     });
+    if (recipe.kind === "private-bun-native-run-recipe/1") {
+      throw new TypeError("Bun native Run recipe execution is not joined to child Flow");
+    }
     if (recipe.digest !== selected.disposition.recipeDigest ||
         recipe.observation.digest !== selected.disposition.observationDigest) {
       throw new Error("current host mechanisms do not reproduce the admitted child recipe");
@@ -566,6 +571,10 @@ function requireTerminal(value: JsonValue): RunHostTerminal {
 }
 
 async function revalidateRecipe(recipe: PrivateDirectRunRecipe): Promise<void> {
+  if (recipe.kind === "private-bun-native-run-recipe/1") {
+    await revalidatePrivateBunNativeRunRecipe(recipe);
+    return;
+  }
   const [mechanism, executableDigest] = await Promise.all([
     recipe.backend.observeMechanism(),
     privateFileDigest(recipe.executablePath),
@@ -606,6 +615,9 @@ function backendPlan(
         `${bun.packageDestination}/${bun.request.entrypoint.path}`,
       ] as readonly [string, ...string[]],
     });
+  }
+  if (recipe.kind === "private-bun-native-run-recipe/1") {
+    throw new TypeError("Bun native Run recipe execution is not joined to child Flow");
   }
   return Object.freeze({
     runId,

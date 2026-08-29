@@ -37,6 +37,12 @@ Start here:
 
 Current implementation frontier:
 
+- [`design-review/194-private-native-recipe-pinning.md`](design-review/194-private-native-recipe-pinning.md)
+  closes mandatory retained-byte classification and one exact planning-only
+  recipe for a Bun Run requiring package-local preparation. The recipe pins
+  its real controller, worker, runtime, Backend, preparation envelopes, and
+  final launch meaning, while every execution consumer still refuses it. The
+  root preparation/materialization/final-Run join remains the next gate.
 - [`design-review/193-private-prepared-tree-materialization.md`](design-review/193-private-prepared-tree-materialization.md)
   closes the private authenticated view which turns one retained prepared tree
   into a restart-verifiable, read-only per-Run materialization without

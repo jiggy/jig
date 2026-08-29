@@ -1,5 +1,8 @@
 import { lstat, mkdir, realpath } from "node:fs/promises";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+
+import type { JsonValue } from "../json.js";
 
 import { findPrivateActivationCandidateTargetV5 } from "./activation-admission.js";
 import {
@@ -32,7 +35,7 @@ import {
   normalizePrivateRootBunNativePreparationAllocation,
   type PrivateRootBunNativePreparationOutcome,
 } from "./bun-native-preparation-state.js";
-import { privateFileDigest } from "./identity.js";
+import { privateDomainDigest, privateFileDigest } from "./identity.js";
 import {
   PrivateLinuxFenceUnconfirmedError,
   cancelPrivateLinuxOwnerStateAllocation,
@@ -72,6 +75,62 @@ const RESOURCE_LIMITS = Object.freeze({
   cancellationGraceMs: CANCELLATION_GRACE_MS,
   cleanupTimeoutMs: 5_000,
 });
+const CONTROLLER_REVISION = "private-bun-native-preparation-controller/1";
+const RUNTIME_PREDICATES = Object.freeze([
+  "private-process-filesystem/1",
+  "private-runtime-devices/1",
+] as const);
+const authenticControllerObservations = new WeakSet<object>();
+
+export interface PrivateBunNativePreparationControllerObservation {
+  readonly kind: "private-bun-native-preparation-controller-observation/1";
+  readonly digest: string;
+  readonly artifactDigest: string;
+  readonly revision: typeof CONTROLLER_REVISION;
+  readonly workerDestination: typeof WORKER_DESTINATION;
+  readonly packageDestination: typeof PACKAGE_DESTINATION;
+  readonly bunPolicy: typeof BUN_POLICY;
+  readonly maxStdoutBytes: typeof MAX_STDOUT_BYTES;
+  readonly maxStderrBytes: typeof MAX_STDERR_BYTES;
+  readonly resourceLimits: typeof RESOURCE_LIMITS;
+  readonly runtimePredicates: typeof RUNTIME_PREDICATES;
+}
+
+/** Pin the controller implementation and every fixed preparation policy input. */
+export async function observePrivateBunNativePreparationController(
+): Promise<PrivateBunNativePreparationControllerObservation> {
+  const identity = Object.freeze({
+    kind: "private-bun-native-preparation-controller-observation/1" as const,
+    artifactDigest: await privateFileDigest(fileURLToPath(import.meta.url)),
+    revision: CONTROLLER_REVISION,
+    workerDestination: WORKER_DESTINATION,
+    packageDestination: PACKAGE_DESTINATION,
+    bunPolicy: BUN_POLICY,
+    maxStdoutBytes: MAX_STDOUT_BYTES,
+    maxStderrBytes: MAX_STDERR_BYTES,
+    resourceLimits: RESOURCE_LIMITS,
+    runtimePredicates: RUNTIME_PREDICATES,
+  });
+  const observation = Object.freeze({
+    ...identity,
+    digest: privateDomainDigest(
+      "JIG-Private-Bun-Native-Preparation-Controller/1",
+      identity as unknown as JsonValue,
+    ),
+  });
+  authenticControllerObservations.add(observation);
+  return observation;
+}
+
+export function requirePrivateBunNativePreparationControllerObservation(
+  value: unknown,
+): PrivateBunNativePreparationControllerObservation {
+  if (value === null || typeof value !== "object" ||
+      !authenticControllerObservations.has(value)) {
+    throw new TypeError("Bun native preparation controller observation is not authentic");
+  }
+  return value as PrivateBunNativePreparationControllerObservation;
+}
 
 export type PrivateRootBunNativePreparationDisposition =
   | { readonly state: "terminal"; readonly snapshot: PrivateRootBunNativePreparationSnapshot }

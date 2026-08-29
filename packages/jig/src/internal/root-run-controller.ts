@@ -18,6 +18,7 @@ import {
   type PrivateRootRunTerminal,
 } from "./activation-admission-store.js";
 import type { PrivateBunDirectRecipe } from "./bun-direct-run.js";
+import { revalidatePrivateBunNativeRunRecipe } from "./bun-native-run-recipe.js";
 import {
   planPrivateDirectRun,
   type PrivateDirectRunRecipe,
@@ -166,6 +167,9 @@ async function startOrResumeCurrentExecution(
       }
       const activationStartedUnixMs = Date.now();
       recipe = await reproduceRecipe(input, work);
+      if (recipe.kind === "private-bun-native-run-recipe/1") {
+        throw new TypeError("Bun native Run recipe execution is not joined to root Run");
+      }
       stop.narrow(Math.min(
         work.intent.deadlineUnixMs,
         activationStartedUnixMs + recipe.wallClockCeilingMs,
@@ -203,6 +207,9 @@ async function startOrResumeCurrentExecution(
     } else {
       plan = parsePlan(work.lifecycle.plan.value);
       recipe = await reproduceRecipe(input, work);
+      if (recipe.kind === "private-bun-native-run-recipe/1") {
+        throw new TypeError("Bun native Run recipe execution is not joined to root Run");
+      }
       await requirePlanMatches(input.projectRoot, plan, work, recipe);
       stop.narrow(plan.effectiveDeadlineUnixMs);
     }
@@ -634,6 +641,7 @@ async function reproduceRecipe(
     request,
     runtimeSupport: input.runtimeSupport,
     backend: input.backend,
+    packageStoreRoot: input.packageStoreRoot,
   });
   if (recipe.digest !== work.intent.recipeDigest ||
       recipe.observation.digest !== work.intent.observationDigest) {
@@ -643,6 +651,10 @@ async function reproduceRecipe(
 }
 
 async function revalidateRecipe(recipe: PrivateDirectRunRecipe): Promise<void> {
+  if (recipe.kind === "private-bun-native-run-recipe/1") {
+    await revalidatePrivateBunNativeRunRecipe(recipe);
+    return;
+  }
   const [mechanism, executableDigest] = await Promise.all([
     recipe.backend.observeMechanism(),
     privateFileDigest(recipe.executablePath),
@@ -682,6 +694,9 @@ function backendPlan(
         `${bun.packageDestination}/${bun.request.entrypoint.path}`,
       ] as readonly [string, ...string[]],
     });
+  }
+  if (recipe.kind === "private-bun-native-run-recipe/1") {
+    throw new TypeError("Bun native Run recipe execution is not joined to root Run");
   }
   return Object.freeze({
     runId: backendRunLabel(runId),

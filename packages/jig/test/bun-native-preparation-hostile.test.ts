@@ -215,6 +215,11 @@ hostileDescribe("private contained Bun native preparation feasibility", () => {
           request: candidateRequest,
           runtimeSupport: bun.runtimeSupport,
           backend,
+          packageStoreRoot: store,
+          bunNativePreparation: {
+            workerBundlePath: workerBundle,
+            workerBundleDigest,
+          },
         })));
       const planning = createPrivateActivationPlanningObservation({
         policyDigest: testDigest("native-preparation-policy"),

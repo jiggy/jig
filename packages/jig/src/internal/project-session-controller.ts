@@ -171,6 +171,7 @@ function createSession(
               request,
               runtimeSupport: host.directRuntimeSupport,
               backend: host.backend,
+              packageStoreRoot,
             }));
           } catch (error) {
             if (error instanceof TypeError) {

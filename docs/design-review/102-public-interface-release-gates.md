@@ -548,11 +548,14 @@ The critical path still needs:
 - one administrator-owned production launcher/runtime-support installation on
   a fresh supported host rather than the proof sandbox's controls;
 - READY integration and final read-only prepared execution for the exact
-  package-local native dependency; review 192 closes the concrete durable
+  package-local native dependency; review 194 closes mandatory retained-byte
+  routing and its exact planning-only recipe, review 193 closes detached
+  prepared-tree materialization, review 192 closes the concrete durable
   controller, review 190 closes the protected prepared-tree store, review 191
   closes the v19 lifecycle state/no-redispatch substrate, and review 188 closes
   the preceding ephemeral contained-install feasibility proof selected by
-  reviews 175 and 186;
+  reviews 175 and 186. The root-owned preparation/materialization/final-Run
+  join is still required;
 - authenticated project acquisition and one finite installed CLI/API consumer
   around the closed Project Session, without exposing state paths or host
   machinery;

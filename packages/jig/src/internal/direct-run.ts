@@ -6,6 +6,12 @@ import {
   type PrivateBunDirectRunResult,
 } from "./bun-direct-run.js";
 import {
+  planPrivateBunNativeRun,
+  requirePrivateBunNativeRunRecipe,
+  type PrivateBunNativeRunRecipe,
+} from "./bun-native-run-recipe.js";
+import { classifyPrivateBunRetainedDependencies } from "./bun-native-preparation.js";
+import {
   requirePrivateRuntimeSupportObservation,
   type PrivateRuntimeSupportObservation,
 } from "./agent-sandbox-runtime-support.js";
@@ -23,18 +29,33 @@ import {
 } from "../project/package-resolution.js";
 import type { RunHostInvocation } from "../run/session.js";
 
-export type PrivateDirectRunRecipe = PrivateBunDirectRecipe | PrivatePythonDirectRecipe;
+export type PrivateDirectRunRecipe =
+  | PrivateBunDirectRecipe
+  | PrivateBunNativeRunRecipe
+  | PrivatePythonDirectRecipe;
 export type PrivateDirectRunResult = PrivateBunDirectRunResult | PrivatePythonDirectRunResult;
 export type PrivateDirectRunRuntimeSupport = PrivateRuntimeSupportObservation | Readonly<{
   readonly bun?: PrivateRuntimeSupportObservation;
   readonly python?: PrivateRuntimeSupportObservation;
 }>;
 
-/** Select only between exact recipes already implemented by the trusted host. */
+export interface PrivateBunNativeRunPlanningInput {
+  readonly workerBundlePath: string;
+  readonly workerBundleDigest: string;
+}
+
+/** Select only between exact private recipes fixed by the trusted host. */
 export async function planPrivateDirectRun(input: {
   readonly request: PrivateActivationRequest;
   readonly runtimeSupport: PrivateDirectRunRuntimeSupport;
   readonly backend: PrivateLinuxCgroupBackend;
+  /** Retained Package/1 bytes are mandatory evidence for every Bun decision. */
+  readonly packageStoreRoot: string;
+  /**
+   * Host-selected preparation worker. It is required only when retained bytes
+   * classify as the one exact package-local dependency relation.
+   */
+  readonly bunNativePreparation?: PrivateBunNativeRunPlanningInput;
 }): Promise<PrivateDirectRunRecipe> {
   const request = requirePrivateActivationRequest(input.request);
   const runtimeSupport = selectRuntimeSupport(request, input.runtimeSupport);
@@ -43,6 +64,25 @@ export async function planPrivateDirectRun(input: {
     return await planPrivatePythonDirectRun(normalized);
   }
   if (request.entrypoint.path === "flow.ts") {
+    const classification = await classifyPrivateBunRetainedDependencies({
+      request,
+      packageStoreRoot: input.packageStoreRoot,
+    });
+    if (classification.state === "exact-required") {
+      if (input.bunNativePreparation === undefined) {
+        throw new TypeError(
+          "Bun native dependency preparation has no trusted host worker selection",
+        );
+      }
+      return await planPrivateBunNativeRun({
+        request,
+        preparationObservation: classification.preparationObservation,
+        runtimeSupport,
+        backend: input.backend,
+        workerBundlePath: input.bunNativePreparation.workerBundlePath,
+        workerBundleDigest: input.bunNativePreparation.workerBundleDigest,
+      });
+    }
     return await planPrivateBunDirectRun(normalized);
   }
   throw new TypeError(`no exact private direct recipe for ${request.entrypoint.path}`);
@@ -83,6 +123,11 @@ export function requirePrivateDirectRunRecipe(value: unknown): PrivateDirectRunR
     // Continue to the other closed recipe authority.
   }
   try {
+    return requirePrivateBunNativeRunRecipe(value);
+  } catch {
+    // Continue to the other closed recipe authority.
+  }
+  try {
     return requirePrivatePythonDirectRecipe(value);
   } catch {
     // Reject below without reading attacker-controlled properties.
@@ -99,6 +144,9 @@ export async function runPrivateDirectRunRecipe(input: {
   const recipe = requirePrivateDirectRunRecipe(input.recipe);
   if (recipe.kind === "private-bun-direct-recipe/1") {
     return await runPrivateBunDirectRecipe({ ...input, recipe });
+  }
+  if (recipe.kind === "private-bun-native-run-recipe/1") {
+    throw new TypeError("Bun native Run recipe execution is not joined to direct Run");
   }
   return await runPrivatePythonDirectRecipe({ ...input, recipe });
 }

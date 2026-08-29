@@ -411,6 +411,7 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
           request: request!,
           runtimeSupport: bun.runtimeSupport,
           backend: backend(host),
+          packageStoreRoot: store,
         });
         expect(requirePrivateBunDirectRecipe(recipe)).toBe(recipe);
         expect(requirePrivateDirectRunRecipe(recipe)).toBe(recipe);
@@ -3282,6 +3283,7 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         request: readyRequest!,
         runtimeSupport: bun.runtimeSupport,
         backend: backend(host),
+        packageStoreRoot: store,
       });
       const readyPlanning = createPrivateActivationPlanningObservation({
         policyDigest: testDigest("ready-policy"),
@@ -3651,6 +3653,7 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         request: candidate,
         runtimeSupport,
         backend: rootBackend,
+        packageStoreRoot: store,
       })));
       const planning = createPrivateActivationPlanningObservation({
         policyDigest: testDigest("journal-policy"),
@@ -4230,7 +4233,12 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
           });
           continue;
         }
-        const recipe = await planPrivateDirectRun({ request, runtimeSupport, backend: rootBackend });
+        const recipe = await planPrivateDirectRun({
+          request,
+          runtimeSupport,
+          backend: rootBackend,
+          packageStoreRoot: store,
+        });
         recipes.push(recipe);
         entries.push({
           target: request.target,
@@ -4907,7 +4915,12 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
           });
           recipes.push(serviceRecipe);
         } else {
-          recipes.push(await planPrivateDirectRun({ request, runtimeSupport, backend: rootBackend }));
+          recipes.push(await planPrivateDirectRun({
+            request,
+            runtimeSupport,
+            backend: rootBackend,
+            packageStoreRoot: store,
+          }));
         }
       }
       if (serviceRecipe === undefined) throw new Error("mixed project has no Service recipe");
@@ -5131,6 +5144,7 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
             request,
             runtimeSupport,
             backend: rootBackend,
+            packageStoreRoot: store,
           }));
         }
       }

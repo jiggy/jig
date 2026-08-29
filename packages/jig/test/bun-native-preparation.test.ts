@@ -5,6 +5,8 @@ import {
   chmod,
   mkdir,
   mkdtemp,
+  readFile,
+  realpath,
   rm,
   writeFile,
 } from "node:fs/promises";
@@ -12,9 +14,28 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
 import {
+  classifyPrivateBunRetainedDependencies,
   observePrivateBunNativePreparation,
+  requirePrivateBunRetainedDependencyClassification,
   requirePrivateBunNativePreparationObservation,
 } from "../src/internal/bun-native-preparation.js";
+import {
+  revalidatePrivateBunNativeRunRecipe,
+  requirePrivateBunNativeRunRecipe,
+} from "../src/internal/bun-native-run-recipe.js";
+import {
+  requirePrivateBunNativePreparationControllerObservation,
+} from "../src/internal/bun-native-preparation-controller.js";
+import {
+  observeAgentSandboxRuntimeSupport,
+} from "../src/internal/agent-sandbox-runtime-support.js";
+import {
+  planPrivateDirectRun,
+  requirePrivateDirectRunRecipe,
+  runPrivateDirectRunRecipe,
+} from "../src/internal/direct-run.js";
+import { privateFileDigest } from "../src/internal/identity.js";
+import { PrivateLinuxCgroupBackend } from "../src/internal/linux-cgroup-backend.js";
 import { defineJig } from "../src/project/author.js";
 import { captureFlowSource, type CapturedFlowSource } from "../src/project/flow-source.js";
 import { linkPackageProject } from "../src/project/package-project.js";
@@ -32,8 +53,263 @@ const VALID_MANIFEST = JSON.stringify({
   type: "module",
   dependencies: { "@flowmd/sdk": `file:./${ARCHIVE_PATH}` },
 });
+const hostPlanningTest = process.platform === "linux" &&
+  process.env.AGENT_RUNTIME_RECEIPTS_DIR !== undefined &&
+  process.env.AGENT_RUNTIME_LEASE_ID !== undefined
+  ? test
+  : test.skip;
 
 describe("private Bun native preparation relation", () => {
+  test("classifies retained dependency bytes as none or the one exact requirement", async () => {
+    await withRunBinding({ includeManifest: false }, async ({ store, request }) => {
+      const classification = await classifyPrivateBunRetainedDependencies({
+        request,
+        packageStoreRoot: store,
+      });
+      expect(classification).toMatchObject({
+        kind: "private-bun-retained-dependency-classification/1",
+        state: "none",
+        requestDigest: request.digest,
+        packageDigest: request.package.digest,
+        preparationObservation: null,
+      });
+      expect(Object.isFrozen(classification)).toBeTrue();
+      expect(requirePrivateBunRetainedDependencyClassification(classification)).toBe(classification);
+    });
+
+    await withRunBinding({ manifest: JSON.stringify({ private: true, type: "module" }) },
+      async ({ store, request }) => {
+        expect((await classifyPrivateBunRetainedDependencies({
+          request,
+          packageStoreRoot: store,
+        })).state).toBe("none");
+      });
+
+    await withRunBinding({}, async ({ store, request }) => {
+      const first = await classifyPrivateBunRetainedDependencies({
+        request,
+        packageStoreRoot: store,
+      });
+      const second = await classifyPrivateBunRetainedDependencies({
+        request,
+        packageStoreRoot: store,
+      });
+      expect(first.state).toBe("exact-required");
+      expect(first.digest).toBe(second.digest);
+      if (first.state !== "exact-required") throw new Error("expected exact dependency relation");
+      expect(first.preparationObservation.dependency.memberPath).toBe(ARCHIVE_PATH);
+      expect(requirePrivateBunNativePreparationObservation(first.preparationObservation))
+        .toBe(first.preparationObservation);
+    });
+  });
+
+  test("makes every unsupported dependency shape unavailable instead of dependency-free", async () => {
+    await withRunBinding({
+      manifest: JSON.stringify({ dependencies: { "@flowmd/sdk": "0.0.0" } }),
+    }, async ({ store, request }) => {
+      await expect(classifyPrivateBunRetainedDependencies({
+        request,
+        packageStoreRoot: store,
+      })).rejects.toMatchObject({
+        kind: "unavailable",
+        code: "BUN_NATIVE_DEPENDENCY_SOURCE",
+      });
+    });
+
+    await withRunBinding({}, async ({ store, directRequest }) => {
+      await expect(classifyPrivateBunRetainedDependencies({
+        request: directRequest,
+        packageStoreRoot: store,
+      })).rejects.toMatchObject({
+        kind: "unavailable",
+        code: "BUN_NATIVE_TARGET_UNSUPPORTED",
+      });
+    });
+
+    for (const sourceNodeModule of ["node_modules/foreign/index.js", "lib/node_modules/foreign/index.js"]) {
+      await withRunBinding({
+        manifest: JSON.stringify({ private: true }),
+        sourceNodeModule,
+      }, async ({ store, request }) => {
+        await expect(classifyPrivateBunRetainedDependencies({
+          request,
+          packageStoreRoot: store,
+        })).rejects.toMatchObject({
+          kind: "unavailable",
+          code: "BUN_NATIVE_SOURCE_CONFLICT",
+        });
+      });
+    }
+
+    for (const manifest of [
+      { dependenciesMeta: {} },
+      { installConfig: {} },
+      { packageManager: "bun@1" },
+      { pnpm: {} },
+    ]) {
+      await withRunBinding({ manifest: JSON.stringify(manifest) }, async ({ store, request }) => {
+        await expect(classifyPrivateBunRetainedDependencies({
+          request,
+          packageStoreRoot: store,
+        })).rejects.toMatchObject({
+          kind: "unavailable",
+          code: "BUN_NATIVE_MANIFEST_FIELD_UNSUPPORTED",
+        });
+      });
+    }
+
+    for (const lockfile of [
+      "bun.lock",
+      "bun.lockb",
+      "npm-shrinkwrap.json",
+      "package-lock.json",
+      "pnpm-lock.yaml",
+      "yarn.lock",
+    ]) {
+      await withRunBinding({ includeManifest: false, lockfile }, async ({ store, request }) => {
+        await expect(classifyPrivateBunRetainedDependencies({
+          request,
+          packageStoreRoot: store,
+        })).rejects.toMatchObject({
+          kind: "unavailable",
+          code: "BUN_NATIVE_LOCKFILE_UNSUPPORTED",
+          path: lockfile,
+        });
+      });
+    }
+
+    let accessed = false;
+    const forged = Object.defineProperty({}, "state", {
+      get() {
+        accessed = true;
+        return "none";
+      },
+    });
+    expect(() => requirePrivateBunRetainedDependencyClassification(forged)).toThrow(
+      "was not produced by private inspection",
+    );
+    expect(accessed).toBeFalse();
+  });
+
+  hostPlanningTest("plans a distinct path-independent native Run identity without executing it", async () => {
+    const host = await unprivilegedPlanningHost();
+    await withRunBinding({}, async ({ root, store, request }) => {
+      const workerA = join(root, "worker-a.js");
+      const workerB = join(root, "relocated", "worker-b.js");
+      const workerBytes = "export {};\n";
+      await writeFile(workerA, workerBytes);
+      await mkdir(dirname(workerB), { recursive: true });
+      await writeFile(workerB, workerBytes);
+      const workerBundleDigest = await privateFileDigest(workerA);
+      const nativeInput = {
+        workerBundleDigest,
+      } as const;
+      const first = await planPrivateDirectRun({
+        request,
+        runtimeSupport: host.runtimeSupport,
+        backend: host.backend,
+        packageStoreRoot: store,
+        bunNativePreparation: { ...nativeInput, workerBundlePath: workerA },
+      });
+      const relocated = await planPrivateDirectRun({
+        request,
+        runtimeSupport: host.runtimeSupport,
+        backend: host.backend,
+        packageStoreRoot: store,
+        bunNativePreparation: { ...nativeInput, workerBundlePath: workerB },
+      });
+
+      expect(first.kind).toBe("private-bun-native-run-recipe/1");
+      if (first.kind !== "private-bun-native-run-recipe/1" ||
+          relocated.kind !== "private-bun-native-run-recipe/1") {
+        throw new Error("expected native Run recipes");
+      }
+      expect(requirePrivateBunNativeRunRecipe(first)).toBe(first);
+      expect(requirePrivateDirectRunRecipe(first)).toBe(first);
+      expect(first.observation.preparationPlanDigest).toMatch(/^sha256:[0-9a-f]{64}$/);
+      expect(first.observation.preparationEnvelopeDigest).toMatch(/^sha256:[0-9a-f]{64}$/);
+      expect(first.observation.inspectionDigest).toBe(first.preparationObservation.digest);
+      expect(first.observation.toolchainDigest).toBe(host.runtimeSupport.digest);
+      expect(first.mechanismDigest).toBe((await host.backend.observeMechanism()).digest);
+      expect(first.workerBundleDigest).toBe(workerBundleDigest);
+      expect(requirePrivateBunNativePreparationControllerObservation(first.preparationController))
+        .toBe(first.preparationController);
+      expect(first.preparationController.digest).toMatch(/^sha256:[0-9a-f]{64}$/);
+      expect(first.preparationResourceCeilings).toBe(first.preparationController.resourceLimits);
+      expect(first.workerBundlePath).not.toBe(relocated.workerBundlePath);
+      expect(relocated.digest).toBe(first.digest);
+      expect(relocated.observation.digest).toBe(first.observation.digest);
+      expect(relocated.observation.preparationPlanDigest)
+        .toBe(first.observation.preparationPlanDigest);
+      expect(relocated.observation.preparationEnvelopeDigest)
+        .toBe(first.observation.preparationEnvelopeDigest);
+      await expect(revalidatePrivateBunNativeRunRecipe(first)).resolves.toBe(first);
+      await writeFile(workerA, "export const changed = true;\n");
+      await expect(revalidatePrivateBunNativeRunRecipe(first)).rejects.toThrow(
+        "no longer matches retained host preparation support",
+      );
+
+      await expect(runPrivateDirectRunRecipe({
+        recipe: first,
+        packageStoreRoot: store,
+        runId: "planning-only-native",
+        invocation: {
+          input: {},
+          settings: request.settings,
+          attachments: request.attachments,
+          deadlineUnixMs: Date.now() + 10_000,
+        },
+      })).rejects.toThrow("execution is not joined");
+    });
+
+    await withRunBinding({ includeManifest: false }, async ({ root, store, request }) => {
+      const worker = join(root, "unused-worker.js");
+      await writeFile(worker, "export {};\n");
+      const recipe = await planPrivateDirectRun({
+        request,
+        runtimeSupport: host.runtimeSupport,
+        backend: host.backend,
+        packageStoreRoot: store,
+        bunNativePreparation: {
+          workerBundlePath: worker,
+          workerBundleDigest: await privateFileDigest(worker),
+        },
+      });
+      expect(recipe.kind).toBe("private-bun-direct-recipe/1");
+      expect(recipe.observation.preparationPlanDigest).toBeNull();
+      expect(recipe.observation.preparationEnvelopeDigest).toBeNull();
+    });
+
+    await withRunBinding({}, async ({ store, request }) => {
+      await expect(planPrivateDirectRun({
+        request,
+        runtimeSupport: host.runtimeSupport,
+        backend: host.backend,
+        packageStoreRoot: store,
+      })).rejects.toThrow("no trusted host worker selection");
+    });
+
+    await withRunBinding({
+      manifest: JSON.stringify({ dependencies: { "@flowmd/sdk": "0.0.0" } }),
+    }, async ({ root, store, request }) => {
+      const worker = join(root, "unavailable-worker.js");
+      await writeFile(worker, "export {};\n");
+      await expect(planPrivateDirectRun({
+        request,
+        runtimeSupport: host.runtimeSupport,
+        backend: host.backend,
+        packageStoreRoot: store,
+        bunNativePreparation: {
+          workerBundlePath: worker,
+          workerBundleDigest: await privateFileDigest(worker),
+        },
+      })).rejects.toMatchObject({
+        kind: "unavailable",
+        code: "BUN_NATIVE_DEPENDENCY_SOURCE",
+      });
+    });
+  }, 15_000);
+
   test("derives one frozen deterministic relation from retained Package/1 bytes", async () => {
     await withRunBinding({}, async ({ store, request }) => {
       const first = await observePrivateBunNativePreparation({
@@ -168,7 +444,7 @@ describe("private Bun native preparation relation", () => {
   });
 
   test("treats a captured node_modules tree as recipe unavailability, not invalid FLOW", async () => {
-    await withRunBinding({ sourceNodeModule: true }, async ({ store, request }) => {
+    await withRunBinding({ sourceNodeModule: "nested/node_modules/foreign/index.js" }, async ({ store, request }) => {
       await expect(observePrivateBunNativePreparation({
         request,
         packageStoreRoot: store,
@@ -220,6 +496,9 @@ describe("private Bun native preparation relation", () => {
     expect(() => requirePrivateBunNativePreparationObservation(forged)).toThrow(
       "was not produced by private inspection",
     );
+    expect(() => requirePrivateBunNativePreparationControllerObservation(forged)).toThrow(
+      "is not authentic",
+    );
     expect(accessed).toBeFalse();
   });
 });
@@ -227,10 +506,12 @@ describe("private Bun native preparation relation", () => {
 async function withRunBinding(
   options: {
     readonly manifest?: string;
+    readonly includeManifest?: boolean;
     readonly archive?: Uint8Array;
     readonly includeArchive?: boolean;
     readonly selector?: string;
-    readonly sourceNodeModule?: boolean;
+    readonly sourceNodeModule?: string;
+    readonly lockfile?: string;
   },
   action: (value: {
     readonly root: string;
@@ -247,10 +528,11 @@ async function withRunBinding(
     const files: Record<string, string | Uint8Array> = {
       "FLOW.md": "---\nname: reviewer\ndescription: Review one value.\n---\n",
       "flow.ts": `#!/usr/bin/env ${options.selector ?? "bun"}\nexport {};\n`,
-      "package.json": options.manifest ?? VALID_MANIFEST,
     };
+    if (options.includeManifest !== false) files["package.json"] = options.manifest ?? VALID_MANIFEST;
     if (options.includeArchive !== false) files[ARCHIVE_PATH] = options.archive ?? ARCHIVE;
-    if (options.sourceNodeModule === true) files["node_modules/foreign/index.js"] = "export {};\n";
+    if (options.sourceNodeModule !== undefined) files[options.sourceNodeModule] = "export {};\n";
+    if (options.lockfile !== undefined) files[options.lockfile] = "retained dependency state\n";
     await writeTree(join(root, "flows/reviewer"), files);
 
     source = await captureFlowSource(root, defineJig({ flows: ["flows/reviewer"] }).flows);
@@ -272,6 +554,44 @@ async function withRunBinding(
     await source?.dispose();
     await rm(root, { recursive: true, force: true });
   }
+}
+
+async function unprivilegedPlanningHost(): Promise<{
+  readonly runtimeSupport: Awaited<ReturnType<typeof observeAgentSandboxRuntimeSupport>>;
+  readonly backend: PrivateLinuxCgroupBackend;
+}> {
+  const receiptsDirectory = process.env.AGENT_RUNTIME_RECEIPTS_DIR;
+  const expectedLeaseId = process.env.AGENT_RUNTIME_LEASE_ID;
+  if (receiptsDirectory === undefined || expectedLeaseId === undefined) {
+    throw new Error("planning test requires the retained runtime receipt");
+  }
+  const executablePath = await realpath("/bin/bun");
+  const runtimeSupport = await observeAgentSandboxRuntimeSupport({
+    receiptsDirectory,
+    expectedLeaseId,
+    executablePath,
+  });
+  const relativeCgroup = (await readFile("/proc/self/cgroup", "utf8"))
+    .trim().split(":").at(-1)!;
+  const cgroupScope = dirname(await realpath(`/sys/fs/cgroup${relativeCgroup}`));
+  const shellWrapper = await realpath("/bin/sh");
+  const shellHeader = (await readFile(shellWrapper, "utf8")).split("\n", 1)[0]!;
+  if (!shellHeader.startsWith("#!/")) throw new Error("planning host lacks the expected Bash wrapper");
+  const inertExecutable = await realpath("/bin/true");
+  return {
+    runtimeSupport,
+    backend: new PrivateLinuxCgroupBackend({
+      cgroupScope,
+      sudoPath: inertExecutable,
+      subreaperPath: inertExecutable,
+      mknodPath: inertExecutable,
+      bunPath: executablePath,
+      bubblewrapPath: inertExecutable,
+      bashPath: shellHeader.slice(2),
+      payloadUid: process.getuid!(),
+      payloadGid: process.getgid!(),
+    }),
+  };
 }
 
 function packageArtifactPath(store: string, request: PrivateActivationRequest): string {
