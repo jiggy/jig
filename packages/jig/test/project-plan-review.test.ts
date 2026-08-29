@@ -58,7 +58,7 @@ describe("private project Plan review", () => {
         }],
       },
     } as unknown as PrivateActivationReviewPlan["plan"];
-    const rendered = renderPrivateProjectPlanReview({ plan } as PrivateActivationReviewPlan);
+    const rendered = renderPrivateProjectPlanReview({ plan, baseCandidate: null } as PrivateActivationReviewPlan);
 
     expect(rendered.mediaType).toBe("text/plain; charset=utf-8");
     expect(rendered.text).toContain('"packagePath": "flows/review"');
@@ -89,15 +89,136 @@ describe("private project Plan review", () => {
     const admission = reviewPlan("admission", `sha256:${"b".repeat(64)}`);
     const repair = reviewPlan("lock-repair", `sha256:${"b".repeat(64)}`);
 
-    expect(renderPrivateProjectPlanReview({ plan: admission } as PrivateActivationReviewPlan).text)
+    expect(renderPrivateProjectPlanReview({ plan: admission, baseCandidate: null } as PrivateActivationReviewPlan).text)
       .toContain('"generationEffect": "replace"');
-    expect(renderPrivateProjectPlanReview({ plan: repair } as PrivateActivationReviewPlan).text)
+    expect(renderPrivateProjectPlanReview({ plan: repair, baseCandidate: null } as PrivateActivationReviewPlan).text)
       .toContain('"generationEffect": "unchanged"');
+  });
+
+  test("shows current and proposed state with explicit additions, removals, and changes", () => {
+    const digest = `sha256:${"a".repeat(64)}`;
+    const plan = reviewPlan("admission", `sha256:${"b".repeat(64)}`);
+    const current = {
+      lock: {
+        packages: { "flows/old": { digest, mode: "run" } },
+        bindings: { review: { packagePath: "flows/old" } },
+        journalPublishers: {},
+        hooks: {},
+      },
+      candidate: {
+        targets: [{
+          request: {
+            target: { kind: "binding", id: "review" },
+            mode: "run",
+            packagePath: "flows/old",
+            package: { digest },
+            entrypoint: { path: "flow.ts", suffix: "ts" },
+            settings: {},
+            attachments: {},
+            slots: {},
+          },
+          disposition: { state: "ready" },
+        }],
+      },
+    };
+    const proposed = {
+      ...plan,
+      proposed: {
+        ...plan.proposed,
+        lock: {
+          packages: { "flows/new": { digest, mode: "run" } },
+          bindings: { review: { packagePath: "flows/new" } },
+          journalPublishers: {},
+          hooks: {},
+        },
+        targets: [{
+          request: {
+            target: { kind: "binding", id: "review" },
+            mode: "run",
+            packagePath: "flows/new",
+            package: { digest },
+            entrypoint: { path: "flow.ts", suffix: "ts" },
+            settings: {},
+            attachments: {},
+            slots: {},
+          },
+          disposition: { state: "unavailable", code: "RUNTIME_UNAVAILABLE" },
+        }],
+      },
+    };
+    const text = renderPrivateProjectPlanReview({
+      plan: proposed,
+      baseCandidate: current,
+    } as unknown as PrivateActivationReviewPlan).text;
+
+    expect(text).toContain('"current": {');
+    expect(text).toContain('"proposed": {');
+    const value = JSON.parse(text.slice(text.indexOf("{")));
+    expect(value.changes.packages).toEqual({
+      added: ["flows/new"],
+      changed: [],
+      removed: ["flows/old"],
+    });
+    expect(value.changes.targets.changed).toEqual(["binding:review"]);
+  });
+
+  test("marks private target-evidence changes without exposing that evidence", () => {
+    const digest = `sha256:${"a".repeat(64)}`;
+    const request = {
+      target: { kind: "flow", path: "flows/review" },
+      mode: "run",
+      packagePath: "flows/review",
+      package: { digest },
+      entrypoint: { path: "flow.ts", suffix: "ts" },
+      settings: {},
+      attachments: {},
+      slots: {},
+    };
+    const base = reviewPlan("admission", `sha256:${"b".repeat(64)}`);
+    const plan = {
+      ...base,
+      proposed: {
+        ...base.proposed,
+        targets: [{
+          request,
+          disposition: {
+            state: "ready",
+            recipeDigest: "private-new-recipe",
+            observationDigest: "private-new-observation",
+          },
+        }],
+      },
+    };
+    const text = renderPrivateProjectPlanReview({
+      plan,
+      baseCandidate: {
+        lock: { packages: {}, bindings: {}, journalPublishers: {}, hooks: {} },
+        candidate: {
+          targets: [{
+            request,
+            disposition: {
+              state: "ready",
+              recipeDigest: "private-old-recipe",
+              observationDigest: "private-old-observation",
+            },
+          }],
+        },
+      },
+    } as unknown as PrivateActivationReviewPlan).text;
+
+    const value = JSON.parse(text.slice(text.indexOf("{")));
+    expect(value.changes.targets.changed).toEqual(["flow:flows/review"]);
+    for (const sentinel of [
+      "private-old-recipe",
+      "private-new-recipe",
+      "private-old-observation",
+      "private-new-observation",
+    ]) expect(text).not.toContain(sentinel);
   });
 
   test("fails before allocating a review larger than its public envelope", () => {
     const plan = reviewPlan("admission", `sha256:${"b".repeat(64)}`);
-    expect(() => renderPrivateProjectPlanReview({ plan } as PrivateActivationReviewPlan, 64))
+    expect(() => renderPrivateProjectPlanReview({ plan, baseCandidate: null } as PrivateActivationReviewPlan, 64))
       .toThrow(expect.objectContaining({
         code: "UNAVAILABLE",
         message: "project plan review exceeds the supported display size",

@@ -37,6 +37,10 @@ Start here:
 
 Current implementation frontier:
 
+- [`design-review/169-project-command-and-review-delta.md`](design-review/169-project-command-and-review-delta.md)
+  closes the proof-independent one-command Project Session lifecycle and the
+  authenticated current-to-proposed review delta while deliberately leaving
+  installed acquisition and an operational CLI blocked on host policy.
 - [`design-review/168-agentic-routing-product-frontier.md`](design-review/168-agentic-routing-product-frontier.md)
   makes a reviewed independent Agentic Routing campaign the first promotional
   milestone and a rebuilt software factory the first showcase milestone. It

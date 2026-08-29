@@ -71,13 +71,13 @@ type ProjectPlanResult =
     };
 ```
 
-The bounded review text is a complete proposed-state snapshot of the current
-portable proposal. It is deterministic, non-truncated, and ASCII display-safe:
-project-controlled controls and Unicode are emitted as JSON escapes. The
-current candidate is intentionally a full-result snapshot rather than a
-current-to-proposed diff; stronger delta presentation remains an operational
-alpha gate and can evolve inside the opaque review text without changing the
-value contract. The review is not authority.
+The bounded review text contains the complete current and proposed portable
+states plus explicit added, removed, and changed identities for packages,
+Bindings, Journal publishers, Hooks, and Run targets. It is deterministic,
+non-truncated, and ASCII display-safe: project-controlled controls and Unicode
+are emitted as JSON escapes. The active base is loaded from the authenticated
+admission chain inside the same protected transaction; it is review evidence,
+not another field in portable Plan authority. The review is not authority.
 Only the retained `planDigest` identifies the exact applicable Plan. Private
 Plan, Candidate, lock, recipe, runtime, Backend, coordinator, database, cgroup,
 and helper representations never cross this boundary.

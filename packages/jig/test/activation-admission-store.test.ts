@@ -1236,6 +1236,7 @@ describe.serial("private activation admission SQLite store", () => {
           targets: fixture.candidate.candidate.targets,
         },
       });
+      expect(plans[0]!.baseCandidate).toBeNull();
       expect(requirePrivateStoredActivationCandidate(plans[0]!.candidate)).toBe(
         plans[0]!.candidate,
       );
@@ -1246,6 +1247,7 @@ describe.serial("private activation admission SQLite store", () => {
       });
       expect(restarted.plan).toEqual(plans[0]!.plan);
       expect(restarted.planBytes).toEqual(plans[0]!.planBytes);
+      expect(restarted.baseCandidate).toBeNull();
       expect(requirePrivateStoredActivationCandidate(restarted.candidate)).toBe(
         restarted.candidate,
       );
@@ -1348,6 +1350,17 @@ describe.serial("private activation admission SQLite store", () => {
         baseGeneration: first.admissionDigest,
         operation: "lock-repair",
       });
+      expect(repairPlan.baseCandidate?.candidate.activationMeaningDigest).toBe(
+        fixture.candidate.candidate.activationMeaningDigest,
+      );
+      const reloadedRepairPlan = await loadPrivateActivationReviewPlan({
+        projectRoot: fixture.root,
+        packageStoreRoot: fixture.store,
+        planDigest: repairPlan.planDigest,
+      });
+      expect(reloadedRepairPlan.baseCandidate?.candidate.activationMeaningDigest).toBe(
+        fixture.candidate.candidate.activationMeaningDigest,
+      );
       const repair = await applyPrivateActivationReviewPlan({
         projectRoot: fixture.root,
         packageStoreRoot: fixture.store,
@@ -1377,6 +1390,9 @@ describe.serial("private activation admission SQLite store", () => {
         baseGeneration: first.admissionDigest,
         operation: "admission",
       });
+      expect(secondPlan.baseCandidate?.candidate.activationMeaningDigest).toBe(
+        fixture.candidate.candidate.activationMeaningDigest,
+      );
       const second = requireAdmissionReceipt(await applyPrivateActivationReviewPlan({
         projectRoot: fixture.root,
         packageStoreRoot: fixture.store,

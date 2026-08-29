@@ -720,6 +720,7 @@ export interface PrivateActivationReviewPlan {
   readonly plan: PrivateActivationPlanV2;
   readonly planBytes: Uint8Array;
   readonly planDigest: string;
+  readonly baseCandidate: PrivateActivationCandidateArtifactV5 | null;
   readonly candidate: PrivateActivationCandidateArtifactV5;
 }
 
@@ -1129,7 +1130,7 @@ export async function loadPrivateActivationReviewPlan(input: {
     requireCandidateRoot(candidate, owner.root);
     requireDerivedPlanOperation(owner.database, plan, candidate, owner.root);
     artifacts = await reacquireCandidateArtifacts(input.packageStoreRoot, candidate);
-    await immediate(owner, () => {
+    const baseCandidate = await immediate(owner, () => {
       readCandidateHead(owner.database, owner.root);
       readAdmissionHead(owner.database, owner.root);
       const currentPlanRow = requirePlanRow(owner.database, input.planDigest);
@@ -1138,12 +1139,14 @@ export async function loadPrivateActivationReviewPlan(input: {
       requireSameCandidateRow(initialCandidateRow, currentCandidateRow);
       crossCheckPlanCandidate(plan, currentPlanRow, currentCandidateRow, candidate);
       requirePlanBase(owner.database, plan, owner.root);
+      return loadPlanBaseCandidate(owner.database, plan, owner.root);
     });
     await owner.finish();
     return Object.freeze({
       plan,
       planBytes: copiedBlob(initialPlanRow.plan_bytes, "stored review plan"),
       planDigest: input.planDigest,
+      baseCandidate,
       candidate: markStored(candidate),
     });
   } catch (error) {
@@ -8706,6 +8709,7 @@ async function classifyAndPersistPrivateActivationReview(
   }
 
   let baseGeneration: string | null = null;
+  let baseCandidate: PrivateActivationCandidateArtifactV5 | null = null;
   let operation: "admission" | "lock-repair" | "unchanged" = "admission";
   if (admissionHead.revision !== null) {
     const activeRow = requireAdmissionRow(owner.database, admissionHead.revision);
@@ -8717,6 +8721,7 @@ async function classifyAndPersistPrivateActivationReview(
     );
     const activeCandidate = loadCandidateRow(activeCandidateRow);
     requireCandidateRoot(activeCandidate, owner.root);
+    baseCandidate = activeCandidate;
     const sameMeaning = activeCandidate.candidate.activationMeaningDigest ===
       candidate.candidate.activationMeaningDigest;
     const sameLock = activeCandidate.candidate.lockDigest === candidate.candidate.lockDigest &&
@@ -8746,6 +8751,7 @@ async function classifyAndPersistPrivateActivationReview(
     plan,
     planBytes,
     planDigest,
+    baseCandidate,
     candidate,
   });
   beforePersistApplicable?.(applicable);
@@ -8812,6 +8818,26 @@ function requirePlanBase(
   if (plan.baseGeneration === null) return;
   const base = requireAdmissionByDigest(database, plan.baseGeneration);
   loadAndCrossCheckAdmission(database, base, root);
+}
+
+function loadPlanBaseCandidate(
+  database: SqliteDatabase,
+  plan: PrivateActivationPlanV2,
+  root: PrivateProjectRoot,
+): PrivateActivationCandidateArtifactV5 | null {
+  if (plan.baseGeneration === null) return null;
+  const baseRow = requireAdmissionByDigest(database, plan.baseGeneration);
+  const base = loadAndCrossCheckAdmission(database, baseRow, root);
+  const baseCandidateRow = requireCandidateRow(
+    database,
+    BigInt(base.admission.candidateRevision),
+  );
+  const baseCandidate = loadCandidateRow(baseCandidateRow);
+  requireCandidateRoot(baseCandidate, root);
+  if (base.admission.candidateDigest !== baseCandidateRow.candidate_digest) {
+    corrupt("review plan base admission does not match its activation candidate");
+  }
+  return baseCandidate;
 }
 
 function requireDerivedPlanOperation(

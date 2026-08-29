@@ -14,8 +14,9 @@ export interface PrivateProjectPlanReview {
 }
 
 /**
- * Render the complete current portable proposal without exposing the private
- * Plan, recipe, host-observation, or protected-store representations.
+ * Render complete current and proposed portable state plus identity deltas
+ * without exposing the private Plan, recipe, host-observation, or
+ * protected-store representations.
  */
 export function renderPrivateProjectPlanReview(
   review: PrivateActivationReviewPlan,
@@ -25,19 +26,16 @@ export function renderPrivateProjectPlanReview(
     throw new TypeError("project plan review byte limit is invalid");
   }
   const plan = review.plan;
-  const targets = plan.proposed.targets.map(({ request, disposition }) => ({
-    target: request.target,
-    mode: request.mode,
-    packagePath: request.packagePath,
-    packageDigest: request.package.digest,
-    entrypoint: request.entrypoint,
-    settings: request.settings,
-    attachments: request.attachments,
-    slots: request.slots,
-    availability: disposition.state === "ready"
-      ? { state: "ready" as const }
-      : { state: "unavailable" as const, code: disposition.code },
-  }));
+  const current = review.baseCandidate === null
+    ? null
+    : projectCandidate(review.baseCandidate.lock, review.baseCandidate.candidate.targets);
+  const proposed = projectCandidate(plan.proposed.lock, plan.proposed.targets);
+  const changes = projectChanges(
+    current,
+    proposed,
+    review.baseCandidate?.candidate.targets ?? [],
+    plan.proposed.targets,
+  );
   const proposal = {
     operation: plan.operation,
     generationEffect: plan.operation === "lock-repair"
@@ -50,13 +48,9 @@ export function renderPrivateProjectPlanReview(
       ? { state: "absent" as const }
       : { state: "present" as const, digest: plan.observedLock.digest },
     proposedLockDigest: plan.proposed.lockDigest,
-    portablePolicy: {
-      packages: plan.proposed.lock.packages,
-      bindings: plan.proposed.lock.bindings,
-      journalPublishers: plan.proposed.lock.journalPublishers,
-      hooks: plan.proposed.lock.hooks,
-    },
-    targets,
+    changes,
+    current,
+    proposed,
   };
   const writer = new BoundedAsciiWriter(maximumBytes);
   writer.write("Jig project plan review\n\n");
@@ -70,6 +64,86 @@ export function renderPrivateProjectPlanReview(
     mediaType: "text/plain; charset=utf-8" as const,
     text,
   });
+}
+
+function projectCandidate(
+  lock: PrivateActivationReviewPlan["candidate"]["lock"],
+  targetValues: PrivateActivationReviewPlan["candidate"]["candidate"]["targets"],
+) {
+  const targets = targetValues.map(({ request, disposition }) => ({
+    target: request.target,
+    mode: request.mode,
+    packagePath: request.packagePath,
+    packageDigest: request.package.digest,
+    entrypoint: request.entrypoint,
+    settings: request.settings,
+    attachments: request.attachments,
+    slots: request.slots,
+    availability: disposition.state === "ready"
+      ? { state: "ready" as const }
+      : { state: "unavailable" as const, code: disposition.code },
+  }));
+  return {
+    portablePolicy: {
+      packages: lock.packages,
+      bindings: lock.bindings,
+      journalPublishers: lock.journalPublishers,
+      hooks: lock.hooks,
+    },
+    targets,
+  };
+}
+
+function projectChanges(
+  current: ReturnType<typeof projectCandidate> | null,
+  proposed: ReturnType<typeof projectCandidate>,
+  currentTargets: PrivateActivationReviewPlan["candidate"]["candidate"]["targets"],
+  proposedTargets: PrivateActivationReviewPlan["candidate"]["candidate"]["targets"],
+) {
+  return {
+    packages: recordChanges(
+      current?.portablePolicy.packages ?? {},
+      proposed.portablePolicy.packages,
+    ),
+    bindings: recordChanges(
+      current?.portablePolicy.bindings ?? {},
+      proposed.portablePolicy.bindings,
+    ),
+    journalPublishers: recordChanges(
+      current?.portablePolicy.journalPublishers ?? {},
+      proposed.portablePolicy.journalPublishers,
+    ),
+    hooks: recordChanges(
+      current?.portablePolicy.hooks ?? {},
+      proposed.portablePolicy.hooks,
+    ),
+    targets: recordChanges(
+      Object.fromEntries(currentTargets.map((target) => [targetKey(target.request.target), target])),
+      Object.fromEntries(proposedTargets.map((target) => [targetKey(target.request.target), target])),
+    ),
+  };
+}
+
+function recordChanges(
+  current: Readonly<Record<string, unknown>>,
+  proposed: Readonly<Record<string, unknown>>,
+) {
+  const currentKeys = Object.keys(current);
+  const proposedKeys = Object.keys(proposed);
+  const currentSet = new Set(currentKeys);
+  const proposedSet = new Set(proposedKeys);
+  return {
+    added: proposedKeys.filter((key) => !currentSet.has(key)).sort(compareUtf16),
+    removed: currentKeys.filter((key) => !proposedSet.has(key)).sort(compareUtf16),
+    changed: proposedKeys.filter((key) => currentSet.has(key) &&
+      JSON.stringify(current[key]) !== JSON.stringify(proposed[key])).sort(compareUtf16),
+  };
+}
+
+function targetKey(
+  target: PrivateActivationReviewPlan["candidate"]["candidate"]["targets"][number]["request"]["target"],
+): string {
+  return target.kind === "flow" ? `flow:${target.path}` : `binding:${target.id}`;
 }
 
 /**
