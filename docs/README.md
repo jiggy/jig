@@ -37,6 +37,10 @@ Start here:
 
 Current implementation frontier:
 
+- [`design-review/174-private-project-run-target-evaluator.md`](design-review/174-private-project-run-target-evaluator.md)
+  seals the exact private `projectRunTargets()` Binding profile inside the
+  real author evaluator while public authoring and the ordinary linker still
+  reject it.
 - [`design-review/173-bare-project-initializer.md`](design-review/173-bare-project-initializer.md)
   closes the fixed inert `jig init --bare <new-directory>` tree, exclusive
   destination claim, bounded owned-entry cleanup, concurrent-winner proof, and

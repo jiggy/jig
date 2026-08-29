@@ -25,12 +25,15 @@ import { compileEmbeddedSchema } from "../schema/index.js";
 import { capturePackageDirectory } from "../package/capture.js";
 import {
   type HookDefinition,
+  type JournalPublisherDefinition,
   normalizeHookDefinition,
   normalizeJournalPublisherDefinition,
+  normalizePrivateProjectRunTargetsBindingDefinition,
   normalizePrivateHookJigDefinition,
   normalizePackageBindingDefinition,
   type BindingDefinition,
   type PrivateHookJigDefinition,
+  type PrivateProjectRunTargetsBindingDefinition,
 } from "./author.js";
 import {
   isCapturedAuthorClosure,
@@ -61,6 +64,21 @@ const EVALUATION_CODES = new Set([
 const decoder = new TextDecoder("utf-8", { fatal: true });
 let evaluationSequence = 0;
 
+export type AuthorEvaluationExpectation =
+  | "project"
+  | "binding"
+  | "hook"
+  | "private-project-run-targets-binding";
+
+type AuthoringProfile =
+  | "project-authoring/1"
+  | "private-project-authoring-hooks/1"
+  | "private-project-run-targets-authoring/1";
+
+export type PrivateEvaluatedBindingDefinition =
+  | JournalPublisherDefinition
+  | PrivateProjectRunTargetsBindingDefinition;
+
 export interface PrivateAuthorEvaluatorOptions {
   readonly backend: PrivateLinuxCgroupBackend;
   readonly bunPath: string;
@@ -72,9 +90,11 @@ export interface PrivateAuthorEvaluatorOptions {
 
 export interface EvaluatorProfile {
   readonly protocol: typeof PROTOCOL;
+  readonly authoringProfile: AuthoringProfile;
   readonly evaluatorDigest: string;
   readonly authoringSdkDigest: string;
   readonly experimentalHookAuthoringSdkDigest: string;
+  readonly privateProjectRunTargetsAuthoringSdkDigest: string;
   readonly schemaDigest: string;
   readonly evaluatorPackageDigest: string;
   readonly runtimeExecutable: string;
@@ -106,9 +126,10 @@ export interface EvaluatorProfile {
 }
 
 export interface EvaluatedAuthorDeclaration<
-  Value extends PrivateHookJigDefinition | BindingDefinition | HookDefinition = PrivateHookJigDefinition | BindingDefinition | HookDefinition,
+  Value extends PrivateHookJigDefinition | BindingDefinition | HookDefinition | PrivateEvaluatedBindingDefinition =
+    PrivateHookJigDefinition | BindingDefinition | HookDefinition | PrivateEvaluatedBindingDefinition,
 > {
-  readonly expected: "project" | "binding" | "hook";
+  readonly expected: AuthorEvaluationExpectation;
   readonly source: {
     readonly entryProjectPath: string;
     readonly bytes: number;
@@ -149,7 +170,7 @@ export async function evaluateAuthorClosure(
   options: PrivateAuthorEvaluatorOptions,
   captured: CapturedAuthorClosure,
   entryProjectPath: string,
-  expected: "project" | "binding" | "hook",
+  expected: AuthorEvaluationExpectation,
   signal?: AbortSignal,
 ): Promise<EvaluatedAuthorDeclaration> {
   if (!isCapturedAuthorClosure(captured)) {
@@ -184,22 +205,43 @@ export async function evaluateAuthorClosure(
 
   let evaluationFailure: unknown;
   try {
-    const [workerBytes, helperBytes, sdkBytes, hookSdkBytes, schemaBytes, runtimeDigest] = await Promise.all([
+    const [
+      workerBytes,
+      helperBytes,
+      sdkBytes,
+      hookSdkBytes,
+      projectRunTargetsSdkBytes,
+      publicSchemaBytes,
+      hookSchemaBytes,
+      projectRunTargetsSchemaBytes,
+      runtimeDigest,
+    ] = await Promise.all([
       toolchain.read("internal/project-evaluator-worker.js"),
       toolchain.read("internal/linux-cgroup-helper.js"),
       toolchain.read("internal/project-evaluator-sdk.bundle.js"),
       toolchain.read("internal/experimental-hook-evaluator-sdk.bundle.js"),
+      toolchain.read("internal/private-project-run-targets-evaluator-sdk.bundle.js"),
+      toolchain.read("project-authoring-1.schema.json"),
       toolchain.read("internal/private-project-authoring-hooks-1.schema.json"),
+      toolchain.read("internal/private-project-run-targets-authoring-1.schema.json"),
       digestFile(bunPath),
     ]).catch((error) => unavailable(
       "PROJECT_EVALUATOR_UNAVAILABLE",
       `cannot seal evaluator toolchain: ${errorText(error)}`,
     ));
+    const authoringProfile = authoringProfileFor(expected);
+    const schemaBytes = authoringProfile === "project-authoring/1"
+      ? publicSchemaBytes
+      : authoringProfile === "private-project-authoring-hooks/1"
+        ? hookSchemaBytes
+        : projectRunTargetsSchemaBytes;
     const profileBase = Object.freeze({
       protocol: PROTOCOL,
+      authoringProfile,
       evaluatorDigest: digestBytes(workerBytes),
       authoringSdkDigest: digestBytes(sdkBytes),
       experimentalHookAuthoringSdkDigest: digestBytes(hookSdkBytes),
+      privateProjectRunTargetsAuthoringSdkDigest: digestBytes(projectRunTargetsSdkBytes),
       schemaDigest: digestBytes(schemaBytes),
       evaluatorPackageDigest: toolchain.digest,
       runtimeExecutable: bunPath,
@@ -227,6 +269,7 @@ export async function evaluateAuthorClosure(
     }));
     const request = canonicalJson({
       protocol: PROTOCOL,
+      authoringProfile,
       entryProjectPath,
       modules,
     });
@@ -339,13 +382,19 @@ export async function evaluateAuthorClosure(
         value,
         "PROJECT_AUTHORING_SCHEMA_INVALID",
       );
-      let normalized: PrivateHookJigDefinition | BindingDefinition | HookDefinition;
+      let normalized:
+        | PrivateHookJigDefinition
+        | BindingDefinition
+        | HookDefinition
+        | PrivateEvaluatedBindingDefinition;
       try {
         normalized = expected === "project"
           ? normalizePrivateHookJigDefinition(value)
           : expected === "binding"
             ? normalizeBindingDefinition(value)
-            : normalizeHookDefinition(value);
+            : expected === "hook"
+              ? normalizeHookDefinition(value)
+              : normalizePrivateProjectRunTargetsBinding(value);
       } catch (error) {
         invalid(
           "PROJECT_DECLARATION_INVALID",
@@ -444,7 +493,7 @@ function checkedResponse(response: JsonValue, projectPath: string): JsonValue {
   return response.value!;
 }
 
-function contextualAuthorSchema(bytes: Uint8Array, expected: "project" | "binding" | "hook") {
+function contextualAuthorSchema(bytes: Uint8Array, expected: AuthorEvaluationExpectation) {
   let document: JsonValue;
   try {
     document = decodeJson1(bytes);
@@ -459,14 +508,14 @@ function contextualAuthorSchema(bytes: Uint8Array, expected: "project" | "bindin
   }
   const definition = expected === "project"
     ? "project"
-    : expected === "binding"
+    : expected === "binding" || expected === "private-project-run-targets-binding"
       ? "bindingDefinition"
       : "hookDefinition";
   try {
     return compileEmbeddedSchema(
       Object.freeze({ $ref: `#/$defs/${definition}` }),
       {
-        path: "private-project-authoring-hooks-1.schema.json",
+        path: schemaPathFor(expected),
         rootDefs: document.$defs as JsonObject,
       },
     );
@@ -483,6 +532,32 @@ function normalizeBindingDefinition(value: JsonValue): BindingDefinition {
     return normalizeJournalPublisherDefinition(value);
   }
   return normalizePackageBindingDefinition(value);
+}
+
+function normalizePrivateProjectRunTargetsBinding(
+  value: JsonValue,
+): PrivateEvaluatedBindingDefinition {
+  if (isRecord(value) && value.kind === "journal-publisher") {
+    return normalizeJournalPublisherDefinition(value);
+  }
+  return normalizePrivateProjectRunTargetsBindingDefinition(value);
+}
+
+function authoringProfileFor(expected: AuthorEvaluationExpectation): AuthoringProfile {
+  if (expected === "binding") return "project-authoring/1";
+  if (expected === "private-project-run-targets-binding") {
+    return "private-project-run-targets-authoring/1";
+  }
+  return "private-project-authoring-hooks/1";
+}
+
+function schemaPathFor(expected: AuthorEvaluationExpectation): string {
+  const profile = authoringProfileFor(expected);
+  return profile === "project-authoring/1"
+    ? "project-authoring-1.schema.json"
+    : profile === "private-project-authoring-hooks/1"
+      ? "private-project-authoring-hooks-1.schema.json"
+      : "private-project-run-targets-authoring-1.schema.json";
 }
 
 function exactKeys(value: object, expected: readonly string[]): boolean {

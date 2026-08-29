@@ -5,9 +5,11 @@ import { dirname, join } from "node:path";
 
 import {
   bindingRef,
+  definePrivateProjectRunTargetsBinding,
   defineHook,
   defineJig,
   defineJournalPublisher,
+  projectRunTargets,
 } from "../src/project/author.js";
 import { captureFlowSource } from "../src/project/flow-source.js";
 import {
@@ -66,6 +68,13 @@ uses:
         ],
       }).flows);
       const flows = await retainFlowSourcePackages(store, source);
+      expect(() => linkPackageProject({
+        flows,
+        bindings: [declaration("bindings/dispatcher.ts", definePrivateProjectRunTargetsBinding({
+          package: "flows/z-direct",
+          slots: { work: projectRunTargets() },
+        }))],
+      })).toThrow("not part of Project Authoring SDK/1");
       const bindings: InjectedBindingDeclaration[] = [
         declaration("bindings/z-run.ts", { package: "flows/z-direct" }),
         declaration("bindings/a-configured.ts", {

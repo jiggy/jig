@@ -5,6 +5,7 @@ import * as publicSdk from "../src/index.js";
 import { defineBinding, flowRef } from "../src/index.js";
 import {
   definePrivateProjectRunTargetsBinding,
+  defineJournalPublisher,
   normalizePackageBindingDefinition,
   normalizePrivateProjectRunTargetsBindingDefinition,
   projectRunTargets,
@@ -52,6 +53,10 @@ describe("private projectRunTargets authoring overlay", () => {
     expect(normalizePrivateProjectRunTargetsBindingDefinition(normalized)).toEqual(normalized);
     expect(Object.isFrozen(normalized.slots.work)).toBeTrue();
     expect(() => privateSchema.validate(binding, "INVALID_PRIVATE_PROJECT_RUN_TARGETS")).not.toThrow();
+    expect(() => privateSchema.validate(
+      defineJournalPublisher({ eventTypes: ["https://example.test/event"] }),
+      "INVALID_PRIVATE_PROJECT_RUN_TARGETS",
+    )).not.toThrow();
   });
 
   test("keeps the marker outside the public author and machine profiles", () => {

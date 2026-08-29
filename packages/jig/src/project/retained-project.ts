@@ -1,10 +1,11 @@
 import { invalid } from "../diagnostics.js";
 import { privateDomainDigest } from "../internal/identity.js";
 import type { JsonValue } from "../json.js";
-import type { BindingDefinition, HookDefinition, PrivateHookJigDefinition } from "./author.js";
+import type { HookDefinition, PrivateHookJigDefinition } from "./author.js";
 import {
   evaluateAuthorClosure,
   type EvaluatedAuthorDeclaration,
+  type PrivateEvaluatedBindingDefinition,
   type PrivateAuthorEvaluatorOptions,
 } from "./author-evaluator.js";
 import {
@@ -42,7 +43,7 @@ export interface PrivateRetainedOpenedProjectOptions {
 export interface RetainedBindingDeclaration {
   readonly id: string;
   readonly sourcePath: string;
-  readonly evaluation: EvaluatedAuthorDeclaration<BindingDefinition>;
+  readonly evaluation: EvaluatedAuthorDeclaration<PrivateEvaluatedBindingDefinition>;
 }
 
 export interface RetainedHookDeclaration {
@@ -144,9 +145,9 @@ export async function retainOpenedPackageProject(
         options.evaluator,
         closure,
         member.projectPath,
-        "binding",
+        "private-project-run-targets-binding",
         signal,
-      ) as EvaluatedAuthorDeclaration<BindingDefinition>;
+      ) as EvaluatedAuthorDeclaration<PrivateEvaluatedBindingDefinition>;
       bindings.push(Object.freeze({ id: member.id, sourcePath: member.projectPath, evaluation }));
     }
     const hooks: RetainedHookDeclaration[] = [];

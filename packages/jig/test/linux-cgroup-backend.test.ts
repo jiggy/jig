@@ -1371,6 +1371,83 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
     }
   });
 
+  test("seals the private project Run-target authoring profile from ordinary evaluation", async () => {
+    host = await hostConfiguration();
+    const bun = await proofHostBunClosure();
+    const distribution = await realpath(join(import.meta.dir, "..", "dist"));
+    const root = await mkdtemp(join(tmpdir(), "jig-project-run-targets-evaluator-proof-"));
+    const evaluator = {
+      backend: backend(host),
+      bunPath: bun.executable,
+      runtimeMounts: bun.runtimeSupport.closureSources.map((source) => ({
+        source,
+        destination: source,
+      })),
+      runtimeSupport: bun.runtimeSupport,
+      jigDistributionPath: distribution,
+    } as const;
+    let fixtureSequence = 0;
+    const evaluate = async (
+      source: string,
+      expected: "binding" | "private-project-run-targets-binding",
+    ) => {
+      const path = `fixture-${++fixtureSequence}.ts`;
+      await writeFile(join(root, path), source);
+      const fixture = await captureAuthorClosure(root, [path]);
+      try {
+        return await evaluateAuthorClosure(evaluator, fixture, path, expected);
+      } finally {
+        fixture.dispose();
+      }
+    };
+    try {
+      const projectRunTargetsSource = [
+        'import { defineBinding, projectRunTargets } from "@jigging/jig/private/project-run-targets";',
+        "export default defineBinding({",
+        '  package: "flows/dispatcher",',
+        "  slots: { work: projectRunTargets() },",
+        "});",
+      ].join("\n");
+      const privateBinding = await evaluate(
+        projectRunTargetsSource,
+        "private-project-run-targets-binding",
+      );
+      expect(privateBinding.value).toEqual({
+        kind: "package",
+        package: "flows/dispatcher",
+        settings: {},
+        slots: { work: { kind: "project-run-targets" } },
+        attachments: {},
+      });
+      expect(privateBinding.profile).toMatchObject({
+        authoringProfile: "private-project-run-targets-authoring/1",
+        privateProjectRunTargetsAuthoringSdkDigest: expect.stringMatching(/^sha256:[0-9a-f]{64}$/),
+        schemaDigest: expect.stringMatching(/^sha256:[0-9a-f]{64}$/),
+      });
+      await expect(evaluate(projectRunTargetsSource, "binding")).rejects.toMatchObject({
+        code: "PROJECT_EVALUATOR_IMPORT",
+      });
+      await expect(evaluate([
+        'import { defineHook, bindingRef, flowRef } from "@jigging/jig/experimental/hooks";',
+        "export default defineHook({",
+        '  on: { publisher: bindingRef("events"), type: "https://example.test/event" },',
+        '  run: flowRef("flows/worker"),',
+        "});",
+      ].join("\n"), "private-project-run-targets-binding")).rejects.toMatchObject({
+        code: "PROJECT_EVALUATOR_IMPORT",
+      });
+      expect((await evaluate([
+        'import { defineJournalPublisher } from "@jigging/jig";',
+        'export default defineJournalPublisher({ eventTypes: ["https://example.test/event"] });',
+      ].join("\n"), "private-project-run-targets-binding")).value).toEqual({
+        kind: "journal-publisher",
+        eventTypes: ["https://example.test/event"],
+      });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   test("allocates one authenticated Service Mount attempt per admitted generation", async () => {
     host = await hostConfiguration();
     const bun = await proofHostBunClosure();
