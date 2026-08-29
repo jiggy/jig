@@ -37,6 +37,11 @@ Start here:
 
 Current implementation frontier:
 
+- [`design-review/189-licensing-and-stewardship-disposition.md`](design-review/189-licensing-and-stewardship-disposition.md)
+  selects a corrected, role-specific licensing and governance target without
+  yet making an operative grant. It separates FLOW's future Community-Spec
+  process from Jig governance and defers licence texts and package metadata
+  until provenance, ownership, curation, counsel, and artifact gates close.
 - [`design-review/188-contained-native-preparation-feasibility.md`](design-review/188-contained-native-preparation-feasibility.md)
   closes one ephemeral networkless, script-free Bun installation of the real
   packed FLOW SDK inside the private Linux envelope, plus deterministic repeat

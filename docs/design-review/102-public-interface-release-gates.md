@@ -540,8 +540,11 @@ the latest completed composition boundary is review 162.
 
 The critical path still needs:
 
-- license, repository, version, finite Bun range, and release metadata chosen
-  by the product owner before registry publication;
+- the role-specific licensing target selected in review 189 activated as one
+  reviewed repository/package transaction after provenance, owner identity,
+  Community-Spec curation and counsel, trademark, and artifact-compliance
+  gates; repository, version, finite Bun range, and remaining release metadata
+  are also still required before registry publication;
 - one administrator-owned production launcher/runtime-support installation on
   a fresh supported host rather than the proof sandbox's controls;
 - durable package-local native preparation and a protected prepared-tree
