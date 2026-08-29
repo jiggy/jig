@@ -1,3 +1,9 @@
+import { types as utilTypes } from "node:util";
+
+import {
+  isCapabilityContractId,
+  isCapabilityContractVersion,
+} from "../capability/index.js";
 import {
   PRIVATE_ACTIVATION_TARGET_LIMIT,
   privateActivationTargetKey,
@@ -29,14 +35,17 @@ import {
   requirePrivateRetainedPackageProject,
   type PrivateRetainedPackageProject,
 } from "./retained-project.js";
-import { normalizeProjectPath } from "./paths.js";
+import {
+  isProtectedProjectPath,
+  normalizeProjectPath,
+} from "./paths.js";
 
 const DIGEST = /^sha256:[0-9a-f]{64}$/;
 const authenticRetainedObservations = new WeakSet<object>();
 const authenticActivationRequests = new WeakSet<object>();
 
 export interface PrivateActivationRequest {
-  readonly kind: "activation-request/1";
+  readonly kind: "activation-request/2";
   readonly digest: string;
   readonly target: RunTargetIdentity;
   readonly mode: "run" | "service";
@@ -161,25 +170,30 @@ export function restorePrivateActivationRequest(value: unknown): PrivateActivati
     "attachments",
     "slots",
   ], "activation request");
-  if (root.kind !== "activation-request/1") {
-    throw new TypeError("activation request kind must be activation-request/1");
+  if (root.kind !== "activation-request/2") {
+    throw new TypeError("activation request kind must be activation-request/2");
   }
   const targetValue = exactRecord(root.target, "activation target");
-  const target = targetValue.kind === "flow"
-    ? Object.freeze({
-        kind: "flow" as const,
-        path: normalizeProjectPath(
-          exactObject(targetValue, ["kind", "path"], "Flow activation target").path,
-          "Flow activation target",
-        ),
-      })
-    : Object.freeze({
-        kind: "binding" as const,
-        id: requireLocalName(
-          exactObject(targetValue, ["kind", "id"], "Binding activation target").id,
-          "Binding activation target",
-        ),
-      });
+  let target: RunTargetIdentity;
+  if (targetValue.kind === "flow") {
+    target = Object.freeze({
+      kind: "flow" as const,
+      path: normalizeProjectPath(
+        exactObject(targetValue, ["kind", "path"], "Flow activation target").path,
+        "Flow activation target",
+      ),
+    });
+  } else if (targetValue.kind === "binding") {
+    target = Object.freeze({
+      kind: "binding" as const,
+      id: requireLocalName(
+        exactObject(targetValue, ["kind", "id"], "Binding activation target").id,
+        "Binding activation target",
+      ),
+    });
+  } else {
+    throw new TypeError("activation target kind must be flow or binding");
+  }
   if (root.mode !== "run" && root.mode !== "service") {
     throw new TypeError("activation request mode must be run or service");
   }
@@ -214,11 +228,8 @@ export function restorePrivateActivationRequest(value: unknown): PrivateActivati
       ...(entrypointValue.selector === undefined ? {} : { selector: entrypointValue.selector }),
     }),
     settings: snapshotJsonObject(root.settings, "activation settings"),
-    attachments: snapshotJsonObject(
-      root.attachments,
-      "activation attachments",
-    ) as LinkedPackageBinding["attachments"],
-    slots: snapshotJsonObject(root.slots, "activation slots") as LinkedPackageBinding["slots"],
+    attachments: normalizeRequestAttachments(root.attachments),
+    slots: normalizeRequestSlots(root.slots),
   });
   if (root.digest !== request.digest) {
     throw new TypeError("activation request digest does not match its canonical content");
@@ -315,7 +326,7 @@ export function requirePrivateRetainedResolutionObservation(
 
 function createRequest(input: Omit<PrivateActivationRequest, "kind" | "digest">): PrivateActivationRequest {
   const valueWithoutDigest = Object.freeze({
-    kind: "activation-request/1" as const,
+    kind: "activation-request/2" as const,
     target: input.target,
     mode: input.mode,
     packagePath: input.packagePath,
@@ -328,7 +339,7 @@ function createRequest(input: Omit<PrivateActivationRequest, "kind" | "digest">)
   const request = Object.freeze({
     ...valueWithoutDigest,
     digest: privateDomainDigest(
-      "JIG-Activation-Request/1",
+      "JIG-Activation-Request/2",
       valueWithoutDigest as unknown as JsonValue,
     ),
   });
@@ -481,7 +492,7 @@ function compareTargets(left: RunTargetIdentity, right: RunTargetIdentity): numb
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
-function requireDigest(value: string, label: string): string {
+function requireDigest(value: unknown, label: string): string {
   if (typeof value !== "string" || !DIGEST.test(value)) {
     throw new TypeError(`${label} digest must be sha256: followed by 64 lowercase hexadecimal digits`);
   }
@@ -489,10 +500,24 @@ function requireDigest(value: string, label: string): string {
 }
 
 function exactRecord(value: unknown, label: string): Record<string, unknown> {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+  if (value === null || typeof value !== "object" || Array.isArray(value) ||
+      utilTypes.isProxy(value)) {
     throw new TypeError(`${label} must be an object`);
   }
-  return value as Record<string, unknown>;
+  const prototype = Object.getPrototypeOf(value);
+  if (prototype !== Object.prototype && prototype !== null) {
+    throw new TypeError(`${label} must be an ordinary object`);
+  }
+  const result: Record<string, unknown> = Object.create(null) as Record<string, unknown>;
+  for (const key of Reflect.ownKeys(value)) {
+    if (typeof key !== "string") throw new TypeError(`${label} must not contain symbol keys`);
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    if (descriptor === undefined || !("value" in descriptor) || !descriptor.enumerable) {
+      throw new TypeError(`${label}.${key} must be an enumerable data property`);
+    }
+    result[key] = descriptor.value;
+  }
+  return result;
 }
 
 function exactObject(
@@ -517,13 +542,183 @@ function requireLocalName(value: unknown, label: string): string {
   return value;
 }
 
+function normalizeRequestAttachments(value: unknown): LinkedPackageBinding["attachments"] {
+  const input = snapshotJsonObject(value, "activation attachments");
+  const keys = Object.keys(input);
+  if (keys.length > 256) throw new TypeError("activation attachments exceed 256 members");
+  const output: Record<string, { readonly source: string; readonly access: "read" | "read-write" }> =
+    Object.create(null) as Record<string, { readonly source: string; readonly access: "read" | "read-write" }>;
+  for (const name of keys.sort()) {
+    requireLocalName(name, "activation attachment name");
+    const attachment = exactObject(input[name], ["source", "access"], `activation attachment ${name}`);
+    const source = normalizeProjectPath(attachment.source, `activation attachment ${name} source`);
+    if (isProtectedProjectPath(source)) {
+      throw new TypeError(`activation attachment ${name} source uses protected .jig state`);
+    }
+    if (attachment.access !== "read" && attachment.access !== "read-write") {
+      throw new TypeError(`activation attachment ${name} access must be read or read-write`);
+    }
+    output[name] = Object.freeze({ source, access: attachment.access });
+  }
+  return Object.freeze(output);
+}
+
+function normalizeRequestSlots(value: unknown): LinkedPackageBinding["slots"] {
+  const input = snapshotJsonObject(value, "activation slots");
+  const keys = Object.keys(input);
+  if (keys.length > 256) throw new TypeError("activation slots exceed 256 members");
+  const output: Record<string, LinkedPackageBinding["slots"][string]> = Object.create(null) as
+    Record<string, LinkedPackageBinding["slots"][string]>;
+  for (const name of keys.sort()) {
+    requireLocalName(name, "activation slot name");
+    const value = input[name];
+    const kind = exactRecord(value, `activation slot ${name}`).kind;
+    if (kind === "flow-call") {
+      const slot = exactObject(
+        value,
+        ["kind", "source", "targets"],
+        `activation slot ${name}`,
+      );
+      if (slot.source !== "exact" && slot.source !== "candidates" &&
+          slot.source !== "project-run-targets") {
+        throw new TypeError(`activation slot ${name} source has an invalid kind`);
+      }
+      if (!Array.isArray(slot.targets)) {
+        throw new TypeError(`activation slot ${name} targets must be an array`);
+      }
+      if (slot.targets.length > PRIVATE_ACTIVATION_TARGET_LIMIT) {
+        throw new TypeError(
+          `activation slot ${name} targets exceed ${PRIVATE_ACTIVATION_TARGET_LIMIT} members`,
+        );
+      }
+      const targets = slot.targets.map((target, index) => normalizeRequestTarget(
+        target,
+        `activation slot ${name} targets[${index}]`,
+      )).sort(compareTargets);
+      if (targets.length === 0 && slot.source !== "project-run-targets") {
+        throw new TypeError(`activation slot ${name} targets cannot be empty for ${slot.source} source`);
+      }
+      if (slot.source === "exact" && targets.length !== 1) {
+        throw new TypeError(`activation slot ${name} exact source must contain exactly one target`);
+      }
+      if (slot.source === "candidates" && targets.length < 2) {
+        throw new TypeError(`activation slot ${name} candidates source must contain at least two targets`);
+      }
+      for (let index = 1; index < targets.length; index += 1) {
+        if (privateActivationTargetKey(targets[index - 1]!) ===
+            privateActivationTargetKey(targets[index]!)) {
+          throw new TypeError(`activation slot ${name} contains duplicate targets`);
+        }
+      }
+      output[name] = Object.freeze({
+        kind: "flow-call" as const,
+        source: slot.source,
+        targets: Object.freeze(targets),
+      });
+      continue;
+    }
+    const slot = exactObject(value, ["kind", "contract", "provider"], `activation slot ${name}`);
+    if (slot.kind !== "capability") throw new TypeError(`activation slot ${name} has an invalid kind`);
+    const contract = exactObject(slot.contract, ["id", "version", "digest"], `activation slot ${name} contract`);
+    if (typeof contract.id !== "string" || !isCapabilityContractId(contract.id)) {
+      throw new TypeError(`activation slot ${name} contract id is invalid`);
+    }
+    if (typeof contract.version !== "string" || !isCapabilityContractVersion(contract.version)) {
+      throw new TypeError(`activation slot ${name} contract version is invalid`);
+    }
+    const provider = exactObject(slot.provider, ["binding", "export"], `activation slot ${name} provider`);
+    output[name] = Object.freeze({
+      kind: "capability" as const,
+      contract: Object.freeze({
+        id: contract.id,
+        version: contract.version,
+        digest: requireDigest(contract.digest, `activation slot ${name} contract`),
+      }),
+      provider: Object.freeze({
+        binding: requireLocalName(provider.binding, `activation slot ${name} provider Binding`),
+        export: requireLocalName(provider.export, `activation slot ${name} provider export`),
+      }),
+    });
+  }
+  return Object.freeze(output);
+}
+
+function normalizeRequestTarget(value: unknown, label: string): RunTargetIdentity {
+  const target = exactRecord(value, label);
+  if (target.kind === "flow") {
+    const flow = exactObject(target, ["kind", "path"], label);
+    const path = normalizeProjectPath(flow.path, `${label} path`);
+    if (isProtectedProjectPath(path)) throw new TypeError(`${label} uses protected .jig state`);
+    return Object.freeze({ kind: "flow" as const, path });
+  }
+  const binding = exactObject(target, ["kind", "id"], label);
+  if (binding.kind !== "binding") throw new TypeError(`${label} has an invalid kind`);
+  return Object.freeze({
+    kind: "binding" as const,
+    id: requireLocalName(binding.id, `${label} Binding`),
+  });
+}
+
 function snapshotJsonObject(value: unknown, label: string): JsonObject {
-  const bytes = canonicalJson(value as JsonValue);
+  const bytes = canonicalJson(captureJsonValue(value, label, new WeakSet<object>()) as JsonValue);
   const snapshot = freezeJson(decodeJson1(bytes));
   if (snapshot === null || typeof snapshot !== "object" || Array.isArray(snapshot)) {
     throw new TypeError(`${label} must be an object`);
   }
   return snapshot as JsonObject;
+}
+
+function captureJsonValue(
+  value: unknown,
+  label: string,
+  active: WeakSet<object>,
+): JsonValue {
+  if (value === null || typeof value === "string" || typeof value === "boolean" ||
+      typeof value === "number") {
+    return value as JsonValue;
+  }
+  if (typeof value !== "object" || utilTypes.isProxy(value)) {
+    throw new TypeError(`${label} must contain only non-proxied JSON values`);
+  }
+  if (active.has(value)) throw new TypeError(`${label} must not contain cycles`);
+  active.add(value);
+  try {
+    if (Array.isArray(value)) {
+      if (Object.getPrototypeOf(value) !== Array.prototype) {
+        throw new TypeError(`${label} arrays must be ordinary arrays`);
+      }
+      const keys = Reflect.ownKeys(value);
+      if (keys.length !== value.length + 1 || keys.some((key) =>
+        typeof key !== "string" || (key !== "length" && !/^(?:0|[1-9][0-9]*)$/.test(key)))) {
+        throw new TypeError(`${label} arrays must be dense without extra properties`);
+      }
+      const output: JsonValue[] = [];
+      for (let index = 0; index < value.length; index += 1) {
+        const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
+        if (descriptor === undefined || !("value" in descriptor) || !descriptor.enumerable) {
+          throw new TypeError(`${label}[${index}] must be an enumerable data property`);
+        }
+        output.push(captureJsonValue(descriptor.value, `${label}[${index}]`, active));
+      }
+      return output;
+    }
+    const prototype = Object.getPrototypeOf(value);
+    if (prototype !== Object.prototype && prototype !== null) {
+      throw new TypeError(`${label} objects must be ordinary objects`);
+    }
+    const output: Record<string, JsonValue> = Object.create(null) as Record<string, JsonValue>;
+    for (const key of Reflect.ownKeys(value)) {
+      if (typeof key !== "string") throw new TypeError(`${label} must not contain symbol keys`);
+      const descriptor = Object.getOwnPropertyDescriptor(value, key);
+      if (descriptor === undefined || !("value" in descriptor) || !descriptor.enumerable) {
+        throw new TypeError(`${label}.${key} must be an enumerable data property`);
+      }
+      output[key] = captureJsonValue(descriptor.value, `${label}.${key}`, active);
+    }
+    return output;
+  } finally {
+    active.delete(value);
+  }
 }
 
 function freezeJson(value: JsonValue): JsonValue {

@@ -23,9 +23,10 @@ import {
   isProtectedProjectPath,
   validateProjectPath,
 } from "../project/paths.js";
+import { PRIVATE_ACTIVATION_TARGET_LIMIT } from "./activation-planning.js";
 import { privateDomainDigest } from "./identity.js";
 
-const KIND = "private-package-project-lock/2";
+const KIND = "private-package-project-lock/3";
 const DIGEST = /^sha256:[0-9a-f]{64}$/;
 const LOCAL_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const MAX_METADATA_MEMBERS = 256;
@@ -49,6 +50,7 @@ export interface PrivateLockPackage {
 export type PrivateLockSlot =
   | {
       readonly kind: "flow-call";
+      readonly source: "exact" | "candidates" | "project-run-targets";
       readonly targets: readonly RunTargetIdentity[];
     }
   | {
@@ -139,7 +141,11 @@ export function createPrivateProjectLocalLock(
     for (const name of Object.keys(binding.slots).sort()) {
       const slot = binding.slots[name]!;
       slots[name] = slot.kind === "flow-call"
-        ? { kind: slot.kind, targets: slot.targets.map((target) => ({ ...target })) }
+        ? {
+            kind: slot.kind,
+            source: slot.source,
+            targets: slot.targets.map((target) => ({ ...target })),
+          }
         : { kind: slot.kind, provider: { ...slot.provider } };
     }
     bindings[binding.id] = {
@@ -195,7 +201,7 @@ export function decodePrivateProjectLocalLock(bytes: Uint8Array): PrivateProject
 /** External evidence identity; it is intentionally not embedded in the lock. */
 export function privateProjectLocalLockDigest(value: PrivateProjectLocalLock): string {
   return privateDomainDigest(
-    "JIG-Private-Package-Project-Lock/2",
+    "JIG-Private-Package-Project-Lock/3",
     requirePrivateProjectLocalLock(value) as unknown as JsonValue,
   );
 }
@@ -212,6 +218,14 @@ function normalizeLock(value: unknown): PrivateProjectLocalLock {
   if (root.kind !== KIND) throw new TypeError(`lock kind must be ${KIND}`);
   const packages = normalizePackages(root.packages);
   const bindings = normalizeBindings(root.bindings);
+  const activationTargetCount = Object.keys(bindings).length + Object.values(packages).filter(
+    ({ mode, directRun }) => mode === "run" && directRun,
+  ).length;
+  if (activationTargetCount > PRIVATE_ACTIVATION_TARGET_LIMIT) {
+    throw new TypeError(
+      `lock activation targets exceed ${PRIVATE_ACTIVATION_TARGET_LIMIT} targets`,
+    );
+  }
   const journalPublishers = normalizeJournalPublishers(root.journalPublishers);
   const hooks = normalizeHooks(root.hooks);
   validateReferences(packages, bindings, journalPublishers, hooks);
@@ -385,9 +399,21 @@ function normalizeBindings(value: unknown): PrivateProjectLocalLock["bindings"] 
     const slots = stringMap(item.slots, `Binding ${id} slots`, (entry, label) => {
       const slot = object(entry, label);
       if (slot.kind === "flow-call") {
-        exactFields(slot, ["kind", "targets"], label);
+        exactFields(slot, ["kind", "source", "targets"], label);
+        if (slot.source !== "exact" && slot.source !== "candidates" &&
+            slot.source !== "project-run-targets") {
+          throw new TypeError(`${label} source has an invalid kind`);
+        }
         const rawTargets = array(slot.targets, `${label} targets`);
-        if (rawTargets.length === 0) throw new TypeError(`${label} targets cannot be empty`);
+        if (rawTargets.length === 0 && slot.source !== "project-run-targets") {
+          throw new TypeError(`${label} targets cannot be empty for ${slot.source} source`);
+        }
+        if (slot.source === "exact" && rawTargets.length !== 1) {
+          throw new TypeError(`${label} exact source must contain exactly one target`);
+        }
+        if (slot.source === "candidates" && rawTargets.length < 2) {
+          throw new TypeError(`${label} candidates source must contain at least two targets`);
+        }
         const targets = rawTargets.map((target, index) => normalizeTarget(target, `${label} targets[${index}]`));
         targets.sort(compareTargets);
         for (let index = 1; index < targets.length; index += 1) {
@@ -395,7 +421,11 @@ function normalizeBindings(value: unknown): PrivateProjectLocalLock["bindings"] 
             throw new TypeError(`${label} contains duplicate target ${targetKey(targets[index]!)}`);
           }
         }
-        return Object.freeze({ kind: "flow-call" as const, targets: Object.freeze(targets) });
+        return Object.freeze({
+          kind: "flow-call" as const,
+          source: slot.source,
+          targets: Object.freeze(targets),
+        });
       }
       exactFields(slot, ["kind", "provider"], label);
       if (slot.kind !== "capability") throw new TypeError(`${label} has an invalid kind`);
@@ -419,6 +449,7 @@ function validateReferences(
   journalPublishers: PrivateProjectLocalLock["journalPublishers"],
   hooks: PrivateProjectLocalLock["hooks"],
 ): void {
+  const projectRunTargets = structuralRunTargets(packages, bindings);
   for (const [id, binding] of Object.entries(bindings)) {
     const consumer = packages[binding.packagePath];
     if (consumer === undefined) throw new TypeError(`Binding ${id} selects an unknown package`);
@@ -446,6 +477,12 @@ function validateReferences(
           throw new TypeError(`Binding ${id} maps capability ${name} as a Flow call`);
         }
         for (const target of slot.targets) validateRunTarget(target, packages, bindings, `Binding ${id} slot ${name}`);
+        if (slot.source === "project-run-targets" &&
+            !sameTargets(slot.targets, projectRunTargets)) {
+          throw new TypeError(
+            `Binding ${id} slot ${name} project-run-targets source does not match the complete project Run catalogue`,
+          );
+        }
         continue;
       }
       const required = consumer.uses[name];
@@ -486,6 +523,33 @@ function validateReferences(
     validateRunTarget(hook.target, packages, bindings, `Hook ${id}`);
   }
   rejectServiceCycles(packages, bindings);
+}
+
+function structuralRunTargets(
+  packages: PrivateProjectLocalLock["packages"],
+  bindings: PrivateProjectLocalLock["bindings"],
+): readonly RunTargetIdentity[] {
+  return [
+    ...Object.entries(bindings).flatMap(([id, binding]) =>
+      packages[binding.packagePath]?.mode === "run"
+        ? [{ kind: "binding" as const, id }]
+        : []
+    ),
+    ...Object.entries(packages).flatMap(([path, value]) =>
+      value.mode === "run" && value.directRun
+        ? [{ kind: "flow" as const, path }]
+        : []
+    ),
+  ].sort(compareTargets);
+}
+
+function sameTargets(
+  left: readonly RunTargetIdentity[],
+  right: readonly RunTargetIdentity[],
+): boolean {
+  return left.length === right.length && left.every(
+    (target, index) => targetKey(target) === targetKey(right[index]!),
+  );
 }
 
 function validateRunTarget(

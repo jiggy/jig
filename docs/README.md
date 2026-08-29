@@ -37,10 +37,16 @@ Start here:
 
 Current implementation frontier:
 
+- [`design-review/177-private-project-run-target-retained-format.md`](design-review/177-private-project-run-target-retained-format.md)
+  advances the private lock to Lock/3, activation requests to Request/2, and
+  the admission store to v18 so exact source intent and the complete bounded
+  `projectRunTargets()` expansion survive strict decoding and admission,
+  while runtime filtering and selection remain gated.
 - [`design-review/176-private-project-run-target-linker.md`](design-review/176-private-project-run-target-linker.md)
   closes the private two-phase `projectRunTargets()` expansion, exact source
   identity, caller-owned aggregate bound, and existing-work-budget accounting
-  while leaving retained formats, admission, filtering, and runtime gated.
+  while leaving the later retained-format, filtering, and runtime boundaries
+  separate.
 - [`design-review/175-exact-native-preparation-frontier.md`](design-review/175-exact-native-preparation-frontier.md)
   selects one offline native-installer preparation owner and a distinct
   private prepared-tree identity after rejecting a Jig-owned npm/wheel

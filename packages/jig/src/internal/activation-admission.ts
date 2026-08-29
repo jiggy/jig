@@ -1162,6 +1162,54 @@ function requireRequestLockProjection(
       packageValue.mode !== request.mode) {
     throw new TypeError("activation request package does not match its lock projection");
   }
+  if (request.target.kind === "binding") {
+    const binding = lock.bindings[request.target.id];
+    if (binding === undefined ||
+        !sameJson(binding.attachments, request.attachments) ||
+        !requestSlotsMatchLock(request.slots, binding.slots, packageValue.uses)) {
+      throw new TypeError("activation request Binding configuration does not match its lock projection");
+    }
+    return;
+  }
+  if (Object.keys(request.settings).length !== 0 ||
+      Object.keys(request.attachments).length !== 0 ||
+      Object.keys(request.slots).length !== 0) {
+    throw new TypeError("direct Flow activation request must have empty configuration");
+  }
+}
+
+function requestSlotsMatchLock(
+  request: PrivateActivationRequest["slots"],
+  locked: PrivateProjectLocalLock["bindings"][string]["slots"],
+  uses: PrivateProjectLocalLock["packages"][string]["uses"],
+): boolean {
+  const requestNames = Object.keys(request).sort();
+  const lockedNames = Object.keys(locked).sort();
+  if (requestNames.length !== lockedNames.length || requestNames.some(
+    (name, index) => name !== lockedNames[index],
+  )) return false;
+  for (const name of requestNames) {
+    const requested = request[name]!;
+    const lockedSlot = locked[name]!;
+    if (lockedSlot.kind === "flow-call") {
+      if (requested.kind !== "flow-call" || !sameJson(requested, lockedSlot)) return false;
+      continue;
+    }
+    const requirement = uses[name];
+    if (requested.kind !== "capability" || requirement?.kind !== "contract" ||
+        !sameJson(requested.provider, lockedSlot.provider) ||
+        requested.contract.id !== requirement.id ||
+        requested.contract.version !== requirement.version ||
+        requested.contract.digest !== requirement.digest) return false;
+  }
+  return true;
+}
+
+function sameJson(left: unknown, right: unknown): boolean {
+  return sameBytes(
+    canonicalJson(left as JsonValue),
+    canonicalJson(right as JsonValue),
+  );
 }
 
 function normalizeIdentity(value: unknown): RunTargetIdentity {

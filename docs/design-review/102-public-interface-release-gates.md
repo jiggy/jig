@@ -358,8 +358,11 @@ boundary with a synchronous deterministic test chooser. Resolver integration
 still requires a distinct durable decision operation, exact survivor and
 rejection evidence, committed-result reuse, and uncertainty without reranking.
 Project `semanticChoice` authoring, a qualifying provider Binding, an
-Agent-backed chooser, and implementation of the reviewed
-`projectRunTargets()` expansion/lock/Plan semantics remain release gates.
+Agent-backed chooser, caller-specific filtering, and runtime dispatch remain
+release gates. Review 177 closes only the private retained-format portion of
+`projectRunTargets()`: Lock/3 and Activation Request/2 preserve exact source
+intent and complete expansion, and admission store v18 rejects mixed older
+authority. It neither publishes the marker nor selects a runtime target.
 
 The former Linux `SANDBOX_UNAVAILABLE` stop is historical. The private proof
 now has a delegated aggregate owner, pre-exec placement, entropy and

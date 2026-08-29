@@ -27,6 +27,7 @@ import {
   requirePrivateActivationRequest,
   requirePrivateRetainedResolutionObservation,
   resolveLinkedPackageProjectObservation,
+  restorePrivateActivationRequest,
   type PrivateActivationRequest,
 } from "../src/project/package-resolution.js";
 import { retainFlowSourcePackages } from "../src/project/retained-flow.js";
@@ -52,6 +53,16 @@ describe("private package resolution", () => {
       expect(() => requirePrivateActivationRequest({ ...requests[0]! })).toThrow(
         "activation request was not produced from a linked package project",
       );
+      const restored = restorePrivateActivationRequest(structuredClone(requests[0]!));
+      expect(restored).toEqual(requests[0]);
+      expect(() => restorePrivateActivationRequest({
+        ...structuredClone(requests[0]!),
+        kind: "activation-request/1",
+      })).toThrow("activation request kind must be activation-request/2");
+      expect(() => restorePrivateActivationRequest({
+        ...structuredClone(requests[0]!),
+        target: { kind: "service", id: "z" },
+      })).toThrow("activation target kind must be flow or binding");
       expect(requests.map(({ target }) => target)).toEqual([
         { kind: "binding", id: "z" },
         { kind: "flow", path: "flows/a" },
@@ -251,6 +262,38 @@ uses:
       }),
     ], async (project) => {
       const requests = buildPrivateActivationRequests(project);
+      const dispatcherRequest = requests.find((request) => targetKey(request.target) === "binding:dispatcher")!;
+      const searchRequest = requests.find((request) => targetKey(request.target) === "binding:search")!;
+      expect(restorePrivateActivationRequest(structuredClone(dispatcherRequest))).toEqual(dispatcherRequest);
+      expect(restorePrivateActivationRequest(structuredClone(searchRequest))).toEqual(searchRequest);
+      const invalidSource = structuredClone(dispatcherRequest) as any;
+      invalidSource.slots.work.source = "query";
+      expect(() => restorePrivateActivationRequest(invalidSource)).toThrow(
+        "activation slot work source has an invalid kind",
+      );
+      const invalidCardinality = structuredClone(dispatcherRequest) as any;
+      invalidCardinality.slots.work.targets.push({ kind: "binding", id: "dispatcher" });
+      expect(() => restorePrivateActivationRequest(invalidCardinality)).toThrow(
+        "exact source must contain exactly one target",
+      );
+      const invalidContract = structuredClone(searchRequest) as any;
+      invalidContract.slots.index.contract.version = "1.0";
+      expect(() => restorePrivateActivationRequest(invalidContract)).toThrow(
+        "contract version is invalid",
+      );
+      let getterCalls = 0;
+      const accessor = structuredClone(dispatcherRequest) as any;
+      Object.defineProperty(accessor.slots.work, "source", {
+        enumerable: true,
+        get() {
+          getterCalls += 1;
+          return "exact";
+        },
+      });
+      expect(() => restorePrivateActivationRequest(accessor)).toThrow(
+        "must be an enumerable data property",
+      );
+      expect(getterCalls).toBe(0);
       const snapshot = planning(requests, (request) => {
         const key = targetKey(request.target);
         return key === "binding:index" || key === "flow:flows/worker"

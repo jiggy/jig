@@ -154,8 +154,8 @@ local Binding ID—such as `offline-choice` or `company-choice`—whose exact ex
 implements the Semantic Choice contract. It is never a strategy name, Flow ID,
 model name, prompt, or algorithm literal.
 
-A later authoring slice also permits one explicit changing source in a
-Flow-call slot:
+The reviewed later authoring shape permits one explicit changing source in a
+Flow-call slot. It remains private rather than part of Project Authoring SDK/1:
 
 ```ts
 slots: {
@@ -168,6 +168,23 @@ to every direct-eligible Run Flow and Run-capable package Binding, including
 structurally valid unavailable targets. It retains the source kind beside the
 exact canonical target set. Services, Journal publishers, host capabilities,
 and invalid declarations never enter it. An unmapped slot remains missing.
+
+The private retained pipeline commits that source and complete expansion into
+Lock/3 and Activation Request/2. `exact`, `candidates`, and
+`project-run-targets` are distinct semantic sources: a fixed candidate list
+and changing source have different identities even when their exact target
+sets currently coincide. The strict Lock decoder recomputes the complete
+structural Run catalogue from the retained packages and Bindings and rejects a
+changing slot whose expansion is a subset, superset, duplicate, or otherwise
+noncanonical value. Admission requires each activation request to be the exact
+projection of its retained lock entry.
+
+The existing aggregate ceiling is 4,096 activation targets across every
+package Binding, including Service Bindings, plus every direct Run Flow. It is
+checked during linking, strict Lock decoding, and activation-request creation;
+no source may be truncated to fit it. An empty complete expansion is valid for
+`project-run-targets`; `exact` requires one target and `candidates` requires at
+least two.
 
 Expansion includes the consuming Run Binding itself. Runtime filtering removes
 every exact target already present in the active owner chain, then applies
@@ -461,8 +478,10 @@ admitted target and enters the same execution path as an admitted Run Binding.
 The reviewed changing-universe direction is the explicit per-slot
 `projectRunTargets()` marker described above and in the
 [target and routing disposition](../design-review/101-default-targets-and-open-routing-candidate.md).
-It remains outside the first authoring slice until its private expansion,
-lock, and Plan-delta evidence pass.
+It remains outside the first authoring slice. Its private evaluation, complete
+expansion, Lock/3, Activation Request/2, and v18 admission retention are now
+implemented; public authoring, caller-specific filtering, Resolver use, and
+runtime dispatch remain separately gated.
 
 Aggregate normalization also computes the transitive authority reachable
 through those exact dependencies. Provider-owned attachments and effect
@@ -944,9 +963,9 @@ Binding revision.
     receipt; candidate-head movement does not stale them, while an
     active-admission change does. A lock-written/no-receipt crash state
     converges only through explicit Plan replay.
-34. During the current private pre-release schema checkpoint, a v17 admission
+34. During the current private pre-release schema checkpoint, a v18 admission
     store rejects every other `private-activation-admission-v*.sqlite3`
-    database or sidecar, including beside a valid v17 database. It never
+    database or sidecar, including beside a valid v18 database. It never
     migrates, merges, or silently chooses around mixed protected authority.
 35. Aggregate authority inspection includes the fixed attachment and effect
     authority reachable through every exact dependency Binding; it never

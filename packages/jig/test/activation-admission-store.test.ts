@@ -181,7 +181,7 @@ describe.serial("private activation admission SQLite store", () => {
     const root = join(base, "project");
     const store = join(base, "store");
     const state = join(root, ".jig");
-    const databasePath = join(state, "private-activation-admission-v17.sqlite3");
+    const databasePath = join(state, "private-activation-admission-v18.sqlite3");
     try {
       await mkdir(root, { mode: 0o700 });
       await mkdir(store, { mode: 0o700 });
@@ -202,7 +202,7 @@ describe.serial("private activation admission SQLite store", () => {
         expect(database.query(
           "SELECT name FROM sqlite_schema WHERE type = 'table' AND name = 'hook_derivations'",
         ).get()).toEqual({ name: "hook_derivations" });
-        expect(database.query("PRAGMA user_version").get().user_version).toBe(17);
+        expect(database.query("PRAGMA user_version").get().user_version).toBe(18);
         for (const table of [
           "lock_repairs",
           "service_mounts",
@@ -217,14 +217,14 @@ describe.serial("private activation admission SQLite store", () => {
     } finally { await rm(base, { recursive: true, force: true }); }
   });
 
-  test("rejects the exact preceding database path without creating v17 state", async () => {
+  test("rejects the exact preceding database path without creating v18 state", async () => {
     const base = await mkdtemp(join(tmpdir(), "jig-admission-legacy-"));
     const root = join(base, "project");
     const store = join(base, "store");
     const state = join(root, ".jig");
-    const legacy = join(state, "private-activation-admission-v16.sqlite3");
+    const legacy = join(state, "private-activation-admission-v17.sqlite3");
     const oldest = join(state, "private-activation-admission-v3.sqlite3");
-    const current = join(state, "private-activation-admission-v17.sqlite3");
+    const current = join(state, "private-activation-admission-v18.sqlite3");
     const sentinel = new TextEncoder().encode("legacy-private-state\n");
     try {
       await mkdir(state, { recursive: true, mode: 0o700 });
@@ -246,13 +246,13 @@ describe.serial("private activation admission SQLite store", () => {
     }
   });
 
-  test("rejects an abandoned legacy sidecar without creating v17 state", async () => {
+  test("rejects an abandoned legacy sidecar without creating v18 state", async () => {
     const base = await mkdtemp(join(tmpdir(), "jig-admission-legacy-sidecar-"));
     const root = join(base, "project");
     const store = join(base, "store");
     const state = join(root, ".jig");
     const sidecar = join(state, "private-activation-admission-v8.sqlite3-wal");
-    const current = join(state, "private-activation-admission-v17.sqlite3");
+    const current = join(state, "private-activation-admission-v18.sqlite3");
     const sentinel = new TextEncoder().encode("abandoned-private-sidecar\n");
     try {
       await mkdir(state, { recursive: true, mode: 0o700 });
@@ -272,9 +272,9 @@ describe.serial("private activation admission SQLite store", () => {
     }
   });
 
-  test("rejects mixed-version authority beside an existing valid v17 store", async () => {
+  test("rejects mixed-version authority beside an existing valid v18 store", async () => {
     const fixture = await createFixture();
-    const legacy = join(fixture.root, ".jig", "private-activation-admission-v16.sqlite3");
+    const legacy = join(fixture.root, ".jig", "private-activation-admission-v17.sqlite3");
     const sentinel = new TextEncoder().encode("ignored-legacy-state\n");
     try {
       await writeFile(legacy, sentinel, { mode: 0o600 });
@@ -1292,7 +1292,7 @@ describe.serial("private activation admission SQLite store", () => {
           "hook_revisions_one_open",
         ]);
         expect(database.query("PRAGMA application_id").get().application_id).toBe(0x4a494741);
-        expect(database.query("PRAGMA user_version").get().user_version).toBe(17);
+        expect(database.query("PRAGMA user_version").get().user_version).toBe(18);
         expect(database.query("SELECT count(*) AS count FROM review_plans").get().count).toBe(1);
       } finally {
         database.close(true);
@@ -1927,7 +1927,7 @@ describe.serial("private activation admission SQLite store", () => {
         lockMode: "update",
       });
       const database = openSqlite(fixture.database, "readwrite");
-      database.exec("PRAGMA user_version=13");
+      database.exec("PRAGMA user_version=17");
       database.close(true);
 
       await expect(loadPrivateActivationReviewPlan({
@@ -1938,7 +1938,7 @@ describe.serial("private activation admission SQLite store", () => {
 
       const unchanged = openSqlite(fixture.database, "readonly");
       try {
-        expect(unchanged.query("PRAGMA user_version").get().user_version).toBe(13);
+        expect(unchanged.query("PRAGMA user_version").get().user_version).toBe(17);
       } finally { unchanged.close(true); }
     } finally {
       await fixture.dispose();
@@ -3838,7 +3838,7 @@ describe.serial("private activation admission SQLite store", () => {
         lockMode: "update",
       });
       await writeFile(join(drift.root, "jig.lock"), json1({
-        kind: "private-package-project-lock/2",
+        kind: "private-package-project-lock/3",
         packages: {},
         bindings: {},
         journalPublishers: {},
@@ -4171,7 +4171,7 @@ describe.serial("private activation admission SQLite store", () => {
         lockMode: "update",
       }));
       await writeFile(lockPath, json1({
-        kind: "private-package-project-lock/2",
+        kind: "private-package-project-lock/3",
         packages: {},
         bindings: {},
         journalPublishers: {},
@@ -4235,7 +4235,7 @@ describe.serial("private activation admission SQLite store", () => {
       });
 
       await writeFile(lockPath, json1({
-        kind: "private-package-project-lock/2",
+        kind: "private-package-project-lock/3",
         packages: {},
         bindings: {},
         journalPublishers: {},
@@ -4415,7 +4415,7 @@ async function createFixture(
     }
     const rootInformation = await stat(root, { bigint: true });
     const lockBytes = json1({
-      kind: "private-package-project-lock/2",
+      kind: "private-package-project-lock/3",
       packages: {
         "flows/run": {
           digest: flow.digest,
@@ -4568,7 +4568,7 @@ async function createFixture(
     const encoded = encodePrivateActivationCandidateV5(candidate);
 
     const state = join(root, ".jig");
-    const databasePath = join(state, "private-activation-admission-v17.sqlite3");
+    const databasePath = join(state, "private-activation-admission-v18.sqlite3");
     await mkdir(state, { mode: 0o700 });
     const databaseFile = await open(
       databasePath,
@@ -4616,7 +4616,7 @@ async function createFixture(
         "INSERT INTO coordinator_head(singleton, epoch) VALUES (1, 0)",
         "INSERT INTO journal_head(singleton, position) VALUES (1, 0)",
         "PRAGMA application_id=1246316353",
-        "PRAGMA user_version=17",
+        "PRAGMA user_version=18",
       ].join(";"));
       database.exec("BEGIN IMMEDIATE");
       database.query(
@@ -5194,7 +5194,7 @@ async function createComposedFixture(): Promise<Fixture> {
     ]);
     const rootInformation = await stat(root, { bigint: true });
     const lockBytes = json1({
-      kind: "private-package-project-lock/2",
+      kind: "private-package-project-lock/3",
       packages: {
         "flows/child": {
           digest: childPackage.digest,
@@ -5220,6 +5220,7 @@ async function createComposedFixture(): Promise<Fixture> {
           slots: {
             child: {
               kind: "flow-call",
+              source: "exact",
               targets: [{ kind: "flow", path: "flows/child" }],
             },
           },
@@ -5242,6 +5243,7 @@ async function createComposedFixture(): Promise<Fixture> {
       slots: {
         child: {
           kind: "flow-call",
+          source: "exact",
           targets: [{ kind: "flow", path: "flows/child" }],
         },
       },
@@ -5299,7 +5301,7 @@ async function createComposedFixture(): Promise<Fixture> {
     });
     const encoded = encodePrivateActivationCandidateV5(candidate);
     const state = join(root, ".jig");
-    const databasePath = join(state, "private-activation-admission-v17.sqlite3");
+    const databasePath = join(state, "private-activation-admission-v18.sqlite3");
     await mkdir(state, { mode: 0o700 });
     const databaseFile = await open(
       databasePath,
@@ -5347,7 +5349,7 @@ async function createComposedFixture(): Promise<Fixture> {
         "INSERT INTO coordinator_head(singleton, epoch) VALUES (1, 0)",
         "INSERT INTO journal_head(singleton, position) VALUES (1, 0)",
         "PRAGMA application_id=1246316353",
-        "PRAGMA user_version=17",
+        "PRAGMA user_version=18",
       ].join(";"));
       database.exec("BEGIN IMMEDIATE");
       database.query(
@@ -5427,10 +5429,10 @@ async function closeTestRootExecutionWithoutPlan(
 }
 
 function activationRequest(content: Record<string, unknown>): Record<string, unknown> {
-  const request = { kind: "activation-request/1", ...content };
+  const request = { kind: "activation-request/2", ...content };
   return {
     ...request,
-    digest: privateDomainDigest("JIG-Activation-Request/1", request as unknown as JsonValue),
+    digest: privateDomainDigest("JIG-Activation-Request/2", request as unknown as JsonValue),
   };
 }
 

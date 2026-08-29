@@ -4,6 +4,14 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
 import {
+  createPrivateActivationPlanningObservation,
+  createPrivateActivationRecipeObservation,
+} from "../src/internal/activation-planning.js";
+import {
+  createPrivateProjectLocalLock,
+  privateProjectLocalLockDigest,
+} from "../src/internal/project-local-lock.js";
+import {
   bindingRef,
   candidates,
   definePrivateProjectRunTargetsBinding,
@@ -20,6 +28,11 @@ import {
   privateProjectRunTargetCatalogue,
   type InjectedBindingDeclaration,
 } from "../src/project/package-project.js";
+import {
+  buildPrivateActivationRequests,
+  resolveLinkedPackageProjectObservation,
+  type PrivateActivationRequest,
+} from "../src/project/package-resolution.js";
 import { retainFlowSourcePackages } from "../src/project/retained-flow.js";
 
 const journalContract = await readFile(new URL(
@@ -235,6 +248,61 @@ uses:
       expect(() => {
         (first as { source: string }).source = "exact";
       }).toThrow();
+
+      const lock = createPrivateProjectLocalLock(project);
+      expect(lock.kind).toBe("private-package-project-lock/3");
+      expect(lock.bindings.dispatcher!.slots.first).toEqual(first);
+      const dispatcherRequest = buildPrivateActivationRequests(project).find(
+        ({ target }) => target.kind === "binding" && target.id === "dispatcher",
+      )!;
+      expect(dispatcherRequest.kind).toBe("activation-request/2");
+      expect(dispatcherRequest.slots.first).toEqual(first);
+
+      const fixed = linkPrivateProjectRunTargetsPackageProject({
+        flows,
+        bindings: [
+          declaration("bindings/dispatcher.ts", definePrivateProjectRunTargetsBinding({
+            package: "flows/dispatcher",
+            slots: {
+              first: candidates([
+                bindingRef("dispatcher"),
+                bindingRef("worker"),
+                flowRef("flows/dispatcher"),
+                flowRef("flows/worker"),
+              ]),
+              second: projectRunTargets(),
+              exact: bindingRef("worker"),
+              chosen: candidates([
+                bindingRef("worker"),
+                flowRef("flows/worker"),
+              ]),
+            },
+          })),
+          declaration("bindings/worker.ts", { package: "flows/worker" }),
+        ],
+      }, 16);
+      const fixedLock = createPrivateProjectLocalLock(fixed);
+      expect(fixedLock.bindings.dispatcher!.slots.first).toMatchObject({
+        kind: "flow-call",
+        source: "candidates",
+        targets: first.kind === "flow-call" ? first.targets : [],
+      });
+      expect(privateProjectLocalLockDigest(fixedLock)).not.toBe(privateProjectLocalLockDigest(lock));
+      const fixedRequest = buildPrivateActivationRequests(fixed).find(
+        ({ target }) => target.kind === "binding" && target.id === "dispatcher",
+      )!;
+      expect(fixedRequest.digest).not.toBe(dispatcherRequest.digest);
+      const dynamicResolution = resolveLinkedPackageProjectObservation(
+        project,
+        testDigest("same-capture"),
+        planned(buildPrivateActivationRequests(project)),
+      );
+      const fixedResolution = resolveLinkedPackageProjectObservation(
+        fixed,
+        testDigest("same-capture"),
+        planned(buildPrivateActivationRequests(fixed)),
+      );
+      expect(fixedResolution.semanticDigest).not.toBe(dynamicResolution.semanticDigest);
     });
   });
 
@@ -337,4 +405,45 @@ async function withFlows(
     await source?.dispose();
     await rm(root, { recursive: true, force: true });
   }
+}
+
+function planned(requests: readonly PrivateActivationRequest[]) {
+  const digest = testDigest("fixed-proof-value");
+  const extension = Object.freeze({ artifactDigest: digest, revision: "proof/1" });
+  return createPrivateActivationPlanningObservation({
+    policyDigest: digest,
+    mechanismDigest: digest,
+    entries: requests.map((request) => ({
+      target: request.target,
+      requestDigest: request.digest,
+      disposition: {
+        state: "planned" as const,
+        observation: createPrivateActivationRecipeObservation({
+          requestDigest: request.digest,
+          adapter: extension,
+          toolchainDigest: digest,
+          inspectionDigest: digest,
+          preparationPlanDigest: null,
+          launchPlanner: extension,
+          backend: extension,
+          preparationEnvelopeDigest: null,
+          launchEnvelopeDigest: digest,
+          runtimeSupportClosureDigest: digest,
+          runtimePredicates: [],
+          requestedAuthorityDigest: digest,
+          wouldGrantAuthorityDigest: digest,
+          plannedAuthorityDigest: digest,
+        }),
+      },
+    })),
+  });
+}
+
+function testDigest(label: string): string {
+  const bytes = new TextEncoder().encode(label);
+  let hex = "";
+  for (let index = 0; index < 32; index += 1) {
+    hex += bytes[index % bytes.length]!.toString(16).padStart(2, "0");
+  }
+  return `sha256:${hex}`;
 }

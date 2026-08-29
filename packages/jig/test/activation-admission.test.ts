@@ -147,7 +147,7 @@ describe("private activation admission candidate", () => {
     const childPackage = digest("child-package");
     const parentPackage = digest("parent-package");
     const lock = {
-      kind: "private-package-project-lock/2",
+      kind: "private-package-project-lock/3",
       packages: {
         "flows/child": {
           digest: childPackage,
@@ -173,6 +173,7 @@ describe("private activation admission candidate", () => {
           slots: {
             child: {
               kind: "flow-call",
+              source: "exact",
               targets: [{ kind: "flow", path: "flows/child" }],
             },
           },
@@ -214,6 +215,7 @@ describe("private activation admission candidate", () => {
         slots: {
           child: {
             kind: "flow-call",
+            source: "exact",
             targets: [{ kind: "flow", path: "flows/child" }],
           },
         },
@@ -351,6 +353,35 @@ describe("private activation admission candidate", () => {
     });
     expect(() => decodePrivateActivationCandidate(proxy)).toThrow("must not be a Proxy");
     expect(proxyTraps).toBe(0);
+
+    const configured = bindingFixture();
+    const configuredCandidate = decodeJson(configured.candidate);
+    const configuredRequest = configuredCandidate.targets[0].request;
+    configuredCandidate.targets[0].request = activationRequest({
+      ...configuredRequest,
+      slots: {
+        work: {
+          kind: "flow-call",
+          source: "exact",
+          targets: [{ kind: "binding", id: "run" }],
+        },
+      },
+    });
+    expect(() => decodePrivateActivationCandidate({
+      candidate: candidateBytes(configuredCandidate),
+      lock: configured.lock,
+    })).toThrow("Binding configuration does not match its lock projection");
+
+    const directCandidate = decodeJson(valid.candidate);
+    const directRequest = directCandidate.targets[0].request;
+    directCandidate.targets[0].request = activationRequest({
+      ...directRequest,
+      settings: { unexpected: true },
+    });
+    expect(() => decodePrivateActivationCandidate({
+      candidate: candidateBytes(directCandidate),
+      lock: valid.lock,
+    })).toThrow("direct Flow activation request must have empty configuration");
   });
 });
 
@@ -481,7 +512,7 @@ describe("private activation admission", () => {
 function fixture() {
   const packageDigest = digest("run-package");
   const lock = {
-    kind: "private-package-project-lock/2",
+    kind: "private-package-project-lock/3",
     packages: {
       "flows/run": {
         digest: packageDigest,
@@ -566,7 +597,7 @@ function expectLockTargetMismatch(
 
 function bindingFixture() {
   const lock = {
-    kind: "private-package-project-lock/2",
+    kind: "private-package-project-lock/3",
     packages: {
       "flows/run": {
         digest: digest("binding-package"),
@@ -628,10 +659,10 @@ function bindingFixture() {
 
 function activationRequest(value: Record<string, unknown>): Record<string, unknown> {
   const { digest: _discarded, kind: _kind, ...content } = value;
-  const request = { kind: "activation-request/1", ...content };
+  const request = { kind: "activation-request/2", ...content };
   return {
     ...request,
-    digest: privateDomainDigest("JIG-Activation-Request/1", request as unknown as JsonValue),
+    digest: privateDomainDigest("JIG-Activation-Request/2", request as unknown as JsonValue),
   };
 }
 

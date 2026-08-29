@@ -1,4 +1,5 @@
 import { invalid } from "../diagnostics.js";
+import { PRIVATE_ACTIVATION_TARGET_LIMIT } from "../internal/activation-planning.js";
 import { privateDomainDigest } from "../internal/identity.js";
 import type { JsonValue } from "../json.js";
 import type { HookDefinition, PrivateHookJigDefinition } from "./author.js";
@@ -17,7 +18,10 @@ import {
   type DeclarationSourceObservation,
 } from "./declaration-source.js";
 import { captureOpenedFlowSource, type FlowDiscoveryObservation, type FlowExactObservation } from "./flow-source.js";
-import { linkPackageProject, type PackageProjectValue } from "./package-project.js";
+import {
+  linkPrivateProjectRunTargetsPackageProject,
+  type PackageProjectValue,
+} from "./package-project.js";
 import { retainAuthorClosure, type RetainedAuthorClosure } from "./retained-author-closure.js";
 import { retainFlowSourcePackages, type RetainedFlowInput } from "./retained-flow.js";
 import {
@@ -171,11 +175,11 @@ export async function retainOpenedPackageProject(
     await hookSource.verify();
     await root.verify();
 
-    const linked = linkPackageProject({
+    const linked = linkPrivateProjectRunTargetsPackageProject({
       flows: retainedFlows,
       bindings: bindings.map(({ sourcePath, evaluation }) => ({ sourcePath, definition: evaluation.value })),
       hooks: hooks.map(({ sourcePath, evaluation }) => ({ sourcePath, definition: evaluation.value })),
-    });
+    }, PRIVATE_ACTIVATION_TARGET_LIMIT);
     const rootIdentity = Object.freeze({
       device: root.information.dev.toString(),
       inode: root.information.ino.toString(),

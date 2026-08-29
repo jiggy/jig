@@ -378,7 +378,7 @@ function candidateFixture(
     };
   }
   const lockBytes = withLf(canonicalJson({
-    kind: "private-package-project-lock/2",
+    kind: "private-package-project-lock/3",
     packages,
     bindings: {},
     journalPublishers: {},
@@ -463,10 +463,10 @@ function expectInvalidPlan(plan: unknown, message: string): void {
 }
 
 function activationRequest(value: Record<string, unknown>): Record<string, unknown> {
-  const request = { kind: "activation-request/1", ...value };
+  const request = { kind: "activation-request/2", ...value };
   return {
     ...request,
-    digest: privateDomainDigest("JIG-Activation-Request/1", request as unknown as JsonValue),
+    digest: privateDomainDigest("JIG-Activation-Request/2", request as unknown as JsonValue),
   };
 }
 

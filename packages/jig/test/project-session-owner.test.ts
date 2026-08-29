@@ -22,7 +22,7 @@ describe("private project-session ownership", () => {
         expect(protectedState.isDirectory()).toBe(true);
         expect(protectedState.mode & 0o7777n).toBe(0o700n);
         expect(await readdir(join(project, ".jig"))).toContain(
-          "private-activation-admission-v17.sqlite3",
+          "private-activation-admission-v18.sqlite3",
         );
 
         await expect(openPrivateProjectSessionOwner(project)).rejects.toMatchObject({

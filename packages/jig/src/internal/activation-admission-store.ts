@@ -248,7 +248,7 @@ export type {
 } from "./root-run-state.js";
 
 const STATE_DIRECTORY = ".jig";
-const DATABASE_NAME = "private-activation-admission-v17.sqlite3";
+const DATABASE_NAME = "private-activation-admission-v18.sqlite3";
 const ADMISSION_DATABASE_FAMILY =
   /^private-activation-admission-v[0-9]+\.sqlite3(?:-journal|-wal|-shm)?$/;
 const CURRENT_DATABASE_SIDECARS = new Set([
@@ -259,8 +259,8 @@ const CURRENT_DATABASE_SIDECARS = new Set([
 const COORDINATOR_DATABASE_NAME = "private-project-coordinator-v1.sqlite3";
 const LOCK_NAME = "jig.lock";
 const LOCK_STAGE_NAME = "private-activation-jig-lock-v1.stage";
-const SCHEMA_VERSION = 17n;
-const APPLICATION_ID = 0x4a494741n; // JIGA: schema 17
+const SCHEMA_VERSION = 18n;
+const APPLICATION_ID = 0x4a494741n; // JIGA: schema 18
 const COORDINATOR_SCHEMA_VERSION = 1n;
 const COORDINATOR_APPLICATION_ID = 0x4a494743n; // JIGC
 const BUSY_TIMEOUT_MS = 250;
@@ -6008,7 +6008,7 @@ function verifySchema(database: SqliteDatabase, root: PrivateProjectRoot): void 
   if (actual.length !== EXPECTED_SCHEMA.length || actual.some((row, index) => {
     const expected = EXPECTED_SCHEMA[index]!;
     return row.type !== expected.type || row.name !== expected.name || row.table !== expected.table || row.sql !== expected.sql;
-  })) corrupt("private admission database schema differs from version 17");
+  })) corrupt("private admission database schema differs from version 18");
   if (statement<Record<string, unknown>>(database, "PRAGMA foreign_key_check").all().length !== 0) {
     corrupt("private admission database has broken foreign keys");
   }

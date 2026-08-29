@@ -129,7 +129,7 @@ try {
   let lastObservation: unknown = { invocations: [], root: "unobserved" };
   const sqlite = createRequire(import.meta.url)("bun:sqlite") as any;
   observationDatabase = sqlite.Database.open(
-    join(projectRoot, ".jig", "private-activation-admission-v17.sqlite3"),
+    join(projectRoot, ".jig", "private-activation-admission-v18.sqlite3"),
     sqlite.constants.SQLITE_OPEN_READONLY | sqlite.constants.SQLITE_OPEN_NOFOLLOW,
   );
   while (true) {
