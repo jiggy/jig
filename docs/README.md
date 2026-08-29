@@ -37,6 +37,12 @@ Start here:
 
 Current implementation frontier:
 
+- [`design-review/168-agentic-routing-product-frontier.md`](design-review/168-agentic-routing-product-frontier.md)
+  makes a reviewed independent Agentic Routing campaign the first promotional
+  milestone and a rebuilt software factory the first showcase milestone. It
+  preserves separate authoring and deterministic operational gates, fixes the
+  Agent/provider/choice dependency chain, and keeps Services, GUI/Cordis,
+  updates, and Jig Graph outside the first-release critical path.
 - [`design-review/167-finite-project-session-checkpoint.md`](design-review/167-finite-project-session-checkpoint.md)
   closes the private descriptor-held project session, display-safe pre-commit
   review, digest-only apply, session-owned Root Administration, close/recovery
@@ -49,8 +55,9 @@ Current implementation frontier:
   public-surface gate which refuses to expose private Plan/lock/host records.
 - [`design-review/165-roadmap-closure-and-product-frontier.md`](design-review/165-roadmap-closure-and-product-frontier.md)
   consolidates every completed, blocked, open, and negative vertical, selects
-  the Bun-only first Jig posture, and fixes the finite trusted local project
-  session as the next product code boundary.
+  the Bun-only first Jig posture, and records the now-completed finite trusted
+  local project session as its selected product boundary. Review 168
+  supersedes only its current-frontier ordering.
 - [`design-review/130-nix-experiment-disposition-and-next-slice.md`](design-review/130-nix-experiment-disposition-and-next-slice.md)
   explains why the archived host-runtime Nix experiment is not a Jig or FLOW
   release gate. Its direct-root milestone is complete.

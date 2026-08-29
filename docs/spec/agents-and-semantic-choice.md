@@ -17,7 +17,8 @@ The responsibility boundary is:
 host/operator      installs and trusts concrete Agent integrations
 Starter/project    declares logical Agent Bindings, authority, and Flow slots
 Jig                admits, pins, projects context, supervises, and revokes
-Jig Graph          will compile Agent use to ordinary Sley nodes whose handlers
+Jig Graph          may, if later earned by a real stored-graph consumer,
+                   compile Agent use to ordinary Sley nodes whose handlers
                    call a separately injected Jig-owned effect client
 FLOW               defines no Agent primitive
 ```
