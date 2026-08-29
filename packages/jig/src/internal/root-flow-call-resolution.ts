@@ -40,7 +40,7 @@ export type PrivateRootFlowCallRejection =
     }
   | {
       readonly target: RunTargetIdentity;
-      readonly code: "TARGET_KIND_UNSUPPORTED";
+      readonly code: "TARGET_CONFIGURATION_UNSUPPORTED";
     }
   | {
       readonly target: RunTargetIdentity;
@@ -158,20 +158,20 @@ async function resolveWithCache(
       continue;
     }
     const ready = target as PrivateReadyActivationCandidateTarget;
-    if (identity.kind === "binding") {
-      rejected.push(Object.freeze({
-        target: identity,
-        code: "TARGET_KIND_UNSUPPORTED" as const,
-      }));
-      continue;
-    }
-
     const inspected = await inspectionFor(
       input.packageStoreRoot,
       target.request.package,
       cache,
     );
-    requireDirectFlowProjection(ready, inspected);
+    if (identity.kind === "flow") {
+      requireDirectFlowProjection(ready, inspected);
+    } else if (!supportsConfiguredRunProjection(ready, inspected)) {
+      rejected.push(Object.freeze({
+        target: identity,
+        code: "TARGET_CONFIGURATION_UNSUPPORTED" as const,
+      }));
+      continue;
+    }
     if (source !== "exact") {
       try {
         inspected.schemas.input?.validate(input.call.input, "INVALID_INPUT");
@@ -283,6 +283,59 @@ function requireDirectFlowProjection(
     throw corrupt(
       `admitted Flow target ${JSON.stringify(privateActivationTargetKey(request.target))} no longer matches its Package/1 inspection`,
     );
+  }
+}
+
+/**
+ * The first configured-child seam deliberately supports only settings. The
+ * package and retained request must still name the same exact Run
+ * implementation, and settings are revalidated against the protected
+ * Package/1 snapshot before the Binding can survive resolution.
+ */
+function supportsConfiguredRunProjection(
+  target: PrivateActivationCandidateTarget,
+  inspected: InspectedPackage,
+): boolean {
+  const request = target.request;
+  if (request.target.kind !== "binding" || request.mode !== "run" ||
+      inspected.digest !== request.package.digest || inspected.mode !== "run" ||
+      inspected.entrypoint === undefined ||
+      inspected.entrypoint.path !== request.entrypoint.path ||
+      inspected.entrypoint.suffix !== request.entrypoint.suffix ||
+      inspected.entrypoint.selector !== request.entrypoint.selector) {
+    throw corrupt(
+      `admitted Binding target ${JSON.stringify(privateActivationTargetKey(request.target))} no longer matches its Package/1 inspection`,
+    );
+  }
+  if (Object.keys(request.attachments).length !== 0 ||
+      Object.keys(request.slots).length !== 0 ||
+      Object.keys(inspected.metadata.attachments ?? {}).length !== 0 ||
+      Object.keys(inspected.metadata.uses ?? {}).length !== 0) {
+    return false;
+  }
+  if (inspected.schemas.settings === undefined) {
+    if (Object.keys(request.settings).length !== 0) {
+      throw corrupt(
+        `admitted Binding target ${JSON.stringify(privateActivationTargetKey(request.target))} has settings without settings.schema.json`,
+      );
+    }
+    return true;
+  }
+  try {
+    inspected.schemas.settings.validate(
+      request.settings,
+      "ROOT_FLOW_CALL_SETTINGS_INVALID",
+    );
+    return true;
+  } catch (error) {
+    if (error instanceof SchemaDiagnostic &&
+        error.code === "ROOT_FLOW_CALL_SETTINGS_INVALID") {
+      throw corrupt(
+        `admitted Binding target ${JSON.stringify(privateActivationTargetKey(request.target))} has invalid retained settings`,
+        error,
+      );
+    }
+    throw error;
   }
 }
 

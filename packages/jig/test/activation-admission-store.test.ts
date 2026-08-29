@@ -2612,6 +2612,68 @@ describe.serial("private activation admission SQLite store", () => {
           observationDigest: parent.disposition.observationDigest,
         }),
       })).rejects.toMatchObject({ code: "UNAVAILABLE" });
+
+      const configuredSubmission = await submitPrivateRootRun({
+        coordinator,
+        projectRoot: fixture.root,
+        packageStoreRoot: fixture.store,
+        submissionId: "composed-root-configured-child",
+        target: { kind: "binding", id: "parent" },
+        input: { value: "parent" },
+        deadlineUnixMs,
+      });
+      const configuredChild = fixture.candidate.candidate.targets.find(
+        ({ request }) => request.target.kind === "binding" && request.target.id === "configured-child",
+      )!;
+      expect(configuredChild.disposition.state).toBe("ready");
+      if (configuredChild.disposition.state !== "ready") {
+        throw new Error("fixture configured child is not READY");
+      }
+      await expect(allocatePrivateRootFlowCall({
+        coordinator,
+        projectRoot: fixture.root,
+        allocation: normalizePrivateRootFlowCallAllocation({
+          ...allocation,
+          parentRunId: configuredSubmission.run.runId,
+          call: { ...allocation.call, operationId: "configured:1" },
+          target: configuredChild.request.target,
+          requestDigest: configuredChild.request.digest,
+          recipeDigest: configuredChild.disposition.recipeDigest,
+          observationDigest: configuredChild.disposition.observationDigest,
+        }),
+      })).resolves.toMatchObject({
+        allocation: { target: { kind: "binding", id: "configured-child" } },
+      });
+
+      for (const id of ["unsupported-child", "attached-child"] as const) {
+        const unsupportedSubmission = await submitPrivateRootRun({
+          coordinator,
+          projectRoot: fixture.root,
+          packageStoreRoot: fixture.store,
+          submissionId: `composed-root-${id}`,
+          target: { kind: "binding", id: "parent" },
+          input: { value: "parent" },
+          deadlineUnixMs,
+        });
+        const unsupported = fixture.candidate.candidate.targets.find(
+          ({ request }) => request.target.kind === "binding" && request.target.id === id,
+        )!;
+        expect(unsupported.disposition.state).toBe("ready");
+        if (unsupported.disposition.state !== "ready") throw new Error(`fixture ${id} is not READY`);
+        await expect(allocatePrivateRootFlowCall({
+          coordinator,
+          projectRoot: fixture.root,
+          allocation: normalizePrivateRootFlowCallAllocation({
+            ...allocation,
+            parentRunId: unsupportedSubmission.run.runId,
+            call: { ...allocation.call, operationId: `${id}:1` },
+            target: unsupported.request.target,
+            requestDigest: unsupported.request.digest,
+            recipeDigest: unsupported.disposition.recipeDigest,
+            observationDigest: unsupported.disposition.observationDigest,
+          }),
+        })).rejects.toMatchObject({ code: "UNAVAILABLE" });
+      }
     } finally {
       await coordinator?.dispose();
       await fixture.dispose();
@@ -5200,6 +5262,8 @@ async function createComposedFixture(): Promise<Fixture> {
   const parentSource = join(base, "parent-flow");
   const childSource = join(base, "child-flow");
   const childTwoSource = join(base, "child-two-flow");
+  const configuredChildSource = join(base, "configured-child-flow");
+  const attachedChildSource = join(base, "attached-child-flow");
   const declarationSource = join(base, "declaration");
   try {
     await Promise.all([
@@ -5208,6 +5272,8 @@ async function createComposedFixture(): Promise<Fixture> {
       mkdir(parentSource),
       mkdir(childSource),
       mkdir(childTwoSource),
+      mkdir(configuredChildSource),
+      mkdir(attachedChildSource),
       mkdir(declarationSource),
     ]);
     await writeFile(join(parentSource, "FLOW.md"), [
@@ -5241,12 +5307,46 @@ async function createComposedFixture(): Promise<Fixture> {
       "",
     ].join("\n"));
     await writeFile(join(childTwoSource, "flow.py"), "print('unused')\n");
+    await writeFile(join(configuredChildSource, "FLOW.md"), [
+      "---",
+      "name: configured-child",
+      "description: Settings-only configured child fixture.",
+      "---",
+      "",
+    ].join("\n"));
+    await writeFile(join(configuredChildSource, "flow.py"), "print('unused')\n");
+    await writeFile(join(configuredChildSource, "settings.schema.json"), JSON.stringify({
+      $schema: "https://flow.dev/schemas/schema-1.json",
+      type: "object",
+      properties: { profile: { const: "child" } },
+      required: ["profile"],
+      additionalProperties: false,
+    }));
+    await writeFile(join(attachedChildSource, "FLOW.md"), [
+      "---",
+      "name: attached-child",
+      "description: Unsupported attached child fixture.",
+      "attachments:",
+      "  source: read",
+      "---",
+      "",
+    ].join("\n"));
+    await writeFile(join(attachedChildSource, "flow.py"), "print('unused')\n");
     await writeFile(join(declarationSource, "jig.ts"), "export default {};\n");
 
-    const [parentPackage, childPackage, childTwoPackage, declaration] = await Promise.all([
+    const [
+      parentPackage,
+      childPackage,
+      childTwoPackage,
+      configuredChildPackage,
+      attachedChildPackage,
+      declaration,
+    ] = await Promise.all([
       retainPackage(store, parentSource),
       retainPackage(store, childSource),
       retainPackage(store, childTwoSource),
+      retainPackage(store, configuredChildSource),
+      retainPackage(store, attachedChildSource),
       retainPackage(store, declarationSource),
     ]);
     const rootInformation = await stat(root, { bigint: true });
@@ -5277,6 +5377,22 @@ async function createComposedFixture(): Promise<Fixture> {
           uses: {},
           provides: {},
         },
+        "flows/configured-child": {
+          digest: configuredChildPackage.digest,
+          mode: "run",
+          directRun: false,
+          attachments: {},
+          uses: {},
+          provides: {},
+        },
+        "flows/attached-child": {
+          digest: attachedChildPackage.digest,
+          mode: "run",
+          directRun: false,
+          attachments: { source: "read" },
+          uses: {},
+          provides: {},
+        },
       },
       bindings: {
         parent: {
@@ -5287,11 +5403,35 @@ async function createComposedFixture(): Promise<Fixture> {
               kind: "flow-call",
               source: "candidates",
               targets: [
+                { kind: "binding", id: "attached-child" },
+                { kind: "binding", id: "configured-child" },
                 { kind: "binding", id: "parent" },
+                { kind: "binding", id: "unsupported-child" },
                 { kind: "flow", path: "flows/child" },
               ],
             },
           },
+        },
+        "configured-child": {
+          packagePath: "flows/configured-child",
+          attachments: {},
+          slots: {},
+        },
+        "unsupported-child": {
+          packagePath: "flows/configured-child",
+          attachments: {},
+          slots: {
+            nested: {
+              kind: "flow-call",
+              source: "exact",
+              targets: [{ kind: "flow", path: "flows/child" }],
+            },
+          },
+        },
+        "attached-child": {
+          packagePath: "flows/attached-child",
+          attachments: { source: { source: "workspace", access: "read" } },
+          slots: {},
         },
       },
       journalPublishers: {},
@@ -5313,7 +5453,10 @@ async function createComposedFixture(): Promise<Fixture> {
           kind: "flow-call",
           source: "candidates",
           targets: [
+            { kind: "binding", id: "attached-child" },
+            { kind: "binding", id: "configured-child" },
             { kind: "binding", id: "parent" },
+            { kind: "binding", id: "unsupported-child" },
             { kind: "flow", path: "flows/child" },
           ],
         },
@@ -5339,6 +5482,42 @@ async function createComposedFixture(): Promise<Fixture> {
       attachments: {},
       slots: {},
     });
+    const configuredChildRequest = activationRequest({
+      target: { kind: "binding", id: "configured-child" },
+      mode: "run",
+      packagePath: "flows/configured-child",
+      package: configuredChildPackage,
+      entrypoint: { path: "flow.py", suffix: "py" },
+      settings: { profile: "child" },
+      attachments: {},
+      slots: {},
+    });
+    const unsupportedChildRequest = activationRequest({
+      target: { kind: "binding", id: "unsupported-child" },
+      mode: "run",
+      packagePath: "flows/configured-child",
+      package: configuredChildPackage,
+      entrypoint: { path: "flow.py", suffix: "py" },
+      settings: { profile: "child" },
+      attachments: {},
+      slots: {
+        nested: {
+          kind: "flow-call",
+          source: "exact",
+          targets: [{ kind: "flow", path: "flows/child" }],
+        },
+      },
+    });
+    const attachedChildRequest = activationRequest({
+      target: { kind: "binding", id: "attached-child" },
+      mode: "run",
+      packagePath: "flows/attached-child",
+      package: attachedChildPackage,
+      entrypoint: { path: "flow.py", suffix: "py" },
+      settings: {},
+      attachments: { source: { source: "workspace", access: "read" } },
+      slots: {},
+    });
     const candidate = decodePrivateActivationCandidateV5({
       candidate: json1(candidateV5({
         kind: "private-activation-candidate/4",
@@ -5361,11 +5540,35 @@ async function createComposedFixture(): Promise<Fixture> {
         },
         targets: [
           {
+            request: attachedChildRequest,
+            disposition: {
+              state: "ready",
+              recipeDigest: digest("attached-child-recipe"),
+              observationDigest: digest("attached-child-observation"),
+            },
+          },
+          {
+            request: configuredChildRequest,
+            disposition: {
+              state: "ready",
+              recipeDigest: digest("configured-child-recipe"),
+              observationDigest: digest("configured-child-observation"),
+            },
+          },
+          {
             request: parentRequest,
             disposition: {
               state: "ready",
               recipeDigest: digest("parent-recipe"),
               observationDigest: digest("parent-observation"),
+            },
+          },
+          {
+            request: unsupportedChildRequest,
+            disposition: {
+              state: "ready",
+              recipeDigest: digest("unsupported-child-recipe"),
+              observationDigest: digest("unsupported-child-observation"),
             },
           },
           {

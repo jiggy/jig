@@ -3870,7 +3870,7 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
     }
   }, 180_000);
 
-  test("runs one admitted Bun parent through deterministically selected Python child Flows", async () => {
+  test("runs one admitted Bun parent through deterministically selected direct child targets", async () => {
     host = await hostConfiguration();
     const [bun, python] = await Promise.all([
       proofHostBunClosure(),
@@ -3895,6 +3895,7 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
       await mkdir(join(root, "flows", "child"), { recursive: true });
       await mkdir(join(root, "flows", "child-two"), { recursive: true });
       await mkdir(join(root, "flows", "child-starting"), { recursive: true });
+      await mkdir(join(root, "flows", "configured-child"), { recursive: true });
       await mkdir(join(root, "flows", "unavailable"), { recursive: true });
       await writeFile(join(root, "jig.ts"), [
         'import { defineJig, discover } from "@jigging/jig";',
@@ -3954,6 +3955,23 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         "});",
         "",
       ].join("\n"));
+      await writeFile(join(root, "bindings", "configured-parent.ts"), [
+        'import { bindingRef, defineBinding } from "@jigging/jig";',
+        "export default defineBinding({",
+        '  package: "flows/parent",',
+        '  settings: { marker: "configured" },',
+        '  slots: { child: bindingRef("configured-child") },',
+        "});",
+        "",
+      ].join("\n"));
+      await writeFile(join(root, "bindings", "configured-child.ts"), [
+        'import { defineBinding } from "@jigging/jig";',
+        "export default defineBinding({",
+        '  package: "flows/configured-child",',
+        '  settings: { profile: "child-only" },',
+        "});",
+        "",
+      ].join("\n"));
 
       const parent = join(root, "flows", "parent");
       await writeFile(join(parent, "FLOW.md"), [
@@ -3967,7 +3985,7 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         $schema: "https://flow.dev/schemas/schema-1.json",
         type: "object",
         properties: {
-          marker: { enum: ["admitted", "filtered", "missing", "multiple", "unavailable", "starting"] },
+          marker: { enum: ["admitted", "configured", "filtered", "missing", "multiple", "unavailable", "starting"] },
         },
         required: ["marker"],
         additionalProperties: false,
@@ -4124,6 +4142,54 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         join(startingPadding, `${index.toString().padStart(4, "0")}.txt`),
         `retained startup fixture ${index}\n`,
       )));
+      const configuredChild = join(root, "flows", "configured-child");
+      await writeFile(join(configuredChild, "FLOW.md"), [
+        "---",
+        "name: configured-child",
+        "description: Returns its exact retained settings and closed child authority.",
+        "---",
+        "",
+      ].join("\n"));
+      await writeFile(join(configuredChild, "settings.schema.json"), JSON.stringify({
+        $schema: "https://flow.dev/schemas/schema-1.json",
+        type: "object",
+        properties: { profile: { const: "child-only" } },
+        required: ["profile"],
+        additionalProperties: false,
+      }));
+      const configuredChildSdk = join(configuredChild, "flow-sdk");
+      await mkdir(configuredChildSdk);
+      for (const name of [
+        "index.ts", "json.ts", "protocol.ts", "service-session.ts", "session.ts", "transport.ts", "types.ts",
+      ]) {
+        await writeFile(
+          join(configuredChildSdk, name),
+          await readFile(join(import.meta.dir, "..", "..", "flow-sdk", "src", name)),
+        );
+      }
+      await writeFile(join(configuredChild, "flow.ts"), [
+        "#!/usr/bin/env bun",
+        'import { OperationError, serve } from "./flow-sdk/index.ts";',
+        "",
+        "await serve(async (context) => {",
+        '  let effect = "unexpected";',
+        "  try {",
+        "    await context.callEffect({ operationId: \"not-admitted\", slot: \"missing\", method: \"read\", input: null });",
+        "  } catch (error) {",
+        '    effect = error instanceof OperationError ? error.code : "unexpected";',
+        "  }",
+        "  return {",
+        '    outcome: "done",',
+        "    output: {",
+        "      settings: context.settings,",
+        "      attachments: Object.keys(context.attachments),",
+        "      input: context.input,",
+        "      effect,",
+        "    },",
+        "  };",
+        "});",
+        "",
+      ].join("\n"));
       const unavailablePath = join(root, "flows", "unavailable");
       await writeFile(join(unavailablePath, "FLOW.md"), [
         "---",
@@ -4139,9 +4205,9 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         storeRoot: store,
         evaluator,
       });
-      expect(aggregate.linked.bindings).toHaveLength(6);
+      expect(aggregate.linked.bindings).toHaveLength(8);
       const requests = buildPrivateActivationRequests(aggregate.linked);
-      expect(requests).toHaveLength(10);
+      expect(requests).toHaveLength(12);
       const runtimeSupport = Object.freeze({
         bun: bun.runtimeSupport,
         python: python.runtimeSupport,
@@ -4149,28 +4215,14 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
       const recipes = [];
       const entries = [];
       for (const request of requests) {
-        const unsupportedParent = request.target.kind === "binding" && request.target.id === "missing";
-        if (request.entrypoint.path === "flow.sh" || unsupportedParent) {
-          if (unsupportedParent) {
-            await expect(planPrivateDirectRun({
-              request,
-              runtimeSupport,
-              backend: rootBackend,
-            })).rejects.toThrow(
-              "private Bun Binding recipe requires at least one admitted Flow-call or capability slot",
-            );
-          }
+        if (request.entrypoint.path === "flow.sh") {
           entries.push({
             target: request.target,
             requestDigest: request.digest,
             disposition: {
               state: "unavailable" as const,
               code: "RUNTIME_UNAVAILABLE" as const,
-              evidenceDigests: [testDigest(
-                request.entrypoint.path === "flow.sh"
-                  ? "unavailable-shell-recipe"
-                  : `unsupported-parent-${request.target.kind === "binding" ? request.target.id : "unknown"}`,
-              )],
+              evidenceDigests: [testDigest("unavailable-shell-recipe")],
             },
           });
           continue;
@@ -4268,20 +4320,16 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         await controller!.drain();
         return { started, status: await controller!.administration.runStatus(started) };
       };
-      const missing = await controller.administration.startRun({
-        submissionId: "composed-missing",
-        target: bindingTarget("missing"),
-        input: {},
-      });
+      const missing = await probe("composed-missing", bindingTarget("missing"), {});
       const multiple = await controller.administration.startRun({
         submissionId: "composed-multiple",
         target: bindingTarget("multiple"),
         input: { probe: "composed-multiple", childInput: {} },
       });
       await controller.drain();
-      expect(await controller.administration.runStatus(missing)).toMatchObject({
+      expect(missing.status).toMatchObject({
         state: "terminal",
-        terminal: { status: "failed", code: "UNAVAILABLE" },
+        terminal: { status: "succeeded", output: { marker: "missing", error: "UNAVAILABLE" } },
       });
       expect(await controller.administration.runStatus(multiple)).toMatchObject({
         state: "terminal",
@@ -4314,6 +4362,29 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
       expect(unavailable.status).toMatchObject({
         state: "terminal",
         terminal: { status: "succeeded", output: { marker: "unavailable", error: "UNAVAILABLE" } },
+      });
+      const configured = await probe(
+        "composed-configured-child",
+        bindingTarget("configured-parent"),
+        { ticket: "T-configured" },
+      );
+      expect(configured.status).toMatchObject({
+        state: "terminal",
+        terminal: {
+          status: "succeeded",
+          output: {
+            marker: "configured",
+            result: {
+              outcome: "done",
+              output: {
+                settings: { profile: "child-only" },
+                attachments: [],
+                input: { ticket: "T-configured" },
+                effect: "UNAVAILABLE",
+              },
+            },
+          },
+        },
       });
       const invalidInput = await probe("composed-invalid-input", parentTarget, "not-an-object");
       expect(invalidInput.status).toMatchObject({
@@ -4385,8 +4456,8 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         sqlite.constants.SQLITE_OPEN_READONLY | sqlite.constants.SQLITE_OPEN_NOFOLLOW,
       );
       try {
-        expect(database.query("SELECT count(*) AS count FROM root_flow_calls").get().count).toBe(8);
-        for (const refused of [missing, multiple, unavailable.started]) {
+        expect(database.query("SELECT count(*) AS count FROM root_flow_calls").get().count).toBe(9);
+        for (const refused of [missing.started, multiple, unavailable.started]) {
           expect(database.query(
             "SELECT count(*) AS count FROM root_flow_calls WHERE parent_run_id = ?1",
           ).get(refused.runId).count).toBe(0);
@@ -4396,11 +4467,11 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         ).get(invalidInput.started.runId).count).toBe(0);
         expect(database.query(
           "SELECT count(*) AS count FROM root_flow_call_facts WHERE fact_name = 'release'",
-        ).get().count).toBe(8);
+        ).get().count).toBe(9);
         expect(database.query(
           "SELECT count(*) AS count FROM root_flow_call_facts WHERE fact_name = 'admitted'",
-        ).get().count).toBe(8);
-        expect(database.query("SELECT count(*) AS count FROM root_flow_call_closures").get().count).toBe(8);
+        ).get().count).toBe(9);
+        expect(database.query("SELECT count(*) AS count FROM root_flow_call_closures").get().count).toBe(9);
       } finally { database.close(true); }
       await controller.dispose();
       controller = undefined;

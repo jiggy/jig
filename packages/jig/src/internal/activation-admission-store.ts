@@ -4877,8 +4877,18 @@ function requireRootFlowCallAllocationCandidate(
   if (privateActivationTargetKey(allocation.target) === privateActivationTargetKey(parent.request.target)) {
     invalid("UNAVAILABLE", "root Flow call cannot select its active parent owner");
   }
-  if (allocation.target.kind !== "flow") {
-    invalid("UNAVAILABLE", "configured Binding child targets are not supported by this Run host");
+  if (allocation.target.kind === "binding") {
+    const packageValue = candidate.lock.packages[child.request.packagePath];
+    if (packageValue === undefined || packageValue.digest !== child.request.package.digest) {
+      corrupt("configured child Binding package differs from its pinned lock");
+    }
+    if (child.request.mode !== "run" ||
+        Object.keys(child.request.attachments).length !== 0 ||
+        Object.keys(child.request.slots).length !== 0 ||
+        Object.keys(packageValue.attachments).length !== 0 ||
+        Object.keys(packageValue.uses).length !== 0) {
+      invalid("UNAVAILABLE", "root Flow call Binding child exceeds the settings-only authority profile");
+    }
   }
   if (allocation.requestDigest !== child.request.digest ||
       allocation.recipeDigest !== child.disposition.recipeDigest ||

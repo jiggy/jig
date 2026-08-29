@@ -104,13 +104,6 @@ export async function planPrivateBunDirectRun(input: {
     if (Object.keys(request.settings).length !== 0 || Object.keys(request.slots).length !== 0) {
       throw new TypeError("private Bun direct Flow recipe requires zero configuration");
     }
-  } else {
-    const slots = Object.values(request.slots);
-    if (slots.length === 0) {
-      throw new TypeError(
-        "private Bun Binding recipe requires at least one admitted Flow-call or capability slot",
-      );
-    }
   }
 
   const [adapterDigest, mechanism] = await Promise.all([

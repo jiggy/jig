@@ -37,6 +37,10 @@ Start here:
 
 Current implementation frontier:
 
+- [`design-review/182-private-settings-only-binding-child.md`](design-review/182-private-settings-only-binding-child.md)
+  closes one private Bun configuration-only child Binding with exact retained
+  settings, independent allocation authority checks, no attachments or slots,
+  and no inherited effect dispatcher.
 - [`design-review/181-private-deterministic-flow-call-dispatch.md`](design-review/181-private-deterministic-flow-call-dispatch.md)
   connects one deterministic direct-Flow survivor to the existing durable
   child lifecycle, proves same-generation allocation authority and contained

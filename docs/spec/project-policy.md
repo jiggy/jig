@@ -196,6 +196,10 @@ complete ancestor chain, and current authority, resource, liveness, and
 wait-graph filters remain later integration gates. One selected direct Flow
 now enters the existing single-child durable lifecycle; zero or several
 survivors close before allocation as `UNAVAILABLE` on the current Run/1 wire.
+The same private lifecycle accepts one configuration-only Bun Run Binding
+whose exact retained settings validate, while both its request and locked
+package declare no attachments, capability uses, or slots. Other configured
+child shapes remain unsupported.
 V1 has no recursive cross-Flow calls. Source additions, removals, and
 same-identity meaning or disposition changes require a new reviewed Plan and
 apply; existing operations never re-expand.

@@ -54,7 +54,7 @@ type Disposition =
 
 interface FlowSpec {
   readonly path: string;
-  readonly flavor?: "open" | "strict" | "exhaustive";
+  readonly flavor?: "open" | "strict" | "exhaustive" | "configured" | "attached";
   readonly disposition?: Disposition;
   readonly requestEntrypoint?: string;
 }
@@ -63,6 +63,12 @@ interface BindingSpec {
   readonly id: string;
   readonly packagePath: string;
   readonly disposition?: Disposition;
+  readonly settings?: Readonly<Record<string, JsonValue>>;
+  readonly attachments?: Readonly<Record<string, {
+    readonly source: string;
+    readonly access: "read" | "read-write";
+  }>>;
+  readonly slots?: Readonly<Record<string, JsonValue>>;
 }
 
 interface FixtureInput {
@@ -126,7 +132,17 @@ describe("private root Flow-call resolution", () => {
           disposition: { state: "unavailable", code: "SANDBOX_UNAVAILABLE" },
         },
       ],
-      bindings: [{ id: "configured", packagePath: "flows/z-compatible" }],
+      bindings: [{
+        id: "configured",
+        packagePath: "flows/z-compatible",
+        slots: {
+          nested: {
+            kind: "flow-call",
+            source: "exact",
+            targets: [{ kind: "flow", path: "flows/z-compatible" }],
+          },
+        },
+      }],
       slotTargets: [
         { kind: "flow", path: "flows/z-compatible" },
         { kind: "binding", id: "dispatcher" },
@@ -147,7 +163,7 @@ describe("private root Flow-call resolution", () => {
         selected: { request: { target: { kind: "flow", path: "flows/z-compatible" } } },
       });
       expect(result.rejected.map(({ target, code }) => ({ target, code }))).toEqual([
-        { target: { kind: "binding", id: "configured" }, code: "TARGET_KIND_UNSUPPORTED" },
+        { target: { kind: "binding", id: "configured" }, code: "TARGET_CONFIGURATION_UNSUPPORTED" },
         { target: { kind: "binding", id: "dispatcher" }, code: "ACTIVE_OWNER" },
         { target: { kind: "flow", path: "flows/incompatible" }, code: "INPUT_INCOMPATIBLE" },
         { target: { kind: "flow", path: "flows/unavailable" }, code: "TARGET_UNAVAILABLE" },
@@ -305,6 +321,145 @@ describe("private root Flow-call resolution", () => {
       })).resolves.toEqual({ state: "missing", rejected: [] });
     } finally { await fixture.dispose(); }
   });
+
+  test("selects settings-configured Run Bindings with their retained child settings", async () => {
+    const fixture = await createFixture({
+      source: "exact",
+      flows: [{ path: "flows/configured", flavor: "configured" }],
+      bindings: [
+        { id: "alpha", packagePath: "flows/configured", settings: { profile: "alpha" } },
+        { id: "beta", packagePath: "flows/configured", settings: { profile: "beta" } },
+      ],
+      slotTargets: [{ kind: "binding", id: "alpha" }],
+    });
+    try {
+      const selected = await resolvePrivateRootFlowCall({
+        parent: fixture.work,
+        packageStoreRoot: fixture.store,
+        call: call({ accept: false }),
+      });
+      expect(selected).toMatchObject({
+        state: "selected",
+        selected: {
+          request: {
+            target: { kind: "binding", id: "alpha" },
+            settings: { profile: "alpha" },
+          },
+        },
+      });
+      if (selected.state !== "selected") throw new Error("expected configured Binding");
+      expect(selected.selected.request.settings).not.toEqual({ profile: "parent" });
+    } finally { await fixture.dispose(); }
+
+    const empty = await createFixture({
+      source: "exact",
+      flows: [{ path: "flows/open" }],
+      bindings: [{ id: "empty", packagePath: "flows/open", settings: {} }],
+      slotTargets: [{ kind: "binding", id: "empty" }],
+    });
+    try {
+      await expect(resolvePrivateRootFlowCall({
+        parent: empty.work,
+        packageStoreRoot: empty.store,
+        call: call(null),
+      })).resolves.toMatchObject({
+        state: "selected",
+        selected: { request: { target: { kind: "binding", id: "empty" }, settings: {} } },
+      });
+    } finally { await empty.dispose(); }
+
+    const ambiguous = await createFixture({
+      source: "candidates",
+      flows: [{ path: "flows/configured", flavor: "configured" }],
+      bindings: [
+        { id: "alpha", packagePath: "flows/configured", settings: { profile: "alpha" } },
+        { id: "beta", packagePath: "flows/configured", settings: { profile: "beta" } },
+      ],
+      slotTargets: [
+        { kind: "binding", id: "beta" },
+        { kind: "binding", id: "alpha" },
+      ],
+    });
+    try {
+      const result = await resolvePrivateRootFlowCall({
+        parent: ambiguous.work,
+        packageStoreRoot: ambiguous.store,
+        call: call(null),
+      });
+      expect(result).toMatchObject({
+        state: "ambiguous",
+        survivors: [
+          { request: { target: { kind: "binding", id: "alpha" }, settings: { profile: "alpha" } } },
+          { request: { target: { kind: "binding", id: "beta" }, settings: { profile: "beta" } } },
+        ],
+      });
+    } finally { await ambiguous.dispose(); }
+  }, 20_000);
+
+  test("rejects configured Binding authority shapes outside the settings-only checkpoint", async () => {
+    const fixture = await createFixture({
+      source: "candidates",
+      flows: [
+        { path: "flows/open" },
+        { path: "flows/attached", flavor: "attached" },
+      ],
+      bindings: [
+        {
+          id: "with-child-slot",
+          packagePath: "flows/open",
+          slots: {
+            nested: {
+              kind: "flow-call",
+              source: "exact",
+              targets: [{ kind: "flow", path: "flows/open" }],
+            },
+          },
+        },
+        {
+          id: "declares-attachment",
+          packagePath: "flows/attached",
+          attachments: { source: { source: "workspace", access: "read" } },
+        },
+      ],
+      slotTargets: [
+        { kind: "binding", id: "with-child-slot" },
+        { kind: "binding", id: "declares-attachment" },
+      ],
+    });
+    try {
+      const result = await resolvePrivateRootFlowCall({
+        parent: fixture.work,
+        packageStoreRoot: fixture.store,
+        call: call(null),
+      });
+      expect(result).toMatchObject({ state: "missing", source: "candidates" });
+      expect(result.rejected.map(({ target, code }) => ({ target, code }))).toEqual([
+        { target: { kind: "binding", id: "declares-attachment" }, code: "TARGET_CONFIGURATION_UNSUPPORTED" },
+        { target: { kind: "binding", id: "with-child-slot" }, code: "TARGET_CONFIGURATION_UNSUPPORTED" },
+      ]);
+    } finally { await fixture.dispose(); }
+  });
+
+  test("treats invalid or undeclared retained Binding settings as protected corruption", async () => {
+    for (const [flavor, settings] of [
+      ["configured", { profile: "gamma" }],
+      ["open", { profile: "alpha" }],
+    ] as const) {
+      const fixture = await createFixture({
+        source: "exact",
+        flows: [{ path: "flows/child", flavor }],
+        bindings: [{ id: "configured", packagePath: "flows/child", settings }],
+        slotTargets: [{ kind: "binding", id: "configured" }],
+      });
+      try {
+        await expect(resolvePrivateRootFlowCall({
+          parent: fixture.work,
+          packageStoreRoot: fixture.store,
+          call: call(null),
+        })).rejects.toMatchObject({ code: "ROOT_FLOW_CALL_RESOLUTION_CORRUPT" });
+      } finally { await fixture.dispose(); }
+    }
+  });
 });
 
 async function createFixture(input: FixtureInput): Promise<Fixture> {
@@ -319,20 +474,29 @@ async function createFixture(input: FixtureInput): Promise<Fixture> {
       "flows/dispatcher": lockPackage(packages.parent, false),
     };
     for (const flow of input.flows) {
-      packageLock[flow.path] = lockPackage(packages[flow.flavor ?? "open"], true);
+      const flavor = flow.flavor ?? "open";
+      packageLock[flow.path] = lockPackage(
+        packages[flavor],
+        flavor === "open" || flavor === "strict" || flavor === "exhaustive",
+        flavor,
+      );
     }
     const bindings: Record<string, JsonValue> = Object.create(null) as Record<string, JsonValue>;
     for (const binding of input.bindings ?? []) {
       bindings[binding.id] = {
         packagePath: binding.packagePath,
-        attachments: {},
-        slots: {},
+        attachments: binding.attachments ?? {},
+        slots: binding.slots ?? {},
       };
     }
     const structuralTargets: RunTargetIdentity[] = [
       { kind: "binding", id: "dispatcher" },
       ...(input.bindings ?? []).map(({ id }) => ({ kind: "binding" as const, id })),
-      ...input.flows.map(({ path }) => ({ kind: "flow" as const, path })),
+      ...input.flows.flatMap(({ path, flavor = "open" }) =>
+        flavor === "open" || flavor === "strict" || flavor === "exhaustive"
+          ? [{ kind: "flow" as const, path }]
+          : []
+      ),
     ].sort(compareTargets);
     const slotTargets = [...(input.slotTargets ?? (
       input.source === "project-run-targets"
@@ -384,9 +548,9 @@ async function createFixture(input: FixtureInput): Promise<Fixture> {
           packagePath: spec.packagePath,
           package: packages[flow.flavor ?? "open"],
           entrypoint: { path: "flow.ts", suffix: "ts" },
-          settings: {},
-          attachments: {},
-          slots: {},
+          settings: spec.settings ?? {},
+          attachments: spec.attachments ?? {},
+          slots: spec.slots ?? {},
         }), spec.disposition ?? { state: "ready" });
       }
       const flow = input.flows.find(({ path }) => path === target.path)!;
@@ -485,12 +649,19 @@ async function createFixture(input: FixtureInput): Promise<Fixture> {
 async function retainFixturePackages(
   base: string,
   store: string,
-): Promise<Record<"parent" | "open" | "strict" | "exhaustive", PackageArtifactRef>> {
+): Promise<Record<
+  "parent" | "open" | "strict" | "exhaustive" | "configured" | "attached",
+  PackageArtifactRef
+>> {
   const parent = join(base, "parent-package");
   const open = join(base, "open-package");
   const strict = join(base, "strict-package");
   const exhaustive = join(base, "exhaustive-package");
-  await Promise.all([mkdir(parent), mkdir(open), mkdir(strict), mkdir(exhaustive)]);
+  const configured = join(base, "configured-package");
+  const attached = join(base, "attached-package");
+  await Promise.all([
+    mkdir(parent), mkdir(open), mkdir(strict), mkdir(exhaustive), mkdir(configured), mkdir(attached),
+  ]);
   await Promise.all([
     writePackage(parent, "dispatcher", {
       "settings.schema.json": schema({
@@ -515,18 +686,38 @@ async function retainFixturePackages(
         maxLength: 2_000_000,
       }),
     }),
+    writePackage(configured, "configured", {
+      "settings.schema.json": schema({
+        type: "object",
+        properties: { profile: { enum: ["alpha", "beta"] } },
+        required: ["profile"],
+        additionalProperties: false,
+      }),
+    }),
+    writePackage(attached, "attached", {}, ["attachments:", "  source: read"]),
   ]);
-  const [parentPackage, openPackage, strictPackage, exhaustivePackage] = await Promise.all([
+  const [
+    parentPackage,
+    openPackage,
+    strictPackage,
+    exhaustivePackage,
+    configuredPackage,
+    attachedPackage,
+  ] = await Promise.all([
     retainPackage(store, parent),
     retainPackage(store, open),
     retainPackage(store, strict),
     retainPackage(store, exhaustive),
+    retainPackage(store, configured),
+    retainPackage(store, attached),
   ]);
   return {
     parent: parentPackage,
     open: openPackage,
     strict: strictPackage,
     exhaustive: exhaustivePackage,
+    configured: configuredPackage,
+    attached: attachedPackage,
   };
 }
 
@@ -534,9 +725,17 @@ async function writePackage(
   root: string,
   name: string,
   files: Readonly<Record<string, string>>,
+  extraMetadata: readonly string[] = [],
 ): Promise<void> {
   await Promise.all([
-    writeFile(join(root, "FLOW.md"), `---\nname: ${name}\ndescription: Resolution fixture.\n---\n`),
+    writeFile(join(root, "FLOW.md"), [
+      "---",
+      `name: ${name}`,
+      "description: Resolution fixture.",
+      ...extraMetadata,
+      "---",
+      "",
+    ].join("\n")),
     writeFile(join(root, "flow.ts"), "export {};\n"),
     ...Object.entries(files).map(async ([path, bytes]) => await writeFile(join(root, path), bytes)),
   ]);
@@ -593,12 +792,16 @@ function activationRequest(content: Record<string, unknown>): Record<string, unk
   };
 }
 
-function lockPackage(reference: PackageArtifactRef, directRun: boolean): JsonValue {
+function lockPackage(
+  reference: PackageArtifactRef,
+  directRun: boolean,
+  flavor?: FlowSpec["flavor"],
+): JsonValue {
   return {
     digest: reference.digest,
     mode: "run",
     directRun,
-    attachments: {},
+    attachments: flavor === "attached" ? { source: "read" } : {},
     uses: {},
     provides: {},
   };
