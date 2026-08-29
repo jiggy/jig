@@ -38,6 +38,15 @@ an exact array of member paths. Omission means no source of that kind. The
 containing field determines whether members are Flow package directories or
 Binding declaration files.
 
+Discovery is shallow and inert. Under a `flows` root it selects immediate
+child directories containing exact-case `FLOW.md`; under a `bindings` root it
+selects immediate regular `*.ts` files. It does not recurse, follow symlinks,
+execute declarations, or interpret globs. A missing valid discovery root is an
+empty source. Binding identity is the declaration filename's LocalName
+basename (`bindings/review.ts` has ID `review`); there is no duplicate `id`
+field. Complete path, collision, capture, and admission rules are in
+[`project-policy.md`](project-policy.md).
+
 ### `defineBinding`
 
 ```ts

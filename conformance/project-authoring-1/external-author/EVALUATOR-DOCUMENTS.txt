@@ -1,0 +1,3 @@
+docs/spec/run-protocol.md
+docs/spec/machine/run-1.schema.json
+docs/spec/machine/run-1-errors.json
