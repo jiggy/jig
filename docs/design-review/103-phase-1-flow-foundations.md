@@ -115,10 +115,12 @@ Its separately bundled Schema/1 instance evaluator had SHA-256
 The agents shared the unrestricted workspace and were constrained by task
 instructions, local manifests, local installs, and verified resolution paths;
 this was not an OS-hermetic or access-controlled experiment. The claim is
-independent authorship and evaluation, not filesystem sealing. Probe material
-remains intentionally uncommitted. This record persists the reviewed
-disposition; future gates must regenerate the artifact from the then-current
-source rather than treating probe output as product code.
+independent authorship and evaluation, not filesystem sealing. The historical
+workspaces were discarded rather than retained as product examples. The
+repeatable author and evaluator contract is preserved under
+[`conformance/run-1/external-author/`](../../conformance/run-1/external-author/);
+future gates regenerate subjects, evaluators, and artifacts from the
+then-current source rather than treating old probe output as product code.
 
 ## Deliberate limits
 
@@ -139,7 +141,8 @@ store must separately prove crash recovery, fencing, and atomic replay.
 
 Run/1 and Run SDK/1 are no longer an exploratory surface. Every compatible fix
 must rerun the complete release gate and the instruction-restricted
-author/evaluator gate; it updates only the normative documents, machine
-fixtures, SDKs, and peers affected by that fix. A semantic or wire-incompatible
-change requires explicit version treatment rather than an implicit Run/1
-reinterpretation.
+author/evaluator gate defined under
+[`conformance/run-1/external-author/`](../../conformance/run-1/external-author/);
+it updates only the normative documents, machine fixtures, SDKs, and peers
+affected by that fix. A semantic or wire-incompatible change requires explicit
+version treatment rather than an implicit Run/1 reinterpretation.

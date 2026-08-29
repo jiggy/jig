@@ -13,7 +13,7 @@ trusted-host injection and packed-consumer testing. It exports no project
 opener or host implementation.
 
 ```console
-bun run src/cli.ts package check ./path/to/package
+jig package check ./path/to/package
 ```
 
 `package check` captures and validates one FLOW package. It does not execute

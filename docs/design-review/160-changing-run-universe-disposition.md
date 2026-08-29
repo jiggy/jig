@@ -2,8 +2,9 @@
 
 **Status:** design selected on 2026-08-28 after two frozen-interface clean-room
 consumers and an independent adjudication. No public SDK or runtime execution
-path is implemented by this checkpoint. The uncommitted probe remains under
-`design-probes/dynamic-candidate-universe-v2/`.
+path is implemented by this checkpoint. The disposable probe workspaces were
+removed after this review retained their complete architectural disposition;
+their invented planner records are not reference implementations.
 
 ## 1. Selected authoring model
 

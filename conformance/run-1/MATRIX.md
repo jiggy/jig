@@ -69,3 +69,6 @@ separate instruction-restricted author and independent evaluator passed the
 SDK, Package/1, Schema/1, and bounded Run/1 gate against the same packed
 TypeScript SDK artifact; the durable disposition is recorded in
 [`103-phase-1-flow-foundations.md`](../../docs/design-review/103-phase-1-flow-foundations.md).
+The repeatable exercise contract is retained in
+[`external-author/`](external-author/); historical solutions and evaluator
+workspaces are deliberately absent.

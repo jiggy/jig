@@ -1,9 +1,0 @@
-# Jig-owned admission, journal, activation, and runtime state.
-.jig/
-
-# Scenario work is intentionally outside durable Starter source.
-workspace/*
-!workspace/README.md
-repair-staging/*
-!repair-staging/README.md
-kanban/cards/
