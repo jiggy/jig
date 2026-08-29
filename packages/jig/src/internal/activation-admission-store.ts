@@ -5633,14 +5633,15 @@ function requireRootBunPreparationOutcomeCorrelation(
       : proof.receipt.stopReason === "deadline"
         ? value.code === "DEADLINE_EXCEEDED"
         : proof.receipt.stopReason === "cancelled"
-          ? value.code === "CANCELLED"
+          ? value.code === "CANCELLED" || value.code === "INVALID_RESULT"
           : proof.receipt.stopReason === "coordinator_lost" ||
               proof.receipt.stopReason === "recovered"
             ? value.code === "UNCERTAIN"
             : proof.receipt.stopReason === "setup_failed" ||
                 proof.receipt.exitCode !== 0 || proof.receipt.signal !== null
               ? value.code === "EXECUTION_FAILED"
-              : value.code === "INVALID_RESULT" || value.code === "EXECUTION_FAILED";
+              : value.code === "INVALID_RESULT" || value.code === "EXECUTION_FAILED" ||
+                  value.code === "UNCERTAIN";
   if (!allowed) {
     corrupt("root Bun native preparation failure code differs from its fence evidence");
   }

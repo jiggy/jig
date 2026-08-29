@@ -19,11 +19,24 @@ import {
   observeAgentSandboxRuntimeSupport,
   requirePrivateRuntimeSupportObservation,
 } from "../src/internal/agent-sandbox-runtime-support.js";
+import { createPrivateActivationPlanningObservation } from "../src/internal/activation-planning.js";
+import { createPrivateActivationCandidateV5 } from "../src/internal/activation-admission.js";
+import {
+  applyPrivateActivationReviewPlan,
+  createPrivateActivationReviewPlan,
+  openPrivateProjectCoordinator,
+  publishPrivateActivationCandidate,
+  submitPrivateRootRun,
+} from "../src/internal/activation-admission-store.js";
+import {
+  executePrivateRootBunNativePreparation,
+} from "../src/internal/bun-native-preparation-controller.js";
 import {
   PrivateBunNativePreparationFenceUnconfirmedError,
   runPrivateBunNativePreparationFeasibility,
 } from "../src/internal/bun-native-preparation-feasibility.js";
 import { privateFileDigest } from "../src/internal/identity.js";
+import { planPrivateDirectRun } from "../src/internal/direct-run.js";
 import {
   PrivateLinuxCgroupBackend,
   type PrivateLinuxCgroupBackendOptions,
@@ -36,6 +49,8 @@ import {
   type PrivateActivationRequest,
 } from "../src/project/package-resolution.js";
 import { retainFlowSourcePackages } from "../src/project/retained-flow.js";
+import { retainPackageProject } from "../src/project/retained-project.js";
+import { resolveRetainedPackageProjectObservation } from "../src/project/package-resolution.js";
 
 const HOSTILE = process.env.JIG_LINUX_CGROUP_HOSTILE === "1";
 const hostileDescribe = HOSTILE ? describe.serial : describe.skip;
@@ -66,6 +81,7 @@ hostileDescribe("private contained Bun native preparation feasibility", () => {
     const archive = join(artifacts, "real", "flowmd-sdk-0.0.0.tgz");
     const scriptArchive = join(artifacts, "script", "flowmd-sdk-0.0.0.tgz");
     const workerBundle = join(artifacts, "bun-native-preparation-worker.js");
+    const overflowWorker = join(artifacts, "bun-native-preparation-overflow.js");
     let source: CapturedFlowSource | undefined;
     let cleanupAllowed = true;
     try {
@@ -76,6 +92,11 @@ hostileDescribe("private contained Bun native preparation feasibility", () => {
       await buildSdkArchive(archive);
       await buildScriptBearingSdkArchive(scriptArchive, join(root, "script-sdk"));
       await buildWorkerBundle(workerBundle);
+      await writeFile(overflowWorker, [
+        "await Bun.write(Bun.stdout, new Uint8Array(2 * 1024 * 1024 + 1));",
+        "await new Promise(() => {});",
+        "",
+      ].join("\n"), { mode: 0o400 });
       expect((await stat(archive)).size).toBeLessThanOrEqual(1024 * 1024);
 
       await writeReviewerFlow(projectRoot, "reviewer", archive);
@@ -156,6 +177,164 @@ hostileDescribe("private contained Bun native preparation feasibility", () => {
       expect(scriptManifest).toBeDefined();
       expect(Buffer.from(scriptManifest!.contentBase64, "base64").toString("utf8"))
         .toContain("postinstall");
+      expect(await jigCgroups(host.scope)).toEqual([]);
+
+      await mkdir(join(projectRoot, "bindings"), { recursive: true });
+      await writeFile(join(projectRoot, "jig.ts"), [
+        'import { defineJig } from "@jigging/jig";',
+        'export default defineJig({ flows: ["flows/reviewer"], bindings: ["bindings/reviewer.ts"] });',
+        "",
+      ].join("\n"));
+      await writeFile(join(projectRoot, "bindings", "reviewer.ts"), [
+        'import { defineBinding } from "@jigging/jig";',
+        'export default defineBinding({ package: "flows/reviewer" });',
+        "",
+      ].join("\n"));
+      const distribution = await realpath(join(import.meta.dir, "..", "dist"));
+      const evaluator = {
+        backend,
+        bunPath: bun.runtimeSupport.executablePath,
+        runtimeMounts: bun.runtimeSupport.closureSources.map((member) => ({
+          source: member,
+          destination: member,
+        })),
+        runtimeSupport: bun.runtimeSupport,
+        jigDistributionPath: distribution,
+      } as const;
+      const aggregate = await retainPackageProject({
+        projectRoot,
+        storeRoot: store,
+        evaluator,
+      });
+      const retainedRequests = buildPrivateActivationRequests(aggregate.linked);
+      const retainedRequest = retainedRequests.find(({ target }) =>
+        target.kind === "binding" && target.id === "reviewer");
+      if (retainedRequest === undefined) throw new Error("missing retained reviewer request");
+      const recipes = await Promise.all(retainedRequests.map(async (candidateRequest) =>
+        await planPrivateDirectRun({
+          request: candidateRequest,
+          runtimeSupport: bun.runtimeSupport,
+          backend,
+        })));
+      const planning = createPrivateActivationPlanningObservation({
+        policyDigest: testDigest("native-preparation-policy"),
+        mechanismDigest: recipes[0]!.mechanismDigest,
+        entries: retainedRequests.map((candidateRequest, index) => ({
+          target: candidateRequest.target,
+          requestDigest: candidateRequest.digest,
+          disposition: { state: "planned" as const, observation: recipes[index]!.observation },
+        })),
+      });
+      const candidate = createPrivateActivationCandidateV5(
+        aggregate,
+        resolveRetainedPackageProjectObservation(aggregate, planning),
+        recipes,
+      );
+      await publishPrivateActivationCandidate({
+        projectRoot,
+        packageStoreRoot: store,
+        candidate,
+      });
+      const review = await createPrivateActivationReviewPlan({
+        projectRoot,
+        packageStoreRoot: store,
+        lockMode: "update",
+      });
+      await applyPrivateActivationReviewPlan({
+        projectRoot,
+        packageStoreRoot: store,
+        planDigest: review.planDigest,
+      });
+      const coordinator = await openPrivateProjectCoordinator({ projectRoot });
+      try {
+        const submitPreparation = async (submissionId: string) => {
+          const submitted = await submitPrivateRootRun({
+            coordinator,
+            projectRoot,
+            packageStoreRoot: store,
+            submissionId,
+            target: retainedRequest.target,
+            input: { submissionId },
+            deadlineUnixMs: Date.now() + 30_000,
+          });
+          if (submitted.launch === undefined) throw new Error("expected fresh root launch");
+          return submitted;
+        };
+        const executePreparation = async (
+          parentRunId: string,
+          selectedWorker: string,
+        ) => {
+          return await executePrivateRootBunNativePreparation({
+            coordinator,
+            projectRoot,
+            packageStoreRoot: store,
+            parentRunId,
+            runtimeSupport: bun.runtimeSupport,
+            backend,
+            workerBundlePath: selectedWorker,
+            workerBundleDigest: await privateFileDigest(selectedWorker),
+          });
+        };
+        const runPreparation = async (submissionId: string, selectedWorker: string) => {
+          const submission = await submitPreparation(submissionId);
+          return await executePreparation(submission.run.runId, selectedWorker);
+        };
+
+        const durable = await runPreparation("native-preparation-controller-success", workerBundle);
+        expect(durable).toMatchObject({
+          state: "terminal",
+          snapshot: {
+            outcome: { value: { status: "succeeded" } },
+            artifact: { value: { reference: { kind: "private-bun-native-prepared-tree/1" } } },
+            release: { value: { packageReleased: true } },
+          },
+        });
+        const replay = await executePrivateRootBunNativePreparation({
+          coordinator,
+          projectRoot,
+          packageStoreRoot: store,
+          parentRunId: durable.snapshot.allocation.parentRunId,
+          runtimeSupport: bun.runtimeSupport,
+          backend,
+          workerBundlePath: workerBundle,
+          workerBundleDigest,
+        });
+        expect(replay).toEqual(durable);
+
+        const concurrentSubmission = await submitPreparation(
+          "native-preparation-controller-concurrent",
+        );
+        const concurrent = await Promise.all([
+          executePreparation(concurrentSubmission.run.runId, workerBundle),
+          executePreparation(concurrentSubmission.run.runId, workerBundle),
+        ]);
+        expect(concurrent.filter(({ state }) => state === "terminal")).toHaveLength(1);
+        expect(concurrent.filter(({ state }) => state === "pending")).toHaveLength(1);
+        expect(concurrent.find(({ state }) => state === "pending")).toEqual({
+          state: "pending",
+          reason: "in-progress",
+        });
+        expect(concurrent.find(({ state }) => state === "terminal")).toMatchObject({
+          state: "terminal",
+          snapshot: { outcome: { value: { status: "succeeded" } } },
+        });
+
+        const overflow = await runPreparation("native-preparation-controller-overflow", overflowWorker);
+        expect(overflow).toMatchObject({
+          state: "terminal",
+          snapshot: {
+            outcome: { value: { status: "failed", code: "INVALID_RESULT" } },
+            release: { value: { packageReleased: true } },
+          },
+        });
+        expect(overflow.snapshot.artifact).toBeUndefined();
+        expect(await readdir(join(projectRoot, ".jig", "private-root-materializations")))
+          .toEqual([]);
+        expect(await readdir(join(projectRoot, ".jig", "private-root-linux-owners")))
+          .toEqual([]);
+      } finally {
+        await coordinator.dispose();
+      }
       expect(await jigCgroups(host.scope)).toEqual([]);
     } catch (error) {
       if (error instanceof PrivateBunNativePreparationFenceUnconfirmedError) {
@@ -323,4 +502,10 @@ async function writeReviewerFlow(
 
 async function jigCgroups(scope: string): Promise<string[]> {
   return (await readdir(scope)).filter((name) => name.startsWith("jig-run-")).sort();
+}
+
+function testDigest(label: string): string {
+  const hash = new Bun.CryptoHasher("sha256");
+  hash.update(label);
+  return `sha256:${hash.digest("hex")}`;
 }

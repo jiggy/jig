@@ -37,12 +37,18 @@ Start here:
 
 Current implementation frontier:
 
+- [`design-review/192-private-native-preparation-controller.md`](design-review/192-private-native-preparation-controller.md)
+  closes one concrete private controller joining the root-owned v19 lifecycle,
+  retained Package/1 backing, Linux cgroup-v2/Bubblewrap owner, and protected
+  prepared-tree store. One-shot launch, duplicate-call ownership, bounded
+  output, exact fencing, conservative recovery, and zero-residue cleanup pass;
+  READY planning and the final read-only prepared Run remain separate gates.
 - [`design-review/191-private-native-preparation-state.md`](design-review/191-private-native-preparation-state.md)
   closes the v19 write-once state machine for one root-owned Bun preparation,
   including exact dispatch authority and older-epoch no-redispatch recovery.
   It also removes the proposed output backing as unable to prove complete
-  output after coordinator loss. Installer execution remains a separate
-  controller checkpoint.
+  output after coordinator loss. Review 192 closes its first concrete
+  controller without yet making the target READY.
 - [`design-review/190-private-prepared-tree-store.md`](design-review/190-private-prepared-tree-store.md)
   closes atomic retention and detached restart reacquisition of one composite
   source-Package/1 plus exact installed SDK tree without conflating that

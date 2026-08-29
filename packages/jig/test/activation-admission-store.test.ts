@@ -5022,6 +5022,59 @@ describe.serial("private activation admission SQLite store", () => {
         epoch: "older",
       })).toHaveLength(1);
 
+      const lostOutput = await start("payload-exit-output-lost");
+      const lostOutputPlan = testBunPreparationPlan(
+        fixture,
+        lostOutput.allocation,
+        lostOutput.allocated.snapshot.allocationDigest,
+      );
+      const lostOutputPlanned = await lostOutput.fact("plan", lostOutputPlan);
+      const lostOutputBacking = testBunPreparationBacking(
+        lostOutputPlan,
+        lostOutputPlanned.plan!.digest,
+      );
+      const lostOutputBacked = await lostOutput.fact("backing", lostOutputBacking);
+      const lostOutputSandbox = testBunPreparationSandbox(
+        lostOutput.allocation,
+        lostOutputPlan,
+        lostOutputBacked.backing!.digest,
+      );
+      const lostOutputSandboxed = await lostOutput.fact("sandbox", lostOutputSandbox);
+      const lostOutputDispatch = await recordPrivateRootBunNativePreparationDispatch({
+        coordinator,
+        projectRoot: fixture.root,
+        allocation: lostOutput.allocated,
+      });
+      const lostOutputPrepared = testBunPreparationPrepared(
+        lostOutputSandbox,
+        lostOutputDispatch.snapshot.dispatch!.digest,
+      );
+      await lostOutput.fact("prepared", lostOutputPrepared);
+      const lostOutputFence = testBunPreparationFence(
+        lostOutputPlanned.plan!.digest,
+        lostOutputSandboxed.sandbox!.digest,
+        lostOutputPrepared,
+        "payload_exit",
+      );
+      const lostOutputFenced = await lostOutput.fact("fence", lostOutputFence);
+      const lostOutputOutcome = await lostOutput.fact("outcome", {
+        status: "failed",
+        code: "UNCERTAIN",
+        message: "worker exited successfully but its response was not durably observed",
+        dispatchDigest: lostOutputDispatch.snapshot.dispatch!.digest,
+        fenceDigest: lostOutputFenced.fence!.digest,
+      });
+      await lostOutput.fact("release", testBunPreparationRelease(lostOutputOutcome));
+      const lostOutputClosed = await closePrivateRootBunNativePreparation({
+        coordinator,
+        projectRoot: fixture.root,
+        parentRunId: lostOutput.submission.run.runId,
+      });
+      expect(lostOutputClosed.outcome?.value).toMatchObject({
+        status: "failed",
+        code: "UNCERTAIN",
+      });
+
       const lossFence = testBunPreparationFence(
         abandonedPlanned.plan!.digest,
         abandonedSandboxed.sandbox!.digest,
