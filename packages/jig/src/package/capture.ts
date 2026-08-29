@@ -19,6 +19,9 @@ const MAX_DIRECTORY_ENTRIES = 262_144;
 // Linux O_TMPFILE is __O_TMPFILE | O_DIRECTORY; Node does not expose it.
 const O_TMPFILE = 0o20000000 | constants.O_DIRECTORY;
 
+/** Resource ceiling shared with private materializers which verify by recapture. */
+export const PACKAGE_CAPTURE_LIMITS = Object.freeze({ directories: MAX_DIRECTORIES });
+
 export interface CapturedFile {
   readonly path: string;
   readonly size: number;

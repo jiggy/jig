@@ -37,6 +37,11 @@ Start here:
 
 Current implementation frontier:
 
+- [`design-review/193-private-prepared-tree-materialization.md`](design-review/193-private-prepared-tree-materialization.md)
+  closes the private authenticated view which turns one retained prepared tree
+  into a restart-verifiable, read-only per-Run materialization without
+  relabelling it as Package/1. READY recipe pinning and root execution remain
+  separate gates.
 - [`design-review/192-private-native-preparation-controller.md`](design-review/192-private-native-preparation-controller.md)
   closes one concrete private controller joining the root-owned v19 lifecycle,
   retained Package/1 backing, Linux cgroup-v2/Bubblewrap owner, and protected

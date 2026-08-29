@@ -19,8 +19,12 @@ import {
   type JsonObject,
   type JsonValue,
 } from "../json.js";
-import type { CapturedFile, CapturedPackage } from "../package/capture.js";
-import { PACKAGE_1_LIMITS } from "../package/digest.js";
+import {
+  PACKAGE_CAPTURE_LIMITS,
+  type CapturedFile,
+  type CapturedPackage,
+} from "../package/capture.js";
+import { packageDigest, PACKAGE_1_LIMITS } from "../package/digest.js";
 import {
   assertNoPathCollisions,
   comparePathBytes,
@@ -41,6 +45,7 @@ import {
   captureStoredPackage,
   normalizePackageArtifactRef,
 } from "./package-artifact-store.js";
+import type { PrivateMaterializationSource } from "./package-materialization.js";
 
 const RECORD_KIND = "private-bun-native-prepared-tree-record/1";
 const REFERENCE_KIND = "private-bun-native-prepared-tree/1";
@@ -81,11 +86,14 @@ export interface PrivateBunNativePreparedTreeRef {
 export interface PrivateBunNativePreparedTreeCapture {
   readonly kind: typeof CAPTURE_KIND;
   readonly reference: PrivateBunNativePreparedTreeRef;
+  readonly materializationDigest: string;
   readonly files: readonly CapturedFile[];
   read(path: string, maximumBytes?: number): Promise<Uint8Array>;
   stream(path: string, maximumBytes?: number): AsyncIterable<Uint8Array>;
   dispose(): Promise<void>;
 }
+
+const authenticCaptures = new WeakSet<object>();
 
 /**
  * Publish only an authenticated preparation observation and its matching,
@@ -145,7 +153,8 @@ export async function capturePrivateBunNativePreparedTree(input: {
   try {
     requireDisjointSource(source.files);
     requireCompleteTreeTopology(source.files, record.files);
-    return preparedCapture(reference, source, record.files);
+    const materializationDigest = await preparedMaterializationDigest(source, record.files);
+    return preparedCapture(reference, materializationDigest, source, record.files);
   } catch (error) {
     try {
       await source.dispose();
@@ -186,6 +195,26 @@ export function normalizePrivateBunNativePreparedTreeRef(
     requestDigest: record.requestDigest as string,
     candidateDigest: record.candidateDigest as string,
     dependencyDigest: record.dependencyDigest as string,
+  });
+}
+
+/**
+ * Give the private durable materializer only the authenticated byte-tree view
+ * it consumes. The prepared reference remains the artifact identity; this
+ * checksum is used solely to verify a detached per-Run materialization.
+ */
+export function privateBunNativePreparedTreeMaterializationSource(
+  value: PrivateBunNativePreparedTreeCapture,
+): PrivateMaterializationSource {
+  if (value === null || typeof value !== "object" || !authenticCaptures.has(value)) {
+    throw new TypeError("prepared-tree materialization requires an authenticated capture");
+  }
+  return Object.freeze({
+    files: value.files,
+    digest: value.materializationDigest,
+    stream(path: string, maximumBytes?: number): AsyncIterable<Uint8Array> {
+      return value.stream(path, maximumBytes);
+    },
   });
 }
 
@@ -265,6 +294,36 @@ function requireCompleteTreeTopology(
     ...sourceFiles.map((file) => file.path),
     ...dependencyFiles.map((file) => dependencyPath(file.path)),
   ];
+  if (paths.length > PACKAGE_1_LIMITS.files) {
+    invalid(
+      "BUN_PREPARED_TREE_LIMIT",
+      `prepared tree exceeds the ${PACKAGE_1_LIMITS.files}-file materialization limit`,
+    );
+  }
+  const totalBytes = sourceFiles.reduce((sum, file) => sum + file.size, 0) +
+    dependencyFiles.reduce(
+      (sum, file) => sum + Buffer.from(file.contentBase64, "base64").byteLength,
+      0,
+    );
+  if (!Number.isSafeInteger(totalBytes) || totalBytes > PACKAGE_1_LIMITS.totalBytes) {
+    invalid(
+      "BUN_PREPARED_TREE_LIMIT",
+      `prepared tree exceeds the ${PACKAGE_1_LIMITS.totalBytes}-byte materialization limit`,
+    );
+  }
+  const directories = new Set<string>([""]);
+  for (const path of paths) {
+    const segments = path.split("/");
+    for (let index = 1; index < segments.length; index += 1) {
+      directories.add(segments.slice(0, index).join("/"));
+    }
+  }
+  if (directories.size > PACKAGE_CAPTURE_LIMITS.directories) {
+    invalid(
+      "BUN_PREPARED_TREE_LIMIT",
+      `prepared tree exceeds the ${PACKAGE_CAPTURE_LIMITS.directories}-directory materialization limit`,
+    );
+  }
   assertNoPathCollisions(paths);
   const foldedFiles = new Map(paths.map((path) => [fullCaseFold15_1(path), path]));
   for (const path of paths) {
@@ -287,8 +346,29 @@ function dependencyPath(path: string): string {
   return validateLogicalPath(`${DEPENDENCY_ROOT}/${validateLogicalPath(path)}`);
 }
 
+async function preparedMaterializationDigest(
+  source: CapturedPackage,
+  files: readonly PrivateBunNativePreparedCandidateFile[],
+): Promise<string> {
+  const dependency = new Map<string, Uint8Array>();
+  const allFiles: CapturedFile[] = source.files.map((file) => Object.freeze({ ...file }));
+  for (const file of files) {
+    const path = dependencyPath(file.path);
+    const bytes = Uint8Array.from(Buffer.from(file.contentBase64, "base64"));
+    dependency.set(path, bytes);
+    allFiles.push(Object.freeze({ path, size: bytes.byteLength }));
+  }
+  return await packageDigest(allFiles, (file) => {
+    const bytes = dependency.get(file.path);
+    return bytes === undefined
+      ? source.stream(file.path, file.size)
+      : detachedBytes(bytes);
+  });
+}
+
 function preparedCapture(
   reference: PrivateBunNativePreparedTreeRef,
+  materializationDigest: string,
   source: CapturedPackage,
   files: readonly PrivateBunNativePreparedCandidateFile[],
 ): PrivateBunNativePreparedTreeCapture {
@@ -312,6 +392,7 @@ function preparedCapture(
   const capture: PrivateBunNativePreparedTreeCapture = {
     kind: CAPTURE_KIND,
     reference,
+    materializationDigest,
     files: frozenFiles,
     async read(pathValue: string, maximumBytes = PACKAGE_1_LIMITS.fileBytes): Promise<Uint8Array> {
       const path = validateLogicalPath(pathValue);
@@ -345,7 +426,9 @@ function preparedCapture(
       return disposal;
     },
   };
-  return Object.freeze(capture);
+  const frozen = Object.freeze(capture);
+  authenticCaptures.add(frozen);
+  return frozen;
 }
 
 async function* detachedBytes(bytes: Uint8Array): AsyncIterable<Uint8Array> {

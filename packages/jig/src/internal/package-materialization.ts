@@ -48,6 +48,19 @@ export interface PrivatePackageMaterializationAllocationOptions {
   readonly ownerToken: string;
 }
 
+/**
+ * The exact private source surface consumed by the materializer. Package/1
+ * captures are one producer; a separately authenticated prepared-tree view
+ * may be another. The first implementation reuses Package/1's bounded
+ * canonical byte-tree digest solely as the materialization integrity checksum;
+ * passing it here does not publish or admit another artifact as Package/1.
+ */
+export interface PrivateMaterializationSource {
+  readonly files: readonly CapturedFile[];
+  readonly digest: string;
+  stream(path: string, maximumBytes?: number): AsyncIterable<Uint8Array>;
+}
+
 /** Persist this no-effect identity before allowing its exact leaf to be made. */
 export interface PrivatePackageMaterializationAllocationIdentity {
   readonly kind: typeof ALLOCATION_KIND;
@@ -170,7 +183,7 @@ export async function allocatePrivatePackageMaterialization(
 
 /** Materialize only after the no-effect allocation identity is durable. */
 export async function materializePrivatePackageLease(
-  captured: CapturedPackage,
+  captured: PrivateMaterializationSource,
   value: unknown,
 ): Promise<PrivatePackageMaterializationLease> {
   const allocation = parseAllocation(value);
@@ -1159,7 +1172,7 @@ function requireExpectedParent(value: string, expected: string): void {
 }
 
 async function copyCapturedFile(
-  captured: CapturedPackage,
+  captured: PrivateMaterializationSource,
   logicalPath: string,
   expectedBytes: number,
   destination: string,

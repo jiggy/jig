@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   chmod,
+  lstat,
   mkdir,
   mkdtemp,
   readFile,
@@ -20,9 +21,16 @@ import {
 import {
   capturePrivateBunNativePreparedTree,
   normalizePrivateBunNativePreparedTreeRef,
+  privateBunNativePreparedTreeMaterializationSource,
   publishPrivateBunNativePreparedTree,
   type PrivateBunNativePreparedTreeRef,
 } from "../src/internal/bun-native-prepared-tree-store.js";
+import {
+  allocatePrivatePackageMaterialization,
+  disposePrivatePackageMaterializationLease,
+  materializePrivatePackageLease,
+  reacquirePrivatePackageMaterializationLease,
+} from "../src/internal/package-materialization.js";
 import {
   observePrivateBunNativePreparation,
   type PrivateBunNativePreparationObservation,
@@ -96,6 +104,79 @@ describe("private Bun native prepared-tree store", () => {
       expect(new Set(references.map((value) => value.digest)).size).toBe(1);
       const finalPath = preparedArtifactPath(fixture.preparedStore, references[0]!);
       expect(await readdir(dirname(finalPath))).toEqual([finalPath.split("/").at(-1)!]);
+    });
+  });
+
+  test("materializes an authenticated prepared capture without relabelling its artifact", async () => {
+    await withFixture({}, async (fixture) => {
+      const reference = await publishFixture(fixture);
+      const capture = await captureFixture(fixture, reference);
+      const secondCapture = await captureFixture(fixture, reference);
+      const protectedParent = join(fixture.root, "materializations");
+      await mkdir(protectedParent, { mode: 0o700 });
+      try {
+        const source = privateBunNativePreparedTreeMaterializationSource(capture);
+        const secondSource = privateBunNativePreparedTreeMaterializationSource(secondCapture);
+        expect(secondSource.digest).toBe(source.digest);
+        expect(() => privateBunNativePreparedTreeMaterializationSource({
+          ...capture,
+        })).toThrow("authenticated capture");
+        const allocation = await allocatePrivatePackageMaterialization({
+          protectedParent,
+          name: "prepared-run",
+          packageDigest: source.digest,
+          ownerToken: privateDomainDigest("JIG-Test-Prepared-Owner/1", {}),
+        });
+        const lease = await materializePrivatePackageLease(source, allocation);
+        await capture.dispose();
+        expect(() => source.stream("flow.ts")).toThrow("snapshot is closed");
+        try {
+          expect(await readFile(join(lease.root, "node_modules/@flowmd/sdk/dist/index.js"), "utf8"))
+            .toBe("export const prepared = true;\n");
+          expect((await lstat(lease.root)).mode & 0o777).toBe(0o555);
+          expect((await lstat(join(lease.root, "flow.ts"))).mode & 0o777).toBe(0o444);
+          const reopened = await reacquirePrivatePackageMaterializationLease(
+            protectedParent,
+            JSON.parse(JSON.stringify(lease.identity)),
+          );
+          expect(reopened.packageDigest).toBe(source.digest);
+        } finally {
+          await disposePrivatePackageMaterializationLease(protectedParent, lease.identity);
+        }
+        expect(await readdir(protectedParent)).toEqual([]);
+
+        const wrong = await allocatePrivatePackageMaterialization({
+          protectedParent,
+          name: "wrong-digest",
+          packageDigest: `sha256:${"0".repeat(64)}`,
+          ownerToken: privateDomainDigest("JIG-Test-Prepared-Owner/1", { wrong: true }),
+        });
+        await expect(materializePrivatePackageLease(secondSource, wrong))
+          .rejects.toThrow("does not match its materialization allocation digest");
+        expect(await readdir(protectedParent)).toEqual([]);
+
+        const corruptAllocation = await allocatePrivatePackageMaterialization({
+          protectedParent,
+          name: "corrupt-stream",
+          packageDigest: secondSource.digest,
+          ownerToken: privateDomainDigest("JIG-Test-Prepared-Owner/1", { corrupt: true }),
+        });
+        const corruptSource = {
+          files: secondSource.files,
+          digest: secondSource.digest,
+          stream(path: string, maximumBytes?: number): AsyncIterable<Uint8Array> {
+            const stream = secondSource.stream(path, maximumBytes);
+            if (path !== "flow.ts") return stream;
+            return corruptFirstByte(stream);
+          },
+        };
+        await expect(materializePrivatePackageLease(corruptSource, corruptAllocation))
+          .rejects.toThrow("failed its digest verification");
+        expect(await readdir(protectedParent)).toEqual([]);
+      } finally {
+        await capture.dispose();
+        await secondCapture.dispose();
+      }
     });
   });
 
@@ -236,6 +317,20 @@ describe("private Bun native prepared-tree store", () => {
     });
   });
 });
+
+async function* corruptFirstByte(
+  source: AsyncIterable<Uint8Array>,
+): AsyncIterable<Uint8Array> {
+  let changed = false;
+  for await (const chunk of source) {
+    const copy = Uint8Array.from(chunk);
+    if (!changed && copy.byteLength > 0) {
+      copy[0] = copy[0]! ^ 0xff;
+      changed = true;
+    }
+    yield copy;
+  }
+}
 
 interface Fixture {
   readonly root: string;
