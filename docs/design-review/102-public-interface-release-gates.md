@@ -544,8 +544,9 @@ The critical path still needs:
   by the product owner before registry publication;
 - one administrator-owned production launcher/runtime-support installation on
   a fresh supported host rather than the proof sandbox's controls;
-- the package-local, contained native-preparation proof selected by reviews
-  175 and 186;
+- durable package-local native preparation and a protected prepared-tree
+  artifact; review 188 closes only the preceding ephemeral contained-install
+  feasibility proof selected by reviews 175 and 186;
 - authenticated project acquisition and one finite installed CLI/API consumer
   around the closed Project Session, without exposing state paths or host
   machinery;
@@ -572,8 +573,8 @@ blockers:
   and
 - cross-language fixtures only for each boundary actually labelled portable.
 
-Reviews 185 and 186 together define the corrected dependency and external
-stop boundaries.
+Reviews 185, 186, and 188 together define the corrected dependency, proven
+ephemeral installer, and remaining external stop boundaries.
 
 ## Rule for the next experiment
 
