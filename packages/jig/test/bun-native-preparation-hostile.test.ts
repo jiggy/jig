@@ -24,6 +24,8 @@ import { createPrivateActivationCandidateV5 } from "../src/internal/activation-a
 import {
   applyPrivateActivationReviewPlan,
   createPrivateActivationReviewPlan,
+  loadPrivateRootBunNativePreparation,
+  loadPrivateRootRun,
   openPrivateProjectCoordinator,
   publishPrivateActivationCandidate,
   submitPrivateRootRun,
@@ -37,6 +39,7 @@ import {
 } from "../src/internal/bun-native-preparation-feasibility.js";
 import { privateFileDigest } from "../src/internal/identity.js";
 import { planPrivateDirectRun } from "../src/internal/direct-run.js";
+import { executePrivateRootRunLaunch } from "../src/internal/root-run-controller.js";
 import {
   PrivateLinuxCgroupBackend,
   type PrivateLinuxCgroupBackendOptions,
@@ -210,30 +213,39 @@ hostileDescribe("private contained Bun native preparation feasibility", () => {
       const retainedRequest = retainedRequests.find(({ target }) =>
         target.kind === "binding" && target.id === "reviewer");
       if (retainedRequest === undefined) throw new Error("missing retained reviewer request");
-      const recipes = await Promise.all(retainedRequests.map(async (candidateRequest) =>
-        await planPrivateDirectRun({
-          request: candidateRequest,
-          runtimeSupport: bun.runtimeSupport,
-          backend,
-          packageStoreRoot: store,
-          bunNativePreparation: {
-            workerBundlePath: workerBundle,
-            workerBundleDigest,
-          },
-        })));
+      const recipe = await planPrivateDirectRun({
+        request: retainedRequest,
+        runtimeSupport: bun.runtimeSupport,
+        backend,
+        packageStoreRoot: store,
+        bunNativePreparation: {
+          workerBundlePath: workerBundle,
+          workerBundleDigest,
+        },
+      });
       const planning = createPrivateActivationPlanningObservation({
         policyDigest: testDigest("native-preparation-policy"),
-        mechanismDigest: recipes[0]!.mechanismDigest,
-        entries: retainedRequests.map((candidateRequest, index) => ({
-          target: candidateRequest.target,
-          requestDigest: candidateRequest.digest,
-          disposition: { state: "planned" as const, observation: recipes[index]!.observation },
-        })),
+        mechanismDigest: recipe.mechanismDigest,
+        entries: retainedRequests.map((candidateRequest) => candidateRequest.digest === retainedRequest.digest
+          ? {
+              target: candidateRequest.target,
+              requestDigest: candidateRequest.digest,
+              disposition: { state: "planned" as const, observation: recipe.observation },
+            }
+          : {
+              target: candidateRequest.target,
+              requestDigest: candidateRequest.digest,
+              disposition: {
+                state: "unavailable" as const,
+                code: "RUNTIME_UNAVAILABLE" as const,
+                evidenceDigests: [testDigest(`native-binding-only:${candidateRequest.digest}`)],
+              },
+            }),
       });
       const candidate = createPrivateActivationCandidateV5(
         aggregate,
         resolveRetainedPackageProjectObservation(aggregate, planning),
-        recipes,
+        recipe,
       );
       await publishPrivateActivationCandidate({
         projectRoot,
@@ -260,7 +272,7 @@ hostileDescribe("private contained Bun native preparation feasibility", () => {
             submissionId,
             target: retainedRequest.target,
             input: { submissionId },
-            deadlineUnixMs: Date.now() + 30_000,
+            deadlineUnixMs: Date.now() + 60_000,
           });
           if (submitted.launch === undefined) throw new Error("expected fresh root launch");
           return submitted;
@@ -333,6 +345,46 @@ hostileDescribe("private contained Bun native preparation feasibility", () => {
           },
         });
         expect(overflow.snapshot.artifact).toBeUndefined();
+
+        const joinedSubmission = await submitPreparation("native-preparation-root-join");
+        const joined = await executePrivateRootRunLaunch({
+          projectRoot,
+          packageStoreRoot: store,
+          runId: joinedSubmission.run.runId,
+          coordinator,
+          runtimeSupport: { bun: bun.runtimeSupport },
+          backend,
+          bunNativePreparation: { workerBundlePath: workerBundle, workerBundleDigest },
+          notifyWorkAvailable: () => undefined,
+        });
+        expect(joined).toMatchObject({
+          state: "terminal",
+          run: {
+            state: "terminal",
+            terminal: {
+              status: "succeeded",
+              result: {
+                outcome: "done",
+                output: {
+                  submissionId: "native-preparation-root-join",
+                  packageReadOnly: true,
+                },
+              },
+            },
+          },
+        });
+        expect(await loadPrivateRootRun({
+          projectRoot,
+          runId: joinedSubmission.run.runId,
+        })).toEqual(joined.run);
+        expect(await loadPrivateRootBunNativePreparation({
+          coordinator,
+          projectRoot,
+          parentRunId: joinedSubmission.run.runId,
+        })).toMatchObject({
+          outcome: { value: { status: "succeeded" } },
+          closure: { value: { parentRunId: joinedSubmission.run.runId } },
+        });
         expect(await readdir(join(projectRoot, ".jig", "private-root-materializations")))
           .toEqual([]);
         expect(await readdir(join(projectRoot, ".jig", "private-root-linux-owners")))
@@ -354,7 +406,7 @@ hostileDescribe("private contained Bun native preparation feasibility", () => {
         await rm(root, { recursive: true, force: true });
       }
     }
-  }, 120_000);
+  }, 240_000);
 });
 
 async function buildSdkArchive(destination: string): Promise<void> {
@@ -496,7 +548,47 @@ async function writeReviewerFlow(
     join(flowRoot, "FLOW.md"),
     `---\nname: ${name}\ndescription: Review one value.\n---\n`,
   );
-  await writeFile(join(flowRoot, "flow.ts"), "#!/usr/bin/env bun\nexport {};\n");
+  await writeFile(join(flowRoot, "input.schema.json"), JSON.stringify({
+    $schema: "https://flow.dev/schemas/schema-1.json",
+    type: "object",
+    properties: { submissionId: { type: "string" } },
+    required: ["submissionId"],
+    additionalProperties: false,
+  }));
+  await writeFile(join(flowRoot, "result.schema.json"), JSON.stringify({
+    $schema: "https://flow.dev/schemas/schema-1.json",
+    type: "object",
+    properties: {
+      outcome: { const: "done" },
+      output: {
+        type: "object",
+        properties: {
+          submissionId: { type: "string" },
+          packageReadOnly: { const: true },
+        },
+        required: ["submissionId", "packageReadOnly"],
+        additionalProperties: false,
+      },
+    },
+    required: ["outcome", "output"],
+    additionalProperties: false,
+  }));
+  await writeFile(join(flowRoot, "flow.ts"), [
+    "#!/usr/bin/env bun",
+    'import { serve } from "@flowmd/sdk";',
+    "",
+    "await serve(async (context) => {",
+    "  let packageReadOnly = false;",
+    '  try { await Bun.write("/package/.write-probe", "unsafe"); }',
+    "  catch { packageReadOnly = true; }",
+    '  if (!packageReadOnly) throw new Error("prepared package mount was writable");',
+    "  return {",
+    '    outcome: "done",',
+    "    output: { submissionId: context.input.submissionId, packageReadOnly },",
+    "  };",
+    "});",
+    "",
+  ].join("\n"));
   await writeFile(join(flowRoot, "package.json"), JSON.stringify({
     private: true,
     type: "module",

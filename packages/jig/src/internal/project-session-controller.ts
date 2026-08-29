@@ -24,6 +24,7 @@ import {
 import type { PrivateRuntimeSupportObservation } from "./agent-sandbox-runtime-support.js";
 import {
   planPrivateDirectRun,
+  type PrivateBunNativeRunPlanningInput,
   type PrivateDirectRunRecipe,
   type PrivateDirectRunRuntimeSupport,
 } from "./direct-run.js";
@@ -56,6 +57,7 @@ export interface PrivateProjectSessionHost {
   readonly directRuntimeSupport: PrivateDirectRunRuntimeSupport;
   readonly jigDistributionPath: string;
   readonly runTimeoutMs: number;
+  readonly bunNativePreparation?: PrivateBunNativeRunPlanningInput;
 }
 
 /** Open one finite project session against already selected trusted machinery. */
@@ -82,6 +84,9 @@ export async function openPrivateProjectSession(input: {
         coordinator,
         runtimeSupport: input.host.directRuntimeSupport,
         backend: input.host.backend,
+        ...(input.host.bunNativePreparation === undefined
+          ? {}
+          : { bunNativePreparation: input.host.bunNativePreparation }),
         notifyWorkAvailable,
         signal,
       }),
@@ -172,6 +177,9 @@ function createSession(
               runtimeSupport: host.directRuntimeSupport,
               backend: host.backend,
               packageStoreRoot,
+              ...(host.bunNativePreparation === undefined
+                ? {}
+                : { bunNativePreparation: host.bunNativePreparation }),
             }));
           } catch (error) {
             if (error instanceof TypeError) {

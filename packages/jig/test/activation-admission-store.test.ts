@@ -4660,6 +4660,144 @@ describe.serial("private activation admission SQLite store", () => {
         projectRoot: fixture.root,
         epoch: "current",
       })).toEqual([]);
+      const rootPlannedAfterPreparation = await recordPrivateRootExecutionCheckpoint({
+        coordinator,
+        projectRoot: fixture.root,
+        runId: submission.run.runId,
+        checkpoint: "plan",
+        value: { test: "successful-preparation-closed" },
+      });
+      expect(rootPlannedAfterPreparation.plan?.value)
+        .toEqual({ test: "successful-preparation-closed" });
+    } finally {
+      await coordinator?.dispose();
+      await fixture.dispose();
+    }
+  });
+
+  test("serializes Bun native preparation allocation before root execution planning", async () => {
+    const fixture = await createFixture("ready");
+    let coordinator: PrivateProjectCoordinator | undefined;
+    try {
+      await applyLatestCandidate(fixture);
+      coordinator = await openPrivateProjectCoordinator({ projectRoot: fixture.root });
+      const target = fixture.candidate.candidate.targets[0]!;
+      const start = async (label: string) => {
+        const deadlineUnixMs = Date.now() + 60_000;
+        const submission = await submitPrivateRootRun({
+          coordinator: coordinator!,
+          projectRoot: fixture.root,
+          packageStoreRoot: fixture.store,
+          submissionId: `bun-native-order-${label}`,
+          target: { kind: "flow", path: "flows/run" },
+          input: { value: label },
+          deadlineUnixMs,
+        });
+        if (submission.launch === undefined) throw new Error("test expected a root launch");
+        return {
+          submission,
+          allocation: normalizePrivateRootBunNativePreparationAllocation({
+            kind: "private-root-bun-native-preparation-allocation/1",
+            parentRunId: submission.run.runId,
+            coordinatorEpoch: coordinator!.epoch,
+            requestDigest: submission.launch.intent.requestDigest,
+            packageDigest: target.request.package.digest,
+            recipeObservationDigest: submission.launch.intent.observationDigest,
+            preparationObservationDigest: digest(`order-observation-${label}`),
+            dependencyDigest: digest(`order-dependency-${label}`),
+            workerDigest: digest(`order-worker-${label}`),
+            runtimeObservationDigest: digest(`order-runtime-${label}`),
+            backendMechanismDigest: digest(`order-backend-${label}`),
+            deadlineUnixMs,
+          }),
+        };
+      };
+
+      const preparationFirst = await start("preparation-first");
+      await allocatePrivateRootBunNativePreparation({
+        coordinator,
+        projectRoot: fixture.root,
+        allocation: preparationFirst.allocation,
+      });
+      await expect(recordPrivateRootExecutionCheckpoint({
+        coordinator,
+        projectRoot: fixture.root,
+        runId: preparationFirst.submission.run.runId,
+        checkpoint: "plan",
+        value: { test: "must-wait-for-preparation-closure" },
+      })).rejects.toMatchObject({ code: "RUN_EXECUTION_ORDER" });
+      await recordPrivateRootExecutionCheckpoint({
+        coordinator,
+        projectRoot: fixture.root,
+        runId: preparationFirst.submission.run.runId,
+        checkpoint: "provisional",
+        value: {
+          status: "failed",
+          code: "EXECUTION_FAILED",
+          message: "root settlement raced its native preparation",
+          diagnostics: { stderr: "", stderrBytes: 0, stderrTruncated: false },
+        },
+      });
+      await expect(recordPrivateRootExecutionCheckpoint({
+        coordinator,
+        projectRoot: fixture.root,
+        runId: preparationFirst.submission.run.runId,
+        checkpoint: "release",
+        value: { released: true },
+      })).rejects.toMatchObject({ code: "RUN_EXECUTION_CLOSURE_REQUIRED" });
+
+      const planFirst = await start("plan-first");
+      await recordPrivateRootExecutionCheckpoint({
+        coordinator,
+        projectRoot: fixture.root,
+        runId: planFirst.submission.run.runId,
+        checkpoint: "plan",
+        value: { test: "root-plan-won" },
+      });
+      await expect(allocatePrivateRootBunNativePreparation({
+        coordinator,
+        projectRoot: fixture.root,
+        allocation: planFirst.allocation,
+      })).rejects.toMatchObject({ code: "RUN_EXECUTION_ORDER" });
+
+      const settlementFirst = await start("settlement-first");
+      await recordPrivateRootExecutionCheckpoint({
+        coordinator,
+        projectRoot: fixture.root,
+        runId: settlementFirst.submission.run.runId,
+        checkpoint: "provisional",
+        value: {
+          status: "failed",
+          code: "EXECUTION_FAILED",
+          message: "settlement began before native preparation",
+          diagnostics: { stderr: "", stderrBytes: 0, stderrTruncated: false },
+        },
+      });
+      await expect(allocatePrivateRootBunNativePreparation({
+        coordinator,
+        projectRoot: fixture.root,
+        allocation: settlementFirst.allocation,
+      })).rejects.toMatchObject({ code: "RUN_EXECUTION_ORDER" });
+
+      const raced = await start("allocation-plan-race");
+      const race = await Promise.allSettled([
+        retryBusy(async () => await allocatePrivateRootBunNativePreparation({
+          coordinator,
+          projectRoot: fixture.root,
+          allocation: raced.allocation,
+        })),
+        retryBusy(async () => await recordPrivateRootExecutionCheckpoint({
+          coordinator,
+          projectRoot: fixture.root,
+          runId: raced.submission.run.runId,
+          checkpoint: "plan",
+          value: { test: "root-plan-race" },
+        })),
+      ]);
+      expect(race.filter(({ status }) => status === "fulfilled")).toHaveLength(1);
+      expect(race.filter(({ status }) => status === "rejected")).toHaveLength(1);
+      expect((race.find(({ status }) => status === "rejected") as PromiseRejectedResult).reason)
+        .toMatchObject({ code: "RUN_EXECUTION_ORDER" });
     } finally {
       await coordinator?.dispose();
       await fixture.dispose();
@@ -4734,6 +4872,13 @@ describe.serial("private activation admission SQLite store", () => {
         outcome: cancelledClosed.outcome?.digest,
         release: cancelledClosed.release?.digest,
       });
+      await expect(recordPrivateRootExecutionCheckpoint({
+        coordinator,
+        projectRoot: fixture.root,
+        runId: cancelled.submission.run.runId,
+        checkpoint: "plan",
+        value: { test: "failed-preparation-must-not-plan" },
+      })).rejects.toMatchObject({ code: "RUN_EXECUTION_ORDER" });
 
       const sealed = await start("sealed-before-dispatch");
       const sealedPlan = testBunPreparationPlan(
@@ -5142,16 +5287,6 @@ describe.serial("private activation admission SQLite store", () => {
           backendMechanismDigest: digest(`root-close-backend-${label}`),
           deadlineUnixMs,
         });
-        for (const [checkpoint, value] of [
-          ["provisional", terminal],
-          ["release", { kind: "test-release-without-plan/1", runId: submission.run.runId }],
-          ["admitted", terminal],
-        ] as const) {
-          await recordPrivateRootExecutionCheckpoint({
-            coordinator: coordinator!, projectRoot: fixture.root,
-            runId: submission.run.runId, checkpoint, value,
-          });
-        }
         return { submission, allocation };
       };
       const closePreparation = async (
@@ -5181,42 +5316,77 @@ describe.serial("private activation admission SQLite store", () => {
       const guardedAllocation = await allocatePrivateRootBunNativePreparation({
         coordinator, projectRoot: fixture.root, allocation: guarded.allocation,
       });
+      await recordPrivateRootExecutionCheckpoint({
+        coordinator, projectRoot: fixture.root,
+        runId: guarded.submission.run.runId, checkpoint: "provisional", value: terminal,
+      });
+      await expect(recordPrivateRootExecutionCheckpoint({
+        coordinator, projectRoot: fixture.root,
+        runId: guarded.submission.run.runId,
+        checkpoint: "release",
+        value: { kind: "test-release-after-preparation/1", runId: guarded.submission.run.runId },
+      })).rejects.toMatchObject({ code: "RUN_EXECUTION_CLOSURE_REQUIRED" });
       await expect(closePrivateRootExecution({
         coordinator, projectRoot: fixture.root,
         runId: guarded.submission.run.runId, terminal,
-      })).rejects.toMatchObject({ code: "RUN_EXECUTION_CLOSURE_REQUIRED" });
+      })).rejects.toMatchObject({ code: "RUN_EXECUTION_INCOMPLETE" });
       await closePreparation(guardedAllocation);
+      await recordPrivateRootExecutionCheckpoint({
+        coordinator, projectRoot: fixture.root,
+        runId: guarded.submission.run.runId,
+        checkpoint: "release",
+        value: { kind: "test-release-after-preparation/1", runId: guarded.submission.run.runId },
+      });
+      await recordPrivateRootExecutionCheckpoint({
+        coordinator, projectRoot: fixture.root,
+        runId: guarded.submission.run.runId, checkpoint: "admitted", value: terminal,
+      });
       expect(await closePrivateRootExecution({
         coordinator, projectRoot: fixture.root,
         runId: guarded.submission.run.runId, terminal,
       })).toMatchObject({ state: "terminal" });
 
       const raced = await start("race");
-      const [allocationRace, closureRace] = await Promise.allSettled([
-        retryBusy(() => allocatePrivateRootBunNativePreparation({
-          coordinator, projectRoot: fixture.root, allocation: raced.allocation,
-        })),
-        retryBusy(() => closePrivateRootExecution({
+      const racedAllocation = await allocatePrivateRootBunNativePreparation({
+        coordinator, projectRoot: fixture.root, allocation: raced.allocation,
+      });
+      await recordPrivateRootExecutionCheckpoint({
+        coordinator, projectRoot: fixture.root,
+        runId: raced.submission.run.runId, checkpoint: "provisional", value: terminal,
+      });
+      const racedRelease = {
+        kind: "test-release-after-preparation/1",
+        runId: raced.submission.run.runId,
+      };
+      const [preparationRace, releaseRace] = await Promise.allSettled([
+        retryBusy(() => closePreparation(racedAllocation)),
+        retryBusy(() => recordPrivateRootExecutionCheckpoint({
           coordinator, projectRoot: fixture.root,
-          runId: raced.submission.run.runId, terminal,
+          runId: raced.submission.run.runId,
+          checkpoint: "release",
+          value: racedRelease,
         })),
       ]);
-      expect([allocationRace.status, closureRace.status].sort()).toEqual(["fulfilled", "rejected"]);
-      if (allocationRace.status === "fulfilled") {
-        expect(closureRace).toMatchObject({
-          status: "rejected", reason: { code: "RUN_EXECUTION_CLOSURE_REQUIRED" },
-        });
-        await closePreparation(allocationRace.value);
-        expect(await closePrivateRootExecution({
+      expect(preparationRace).toMatchObject({ status: "fulfilled" });
+      if (releaseRace.status === "rejected") {
+        expect(releaseRace.reason).toMatchObject({ code: "RUN_EXECUTION_CLOSURE_REQUIRED" });
+        expect(await recordPrivateRootExecutionCheckpoint({
           coordinator, projectRoot: fixture.root,
-          runId: raced.submission.run.runId, terminal,
-        })).toMatchObject({ state: "terminal" });
+          runId: raced.submission.run.runId,
+          checkpoint: "release",
+          value: racedRelease,
+        })).toMatchObject({ release: { value: racedRelease } });
       } else {
-        expect(allocationRace).toMatchObject({
-          status: "rejected", reason: { code: "RUN_ALREADY_TERMINAL" },
-        });
-        expect(closureRace).toMatchObject({ status: "fulfilled", value: { state: "terminal" } });
+        expect(releaseRace.value).toMatchObject({ release: { value: racedRelease } });
       }
+      await recordPrivateRootExecutionCheckpoint({
+        coordinator, projectRoot: fixture.root,
+        runId: raced.submission.run.runId, checkpoint: "admitted", value: terminal,
+      });
+      expect(await closePrivateRootExecution({
+        coordinator, projectRoot: fixture.root,
+        runId: raced.submission.run.runId, terminal,
+      })).toMatchObject({ state: "terminal" });
     } finally {
       await coordinator?.dispose();
       await fixture.dispose();

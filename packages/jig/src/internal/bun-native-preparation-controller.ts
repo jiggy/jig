@@ -219,8 +219,25 @@ export async function executePrivateRootBunNativePreparation(input: {
     observation,
     runtimeSupport,
     workerBundlePath,
+    workerBundleDigest: input.workerBundleDigest,
     roots,
   });
+}
+
+/** Recover an already allocated preparation without requiring launch machinery to remain installed. */
+export async function recoverPrivateRootBunNativePreparation(input: {
+  readonly coordinator: PrivateProjectCoordinator;
+  readonly projectRoot: string;
+  readonly packageStoreRoot: string;
+  readonly parentRunId: string;
+  readonly backend: PrivateLinuxCgroupBackend;
+  readonly signal?: AbortSignal;
+}): Promise<PrivateRootBunNativePreparationDisposition | null> {
+  await input.coordinator.verify();
+  const backend = requirePrivateLinuxCgroupBackend(input.backend);
+  const existing = await loadOptional({ ...input, backend });
+  if (existing === undefined) return null;
+  return await recoverExisting({ ...input, backend }, backend, existing);
 }
 
 async function executeCreated(input: ControllerInput & {
@@ -228,6 +245,7 @@ async function executeCreated(input: ControllerInput & {
   readonly observation: PrivateBunNativePreparationObservation;
   readonly runtimeSupport: PrivateRuntimeSupportObservation;
   readonly workerBundlePath: string;
+  readonly workerBundleDigest: string;
   readonly roots: PreparationRoots;
 }): Promise<PrivateRootBunNativePreparationDisposition> {
   let snapshot = input.allocated.snapshot;
@@ -353,7 +371,7 @@ async function executeCreated(input: ControllerInput & {
 }
 
 async function observeComponent(
-  input: ControllerInput,
+  input: ExecutionControllerInput,
   initial: PrivateRootBunNativePreparationSnapshot,
   observation: PrivateBunNativePreparationObservation,
   componentPromise: Promise<PrivateLinuxComponentProcess>,
@@ -665,7 +683,7 @@ async function revalidateEvidence(
 }
 
 async function revalidateObservedExecution(
-  input: ControllerInput,
+  input: ExecutionControllerInput,
   snapshot: PrivateRootBunNativePreparationSnapshot,
   observation: PrivateBunNativePreparationObservation,
 ): Promise<void> {
@@ -888,9 +906,14 @@ function hasCode(error: unknown, code: string): boolean {
     (error as { readonly code?: unknown }).code === code;
 }
 
-type ControllerInput = Parameters<typeof executePrivateRootBunNativePreparation>[0] & {
+type ExecutionControllerInput = Parameters<typeof executePrivateRootBunNativePreparation>[0] & {
   readonly backend: PrivateLinuxCgroupBackend;
 };
+
+type ControllerInput = Omit<
+  ExecutionControllerInput,
+  "runtimeSupport" | "workerBundlePath" | "workerBundleDigest"
+>;
 
 interface PreparationRoots {
   readonly materializations: string;

@@ -66,6 +66,9 @@ export interface PrivateBunDirectRecipe {
   readonly scratch: "/work";
   readonly wallClockCeilingMs: number;
   readonly resourceCeilings: typeof RESOURCE_CEILINGS;
+  readonly bunPolicy: typeof BUN_POLICY;
+  readonly privateProcessFilesystem: true;
+  readonly privateRuntimeDevices: true;
 }
 
 export interface PrivateBunDirectRunResult {
@@ -161,6 +164,9 @@ export async function planPrivateBunDirectRun(input: {
     scratch: SCRATCH,
     wallClockCeilingMs: MAX_WALL_CLOCK_MS,
     resourceCeilings: RESOURCE_CEILINGS,
+    bunPolicy: BUN_POLICY,
+    privateProcessFilesystem: true,
+    privateRuntimeDevices: true,
   });
   authenticRecipes.add(recipe);
   return recipe;
@@ -231,11 +237,11 @@ export async function runPrivateBunDirectRecipe(input: {
         ...recipe.runtimeSupport.closureSources.map((source) => ({ source, destination: source })),
         { source: materialized.root, destination: recipe.packageDestination },
       ],
-      privateProcessFilesystem: true,
-      privateRuntimeDevices: true,
+      privateProcessFilesystem: recipe.privateProcessFilesystem,
+      privateRuntimeDevices: recipe.privateRuntimeDevices,
       command: [
         recipe.executablePath,
-        ...BUN_POLICY,
+        ...recipe.bunPolicy,
         `${recipe.packageDestination}/${recipe.request.entrypoint.path}`,
       ],
     }, input.invocation.signal);

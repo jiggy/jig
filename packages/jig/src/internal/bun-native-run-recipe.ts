@@ -75,6 +75,9 @@ export interface PrivateBunNativeRunRecipe {
   readonly scratch: "/work";
   readonly wallClockCeilingMs: number;
   readonly resourceCeilings: typeof RESOURCE_CEILINGS;
+  readonly bunPolicy: typeof BUN_POLICY;
+  readonly privateProcessFilesystem: true;
+  readonly privateRuntimeDevices: true;
   readonly preparationResourceCeilings:
     PrivateBunNativePreparationControllerObservation["resourceLimits"];
 }
@@ -204,6 +207,9 @@ export async function planPrivateBunNativeRun(input: {
     scratch: SCRATCH,
     wallClockCeilingMs: MAX_WALL_CLOCK_MS,
     resourceCeilings: RESOURCE_CEILINGS,
+    bunPolicy: BUN_POLICY,
+    privateProcessFilesystem: true,
+    privateRuntimeDevices: true,
     preparationResourceCeilings: preparationController.resourceLimits,
   });
   authenticRecipes.add(recipe);

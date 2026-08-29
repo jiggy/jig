@@ -6,6 +6,7 @@ import {
   type PrivateRuntimeSupportObservation,
 } from "../src/internal/agent-sandbox-runtime-support.js";
 import { PrivateLinuxCgroupBackend } from "../src/internal/linux-cgroup-backend.js";
+import { privateFileDigest } from "../src/internal/identity.js";
 import type { PrivateProjectSessionHost } from "../src/internal/project-session-controller.js";
 
 const RUN_TIMEOUT_MS = 60_000;
@@ -24,6 +25,13 @@ export async function openAgentSandboxProofHost(): Promise<PrivateProjectSession
     executablePath: bunPath,
   });
   const python = await proofHostPython(receiptsDirectory, expectedLeaseId);
+  const workerBundlePath = await realpath(join(
+    import.meta.dir,
+    "..",
+    "dist",
+    "internal",
+    "bun-native-preparation-worker.bundle.js",
+  ));
 
   const relativeCgroup = (await readFile("/proc/self/cgroup", "utf8"))
     .trim()
@@ -50,6 +58,10 @@ export async function openAgentSandboxProofHost(): Promise<PrivateProjectSession
     }),
     bunRuntimeSupport: bun,
     directRuntimeSupport: Object.freeze({ bun, python }),
+    bunNativePreparation: Object.freeze({
+      workerBundlePath,
+      workerBundleDigest: await privateFileDigest(workerBundlePath),
+    }),
     jigDistributionPath: await realpath(join(import.meta.dir, "..", "dist")),
     runTimeoutMs: RUN_TIMEOUT_MS,
   });

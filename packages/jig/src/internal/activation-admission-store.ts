@@ -2796,6 +2796,22 @@ export async function recordPrivateRootExecutionCheckpoint(input: {
         }
         return before;
       }
+      if (checkpoint === "plan") {
+        requireRootBunPreparationClosedBeforeRootPlan(
+          owner.database,
+          owner.root,
+          coordinator,
+          runRow,
+        );
+      }
+      if (checkpoint === "release" &&
+          findRootBunPreparation(owner.database, runRow.run_id) !== null &&
+          findRootBunPreparationClosure(owner.database, runRow.run_id) === null) {
+        invalid(
+          "RUN_EXECUTION_CLOSURE_REQUIRED",
+          "root execution cannot release while its Bun native preparation remains open",
+        );
+      }
       requireCheckpointAuthority(run, coordinator, checkpoint, envelope.value);
       requireCheckpointOrder(before, checkpoint, envelope.value);
       const columns = checkpointColumns(checkpoint);
@@ -5319,7 +5335,40 @@ function requireNewRootBunPreparationContext(
   if (run.coordinatorEpoch !== coordinator.epoch || allocation.coordinatorEpoch !== coordinator.epoch) {
     invalid("RUN_COORDINATOR_STALE", "replacement coordinator cannot allocate Bun native preparation");
   }
+  const lifecycle = loadRootExecutionLifecycle(
+    database,
+    requireRootExecutionLifecycle(database, run.runId),
+    runRow,
+  );
+  if (lifecycle.plan !== undefined || lifecycle.backing !== undefined ||
+      lifecycle.sandbox !== undefined || lifecycle.prepared !== undefined ||
+      lifecycle.provisional !== undefined || lifecycle.fence !== undefined ||
+      lifecycle.release !== undefined || lifecycle.admitted !== undefined ||
+      lifecycle.closureDigest !== undefined) {
+    invalid(
+      "RUN_EXECUTION_ORDER",
+      "Bun native preparation must be allocated before root execution planning begins",
+    );
+  }
   requireRootBunPreparationCandidate(database, runRow, allocation, root);
+}
+
+function requireRootBunPreparationClosedBeforeRootPlan(
+  database: SqliteDatabase,
+  root: PrivateProjectRoot,
+  coordinator: PrivateProjectCoordinator,
+  runRow: RootRunRow,
+): void {
+  const row = findRootBunPreparation(database, runRow.run_id);
+  if (row === null) return;
+  const preparation = loadRootBunPreparationSnapshot(database, row, root, coordinator);
+  if (preparation.closure === undefined || preparation.outcome?.value.status !== "succeeded" ||
+      preparation.artifact === undefined || preparation.release === undefined) {
+    invalid(
+      "RUN_EXECUTION_ORDER",
+      "root execution planning requires its Bun native preparation to succeed and close",
+    );
+  }
 }
 
 function requireRootBunPreparationCandidate(
