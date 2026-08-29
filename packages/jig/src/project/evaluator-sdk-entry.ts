@@ -6,4 +6,5 @@ export {
   defineJournalPublisher,
   discover,
   flowRef,
+  projectRunTargets,
 } from "./author.js";

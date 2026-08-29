@@ -2,11 +2,10 @@ import { invalid } from "../diagnostics.js";
 import { PRIVATE_ACTIVATION_TARGET_LIMIT } from "../internal/activation-planning.js";
 import { privateDomainDigest } from "../internal/identity.js";
 import type { JsonValue } from "../json.js";
-import type { HookDefinition, PrivateHookJigDefinition } from "./author.js";
+import type { BindingDefinition, HookDefinition, PrivateHookJigDefinition } from "./author.js";
 import {
   evaluateAuthorClosure,
   type EvaluatedAuthorDeclaration,
-  type PrivateEvaluatedBindingDefinition,
   type PrivateAuthorEvaluatorOptions,
 } from "./author-evaluator.js";
 import {
@@ -19,7 +18,7 @@ import {
 } from "./declaration-source.js";
 import { captureOpenedFlowSource, type FlowDiscoveryObservation, type FlowExactObservation } from "./flow-source.js";
 import {
-  linkPrivateProjectRunTargetsPackageProject,
+  linkPackageProject,
   type PackageProjectValue,
 } from "./package-project.js";
 import { retainAuthorClosure, type RetainedAuthorClosure } from "./retained-author-closure.js";
@@ -47,7 +46,7 @@ export interface PrivateRetainedOpenedProjectOptions {
 export interface RetainedBindingDeclaration {
   readonly id: string;
   readonly sourcePath: string;
-  readonly evaluation: EvaluatedAuthorDeclaration<PrivateEvaluatedBindingDefinition>;
+  readonly evaluation: EvaluatedAuthorDeclaration<BindingDefinition>;
 }
 
 export interface RetainedHookDeclaration {
@@ -149,9 +148,9 @@ export async function retainOpenedPackageProject(
         options.evaluator,
         closure,
         member.projectPath,
-        "private-project-run-targets-binding",
+        "binding",
         signal,
-      ) as EvaluatedAuthorDeclaration<PrivateEvaluatedBindingDefinition>;
+      ) as EvaluatedAuthorDeclaration<BindingDefinition>;
       bindings.push(Object.freeze({ id: member.id, sourcePath: member.projectPath, evaluation }));
     }
     const hooks: RetainedHookDeclaration[] = [];
@@ -175,7 +174,7 @@ export async function retainOpenedPackageProject(
     await hookSource.verify();
     await root.verify();
 
-    const linked = linkPrivateProjectRunTargetsPackageProject({
+    const linked = linkPackageProject({
       flows: retainedFlows,
       bindings: bindings.map(({ sourcePath, evaluation }) => ({ sourcePath, definition: evaluation.value })),
       hooks: hooks.map(({ sourcePath, evaluation }) => ({ sourcePath, definition: evaluation.value })),

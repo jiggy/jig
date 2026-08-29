@@ -1371,7 +1371,7 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
     }
   });
 
-  test("seals the private project Run-target authoring profile from ordinary evaluation", async () => {
+  test("evaluates projectRunTargets through the ordinary public authoring profile", async () => {
     host = await hostConfiguration();
     const bun = await proofHostBunClosure();
     const distribution = await realpath(join(import.meta.dir, "..", "dist"));
@@ -1389,7 +1389,7 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
     let fixtureSequence = 0;
     const evaluate = async (
       source: string,
-      expected: "binding" | "private-project-run-targets-binding",
+      expected: "binding",
     ) => {
       const path = `fixture-${++fixtureSequence}.ts`;
       await writeFile(join(root, path), source);
@@ -1402,29 +1402,32 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
     };
     try {
       const projectRunTargetsSource = [
-        'import { defineBinding, projectRunTargets } from "@jigging/jig/private/project-run-targets";',
+        'import { defineBinding, projectRunTargets } from "@jigging/jig";',
         "export default defineBinding({",
         '  package: "flows/dispatcher",',
         "  slots: { work: projectRunTargets() },",
         "});",
       ].join("\n");
-      const privateBinding = await evaluate(
+      const publicBinding = await evaluate(
         projectRunTargetsSource,
-        "private-project-run-targets-binding",
+        "binding",
       );
-      expect(privateBinding.value).toEqual({
+      expect(publicBinding.value).toEqual({
         kind: "package",
         package: "flows/dispatcher",
         settings: {},
         slots: { work: { kind: "project-run-targets" } },
         attachments: {},
       });
-      expect(privateBinding.profile).toMatchObject({
-        authoringProfile: "private-project-run-targets-authoring/1",
-        privateProjectRunTargetsAuthoringSdkDigest: expect.stringMatching(/^sha256:[0-9a-f]{64}$/),
+      expect(publicBinding.profile).toMatchObject({
+        authoringProfile: "project-authoring/1",
+        authoringSdkDigest: expect.stringMatching(/^sha256:[0-9a-f]{64}$/),
         schemaDigest: expect.stringMatching(/^sha256:[0-9a-f]{64}$/),
       });
-      await expect(evaluate(projectRunTargetsSource, "binding")).rejects.toMatchObject({
+      await expect(evaluate([
+        'import { defineBinding, projectRunTargets } from "@jigging/jig/private/project-run-targets";',
+        'export default defineBinding({ package: "flows/dispatcher", slots: { work: projectRunTargets() } });',
+      ].join("\n"), "binding")).rejects.toMatchObject({
         code: "PROJECT_EVALUATOR_IMPORT",
       });
       await expect(evaluate([
@@ -1433,13 +1436,13 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         '  on: { publisher: bindingRef("events"), type: "https://example.test/event" },',
         '  run: flowRef("flows/worker"),',
         "});",
-      ].join("\n"), "private-project-run-targets-binding")).rejects.toMatchObject({
+      ].join("\n"), "binding")).rejects.toMatchObject({
         code: "PROJECT_EVALUATOR_IMPORT",
       });
       expect((await evaluate([
         'import { defineJournalPublisher } from "@jigging/jig";',
         'export default defineJournalPublisher({ eventTypes: ["https://example.test/event"] });',
-      ].join("\n"), "private-project-run-targets-binding")).value).toEqual({
+      ].join("\n"), "binding")).value).toEqual({
         kind: "journal-publisher",
         eventTypes: ["https://example.test/event"],
       });

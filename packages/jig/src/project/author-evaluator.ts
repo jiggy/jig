@@ -28,12 +28,10 @@ import {
   type JournalPublisherDefinition,
   normalizeHookDefinition,
   normalizeJournalPublisherDefinition,
-  normalizePrivateProjectRunTargetsBindingDefinition,
   normalizePrivateHookJigDefinition,
   normalizePackageBindingDefinition,
   type BindingDefinition,
   type PrivateHookJigDefinition,
-  type PrivateProjectRunTargetsBindingDefinition,
 } from "./author.js";
 import {
   isCapturedAuthorClosure,
@@ -67,17 +65,11 @@ let evaluationSequence = 0;
 export type AuthorEvaluationExpectation =
   | "project"
   | "binding"
-  | "hook"
-  | "private-project-run-targets-binding";
+  | "hook";
 
 type AuthoringProfile =
   | "project-authoring/1"
-  | "private-project-authoring-hooks/1"
-  | "private-project-run-targets-authoring/1";
-
-export type PrivateEvaluatedBindingDefinition =
-  | JournalPublisherDefinition
-  | PrivateProjectRunTargetsBindingDefinition;
+  | "private-project-authoring-hooks/1";
 
 export interface PrivateAuthorEvaluatorOptions {
   readonly backend: PrivateLinuxCgroupBackend;
@@ -94,7 +86,6 @@ export interface EvaluatorProfile {
   readonly evaluatorDigest: string;
   readonly authoringSdkDigest: string;
   readonly experimentalHookAuthoringSdkDigest: string;
-  readonly privateProjectRunTargetsAuthoringSdkDigest: string;
   readonly schemaDigest: string;
   readonly evaluatorPackageDigest: string;
   readonly runtimeExecutable: string;
@@ -126,8 +117,8 @@ export interface EvaluatorProfile {
 }
 
 export interface EvaluatedAuthorDeclaration<
-  Value extends PrivateHookJigDefinition | BindingDefinition | HookDefinition | PrivateEvaluatedBindingDefinition =
-    PrivateHookJigDefinition | BindingDefinition | HookDefinition | PrivateEvaluatedBindingDefinition,
+  Value extends PrivateHookJigDefinition | BindingDefinition | HookDefinition =
+    PrivateHookJigDefinition | BindingDefinition | HookDefinition,
 > {
   readonly expected: AuthorEvaluationExpectation;
   readonly source: {
@@ -210,20 +201,16 @@ export async function evaluateAuthorClosure(
       helperBytes,
       sdkBytes,
       hookSdkBytes,
-      projectRunTargetsSdkBytes,
       publicSchemaBytes,
       hookSchemaBytes,
-      projectRunTargetsSchemaBytes,
       runtimeDigest,
     ] = await Promise.all([
       toolchain.read("internal/project-evaluator-worker.js"),
       toolchain.read("internal/linux-cgroup-helper.js"),
       toolchain.read("internal/project-evaluator-sdk.bundle.js"),
       toolchain.read("internal/experimental-hook-evaluator-sdk.bundle.js"),
-      toolchain.read("internal/private-project-run-targets-evaluator-sdk.bundle.js"),
       toolchain.read("project-authoring-1.schema.json"),
       toolchain.read("internal/private-project-authoring-hooks-1.schema.json"),
-      toolchain.read("internal/private-project-run-targets-authoring-1.schema.json"),
       digestFile(bunPath),
     ]).catch((error) => unavailable(
       "PROJECT_EVALUATOR_UNAVAILABLE",
@@ -232,16 +219,13 @@ export async function evaluateAuthorClosure(
     const authoringProfile = authoringProfileFor(expected);
     const schemaBytes = authoringProfile === "project-authoring/1"
       ? publicSchemaBytes
-      : authoringProfile === "private-project-authoring-hooks/1"
-        ? hookSchemaBytes
-        : projectRunTargetsSchemaBytes;
+      : hookSchemaBytes;
     const profileBase = Object.freeze({
       protocol: PROTOCOL,
       authoringProfile,
       evaluatorDigest: digestBytes(workerBytes),
       authoringSdkDigest: digestBytes(sdkBytes),
       experimentalHookAuthoringSdkDigest: digestBytes(hookSdkBytes),
-      privateProjectRunTargetsAuthoringSdkDigest: digestBytes(projectRunTargetsSdkBytes),
       schemaDigest: digestBytes(schemaBytes),
       evaluatorPackageDigest: toolchain.digest,
       runtimeExecutable: bunPath,
@@ -385,16 +369,13 @@ export async function evaluateAuthorClosure(
       let normalized:
         | PrivateHookJigDefinition
         | BindingDefinition
-        | HookDefinition
-        | PrivateEvaluatedBindingDefinition;
+        | HookDefinition;
       try {
         normalized = expected === "project"
           ? normalizePrivateHookJigDefinition(value)
           : expected === "binding"
             ? normalizeBindingDefinition(value)
-            : expected === "hook"
-              ? normalizeHookDefinition(value)
-              : normalizePrivateProjectRunTargetsBinding(value);
+            : normalizeHookDefinition(value);
       } catch (error) {
         invalid(
           "PROJECT_DECLARATION_INVALID",
@@ -508,7 +489,7 @@ function contextualAuthorSchema(bytes: Uint8Array, expected: AuthorEvaluationExp
   }
   const definition = expected === "project"
     ? "project"
-    : expected === "binding" || expected === "private-project-run-targets-binding"
+    : expected === "binding"
       ? "bindingDefinition"
       : "hookDefinition";
   try {
@@ -534,20 +515,8 @@ function normalizeBindingDefinition(value: JsonValue): BindingDefinition {
   return normalizePackageBindingDefinition(value);
 }
 
-function normalizePrivateProjectRunTargetsBinding(
-  value: JsonValue,
-): PrivateEvaluatedBindingDefinition {
-  if (isRecord(value) && value.kind === "journal-publisher") {
-    return normalizeJournalPublisherDefinition(value);
-  }
-  return normalizePrivateProjectRunTargetsBindingDefinition(value);
-}
-
 function authoringProfileFor(expected: AuthorEvaluationExpectation): AuthoringProfile {
   if (expected === "binding") return "project-authoring/1";
-  if (expected === "private-project-run-targets-binding") {
-    return "private-project-run-targets-authoring/1";
-  }
   return "private-project-authoring-hooks/1";
 }
 
@@ -555,9 +524,7 @@ function schemaPathFor(expected: AuthorEvaluationExpectation): string {
   const profile = authoringProfileFor(expected);
   return profile === "project-authoring/1"
     ? "project-authoring-1.schema.json"
-    : profile === "private-project-authoring-hooks/1"
-      ? "private-project-authoring-hooks-1.schema.json"
-      : "private-project-run-targets-authoring-1.schema.json";
+    : "private-project-authoring-hooks-1.schema.json";
 }
 
 function exactKeys(value: object, expected: readonly string[]): boolean {

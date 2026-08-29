@@ -59,15 +59,11 @@ export interface CandidateSetRef {
   readonly targets: readonly RunTargetRef[];
 }
 
-export type SlotRef = RunTargetRef | CandidateSetRef;
-
-/** Private experimental marker; not part of Project Authoring SDK/1. */
-export interface PrivateProjectRunTargetsRef {
+export interface ProjectRunTargetsRef {
   readonly kind: "project-run-targets";
 }
 
-/** Private experimental slot overlay; not part of Project Authoring SDK/1. */
-export type PrivateProjectRunTargetsSlotRef = SlotRef | PrivateProjectRunTargetsRef;
+export type SlotRef = RunTargetRef | CandidateSetRef | ProjectRunTargetsRef;
 
 export interface PackageBindingDefinition {
   readonly kind: "package";
@@ -82,18 +78,6 @@ export interface PackageBindingInput {
   readonly settings?: JsonObject;
   readonly slots?: Readonly<Record<string, SlotRef>>;
   readonly attachments?: Readonly<Record<string, string>>;
-}
-
-/** Private experimental Binding overlay; not part of Project Authoring SDK/1. */
-export interface PrivateProjectRunTargetsBindingDefinition
-  extends Omit<PackageBindingDefinition, "slots"> {
-  readonly slots: Readonly<Record<string, PrivateProjectRunTargetsSlotRef>>;
-}
-
-/** Private experimental Binding input; not part of Project Authoring SDK/1. */
-export interface PrivateProjectRunTargetsBindingInput
-  extends Omit<PackageBindingInput, "slots"> {
-  readonly slots?: Readonly<Record<string, PrivateProjectRunTargetsSlotRef>>;
 }
 
 export interface JournalPublisherDefinition {
@@ -194,19 +178,12 @@ function normalizePrivateHookJig(
 }
 
 export function defineBinding(input: PackageBindingInput): PackageBindingDefinition {
-  return normalizeBinding(input, false, false) as PackageBindingDefinition;
+  return normalizeBinding(input, false);
 }
 
-/** Private experimental marker constructor; absent from the package root. */
-export function projectRunTargets(): PrivateProjectRunTargetsRef {
-  return record({ kind: "project-run-targets" }) as unknown as PrivateProjectRunTargetsRef;
-}
-
-/** Private experimental Binding helper; absent from the package root. */
-export function definePrivateProjectRunTargetsBinding(
-  input: PrivateProjectRunTargetsBindingInput,
-): PrivateProjectRunTargetsBindingDefinition {
-  return normalizeBinding(input, false, true) as PrivateProjectRunTargetsBindingDefinition;
+/** Declare the complete structural Run-target catalogue of the admitted project generation. */
+export function projectRunTargets(): ProjectRunTargetsRef {
+  return record({ kind: "project-run-targets" }) as unknown as ProjectRunTargetsRef;
 }
 
 /** Declare one canonical Jig Journal publisher with an exact authority ceiling. */
@@ -290,25 +267,13 @@ function normalizeJournalPublisher(
 
 /** Evaluator-only canonical re-normalization; absent from the package root. */
 export function normalizePackageBindingDefinition(input: unknown): PackageBindingDefinition {
-  return normalizeBinding(input as PackageBindingInput, true, false) as PackageBindingDefinition;
-}
-
-/** Evaluator-only normalization for the private project-Run-target overlay. */
-export function normalizePrivateProjectRunTargetsBindingDefinition(
-  input: unknown,
-): PrivateProjectRunTargetsBindingDefinition {
-  return normalizeBinding(
-    input as PrivateProjectRunTargetsBindingInput,
-    true,
-    true,
-  ) as PrivateProjectRunTargetsBindingDefinition;
+  return normalizeBinding(input as PackageBindingInput, true);
 }
 
 function normalizeBinding(
-  input: PackageBindingInput | PrivateProjectRunTargetsBindingInput,
+  input: PackageBindingInput,
   canonical: boolean,
-  allowProjectRunTargets: boolean,
-): PackageBindingDefinition | PrivateProjectRunTargetsBindingDefinition {
+): PackageBindingDefinition {
   const captured = snapshotJsonObject(input, "Binding definition");
   assertClosedObject(
     captured,
@@ -327,8 +292,7 @@ function normalizeBinding(
     : emptyRecord();
   const slots = Object.hasOwn(captured, "slots")
     ? normalizeSlots(
-      captured.slots as unknown as Readonly<Record<string, PrivateProjectRunTargetsSlotRef>>,
-      allowProjectRunTargets,
+      captured.slots as unknown as Readonly<Record<string, SlotRef>>,
     )
     : emptyRecord();
   const attachments = Object.hasOwn(captured, "attachments")
@@ -400,14 +364,13 @@ function normalizeSource(
 }
 
 function normalizeSlots(
-  value: Readonly<Record<string, PrivateProjectRunTargetsSlotRef>> | undefined,
-  allowProjectRunTargets: boolean,
-): Readonly<Record<string, PrivateProjectRunTargetsSlotRef>> {
+  value: Readonly<Record<string, SlotRef>> | undefined,
+): Readonly<Record<string, SlotRef>> {
   const input = assertRecord(value, "slots");
-  const output: Record<string, PrivateProjectRunTargetsSlotRef> = {};
+  const output: Record<string, SlotRef> = {};
   for (const key of sortedKeys(input)) {
     validateLocalName(key, "slot name");
-    output[key] = normalizeSlot(input[key], allowProjectRunTargets);
+    output[key] = normalizeSlot(input[key]);
   }
   return record(output);
 }
@@ -425,15 +388,11 @@ function normalizeAttachments(
 }
 
 function normalizeSlot(
-  value: PrivateProjectRunTargetsSlotRef | undefined,
-  allowProjectRunTargets: boolean,
-): PrivateProjectRunTargetsSlotRef {
+  value: SlotRef | undefined,
+): SlotRef {
   if (value === undefined) throw new TypeError("slot value cannot be undefined");
-  const object = assertRecord(value, "slot reference") as Partial<PrivateProjectRunTargetsSlotRef>;
+  const object = assertRecord(value, "slot reference") as Partial<SlotRef>;
   if (object.kind === "project-run-targets") {
-    if (!allowProjectRunTargets) {
-      throw new TypeError("projectRunTargets() is not part of Project Authoring SDK/1");
-    }
     assertClosedObject(object, ["kind"], "slot reference");
     return projectRunTargets();
   }

@@ -37,6 +37,11 @@ Start here:
 
 Current implementation frontier:
 
+- [`design-review/183-project-run-targets-authoring-campaign.md`](design-review/183-project-run-targets-authoring-campaign.md)
+  accepts the inert `projectRunTargets()` Project Authoring SDK/1 value after
+  two clean-room consumers and the real retained evaluator converged, while
+  keeping operational routing, Agent ranking, and durable Semantic Choice
+  explicitly gated.
 - [`design-review/182-private-settings-only-binding-child.md`](design-review/182-private-settings-only-binding-child.md)
   closes one private Bun configuration-only child Binding with exact retained
   settings, independent allocation authority checks, no attachments or slots,

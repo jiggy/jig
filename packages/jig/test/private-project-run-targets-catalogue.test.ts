@@ -14,7 +14,7 @@ import {
 import {
   bindingRef,
   candidates,
-  definePrivateProjectRunTargetsBinding,
+  defineBinding,
   defineHook,
   defineJig,
   defineJournalPublisher,
@@ -24,7 +24,6 @@ import {
 import { captureFlowSource } from "../src/project/flow-source.js";
 import {
   linkPackageProject,
-  linkPrivateProjectRunTargetsPackageProject,
   privateProjectRunTargetCatalogue,
   type InjectedBindingDeclaration,
 } from "../src/project/package-project.js";
@@ -86,11 +85,11 @@ uses:
       const flows = await retainFlowSourcePackages(store, source);
       expect(() => linkPackageProject({
         flows,
-        bindings: [declaration("bindings/dispatcher.ts", definePrivateProjectRunTargetsBinding({
+        bindings: [declaration("bindings/dispatcher.ts", defineBinding({
           package: "flows/z-direct",
           slots: { work: projectRunTargets() },
         }))],
-      })).toThrow("not part of Project Authoring SDK/1");
+      })).toThrow("requires bounded two-phase project linking");
       const bindings: InjectedBindingDeclaration[] = [
         declaration("bindings/z-run.ts", { package: "flows/z-direct" }),
         declaration("bindings/a-configured.ts", {
@@ -149,7 +148,7 @@ uses:
   });
 
   test("permits an empty dynamic expansion and an authenticated empty project", async () => {
-    const project = linkPrivateProjectRunTargetsPackageProject({
+    const project = linkPackageProject({
       flows: [],
       bindings: [],
     }, 1);
@@ -164,11 +163,11 @@ uses:
         "flow.ts": "export {};\n",
       },
     }, async (flows) => {
-      const serviceProject = linkPrivateProjectRunTargetsPackageProject({
+      const serviceProject = linkPackageProject({
         flows,
         bindings: [declaration(
           "bindings/service.ts",
-          definePrivateProjectRunTargetsBinding({
+          defineBinding({
             package: "flows/service",
             slots: { work: projectRunTargets() },
           }),
@@ -194,10 +193,10 @@ uses:
         "flow.py": "#!/usr/bin/env python3\n",
       },
     }, async (flows) => {
-      const project = linkPrivateProjectRunTargetsPackageProject({
+      const project = linkPackageProject({
         flows,
         bindings: [
-          declaration("bindings/dispatcher.ts", definePrivateProjectRunTargetsBinding({
+          declaration("bindings/dispatcher.ts", defineBinding({
             package: "flows/dispatcher",
             slots: {
               first: projectRunTargets(),
@@ -258,10 +257,10 @@ uses:
       expect(dispatcherRequest.kind).toBe("activation-request/2");
       expect(dispatcherRequest.slots.first).toEqual(first);
 
-      const fixed = linkPrivateProjectRunTargetsPackageProject({
+      const fixed = linkPackageProject({
         flows,
         bindings: [
-          declaration("bindings/dispatcher.ts", definePrivateProjectRunTargetsBinding({
+          declaration("bindings/dispatcher.ts", defineBinding({
             package: "flows/dispatcher",
             slots: {
               first: candidates([
@@ -308,7 +307,7 @@ uses:
 
   test("rejects invalid caller bounds and complete catalogues above the bound", async () => {
     for (const limit of [0, -1, 1.5, Number.MAX_SAFE_INTEGER + 1]) {
-      expect(() => linkPrivateProjectRunTargetsPackageProject({ flows: [], bindings: [] }, limit)).toThrow(
+      expect(() => linkPackageProject({ flows: [], bindings: [] }, limit)).toThrow(
         "maximum activation targets must be a positive safe integer",
       );
     }
@@ -319,7 +318,7 @@ uses:
         "flow.ts": "export {};\n",
       },
     }, async (flows) => {
-      expect(() => linkPrivateProjectRunTargetsPackageProject({
+      expect(() => linkPackageProject({
         flows,
         bindings: [
           declaration("bindings/a.ts", { package: "flows/dispatcher" }),
@@ -340,10 +339,10 @@ uses:
         declaration("bindings/a.ts", { package: "flows/service" }),
         declaration("bindings/b.ts", { package: "flows/service" }),
       ];
-      expect(() => linkPrivateProjectRunTargetsPackageProject({ flows, bindings }, 1)).toThrow(
+      expect(() => linkPackageProject({ flows, bindings }, 1)).toThrow(
         "project contains 2 activation targets, exceeding the caller bound 1",
       );
-      const project = linkPrivateProjectRunTargetsPackageProject({ flows, bindings }, 2);
+      const project = linkPackageProject({ flows, bindings }, 2);
       expect(privateProjectRunTargetCatalogue(project)).toEqual([]);
     });
   });
@@ -357,12 +356,12 @@ uses:
     }, async (flows) => {
       const bindings = Array.from({ length: 600 }, (_, index) => declaration(
         `bindings/b-${index.toString().padStart(3, "0")}.ts`,
-        definePrivateProjectRunTargetsBinding({
+        defineBinding({
           package: "flows/dispatcher",
           slots: { work: projectRunTargets() },
         }),
       ));
-      expect(() => linkPrivateProjectRunTargetsPackageProject({ flows, bindings }, 601)).toThrow(
+      expect(() => linkPackageProject({ flows, bindings }, 601)).toThrow(
         "package-project semantic work exceeds 1000000 units",
       );
     });

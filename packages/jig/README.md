@@ -36,3 +36,8 @@ export default defineJig({
 
 These helpers construct inert frozen data. They do not discover or admit the
 referenced files.
+
+The same root exports `projectRunTargets()` for a Binding Flow-call slot. It
+declares the complete structural Run-target catalogue to be expanded and
+pinned during planning; it does not select, rank, authorize, or execute a
+target.

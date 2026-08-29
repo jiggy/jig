@@ -9,6 +9,7 @@ import {
   defineJournalPublisher,
   discover,
   flowRef,
+  projectRunTargets,
 } from "../src/index.js";
 import {
   defineHook,
@@ -46,6 +47,7 @@ const binding = defineBinding({
       bindingRef("research-deep"),
       flowRef("./flows/research-fast"),
     ]),
+    dynamic: projectRunTargets(),
   },
   attachments: { source: "./workspace" },
 });

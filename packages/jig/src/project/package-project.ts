@@ -5,18 +5,13 @@ import type { CheckedContractReference, InspectedPackage } from "../package/insp
 import { SchemaDiagnostic } from "../schema/index.js";
 import {
   defineBinding,
-  definePrivateProjectRunTargetsBinding,
   normalizeJournalPublisherDefinition,
   normalizeHookDefinition,
   normalizePackageBindingDefinition,
-  normalizePrivateProjectRunTargetsBindingDefinition,
   type BindingDefinition,
   type HookDefinition,
   type JournalPublisherDefinition,
   type PackageBindingInput,
-  type PrivateProjectRunTargetsBindingDefinition,
-  type PrivateProjectRunTargetsBindingInput,
-  type PrivateProjectRunTargetsRef,
   type RunTargetRef,
   type SlotRef,
 } from "./author.js";
@@ -138,7 +133,7 @@ export interface PackageProjectValue {
 interface PreparedBinding {
   readonly id: string;
   readonly declarationPath: string;
-  readonly definition: ReturnType<typeof defineBinding> | PrivateProjectRunTargetsBindingDefinition;
+  readonly definition: ReturnType<typeof defineBinding>;
   readonly flow: PreparedFlow;
 }
 
@@ -159,20 +154,12 @@ interface PreparedFlow {
  * Link factory-retained package inspections and evaluated Binding values
  * without I/O. This is invocation-local meaning, not capture or admission.
  */
-export function linkPackageProject(input: PackageProjectInput): PackageProjectValue {
-  return linkPackageProjectImplementation(input, undefined);
-}
-
-/**
- * Private two-phase linker for the sealed projectRunTargets() authoring
- * profile. The caller supplies the already-owned aggregate activation-target
- * bound; this layer neither invents another cap nor truncates the catalogue.
- */
-export function linkPrivateProjectRunTargetsPackageProject(
+export function linkPackageProject(
   input: PackageProjectInput,
-  maximumActivationTargets: number,
+  maximumActivationTargets?: number,
 ): PackageProjectValue {
-  if (!Number.isSafeInteger(maximumActivationTargets) || maximumActivationTargets < 1) {
+  if (maximumActivationTargets !== undefined &&
+      (!Number.isSafeInteger(maximumActivationTargets) || maximumActivationTargets < 1)) {
     throw new TypeError("maximum activation targets must be a positive safe integer");
   }
   return linkPackageProjectImplementation(input, maximumActivationTargets);
@@ -194,7 +181,6 @@ function linkPackageProjectImplementation(
     readBoundedArray(root.bindings, "bindings"),
     flowByPath,
     budget,
-    maximumActivationTargets !== undefined,
   );
   const prepared = declarations.filter((value): value is PreparedBinding => "flow" in value);
   const publishers = declarations.filter((value): value is PreparedJournalPublisher => !("flow" in value));
@@ -495,7 +481,6 @@ function prepareBindings(
   values: readonly unknown[],
   flowByPath: ReadonlyMap<string, PreparedFlow>,
   budget: WorkBudget,
-  allowProjectRunTargets: boolean,
 ): readonly (PreparedBinding | PreparedJournalPublisher)[] {
   const bindings = values.map((value, index) => {
     const record = readClosedRecord(value, ["sourcePath", "definition"], `bindings[${index}]`);
@@ -515,20 +500,16 @@ function prepareBindings(
       invalid("PROJECT_BINDING_ID", "Binding declaration basename must be a LocalName", declarationPath);
     }
 
-    let definition: BindingDefinition | PrivateProjectRunTargetsBindingDefinition;
+    let definition: BindingDefinition;
     try {
       const candidate = record.definition;
       if (typeof candidate === "object" && candidate !== null &&
           Object.hasOwn(candidate, "kind")) {
         definition = (candidate as { readonly kind?: unknown }).kind === "journal-publisher"
           ? normalizeJournalPublisherDefinition(candidate)
-          : allowProjectRunTargets
-            ? normalizePrivateProjectRunTargetsBindingDefinition(candidate)
-            : normalizePackageBindingDefinition(candidate);
+          : normalizePackageBindingDefinition(candidate);
       } else {
-        definition = allowProjectRunTargets
-          ? definePrivateProjectRunTargetsBinding(candidate as PrivateProjectRunTargetsBindingInput)
-          : defineBinding(candidate as PackageBindingInput);
+        definition = defineBinding(candidate as PackageBindingInput);
       }
     } catch (error) {
       invalid("PROJECT_BINDING_DECLARATION", errorText(error), declarationPath);
@@ -608,7 +589,7 @@ function linkBinding(
 function linkCapability(
   consumerId: string,
   slot: string,
-  configured: SlotRef | PrivateProjectRunTargetsRef,
+  configured: SlotRef,
   consumer: PreparedFlow,
   bindingById: ReadonlyMap<string, PreparedBinding>,
   publisherById: ReadonlyMap<string, PreparedJournalPublisher>,
@@ -670,7 +651,7 @@ function contractIdentityKey(value: ContractIdentity): string {
 
 function linkFlowCall(
   slot: string,
-  configured: SlotRef | PrivateProjectRunTargetsRef,
+  configured: SlotRef,
   flowByPath: ReadonlyMap<string, PreparedFlow>,
   bindingById: ReadonlyMap<string, PreparedBinding>,
   path: string,
@@ -681,7 +662,7 @@ function linkFlowCall(
     if (projectRunTargets === undefined) {
       invalid(
         "PROJECT_BINDING_DECLARATION",
-        "projectRunTargets() is not part of Project Authoring SDK/1",
+        "projectRunTargets() requires bounded two-phase project linking",
         path,
         slotPointer(slot),
       );

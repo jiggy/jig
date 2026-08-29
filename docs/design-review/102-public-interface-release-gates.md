@@ -218,9 +218,11 @@ projects captured inert desired state for:
 - attachments and complete settings.
 
 Its selected vocabulary is `defineJig`, `discover`, `defineBinding`, `flowRef`,
-`bindingRef`, and `candidates`. The checked-in declaration implementation and
-normalized captured-value schema must pass their corpus before this private
-slice may be handed to an external probe.
+`bindingRef`, `candidates`, and the direct slot source `projectRunTargets`.
+The first six values passed the general authoring campaign in review 170; the
+changing source separately passed the two-participant campaign in review 183.
+The checked-in declaration implementation and normalized captured-value schema
+remain the public source of truth.
 
 The private implementation boundary is fixed in
 [`108-project-capture-boundary.md`](108-project-capture-boundary.md): authored
@@ -258,9 +260,11 @@ runtime are now a closed private proof: inert authoring, exact revision
 intervals, atomic derivation, prompt same-epoch execution, and conservative
 restart loss all have executable evidence. They do not reopen Project
 Authoring SDK/1 or publish Hook authoring, inspection, replay, or scheduling.
-The zero-boilerplate target is resolved; only the changing admitted routing
-universe remains open in
-[`101-default-targets-and-open-routing-candidate.md`](101-default-targets-and-open-routing-candidate.md).
+The zero-boilerplate target and changing structural Run-target source are now
+resolved. `projectRunTargets()` is public inert authoring, while expansion,
+retention, complete direct-Flow filtering, and narrow deterministic dispatch
+remain private host evidence. Agent-backed choice, durable no-rerank ownership,
+and complete operational routing remain open in reviews 168 and 183.
 
 ### Jig host and administration interface
 
@@ -357,12 +361,11 @@ Review 159 separately closes only the pure canonical Semantic Choice value
 boundary with a synchronous deterministic test chooser. Resolver integration
 still requires a distinct durable decision operation, exact survivor and
 rejection evidence, committed-result reuse, and uncertainty without reranking.
-Project `semanticChoice` authoring, a qualifying provider Binding, an
-Agent-backed chooser, caller-specific filtering, and runtime dispatch remain
-release gates. Review 177 closes only the private retained-format portion of
-`projectRunTargets()`: Lock/3 and Activation Request/2 preserve exact source
-intent and complete expansion, and admission store v18 rejects mixed older
-authority. It neither publishes the marker nor selects a runtime target.
+Project `semanticChoice` authoring, a qualifying provider Binding, and an
+Agent-backed chooser remain release gates. Review 183 publishes only the inert
+`projectRunTargets()` authoring marker. The private host expands and retains it,
+filters complete pinned direct-Flow survivors, and can durably dispatch one
+survivor; complete runtime filtering and Agent-backed routing remain gated.
 
 The former Linux `SANDBOX_UNAVAILABLE` stop is historical. The private proof
 now has a delegated aggregate owner, pre-exec placement, entropy and

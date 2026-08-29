@@ -154,8 +154,8 @@ local Binding ID—such as `offline-choice` or `company-choice`—whose exact ex
 implements the Semantic Choice contract. It is never a strategy name, Flow ID,
 model name, prompt, or algorithm literal.
 
-The reviewed later authoring shape permits one explicit changing source in a
-Flow-call slot. It remains private rather than part of Project Authoring SDK/1:
+Project Authoring SDK/1 permits one explicit changing source in a Flow-call
+slot:
 
 ```ts
 slots: {
@@ -169,7 +169,7 @@ structurally valid unavailable targets. It retains the source kind beside the
 exact canonical target set. Services, Journal publishers, host capabilities,
 and invalid declarations never enter it. An unmapped slot remains missing.
 
-The private retained pipeline commits that source and complete expansion into
+The retained pipeline commits that source and complete expansion into
 Lock/3 and Activation Request/2. `exact`, `candidates`, and
 `project-run-targets` are distinct semantic sources: a fixed candidate list
 and changing source have different identities even when their exact target
@@ -486,13 +486,13 @@ none of these helpers imports or captures a live provider object.
 
 An ordinary zero-configuration discovered Run Flow is now a tagged direct
 admitted target and enters the same execution path as an admitted Run Binding.
-The reviewed changing-universe direction is the explicit per-slot
+The reviewed changing-universe source is the explicit per-slot
 `projectRunTargets()` marker described above and in the
 [target and routing disposition](../design-review/101-default-targets-and-open-routing-candidate.md).
-It remains outside the first authoring slice. Its private evaluation, complete
-expansion, Lock/3, Activation Request/2, and v18 admission retention are now
-implemented; public authoring, caller-specific filtering, Resolver use, and
-runtime dispatch remain separately gated.
+Its ordinary public authoring evaluation, complete expansion, Lock/3,
+Activation Request/2, and v18 admission retention are implemented. Runtime
+filtering and the current bounded zero/one/many dispatch remain private;
+semantic ranking and broader routing claims stay separately gated.
 
 Aggregate normalization also computes the transitive authority reachable
 through those exact dependencies. Provider-owned attachments and effect

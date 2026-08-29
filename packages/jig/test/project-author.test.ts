@@ -8,6 +8,7 @@ import {
   defineJournalPublisher,
   discover,
   flowRef,
+  projectRunTargets,
 } from "../src/index.js";
 import {
   defineHook,
@@ -92,6 +93,18 @@ describe("Jig project authoring SDK/1", () => {
       slots: {},
       attachments: {},
     });
+  });
+
+  test("captures the complete project Run-target source only as a direct slot", () => {
+    const marker = projectRunTargets();
+    const binding = defineBinding({ package: "./flows/router", slots: { work: marker } });
+    expect(binding.slots.work).toEqual({ kind: "project-run-targets" });
+    expect(Object.isFrozen(marker)).toBeTrue();
+    expect(Object.isFrozen(binding.slots.work)).toBeTrue();
+    expect(normalizePackageBindingDefinition(binding)).toEqual(binding);
+    expect(() => candidates([marker as never, flowRef("flows/worker")])).toThrow(
+      "Run target must be a flowRef() or bindingRef()",
+    );
   });
 
   test("captures one exact canonical Journal publisher", () => {

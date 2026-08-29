@@ -7,12 +7,9 @@ const MAX_REQUEST_BYTES = 2 * 1024 * 1024;
 const VM_TIMEOUT_MS = 1_000;
 const SDK_ENTRY = "/jig-evaluator/internal/project-evaluator-sdk.bundle.js";
 const HOOK_SDK_ENTRY = "/jig-evaluator/internal/experimental-hook-evaluator-sdk.bundle.js";
-const PROJECT_RUN_TARGETS_SDK_ENTRY =
-  "/jig-evaluator/internal/private-project-run-targets-evaluator-sdk.bundle.js";
 type AuthoringProfile =
   | "project-authoring/1"
-  | "private-project-authoring-hooks/1"
-  | "private-project-run-targets-authoring/1";
+  | "private-project-authoring-hooks/1";
 const EVALUATION_CODES = new Set([
   "PROJECT_AUTHORING_VALUE",
   "PROJECT_DEFAULT_EXPORT",
@@ -172,7 +169,6 @@ async function readRequest(): Promise<WorkerRequest> {
 async function build(request: WorkerRequest): Promise<string> {
   const sdkSource = await runtime.file(SDK_ENTRY).text();
   const hookSdkSource = await runtime.file(HOOK_SDK_ENTRY).text();
-  const projectRunTargetsSdkSource = await runtime.file(PROJECT_RUN_TARGETS_SDK_ENTRY).text();
   const modules = new Map(request.modules.map((module) => [module.projectPath, module]));
   const edges = new Map<string, string>();
   for (const module of request.modules) {
@@ -240,14 +236,6 @@ async function build(request: WorkerRequest): Promise<string> {
           }
           return { path: "hook-sdk", namespace: "jig-sealed" };
         });
-        builder.onResolve({ filter: /^@jigging\/jig\/private\/project-run-targets$/ }, (arguments_) => {
-          if (arguments_.kind !== "import-statement" ||
-              !modules.has(arguments_.importer) ||
-              request.authoringProfile !== "private-project-run-targets-authoring/1") {
-            throw deniedImport(arguments_.path);
-          }
-          return { path: "project-run-targets-sdk", namespace: "jig-sealed" };
-        });
         builder.onLoad({ filter: /^sdk$/, namespace: "jig-sealed" }, () => ({
           loader: "js",
           contents: sdkSource,
@@ -255,10 +243,6 @@ async function build(request: WorkerRequest): Promise<string> {
         builder.onLoad({ filter: /^hook-sdk$/, namespace: "jig-sealed" }, () => ({
           loader: "js",
           contents: hookSdkSource,
-        }));
-        builder.onLoad({ filter: /^project-run-targets-sdk$/, namespace: "jig-sealed" }, () => ({
-          loader: "js",
-          contents: projectRunTargetsSdkSource,
         }));
         builder.onResolve({ filter: /.*/, namespace: "jig-sealed" }, (arguments_) => {
           throw deniedImport(arguments_.path);
@@ -311,8 +295,7 @@ async function build(request: WorkerRequest): Promise<string> {
 
 function isAuthoringProfile(value: unknown): value is AuthoringProfile {
   return value === "project-authoring/1" ||
-    value === "private-project-authoring-hooks/1" ||
-    value === "private-project-run-targets-authoring/1";
+    value === "private-project-authoring-hooks/1";
 }
 
 function deniedImport(path: string): Error & { readonly code: string } {

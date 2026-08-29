@@ -109,13 +109,15 @@ description: A valid installed Jig package-check smoke Flow.
   assert.match(checked.stdout, /^implementation: instruction$/m);
 
   await writeFile(join(consumer, "smoke.mjs"), `
-import { defineBinding, defineJig, discover, flowRef } from "@jigging/jig";
+import { defineBinding, defineJig, discover, flowRef, projectRunTargets } from "@jigging/jig";
 import { bindingRef, defineHook, defineJig as defineHookJig } from "@jigging/jig/experimental/hooks";
 const project = defineJig({ flows: discover("./flows") });
 const binding = defineBinding({ package: "./flows/review", slots: { child: flowRef("./flows/child") } });
+const dynamic = defineBinding({ package: "./flows/review", slots: { child: projectRunTargets() } });
 const hookProject = defineHookJig({ hooks: discover("./hooks") });
 const hook = defineHook({ on: { publisher: bindingRef("events"), type: "https://example.org/events/work" }, run: flowRef("./flows/review") });
 if (project.flows.roots[0] !== "flows" || binding.package !== "flows/review" ||
+    dynamic.slots.child.kind !== "project-run-targets" ||
     hookProject.hooks.roots[0] !== "hooks" || hook.kind !== "hook") throw new Error("bad package exports");
 `);
   await run(["bun", "smoke.mjs"], consumer);
@@ -135,6 +137,7 @@ import { readFile } from "node:fs/promises";
 const path = import.meta.resolve("@jigging/jig/schema/project-authoring-1");
 const schema = JSON.parse(await readFile(new URL(path), "utf8"));
 if (schema.$schema !== "https://flow.dev/schemas/schema-1.json") throw new Error("bad packaged schema");
+if (!schema.$defs?.projectRunTargets) throw new Error("missing projectRunTargets schema");
 const administrationPath = import.meta.resolve("@jigging/jig/schema/root-administration-1");
 const administration = JSON.parse(await readFile(new URL(administrationPath), "utf8"));
 if (!administration.$defs?.startRunRequest) throw new Error("bad packaged administration schema");
@@ -147,11 +150,13 @@ if (!projectAdministration.$defs?.planResult) throw new Error("bad packaged proj
   assert.equal(installedManifest.private, true);
 
   await writeFile(join(consumer, "smoke.ts"), `
-import { defineJig, discover, type JigDefinitionInput } from "@jigging/jig";
+import { defineBinding, defineJig, discover, projectRunTargets, type JigDefinitionInput, type ProjectRunTargetsRef } from "@jigging/jig";
 import { defineHook, defineJig as defineHookJig, bindingRef, flowRef } from "@jigging/jig/experimental/hooks";
 import type { ProjectSession, RootAdministration, RootRunStatus } from "@jigging/jig/administration";
 const input: JigDefinitionInput = { flows: discover("./flows") };
 const project = defineJig(input);
+const source: ProjectRunTargetsRef = projectRunTargets();
+const dynamicBinding = defineBinding({ package: "./flows/router", slots: { work: source } });
 const hookProject = defineHookJig({ hooks: discover("./hooks") });
 const hook = defineHook({ on: { publisher: bindingRef("events"), type: "https://example.org/events/work" }, run: flowRef("./flows/review") });
 declare const administration: RootAdministration;
@@ -159,6 +164,7 @@ declare const session: ProjectSession;
 const status: Promise<RootRunStatus> = administration.runStatus({ runId: "sha256:${"a".repeat(64)}" });
 const planned = session.plan({ lockMode: "update" });
 void project;
+void dynamicBinding;
 void hookProject;
 void hook;
 void status;

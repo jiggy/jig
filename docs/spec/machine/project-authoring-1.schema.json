@@ -95,10 +95,19 @@
       "required": ["kind", "targets"],
       "additionalProperties": false
     },
+    "projectRunTargets": {
+      "type": "object",
+      "properties": {
+        "kind": { "const": "project-run-targets" }
+      },
+      "required": ["kind"],
+      "additionalProperties": false
+    },
     "slotRef": {
       "oneOf": [
         { "$ref": "#/$defs/runTargetRef" },
-        { "$ref": "#/$defs/candidateSet" }
+        { "$ref": "#/$defs/candidateSet" },
+        { "$ref": "#/$defs/projectRunTargets" }
       ]
     },
     "packageBinding": {

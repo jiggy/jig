@@ -19,6 +19,7 @@ import {
   defineJournalPublisher,
   discover,
   flowRef,
+  projectRunTargets,
 } from "@jigging/jig";
 ```
 
@@ -70,8 +71,9 @@ export default defineBinding({
 configuration is a different Binding; there are no profiles, inheritance,
 overlays, environment fallback, or per-Run setting overrides.
 
-`slots` accepts one tagged Flow or Binding target, or `candidates()` containing
-two or more tagged Run targets. Candidate order has no semantic precedence.
+`slots` accepts one tagged Flow or Binding target, `candidates()` containing
+two or more tagged Run targets, or the explicit `projectRunTargets()` changing
+source. Candidate order has no semantic precedence.
 The authoritative normalizer rejects duplicate targets and incompatible slot
 kinds after resolving package metadata.
 
@@ -85,10 +87,27 @@ project cannot widen those declarations.
 flowRef("./flows/review")
 bindingRef("strict-review")
 candidates([flowRef("./flows/fast"), bindingRef("deep")])
+projectRunTargets()
 ```
 
 References are tagged plain data. Raw target strings are not accepted and one
 namespace never silently wins over another.
+
+`projectRunTargets()` means the complete structural Run-target catalogue of
+the immutable project Candidate used for planning. It is expanded once,
+reviewed, locked, and pinned with the admitted generation. It grants no
+authority, chooses no route, invokes no model, and performs no author-time
+discovery. A fixed `candidates([...])` list and this changing source remain
+different identities even when their current expansions match. The marker is
+valid only as a direct Flow-call slot value and cannot be nested in
+`candidates()`.
+
+Runtime filtering happens later against the pinned expansion. The current
+private host can dispatch one surviving direct Flow or one narrowly
+configuration-only Bun Run Binding; zero survivors dispatch nothing and
+several survivors remain ambiguous. Agent ranking, recursive composition,
+general configured Binding dispatch, and complete authority/resource/liveness
+filtering are not claims of this authoring surface.
 
 ### `defineJournalPublisher`
 
@@ -188,7 +207,7 @@ normalized JSON Pointer. The shape schema alone is never admission evidence.
 ## 5. Deliberate exclusions
 
 Project Authoring SDK/1 does not expose Hooks, Service export references,
-instruction Agent selection, `semanticChoice`, `projectRunTargets()`, generic
+instruction Agent selection, `semanticChoice`, generic
 host-capability Bindings, registration-defined grants, or runtime/sandbox
 selection. Private Hook work uses a separately named experimental overlay and
 machine schema; those are not members of SDK/1 and carry no compatibility
