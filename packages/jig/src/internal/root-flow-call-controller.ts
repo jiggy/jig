@@ -122,6 +122,7 @@ export async function executePrivateRootFlowCall(
       parent: input.parent,
       call: input.call,
       packageStoreRoot: input.packageStoreRoot,
+      signal: input.signal,
     });
     if (resolution.state === "missing") {
       throw new CheckError(
@@ -533,7 +534,8 @@ function preallocationFailure(error: unknown): RunHostOperationTerminal {
   }
   if (error instanceof CheckError && (
     error.code === "UNAVAILABLE" || error.code === "RESOURCE_EXHAUSTED" ||
-    error.code === "INVALID_INPUT" || error.code === "PERMISSION_DENIED"
+    error.code === "INVALID_INPUT" || error.code === "PERMISSION_DENIED" ||
+    error.code === "CANCELLED"
   )) {
     return Object.freeze({ status: "failed", code: error.code, message: error.message });
   }

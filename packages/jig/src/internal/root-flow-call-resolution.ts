@@ -98,6 +98,7 @@ export async function resolvePrivateRootFlowCall(input: {
   readonly parent: PrivateReacquiredRootExecutionWork;
   readonly call: RunHostFlowCall;
   readonly packageStoreRoot: string;
+  readonly signal?: AbortSignal;
 }): Promise<PrivateRootFlowCallResolution> {
   const cache: PackageInspectionCache = {
     inspections: new Map(),
@@ -114,9 +115,11 @@ async function resolveWithCache(
     readonly parent: PrivateReacquiredRootExecutionWork;
     readonly call: RunHostFlowCall;
     readonly packageStoreRoot: string;
+    readonly signal?: AbortSignal;
   },
   cache: PackageInspectionCache,
 ): Promise<PrivateRootFlowCallResolution> {
+  requireNotCancelled(input.signal);
   const candidate = requirePrivateStoredActivationCandidate(input.parent.candidate);
   const targetByKey = candidateTargetMap(candidate.candidate.targets);
   const parent = targetByKey.get(privateActivationTargetKey(input.parent.run.target));
@@ -138,6 +141,7 @@ async function resolveWithCache(
   );
 
   for (const identity of targets) {
+    requireNotCancelled(input.signal);
     const target = targetByKey.get(privateActivationTargetKey(identity));
     if (target === undefined) {
       throw corrupt(
@@ -162,6 +166,7 @@ async function resolveWithCache(
       input.packageStoreRoot,
       target.request.package,
       cache,
+      input.signal,
     );
     if (identity.kind === "flow") {
       requireDirectFlowProjection(ready, inspected);
@@ -173,6 +178,7 @@ async function resolveWithCache(
       continue;
     }
     if (source !== "exact") {
+      requireNotCancelled(input.signal);
       try {
         inspected.schemas.input?.validate(input.call.input, "INVALID_INPUT");
       } catch (error) {
@@ -186,8 +192,11 @@ async function resolveWithCache(
         continue;
       }
     }
+    requireNotCancelled(input.signal);
     survivors.push(ready);
   }
+
+  requireNotCancelled(input.signal);
 
   rejected.sort((left, right) =>
     compareOrdinal(privateActivationTargetKey(left.target), privateActivationTargetKey(right.target))
@@ -226,14 +235,21 @@ async function inspectionFor(
   packageStoreRoot: string,
   reference: PackageArtifactRef,
   cache: PackageInspectionCache,
+  signal?: AbortSignal,
 ): Promise<InspectedPackage> {
+  requireNotCancelled(signal);
   const prior = cache.inspections.get(reference.digest);
-  if (prior !== undefined) return prior;
+  if (prior !== undefined) {
+    requireNotCancelled(signal);
+    return prior;
+  }
   const captured = await captureStoredPackage(packageStoreRoot, reference);
   let inspected: InspectedPackage | undefined;
   let operationFailure: unknown;
   try {
+    requireNotCancelled(signal);
     inspected = await inspectCapturedPackage(captured);
+    requireNotCancelled(signal);
   } catch (error) {
     operationFailure = error;
   }
@@ -251,8 +267,19 @@ async function inspectionFor(
   }
   if (operationFailure !== undefined) throw operationFailure;
   if (inspected === undefined) throw corrupt("Package/1 inspection produced no result");
+  requireNotCancelled(signal);
   cache.inspections.set(reference.digest, inspected);
   return inspected;
+}
+
+function requireNotCancelled(signal: AbortSignal | undefined): void {
+  if (signal?.aborted) {
+    throw new CheckError(
+      "unavailable",
+      "CANCELLED",
+      "child Flow selection was cancelled before allocation",
+    );
+  }
 }
 
 function candidateTargetMap(

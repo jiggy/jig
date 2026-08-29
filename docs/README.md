@@ -37,6 +37,10 @@ Start here:
 
 Current implementation frontier:
 
+- [`design-review/184-cancellation-aware-flow-call-resolution.md`](design-review/184-cancellation-aware-flow-call-resolution.md)
+  propagates the existing operation signal through complete deterministic
+  target filtering, closing a 4,096-target cancellation-latency debt without
+  adding a public Resolver or wire operation.
 - [`design-review/183-project-run-targets-authoring-campaign.md`](design-review/183-project-run-targets-authoring-campaign.md)
   accepts the inert `projectRunTargets()` Project Authoring SDK/1 value after
   two clean-room consumers and the real retained evaluator converged, while

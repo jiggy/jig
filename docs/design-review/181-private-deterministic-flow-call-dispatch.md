@@ -78,11 +78,10 @@ This checkpoint does not add:
 - public `projectRunTargets()` authoring; or
 - a new Run/1 error code.
 
-Broad filtering is finite and bounded, but it currently observes operation
-cancellation only after the complete scan. That can delay parent settlement
-for an expensive maximum-set filter, although no package code is dispatched
-during the scan. This is explicit follow-up debt, not a reason to weaken the
-completed authority and lifecycle proof.
+Review 184 closes the former cancellation-responsiveness debt: the existing
+operation signal is now checked between candidates and after each
+non-interruptible retained-package operation, before durable child allocation.
+No package code is dispatched by the scan.
 
 The next safe product slice is a configuration-only Run Binding: immutable
 settings, no attachments, and no slots. Capability-bearing children wait for

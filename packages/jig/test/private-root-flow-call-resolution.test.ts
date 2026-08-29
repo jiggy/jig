@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import {
   mkdir,
   mkdtemp,
+  readdir,
   rm,
   stat,
   unlink,
@@ -260,6 +261,47 @@ describe("private root Flow-call resolution", () => {
       expect(result.survivors.length + result.rejected.length).toBe(4_096);
     } finally { await fixture.dispose(); }
   }, 120_000);
+
+  test("stops a broad scan after operation cancellation", async () => {
+    const flows = Array.from({ length: 257 }, (_, index) => ({
+      path: `flows/worker-${index.toString().padStart(3, "0")}`,
+    }));
+    const fixture = await createFixture({ source: "project-run-targets", flows });
+    try {
+      const descriptorsBefore = (await readdir("/proc/self/fd")).length;
+      const cancellation = new AbortController();
+      const resolution = resolvePrivateRootFlowCall({
+        parent: fixture.work,
+        packageStoreRoot: fixture.store,
+        call: call(null),
+        signal: cancellation.signal,
+      });
+      setTimeout(() => cancellation.abort(), 0);
+      await expect(resolution).rejects.toMatchObject({
+        kind: "unavailable",
+        code: "CANCELLED",
+      });
+      expect((await readdir("/proc/self/fd")).length).toBe(descriptorsBefore);
+
+      const alreadyCancelled = new AbortController();
+      alreadyCancelled.abort();
+      await expect(resolvePrivateRootFlowCall({
+        parent: fixture.work,
+        packageStoreRoot: fixture.store,
+        call: call(null),
+        signal: alreadyCancelled.signal,
+      })).rejects.toMatchObject({ kind: "unavailable", code: "CANCELLED" });
+
+      const sqlite = createRequire(import.meta.url)("bun:sqlite") as any;
+      const database = sqlite.Database.open(
+        join(fixture.base, "project", ".jig", "private-activation-admission-v18.sqlite3"),
+        sqlite.constants.SQLITE_OPEN_READONLY | sqlite.constants.SQLITE_OPEN_NOFOLLOW,
+      );
+      try {
+        expect(database.query("SELECT count(*) AS count FROM root_flow_calls").get().count).toBe(0);
+      } finally { database.close(true); }
+    } finally { await fixture.dispose(); }
+  }, 30_000);
 
   test("rejects non-store provenance and pinned candidate or Package/1 corruption", async () => {
     const fixture = await createFixture({
