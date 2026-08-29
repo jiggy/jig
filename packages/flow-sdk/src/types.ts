@@ -14,10 +14,10 @@ export interface Attachment {
   readonly access: AttachmentAccess;
 }
 
-export interface RunResult {
+export type RunResult = {
   readonly outcome: string;
   readonly output: JsonValue;
-}
+};
 
 export interface FlowCall {
   readonly operationId: string;

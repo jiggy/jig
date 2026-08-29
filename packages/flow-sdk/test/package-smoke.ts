@@ -116,7 +116,7 @@ if ("serveService" in runSdk || "ServiceError" in runSdk || "ServiceDefinition" 
 
   await writeFile(
     join(consumer, "smoke.ts"),
-    `import { OperationError, type RunHandler } from "@flowmd/sdk";
+    `import { OperationError, type JsonValue, type RunHandler, type RunResult } from "@flowmd/sdk";
 // @ts-expect-error Service/1 is deliberately absent from the Run SDK root.
 import { serveService as rootServeService } from "@flowmd/sdk";
 // @ts-expect-error Service/1 is deliberately absent from the Run SDK root.
@@ -139,6 +139,14 @@ const service: ServiceDefinition = {
   mount: async context => { await context.ready(); await context.cancelled; },
 };
 void service;
+const runResult: RunResult = {
+  outcome: "done",
+  output: { value: 1 },
+};
+const directJson: JsonValue = runResult;
+const nestedJson: JsonValue = { result: runResult };
+void directJson;
+void nestedJson;
 void rootServeService;
 void RootServiceError;
 const rootServiceDefinition: RootServiceDefinition | undefined = undefined;

@@ -51,10 +51,10 @@ type JsonValue =
   | readonly JsonValue[]
   | { readonly [key: string]: JsonValue };
 
-interface RunResult {
+type RunResult = {
   readonly outcome: string;
   readonly output: JsonValue;
-}
+};
 
 interface FlowCall {
   readonly operationId: string;
@@ -187,7 +187,9 @@ whose retry and deduplication meaning is defined by Run/1.
 ## 5. Results and errors
 
 `callFlow` and `call_flow` return the complete child `RunResult`, including its
-outcome. `callEffect` and `call_effect` unwrap a successful effect `{ value }`.
+outcome. In TypeScript, `RunResult` is itself a `JsonValue` and may be retained
+directly inside another Run result without rebuilding or casting it.
+`callEffect` and `call_effect` unwrap a successful effect `{ value }`.
 A declared capability error raises `EffectError`, carrying `errorName` and
 `data` in TypeScript or `error_name` and `data` in Python. Its human exception
 message is not portable; authors branch only on the named fields.

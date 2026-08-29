@@ -360,7 +360,7 @@ export function cancelMessage(id: string): JsonObject {
 }
 
 export function resultMessage(id: string, result: RunResult): JsonObject {
-  return { jsonrpc: "2.0", id, result: result as unknown as JsonValue };
+  return { jsonrpc: "2.0", id, result };
 }
 
 export function errorMessage(

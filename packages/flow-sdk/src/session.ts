@@ -252,7 +252,7 @@ export class RunSession {
     try {
       if (pending.kind === "flow") {
         const parsed = parseRunResult(result);
-        this.settleOutbound(pending, { result: parsed as unknown as JsonValue });
+        this.settleOutbound(pending, { result: parsed });
       } else {
         const parsed = parseEffectResult(result);
         if (parsed.kind === "value") {
@@ -355,7 +355,7 @@ export class RunSession {
       try {
         result = parseRunResult(result as unknown as JsonValue);
         // Validate the complete application value before selecting success.
-        encodeJson(result as unknown as JsonValue);
+        encodeJson(result);
       } catch (error) {
         failure = "INVALID_RESULT";
         this.diagnose(error);

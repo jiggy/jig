@@ -305,7 +305,7 @@ export class ServiceSession {
         mount.readiness = "acknowledged";
         this.settleOutbound(pending, { result });
       } else if (pending.kind === "flow") {
-        this.settleOutbound(pending, { result: parseRunResult(result) as unknown as JsonValue });
+        this.settleOutbound(pending, { result: parseRunResult(result) });
       } else {
         const parsed = parseEffectResult(result);
         if (parsed.kind === "value") this.settleOutbound(pending, { result: parsed.value });

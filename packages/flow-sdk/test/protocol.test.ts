@@ -1,6 +1,11 @@
 import { describe, expect, test } from "bun:test";
 
-import { parseEnvelope, validateFlowCall } from "../src/protocol.ts";
+import {
+  parseEnvelope,
+  parseRunResult,
+  resultMessage,
+  validateFlowCall,
+} from "../src/protocol.ts";
 
 describe("JSON-RPC envelope validation", () => {
   test("rejects null and scalar request params", () => {
@@ -86,5 +91,23 @@ describe("public call validation", () => {
         } as never),
       ).toThrow(TypeError);
     }
+  });
+});
+
+describe("Run results", () => {
+  test("preserves the exact Run/1 result wire shape", () => {
+    const result = parseRunResult({
+      outcome: "done",
+      output: { nested: [true, null, "value"] },
+    });
+
+    expect(resultMessage("host:1", result)).toEqual({
+      jsonrpc: "2.0",
+      id: "host:1",
+      result: {
+        outcome: "done",
+        output: { nested: [true, null, "value"] },
+      },
+    });
   });
 });
