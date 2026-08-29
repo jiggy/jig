@@ -56,6 +56,7 @@ new wire error, recursive owner chain, wait graph, semantic chooser, provider,
 or broader configured-Binding execution. Immediate parent exclusion remains
 sufficient for the currently supported non-recursive leaf-child profile.
 
-With this debt closed, the local first-release critical path reaches the
-external operational-host, retained native-artifact, and Agent-provider
-boundaries recorded by reviews 158, 168, and 179.
+With this debt closed, the first-release path reaches native preparation plus
+the external operational-host and Agent-provider boundaries. Review 186 later
+corrects the native artifact to locally actionable package input; reviews 158
+and 168 retain the external Agent/provider boundary.

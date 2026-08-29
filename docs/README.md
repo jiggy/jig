@@ -37,11 +37,17 @@ Start here:
 
 Current implementation frontier:
 
+- [`design-review/186-package-local-native-artifact-correction.md`](design-review/186-package-local-native-artifact-correction.md)
+  corrects the native-preparation ownership boundary: the SDK archive is
+  untrusted package-local content captured and admitted through Package/1 and
+  Plan/apply, while runtimes, installers and containment remain host-owned.
+  No Jig-specific `agent-sandbox` feature or administrator dependency
+  whitelist is required.
 - [`design-review/185-first-release-external-join.md`](design-review/185-first-release-external-join.md)
-  records that the next executable critical-path proof has reached its external
-  substrate join after deterministic changing-source hardening, fixes the
-  direct-leaf versus Agent-worker claim, and defers Event Sources until the
-  independent post-routing campaign.
+  records the remaining production-host and Agent-provider joins after
+  deterministic changing-source hardening, fixes the direct-leaf versus
+  Agent-worker claim, and defers Event Sources until the independent
+  post-routing campaign. Review 186 supersedes its former SDK-artifact blocker.
 - [`design-review/184-cancellation-aware-flow-call-resolution.md`](design-review/184-cancellation-aware-flow-call-resolution.md)
   propagates the existing operation signal through complete deterministic
   target filtering, closing a 4,096-target cancellation-latency debt without
@@ -67,9 +73,8 @@ Current implementation frontier:
   while leaving configured Bindings, durable dispatch, and Semantic Choice
   separate.
 - [`design-review/179-native-preparation-artifact-boundary.md`](design-review/179-native-preparation-artifact-boundary.md)
-  records the exact retained SDK artifact substrate missing from the selected
-  native-preparation proof after rejecting caller-asserted path, digest, and
-  lifetime claims without growing Jig into a package manager.
+  preserves the rejection of caller-asserted path, digest, and lifetime claims.
+  Its administrator-owned SDK conclusion is superseded by review 186.
 - [`design-review/178-project-run-target-review-delta.md`](design-review/178-project-run-target-review-delta.md)
   adds one bounded navigation delta for changing Run-target slots, including
   private target-meaning revisions without disclosing their evidence, while

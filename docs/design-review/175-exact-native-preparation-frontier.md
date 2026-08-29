@@ -3,10 +3,11 @@
 **Status:** selected on 2026-08-29 after the clean-room Project Authoring
 campaign exposed the missing SDK installations and an adversarial comparison
 of native installers versus a Jig-owned archive extractor. No preparation
-implementation is claimed by this record. The subsequent
-[artifact-boundary review](179-native-preparation-artifact-boundary.md) rejects
-caller-asserted archive evidence and records the exact host-owned substrate
-required before this implementation may begin.
+implementation is claimed by this record. Review 179 correctly rejects
+caller-asserted archive evidence but assigns dependency custody to the wrong
+owner. The
+[package-local correction](186-package-local-native-artifact-correction.md)
+supersedes that external blocker and fixes the input to this implementation.
 
 ## 1. The exact gap
 
@@ -18,9 +19,11 @@ recipes materialize the authored Package/1 unchanged and deliberately disable
 ambient installation or lookup, so the same components cannot yet execute
 through the Jig host.
 
-This is a native preparation gap. It is not a reason to vendor the SDKs into
-the subject, mount dependencies as Runtime Support Closure, add `NODE_PATH` or
-`PYTHONPATH`, consult a registry, or broaden FLOW metadata.
+This is a native preparation gap. It is not a reason to mount dependencies as
+Runtime Support Closure, add `NODE_PATH` or `PYTHONPATH`, consult an ambient
+registry, or broaden FLOW metadata. The corrected first offline proof may use
+one exact package-local archive as ordinary native input; that is a bounded
+pre-publication fixture rather than a new FLOW convention.
 
 ## 2. Rejected design: a Jig-owned two-format extractor
 
@@ -54,9 +57,10 @@ The first slice supports only:
 
 ```text
 one exact Bun Package/1 fixture
-    declaring @flowmd/sdk at one exact version
+    declaring one relative package-local @flowmd/sdk archive
 
-one exact authenticated retained SDK tarball
+one exact SDK tarball identified inside Package/1 and retained by its
+protected PackageArtifact owner
 
 one fixed offline, networkless, script-free Bun install
 
@@ -65,12 +69,14 @@ one immutable private prepared-tree artifact
 one final Run/1 process launched read-only with --no-install
 ```
 
-The host supplies the installer through exact authenticated runtime support.
-Protected planning constructs a synthetic one-dependency manifest pointing at
-the retained local tarball and invokes Bun with fixed no-save, ignore-scripts,
-empty-cache, copyfile, and no-config policy. The installer receives an empty
-environment, no network, no ambient cache or home, no package registry, no
-project tree, no attachments, no effects, no secrets, and no Run/1 channel.
+The host supplies only the installer and runtime through exact authenticated
+runtime support. Protected planning derives a synthetic one-dependency
+manifest from the retained native declaration and its relative archive member,
+then invokes Bun with fixed no-save, ignore-scripts, empty-cache, copyfile, and
+no-config policy. The installer receives the immutable source and dependency
+member, an empty environment, no network, no ambient cache or home, no package
+registry, no project tree, no attachments, no effects, no secrets, and no
+Run/1 channel.
 
 If that passes, the second slice may add the exact pure Python wheel using
 authenticated pip with isolated, no-index, no-deps, no-cache, no-compile, and
@@ -117,7 +123,7 @@ admission. Final execution uses a separate private prepared-tree reference.
 
 The portable lock and Candidate/5 grammar need not change for this exact
 private proof. The candidate value must change: its ready recipe and
-observation commit the exact dependency artifact, installer/runtime identity,
+observation commit the exact derived dependency member, installer/runtime identity,
 preparation plan, Backend/envelope identity, and non-null preparation plan and
 envelope digests. That changes activation meaning, Candidate digest, Plan, and
 admitted generation in the ordinary way.
@@ -128,19 +134,22 @@ portable lock. Execution/recovery may reopen only a completed authenticated
 preparation result; it never starts preparation while reproducing an admitted
 root after uncertain dispatch.
 
-The source subjects have exact version declarations but no native lockfiles.
-An exact operator-supplied artifact can support this one private proof, but it
-does not prove portable dependency locking or justify a public Lock/1
-conclusion.
+The corrected source subject uses one exact relative local dependency but no
+general registry lock. This supports one private offline proof; it does not
+prove portable dependency locking or justify a public Lock/1 conclusion.
 
 ## 6. Implementation sequence
 
-1. Retain and authenticate the exact Bun SDK tarball and recognize only the
-   campaign's exact manifest shape; every other shape is unavailable.
-2. Define a distinct bounded immutable private prepared-tree artifact/store,
+1. Recognize only one retained package whose exact native declaration points
+   to one relative SDK tarball member; derive the dependency key, normalized
+   member path, member digest and installer inputs from the same Package/1
+   bytes. Do not host-parse npm tar metadata. Every other shape is unavailable.
+2. Prove one ephemeral offline/script-free Bun install inside the existing
+   Backend, then validate its installed identity and bounded safe output after
+   complete-tree fencing. Output bytes may be buffered by the trusted helper
+   while the process runs, but cannot be accepted or published before fencing.
+3. Define a distinct bounded immutable private prepared-tree artifact/store,
    never a second Package/1 interpretation.
-3. Prove one ephemeral offline/script-free Bun install and safe-tree capture
-   inside the existing Backend.
 4. Add durable preparation intent, possible-dispatch, fencing, result,
    release, closure, recovery, and no-redispatch ownership.
 5. Commit non-null preparation evidence into the Bun recipe and Project
@@ -154,7 +163,8 @@ conclusion.
 
 Stop rather than broaden if:
 
-- the artifact or installer is not authenticated, retained, and reacquirable;
+- the dependency member is not captured, retained, and reacquirable with its
+  Package/1, or the installer/runtime is not authenticated host machinery;
 - the installer consults network, registry, ambient cache/configuration, or
   executes scripts;
 - Python would require an sdist/build backend or unauthenticated pip;

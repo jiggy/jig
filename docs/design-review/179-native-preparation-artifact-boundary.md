@@ -1,8 +1,10 @@
 # Native preparation artifact boundary
 
-**Status:** externally blocked on 2026-08-29 after one private implementation
-attempt was rejected and removed. Review 175's native-installer design remains
-selected; no preparation code or public interface was retained.
+**Status:** superseded in part on 2026-08-29 by
+[review 186](186-package-local-native-artifact-correction.md). The rejected
+caller-asserted API remains rejected. The conclusion that the SDK archive
+needed administrator-owned admission was a category error; dependency bytes
+now remain inside captured Package/1 and ordinary Plan/apply authority.
 
 ## 1. The attempted shortcut was not admissible evidence
 
@@ -25,43 +27,48 @@ reacquire it, or that the dependency declared by the retained Package/1 is the
 one being installed. The sketch was therefore deleted rather than hardened
 into a private artifact store or package-manager integration.
 
-## 2. Exact missing substrate
+## 2. Superseded missing-substrate conclusion
 
-The first Bun preparation proof requires one administrator/operator-owned
-record for the exact `@flowmd/sdk@0.0.0` archive. That record must:
+This review originally required one administrator/operator-owned record for
+the exact `@flowmd/sdk@0.0.0` archive. That would have required the host to
+approve ordinary untrusted package dependencies and is no longer current.
 
-- authenticate the retained archive artifact and its content identity;
-- promise a lifetime which covers planning, admission, dispatch, restart
+The underlying requirements remain, but their owners are now precise:
+
+- capture the archive inside the Package/1 content identity;
+- retain Package/1 through planning, admission, dispatch, restart
   reacquisition, fencing, and cleanup;
-- be reacquirable from protected host state rather than a caller path;
+- reacquire it from the protected PackageArtifact store rather than a caller
+  path;
 - fail closed when absent, replaced, or expired; and
 - give package code no registry, cache, package-manager, retention, receipt,
   or host-control authority.
 
 The synthetic installer manifest and lock must be derived from the exact
-retained source Package/1 native declaration and the authenticated artifact.
+retained source Package/1 native declaration and its captured relative member.
 They are not independent caller inputs. Installer, toolchain, and runtime
 facts likewise come from authenticated host observations.
 
-An already-approved generic retained-artifact substrate with equivalent
-evidence would also satisfy this boundary. None exists in the current host
-contract.
+The existing protected PackageArtifact store supplies the required content
+lifetime and restart reacquisition. Explicit Plan apply supplies admission
+authority.
+Neither turns dependency bytes into trusted host machinery.
 
-## 3. Stop condition
+## 3. Preserved stop condition
 
 Jig must not resolve this blocker by creating an SDK registry, blob-store
 lifetime service, package-manager retention layer, Nix integration, or public
 artifact-provider SPI. One missing proof artifact does not earn any of those
 systems.
 
-When the protected artifact record exists, implementation resumes at review
-175 step 2: construct one distinct private prepared-tree identity, perform one
-offline script-free install in its own contained durable owner, and preserve
-the existing no-redispatch and complete-fence contract.
+Implementation resumes at review 175 with a package-local captured archive:
+construct one distinct private prepared-tree identity, perform one offline
+script-free install in its own contained durable owner, and preserve the
+existing no-redispatch and complete-fence contract.
 
-The current result is an exact external boundary, not an implementation
-failure hidden as graceful degradation:
+The corrected result is an exact local boundary, not an implementation failure
+hidden as graceful degradation:
 
-> Native first-party SDK preparation is unavailable until the host admits and
-> retains the exact dependency artifact. Jig neither guesses an ambient
-> archive nor manufactures the authority which would make one trustworthy.
+> Native first-party SDK preparation uses only dependency bytes already
+> committed by captured Package/1 and explicit Plan apply. Jig neither guesses
+> an ambient archive nor asks the host administrator to approve package code.

@@ -179,6 +179,21 @@ requires extra authority. Project or host policy may require reproducible
 preparation. FLOW/1 does not claim universal dependency locking across package
 managers.
 
+Native dependency material physically contained in the selected package tree
+is ordinary untrusted Package/1 content. An Adapter may resolve a native
+manifest's relative reference only within that immutable snapshot. It derives
+the normalized member path and content digest from the retained package; it
+never accepts a separately supplied path, digest, lifetime claim, ambient
+cache, or registry result as equivalent evidence. Candidate planning retains
+the existing PackageArtifactRef and commits that member relationship into the
+recipe. Recovery reopens only the protected package and re-derives it.
+
+The host operator authenticates runtime, installer, Adapter, Backend and
+policy rather than registering every package member. Host policy may still
+reject local dependencies or constrain allowed sources. Missing, corrupt, or
+mismatched retained bytes fail closed. The prepared output is a separate
+private artifact and never a second interpretation of Package/1.
+
 ## 5. Preparation and launch authority
 
 The Adapter plans. The Sandbox Backend alone executes every process which may

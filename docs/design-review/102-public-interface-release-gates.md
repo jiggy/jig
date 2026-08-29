@@ -336,10 +336,15 @@ Sandbox Backend, Event Source, or provider-plugin SPIs. One Linux Backend and
 one Agent integration cannot establish portable extension abstractions.
 
 The installed host policy must authenticate its exact launcher, runtime
-support, retained first-party artifacts, and provider registration; support
+support, and provider registration; support
 restart reacquisition and drift refusal; and keep every resulting handle
 outside project and FLOW authority. The project cannot name paths, commands,
 receipts, provider artifacts, containment arguments, or host-policy tokens.
+
+Native dependency archives are not host-policy registrations. They remain
+untrusted package/release inputs captured into protected Jig state and admitted
+only through complete Plan review and explicit apply, as corrected by review
+186.
 
 The first alpha needs one exact private operator registration record and
 inspection path for its selected Agent integration. That record is closed,
@@ -539,8 +544,8 @@ The critical path still needs:
   by the product owner before registry publication;
 - one administrator-owned production launcher/runtime-support installation on
   a fresh supported host rather than the proof sandbox's controls;
-- one authenticated retained and restart-reacquirable record for the exact
-  first-party TypeScript FLOW SDK archive used by native preparation;
+- the package-local, contained native-preparation proof selected by reviews
+  175 and 186;
 - authenticated project acquisition and one finite installed CLI/API consumer
   around the closed Project Session, without exposing state paths or host
   machinery;
@@ -567,7 +572,8 @@ blockers:
   and
 - cross-language fixtures only for each boundary actually labelled portable.
 
-Review 185 is the current dependency and stop-boundary record.
+Reviews 185 and 186 together define the corrected dependency and external
+stop boundaries.
 
 ## Rule for the next experiment
 

@@ -387,6 +387,14 @@ release gate. Planning does not claim that a live provider generation exists
 yet. A host-capability recipe pins its fully resolved registration and
 operational provider evidence.
 
+For a recipe using one package-local native artifact, activation meaning also
+records the retained Package/1 identity, exact normalized relative member path,
+derived member digest, and preparation-plan identity. Candidate/Plan
+publication retains the existing PackageArtifactRef; explicit apply admits
+those exact bytes with the package. Replanning and recovery reopen only the
+retained package and re-derive the relationship. Missing bytes or a mismatch
+fail closed, and execution never reopens visible source or an ambient cache.
+
 For a code-backed Run package, deterministic planning selects the exact-code
 recipe when exactly one qualifies. Only when zero complete exact recipes
 qualify and both package and Binding explicitly permit instruction fallback may
@@ -608,8 +616,8 @@ observedSemanticDigest
 
 activationMeaningDigest
     Which normalized behavior, exact final READY recipes or UNAVAILABLE
-    evidence, provider edges, settings, and requested authority would be
-    admitted?
+    evidence, package-local dependency members, provider edges, settings, and
+    requested authority would be admitted?
 
 planDigest
     Which exact capture, semantic result, resolution-input snapshot, proposed
@@ -623,6 +631,11 @@ is never formatting-only. The plan digest commits to `captureDigest`, both
 semantic identities, the complete immutable resolution-input snapshot,
 proposed lock, exact visible-lock observation, final targets, and base
 generation. All four are internal Jig evidence, not FLOW metadata.
+
+For an authority-changing admission, that retained Plan is also the approval
+of its exact package-local dependency member. Immutable custody or a matching
+digest cannot substitute for Plan review, and Plan review cannot substitute
+for the Sandbox Backend which contains the installer and final component.
 
 `jig apply` displays one aggregate semantic and authority review. A UI may
 notify that watched changes are pending and offer Apply, but the watcher never

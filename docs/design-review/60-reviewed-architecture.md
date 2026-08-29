@@ -394,6 +394,17 @@ Node `engines`, or package-manager dependency declarations, and it does not
 claim universal locking across them. The Adapter reports preparation
 reproducibility and authority; project/host policy decides what is admissible.
 
+Native dependency material physically contained in the selected package tree
+is ordinary untrusted Package/1 content. A selected Adapter may resolve a
+native manifest's relative reference only within that immutable package
+snapshot. It derives the referenced member path and content identity itself;
+it never accepts an independently supplied path, digest, lifetime assertion,
+ambient cache, or registry result. The host operator supplies and
+authenticates the Adapter, installer/runtime, Sandbox Backend and policy—not a
+separate registration for every package member. Host policy may reject local
+dependencies or constrain sources further. The Backend alone executes the
+fixed installer, and its prepared tree remains a distinct private artifact.
+
 Preparation runs under a separate independently minimized Sandbox plan from
 the final Run or Service Mount and sees no owner attachments, secrets, policy
 roots, or effect slots. It may contain preparation-only authority, such as

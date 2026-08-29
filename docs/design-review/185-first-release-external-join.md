@@ -1,10 +1,11 @@
 # First-release external-join disposition
 
 **Status:** accepted on 2026-08-29 after the public changing-source campaign
-and cancellation checkpoint. The next executable critical-path proof requires
-protected external substrates. Remaining local release/schema work must close
-with that independent consumer rather than substitute for it; this is not
-permission to pull later features forward.
+and cancellation checkpoint, then corrected by
+[review 186](186-package-local-native-artifact-correction.md). The production
+host and Agent-provider joins remain external. Native dependency preparation
+is locally actionable because its untrusted archive is retained inside
+Package/1; §3.1 and the former all-external stop boundary are superseded.
 
 ## 1. Completed local chain
 
@@ -55,18 +56,20 @@ exclusion remains sufficient for the supported non-recursive leaf profile; a
 generic ancestor chain or wait graph is not earned until nested composition or
 shared blocking resources exist.
 
-## 3. The three external prerequisites
+## 3. Corrected external prerequisites
 
-### 3.1 Retained native SDK artifact
+### 3.1 Package-local native SDK artifact — corrected local work
 
-The selected native-preparation proof requires an administrator-owned,
-authenticated, retained, restart-reacquirable record for the exact
-`@flowmd/sdk@0.0.0` archive. Absence or drift must become exact
-`UNAVAILABLE`. Jig must not replace that missing fact with a caller path,
-ambient package cache, package-manager lifecycle, Nix integration, generic
-artifact registry, or new blob-store SPI.
+The selected native-preparation proof no longer requires an
+administrator-owned SDK record. Its exact archive is a relative member of the
+same captured Package/1, so Package identity, protected retention, Candidate,
+Plan and explicit apply already bind the bytes and their authority. Review 186
+defines the corrected proof while preserving rejection of caller path/digest
+assertions, ambient caches, Nix integration, and a new artifact SPI.
 
-This blocks real SDK-dependent packages in Operational Baseline/1.
+This is now the next local implementation vertical. Operational Baseline/1
+still requires the production host boundary below before it becomes an
+external alpha claim.
 
 ### 3.2 Production host trust root
 
@@ -96,7 +99,10 @@ a public provider SPI.
 Once the prerequisites exist, the order remains:
 
 ```text
-retained SDK artifact + production trust root
+package-local SDK artifact
+    -> contained native preparation
+
+production trust root + contained native preparation
     + authenticated acquisition/finite CLI
     + public lock schema and exact installed-consumer gates
     + selected release/package metadata
@@ -175,6 +181,6 @@ first-release work:
   SPIs; and
 - maximum-size Plan fault-injection coverage.
 
-The correct continuation at this boundary is external substrate coordination
-plus the bounded local release/schema work exercised with its consumer, not
-additional unrelated platform surface.
+The correct continuation is the bounded package-local native-preparation
+vertical. Production-host and Agent-provider coordination proceeds in
+parallel; unrelated platform surface remains deferred.
