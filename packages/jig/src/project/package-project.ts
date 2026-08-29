@@ -5,13 +5,18 @@ import type { CheckedContractReference, InspectedPackage } from "../package/insp
 import { SchemaDiagnostic } from "../schema/index.js";
 import {
   defineBinding,
+  definePrivateProjectRunTargetsBinding,
   normalizeJournalPublisherDefinition,
   normalizeHookDefinition,
   normalizePackageBindingDefinition,
+  normalizePrivateProjectRunTargetsBindingDefinition,
   type BindingDefinition,
   type HookDefinition,
   type JournalPublisherDefinition,
   type PackageBindingInput,
+  type PrivateProjectRunTargetsBindingDefinition,
+  type PrivateProjectRunTargetsBindingInput,
+  type PrivateProjectRunTargetsRef,
   type RunTargetRef,
   type SlotRef,
 } from "./author.js";
@@ -78,6 +83,7 @@ export type RunTargetIdentity =
 export type LinkedSlot =
   | {
       readonly kind: "flow-call";
+      readonly source: "exact" | "candidates" | "project-run-targets";
       readonly targets: readonly RunTargetIdentity[];
     }
   | {
@@ -132,7 +138,7 @@ export interface PackageProjectValue {
 interface PreparedBinding {
   readonly id: string;
   readonly declarationPath: string;
-  readonly definition: ReturnType<typeof defineBinding>;
+  readonly definition: ReturnType<typeof defineBinding> | PrivateProjectRunTargetsBindingDefinition;
   readonly flow: PreparedFlow;
 }
 
@@ -154,6 +160,28 @@ interface PreparedFlow {
  * without I/O. This is invocation-local meaning, not capture or admission.
  */
 export function linkPackageProject(input: PackageProjectInput): PackageProjectValue {
+  return linkPackageProjectImplementation(input, undefined);
+}
+
+/**
+ * Private two-phase linker for the sealed projectRunTargets() authoring
+ * profile. The caller supplies the already-owned aggregate activation-target
+ * bound; this layer neither invents another cap nor truncates the catalogue.
+ */
+export function linkPrivateProjectRunTargetsPackageProject(
+  input: PackageProjectInput,
+  maximumActivationTargets: number,
+): PackageProjectValue {
+  if (!Number.isSafeInteger(maximumActivationTargets) || maximumActivationTargets < 1) {
+    throw new TypeError("maximum activation targets must be a positive safe integer");
+  }
+  return linkPackageProjectImplementation(input, maximumActivationTargets);
+}
+
+function linkPackageProjectImplementation(
+  input: PackageProjectInput,
+  maximumActivationTargets: number | undefined,
+): PackageProjectValue {
   const root = readClosedRecord(
     input,
     Object.hasOwn(input, "hooks") ? ["flows", "bindings", "hooks"] : ["flows", "bindings"],
@@ -162,12 +190,40 @@ export function linkPackageProject(input: PackageProjectInput): PackageProjectVa
   const budget = new WorkBudget();
   const preparedFlows = prepareFlows(readBoundedArray(root.flows, "flows"), budget);
   const flowByPath = new Map(preparedFlows.map((flow) => [flow.value.provenance.projectPath, flow]));
-  const declarations = prepareBindings(readBoundedArray(root.bindings, "bindings"), flowByPath, budget);
+  const declarations = prepareBindings(
+    readBoundedArray(root.bindings, "bindings"),
+    flowByPath,
+    budget,
+    maximumActivationTargets !== undefined,
+  );
   const prepared = declarations.filter((value): value is PreparedBinding => "flow" in value);
   const publishers = declarations.filter((value): value is PreparedJournalPublisher => !("flow" in value));
   const bindingById = new Map(prepared.map((binding) => [binding.id, binding]));
   const publisherById = new Map(publishers.map((publisher) => [publisher.id, publisher]));
-  const bindings = prepared.map((binding) => linkBinding(binding, flowByPath, bindingById, publisherById));
+  const projectRunTargets = maximumActivationTargets === undefined
+    ? undefined
+    : deriveStructuralRunTargetCatalogue(
+        preparedFlows.map(preparedFlowCatalogueMember),
+        prepared.map(preparedBindingCatalogueMember),
+      );
+  const activationTargetCount = prepared.length + preparedFlows.filter(
+    ({ value }) => value.mode === "run" && value.directRun,
+  ).length;
+  if (maximumActivationTargets !== undefined &&
+      activationTargetCount > maximumActivationTargets) {
+    invalid(
+      "PROJECT_ACTIVATION_TARGET_LIMIT",
+      `project contains ${activationTargetCount} activation targets, exceeding the caller bound ${maximumActivationTargets}`,
+    );
+  }
+  const bindings = prepared.map((binding) => linkBinding(
+    binding,
+    flowByPath,
+    bindingById,
+    publisherById,
+    budget,
+    projectRunTargets,
+  ));
   const journalPublishers = publishers.map((publisher) => Object.freeze({
     kind: "journal-publisher" as const,
     id: publisher.id,
@@ -312,21 +368,58 @@ export function requirePackageProjectValue(value: unknown): PackageProjectValue 
 export function privateProjectRunTargetCatalogue(value: unknown): readonly RunTargetIdentity[] {
   const project = requirePackageProjectValue(value);
   const flowByPath = new Map(project.flows.map((flow) => [flow.provenance.projectPath, flow]));
-  const targets: RunTargetIdentity[] = [];
+  return deriveStructuralRunTargetCatalogue(
+    project.flows.map((flow) => ({
+      path: flow.provenance.projectPath,
+      mode: flow.mode,
+      directRun: flow.directRun,
+    })),
+    project.bindings.map((binding) => {
+      const flow = flowByPath.get(binding.packagePath);
+      if (flow === undefined) throw new Error("linked project invariant violated: Binding package is missing");
+      return { id: binding.id, mode: flow.mode };
+    }),
+  );
+}
 
-  for (const binding of project.bindings) {
-    const flow = flowByPath.get(binding.packagePath);
-    if (flow === undefined) throw new Error("linked project invariant violated: Binding package is missing");
-    if (flow.mode === "run") {
+interface StructuralFlowCatalogueMember {
+  readonly path: string;
+  readonly mode: "run" | "service";
+  readonly directRun: boolean;
+}
+
+interface StructuralBindingCatalogueMember {
+  readonly id: string;
+  readonly mode: "run" | "service";
+}
+
+function preparedFlowCatalogueMember(flow: PreparedFlow): StructuralFlowCatalogueMember {
+  return {
+    path: flow.value.provenance.projectPath,
+    mode: flow.value.mode,
+    directRun: flow.value.directRun,
+  };
+}
+
+function preparedBindingCatalogueMember(binding: PreparedBinding): StructuralBindingCatalogueMember {
+  return { id: binding.id, mode: binding.flow.value.mode };
+}
+
+function deriveStructuralRunTargetCatalogue(
+  flows: readonly StructuralFlowCatalogueMember[],
+  bindings: readonly StructuralBindingCatalogueMember[],
+): readonly RunTargetIdentity[] {
+  const targets: RunTargetIdentity[] = [];
+  for (const binding of bindings) {
+    if (binding.mode === "run") {
       targets.push(Object.freeze({ kind: "binding" as const, id: binding.id }));
     }
   }
-  for (const flow of project.flows) {
+  for (const flow of flows) {
     if (flow.mode === "run" && flow.directRun) {
-      targets.push(Object.freeze({ kind: "flow" as const, path: flow.provenance.projectPath }));
+      targets.push(Object.freeze({ kind: "flow" as const, path: flow.path }));
     }
   }
-
   targets.sort(compareRunTargets);
   return Object.freeze(targets);
 }
@@ -402,6 +495,7 @@ function prepareBindings(
   values: readonly unknown[],
   flowByPath: ReadonlyMap<string, PreparedFlow>,
   budget: WorkBudget,
+  allowProjectRunTargets: boolean,
 ): readonly (PreparedBinding | PreparedJournalPublisher)[] {
   const bindings = values.map((value, index) => {
     const record = readClosedRecord(value, ["sourcePath", "definition"], `bindings[${index}]`);
@@ -421,16 +515,20 @@ function prepareBindings(
       invalid("PROJECT_BINDING_ID", "Binding declaration basename must be a LocalName", declarationPath);
     }
 
-    let definition: BindingDefinition;
+    let definition: BindingDefinition | PrivateProjectRunTargetsBindingDefinition;
     try {
       const candidate = record.definition;
       if (typeof candidate === "object" && candidate !== null &&
           Object.hasOwn(candidate, "kind")) {
         definition = (candidate as { readonly kind?: unknown }).kind === "journal-publisher"
           ? normalizeJournalPublisherDefinition(candidate)
-          : normalizePackageBindingDefinition(candidate);
+          : allowProjectRunTargets
+            ? normalizePrivateProjectRunTargetsBindingDefinition(candidate)
+            : normalizePackageBindingDefinition(candidate);
       } else {
-        definition = defineBinding(candidate as PackageBindingInput);
+        definition = allowProjectRunTargets
+          ? definePrivateProjectRunTargetsBinding(candidate as PrivateProjectRunTargetsBindingInput)
+          : defineBinding(candidate as PackageBindingInput);
       }
     } catch (error) {
       invalid("PROJECT_BINDING_DECLARATION", errorText(error), declarationPath);
@@ -469,6 +567,8 @@ function linkBinding(
   flowByPath: ReadonlyMap<string, PreparedFlow>,
   bindingById: ReadonlyMap<string, PreparedBinding>,
   publisherById: ReadonlyMap<string, PreparedJournalPublisher>,
+  budget: WorkBudget,
+  projectRunTargets: readonly RunTargetIdentity[] | undefined,
 ): LinkedPackageBinding {
   const { id, declarationPath, definition, flow } = prepared;
   const slots: Record<string, LinkedSlot> = Object.create(null) as Record<string, LinkedSlot>;
@@ -483,7 +583,15 @@ function linkBinding(
   }
   for (const slot of Object.keys(definition.slots).sort(compareProjectPaths)) {
     if (Object.hasOwn(uses, slot)) continue;
-    slots[slot] = linkFlowCall(slot, definition.slots[slot]!, flowByPath, bindingById, declarationPath);
+    slots[slot] = linkFlowCall(
+      slot,
+      definition.slots[slot]!,
+      flowByPath,
+      bindingById,
+      declarationPath,
+      budget,
+      projectRunTargets,
+    );
   }
 
   return Object.freeze({
@@ -500,7 +608,7 @@ function linkBinding(
 function linkCapability(
   consumerId: string,
   slot: string,
-  configured: SlotRef,
+  configured: SlotRef | PrivateProjectRunTargetsRef,
   consumer: PreparedFlow,
   bindingById: ReadonlyMap<string, PreparedBinding>,
   publisherById: ReadonlyMap<string, PreparedJournalPublisher>,
@@ -562,14 +670,33 @@ function contractIdentityKey(value: ContractIdentity): string {
 
 function linkFlowCall(
   slot: string,
-  configured: SlotRef,
+  configured: SlotRef | PrivateProjectRunTargetsRef,
   flowByPath: ReadonlyMap<string, PreparedFlow>,
   bindingById: ReadonlyMap<string, PreparedBinding>,
   path: string,
+  budget: WorkBudget,
+  projectRunTargets: readonly RunTargetIdentity[] | undefined,
 ): Extract<LinkedSlot, { readonly kind: "flow-call" }> {
+  if (configured.kind === "project-run-targets") {
+    if (projectRunTargets === undefined) {
+      invalid(
+        "PROJECT_BINDING_DECLARATION",
+        "projectRunTargets() is not part of Project Authoring SDK/1",
+        path,
+        slotPointer(slot),
+      );
+    }
+    budget.consume(jsonWork(projectRunTargets as unknown as JsonValue));
+    return Object.freeze({
+      kind: "flow-call" as const,
+      source: "project-run-targets" as const,
+      targets: projectRunTargets,
+    });
+  }
   const targets = configured.kind === "candidates" ? configured.targets : [configured];
   return Object.freeze({
     kind: "flow-call" as const,
+    source: configured.kind === "candidates" ? "candidates" as const : "exact" as const,
     targets: Object.freeze(targets.map(
       (target, index) => validateRunTarget(
         slot,

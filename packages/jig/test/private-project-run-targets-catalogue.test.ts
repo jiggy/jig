@@ -5,15 +5,18 @@ import { dirname, join } from "node:path";
 
 import {
   bindingRef,
+  candidates,
   definePrivateProjectRunTargetsBinding,
   defineHook,
   defineJig,
   defineJournalPublisher,
+  flowRef,
   projectRunTargets,
 } from "../src/project/author.js";
 import { captureFlowSource } from "../src/project/flow-source.js";
 import {
   linkPackageProject,
+  linkPrivateProjectRunTargetsPackageProject,
   privateProjectRunTargetCatalogue,
   type InjectedBindingDeclaration,
 } from "../src/project/package-project.js";
@@ -132,13 +135,169 @@ uses:
     }
   });
 
-  test("returns one frozen empty catalogue for an authenticated empty project", () => {
-    const catalogue = privateProjectRunTargetCatalogue(linkPackageProject({
+  test("permits an empty dynamic expansion and an authenticated empty project", async () => {
+    const project = linkPrivateProjectRunTargetsPackageProject({
       flows: [],
       bindings: [],
-    }));
+    }, 1);
+    const catalogue = privateProjectRunTargetCatalogue(project);
     expect(catalogue).toEqual([]);
     expect(Object.isFrozen(catalogue)).toBeTrue();
+    expect(project.bindings).toEqual([]);
+
+    await withFlows({
+      "flows/service": {
+        "FLOW.md": metadata("name: service\ndescription: Service.\nservice: 1"),
+        "flow.ts": "export {};\n",
+      },
+    }, async (flows) => {
+      const serviceProject = linkPrivateProjectRunTargetsPackageProject({
+        flows,
+        bindings: [declaration(
+          "bindings/service.ts",
+          definePrivateProjectRunTargetsBinding({
+            package: "flows/service",
+            slots: { work: projectRunTargets() },
+          }),
+        )],
+      }, 1);
+      expect(serviceProject.bindings[0]!.slots.work).toEqual({
+        kind: "flow-call",
+        source: "project-run-targets",
+        targets: [],
+      });
+      expect(privateProjectRunTargetCatalogue(serviceProject)).toEqual([]);
+    });
+  });
+
+  test("expands every marker from one complete immutable two-phase catalogue", async () => {
+    await withFlows({
+      "flows/dispatcher": {
+        "FLOW.md": metadata("name: dispatcher\ndescription: Dispatcher."),
+        "flow.ts": "export {};\n",
+      },
+      "flows/worker": {
+        "FLOW.md": metadata("name: worker\ndescription: Worker."),
+        "flow.py": "#!/usr/bin/env python3\n",
+      },
+    }, async (flows) => {
+      const project = linkPrivateProjectRunTargetsPackageProject({
+        flows,
+        bindings: [
+          declaration("bindings/dispatcher.ts", definePrivateProjectRunTargetsBinding({
+            package: "flows/dispatcher",
+            slots: {
+              first: projectRunTargets(),
+              second: projectRunTargets(),
+              exact: bindingRef("worker"),
+              chosen: candidates([
+                bindingRef("worker"),
+                flowRef("flows/worker"),
+              ]),
+            },
+          })),
+          declaration("bindings/worker.ts", { package: "flows/worker" }),
+        ],
+      }, 16);
+
+      const dispatcher = project.bindings.find(({ id }) => id === "dispatcher")!;
+      const first = dispatcher.slots.first!;
+      const second = dispatcher.slots.second!;
+      expect(first).toEqual({
+        kind: "flow-call",
+        source: "project-run-targets",
+        targets: [
+          { kind: "binding", id: "dispatcher" },
+          { kind: "binding", id: "worker" },
+          { kind: "flow", path: "flows/dispatcher" },
+          { kind: "flow", path: "flows/worker" },
+        ],
+      });
+      expect(second).toEqual(first);
+      expect(second.kind === "flow-call" && first.kind === "flow-call" && second.targets).toBe(first.targets);
+      expect(dispatcher.slots.exact).toEqual({
+        kind: "flow-call",
+        source: "exact",
+        targets: [{ kind: "binding", id: "worker" }],
+      });
+      expect(dispatcher.slots.chosen).toEqual({
+        kind: "flow-call",
+        source: "candidates",
+        targets: [
+          { kind: "binding", id: "worker" },
+          { kind: "flow", path: "flows/worker" },
+        ],
+      });
+      expect(privateProjectRunTargetCatalogue(project)).toEqual(first.kind === "flow-call" ? first.targets : []);
+      expect(Object.isFrozen(first)).toBeTrue();
+      expect(first.kind === "flow-call" && Object.isFrozen(first.targets)).toBeTrue();
+      expect(first.kind === "flow-call" && first.targets.every(Object.isFrozen)).toBeTrue();
+      expect(() => {
+        (first as { source: string }).source = "exact";
+      }).toThrow();
+    });
+  });
+
+  test("rejects invalid caller bounds and complete catalogues above the bound", async () => {
+    for (const limit of [0, -1, 1.5, Number.MAX_SAFE_INTEGER + 1]) {
+      expect(() => linkPrivateProjectRunTargetsPackageProject({ flows: [], bindings: [] }, limit)).toThrow(
+        "maximum activation targets must be a positive safe integer",
+      );
+    }
+
+    await withFlows({
+      "flows/dispatcher": {
+        "FLOW.md": metadata("name: dispatcher\ndescription: Dispatcher."),
+        "flow.ts": "export {};\n",
+      },
+    }, async (flows) => {
+      expect(() => linkPrivateProjectRunTargetsPackageProject({
+        flows,
+        bindings: [
+          declaration("bindings/a.ts", { package: "flows/dispatcher" }),
+          declaration("bindings/b.ts", { package: "flows/dispatcher" }),
+        ],
+      }, 2)).toThrow("project contains 3 activation targets, exceeding the caller bound 2");
+    });
+  });
+
+  test("counts Service Bindings in the caller-owned aggregate activation bound", async () => {
+    await withFlows({
+      "flows/service": {
+        "FLOW.md": metadata("name: service\ndescription: Service.\nservice: 1"),
+        "flow.ts": "export {};\n",
+      },
+    }, async (flows) => {
+      const bindings = [
+        declaration("bindings/a.ts", { package: "flows/service" }),
+        declaration("bindings/b.ts", { package: "flows/service" }),
+      ];
+      expect(() => linkPrivateProjectRunTargetsPackageProject({ flows, bindings }, 1)).toThrow(
+        "project contains 2 activation targets, exceeding the caller bound 1",
+      );
+      const project = linkPrivateProjectRunTargetsPackageProject({ flows, bindings }, 2);
+      expect(privateProjectRunTargetCatalogue(project)).toEqual([]);
+    });
+  });
+
+  test("charges every dynamic expansion to the existing semantic-work budget", async () => {
+    await withFlows({
+      "flows/dispatcher": {
+        "FLOW.md": metadata("name: dispatcher\ndescription: Dispatcher."),
+        "flow.ts": "export {};\n",
+      },
+    }, async (flows) => {
+      const bindings = Array.from({ length: 600 }, (_, index) => declaration(
+        `bindings/b-${index.toString().padStart(3, "0")}.ts`,
+        definePrivateProjectRunTargetsBinding({
+          package: "flows/dispatcher",
+          slots: { work: projectRunTargets() },
+        }),
+      ));
+      expect(() => linkPrivateProjectRunTargetsPackageProject({ flows, bindings }, 601)).toThrow(
+        "package-project semantic work exceeds 1000000 units",
+      );
+    });
   });
 });
 
@@ -155,5 +314,27 @@ async function writeTree(root: string, files: Readonly<Record<string, string>>):
     const file = join(root, path);
     await mkdir(dirname(file), { recursive: true });
     await writeFile(file, contents);
+  }
+}
+
+async function withFlows(
+  trees: Readonly<Record<string, Readonly<Record<string, string>>>>,
+  action: (flows: Awaited<ReturnType<typeof retainFlowSourcePackages>>) => Promise<void>,
+): Promise<void> {
+  const root = await mkdtemp(join(tmpdir(), "jig-project-run-target-linker-"));
+  const store = join(root, "store");
+  let source: Awaited<ReturnType<typeof captureFlowSource>> | undefined;
+  try {
+    await mkdir(store, { mode: 0o700 });
+    for (const [packagePath, files] of Object.entries(trees)) {
+      for (const [path, contents] of Object.entries(files)) {
+        await writeTree(root, { [`${packagePath}/${path}`]: contents });
+      }
+    }
+    source = await captureFlowSource(root, defineJig({ flows: Object.keys(trees) }).flows);
+    await action(await retainFlowSourcePackages(store, source));
+  } finally {
+    await source?.dispose();
+    await rm(root, { recursive: true, force: true });
   }
 }

@@ -37,6 +37,10 @@ Start here:
 
 Current implementation frontier:
 
+- [`design-review/176-private-project-run-target-linker.md`](design-review/176-private-project-run-target-linker.md)
+  closes the private two-phase `projectRunTargets()` expansion, exact source
+  identity, caller-owned aggregate bound, and existing-work-budget accounting
+  while leaving retained formats, admission, filtering, and runtime gated.
 - [`design-review/175-exact-native-preparation-frontier.md`](design-review/175-exact-native-preparation-frontier.md)
   selects one offline native-installer preparation owner and a distinct
   private prepared-tree identity after rejecting a Jig-owned npm/wheel

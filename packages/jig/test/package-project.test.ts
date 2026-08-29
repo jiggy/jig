@@ -583,6 +583,7 @@ attachments:
       });
       expect(value.bindings[0]!.slots.next).toEqual({
         kind: "flow-call",
+        source: "candidates",
         targets: [
           { kind: "binding", id: "worker" },
           { kind: "flow", path: "flows/worker" },
