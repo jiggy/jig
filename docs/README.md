@@ -37,6 +37,10 @@ Start here:
 
 Current implementation frontier:
 
+- [`design-review/170-project-authoring-probe-disposition.md`](design-review/170-project-authoring-probe-disposition.md)
+  records the passed clean-room public authoring campaign, the Run-result
+  ergonomics correction it earned, and the still-open native dependency and
+  operational-host gates.
 - [`design-review/169-project-command-and-review-delta.md`](design-review/169-project-command-and-review-delta.md)
   closes the proof-independent one-command Project Session lifecycle and the
   authenticated current-to-proposed review delta while deliberately leaving
