@@ -42,8 +42,8 @@ older-epoch Hook work to `COORDINATOR_LOST` without another append or dispatch.
 This is not yet a published Jig SDK or complete product control
 plane: Root Administration/1 and Project Administration/1 now have machine
 schemas, packed value/type candidates, private controllers, and independent
-injected-object consumers, while the project opener, production host trust
-root, authentication/transport, generic Runtime Adapter and Sandbox Backend
+injected-object consumers, while the project opener, zero-setup rootless host
+path, authentication/transport, generic Runtime Adapter and Sandbox Backend
 models, and broader effect/provider forms remain unfinished seams. The
 private Service path now also admits and hosts one exact Bun Service Binding,
 persists its complete Mount/generation lifecycle, and proves exact leases,
@@ -286,7 +286,7 @@ Administration object, and deterministic close. Its
 [`machine schema`](../spec/machine/project-administration-1.schema.json) and
 packed injected-session consumer pass. It deliberately defines neither
 project selection/acquisition nor a transport. Before a CLI or GUI becomes an
-operational alpha, Jig must still close the production host installation,
+operational alpha, Jig must still prove the zero-setup rootless host path,
 authenticate project selection and authority issuance, and freeze the actual
 acquisition/finite-CLI spelling through an independent installed consumer.
 Current-to-proposed review evidence is closed in review 169. Later inspection,
@@ -328,18 +328,22 @@ public-surface consumer, and independent packed-package consumer review now
 pass. The independent review first rejected three ambiguous semantics and
 cleared the amended candidate only after its original counterexamples passed.
 
-### Trusted host installation and later extension interfaces
+### Zero-setup host boundary and later extension interfaces
 
-The first alpha needs one closed administrator-owned installation contract for
-the exact mechanisms it ships. It does **not** need public Runtime Adapter,
-Sandbox Backend, Event Source, or provider-plugin SPIs. One Linux Backend and
-one Agent integration cannot establish portable extension abstractions.
+The first alpha has no Jig-specific host setup. Ordinary installation creates
+no privileged helper, service, registration, cgroup ownership, runtime
+receipt, or persistent host authority. Every Run must establish one complete
+pre-existing unprivileged containment path or return bounded
+`SANDBOX_UNAVAILABLE`; there is no privileged or unsafe fallback. The first
+private candidate is a transient user-owned cgroup plus patched rootless
+Bubblewrap on a deliberately narrow Linux/Bun host. Review 196 records the
+boundary and its currently blocked proof.
 
-The installed host policy must authenticate its exact launcher, runtime
-support, and provider registration; support
-restart reacquisition and drift refusal; and keep every resulting handle
-outside project and FLOW authority. The project cannot name paths, commands,
-receipts, provider artifacts, containment arguments, or host-policy tokens.
+The first alpha does **not** need public Runtime Adapter, Sandbox Backend,
+Event Source, or provider-plugin SPIs. One Linux mechanism and one Agent
+integration cannot establish portable extension abstractions. Project and
+FLOW code cannot name paths, commands, provider artifacts, containment
+arguments, or host-policy tokens.
 
 Native dependency archives are not host-policy registrations. They remain
 untrusted package/release inputs captured into protected Jig state and admitted
@@ -378,18 +382,18 @@ survivor. Capability-bearing Agent workers, their child-owned effect path, and
 Agent-backed routing remain gated. Review 185 records why that distinction and
 the Event Source ordering are now first-release stop conditions.
 
-The former Linux `SANDBOX_UNAVAILABLE` stop is historical. The private proof
-now has a delegated aggregate owner, pre-exec placement, entropy and
-root-mapping evidence, coordinator-independent cleanup, and a hostile corpus.
+The former privileged-proof `SANDBOX_UNAVAILABLE` stop is historical. That
+private proof now has a delegated aggregate owner, pre-exec placement, entropy
+and root-mapping evidence, coordinator-independent cleanup, and a hostile
+corpus. It does not satisfy the zero-setup product gate in review 196.
 A Python Run/1 and Service/1 activation using this host's Nix-store runtime
 were integration witnesses for that envelope, not an admitted Nix Adapter or
 current product dependency. The exact evidence is recorded in
 [`105-phase-2-linux-cgroup-proof.md`](105-phase-2-linux-cgroup-proof.md); the
 old environmental stop remains in
 [`104-phase-2-security-blocker.md`](104-phase-2-security-blocker.md). The proof
-still withholds the public Backend interface: registration and plan schemas,
-an installed immutable helper, and a genuinely different Backend mechanism
-remain unclosed.
+still withholds the public Backend interface: generic registration and plan
+schemas plus a genuinely different Backend mechanism remain unclosed.
 
 ### Jig Graph over Sley
 
@@ -545,8 +549,8 @@ The critical path still needs:
   Community-Spec curation and counsel, trademark, and artifact-compliance
   gates; repository, version, finite Bun range, and remaining release metadata
   are also still required before registry publication;
-- one administrator-owned production launcher/runtime-support installation on
-  a fresh supported host rather than the proof sandbox's controls;
+- one zero-setup rootless containment path proved on a fresh supported host,
+  rather than the proof sandbox's privileged controls;
 - the exact package-local native dependency's private root join is closed in
   review 195: retained-byte routing, durable preparation, authenticated
   prepared-tree materialization, and final read-only Run/1 execution now pass
