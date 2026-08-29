@@ -37,6 +37,9 @@ Start here:
 
 Current implementation frontier:
 
+- [`design-review/172-private-project-run-target-catalogue.md`](design-review/172-private-project-run-target-catalogue.md)
+  derives the complete authenticated structural Run universe without yet
+  integrating the private marker, lock, Resolver, or runtime.
 - [`design-review/171-private-project-run-target-marker.md`](design-review/171-private-project-run-target-marker.md)
   closes only the private minimal `projectRunTargets()` marker shape while
   keeping public authoring, evaluation, linking, locks, and execution gated.

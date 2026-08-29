@@ -302,6 +302,42 @@ export function requirePackageProjectValue(value: unknown): PackageProjectValue 
   return value as PackageProjectValue;
 }
 
+/**
+ * Derive the complete structural Run-target catalogue from one authenticated
+ * linked project. This deliberately ignores operational readiness: planning
+ * decides whether each exact target is runnable on the current host.
+ *
+ * Private checkpoint only. The changing-source marker is not linked here.
+ */
+export function privateProjectRunTargetCatalogue(value: unknown): readonly RunTargetIdentity[] {
+  const project = requirePackageProjectValue(value);
+  const flowByPath = new Map(project.flows.map((flow) => [flow.provenance.projectPath, flow]));
+  const targets: RunTargetIdentity[] = [];
+
+  for (const binding of project.bindings) {
+    const flow = flowByPath.get(binding.packagePath);
+    if (flow === undefined) throw new Error("linked project invariant violated: Binding package is missing");
+    if (flow.mode === "run") {
+      targets.push(Object.freeze({ kind: "binding" as const, id: binding.id }));
+    }
+  }
+  for (const flow of project.flows) {
+    if (flow.mode === "run" && flow.directRun) {
+      targets.push(Object.freeze({ kind: "flow" as const, path: flow.provenance.projectPath }));
+    }
+  }
+
+  targets.sort(compareRunTargets);
+  return Object.freeze(targets);
+}
+
+function compareRunTargets(left: RunTargetIdentity, right: RunTargetIdentity): number {
+  if (left.kind !== right.kind) return left.kind === "binding" ? -1 : 1;
+  return left.kind === "binding"
+    ? compareProjectPaths(left.id, (right as Extract<RunTargetIdentity, { kind: "binding" }>).id)
+    : compareProjectPaths(left.path, (right as Extract<RunTargetIdentity, { kind: "flow" }>).path);
+}
+
 function prepareFlows(values: readonly unknown[], budget: WorkBudget): readonly PreparedFlow[] {
   const flows = values.map((value) => {
     let retained: RetainedFlowInput;
