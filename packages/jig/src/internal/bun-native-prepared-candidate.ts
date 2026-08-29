@@ -52,6 +52,13 @@ export interface PrivateBunNativePreparedCandidate {
   readonly files: readonly PrivateBunNativePreparedCandidateFile[];
 }
 
+/** The complete, inert payload decoded from one preparation worker response. */
+export interface PrivateBunNativePreparedCandidatePayload {
+  readonly dependencyDigest: string;
+  readonly totalBytes: number;
+  readonly files: readonly PrivateBunNativePreparedCandidateFile[];
+}
+
 /**
  * Normalize the complete stdout of the trusted ephemeral preparation worker.
  *
@@ -64,6 +71,35 @@ export function normalizePrivateBunNativePreparedCandidate(
   candidateBytesValue: unknown,
 ): PrivateBunNativePreparedCandidate {
   const observation = requirePrivateBunNativePreparationObservation(observationValue);
+  const payload = decodePrivateBunNativePreparedCandidateBytes(candidateBytesValue);
+  if (payload.dependencyDigest !== observation.dependency.memberDigest) {
+    throw new TypeError("Bun native prepared candidate has an invalid identity");
+  }
+
+  const identity = Object.freeze({
+    kind: CANDIDATE_KIND,
+    observationDigest: observation.digest,
+    requestDigest: observation.requestDigest,
+    packageDigest: observation.packageDigest,
+    dependencyDigest: payload.dependencyDigest,
+    totalBytes: payload.totalBytes,
+    files: payload.files,
+  });
+  const candidateValue = Object.freeze({
+    ...identity,
+    digest: privateDomainDigest(
+      "JIG-Private-Bun-Native-Prepared-Candidate/1",
+      identity as unknown as JsonValue,
+    ),
+  });
+  authenticCandidates.add(candidateValue);
+  return candidateValue;
+}
+
+/** Decode worker bytes without granting prepared-tree publication authority. */
+export function decodePrivateBunNativePreparedCandidateBytes(
+  candidateBytesValue: unknown,
+): PrivateBunNativePreparedCandidatePayload {
   const candidateBytes = snapshotBytes(candidateBytesValue, MAX_CANDIDATE_BYTES);
 
   let decoded: JsonValue;
@@ -83,7 +119,6 @@ export function normalizePrivateBunNativePreparedCandidate(
   if (candidate.kind !== CANDIDATE_KIND ||
       typeof candidate.dependencyDigest !== "string" ||
       !DIGEST.test(candidate.dependencyDigest) ||
-      candidate.dependencyDigest !== observation.dependency.memberDigest ||
       !Array.isArray(candidate.files)) {
     throw new TypeError("Bun native prepared candidate has an invalid identity");
   }
@@ -125,25 +160,11 @@ export function normalizePrivateBunNativePreparedCandidate(
   assertNoPathCollisions(files.map((file) => file.path));
   requireSdkManifest(files);
 
-  const frozenFiles = Object.freeze(files);
-  const identity = Object.freeze({
-    kind: CANDIDATE_KIND,
-    observationDigest: observation.digest,
-    requestDigest: observation.requestDigest,
-    packageDigest: observation.packageDigest,
-    dependencyDigest: observation.dependency.memberDigest,
+  return Object.freeze({
+    dependencyDigest: candidate.dependencyDigest,
     totalBytes,
-    files: frozenFiles,
+    files: Object.freeze(files),
   });
-  const candidateValue = Object.freeze({
-    ...identity,
-    digest: privateDomainDigest(
-      "JIG-Private-Bun-Native-Prepared-Candidate/1",
-      identity as unknown as JsonValue,
-    ),
-  });
-  authenticCandidates.add(candidateValue);
-  return candidateValue;
 }
 
 export function requirePrivateBunNativePreparedCandidate(

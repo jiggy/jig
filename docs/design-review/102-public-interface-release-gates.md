@@ -547,9 +547,11 @@ The critical path still needs:
   are also still required before registry publication;
 - one administrator-owned production launcher/runtime-support installation on
   a fresh supported host rather than the proof sandbox's controls;
-- durable package-local native preparation and a protected prepared-tree
-  artifact; review 188 closes only the preceding ephemeral contained-install
-  feasibility proof selected by reviews 175 and 186;
+- the concrete durable package-local native-preparation controller and READY
+  integration; review 190 closes the protected prepared-tree store, review
+  191 closes only the v19 lifecycle state/no-redispatch substrate, and review
+  188 closes the preceding ephemeral contained-install feasibility proof
+  selected by reviews 175 and 186;
 - authenticated project acquisition and one finite installed CLI/API consumer
   around the closed Project Session, without exposing state paths or host
   machinery;

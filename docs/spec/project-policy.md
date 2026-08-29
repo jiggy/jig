@@ -498,7 +498,7 @@ The reviewed changing-universe source is the explicit per-slot
 `projectRunTargets()` marker described above and in the
 [target and routing disposition](../design-review/101-default-targets-and-open-routing-candidate.md).
 Its ordinary public authoring evaluation, complete expansion, Lock/3,
-Activation Request/2, and v18 admission retention are implemented. Runtime
+Activation Request/2, and v19 admission retention are implemented. Runtime
 filtering and the current bounded zero/one/many dispatch remain private;
 semantic ranking and broader routing claims stay separately gated.
 
@@ -987,9 +987,9 @@ Binding revision.
     receipt; candidate-head movement does not stale them, while an
     active-admission change does. A lock-written/no-receipt crash state
     converges only through explicit Plan replay.
-34. During the current private pre-release schema checkpoint, a v18 admission
+34. During the current private pre-release schema checkpoint, a v19 admission
     store rejects every other `private-activation-admission-v*.sqlite3`
-    database or sidecar, including beside a valid v18 database. It never
+    database or sidecar, including beside a valid v19 database. It never
     migrates, merges, or silently chooses around mixed protected authority.
 35. Aggregate authority inspection includes the fixed attachment and effect
     authority reachable through every exact dependency Binding; it never

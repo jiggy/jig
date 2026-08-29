@@ -37,6 +37,16 @@ Start here:
 
 Current implementation frontier:
 
+- [`design-review/191-private-native-preparation-state.md`](design-review/191-private-native-preparation-state.md)
+  closes the v19 write-once state machine for one root-owned Bun preparation,
+  including exact dispatch authority and older-epoch no-redispatch recovery.
+  It also removes the proposed output backing as unable to prove complete
+  output after coordinator loss. Installer execution remains a separate
+  controller checkpoint.
+- [`design-review/190-private-prepared-tree-store.md`](design-review/190-private-prepared-tree-store.md)
+  closes atomic retention and detached restart reacquisition of one composite
+  source-Package/1 plus exact installed SDK tree without conflating that
+  private execution artifact with authored Package/1.
 - [`design-review/189-licensing-and-stewardship-disposition.md`](design-review/189-licensing-and-stewardship-disposition.md)
   selects a corrected, role-specific licensing and governance target without
   yet making an operative grant. It separates FLOW's future Community-Spec
@@ -96,9 +106,10 @@ Current implementation frontier:
   leaving filtering and selection separate.
 - [`design-review/177-private-project-run-target-retained-format.md`](design-review/177-private-project-run-target-retained-format.md)
   advances the private lock to Lock/3, activation requests to Request/2, and
-  the admission store to v18 so exact source intent and the complete bounded
+  the then-current admission store to v18 so exact source intent and the complete bounded
   `projectRunTargets()` expansion survive strict decoding and admission,
-  while runtime filtering and selection remain gated.
+  while runtime filtering and selection remain gated. Review 191 advances the
+  current private store to v19 without changing those retained formats.
 - [`design-review/176-private-project-run-target-linker.md`](design-review/176-private-project-run-target-linker.md)
   closes the private two-phase `projectRunTargets()` expansion, exact source
   identity, caller-owned aggregate bound, and existing-work-budget accounting

@@ -2316,7 +2316,7 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
       coordinator = undefined;
 
       const sqlite = createRequire(import.meta.url)("bun:sqlite") as any;
-      const databasePath = join(root, ".jig", "private-activation-admission-v18.sqlite3");
+      const databasePath = join(root, ".jig", "private-activation-admission-v19.sqlite3");
       const writable = sqlite.constants.SQLITE_OPEN_READWRITE |
         sqlite.constants.SQLITE_OPEN_NOFOLLOW;
       let corruptor = sqlite.Database.open(databasePath, writable);
@@ -2676,7 +2676,7 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
       const foreignPlanningBase = await capturePrivateActivationPlanningBase({
         projectRoot: foreignRoot,
       });
-      const admissionDatabase = join(root, ".jig", "private-activation-admission-v18.sqlite3");
+      const admissionDatabase = join(root, ".jig", "private-activation-admission-v19.sqlite3");
       const sqlite = createRequire(import.meta.url)("bun:sqlite") as any;
 
       const aggregate = await retainPackageProject({
@@ -3699,7 +3699,7 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         }),
       });
 
-      const databasePath = join(root, ".jig", "private-activation-admission-v18.sqlite3");
+      const databasePath = join(root, ".jig", "private-activation-admission-v19.sqlite3");
       controller = await openController();
       const submitted = await controller.administration.startRun({
         submissionId: "journal-success",
@@ -4453,7 +4453,7 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
         },
       });
       const sqlite = createRequire(import.meta.url)("bun:sqlite") as any;
-      const databasePath = join(root, ".jig", "private-activation-admission-v18.sqlite3");
+      const databasePath = join(root, ".jig", "private-activation-admission-v19.sqlite3");
       const database = sqlite.Database.open(
         databasePath,
         sqlite.constants.SQLITE_OPEN_READONLY | sqlite.constants.SQLITE_OPEN_NOFOLLOW,
@@ -5014,7 +5014,7 @@ hostileDescribe("private Linux cgroup-v2 hostile envelope", () => {
       });
 
       const sqlite = createRequire(import.meta.url)("bun:sqlite") as any;
-      const databasePath = join(root, ".jig", "private-activation-admission-v18.sqlite3");
+      const databasePath = join(root, ".jig", "private-activation-admission-v19.sqlite3");
       const database = sqlite.Database.open(
         databasePath,
         sqlite.constants.SQLITE_OPEN_READONLY | sqlite.constants.SQLITE_OPEN_NOFOLLOW,

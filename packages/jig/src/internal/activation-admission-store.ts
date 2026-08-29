@@ -203,6 +203,30 @@ import {
   type PrivateRootFlowCallLifecycle,
 } from "./root-flow-call-state.js";
 import {
+  PRIVATE_ROOT_BUN_NATIVE_PREPARATION_FACT_NAMES,
+  decodePrivateRootBunNativePreparationCandidateBytes,
+  decodePrivateRootBunNativePreparationAllocation,
+  decodePrivateRootBunNativePreparationClosure,
+  decodePrivateRootBunNativePreparationFact,
+  encodePrivateRootBunNativePreparationAllocation,
+  encodePrivateRootBunNativePreparationClosure,
+  encodePrivateRootBunNativePreparationFact,
+  normalizePrivateRootBunNativePreparationAllocation,
+  normalizePrivateRootBunNativePreparationClosure,
+  normalizePrivateRootBunNativePreparationFact,
+  normalizePrivateRootBunNativePreparationOutcome,
+  privateRootBunNativePreparationCandidateDigest,
+  privateRootBunNativePreparationAllocationDigest,
+  privateRootBunNativePreparationClosureDigest,
+  privateRootBunNativePreparationFactDigest,
+  requirePrivateRootBunNativePreparationFactName,
+  type PrivateRootBunNativePreparationAllocation,
+  type PrivateRootBunNativePreparationClosure,
+  type PrivateRootBunNativePreparationFactName,
+  type PrivateRootBunNativePreparationFactValueMap,
+  type PrivateRootBunNativePreparationOutcome,
+} from "./bun-native-preparation-state.js";
+import {
   createPrivateJournalEvent,
   decodePrivateRootJournalAppendAllocation,
   encodePrivateRootJournalAppendAllocation,
@@ -248,7 +272,7 @@ export type {
 } from "./root-run-state.js";
 
 const STATE_DIRECTORY = ".jig";
-const DATABASE_NAME = "private-activation-admission-v18.sqlite3";
+const DATABASE_NAME = "private-activation-admission-v19.sqlite3";
 const ADMISSION_DATABASE_FAMILY =
   /^private-activation-admission-v[0-9]+\.sqlite3(?:-journal|-wal|-shm)?$/;
 const CURRENT_DATABASE_SIDECARS = new Set([
@@ -259,8 +283,8 @@ const CURRENT_DATABASE_SIDECARS = new Set([
 const COORDINATOR_DATABASE_NAME = "private-project-coordinator-v1.sqlite3";
 const LOCK_NAME = "jig.lock";
 const LOCK_STAGE_NAME = "private-activation-jig-lock-v1.stage";
-const SCHEMA_VERSION = 18n;
-const APPLICATION_ID = 0x4a494741n; // JIGA: schema 18
+const SCHEMA_VERSION = 19n;
+const APPLICATION_ID = 0x4a494741n; // JIGA: schema 19
 const COORDINATOR_SCHEMA_VERSION = 1n;
 const COORDINATOR_APPLICATION_ID = 0x4a494743n; // JIGC
 const BUSY_TIMEOUT_MS = 250;
@@ -286,6 +310,9 @@ const CREATE_ROOT_EXECUTION_CLOSURES = "CREATE TABLE root_execution_closures (ru
 const CREATE_ROOT_FLOW_CALLS = "CREATE TABLE root_flow_calls (parent_run_id TEXT PRIMARY KEY REFERENCES root_spawn_intents(run_id), allocation_digest TEXT NOT NULL UNIQUE, allocation_bytes BLOB NOT NULL CHECK (length(allocation_bytes) BETWEEN 1 AND 16777216)) STRICT";
 const CREATE_ROOT_FLOW_CALL_FACTS = "CREATE TABLE root_flow_call_facts (parent_run_id TEXT NOT NULL REFERENCES root_flow_calls(parent_run_id), fact_name TEXT NOT NULL CHECK (fact_name IN ('plan','backing','sandbox','prepared','provisional','fence','release','admitted')), fact_digest TEXT NOT NULL UNIQUE, fact_bytes BLOB NOT NULL CHECK (length(fact_bytes) BETWEEN 1 AND 16777216), PRIMARY KEY (parent_run_id, fact_name)) WITHOUT ROWID, STRICT";
 const CREATE_ROOT_FLOW_CALL_CLOSURES = "CREATE TABLE root_flow_call_closures (parent_run_id TEXT PRIMARY KEY REFERENCES root_flow_calls(parent_run_id), closure_digest TEXT NOT NULL UNIQUE, closure_bytes BLOB NOT NULL CHECK (length(closure_bytes) BETWEEN 1 AND 16777216), UNIQUE (parent_run_id, closure_digest)) STRICT";
+const CREATE_ROOT_BUN_PREPARATIONS = "CREATE TABLE root_bun_preparations (parent_run_id TEXT PRIMARY KEY REFERENCES root_spawn_intents(run_id), allocation_digest TEXT NOT NULL UNIQUE, allocation_bytes BLOB NOT NULL CHECK (length(allocation_bytes) BETWEEN 1 AND 16777216)) STRICT";
+const CREATE_ROOT_BUN_PREPARATION_FACTS = "CREATE TABLE root_bun_preparation_facts (parent_run_id TEXT NOT NULL REFERENCES root_bun_preparations(parent_run_id), fact_name TEXT NOT NULL CHECK (fact_name IN ('plan','backing','sandbox','dispatch','prepared','fence','outcome','artifact','release')), fact_digest TEXT NOT NULL UNIQUE, fact_bytes BLOB NOT NULL CHECK (length(fact_bytes) BETWEEN 1 AND 16777216), PRIMARY KEY (parent_run_id, fact_name)) WITHOUT ROWID, STRICT";
+const CREATE_ROOT_BUN_PREPARATION_CLOSURES = "CREATE TABLE root_bun_preparation_closures (parent_run_id TEXT PRIMARY KEY REFERENCES root_bun_preparations(parent_run_id), closure_digest TEXT NOT NULL UNIQUE, closure_bytes BLOB NOT NULL CHECK (length(closure_bytes) BETWEEN 1 AND 16777216), UNIQUE (parent_run_id, closure_digest)) STRICT";
 const CREATE_JOURNAL_HEAD = "CREATE TABLE journal_head (singleton INTEGER PRIMARY KEY CHECK (singleton = 1), position INTEGER NOT NULL CHECK (position BETWEEN 0 AND 9007199254740991)) STRICT";
 const CREATE_JOURNAL_EVENTS = "CREATE TABLE journal_events (position INTEGER PRIMARY KEY CHECK (position BETWEEN 1 AND 9007199254740991), event_id TEXT NOT NULL UNIQUE, event_digest TEXT NOT NULL UNIQUE, event_bytes BLOB NOT NULL CHECK (length(event_bytes) BETWEEN 1 AND 16777216)) STRICT";
 const CREATE_HOOK_ADMISSION_BOUNDARIES = "CREATE TABLE hook_admission_boundaries (admission_digest TEXT PRIMARY KEY REFERENCES admissions(admission_digest), boundary_digest TEXT NOT NULL UNIQUE, boundary_bytes BLOB NOT NULL CHECK (length(boundary_bytes) BETWEEN 1 AND 16777216)) STRICT";
@@ -316,6 +343,9 @@ const EXPECTED_SCHEMA = Object.freeze([
   Object.freeze({ type: "table", name: "journal_head", table: "journal_head", sql: CREATE_JOURNAL_HEAD }),
   Object.freeze({ type: "table", name: "lock_repairs", table: "lock_repairs", sql: CREATE_LOCK_REPAIRS }),
   Object.freeze({ type: "table", name: "review_plans", table: "review_plans", sql: CREATE_REVIEW_PLANS }),
+  Object.freeze({ type: "table", name: "root_bun_preparation_closures", table: "root_bun_preparation_closures", sql: CREATE_ROOT_BUN_PREPARATION_CLOSURES }),
+  Object.freeze({ type: "table", name: "root_bun_preparation_facts", table: "root_bun_preparation_facts", sql: CREATE_ROOT_BUN_PREPARATION_FACTS }),
+  Object.freeze({ type: "table", name: "root_bun_preparations", table: "root_bun_preparations", sql: CREATE_ROOT_BUN_PREPARATIONS }),
   Object.freeze({ type: "table", name: "root_execution_closures", table: "root_execution_closures", sql: CREATE_ROOT_EXECUTION_CLOSURES }),
   Object.freeze({ type: "table", name: "root_execution_lifecycles", table: "root_execution_lifecycles", sql: CREATE_ROOT_EXECUTION_LIFECYCLES }),
   Object.freeze({ type: "table", name: "root_flow_call_closures", table: "root_flow_call_closures", sql: CREATE_ROOT_FLOW_CALL_CLOSURES }),
@@ -340,6 +370,13 @@ const authenticRootRunLaunches = new WeakSet<object>();
 const claimedRootRunLaunches = new WeakSet<object>();
 const authenticCreatedServiceMountAllocations = new WeakSet<object>();
 const authenticCreatedServiceInvocationAllocations = new WeakSet<object>();
+const authenticCreatedRootBunPreparationAllocations = new WeakSet<object>();
+const authenticRootBunPreparationLaunchAdmissions = new WeakSet<object>();
+const claimedRootBunPreparationLaunchAdmissions = new WeakSet<object>();
+const rootBunPreparationLaunchAdmissionOwners = new WeakMap<object, Readonly<{
+  readonly coordinator: PrivateProjectCoordinator;
+  readonly projectRoot: string;
+}>>();
 const authenticCoordinators = new WeakMap<object, {
   readonly device: bigint;
   readonly inode: bigint;
@@ -570,6 +607,25 @@ interface RootFlowCallFactRow {
 }
 
 interface RootFlowCallClosureRow {
+  readonly parent_run_id: string;
+  readonly closure_digest: string;
+  readonly closure_bytes: Uint8Array;
+}
+
+interface RootBunPreparationRow {
+  readonly parent_run_id: string;
+  readonly allocation_digest: string;
+  readonly allocation_bytes: Uint8Array;
+}
+
+interface RootBunPreparationFactRow {
+  readonly parent_run_id: string;
+  readonly fact_name: string;
+  readonly fact_digest: string;
+  readonly fact_bytes: Uint8Array;
+}
+
+interface RootBunPreparationClosureRow {
   readonly parent_run_id: string;
   readonly closure_digest: string;
   readonly closure_bytes: Uint8Array;
@@ -860,6 +916,48 @@ export interface PrivateRootExecutionWork {
   readonly run: PrivateRootRunSnapshot;
   readonly intent: PrivateRootRunSpawnIntent;
   readonly lifecycle: PrivateRootExecutionLifecycle;
+}
+
+export interface PrivateRootBunNativePreparationFact<Value = JsonValue> {
+  readonly digest: string;
+  readonly value: Value;
+}
+
+/** One exact root-owned Bun preparation lifecycle, classified against the live coordinator. */
+export interface PrivateRootBunNativePreparationSnapshot {
+  readonly allocation: PrivateRootBunNativePreparationAllocation;
+  readonly allocationDigest: string;
+  readonly coordinator: "current" | "older";
+  readonly plan?: PrivateRootBunNativePreparationFact<PrivateRootBunNativePreparationFactValueMap["plan"]>;
+  readonly backing?: PrivateRootBunNativePreparationFact<PrivateRootBunNativePreparationFactValueMap["backing"]>;
+  readonly sandbox?: PrivateRootBunNativePreparationFact<PrivateRootBunNativePreparationFactValueMap["sandbox"]>;
+  readonly dispatch?: PrivateRootBunNativePreparationFact<PrivateRootBunNativePreparationFactValueMap["dispatch"]>;
+  readonly prepared?: PrivateRootBunNativePreparationFact<PrivateRootBunNativePreparationFactValueMap["prepared"]>;
+  readonly fence?: PrivateRootBunNativePreparationFact<PrivateRootBunNativePreparationFactValueMap["fence"]>;
+  readonly outcome?: PrivateRootBunNativePreparationFact<PrivateRootBunNativePreparationFactValueMap["outcome"]>;
+  readonly artifact?: PrivateRootBunNativePreparationFact<PrivateRootBunNativePreparationFactValueMap["artifact"]>;
+  readonly release?: PrivateRootBunNativePreparationFact<PrivateRootBunNativePreparationFactValueMap["release"]>;
+  readonly closure?: PrivateRootBunNativePreparationFact<PrivateRootBunNativePreparationClosure>;
+}
+
+/** Only a newly inserted allocation result may attempt the dispatch transition. */
+export interface PrivateRootBunNativePreparationAllocationResult {
+  readonly snapshot: PrivateRootBunNativePreparationSnapshot;
+  readonly created: boolean;
+}
+
+export interface PrivateRootBunNativePreparationDispatchResult {
+  readonly snapshot: PrivateRootBunNativePreparationSnapshot;
+  readonly created: boolean;
+  readonly launchAdmission?: PrivateRootBunNativePreparationLaunchAdmission;
+}
+
+/** Nonserializable authority to begin exactly the newly committed dispatch. */
+export interface PrivateRootBunNativePreparationLaunchAdmission {
+  readonly parentRunId: string;
+  readonly allocationDigest: string;
+  readonly dispatchDigest: string;
+  readonly coordinatorEpoch: number;
 }
 
 /** Create or verify inert protected project state without granting authority. */
@@ -2925,6 +3023,328 @@ export async function closePrivateRootFlowCall(input: {
   }
 }
 
+/** Allocate or replay the one private Bun native preparation beneath a root Run. */
+export async function allocatePrivateRootBunNativePreparation(input: {
+  readonly coordinator: PrivateProjectCoordinator;
+  readonly projectRoot: string;
+  readonly allocation: PrivateRootBunNativePreparationAllocation;
+}): Promise<PrivateRootBunNativePreparationAllocationResult> {
+  const coordinator = requirePrivateProjectCoordinator(input.coordinator);
+  const allocation = normalizePrivateRootBunNativePreparationAllocation(input.allocation);
+  await coordinator.verify();
+  const owner = await openStateOwner(input.projectRoot, false);
+  let failure: unknown;
+  try {
+    requireCoordinatorRoot(coordinator, owner.root);
+    const result = await immediate(owner, async () => {
+      await coordinator.verify();
+      const runRow = requireRootRunRow(owner.database, allocation.parentRunId);
+      const run = loadRootRunSnapshot(owner.database, runRow, owner.root);
+      if (run.state === "terminal") invalid("RUN_ALREADY_TERMINAL", "root Run is already terminal");
+      if (run.coordinatorEpoch > coordinator.epoch) {
+        corrupt("root Bun native preparation belongs to a future coordinator epoch");
+      }
+      const prior = findRootBunPreparation(owner.database, allocation.parentRunId);
+      if (prior !== null) {
+        const snapshot = loadRootBunPreparationSnapshot(
+          owner.database,
+          prior,
+          owner.root,
+          coordinator,
+        );
+        if (!sameCanonical(snapshot.allocation, allocation)) {
+          invalid("OPERATION_CONFLICT", "root Bun native preparation already has another allocation");
+        }
+        return Object.freeze({ snapshot, created: false });
+      }
+      requireNewRootBunPreparationContext(owner.database, owner.root, coordinator, allocation);
+      const bytes = encodePrivateRootBunNativePreparationAllocation(allocation);
+      const digest = privateRootBunNativePreparationAllocationDigest(allocation);
+      requireStoredSize(bytes, "root Bun native preparation allocation");
+      runFinalized(owner.database, [
+        "INSERT INTO root_bun_preparations(parent_run_id, allocation_digest, allocation_bytes)",
+        "VALUES (?1, ?2, ?3)",
+      ].join(" "), [allocation.parentRunId, digest, bytes]);
+      const snapshot = loadRootBunPreparationSnapshot(
+        owner.database,
+        requireRootBunPreparation(owner.database, allocation.parentRunId),
+        owner.root,
+        coordinator,
+      );
+      return Object.freeze({ snapshot, created: true });
+    });
+    await owner.finish();
+    if (result.created) authenticCreatedRootBunPreparationAllocations.add(result);
+    return result;
+  } catch (error) {
+    failure = error;
+    throw error;
+  } finally {
+    await disposeOperation(owner, undefined, failure);
+  }
+}
+
+/** Reopen one private Bun native preparation without minting dispatch authority. */
+export async function loadPrivateRootBunNativePreparation(input: {
+  readonly coordinator: PrivateProjectCoordinator;
+  readonly projectRoot: string;
+  readonly parentRunId: string;
+}): Promise<PrivateRootBunNativePreparationSnapshot | undefined> {
+  const coordinator = requirePrivateProjectCoordinator(input.coordinator);
+  await coordinator.verify();
+  requireDigest(input.parentRunId, "root Bun native preparation parent Run");
+  const owner = await openStateOwner(input.projectRoot, false);
+  let failure: unknown;
+  try {
+    requireCoordinatorRoot(coordinator, owner.root);
+    const snapshot = await immediate(owner, async () => {
+      await coordinator.verify();
+      const row = findRootBunPreparation(owner.database, input.parentRunId);
+      return row === null
+        ? undefined
+        : loadRootBunPreparationSnapshot(owner.database, row, owner.root, coordinator);
+    });
+    await owner.finish();
+    return snapshot;
+  } catch (error) {
+    failure = error;
+    throw error;
+  } finally {
+    await disposeOperation(owner, undefined, failure);
+  }
+}
+
+/** List unclosed preparation work for current or older coordinator epochs. */
+export async function listPrivateRootBunNativePreparationWork(input: {
+  readonly coordinator: PrivateProjectCoordinator;
+  readonly projectRoot: string;
+  readonly epoch: "current" | "older";
+}): Promise<readonly PrivateRootBunNativePreparationSnapshot[]> {
+  const coordinator = requirePrivateProjectCoordinator(input.coordinator);
+  await coordinator.verify();
+  if (input.epoch !== "current" && input.epoch !== "older") {
+    throw new TypeError("root Bun native preparation epoch must be current or older");
+  }
+  const owner = await openStateOwner(input.projectRoot, false);
+  let failure: unknown;
+  try {
+    requireCoordinatorRoot(coordinator, owner.root);
+    const snapshots = await immediate(owner, async () => {
+      await coordinator.verify();
+      const comparison = input.epoch === "current" ? "=" : "<";
+      const query = statement<RootBunPreparationRow>(owner.database, [
+        "SELECT p.parent_run_id, p.allocation_digest, p.allocation_bytes",
+        "FROM root_bun_preparations p",
+        "JOIN root_runs r ON r.run_id = p.parent_run_id",
+        "LEFT JOIN root_bun_preparation_closures c ON c.parent_run_id = p.parent_run_id",
+        `WHERE c.parent_run_id IS NULL AND r.coordinator_epoch ${comparison} ?1`,
+        "ORDER BY p.parent_run_id",
+      ].join(" ")).safeIntegers(true);
+      let rows: readonly RootBunPreparationRow[];
+      try { rows = query.all(BigInt(coordinator.epoch)); }
+      finally { query.finalize(); }
+      return Object.freeze(rows.map((row) => loadRootBunPreparationSnapshot(
+        owner.database,
+        copiedRootBunPreparationRow(row),
+        owner.root,
+        coordinator,
+      )));
+    });
+    await owner.finish();
+    return snapshots;
+  } catch (error) {
+    failure = error;
+    throw error;
+  } finally {
+    await disposeOperation(owner, undefined, failure);
+  }
+}
+
+/** Persist one non-dispatch write-once preparation fact. */
+export async function recordPrivateRootBunNativePreparationFact<
+  Name extends Exclude<PrivateRootBunNativePreparationFactName, "dispatch">,
+>(input: {
+  readonly coordinator: PrivateProjectCoordinator;
+  readonly projectRoot: string;
+  readonly parentRunId: string;
+  readonly fact: Name;
+  readonly value: PrivateRootBunNativePreparationFactValueMap[Name];
+}): Promise<PrivateRootBunNativePreparationSnapshot> {
+  const fact = requirePrivateRootBunNativePreparationFactName(input.fact);
+  if (fact === "dispatch") throw new TypeError("use the dispatch-admission transition for dispatch");
+  return (await transitionRootBunPreparationFact({
+    ...input,
+    fact,
+    value: input.value as unknown as JsonValue,
+  })).snapshot;
+}
+
+/** Commit possible dispatch before any installer byte may execute. */
+export async function recordPrivateRootBunNativePreparationDispatch(input: {
+  readonly coordinator: PrivateProjectCoordinator;
+  readonly projectRoot: string;
+  readonly allocation: PrivateRootBunNativePreparationAllocationResult;
+}): Promise<PrivateRootBunNativePreparationDispatchResult> {
+  if (!authenticCreatedRootBunPreparationAllocations.has(input.allocation) ||
+      !input.allocation.created) {
+    throw new TypeError("root Bun native preparation dispatch requires its newly created allocation");
+  }
+  const allocation = input.allocation.snapshot.allocation;
+  const before = await loadPrivateRootBunNativePreparation({
+    coordinator: input.coordinator,
+    projectRoot: input.projectRoot,
+    parentRunId: allocation.parentRunId,
+  });
+  if (before === undefined || before.allocationDigest !== input.allocation.snapshot.allocationDigest ||
+      !sameCanonical(before.allocation, allocation)) {
+    corrupt("root Bun native preparation dispatch authority differs from its durable allocation");
+  }
+  if (before.dispatch !== undefined) {
+    return Object.freeze({ snapshot: before, created: false });
+  }
+  if (before.sandbox === undefined) {
+    invalid("RUN_EXECUTION_CHECKPOINT_ORDER", "root Bun native preparation dispatch requires sandbox evidence");
+  }
+  const transition = await transitionRootBunPreparationFact({
+    coordinator: input.coordinator,
+    projectRoot: input.projectRoot,
+    parentRunId: allocation.parentRunId,
+    fact: "dispatch",
+    value: {
+      kind: "private-root-bun-native-preparation-dispatch/1",
+      sandboxDigest: before.sandbox.digest,
+    },
+  });
+  if (!transition.created || transition.snapshot.dispatch === undefined) {
+    return Object.freeze({ snapshot: transition.snapshot, created: false });
+  }
+  const launchAdmission = Object.freeze({
+    parentRunId: allocation.parentRunId,
+    allocationDigest: transition.snapshot.allocationDigest,
+    dispatchDigest: transition.snapshot.dispatch.digest,
+    coordinatorEpoch: allocation.coordinatorEpoch,
+  });
+  authenticRootBunPreparationLaunchAdmissions.add(launchAdmission);
+  rootBunPreparationLaunchAdmissionOwners.set(launchAdmission, Object.freeze({
+    coordinator: input.coordinator,
+    projectRoot: input.projectRoot,
+  }));
+  return Object.freeze({ snapshot: transition.snapshot, created: true, launchAdmission });
+}
+
+/** Validate and consume launch authority while synchronously beginning admission under the state lock. */
+export async function claimPrivateRootBunNativePreparationLaunchAdmission(
+  input: {
+    readonly launchAdmission: unknown;
+    readonly begin: (admission: PrivateRootBunNativePreparationLaunchAdmission) => void;
+  },
+): Promise<PrivateRootBunNativePreparationLaunchAdmission> {
+  const value = input.launchAdmission;
+  if (value === null || typeof value !== "object" ||
+      !authenticRootBunPreparationLaunchAdmissions.has(value)) {
+    throw new TypeError("root Bun native preparation launch admission was not durably minted");
+  }
+  if (typeof input.begin !== "function") {
+    throw new TypeError("root Bun native preparation launch admission requires a start callback");
+  }
+  const admission = value as PrivateRootBunNativePreparationLaunchAdmission;
+  const source = rootBunPreparationLaunchAdmissionOwners.get(value);
+  if (source === undefined) corrupt("root Bun native preparation launch admission lost its owner");
+  const coordinator = source.coordinator;
+  await coordinator.verify();
+  const owner = await openStateOwner(source.projectRoot, false);
+  let failure: unknown;
+  try {
+    requireCoordinatorRoot(coordinator, owner.root);
+    await immediate(owner, async () => {
+      await coordinator.verify();
+      if (claimedRootBunPreparationLaunchAdmissions.has(value)) {
+        throw new TypeError("root Bun native preparation launch admission was already consumed");
+      }
+      const runRow = requireRootRunRow(owner.database, admission.parentRunId);
+      const run = loadRootRunSnapshot(owner.database, runRow, owner.root);
+      if (run.state === "terminal") {
+        invalid("RUN_ALREADY_TERMINAL", "root Bun native preparation parent Run is terminal");
+      }
+      const row = requireRootBunPreparation(owner.database, admission.parentRunId);
+      const snapshot = loadRootBunPreparationSnapshot(
+        owner.database,
+        row,
+        owner.root,
+        coordinator,
+      );
+      if (snapshot.coordinator !== "current" ||
+          snapshot.allocationDigest !== admission.allocationDigest ||
+          snapshot.allocation.coordinatorEpoch !== admission.coordinatorEpoch ||
+          snapshot.dispatch?.digest !== admission.dispatchDigest ||
+          snapshot.prepared !== undefined || snapshot.fence !== undefined ||
+          snapshot.outcome !== undefined || snapshot.artifact !== undefined ||
+          snapshot.release !== undefined || snapshot.closure !== undefined) {
+        invalid(
+          "RUN_EXECUTION_CHECKPOINT_ORDER",
+          "root Bun native preparation launch admission is no longer live",
+        );
+      }
+      claimedRootBunPreparationLaunchAdmissions.add(value);
+      input.begin(admission);
+    });
+    await owner.finish();
+    return admission;
+  } catch (error) {
+    failure = error;
+    throw error;
+  } finally {
+    await disposeOperation(owner, undefined, failure);
+  }
+}
+
+/** Bind one fully settled preparation to the exact immutable fact set it closed. */
+export async function closePrivateRootBunNativePreparation(input: {
+  readonly coordinator: PrivateProjectCoordinator;
+  readonly projectRoot: string;
+  readonly parentRunId: string;
+}): Promise<PrivateRootBunNativePreparationSnapshot> {
+  const coordinator = requirePrivateProjectCoordinator(input.coordinator);
+  await coordinator.verify();
+  requireDigest(input.parentRunId, "root Bun native preparation parent Run");
+  const owner = await openStateOwner(input.projectRoot, false);
+  let failure: unknown;
+  try {
+    requireCoordinatorRoot(coordinator, owner.root);
+    const snapshot = await immediate(owner, async () => {
+      await coordinator.verify();
+      const row = requireRootBunPreparation(owner.database, input.parentRunId);
+      const before = loadRootBunPreparationSnapshot(owner.database, row, owner.root, coordinator);
+      if (before.closure !== undefined) return before;
+      requireRootBunPreparationClosable(before);
+      const closure = normalizePrivateRootBunNativePreparationClosure({
+        kind: "private-root-bun-native-preparation-closure/1",
+        parentRunId: before.allocation.parentRunId,
+        allocationDigest: before.allocationDigest,
+        facts: Object.fromEntries(PRIVATE_ROOT_BUN_NATIVE_PREPARATION_FACT_NAMES.map((name) => [
+          name,
+          before[name]?.digest ?? null,
+        ])),
+      });
+      const bytes = encodePrivateRootBunNativePreparationClosure(closure);
+      const digest = privateRootBunNativePreparationClosureDigest(closure);
+      requireStoredSize(bytes, "root Bun native preparation closure");
+      runFinalized(owner.database, [
+        "INSERT INTO root_bun_preparation_closures(parent_run_id, closure_digest, closure_bytes)",
+        "VALUES (?1, ?2, ?3)",
+      ].join(" "), [input.parentRunId, digest, bytes]);
+      return loadRootBunPreparationSnapshot(owner.database, row, owner.root, coordinator);
+    });
+    await owner.finish();
+    return snapshot;
+  } catch (error) {
+    failure = error;
+    throw error;
+  } finally {
+    await disposeOperation(owner, undefined, failure);
+  }
+}
+
 function matchingOpenHookRevisions(
   database: SqliteDatabase,
   event: PrivateJournalEvent,
@@ -3605,6 +4025,14 @@ export async function closePrivateRootExecution(input: {
       const lifecycleRow = requireRootExecutionLifecycle(owner.database, input.runId);
       const lifecycle = loadRootExecutionLifecycle(owner.database, lifecycleRow, runRow);
       requireExecutionClosable(lifecycle);
+      const preparation = findRootBunPreparation(owner.database, input.runId);
+      if (preparation !== null &&
+          findRootBunPreparationClosure(owner.database, input.runId) === null) {
+        invalid(
+          "RUN_EXECUTION_CLOSURE_REQUIRED",
+          "root Run cannot close while its Bun native preparation remains open",
+        );
+      }
       const admitted = normalizePrivateRootTerminal(lifecycle.admitted!.value);
       if (!sameBytes(privateRootTerminalBytes(admitted), privateRootTerminalBytes(terminal))) {
         invalid("RUN_TERMINAL_CONFLICT", "final terminal differs from its admitted terminal checkpoint");
@@ -4725,6 +5153,672 @@ function findRootFlowCall(database: SqliteDatabase, parentRunId: string): RootFl
       allocation_bytes: copiedBlob(row.allocation_bytes, "stored root Flow call allocation"),
     });
   } finally { query.finalize(); }
+}
+
+function findRootBunPreparation(
+  database: SqliteDatabase,
+  parentRunId: string,
+): RootBunPreparationRow | null {
+  const query = statement<RootBunPreparationRow>(database, [
+    "SELECT parent_run_id, allocation_digest, allocation_bytes",
+    "FROM root_bun_preparations WHERE parent_run_id = ?1",
+  ].join(" "));
+  try {
+    const row = query.get(parentRunId);
+    return row === null ? null : copiedRootBunPreparationRow(row);
+  } finally { query.finalize(); }
+}
+
+function copiedRootBunPreparationRow(row: RootBunPreparationRow): RootBunPreparationRow {
+  return Object.freeze({
+    parent_run_id: row.parent_run_id,
+    allocation_digest: row.allocation_digest,
+    allocation_bytes: copiedBlob(
+      row.allocation_bytes,
+      "stored root Bun native preparation allocation",
+    ),
+  });
+}
+
+function requireRootBunPreparation(
+  database: SqliteDatabase,
+  parentRunId: string,
+): RootBunPreparationRow {
+  const row = findRootBunPreparation(database, parentRunId);
+  if (row === null) corrupt("root Run has no allocated Bun native preparation");
+  return row;
+}
+
+function findRootBunPreparationFact(
+  database: SqliteDatabase,
+  parentRunId: string,
+  factName: PrivateRootBunNativePreparationFactName,
+): RootBunPreparationFactRow | null {
+  const query = statement<RootBunPreparationFactRow>(database, [
+    "SELECT parent_run_id, fact_name, fact_digest, fact_bytes",
+    "FROM root_bun_preparation_facts WHERE parent_run_id = ?1 AND fact_name = ?2",
+  ].join(" "));
+  try {
+    const row = query.get(parentRunId, factName);
+    return row === null ? null : Object.freeze({
+      parent_run_id: row.parent_run_id,
+      fact_name: row.fact_name,
+      fact_digest: row.fact_digest,
+      fact_bytes: copiedBlob(
+        row.fact_bytes,
+        `stored root Bun native preparation ${factName}`,
+      ),
+    });
+  } finally { query.finalize(); }
+}
+
+function findRootBunPreparationClosure(
+  database: SqliteDatabase,
+  parentRunId: string,
+): RootBunPreparationClosureRow | null {
+  const query = statement<RootBunPreparationClosureRow>(database, [
+    "SELECT parent_run_id, closure_digest, closure_bytes",
+    "FROM root_bun_preparation_closures WHERE parent_run_id = ?1",
+  ].join(" "));
+  try {
+    const row = query.get(parentRunId);
+    return row === null ? null : Object.freeze({
+      parent_run_id: row.parent_run_id,
+      closure_digest: row.closure_digest,
+      closure_bytes: copiedBlob(
+        row.closure_bytes,
+        "stored root Bun native preparation closure",
+      ),
+    });
+  } finally { query.finalize(); }
+}
+
+function loadRootBunPreparationSnapshot(
+  database: SqliteDatabase,
+  row: RootBunPreparationRow,
+  root: PrivateProjectRoot,
+  coordinator: PrivateProjectCoordinator,
+): PrivateRootBunNativePreparationSnapshot {
+  const runRow = requireRootRunRow(database, row.parent_run_id);
+  if (runRow.coordinator_epoch > BigInt(coordinator.epoch)) {
+    corrupt("root Bun native preparation belongs to a future coordinator epoch");
+  }
+  requireDigest(row.allocation_digest, "stored root Bun native preparation allocation");
+  let allocation: PrivateRootBunNativePreparationAllocation;
+  try { allocation = decodePrivateRootBunNativePreparationAllocation(row.allocation_bytes); }
+  catch { corrupt("stored root Bun native preparation allocation is invalid"); }
+  if (privateRootBunNativePreparationAllocationDigest(allocation) !== row.allocation_digest ||
+      allocation.parentRunId !== runRow.run_id ||
+      allocation.coordinatorEpoch !== safeRevision(runRow.coordinator_epoch)) {
+    corrupt("stored root Bun native preparation allocation differs from its durable identity");
+  }
+  requireRootBunPreparationCandidate(database, runRow, allocation, root);
+  const result: PrivateRootBunNativePreparationSnapshot = {
+    allocation,
+    allocationDigest: row.allocation_digest,
+    coordinator: runRow.coordinator_epoch === BigInt(coordinator.epoch) ? "current" : "older",
+  };
+  const query = statement<RootBunPreparationFactRow>(database, [
+    "SELECT parent_run_id, fact_name, fact_digest, fact_bytes",
+    "FROM root_bun_preparation_facts WHERE parent_run_id = ?1 ORDER BY fact_name",
+  ].join(" "));
+  let facts: readonly RootBunPreparationFactRow[];
+  try { facts = query.all(row.parent_run_id); }
+  finally { query.finalize(); }
+  for (const raw of facts) {
+    let factName: PrivateRootBunNativePreparationFactName;
+    try { factName = requirePrivateRootBunNativePreparationFactName(raw.fact_name); }
+    catch { corrupt("stored root Bun native preparation fact name is invalid"); }
+    requireDigest(raw.fact_digest, `stored root Bun native preparation ${factName}`);
+    const bytes = copiedBlob(raw.fact_bytes, `stored root Bun native preparation ${factName}`);
+    let envelope: ReturnType<typeof normalizePrivateRootBunNativePreparationFact>;
+    try { envelope = decodePrivateRootBunNativePreparationFact(bytes, factName); }
+    catch { corrupt(`stored root Bun native preparation ${factName} is invalid`); }
+    if (privateRootBunNativePreparationFactDigest(factName, envelope) !== raw.fact_digest ||
+        envelope.parentRunId !== row.parent_run_id ||
+        envelope.allocationDigest !== row.allocation_digest) {
+      corrupt(`stored root Bun native preparation ${factName} differs from its durable identity`);
+    }
+    (result as unknown as Record<string, unknown>)[factName] = Object.freeze({
+      digest: raw.fact_digest,
+      value: envelope.value,
+    });
+  }
+  validateRootBunPreparationLifecycle(root, result);
+  const closureRow = findRootBunPreparationClosure(database, row.parent_run_id);
+  if (closureRow === null) return Object.freeze(result);
+  requireRootBunPreparationClosable(result);
+  requireDigest(closureRow.closure_digest, "stored root Bun native preparation closure");
+  let closure: PrivateRootBunNativePreparationClosure;
+  try { closure = decodePrivateRootBunNativePreparationClosure(closureRow.closure_bytes); }
+  catch { corrupt("stored root Bun native preparation closure is invalid"); }
+  const expectedFacts = Object.fromEntries(PRIVATE_ROOT_BUN_NATIVE_PREPARATION_FACT_NAMES.map(
+    (name) => [name, result[name]?.digest ?? null],
+  ));
+  if (privateRootBunNativePreparationClosureDigest(closure) !== closureRow.closure_digest ||
+      closure.parentRunId !== row.parent_run_id ||
+      closure.allocationDigest !== row.allocation_digest ||
+      !sameCanonical(closure.facts, expectedFacts)) {
+    corrupt("stored root Bun native preparation closure differs from its durable evidence");
+  }
+  return Object.freeze({
+    ...result,
+    closure: Object.freeze({ digest: closureRow.closure_digest, value: closure }),
+  });
+}
+
+function requireNewRootBunPreparationContext(
+  database: SqliteDatabase,
+  root: PrivateProjectRoot,
+  coordinator: PrivateProjectCoordinator,
+  allocation: PrivateRootBunNativePreparationAllocation,
+): void {
+  const runRow = requireRootRunRow(database, allocation.parentRunId);
+  const run = loadRootRunSnapshot(database, runRow, root);
+  if (run.state === "terminal") invalid("RUN_ALREADY_TERMINAL", "root Run is already terminal");
+  if (run.coordinatorEpoch !== coordinator.epoch || allocation.coordinatorEpoch !== coordinator.epoch) {
+    invalid("RUN_COORDINATOR_STALE", "replacement coordinator cannot allocate Bun native preparation");
+  }
+  requireRootBunPreparationCandidate(database, runRow, allocation, root);
+}
+
+function requireRootBunPreparationCandidate(
+  database: SqliteDatabase,
+  run: RootRunRow,
+  allocation: PrivateRootBunNativePreparationAllocation,
+  root: PrivateProjectRoot,
+): void {
+  if (allocation.parentRunId !== run.run_id ||
+      allocation.coordinatorEpoch !== safeRevision(run.coordinator_epoch)) {
+    corrupt("root Bun native preparation allocation differs from its parent Run");
+  }
+  const request = decodePrivateRootRunRequest(run.request_bytes);
+  const candidate = loadCandidateRow(requireCandidateRow(database, run.candidate_revision));
+  requireCandidateRoot(candidate, root);
+  const target = findPrivateActivationCandidateTargetV5(candidate, request.target);
+  if (target === undefined || target.disposition.state !== "ready") {
+    corrupt("root Bun native preparation target is absent from its pinned candidate");
+  }
+  if (allocation.requestDigest !== target.request.digest ||
+      allocation.packageDigest !== target.request.package.digest) {
+    corrupt("root Bun native preparation differs from its pinned package request");
+  }
+  const spawn = findRootSpawn(database, run.run_id);
+  if (spawn === null) corrupt("root Bun native preparation parent has no spawn intent");
+  const intent = loadRootSpawnRow(spawn, run);
+  if (allocation.requestDigest !== intent.requestDigest ||
+      allocation.recipeObservationDigest !== intent.observationDigest) {
+    corrupt("root Bun native preparation differs from its parent root Run intent");
+  }
+  if (allocation.deadlineUnixMs > intent.deadlineUnixMs) {
+    invalid("RUN_DEADLINE_INVALID", "Bun native preparation exceeds its parent root Run deadline");
+  }
+}
+
+async function transitionRootBunPreparationFact(input: {
+  readonly coordinator: PrivateProjectCoordinator;
+  readonly projectRoot: string;
+  readonly parentRunId: string;
+  readonly fact: PrivateRootBunNativePreparationFactName;
+  readonly value: JsonValue;
+}): Promise<PrivateRootBunNativePreparationDispatchResult> {
+  const coordinator = requirePrivateProjectCoordinator(input.coordinator);
+  const factName = requirePrivateRootBunNativePreparationFactName(input.fact);
+  await coordinator.verify();
+  requireDigest(input.parentRunId, "root Bun native preparation parent Run");
+  const owner = await openStateOwner(input.projectRoot, false);
+  let failure: unknown;
+  try {
+    requireCoordinatorRoot(coordinator, owner.root);
+    const transition = await immediate(owner, async () => {
+      await coordinator.verify();
+      const runRow = requireRootRunRow(owner.database, input.parentRunId);
+      const run = loadRootRunSnapshot(owner.database, runRow, owner.root);
+      if (run.state === "terminal") invalid("RUN_ALREADY_TERMINAL", "root Run is already terminal");
+      if (run.coordinatorEpoch > coordinator.epoch) {
+        corrupt("root Bun native preparation belongs to a future coordinator epoch");
+      }
+      const row = requireRootBunPreparation(owner.database, input.parentRunId);
+      const before = loadRootBunPreparationSnapshot(owner.database, row, owner.root, coordinator);
+      const envelope = normalizePrivateRootBunNativePreparationFact({
+        kind: `private-root-bun-native-preparation-${factName}/1`,
+        parentRunId: input.parentRunId,
+        allocationDigest: before.allocationDigest,
+        value: input.value,
+      }, factName);
+      const bytes = encodePrivateRootBunNativePreparationFact(envelope, factName);
+      const digest = privateRootBunNativePreparationFactDigest(factName, envelope);
+      requireStoredSize(bytes, `root Bun native preparation ${factName}`);
+      const prior = findRootBunPreparationFact(owner.database, input.parentRunId, factName);
+      if (prior !== null) {
+        if (prior.fact_digest !== digest || !sameBytes(prior.fact_bytes, bytes)) {
+          invalid(
+            "RUN_EXECUTION_CHECKPOINT_CONFLICT",
+            `root Bun native preparation ${factName} differs from its retained fact`,
+          );
+        }
+        return Object.freeze({ snapshot: before, created: false });
+      }
+      requireRootBunPreparationFactAuthority(before, coordinator, factName);
+      requireRootBunPreparationFactCorrelation(owner.root, before, factName, envelope.value);
+      requireRootBunPreparationFactOrder(before, factName, envelope.value);
+      runFinalized(owner.database, [
+        "INSERT INTO root_bun_preparation_facts(parent_run_id, fact_name, fact_digest, fact_bytes)",
+        "VALUES (?1, ?2, ?3, ?4)",
+      ].join(" "), [input.parentRunId, factName, digest, bytes]);
+      return Object.freeze({
+        snapshot: loadRootBunPreparationSnapshot(owner.database, row, owner.root, coordinator),
+        created: true,
+      });
+    });
+    await owner.finish();
+    return transition;
+  } catch (error) {
+    failure = error;
+    throw error;
+  } finally {
+    await disposeOperation(owner, undefined, failure);
+  }
+}
+
+function requireRootBunPreparationFactAuthority(
+  before: PrivateRootBunNativePreparationSnapshot,
+  coordinator: PrivateProjectCoordinator,
+  factName: PrivateRootBunNativePreparationFactName,
+): void {
+  if (before.allocation.coordinatorEpoch === coordinator.epoch) return;
+  if (factName === "fence" || factName === "outcome" || factName === "artifact" ||
+      factName === "release") return;
+  invalid(
+    "RUN_COORDINATOR_STALE",
+    `replacement coordinator cannot create Bun native preparation ${factName} work`,
+  );
+}
+
+function requireRootBunPreparationFactCorrelation(
+  root: PrivateProjectRoot,
+  before: PrivateRootBunNativePreparationSnapshot,
+  factName: PrivateRootBunNativePreparationFactName,
+  rawValue: JsonValue,
+): void {
+  const value = rawValue as unknown as PrivateRootBunNativePreparationFactValueMap[
+    PrivateRootBunNativePreparationFactName
+  ];
+  if (factName === "plan") {
+    const plan = value as PrivateRootBunNativePreparationFactValueMap["plan"];
+    const roots = rootBunPreparationProtectedRoots(root);
+    const hexadecimal = before.allocation.parentRunId.slice("sha256:".length);
+    const packageName = `bun-${hexadecimal}`;
+    const ownerName = `b-${hexadecimal.slice(0, 62)}`;
+    if (plan.packageAllocation.packageDigest !== before.allocation.packageDigest ||
+        plan.packageAllocation.ownerToken !== before.allocationDigest ||
+        plan.packageAllocation.parent.path !== roots.materializations ||
+        plan.packageAllocation.name !== packageName ||
+        plan.packageAllocation.path !== join(roots.materializations, packageName) ||
+        plan.ownerAllocation.parent !== roots.owners ||
+        plan.ownerAllocation.name !== ownerName ||
+        plan.ownerAllocation.directory !== join(roots.owners, ownerName) ||
+        plan.backendRunId !== `bun-${hexadecimal.slice(0, 40)}`) {
+      corrupt("root Bun native preparation plan differs from its exact allocation");
+    }
+    return;
+  }
+  if (factName === "backing") {
+    const backing = value as PrivateRootBunNativePreparationFactValueMap["backing"];
+    const plan = requireRootBunPreparationFact(before.plan, "plan");
+    if (backing.planDigest !== plan.digest ||
+        !sameCanonical(backing.lease.allocation, plan.value.packageAllocation)) {
+      corrupt("root Bun native preparation backing differs from its exact plan");
+    }
+    return;
+  }
+  if (factName === "sandbox") {
+    const sandbox = value as PrivateRootBunNativePreparationFactValueMap["sandbox"];
+    const plan = requireRootBunPreparationFact(before.plan, "plan");
+    const backing = requireRootBunPreparationFact(before.backing, "backing");
+    const owner = sandbox.owner;
+    if (sandbox.backingDigest !== backing.digest ||
+        owner.runId !== plan.value.backendRunId ||
+        owner.deadlineUnixMs !== before.allocation.deadlineUnixMs ||
+        owner.cancellationGraceMs !== plan.value.cancellationGraceMs ||
+        owner.mechanismDigest !== before.allocation.backendMechanismDigest ||
+        owner.ownerStateParent !== plan.value.ownerAllocation.parent ||
+        owner.ownerStateParentDevice !== plan.value.ownerAllocation.parentDevice ||
+        owner.ownerStateParentInode !== plan.value.ownerAllocation.parentInode ||
+        owner.ownerStateName !== plan.value.ownerAllocation.name ||
+        owner.ownerStateDirectory !== plan.value.ownerAllocation.directory ||
+        owner.ownerStateAllocationDigest !== plan.value.ownerAllocation.digest ||
+        owner.ownerToken !== plan.value.ownerAllocation.ownerToken) {
+      corrupt("root Bun native preparation sandbox differs from its exact plan and allocation");
+    }
+    return;
+  }
+  if (factName === "dispatch") {
+    const dispatch = value as PrivateRootBunNativePreparationFactValueMap["dispatch"];
+    if (dispatch.sandboxDigest !== requireRootBunPreparationFact(before.sandbox, "sandbox").digest) {
+      corrupt("root Bun native preparation dispatch names another sandbox");
+    }
+    return;
+  }
+  if (factName === "prepared") {
+    const prepared = value as PrivateRootBunNativePreparationFactValueMap["prepared"];
+    const dispatch = requireRootBunPreparationFact(before.dispatch, "dispatch");
+    const sandbox = requireRootBunPreparationFact(before.sandbox, "sandbox");
+    if (prepared.dispatchDigest !== dispatch.digest ||
+        !sameCanonical(prepared.prepared.owner, sandbox.value.owner)) {
+      corrupt("root Bun native preparation prepared owner differs from its dispatch sandbox");
+    }
+    return;
+  }
+  if (factName === "fence") {
+    requireRootBunPreparationFenceCorrelation(
+      before,
+      value as PrivateRootBunNativePreparationFactValueMap["fence"],
+    );
+    return;
+  }
+  if (factName === "outcome") {
+    requireRootBunPreparationOutcomeCorrelation(
+      before,
+      value as PrivateRootBunNativePreparationFactValueMap["outcome"],
+    );
+    return;
+  }
+  if (factName === "artifact") {
+    const artifact = value as PrivateRootBunNativePreparationFactValueMap["artifact"];
+    const outcome = requireRootBunPreparationFact(before.outcome, "outcome");
+    if (outcome.value.status !== "succeeded") {
+      corrupt("root Bun native preparation artifact has no successful candidate");
+    }
+    const candidate = decodePrivateRootBunNativePreparationCandidateBytes(
+      outcome.value.candidateBytesBase64,
+    );
+    const expectedReferenceDigest = privateDomainDigest(
+      "JIG-Private-Bun-Native-Prepared-Tree/1",
+      {
+        kind: "private-bun-native-prepared-tree-record/1",
+        sourcePackageDigest: before.allocation.packageDigest,
+        observationDigest: before.allocation.preparationObservationDigest,
+        requestDigest: before.allocation.requestDigest,
+        candidateDigest: outcome.value.candidateDigest,
+        dependencyDigest: before.allocation.dependencyDigest,
+        files: candidate.files,
+      },
+    );
+    if (artifact.outcomeDigest !== outcome.digest ||
+        artifact.reference.candidateDigest !== outcome.value.candidateDigest ||
+        artifact.reference.digest !== expectedReferenceDigest ||
+        artifact.reference.observationDigest !== before.allocation.preparationObservationDigest ||
+        artifact.reference.requestDigest !== before.allocation.requestDigest ||
+        artifact.reference.sourcePackageDigest !== before.allocation.packageDigest ||
+        artifact.reference.dependencyDigest !== before.allocation.dependencyDigest) {
+      corrupt("root Bun native preparation artifact differs from its successful candidate");
+    }
+    return;
+  }
+  requireRootBunPreparationReleaseCorrelation(
+    before,
+    value as PrivateRootBunNativePreparationFactValueMap["release"],
+  );
+}
+
+function requireRootBunPreparationFenceCorrelation(
+  before: PrivateRootBunNativePreparationSnapshot,
+  value: PrivateRootBunNativePreparationFactValueMap["fence"],
+): void {
+  const plan = requireRootBunPreparationFact(before.plan, "plan");
+  if (value.planDigest !== plan.digest) {
+    corrupt("root Bun native preparation fence names another plan");
+  }
+  if (value.proof.kind === "allocation-cancelled") {
+    if (before.prepared !== undefined || before.dispatch !== undefined ||
+        value.proof.cancellation.allocationDigest !== plan.value.ownerAllocation.digest) {
+      corrupt("root Bun native preparation cancellation does not fence its unstarted owner");
+    }
+    if (before.sandbox !== undefined &&
+        (value.proof.cancellation.directoryDevice !== before.sandbox.value.owner.ownerStateDevice ||
+         value.proof.cancellation.directoryInode !== before.sandbox.value.owner.ownerStateInode)) {
+      corrupt("root Bun native preparation cancellation differs from its sealed owner");
+    }
+    return;
+  }
+  const sandbox = requireRootBunPreparationFact(before.sandbox, "sandbox");
+  const expectedPreparedDigest = privateDomainDigest(
+    "JIG-Private-Linux-Prepared-Owner/1",
+    sandbox.value.owner as unknown as JsonValue,
+  );
+  if (value.proof.sandboxDigest !== sandbox.digest ||
+      value.proof.receipt.ownerDigest !== expectedPreparedDigest) {
+    corrupt("root Bun native preparation enforcement receipt belongs to another owner");
+  }
+}
+
+function requireRootBunPreparationOutcomeCorrelation(
+  before: PrivateRootBunNativePreparationSnapshot,
+  value: PrivateRootBunNativePreparationOutcome,
+): void {
+  if (value.status === "succeeded") {
+    const prepared = requireRootBunPreparationFact(before.prepared, "prepared");
+    const fence = requireRootBunPreparationFact(before.fence, "fence");
+    if (value.preparedDigest !== prepared.digest || value.fenceDigest !== fence.digest ||
+        fence.value.proof.kind !== "enforcement-confirmed" ||
+        fence.value.proof.receipt.stopReason !== "payload_exit" ||
+        fence.value.proof.receipt.exitCode !== 0 || fence.value.proof.receipt.signal !== null ||
+        fence.value.proof.receipt.setupError !== undefined ||
+        fence.value.proof.receipt.killError !== undefined ||
+        value.candidateDigest !== privateRootBunNativePreparationCandidateDigest({
+          outcome: value,
+          observationDigest: before.allocation.preparationObservationDigest,
+          requestDigest: before.allocation.requestDigest,
+          packageDigest: before.allocation.packageDigest,
+          dependencyDigest: before.allocation.dependencyDigest,
+        })) {
+      corrupt("root Bun native preparation success differs from its fenced worker candidate");
+    }
+    return;
+  }
+  if (value.dispatchDigest !== (before.dispatch?.digest ?? null) ||
+      value.fenceDigest !== (before.fence?.digest ?? null)) {
+    corrupt("root Bun native preparation failure differs from its durable dispatch prefix");
+  }
+  const proof = before.fence?.value.proof;
+  const allowed = proof === undefined
+    ? value.code !== "UNCERTAIN"
+    : proof.kind === "allocation-cancelled"
+      ? proof.reason === "cancelled"
+        ? value.code === "CANCELLED"
+        : proof.reason === "deadline"
+          ? value.code === "DEADLINE_EXCEEDED"
+          : value.code === "EXECUTION_FAILED"
+      : proof.receipt.stopReason === "deadline"
+        ? value.code === "DEADLINE_EXCEEDED"
+        : proof.receipt.stopReason === "cancelled"
+          ? value.code === "CANCELLED"
+          : proof.receipt.stopReason === "coordinator_lost" ||
+              proof.receipt.stopReason === "recovered"
+            ? value.code === "UNCERTAIN"
+            : proof.receipt.stopReason === "setup_failed" ||
+                proof.receipt.exitCode !== 0 || proof.receipt.signal !== null
+              ? value.code === "EXECUTION_FAILED"
+              : value.code === "INVALID_RESULT" || value.code === "EXECUTION_FAILED";
+  if (!allowed) {
+    corrupt("root Bun native preparation failure code differs from its fence evidence");
+  }
+}
+
+function requireRootBunPreparationReleaseCorrelation(
+  before: PrivateRootBunNativePreparationSnapshot,
+  value: PrivateRootBunNativePreparationFactValueMap["release"],
+): void {
+  const outcome = requireRootBunPreparationFact(before.outcome, "outcome");
+  if (value.outcomeDigest !== outcome.digest || value.planDigest !== (before.plan?.digest ?? null) ||
+      value.backingDigest !== (before.backing?.digest ?? null) ||
+      value.fenceDigest !== (before.fence?.digest ?? null) ||
+      value.artifactDigest !== (before.artifact?.digest ?? null)) {
+    corrupt("root Bun native preparation release differs from its durable resource prefix");
+  }
+  if (before.plan === undefined) {
+    if (value.ownerRelease !== null) {
+      corrupt("unplanned root Bun native preparation release carries owner evidence");
+    }
+    return;
+  }
+  if (before.fence === undefined || value.ownerRelease === null ||
+      value.ownerRelease.allocationDigest !== before.plan.value.ownerAllocation.digest) {
+    corrupt("planned root Bun native preparation release lacks exact owner evidence");
+  }
+  const proof = before.fence.value.proof;
+  const expectedDevice = proof.kind === "allocation-cancelled"
+    ? proof.cancellation.directoryDevice
+    : requireRootBunPreparationFact(before.sandbox, "sandbox").value.owner.ownerStateDevice;
+  const expectedInode = proof.kind === "allocation-cancelled"
+    ? proof.cancellation.directoryInode
+    : requireRootBunPreparationFact(before.sandbox, "sandbox").value.owner.ownerStateInode;
+  if (value.ownerRelease.directoryDevice !== expectedDevice ||
+      value.ownerRelease.directoryInode !== expectedInode) {
+    corrupt("root Bun native preparation owner release belongs to another directory");
+  }
+}
+
+function requireRootBunPreparationFact<Name extends PrivateRootBunNativePreparationFactName>(
+  fact: PrivateRootBunNativePreparationFact<PrivateRootBunNativePreparationFactValueMap[Name]> |
+    undefined,
+  name: Name,
+): PrivateRootBunNativePreparationFact<PrivateRootBunNativePreparationFactValueMap[Name]> {
+  if (fact === undefined) bunPreparationOrderError(name);
+  return fact;
+}
+
+function requireRootBunPreparationFactOrder(
+  before: PrivateRootBunNativePreparationSnapshot,
+  factName: PrivateRootBunNativePreparationFactName,
+  value: JsonValue,
+): void {
+  if (before.closure !== undefined) {
+    invalid("RUN_ALREADY_TERMINAL", "root Bun native preparation is already closed");
+  }
+  const has = (name: PrivateRootBunNativePreparationFactName): boolean =>
+    before[name] !== undefined;
+  const afterOutcome = (): boolean => has("outcome") || has("artifact") || has("release");
+  if (factName === "plan") {
+    if (has("backing") || has("sandbox") || has("dispatch") ||
+        has("prepared") || has("fence") || afterOutcome()) bunPreparationOrderError(factName);
+    return;
+  }
+  if (factName === "backing") {
+    if (!has("plan") || has("sandbox") || has("dispatch") || has("prepared") ||
+        has("fence") || afterOutcome()) bunPreparationOrderError(factName);
+    return;
+  }
+  if (factName === "sandbox") {
+    if (!has("plan") || !has("backing") || has("dispatch") ||
+        has("prepared") || has("fence") || afterOutcome()) bunPreparationOrderError(factName);
+    return;
+  }
+  if (factName === "dispatch") {
+    if (!has("sandbox") || has("prepared") || has("fence") || afterOutcome()) {
+      bunPreparationOrderError(factName);
+    }
+    return;
+  }
+  if (factName === "prepared") {
+    if (!has("dispatch") || has("fence") || afterOutcome()) bunPreparationOrderError(factName);
+    return;
+  }
+  if (factName === "fence") {
+    if (!has("plan") || afterOutcome()) bunPreparationOrderError(factName);
+    return;
+  }
+  if (factName === "outcome") {
+    const outcome = normalizePrivateRootBunNativePreparationOutcome(value);
+    if (has("artifact") || has("release") || (has("plan") && !has("fence")) ||
+        (outcome.status === "succeeded" &&
+          (!has("dispatch") || !has("prepared") || !has("fence")))) {
+      bunPreparationOrderError(factName);
+    }
+    return;
+  }
+  if (factName === "artifact") {
+    const outcome = requireRootBunPreparationOutcome(before);
+    if (!has("outcome") || has("release") ||
+        outcome.status !== "succeeded" || (has("plan") && !has("fence"))) {
+      bunPreparationOrderError(factName);
+    }
+    return;
+  }
+  const outcome = has("outcome") ? requireRootBunPreparationOutcome(before) : undefined;
+  if (outcome === undefined || (has("plan") && !has("fence")) ||
+      (outcome.status === "succeeded" && !has("artifact"))) {
+    bunPreparationOrderError(factName);
+  }
+}
+
+function validateRootBunPreparationLifecycle(
+  root: PrivateProjectRoot,
+  lifecycle: PrivateRootBunNativePreparationSnapshot,
+): void {
+  const replay: PrivateRootBunNativePreparationSnapshot = {
+    allocation: lifecycle.allocation,
+    allocationDigest: lifecycle.allocationDigest,
+    coordinator: lifecycle.coordinator,
+  };
+  for (const factName of PRIVATE_ROOT_BUN_NATIVE_PREPARATION_FACT_NAMES) {
+    const fact = lifecycle[factName];
+    if (fact === undefined) continue;
+    requireRootBunPreparationFactCorrelation(
+      root,
+      replay,
+      factName,
+      fact.value as unknown as JsonValue,
+    );
+    requireRootBunPreparationFactOrder(replay, factName, fact.value as unknown as JsonValue);
+    (replay as unknown as Record<string, unknown>)[factName] = fact;
+  }
+}
+
+function rootBunPreparationProtectedRoots(root: PrivateProjectRoot): {
+  readonly materializations: string;
+  readonly owners: string;
+} {
+  const state = join(root.requestedPath, STATE_DIRECTORY);
+  return Object.freeze({
+    materializations: join(state, "private-root-materializations"),
+    owners: join(state, "private-root-linux-owners"),
+  });
+}
+
+function requireRootBunPreparationClosable(
+  lifecycle: PrivateRootBunNativePreparationSnapshot,
+): void {
+  const outcome = lifecycle.outcome === undefined
+    ? undefined
+    : requireRootBunPreparationOutcome(lifecycle);
+  if (lifecycle.outcome === undefined || lifecycle.release === undefined ||
+      (lifecycle.plan !== undefined && lifecycle.fence === undefined) ||
+      (outcome?.status === "succeeded" && lifecycle.artifact === undefined)) {
+    invalid(
+      "RUN_EXECUTION_INCOMPLETE",
+      "root Bun native preparation cannot close before outcome, fence, and release",
+    );
+  }
+}
+
+function requireRootBunPreparationOutcome(
+  lifecycle: PrivateRootBunNativePreparationSnapshot,
+): PrivateRootBunNativePreparationOutcome {
+  if (lifecycle.outcome === undefined) bunPreparationOrderError("artifact");
+  try {
+    return normalizePrivateRootBunNativePreparationOutcome(lifecycle.outcome.value);
+  } catch {
+    corrupt("stored root Bun native preparation outcome is invalid");
+  }
+}
+
+function bunPreparationOrderError(factName: PrivateRootBunNativePreparationFactName): never {
+  invalid(
+    "RUN_EXECUTION_CHECKPOINT_ORDER",
+    `root Bun native preparation ${factName} checkpoint is out of order`,
+  );
 }
 
 function requireRootFlowCall(database: SqliteDatabase, parentRunId: string): RootFlowCallRow {
@@ -5990,6 +7084,9 @@ function initializeOrVerifySchema(database: SqliteDatabase, root: PrivateProject
       database.exec(CREATE_ROOT_FLOW_CALLS);
       database.exec(CREATE_ROOT_FLOW_CALL_FACTS);
       database.exec(CREATE_ROOT_FLOW_CALL_CLOSURES);
+      database.exec(CREATE_ROOT_BUN_PREPARATIONS);
+      database.exec(CREATE_ROOT_BUN_PREPARATION_FACTS);
+      database.exec(CREATE_ROOT_BUN_PREPARATION_CLOSURES);
       database.exec(CREATE_JOURNAL_HEAD);
       database.exec(CREATE_JOURNAL_EVENTS);
       database.exec(CREATE_HOOK_ADMISSION_BOUNDARIES);
@@ -6024,7 +7121,7 @@ function verifySchema(database: SqliteDatabase, root: PrivateProjectRoot): void 
   if (actual.length !== EXPECTED_SCHEMA.length || actual.some((row, index) => {
     const expected = EXPECTED_SCHEMA[index]!;
     return row.type !== expected.type || row.name !== expected.name || row.table !== expected.table || row.sql !== expected.sql;
-  })) corrupt("private admission database schema differs from version 18");
+  })) corrupt("private admission database schema differs from version 19");
   if (statement<Record<string, unknown>>(database, "PRAGMA foreign_key_check").all().length !== 0) {
     corrupt("private admission database has broken foreign keys");
   }

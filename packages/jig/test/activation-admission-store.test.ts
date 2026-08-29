@@ -16,6 +16,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { privateDomainDigest } from "../src/internal/identity.js";
+import { planPrivateLinuxOwnerStateAllocation } from "../src/internal/linux-cgroup-backend.js";
 import {
   decodePrivateHookRevision,
   decodePrivateHookAdmissionBoundary,
@@ -43,11 +44,14 @@ import {
 } from "../src/internal/project-local-lock.js";
 import {
   allocatePrivateRootFlowCall,
+  allocatePrivateRootBunNativePreparation,
   allocatePrivateServiceLease,
   allocatePrivateServiceInvocation,
   appendPrivateRootJournalEvent,
   applyPrivateActivationReviewPlan,
   closePrivateRootFlowCall,
+  closePrivateRootBunNativePreparation,
+  claimPrivateRootBunNativePreparationLaunchAdmission,
   completePrivateServiceInvocation,
   closePrivateRootExecution,
   completePrivateRootRun,
@@ -57,7 +61,9 @@ import {
   loadPrivateRootRun,
   loadPrivateRootJournalAppend,
   loadPrivateRootFlowCall,
+  loadPrivateRootBunNativePreparation,
   listPrivateRootExecutionWork,
+  listPrivateRootBunNativePreparationWork,
   listPrivateRootJournalAppends,
   listPrivateServiceLeases,
   listPrivateServiceInvocations,
@@ -67,6 +73,8 @@ import {
   reacquirePrivateRootExecutionWork,
   recordPrivateRootExecutionCheckpoint,
   recordPrivateRootFlowCallCheckpoint,
+  recordPrivateRootBunNativePreparationDispatch,
+  recordPrivateRootBunNativePreparationFact,
   recordPrivateServiceInvocationDispatch,
   recordPrivateServiceLeaseRelease,
   recordPrivateServiceMountRelease,
@@ -75,6 +83,8 @@ import {
   requirePrivateStoredActivationCandidate,
   submitPrivateRootRun,
   type PrivateProjectCoordinator,
+  type PrivateRootBunNativePreparationAllocationResult,
+  type PrivateRootBunNativePreparationSnapshot,
   type PrivateRootRunTerminal,
 } from "../src/internal/activation-admission-store.js";
 import {
@@ -114,6 +124,12 @@ import {
   privateServiceMountSandboxDigest,
 } from "../src/internal/private-service-state.js";
 import { normalizePrivateRootFlowCallAllocation } from "../src/internal/root-flow-call-state.js";
+import {
+  normalizePrivateRootBunNativePreparationAllocation,
+  privateRootBunNativePreparationCandidateDigest,
+  type PrivateRootBunNativePreparationAllocation,
+  type PrivateRootBunNativePreparationFactValueMap,
+} from "../src/internal/bun-native-preparation-state.js";
 import {
   normalizePrivateRootJournalAppendAllocation,
   privateJournalEventDigest,
@@ -157,6 +173,9 @@ const CREATE_ROOT_EXECUTION_CLOSURES = "CREATE TABLE root_execution_closures (ru
 const CREATE_ROOT_FLOW_CALLS = "CREATE TABLE root_flow_calls (parent_run_id TEXT PRIMARY KEY REFERENCES root_spawn_intents(run_id), allocation_digest TEXT NOT NULL UNIQUE, allocation_bytes BLOB NOT NULL CHECK (length(allocation_bytes) BETWEEN 1 AND 16777216)) STRICT";
 const CREATE_ROOT_FLOW_CALL_FACTS = "CREATE TABLE root_flow_call_facts (parent_run_id TEXT NOT NULL REFERENCES root_flow_calls(parent_run_id), fact_name TEXT NOT NULL CHECK (fact_name IN ('plan','backing','sandbox','prepared','provisional','fence','release','admitted')), fact_digest TEXT NOT NULL UNIQUE, fact_bytes BLOB NOT NULL CHECK (length(fact_bytes) BETWEEN 1 AND 16777216), PRIMARY KEY (parent_run_id, fact_name)) WITHOUT ROWID, STRICT";
 const CREATE_ROOT_FLOW_CALL_CLOSURES = "CREATE TABLE root_flow_call_closures (parent_run_id TEXT PRIMARY KEY REFERENCES root_flow_calls(parent_run_id), closure_digest TEXT NOT NULL UNIQUE, closure_bytes BLOB NOT NULL CHECK (length(closure_bytes) BETWEEN 1 AND 16777216), UNIQUE (parent_run_id, closure_digest)) STRICT";
+const CREATE_ROOT_BUN_PREPARATIONS = "CREATE TABLE root_bun_preparations (parent_run_id TEXT PRIMARY KEY REFERENCES root_spawn_intents(run_id), allocation_digest TEXT NOT NULL UNIQUE, allocation_bytes BLOB NOT NULL CHECK (length(allocation_bytes) BETWEEN 1 AND 16777216)) STRICT";
+const CREATE_ROOT_BUN_PREPARATION_FACTS = "CREATE TABLE root_bun_preparation_facts (parent_run_id TEXT NOT NULL REFERENCES root_bun_preparations(parent_run_id), fact_name TEXT NOT NULL CHECK (fact_name IN ('plan','backing','sandbox','dispatch','prepared','fence','outcome','artifact','release')), fact_digest TEXT NOT NULL UNIQUE, fact_bytes BLOB NOT NULL CHECK (length(fact_bytes) BETWEEN 1 AND 16777216), PRIMARY KEY (parent_run_id, fact_name)) WITHOUT ROWID, STRICT";
+const CREATE_ROOT_BUN_PREPARATION_CLOSURES = "CREATE TABLE root_bun_preparation_closures (parent_run_id TEXT PRIMARY KEY REFERENCES root_bun_preparations(parent_run_id), closure_digest TEXT NOT NULL UNIQUE, closure_bytes BLOB NOT NULL CHECK (length(closure_bytes) BETWEEN 1 AND 16777216), UNIQUE (parent_run_id, closure_digest)) STRICT";
 const CREATE_JOURNAL_HEAD = "CREATE TABLE journal_head (singleton INTEGER PRIMARY KEY CHECK (singleton = 1), position INTEGER NOT NULL CHECK (position BETWEEN 0 AND 9007199254740991)) STRICT";
 const CREATE_JOURNAL_EVENTS = "CREATE TABLE journal_events (position INTEGER PRIMARY KEY CHECK (position BETWEEN 1 AND 9007199254740991), event_id TEXT NOT NULL UNIQUE, event_digest TEXT NOT NULL UNIQUE, event_bytes BLOB NOT NULL CHECK (length(event_bytes) BETWEEN 1 AND 16777216)) STRICT";
 const CREATE_HOOK_ADMISSION_BOUNDARIES = "CREATE TABLE hook_admission_boundaries (admission_digest TEXT PRIMARY KEY REFERENCES admissions(admission_digest), boundary_digest TEXT NOT NULL UNIQUE, boundary_bytes BLOB NOT NULL CHECK (length(boundary_bytes) BETWEEN 1 AND 16777216)) STRICT";
@@ -181,7 +200,7 @@ describe.serial("private activation admission SQLite store", () => {
     const root = join(base, "project");
     const store = join(base, "store");
     const state = join(root, ".jig");
-    const databasePath = join(state, "private-activation-admission-v18.sqlite3");
+    const databasePath = join(state, "private-activation-admission-v19.sqlite3");
     try {
       await mkdir(root, { mode: 0o700 });
       await mkdir(store, { mode: 0o700 });
@@ -202,9 +221,12 @@ describe.serial("private activation admission SQLite store", () => {
         expect(database.query(
           "SELECT name FROM sqlite_schema WHERE type = 'table' AND name = 'hook_derivations'",
         ).get()).toEqual({ name: "hook_derivations" });
-        expect(database.query("PRAGMA user_version").get().user_version).toBe(18);
+        expect(database.query("PRAGMA user_version").get().user_version).toBe(19);
         for (const table of [
           "lock_repairs",
+          "root_bun_preparations",
+          "root_bun_preparation_facts",
+          "root_bun_preparation_closures",
           "service_mounts",
           "service_mount_facts",
           "service_leases",
@@ -217,14 +239,14 @@ describe.serial("private activation admission SQLite store", () => {
     } finally { await rm(base, { recursive: true, force: true }); }
   });
 
-  test("rejects the exact preceding database path without creating v18 state", async () => {
+  test("rejects the exact preceding database path without creating v19 state", async () => {
     const base = await mkdtemp(join(tmpdir(), "jig-admission-legacy-"));
     const root = join(base, "project");
     const store = join(base, "store");
     const state = join(root, ".jig");
-    const legacy = join(state, "private-activation-admission-v17.sqlite3");
+    const legacy = join(state, "private-activation-admission-v18.sqlite3");
     const oldest = join(state, "private-activation-admission-v3.sqlite3");
-    const current = join(state, "private-activation-admission-v18.sqlite3");
+    const current = join(state, "private-activation-admission-v19.sqlite3");
     const sentinel = new TextEncoder().encode("legacy-private-state\n");
     try {
       await mkdir(state, { recursive: true, mode: 0o700 });
@@ -246,13 +268,13 @@ describe.serial("private activation admission SQLite store", () => {
     }
   });
 
-  test("rejects an abandoned legacy sidecar without creating v18 state", async () => {
+  test("rejects an abandoned legacy sidecar without creating v19 state", async () => {
     const base = await mkdtemp(join(tmpdir(), "jig-admission-legacy-sidecar-"));
     const root = join(base, "project");
     const store = join(base, "store");
     const state = join(root, ".jig");
     const sidecar = join(state, "private-activation-admission-v8.sqlite3-wal");
-    const current = join(state, "private-activation-admission-v18.sqlite3");
+    const current = join(state, "private-activation-admission-v19.sqlite3");
     const sentinel = new TextEncoder().encode("abandoned-private-sidecar\n");
     try {
       await mkdir(state, { recursive: true, mode: 0o700 });
@@ -272,9 +294,9 @@ describe.serial("private activation admission SQLite store", () => {
     }
   });
 
-  test("rejects mixed-version authority beside an existing valid v18 store", async () => {
+  test("rejects mixed-version authority beside an existing valid v19 store", async () => {
     const fixture = await createFixture();
-    const legacy = join(fixture.root, ".jig", "private-activation-admission-v17.sqlite3");
+    const legacy = join(fixture.root, ".jig", "private-activation-admission-v18.sqlite3");
     const sentinel = new TextEncoder().encode("ignored-legacy-state\n");
     try {
       await writeFile(legacy, sentinel, { mode: 0o600 });
@@ -1292,7 +1314,7 @@ describe.serial("private activation admission SQLite store", () => {
           "hook_revisions_one_open",
         ]);
         expect(database.query("PRAGMA application_id").get().application_id).toBe(0x4a494741);
-        expect(database.query("PRAGMA user_version").get().user_version).toBe(18);
+        expect(database.query("PRAGMA user_version").get().user_version).toBe(19);
         expect(database.query("SELECT count(*) AS count FROM review_plans").get().count).toBe(1);
       } finally {
         database.close(true);
@@ -1927,7 +1949,7 @@ describe.serial("private activation admission SQLite store", () => {
         lockMode: "update",
       });
       const database = openSqlite(fixture.database, "readwrite");
-      database.exec("PRAGMA user_version=17");
+      database.exec("PRAGMA user_version=18");
       database.close(true);
 
       await expect(loadPrivateActivationReviewPlan({
@@ -1938,7 +1960,7 @@ describe.serial("private activation admission SQLite store", () => {
 
       const unchanged = openSqlite(fixture.database, "readonly");
       try {
-        expect(unchanged.query("PRAGMA user_version").get().user_version).toBe(17);
+        expect(unchanged.query("PRAGMA user_version").get().user_version).toBe(18);
       } finally { unchanged.close(true); }
     } finally {
       await fixture.dispose();
@@ -4418,6 +4440,735 @@ describe.serial("private activation admission SQLite store", () => {
       await fixture.dispose();
     }
   });
+
+  test("persists one successful root-owned Bun native preparation without redispatch", async () => {
+    const fixture = await createFixture("ready");
+    let coordinator: PrivateProjectCoordinator | undefined;
+    try {
+      await applyLatestCandidate(fixture);
+      coordinator = await openPrivateProjectCoordinator({ projectRoot: fixture.root });
+      const deadlineUnixMs = Date.now() + 60_000;
+      const submission = await submitPrivateRootRun({
+        coordinator,
+        projectRoot: fixture.root,
+        packageStoreRoot: fixture.store,
+        submissionId: "bun-native-preparation-success",
+        target: { kind: "flow", path: "flows/run" },
+        input: { value: "prepare" },
+        deadlineUnixMs,
+      });
+      if (submission.launch === undefined) throw new Error("test expected a root launch");
+      const target = fixture.candidate.candidate.targets[0]!;
+      const allocation = normalizePrivateRootBunNativePreparationAllocation({
+        kind: "private-root-bun-native-preparation-allocation/1",
+        parentRunId: submission.run.runId,
+        coordinatorEpoch: coordinator.epoch,
+        requestDigest: submission.launch.intent.requestDigest,
+        packageDigest: target.request.package.digest,
+        recipeObservationDigest: submission.launch.intent.observationDigest,
+        preparationObservationDigest: digest("bun-preparation-observation"),
+        dependencyDigest: digest("bun-preparation-dependencies"),
+        workerDigest: digest("bun-preparation-worker"),
+        runtimeObservationDigest: digest("bun-preparation-runtime"),
+        backendMechanismDigest: digest("bun-preparation-backend"),
+        deadlineUnixMs,
+      });
+
+      const created = await allocatePrivateRootBunNativePreparation({
+        coordinator,
+        projectRoot: fixture.root,
+        allocation,
+      });
+      expect(created).toMatchObject({ created: true });
+      expect(created.snapshot).toMatchObject({ allocation, coordinator: "current" });
+      expect(created.snapshot.dispatch).toBeUndefined();
+      const replay = await allocatePrivateRootBunNativePreparation({
+        coordinator,
+        projectRoot: fixture.root,
+        allocation,
+      });
+      expect(replay).toMatchObject({ created: false, snapshot: created.snapshot });
+      await expect(allocatePrivateRootBunNativePreparation({
+        coordinator,
+        projectRoot: fixture.root,
+        allocation: normalizePrivateRootBunNativePreparationAllocation({
+          ...allocation,
+          workerDigest: digest("changed-bun-preparation-worker"),
+        }),
+      })).rejects.toMatchObject({ code: "OPERATION_CONFLICT" });
+      await expect(recordPrivateRootBunNativePreparationDispatch({
+        coordinator, projectRoot: fixture.root, allocation: replay,
+      })).rejects.toThrow("requires its newly created allocation");
+      await expect(recordPrivateRootBunNativePreparationDispatch({
+        coordinator, projectRoot: fixture.root, allocation: created,
+      })).rejects.toMatchObject({ code: "RUN_EXECUTION_CHECKPOINT_ORDER" });
+
+      const facts = async (
+        fact: Exclude<Parameters<typeof recordPrivateRootBunNativePreparationFact>[0]["fact"],
+          "dispatch">,
+        value: PrivateRootBunNativePreparationFactValueMap[typeof fact],
+      ) => await recordPrivateRootBunNativePreparationFact({
+        coordinator: coordinator!,
+        projectRoot: fixture.root,
+        parentRunId: submission.run.runId,
+        fact,
+        value,
+      });
+      const ownerParent = join(fixture.root, ".jig", "private-root-linux-owners");
+      await mkdir(ownerParent, { recursive: true, mode: 0o700 });
+      const hexadecimal = allocation.parentRunId.slice("sha256:".length);
+      const realOwnerAllocation = await planPrivateLinuxOwnerStateAllocation({
+        parent: ownerParent,
+        name: `b-${hexadecimal.slice(0, 62)}`,
+      });
+      expect(realOwnerAllocation.ownerToken).not.toBe(
+        created.snapshot.allocationDigest.slice("sha256:".length),
+      );
+      const plan = testBunPreparationPlan(
+        fixture,
+        allocation,
+        created.snapshot.allocationDigest,
+        realOwnerAllocation,
+      );
+      const planned = await facts("plan", plan);
+      expect((await facts("plan", plan)).plan).toEqual(planned.plan);
+      await expect(facts("plan", { ...plan, backendRunId: "changed" }))
+        .rejects.toMatchObject({ code: "RUN_EXECUTION_CHECKPOINT_CONFLICT" });
+      const backing = testBunPreparationBacking(plan, planned.plan!.digest);
+      const backed = await facts("backing", backing);
+      const sandbox = testBunPreparationSandbox(allocation, plan, backed.backing!.digest);
+      const sandboxed = await facts("sandbox", sandbox);
+
+      const dispatched = await recordPrivateRootBunNativePreparationDispatch({
+        coordinator, projectRoot: fixture.root, allocation: created,
+      });
+      expect(dispatched).toMatchObject({ created: true });
+      expect(dispatched.snapshot.dispatch?.value).toEqual({
+        kind: "private-root-bun-native-preparation-dispatch/1",
+        sandboxDigest: sandboxed.sandbox!.digest,
+      });
+      expect(dispatched.launchAdmission).toBeDefined();
+      let launchStarts = 0;
+      const begin = () => { launchStarts += 1; };
+      expect(await claimPrivateRootBunNativePreparationLaunchAdmission({
+        launchAdmission: dispatched.launchAdmission,
+        begin,
+      }))
+        .toBe(dispatched.launchAdmission);
+      expect(launchStarts).toBe(1);
+      await expect(claimPrivateRootBunNativePreparationLaunchAdmission({
+        launchAdmission: dispatched.launchAdmission,
+        begin,
+      }))
+        .rejects.toThrow("already consumed");
+      await expect(claimPrivateRootBunNativePreparationLaunchAdmission({
+        launchAdmission: { ...dispatched.launchAdmission },
+        begin,
+      }))
+        .rejects.toThrow("was not durably minted");
+      expect(launchStarts).toBe(1);
+      expect((await loadPrivateRootBunNativePreparation({
+        coordinator,
+        projectRoot: fixture.root,
+        parentRunId: submission.run.runId,
+      }))?.dispatch).toEqual(dispatched.snapshot.dispatch);
+      const dispatchReplay = await recordPrivateRootBunNativePreparationDispatch({
+        coordinator, projectRoot: fixture.root, allocation: created,
+      });
+      expect(dispatchReplay).toMatchObject({ created: false });
+      expect(dispatchReplay.launchAdmission).toBeUndefined();
+      await expect(closePrivateRootBunNativePreparation({
+        coordinator,
+        projectRoot: fixture.root,
+        parentRunId: submission.run.runId,
+      })).rejects.toMatchObject({ code: "RUN_EXECUTION_INCOMPLETE" });
+
+      const prepared = testBunPreparationPrepared(sandbox, dispatched.snapshot.dispatch!.digest);
+      const preparedSnapshot = await facts("prepared", prepared);
+      const prematureSuccess = testBunPreparationSuccess(
+        allocation,
+        preparedSnapshot.prepared!.digest,
+        digest("not-yet-fenced"),
+      );
+      await expect(facts("outcome", prematureSuccess))
+        .rejects.toMatchObject({ code: "RUN_EXECUTION_CHECKPOINT_ORDER" });
+      const fence = testBunPreparationFence(
+        planned.plan!.digest,
+        sandboxed.sandbox!.digest,
+        prepared,
+      );
+      await expect(facts("fence", {
+        ...fence,
+        proof: { ...fence.proof, receipt: { ...fence.proof.receipt, ownerDigest: digest("wrong") } },
+      })).rejects.toMatchObject({ code: "ADMISSION_STATE_CORRUPT" });
+      const fenced = await facts("fence", fence);
+      const success = testBunPreparationSuccess(
+        allocation,
+        preparedSnapshot.prepared!.digest,
+        fenced.fence!.digest,
+      );
+      const decodedCandidate = decodeJson1(Buffer.from(success.candidateBytesBase64, "base64")) as any;
+      await expect(facts("outcome", {
+        ...success,
+        candidateBytesBase64: Buffer.from(canonicalJson({
+          ...decodedCandidate,
+          files: decodedCandidate.files.filter(({ path }: { path: string }) => path !== "dist/index.js"),
+        })).toString("base64"),
+      })).rejects.toThrow("missing dist/index.js");
+      const succeeded = await facts("outcome", success);
+      await expect(facts("release", testBunPreparationRelease(succeeded)))
+        .rejects.toMatchObject({ code: "RUN_EXECUTION_CHECKPOINT_ORDER" });
+      const artifact = testBunPreparationArtifact(allocation, success, succeeded.outcome!.digest);
+      await expect(facts("artifact", {
+        ...artifact,
+        reference: { ...artifact.reference, candidateDigest: digest("wrong-candidate") },
+      })).rejects.toThrow();
+      await expect(facts("artifact", {
+        ...artifact,
+        reference: { ...artifact.reference, digest: digest("wrong-prepared-tree") },
+      })).rejects.toMatchObject({ code: "ADMISSION_STATE_CORRUPT" });
+      const published = await facts("artifact", artifact);
+      const release = testBunPreparationRelease(published);
+      await expect(facts("release", {
+        ...release,
+        ownerRelease: { ...release.ownerRelease!, allocationDigest: digest("wrong-owner") },
+      })).rejects.toThrow();
+      await facts("release", release);
+      const closed = await closePrivateRootBunNativePreparation({
+        coordinator,
+        projectRoot: fixture.root,
+        parentRunId: submission.run.runId,
+      });
+      expect(closed.closure?.value.facts).toEqual(Object.fromEntries(
+        ["plan", "backing", "sandbox", "dispatch", "prepared", "fence",
+          "outcome", "artifact", "release"].map((name) => [
+            name,
+            closed[name as keyof typeof closed] !== undefined
+              ? (closed[name as keyof typeof closed] as { readonly digest: string }).digest
+              : null,
+          ]),
+      ));
+      expect(await closePrivateRootBunNativePreparation({
+        coordinator,
+        projectRoot: fixture.root,
+        parentRunId: submission.run.runId,
+      })).toEqual(closed);
+      await expect(facts("release", { ...release, packageReleased: false as true }))
+        .rejects.toThrow("release is invalid");
+      expect(await listPrivateRootBunNativePreparationWork({
+        coordinator,
+        projectRoot: fixture.root,
+        epoch: "current",
+      })).toEqual([]);
+    } finally {
+      await coordinator?.dispose();
+      await fixture.dispose();
+    }
+  });
+
+  test("settles pre-dispatch failures and conservatively fences older preparations", async () => {
+    const fixture = await createFixture("ready");
+    let coordinator: PrivateProjectCoordinator | undefined;
+    try {
+      await applyLatestCandidate(fixture);
+      coordinator = await openPrivateProjectCoordinator({ projectRoot: fixture.root });
+      const target = fixture.candidate.candidate.targets[0]!;
+      const start = async (label: string) => {
+        const deadlineUnixMs = Date.now() + 60_000;
+        const submission = await submitPrivateRootRun({
+          coordinator: coordinator!,
+          projectRoot: fixture.root,
+          packageStoreRoot: fixture.store,
+          submissionId: `bun-preparation-${label}`,
+          target: { kind: "flow", path: "flows/run" },
+          input: { value: label },
+          deadlineUnixMs,
+        });
+        if (submission.launch === undefined) throw new Error("test expected a root launch");
+        const allocation = normalizePrivateRootBunNativePreparationAllocation({
+          kind: "private-root-bun-native-preparation-allocation/1",
+          parentRunId: submission.run.runId,
+          coordinatorEpoch: coordinator!.epoch,
+          requestDigest: submission.launch.intent.requestDigest,
+          packageDigest: target.request.package.digest,
+          recipeObservationDigest: submission.launch.intent.observationDigest,
+          preparationObservationDigest: digest(`preparation-observation-${label}`),
+          dependencyDigest: digest(`dependencies-${label}`),
+          workerDigest: digest(`worker-${label}`),
+          runtimeObservationDigest: digest(`runtime-${label}`),
+          backendMechanismDigest: digest(`backend-${label}`),
+          deadlineUnixMs,
+        });
+        const allocated = await allocatePrivateRootBunNativePreparation({
+          coordinator: coordinator!, projectRoot: fixture.root, allocation,
+        });
+        const fact = async <Name extends Exclude<keyof PrivateRootBunNativePreparationFactValueMap,
+          "dispatch">>(
+          name: Name,
+          value: PrivateRootBunNativePreparationFactValueMap[Name],
+        ) => await recordPrivateRootBunNativePreparationFact({
+          coordinator: coordinator!, projectRoot: fixture.root,
+          parentRunId: submission.run.runId, fact: name, value,
+        });
+        return { submission, allocation, allocated, fact };
+      };
+
+      const cancelled = await start("cancelled-before-plan");
+      await cancelled.fact("outcome", {
+        status: "failed", code: "CANCELLED", message: "cancelled before preparation planning",
+        dispatchDigest: null, fenceDigest: null,
+      });
+      await cancelled.fact("release", testBunPreparationRelease(
+        (await loadPrivateRootBunNativePreparation({
+          coordinator, projectRoot: fixture.root,
+          parentRunId: cancelled.submission.run.runId,
+        }))!,
+      ));
+      const cancelledClosed = await closePrivateRootBunNativePreparation({
+        coordinator,
+        projectRoot: fixture.root,
+        parentRunId: cancelled.submission.run.runId,
+      });
+      expect(cancelledClosed.closure?.value.facts).toMatchObject({
+        plan: null, sandbox: null, dispatch: null, fence: null, artifact: null,
+        outcome: cancelledClosed.outcome?.digest,
+        release: cancelledClosed.release?.digest,
+      });
+
+      const sealed = await start("sealed-before-dispatch");
+      const sealedPlan = testBunPreparationPlan(
+        fixture, sealed.allocation, sealed.allocated.snapshot.allocationDigest,
+      );
+      const wrongParent = join(fixture.root, ".jig", "not-preparation-owned");
+      await expect(sealed.fact("plan", {
+        ...sealedPlan,
+        packageAllocation: {
+          ...sealedPlan.packageAllocation,
+          parent: { ...sealedPlan.packageAllocation.parent, path: wrongParent },
+          path: join(wrongParent, sealedPlan.packageAllocation.name),
+        },
+      })).rejects.toMatchObject({ code: "ADMISSION_STATE_CORRUPT" });
+      const sealedPlanned = await sealed.fact("plan", sealedPlan);
+      const sealedBacking = testBunPreparationBacking(sealedPlan, sealedPlanned.plan!.digest);
+      const sealedBacked = await sealed.fact("backing", sealedBacking);
+      const sealedSandbox = testBunPreparationSandbox(
+        sealed.allocation, sealedPlan, sealedBacked.backing!.digest,
+      );
+      const sealedSandboxed = await sealed.fact("sandbox", sealedSandbox);
+      const sealedPreparedIdentity = testBunPreparationPrepared(
+        sealedSandbox, digest("never-dispatched"),
+      );
+      const sealedFence = testBunPreparationFence(
+        sealedPlanned.plan!.digest,
+        sealedSandboxed.sandbox!.digest,
+        sealedPreparedIdentity,
+        "setup_failed",
+      );
+      const sealedFenced = await sealed.fact("fence", sealedFence);
+      await expect(sealed.fact("outcome", {
+        status: "failed", code: "CANCELLED", message: "mismatched setup failure",
+        dispatchDigest: null, fenceDigest: sealedFenced.fence!.digest,
+      })).rejects.toMatchObject({ code: "ADMISSION_STATE_CORRUPT" });
+      const sealedFailed = await sealed.fact("outcome", {
+        status: "failed", code: "EXECUTION_FAILED", message: "sealed owner never dispatched",
+        dispatchDigest: null, fenceDigest: sealedFenced.fence!.digest,
+      });
+      await sealed.fact("release", testBunPreparationRelease(sealedFailed));
+      expect((await closePrivateRootBunNativePreparation({
+        coordinator,
+        projectRoot: fixture.root,
+        parentRunId: sealed.submission.run.runId,
+      })).dispatch).toBeUndefined();
+
+      for (const [label, reason, code] of [
+        ["allocation-cancelled", "cancelled", "CANCELLED"],
+        ["allocation-deadline", "deadline", "DEADLINE_EXCEEDED"],
+        ["allocation-setup-failed", "setup_failed", "EXECUTION_FAILED"],
+      ] as const) {
+        const unstarted = await start(label);
+        const unstartedPlan = testBunPreparationPlan(
+          fixture,
+          unstarted.allocation,
+          unstarted.allocated.snapshot.allocationDigest,
+        );
+        const unstartedPlanned = await unstarted.fact("plan", unstartedPlan);
+        const unstartedFence = testBunPreparationCancellationFence(
+          unstartedPlan,
+          unstartedPlanned.plan!.digest,
+          reason,
+        );
+        const unstartedFenced = await unstarted.fact("fence", unstartedFence);
+        const unstartedFailed = await unstarted.fact("outcome", {
+          status: "failed", code, message: `${reason} before dispatch`,
+          dispatchDigest: null, fenceDigest: unstartedFenced.fence!.digest,
+        });
+        await unstarted.fact("release", testBunPreparationRelease(unstartedFailed));
+        await closePrivateRootBunNativePreparation({
+          coordinator, projectRoot: fixture.root,
+          parentRunId: unstarted.submission.run.runId,
+        });
+      }
+
+      const throwing = await start("throwing-launch-callback");
+      const throwingPlan = testBunPreparationPlan(
+        fixture, throwing.allocation, throwing.allocated.snapshot.allocationDigest,
+      );
+      const throwingPlanned = await throwing.fact("plan", throwingPlan);
+      const throwingBacking = testBunPreparationBacking(
+        throwingPlan, throwingPlanned.plan!.digest,
+      );
+      const throwingBacked = await throwing.fact("backing", throwingBacking);
+      const throwingSandbox = testBunPreparationSandbox(
+        throwing.allocation, throwingPlan, throwingBacked.backing!.digest,
+      );
+      const throwingSandboxed = await throwing.fact("sandbox", throwingSandbox);
+      const throwingDispatch = await recordPrivateRootBunNativePreparationDispatch({
+        coordinator, projectRoot: fixture.root, allocation: throwing.allocated,
+      });
+      let throwingStarts = 0;
+      await expect(claimPrivateRootBunNativePreparationLaunchAdmission({
+        launchAdmission: throwingDispatch.launchAdmission,
+        begin: () => {
+          throwingStarts += 1;
+          throw new Error("launch callback failed after possible effect");
+        },
+      })).rejects.toThrow("launch callback failed after possible effect");
+      await expect(claimPrivateRootBunNativePreparationLaunchAdmission({
+        launchAdmission: throwingDispatch.launchAdmission,
+        begin: () => { throwingStarts += 1; },
+      })).rejects.toThrow("already consumed");
+      expect(throwingStarts).toBe(1);
+      const throwingPreparedIdentity = testBunPreparationPrepared(
+        throwingSandbox, throwingDispatch.snapshot.dispatch!.digest,
+      );
+      const throwingFence = testBunPreparationFence(
+        throwingPlanned.plan!.digest,
+        throwingSandboxed.sandbox!.digest,
+        throwingPreparedIdentity,
+        "coordinator_lost",
+      );
+      const throwingFenced = await throwing.fact("fence", throwingFence);
+      const throwingFailed = await throwing.fact("outcome", {
+        status: "failed", code: "UNCERTAIN",
+        message: "launch callback may have dispatched before throwing",
+        dispatchDigest: throwingDispatch.snapshot.dispatch!.digest,
+        fenceDigest: throwingFenced.fence!.digest,
+      });
+      await throwing.fact("release", testBunPreparationRelease(throwingFailed));
+      await closePrivateRootBunNativePreparation({
+        coordinator, projectRoot: fixture.root,
+        parentRunId: throwing.submission.run.runId,
+      });
+
+      const stale = await start("stale-launch-token");
+      const stalePlan = testBunPreparationPlan(
+        fixture, stale.allocation, stale.allocated.snapshot.allocationDigest,
+      );
+      const stalePlanned = await stale.fact("plan", stalePlan);
+      const staleBacking = testBunPreparationBacking(stalePlan, stalePlanned.plan!.digest);
+      const staleBacked = await stale.fact("backing", staleBacking);
+      const staleSandbox = testBunPreparationSandbox(
+        stale.allocation, stalePlan, staleBacked.backing!.digest,
+      );
+      const staleSandboxed = await stale.fact("sandbox", staleSandbox);
+      const staleDispatch = await recordPrivateRootBunNativePreparationDispatch({
+        coordinator, projectRoot: fixture.root, allocation: stale.allocated,
+      });
+      const stalePreparedIdentity = testBunPreparationPrepared(
+        staleSandbox, staleDispatch.snapshot.dispatch!.digest,
+      );
+      const staleFence = testBunPreparationFence(
+        stalePlanned.plan!.digest,
+        staleSandboxed.sandbox!.digest,
+        stalePreparedIdentity,
+        "setup_failed",
+      );
+      const staleFenced = await stale.fact("fence", staleFence);
+      let staleStarts = 0;
+      const staleClaim = () => claimPrivateRootBunNativePreparationLaunchAdmission({
+        launchAdmission: staleDispatch.launchAdmission,
+        begin: () => { staleStarts += 1; },
+      });
+      await expect(staleClaim()).rejects.toMatchObject({
+        code: "RUN_EXECUTION_CHECKPOINT_ORDER",
+      });
+      const staleFailed = await stale.fact("outcome", {
+        status: "failed", code: "EXECUTION_FAILED", message: "setup did not start",
+        dispatchDigest: staleDispatch.snapshot.dispatch!.digest,
+        fenceDigest: staleFenced.fence!.digest,
+      });
+      await stale.fact("release", testBunPreparationRelease(staleFailed));
+      await closePrivateRootBunNativePreparation({
+        coordinator, projectRoot: fixture.root, parentRunId: stale.submission.run.runId,
+      });
+      await expect(staleClaim()).rejects.toMatchObject({
+        code: "RUN_EXECUTION_CHECKPOINT_ORDER",
+      });
+      const staleTerminal = {
+        status: "failed" as const,
+        code: "EXECUTION_FAILED" as const,
+        message: "stale launch token root terminal",
+        diagnostics: { stderr: "", stderrBytes: 0, stderrTruncated: false },
+      };
+      await closeTestRootExecutionWithoutPlan(
+        fixture.root, coordinator, stale.submission.run.runId, staleTerminal,
+      );
+      await expect(staleClaim()).rejects.toMatchObject({ code: "RUN_ALREADY_TERMINAL" });
+      expect(staleStarts).toBe(0);
+
+      const awaitingArtifact = await start("artifact-resume");
+      const resumePlan = testBunPreparationPlan(
+        fixture, awaitingArtifact.allocation, awaitingArtifact.allocated.snapshot.allocationDigest,
+      );
+      const resumePlanned = await awaitingArtifact.fact("plan", resumePlan);
+      const resumeBacking = testBunPreparationBacking(resumePlan, resumePlanned.plan!.digest);
+      const resumeBacked = await awaitingArtifact.fact("backing", resumeBacking);
+      const resumeSandbox = testBunPreparationSandbox(
+        awaitingArtifact.allocation, resumePlan, resumeBacked.backing!.digest,
+      );
+      const resumeSandboxed = await awaitingArtifact.fact("sandbox", resumeSandbox);
+      const resumeDispatch = await recordPrivateRootBunNativePreparationDispatch({
+        coordinator, projectRoot: fixture.root, allocation: awaitingArtifact.allocated,
+      });
+      expect(resumeDispatch).toMatchObject({ created: true });
+      const resumePrepared = testBunPreparationPrepared(
+        resumeSandbox, resumeDispatch.snapshot.dispatch!.digest,
+      );
+      const resumePreparedSnapshot = await awaitingArtifact.fact("prepared", resumePrepared);
+      const resumeFence = testBunPreparationFence(
+        resumePlanned.plan!.digest,
+        resumeSandboxed.sandbox!.digest,
+        resumePrepared,
+      );
+      const resumeFenced = await awaitingArtifact.fact("fence", resumeFence);
+      const resumeSuccess = testBunPreparationSuccess(
+        awaitingArtifact.allocation,
+        resumePreparedSnapshot.prepared!.digest,
+        resumeFenced.fence!.digest,
+      );
+      await awaitingArtifact.fact("outcome", resumeSuccess);
+
+      const abandoned = await start("coordinator-loss");
+      const abandonedPlan = testBunPreparationPlan(
+        fixture, abandoned.allocation, abandoned.allocated.snapshot.allocationDigest,
+      );
+      const abandonedPlanned = await abandoned.fact("plan", abandonedPlan);
+      const abandonedBacking = testBunPreparationBacking(
+        abandonedPlan, abandonedPlanned.plan!.digest,
+      );
+      const abandonedBacked = await abandoned.fact("backing", abandonedBacking);
+      const abandonedSandbox = testBunPreparationSandbox(
+        abandoned.allocation, abandonedPlan, abandonedBacked.backing!.digest,
+      );
+      const abandonedSandboxed = await abandoned.fact("sandbox", abandonedSandbox);
+      const abandonedDispatch = await recordPrivateRootBunNativePreparationDispatch({
+        coordinator, projectRoot: fixture.root, allocation: abandoned.allocated,
+      });
+      const abandonedPrepared = testBunPreparationPrepared(
+        abandonedSandbox, abandonedDispatch.snapshot.dispatch!.digest,
+      );
+      await abandoned.fact("prepared", abandonedPrepared);
+      await coordinator.dispose();
+      await expect(claimPrivateRootBunNativePreparationLaunchAdmission({
+        launchAdmission: abandonedDispatch.launchAdmission,
+        begin: () => { throw new Error("closed coordinator must not begin admission"); },
+      })).rejects.toMatchObject({ code: "COORDINATOR_CLOSED" });
+
+      coordinator = await openPrivateProjectCoordinator({ projectRoot: fixture.root });
+      const lostDispatchReplay = await recordPrivateRootBunNativePreparationDispatch({
+        coordinator, projectRoot: fixture.root, allocation: abandoned.allocated,
+      });
+      expect(lostDispatchReplay).toMatchObject({ created: false });
+      expect(lostDispatchReplay.launchAdmission).toBeUndefined();
+      const replay = await allocatePrivateRootBunNativePreparation({
+        coordinator,
+        projectRoot: fixture.root,
+        allocation: abandoned.allocation,
+      });
+      expect(replay).toMatchObject({ created: false });
+      expect(replay.snapshot).toMatchObject({ coordinator: "older" });
+      expect(replay.snapshot.dispatch).toEqual(abandonedDispatch.snapshot.dispatch);
+      expect(replay.snapshot.prepared).toBeDefined();
+      await expect(recordPrivateRootBunNativePreparationDispatch({
+        coordinator, projectRoot: fixture.root, allocation: replay,
+      })).rejects.toThrow("requires its newly created allocation");
+      expect(await listPrivateRootBunNativePreparationWork({
+        coordinator,
+        projectRoot: fixture.root,
+        epoch: "older",
+      })).toHaveLength(2);
+
+      const resumedBeforeArtifact = (await loadPrivateRootBunNativePreparation({
+        coordinator, projectRoot: fixture.root,
+        parentRunId: awaitingArtifact.submission.run.runId,
+      }))!;
+      const resumeArtifact = testBunPreparationArtifact(
+        awaitingArtifact.allocation,
+        resumeSuccess,
+        resumedBeforeArtifact.outcome!.digest,
+      );
+      const resumePublished = await awaitingArtifact.fact("artifact", resumeArtifact);
+      await awaitingArtifact.fact("release", testBunPreparationRelease(resumePublished));
+      const resumed = await closePrivateRootBunNativePreparation({
+        coordinator,
+        projectRoot: fixture.root,
+        parentRunId: awaitingArtifact.submission.run.runId,
+      });
+      expect(resumed).toMatchObject({ coordinator: "older" });
+      expect(resumed.outcome?.value).toMatchObject({ status: "succeeded" });
+      expect(await listPrivateRootBunNativePreparationWork({
+        coordinator,
+        projectRoot: fixture.root,
+        epoch: "older",
+      })).toHaveLength(1);
+
+      const lossFence = testBunPreparationFence(
+        abandonedPlanned.plan!.digest,
+        abandonedSandboxed.sandbox!.digest,
+        abandonedPrepared,
+        "coordinator_lost",
+      );
+      const lossFenced = await abandoned.fact("fence", lossFence);
+      const lossOutcome = await abandoned.fact("outcome", {
+        status: "failed", code: "UNCERTAIN",
+        message: "possibly dispatched preparation lost its coordinator",
+        dispatchDigest: abandonedDispatch.snapshot.dispatch!.digest,
+        fenceDigest: lossFenced.fence!.digest,
+      });
+      await abandoned.fact("release", testBunPreparationRelease(lossOutcome));
+      const recovered = await closePrivateRootBunNativePreparation({
+        coordinator,
+        projectRoot: fixture.root,
+        parentRunId: abandoned.submission.run.runId,
+      });
+      expect(recovered).toMatchObject({ coordinator: "older" });
+      expect(recovered.dispatch).toEqual(abandonedDispatch.snapshot.dispatch);
+      expect(await listPrivateRootBunNativePreparationWork({
+        coordinator,
+        projectRoot: fixture.root,
+        epoch: "older",
+      })).toEqual([]);
+    } finally {
+      await coordinator?.dispose();
+      await fixture.dispose();
+    }
+  }, 60_000);
+
+  test("linearizes root closure against an open Bun native preparation", async () => {
+    const fixture = await createFixture("ready");
+    let coordinator: PrivateProjectCoordinator | undefined;
+    try {
+      await applyLatestCandidate(fixture);
+      coordinator = await openPrivateProjectCoordinator({ projectRoot: fixture.root });
+      const target = fixture.candidate.candidate.targets[0]!;
+      const terminal = {
+        status: "failed" as const,
+        code: "EXECUTION_FAILED" as const,
+        message: "test root terminal",
+        diagnostics: { stderr: "", stderrBytes: 0, stderrTruncated: false },
+      };
+      const start = async (label: string) => {
+        const deadlineUnixMs = Date.now() + 60_000;
+        const submission = await submitPrivateRootRun({
+          coordinator: coordinator!, projectRoot: fixture.root, packageStoreRoot: fixture.store,
+          submissionId: `bun-preparation-root-close-${label}`,
+          target: { kind: "flow", path: "flows/run" }, input: { value: label }, deadlineUnixMs,
+        });
+        if (submission.launch === undefined) throw new Error("test expected a root launch");
+        const allocation = normalizePrivateRootBunNativePreparationAllocation({
+          kind: "private-root-bun-native-preparation-allocation/1",
+          parentRunId: submission.run.runId,
+          coordinatorEpoch: coordinator!.epoch,
+          requestDigest: submission.launch.intent.requestDigest,
+          packageDigest: target.request.package.digest,
+          recipeObservationDigest: submission.launch.intent.observationDigest,
+          preparationObservationDigest: digest(`root-close-preparation-observation-${label}`),
+          dependencyDigest: digest(`root-close-dependency-${label}`),
+          workerDigest: digest(`root-close-worker-${label}`),
+          runtimeObservationDigest: digest(`root-close-runtime-${label}`),
+          backendMechanismDigest: digest(`root-close-backend-${label}`),
+          deadlineUnixMs,
+        });
+        for (const [checkpoint, value] of [
+          ["provisional", terminal],
+          ["release", { kind: "test-release-without-plan/1", runId: submission.run.runId }],
+          ["admitted", terminal],
+        ] as const) {
+          await recordPrivateRootExecutionCheckpoint({
+            coordinator: coordinator!, projectRoot: fixture.root,
+            runId: submission.run.runId, checkpoint, value,
+          });
+        }
+        return { submission, allocation };
+      };
+      const closePreparation = async (
+        allocationResult: PrivateRootBunNativePreparationAllocationResult,
+      ) => {
+        let snapshot = await recordPrivateRootBunNativePreparationFact({
+          coordinator: coordinator!, projectRoot: fixture.root,
+          parentRunId: allocationResult.snapshot.allocation.parentRunId,
+          fact: "outcome",
+          value: {
+            status: "failed", code: "CANCELLED", message: "closed by root test",
+            dispatchDigest: null, fenceDigest: null,
+          },
+        });
+        snapshot = await recordPrivateRootBunNativePreparationFact({
+          coordinator: coordinator!, projectRoot: fixture.root,
+          parentRunId: allocationResult.snapshot.allocation.parentRunId,
+          fact: "release", value: testBunPreparationRelease(snapshot),
+        });
+        return await closePrivateRootBunNativePreparation({
+          coordinator: coordinator!, projectRoot: fixture.root,
+          parentRunId: allocationResult.snapshot.allocation.parentRunId,
+        });
+      };
+
+      const guarded = await start("guarded");
+      const guardedAllocation = await allocatePrivateRootBunNativePreparation({
+        coordinator, projectRoot: fixture.root, allocation: guarded.allocation,
+      });
+      await expect(closePrivateRootExecution({
+        coordinator, projectRoot: fixture.root,
+        runId: guarded.submission.run.runId, terminal,
+      })).rejects.toMatchObject({ code: "RUN_EXECUTION_CLOSURE_REQUIRED" });
+      await closePreparation(guardedAllocation);
+      expect(await closePrivateRootExecution({
+        coordinator, projectRoot: fixture.root,
+        runId: guarded.submission.run.runId, terminal,
+      })).toMatchObject({ state: "terminal" });
+
+      const raced = await start("race");
+      const [allocationRace, closureRace] = await Promise.allSettled([
+        retryBusy(() => allocatePrivateRootBunNativePreparation({
+          coordinator, projectRoot: fixture.root, allocation: raced.allocation,
+        })),
+        retryBusy(() => closePrivateRootExecution({
+          coordinator, projectRoot: fixture.root,
+          runId: raced.submission.run.runId, terminal,
+        })),
+      ]);
+      expect([allocationRace.status, closureRace.status].sort()).toEqual(["fulfilled", "rejected"]);
+      if (allocationRace.status === "fulfilled") {
+        expect(closureRace).toMatchObject({
+          status: "rejected", reason: { code: "RUN_EXECUTION_CLOSURE_REQUIRED" },
+        });
+        await closePreparation(allocationRace.value);
+        expect(await closePrivateRootExecution({
+          coordinator, projectRoot: fixture.root,
+          runId: raced.submission.run.runId, terminal,
+        })).toMatchObject({ state: "terminal" });
+      } else {
+        expect(allocationRace).toMatchObject({
+          status: "rejected", reason: { code: "RUN_ALREADY_TERMINAL" },
+        });
+        expect(closureRace).toMatchObject({ status: "fulfilled", value: { state: "terminal" } });
+      }
+    } finally {
+      await coordinator?.dispose();
+      await fixture.dispose();
+    }
+  });
 });
 
 interface Fixture {
@@ -4426,6 +5177,286 @@ interface Fixture {
   readonly database: string;
   readonly candidate: ReturnType<typeof decodePrivateActivationCandidateV5>;
   dispose(): Promise<void>;
+}
+
+function testBunPreparationPlan(
+  fixture: Fixture,
+  allocation: PrivateRootBunNativePreparationAllocation,
+  allocationDigest: string,
+  ownerAllocationValue?: PrivateRootBunNativePreparationFactValueMap["plan"]["ownerAllocation"],
+): PrivateRootBunNativePreparationFactValueMap["plan"] {
+  const hexadecimal = allocation.parentRunId.slice("sha256:".length);
+  const materializations = join(fixture.root, ".jig", "private-root-materializations");
+  const owners = join(fixture.root, ".jig", "private-root-linux-owners");
+  const packageName = `bun-${hexadecimal}`;
+  const ownerName = `b-${hexadecimal.slice(0, 62)}`;
+  const ownerFields = {
+    kind: "private-linux-owner-state-allocation/1" as const,
+    parent: owners,
+    parentDevice: "1",
+    parentInode: "2",
+    name: ownerName,
+    directory: join(owners, ownerName),
+    ownerToken: digest(`owner-token-${allocation.parentRunId}`).slice("sha256:".length),
+  };
+  const ownerAllocation = ownerAllocationValue ?? Object.freeze({
+    ...ownerFields,
+    digest: privateDomainDigest(
+      "JIG-Private-Linux-Owner-State-Allocation/1",
+      ownerFields,
+    ),
+  });
+  return Object.freeze({
+    kind: "private-root-bun-native-preparation-plan/1",
+    backendRunId: `bun-${hexadecimal.slice(0, 40)}`,
+    cancellationGraceMs: 1_000,
+    packageAllocation: Object.freeze({
+      kind: "private-package-materialization-allocation/1",
+      parent: Object.freeze({ path: materializations, dev: "1", ino: "2" }),
+      name: packageName,
+      path: join(materializations, packageName),
+      packageDigest: allocation.packageDigest,
+      ownerToken: allocationDigest,
+    }),
+    ownerAllocation,
+  });
+}
+
+function testBunPreparationBacking(
+  plan: PrivateRootBunNativePreparationFactValueMap["plan"],
+  planDigest: string,
+): PrivateRootBunNativePreparationFactValueMap["backing"] {
+  return Object.freeze({
+    kind: "private-root-bun-native-preparation-backing/1",
+    planDigest,
+    lease: Object.freeze({
+      kind: "private-package-materialization-lease/1",
+      allocation: plan.packageAllocation,
+      transaction: Object.freeze({ path: plan.packageAllocation.path, dev: "3", ino: "4" }),
+      package: Object.freeze({
+        path: join(plan.packageAllocation.path, "package"), dev: "5", ino: "6",
+      }),
+    }),
+  });
+}
+
+function testBunPreparationSandbox(
+  allocation: PrivateRootBunNativePreparationAllocation,
+  plan: PrivateRootBunNativePreparationFactValueMap["plan"],
+  backingDigest: string,
+): PrivateRootBunNativePreparationFactValueMap["sandbox"] {
+  const nonce = "b".repeat(24);
+  const parentName = `jig-run-${plan.backendRunId}-${nonce}`;
+  const parentCgroup = `/sys/fs/cgroup/jig/${parentName}`;
+  const ownerFields = {
+    kind: "private-linux-sealed-owner/1" as const,
+    runId: plan.backendRunId,
+    nonce,
+    ownerToken: plan.ownerAllocation.ownerToken,
+    mechanismDigest: allocation.backendMechanismDigest,
+    sealedPlanDigest: digest("bun-preparation-sealed-plan"),
+    cgroupScope: "/sys/fs/cgroup/jig",
+    cgroupScopeDevice: "7",
+    cgroupScopeInode: "8",
+    parentName,
+    parentCgroup,
+    supervisorCgroup: `${parentCgroup}/supervisor`,
+    runCgroup: `${parentCgroup}/run`,
+    privateDeviceDirectory: `/dev/.jig-${parentName}-devices`,
+    deadlineUnixMs: allocation.deadlineUnixMs,
+    cancellationGraceMs: plan.cancellationGraceMs,
+    cleanupTimeoutMs: 5_000,
+    trustedHelperPath: "/opt/jig/linux-cgroup-helper",
+    trustedHelperDigest: digest("bun-preparation-helper"),
+    ownerStateParent: plan.ownerAllocation.parent,
+    ownerStateParentDevice: plan.ownerAllocation.parentDevice,
+    ownerStateParentInode: plan.ownerAllocation.parentInode,
+    ownerStateName: plan.ownerAllocation.name,
+    ownerStateDirectory: plan.ownerAllocation.directory,
+    ownerStateDevice: "9",
+    ownerStateInode: "10",
+    ownerStateAllocationDigest: plan.ownerAllocation.digest,
+  };
+  return Object.freeze({
+    kind: "private-root-bun-native-preparation-sandbox/1",
+    backingDigest,
+    owner: Object.freeze({
+      ...ownerFields,
+      digest: privateDomainDigest("JIG-Private-Linux-Sealed-Owner/1", ownerFields),
+    }),
+  });
+}
+
+function testBunPreparationPrepared(
+  sandbox: PrivateRootBunNativePreparationFactValueMap["sandbox"],
+  dispatchDigest: string,
+): PrivateRootBunNativePreparationFactValueMap["prepared"] {
+  return Object.freeze({
+    kind: "private-root-bun-native-preparation-prepared/1",
+    dispatchDigest,
+    prepared: Object.freeze({
+      kind: "private-linux-prepared-owner/1",
+      digest: privateDomainDigest("JIG-Private-Linux-Prepared-Owner/1", sandbox.owner),
+      owner: sandbox.owner,
+    }),
+  });
+}
+
+function testBunPreparationFence(
+  planDigest: string,
+  sandboxDigest: string,
+  prepared: PrivateRootBunNativePreparationFactValueMap["prepared"],
+  stopReason: "coordinator_lost" | "payload_exit" | "setup_failed" = "payload_exit",
+): PrivateRootBunNativePreparationFactValueMap["fence"] {
+  return Object.freeze({
+    kind: "private-root-bun-native-preparation-fence/1",
+    planDigest,
+    proof: Object.freeze({
+      kind: "enforcement-confirmed",
+      sandboxDigest,
+      receipt: Object.freeze({
+        kind: "private-linux-confirmed-enforcement/1",
+        ownerDigest: prepared.prepared.digest,
+        stopReason,
+        exitCode: stopReason === "payload_exit" ? 0 : 1,
+        signal: null,
+        fenced: true,
+        evidence: Object.freeze({
+          cpuStat: Object.freeze({}),
+          memoryEvents: Object.freeze({}),
+          pidsEvents: Object.freeze({}),
+        }),
+      }),
+    }),
+  });
+}
+
+function testBunPreparationCancellationFence(
+  plan: PrivateRootBunNativePreparationFactValueMap["plan"],
+  planDigest: string,
+  reason: "cancelled" | "deadline" | "setup_failed" = "cancelled",
+): PrivateRootBunNativePreparationFactValueMap["fence"] {
+  const fields = {
+    kind: "private-linux-owner-state-cancellation/1" as const,
+    allocationDigest: plan.ownerAllocation.digest,
+    directoryDevice: "9",
+    directoryInode: "10",
+    state: "cancelled" as const,
+  };
+  return Object.freeze({
+    kind: "private-root-bun-native-preparation-fence/1",
+    planDigest,
+    proof: Object.freeze({
+      kind: "allocation-cancelled",
+      reason,
+      cancellation: Object.freeze({
+        ...fields,
+        digest: privateDomainDigest("JIG-Private-Linux-Owner-State-Cancellation/1", fields),
+      }),
+    }),
+  });
+}
+
+function testBunPreparationSuccess(
+  allocation: PrivateRootBunNativePreparationAllocation,
+  preparedDigest: string,
+  fenceDigest: string,
+): PrivateRootBunNativePreparationFactValueMap["outcome"] & { readonly status: "succeeded" } {
+  const files = Object.freeze([
+    Object.freeze({ path: "dist/index.js", contentBase64: Buffer.from("export {}\n").toString("base64") }),
+    Object.freeze({
+      path: "package.json",
+      contentBase64: Buffer.from(canonicalJson({ name: "@flowmd/sdk", version: "0.0.0" }))
+        .toString("base64"),
+    }),
+  ]);
+  const candidateBytesBase64 = Buffer.from(canonicalJson({
+    kind: "private-bun-native-prepared-candidate/1",
+    dependencyDigest: allocation.dependencyDigest,
+    files,
+  })).toString("base64");
+  const preliminary = Object.freeze({
+    status: "succeeded" as const,
+    preparedDigest,
+    fenceDigest,
+    candidateDigest: digest("candidate-placeholder"),
+    candidateBytesBase64,
+  });
+  return Object.freeze({
+    ...preliminary,
+    candidateDigest: privateRootBunNativePreparationCandidateDigest({
+      outcome: preliminary,
+      observationDigest: allocation.preparationObservationDigest,
+      requestDigest: allocation.requestDigest,
+      packageDigest: allocation.packageDigest,
+      dependencyDigest: allocation.dependencyDigest,
+    }),
+  });
+}
+
+function testBunPreparationArtifact(
+  allocation: PrivateRootBunNativePreparationAllocation,
+  outcome: PrivateRootBunNativePreparationFactValueMap["outcome"] & { readonly status: "succeeded" },
+  outcomeDigest: string,
+): PrivateRootBunNativePreparationFactValueMap["artifact"] {
+  const decoded = decodeJson1(Buffer.from(outcome.candidateBytesBase64, "base64")) as {
+    readonly files: readonly { readonly path: string; readonly contentBase64: string }[];
+  };
+  const record = {
+    kind: "private-bun-native-prepared-tree-record/1",
+    sourcePackageDigest: allocation.packageDigest,
+    observationDigest: allocation.preparationObservationDigest,
+    requestDigest: allocation.requestDigest,
+    candidateDigest: outcome.candidateDigest,
+    dependencyDigest: allocation.dependencyDigest,
+    files: decoded.files,
+  } as const;
+  return Object.freeze({
+    kind: "private-root-bun-native-preparation-artifact/1",
+    outcomeDigest,
+    reference: Object.freeze({
+      kind: "private-bun-native-prepared-tree/1",
+      digest: privateDomainDigest("JIG-Private-Bun-Native-Prepared-Tree/1", record),
+      sourcePackageDigest: allocation.packageDigest,
+      observationDigest: allocation.preparationObservationDigest,
+      requestDigest: allocation.requestDigest,
+      candidateDigest: outcome.candidateDigest,
+      dependencyDigest: allocation.dependencyDigest,
+    }),
+  });
+}
+
+function testBunPreparationRelease(
+  snapshot: PrivateRootBunNativePreparationSnapshot,
+): PrivateRootBunNativePreparationFactValueMap["release"] {
+  let ownerRelease = null;
+  if (snapshot.plan !== undefined) {
+    if (snapshot.fence === undefined) throw new Error("test preparation release requires a fence");
+    const proof = snapshot.fence.value.proof;
+    const fields = {
+      kind: "private-linux-owner-state-release/1" as const,
+      allocationDigest: snapshot.plan.value.ownerAllocation.digest,
+      directoryDevice: proof.kind === "allocation-cancelled"
+        ? proof.cancellation.directoryDevice : snapshot.sandbox!.value.owner.ownerStateDevice,
+      directoryInode: proof.kind === "allocation-cancelled"
+        ? proof.cancellation.directoryInode : snapshot.sandbox!.value.owner.ownerStateInode,
+      released: true as const,
+    };
+    ownerRelease = Object.freeze({
+      ...fields,
+      digest: privateDomainDigest("JIG-Private-Linux-Owner-State-Release/1", fields),
+    });
+  }
+  return Object.freeze({
+    kind: "private-root-bun-native-preparation-release/1",
+    outcomeDigest: snapshot.outcome!.digest,
+    planDigest: snapshot.plan?.digest ?? null,
+    backingDigest: snapshot.backing?.digest ?? null,
+    fenceDigest: snapshot.fence?.digest ?? null,
+    artifactDigest: snapshot.artifact?.digest ?? null,
+    packageReleased: true,
+    ownerRelease,
+  });
 }
 
 async function createFixture(
@@ -4676,7 +5707,7 @@ async function createFixture(
     const encoded = encodePrivateActivationCandidateV5(candidate);
 
     const state = join(root, ".jig");
-    const databasePath = join(state, "private-activation-admission-v18.sqlite3");
+    const databasePath = join(state, "private-activation-admission-v19.sqlite3");
     await mkdir(state, { mode: 0o700 });
     const databaseFile = await open(
       databasePath,
@@ -4704,6 +5735,9 @@ async function createFixture(
         CREATE_ROOT_FLOW_CALLS,
         CREATE_ROOT_FLOW_CALL_FACTS,
         CREATE_ROOT_FLOW_CALL_CLOSURES,
+        CREATE_ROOT_BUN_PREPARATIONS,
+        CREATE_ROOT_BUN_PREPARATION_FACTS,
+        CREATE_ROOT_BUN_PREPARATION_CLOSURES,
         CREATE_JOURNAL_HEAD,
         CREATE_JOURNAL_EVENTS,
         CREATE_HOOK_ADMISSION_BOUNDARIES,
@@ -4724,7 +5758,7 @@ async function createFixture(
         "INSERT INTO coordinator_head(singleton, epoch) VALUES (1, 0)",
         "INSERT INTO journal_head(singleton, position) VALUES (1, 0)",
         "PRAGMA application_id=1246316353",
-        "PRAGMA user_version=18",
+        "PRAGMA user_version=19",
       ].join(";"));
       database.exec("BEGIN IMMEDIATE");
       database.query(
@@ -5593,7 +6627,7 @@ async function createComposedFixture(): Promise<Fixture> {
     });
     const encoded = encodePrivateActivationCandidateV5(candidate);
     const state = join(root, ".jig");
-    const databasePath = join(state, "private-activation-admission-v18.sqlite3");
+    const databasePath = join(state, "private-activation-admission-v19.sqlite3");
     await mkdir(state, { mode: 0o700 });
     const databaseFile = await open(
       databasePath,
@@ -5621,6 +6655,9 @@ async function createComposedFixture(): Promise<Fixture> {
         CREATE_ROOT_FLOW_CALLS,
         CREATE_ROOT_FLOW_CALL_FACTS,
         CREATE_ROOT_FLOW_CALL_CLOSURES,
+        CREATE_ROOT_BUN_PREPARATIONS,
+        CREATE_ROOT_BUN_PREPARATION_FACTS,
+        CREATE_ROOT_BUN_PREPARATION_CLOSURES,
         CREATE_JOURNAL_HEAD,
         CREATE_JOURNAL_EVENTS,
         CREATE_HOOK_ADMISSION_BOUNDARIES,
@@ -5641,7 +6678,7 @@ async function createComposedFixture(): Promise<Fixture> {
         "INSERT INTO coordinator_head(singleton, epoch) VALUES (1, 0)",
         "INSERT INTO journal_head(singleton, position) VALUES (1, 0)",
         "PRAGMA application_id=1246316353",
-        "PRAGMA user_version=18",
+        "PRAGMA user_version=19",
       ].join(";"));
       database.exec("BEGIN IMMEDIATE");
       database.query(

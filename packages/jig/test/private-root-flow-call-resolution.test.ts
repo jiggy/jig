@@ -294,7 +294,7 @@ describe("private root Flow-call resolution", () => {
 
       const sqlite = createRequire(import.meta.url)("bun:sqlite") as any;
       const database = sqlite.Database.open(
-        join(fixture.base, "project", ".jig", "private-activation-admission-v18.sqlite3"),
+        join(fixture.base, "project", ".jig", "private-activation-admission-v19.sqlite3"),
         sqlite.constants.SQLITE_OPEN_READONLY | sqlite.constants.SQLITE_OPEN_NOFOLLOW,
       );
       try {
@@ -795,7 +795,7 @@ function seedCandidate(
 ): void {
   const sqlite = createRequire(import.meta.url)("bun:sqlite") as any;
   const database = sqlite.Database.open(
-    join(root, ".jig", "private-activation-admission-v18.sqlite3"),
+    join(root, ".jig", "private-activation-admission-v19.sqlite3"),
     sqlite.constants.SQLITE_OPEN_READWRITE | sqlite.constants.SQLITE_OPEN_NOFOLLOW,
   );
   const encoded = encodePrivateActivationCandidateV5(candidate);

@@ -499,7 +499,7 @@ function inspectPlanningState(root: string): {
 } {
   const sqlite = createRequire(import.meta.url)("bun:sqlite") as any;
   const database = sqlite.Database.open(
-    join(root, ".jig", "private-activation-admission-v18.sqlite3"),
+    join(root, ".jig", "private-activation-admission-v19.sqlite3"),
     sqlite.constants.SQLITE_OPEN_READONLY | sqlite.constants.SQLITE_OPEN_NOFOLLOW,
   );
   try {
@@ -528,7 +528,7 @@ async function waitForPrepared(root: string, runId: string): Promise<void> {
     let database: any;
     try {
       database = sqlite.Database.open(
-        join(root, ".jig", "private-activation-admission-v18.sqlite3"),
+        join(root, ".jig", "private-activation-admission-v19.sqlite3"),
         sqlite.constants.SQLITE_OPEN_READONLY | sqlite.constants.SQLITE_OPEN_NOFOLLOW,
       );
       const row = database.query([
