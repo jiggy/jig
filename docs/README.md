@@ -37,6 +37,12 @@ Start here:
 
 Current implementation frontier:
 
+- [`design-review/180-private-root-flow-call-filtering.md`](design-review/180-private-root-flow-call-filtering.md)
+  closes complete invocation-local filtering for direct Flow targets over one
+  retained admitted slot, including exact-versus-broad input ordering,
+  canonical rejection evidence, and the untruncated 4,096-target boundary,
+  while leaving configured Bindings, durable dispatch, and Semantic Choice
+  separate.
 - [`design-review/179-native-preparation-artifact-boundary.md`](design-review/179-native-preparation-artifact-boundary.md)
   records the exact retained SDK artifact substrate missing from the selected
   native-preparation proof after rejecting caller-asserted path, digest, and

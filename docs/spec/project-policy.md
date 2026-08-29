@@ -186,10 +186,15 @@ no source may be truncated to fit it. An empty complete expansion is valid for
 `project-run-targets`; `exact` requires one target and `candidates` requires at
 least two.
 
-Expansion includes the consuming Run Binding itself. Runtime filtering removes
-every exact target already present in the active owner chain, then applies
-actual input, readiness, authority, resource, liveness, and wait-graph rules
-over the admitted frozen set. V1 has no recursive cross-Flow calls. Source additions, removals, and
+Expansion includes the consuming Run Binding itself. The first private
+invocation-local checkpoint removes the active parent, rejects unavailable and
+unsupported target kinds, revalidates retained direct-Flow package projection,
+and applies actual input compatibility for broad sources over the complete
+admitted frozen set. Exact calls preserve the existing durable
+allocation-before-input-validation order. Configured Bindings, a persisted
+complete ancestor chain, and current authority, resource, liveness, and
+wait-graph filters remain later integration gates. V1 has no recursive
+cross-Flow calls. Source additions, removals, and
 same-identity meaning or disposition changes require a new reviewed Plan and
 apply; existing operations never re-expand.
 
