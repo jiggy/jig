@@ -11,6 +11,7 @@ const expectedInstalledFiles = [
   "dist/administration.js",
   "dist/administration/root.d.ts",
   "dist/administration/root.js",
+  "dist/bare-init.js",
   "dist/administration/project.d.ts",
   "dist/administration/project.js",
   "dist/capability/index.js",
@@ -60,8 +61,36 @@ try {
   ], consumer);
   const installed = join(consumer, "node_modules", "@jigging", "jig");
   const installedFiles = await listFiles(installed);
+  const installedManifest = JSON.parse(await readFile(join(installed, "package.json"), "utf8")) as Record<string, unknown>;
   assert.deepEqual(installedFiles, expectedInstalledFiles);
   assert.equal(installedFiles.some((path) => path.startsWith("dist/internal/")), false);
+
+  const bareProject = join(consumer, "bare-project");
+  const initialized = await run([
+    join(consumer, "node_modules", ".bin", "jig"),
+    "init", "--bare", bareProject,
+  ], consumer);
+  assert.equal(initialized.stdout, "created bare Jig project\n");
+  assert.deepEqual((await readdir(bareProject)).sort(), [
+    ".gitignore", "bindings", "flows", "jig.ts", "package.json", "tsconfig.json",
+  ]);
+  assert.deepEqual(await readdir(join(bareProject, "bindings")), []);
+  assert.deepEqual(await readdir(join(bareProject, "flows")), []);
+  assert.deepEqual(
+    JSON.parse(await readFile(join(bareProject, "package.json"), "utf8")),
+    {
+      private: true,
+      type: "module",
+      dependencies: { "@jigging/jig": installedManifest.version },
+      devDependencies: { typescript: "7.0.2" },
+    },
+  );
+  await run([
+    "bun",
+    resolve(packageRoot, "node_modules/typescript/bin/tsc"),
+    "-p",
+    join(bareProject, "tsconfig.json"),
+  ], packageRoot);
 
   const flow = join(consumer, "smoke-flow");
   await mkdir(flow);
@@ -115,7 +144,6 @@ if (!projectAdministration.$defs?.planResult) throw new Error("bad packaged proj
 `);
   await run(["bun", "schema-smoke.mjs"], consumer);
 
-  const installedManifest = JSON.parse(await readFile(join(installed, "package.json"), "utf8")) as Record<string, unknown>;
   assert.equal(installedManifest.private, true);
 
   await writeFile(join(consumer, "smoke.ts"), `

@@ -1,19 +1,38 @@
 #!/usr/bin/env bun
 
 import { CheckError } from "./diagnostics.js";
+import { BareInitError, initializeBareProject } from "./bare-init.js";
 import { checkPackageDirectory, type InspectedPackage } from "./package/inspect.js";
 import { SchemaDiagnostic } from "./schema/index.js";
 
 const HELP = `Usage:
+  jig init --bare <new-directory>
   jig package check <package-directory>
 
-Validates one inert FLOW package snapshot. It does not resolve a runtime,
-execute the package, or claim operational readiness.`;
+Creates one inert bare Jig project, or validates one inert FLOW package
+snapshot. Neither command runs project or package code.`;
 
 export async function main(arguments_: readonly string[] = process.argv.slice(2)): Promise<number> {
   if (arguments_.length === 1 && (arguments_[0] === "--help" || arguments_[0] === "-h")) {
     process.stdout.write(`${HELP}\n`);
     return 0;
+  }
+  if (arguments_.length === 3 && arguments_[0] === "init" && arguments_[1] === "--bare") {
+    try {
+      await initializeBareProject(arguments_[2]!);
+      process.stdout.write("created bare Jig project\n");
+      return 0;
+    } catch (error) {
+      if (error instanceof BareInitError) {
+        process.stderr.write(renderDiagnostic(error.code, error.message));
+        return error.kind === "invalid" ? 1 : 2;
+      }
+      process.stderr.write(renderDiagnostic(
+        "JIG_INIT_UNAVAILABLE",
+        "the destination cannot be initialized",
+      ));
+      return 2;
+    }
   }
   if (arguments_.length !== 3 || arguments_[0] !== "package" || arguments_[1] !== "check") {
     process.stderr.write(`${HELP}\n`);

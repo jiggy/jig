@@ -43,6 +43,7 @@
     "dist/project/paths.js",
     "dist/json.js",
     "dist/json.d.ts",
+    "dist/bare-init.js",
     "dist/cli.js",
     "dist/diagnostics.js",
     "dist/package/capture.js",

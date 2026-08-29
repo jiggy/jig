@@ -2014,6 +2014,15 @@ jig init --bare
 jig init --from <starter>
 ```
 
+The implemented bare command takes one nonexistent destination and writes only
+the fixed inert project source tree selected by the clean-room authoring
+campaign. It claims the final pathname with an exclusive directory creation
+and never replaces or recursively removes an existing path. This six-file
+generator does not promise crash-atomic whole-tree publication: interruption
+may leave a partial inert directory which a retry refuses until the user
+inspects or removes it. It does not install dependencies, configure host
+policy, or grant project authority. `init --from` remains future work.
+
 A selected Starter may run its own reviewed initializer and ask whether to add
 an Agent Binding, Semantic Choice Binding, `create-missing-flow`, Git/worktrees, an
 inbox, or a GUI. Those are application choices. Runtime Adapter and Sandbox

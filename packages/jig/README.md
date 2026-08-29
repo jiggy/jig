@@ -5,7 +5,12 @@ project-authoring slice are development evidence, not a published stable host
 interface.
 
 This artifact does not open projects, issue Root Administration authority,
-plan or apply projects, or execute FLOW packages.
+plan or apply projects, or execute FLOW packages. Its bare initializer writes
+only inert user-owned project source:
+
+```console
+jig init --bare ./my-project
+```
 
 The `@jigging/jig/administration` path also exports the inert
 Project Administration/1 and Root Administration/1 value/type candidates for

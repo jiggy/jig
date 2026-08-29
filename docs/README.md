@@ -37,6 +37,11 @@ Start here:
 
 Current implementation frontier:
 
+- [`design-review/173-bare-project-initializer.md`](design-review/173-bare-project-initializer.md)
+  closes the fixed inert `jig init --bare <new-directory>` tree, exclusive
+  destination claim, bounded owned-entry cleanup, concurrent-winner proof, and
+  packed type-check without claiming atomic crash recovery, installation, or
+  an operational host.
 - [`design-review/172-private-project-run-target-catalogue.md`](design-review/172-private-project-run-target-catalogue.md)
   derives the complete authenticated structural Run universe without yet
   integrating the private marker, lock, Resolver, or runtime.
