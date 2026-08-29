@@ -37,6 +37,9 @@ Start here:
 
 Current implementation frontier:
 
+- [`design-review/171-private-project-run-target-marker.md`](design-review/171-private-project-run-target-marker.md)
+  closes only the private minimal `projectRunTargets()` marker shape while
+  keeping public authoring, evaluation, linking, locks, and execution gated.
 - [`design-review/170-project-authoring-probe-disposition.md`](design-review/170-project-authoring-probe-disposition.md)
   records the passed clean-room public authoring campaign, the Run-result
   ergonomics correction it earned, and the still-open native dependency and

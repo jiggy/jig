@@ -61,6 +61,14 @@ export interface CandidateSetRef {
 
 export type SlotRef = RunTargetRef | CandidateSetRef;
 
+/** Private experimental marker; not part of Project Authoring SDK/1. */
+export interface PrivateProjectRunTargetsRef {
+  readonly kind: "project-run-targets";
+}
+
+/** Private experimental slot overlay; not part of Project Authoring SDK/1. */
+export type PrivateProjectRunTargetsSlotRef = SlotRef | PrivateProjectRunTargetsRef;
+
 export interface PackageBindingDefinition {
   readonly kind: "package";
   readonly package: string;
@@ -74,6 +82,18 @@ export interface PackageBindingInput {
   readonly settings?: JsonObject;
   readonly slots?: Readonly<Record<string, SlotRef>>;
   readonly attachments?: Readonly<Record<string, string>>;
+}
+
+/** Private experimental Binding overlay; not part of Project Authoring SDK/1. */
+export interface PrivateProjectRunTargetsBindingDefinition
+  extends Omit<PackageBindingDefinition, "slots"> {
+  readonly slots: Readonly<Record<string, PrivateProjectRunTargetsSlotRef>>;
+}
+
+/** Private experimental Binding input; not part of Project Authoring SDK/1. */
+export interface PrivateProjectRunTargetsBindingInput
+  extends Omit<PackageBindingInput, "slots"> {
+  readonly slots?: Readonly<Record<string, PrivateProjectRunTargetsSlotRef>>;
 }
 
 export interface JournalPublisherDefinition {
@@ -174,7 +194,19 @@ function normalizePrivateHookJig(
 }
 
 export function defineBinding(input: PackageBindingInput): PackageBindingDefinition {
-  return normalizeBinding(input, false);
+  return normalizeBinding(input, false, false) as PackageBindingDefinition;
+}
+
+/** Private experimental marker constructor; absent from the package root. */
+export function projectRunTargets(): PrivateProjectRunTargetsRef {
+  return record({ kind: "project-run-targets" }) as unknown as PrivateProjectRunTargetsRef;
+}
+
+/** Private experimental Binding helper; absent from the package root. */
+export function definePrivateProjectRunTargetsBinding(
+  input: PrivateProjectRunTargetsBindingInput,
+): PrivateProjectRunTargetsBindingDefinition {
+  return normalizeBinding(input, false, true) as PrivateProjectRunTargetsBindingDefinition;
 }
 
 /** Declare one canonical Jig Journal publisher with an exact authority ceiling. */
@@ -258,13 +290,25 @@ function normalizeJournalPublisher(
 
 /** Evaluator-only canonical re-normalization; absent from the package root. */
 export function normalizePackageBindingDefinition(input: unknown): PackageBindingDefinition {
-  return normalizeBinding(input as PackageBindingInput, true);
+  return normalizeBinding(input as PackageBindingInput, true, false) as PackageBindingDefinition;
+}
+
+/** Evaluator-only normalization for the private project-Run-target overlay. */
+export function normalizePrivateProjectRunTargetsBindingDefinition(
+  input: unknown,
+): PrivateProjectRunTargetsBindingDefinition {
+  return normalizeBinding(
+    input as PrivateProjectRunTargetsBindingInput,
+    true,
+    true,
+  ) as PrivateProjectRunTargetsBindingDefinition;
 }
 
 function normalizeBinding(
-  input: PackageBindingInput,
+  input: PackageBindingInput | PrivateProjectRunTargetsBindingInput,
   canonical: boolean,
-): PackageBindingDefinition {
+  allowProjectRunTargets: boolean,
+): PackageBindingDefinition | PrivateProjectRunTargetsBindingDefinition {
   const captured = snapshotJsonObject(input, "Binding definition");
   assertClosedObject(
     captured,
@@ -282,7 +326,10 @@ function normalizeBinding(
     ? expectJsonObject(captured.settings, "settings")
     : emptyRecord();
   const slots = Object.hasOwn(captured, "slots")
-    ? normalizeSlots(captured.slots as unknown as Readonly<Record<string, SlotRef>>)
+    ? normalizeSlots(
+      captured.slots as unknown as Readonly<Record<string, PrivateProjectRunTargetsSlotRef>>,
+      allowProjectRunTargets,
+    )
     : emptyRecord();
   const attachments = Object.hasOwn(captured, "attachments")
     ? normalizeAttachments(captured.attachments as unknown as Readonly<Record<string, string>>)
@@ -352,12 +399,15 @@ function normalizeSource(
   return record({ kind: "discover", roots }) as unknown as DiscoverySource;
 }
 
-function normalizeSlots(value: Readonly<Record<string, SlotRef>> | undefined): Readonly<Record<string, SlotRef>> {
+function normalizeSlots(
+  value: Readonly<Record<string, PrivateProjectRunTargetsSlotRef>> | undefined,
+  allowProjectRunTargets: boolean,
+): Readonly<Record<string, PrivateProjectRunTargetsSlotRef>> {
   const input = assertRecord(value, "slots");
-  const output: Record<string, SlotRef> = {};
+  const output: Record<string, PrivateProjectRunTargetsSlotRef> = {};
   for (const key of sortedKeys(input)) {
     validateLocalName(key, "slot name");
-    output[key] = normalizeSlot(input[key]);
+    output[key] = normalizeSlot(input[key], allowProjectRunTargets);
   }
   return record(output);
 }
@@ -374,12 +424,24 @@ function normalizeAttachments(
   return record(output);
 }
 
-function normalizeSlot(value: SlotRef | undefined): SlotRef {
+function normalizeSlot(
+  value: PrivateProjectRunTargetsSlotRef | undefined,
+  allowProjectRunTargets: boolean,
+): PrivateProjectRunTargetsSlotRef {
   if (value === undefined) throw new TypeError("slot value cannot be undefined");
-  const object = assertRecord(value, "slot reference") as Partial<SlotRef>;
+  const object = assertRecord(value, "slot reference") as Partial<PrivateProjectRunTargetsSlotRef>;
+  if (object.kind === "project-run-targets") {
+    if (!allowProjectRunTargets) {
+      throw new TypeError("projectRunTargets() is not part of Project Authoring SDK/1");
+    }
+    assertClosedObject(object, ["kind"], "slot reference");
+    return projectRunTargets();
+  }
   if (object.kind === "candidates") {
     assertClosedObject(object, ["kind", "targets"], "slot reference");
-    return candidates(object.targets!);
+    // candidates() deliberately accepts only exact Run targets. A changing
+    // source cannot be nested inside another candidate source.
+    return candidates((object as Partial<CandidateSetRef>).targets!);
   }
   return normalizeRunTarget(object as RunTargetRef);
 }
