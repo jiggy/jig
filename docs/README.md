@@ -37,6 +37,10 @@ Start here:
 
 Current implementation frontier:
 
+- [`design-review/175-exact-native-preparation-frontier.md`](design-review/175-exact-native-preparation-frontier.md)
+  selects one offline native-installer preparation owner and a distinct
+  private prepared-tree identity after rejecting a Jig-owned npm/wheel
+  extractor and any Package/1 identity conflation.
 - [`design-review/174-private-project-run-target-evaluator.md`](design-review/174-private-project-run-target-evaluator.md)
   seals the exact private `projectRunTargets()` Binding profile inside the
   real author evaluator while public authoring and the ordinary linker still
