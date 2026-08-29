@@ -37,6 +37,10 @@ Start here:
 
 Current implementation frontier:
 
+- [`design-review/187-retained-native-dependency-relation.md`](design-review/187-retained-native-dependency-relation.md)
+  closes exact derivation of one package-local SDK member from retained
+  Package/1 bytes. It grants no readiness; the next proof is the ephemeral
+  contained native installation and post-fence output validation.
 - [`design-review/186-package-local-native-artifact-correction.md`](design-review/186-package-local-native-artifact-correction.md)
   corrects the native-preparation ownership boundary: the SDK archive is
   untrusted package-local content captured and admitted through Package/1 and
