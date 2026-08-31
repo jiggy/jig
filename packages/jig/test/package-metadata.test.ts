@@ -25,7 +25,6 @@ describe("FLOW.md Metadata/1", () => {
     const parsed = parseFlowDocument(flow(`name: document-index
 description: >-
   Query a document index.
-fallback: instruction
 uses:
   agent:
     contract: ./contracts/agent.capability.json
@@ -45,7 +44,6 @@ x-example:
     expect(parsed.metadata).toEqual({
       name: "document-index",
       description: "Query a document index.",
-      fallback: "instruction",
       uses: {
         agent: { contract: "./contracts/agent.capability.json" },
         scratch: { local: true },

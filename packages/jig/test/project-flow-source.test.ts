@@ -204,7 +204,7 @@ describe("private project Flow source capture", () => {
   linuxTest("derives only exact zero-configuration Run targets", async () => {
     await withProject(async (root) => {
       await packageFiles(root, "flows/direct", {
-        "FLOW.md": metadata("direct", "fallback: instruction"),
+        "FLOW.md": metadata("direct"),
         "flow.ts": "export {};\n",
       });
       await packageFiles(root, "flows/instruction-only", { "FLOW.md": metadata("instruction") });

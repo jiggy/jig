@@ -184,22 +184,6 @@ uses:
     });
   });
 
-  test("discovers only exact immediate selectable skill subtrees", async () => {
-    const maximum = "a".repeat(64);
-    const oversized = "b".repeat(65);
-    await withPackage({
-      "FLOW.md": runMetadata,
-      "skills/coding/SKILL.md": "# Coding\n",
-      "skills/review/SKILL.md": "# Review\n",
-      [`skills/${maximum}/SKILL.md`]: "# Maximum LocalName\n",
-      [`skills/${oversized}/SKILL.md`]: "# Not a LocalName\n",
-      "skills/Bad/SKILL.md": "# Invalid local name\n",
-      "skills/deep/nested/SKILL.md": "# Not immediate\n",
-      "skills/wrong/skill.md": "# Wrong case\n",
-    }, async (root) => {
-      expect((await checkPackageDirectory(root)).skills).toEqual([maximum, "coding", "review"]);
-    });
-  });
 });
 
 function flowMetadata(frontmatter: string): string {

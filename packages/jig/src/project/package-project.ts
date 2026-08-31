@@ -41,7 +41,6 @@ export interface LinkedFlow {
   readonly mode: "run";
   readonly metadata: InspectedPackage["metadata"];
   readonly entrypoint?: InspectedPackage["entrypoint"];
-  readonly skills: readonly string[];
   readonly directRun: boolean;
 }
 
@@ -145,10 +144,7 @@ function prepareFlows(values: readonly unknown[], budget: WorkBudget): readonly 
         retained.provenance.projectPath,
       );
     }
-    budget.consume(
-      1 + retained.inspected.skills.length +
-      Object.keys(retained.inspected.metadata.attachments ?? {}).length,
-    );
+    budget.consume(1 + Object.keys(retained.inspected.metadata.attachments ?? {}).length);
     const linked = Object.freeze({
       provenance: retained.provenance,
       package: retained.package,
@@ -157,7 +153,6 @@ function prepareFlows(values: readonly unknown[], budget: WorkBudget): readonly 
       ...(retained.inspected.entrypoint === undefined
         ? {}
         : { entrypoint: retained.inspected.entrypoint }),
-      skills: retained.inspected.skills,
       directRun: isDirectRunEligible(retained.inspected),
     });
     return Object.freeze({ value: linked, inspected: retained.inspected });

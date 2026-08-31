@@ -63,7 +63,6 @@ Metadata/1 has this closed unnamespaced vocabulary:
 ```text
 name          required LocalName
 description   required non-empty string
-fallback      optional exact literal `instruction`
 uses          optional map of capability slots
 outcomes      optional map of custom outcome descriptions
 attachments   optional map of attachment access modes

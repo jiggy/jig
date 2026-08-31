@@ -27,7 +27,6 @@ export interface CapabilityUse {
 export interface FlowMetadata {
   readonly name: string;
   readonly description: string;
-  readonly fallback?: "instruction";
   readonly uses?: Readonly<Record<string, CapabilityUse>>;
   readonly outcomes?: Readonly<Record<string, string>>;
   readonly attachments?: Readonly<Record<string, "read" | "read-write">>;
@@ -211,7 +210,6 @@ function validateMetadata(root: JsonObject): FlowMetadata {
   const known = new Set([
     "name",
     "description",
-    "fallback",
     "uses",
     "outcomes",
     "attachments",
@@ -224,10 +222,6 @@ function validateMetadata(root: JsonObject): FlowMetadata {
   }
   const name = requireLocalName(root.name, "name");
   const description = requireDescription(root.description, "description");
-  const fallback = root.fallback;
-  if (fallback !== undefined && fallback !== "instruction") {
-    invalid("METADATA_FIELD", "fallback must be the exact string instruction", "FLOW.md");
-  }
   const uses = root.uses === undefined ? undefined : validateUses(root.uses);
   const outcomes = root.outcomes === undefined ? undefined : validateDescriptions(root.outcomes, true);
   const attachments = root.attachments === undefined ? undefined : validateAttachments(root.attachments);
@@ -235,7 +229,6 @@ function validateMetadata(root: JsonObject): FlowMetadata {
   const metadata: FlowMetadata = {
     name,
     description,
-    ...(fallback === "instruction" ? { fallback } : {}),
     ...(uses === undefined ? {} : { uses }),
     ...(outcomes === undefined ? {} : { outcomes }),
     ...(attachments === undefined ? {} : { attachments }),

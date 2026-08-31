@@ -20,7 +20,6 @@ const FLOW_FRONTMATTER_LIMIT = 262_144;
 const ENTRYPOINT_PREFIX_LIMIT = 82;
 const ENTRYPOINT = /^flow\.([a-z0-9]{1,16})$/;
 const SELECTOR = /^#!\/usr\/bin\/env ([A-Za-z0-9][A-Za-z0-9._+-]{0,63})\r?$/;
-const LOCAL_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
 export type PackageMode = "run";
 
@@ -47,7 +46,6 @@ export interface InspectedPackage {
     result?: CompiledSchema;
   }>;
   readonly usedContracts: readonly CheckedContractReference[];
-  readonly skills: readonly string[];
   readonly fileCount: number;
   readonly contentBytes: number;
 }
@@ -89,11 +87,6 @@ export async function inspectCapturedPackage(
   }
   rejectContractEquivocation(usedContracts);
 
-  const skills = [...new Set(captured.files.flatMap((file) => {
-    const match = /^skills\/([^/]+)\/SKILL\.md$/.exec(file.path);
-    return match !== null && match[1]!.length <= 64 && LOCAL_NAME.test(match[1]!) ? [match[1]!] : [];
-  }))].sort();
-
   return Object.freeze({
     digest: captured.digest,
     mode,
@@ -101,7 +94,6 @@ export async function inspectCapturedPackage(
     ...(entrypoint === undefined ? {} : { entrypoint }),
     schemas: Object.freeze(schemas),
     usedContracts: Object.freeze(usedContracts),
-    skills: Object.freeze(skills),
     fileCount: captured.files.length,
     contentBytes: captured.files.reduce((total, file) => total + file.size, 0),
   });
