@@ -216,7 +216,7 @@ uses:
     );
     expect(() => decodePrivateProjectLocalLock(lockBytes({
       ...canonical,
-      kind: "private-package-project-lock/2",
+      kind: "invalid-lock-kind",
     }))).toThrow("lock kind must be private-package-project-lock/3");
     expect(() => decodePrivateProjectLocalLock(encoder.encode(JSON.stringify(canonical, null, 2) + "\n"))).toThrow(
       "not in canonical",

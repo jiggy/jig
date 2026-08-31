@@ -8,7 +8,7 @@ import { SchemaDiagnostic } from "../schema/index.js";
 import {
   RunHostSession,
   type RunHostFlowCall,
-  type RunHostOperationTerminal,
+  type RunHostFlowOperationTerminal,
   type RunHostTerminal,
 } from "../run/session.js";
 import {
@@ -116,7 +116,7 @@ export async function executePrivateRootFlowCall(
     readonly parentDeadlineUnixMs: number;
     readonly signal: AbortSignal;
   },
-): Promise<RunHostOperationTerminal> {
+): Promise<RunHostFlowOperationTerminal> {
   let allocated = false;
   try {
     const resolution = await resolvePrivateRootFlowCall({
@@ -513,7 +513,7 @@ function hasExecutionWork(lifecycle: PrivateRootFlowCallLifecycle): boolean {
     lifecycle.release !== undefined || lifecycle.admitted !== undefined;
 }
 
-function operationTerminal(lifecycle: PrivateRootFlowCallLifecycle): RunHostOperationTerminal {
+function operationTerminal(lifecycle: PrivateRootFlowCallLifecycle): RunHostFlowOperationTerminal {
   const terminal = requireTerminal(lifecycle.admitted!.value);
   if (terminal.status === "succeeded") {
     return Object.freeze({ status: "succeeded", result: terminal.result });
@@ -529,7 +529,7 @@ function operationTerminal(lifecycle: PrivateRootFlowCallLifecycle): RunHostOper
   });
 }
 
-function preallocationFailure(error: unknown): RunHostOperationTerminal {
+function preallocationFailure(error: unknown): RunHostFlowOperationTerminal {
   if (error instanceof PrivateRootFlowCallResolutionError) {
     return Object.freeze({
       status: "failed",

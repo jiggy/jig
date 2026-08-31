@@ -10,7 +10,7 @@ import {
   type RunHostFlowCall,
   type RunHostInvocation,
   type RunHostOperationDispatcher,
-  type RunHostOperationTerminal,
+  type RunHostFlowOperationTerminal,
 } from "../src/run/session.js";
 
 const encoder = new TextEncoder();
@@ -179,7 +179,7 @@ describe("private RunHostSession", () => {
 
   test("dispatches one flow operation and joins identical waiters", async () => {
     const process = new FakeProcess();
-    const decision = deferred<RunHostOperationTerminal>();
+    const decision = deferred<RunHostFlowOperationTerminal>();
     const calls: RunHostFlowCall[] = [];
     const dispatcher: RunHostOperationDispatcher = {
       async callFlow(call) {
@@ -316,7 +316,7 @@ describe("private RunHostSession", () => {
 
   test("rejects a conflicting operation while the first dispatch is pending", async () => {
     const process = new FakeProcess();
-    const decision = deferred<RunHostOperationTerminal>();
+    const decision = deferred<RunHostFlowOperationTerminal>();
     let calls = 0;
     const running = new RunHostSession(process, invocation(), {}, {
       async callFlow() {

@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { constants, type BigIntStats } from "node:fs";
-import { lstat, mkdir, open, readdir, rename, unlink, type FileHandle } from "node:fs/promises";
+import { lstat, mkdir, open, rename, unlink, type FileHandle } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { join } from "node:path";
 
@@ -273,13 +273,6 @@ export type {
 
 const STATE_DIRECTORY = ".jig";
 const DATABASE_NAME = "private-activation-admission-v19.sqlite3";
-const ADMISSION_DATABASE_FAMILY =
-  /^private-activation-admission-v[0-9]+\.sqlite3(?:-journal|-wal|-shm)?$/;
-const CURRENT_DATABASE_SIDECARS = new Set([
-  `${DATABASE_NAME}-journal`,
-  `${DATABASE_NAME}-wal`,
-  `${DATABASE_NAME}-shm`,
-]);
 const COORDINATOR_DATABASE_NAME = "private-project-coordinator-v1.sqlite3";
 const LOCK_NAME = "jig.lock";
 const LOCK_STAGE_NAME = "private-activation-jig-lock-v1.stage";
@@ -6877,17 +6870,6 @@ async function openStateOwner(projectRoot: PrivateProjectRootSource, create: boo
     if (create) await root.handle.sync();
     const databasePath = descriptorChild(directory, DATABASE_NAME);
     const databaseExists = await pathExists(databasePath);
-    const alternates = (await readdir(descriptorChild(directory, "")))
-      .filter((name) => ADMISSION_DATABASE_FAMILY.test(name))
-      .filter((name) => name !== DATABASE_NAME)
-      .filter((name) => !databaseExists || !CURRENT_DATABASE_SIDECARS.has(name))
-      .sort();
-    if (alternates.length !== 0) {
-      invalid(
-        "ADMISSION_SCHEMA_VERSION",
-        `${alternates[0]} is an unsupported private admission format`,
-      );
-    }
     const databaseInformation = await ensureDatabaseFile(
       databasePath,
       directory,
@@ -9847,7 +9829,7 @@ function advanceCandidateHead(
 }
 
 /**
- * The one classification path shared by legacy current-head review and the
+ * The one classification path shared by current-head review and the
  * pre-capture-base atomic publication path. The caller owns the surrounding
  * immediate transaction and has already authenticated the proposed row.
  */

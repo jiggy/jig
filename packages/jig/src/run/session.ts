@@ -106,9 +106,6 @@ export type RunHostEffectOperationTerminal =
     }
   | RunHostOperationFailure;
 
-/** Backwards-compatible private alias for existing Flow dispatchers. */
-export type RunHostOperationTerminal = RunHostFlowOperationTerminal;
-
 /** Private host seam. Portable components see only Run/1. */
 export interface RunHostOperationDispatcher {
   callFlow?(call: RunHostFlowCall, signal: AbortSignal): Promise<RunHostFlowOperationTerminal>;

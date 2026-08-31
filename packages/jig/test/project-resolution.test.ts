@@ -57,7 +57,7 @@ describe("private package resolution", () => {
       expect(restored).toEqual(requests[0]);
       expect(() => restorePrivateActivationRequest({
         ...structuredClone(requests[0]!),
-        kind: "activation-request/1",
+        kind: "invalid-activation-request-kind",
       })).toThrow("activation request kind must be activation-request/2");
       expect(() => restorePrivateActivationRequest({
         ...structuredClone(requests[0]!),

@@ -239,85 +239,6 @@ describe.serial("private activation admission SQLite store", () => {
     } finally { await rm(base, { recursive: true, force: true }); }
   });
 
-  test("rejects the exact preceding database path without creating v19 state", async () => {
-    const base = await mkdtemp(join(tmpdir(), "jig-admission-legacy-"));
-    const root = join(base, "project");
-    const store = join(base, "store");
-    const state = join(root, ".jig");
-    const legacy = join(state, "private-activation-admission-v18.sqlite3");
-    const oldest = join(state, "private-activation-admission-v3.sqlite3");
-    const current = join(state, "private-activation-admission-v19.sqlite3");
-    const sentinel = new TextEncoder().encode("legacy-private-state\n");
-    try {
-      await mkdir(state, { recursive: true, mode: 0o700 });
-      await mkdir(store, { mode: 0o700 });
-      await writeFile(legacy, sentinel, { mode: 0o600 });
-      await writeFile(oldest, sentinel, { mode: 0o600 });
-
-      await expect(createPrivateActivationReviewPlan({
-        projectRoot: root,
-        packageStoreRoot: store,
-        lockMode: "update",
-      })).rejects.toMatchObject({ code: "ADMISSION_SCHEMA_VERSION" });
-
-      expect(new Uint8Array(await readFile(legacy))).toEqual(sentinel);
-      expect(new Uint8Array(await readFile(oldest))).toEqual(sentinel);
-      await expect(stat(current)).rejects.toMatchObject({ code: "ENOENT" });
-    } finally {
-      await rm(base, { recursive: true, force: true });
-    }
-  });
-
-  test("rejects an abandoned legacy sidecar without creating v19 state", async () => {
-    const base = await mkdtemp(join(tmpdir(), "jig-admission-legacy-sidecar-"));
-    const root = join(base, "project");
-    const store = join(base, "store");
-    const state = join(root, ".jig");
-    const sidecar = join(state, "private-activation-admission-v8.sqlite3-wal");
-    const current = join(state, "private-activation-admission-v19.sqlite3");
-    const sentinel = new TextEncoder().encode("abandoned-private-sidecar\n");
-    try {
-      await mkdir(state, { recursive: true, mode: 0o700 });
-      await mkdir(store, { mode: 0o700 });
-      await writeFile(sidecar, sentinel, { mode: 0o600 });
-
-      await expect(createPrivateActivationReviewPlan({
-        projectRoot: root,
-        packageStoreRoot: store,
-        lockMode: "update",
-      })).rejects.toMatchObject({ code: "ADMISSION_SCHEMA_VERSION" });
-
-      expect(new Uint8Array(await readFile(sidecar))).toEqual(sentinel);
-      await expect(stat(current)).rejects.toMatchObject({ code: "ENOENT" });
-    } finally {
-      await rm(base, { recursive: true, force: true });
-    }
-  });
-
-  test("rejects mixed-version authority beside an existing valid v19 store", async () => {
-    const fixture = await createFixture();
-    const legacy = join(fixture.root, ".jig", "private-activation-admission-v18.sqlite3");
-    const sentinel = new TextEncoder().encode("ignored-legacy-state\n");
-    try {
-      await writeFile(legacy, sentinel, { mode: 0o600 });
-      await expect(createPrivateActivationReviewPlan({
-        projectRoot: fixture.root,
-        packageStoreRoot: fixture.store,
-        lockMode: "update",
-      })).rejects.toMatchObject({ code: "ADMISSION_SCHEMA_VERSION" });
-      expect(new Uint8Array(await readFile(legacy))).toEqual(sentinel);
-      await rm(legacy);
-      const plan = requireApplicablePlan(await createPrivateActivationReviewPlan({
-        projectRoot: fixture.root,
-        packageStoreRoot: fixture.store,
-        lockMode: "update",
-      }));
-      expect(plan.plan.kind).toBe("private-activation-plan/2");
-    } finally {
-      await fixture.dispose();
-    }
-  });
-
   test("binds a foreground-style review to the exact expected candidate head", async () => {
     const fixture = await createFixture();
     try {
@@ -1940,7 +1861,7 @@ describe.serial("private activation admission SQLite store", () => {
     } finally { await fixture.dispose(); }
   }, 30_000);
 
-  test("fails closed on the preceding private schema instead of migrating it", async () => {
+  test("fails closed when the current database format identity is corrupted", async () => {
     const fixture = await createFixture();
     try {
       const plan = await createPrivateActivationReviewPlan({
@@ -1949,7 +1870,7 @@ describe.serial("private activation admission SQLite store", () => {
         lockMode: "update",
       });
       const database = openSqlite(fixture.database, "readwrite");
-      database.exec("PRAGMA user_version=18");
+      database.exec("PRAGMA user_version=8675309");
       database.close(true);
 
       await expect(loadPrivateActivationReviewPlan({
@@ -1960,7 +1881,7 @@ describe.serial("private activation admission SQLite store", () => {
 
       const unchanged = openSqlite(fixture.database, "readonly");
       try {
-        expect(unchanged.query("PRAGMA user_version").get().user_version).toBe(18);
+        expect(unchanged.query("PRAGMA user_version").get().user_version).toBe(8675309);
       } finally { unchanged.close(true); }
     } finally {
       await fixture.dispose();
@@ -5840,13 +5761,12 @@ async function createFixture(
     const planningObservationDigest = digest("planning");
     const candidate = decodePrivateActivationCandidateV5({
       candidate: json1(candidateV5({
-        kind: "private-activation-candidate/4",
         projectRoot: {
           device: rootInformation.dev.toString(),
           inode: rootInformation.ino.toString(),
         },
         captureDigest,
-        semanticDigest: digest("semantic"),
+        observedSemanticDigest: digest("semantic"),
         resolutionInputDigest: privateDomainDigest(
           "JIG-Package-Project-Resolution-Input/1",
           { captureDigest, planningObservationDigest },
@@ -6763,13 +6683,12 @@ async function createComposedFixture(): Promise<Fixture> {
     });
     const candidate = decodePrivateActivationCandidateV5({
       candidate: json1(candidateV5({
-        kind: "private-activation-candidate/4",
         projectRoot: {
           device: rootInformation.dev.toString(),
           inode: rootInformation.ino.toString(),
         },
         captureDigest,
-        semanticDigest: digest("composed-semantic"),
+        observedSemanticDigest: digest("composed-semantic"),
         resolutionInputDigest: privateDomainDigest(
           "JIG-Package-Project-Resolution-Input/1",
           { captureDigest, planningObservationDigest },
@@ -6995,21 +6914,20 @@ function json1(value: JsonValue): Uint8Array {
 
 function candidateV5(value: Record<string, JsonValue>): JsonValue {
   const {
-    semanticDigest,
-    observedSemanticDigest: _observedSemanticDigest,
+    observedSemanticDigest,
     activationMeaningDigest: _activationMeaningDigest,
     ...rest
   } = value;
-  if (typeof semanticDigest !== "string" || !Array.isArray(value.targets)) {
+  if (typeof observedSemanticDigest !== "string" || !Array.isArray(value.targets)) {
     throw new TypeError("candidate fixture requires observed semantics and targets");
   }
   return {
     ...rest,
     kind: "private-activation-candidate/5",
-    observedSemanticDigest: semanticDigest,
+    observedSemanticDigest,
     activationMeaningDigest: privateDomainDigest(
       "JIG-Private-Activation-Meaning/1",
-      { observedSemanticDigest: semanticDigest, targets: value.targets },
+      { observedSemanticDigest, targets: value.targets },
     ),
   } as JsonValue;
 }

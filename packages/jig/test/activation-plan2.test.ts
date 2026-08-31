@@ -39,13 +39,13 @@ describe("private Candidate/5", () => {
     expect(Object.isFrozen(artifact.candidate.targets)).toBeTrue();
   });
 
-  test("rejects Candidate/4 spelling and every uncommitted final meaning", () => {
+  test("rejects an invalid kind and every uncommitted final meaning", () => {
     const valid = encodePrivateActivationCandidateV5(candidateFixture());
     const candidate = json(valid.candidate);
 
     expectInvalidCandidate(valid, {
       ...candidate,
-      kind: "private-activation-candidate/4",
+      kind: "invalid-candidate-kind",
     }, "candidate/5 kind");
     const { observedSemanticDigest, ...withoutObserved } = candidate;
     expectInvalidCandidate(valid, {
