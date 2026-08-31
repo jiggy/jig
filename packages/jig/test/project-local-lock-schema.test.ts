@@ -1,0 +1,64 @@
+import { describe, expect, test } from "bun:test";
+import { readFile } from "node:fs/promises";
+
+import { compileSchemaFile, SchemaDiagnostic } from "../src/schema/index.js";
+
+const schema = compileSchemaFile(await readFile(new URL(
+  "../../../docs/spec/machine/jig-lock-1.schema.json",
+  import.meta.url,
+)), "jig-lock-1.schema.json");
+
+const digest = `sha256:${"a".repeat(64)}`;
+const lock = {
+  packages: {
+    "flows/configured": {
+      digest,
+      directRun: false,
+      attachments: { source: "read" },
+    },
+    "flows/direct": {
+      digest,
+      directRun: true,
+      attachments: {},
+    },
+  },
+  bindings: {
+    configured: {
+      packagePath: "flows/configured",
+      settings: { retries: 2 },
+      attachments: {
+        source: { source: "workspace", access: "read" },
+      },
+    },
+  },
+};
+
+function changed(value: unknown, mutate: (copy: Record<string, any>) => void): unknown {
+  const copy = structuredClone(value) as Record<string, any>;
+  mutate(copy);
+  return copy;
+}
+
+describe("Jig lock/1 shape schema", () => {
+  test("accepts the complete current lock shape", () => {
+    expect(() => schema.validate(lock, "INVALID_JIG_LOCK")).not.toThrow();
+  });
+
+  for (const [name, value] of [
+    ["a format discriminator", { kind: "jig-lock/1", ...lock }],
+    ["a missing package map", changed(lock, (item) => { delete item.packages; })],
+    ["an unknown package field", changed(lock, (item) => {
+      item.packages["flows/direct"].runtime = "bun";
+    })],
+    ["attachments on a direct Run", changed(lock, (item) => {
+      item.packages["flows/direct"].attachments = { source: "read" };
+    })],
+    ["an unknown Binding field", changed(lock, (item) => {
+      item.bindings.configured.grants = {};
+    })],
+  ] as const) {
+    test(`rejects ${name}`, () => {
+      expect(() => schema.validate(value, "INVALID_JIG_LOCK")).toThrow(SchemaDiagnostic);
+    });
+  }
+});

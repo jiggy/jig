@@ -1,0 +1,138 @@
+{
+  "$schema": "https://flow.dev/schemas/schema-1.json",
+  "title": "Jig lock/1",
+  "description": "The portable desired-state value stored as canonical JSON/1 plus LF in jig.lock. Project-path, LocalName, digest, collision, protected-path, aggregate-target, and canonical-byte rules are additionally enforced by Jig.",
+  "type": "object",
+  "properties": {
+    "packages": {
+      "type": "object",
+      "description": "Package entries keyed by canonical project-relative package path.",
+      "additionalProperties": {
+        "$ref": "#/$defs/package"
+      },
+      "maxProperties": 65536
+    },
+    "bindings": {
+      "type": "object",
+      "description": "Binding entries keyed by LocalName.",
+      "additionalProperties": {
+        "$ref": "#/$defs/binding"
+      },
+      "maxProperties": 4096
+    }
+  },
+  "required": [
+    "packages",
+    "bindings"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "digest": {
+      "type": "string",
+      "description": "A sha256: digest containing exactly 64 lowercase hexadecimal digits.",
+      "minLength": 71,
+      "maxLength": 71
+    },
+    "access": {
+      "enum": [
+        "read",
+        "read-write"
+      ]
+    },
+    "package": {
+      "type": "object",
+      "properties": {
+        "digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "directRun": {
+          "type": "boolean"
+        },
+        "attachments": {
+          "type": "object",
+          "description": "Declared attachment access keyed by LocalName.",
+          "additionalProperties": {
+            "$ref": "#/$defs/access"
+          },
+          "maxProperties": 256
+        }
+      },
+      "required": [
+        "digest",
+        "directRun",
+        "attachments"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "directRun": {
+                "const": true
+              }
+            },
+            "required": [
+              "directRun"
+            ]
+          },
+          "then": {
+            "properties": {
+              "attachments": {
+                "maxProperties": 0
+              }
+            }
+          }
+        }
+      ]
+    },
+    "bindingAttachment": {
+      "type": "object",
+      "properties": {
+        "source": {
+          "type": "string",
+          "description": "A canonical project-relative attachment source path.",
+          "minLength": 1,
+          "maxLength": 1024
+        },
+        "access": {
+          "$ref": "#/$defs/access"
+        }
+      },
+      "required": [
+        "source",
+        "access"
+      ],
+      "additionalProperties": false
+    },
+    "binding": {
+      "type": "object",
+      "properties": {
+        "packagePath": {
+          "type": "string",
+          "description": "A canonical project-relative path selecting one package entry.",
+          "minLength": 1,
+          "maxLength": 1024
+        },
+        "settings": {
+          "type": "object",
+          "additionalProperties": true,
+          "maxProperties": 65536
+        },
+        "attachments": {
+          "type": "object",
+          "description": "Configured attachment mappings keyed by LocalName.",
+          "additionalProperties": {
+            "$ref": "#/$defs/bindingAttachment"
+          },
+          "maxProperties": 256
+        }
+      },
+      "required": [
+        "packagePath",
+        "settings",
+        "attachments"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

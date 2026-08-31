@@ -17,7 +17,6 @@ import {
 import { PRIVATE_ACTIVATION_TARGET_LIMIT } from "./activation-planning.js";
 import { privateDomainDigest } from "./identity.js";
 
-const KIND = "private-package-project-lock/4";
 const DIGEST = /^sha256:[0-9a-f]{64}$/;
 const LOCAL_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const MAX_METADATA_MEMBERS = 256;
@@ -39,7 +38,6 @@ export interface PrivateLockBinding {
 }
 
 export interface PrivateProjectLocalLock {
-  readonly kind: typeof KIND;
   readonly packages: Readonly<Record<string, PrivateLockPackage>>;
   readonly bindings: Readonly<Record<string, PrivateLockBinding>>;
 }
@@ -72,7 +70,7 @@ export function createPrivateProjectLocalLock(
       attachments: binding.attachments,
     });
   }
-  const lock = normalizeLock({ kind: KIND, packages, bindings });
+  const lock = normalizeLock({ packages, bindings });
   encodeNormalized(lock);
   return markValidated(lock);
 }
@@ -91,7 +89,7 @@ export function decodePrivateProjectLocalLock(bytes: Uint8Array): PrivateProject
 
 export function privateProjectLocalLockDigest(value: PrivateProjectLocalLock): string {
   return privateDomainDigest(
-    "JIG-Private-Package-Project-Lock/4",
+    "JIG-Project-Lock",
     requirePrivateProjectLocalLock(value) as unknown as JsonValue,
   );
 }
@@ -104,8 +102,7 @@ export function requirePrivateProjectLocalLock(value: unknown): PrivateProjectLo
 }
 
 function normalizeLock(value: unknown): PrivateProjectLocalLock {
-  const root = exactObject(value, ["kind", "packages", "bindings"], "lock");
-  if (root.kind !== KIND) throw new TypeError(`lock kind must be ${KIND}`);
+  const root = exactObject(value, ["packages", "bindings"], "lock");
   const packages = normalizePackages(root.packages);
   const bindings = normalizeBindings(root.bindings);
   const activationTargetCount = Object.keys(bindings).length + Object.values(packages).filter(
@@ -117,7 +114,7 @@ function normalizeLock(value: unknown): PrivateProjectLocalLock {
     );
   }
   validateReferences(packages, bindings);
-  return Object.freeze({ kind: KIND, packages, bindings });
+  return Object.freeze({ packages, bindings });
 }
 
 function normalizePackages(value: unknown): PrivateProjectLocalLock["packages"] {

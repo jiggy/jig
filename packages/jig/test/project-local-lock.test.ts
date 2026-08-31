@@ -29,7 +29,7 @@ const schemaUri = "https://flow.dev/schemas/schema-1.json";
 describe("private package-project portable lock projection", () => {
   test("has one empty canonical byte vector and authenticated identity", () => {
     const bytes = encoder.encode(
-      '{"bindings":{},"kind":"private-package-project-lock/4","packages":{}}\n',
+      '{"bindings":{},"packages":{}}\n',
     );
     const value = decodePrivateProjectLocalLock(bytes);
 
@@ -94,7 +94,6 @@ describe("private package-project portable lock projection", () => {
 
   test("rejects alternate spelling and forged fields", () => {
     const canonical = {
-      kind: "private-package-project-lock/4",
       packages: {},
       bindings: {},
     };
@@ -103,15 +102,11 @@ describe("private package-project portable lock projection", () => {
     expect(() => decodePrivateProjectLocalLock(valid.subarray(0, valid.length - 1))).toThrow(
       "not in canonical",
     );
-    expect(() => decodePrivateProjectLocalLock(lockBytes({
-      ...canonical,
-      kind: "private-package-project-lock/3",
-    }))).toThrow("lock kind must be private-package-project-lock/4");
     expect(() => decodePrivateProjectLocalLock(encoder.encode(
       JSON.stringify(canonical, null, 2) + "\n",
     ))).toThrow("not in canonical");
     expect(() => decodePrivateProjectLocalLock(encoder.encode(
-      '{"kind":"private-package-project-lock/4","kind":"private-package-project-lock/4","packages":{},"bindings":{}}\n',
+      '{"packages":{},"packages":{},"bindings":{}}\n',
     ))).toThrow("duplicate object member");
     expect(() => decodePrivateProjectLocalLock(lockBytes({
       ...canonical,
@@ -182,7 +177,6 @@ function attachmentBoundLock(count: number): unknown {
     "read",
   ]));
   return {
-    kind: "private-package-project-lock/4",
     packages: {
       "flows/bounded": {
         digest: `sha256:${"b".repeat(64)}`,
@@ -203,7 +197,7 @@ function rootPackageCollection(count: number): unknown {
       attachments: {},
     },
   ]));
-  return { kind: "private-package-project-lock/4", packages, bindings: {} };
+  return { packages, bindings: {} };
 }
 
 function projectTrees(): Record<string, Record<string, string>> {

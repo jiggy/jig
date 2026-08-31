@@ -372,7 +372,6 @@ function candidateFixture(
     };
   }
   const lockBytes = withLf(canonicalJson({
-    kind: "private-package-project-lock/4",
     packages,
     bindings: {},
   }));

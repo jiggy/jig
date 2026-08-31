@@ -633,7 +633,6 @@ async function createFixture(
     const declaration = await retainPackage(empty.store, declarationSource);
     const information = await stat(empty.root, { bigint: true });
     const lockBytes = json1({
-      kind: "private-package-project-lock/4",
       packages: {
         "flows/run": {
           digest: flow.digest,

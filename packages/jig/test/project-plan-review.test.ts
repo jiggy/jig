@@ -14,7 +14,6 @@ describe("private project Plan review", () => {
       proposed: {
         lockDigest: digest,
         lock: {
-          kind: "private-package-project-lock/4",
           packages: {
             "flows/review": {
               digest,
@@ -106,7 +105,6 @@ describe("private project Plan review", () => {
     const plan = reviewPlan("admission", `sha256:${"b".repeat(64)}`);
     const current = {
       lock: {
-        kind: "private-package-project-lock/4",
         packages: { "flows/old": { digest, directRun: false, attachments: {} } },
         bindings: { review: { packagePath: "flows/old", settings: {}, attachments: {} } },
       },
@@ -130,7 +128,6 @@ describe("private project Plan review", () => {
       proposed: {
         ...plan.proposed,
         lock: {
-          kind: "private-package-project-lock/4",
           packages: { "flows/new": { digest, directRun: false, attachments: {} } },
           bindings: { review: { packagePath: "flows/new", settings: {}, attachments: {} } },
         },
@@ -186,7 +183,7 @@ function reviewPlan(
     observedLock: { state: "absent" },
     proposed: {
       lockDigest: digest,
-      lock: { kind: "private-package-project-lock/4", packages: {}, bindings: {} },
+      lock: { packages: {}, bindings: {} },
       targets: [],
     },
   } as unknown as PrivateActivationReviewPlan["plan"];
