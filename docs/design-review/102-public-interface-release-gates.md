@@ -42,9 +42,10 @@ older-epoch Hook work to `COORDINATOR_LOST` without another append or dispatch.
 This is not yet a published Jig SDK or complete product control
 plane: Root Administration/1 and Project Administration/1 now have machine
 schemas, packed value/type candidates, private controllers, and independent
-injected-object consumers, while the project opener, zero-setup rootless host
-path, authentication/transport, generic Runtime Adapter and Sandbox Backend
-models, and broader effect/provider forms remain unfinished seams. The
+injected-object consumers. Review 197 closes the private zero-setup rootless
+mechanism; its installed Project Session join, project acquisition, and finite
+CLI remain unfinished. Generic Runtime Adapter and Sandbox Backend models and
+broader effect/provider forms are later, demand-gated seams. The
 private Service path now also admits and hosts one exact Bun Service Binding,
 persists its complete Mount/generation lifecycle, and proves exact leases,
 invocation allocation, possible-dispatch admission, terminal/closure evidence,
@@ -285,8 +286,8 @@ display-safe pre-commit review, retained-digest apply, the unchanged Root
 Administration object, and deterministic close. Its
 [`machine schema`](../spec/machine/project-administration-1.schema.json) and
 packed injected-session consumer pass. It deliberately defines neither
-project selection/acquisition nor a transport. Before a CLI or GUI becomes an
-operational alpha, Jig must still prove the zero-setup rootless host path,
+project selection/acquisition nor a transport. Before a CLI becomes an
+operational alpha, Jig must join the proved zero-setup rootless mechanism,
 authenticate project selection and authority issuance, and freeze the actual
 acquisition/finite-CLI spelling through an independent installed consumer.
 Current-to-proposed review evidence is closed in review 169. Later inspection,
@@ -383,23 +384,25 @@ survivor. Capability-bearing Agent workers, their child-owned effect path, and
 Agent-backed routing remain gated. Review 185 records why that distinction and
 the Event Source ordering are now first-release stop conditions.
 
-The former privileged-proof `SANDBOX_UNAVAILABLE` stop is historical. That
-private proof now has a delegated aggregate owner, pre-exec placement, entropy
-and root-mapping evidence, coordinator-independent cleanup, and a hostile
-corpus. It does not satisfy the zero-setup product gate in review 196.
+The former privileged-proof `SANDBOX_UNAVAILABLE` stop is historical. Review
+197 now proves the required private rootless aggregate owner, pre-exec
+placement, namespace/device boundary, coordinator-independent cleanup, and
+hostile corpus without Jig-specific host setup. Installed acquisition and the
+admitted Project Session/root join remain the product gate.
 A Python Run/1 and Service/1 activation using this host's Nix-store runtime
 were integration witnesses for that envelope, not an admitted Nix Adapter or
 current product dependency. The exact evidence is recorded in
 [`105-phase-2-linux-cgroup-proof.md`](105-phase-2-linux-cgroup-proof.md); the
 old environmental stop remains in
 [`104-phase-2-security-blocker.md`](104-phase-2-security-blocker.md). The proof
-still withholds the public Backend interface: generic registration and plan
-schemas plus a genuinely different Backend mechanism remain unclosed.
+still withholds the public Backend interface: a genuinely different mechanism
+and consumer must earn that later abstraction.
 
-### Jig Graph over Sley
+### Conditional Jig Graph over Sley
 
-Jig Graph must own a serializable compiler/contract model independent of Sley
-objects:
+There is no Jig Graph first-release surface. If a real stored-graph consumer
+later proves direct Sley inadequate, that layer must own a serializable
+compiler/contract model independent of Sley objects:
 
 - stable Jig node/workflow/path IDs;
 - route contracts and boundary schemas;

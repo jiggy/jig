@@ -1,6 +1,7 @@
 # Roadmap closure and first product frontier
 
-**Status:** reviewed on 2026-08-28. Every vertical in the approved exploratory
+**Status:** historical roadmap disposition, superseded for current ordering by
+review 198. Reviewed on 2026-08-28. Every vertical in the approved exploratory
 roadmap now has a recorded disposition: a bounded proof, an explicit blocker,
 an open gated seam, or a deliberate negative result. This does **not** mean
 that Jig is an operable alpha or that every product/interface question is

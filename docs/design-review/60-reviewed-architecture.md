@@ -1789,11 +1789,12 @@ digest includes operational Adapter and Sandbox choices which affected it, but
 excludes that suggestion. An unknown or unavailable suggestion is reported only by
 `jig init` and cannot invalidate unrelated inspection, checking, or execution.
 
-`jig init` may offer a separate host-setup step for a Runtime Adapter or
-Sandbox Backend, but that step writes host policy after its own confirmation;
-it is not Starter output. Bubblewrap, Landlock, or another system mechanism is
-therefore a host choice applied outside every Flow, not a wrapper Flow and not
-portable project policy.
+Jig has no host-setup command. The first supported host path consumes ordinary
+pre-existing unprivileged operating-system facilities and finite support bytes
+shipped with or selected by the installed product. Every activation proves the
+complete envelope or returns `SANDBOX_UNAVAILABLE`; there is no privileged or
+unsafe fallback. A future choice among independently proven containment
+mechanisms would remain host policy, not Starter or FLOW policy.
 
 Inspection is a required security capability. A future CLI may project it as:
 
@@ -2150,21 +2151,23 @@ matrix. The remaining repository gap inventory includes:
 - a portable shared Service/1 Host-under-test corpus, a second independent
   Host, and durable generation/lease hosting integration; every session-local
   case and one real contained Python Mount already have executable evidence;
-- closed RuntimeAdapter/1 and Sandbox Backend registration, plan, seal, spawn,
-  receipt, and error data models;
 - one canonical `jig.lock` data model and schema;
 - an authoritative TypeScript project SDK for `@jigging/jig`;
 - closed provider-registration, Agent-projection, instruction-runtime,
-  host-policy, and host-administration interfaces; and
-- a Jig Graph definition/compiler interface which consumes only Sley's public
-  API.
+  host-policy, and host-administration interfaces.
+
+Public Runtime Adapter and Sandbox Backend registries require a second real
+mechanism and are not first-release gates. Jig Graph remains demand-gated
+until a real stored-graph consumer proves direct Sley inadequate.
 
 The complete gap inventory is
 [`102-public-interface-release-gates.md`](102-public-interface-release-gates.md).
 The Phase 1 evidence and limits are recorded in
 [`103-phase-1-flow-foundations.md`](103-phase-1-flow-foundations.md); the first
-live secure-root attempt stops fail-closed at the environment evidence in
-[`104-phase-2-security-blocker.md`](104-phase-2-security-blocker.md).
+live secure-root attempt and its former environment stop are historical. The
+current private rootless mechanism and remaining product join are recorded in
+[`197-private-rootless-linux-run-proof.md`](197-private-rootless-linux-run-proof.md)
+and [`198-post-rootless-product-roadmap.md`](198-post-rootless-product-roadmap.md).
 
 Consumer examples and implementations may not invent these interfaces while
 attempting to use them. These are release gates, not permission to fill gaps

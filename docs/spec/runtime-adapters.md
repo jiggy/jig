@@ -1,9 +1,10 @@
 # Jig Runtime Adapters/1
 
-**Status:** reviewed Jig host semantics. Closed registration, planning,
-receipt, and error models for Runtime Adapters and Sandbox Backends remain
-release gates. Runtime Adapters are host extensions, not FLOW package metadata
-or a FLOW conformance profile.
+**Status:** deferred extension semantics, not the first-alpha installation
+model. The alpha uses one private closed recipe and one proved rootless
+mechanism, with no public Adapter or Backend registry. A second independent
+mechanism and consumer must earn these extension interfaces. Runtime Adapters
+remain host concepts, not FLOW package metadata or a FLOW conformance profile.
 
 FLOW standardizes one obvious implementation file and the Run/1 process
 boundary. Jig decides how source becomes that process. It does not standardize

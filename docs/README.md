@@ -37,6 +37,12 @@ Start here:
 
 Current implementation frontier:
 
+- [`design-review/198-post-rootless-product-roadmap.md`](design-review/198-post-rootless-product-roadmap.md)
+  is the current product ordering: join admitted Project Session execution to
+  the proved rootless mechanism, move evaluation and necessary preparation
+  into the same envelope, remove the privileged path, then freeze the smallest
+  installed `init --bare` / `check` / `run` CLI through an independent
+  Operational Baseline/1 consumer.
 - [`design-review/197-private-rootless-linux-run-proof.md`](design-review/197-private-rootless-linux-run-proof.md)
   closes one private zero-setup rootless execution mechanism and hostile
   corpus, including a real Run/1 exchange and coordinator-loss cleanup. It

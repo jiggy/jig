@@ -1,9 +1,9 @@
 # Agentic routing product frontier
 
-**Status:** selected on 2026-08-29 after the finite Project Administration
-checkpoint and an independent roadmap and probe-evidence review. This record
-supersedes review 165 only as the current product frontier; review 165 remains
-the disposition of the exploratory verticals.
+**Status:** historical milestone rationale, superseded for current ordering by
+review 198. Selected on 2026-08-29 after the finite Project Administration
+checkpoint and an independent roadmap and probe-evidence review. The Agentic
+Routing and software-factory milestone definitions remain valid.
 
 ## 1. Product milestones
 

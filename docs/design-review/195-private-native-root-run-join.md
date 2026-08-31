@@ -132,7 +132,8 @@ owner; merely allowing arbitrary current-epoch recovery would reintroduce
 duplicate-owner races. This checkpoint neither adds that owner nor claims
 same-session pending convergence.
 
-The next product gates remain the production host trust root and bounded
-installed project acquisition/CLI, canonical public lock schema, release
-metadata, and fresh-host Operational Baseline/1. None of those is solved by
-making this private root path executable.
+The next product gate is the review-198 join of this admitted lifecycle to the
+proved rootless mechanism, followed by bounded installed project acquisition
+and CLI, one canonical public lock schema, release metadata, and fresh-host
+Operational Baseline/1. No production Jig-specific trust-root installation is
+required or permitted.

@@ -1,9 +1,11 @@
 # First-release external-join disposition
 
-**Status:** accepted on 2026-08-29 after the public changing-source campaign
-and cancellation checkpoint, then corrected by
-[review 186](186-package-local-native-artifact-correction.md). The production
-host and Agent-provider joins remain external. Native dependency preparation
+**Status:** historical external-join analysis, superseded for current product
+ordering by reviews 196–198. Accepted on 2026-08-29 after the public
+changing-source campaign and cancellation checkpoint, then corrected by
+[review 186](186-package-local-native-artifact-correction.md). The former
+production trust-root requirement is superseded; the Agent-provider join
+remains external. Native dependency preparation
 is locally actionable because its untrusted archive is retained inside
 Package/1; §3.1 and the former all-external stop boundary are superseded.
 

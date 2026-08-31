@@ -2,7 +2,8 @@
 
 **Status:** private checkpoint closed on 2026-08-29. It advances the
 deterministic operational baseline without publishing project acquisition or
-an operational CLI.
+an operational CLI. Review 198 supersedes its former host-policy-dependent
+next step with the proved rootless Project Session join.
 
 ## 1. Complete review evidence
 

@@ -369,8 +369,9 @@ inboxes, tasks, Kanban, Git, or even a filesystem-facing UI.
 `jig init --bare` or `--from <starter>` copies one user-owned project. A Starter
 initializer may offer application features such as an Agent Binding, semantic
 choice, repair Flow, inbox, or GUI. Runtime Adapter and Sandbox preferences are
-host policy; `jig init` may offer a separate host-setup step but cannot smuggle
-those choices into Starter output. There is no Starter algebra.
+host policy and cannot be smuggled into Starter output. Jig has no host-setup
+command: each activation consumes and proves the supported pre-existing
+rootless envelope or fails closed. There is no Starter algebra.
 
 ## 12. Direct editing and updates stay conventional
 
@@ -403,10 +404,12 @@ executable cross-implementation fixtures for:
 5. catalogue resolution, semantic-choice uncertainty, three-way updates,
    rollback, init, and decentralized source distribution.
 
-Sley now supplies function nodes, shared run state, branch-local input,
-emit/end, fan-out/combine, retries, recovery, and topology inspection. Jig
-Graph must own semantic contracts and compile them to ordinary Sley objects;
-it must not recreate or subclass the scheduler. Service methods still need
+Sley supplies function nodes, shared run state, branch-local input, emit/end,
+fan-out/combine, retries, recovery, and topology inspection. If a real stored
+graph later proves direct Sley inadequate, a Jig Graph layer would own semantic
+contracts and compile them to ordinary Sley objects without recreating or
+subclassing the scheduler. No Jig Graph surface is a first-release gate.
+Service methods still need
 separate invocation-owned and Mount-background projections, while provider
 state plus Journal publication remains an application outbox rather than a Jig
 transaction. GUI and HTTP presentation remain application-owned. A Cordis
