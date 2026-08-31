@@ -68,6 +68,12 @@ try {
   const bun = await run([command, "--version"], consumer, { BUN_BE_BUN: "1" });
   assert.equal(bun.stdout, "1.3.3\n");
   assert.equal(bun.stderr, "");
+  const revision = await run([command, "--revision"], consumer, { BUN_BE_BUN: "1" });
+  assert.equal(revision.stdout, "1.3.3+274e01c73\n");
+  assert.match(
+    await readFile(join(installed, "THIRD_PARTY_NOTICES"), "utf8"),
+    /Bun 1\.3\.3 revision\s+`274e01c73`/,
+  );
 
   const bareProject = join(consumer, "bare-project");
   const initialized = await run([command, "init", "--bare", bareProject], consumer);
