@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 
 import { openPrivateProjectSession } from "../src/internal/project-session-controller.js";
-import { openRootlessBunProofHost } from "../scripts/private-rootless-proof-host.js";
+import { openPrivateInstalledBunHost } from "../src/internal/installed-bun-host.js";
 
 const HOSTILE = process.env.JIG_LINUX_ROOTLESS_HOSTILE === "1";
 const proofDescribe = HOSTILE ? describe.serial : describe.skip;
@@ -106,7 +106,7 @@ proofDescribe("private rootless project session", () => {
 
       const cancellationSession = await openPrivateProjectSession({
         directory: root,
-        host: await openRootlessBunProofHost(),
+        host: await openPrivateInstalledBunHost(),
       });
       const cancellationRequest = {
         submissionId: "foreground-close-cancel",
@@ -125,7 +125,7 @@ proofDescribe("private rootless project session", () => {
 
       const cancellationRecovery = await openPrivateProjectSession({
         directory: root,
-        host: await openRootlessBunProofHost(),
+        host: await openPrivateInstalledBunHost(),
       });
       expect(await cancellationRecovery.rootAdministration.startRun(cancellationRequest))
         .toEqual(cancelledReceipt);
@@ -160,7 +160,7 @@ proofDescribe("private rootless project session", () => {
 
       const crashRecovery = await openPrivateProjectSession({
         directory: root,
-        host: await openRootlessBunProofHost(),
+        host: await openPrivateInstalledBunHost(),
       });
       expect(await crashRecovery.rootAdministration.startRun(crashRequest)).toEqual(crashedReceipt);
       expect(await crashRecovery.rootAdministration.runStatus(crashedReceipt)).toMatchObject({
@@ -177,7 +177,7 @@ proofDescribe("private rootless project session", () => {
       // Closing the recovered session releases exclusive project authority.
       const reopened = await openPrivateProjectSession({
         directory: root,
-        host: await openRootlessBunProofHost(),
+        host: await openPrivateInstalledBunHost(),
       });
       await reopened.close();
       await waitForRootlessCgroups(initialRootlessCgroups);

@@ -13,7 +13,7 @@ import {
 } from "node:fs/promises";
 import { createServer, type Server, type Socket } from "node:net";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const POLICY = ["--no-env-file", "--no-install", "--config=/dev/null"] as const;
@@ -162,6 +162,7 @@ interface Configuration {
   readonly command: readonly [string, ...string[]];
   readonly environment: Readonly<Record<string, string>>;
   readonly bunPath: string;
+  readonly bunHostLibraryPath: string;
   readonly bubblewrapPath: string;
   readonly payloadUid: number;
   readonly payloadGid: number;
@@ -184,6 +185,7 @@ async function fixtureFor(runId: string): Promise<Fixture> {
   await mkdir(ownerStateDirectory, { mode: 0o700 });
   const marker = join(root, "payload-ran");
   const bunPath = await realpath("/bin/bun");
+  const bunHostLibraryPath = dirname(await realpath("/lib64/ld-linux-x86-64.so.2"));
   const delegatedCgroup = `/sys/fs/cgroup/jig-supervisor-test-${randomBytes(8).toString("hex")}`;
   const runCgroup = `${delegatedCgroup}/jig-run-${runId}-${randomBytes(12).toString("hex")}`;
   const configuration: Configuration = {
@@ -213,6 +215,7 @@ async function fixtureFor(runId: string): Promise<Fixture> {
     ],
     environment: {},
     bunPath,
+    bunHostLibraryPath,
     bubblewrapPath: "/usr/bin/bwrap",
     payloadUid: process.getuid?.() ?? 1_000,
     payloadGid: process.getgid?.() ?? 100,
@@ -269,7 +272,10 @@ async function invokeSupervisor(
   ], {
     cwd: "/",
     detached: true,
-    env: {},
+    env: {
+      BUN_BE_BUN: "1",
+      LD_LIBRARY_PATH: dirname(await realpath("/lib64/ld-linux-x86-64.so.2")),
+    },
     stdio: ["ignore", "pipe", "pipe"],
   });
   const stdout = collect(child.stdout!);

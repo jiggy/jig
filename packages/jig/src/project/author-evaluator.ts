@@ -1,18 +1,17 @@
 import { createHash } from "node:crypto";
-import { createReadStream } from "node:fs";
-import { realpath } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 
 import { invalid, unavailable } from "../diagnostics.js";
 import {
   PrivateLinuxCgroupBackend,
   type PrivateLinuxCgroupLimits,
-  type PrivateLinuxReadOnlyMount,
 } from "../internal/linux-rootless-backend.js";
 import {
-  requirePrivateRuntimeSupportObservation,
-  type PrivateRuntimeSupportObservation,
-} from "../internal/runtime-support.js";
-import { materializeCapturedPackage } from "../internal/package-materialization.js";
+  requirePrivateInstalledBunSupport,
+  revalidatePrivateInstalledBunSupport,
+  type PrivateInstalledBunSupport,
+} from "../internal/installed-bun-support.js";
 import {
   canonicalJson,
   decodeJson1,
@@ -22,7 +21,6 @@ import {
   type JsonValue,
 } from "../json.js";
 import { compileEmbeddedSchema } from "../schema/index.js";
-import { capturePackageDirectory } from "../package/capture.js";
 import {
   normalizeJigDefinition,
   normalizePackageBindingDefinition,
@@ -66,11 +64,7 @@ type AuthoringProfile = "project-authoring/1";
 
 export interface PrivateAuthorEvaluatorOptions {
   readonly backend: PrivateLinuxCgroupBackend;
-  readonly bunPath: string;
-  readonly runtimeMounts: readonly PrivateLinuxReadOnlyMount[];
-  /** Private host-retained runtime evidence; not a Runtime Adapter interface. */
-  readonly runtimeSupport: PrivateRuntimeSupportObservation;
-  readonly jigDistributionPath: string;
+  readonly installedSupport: PrivateInstalledBunSupport;
 }
 
 export interface EvaluatorProfile {
@@ -84,9 +78,8 @@ export interface EvaluatorProfile {
   readonly runtimeDigest: string;
   readonly runtimeMounts: readonly string[];
   readonly runtimeSupport: {
-    readonly kind: "runtime-support-observation/1";
+    readonly kind: "private-installed-bun-support/1";
     readonly digest: string;
-    readonly supportId: string;
   };
   readonly buildOptions: "bun-cjs-closed-static-closure/1";
   readonly sandbox: {
@@ -161,42 +154,20 @@ export async function evaluateAuthorClosure(
   if (!captured.entries.includes(entryProjectPath)) {
     invalid("PROJECT_AUTHOR_CAPTURE", "selected entry is outside the author closure", entryProjectPath);
   }
-  const distribution = await realpath(options.jigDistributionPath);
-  const bunPath = await realpath(options.bunPath);
-  const runtimeSupport = requirePrivateRuntimeSupportObservation(options.runtimeSupport);
-  const runtimeMounts = await checkedRuntimeMounts(
-    options.runtimeMounts,
-    bunPath,
-    runtimeSupport,
-  );
-  const toolchain = await capturePackageDirectory(distribution).catch((error) => unavailable(
+  const installedSupport = requirePrivateInstalledBunSupport(options.installedSupport);
+  await revalidatePrivateInstalledBunSupport(installedSupport).catch((error) => unavailable(
     "PROJECT_EVALUATOR_UNAVAILABLE",
-    `cannot capture evaluator toolchain: ${errorText(error)}`,
+    `installed evaluator support is unavailable: ${errorText(error)}`,
   ));
-  const materialized = await materializeCapturedPackage(toolchain).catch(async (error) => {
-    try {
-      await toolchain.dispose();
-    } catch (cleanupError) {
-      throw new AggregateError(
-        [error, cleanupError],
-        "evaluator materialization failed and captured toolchain cleanup failed",
-      );
-    }
-    unavailable("PROJECT_EVALUATOR_UNAVAILABLE", `cannot materialize evaluator toolchain: ${errorText(error)}`);
-  });
-
-  let evaluationFailure: unknown;
-  try {
+  const runtimeMounts = installedSupport.runtimeMounts;
     const [
       workerBytes,
       sdkBytes,
       schemaBytes,
-      runtimeDigest,
     ] = await Promise.all([
-      toolchain.read("internal/project-evaluator-worker.js"),
-      toolchain.read("internal/project-evaluator-sdk.bundle.js"),
-      toolchain.read("project-authoring-1.schema.json"),
-      digestFile(bunPath),
+      readFile(join(installedSupport.evaluatorSupportPath, "project-evaluator-worker.js")),
+      readFile(join(installedSupport.evaluatorSupportPath, "project-evaluator-sdk.bundle.js")),
+      readFile(join(installedSupport.evaluatorSupportPath, "project-authoring-1.schema.json")),
     ]).catch((error) => unavailable(
       "PROJECT_EVALUATOR_UNAVAILABLE",
       `cannot seal evaluator toolchain: ${errorText(error)}`,
@@ -208,24 +179,16 @@ export async function evaluateAuthorClosure(
       evaluatorDigest: digestBytes(workerBytes),
       authoringSdkDigest: digestBytes(sdkBytes),
       schemaDigest: digestBytes(schemaBytes),
-      evaluatorPackageDigest: toolchain.digest,
-      runtimeExecutable: bunPath,
-      runtimeDigest,
-      runtimeMounts: Object.freeze(runtimeMounts.map(({ source }) => source)),
+      evaluatorPackageDigest: installedSupport.evaluatorSupportDigest,
+      runtimeExecutable: installedSupport.sandboxExecutablePath,
+      runtimeDigest: installedSupport.executableDigest,
+      runtimeMounts: Object.freeze(runtimeMounts.map(({ destination }) => destination)),
       runtimeSupport: Object.freeze({
-        kind: runtimeSupport.kind,
-        digest: runtimeSupport.digest,
-        supportId: runtimeSupport.supportId,
+        kind: installedSupport.kind,
+        digest: installedSupport.digest,
       }),
       buildOptions: "bun-cjs-closed-static-closure/1" as const,
     });
-    if (bunPath !== runtimeSupport.executablePath ||
-        runtimeDigest !== runtimeSupport.executableDigest) {
-      unavailable(
-        "PROJECT_EVALUATOR_UNAVAILABLE",
-        "selected Bun executable no longer matches its retained runtime support",
-      );
-    }
     const modules = captured.modules.map((module) => ({
       projectPath: module.projectPath,
       source: decoder.decode(captured.read(module.projectPath)),
@@ -244,16 +207,16 @@ export async function evaluateAuthorClosure(
       limits,
       readOnlyMounts: [
         ...runtimeMounts,
-        { source: materialized.root, destination: "/jig-evaluator" },
+        { source: installedSupport.evaluatorSupportPath, destination: "/jig-evaluator" },
       ],
-      command: [bunPath, "/jig-evaluator/internal/project-evaluator-worker.js"],
+      command: [installedSupport.sandboxExecutablePath, "/jig-evaluator/project-evaluator-worker.js"],
     }, signal).catch((error) => unavailable(
       "PROJECT_EVALUATOR_UNAVAILABLE",
       `cannot launch evaluator envelope: ${errorText(error)}`,
     ));
     if (!component.envelope.privateProcessFilesystem || !component.envelope.privateRuntimeDevices ||
         !sameEvaluatorLimits(component.envelope.limits, limits) ||
-        component.envelope.trustedCoordinatorBunDigest !== runtimeDigest) {
+        component.envelope.trustedCoordinatorBunDigest !== installedSupport.executableDigest) {
       await component.terminate().catch(() => undefined);
       const completion = await component.completion.catch((error) => unavailable(
         "PROJECT_EVALUATOR_UNAVAILABLE",
@@ -405,22 +368,6 @@ export async function evaluateAuthorClosure(
       }
       throw error;
     }
-  } catch (error) {
-    evaluationFailure = error;
-    throw error;
-  } finally {
-    const cleanup = await Promise.allSettled([materialized.dispose(), toolchain.dispose()]);
-    const failed = cleanup.filter((item): item is PromiseRejectedResult => item.status === "rejected");
-    if (failed.length > 0) {
-      throw new AggregateError(
-        [
-          ...(evaluationFailure === undefined ? [] : [evaluationFailure]),
-          ...failed.map((item) => item.reason),
-        ],
-        "evaluator toolchain cleanup failed",
-      );
-    }
-  }
 }
 
 function checkedResponse(response: JsonValue, projectPath: string): JsonValue {
@@ -511,43 +458,6 @@ function sameEvaluatorLimits(
     actual.cleanupTimeoutMs === expected.cleanupTimeoutMs;
 }
 
-async function checkedRuntimeMounts(
-  mounts: readonly PrivateLinuxReadOnlyMount[],
-  bunPath: string,
-  observation: PrivateRuntimeSupportObservation,
-): Promise<readonly PrivateLinuxReadOnlyMount[]> {
-  requirePrivateRuntimeSupportObservation(observation);
-  if (bunPath !== observation.executablePath) {
-    unavailable("PROJECT_EVALUATOR_UNAVAILABLE", "evaluator runtime executable is not retained");
-  }
-  const normalized = await Promise.all(mounts.map(async ({ source, destination }) => {
-    const canonical = await realpath(source);
-    if (destination !== canonical) {
-      unavailable(
-        "PROJECT_EVALUATOR_UNAVAILABLE",
-        "evaluator runtime mounts must preserve their retained absolute paths",
-      );
-    }
-    return Object.freeze({ source: canonical, destination: canonical });
-  }));
-  if (!normalized.some(({ source }) => bunPath === source || bunPath.startsWith(`${source}/`))) {
-    unavailable(
-      "PROJECT_EVALUATOR_UNAVAILABLE",
-      "evaluator runtime mounts do not contain the selected Bun executable",
-    );
-  }
-  const observedSources = normalized.map(({ source }) => source).sort();
-  const sealedSources = [...observation.closureSources];
-  if (observedSources.length !== sealedSources.length ||
-      observedSources.some((source, index) => source !== sealedSources[index])) {
-    unavailable(
-      "PROJECT_EVALUATOR_UNAVAILABLE",
-      "evaluator runtime mounts do not match the retained support closure",
-    );
-  }
-  return Object.freeze(normalized);
-}
-
 async function collectBounded(
   stream: AsyncIterable<Uint8Array>,
   maximum: number,
@@ -572,11 +482,6 @@ async function collectBounded(
   return output;
 }
 
-async function digestFile(path: string): Promise<string> {
-  const hash = createHash("sha256");
-  for await (const chunk of createReadStream(path)) hash.update(chunk);
-  return `sha256:${hash.digest("hex")}`;
-}
 
 function digestBytes(bytes: Uint8Array): string {
   return `sha256:${createHash("sha256").update(bytes).digest("hex")}`;

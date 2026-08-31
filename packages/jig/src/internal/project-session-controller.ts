@@ -21,7 +21,7 @@ import { createPrivateActivationCandidateV5 } from "./activation-admission.js";
 import {
   createPrivateActivationPlanningObservation,
 } from "./activation-planning.js";
-import type { PrivateRuntimeSupportObservation } from "./runtime-support.js";
+import type { PrivateInstalledBunSupport } from "./installed-bun-support.js";
 import {
   planPrivateDirectRun,
   type PrivateDirectRunRecipe,
@@ -51,8 +51,7 @@ const STORE_DIRECTORY = "private-package-store";
 /** One closed proof-host input. It is not a public host or extension SPI. */
 export interface PrivateProjectSessionHost {
   readonly backend: PrivateLinuxCgroupBackend;
-  readonly bunRuntimeSupport: PrivateRuntimeSupportObservation;
-  readonly jigDistributionPath: string;
+  readonly installedBunSupport: PrivateInstalledBunSupport;
   readonly runTimeoutMs: number;
 }
 
@@ -78,7 +77,7 @@ export async function openPrivateProjectSession(input: {
         packageStoreRoot,
         runId,
         coordinator,
-        runtimeSupport: input.host.bunRuntimeSupport,
+        installedSupport: input.host.installedBunSupport,
         backend: input.host.backend,
         signal,
       }),
@@ -138,12 +137,7 @@ function createSession(
           storeRoot: packageStoreRoot,
           evaluator: {
             backend: host.backend,
-            bunPath: host.bunRuntimeSupport.executablePath,
-            runtimeMounts: host.bunRuntimeSupport.closureSources.map(
-              (source) => ({ source, destination: source }),
-            ),
-            runtimeSupport: host.bunRuntimeSupport,
-            jigDistributionPath: host.jigDistributionPath,
+            installedSupport: host.installedBunSupport,
           },
         }, planningCancellation.signal);
         planningCancellation.signal.throwIfAborted();
@@ -166,7 +160,7 @@ function createSession(
           try {
             recipes.push(await planPrivateDirectRun({
               request,
-              runtimeSupport: host.bunRuntimeSupport,
+              installedSupport: host.installedBunSupport,
               backend: host.backend,
             }));
           } catch (error) {

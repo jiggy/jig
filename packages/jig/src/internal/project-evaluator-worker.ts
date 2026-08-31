@@ -5,7 +5,7 @@ import { canonicalJson, type JsonValue } from "../json.js";
 const PROTOCOL = "jig-author-evaluator/1";
 const MAX_REQUEST_BYTES = 2 * 1024 * 1024;
 const VM_TIMEOUT_MS = 1_000;
-const SDK_ENTRY = "/jig-evaluator/internal/project-evaluator-sdk.bundle.js";
+const SDK_ENTRY = "/jig-evaluator/project-evaluator-sdk.bundle.js";
 type AuthoringProfile = "project-authoring/1";
 const EVALUATION_CODES = new Set([
   "PROJECT_AUTHORING_VALUE",

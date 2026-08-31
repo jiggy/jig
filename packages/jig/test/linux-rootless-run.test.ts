@@ -1,8 +1,8 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import { spawn } from "node:child_process";
-import { mkdtemp, readFile, readdir, realpath, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
@@ -20,24 +20,32 @@ const delegatedCgroup = process.env.AGENT_DELEGATED_CGROUP;
 const initialRootlessTemporaryState = new Set(
   (await readdir(tmpdir())).filter(rootlessTemporaryEntry),
 );
+let portableBunRoot: string | undefined;
+let portableBunPromise: Promise<string> | undefined;
+
+afterAll(async () => {
+  if (portableBunRoot !== undefined) await rm(portableBunRoot, { recursive: true, force: true });
+});
 
 describe("private rootless Linux Run", () => {
   test("preflights and executes one isolated payload", async () => {
     const host = await hostConfiguration();
     const fixture = await createFixture(`
+      import { dlopen, FFIType } from "bun:ffi";
       import { chmodSync, existsSync, readFileSync, statSync } from "node:fs";
       const status = readFileSync("/proc/self/status", "utf8");
       const nspid = status.split("\\n").find((line) => line.startsWith("NSpid:"));
-      const nested = Bun.spawnSync([
-        ${JSON.stringify(host.bubblewrap)}, "--unshare-user", "--",
-        ${JSON.stringify(host.bun)}, "--no-env-file", "--no-install", "--config=/dev/null", "-e", "",
-      ], { stdout: "ignore", stderr: "ignore" });
+      const libc = dlopen("/jig-runtime/lib/libc.so.6", {
+        unshare: { args: [FFIType.i32], returns: FFIType.i32 },
+      });
+      const nestedUserDenied = libc.symbols.unshare(0x10000000) === -1;
+      libc.close();
       let deviceMutationDenied = false;
       try { chmodSync("/dev/urandom", 0o777); } catch { deviceMutationDenied = true; }
       console.log(JSON.stringify({
         cgroupVisible: existsSync("/sys/fs/cgroup/cgroup.procs"),
         deviceMutationDenied,
-        nestedUserDenied: nested.exitCode !== 0,
+        nestedUserDenied,
         networkRoutes: readFileSync("/proc/net/route", "utf8").trim().split("\\n").length,
         nullMode: statSync("/dev/null").mode & 0o777,
         urandomMode: statSync("/dev/urandom").mode & 0o777,
@@ -295,6 +303,7 @@ hostileDescribe("private rootless Linux hostile envelope", () => {
     await writeFile(configuration, JSON.stringify({
       delegatedCgroup,
       bunPath: host.bun,
+      bunHostLibraryPath: host.bunHostLibraryPath,
       bubblewrapPath: await realpath("/usr/bin/bwrap"),
       mounts: host.mounts,
       fixture,
@@ -343,21 +352,46 @@ hostileDescribe("private rootless Linux hostile envelope", () => {
 interface HostConfiguration {
   readonly backend: PrivateLinuxCgroupBackend;
   readonly bun: string;
-  readonly bubblewrap: string;
+  readonly bunHostLibraryPath: string;
   readonly mounts: readonly PrivateLinuxReadOnlyMount[];
 }
 
 async function hostConfiguration(): Promise<HostConfiguration> {
   if (delegatedCgroup === undefined) throw new Error("rootless proof host did not expose its delegated cgroup");
-  const bun = await realpath("/bin/bun");
-  const bubblewrap = await realpath("/usr/bin/bwrap");
-  const mounts = await runtimeMounts([bun, bubblewrap]);
+  const bun = await portableBun();
+  const loader = await realpath("/lib64/ld-linux-x86-64.so.2");
+  const bunHostLibraryPath = dirname(loader);
+  const mounts = await runtimeMounts(bun, loader, bunHostLibraryPath);
   return {
     bun,
-    bubblewrap,
+    bunHostLibraryPath,
     mounts,
-    backend: new PrivateLinuxCgroupBackend({ bunPath: bun }),
+    backend: new PrivateLinuxCgroupBackend({ bunPath: bun, bunHostLibraryPath }),
   };
+}
+
+async function portableBun(): Promise<string> {
+  portableBunPromise ??= (async () => {
+    portableBunRoot = await mkdtemp(join(tmpdir(), "jig-portable-bun-"));
+    const directory = join(portableBunRoot, "bin");
+    await mkdir(directory);
+    const destination = join(directory, "jig");
+    const source = await realpath("/bin/bun");
+    const bytes = Buffer.from(await readFile(source));
+    const fixedInterpreter = Buffer.from("/lib64/ld-linux-x86-64.so.2\0");
+    if (bytes.indexOf(fixedInterpreter) === -1) {
+      const hostInterpreter = Buffer.from(`${await realpath("/lib64/ld-linux-x86-64.so.2")}\0`);
+      const offset = bytes.indexOf(hostInterpreter);
+      if (offset === -1 || fixedInterpreter.length > hostInterpreter.length) {
+        throw new Error("proof Bun does not expose a replaceable ELF interpreter");
+      }
+      bytes.fill(0, offset, offset + hostInterpreter.length);
+      fixedInterpreter.copy(bytes, offset);
+    }
+    await writeFile(destination, bytes, { mode: 0o755 });
+    return await realpath(destination);
+  })();
+  return await portableBunPromise;
 }
 
 function plan(
@@ -385,32 +419,24 @@ function plan(
       ...host.mounts,
       { source: fixture, destination: "/package" },
     ],
-    command: [host.bun, ...["--no-env-file", "--no-install", "--config=/dev/null"], "/package/flow.ts"],
+    command: ["/jig-runtime/jig", ...["--no-env-file", "--no-install", "--config=/dev/null"], "/package/flow.ts"],
   };
 }
 
-async function runtimeMounts(executables: readonly string[]): Promise<readonly PrivateLinuxReadOnlyMount[]> {
-  const receipts = process.env.AGENT_RUNTIME_RECEIPTS_DIR;
-  if (receipts === undefined) throw new Error("rootless proof host did not retain its runtime receipt");
-  const document = JSON.parse(await readFile(join(receipts, "runtime-rootfs.json"), "utf8")) as {
-    readonly closure: readonly { readonly path: string; readonly references: readonly string[] }[];
-  };
-  const byPath = new Map(document.closure.map((entry) => [entry.path, entry]));
-  const roots = executables.map((executable) => {
-    const found = document.closure.find((entry) => executable === entry.path || executable.startsWith(`${entry.path}/`));
-    if (found === undefined) throw new Error(`runtime receipt does not contain ${executable}`);
-    return found.path;
-  });
-  const selected = new Set<string>();
-  const visit = (path: string): void => {
-    if (selected.has(path)) return;
-    const entry = byPath.get(path);
-    if (entry === undefined) throw new Error(`runtime receipt omits referenced path ${path}`);
-    selected.add(path);
-    for (const reference of entry.references) visit(reference);
-  };
-  for (const root of roots) visit(root);
-  return Object.freeze([...selected].sort().map((path) => Object.freeze({ source: path, destination: path })));
+async function runtimeMounts(
+  bun: string,
+  loader: string,
+  libraryDirectory: string,
+): Promise<readonly PrivateLinuxReadOnlyMount[]> {
+  const libraries = ["libc.so.6", "libm.so.6", "libdl.so.2", "libpthread.so.0"];
+  return Object.freeze([
+    Object.freeze({ source: bun, destination: "/jig-runtime/jig" }),
+    Object.freeze({ source: loader, destination: "/lib64/ld-linux-x86-64.so.2" }),
+    ...await Promise.all(libraries.map(async (name) => Object.freeze({
+      source: await realpath(join(libraryDirectory, name)),
+      destination: `/jig-runtime/lib/${name}`,
+    }))),
+  ]);
 }
 
 async function createFixture(source: string): Promise<string> {

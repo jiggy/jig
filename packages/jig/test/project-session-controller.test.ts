@@ -108,8 +108,7 @@ describe("private finite project session", () => {
 function inertHost(): PrivateProjectSessionHost {
   return Object.freeze({
     backend: Object.freeze({}) as never,
-    bunRuntimeSupport: Object.freeze({}) as never,
-    jigDistributionPath: "/unreachable-test-distribution",
+    installedBunSupport: Object.freeze({}) as never,
     runTimeoutMs: 1_000,
   });
 }

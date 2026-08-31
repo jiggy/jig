@@ -80,6 +80,7 @@ interface SealedLaunchPlan extends Omit<PrivateLinuxLaunchPlan, "limits" | "read
 
 export interface PrivateLinuxCgroupBackendOptions {
   readonly bunPath: string;
+  readonly bunHostLibraryPath: string;
   readonly supervisorPath?: string;
   readonly startupTimeoutMs?: number;
 }
@@ -129,6 +130,7 @@ export interface PrivateLinuxBackendMechanismObservation {
   readonly bubblewrapVersion: string;
   readonly trustedCoordinatorBunPath: string;
   readonly trustedCoordinatorBunDigest: string;
+  readonly trustedCoordinatorLibraryPath: string;
   readonly trustedSupervisorPath: string;
   readonly trustedSupervisorDigest: string;
   readonly cgroupVersion: 2;
@@ -284,6 +286,7 @@ export class PrivateLinuxFenceUnconfirmedError extends Error {
 
 interface NormalizedOptions {
   readonly bunPath: string;
+  readonly bunHostLibraryPath: string;
   readonly supervisorPath: string;
   readonly startupTimeoutMs: number;
 }
@@ -321,6 +324,7 @@ export class PrivateLinuxCgroupBackend {
     const extension = extname(sourcePath);
     this.#options = Object.freeze({
       bunPath: requireAbsolute(options.bunPath, "Bun path"),
+      bunHostLibraryPath: requireAbsolute(options.bunHostLibraryPath, "Bun host library path"),
       supervisorPath: requireAbsolute(
         options.supervisorPath ?? join(dirname(sourcePath), `linux-rootless-supervisor${extension}`),
         "supervisor path",
@@ -492,7 +496,15 @@ export class PrivateLinuxCgroupBackend {
           controlPath,
           String(this.#options.startupTimeoutMs),
         ],
-        { cwd: "/", env: {}, detached: true, stdio: ["pipe", "pipe", "pipe"] },
+        {
+          cwd: "/",
+          env: {
+            BUN_BE_BUN: "1",
+            LD_LIBRARY_PATH: data.mechanism.trustedCoordinatorLibraryPath,
+          },
+          detached: true,
+          stdio: ["pipe", "pipe", "pipe"],
+        },
       ));
       const closed = childClose(supervisor);
       control = await Promise.race([
@@ -994,20 +1006,26 @@ function releaseReceipt(reference: ReleaseReference): PrivateLinuxOwnerStateRele
 
 async function observeMechanism(options: NormalizedOptions): Promise<PrivateLinuxBackendMechanismObservation> {
   const authority = await acquirePrivateRootlessLinux();
-  const [bunPath, supervisorPath] = await Promise.all([
+  const [bunPath, bunHostLibraryPath, supervisorPath] = await Promise.all([
     realpath(options.bunPath),
+    realpath(options.bunHostLibraryPath),
     realpath(options.supervisorPath),
   ]);
-  if (bunPath !== options.bunPath || supervisorPath !== options.supervisorPath) {
+  if (bunPath !== options.bunPath || bunHostLibraryPath !== options.bunHostLibraryPath ||
+      supervisorPath !== options.supervisorPath) {
     throw new Error("rootless Linux support paths must be canonical");
   }
-  const [scope, bun, supervisor, bubblewrap] = await Promise.all([
+  const [scope, bun, bunLibraries, supervisor, bubblewrap] = await Promise.all([
     lstat(authority.delegatedCgroup, { bigint: true }),
     lstat(bunPath),
+    lstat(bunHostLibraryPath),
     lstat(supervisorPath),
     lstat(authority.bubblewrapPath),
   ]);
   requireExecutable(bun, "Bun");
+  if (!bunLibraries.isDirectory() || bunLibraries.isSymbolicLink()) {
+    throw new Error("Bun host library path is unavailable");
+  }
   requireRegularFile(supervisor, "rootless supervisor");
   requireExecutable(bubblewrap, "Bubblewrap");
   const [bunDigest, supervisorDigest, bubblewrapDigest] = await Promise.all([
@@ -1025,6 +1043,7 @@ async function observeMechanism(options: NormalizedOptions): Promise<PrivateLinu
     bubblewrapVersion: authority.bubblewrapVersion,
     trustedCoordinatorBunPath: bunPath,
     trustedCoordinatorBunDigest: bunDigest,
+    trustedCoordinatorLibraryPath: bunHostLibraryPath,
     trustedSupervisorPath: supervisorPath,
     trustedSupervisorDigest: supervisorDigest,
     cgroupVersion: 2 as const,
@@ -1055,6 +1074,7 @@ function supervisorConfiguration(data: SealedOwnerData): object {
     command: data.sealedPlan.command,
     environment: data.sealedPlan.environment,
     bunPath: data.mechanism.trustedCoordinatorBunPath,
+    bunHostLibraryPath: data.mechanism.trustedCoordinatorLibraryPath,
     bubblewrapPath: data.mechanism.trustedBubblewrapPath,
     payloadUid: data.mechanism.payloadUid,
     payloadGid: data.mechanism.payloadGid,
@@ -1162,7 +1182,8 @@ function snapshotPlan(value: PrivateLinuxLaunchPlan): SealedLaunchPlan {
   });
   const environment: Record<string, string> = Object.create(null) as Record<string, string>;
   for (const [name, content] of Object.entries(value.environment ?? {})) {
-    if (!ENVIRONMENT_NAME.test(name) || typeof content !== "string" || content.includes("\0")) {
+    if (!ENVIRONMENT_NAME.test(name) || name === "BUN_BE_BUN" || name === "LD_LIBRARY_PATH" ||
+        typeof content !== "string" || content.includes("\0")) {
       throw new TypeError("rootless Linux environment is invalid");
     }
     environment[name] = content;

@@ -1,5 +1,5 @@
 import { openPrivateProjectSession } from "../../src/internal/project-session-controller.js";
-import { openRootlessBunProofHost } from "../../scripts/private-rootless-proof-host.js";
+import { openPrivateInstalledBunHost } from "../../src/internal/installed-bun-host.js";
 
 const [projectRoot, submissionId] = process.argv.slice(2);
 if (projectRoot === undefined || submissionId === undefined) {
@@ -8,7 +8,7 @@ if (projectRoot === undefined || submissionId === undefined) {
 
 const session = await openPrivateProjectSession({
   directory: projectRoot,
-  host: await openRootlessBunProofHost(),
+  host: await openPrivateInstalledBunHost(),
 });
 const receipt = await session.rootAdministration.startRun({
   submissionId,

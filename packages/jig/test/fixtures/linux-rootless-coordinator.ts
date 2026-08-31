@@ -8,6 +8,7 @@ import {
 interface Configuration {
   readonly delegatedCgroup: string;
   readonly bunPath: string;
+  readonly bunHostLibraryPath: string;
   readonly bubblewrapPath: string;
   readonly mounts: readonly { readonly source: string; readonly destination: string }[];
   readonly fixture: string;
@@ -19,7 +20,10 @@ interface Configuration {
 const path = process.argv[2];
 if (path === undefined) throw new Error("missing rootless coordinator configuration");
 const configuration = JSON.parse(await readFile(path, "utf8")) as Configuration;
-const backend = new PrivateLinuxCgroupBackend({ bunPath: configuration.bunPath });
+const backend = new PrivateLinuxCgroupBackend({
+  bunPath: configuration.bunPath,
+  bunHostLibraryPath: configuration.bunHostLibraryPath,
+});
 const plan = {
   runId: "coordinator-loss",
   limits: {
@@ -31,7 +35,7 @@ const plan = {
     cancellationGraceMs: 250,
   },
   readOnlyMounts: [...configuration.mounts, { source: configuration.fixture, destination: "/package" }],
-  command: [configuration.bunPath, "--no-env-file", "--no-install", "--config=/dev/null", "/package/flow.ts"],
+  command: ["/jig-runtime/jig", "--no-env-file", "--no-install", "--config=/dev/null", "/package/flow.ts"],
 };
 const allocation = await planPrivateLinuxOwnerStateAllocation({
   parent: configuration.ownerStateParent,

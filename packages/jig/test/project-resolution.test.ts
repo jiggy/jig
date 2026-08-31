@@ -347,7 +347,7 @@ function observationInput(
     launchPlanner: adapter,
     backend: extension("backend"),
     launchEnvelopeDigest: digest("launch-envelope"),
-    runtimeSupportClosureDigest: digest("runtime-closure"),
+    installedSupportDigest: digest("installed-support"),
     runtimePredicates: [],
     requestedAuthorityDigest: digest("requested-authority"),
     wouldGrantAuthorityDigest: digest("would-grant-authority"),

@@ -4,9 +4,9 @@ import {
   type PrivateBunDirectRecipe,
 } from "./bun-direct-run.js";
 import {
-  requirePrivateRuntimeSupportObservation,
-  type PrivateRuntimeSupportObservation,
-} from "./runtime-support.js";
+  requirePrivateInstalledBunSupport,
+  type PrivateInstalledBunSupport,
+} from "./installed-bun-support.js";
 import type { PrivateLinuxCgroupBackend } from "./linux-rootless-backend.js";
 import {
   requirePrivateActivationRequest,
@@ -14,12 +14,12 @@ import {
 } from "../project/package-resolution.js";
 
 export type PrivateDirectRunRecipe = PrivateBunDirectRecipe;
-export type PrivateDirectRunRuntimeSupport = PrivateRuntimeSupportObservation;
+export type PrivateDirectRunInstalledSupport = PrivateInstalledBunSupport;
 
 /** Plan the one exact Bun recipe fixed by the alpha host. */
 export async function planPrivateDirectRun(input: {
   readonly request: PrivateActivationRequest;
-  readonly runtimeSupport: PrivateDirectRunRuntimeSupport;
+  readonly installedSupport: PrivateDirectRunInstalledSupport;
   readonly backend: PrivateLinuxCgroupBackend;
 }): Promise<PrivateDirectRunRecipe> {
   const request = requirePrivateActivationRequest(input.request);
@@ -29,7 +29,7 @@ export async function planPrivateDirectRun(input: {
   return await planPrivateBunDirectRun({
     ...input,
     request,
-    runtimeSupport: requirePrivateRuntimeSupportObservation(input.runtimeSupport),
+    installedSupport: requirePrivateInstalledBunSupport(input.installedSupport),
   });
 }
 

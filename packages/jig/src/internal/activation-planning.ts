@@ -32,7 +32,7 @@ export interface PrivateActivationRecipeObservationInput {
   readonly launchPlanner: PrivateExtensionObservation;
   readonly backend: PrivateExtensionObservation;
   readonly launchEnvelopeDigest: string;
-  readonly runtimeSupportClosureDigest: string;
+  readonly installedSupportDigest: string;
   readonly runtimePredicates: readonly [];
   readonly requestedAuthorityDigest: string;
   readonly wouldGrantAuthorityDigest: string;
@@ -111,7 +111,7 @@ export function createPrivateActivationRecipeObservation(
     "launchPlanner",
     "backend",
     "launchEnvelopeDigest",
-    "runtimeSupportClosureDigest",
+    "installedSupportDigest",
     "runtimePredicates",
     "requestedAuthorityDigest",
     "wouldGrantAuthorityDigest",
@@ -126,9 +126,9 @@ export function createPrivateActivationRecipeObservation(
     launchPlanner: normalizeExtension(root.launchPlanner, "launch planner"),
     backend: normalizeExtension(root.backend, "sandbox backend"),
     launchEnvelopeDigest: requireDigest(root.launchEnvelopeDigest, "launch envelope"),
-    runtimeSupportClosureDigest: requireDigest(
-      root.runtimeSupportClosureDigest,
-      "runtime support closure",
+    installedSupportDigest: requireDigest(
+      root.installedSupportDigest,
+      "installed support",
     ),
     runtimePredicates: normalizeRuntimePredicates(root.runtimePredicates),
     requestedAuthorityDigest: requireDigest(root.requestedAuthorityDigest, "requested authority"),

@@ -16,6 +16,8 @@ import { posix } from "node:path";
 import type { Readable } from "node:stream";
 
 const POLICY = Object.freeze(["--no-env-file", "--no-install", "--config=/dev/null"] as const);
+const SANDBOX_BUN = "/jig-runtime/jig";
+const SANDBOX_LIBRARY_PATH = "/jig-runtime/lib";
 const MAX_CONTROL_BYTES = 64 * 1024;
 // The source checkout executes this file as TypeScript while packed builds
 // execute emitted JavaScript. JavaScript is valid TypeScript, so one `.ts`
@@ -54,6 +56,7 @@ interface Configuration {
   readonly command: readonly [string, ...string[]];
   readonly environment: Readonly<Record<string, string>>;
   readonly bunPath: string;
+  readonly bunHostLibraryPath: string;
   readonly bubblewrapPath: string;
   readonly payloadUid: number;
   readonly payloadGid: number;
@@ -194,7 +197,14 @@ async function superviseConnected(control: Socket, startupDeadlineUnixMs: number
         configuration.bubblewrapPath,
         ...bubblewrapArguments(configuration),
       ],
-      { cwd: "/", env: {}, stdio: ["inherit", "inherit", "inherit", "pipe"] },
+      {
+        cwd: "/",
+        env: {
+          BUN_BE_BUN: "1",
+          LD_LIBRARY_PATH: configuration.bunHostLibraryPath,
+        },
+        stdio: ["inherit", "inherit", "inherit", "pipe"],
+      },
     );
     const exitPromise = childClose(launched);
     child = launched;
@@ -304,6 +314,9 @@ function bubblewrapArguments(configuration: Configuration): string[] {
     "--tmpfs", "/run",
     "--dir", "/work",
     "--dir", "/jig",
+    "--dir", "/jig-runtime",
+    "--dir", "/jig-runtime/lib",
+    "--dir", "/lib64",
     "--chdir", "/work",
   ];
   for (const mount of configuration.readOnlyMounts) result.push("--ro-bind", mount.source, mount.destination);
@@ -312,11 +325,13 @@ function bubblewrapArguments(configuration: Configuration): string[] {
     result.push("--setenv", name, value);
   }
   result.push(
+    "--setenv", "BUN_BE_BUN", "1",
+    "--setenv", "LD_LIBRARY_PATH", SANDBOX_LIBRARY_PATH,
     "--uid", String(configuration.payloadUid),
     "--gid", String(configuration.payloadGid),
     "--cap-drop", "ALL",
     "--",
-    configuration.bunPath,
+    SANDBOX_BUN,
     ...POLICY,
     MODULE_DESTINATION,
     "--inner",
@@ -410,14 +425,14 @@ function requireStart(value: unknown): Configuration {
       !("configuration" in value)) throw new Error("invalid rootless supervisor start message");
   const configuration = (value as { configuration: Configuration }).configuration;
   const keys = [
-    "bubblewrapPath", "bunPath", "command", "delegatedCgroup", "environment", "limits",
+    "bubblewrapPath", "bunHostLibraryPath", "bunPath", "command", "delegatedCgroup", "environment", "limits",
     "mechanismDigest", "ownerDigest",
     "ownerStateAllocationDigest", "ownerStateDirectory", "ownerToken", "payloadGid",
     "payloadUid", "readOnlyMounts", "runCgroup", "sealedPlanDigest", "supervisorPath",
   ];
   if (configuration === null || typeof configuration !== "object" || Array.isArray(configuration) ||
       Object.keys(configuration).sort().join("\0") !== keys.sort().join("\0") ||
-      !absolute(configuration.delegatedCgroup) ||
+      !absolute(configuration.delegatedCgroup) || !absolute(configuration.bunHostLibraryPath) ||
       !absolute(configuration.runCgroup) ||
       posix.dirname(configuration.runCgroup) !== configuration.delegatedCgroup ||
       !/^jig-run-[a-z0-9][a-z0-9-]{0,47}-[0-9a-f]{24}$/.test(posix.basename(configuration.runCgroup)) ||
@@ -470,7 +485,8 @@ function validMounts(value: unknown): value is readonly Mount[] {
 function validEnvironment(value: unknown): value is Readonly<Record<string, string>> {
   if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
   return Object.entries(value).every(([name, content]) =>
-    ENVIRONMENT_NAME.test(name) && typeof content === "string" && !content.includes("\0")
+    ENVIRONMENT_NAME.test(name) && name !== "BUN_BE_BUN" && name !== "LD_LIBRARY_PATH" &&
+    typeof content === "string" && !content.includes("\0")
   );
 }
 
@@ -584,7 +600,10 @@ function absolute(path: string): boolean {
 }
 
 function requireFixedBunPosture(label: string): void {
-  if (process.cwd() !== "/" || Object.keys(process.env).length !== 0 ||
+  const environmentKeys = Object.keys(process.env).sort();
+  if (process.cwd() !== "/" ||
+      environmentKeys.join("\0") !== "BUN_BE_BUN\0LD_LIBRARY_PATH" ||
+      process.env.BUN_BE_BUN !== "1" || !absolute(process.env.LD_LIBRARY_PATH ?? "") ||
       process.execArgv.length !== POLICY.length ||
       process.execArgv.some((value, index) => value !== POLICY[index])) {
     throw new Error(`rootless ${label} has an invalid startup posture`);

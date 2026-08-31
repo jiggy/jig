@@ -20,9 +20,9 @@ import {
 import {
   planPrivateDirectRun,
   type PrivateDirectRunRecipe,
-  type PrivateDirectRunRuntimeSupport,
+  type PrivateDirectRunInstalledSupport,
 } from "./direct-run.js";
-import { privateFileDigest } from "./identity.js";
+import { revalidatePrivateInstalledBunSupport } from "./installed-bun-support.js";
 import {
   PrivateLinuxFenceUnconfirmedError,
   cancelPrivateLinuxOwnerStateAllocation,
@@ -99,7 +99,7 @@ export async function executePrivateRootRunLaunch(input: {
   readonly packageStoreRoot: string;
   readonly runId: string;
   readonly coordinator: PrivateProjectCoordinator;
-  readonly runtimeSupport: PrivateDirectRunRuntimeSupport;
+  readonly installedSupport: PrivateDirectRunInstalledSupport;
   readonly backend: PrivateLinuxCgroupBackend;
   readonly signal?: AbortSignal;
 }): Promise<PrivateRootExecutionDisposition> {
@@ -589,7 +589,7 @@ async function reproduceRecipe(
   }
   const recipe = await planPrivateDirectRun({
     request,
-    runtimeSupport: input.runtimeSupport,
+    installedSupport: input.installedSupport,
     backend: input.backend,
   });
   if (recipe.digest !== work.intent.recipeDigest ||
@@ -600,12 +600,11 @@ async function reproduceRecipe(
 }
 
 async function revalidateRecipe(recipe: PrivateDirectRunRecipe): Promise<void> {
-  const [mechanism, executableDigest] = await Promise.all([
+  const [mechanism] = await Promise.all([
     recipe.backend.observeMechanism(),
-    privateFileDigest(recipe.executablePath),
+    revalidatePrivateInstalledBunSupport(recipe.installedSupport),
   ]);
-  if (mechanism.digest !== recipe.mechanismDigest ||
-      executableDigest !== recipe.runtimeSupport.executableDigest) {
+  if (mechanism.digest !== recipe.mechanismDigest) {
     throw new Error("direct Run recipe no longer matches retained host support");
   }
 }
@@ -617,7 +616,7 @@ function backendPlan(
   plan: PrivateDirectRootPlanRecord,
 ): PrivateLinuxLaunchPlan {
   const readOnlyMounts = [
-    ...recipe.runtimeSupport.closureSources.map((source) => ({ source, destination: source })),
+    ...recipe.installedSupport.runtimeMounts,
     { source: packageRoot, destination: recipe.packageDestination },
   ];
   const limits = Object.freeze({
@@ -630,7 +629,7 @@ function backendPlan(
     limits,
     readOnlyMounts,
     command: [
-      recipe.executablePath,
+      recipe.sandboxExecutablePath,
       ...recipe.bunPolicy,
       `${recipe.packageDestination}/${recipe.request.entrypoint.path}`,
     ] as readonly [string, ...string[]],
