@@ -18,8 +18,8 @@ authority they need or fail closed.
 npm install --global @jigging/jig@0.1.0-alpha.1
 ```
 
-The packed artifact contains the fixed Bun executable and its Jig-owned
-support files. It has no runtime npm dependencies.
+The packed artifact contains Bun 1.3.3 as its fixed executable and its
+Jig-owned support files. It has no runtime npm dependencies.
 
 ## Supported host
 

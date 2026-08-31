@@ -6,7 +6,9 @@ import { join, resolve } from "node:path";
 const packageRoot = resolve(import.meta.dir, "..");
 const temporary = await mkdtemp(join(tmpdir(), "jig-package-"));
 const expectedInstalledFiles = [
+  "LICENSE",
   "README.md",
+  "THIRD_PARTY_NOTICES",
   "bin/jig",
   "dist/index.d.ts",
   "dist/index.js",
@@ -46,6 +48,11 @@ try {
   assert.deepEqual(installedManifest.bin, { jig: "./bin/jig" });
   assert.equal(installedManifest.dependencies, undefined);
   assert.equal(installedManifest.private, true);
+  assert.equal(installedManifest.version, "0.1.0-alpha.1");
+  assert.equal(installedManifest.license, "MPL-2.0");
+  assert.deepEqual(installedManifest.os, ["linux"]);
+  assert.deepEqual(installedManifest.cpu, ["x64"]);
+  assert.deepEqual(installedManifest.libc, ["glibc"]);
 
   const executable = join(installed, "bin", "jig");
   const command = join(consumer, "node_modules", ".bin", "jig");
@@ -59,7 +66,7 @@ try {
   assert.doesNotMatch(help.stdout, /setup|package check|planDigest/);
 
   const bun = await run([command, "--version"], consumer, { BUN_BE_BUN: "1" });
-  assert.match(bun.stdout, /^[0-9]+\.[0-9]+\.[0-9]+\n$/);
+  assert.equal(bun.stdout, "1.3.3\n");
   assert.equal(bun.stderr, "");
 
   const bareProject = join(consumer, "bare-project");

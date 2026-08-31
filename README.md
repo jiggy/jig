@@ -25,10 +25,10 @@ The alpha supports one host shape:
 - a systemd user manager able to create transient scopes with `Delegate=yes`;
 - unprivileged user, mount, PID, network, IPC, UTS, and cgroup namespaces.
 
-Jig uses its compiled Bun executable as the fixed application and Flow
-runtime. It acquires a transient delegated scope when `check` or `run` needs
-one. This requires no `sudo` and exposes no host-control channel to Flow code.
-An unsupported host fails closed.
+The `0.1.0-alpha.1` artifact embeds Bun 1.3.3 as the fixed application and
+Flow runtime. Jig acquires a transient delegated scope when `check` or `run`
+needs one. This requires no `sudo` and exposes no host-control channel to Flow
+code. An unsupported host fails closed.
 
 ## Quickstart
 
@@ -142,6 +142,10 @@ growing the minimal protocol example above.
 - [FLOW Schema/1](docs/spec/schema-files.md)
 - [Jig Project Authoring SDK](docs/spec/project-sdk.md)
 - [Jig direct-alpha project policy](docs/spec/project-policy.md)
+
+Licenses are mapped in [LICENSES.md](LICENSES.md). FLOW is founder-stewarded
+under the public process in [Governance.md](Governance.md), and contributions
+use the [DCO 1.1 process](CONTRIBUTING.md).
 
 Jig is prerelease software. Services, Hooks, event sources, Agent providers,
 Semantic Choice, Jig Graph, and extension registries are not part of this

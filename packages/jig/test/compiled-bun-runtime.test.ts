@@ -120,8 +120,8 @@ async function compileArtifact(entrypoint: string, artifact: string): Promise<vo
     process.execPath,
     "build",
     "--compile",
-    // An explicit cross-target forces Bun's official release executable rather
-    // than wrapping this proof host's Nix-patched current executable.
+    // An explicit cross-target makes the artifact independent of the
+    // development host's current Bun executable.
     "--target=bun-linux-x64-baseline",
     entrypoint,
     `--outfile=${artifact}`,

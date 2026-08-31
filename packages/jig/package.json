@@ -1,8 +1,30 @@
 {
   "name": "@jigging/jig",
-  "version": "0.0.0",
+  "version": "0.1.0-alpha.1",
   "private": true,
-  "description": "Private prerelease Jig authoring and FLOW package-checking candidate",
+  "description": "A local, secure host for admitted FLOW packages",
+  "license": "MPL-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jigmd/jig.git",
+    "directory": "packages/jig"
+  },
+  "homepage": "https://github.com/jigmd/jig#readme",
+  "bugs": {
+    "url": "https://github.com/jigmd/jig/issues"
+  },
+  "os": [
+    "linux"
+  ],
+  "cpu": [
+    "x64"
+  ],
+  "libc": [
+    "glibc"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "type": "module",
   "sideEffects": false,
   "main": "./dist/index.js",
@@ -26,7 +48,9 @@
     "libexec/evaluator/project-evaluator-worker.js",
     "libexec/evaluator/project-evaluator-sdk.bundle.js",
     "libexec/evaluator/project-authoring-1.schema.json",
-    "README.md"
+    "README.md",
+    "LICENSE",
+    "THIRD_PARTY_NOTICES"
   ],
   "scripts": {
     "build": "bun run clean && mkdir -p bin libexec/evaluator && bun node_modules/typescript/bin/tsc -p tsconfig.json && bun build src/index.ts --target=bun --format=esm --outfile=dist/index.js && bun build src/internal/linux-rootless-supervisor.ts --target=bun --format=esm --outfile=libexec/linux-rootless-supervisor.js && bun build src/internal/project-evaluator-worker.ts --target=bun --format=esm --outfile=libexec/evaluator/project-evaluator-worker.js && bun build src/project/evaluator-sdk-entry.ts --target=bun --format=esm --outfile=libexec/evaluator/project-evaluator-sdk.bundle.js && cp ../../docs/spec/machine/project-authoring-1.schema.json libexec/evaluator/project-authoring-1.schema.json && bun build src/installed-cli.ts --compile --target=bun-linux-x64-baseline --outfile=bin/jig",
