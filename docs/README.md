@@ -19,6 +19,8 @@ in [`../conformance/run-1/`](../conformance/run-1/).
 
 ## Jig direct alpha
 
+- [`../README.md`](../README.md) — supported-host requirements and a runnable
+  installed quickstart.
 - [`spec/project-sdk.md`](spec/project-sdk.md) — inert `jig.ts` and Binding
   authoring values.
 - [`spec/project-policy.md`](spec/project-policy.md) — capture, review,
@@ -26,5 +28,5 @@ in [`../conformance/run-1/`](../conformance/run-1/).
 
 The direct alpha deliberately excludes Services, Hooks, Journal providers,
 Agent providers, Semantic Choice, Jig Graph, runtime registries, sandbox
-registries, and compatibility formats. They will be reconsidered only after
-the installed `init --bare` / `check` / `run` baseline is complete.
+registries, and compatibility formats. Its installed command surface is
+exactly `init --bare`, `check`, and `run`.
