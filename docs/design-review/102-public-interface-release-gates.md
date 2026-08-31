@@ -337,7 +337,8 @@ pre-existing unprivileged containment path or return bounded
 `SANDBOX_UNAVAILABLE`; there is no privileged or unsafe fallback. The first
 private candidate is a transient user-owned cgroup plus patched rootless
 Bubblewrap on a deliberately narrow Linux/Bun host. Review 196 records the
-boundary and its currently blocked proof.
+boundary and review 197 closes the private mechanism and hostile corpus. The
+installed acquisition and admitted Project Session join remain open.
 
 The first alpha does **not** need public Runtime Adapter, Sandbox Backend,
 Event Source, or provider-plugin SPIs. One Linux mechanism and one Agent
@@ -549,8 +550,9 @@ The critical path still needs:
   Community-Spec curation and counsel, trademark, and artifact-compliance
   gates; repository, version, finite Bun range, and remaining release metadata
   are also still required before registry publication;
-- one zero-setup rootless containment path proved on a fresh supported host,
-  rather than the proof sandbox's privileged controls;
+- the proved private rootless mechanism from review 197 joined to installed
+  acquisition and admitted Project Session execution on a fresh supported
+  host;
 - the exact package-local native dependency's private root join is closed in
   review 195: retained-byte routing, durable preparation, authenticated
   prepared-tree materialization, and final read-only Run/1 execution now pass

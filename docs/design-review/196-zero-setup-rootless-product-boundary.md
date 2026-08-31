@@ -1,7 +1,8 @@
 # Zero-setup rootless product boundary
 
-**Status:** selected on 2026-08-29. The product boundary is settled; the
-rootless execution mechanism is not yet proved on this development host.
+**Status:** selected on 2026-08-29. The product boundary is settled. Review
+197 closes the first private execution-mechanism proof; product acquisition
+and the admitted Project Session join remain open.
 
 ## Decision
 
@@ -55,27 +56,23 @@ unprivileged facilities. Narrow support is preferable to Jig-specific setup.
 
 ## Current development-host result
 
-The current sandbox cannot run this proof:
+The generic rootless host envelope is now available and review 197 proves one
+private Run mechanism against it. The mechanism consumes an already delegated,
+empty cgroup-v2 parent with active CPU, memory and PID controllers; creates one
+ephemeral child cgroup per Run; enters that child before Bubblewrap or package
+bytes execute; and uses unprivileged Bubblewrap 0.12 for the remaining
+namespace and filesystem boundary.
 
-```text
-uid                                      1000, unprivileged
-cgroup v2 controllers                    cpu, memory, pids available
-cgroup subtree/control files             not writable by uid 1000
-user systemd manager/client               unavailable
-user runtime directory                    unavailable
-unprivileged user namespaces              enabled by kernel limit
-Bubblewrap                                0.11.0
-required patched Bubblewrap baseline      0.12.0 or newer
-```
+The proof uses no `sudo`, host user bus, Nix daemon, Jig-specific service,
+privileged helper, or persistent registration. Its supervisor survives loss
+of the Jig coordinator, fences the complete Run through `cgroup.kill`, waits
+for `populated 0`, and removes the Run cgroup.
 
-Using passwordless `sudo`, the existing root helper, or an artificial service
-manager started inside the development container would test a different
-product. No package or hostile payload was launched.
-
-The next proof environment needs only generic rootless-Linux facilities: an
-active unprivileged user service manager with delegated cgroup-v2 CPU, memory,
-and PID controls, unprivileged user namespaces, and patched Bubblewrap. It
-must not install or register any Jig-specific artifact.
+The development test harness reads the sandbox's bounded runtime receipt only
+to construct exact read-only Bun and Bubblewrap mounts. That is fixture
+machinery, not Jig product code or a FLOW concept. Installed acquisition of an
+equivalent delegated envelope and exact retained runtime, plus the join to the
+admitted Project Session path, remain the next product gate.
 
 ## Superseded release gate
 

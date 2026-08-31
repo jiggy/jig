@@ -37,12 +37,15 @@ Start here:
 
 Current implementation frontier:
 
+- [`design-review/197-private-rootless-linux-run-proof.md`](design-review/197-private-rootless-linux-run-proof.md)
+  closes one private zero-setup rootless execution mechanism and hostile
+  corpus, including a real Run/1 exchange and coordinator-loss cleanup. It
+  does not yet close installed acquisition or the admitted Project Session
+  join.
 - [`design-review/196-zero-setup-rootless-product-boundary.md`](design-review/196-zero-setup-rootless-product-boundary.md)
   removes Jig-specific host setup from the product. Each Run must prove and
   consume a complete pre-existing unprivileged envelope or fail with
-  `SANDBOX_UNAVAILABLE`. The current development sandbox lacks the generic
-  rootless user-service/cgroup and patched-Bubblewrap capabilities needed to
-  execute that proof.
+  `SANDBOX_UNAVAILABLE`.
 - [`design-review/195-private-native-root-run-join.md`](design-review/195-private-native-root-run-join.md)
   closes the private root-only join from one exact package-local Bun
   preparation through authenticated prepared-tree materialization and final
