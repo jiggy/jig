@@ -68,6 +68,7 @@
     "test": "bun test",
     "test:package": "bun run build && bun test/package-smoke.ts",
     "test:linux-cgroup:proof-host": "bun run build && sh ../../scripts/preflight-linux-cgroup.sh && JIG_LINUX_CGROUP_HOSTILE=1 bun test test/linux-cgroup-backend.test.ts --timeout 120000",
+    "test:linux-rootless:proof-host": "bun run build && JIG_LINUX_ROOTLESS_HOSTILE=1 bun test test/linux-rootless-run.test.ts --timeout 30000",
     "check": "bun run build && bun test"
   },
   "dependencies": {
