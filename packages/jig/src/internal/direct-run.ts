@@ -14,8 +14,8 @@ import { classifyPrivateBunRetainedDependencies } from "./bun-native-preparation
 import {
   requirePrivateRuntimeSupportObservation,
   type PrivateRuntimeSupportObservation,
-} from "./agent-sandbox-runtime-support.js";
-import type { PrivateLinuxCgroupBackend } from "./linux-cgroup-backend.js";
+} from "./runtime-support.js";
+import type { PrivateLinuxCgroupBackend } from "./linux-rootless-backend.js";
 import {
   planPrivatePythonDirectRun,
   requirePrivatePythonDirectRecipe,

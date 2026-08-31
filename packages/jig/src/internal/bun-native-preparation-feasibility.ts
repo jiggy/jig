@@ -3,7 +3,7 @@ import { realpath, rmdir } from "node:fs/promises";
 import {
   requirePrivateRuntimeSupportObservation,
   type PrivateRuntimeSupportObservation,
-} from "./agent-sandbox-runtime-support.js";
+} from "./runtime-support.js";
 import {
   normalizePrivateBunNativePreparedCandidate,
   type PrivateBunNativePreparedCandidate,
@@ -17,7 +17,7 @@ import {
   type PrivateLinuxCgroupBackend,
   type PrivateLinuxConfirmedEnforcementReceipt,
   type PrivateLinuxSealedOwner,
-} from "./linux-cgroup-backend.js";
+} from "./linux-rootless-backend.js";
 import { captureStoredPackage } from "./package-artifact-store.js";
 import { materializeCapturedPackage } from "./package-materialization.js";
 import {
@@ -169,8 +169,6 @@ export async function runPrivateBunNativePreparationFeasibility(input: {
           { source: materialized.root, destination: PACKAGE_DESTINATION },
           { source: workerBundlePath, destination: WORKER_DESTINATION },
         ],
-        privateProcessFilesystem: true,
-        privateRuntimeDevices: true,
         command: [
           runtimeSupport.executablePath,
           ...BUN_POLICY,

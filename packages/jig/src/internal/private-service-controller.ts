@@ -33,7 +33,7 @@ import {
   type PrivateLinuxConfirmedEnforcementReceipt,
   type PrivateLinuxComponentProcess,
   type PrivateLinuxSealedOwnerIdentity,
-} from "./linux-cgroup-backend.js";
+} from "./linux-rootless-backend.js";
 import { captureStoredPackage } from "./package-artifact-store.js";
 import {
   allocatePrivatePackageMaterialization,
@@ -147,8 +147,6 @@ export async function startPrivateBunServiceMount(input: {
         ...recipe.runtimeSupport.closureSources.map((source) => ({ source, destination: source })),
         { source: packageLease.root, destination: recipe.packageDestination },
       ],
-      privateProcessFilesystem: true,
-      privateRuntimeDevices: true,
       command: [
         recipe.executablePath,
         ...recipe.bunPolicy,

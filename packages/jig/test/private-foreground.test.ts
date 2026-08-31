@@ -4,7 +4,7 @@ import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 
 import { openPrivateProjectSession } from "../src/internal/project-session-controller.js";
-import { openAgentSandboxProofHost } from "../scripts/private-proof-host.js";
+import { openRootlessProofHost } from "../scripts/private-rootless-proof-host.js";
 import { tmpdir } from "node:os";
 
 const HOSTILE = process.env.JIG_LINUX_CGROUP_HOSTILE === "1";
@@ -101,7 +101,7 @@ proofDescribe("private foreground project path", () => {
 
       const closingSession = await openPrivateProjectSession({
         directory: root,
-        host: await openAgentSandboxProofHost(),
+        host: await openRootlessProofHost(),
       });
       const acceptedApply = closingSession.apply({ planDigest: planned.planDigest });
       const closing = closingSession.close();
@@ -176,7 +176,7 @@ proofDescribe("private foreground project path", () => {
 
       const cancellationSession = await openPrivateProjectSession({
         directory: root,
-        host: await openAgentSandboxProofHost(),
+        host: await openRootlessProofHost(),
       });
       const cancelledReceipt = await cancellationSession.rootAdministration.startRun({
         submissionId: "foreground-close-cancel",
@@ -191,7 +191,7 @@ proofDescribe("private foreground project path", () => {
       });
       const cancellationRecovery = await openPrivateProjectSession({
         directory: root,
-        host: await openAgentSandboxProofHost(),
+        host: await openRootlessProofHost(),
       });
       expect(await cancellationRecovery.rootAdministration.runStatus(cancelledReceipt)).toMatchObject({
         state: "terminal",
@@ -216,7 +216,7 @@ proofDescribe("private foreground project path", () => {
       expect(await crashed.exited).toBe(137);
       const crashRecovery = await openPrivateProjectSession({
         directory: root,
-        host: await openAgentSandboxProofHost(),
+        host: await openRootlessProofHost(),
       });
       expect(await crashRecovery.rootAdministration.runStatus(crashedReceipt)).toMatchObject({
         state: "terminal",
@@ -231,7 +231,7 @@ proofDescribe("private foreground project path", () => {
       ].join("\n"));
       const planningSession = await openPrivateProjectSession({
         directory: root,
-        host: await openAgentSandboxProofHost(),
+        host: await openRootlessProofHost(),
       });
       const interruptedPlan = planningSession.plan({ lockMode: "update" });
       await waitForAnyJigCgroup();

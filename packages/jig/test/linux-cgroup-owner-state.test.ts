@@ -3,13 +3,14 @@ import { chmod, lstat, mkdir, mkdtemp, readFile, rm, unlink, writeFile } from "n
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { privateDomainDigest } from "../src/internal/identity.js";
 import {
   cancelPrivateLinuxOwnerStateAllocation,
   normalizePrivateLinuxOwnerStateAllocationIdentity,
   planPrivateLinuxOwnerStateAllocation,
   PrivateLinuxFenceUnconfirmedError,
   releasePrivateLinuxOwnerState,
-} from "../src/internal/linux-cgroup-backend.js";
+} from "../src/internal/linux-rootless-backend.js";
 
 describe("private Linux durable owner allocation", () => {
   test("plans without creating a leaf and cancellation is durable and idempotent", async () => {
@@ -67,7 +68,7 @@ describe("private Linux durable owner allocation", () => {
       await writeFile(join(unexpected.directory, "owner.json"), "{", { mode: 0o600 });
       await writeFile(join(unexpected.directory, "keep.txt"), "caller-owned\n", { mode: 0o600 });
       await expect(cancelPrivateLinuxOwnerStateAllocation(unexpected)).rejects.toThrow(
-        "incomplete Linux owner state contains unexpected entries",
+        "rootless Linux owner record conflicts",
       );
       expect(await readFile(join(unexpected.directory, "keep.txt"), "utf8")).toBe("caller-owned\n");
 
@@ -100,12 +101,16 @@ describe("private Linux durable owner allocation", () => {
     try {
       const allocation = await planPrivateLinuxOwnerStateAllocation({ parent, name: "run-five" });
       const cancellation = await cancelPrivateLinuxOwnerStateAllocation(allocation);
-      await writeFile(join(allocation.directory, "release.json"), `${JSON.stringify({
+      const fields = {
+        kind: "private-linux-owner-state-release/1" as const,
         allocationDigest: allocation.digest,
         directoryDevice: cancellation.directoryDevice,
         directoryInode: cancellation.directoryInode,
-        kind: "private-linux-owner-state-release-marker/1",
-        proofDigest: cancellation.digest,
+        released: true as const,
+      };
+      await writeFile(join(allocation.directory, "release.json"), `${JSON.stringify({
+        ...fields,
+        digest: privateDomainDigest("JIG-Rootless-Linux-Owner-Release/1", fields),
       })}\n`, { mode: 0o600 });
       await unlink(join(allocation.directory, "owner.json"));
 

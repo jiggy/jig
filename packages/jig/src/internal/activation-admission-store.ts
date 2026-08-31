@@ -134,7 +134,7 @@ import {
   type PrivateLinuxOwnerStateReleaseReceipt,
   type PrivateLinuxPreparedOwnerIdentity,
   type PrivateLinuxSealedOwnerIdentity,
-} from "./linux-cgroup-backend.js";
+} from "./linux-rootless-backend.js";
 import {
   normalizePrivatePackageMaterializationAllocationIdentity,
   normalizePrivatePackageMaterializationLeaseIdentity,
@@ -5633,7 +5633,7 @@ function requireRootBunPreparationFenceCorrelation(
   }
   const sandbox = requireRootBunPreparationFact(before.sandbox, "sandbox");
   const expectedPreparedDigest = privateDomainDigest(
-    "JIG-Private-Linux-Prepared-Owner/1",
+    "JIG-Rootless-Linux-Prepared-Owner/1",
     sandbox.value.owner as unknown as JsonValue,
   );
   if (value.proof.sandboxDigest !== sandbox.digest ||
@@ -5653,8 +5653,6 @@ function requireRootBunPreparationOutcomeCorrelation(
         fence.value.proof.kind !== "enforcement-confirmed" ||
         fence.value.proof.receipt.stopReason !== "payload_exit" ||
         fence.value.proof.receipt.exitCode !== 0 || fence.value.proof.receipt.signal !== null ||
-        fence.value.proof.receipt.setupError !== undefined ||
-        fence.value.proof.receipt.killError !== undefined ||
         value.candidateDigest !== privateRootBunNativePreparationCandidateDigest({
           outcome: value,
           observationDigest: before.allocation.preparationObservationDigest,
@@ -9465,7 +9463,7 @@ function preparedIdentityForServiceSandbox(
   return normalizePrivateLinuxPreparedOwnerIdentity({
     kind: "private-linux-prepared-owner/1",
     digest: privateDomainDigest(
-      "JIG-Private-Linux-Prepared-Owner/1",
+      "JIG-Rootless-Linux-Prepared-Owner/1",
       owner as unknown as JsonValue,
     ),
     owner,

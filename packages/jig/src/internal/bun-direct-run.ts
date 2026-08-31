@@ -7,14 +7,14 @@ import {
 import {
   requirePrivateRuntimeSupportObservation,
   type PrivateRuntimeSupportObservation,
-} from "./agent-sandbox-runtime-support.js";
+} from "./runtime-support.js";
 import { privateDomainDigest, privateFileDigest } from "./identity.js";
 import {
   requirePrivateLinuxCgroupBackend,
   type PrivateLinuxBackendMechanismObservation,
   type PrivateLinuxCgroupBackend,
   type PrivateLinuxCgroupLimits,
-} from "./linux-cgroup-backend.js";
+} from "./linux-rootless-backend.js";
 import { captureStoredPackage } from "./package-artifact-store.js";
 import { materializeCapturedPackage } from "./package-materialization.js";
 import { canonicalJson, type JsonValue } from "../json.js";
@@ -115,7 +115,7 @@ export async function planPrivateBunDirectRun(input: {
   ]);
   const adapter = Object.freeze({ artifactDigest: adapterDigest, revision: ADAPTER_REVISION });
   const backendIdentity = Object.freeze({
-    artifactDigest: mechanism.trustedBackendDigest,
+    artifactDigest: mechanism.trustedSupervisorDigest,
     revision: mechanism.kind,
   });
   const inspectionDigest = privateDomainDigest("JIG-Private-Bun-Inspection/1", {
@@ -237,8 +237,6 @@ export async function runPrivateBunDirectRecipe(input: {
         ...recipe.runtimeSupport.closureSources.map((source) => ({ source, destination: source })),
         { source: materialized.root, destination: recipe.packageDestination },
       ],
-      privateProcessFilesystem: recipe.privateProcessFilesystem,
-      privateRuntimeDevices: recipe.privateRuntimeDevices,
       command: [
         recipe.executablePath,
         ...recipe.bunPolicy,

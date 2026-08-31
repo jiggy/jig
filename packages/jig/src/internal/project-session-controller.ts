@@ -21,7 +21,7 @@ import { createPrivateActivationCandidateV5 } from "./activation-admission.js";
 import {
   createPrivateActivationPlanningObservation,
 } from "./activation-planning.js";
-import type { PrivateRuntimeSupportObservation } from "./agent-sandbox-runtime-support.js";
+import type { PrivateRuntimeSupportObservation } from "./runtime-support.js";
 import {
   planPrivateDirectRun,
   type PrivateBunNativeRunPlanningInput,
@@ -30,7 +30,7 @@ import {
 } from "./direct-run.js";
 import { privateDomainDigest } from "./identity.js";
 import { validateJson1 } from "../json.js";
-import type { PrivateLinuxCgroupBackend } from "./linux-cgroup-backend.js";
+import type { PrivateLinuxCgroupBackend } from "./linux-rootless-backend.js";
 import { renderPrivateProjectPlanReview } from "./project-plan-review.js";
 import type { PrivateProjectPlanReview } from "./project-plan-review.js";
 import {

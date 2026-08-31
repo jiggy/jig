@@ -27,15 +27,16 @@ import {
   requirePrivateBunNativePreparationControllerObservation,
 } from "../src/internal/bun-native-preparation-controller.js";
 import {
-  observeAgentSandboxRuntimeSupport,
-} from "../src/internal/agent-sandbox-runtime-support.js";
+  observePrivateRuntimeSupport,
+  type PrivateRuntimeSupportObservation,
+} from "../src/internal/runtime-support.js";
 import {
   planPrivateDirectRun,
   requirePrivateDirectRunRecipe,
   runPrivateDirectRunRecipe,
 } from "../src/internal/direct-run.js";
 import { privateFileDigest } from "../src/internal/identity.js";
-import { PrivateLinuxCgroupBackend } from "../src/internal/linux-cgroup-backend.js";
+import { PrivateLinuxCgroupBackend } from "../src/internal/linux-rootless-backend.js";
 import { defineJig } from "../src/project/author.js";
 import { captureFlowSource, type CapturedFlowSource } from "../src/project/flow-source.js";
 import { linkPackageProject } from "../src/project/package-project.js";
@@ -55,7 +56,7 @@ const VALID_MANIFEST = JSON.stringify({
 });
 const hostPlanningTest = process.platform === "linux" &&
   process.env.AGENT_RUNTIME_RECEIPTS_DIR !== undefined &&
-  process.env.AGENT_RUNTIME_LEASE_ID !== undefined
+  process.env.AGENT_DELEGATED_CGROUP !== undefined
   ? test
   : test.skip;
 
@@ -557,41 +558,66 @@ async function withRunBinding(
 }
 
 async function unprivilegedPlanningHost(): Promise<{
-  readonly runtimeSupport: Awaited<ReturnType<typeof observeAgentSandboxRuntimeSupport>>;
+  readonly runtimeSupport: PrivateRuntimeSupportObservation;
   readonly backend: PrivateLinuxCgroupBackend;
 }> {
   const receiptsDirectory = process.env.AGENT_RUNTIME_RECEIPTS_DIR;
-  const expectedLeaseId = process.env.AGENT_RUNTIME_LEASE_ID;
-  if (receiptsDirectory === undefined || expectedLeaseId === undefined) {
+  if (receiptsDirectory === undefined) {
     throw new Error("planning test requires the retained runtime receipt");
   }
   const executablePath = await realpath("/bin/bun");
-  const runtimeSupport = await observeAgentSandboxRuntimeSupport({
-    receiptsDirectory,
-    expectedLeaseId,
+  const runtimeSupport = await observePrivateRuntimeSupport({
+    supportId: "test-host-bun",
     executablePath,
+    closureSources: await retainedClosureFixture(receiptsDirectory, executablePath),
   });
-  const relativeCgroup = (await readFile("/proc/self/cgroup", "utf8"))
-    .trim().split(":").at(-1)!;
-  const cgroupScope = dirname(await realpath(`/sys/fs/cgroup${relativeCgroup}`));
-  const shellWrapper = await realpath("/bin/sh");
-  const shellHeader = (await readFile(shellWrapper, "utf8")).split("\n", 1)[0]!;
-  if (!shellHeader.startsWith("#!/")) throw new Error("planning host lacks the expected Bash wrapper");
-  const inertExecutable = await realpath("/bin/true");
   return {
     runtimeSupport,
-    backend: new PrivateLinuxCgroupBackend({
-      cgroupScope,
-      sudoPath: inertExecutable,
-      subreaperPath: inertExecutable,
-      mknodPath: inertExecutable,
-      bunPath: executablePath,
-      bubblewrapPath: inertExecutable,
-      bashPath: shellHeader.slice(2),
-      payloadUid: process.getuid!(),
-      payloadGid: process.getgid!(),
-    }),
+    backend: new PrivateLinuxCgroupBackend({ bunPath: executablePath }),
   };
+}
+
+async function retainedClosureFixture(
+  receiptsDirectory: string,
+  executablePath: string,
+): Promise<readonly string[]> {
+  const value: unknown = JSON.parse(
+    await readFile(join(receiptsDirectory, "runtime-rootfs.json"), "utf8"),
+  );
+  if (!isRecord(value) || !Array.isArray(value.closure)) {
+    throw new Error("planning test runtime receipt has no closure");
+  }
+  const closure = new Map<string, readonly string[]>();
+  for (const raw of value.closure) {
+    if (!isRecord(raw) || typeof raw.path !== "string" ||
+        !Array.isArray(raw.references) ||
+        !raw.references.every((reference) => typeof reference === "string")) {
+      throw new Error("planning test runtime receipt contains an invalid closure entry");
+    }
+    closure.set(raw.path, raw.references as readonly string[]);
+  }
+  const start = [...closure.keys()].filter((path) =>
+    executablePath === path || executablePath.startsWith(`${path}/`)
+  ).sort((left, right) => right.length - left.length)[0];
+  if (start === undefined) throw new Error("planning test Bun is outside the retained closure");
+
+  const selected = new Set<string>();
+  const pending = [start];
+  while (pending.length > 0) {
+    const path = pending.pop()!;
+    if (selected.has(path)) continue;
+    const references = closure.get(path);
+    if (references === undefined) {
+      throw new Error("planning test runtime receipt has an incomplete closure");
+    }
+    selected.add(path);
+    pending.push(...references);
+  }
+  return [...selected].sort();
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
 function packageArtifactPath(store: string, request: PrivateActivationRequest): string {

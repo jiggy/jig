@@ -16,7 +16,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { privateDomainDigest } from "../src/internal/identity.js";
-import { planPrivateLinuxOwnerStateAllocation } from "../src/internal/linux-cgroup-backend.js";
+import { planPrivateLinuxOwnerStateAllocation } from "../src/internal/linux-rootless-backend.js";
 import {
   decodePrivateHookRevision,
   decodePrivateHookAdmissionBoundary,
@@ -5425,7 +5425,7 @@ function testBunPreparationPlan(
   const ownerAllocation = ownerAllocationValue ?? Object.freeze({
     ...ownerFields,
     digest: privateDomainDigest(
-      "JIG-Private-Linux-Owner-State-Allocation/1",
+      "JIG-Rootless-Linux-Owner-Allocation/1",
       ownerFields,
     ),
   });
@@ -5469,8 +5469,7 @@ function testBunPreparationSandbox(
   backingDigest: string,
 ): PrivateRootBunNativePreparationFactValueMap["sandbox"] {
   const nonce = "b".repeat(24);
-  const parentName = `jig-run-${plan.backendRunId}-${nonce}`;
-  const parentCgroup = `/sys/fs/cgroup/jig/${parentName}`;
+  const delegatedCgroup = "/sys/fs/cgroup/jig";
   const ownerFields = {
     kind: "private-linux-sealed-owner/1" as const,
     runId: plan.backendRunId,
@@ -5478,19 +5477,13 @@ function testBunPreparationSandbox(
     ownerToken: plan.ownerAllocation.ownerToken,
     mechanismDigest: allocation.backendMechanismDigest,
     sealedPlanDigest: digest("bun-preparation-sealed-plan"),
-    cgroupScope: "/sys/fs/cgroup/jig",
-    cgroupScopeDevice: "7",
-    cgroupScopeInode: "8",
-    parentName,
-    parentCgroup,
-    supervisorCgroup: `${parentCgroup}/supervisor`,
-    runCgroup: `${parentCgroup}/run`,
-    privateDeviceDirectory: `/dev/.jig-${parentName}-devices`,
+    delegatedCgroup,
+    delegatedCgroupDevice: "7",
+    delegatedCgroupInode: "8",
+    runCgroup: `${delegatedCgroup}/jig-run-${plan.backendRunId}-${nonce}`,
     deadlineUnixMs: allocation.deadlineUnixMs,
     cancellationGraceMs: plan.cancellationGraceMs,
     cleanupTimeoutMs: 5_000,
-    trustedHelperPath: "/opt/jig/linux-cgroup-helper",
-    trustedHelperDigest: digest("bun-preparation-helper"),
     ownerStateParent: plan.ownerAllocation.parent,
     ownerStateParentDevice: plan.ownerAllocation.parentDevice,
     ownerStateParentInode: plan.ownerAllocation.parentInode,
@@ -5505,7 +5498,7 @@ function testBunPreparationSandbox(
     backingDigest,
     owner: Object.freeze({
       ...ownerFields,
-      digest: privateDomainDigest("JIG-Private-Linux-Sealed-Owner/1", ownerFields),
+      digest: privateDomainDigest("JIG-Rootless-Linux-Sealed-Owner/1", ownerFields),
     }),
   });
 }
@@ -5519,7 +5512,7 @@ function testBunPreparationPrepared(
     dispatchDigest,
     prepared: Object.freeze({
       kind: "private-linux-prepared-owner/1",
-      digest: privateDomainDigest("JIG-Private-Linux-Prepared-Owner/1", sandbox.owner),
+      digest: privateDomainDigest("JIG-Rootless-Linux-Prepared-Owner/1", sandbox.owner),
       owner: sandbox.owner,
     }),
   });
@@ -5574,7 +5567,7 @@ function testBunPreparationCancellationFence(
       reason,
       cancellation: Object.freeze({
         ...fields,
-        digest: privateDomainDigest("JIG-Private-Linux-Owner-State-Cancellation/1", fields),
+        digest: privateDomainDigest("JIG-Rootless-Linux-Owner-Cancellation/1", fields),
       }),
     }),
   });
@@ -5667,7 +5660,7 @@ function testBunPreparationRelease(
     };
     ownerRelease = Object.freeze({
       ...fields,
-      digest: privateDomainDigest("JIG-Private-Linux-Owner-State-Release/1", fields),
+      digest: privateDomainDigest("JIG-Rootless-Linux-Owner-Release/1", fields),
     });
   }
   return Object.freeze({
@@ -6076,7 +6069,7 @@ function installAcknowledgedServiceMount(
   };
   const ownerAllocation = {
     ...ownerFields,
-    digest: privateDomainDigest("JIG-Private-Linux-Owner-State-Allocation/1", ownerFields),
+    digest: privateDomainDigest("JIG-Rootless-Linux-Owner-Allocation/1", ownerFields),
   };
   const packageAllocation = {
     kind: "private-package-materialization-allocation/1" as const,
@@ -6108,8 +6101,7 @@ function installAcknowledgedServiceMount(
   });
   const runId = `service-${hexadecimal.slice(0, 40)}`;
   const nonce = "b".repeat(24);
-  const parentName = `jig-run-${runId}-${nonce}`;
-  const parentCgroup = `/sys/fs/cgroup/jig/${parentName}`;
+  const delegatedCgroup = "/sys/fs/cgroup/jig";
   const sealedFields = {
     kind: "private-linux-sealed-owner/1" as const,
     runId,
@@ -6117,19 +6109,13 @@ function installAcknowledgedServiceMount(
     ownerToken: ownerAllocation.ownerToken,
     mechanismDigest: digest("mechanism"),
     sealedPlanDigest: digest("sealed-plan"),
-    cgroupScope: "/sys/fs/cgroup/jig",
-    cgroupScopeDevice: "7",
-    cgroupScopeInode: "8",
-    parentName,
-    parentCgroup,
-    supervisorCgroup: `${parentCgroup}/supervisor`,
-    runCgroup: `${parentCgroup}/run`,
-    privateDeviceDirectory: `/dev/.jig-${parentName}-devices`,
+    delegatedCgroup,
+    delegatedCgroupDevice: "7",
+    delegatedCgroupInode: "8",
+    runCgroup: `${delegatedCgroup}/jig-run-${runId}-${nonce}`,
     deadlineUnixMs: allocation.effectiveDeadlineUnixMs,
     cancellationGraceMs: plan.cancellationGraceMs,
     cleanupTimeoutMs: 5_000,
-    trustedHelperPath: "/opt/jig/linux-cgroup-helper",
-    trustedHelperDigest: digest("helper"),
     ownerStateParent: ownerAllocation.parent,
     ownerStateParentDevice: ownerAllocation.parentDevice,
     ownerStateParentInode: ownerAllocation.parentInode,
@@ -6141,7 +6127,7 @@ function installAcknowledgedServiceMount(
   };
   const sealed = {
     ...sealedFields,
-    digest: privateDomainDigest("JIG-Private-Linux-Sealed-Owner/1", sealedFields),
+    digest: privateDomainDigest("JIG-Rootless-Linux-Sealed-Owner/1", sealedFields),
   };
   const sandbox = normalizePrivateServiceMountSandbox({
     kind: "private-service-mount-sandbox/1",
@@ -6152,7 +6138,7 @@ function installAcknowledgedServiceMount(
   });
   const preparedOwner = {
     kind: "private-linux-prepared-owner/1" as const,
-    digest: privateDomainDigest("JIG-Private-Linux-Prepared-Owner/1", sealed),
+    digest: privateDomainDigest("JIG-Rootless-Linux-Prepared-Owner/1", sealed),
     owner: sealed,
   };
   const prepared = normalizePrivateServiceMountPrepared({
@@ -6291,7 +6277,7 @@ function ownerReleaseForInstalledMount(installed: ReturnType<typeof installAckno
   };
   return Object.freeze({
     ...fields,
-    digest: privateDomainDigest("JIG-Private-Linux-Owner-State-Release/1", fields),
+    digest: privateDomainDigest("JIG-Rootless-Linux-Owner-Release/1", fields),
   });
 }
 

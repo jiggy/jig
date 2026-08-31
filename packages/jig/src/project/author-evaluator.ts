@@ -7,11 +7,11 @@ import {
   PrivateLinuxCgroupBackend,
   type PrivateLinuxCgroupLimits,
   type PrivateLinuxReadOnlyMount,
-} from "../internal/linux-cgroup-backend.js";
+} from "../internal/linux-rootless-backend.js";
 import {
   requirePrivateRuntimeSupportObservation,
   type PrivateRuntimeSupportObservation,
-} from "../internal/agent-sandbox-runtime-support.js";
+} from "../internal/runtime-support.js";
 import { materializeCapturedPackage } from "../internal/package-materialization.js";
 import {
   canonicalJson,
@@ -43,7 +43,7 @@ const MAX_STDERR_BYTES = 64 * 1024;
 const MAX_STDOUT_BYTES = JSON_1_LIMITS.bytes + 16 * 1024;
 const EVALUATOR_LIMIT_POLICY = Object.freeze({
   memoryBytes: 256 * 1024 * 1024,
-  pids: 32,
+  pids: 64,
   cpuQuotaMicros: 50_000,
   cpuPeriodMicros: 100_000,
   wallClockCeilingMs: 3_000,
@@ -94,19 +94,19 @@ export interface EvaluatorProfile {
   readonly runtimeSupport: {
     readonly kind: "runtime-support-observation/1";
     readonly digest: string;
-    readonly leaseId: string;
-    readonly receiptDigest: string;
+    readonly supportId: string;
   };
   readonly buildOptions: "bun-cjs-closed-static-closure/1";
   readonly sandbox: {
-    readonly kind: "linux-cgroup-v2-bubblewrap/1";
-    readonly helperDigest: string;
+    readonly kind: "linux-rootless-cgroup-v2-bubblewrap/1";
+    readonly mechanismDigest: string;
+    readonly sealedPlanDigest: string;
     readonly bubblewrapPath: string;
     readonly bubblewrapDigest: string;
     readonly coordinatorRuntimePath: string;
     readonly coordinatorRuntimeDigest: string;
-    readonly trustedLauncherPath: string;
-    readonly trustedLauncherDigest: string;
+    readonly supervisorPath: string;
+    readonly supervisorDigest: string;
     readonly payloadUid: number;
     readonly payloadGid: number;
     /** Stable policy only; invocation-local absolute deadlines are enforcement evidence. */
@@ -140,9 +140,9 @@ export interface EvaluatedAuthorDeclaration<
   readonly value: Value;
   readonly enforcement: {
     readonly cgroup: {
-      readonly parentCgroup: string;
       readonly runCgroup: string;
       readonly payloadPid: number;
+      readonly supervisorPid: number;
     };
     readonly terminal: {
       readonly reason: "payload_exit";
@@ -198,7 +198,6 @@ export async function evaluateAuthorClosure(
   try {
     const [
       workerBytes,
-      helperBytes,
       sdkBytes,
       hookSdkBytes,
       publicSchemaBytes,
@@ -206,7 +205,6 @@ export async function evaluateAuthorClosure(
       runtimeDigest,
     ] = await Promise.all([
       toolchain.read("internal/project-evaluator-worker.js"),
-      toolchain.read("internal/linux-cgroup-helper.js"),
       toolchain.read("internal/project-evaluator-sdk.bundle.js"),
       toolchain.read("internal/experimental-hook-evaluator-sdk.bundle.js"),
       toolchain.read("project-authoring-1.schema.json"),
@@ -234,8 +232,7 @@ export async function evaluateAuthorClosure(
       runtimeSupport: Object.freeze({
         kind: runtimeSupport.kind,
         digest: runtimeSupport.digest,
-        leaseId: runtimeSupport.lease.id,
-        receiptDigest: runtimeSupport.lease.receiptDigest,
+        supportId: runtimeSupport.supportId,
       }),
       buildOptions: "bun-cjs-closed-static-closure/1" as const,
     });
@@ -266,9 +263,6 @@ export async function evaluateAuthorClosure(
         ...runtimeMounts,
         { source: materialized.root, destination: "/jig-evaluator" },
       ],
-      privateProcessFilesystem: true,
-      privateRuntimeDevices: true,
-      trustedHelperPath: `${materialized.root}/internal/linux-cgroup-helper.js`,
       command: [bunPath, "/jig-evaluator/internal/project-evaluator-worker.js"],
     }, signal).catch((error) => unavailable(
       "PROJECT_EVALUATOR_UNAVAILABLE",
@@ -276,7 +270,6 @@ export async function evaluateAuthorClosure(
     ));
     if (!component.envelope.privateProcessFilesystem || !component.envelope.privateRuntimeDevices ||
         !sameEvaluatorLimits(component.envelope.limits, limits) ||
-        component.envelope.trustedHelperDigest !== digestBytes(helperBytes) ||
         component.envelope.trustedCoordinatorBunDigest !== runtimeDigest) {
       await component.terminate().catch(() => undefined);
       const completion = await component.completion.catch((error) => unavailable(
@@ -291,20 +284,21 @@ export async function evaluateAuthorClosure(
       }
       unavailable(
         "PROJECT_EVALUATOR_UNAVAILABLE",
-        "evaluator envelope did not preserve its sealed helper, runtime, or root-only predicates",
+        "evaluator envelope did not preserve its sealed runtime or root-only predicates",
       );
     }
     const profile: EvaluatorProfile = Object.freeze({
       ...profileBase,
       sandbox: Object.freeze({
         kind: component.envelope.kind,
-        helperDigest: component.envelope.trustedHelperDigest,
+        mechanismDigest: component.envelope.mechanismDigest,
+        sealedPlanDigest: component.envelope.sealedPlanDigest,
         bubblewrapPath: component.envelope.trustedBubblewrapPath,
         bubblewrapDigest: component.envelope.trustedBubblewrapDigest,
         coordinatorRuntimePath: component.envelope.trustedCoordinatorBunPath,
         coordinatorRuntimeDigest: component.envelope.trustedCoordinatorBunDigest,
-        trustedLauncherPath: component.envelope.trustedLauncherPath,
-        trustedLauncherDigest: component.envelope.trustedLauncherDigest,
+        supervisorPath: component.envelope.trustedSupervisorPath,
+        supervisorDigest: component.envelope.trustedSupervisorDigest,
         payloadUid: component.envelope.payloadUid,
         payloadGid: component.envelope.payloadGid,
         limits: EVALUATOR_LIMIT_POLICY,
@@ -332,8 +326,11 @@ export async function evaluateAuthorClosure(
           entryProjectPath,
         );
       }
-      if ((evidence.memoryEvents.max ?? 0) > 0 || (evidence.pidsEvents.max ?? 0) > 0) {
-        invalid("PROJECT_EVALUATION_LIMIT", "evaluator reached a hard resource limit", entryProjectPath);
+      if ((evidence.memoryEvents.max ?? 0) > 0) {
+        invalid("PROJECT_EVALUATION_LIMIT", "evaluator reached its hard memory limit", entryProjectPath);
+      }
+      if ((evidence.pidsEvents.max ?? 0) > 0) {
+        invalid("PROJECT_EVALUATION_LIMIT", "evaluator reached its hard process limit", entryProjectPath);
       }
       if (terminationReason === "deadline") {
         invalid("PROJECT_EVALUATION_LIMIT", "evaluator reached its hard wall deadline", entryProjectPath);

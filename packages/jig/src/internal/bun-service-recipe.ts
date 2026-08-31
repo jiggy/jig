@@ -7,13 +7,13 @@ import {
 import {
   requirePrivateRuntimeSupportObservation,
   type PrivateRuntimeSupportObservation,
-} from "./agent-sandbox-runtime-support.js";
+} from "./runtime-support.js";
 import { privateDomainDigest, privateFileDigest } from "./identity.js";
 import {
   requirePrivateLinuxCgroupBackend,
   type PrivateLinuxBackendMechanismObservation,
   type PrivateLinuxCgroupBackend,
-} from "./linux-cgroup-backend.js";
+} from "./linux-rootless-backend.js";
 import { captureStoredPackage } from "./package-artifact-store.js";
 import { type JsonValue } from "../json.js";
 import { inspectCapturedPackage } from "../package/inspect.js";
@@ -184,7 +184,7 @@ export async function planPrivateBunService(input: {
   ]);
   const adapter = Object.freeze({ artifactDigest: adapterDigest, revision: ADAPTER_REVISION });
   const backendIdentity = Object.freeze({
-    artifactDigest: mechanism.trustedBackendDigest,
+    artifactDigest: mechanism.trustedSupervisorDigest,
     revision: mechanism.kind,
   });
   const authorityDigest = privateDomainDigest("JIG-Private-Bun-Service-Authority/1", {

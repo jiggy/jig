@@ -30,7 +30,7 @@ import {
   type PrivateLinuxOwnerStateReleaseReceipt,
   type PrivateLinuxPreparedOwnerIdentity,
   type PrivateLinuxSealedOwnerIdentity,
-} from "./linux-cgroup-backend.js";
+} from "./linux-rootless-backend.js";
 import {
   normalizePrivatePackageMaterializationAllocationIdentity,
   normalizePrivatePackageMaterializationLeaseIdentity,

@@ -160,7 +160,7 @@ describe("private Service durable state", () => {
     expect(() => normalizePrivateServiceMountPrepared({
       ...state.prepared,
       prepared: { ...state.prepared.prepared, digest: id("f") },
-    })).toThrow("prepared Linux owner identity is invalid");
+    })).toThrow("prepared rootless Linux owner is invalid");
   });
 
   test("makes Mount terminal classification and readiness evidence exact", () => {
@@ -775,15 +775,14 @@ function ownerAllocation() {
   };
   return {
     ...fields,
-    digest: domainDigest("JIG-Private-Linux-Owner-State-Allocation/1", fields),
+    digest: domainDigest("JIG-Rootless-Linux-Owner-Allocation/1", fields),
   };
 }
 
 function sealedOwner(allocation: ReturnType<typeof ownerAllocation>, deadlineUnixMs: number) {
   const nonce = "b".repeat(24);
   const runId = "service-counter";
-  const parentName = `jig-run-${runId}-${nonce}`;
-  const parentCgroup = `/sys/fs/cgroup/jig/${parentName}`;
+  const delegatedCgroup = "/sys/fs/cgroup/jig";
   const fields = {
     kind: "private-linux-sealed-owner/1" as const,
     runId,
@@ -791,19 +790,13 @@ function sealedOwner(allocation: ReturnType<typeof ownerAllocation>, deadlineUni
     ownerToken: "c".repeat(64),
     mechanismDigest: id("a"),
     sealedPlanDigest: id("b"),
-    cgroupScope: "/sys/fs/cgroup/jig",
-    cgroupScopeDevice: "7",
-    cgroupScopeInode: "8",
-    parentName,
-    parentCgroup,
-    supervisorCgroup: `${parentCgroup}/supervisor`,
-    runCgroup: `${parentCgroup}/run`,
-    privateDeviceDirectory: `/dev/.jig-${parentName}-devices`,
+    delegatedCgroup,
+    delegatedCgroupDevice: "7",
+    delegatedCgroupInode: "8",
+    runCgroup: `${delegatedCgroup}/jig-run-${runId}-${nonce}`,
     deadlineUnixMs,
     cancellationGraceMs: 1_000,
     cleanupTimeoutMs: 5_000,
-    trustedHelperPath: "/opt/jig/linux-cgroup-helper",
-    trustedHelperDigest: id("c"),
     ownerStateParent: allocation.parent,
     ownerStateParentDevice: allocation.parentDevice,
     ownerStateParentInode: allocation.parentInode,
@@ -815,14 +808,14 @@ function sealedOwner(allocation: ReturnType<typeof ownerAllocation>, deadlineUni
   };
   return {
     ...fields,
-    digest: domainDigest("JIG-Private-Linux-Sealed-Owner/1", fields),
+    digest: domainDigest("JIG-Rootless-Linux-Sealed-Owner/1", fields),
   };
 }
 
 function preparedOwnerIdentity(owner: ReturnType<typeof sealedOwner>) {
   return {
     kind: "private-linux-prepared-owner/1" as const,
-    digest: domainDigest("JIG-Private-Linux-Prepared-Owner/1", owner),
+    digest: domainDigest("JIG-Rootless-Linux-Prepared-Owner/1", owner),
     owner,
   };
 }
@@ -838,7 +831,7 @@ function ownerCancellation() {
   };
   return {
     ...fields,
-    digest: domainDigest("JIG-Private-Linux-Owner-State-Cancellation/1", fields),
+    digest: domainDigest("JIG-Rootless-Linux-Owner-Cancellation/1", fields),
   };
 }
 
@@ -852,7 +845,7 @@ function ownerReleaseReceipt(allocationDigest: string) {
   };
   return {
     ...fields,
-    digest: domainDigest("JIG-Private-Linux-Owner-State-Release/1", fields),
+    digest: domainDigest("JIG-Rootless-Linux-Owner-Release/1", fields),
   };
 }
 

@@ -41,7 +41,7 @@ import {
   type PrivateLinuxOwnerStateAllocationIdentity,
   type PrivateLinuxOwnerStateReleaseReceipt,
   type PrivateLinuxSealedOwnerIdentity,
-} from "./linux-cgroup-backend.js";
+} from "./linux-rootless-backend.js";
 import { captureStoredPackage } from "./package-artifact-store.js";
 import {
   allocatePrivatePackageMaterialization,
@@ -607,8 +607,6 @@ function backendPlan(
       runId,
       limits,
       readOnlyMounts,
-      privateProcessFilesystem: true,
-      privateRuntimeDevices: true,
       command: [
         bun.executablePath,
         ...BUN_POLICY,

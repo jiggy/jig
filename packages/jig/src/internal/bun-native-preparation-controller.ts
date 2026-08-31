@@ -20,7 +20,7 @@ import {
 import {
   requirePrivateRuntimeSupportObservation,
   type PrivateRuntimeSupportObservation,
-} from "./agent-sandbox-runtime-support.js";
+} from "./runtime-support.js";
 import {
   normalizePrivateBunNativePreparedCandidate,
 } from "./bun-native-prepared-candidate.js";
@@ -45,7 +45,7 @@ import {
   type PrivateLinuxCgroupBackend,
   type PrivateLinuxComponentProcess,
   type PrivateLinuxConfirmedEnforcementReceipt,
-} from "./linux-cgroup-backend.js";
+} from "./linux-rootless-backend.js";
 import {
   captureStoredPackage,
   normalizePackageArtifactRef,
@@ -310,8 +310,6 @@ async function executeCreated(input: ControllerInput & {
         { source: lease.root, destination: PACKAGE_DESTINATION },
         { source: input.workerBundlePath, destination: WORKER_DESTINATION },
       ],
-      privateProcessFilesystem: true,
-      privateRuntimeDevices: true,
       command: [
         input.runtimeSupport.executablePath,
         ...BUN_POLICY,

@@ -8,7 +8,7 @@ import {
 import {
   requirePrivateRuntimeSupportObservation,
   type PrivateRuntimeSupportObservation,
-} from "./agent-sandbox-runtime-support.js";
+} from "./runtime-support.js";
 import {
   requirePrivateBunNativePreparationObservation,
   type PrivateBunNativePreparationObservation,
@@ -23,7 +23,7 @@ import {
   requirePrivateLinuxCgroupBackend,
   type PrivateLinuxBackendMechanismObservation,
   type PrivateLinuxCgroupBackend,
-} from "./linux-cgroup-backend.js";
+} from "./linux-rootless-backend.js";
 import type { JsonValue } from "../json.js";
 import {
   requirePrivateActivationRequest,
@@ -128,7 +128,7 @@ export async function planPrivateBunNativeRun(input: {
 
   const adapter = Object.freeze({ artifactDigest: adapterDigest, revision: ADAPTER_REVISION });
   const backendIdentity = Object.freeze({
-    artifactDigest: mechanism.trustedBackendDigest,
+    artifactDigest: mechanism.trustedSupervisorDigest,
     revision: mechanism.kind,
   });
   const preparationPlanDigest = logicalPreparationPlanDigest(

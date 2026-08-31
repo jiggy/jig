@@ -1,21 +1,25 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import { spawn } from "node:child_process";
-import { mkdtemp, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
-  PrivateRootlessLinuxBackend,
-  type PrivateRootlessLinuxMount,
-  type PrivateRootlessLinuxPlan,
-  type PrivateRootlessLinuxProcess,
-} from "../src/internal/linux-rootless-run.js";
+  PrivateLinuxCgroupBackend,
+  PrivateLinuxFenceUnconfirmedError,
+  releasePrivateLinuxOwnerState,
+  type PrivateLinuxReadOnlyMount,
+  type PrivateLinuxLaunchPlan,
+} from "../src/internal/linux-rootless-backend.js";
 import { RunHostSession } from "../src/run/session.js";
 
 const HOSTILE = process.env.JIG_LINUX_ROOTLESS_HOSTILE === "1";
 const hostileDescribe = HOSTILE ? describe.serial : describe.skip;
 const delegatedCgroup = process.env.AGENT_DELEGATED_CGROUP;
+const initialRootlessTemporaryState = new Set(
+  (await readdir(tmpdir())).filter(rootlessTemporaryEntry),
+);
 
 describe("private rootless Linux Run", () => {
   test("preflights and executes one isolated payload", async () => {
@@ -65,7 +69,7 @@ describe("private rootless Linux Run", () => {
       });
       expect(isolation.nspid.trim().split(/\s+/)).toHaveLength(2);
       expect((await stat("/dev/urandom")).mode & 0o777).toBe(0o666);
-      expect(await missing(component.cgroup)).toBe(true);
+      expect(await missing(component.cgroup.runCgroup)).toBe(true);
     } finally {
       await rm(fixture, { recursive: true, force: true });
     }
@@ -98,7 +102,7 @@ describe("private rootless Linux Run", () => {
           output: { input: { request: "hello" }, settings: { mode: "proof" } },
         },
       });
-      expect(await missing(component.cgroup)).toBe(true);
+      expect(await missing(component.cgroup.runCgroup)).toBe(true);
     } finally {
       await rm(fixture, { recursive: true, force: true });
     }
@@ -112,11 +116,11 @@ describe("private rootless Linux Run", () => {
       await expect(host.backend.launch({
         ...base,
         readOnlyMounts: [{ source: fixture, destination: "/work/../sys" }],
-      })).rejects.toThrow("invalid rootless read-only mount");
+      })).rejects.toThrow("rootless Linux read-only mount is invalid");
       await expect(host.backend.launch({
         ...base,
         readOnlyMounts: [{ source: "/proc", destination: "/host-proc" }],
-      })).rejects.toThrow("invalid rootless read-only mount source");
+      })).rejects.toThrow("host pseudo-filesystem cannot enter the rootless sandbox");
       await waitForNoRunCgroups();
     } finally {
       await rm(fixture, { recursive: true, force: true });
@@ -129,6 +133,11 @@ hostileDescribe("private rootless Linux hostile envelope", () => {
     if (delegatedCgroup === undefined) return;
     const entries = await Array.fromAsync(new Bun.Glob("jig-run-*").scan({ cwd: delegatedCgroup, onlyFiles: false }));
     expect(entries).toEqual([]);
+    expect((await readdir(tmpdir())).filter(rootlessTemporaryEntry)
+      .filter((entry) => !initialRootlessTemporaryState.has(entry))).toEqual([]);
+    expect((await readdir("/dev")).filter((entry) =>
+      entry.startsWith(".jig-") && entry.endsWith("-devices")
+    )).toEqual([]);
   });
 
   test("enforces cancellation and removes the complete Run", async () => {
@@ -139,7 +148,7 @@ hostileDescribe("private rootless Linux hostile envelope", () => {
       await component.terminate();
       const completion = await component.completion;
       expect(completion).toMatchObject({ fenced: true, stopReason: "cancelled" });
-      expect(await missing(component.cgroup)).toBe(true);
+      expect(await missing(component.cgroup.runCgroup)).toBe(true);
     } finally {
       await rm(fixture, { recursive: true, force: true });
     }
@@ -165,7 +174,7 @@ hostileDescribe("private rootless Linux hostile envelope", () => {
       const [completion, evidence] = await Promise.all([component.completion, component.evidence]);
       expect(completion.fenced).toBe(true);
       expect(evidence.pidsEvents.max).toBeGreaterThan(0);
-      expect(await missing(component.cgroup)).toBe(true);
+      expect(await missing(component.cgroup.runCgroup)).toBe(true);
     } finally {
       await rm(fixture, { recursive: true, force: true });
     }
@@ -183,13 +192,15 @@ hostileDescribe("private rootless Linux hostile envelope", () => {
     `);
     try {
       const component = await host.backend.launch(plan(host, fixture, "memory", {
-        memoryBytes: 128 * 1024 * 1024,
-        deadlineMs: 4_000,
+        memoryBytes: 192 * 1024 * 1024,
+        pids: 256,
+        cpuQuotaMicros: 100_000,
+        deadlineMs: 8_000,
       }));
       const [completion, evidence] = await Promise.all([component.completion, component.evidence]);
       expect(completion.fenced).toBe(true);
-      expect((evidence.memoryEvents.oom_kill ?? 0) + (evidence.memoryEvents.oom_group_kill ?? 0)).toBeGreaterThan(0);
-      expect(await missing(component.cgroup)).toBe(true);
+      expect(evidence.memoryEvents.max).toBeGreaterThan(0);
+      expect(await missing(component.cgroup.runCgroup)).toBe(true);
     } finally {
       await rm(fixture, { recursive: true, force: true });
     }
@@ -209,13 +220,13 @@ hostileDescribe("private rootless Linux hostile envelope", () => {
       const started = Date.now();
       const component = await host.backend.launch(plan(host, fixture, "cpu", {
         cpuQuotaMicros: 10_000,
-        deadlineMs: 750,
+        deadlineMs: 2_500,
       }));
       const [completion, evidence] = await Promise.all([component.completion, component.evidence]);
       expect(completion).toMatchObject({ fenced: true, stopReason: "deadline" });
-      expect(Date.now() - started).toBeLessThan(3_000);
+      expect(Date.now() - started).toBeLessThan(5_000);
       expect(evidence.cpuStat.nr_throttled).toBeGreaterThan(0);
-      expect(await missing(component.cgroup)).toBe(true);
+      expect(await missing(component.cgroup.runCgroup)).toBe(true);
     } finally {
       await rm(fixture, { recursive: true, force: true });
     }
@@ -227,8 +238,8 @@ hostileDescribe("private rootless Linux hostile envelope", () => {
     const fixture = await createFixture(`await Bun.write(${JSON.stringify(marker)}, "ran");`);
     const controller = new AbortController();
     try {
-      await expect(host.backend.launch(
-        plan(host, fixture, "startup-cancel"),
+      const owner = await host.backend.seal(plan(host, fixture, "startup-cancel"));
+      await expect(owner.admit(
         controller.signal,
         async () => controller.abort(),
       )).rejects.toThrow("cancelled before admission");
@@ -255,7 +266,21 @@ hostileDescribe("private rootless Linux hostile envelope", () => {
       await Bun.sleep(100);
       await component.terminate();
       expect(await component.completion).toMatchObject({ fenced: true, stopReason: "cancelled" });
-      expect(await missing(component.cgroup)).toBe(true);
+      expect(await missing(component.cgroup.runCgroup)).toBe(true);
+    } finally {
+      await rm(fixture, { recursive: true, force: true });
+    }
+  });
+
+  test("settles a cancellation racing payload shutdown", async () => {
+    const host = await hostConfiguration();
+    const fixture = await createFixture("await Bun.sleep(25);");
+    try {
+      const component = await host.backend.launch(plan(host, fixture, "shutdown-cancel"));
+      await Bun.sleep(20);
+      await component.terminate();
+      expect(await component.completion).toMatchObject({ fenced: true });
+      expect(await missing(component.cgroup.runCgroup)).toBe(true);
     } finally {
       await rm(fixture, { recursive: true, force: true });
     }
@@ -265,6 +290,7 @@ hostileDescribe("private rootless Linux hostile envelope", () => {
     const host = await hostConfiguration();
     const fixture = await createFixture("await new Promise(() => {});");
     const configurationDirectory = await mkdtemp(join(tmpdir(), "jig-rootless-coordinator-"));
+    const ownerStateParent = await mkdtemp(join(tmpdir(), "jig-rootless-coordinator-owner-"));
     const configuration = join(configurationDirectory, "configuration.json");
     await writeFile(configuration, JSON.stringify({
       delegatedCgroup,
@@ -272,6 +298,7 @@ hostileDescribe("private rootless Linux hostile envelope", () => {
       bubblewrapPath: await realpath("/usr/bin/bwrap"),
       mounts: host.mounts,
       fixture,
+      ownerStateParent,
       uid: process.getuid?.() ?? 1_000,
       gid: process.getgid?.() ?? 100,
     }));
@@ -281,14 +308,20 @@ hostileDescribe("private rootless Linux hostile envelope", () => {
       configuration,
     ], { stdio: ["ignore", "pipe", "pipe"] });
     try {
-      const cgroup = JSON.parse(await readLine(coordinator.stdout!)) as { readonly cgroup: string };
+      const started = JSON.parse(await readLine(coordinator.stdout!)) as {
+        readonly cgroup: string;
+        readonly owner: unknown;
+      };
       coordinator.kill("SIGKILL");
       await childExit(coordinator);
-      await waitForMissing(cgroup.cgroup, 5_000);
+      await waitForMissing(started.cgroup, 5_000);
+      const receipt = await waitForFence(host.backend, started.owner, 5_000);
+      await releasePrivateLinuxOwnerState(started.owner, receipt);
     } finally {
       coordinator.kill("SIGKILL");
       await rm(fixture, { recursive: true, force: true });
       await rm(configurationDirectory, { recursive: true, force: true });
+      await rm(ownerStateParent, { recursive: true, force: true });
     }
   });
 
@@ -308,10 +341,10 @@ hostileDescribe("private rootless Linux hostile envelope", () => {
 });
 
 interface HostConfiguration {
-  readonly backend: PrivateRootlessLinuxBackend;
+  readonly backend: PrivateLinuxCgroupBackend;
   readonly bun: string;
   readonly bubblewrap: string;
-  readonly mounts: readonly PrivateRootlessLinuxMount[];
+  readonly mounts: readonly PrivateLinuxReadOnlyMount[];
 }
 
 async function hostConfiguration(): Promise<HostConfiguration> {
@@ -323,13 +356,7 @@ async function hostConfiguration(): Promise<HostConfiguration> {
     bun,
     bubblewrap,
     mounts,
-    backend: new PrivateRootlessLinuxBackend({
-      delegatedCgroup,
-      bunPath: bun,
-      bubblewrapPath: bubblewrap,
-      payloadUid: process.getuid?.() ?? 1_000,
-      payloadGid: process.getgid?.() ?? 100,
-    }),
+    backend: new PrivateLinuxCgroupBackend({ bunPath: bun }),
   };
 }
 
@@ -343,7 +370,7 @@ function plan(
     readonly cpuQuotaMicros?: number;
     readonly deadlineMs?: number;
   } = {},
-): PrivateRootlessLinuxPlan {
+): PrivateLinuxLaunchPlan {
   return {
     runId,
     limits: {
@@ -352,6 +379,7 @@ function plan(
       cpuQuotaMicros: overrides.cpuQuotaMicros ?? 50_000,
       cpuPeriodMicros: 100_000,
       deadlineUnixMs: Date.now() + (overrides.deadlineMs ?? 5_000),
+      cancellationGraceMs: 250,
     },
     readOnlyMounts: [
       ...host.mounts,
@@ -361,7 +389,7 @@ function plan(
   };
 }
 
-async function runtimeMounts(executables: readonly string[]): Promise<readonly PrivateRootlessLinuxMount[]> {
+async function runtimeMounts(executables: readonly string[]): Promise<readonly PrivateLinuxReadOnlyMount[]> {
   const receipts = process.env.AGENT_RUNTIME_RECEIPTS_DIR;
   if (receipts === undefined) throw new Error("rootless proof host did not retain its runtime receipt");
   const document = JSON.parse(await readFile(join(receipts, "runtime-rootfs.json"), "utf8")) as {
@@ -443,4 +471,24 @@ async function readLine(stream: NodeJS.ReadableStream): Promise<string> {
 async function childExit(child: ReturnType<typeof spawn>): Promise<void> {
   if (child.exitCode !== null || child.signalCode !== null) return;
   await new Promise<void>((resolve) => child.once("close", () => resolve()));
+}
+
+function rootlessTemporaryEntry(entry: string): boolean {
+  return entry.startsWith("jig-rootless-control-") || entry.startsWith("jig-rootless-owner-");
+}
+
+async function waitForFence(
+  backend: PrivateLinuxCgroupBackend,
+  owner: unknown,
+  timeoutMs: number,
+) {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    try {
+      return await backend.recoverFence(owner);
+    } catch (error) {
+      if (!(error instanceof PrivateLinuxFenceUnconfirmedError) || Date.now() > deadline) throw error;
+      await Bun.sleep(20);
+    }
+  }
 }

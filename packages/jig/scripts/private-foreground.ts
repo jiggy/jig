@@ -7,7 +7,7 @@ import {
   type ProjectSession,
 } from "../src/administration/project.js";
 import { openPrivateProjectSession } from "../src/internal/project-session-controller.js";
-import { openAgentSandboxProofHost } from "./private-proof-host.js";
+import { openRootlessProofHost } from "./private-rootless-proof-host.js";
 
 // Proof-host dogfood only. This file is intentionally outside src/, exports no
 // API, and must not become a shortcut around a future reviewed control plane.
@@ -56,7 +56,7 @@ async function withProjectSession<Value>(
 ): Promise<Value> {
   const session = await openPrivateProjectSession({
     directory,
-    host: await openAgentSandboxProofHost(),
+    host: await openRootlessProofHost(),
   });
   let operationFailed = false;
   let operationFailure: unknown;
