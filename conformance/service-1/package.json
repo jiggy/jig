@@ -1,8 +1,0 @@
-{
-  "name": "@flowmd/service-1-conformance",
-  "private": true,
-  "type": "module",
-  "devDependencies": {
-    "ajv": "8.17.1"
-  }
-}

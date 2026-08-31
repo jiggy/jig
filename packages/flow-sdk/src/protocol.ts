@@ -23,21 +23,6 @@ export interface RunParams {
   readonly deadlineUnixMs: number;
 }
 
-export interface ServiceMountParams {
-  readonly protocol: "service/1";
-  readonly settings: JsonObject;
-  readonly attachments: Readonly<Record<string, Attachment>>;
-  readonly scratch: string;
-  readonly startupDeadlineUnixMs: number;
-}
-
-export interface ServiceInvokeParams {
-  readonly exportName: string;
-  readonly method: string;
-  readonly input: JsonValue;
-  readonly deadlineUnixMs: number;
-}
-
 export interface RequestMessage {
   readonly jsonrpc: "2.0";
   readonly id: string;
@@ -230,63 +215,12 @@ export function validateEffectCall(call: EffectCall): JsonObject {
   };
 }
 
-export function parseServiceMountParams(value: JsonValue): ServiceMountParams {
-  const object = requireObject(value, "service/mount params");
-  requireExactKeys(object, [
-    "protocol",
-    "settings",
-    "attachments",
-    "scratch",
-    "startupDeadlineUnixMs",
-  ]);
-  if (object.protocol !== "service/1") throw new Error("unsupported Service protocol");
-  const settings = requireObject(object.settings as JsonValue, "settings");
-  const attachments = parseAttachments(object.attachments as JsonValue);
-  if (typeof object.scratch !== "string" || object.scratch.length === 0) {
-    throw new Error("scratch must be nonempty");
-  }
-  requireDeadline(object.startupDeadlineUnixMs as JsonValue, "startupDeadlineUnixMs");
-  return {
-    protocol: "service/1",
-    settings,
-    attachments,
-    scratch: object.scratch,
-    startupDeadlineUnixMs: object.startupDeadlineUnixMs as number,
-  };
-}
-
-export function parseServiceInvokeParams(value: JsonValue): ServiceInvokeParams {
-  const object = requireObject(value, "service/invoke params");
-  requireExactKeys(object, ["export", "method", "input", "deadlineUnixMs"]);
-  requireDeadline(object.deadlineUnixMs as JsonValue, "deadlineUnixMs");
-  return {
-    exportName: requireLocalName(object.export as JsonValue),
-    method: requireLocalName(object.method as JsonValue),
-    input: object.input as JsonValue,
-    deadlineUnixMs: object.deadlineUnixMs as number,
-  };
-}
-
 export function attributedFlowCall(ownerRequestId: string, call: FlowCall): JsonObject {
   return { ownerRequestId: requireWireId(ownerRequestId), ...validateFlowCall(call) };
 }
 
 export function attributedEffectCall(ownerRequestId: string, call: EffectCall): JsonObject {
   return { ownerRequestId: requireWireId(ownerRequestId), ...validateEffectCall(call) };
-}
-
-export function serviceReadyParams(ownerRequestId: string, exports: readonly string[]): JsonObject {
-  requireWireId(ownerRequestId);
-  if (exports.length > 256) throw new Error("invalid Service export count");
-  let previous: string | undefined;
-  for (const name of exports) {
-    requireLocalName(name);
-    if (previous !== undefined && previous >= name) {
-      throw new Error("Service exports must be unique and sorted");
-    }
-    previous = name;
-  }
-  return { ownerRequestId, exports };
 }
 
 export function emptyResultMessage(id: string): JsonObject {
@@ -423,31 +357,6 @@ function requireObject(value: JsonValue, description: string): Record<string, Js
     throw new Error(`${description} must be an object`);
   }
   return value as Record<string, JsonValue>;
-}
-
-function parseAttachments(value: JsonValue): Readonly<Record<string, Attachment>> {
-  const object = requireObject(value, "attachments");
-  if (Object.keys(object).length > 256) throw new Error("too many attachments");
-  const attachments: Record<string, Attachment> = Object.create(null) as Record<string, Attachment>;
-  for (const [name, raw] of Object.entries(object)) {
-    requireLocalName(name);
-    const attachment = requireObject(raw, "attachment");
-    requireExactKeys(attachment, ["path", "access"]);
-    if (typeof attachment.path !== "string" || attachment.path.length === 0) {
-      throw new Error("attachment path must be nonempty");
-    }
-    if (attachment.access !== "read" && attachment.access !== "read-write") {
-      throw new Error("invalid attachment access");
-    }
-    attachments[name] = { path: attachment.path, access: attachment.access };
-  }
-  return attachments;
-}
-
-function requireDeadline(value: JsonValue, name: string): void {
-  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) {
-    throw new Error(`invalid ${name}`);
-  }
 }
 
 function requireExactKeys(object: Record<string, JsonValue>, expected: readonly string[]): void {

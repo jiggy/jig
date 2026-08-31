@@ -2,7 +2,7 @@
   "name": "@flowmd/sdk",
   "version": "0.0.0",
   "private": true,
-  "description": "TypeScript SDK for FLOW Run/1 with a separate Service/1 candidate subpath",
+  "description": "TypeScript SDK for FLOW Run/1",
   "type": "module",
   "sideEffects": false,
   "types": "./dist/index.d.ts",
@@ -10,10 +10,6 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
-    },
-    "./service": {
-      "types": "./dist/service.d.ts",
-      "import": "./dist/service.js"
     }
   },
   "files": [
