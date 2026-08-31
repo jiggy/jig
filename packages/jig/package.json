@@ -67,7 +67,7 @@
     "prepack": "bun run build",
     "test": "bun test",
     "test:package": "bun run build && bun test/package-smoke.ts",
-    "test:linux-rootless:proof-host": "bun run build && JIG_LINUX_ROOTLESS_HOSTILE=1 bun test test/linux-rootless-run.test.ts --timeout 30000",
+    "test:linux-rootless:proof-host": "bun run build && JIG_LINUX_ROOTLESS_HOSTILE=1 bun test test/linux-rootless-run.test.ts --timeout 30000 && JIG_LINUX_ROOTLESS_HOSTILE=1 bun test test/private-foreground.test.ts --timeout 30000",
     "test:compiled-bun:proof-host": "JIG_COMPILED_BUN_PROOF=1 bun test test/compiled-bun-runtime.test.ts --timeout 30000",
     "check": "bun run build && bun test"
   },
