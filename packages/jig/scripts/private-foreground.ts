@@ -6,8 +6,11 @@ import {
   ProjectAdministrationError,
   type ProjectSession,
 } from "../src/administration/project.js";
+import { join } from "node:path";
 import { openPrivateProjectSession } from "../src/internal/project-session-controller.js";
 import { openPrivateInstalledBunHost } from "../src/internal/installed-bun-host.js";
+
+const installedExecutable = join(import.meta.dir, "..", "bin", "jig");
 
 // Proof-host dogfood only. This file is intentionally outside src/, exports no
 // API, and must not become a shortcut around a future reviewed control plane.
@@ -56,7 +59,7 @@ async function withProjectSession<Value>(
 ): Promise<Value> {
   const session = await openPrivateProjectSession({
     directory,
-    host: await openPrivateInstalledBunHost(),
+    host: await openPrivateInstalledBunHost(installedExecutable),
   });
   let operationFailed = false;
   let operationFailure: unknown;

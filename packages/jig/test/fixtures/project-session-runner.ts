@@ -1,5 +1,6 @@
 import { openPrivateProjectSession } from "../../src/internal/project-session-controller.js";
 import { openPrivateInstalledBunHost } from "../../src/internal/installed-bun-host.js";
+import { join } from "node:path";
 
 const [projectRoot, submissionId] = process.argv.slice(2);
 if (projectRoot === undefined || submissionId === undefined) {
@@ -8,7 +9,9 @@ if (projectRoot === undefined || submissionId === undefined) {
 
 const session = await openPrivateProjectSession({
   directory: projectRoot,
-  host: await openPrivateInstalledBunHost(),
+  host: await openPrivateInstalledBunHost(
+    join(import.meta.dir, "..", "..", "bin", "jig"),
+  ),
 });
 const receipt = await session.rootAdministration.startRun({
   submissionId,
