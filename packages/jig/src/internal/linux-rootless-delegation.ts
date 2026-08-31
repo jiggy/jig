@@ -801,7 +801,7 @@ const scopeDependencies: PrivateRootlessLinuxScopeDependencies = Object.freeze({
 const systemDependencies: PrivateRootlessLinuxDelegationDependencies = Object.freeze({
   acquire: () => acquirePrivateRootlessLinux(),
   environment: () => process.env,
-  currentCommand: () => [process.execPath, ...process.argv.slice(1)] as [string, ...string[]],
+  currentCommand: currentCommand,
   currentDirectory: () => process.cwd(),
   nonce: (bytes: number) => randomBytes(bytes).toString("hex"),
   resolveManager,
@@ -809,3 +809,13 @@ const systemDependencies: PrivateRootlessLinuxDelegationDependencies = Object.fr
   acknowledgeReady,
   reexecute: reexecutePrivateRootlessLinuxCommand,
 });
+
+function currentCommand(): [string, ...string[]] {
+  if (process.argv[0] === process.execPath) {
+    return [process.execPath, ...process.argv.slice(1)];
+  }
+  if (process.argv[0] === "bun" && process.argv[1]?.startsWith("/$bunfs/")) {
+    return [process.execPath, ...process.argv.slice(2)];
+  }
+  throw new Error("the current Bun invocation cannot be reexecuted exactly");
+}

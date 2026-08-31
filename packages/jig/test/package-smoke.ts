@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -7,27 +7,16 @@ const packageRoot = resolve(import.meta.dir, "..");
 const temporary = await mkdtemp(join(tmpdir(), "jig-package-"));
 const expectedInstalledFiles = [
   "README.md",
-  "dist/bare-init.js",
-  "dist/capability/index.js",
-  "dist/cli.js",
-  "dist/diagnostics.js",
+  "bin/jig",
   "dist/index.d.ts",
   "dist/index.js",
   "dist/json.d.ts",
-  "dist/json.js",
-  "dist/package/capture.js",
-  "dist/package/case-fold-15.1.js",
-  "dist/package/digest.js",
-  "dist/package/inspect.js",
-  "dist/package/metadata.js",
-  "dist/package/paths.js",
   "dist/project-authoring-1.schema.json",
   "dist/project/author.d.ts",
-  "dist/project/author.js",
-  "dist/project/paths.js",
-  "dist/schema/compiler.js",
-  "dist/schema/index.js",
-  "dist/schema/types.js",
+  "libexec/evaluator/project-authoring-1.schema.json",
+  "libexec/evaluator/project-evaluator-sdk.bundle.js",
+  "libexec/evaluator/project-evaluator-worker.js",
+  "libexec/linux-rootless-supervisor.js",
   "package.json",
 ].sort();
 
@@ -51,37 +40,47 @@ try {
   ], consumer);
   const installed = join(consumer, "node_modules", "@jigging", "jig");
   const installedFiles = await listFiles(installed);
-  const installedManifest = JSON.parse(await readFile(join(installed, "package.json"), "utf8")) as Record<string, unknown>;
+  const installedManifest = JSON.parse(
+    await readFile(join(installed, "package.json"), "utf8"),
+  ) as Record<string, unknown>;
   assert.deepEqual(installedFiles, expectedInstalledFiles);
-  assert.equal(installedFiles.some((path) => path.startsWith("dist/internal/")), false);
+  assert.deepEqual(installedManifest.bin, { jig: "./bin/jig" });
+  assert.equal(installedManifest.dependencies, undefined);
+  assert.equal(installedManifest.private, true);
+
+  const executable = join(installed, "bin", "jig");
+  const command = join(consumer, "node_modules", ".bin", "jig");
+  assert.notEqual((await stat(executable)).mode & 0o111, 0);
+  assert.equal((await readFile(executable)).subarray(0, 4).toString("hex"), "7f454c46");
+  const help = await run([command, "--help"], consumer);
+  assert.equal(help.stderr, "");
+  assert.match(help.stdout, /^Usage:\n  jig init --bare <directory>$/m);
+  assert.match(help.stdout, /^  jig check \[project\] \[--yes\]$/m);
+  assert.match(help.stdout, /^  jig run <flow:path\|binding:id> \[--input JSON\]$/m);
+  assert.doesNotMatch(help.stdout, /setup|package check|planDigest/);
+
+  const bun = await run([command, "--version"], consumer, { BUN_BE_BUN: "1" });
+  assert.match(bun.stdout, /^[0-9]+\.[0-9]+\.[0-9]+\n$/);
+  assert.equal(bun.stderr, "");
 
   const bareProject = join(consumer, "bare-project");
-  const initialized = await run([
-    join(consumer, "node_modules", ".bin", "jig"),
-    "init", "--bare", bareProject,
-  ], consumer);
+  const initialized = await run([command, "init", "--bare", bareProject], consumer);
   assert.equal(initialized.stdout, "created bare Jig project\n");
+  assert.equal(initialized.stderr, "");
   assert.deepEqual((await readdir(bareProject)).sort(), [
     ".gitignore", "bindings", "flows", "jig.ts",
   ]);
   assert.deepEqual(await readdir(join(bareProject, "bindings")), []);
   assert.deepEqual(await readdir(join(bareProject, "flows")), []);
 
-  const flow = join(consumer, "smoke-flow");
-  await mkdir(flow);
-  await writeFile(join(flow, "FLOW.md"), `---
-name: smoke-flow
-description: A valid installed Jig package-check smoke Flow.
----
-
-# Smoke Flow
-`);
-  const checked = await run([
-    join(consumer, "node_modules", ".bin", "jig"),
-    "package", "check", flow,
-  ], consumer);
-  assert.match(checked.stdout, /^valid FLOW run package: smoke-flow$/m);
-  assert.match(checked.stdout, /^implementation: instruction$/m);
+  for (const relative of [
+    "libexec/linux-rootless-supervisor.js",
+    "libexec/evaluator/project-evaluator-worker.js",
+    "libexec/evaluator/project-evaluator-sdk.bundle.js",
+  ]) {
+    const source = await readFile(join(installed, relative), "utf8");
+    assert.doesNotMatch(source, /(?:from|import\()\s*["']\.\.?\//);
+  }
 
   await writeFile(join(consumer, "smoke.mjs"), `
 import { defineBinding, defineJig, discover } from "@jigging/jig";
@@ -101,8 +100,6 @@ if (!schema.$defs?.packageBinding) throw new Error("missing package Binding sche
 `);
   await run(["bun", "schema-smoke.mjs"], consumer);
 
-  assert.equal(installedManifest.private, true);
-
   await writeFile(join(consumer, "smoke.ts"), `
 import { defineBinding, defineJig, discover, type JigDefinitionInput, type PackageBindingInput } from "@jigging/jig";
 const input: JigDefinitionInput = { flows: discover("./flows") };
@@ -119,8 +116,11 @@ void binding;
     },
     files: ["smoke.ts"],
   }));
-  await run(["bunx", "--bun", "tsc", "-p", join(consumer, "tsconfig.json")], packageRoot);
-
+  await run([
+    process.execPath,
+    join(packageRoot, "node_modules", "typescript", "bin", "tsc"),
+    "-p", join(consumer, "tsconfig.json"),
+  ], packageRoot);
 } finally {
   await rm(temporary, { recursive: true, force: true });
 }
@@ -136,11 +136,17 @@ async function listFiles(root: string, prefix = ""): Promise<string[]> {
   return output.sort();
 }
 
-async function run(command: string[], cwd: string): Promise<{
-  readonly stdout: string;
-  readonly stderr: string;
-}> {
-  const child = Bun.spawn(command, { cwd, stdout: "pipe", stderr: "pipe" });
+async function run(
+  command: string[],
+  cwd: string,
+  environment: NodeJS.ProcessEnv = {},
+): Promise<{ readonly stdout: string; readonly stderr: string }> {
+  const child = Bun.spawn(command, {
+    cwd,
+    env: { ...process.env, ...environment },
+    stdout: "pipe",
+    stderr: "pipe",
+  });
   const timeout = setTimeout(() => child.kill(), 30_000);
   const [exitCode, stdout, stderr] = await Promise.all([
     child.exited,

@@ -15,35 +15,24 @@
     "./schema/project-authoring-1": "./dist/project-authoring-1.schema.json"
   },
   "bin": {
-    "jig": "./dist/cli.js"
+    "jig": "./bin/jig"
   },
   "files": [
+    "bin/jig",
     "dist/index.js",
     "dist/index.d.ts",
-    "dist/project/author.js",
     "dist/project/author.d.ts",
-    "dist/project/paths.js",
-    "dist/json.js",
     "dist/json.d.ts",
-    "dist/bare-init.js",
-    "dist/cli.js",
-    "dist/diagnostics.js",
-    "dist/package/capture.js",
-    "dist/package/case-fold-15.1.js",
-    "dist/package/digest.js",
-    "dist/package/inspect.js",
-    "dist/package/metadata.js",
-    "dist/package/paths.js",
-    "dist/schema/compiler.js",
-    "dist/schema/index.js",
-    "dist/schema/types.js",
-    "dist/capability/index.js",
     "dist/project-authoring-1.schema.json",
+    "libexec/linux-rootless-supervisor.js",
+    "libexec/evaluator/project-evaluator-worker.js",
+    "libexec/evaluator/project-evaluator-sdk.bundle.js",
+    "libexec/evaluator/project-authoring-1.schema.json",
     "README.md"
   ],
   "scripts": {
-    "build": "bun run clean && bun node_modules/typescript/bin/tsc -p tsconfig.json && bun build src/project/evaluator-sdk-entry.ts --target=bun --format=esm --outfile=dist/internal/project-evaluator-sdk.bundle.js && cp ../../docs/spec/machine/project-authoring-1.schema.json dist/project-authoring-1.schema.json",
-    "clean": "bun -e \"import { rm } from 'node:fs/promises'; await rm('dist', { recursive: true, force: true })\"",
+    "build": "bun run clean && mkdir -p bin libexec/evaluator && bun node_modules/typescript/bin/tsc -p tsconfig.json && bun build src/index.ts --target=bun --format=esm --outfile=dist/index.js && bun build src/internal/linux-rootless-supervisor.ts --target=bun --format=esm --outfile=libexec/linux-rootless-supervisor.js && bun build src/internal/project-evaluator-worker.ts --target=bun --format=esm --outfile=libexec/evaluator/project-evaluator-worker.js && bun build src/project/evaluator-sdk-entry.ts --target=bun --format=esm --outfile=libexec/evaluator/project-evaluator-sdk.bundle.js && cp ../../docs/spec/machine/project-authoring-1.schema.json dist/project-authoring-1.schema.json && cp ../../docs/spec/machine/project-authoring-1.schema.json libexec/evaluator/project-authoring-1.schema.json && bun build src/installed-cli.ts --compile --target=bun-linux-x64-baseline --outfile=bin/jig",
+    "clean": "bun -e \"import { rm } from 'node:fs/promises'; for (const path of ['dist', 'bin', 'libexec']) await rm(path, { recursive: true, force: true })\"",
     "prepack": "bun run build",
     "test": "bun test",
     "test:package": "bun run build && bun test/package-smoke.ts",
@@ -51,11 +40,9 @@
     "test:compiled-bun:proof-host": "JIG_COMPILED_BUN_PROOF=1 bun test test/compiled-bun-runtime.test.ts --timeout 30000",
     "check": "bun run build && bun test"
   },
-  "dependencies": {
-    "yaml": "2.9.0"
-  },
   "devDependencies": {
     "@types/node": "24.13.3",
-    "typescript": "7.0.2"
+    "typescript": "7.0.2",
+    "yaml": "2.9.0"
   }
 }
