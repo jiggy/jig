@@ -485,7 +485,13 @@ export class PrivateLinuxCgroupBackend {
       const accepted = acceptOne(server, this.#options.startupTimeoutMs);
       supervisor = requirePipedChild(spawn(
         data.mechanism.trustedCoordinatorBunPath,
-        [...BUN_POLICY, data.mechanism.trustedSupervisorPath, "--supervisor", controlPath],
+        [
+          ...BUN_POLICY,
+          data.mechanism.trustedSupervisorPath,
+          "--supervisor",
+          controlPath,
+          String(this.#options.startupTimeoutMs),
+        ],
         { cwd: "/", env: {}, detached: true, stdio: ["pipe", "pipe", "pipe"] },
       ));
       const closed = childClose(supervisor);

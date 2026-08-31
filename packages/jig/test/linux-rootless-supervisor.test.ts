@@ -26,6 +26,29 @@ const DIGEST_C = `sha256:${"c".repeat(64)}`;
 const OWNER_TOKEN = "d".repeat(64);
 
 describe("private rootless Linux supervisor admission boundary", () => {
+  test("exits when its coordinator connects but never sends a start message", async () => {
+    const fixture = await fixtureFor("missing-start");
+    try {
+      const result = await invokeSupervisor(fixture.configuration, [], {
+        sendStart: false,
+        startupTimeoutMs: 50,
+      });
+
+      expect(result).toMatchObject({
+        code: 70,
+        signal: null,
+        control: "",
+        stdout: "",
+      });
+      expect(result.stderr).toContain("rootless supervisor start timed out");
+      await expectMissing(join(fixture.ownerStateDirectory, "claim.json"));
+      await expectMissing(fixture.runCgroup);
+      await expectMissing(fixture.marker);
+    } finally {
+      await fixture.dispose();
+    }
+  });
+
   test("rejects a malformed limit before claiming or creating a cgroup", async () => {
     const fixture = await fixtureFor("invalid-limit");
     try {
@@ -220,6 +243,10 @@ async function writeOwner(fixture: Fixture, configuration: Configuration): Promi
 async function invokeSupervisor(
   configuration: unknown,
   messages: readonly unknown[] = [],
+  options: {
+    readonly sendStart?: boolean;
+    readonly startupTimeoutMs?: number;
+  } = {},
 ): Promise<{
   readonly code: number | null;
   readonly signal: string | null;
@@ -233,8 +260,15 @@ async function invokeSupervisor(
   await listen(server, controlPath);
   const accepted = acceptOne(server);
   const bunPath = await realpath("/bin/bun");
-  const child = spawn(bunPath, [...POLICY, SUPERVISOR, "--supervisor", controlPath], {
+  const child = spawn(bunPath, [
+    ...POLICY,
+    SUPERVISOR,
+    "--supervisor",
+    controlPath,
+    String(options.startupTimeoutMs ?? 1_000),
+  ], {
     cwd: "/",
+    detached: true,
     env: {},
     stdio: ["ignore", "pipe", "pipe"],
   });
@@ -244,8 +278,10 @@ async function invokeSupervisor(
   try {
     socket = await accepted;
     server.close();
-    socket.write(`${JSON.stringify({ type: "start", configuration })}\n`);
-    for (const message of messages) socket.write(`${JSON.stringify(message)}\n`);
+    if (options.sendStart !== false) {
+      socket.write(`${JSON.stringify({ type: "start", configuration })}\n`);
+      for (const message of messages) socket.write(`${JSON.stringify(message)}\n`);
+    }
     const control = collect(socket);
     const exit = await withTimeout(childClose(child), 2_000, "rootless supervisor rejection");
     return {

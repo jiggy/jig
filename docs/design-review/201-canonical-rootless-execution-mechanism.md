@@ -42,11 +42,14 @@ The combined rootless corpus passes 12 tests and 36 expectations. It covers:
 - zero Run cgroups, rootless control/owner directories, and private device
   directories after the corpus.
 
-The supervisor boundary adds three fail-before-mutation cases for malformed
-limits, owner/configuration mismatch, and duplicate active claims. The durable
-owner-state corpus adds four cases for cancellation, conflict preservation,
-interrupted release, and idempotent release. The package TypeScript build
-passes after all production consumers moved to the rootless contract.
+The supervisor boundary adds four fail-before-mutation cases for an absent
+start message, malformed limits, owner/configuration mismatch, and duplicate
+active claims. The absent-start case proves that the detached supervisor owns
+a bounded startup deadline and exits without a claim or cgroup when its
+coordinator connects but never transfers ownership. The durable owner-state
+corpus adds four cases for cancellation, conflict preservation, interrupted
+release, and idempotent release. The package TypeScript build passes after all
+production consumers moved to the rootless contract.
 
 ## Removed surface
 

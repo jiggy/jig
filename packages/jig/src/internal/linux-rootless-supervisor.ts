@@ -94,24 +94,30 @@ interface TerminalMessage {
   readonly evidence: Evidence;
 }
 
-async function supervisorMain(controlPath: string): Promise<void> {
+async function supervisorMain(controlPath: string, startupTimeoutText: string): Promise<void> {
   requireFixedBunPosture("supervisor");
   if (!absolute(controlPath)) throw new Error("invalid rootless supervisor control path");
+  const startupTimeoutMs = Number(startupTimeoutText);
+  if (!/^[1-9][0-9]*$/.test(startupTimeoutText) || !positiveInteger(startupTimeoutMs) ||
+      startupTimeoutMs > 2_147_483_647) {
+    throw new Error("invalid rootless supervisor startup timeout");
+  }
+  const startupDeadlineUnixMs = Date.now() + startupTimeoutMs;
   const control = connect(controlPath);
   control.on("error", () => {
     // Socket loss is an ownership event. Cleanup below remains independent.
   });
   try {
-    await connected(control);
-    await superviseConnected(control);
+    await beforeStartupDeadline(connected(control), startupDeadlineUnixMs, control);
+    await superviseConnected(control, startupDeadlineUnixMs);
   } finally {
     control.destroy();
   }
 }
 
-async function superviseConnected(control: Socket): Promise<void> {
+async function superviseConnected(control: Socket, startupDeadlineUnixMs: number): Promise<void> {
   const iterator = readJsonLines(control)[Symbol.asyncIterator]();
-  const first = await iterator.next();
+  const first = await beforeStartupDeadline(iterator.next(), startupDeadlineUnixMs, control);
   if (first.done) return;
   const configuration = requireStart(first.value);
   const { limits, runCgroup } = configuration;
@@ -604,6 +610,25 @@ function connected(socket: Socket): Promise<void> {
   });
 }
 
+function beforeStartupDeadline<T>(promise: Promise<T>, deadlineUnixMs: number, control: Socket): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const remaining = deadlineUnixMs - Date.now();
+    if (remaining <= 0) {
+      control.destroy();
+      reject(new Error("rootless supervisor start timed out"));
+      return;
+    }
+    const timer = setTimeout(() => {
+      control.destroy();
+      reject(new Error("rootless supervisor start timed out"));
+    }, remaining);
+    promise.then(
+      (value) => { clearTimeout(timer); resolve(value); },
+      (error) => { clearTimeout(timer); reject(error); },
+    );
+  });
+}
+
 function errorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
@@ -611,8 +636,8 @@ function errorText(error: unknown): string {
 async function main(): Promise<void> {
   const [mode, ...arguments_] = process.argv.slice(2);
   if (mode === "--supervisor") {
-    if (arguments_.length !== 1) throw new Error("invalid rootless supervisor arguments");
-    return await supervisorMain(arguments_[0]!);
+    if (arguments_.length !== 2) throw new Error("invalid rootless supervisor arguments");
+    return await supervisorMain(arguments_[0]!, arguments_[1]!);
   }
   if (mode === "--enter") return await enterMain(arguments_);
   if (mode === "--inner") {
