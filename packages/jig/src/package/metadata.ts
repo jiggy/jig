@@ -31,8 +31,6 @@ export interface FlowMetadata {
   readonly uses?: Readonly<Record<string, CapabilityUse>>;
   readonly outcomes?: Readonly<Record<string, string>>;
   readonly attachments?: Readonly<Record<string, "read" | "read-write">>;
-  readonly service?: 1;
-  readonly provides?: Readonly<Record<string, string>>;
   readonly extensions: JsonObject;
 }
 
@@ -217,8 +215,6 @@ function validateMetadata(root: JsonObject): FlowMetadata {
     "uses",
     "outcomes",
     "attachments",
-    "service",
-    "provides",
   ]);
   const extensions: Record<string, JsonValue> = Object.create(null) as Record<string, JsonValue>;
   for (const [key, value] of Object.entries(root)) {
@@ -232,23 +228,9 @@ function validateMetadata(root: JsonObject): FlowMetadata {
   if (fallback !== undefined && fallback !== "instruction") {
     invalid("METADATA_FIELD", "fallback must be the exact string instruction", "FLOW.md");
   }
-  const service = root.service;
-  if (service !== undefined && service !== 1) {
-    invalid("METADATA_FIELD", "service must be the exact integer 1", "FLOW.md");
-  }
-
   const uses = root.uses === undefined ? undefined : validateUses(root.uses);
   const outcomes = root.outcomes === undefined ? undefined : validateDescriptions(root.outcomes, true);
   const attachments = root.attachments === undefined ? undefined : validateAttachments(root.attachments);
-  const provides = root.provides === undefined ? undefined : validateProvides(root.provides);
-
-  if (service === 1) {
-    if (fallback !== undefined || outcomes !== undefined) {
-      invalid("METADATA_MODE", "Service packages cannot declare fallback or outcomes", "FLOW.md");
-    }
-  } else if (provides !== undefined) {
-    invalid("METADATA_MODE", "Run packages cannot declare provides", "FLOW.md");
-  }
 
   const metadata: FlowMetadata = {
     name,
@@ -257,8 +239,6 @@ function validateMetadata(root: JsonObject): FlowMetadata {
     ...(uses === undefined ? {} : { uses }),
     ...(outcomes === undefined ? {} : { outcomes }),
     ...(attachments === undefined ? {} : { attachments }),
-    ...(service === 1 ? { service } : {}),
-    ...(provides === undefined ? {} : { provides }),
     extensions,
   };
   deepFreezeJson(metadata as unknown as JsonValue);
@@ -305,17 +285,6 @@ function validateAttachments(value: JsonValue): Readonly<Record<string, "read" |
       invalid("METADATA_ATTACHMENT", `attachments.${name} must be read or read-write`, "FLOW.md");
     }
     result[name] = access;
-  }
-  return result;
-}
-
-function validateProvides(value: JsonValue): Readonly<Record<string, string>> {
-  const object = requireObject(value, "provides");
-  const result: Record<string, string> = Object.create(null) as Record<string, string>;
-  for (const [name, reference] of Object.entries(object)) {
-    requireLocalName(name, `provides.${name}`);
-    if (typeof reference !== "string") invalid("METADATA_PROVIDES", `provides.${name} must be a path`, "FLOW.md");
-    result[name] = requireAuthorReference(reference, `provides.${name}`);
   }
   return result;
 }

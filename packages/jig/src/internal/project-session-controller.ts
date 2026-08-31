@@ -24,9 +24,7 @@ import {
 import type { PrivateRuntimeSupportObservation } from "./runtime-support.js";
 import {
   planPrivateDirectRun,
-  type PrivateBunNativeRunPlanningInput,
   type PrivateDirectRunRecipe,
-  type PrivateDirectRunRuntimeSupport,
 } from "./direct-run.js";
 import { privateDomainDigest } from "./identity.js";
 import { validateJson1 } from "../json.js";
@@ -54,10 +52,8 @@ const STORE_DIRECTORY = "private-package-store";
 export interface PrivateProjectSessionHost {
   readonly backend: PrivateLinuxCgroupBackend;
   readonly bunRuntimeSupport: PrivateRuntimeSupportObservation;
-  readonly directRuntimeSupport: PrivateDirectRunRuntimeSupport;
   readonly jigDistributionPath: string;
   readonly runTimeoutMs: number;
-  readonly bunNativePreparation?: PrivateBunNativeRunPlanningInput;
 }
 
 /** Open one finite project session against already selected trusted machinery. */
@@ -77,17 +73,13 @@ export async function openPrivateProjectSession(input: {
       projectRoot: owner.root.requestedPath,
       packageStoreRoot,
       runTimeoutMs: input.host.runTimeoutMs,
-      execute: (runId, coordinator, signal, notifyWorkAvailable) => executePrivateRootRunLaunch({
+      execute: (runId, coordinator, signal) => executePrivateRootRunLaunch({
         projectRoot: owner!.root.requestedPath,
         packageStoreRoot,
         runId,
         coordinator,
-        runtimeSupport: input.host.directRuntimeSupport,
+        runtimeSupport: input.host.bunRuntimeSupport,
         backend: input.host.backend,
-        ...(input.host.bunNativePreparation === undefined
-          ? {}
-          : { bunNativePreparation: input.host.bunNativePreparation }),
-        notifyWorkAvailable,
         signal,
       }),
       onProjectIdentityLoss: () => {
@@ -159,7 +151,7 @@ function createSession(
         if (requests.length === 0) {
           throw new ProjectAdministrationError(
             "INVALID_CANDIDATE",
-            "project has no exact Run or Service target",
+            "project has no exact Run target",
           );
         }
         const recipes: PrivateDirectRunRecipe[] = [];
@@ -174,12 +166,8 @@ function createSession(
           try {
             recipes.push(await planPrivateDirectRun({
               request,
-              runtimeSupport: host.directRuntimeSupport,
+              runtimeSupport: host.bunRuntimeSupport,
               backend: host.backend,
-              packageStoreRoot,
-              ...(host.bunNativePreparation === undefined
-                ? {}
-                : { bunNativePreparation: host.bunNativePreparation }),
             }));
           } catch (error) {
             if (error instanceof TypeError) {

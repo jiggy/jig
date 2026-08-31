@@ -21,11 +21,11 @@ describe("FLOW.md Metadata/1", () => {
     expect(parsed.markdown).toBe("# Procedure\n\r\nKeep these bytes.\n");
   });
 
-  test("accepts the closed Service form and inert JSON-shaped extensions", () => {
+  test("accepts the optional Run fields and inert JSON-shaped extensions", () => {
     const parsed = parseFlowDocument(flow(`name: document-index
 description: >-
-  Maintain a document index.
-service: 1
+  Query a document index.
+fallback: instruction
 uses:
   agent:
     contract: ./contracts/agent.capability.json
@@ -34,8 +34,8 @@ uses:
 attachments:
   source: read
   cache: read-write
-provides:
-  index: ./contracts/index.capability.json
+outcomes:
+  waiting: External input is required.
 x-example:
   - null
   - true
@@ -44,14 +44,14 @@ x-example:
 
     expect(parsed.metadata).toEqual({
       name: "document-index",
-      description: "Maintain a document index.",
-      service: 1,
+      description: "Query a document index.",
+      fallback: "instruction",
       uses: {
         agent: { contract: "./contracts/agent.capability.json" },
         scratch: { local: true },
       },
       attachments: { source: "read", cache: "read-write" },
-      provides: { index: "./contracts/index.capability.json" },
+      outcomes: { waiting: "External input is required." },
       extensions: { "x-example": [null, true, 1, "2026-08-24"] },
     });
   });
@@ -159,8 +159,6 @@ function invalidDocuments(): Array<readonly [string, Uint8Array]> {
     ["a format discriminator", flow(`${minimal}\nformat: 2`)],
     ["an unknown unnamespaced field", flow(`${minimal}\nunknown: true`)],
     ["an invalid extension key", flow(`${minimal}\nx-Bad: true`)],
-    ["a Run package providing a capability", flow(`${minimal}\nprovides:\n  index: ./index.json`)],
-    ["a Service package with a Run fallback", flow(`${minimal}\nservice: 1\nfallback: instruction`)],
     ["a reserved outcome", flow(`${minimal}\noutcomes:\n  done: No.`)],
     ["an unsafe JSON/1 number", flow(`${minimal}\nx-number: 9007199254740993`)],
     ["an escaping author reference", flow(`${minimal}\nuses:\n  agent:\n    contract: ../agent.json`)],

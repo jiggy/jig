@@ -14,25 +14,21 @@ describe("private project Plan review", () => {
       proposed: {
         lockDigest: digest,
         lock: {
+          kind: "private-package-project-lock/4",
           packages: {
             "flows/review": {
               digest,
-              mode: "run",
               directRun: false,
               attachments: { source: "read" },
-              uses: {},
-              provides: {},
             },
           },
           bindings: {
             review: {
               packagePath: "flows/review",
+              settings: {},
               attachments: { source: { source: "workspace", access: "read" } },
-              slots: {},
             },
           },
-          journalPublishers: {},
-          hooks: {},
         },
         targets: [{
           request: {
@@ -47,7 +43,6 @@ describe("private project Plan review", () => {
               "\u202ekey": "value",
             },
             attachments: { source: { source: "workspace", access: "read" } },
-            slots: {},
             digest: `sha256:${"b".repeat(64)}`,
           },
           disposition: {
@@ -100,10 +95,9 @@ describe("private project Plan review", () => {
     const plan = reviewPlan("admission", `sha256:${"b".repeat(64)}`);
     const current = {
       lock: {
-        packages: { "flows/old": { digest, mode: "run" } },
-        bindings: { review: { packagePath: "flows/old", attachments: {}, slots: {} } },
-        journalPublishers: {},
-        hooks: {},
+        kind: "private-package-project-lock/4",
+        packages: { "flows/old": { digest, directRun: false, attachments: {} } },
+        bindings: { review: { packagePath: "flows/old", settings: {}, attachments: {} } },
       },
       candidate: {
         targets: [{
@@ -115,7 +109,6 @@ describe("private project Plan review", () => {
             entrypoint: { path: "flow.ts", suffix: "ts" },
             settings: {},
             attachments: {},
-            slots: {},
           },
           disposition: { state: "ready" },
         }],
@@ -126,10 +119,9 @@ describe("private project Plan review", () => {
       proposed: {
         ...plan.proposed,
         lock: {
-          packages: { "flows/new": { digest, mode: "run" } },
-          bindings: { review: { packagePath: "flows/new", attachments: {}, slots: {} } },
-          journalPublishers: {},
-          hooks: {},
+          kind: "private-package-project-lock/4",
+          packages: { "flows/new": { digest, directRun: false, attachments: {} } },
+          bindings: { review: { packagePath: "flows/new", settings: {}, attachments: {} } },
         },
         targets: [{
           request: {
@@ -140,7 +132,6 @@ describe("private project Plan review", () => {
             entrypoint: { path: "flow.ts", suffix: "ts" },
             settings: {},
             attachments: {},
-            slots: {},
           },
           disposition: { state: "unavailable", code: "RUNTIME_UNAVAILABLE" },
         }],
@@ -160,138 +151,6 @@ describe("private project Plan review", () => {
       removed: ["flows/old"],
     });
     expect(value.changes.targets.changed).toEqual(["binding:review"]);
-  });
-
-  test("indexes changing-universe slot additions, removals, and referenced target revisions", () => {
-    const digest = `sha256:${"a".repeat(64)}`;
-    const revisedDigest = `sha256:${"c".repeat(64)}`;
-    const review = reviewPlan("admission", `sha256:${"b".repeat(64)}`);
-    const flowA = { kind: "flow" as const, path: "flows/a" };
-    const flowB = { kind: "flow" as const, path: "flows/b" };
-    const flowC = { kind: "flow" as const, path: "flows/c" };
-    const currentLock = lockWithFlowCallSlot("candidates", [flowA, flowC]);
-    const proposedLock = lockWithFlowCallSlot("project-run-targets", [flowA, flowB]);
-    const currentTargets = [
-      activationTarget(flowA, digest, { state: "ready", recipeDigest: "private-a-old" }),
-      activationTarget(flowC, digest, { state: "ready", recipeDigest: "private-c" }),
-    ];
-    const proposedTargets = [
-      activationTarget(flowA, revisedDigest, {
-        state: "unavailable",
-        code: "RUNTIME_UNAVAILABLE",
-        evidenceDigests: ["private-a-evidence"],
-      }),
-      activationTarget(flowB, digest, { state: "ready", recipeDigest: "private-b" }),
-    ];
-    const text = renderPrivateProjectPlanReview({
-      plan: {
-        ...review,
-        proposed: { ...review.proposed, lock: proposedLock, targets: proposedTargets },
-      },
-      baseCandidate: {
-        lock: currentLock,
-        candidate: { targets: currentTargets },
-      },
-    } as unknown as PrivateActivationReviewPlan).text;
-
-    const value = JSON.parse(text.slice(text.indexOf("{")));
-    expect(value.changes.flowCallSlots).toEqual({
-      "dispatcher/work": {
-        source: { current: "candidates", proposed: "project-run-targets" },
-        targets: {
-          added: ["flow:flows/b"],
-          changed: ["flow:flows/a"],
-          removed: ["flow:flows/c"],
-        },
-      },
-    });
-    expect(value.current.portablePolicy.bindings.dispatcher.slots.work.source).toBe("candidates");
-    expect(value.proposed.portablePolicy.bindings.dispatcher.slots.work.source)
-      .toBe("project-run-targets");
-    expect(text).not.toContain("private-a-old");
-    expect(text).not.toContain("private-a-evidence");
-    expect(text).not.toContain("private-b");
-    expect(text).not.toContain("private-c");
-  });
-
-  test("marks private target-evidence changes without exposing that evidence", () => {
-    const digest = `sha256:${"a".repeat(64)}`;
-    const request = {
-      target: { kind: "flow", path: "flows/review" },
-      mode: "run",
-      packagePath: "flows/review",
-      package: { digest },
-      entrypoint: { path: "flow.ts", suffix: "ts" },
-      settings: {},
-      attachments: {},
-      slots: {},
-    };
-    const base = reviewPlan("admission", `sha256:${"b".repeat(64)}`);
-    const dynamicLock = lockWithFlowCallSlot("project-run-targets", [request.target], true);
-    const plan = {
-      ...base,
-      proposed: {
-        ...base.proposed,
-        lock: dynamicLock,
-        targets: [{
-          request,
-          disposition: {
-            state: "ready",
-            recipeDigest: "private-new-recipe",
-            observationDigest: "private-new-observation",
-          },
-        }],
-      },
-    };
-    const text = renderPrivateProjectPlanReview({
-      plan,
-      baseCandidate: {
-        lock: dynamicLock,
-        candidate: {
-          targets: [{
-            request,
-            disposition: {
-              state: "ready",
-              recipeDigest: "private-old-recipe",
-              observationDigest: "private-old-observation",
-            },
-          }],
-        },
-      },
-    } as unknown as PrivateActivationReviewPlan).text;
-
-    const value = JSON.parse(text.slice(text.indexOf("{")));
-    expect(value.changes.targets.changed).toEqual(["flow:flows/review"]);
-    expect(value.changes.flowCallSlots).toEqual({
-      "dispatcher/mirror": {
-        source: {
-          current: "project-run-targets",
-          proposed: "project-run-targets",
-        },
-        targets: {
-          added: [],
-          changed: ["flow:flows/review"],
-          removed: [],
-        },
-      },
-      "dispatcher/work": {
-        source: {
-          current: "project-run-targets",
-          proposed: "project-run-targets",
-        },
-        targets: {
-          added: [],
-          changed: ["flow:flows/review"],
-          removed: [],
-        },
-      },
-    });
-    for (const sentinel of [
-      "private-old-recipe",
-      "private-new-recipe",
-      "private-old-observation",
-      "private-new-observation",
-    ]) expect(text).not.toContain(sentinel);
   });
 
   test("fails before allocating a review larger than its public envelope", () => {
@@ -316,53 +175,8 @@ function reviewPlan(
     observedLock: { state: "absent" },
     proposed: {
       lockDigest: digest,
-      lock: { packages: {}, bindings: {}, journalPublishers: {}, hooks: {} },
+      lock: { kind: "private-package-project-lock/4", packages: {}, bindings: {} },
       targets: [],
     },
   } as unknown as PrivateActivationReviewPlan["plan"];
-}
-
-function lockWithFlowCallSlot(
-  source: "exact" | "candidates" | "project-run-targets",
-  targets: readonly ({ readonly kind: "flow"; readonly path: string } |
-    { readonly kind: "binding"; readonly id: string })[],
-  repeat = false,
-) {
-  const slot = { kind: "flow-call" as const, source, targets };
-  return {
-    packages: {},
-    bindings: {
-      dispatcher: {
-        packagePath: "flows/dispatcher",
-        attachments: {},
-        slots: {
-          ...(repeat ? { mirror: slot } : {}),
-          work: slot,
-        },
-      },
-    },
-    journalPublishers: {},
-    hooks: {},
-  };
-}
-
-function activationTarget(
-  target: { readonly kind: "flow"; readonly path: string } |
-    { readonly kind: "binding"; readonly id: string },
-  packageDigest: string,
-  disposition: Readonly<Record<string, unknown>>,
-) {
-  return {
-    request: {
-      target,
-      mode: "run",
-      packagePath: target.kind === "flow" ? target.path : `flows/${target.id}`,
-      package: { digest: packageDigest },
-      entrypoint: { path: "flow.ts", suffix: "ts" },
-      settings: {},
-      attachments: {},
-      slots: {},
-    },
-    disposition,
-  };
 }

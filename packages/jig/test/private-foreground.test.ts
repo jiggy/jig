@@ -360,7 +360,7 @@ function inspectRootExecution(root: string, runId: string): {
 function withStore<Value>(root: string, use: (database: any) => Value): Value {
   const sqlite = createRequire(import.meta.url)("bun:sqlite") as any;
   const database = sqlite.Database.open(
-    join(root, ".jig", "private-activation-admission-v19.sqlite3"),
+    join(root, ".jig", "jig.sqlite3"),
     sqlite.constants.SQLITE_OPEN_READONLY | sqlite.constants.SQLITE_OPEN_NOFOLLOW,
   );
   try { return use(database); }

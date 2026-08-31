@@ -1,10 +1,6 @@
 import { types as utilTypes } from "node:util";
 
 import {
-  isCapabilityContractId,
-  isCapabilityContractVersion,
-} from "../capability/index.js";
-import {
   PRIVATE_ACTIVATION_TARGET_LIMIT,
   privateActivationTargetKey,
   requirePrivateActivationPlanningObservation,
@@ -48,18 +44,15 @@ export interface PrivateActivationRequest {
   readonly kind: "activation-request/2";
   readonly digest: string;
   readonly target: RunTargetIdentity;
-  readonly mode: "run" | "service";
+  readonly mode: "run";
   readonly packagePath: string;
   readonly package: PackageArtifactRef;
   readonly entrypoint: PackageEntrypoint;
   readonly settings: JsonObject;
   readonly attachments: LinkedPackageBinding["attachments"];
-  readonly slots: LinkedPackageBinding["slots"];
 }
 
-export type PrivateResolutionUnavailableCode =
-  | PrivateActivationUnavailableCode
-  | "DEPENDENCY_UNAVAILABLE";
+export type PrivateResolutionUnavailableCode = PrivateActivationUnavailableCode;
 
 export type PrivateResolutionObservedDisposition =
   | {
@@ -113,7 +106,6 @@ export function buildPrivateActivationRequests(
       entrypoint: flow.entrypoint,
       settings: emptyRecord(),
       attachments: emptyRecord(),
-      slots: emptyRecord(),
     }));
   }
 
@@ -130,7 +122,6 @@ export function buildPrivateActivationRequests(
       entrypoint: flow.entrypoint,
       settings: binding.settings,
       attachments: binding.attachments,
-      slots: binding.slots,
     }));
   }
 
@@ -168,7 +159,6 @@ export function restorePrivateActivationRequest(value: unknown): PrivateActivati
     "entrypoint",
     "settings",
     "attachments",
-    "slots",
   ], "activation request");
   if (root.kind !== "activation-request/2") {
     throw new TypeError("activation request kind must be activation-request/2");
@@ -194,9 +184,7 @@ export function restorePrivateActivationRequest(value: unknown): PrivateActivati
   } else {
     throw new TypeError("activation target kind must be flow or binding");
   }
-  if (root.mode !== "run" && root.mode !== "service") {
-    throw new TypeError("activation request mode must be run or service");
-  }
+  if (root.mode !== "run") throw new TypeError("activation request mode must be run");
   const packagePath = normalizeProjectPath(root.packagePath, "activation package path");
   const entrypointValue = exactObject(
     root.entrypoint,
@@ -229,7 +217,6 @@ export function restorePrivateActivationRequest(value: unknown): PrivateActivati
     }),
     settings: snapshotJsonObject(root.settings, "activation settings"),
     attachments: normalizeRequestAttachments(root.attachments),
-    slots: normalizeRequestSlots(root.slots),
   });
   if (root.digest !== request.digest) {
     throw new TypeError("activation request digest does not match its canonical content");
@@ -271,9 +258,8 @@ export function resolveLinkedPackageProjectObservation(
     }));
   }
 
-  const effective = propagateServiceAvailability(linked, intrinsic);
   const targets = requests.map((request) => {
-    const target = effective.get(privateActivationTargetKey(request.target));
+    const target = intrinsic.get(privateActivationTargetKey(request.target));
     if (target === undefined) throw new Error("resolved target invariant violated");
     return target;
   });
@@ -334,7 +320,6 @@ function createRequest(input: Omit<PrivateActivationRequest, "kind" | "digest">)
     entrypoint: input.entrypoint,
     settings: input.settings,
     attachments: input.attachments,
-    slots: input.slots,
   });
   const request = Object.freeze({
     ...valueWithoutDigest,
@@ -345,71 +330,6 @@ function createRequest(input: Omit<PrivateActivationRequest, "kind" | "digest">)
   });
   authenticActivationRequests.add(request);
   return request;
-}
-
-function propagateServiceAvailability(
-  project: PackageProjectValue,
-  intrinsic: ReadonlyMap<string, PrivateResolvedTargetObservation>,
-): ReadonlyMap<string, PrivateResolvedTargetObservation> {
-  const bindingById = new Map(project.bindings.map((binding) => [binding.id, binding]));
-  const effective = new Map<string, PrivateResolvedTargetObservation>();
-  const visiting = new Set<string>();
-
-  const visit = (id: string): PrivateResolvedTargetObservation => {
-    const key = privateActivationTargetKey({ kind: "binding", id });
-    const prior = effective.get(key);
-    if (prior !== undefined) return prior;
-    if (visiting.has(id)) throw new Error("linked Service dependency cycle reached resolution");
-    const base = intrinsic.get(key);
-    const binding = bindingById.get(id);
-    if (base === undefined || binding === undefined) throw new Error(`missing linked Binding ${id}`);
-    if (base.disposition.state === "unavailable") {
-      effective.set(key, base);
-      return base;
-    }
-    visiting.add(id);
-    try {
-      const unavailableDependencies: string[] = [];
-      for (const slot of Object.keys(binding.slots).sort()) {
-        const value = binding.slots[slot]!;
-        if (value.kind !== "capability") continue;
-        // Canonical host publishers are admitted generation dependencies, not
-        // executable Service targets whose runtime availability propagates.
-        if (!bindingById.has(value.provider.binding)) continue;
-        const provider = visit(value.provider.binding);
-        if (provider.disposition.state === "unavailable") {
-          unavailableDependencies.push(privateDomainDigest(
-            "JIG-Unavailable-Service-Dependency/1",
-            {
-              slot,
-              provider: provider.request.target,
-              disposition: semanticDisposition(provider.disposition),
-            },
-          ));
-        }
-      }
-      if (unavailableDependencies.length === 0) {
-        effective.set(key, base);
-        return base;
-      }
-      const result = Object.freeze({
-        request: base.request,
-        disposition: Object.freeze({
-          state: "unavailable" as const,
-          code: "DEPENDENCY_UNAVAILABLE" as const,
-          evidenceDigests: Object.freeze(unavailableDependencies.sort()),
-        }),
-      });
-      effective.set(key, result);
-      return result;
-    } finally {
-      visiting.delete(id);
-    }
-  };
-
-  for (const binding of project.bindings) visit(binding.id);
-  for (const [key, value] of intrinsic) if (!effective.has(key)) effective.set(key, value);
-  return effective;
 }
 
 function copyDisposition(
@@ -433,8 +353,6 @@ function semanticProject(project: PackageProjectValue): JsonValue {
       mode: flow.mode,
       entrypoint: flow.entrypoint ?? null,
       directRun: flow.directRun,
-      uses: flow.uses,
-      provides: flow.provides,
     })),
     bindings: project.bindings.map((binding) => ({
       kind: binding.kind,
@@ -442,24 +360,6 @@ function semanticProject(project: PackageProjectValue): JsonValue {
       packagePath: binding.packagePath,
       settings: binding.settings,
       attachments: binding.attachments,
-      slots: binding.slots,
-    })),
-    journalPublishers: project.journalPublishers.map((publisher) => ({
-      kind: publisher.kind,
-      id: publisher.id,
-      source: publisher.source,
-      contract: publisher.contract,
-      eventTypes: publisher.eventTypes,
-    })),
-    hooks: project.hooks.map((hook) => ({
-      kind: hook.kind,
-      id: hook.id,
-      declarationPath: hook.declarationPath,
-      source: hook.source,
-      publisherBinding: hook.publisherBinding,
-      type: hook.type,
-      target: hook.target,
-      relationDigest: hook.relationDigest,
     })),
   } as unknown as JsonValue;
 }
@@ -561,102 +461,6 @@ function normalizeRequestAttachments(value: unknown): LinkedPackageBinding["atta
     output[name] = Object.freeze({ source, access: attachment.access });
   }
   return Object.freeze(output);
-}
-
-function normalizeRequestSlots(value: unknown): LinkedPackageBinding["slots"] {
-  const input = snapshotJsonObject(value, "activation slots");
-  const keys = Object.keys(input);
-  if (keys.length > 256) throw new TypeError("activation slots exceed 256 members");
-  const output: Record<string, LinkedPackageBinding["slots"][string]> = Object.create(null) as
-    Record<string, LinkedPackageBinding["slots"][string]>;
-  for (const name of keys.sort()) {
-    requireLocalName(name, "activation slot name");
-    const value = input[name];
-    const kind = exactRecord(value, `activation slot ${name}`).kind;
-    if (kind === "flow-call") {
-      const slot = exactObject(
-        value,
-        ["kind", "source", "targets"],
-        `activation slot ${name}`,
-      );
-      if (slot.source !== "exact" && slot.source !== "candidates" &&
-          slot.source !== "project-run-targets") {
-        throw new TypeError(`activation slot ${name} source has an invalid kind`);
-      }
-      if (!Array.isArray(slot.targets)) {
-        throw new TypeError(`activation slot ${name} targets must be an array`);
-      }
-      if (slot.targets.length > PRIVATE_ACTIVATION_TARGET_LIMIT) {
-        throw new TypeError(
-          `activation slot ${name} targets exceed ${PRIVATE_ACTIVATION_TARGET_LIMIT} members`,
-        );
-      }
-      const targets = slot.targets.map((target, index) => normalizeRequestTarget(
-        target,
-        `activation slot ${name} targets[${index}]`,
-      )).sort(compareTargets);
-      if (targets.length === 0 && slot.source !== "project-run-targets") {
-        throw new TypeError(`activation slot ${name} targets cannot be empty for ${slot.source} source`);
-      }
-      if (slot.source === "exact" && targets.length !== 1) {
-        throw new TypeError(`activation slot ${name} exact source must contain exactly one target`);
-      }
-      if (slot.source === "candidates" && targets.length < 2) {
-        throw new TypeError(`activation slot ${name} candidates source must contain at least two targets`);
-      }
-      for (let index = 1; index < targets.length; index += 1) {
-        if (privateActivationTargetKey(targets[index - 1]!) ===
-            privateActivationTargetKey(targets[index]!)) {
-          throw new TypeError(`activation slot ${name} contains duplicate targets`);
-        }
-      }
-      output[name] = Object.freeze({
-        kind: "flow-call" as const,
-        source: slot.source,
-        targets: Object.freeze(targets),
-      });
-      continue;
-    }
-    const slot = exactObject(value, ["kind", "contract", "provider"], `activation slot ${name}`);
-    if (slot.kind !== "capability") throw new TypeError(`activation slot ${name} has an invalid kind`);
-    const contract = exactObject(slot.contract, ["id", "version", "digest"], `activation slot ${name} contract`);
-    if (typeof contract.id !== "string" || !isCapabilityContractId(contract.id)) {
-      throw new TypeError(`activation slot ${name} contract id is invalid`);
-    }
-    if (typeof contract.version !== "string" || !isCapabilityContractVersion(contract.version)) {
-      throw new TypeError(`activation slot ${name} contract version is invalid`);
-    }
-    const provider = exactObject(slot.provider, ["binding", "export"], `activation slot ${name} provider`);
-    output[name] = Object.freeze({
-      kind: "capability" as const,
-      contract: Object.freeze({
-        id: contract.id,
-        version: contract.version,
-        digest: requireDigest(contract.digest, `activation slot ${name} contract`),
-      }),
-      provider: Object.freeze({
-        binding: requireLocalName(provider.binding, `activation slot ${name} provider Binding`),
-        export: requireLocalName(provider.export, `activation slot ${name} provider export`),
-      }),
-    });
-  }
-  return Object.freeze(output);
-}
-
-function normalizeRequestTarget(value: unknown, label: string): RunTargetIdentity {
-  const target = exactRecord(value, label);
-  if (target.kind === "flow") {
-    const flow = exactObject(target, ["kind", "path"], label);
-    const path = normalizeProjectPath(flow.path, `${label} path`);
-    if (isProtectedProjectPath(path)) throw new TypeError(`${label} uses protected .jig state`);
-    return Object.freeze({ kind: "flow" as const, path });
-  }
-  const binding = exactObject(target, ["kind", "id"], label);
-  if (binding.kind !== "binding") throw new TypeError(`${label} has an invalid kind`);
-  return Object.freeze({
-    kind: "binding" as const,
-    id: requireLocalName(binding.id, `${label} Binding`),
-  });
 }
 
 function snapshotJsonObject(value: unknown, label: string): JsonObject {

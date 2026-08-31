@@ -215,7 +215,7 @@ describe("private RunHostSession", () => {
     const process = new FakeProcess();
     const calls: RunHostEffectCall[] = [];
     const terminals: RunHostEffectOperationTerminal[] = [
-      { status: "succeeded", result: { value: { eventId: "event-1" } } },
+      { status: "succeeded", result: { value: { recordId: "record-1" } } },
       { status: "succeeded", result: { error: { name: "type-denied", data: { type: "private" } } } },
     ];
     const running = new RunHostSession(process, invocation(), {}, {
@@ -227,20 +227,20 @@ describe("private RunHostSession", () => {
     await process.nextHost();
 
     process.emit(request("component:1", "effect/call", {
-      operationId: "append:1",
-      slot: "journal",
-      method: "append",
+      operationId: "put:1",
+      slot: "records",
+      method: "put",
       input: { type: "document-created", data: { id: 1 } },
     }));
     expect(await process.nextHost()).toEqual({
       jsonrpc: "2.0",
       id: "component:1",
-      result: { value: { eventId: "event-1" } },
+      result: { value: { recordId: "record-1" } },
     });
     process.emit(request("component:2", "effect/call", {
-      operationId: "append:2",
-      slot: "journal",
-      method: "append",
+      operationId: "put:2",
+      slot: "records",
+      method: "put",
       input: { type: "private", data: null },
     }));
     expect(await process.nextHost()).toEqual({
@@ -250,15 +250,15 @@ describe("private RunHostSession", () => {
     });
     expect(calls).toEqual([
       {
-        operationId: "append:1",
-        slot: "journal",
-        method: "append",
+        operationId: "put:1",
+        slot: "records",
+        method: "put",
         input: { type: "document-created", data: { id: 1 } },
       },
       {
-        operationId: "append:2",
-        slot: "journal",
-        method: "append",
+        operationId: "put:2",
+        slot: "records",
+        method: "put",
         input: { type: "private", data: null },
       },
     ]);
@@ -276,9 +276,9 @@ describe("private RunHostSession", () => {
     }).run();
     await invalid.nextHost();
     invalid.emit(request("component:1", "effect/call", {
-      operationId: "append:1",
-      slot: "journal",
-      method: "append",
+      operationId: "put:1",
+      slot: "records",
+      method: "put",
       input: null,
     }));
     expect(operationCode(await invalid.nextHost())).toBe("INVALID_RESULT");
@@ -304,8 +304,8 @@ describe("private RunHostSession", () => {
     expect(await conflict.nextHost()).toMatchObject({ result: { outcome: "done" } });
     conflict.emit(request("component:2", "effect/call", {
       operationId: "shared:1",
-      slot: "journal",
-      method: "append",
+      slot: "records",
+      method: "put",
       input: null,
     }));
     expect(operationCode(await conflict.nextHost())).toBe("OPERATION_CONFLICT");

@@ -43,7 +43,6 @@ export interface PrivateRootLaunchExecutor {
     runId: string,
     coordinator: PrivateProjectCoordinator,
     signal: AbortSignal,
-    notifyWorkAvailable: () => void,
   ): Promise<PrivateRootExecutionDisposition>;
 }
 
@@ -138,8 +137,6 @@ function createController(input: {
   const operations = new Set<Promise<void>>();
   const tasks = new Map<string, Promise<void>>();
   const failures: unknown[] = [];
-  let backgroundPump: Promise<void> | undefined;
-  let pumpRequested = false;
   let closed = false;
   let identityLossNotified = false;
   let disposal: Promise<void> | undefined;
@@ -212,7 +209,6 @@ function createController(input: {
       runId,
       input.coordinator,
       cancellation.signal,
-      notifyWorkAvailable,
     ));
     if (settled.state === "pending") {
       throw new RootAdministrationError(
@@ -223,10 +219,6 @@ function createController(input: {
     if (settled.run.runId !== runId || settled.run.state !== "terminal") {
       throw new Error("trusted root Run executor returned no matching terminal");
     }
-    // A terminal owner can have committed durable Hook work even if its
-    // immediate post-append wake was lost. Rescan before this task settles so
-    // drain observes the complete same-epoch work closure.
-    await pumpCurrent();
   }
 
   async function pumpCurrent(): Promise<void> {
@@ -236,32 +228,6 @@ function createController(input: {
       epoch: "current",
     }));
     for (const item of work) schedule(item.run.runId);
-  }
-
-  /**
-   * Signal that a trusted operation may have committed more root work.
-   *
-   * The signal is deliberately nonthrowing: the durable append result must
-   * not be rewritten merely because its best-effort scheduler wake failed.
-   * Bursts coalesce into one or more serialized scans, whose failures remain
-   * visible through drain().
-   */
-  function notifyWorkAvailable(): void {
-    pumpRequested = true;
-    if (backgroundPump !== undefined) return;
-    backgroundPump = drainPumpRequests()
-      .catch((error) => { observeFailure(error); failures.push(error); })
-      .finally(() => {
-        backgroundPump = undefined;
-        if (pumpRequested) notifyWorkAvailable();
-      });
-  }
-
-  async function drainPumpRequests(): Promise<void> {
-    while (pumpRequested) {
-      pumpRequested = false;
-      await pumpCurrent();
-    }
   }
 
   async function recoverOlder(): Promise<void> {
@@ -276,7 +242,6 @@ function createController(input: {
           item.run.runId,
           input.coordinator,
           cancellation.signal,
-          notifyWorkAvailable,
         ));
         if (settled.state === "pending") {
           throw new RootAdministrationError(
@@ -306,12 +271,7 @@ function createController(input: {
   async function drain(): Promise<void> {
     while (operations.size > 0) await Promise.all([...operations]);
     await pumpCurrent();
-    while (tasks.size > 0 || backgroundPump !== undefined) {
-      await Promise.all([
-        ...tasks.values(),
-        ...(backgroundPump === undefined ? [] : [backgroundPump]),
-      ]);
-    }
+    while (tasks.size > 0) await Promise.all([...tasks.values()]);
     if (failures.length > 0) {
       const captured = failures.splice(0, failures.length);
       throw new AggregateError(captured, "root Run controller did not settle cleanly");

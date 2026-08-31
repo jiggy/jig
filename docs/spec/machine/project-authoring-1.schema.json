@@ -57,102 +57,23 @@
       },
       "additionalProperties": false
     },
-    "flowRef": {
-      "type": "object",
-      "properties": {
-        "kind": { "const": "flow" },
-        "path": { "$ref": "#/$defs/projectPath" }
-      },
-      "required": ["kind", "path"],
-      "additionalProperties": false
-    },
-    "bindingRef": {
-      "type": "object",
-      "properties": {
-        "kind": { "const": "binding" },
-        "id": { "$ref": "#/$defs/localName" }
-      },
-      "required": ["kind", "id"],
-      "additionalProperties": false
-    },
-    "runTargetRef": {
-      "oneOf": [
-        { "$ref": "#/$defs/flowRef" },
-        { "$ref": "#/$defs/bindingRef" }
-      ]
-    },
-    "candidateSet": {
-      "type": "object",
-      "properties": {
-        "kind": { "const": "candidates" },
-        "targets": {
-          "type": "array",
-          "items": { "$ref": "#/$defs/runTargetRef" },
-          "minItems": 2,
-          "maxItems": 65536
-        }
-      },
-      "required": ["kind", "targets"],
-      "additionalProperties": false
-    },
-    "projectRunTargets": {
-      "type": "object",
-      "properties": {
-        "kind": { "const": "project-run-targets" }
-      },
-      "required": ["kind"],
-      "additionalProperties": false
-    },
-    "slotRef": {
-      "oneOf": [
-        { "$ref": "#/$defs/runTargetRef" },
-        { "$ref": "#/$defs/candidateSet" },
-        { "$ref": "#/$defs/projectRunTargets" }
-      ]
-    },
     "packageBinding": {
       "type": "object",
       "properties": {
         "kind": { "const": "package" },
         "package": { "$ref": "#/$defs/projectPath" },
         "settings": { "type": "object", "maxProperties": 65536 },
-        "slots": {
-          "type": "object",
-          "additionalProperties": { "$ref": "#/$defs/slotRef" },
-          "maxProperties": 65536
-        },
         "attachments": {
           "type": "object",
           "additionalProperties": { "$ref": "#/$defs/projectPath" },
           "maxProperties": 65536
         }
       },
-      "required": ["kind", "package", "settings", "slots", "attachments"],
-      "additionalProperties": false
-    },
-    "journalPublisher": {
-      "type": "object",
-      "properties": {
-        "kind": { "const": "journal-publisher" },
-        "eventTypes": {
-          "type": "array",
-          "items": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 512
-          },
-          "minItems": 1,
-          "maxItems": 65536
-        }
-      },
-      "required": ["kind", "eventTypes"],
+      "required": ["kind", "package", "settings", "attachments"],
       "additionalProperties": false
     },
     "bindingDefinition": {
-      "oneOf": [
-        { "$ref": "#/$defs/packageBinding" },
-        { "$ref": "#/$defs/journalPublisher" }
-      ]
+      "$ref": "#/$defs/packageBinding"
     }
   }
 }

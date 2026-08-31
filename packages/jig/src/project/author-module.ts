@@ -337,8 +337,7 @@ function scanStaticImports(
         importer,
       );
     }
-    if (item.path === "@jigging/jig" ||
-        item.path === "@jigging/jig/experimental/hooks") continue;
+    if (item.path === "@jigging/jig") continue;
     const target = resolveAuthorImport(importer, item.path);
     edges.set(`${item.path}\0${target}`, Object.freeze({ specifier: item.path, projectPath: target }));
   }

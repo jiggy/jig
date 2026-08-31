@@ -22,7 +22,7 @@ const ENTRYPOINT = /^flow\.([a-z0-9]{1,16})$/;
 const SELECTOR = /^#!\/usr\/bin\/env ([A-Za-z0-9][A-Za-z0-9._+-]{0,63})\r?$/;
 const LOCAL_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
-export type PackageMode = "run" | "service";
+export type PackageMode = "run";
 
 export interface PackageEntrypoint {
   readonly path: string;
@@ -47,7 +47,6 @@ export interface InspectedPackage {
     result?: CompiledSchema;
   }>;
   readonly usedContracts: readonly CheckedContractReference[];
-  readonly providedContracts: readonly CheckedContractReference[];
   readonly skills: readonly string[];
   readonly fileCount: number;
   readonly contentBytes: number;
@@ -74,12 +73,9 @@ export async function inspectCapturedPackage(
   await validateUtf8File(captured, "FLOW.md");
 
   const entrypoint = await inspectEntrypoint(captured);
-  const mode: PackageMode = metadata.service === 1 ? "service" : "run";
-  if (mode === "service" && entrypoint === undefined) {
-    invalid("PACKAGE_SERVICE_CODE", "Service packages require one root flow.<suffix>", "FLOW.md");
-  }
+  const mode: PackageMode = "run";
 
-  const schemas = await inspectConventionalSchemas(captured, byPath, mode);
+  const schemas = await inspectConventionalSchemas(captured, byPath);
   const contractCache = new Map<string, ParsedCapabilityContract>();
   const usedContracts: CheckedContractReference[] = [];
   for (const [slot, declaration] of Object.entries(metadata.uses ?? {})) {
@@ -91,16 +87,7 @@ export async function inspectCapturedPackage(
       contract: await readContract(captured, byPath, contractCache, path),
     }));
   }
-  const providedContracts: CheckedContractReference[] = [];
-  for (const [slot, reference] of Object.entries(metadata.provides ?? {})) {
-    const path = reference.slice(2);
-    providedContracts.push(Object.freeze({
-      slot,
-      path,
-      contract: await readContract(captured, byPath, contractCache, path),
-    }));
-  }
-  rejectContractEquivocation([...usedContracts, ...providedContracts]);
+  rejectContractEquivocation(usedContracts);
 
   const skills = [...new Set(captured.files.flatMap((file) => {
     const match = /^skills\/([^/]+)\/SKILL\.md$/.exec(file.path);
@@ -114,7 +101,6 @@ export async function inspectCapturedPackage(
     ...(entrypoint === undefined ? {} : { entrypoint }),
     schemas: Object.freeze(schemas),
     usedContracts: Object.freeze(usedContracts),
-    providedContracts: Object.freeze(providedContracts),
     skills: Object.freeze(skills),
     fileCount: captured.files.length,
     contentBytes: captured.files.reduce((total, file) => total + file.size, 0),
@@ -186,17 +172,10 @@ async function inspectEntrypoint(
 async function inspectConventionalSchemas(
   captured: CapturedPackage,
   byPath: ReadonlyMap<string, { readonly path: string; readonly size: number }>,
-  mode: PackageMode,
 ): Promise<{ input?: CompiledSchema; settings?: CompiledSchema; result?: CompiledSchema }> {
   const present = (path: string): boolean => byPath.has(path);
-  if (mode === "service" && (present("input.schema.json") || present("result.schema.json"))) {
-    invalid(
-      "PACKAGE_SCHEMA_MODE",
-      "Service packages cannot contain input.schema.json or result.schema.json",
-    );
-  }
   const result: { input?: CompiledSchema; settings?: CompiledSchema; result?: CompiledSchema } = {};
-  if (mode === "run" && present("input.schema.json")) {
+  if (present("input.schema.json")) {
     result.input = compileSchemaFile(
       await readSchemaFile(captured, byPath, "input.schema.json"),
       "input.schema.json",
@@ -208,7 +187,7 @@ async function inspectConventionalSchemas(
       "settings.schema.json",
     );
   }
-  if (mode === "run" && present("result.schema.json")) {
+  if (present("result.schema.json")) {
     result.result = compileSchemaFile(
       await readSchemaFile(captured, byPath, "result.schema.json"),
       "result.schema.json",

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
@@ -12,13 +12,12 @@ import {
   type PrivateActivationRecipeObservationInput,
 } from "../src/internal/activation-planning.js";
 import { privateDomainDigest } from "../src/internal/identity.js";
-import { bindingRef, defineBinding, defineHook, defineJig, defineJournalPublisher, flowRef } from "../src/project/author.js";
+import { defineBinding, defineJig } from "../src/project/author.js";
 import { captureFlowSource } from "../src/project/flow-source.js";
 import {
   linkPackageProject,
   requirePackageProjectValue,
   type InjectedBindingDeclaration,
-  type InjectedHookDeclaration,
   type PackageProjectValue,
   type RunTargetIdentity,
 } from "../src/project/package-project.js";
@@ -31,11 +30,6 @@ import {
   type PrivateActivationRequest,
 } from "../src/project/package-resolution.js";
 import { retainFlowSourcePackages } from "../src/project/retained-flow.js";
-
-const journalContract = await readFile(new URL(
-  "../../../docs/spec/contracts/jig/journal.capability.json",
-  import.meta.url,
-), "utf8");
 
 describe("private package resolution", () => {
   test("authenticates inputs, canonically orders targets, and freezes results", async () => {
@@ -61,7 +55,7 @@ describe("private package resolution", () => {
       })).toThrow("activation request kind must be activation-request/2");
       expect(() => restorePrivateActivationRequest({
         ...structuredClone(requests[0]!),
-        target: { kind: "service", id: "z" },
+        target: { kind: "unknown", id: "z" },
       })).toThrow("activation target kind must be flow or binding");
       expect(requests.map(({ target }) => target)).toEqual([
         { kind: "binding", id: "z" },
@@ -69,8 +63,10 @@ describe("private package resolution", () => {
         { kind: "flow", path: "flows/z" },
       ]);
 
-      const snapshot = planning(requests, () => "planned", true);
-      const reversed = planning(requests, () => "planned", false);
+      const snapshot = planning(requests, (request) =>
+        targetKey(request.target) === "flow:flows/a" ? "unavailable" : "planned", true);
+      const reversed = planning(requests, (request) =>
+        targetKey(request.target) === "flow:flows/a" ? "unavailable" : "planned", false);
       expect(reversed.digest).toBe(snapshot.digest);
       expect(() => resolveLinkedPackageProjectObservation(project, digest("capture"), { ...snapshot })).toThrow(
         "planning observation was not produced by the trusted host boundary",
@@ -80,6 +76,10 @@ describe("private package resolution", () => {
       expect(resolution.targets.map(({ request }) => request.target)).toEqual(
         requests.map(({ target }) => target),
       );
+      expect(resolution.targets[1]!.disposition).toMatchObject({
+        state: "unavailable",
+        code: "RUNTIME_UNAVAILABLE",
+      });
       expect(resolution.admissible).toBeFalse();
       expect(Object.isFrozen(resolution)).toBeTrue();
       expect(Object.isFrozen(resolution.targets)).toBeTrue();
@@ -117,85 +117,6 @@ describe("private package resolution", () => {
     });
   });
 
-  test("keeps Journal publishers in semantics but outside the activation target set", async () => {
-    await withProject({
-      "flows/producer": {
-        "FLOW.md": metadata(`name: producer
-description: Producer.
-uses:
-  journal:
-    contract: ./contracts/journal.capability.json`),
-        "flow.ts": "export {};\n",
-        "contracts/journal.capability.json": journalContract,
-      },
-    }, [
-      { sourcePath: "bindings/publisher.ts", definition: defineJournalPublisher({
-        eventTypes: ["https://example.org/events/work-created"],
-      }) },
-      binding("bindings/producer.ts", {
-        package: "flows/producer",
-        slots: { journal: bindingRef("publisher") },
-      }),
-    ], async (project) => {
-      const requests = buildPrivateActivationRequests(project);
-      expect(requests.map(({ target }) => target)).toEqual([
-        { kind: "binding", id: "producer" },
-      ]);
-      const resolution = resolveLinkedPackageProjectObservation(
-        project,
-        digest("journal-capture"),
-        planning(requests, () => "planned"),
-      );
-      expect(resolution.targets).toHaveLength(1);
-      expect(project.journalPublishers[0]).toMatchObject({
-        id: "publisher",
-        source: "binding:publisher",
-        eventTypes: ["https://example.org/events/work-created"],
-      });
-    });
-  });
-
-  test("commits linked Hooks to semantic identity without creating activation targets", async () => {
-    const trees = { "flows/triage": run("triage") };
-    const bindings = [{
-      sourcePath: "bindings/publisher.ts",
-      definition: defineJournalPublisher({
-        eventTypes: ["https://example.org/events/work-created"],
-      }),
-    }];
-    let withoutHook: string | undefined;
-    await withProject(trees, bindings, async (project) => {
-      const requests = buildPrivateActivationRequests(project);
-      withoutHook = resolveLinkedPackageProjectObservation(
-        project,
-        digest("hook-capture"),
-        planning(requests, () => "planned"),
-      ).semanticDigest;
-    });
-    await withProject(trees, bindings, async (project) => {
-      const requests = buildPrivateActivationRequests(project);
-      expect(requests.map(({ target }) => target)).toEqual([
-        { kind: "flow", path: "flows/triage" },
-      ]);
-      expect(project.hooks).toHaveLength(1);
-      const withHook = resolveLinkedPackageProjectObservation(
-        project,
-        digest("hook-capture"),
-        planning(requests, () => "planned"),
-      );
-      expect(withHook.semanticDigest).not.toBe(withoutHook);
-    }, [{
-      sourcePath: "hooks/on-work.ts",
-      definition: defineHook({
-        on: {
-          publisher: bindingRef("publisher"),
-          type: "https://example.org/events/work-created",
-        },
-        run: flowRef("flows/triage"),
-      }),
-    }]);
-  });
-
   test("requires an exact request-matched planning answer for every target", async () => {
     await withProject({ "flows/run": run("run") }, [], async (project) => {
       const [request] = buildPrivateActivationRequests(project);
@@ -224,100 +145,6 @@ uses:
           disposition: { state: "planned", observation },
         }],
       })).toThrow("recipe observation does not belong to activation request");
-    });
-  });
-
-  test("propagates unavailable Service dependencies but not child-Flow candidates", async () => {
-    const contract = capability("https://example.org/contracts/index");
-    await withProject({
-      "flows/index": {
-        "FLOW.md": metadata(`name: index
-description: Index.
-service: 1
-provides:
-  api: ./contracts/index.capability.json`),
-        "flow.py": "pass\n",
-        "contracts/index.capability.json": contract,
-      },
-      "flows/search": {
-        "FLOW.md": metadata(`name: search
-description: Search.
-uses:
-  index:
-    contract: ./contracts/index.capability.json`),
-        "flow.py": "pass\n",
-        "contracts/index.capability.json": contract,
-      },
-      "flows/dispatcher": run("dispatcher"),
-      "flows/worker": run("worker"),
-    }, [
-      binding("bindings/index.ts", { package: "flows/index" }),
-      binding("bindings/search.ts", {
-        package: "flows/search",
-        slots: { index: bindingRef("index") },
-      }),
-      binding("bindings/dispatcher.ts", {
-        package: "flows/dispatcher",
-        slots: { work: flowRef("flows/worker") },
-      }),
-    ], async (project) => {
-      const requests = buildPrivateActivationRequests(project);
-      const dispatcherRequest = requests.find((request) => targetKey(request.target) === "binding:dispatcher")!;
-      const searchRequest = requests.find((request) => targetKey(request.target) === "binding:search")!;
-      expect(restorePrivateActivationRequest(structuredClone(dispatcherRequest))).toEqual(dispatcherRequest);
-      expect(restorePrivateActivationRequest(structuredClone(searchRequest))).toEqual(searchRequest);
-      const invalidSource = structuredClone(dispatcherRequest) as any;
-      invalidSource.slots.work.source = "query";
-      expect(() => restorePrivateActivationRequest(invalidSource)).toThrow(
-        "activation slot work source has an invalid kind",
-      );
-      const invalidCardinality = structuredClone(dispatcherRequest) as any;
-      invalidCardinality.slots.work.targets.push({ kind: "binding", id: "dispatcher" });
-      expect(() => restorePrivateActivationRequest(invalidCardinality)).toThrow(
-        "exact source must contain exactly one target",
-      );
-      const invalidContract = structuredClone(searchRequest) as any;
-      invalidContract.slots.index.contract.version = "1.0";
-      expect(() => restorePrivateActivationRequest(invalidContract)).toThrow(
-        "contract version is invalid",
-      );
-      let getterCalls = 0;
-      const accessor = structuredClone(dispatcherRequest) as any;
-      Object.defineProperty(accessor.slots.work, "source", {
-        enumerable: true,
-        get() {
-          getterCalls += 1;
-          return "exact";
-        },
-      });
-      expect(() => restorePrivateActivationRequest(accessor)).toThrow(
-        "must be an enumerable data property",
-      );
-      expect(getterCalls).toBe(0);
-      const snapshot = planning(requests, (request) => {
-        const key = targetKey(request.target);
-        return key === "binding:index" || key === "flow:flows/worker"
-          ? "unavailable"
-          : "planned";
-      });
-      const resolution = resolveLinkedPackageProjectObservation(project, digest("capture"), snapshot);
-      const byTarget = new Map(resolution.targets.map((target) => [
-        targetKey(target.request.target),
-        target.disposition,
-      ]));
-      expect(byTarget.get("binding:index")).toMatchObject({
-        state: "unavailable",
-        code: "RUNTIME_UNAVAILABLE",
-      });
-      expect(byTarget.get("binding:search")).toMatchObject({
-        state: "unavailable",
-        code: "DEPENDENCY_UNAVAILABLE",
-      });
-      expect(byTarget.get("binding:dispatcher")).toMatchObject({ state: "planned" });
-      expect(byTarget.get("flow:flows/worker")).toMatchObject({
-        state: "unavailable",
-        code: "RUNTIME_UNAVAILABLE",
-      });
     });
   });
 
@@ -396,8 +223,8 @@ uses:
             target: request!.target,
             requestDigest: request!.digest,
             disposition: {
-              state: "unavailable",
-              code: "RUNTIME_UNAVAILABLE",
+              state: "unavailable" as const,
+              code: "RUNTIME_UNAVAILABLE" as const,
               evidenceDigests: evidence,
             },
           }],
@@ -423,18 +250,10 @@ uses:
     });
   });
 
-  test("closes preparation, runtime-predicate, and digest domains", async () => {
+  test("closes runtime-predicate and digest domains", async () => {
     await withProject({ "flows/run": run("run") }, [], async (project) => {
       const [request] = buildPrivateActivationRequests(project);
       const base = observationInput(request!);
-      expect(() => createPrivateActivationRecipeObservation({
-        ...base,
-        preparationPlanDigest: digest("preparation"),
-      })).toThrow("preparation plan and envelope must both be present or both be absent");
-      expect(() => createPrivateActivationRecipeObservation({
-        ...base,
-        preparationEnvelopeDigest: digest("envelope"),
-      })).toThrow("preparation plan and envelope must both be present or both be absent");
       expect(() => createPrivateActivationRecipeObservation({
         ...base,
         runtimePredicates: ["root-process-mappings" as never],
@@ -525,10 +344,8 @@ function observationInput(
     adapter,
     toolchainDigest: digest("toolchain"),
     inspectionDigest: digest("inspection"),
-    preparationPlanDigest: null,
     launchPlanner: adapter,
     backend: extension("backend"),
-    preparationEnvelopeDigest: null,
     launchEnvelopeDigest: digest("launch-envelope"),
     runtimeSupportClosureDigest: digest("runtime-closure"),
     runtimePredicates: [],
@@ -549,26 +366,19 @@ function targetKey(target: RunTargetIdentity): string {
 function run(name: string): Record<string, string> {
   return {
     "FLOW.md": metadata(`name: ${name}\ndescription: ${name}.`),
-    "flow.py": "pass\n",
+    "flow.ts": "export {};\n",
   };
 }
 
-function binding(sourcePath: string, definition: Parameters<typeof defineBinding>[0]): InjectedBindingDeclaration {
+function binding(
+  sourcePath: string,
+  definition: Parameters<typeof defineBinding>[0],
+): InjectedBindingDeclaration {
   return { sourcePath, definition: defineBinding(definition) };
 }
 
 function metadata(frontmatter: string): string {
   return `---\n${frontmatter}\n---\n`;
-}
-
-function capability(id: string): string {
-  return JSON.stringify({
-    $schema: "https://flow.dev/schemas/capability-contract-1.schema.json",
-    flowCapabilityContract: 1,
-    id,
-    version: "1.0.0",
-    methods: { call: { input: true, output: true, errors: {} } },
-  });
 }
 
 function digest(label: string): string {
@@ -579,7 +389,6 @@ async function withProject(
   trees: Readonly<Record<string, Readonly<Record<string, string>>>>,
   bindings: readonly InjectedBindingDeclaration[],
   action: (project: PackageProjectValue) => Promise<void> | void,
-  hooks: readonly InjectedHookDeclaration[] = [],
 ): Promise<void> {
   const root = await mkdtemp(join(tmpdir(), "jig-project-resolution-"));
   const store = join(root, "store");
@@ -595,7 +404,7 @@ async function withProject(
     }
     source = await captureFlowSource(root, defineJig({ flows: Object.keys(trees) }).flows);
     const flows = await retainFlowSourcePackages(store, source);
-    await action(linkPackageProject({ flows, bindings, hooks }));
+    await action(linkPackageProject({ flows, bindings }));
   } finally {
     await source?.dispose();
     await rm(root, { recursive: true, force: true });

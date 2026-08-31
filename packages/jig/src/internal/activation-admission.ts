@@ -20,10 +20,6 @@ import {
   type PrivateDirectRunRecipe,
 } from "./direct-run.js";
 import {
-  requirePrivateBunServiceRecipe,
-  type PrivateBunServiceRecipe,
-} from "./bun-service-recipe.js";
-import {
   canonicalJson,
   decodeJson1,
   JSON_1_LIMITS,
@@ -48,7 +44,6 @@ import {
 const KIND_V5 = "private-activation-candidate/5";
 const PLAN_V2_KIND = "private-activation-plan/2";
 const ADMISSION_KIND = "private-activation-admission/2";
-const LOCK_REPAIR_KIND = "private-lock-repair/1";
 const DIGEST = /^sha256:[0-9a-f]{64}$/;
 const LOCAL_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const UNSIGNED_64 = /^(?:0|[1-9][0-9]{0,19})$/;
@@ -58,7 +53,7 @@ const createdCandidatesV5 = new WeakSet<object>();
 const inertCandidatesV5 = new WeakSet<object>();
 const inertPlansV2 = new WeakSet<object>();
 
-type PrivateActivationRecipe = PrivateDirectRunRecipe | PrivateBunServiceRecipe;
+type PrivateActivationRecipe = PrivateDirectRunRecipe;
 
 export interface PrivateActivationCandidateTarget {
   readonly request: PrivateActivationRequest;
@@ -145,18 +140,6 @@ export interface PrivateActivationAdmission {
   readonly candidateRevision: number;
   readonly candidateDigest: string;
   readonly lockDigest: string;
-  readonly hookBoundaryDigest: string;
-}
-
-/**
- * One immutable acknowledgement that a reviewed visible-lock repair
- * converged without creating a new activation generation.
- */
-export interface PrivateLockRepair {
-  readonly kind: typeof LOCK_REPAIR_KIND;
-  readonly planDigest: string;
-  readonly activeAdmissionDigest: string;
-  readonly proposedLockDigest: string;
 }
 
 /**
@@ -179,10 +162,7 @@ export function createPrivateActivationCandidateV5(
   const recipes = recipeValues.map(requirePrivateActivationRecipe);
   const recipeByRequest = new Map<string, PrivateActivationRecipe>();
   for (const recipe of recipes) {
-    const expectedMode = recipe.kind === "private-bun-service-recipe/1" ? "service" : "run";
-    if (recipe.request.mode !== expectedMode) {
-      throw new TypeError("activation recipe kind does not match its request mode");
-    }
+    if (recipe.request.mode !== "run") throw new TypeError("activation recipe must target a Run");
     if (recipeByRequest.has(recipe.request.digest)) {
       throw new TypeError("activation candidate contains duplicate recipes for one request");
     }
@@ -237,14 +217,8 @@ function requirePrivateActivationRecipe(value: unknown): PrivateActivationRecipe
   try {
     return requirePrivateDirectRunRecipe(value);
   } catch {
-    // Continue to the other closed recipe authority.
+    throw new TypeError("activation recipe was not produced by the direct Run planner");
   }
-  try {
-    return requirePrivateBunServiceRecipe(value);
-  } catch {
-    // Reject below without reading attacker-controlled properties.
-  }
-  throw new TypeError("activation recipe was not produced by a private planner");
 }
 
 function readPrivateActivationRecipeValues(
@@ -435,34 +409,6 @@ export function privateActivationPlanDigestV2(value: unknown): string {
 }
 
 /** Build the minimal receipt for one committed lock-only repair. */
-export function createPrivateLockRepair(input: {
-  readonly planDigest: string;
-  readonly activeAdmissionDigest: string;
-  readonly proposedLockDigest: string;
-}): PrivateLockRepair {
-  return normalizeLockRepair({ kind: LOCK_REPAIR_KIND, ...input });
-}
-
-export function decodePrivateLockRepair(bytesValue: unknown): PrivateLockRepair {
-  const bytes = copiedBytes(bytesValue, "lock-repair receipt bytes");
-  const receipt = normalizeLockRepair(decodeJson1(bytes));
-  if (!sameBytes(bytes, encodePrivateLockRepair(receipt))) {
-    throw new TypeError("private lock-repair receipt is not in canonical JSON/1 + LF form");
-  }
-  return receipt;
-}
-
-export function encodePrivateLockRepair(value: unknown): Uint8Array {
-  return encodeRecord(normalizeLockRepair(value), "private lock-repair receipt");
-}
-
-export function privateLockRepairDigest(value: unknown): string {
-  return privateDomainDigest(
-    "JIG-Private-Lock-Repair/1",
-    normalizeLockRepair(value) as unknown as JsonValue,
-  );
-}
-
 /** Require a factory- or strict-decoder-minted descriptor-inert Plan/2. */
 export function requirePrivateInertPlanV2(value: unknown): PrivateActivationPlanV2 {
   if (value === null || typeof value !== "object" || !inertPlansV2.has(value)) {
@@ -478,7 +424,6 @@ export function createPrivateActivationAdmission(input: {
   readonly candidateRevision: number;
   readonly candidateDigest: string;
   readonly lockDigest: string;
-  readonly hookBoundaryDigest: string;
 }): PrivateActivationAdmission {
   return normalizeAdmission({ kind: ADMISSION_KIND, ...input });
 }
@@ -765,7 +710,6 @@ function normalizeAdmission(input: unknown): PrivateActivationAdmission {
     "candidateRevision",
     "candidateDigest",
     "lockDigest",
-    "hookBoundaryDigest",
   ], "activation admission");
   if (root.kind !== ADMISSION_KIND) {
     throw new TypeError(`activation admission kind must be ${ADMISSION_KIND}`);
@@ -783,28 +727,6 @@ function normalizeAdmission(input: unknown): PrivateActivationAdmission {
     ),
     candidateDigest: requireDigest(root.candidateDigest, "admission candidate"),
     lockDigest: requireDigest(root.lockDigest, "admission lock"),
-    hookBoundaryDigest: requireDigest(root.hookBoundaryDigest, "admission Hook boundary"),
-  });
-}
-
-function normalizeLockRepair(input: unknown): PrivateLockRepair {
-  const root = exactObject(input, [
-    "kind",
-    "planDigest",
-    "activeAdmissionDigest",
-    "proposedLockDigest",
-  ], "lock-repair receipt");
-  if (root.kind !== LOCK_REPAIR_KIND) {
-    throw new TypeError(`lock-repair receipt kind must be ${LOCK_REPAIR_KIND}`);
-  }
-  return Object.freeze({
-    kind: LOCK_REPAIR_KIND,
-    planDigest: requireDigest(root.planDigest, "lock-repair plan"),
-    activeAdmissionDigest: requireDigest(
-      root.activeAdmissionDigest,
-      "lock-repair active admission",
-    ),
-    proposedLockDigest: requireDigest(root.proposedLockDigest, "lock-repair proposed lock"),
   });
 }
 
@@ -872,51 +794,22 @@ function requireRequestLockProjection(
     throw new TypeError("activation request package path does not match its lock target");
   }
   const packageValue = lock.packages[request.packagePath];
-  if (packageValue === undefined || packageValue.digest !== request.package.digest ||
-      packageValue.mode !== request.mode) {
+  if (packageValue === undefined || packageValue.digest !== request.package.digest) {
     throw new TypeError("activation request package does not match its lock projection");
   }
   if (request.target.kind === "binding") {
     const binding = lock.bindings[request.target.id];
     if (binding === undefined ||
-        !sameJson(binding.attachments, request.attachments) ||
-        !requestSlotsMatchLock(request.slots, binding.slots, packageValue.uses)) {
+        !sameJson(binding.settings, request.settings) ||
+        !sameJson(binding.attachments, request.attachments)) {
       throw new TypeError("activation request Binding configuration does not match its lock projection");
     }
     return;
   }
   if (Object.keys(request.settings).length !== 0 ||
-      Object.keys(request.attachments).length !== 0 ||
-      Object.keys(request.slots).length !== 0) {
+      Object.keys(request.attachments).length !== 0) {
     throw new TypeError("direct Flow activation request must have empty configuration");
   }
-}
-
-function requestSlotsMatchLock(
-  request: PrivateActivationRequest["slots"],
-  locked: PrivateProjectLocalLock["bindings"][string]["slots"],
-  uses: PrivateProjectLocalLock["packages"][string]["uses"],
-): boolean {
-  const requestNames = Object.keys(request).sort();
-  const lockedNames = Object.keys(locked).sort();
-  if (requestNames.length !== lockedNames.length || requestNames.some(
-    (name, index) => name !== lockedNames[index],
-  )) return false;
-  for (const name of requestNames) {
-    const requested = request[name]!;
-    const lockedSlot = locked[name]!;
-    if (lockedSlot.kind === "flow-call") {
-      if (requested.kind !== "flow-call" || !sameJson(requested, lockedSlot)) return false;
-      continue;
-    }
-    const requirement = uses[name];
-    if (requested.kind !== "capability" || requirement?.kind !== "contract" ||
-        !sameJson(requested.provider, lockedSlot.provider) ||
-        requested.contract.id !== requirement.id ||
-        requested.contract.version !== requirement.version ||
-        requested.contract.digest !== requirement.digest) return false;
-  }
-  return true;
 }
 
 function sameJson(left: unknown, right: unknown): boolean {
@@ -952,7 +845,7 @@ function requireExactTargetSet(
 ): void {
   const keys = [
     ...Object.entries(lock.packages)
-      .filter(([, packageValue]) => packageValue.mode === "run" && packageValue.directRun)
+      .filter(([, packageValue]) => packageValue.directRun)
       .map(([path]) => privateActivationTargetKey({ kind: "flow", path })),
     ...Object.keys(lock.bindings)
       .map((id) => privateActivationTargetKey({ kind: "binding", id })),
@@ -1122,12 +1015,7 @@ function copiedBytes(value: unknown, label: string): Uint8Array {
 function isUnavailableCode(value: unknown): value is PrivateResolutionUnavailableCode {
   return [
     "RUNTIME_UNAVAILABLE",
-    "RUNTIME_AMBIGUOUS",
-    "PREPARATION_AUTHORITY_REQUIRED",
     "SANDBOX_UNAVAILABLE",
-    "SANDBOX_AMBIGUOUS",
-    "PERMISSION_UNENFORCEABLE",
-    "DEPENDENCY_UNAVAILABLE",
   ].includes(value as string);
 }
 

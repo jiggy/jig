@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
-import { readdir } from "node:fs/promises";
 import { resolve } from "node:path";
 
 import {
@@ -72,19 +71,6 @@ describe("Capability Contract/1", () => {
     expect(() =>
       parsed.schemas.get("/methods/read/input")!.validate({}, "INVALID_INPUT")
     ).toThrow(SchemaDiagnostic);
-  });
-
-  test("accepts every published Jig capability descriptor", async () => {
-    const directory = resolve(import.meta.dir, "../../../docs/spec/contracts/jig");
-    const names = (await readdir(directory)).filter((name) => name.endsWith(".capability.json"));
-    expect(names.length).toBeGreaterThan(0);
-    for (const name of names) {
-      const parsed = parseCapabilityContract(
-        new Uint8Array(await readFile(resolve(directory, name))),
-        name,
-      );
-      expect(parsed.digest).toMatch(/^sha256:[0-9a-f]{64}$/);
-    }
   });
 
   test("digests parsed values rather than source formatting", () => {

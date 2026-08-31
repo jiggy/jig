@@ -71,7 +71,7 @@ function renderPackage(checked: InspectedPackage): string {
     `implementation: ${implementation}`,
     `files: ${checked.fileCount} (${checked.contentBytes} bytes)`,
     `schemas: ${schemas.length === 0 ? "none" : schemas.join(", ")}`,
-    `contracts: ${checked.usedContracts.length} used, ${checked.providedContracts.length} provided`,
+    `contracts: ${checked.usedContracts.length} used`,
     `skills: ${checked.skills.length === 0 ? "none" : checked.skills.join(", ")}`,
     "",
   ].join("\n");

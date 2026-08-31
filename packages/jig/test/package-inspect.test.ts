@@ -87,33 +87,6 @@ describe("aggregate Package/1 inspection", () => {
     }
   });
 
-  test("requires exact code for Services and rejects Run-only Service schemas", async () => {
-    const service = flowMetadata("name: service\ndescription: Service.\nservice: 1");
-    await withPackage({ "FLOW.md": service }, async (root) => {
-      await expectCheckError(() => checkPackageDirectory(root), "PACKAGE_SERVICE_CODE");
-    });
-
-    for (const schema of ["input.schema.json", "result.schema.json"]) {
-      await withPackage({
-        "FLOW.md": service,
-        "flow.py": "#!/usr/bin/env python\n",
-        [schema]: schemaDocument({ type: "object" }),
-      }, async (root) => {
-        await expectCheckError(() => checkPackageDirectory(root), "PACKAGE_SCHEMA_MODE");
-      });
-    }
-
-    await withPackage({
-      "FLOW.md": service,
-      "flow.py": "#!/usr/bin/env python\n",
-      "settings.schema.json": schemaDocument({ type: "object" }),
-    }, async (root) => {
-      const checked = await checkPackageDirectory(root);
-      expect(checked.mode).toBe("service");
-      expect(checked.schemas.settings).toBeDefined();
-    });
-  });
-
   test("compiles every conventional Run schema during inspection", async () => {
     await withPackage({
       "FLOW.md": runMetadata,
@@ -148,22 +121,21 @@ describe("aggregate Package/1 inspection", () => {
     });
   });
 
-  test("loads exact referenced consumed and provided capability contracts", async () => {
+  test("loads exact referenced consumed capability contracts", async () => {
     const consumer = capability("https://example.org/contracts/consumer");
-    const provider = capability("https://example.org/contracts/provider");
-    const metadata = flowMetadata(`name: service
-description: Service.
-service: 1
+    const peer = capability("https://example.org/contracts/peer");
+    const metadata = flowMetadata(`name: consumer
+description: Consumer.
 uses:
   dependency:
     contract: ./contracts/consumer.capability.json
-provides:
-  api: ./contracts/provider.capability.json`);
+  peer:
+    contract: ./contracts/peer.capability.json`);
     await withPackage({
       "FLOW.md": metadata,
       "flow.ts": "export {};\n",
       "contracts/consumer.capability.json": consumer,
-      "contracts/provider.capability.json": provider,
+      "contracts/peer.capability.json": peer,
     }, async (root) => {
       const checked = await checkPackageDirectory(root);
       expect(checked.usedContracts.map(({ slot, path, contract }) => ({
@@ -174,15 +146,10 @@ provides:
         slot: "dependency",
         path: "contracts/consumer.capability.json",
         id: "https://example.org/contracts/consumer",
-      }]);
-      expect(checked.providedContracts.map(({ slot, path, contract }) => ({
-        slot,
-        path,
-        id: contract.descriptor.id,
-      }))).toEqual([{
-        slot: "api",
-        path: "contracts/provider.capability.json",
-        id: "https://example.org/contracts/provider",
+      }, {
+        slot: "peer",
+        path: "contracts/peer.capability.json",
+        id: "https://example.org/contracts/peer",
       }]);
     });
   });
@@ -190,17 +157,16 @@ provides:
   test("rejects one package carrying different bytes for the same contract version", async () => {
     const id = "https://example.org/contracts/equivocal";
     await withPackage({
-      "FLOW.md": flowMetadata(`name: service
-description: Service.
-service: 1
+      "FLOW.md": flowMetadata(`name: consumer
+description: Consumer.
 uses:
-  dependency:
-    contract: ./contracts/consumer.capability.json
-provides:
-  api: ./contracts/provider.capability.json`),
+  first:
+    contract: ./contracts/first.capability.json
+  second:
+    contract: ./contracts/second.capability.json`),
       "flow.ts": "export {};\n",
-      "contracts/consumer.capability.json": capability(id),
-      "contracts/provider.capability.json": capability(id, false),
+      "contracts/first.capability.json": capability(id),
+      "contracts/second.capability.json": capability(id, false),
     }, async (root) => {
       await expectCheckError(() => checkPackageDirectory(root), "CAPABILITY_EQUIVOCATION");
     });

@@ -1,21 +1,13 @@
 # `@jigging/jig`
 
-Private pre-release implementation of Jig. The package checker and first pure
-project-authoring slice are development evidence, not a published stable host
-interface.
+Private prerelease implementation of Jig. This package is not a published
+stable host interface.
 
-This artifact does not open projects, issue Root Administration authority,
-plan or apply projects, or execute FLOW packages. Its bare initializer writes
-only inert user-owned project source:
+Its bare initializer writes only inert user-owned project source:
 
 ```console
 jig init --bare ./my-project
 ```
-
-The `@jigging/jig/administration` path also exports the inert
-Project Administration/1 and Root Administration/1 value/type candidates for
-trusted-host injection and packed-consumer testing. It exports no project
-opener or host implementation.
 
 ```console
 jig package check ./path/to/package
@@ -37,7 +29,6 @@ export default defineJig({
 These helpers construct inert frozen data. They do not discover or admit the
 referenced files.
 
-The same root exports `projectRunTargets()` for a Binding Flow-call slot. It
-declares the complete structural Run-target catalogue to be expanded and
-pinned during planning; it does not select, rank, authorize, or execute a
-target.
+The current packed command surface does not yet open a project or execute a
+FLOW package. `jig check` and `jig run` will be added only when the same packed
+artifact passes the installed Operational Baseline/1.

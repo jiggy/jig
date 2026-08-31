@@ -32,16 +32,6 @@ export interface JigDefinitionInput {
   readonly bindings?: ProjectSourceInput;
 }
 
-/** Private experimental overlay; not part of Project Authoring SDK/1. */
-export interface PrivateHookJigDefinition extends JigDefinition {
-  readonly hooks?: ProjectSource;
-}
-
-/** Private experimental overlay; not part of Project Authoring SDK/1. */
-export interface PrivateHookJigDefinitionInput extends JigDefinitionInput {
-  readonly hooks?: ProjectSourceInput;
-}
-
 export interface FlowRef {
   readonly kind: "flow";
   readonly path: string;
@@ -54,59 +44,20 @@ export interface BindingRef {
 
 export type RunTargetRef = FlowRef | BindingRef;
 
-export interface CandidateSetRef {
-  readonly kind: "candidates";
-  readonly targets: readonly RunTargetRef[];
-}
-
-export interface ProjectRunTargetsRef {
-  readonly kind: "project-run-targets";
-}
-
-export type SlotRef = RunTargetRef | CandidateSetRef | ProjectRunTargetsRef;
-
 export interface PackageBindingDefinition {
   readonly kind: "package";
   readonly package: string;
   readonly settings: JsonObject;
-  readonly slots: Readonly<Record<string, SlotRef>>;
   readonly attachments: Readonly<Record<string, string>>;
 }
 
 export interface PackageBindingInput {
   readonly package: string;
   readonly settings?: JsonObject;
-  readonly slots?: Readonly<Record<string, SlotRef>>;
   readonly attachments?: Readonly<Record<string, string>>;
 }
 
-export interface JournalPublisherDefinition {
-  readonly kind: "journal-publisher";
-  readonly eventTypes: readonly string[];
-}
-
-export interface JournalPublisherInput {
-  readonly eventTypes: readonly string[];
-}
-
-export interface HookDefinition {
-  readonly kind: "hook";
-  readonly on: {
-    readonly publisher: BindingRef;
-    readonly type: string;
-  };
-  readonly run: RunTargetRef;
-}
-
-export interface HookInput {
-  readonly on: {
-    readonly publisher: BindingRef;
-    readonly type: string;
-  };
-  readonly run: RunTargetRef;
-}
-
-export type BindingDefinition = PackageBindingDefinition | JournalPublisherDefinition;
+export type BindingDefinition = PackageBindingDefinition;
 
 export function discover(roots: string | readonly string[]): DiscoverySource {
   const values = typeof roots === "string"
@@ -149,120 +100,16 @@ function normalizeJig(input: JigDefinitionInput, canonical: boolean): JigDefinit
   return record(output) as unknown as JigDefinition;
 }
 
-/** Private experimental project helper used only by the Hook vertical. */
-export function definePrivateHookJig(input: PrivateHookJigDefinitionInput): PrivateHookJigDefinition {
-  return normalizePrivateHookJig(input, false);
-}
-
-/** Evaluator-only normalization for the private Hook authoring overlay. */
-export function normalizePrivateHookJigDefinition(input: unknown): PrivateHookJigDefinition {
-  return normalizePrivateHookJig(input as PrivateHookJigDefinitionInput, true);
-}
-
-function normalizePrivateHookJig(
-  input: PrivateHookJigDefinitionInput,
-  canonical: boolean,
-): PrivateHookJigDefinition {
-  const captured = snapshotJsonObject(input, "experimental Hook Jig definition");
-  assertClosedObject(captured, ["flows", "bindings", "hooks"], "experimental Hook Jig definition");
-  const baseInput: JigDefinitionInput = {
-    ...(Object.hasOwn(captured, "flows") ? { flows: captured.flows as unknown as ProjectSourceInput } : {}),
-    ...(Object.hasOwn(captured, "bindings") ? { bindings: captured.bindings as unknown as ProjectSourceInput } : {}),
-  };
-  const base = normalizeJig(baseInput, canonical);
-  const output: { flows?: ProjectSource; bindings?: ProjectSource; hooks?: ProjectSource } = { ...base };
-  if (Object.hasOwn(captured, "hooks")) {
-    output.hooks = normalizeSource(captured.hooks as unknown as ProjectSourceInput, "hooks", canonical);
-  }
-  return record(output) as unknown as PrivateHookJigDefinition;
-}
-
 export function defineBinding(input: PackageBindingInput): PackageBindingDefinition {
   return normalizeBinding(input, false);
 }
 
-/** Declare the complete structural Run-target catalogue of the admitted project generation. */
-export function projectRunTargets(): ProjectRunTargetsRef {
-  return record({ kind: "project-run-targets" }) as unknown as ProjectRunTargetsRef;
+export function flowRef(path: string): FlowRef {
+  return record({ kind: "flow", path: normalizeProjectPath(path, "Flow reference") }) as unknown as FlowRef;
 }
 
-/** Declare one canonical Jig Journal publisher with an exact authority ceiling. */
-export function defineJournalPublisher(input: JournalPublisherInput): JournalPublisherDefinition {
-  return normalizeJournalPublisher(input, false);
-}
-
-/** Evaluator-only canonical re-normalization; absent from the package root. */
-export function normalizeJournalPublisherDefinition(input: unknown): JournalPublisherDefinition {
-  return normalizeJournalPublisher(input as JournalPublisherInput, true);
-}
-
-/** Declare one exact inert Event-to-Run relation. */
-export function defineHook(input: HookInput): HookDefinition {
-  return normalizeHook(input, false);
-}
-
-/** Evaluator-only canonical re-normalization; absent from the package root. */
-export function normalizeHookDefinition(input: unknown): HookDefinition {
-  return normalizeHook(input as HookInput, true);
-}
-
-function normalizeHook(input: HookInput, canonical: boolean): HookDefinition {
-  const captured = snapshotJsonObject(input, "Hook definition");
-  assertClosedObject(captured, canonical ? ["kind", "on", "run"] : ["on", "run"], "Hook definition");
-  if (canonical && captured.kind !== "hook") throw new TypeError("Hook kind must be hook");
-  if (!Object.hasOwn(captured, "on") || !Object.hasOwn(captured, "run")) {
-    throw new TypeError("Hook on and run are required");
-  }
-  const on = assertRecord(captured.on as unknown as HookInput["on"], "Hook on");
-  assertClosedObject(on, ["publisher", "type"], "Hook on");
-  if (!Object.hasOwn(on, "publisher") || !Object.hasOwn(on, "type")) {
-    throw new TypeError("Hook on.publisher and on.type are required");
-  }
-  const publisher = normalizeRunTarget(on.publisher as RunTargetRef);
-  if (publisher.kind !== "binding") throw new TypeError("Hook publisher must be a bindingRef()");
-  const type = validateEventType(on.type);
-  const run = normalizeRunTarget(captured.run as unknown as RunTargetRef);
-  return record({
-    kind: "hook",
-    on: record({ publisher, type }),
-    run,
-  }) as unknown as HookDefinition;
-}
-
-function normalizeJournalPublisher(
-  input: JournalPublisherInput,
-  canonical: boolean,
-): JournalPublisherDefinition {
-  const captured = snapshotJsonObject(input, "Journal publisher definition");
-  assertClosedObject(
-    captured,
-    canonical ? ["kind", "eventTypes"] : ["eventTypes"],
-    "Journal publisher definition",
-  );
-  if (canonical && captured.kind !== "journal-publisher") {
-    throw new TypeError("Journal publisher kind must be journal-publisher");
-  }
-  if (!Object.hasOwn(captured, "eventTypes")) {
-    throw new TypeError("Journal publisher eventTypes are required");
-  }
-  const values = snapshotStringArray(
-    captured.eventTypes as unknown as readonly string[],
-    "Journal publisher eventTypes",
-  );
-  if (values.length === 0) {
-    throw new TypeError("Journal publisher requires at least one event type");
-  }
-  if (values.length > JSON_1_LIMITS.containerEntries) {
-    throw new TypeError("Journal publisher eventTypes exceed the JSON/1 container bound");
-  }
-  const eventTypes = values.map((value) => validateEventType(value));
-  eventTypes.sort();
-  for (let index = 1; index < eventTypes.length; index += 1) {
-    if (eventTypes[index - 1] === eventTypes[index]) {
-      throw new TypeError(`duplicate Journal event type ${eventTypes[index]}`);
-    }
-  }
-  return record({ kind: "journal-publisher", eventTypes: Object.freeze(eventTypes) }) as unknown as JournalPublisherDefinition;
+export function bindingRef(id: string): BindingRef {
+  return record({ kind: "binding", id: validateLocalName(id, "Binding reference") }) as unknown as BindingRef;
 }
 
 /** Evaluator-only canonical re-normalization; absent from the package root. */
@@ -278,8 +125,8 @@ function normalizeBinding(
   assertClosedObject(
     captured,
     canonical
-      ? ["kind", "package", "settings", "slots", "attachments"]
-      : ["package", "settings", "slots", "attachments"],
+      ? ["kind", "package", "settings", "attachments"]
+      : ["package", "settings", "attachments"],
     "Binding definition",
   );
   if (canonical && captured.kind !== "package") {
@@ -290,41 +137,10 @@ function normalizeBinding(
   const settings = Object.hasOwn(captured, "settings")
     ? expectJsonObject(captured.settings, "settings")
     : emptyRecord();
-  const slots = Object.hasOwn(captured, "slots")
-    ? normalizeSlots(
-      captured.slots as unknown as Readonly<Record<string, SlotRef>>,
-    )
-    : emptyRecord();
   const attachments = Object.hasOwn(captured, "attachments")
     ? normalizeAttachments(captured.attachments as unknown as Readonly<Record<string, string>>)
     : emptyRecord();
-  return record({ kind: "package", package: packagePath, settings, slots, attachments }) as unknown as PackageBindingDefinition;
-}
-
-export function flowRef(path: string): FlowRef {
-  return record({ kind: "flow", path: normalizeProjectPath(path, "Flow reference") }) as unknown as FlowRef;
-}
-
-export function bindingRef(id: string): BindingRef {
-  return record({ kind: "binding", id: validateLocalName(id, "Binding reference") }) as unknown as BindingRef;
-}
-
-export function candidates(targets: readonly RunTargetRef[]): CandidateSetRef {
-  const input = snapshotJson(targets, "candidate targets");
-  validateJson1(input);
-  if (!Array.isArray(input)) throw new TypeError("candidate targets must be an array");
-  if (input.length < 2) throw new TypeError("candidates() requires at least two targets");
-  if (input.length > JSON_1_LIMITS.containerEntries) {
-    throw new TypeError("candidate targets exceed the JSON/1 container bound");
-  }
-  const normalized = input.map((target) => normalizeRunTarget(target));
-  normalized.sort(compareTargets);
-  for (let index = 1; index < normalized.length; index += 1) {
-    if (targetKey(normalized[index - 1]!) === targetKey(normalized[index]!)) {
-      throw new TypeError(`duplicate candidate target ${targetKey(normalized[index]!)}`);
-    }
-  }
-  return record({ kind: "candidates", targets: Object.freeze(normalized) }) as unknown as CandidateSetRef;
+  return record({ kind: "package", package: packagePath, settings, attachments }) as unknown as PackageBindingDefinition;
 }
 
 function normalizeSource(
@@ -363,18 +179,6 @@ function normalizeSource(
   return record({ kind: "discover", roots }) as unknown as DiscoverySource;
 }
 
-function normalizeSlots(
-  value: Readonly<Record<string, SlotRef>> | undefined,
-): Readonly<Record<string, SlotRef>> {
-  const input = assertRecord(value, "slots");
-  const output: Record<string, SlotRef> = {};
-  for (const key of sortedKeys(input)) {
-    validateLocalName(key, "slot name");
-    output[key] = normalizeSlot(input[key]);
-  }
-  return record(output);
-}
-
 function normalizeAttachments(
   value: Readonly<Record<string, string>> | undefined,
 ): Readonly<Record<string, string>> {
@@ -385,37 +189,6 @@ function normalizeAttachments(
     output[key] = normalizeProjectPath(input[key], `attachment ${key}`);
   }
   return record(output);
-}
-
-function normalizeSlot(
-  value: SlotRef | undefined,
-): SlotRef {
-  if (value === undefined) throw new TypeError("slot value cannot be undefined");
-  const object = assertRecord(value, "slot reference") as Partial<SlotRef>;
-  if (object.kind === "project-run-targets") {
-    assertClosedObject(object, ["kind"], "slot reference");
-    return projectRunTargets();
-  }
-  if (object.kind === "candidates") {
-    assertClosedObject(object, ["kind", "targets"], "slot reference");
-    // candidates() deliberately accepts only exact Run targets. A changing
-    // source cannot be nested inside another candidate source.
-    return candidates((object as Partial<CandidateSetRef>).targets!);
-  }
-  return normalizeRunTarget(object as RunTargetRef);
-}
-
-function normalizeRunTarget(value: RunTargetRef): RunTargetRef {
-  const object = assertRecord(value, "Run target") as Partial<RunTargetRef>;
-  if (object.kind === "flow") {
-    assertClosedObject(object, ["kind", "path"], "Run target");
-    return flowRef(object.path!);
-  }
-  if (object.kind === "binding") {
-    assertClosedObject(object, ["kind", "id"], "Run target");
-    return bindingRef(object.id!);
-  }
-  throw new TypeError("Run target must be a flowRef() or bindingRef()");
 }
 
 function normalizeUniquePaths(
@@ -441,16 +214,6 @@ function normalizeUniquePaths(
 function validateLocalName(value: unknown, label: string): string {
   if (typeof value !== "string" || value.length > 64 || !LOCAL_NAME.test(value)) {
     throw new TypeError(`${label} must be a LocalName`);
-  }
-  return value;
-}
-
-function validateEventType(value: unknown): string {
-  if (typeof value !== "string" || [...value].length === 0 || [...value].length > 512) {
-    throw new TypeError("Journal event type must be a non-empty string of at most 512 characters");
-  }
-  if (value.startsWith("https://jig.dev/events/")) {
-    throw new TypeError("Journal event type uses Jig's protected lifecycle namespace");
   }
   return value;
 }
@@ -566,14 +329,6 @@ function isReadonlyArray(value: unknown): value is readonly unknown[] {
 
 function sortedKeys(value: object): string[] {
   return Object.keys(value).sort(compareUtf8);
-}
-
-function compareTargets(left: RunTargetRef, right: RunTargetRef): number {
-  return compareUtf8(targetKey(left), targetKey(right));
-}
-
-function targetKey(target: RunTargetRef): string {
-  return target.kind === "flow" ? `flow:${target.path}` : `binding:${target.id}`;
 }
 
 function snapshotStringArray(value: unknown, label: string): readonly string[] {

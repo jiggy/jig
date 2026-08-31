@@ -29,10 +29,8 @@ export interface PrivateActivationRecipeObservationInput {
   readonly adapter: PrivateExtensionObservation;
   readonly toolchainDigest: string;
   readonly inspectionDigest: string;
-  readonly preparationPlanDigest: string | null;
   readonly launchPlanner: PrivateExtensionObservation;
   readonly backend: PrivateExtensionObservation;
-  readonly preparationEnvelopeDigest: string | null;
   readonly launchEnvelopeDigest: string;
   readonly runtimeSupportClosureDigest: string;
   readonly runtimePredicates: readonly [];
@@ -49,11 +47,7 @@ export interface PrivateActivationRecipeObservation
 
 export type PrivateActivationUnavailableCode =
   | "RUNTIME_UNAVAILABLE"
-  | "RUNTIME_AMBIGUOUS"
-  | "PREPARATION_AUTHORITY_REQUIRED"
-  | "SANDBOX_UNAVAILABLE"
-  | "SANDBOX_AMBIGUOUS"
-  | "PERMISSION_UNENFORCEABLE";
+  | "SANDBOX_UNAVAILABLE";
 
 export type PrivateActivationPlanningDisposition =
   | {
@@ -114,10 +108,8 @@ export function createPrivateActivationRecipeObservation(
     "adapter",
     "toolchainDigest",
     "inspectionDigest",
-    "preparationPlanDigest",
     "launchPlanner",
     "backend",
-    "preparationEnvelopeDigest",
     "launchEnvelopeDigest",
     "runtimeSupportClosureDigest",
     "runtimePredicates",
@@ -125,24 +117,14 @@ export function createPrivateActivationRecipeObservation(
     "wouldGrantAuthorityDigest",
     "plannedAuthorityDigest",
   ], "activation recipe observation");
-  const preparationPlanDigest = optionalDigest(root.preparationPlanDigest, "preparation plan");
-  const preparationEnvelopeDigest = optionalDigest(
-    root.preparationEnvelopeDigest,
-    "preparation envelope",
-  );
-  if ((preparationPlanDigest === null) !== (preparationEnvelopeDigest === null)) {
-    throw new TypeError("preparation plan and envelope must both be present or both be absent");
-  }
   const valueWithoutDigest = Object.freeze({
     kind: "activation-recipe-observation/1" as const,
     requestDigest: requireDigest(root.requestDigest, "recipe request"),
     adapter: normalizeExtension(root.adapter, "adapter"),
     toolchainDigest: requireDigest(root.toolchainDigest, "toolchain"),
     inspectionDigest: requireDigest(root.inspectionDigest, "inspection"),
-    preparationPlanDigest,
     launchPlanner: normalizeExtension(root.launchPlanner, "launch planner"),
     backend: normalizeExtension(root.backend, "sandbox backend"),
-    preparationEnvelopeDigest,
     launchEnvelopeDigest: requireDigest(root.launchEnvelopeDigest, "launch envelope"),
     runtimeSupportClosureDigest: requireDigest(
       root.runtimeSupportClosureDigest,
@@ -321,10 +303,6 @@ function normalizeRuntimePredicates(
   return Object.freeze([]);
 }
 
-function optionalDigest(value: unknown, label: string): string | null {
-  return value === null ? null : requireDigest(value, label);
-}
-
 function requireDigest(value: unknown, label: string): string {
   if (typeof value !== "string" || !DIGEST.test(value)) {
     throw new TypeError(`${label} digest must be sha256: followed by 64 lowercase hexadecimal digits`);
@@ -335,11 +313,7 @@ function requireDigest(value: unknown, label: string): string {
 function isUnavailableCode(value: unknown): value is PrivateActivationUnavailableCode {
   return [
     "RUNTIME_UNAVAILABLE",
-    "RUNTIME_AMBIGUOUS",
-    "PREPARATION_AUTHORITY_REQUIRED",
     "SANDBOX_UNAVAILABLE",
-    "SANDBOX_AMBIGUOUS",
-    "PERMISSION_UNENFORCEABLE",
   ].includes(value as string);
 }
 

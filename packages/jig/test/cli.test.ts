@@ -33,13 +33,11 @@ test("jig init --bare creates only the fixed inert project envelope", async () =
       "bindings",
       "flows",
       "jig.ts",
-      "package.json",
-      "tsconfig.json",
     ]);
     expect(await readdir(join(destination, "flows"))).toEqual([]);
     expect(await readdir(join(destination, "bindings"))).toEqual([]);
     expect(await readFile(join(destination, ".gitignore"), "utf8")).toBe(
-      ".jig/\nnode_modules/\n",
+      ".jig/\n",
     );
     expect(await readFile(join(destination, "jig.ts"), "utf8")).toBe([
       'import { defineJig, discover } from "@jigging/jig";',
@@ -50,24 +48,6 @@ test("jig init --bare creates only the fixed inert project envelope", async () =
       "});",
       "",
     ].join("\n"));
-    const shipped = JSON.parse(await readFile(resolve(import.meta.dir, "../package.json"), "utf8"));
-    expect(JSON.parse(await readFile(join(destination, "package.json"), "utf8"))).toEqual({
-      private: true,
-      type: "module",
-      dependencies: { "@jigging/jig": shipped.version },
-      devDependencies: { typescript: "7.0.2" },
-    });
-    expect(JSON.parse(await readFile(join(destination, "tsconfig.json"), "utf8"))).toEqual({
-      compilerOptions: {
-        target: "ES2022",
-        module: "ESNext",
-        moduleResolution: "Bundler",
-        strict: true,
-        noEmit: true,
-        skipLibCheck: true,
-      },
-      include: ["jig.ts", "bindings/**/*.ts"],
-    });
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -132,7 +112,7 @@ test("bare initialization removes only its own entries after a controlled write 
     }) as typeof writeFile,
   };
   try {
-    await expect(createBareProject(destination, "1.2.3", fileSystem)).rejects.toMatchObject({
+    await expect(createBareProject(destination, fileSystem)).rejects.toMatchObject({
       code: "JIG_INIT_UNAVAILABLE",
       message: "the destination cannot be initialized",
     });
@@ -161,7 +141,7 @@ test("bare initialization never removes unknown concurrent content", async () =>
     }) as typeof writeFile,
   };
   try {
-    await expect(createBareProject(destination, "1.2.3", fileSystem)).rejects.toMatchObject({
+    await expect(createBareProject(destination, fileSystem)).rejects.toMatchObject({
       code: "JIG_INIT_CLEANUP_FAILED",
       message: "initialization failed and its created files could not be removed",
     });
@@ -193,7 +173,7 @@ test("concurrent bare initializers have exactly one winner", async () => {
       "JIG_INIT_DESTINATION_EXISTS: the destination already exists\n",
     );
     expect((await readdir(destination)).sort()).toEqual([
-      ".gitignore", "bindings", "flows", "jig.ts", "package.json", "tsconfig.json",
+      ".gitignore", "bindings", "flows", "jig.ts",
     ]);
   } finally {
     await rm(root, { recursive: true, force: true });

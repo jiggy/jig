@@ -37,14 +37,8 @@ export interface PrivateExternalSubmissionOrigin {
   readonly submissionId: string;
 }
 
-export interface PrivateHookDerivedOrigin {
-  readonly kind: "private-root-hook-derived-origin/1";
-  readonly hookRevisionDigest: string;
-  readonly eventId: string;
-}
-
 /** One closed, inert reason that a root Run exists. */
-export type PrivateRootRunOrigin = PrivateExternalSubmissionOrigin | PrivateHookDerivedOrigin;
+export type PrivateRootRunOrigin = PrivateExternalSubmissionOrigin;
 
 export interface PrivateRootRunIdentityInput {
   readonly project: {
@@ -112,17 +106,6 @@ export function createPrivateExternalSubmissionOrigin(
   }) as PrivateExternalSubmissionOrigin;
 }
 
-export function createPrivateHookDerivedOrigin(input: {
-  readonly hookRevisionDigest: string;
-  readonly eventId: string;
-}): PrivateHookDerivedOrigin {
-  return normalizePrivateRootRunOrigin({
-    kind: "private-root-hook-derived-origin/1",
-    hookRevisionDigest: input.hookRevisionDigest,
-    eventId: input.eventId,
-  }) as PrivateHookDerivedOrigin;
-}
-
 export function normalizePrivateRootRunOrigin(value: unknown): PrivateRootRunOrigin {
   const kind = value !== null && typeof value === "object"
     ? (value as Record<string, unknown>).kind
@@ -133,18 +116,6 @@ export function normalizePrivateRootRunOrigin(value: unknown): PrivateRootRunOri
     return Object.freeze({
       kind: "private-root-external-submission-origin/1",
       submissionId: root.submissionId as string,
-    });
-  }
-  if (kind === "private-root-hook-derived-origin/1") {
-    const root = exactRecord(
-      value,
-      ["kind", "hookRevisionDigest", "eventId"],
-      "Hook-derived root Run origin",
-    );
-    return Object.freeze({
-      kind: "private-root-hook-derived-origin/1",
-      hookRevisionDigest: digest(root.hookRevisionDigest, "Hook revision"),
-      eventId: digest(root.eventId, "Hook Event"),
     });
   }
   throw new TypeError("root Run origin kind is invalid");
@@ -164,18 +135,10 @@ export function decodePrivateRootRunOrigin(bytes: Uint8Array): PrivateRootRunOri
 
 export function privateRootRunOriginDigest(value: PrivateRootRunOrigin): string {
   const origin = normalizePrivateRootRunOrigin(value);
-  return origin.kind === "private-root-external-submission-origin/1"
-    ? privateDomainDigest(
-        "JIG-Private-Root-Origin-External-Submission/1",
-        { submissionId: origin.submissionId },
-      )
-    : privateDomainDigest(
-        "JIG-Private-Root-Origin-Hook-Derived/1",
-        {
-          hookRevisionDigest: origin.hookRevisionDigest,
-          eventId: origin.eventId,
-        },
-      );
+  return privateDomainDigest(
+    "JIG-Private-Root-Origin-External-Submission/1",
+    { submissionId: origin.submissionId },
+  );
 }
 
 export function normalizePrivateRootRunIdentityInput(

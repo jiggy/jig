@@ -208,10 +208,6 @@ describe("private project Flow source capture", () => {
         "flow.ts": "export {};\n",
       });
       await packageFiles(root, "flows/instruction-only", { "FLOW.md": metadata("instruction") });
-      await packageFiles(root, "flows/service", {
-        "FLOW.md": metadata("service", "service: 1"),
-        "flow.ts": "export {};\n",
-      });
       await packageFiles(root, "flows/dependency", {
         "FLOW.md": metadata("dependency", "uses:\n  host:\n    local: true"),
         "flow.py": "pass\n",

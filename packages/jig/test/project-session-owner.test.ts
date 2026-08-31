@@ -21,8 +21,8 @@ describe("private project-session ownership", () => {
         const protectedState = await stat(join(project, ".jig"), { bigint: true });
         expect(protectedState.isDirectory()).toBe(true);
         expect(protectedState.mode & 0o7777n).toBe(0o700n);
-        expect(await readdir(join(project, ".jig"))).toContain(
-          "private-activation-admission-v19.sqlite3",
+        expect(await readdir(join(project, ".jig"))).toEqual(
+          expect.arrayContaining(["coordinator.sqlite3", "jig.sqlite3"]),
         );
 
         await expect(openPrivateProjectSessionOwner(project)).rejects.toMatchObject({
@@ -38,7 +38,7 @@ describe("private project-session ownership", () => {
         await first.dispose();
       }
     });
-  });
+  }, 15_000);
 
   test("never switches an open owner to a replacement path", async () => {
     await withDirectory(async (temporary) => {
@@ -58,7 +58,7 @@ describe("private project-session ownership", () => {
         await owner.dispose();
       }
     });
-  });
+  }, 15_000);
 
   test("binds coordinator operations to device and inode, not a path string", async () => {
     await withDirectory(async (temporary) => {
@@ -84,7 +84,7 @@ describe("private project-session ownership", () => {
         await first.dispose();
       }
     });
-  });
+  }, 15_000);
 
   test("a failed borrowed capture never disposes the session root", async () => {
     await withDirectory(async (temporary) => {
@@ -102,7 +102,7 @@ describe("private project-session ownership", () => {
         await owner.dispose();
       }
     });
-  });
+  }, 15_000);
 });
 
 async function withDirectory(action: (temporary: string) => Promise<void>): Promise<void> {

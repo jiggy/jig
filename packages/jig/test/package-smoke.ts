@@ -7,18 +7,10 @@ const packageRoot = resolve(import.meta.dir, "..");
 const temporary = await mkdtemp(join(tmpdir(), "jig-package-"));
 const expectedInstalledFiles = [
   "README.md",
-  "dist/administration.d.ts",
-  "dist/administration.js",
-  "dist/administration/root.d.ts",
-  "dist/administration/root.js",
   "dist/bare-init.js",
-  "dist/administration/project.d.ts",
-  "dist/administration/project.js",
   "dist/capability/index.js",
   "dist/cli.js",
   "dist/diagnostics.js",
-  "dist/experimental/hooks.d.ts",
-  "dist/experimental/hooks.js",
   "dist/index.d.ts",
   "dist/index.js",
   "dist/json.d.ts",
@@ -30,11 +22,9 @@ const expectedInstalledFiles = [
   "dist/package/metadata.js",
   "dist/package/paths.js",
   "dist/project-authoring-1.schema.json",
-  "dist/project-administration-1.schema.json",
   "dist/project/author.d.ts",
   "dist/project/author.js",
   "dist/project/paths.js",
-  "dist/root-administration-1.schema.json",
   "dist/schema/compiler.js",
   "dist/schema/index.js",
   "dist/schema/types.js",
@@ -72,25 +62,10 @@ try {
   ], consumer);
   assert.equal(initialized.stdout, "created bare Jig project\n");
   assert.deepEqual((await readdir(bareProject)).sort(), [
-    ".gitignore", "bindings", "flows", "jig.ts", "package.json", "tsconfig.json",
+    ".gitignore", "bindings", "flows", "jig.ts",
   ]);
   assert.deepEqual(await readdir(join(bareProject, "bindings")), []);
   assert.deepEqual(await readdir(join(bareProject, "flows")), []);
-  assert.deepEqual(
-    JSON.parse(await readFile(join(bareProject, "package.json"), "utf8")),
-    {
-      private: true,
-      type: "module",
-      dependencies: { "@jigging/jig": installedManifest.version },
-      devDependencies: { typescript: "7.0.2" },
-    },
-  );
-  await run([
-    "bun",
-    resolve(packageRoot, "node_modules/typescript/bin/tsc"),
-    "-p",
-    join(bareProject, "tsconfig.json"),
-  ], packageRoot);
 
   const flow = join(consumer, "smoke-flow");
   await mkdir(flow);
@@ -109,87 +84,40 @@ description: A valid installed Jig package-check smoke Flow.
   assert.match(checked.stdout, /^implementation: instruction$/m);
 
   await writeFile(join(consumer, "smoke.mjs"), `
-import { defineBinding, defineJig, discover, flowRef, projectRunTargets } from "@jigging/jig";
-import { bindingRef, defineHook, defineJig as defineHookJig } from "@jigging/jig/experimental/hooks";
+import { defineBinding, defineJig, discover } from "@jigging/jig";
 const project = defineJig({ flows: discover("./flows") });
-const binding = defineBinding({ package: "./flows/review", slots: { child: flowRef("./flows/child") } });
-const dynamic = defineBinding({ package: "./flows/review", slots: { child: projectRunTargets() } });
-const hookProject = defineHookJig({ hooks: discover("./hooks") });
-const hook = defineHook({ on: { publisher: bindingRef("events"), type: "https://example.org/events/work" }, run: flowRef("./flows/review") });
+const binding = defineBinding({ package: "./flows/review", settings: { profile: "fast" } });
 if (project.flows.roots[0] !== "flows" || binding.package !== "flows/review" ||
-    dynamic.slots.child.kind !== "project-run-targets" ||
-    hookProject.hooks.roots[0] !== "hooks" || hook.kind !== "hook") throw new Error("bad package exports");
+    binding.settings.profile !== "fast") throw new Error("bad package exports");
 `);
   await run(["bun", "smoke.mjs"], consumer);
-
-  await writeFile(join(consumer, "administration-smoke.mjs"), `
-import { RootAdministrationError } from "@jigging/jig/administration";
-import { ProjectAdministrationError } from "@jigging/jig/administration";
-const error = new RootAdministrationError("PROJECT_BUSY", "busy");
-if (error.code !== "PROJECT_BUSY" || error.toJSON().message !== "busy") throw new Error("bad administration export");
-const projectError = new ProjectAdministrationError("STALE_PLAN", "stale");
-if (projectError.code !== "STALE_PLAN" || projectError.toJSON().message !== "stale") throw new Error("bad project administration export");
-`);
-  await run(["bun", "administration-smoke.mjs"], consumer);
 
   await writeFile(join(consumer, "schema-smoke.mjs"), `
 import { readFile } from "node:fs/promises";
 const path = import.meta.resolve("@jigging/jig/schema/project-authoring-1");
 const schema = JSON.parse(await readFile(new URL(path), "utf8"));
 if (schema.$schema !== "https://flow.dev/schemas/schema-1.json") throw new Error("bad packaged schema");
-if (!schema.$defs?.projectRunTargets) throw new Error("missing projectRunTargets schema");
-const administrationPath = import.meta.resolve("@jigging/jig/schema/root-administration-1");
-const administration = JSON.parse(await readFile(new URL(administrationPath), "utf8"));
-if (!administration.$defs?.startRunRequest) throw new Error("bad packaged administration schema");
-const projectAdministrationPath = import.meta.resolve("@jigging/jig/schema/project-administration-1");
-const projectAdministration = JSON.parse(await readFile(new URL(projectAdministrationPath), "utf8"));
-if (!projectAdministration.$defs?.planResult) throw new Error("bad packaged project administration schema");
+if (!schema.$defs?.packageBinding) throw new Error("missing package Binding schema");
 `);
   await run(["bun", "schema-smoke.mjs"], consumer);
 
   assert.equal(installedManifest.private, true);
 
   await writeFile(join(consumer, "smoke.ts"), `
-import { defineBinding, defineJig, discover, projectRunTargets, type JigDefinitionInput, type ProjectRunTargetsRef } from "@jigging/jig";
-import { defineHook, defineJig as defineHookJig, bindingRef, flowRef } from "@jigging/jig/experimental/hooks";
-import type { ProjectSession, RootAdministration, RootRunStatus } from "@jigging/jig/administration";
+import { defineBinding, defineJig, discover, type JigDefinitionInput, type PackageBindingInput } from "@jigging/jig";
 const input: JigDefinitionInput = { flows: discover("./flows") };
 const project = defineJig(input);
-const source: ProjectRunTargetsRef = projectRunTargets();
-const dynamicBinding = defineBinding({ package: "./flows/router", slots: { work: source } });
-const hookProject = defineHookJig({ hooks: discover("./hooks") });
-const hook = defineHook({ on: { publisher: bindingRef("events"), type: "https://example.org/events/work" }, run: flowRef("./flows/review") });
-declare const administration: RootAdministration;
-declare const session: ProjectSession;
-const status: Promise<RootRunStatus> = administration.runStatus({ runId: "sha256:${"a".repeat(64)}" });
-const planned = session.plan({ lockMode: "update" });
+const bindingInput: PackageBindingInput = { package: "./flows/router", settings: { profile: "fast" } };
+const binding = defineBinding(bindingInput);
 void project;
-void dynamicBinding;
-void hookProject;
-void hook;
-void status;
-void planned;
+void binding;
 `);
-  await writeFile(
-    join(consumer, "root-administration-consumer.ts"),
-    await readFile(resolve(
-      packageRoot,
-      "../../conformance/root-administration-1/consumer.ts",
-    ), "utf8"),
-  );
-  await writeFile(
-    join(consumer, "project-administration-consumer.ts"),
-    await readFile(resolve(
-      packageRoot,
-      "../../conformance/project-administration-1/consumer.ts",
-    ), "utf8"),
-  );
   await writeFile(join(consumer, "tsconfig.json"), JSON.stringify({
     compilerOptions: {
       target: "ES2022", module: "NodeNext", moduleResolution: "NodeNext",
       strict: true, noEmit: true,
     },
-    files: ["smoke.ts", "root-administration-consumer.ts", "project-administration-consumer.ts"],
+    files: ["smoke.ts"],
   }));
   await run(["bunx", "--bun", "tsc", "-p", join(consumer, "tsconfig.json")], packageRoot);
 

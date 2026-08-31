@@ -18,22 +18,7 @@ import {
   type PrivateRootRunTerminal,
 } from "./activation-admission-store.js";
 import {
-  revalidatePrivateBunNativeRunRecipe,
-  type PrivateBunNativeRunRecipe,
-} from "./bun-native-run-recipe.js";
-import {
-  executePrivateRootBunNativePreparation,
-  recoverPrivateRootBunNativePreparation,
-  type PrivateRootBunNativePreparationDisposition,
-} from "./bun-native-preparation-controller.js";
-import {
-  capturePrivateBunNativePreparedTree,
-  privateBunNativePreparedTreeMaterializationSource,
-  type PrivateBunNativePreparedTreeCapture,
-} from "./bun-native-prepared-tree-store.js";
-import {
   planPrivateDirectRun,
-  type PrivateBunNativeRunPlanningInput,
   type PrivateDirectRunRecipe,
   type PrivateDirectRunRuntimeSupport,
 } from "./direct-run.js";
@@ -65,19 +50,6 @@ import {
 } from "./package-materialization.js";
 import { admitPrivatePackageResult } from "./package-result-admission.js";
 import {
-  closePrivateRootFlowCallBeforeParent,
-  executePrivateRootFlowCall,
-} from "./root-flow-call-controller.js";
-import {
-  closePrivateRootJournalEffectsBeforeParent,
-} from "./root-journal-effect-controller.js";
-import { executePrivateRootEffect } from "./root-effect-dispatcher.js";
-import {
-  closePrivateRootServiceEffectsBeforeParent,
-} from "./root-service-effect-controller.js";
-import { privateServiceOwnerClosureDigest } from "./private-service-state.js";
-import type { PrivateBunServiceMount } from "./private-service-controller.js";
-import {
   failedPrivateRootTerminal,
   normalizePrivateRootTerminal,
 } from "./root-run-state.js";
@@ -87,12 +59,12 @@ const BACKING_KIND = "private-direct-root-backing/1";
 const SANDBOX_KIND = "private-direct-root-sandbox/1";
 const PREPARED_KIND = "private-direct-root-prepared/1";
 const FENCE_KIND = "private-direct-root-fence/1";
-const RELEASE_KIND = "private-direct-root-release/2";
+const RELEASE_KIND = "private-direct-root-release/1";
 const CANCELLATION_GRACE_MS = 1_000;
 
 export type PrivateRootExecutionDisposition =
   | { readonly state: "terminal"; readonly run: PrivateRootRunSnapshot }
-  | { readonly state: "pending"; readonly reason: "fence-unconfirmed" | "preparation-in-progress" };
+  | { readonly state: "pending"; readonly reason: "fence-unconfirmed" };
 
 interface PrivateDirectRootPlanRecord {
   readonly kind: typeof PLAN_KIND;
@@ -129,39 +101,10 @@ export async function executePrivateRootRunLaunch(input: {
   readonly coordinator: PrivateProjectCoordinator;
   readonly runtimeSupport: PrivateDirectRunRuntimeSupport;
   readonly backend: PrivateLinuxCgroupBackend;
-  readonly bunNativePreparation?: PrivateBunNativeRunPlanningInput;
-  readonly notifyWorkAvailable: () => void;
-  /** One exact acknowledged generation owned by the enclosing finite session. */
-  readonly serviceMount?: PrivateBunServiceMount;
   readonly signal?: AbortSignal;
 }): Promise<PrivateRootExecutionDisposition> {
   await input.coordinator.verify();
   let work = await reacquire(input);
-  let recoveredPreparation: Extract<
-    PrivateRootBunNativePreparationDisposition,
-    { readonly state: "terminal" }
-  > | null = null;
-  try {
-    await closePrivateRootFlowCallBeforeParent({ ...input, parent: work });
-    await closePrivateRootJournalEffectsBeforeParent({ ...input, parent: work });
-    await closePrivateRootServiceEffectsBeforeParent({ ...input, parent: work });
-    const preparation = await recoverPrivateRootBunNativePreparation({
-      coordinator: input.coordinator,
-      projectRoot: input.projectRoot,
-      packageStoreRoot: input.packageStoreRoot,
-      parentRunId: work.run.runId,
-      backend: input.backend,
-      ...(input.signal === undefined ? {} : { signal: input.signal }),
-    });
-    if (preparation?.state === "pending") return preparationPending(preparation);
-    recoveredPreparation = preparation;
-  } catch (error) {
-    if (error instanceof PrivateLinuxFenceUnconfirmedError) {
-      return Object.freeze({ state: "pending", reason: "fence-unconfirmed" });
-    }
-    throw error;
-  }
-  work = await reacquire(input);
   if (work.lifecycle.admitted !== undefined) {
     return terminal(await closeFromAdmitted(input, work));
   }
@@ -171,21 +114,16 @@ export async function executePrivateRootRunLaunch(input: {
   if (work.lifecycle.sandbox !== undefined || work.lifecycle.provisional !== undefined) {
     return await recoverCurrentExecution(input, work);
   }
-  return await startOrResumeCurrentExecution(input, work, recoveredPreparation);
+  return await startOrResumeCurrentExecution(input, work);
 }
 
 async function startOrResumeCurrentExecution(
   input: RootExecutionInput,
   initial: PrivateReacquiredRootExecutionWork,
-  recoveredPreparation: Extract<
-    PrivateRootBunNativePreparationDisposition,
-    { readonly state: "terminal" }
-  > | null,
 ): Promise<PrivateRootExecutionDisposition> {
   const stop = new FirstStop(input.signal, initial.intent.deadlineUnixMs);
   let work = initial;
   let observedTerminal: RunHostTerminal | undefined;
-  let nativeCapture: PrivateBunNativePreparedTreeCapture | undefined;
   try {
     let recipe: PrivateDirectRunRecipe;
     let plan: PrivateDirectRootPlanRecord;
@@ -193,28 +131,8 @@ async function startOrResumeCurrentExecution(
       if (stop.terminal !== undefined) {
         return terminal(await settleWithoutPlan(input, work, stop.terminal));
       }
-      const directActivationStartedUnixMs = Date.now();
-      let activationStartedUnixMs: number;
+      const activationStartedUnixMs = Date.now();
       recipe = await reproduceRecipe(input, work);
-      if (recipe.kind === "private-bun-native-run-recipe/1") {
-        const preparation = await prepareNativeRootBacking(
-          input,
-          recipe,
-          stop,
-          recoveredPreparation,
-          true,
-        );
-        if (preparation.state === "pending") return preparation.disposition;
-        if (preparation.state === "failed") {
-          return terminal(await settleWithoutPlan(input, work, preparation.terminal));
-        }
-        nativeCapture = preparation.capture;
-        activationStartedUnixMs = Date.now();
-      } else {
-        // Preserve the original direct-Run timing boundary: direct recipe
-        // reproduction consumes its final activation ceiling.
-        activationStartedUnixMs = directActivationStartedUnixMs;
-      }
       stop.narrow(Math.min(
         work.intent.deadlineUnixMs,
         activationStartedUnixMs + recipe.wallClockCeilingMs,
@@ -228,7 +146,7 @@ async function startOrResumeCurrentExecution(
         allocatePrivatePackageMaterialization({
           protectedParent: roots.materializations,
           name: `root-${hexadecimal}`,
-          packageDigest: materializationDigest(recipe, nativeCapture),
+          packageDigest: recipe.request.package.digest,
           ownerToken: work.lifecycle.allocation.digest,
         }),
         planPrivateLinuxOwnerStateAllocation({
@@ -252,27 +170,13 @@ async function startOrResumeCurrentExecution(
     } else {
       plan = parsePlan(work.lifecycle.plan.value);
       recipe = await reproduceRecipe(input, work);
-      if (recipe.kind === "private-bun-native-run-recipe/1") {
-        const preparation = await prepareNativeRootBacking(
-          input,
-          recipe,
-          stop,
-          recoveredPreparation,
-          false,
-        );
-        if (preparation.state === "pending") return preparation.disposition;
-        if (preparation.state === "failed") {
-          return await settleBeforeSandbox(input, work, plan, preparation.terminal);
-        }
-        nativeCapture = preparation.capture;
-      }
       stop.narrow(plan.effectiveDeadlineUnixMs);
       await requirePlanMatches(
         input.projectRoot,
         plan,
         work,
         recipe,
-        materializationDigest(recipe, nativeCapture),
+        recipe.request.package.digest,
       );
     }
 
@@ -292,7 +196,7 @@ async function startOrResumeCurrentExecution(
       if (recovered.state === "complete") {
         lease = recovered.lease;
       } else {
-        lease = await materializeRootBacking(input, recipe, nativeCapture, plan.packageAllocation);
+        lease = await materializeRootBacking(input, recipe, plan.packageAllocation);
       }
       backing = Object.freeze({ kind: BACKING_KIND, lease: lease.identity });
       await recordCheckpoint(input, work.run.runId, "backing", backing as unknown as JsonValue);
@@ -303,12 +207,6 @@ async function startOrResumeCurrentExecution(
         backing.lease,
       );
     }
-    if (nativeCapture !== undefined) {
-      const preparedCapture = nativeCapture;
-      nativeCapture = undefined;
-      await preparedCapture.dispose();
-    }
-
     if (stop.terminal !== undefined) {
       return await settleBeforeSandbox(input, work, plan, stop.terminal);
     }
@@ -350,21 +248,7 @@ async function startOrResumeCurrentExecution(
         scratch: recipe.scratch,
         deadlineUnixMs: plan.effectiveDeadlineUnixMs,
         ...(input.signal === undefined ? {} : { signal: input.signal }),
-      }, { cancellationGraceMs: plan.cancellationGraceMs }, {
-        callFlow: async (call, signal) => await executePrivateRootFlowCall({
-          ...input,
-          parent: work,
-          call,
-          parentDeadlineUnixMs: plan.effectiveDeadlineUnixMs,
-          signal,
-        }),
-        callEffect: async (call, signal) => await executePrivateRootEffect({
-          ...input,
-          parent: work,
-          call,
-          signal,
-        }),
-      }).run();
+      }, { cancellationGraceMs: plan.cancellationGraceMs }).run();
       observedTerminal = provisional;
       await recordCheckpoint(input, work.run.runId, "provisional", provisional as unknown as JsonValue);
       try {
@@ -406,8 +290,8 @@ async function startOrResumeCurrentExecution(
         // asking the durable controller to repeat this complete operation.
         // If the known terminal could not be recorded, the retry will recover
         // conservatively as UNCERTAIN; it must never infer success from the
-        // fence alone. Sandbox state prevents another component launch and
-        // durable operation identities prevent effect redispatch.
+        // fence alone. Sandbox state and the durable root execution identity
+        // prevent another component launch.
         await recordCheckpoint(input, work.run.runId, "fence", {
           kind: FENCE_KIND,
           receipt: fence,
@@ -453,7 +337,6 @@ async function startOrResumeCurrentExecution(
     return terminal(await settleWithoutPlan(input, work, stop.terminal ?? executionFailed(error)));
   } finally {
     stop.dispose();
-    await nativeCapture?.dispose();
   }
 }
 
@@ -600,9 +483,6 @@ async function settleWithoutPlan(
     fenceDigest: null,
     packageReleased: true,
     ownerRelease: null,
-    childClosureDigest: null,
-    journalClosureDigest: null,
-    serviceClosureDigest: null,
   } as unknown as JsonValue);
   work = await reacquire(input);
   const admitted = normalizePrivateRootTerminal(work.lifecycle.provisional!.value);
@@ -617,12 +497,6 @@ async function releaseAdmitAndClose(
 ): Promise<PrivateRootRunSnapshot> {
   let work = initial;
   if (work.lifecycle.release === undefined) {
-    const childClosureDigest = await closePrivateRootFlowCallBeforeParent({ ...input, parent: work });
-    const journalClosureDigest = await closePrivateRootJournalEffectsBeforeParent({ ...input, parent: work });
-    const serviceClosure = await closePrivateRootServiceEffectsBeforeParent({ ...input, parent: work });
-    const serviceClosureDigest = serviceClosure === null
-      ? null
-      : privateServiceOwnerClosureDigest(serviceClosure);
     const plan = work.lifecycle.plan === undefined ? undefined : parsePlan(work.lifecycle.plan.value);
     let ownerRelease: PrivateLinuxOwnerStateReleaseReceipt | null = null;
     if (plan !== undefined) {
@@ -655,9 +529,6 @@ async function releaseAdmitAndClose(
       fenceDigest: work.lifecycle.fence?.digest ?? null,
       packageReleased: true,
       ownerRelease,
-      childClosureDigest,
-      journalClosureDigest,
-      serviceClosureDigest,
     } as unknown as JsonValue);
     work = await reacquire(input);
   }
@@ -689,106 +560,11 @@ async function admitProtectedResult(
   }
 }
 
-type NativeRootBackingPreparation =
-  | { readonly state: "ready"; readonly capture: PrivateBunNativePreparedTreeCapture }
-  | { readonly state: "failed"; readonly terminal: RunHostTerminal }
-  | { readonly state: "pending"; readonly disposition: PrivateRootExecutionDisposition };
-
-async function prepareNativeRootBacking(
-  input: RootExecutionInput,
-  recipe: PrivateBunNativeRunRecipe,
-  stop: FirstStop,
-  recovered: Extract<
-    PrivateRootBunNativePreparationDisposition,
-    { readonly state: "terminal" }
-  > | null,
-  mayAllocate: boolean,
-): Promise<NativeRootBackingPreparation> {
-  if (!mayAllocate && recovered === null) {
-    throw new Error("durable Bun native root plan has no prior preparation lifecycle");
-  }
-  const disposition = recovered ?? await executePrivateRootBunNativePreparation({
-      coordinator: input.coordinator,
-      projectRoot: input.projectRoot,
-      packageStoreRoot: input.packageStoreRoot,
-      parentRunId: input.runId,
-      runtimeSupport: recipe.runtimeSupport,
-      backend: input.backend,
-      workerBundlePath: recipe.workerBundlePath,
-      workerBundleDigest: recipe.workerBundleDigest,
-      ...(input.signal === undefined ? {} : { signal: input.signal }),
-    });
-  if (disposition.state === "pending") {
-    return Object.freeze({ state: "pending", disposition: preparationPending(disposition) });
-  }
-  const snapshot = disposition.snapshot;
-  if (snapshot.closure === undefined || snapshot.release === undefined || snapshot.outcome === undefined) {
-    throw new Error("terminal Bun native preparation lacks its exact closure evidence");
-  }
-  const outcome = snapshot.outcome.value;
-  if (outcome.status === "failed") {
-    return Object.freeze({
-      state: "failed",
-      terminal: nativePreparationFailedTerminal(outcome.code),
-    });
-  }
-  if (snapshot.artifact === undefined ||
-      snapshot.release.value.artifactDigest !== snapshot.artifact.digest) {
-    throw new Error("successful Bun native preparation lacks its retained artifact evidence");
-  }
-  const reference = snapshot.artifact.value.reference;
-  const allocation = snapshot.allocation;
-  if (allocation.parentRunId !== input.runId ||
-      allocation.requestDigest !== recipe.request.digest ||
-      allocation.packageDigest !== recipe.request.package.digest ||
-      allocation.recipeObservationDigest !== recipe.observation.digest ||
-      allocation.preparationObservationDigest !== recipe.preparationObservation.digest ||
-      allocation.dependencyDigest !== recipe.preparationObservation.dependency.memberDigest ||
-      allocation.workerDigest !== recipe.workerBundleDigest ||
-      allocation.runtimeObservationDigest !== recipe.runtimeSupport.digest ||
-      allocation.backendMechanismDigest !== recipe.mechanismDigest ||
-      allocation.deadlineUnixMs !== stop.deadlineUnixMs ||
-      reference.requestDigest !== recipe.request.digest ||
-      reference.sourcePackageDigest !== recipe.request.package.digest ||
-      reference.observationDigest !== recipe.preparationObservation.digest ||
-      reference.dependencyDigest !== recipe.preparationObservation.dependency.memberDigest ||
-      reference.candidateDigest !== outcome.candidateDigest) {
-    throw new Error("Bun native prepared artifact differs from its admitted recipe");
-  }
-  const capture = await capturePrivateBunNativePreparedTree({
-    preparedStoreRoot: input.packageStoreRoot,
-    packageStoreRoot: input.packageStoreRoot,
-    reference,
-  });
-  return Object.freeze({ state: "ready", capture });
-}
-
-function materializationDigest(
-  recipe: PrivateDirectRunRecipe,
-  nativeCapture: PrivateBunNativePreparedTreeCapture | undefined,
-): string {
-  if (recipe.kind !== "private-bun-native-run-recipe/1") return recipe.request.package.digest;
-  if (nativeCapture === undefined) {
-    throw new Error("Bun native Run has no authenticated prepared-tree capture");
-  }
-  return nativeCapture.materializationDigest;
-}
-
 async function materializeRootBacking(
   input: RootExecutionInput,
   recipe: PrivateDirectRunRecipe,
-  nativeCapture: PrivateBunNativePreparedTreeCapture | undefined,
   allocation: PrivatePackageMaterializationAllocationIdentity,
 ): Promise<PrivatePackageMaterializationLease> {
-  if (recipe.kind === "private-bun-native-run-recipe/1") {
-    if (nativeCapture === undefined) {
-      throw new Error("Bun native Run has no authenticated prepared-tree capture");
-    }
-    return await materializePrivatePackageLease(
-      privateBunNativePreparedTreeMaterializationSource(nativeCapture),
-      allocation,
-    );
-  }
   const captured = await captureStoredPackage(input.packageStoreRoot, recipe.request.package);
   try {
     return await materializePrivatePackageLease(
@@ -815,10 +591,6 @@ async function reproduceRecipe(
     request,
     runtimeSupport: input.runtimeSupport,
     backend: input.backend,
-    packageStoreRoot: input.packageStoreRoot,
-    ...(input.bunNativePreparation === undefined
-      ? {}
-      : { bunNativePreparation: input.bunNativePreparation }),
   });
   if (recipe.digest !== work.intent.recipeDigest ||
       recipe.observation.digest !== work.intent.observationDigest) {
@@ -828,10 +600,6 @@ async function reproduceRecipe(
 }
 
 async function revalidateRecipe(recipe: PrivateDirectRunRecipe): Promise<void> {
-  if (recipe.kind === "private-bun-native-run-recipe/1") {
-    await revalidatePrivateBunNativeRunRecipe(recipe);
-    return;
-  }
   const [mechanism, executableDigest] = await Promise.all([
     recipe.backend.observeMechanism(),
     privateFileDigest(recipe.executablePath),
@@ -857,27 +625,15 @@ function backendPlan(
     deadlineUnixMs: plan.effectiveDeadlineUnixMs,
     cancellationGraceMs: plan.cancellationGraceMs,
   });
-  if (recipe.kind === "private-bun-direct-recipe/1" ||
-      recipe.kind === "private-bun-native-run-recipe/1") {
-    return Object.freeze({
-      runId: backendRunLabel(runId),
-      limits,
-      readOnlyMounts,
-      command: [
-        recipe.executablePath,
-        ...recipe.bunPolicy,
-        `${recipe.packageDestination}/${recipe.request.entrypoint.path}`,
-      ] as readonly [string, ...string[]],
-    });
-  }
   return Object.freeze({
     runId: backendRunLabel(runId),
     limits,
     readOnlyMounts,
     command: [
       recipe.executablePath,
+      ...recipe.bunPolicy,
       `${recipe.packageDestination}/${recipe.request.entrypoint.path}`,
-    ] as const,
+    ] as readonly [string, ...string[]],
   });
 }
 
@@ -1122,34 +878,8 @@ function terminal(run: PrivateRootRunSnapshot): PrivateRootExecutionDisposition 
   return Object.freeze({ state: "terminal" as const, run });
 }
 
-function preparationPending(
-  disposition: Extract<PrivateRootBunNativePreparationDisposition, { readonly state: "pending" }>,
-): PrivateRootExecutionDisposition {
-  return Object.freeze({
-    state: "pending",
-    reason: disposition.reason === "fence-unconfirmed"
-      ? "fence-unconfirmed"
-      : "preparation-in-progress",
-  });
-}
-
 function executionFailed(_error: unknown): RunHostTerminal {
   return failedPrivateRootTerminal("EXECUTION_FAILED", "root Run execution failed");
-}
-
-function nativePreparationFailedTerminal(
-  code: "CANCELLED" | "DEADLINE_EXCEEDED" | "EXECUTION_FAILED" | "INVALID_RESULT" | "UNCERTAIN",
-): RunHostTerminal {
-  const message = code === "CANCELLED"
-    ? "Bun native preparation was cancelled"
-    : code === "DEADLINE_EXCEEDED"
-      ? "Bun native preparation exceeded its deadline"
-      : code === "INVALID_RESULT"
-        ? "Bun native preparation returned an invalid result"
-        : code === "UNCERTAIN"
-          ? "Bun native preparation completion is uncertain"
-          : "Bun native preparation failed";
-  return failedPrivateRootTerminal(code, message);
 }
 
 function isAdmissionStateBusy(error: unknown): error is CheckError {

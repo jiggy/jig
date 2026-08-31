@@ -340,7 +340,7 @@ describe("private Plan/2", () => {
   });
 
   test("rejects an aggregate Plan that exceeds JSON/1 although each lock fits", () => {
-    const candidate = candidateFixture(["flows/run"], 7_500);
+    const candidate = candidateFixture(["flows/run"], 8_000);
     expect(() => createPrivateActivationPlanV2({
       candidate,
       candidateRevision: 1,
@@ -354,35 +354,27 @@ describe("private Plan/2", () => {
 
 function candidateFixture(
   paths: readonly string[] = ["flows/run"],
-  extraServicePackages = 0,
+  extraInertPackages = 0,
 ) {
   const orderedPaths = [...paths].sort((left, right) => left < right ? -1 : left > right ? 1 : 0);
   const packages: Record<string, JsonValue> = Object.fromEntries(orderedPaths.map((path) => [path, {
     digest: digest(`package:${path}`),
-    mode: "run",
     directRun: true,
     attachments: {},
-    uses: {},
-    provides: {},
   }]));
   const pathTail = ["x".repeat(220), "y".repeat(240), "z".repeat(240), "w".repeat(240)];
-  for (let index = 0; index < extraServicePackages; index += 1) {
-    const path = `services/${String(index).padStart(5, "0")}-${pathTail.join("/")}`;
+  for (let index = 0; index < extraInertPackages; index += 1) {
+    const path = `flows/${String(index).padStart(5, "0")}-${pathTail.join("/")}`;
     packages[path] = {
       digest: digest(`package:${path}`),
-      mode: "service",
       directRun: false,
       attachments: {},
-      uses: {},
-      provides: {},
     };
   }
   const lockBytes = withLf(canonicalJson({
-    kind: "private-package-project-lock/3",
+    kind: "private-package-project-lock/4",
     packages,
     bindings: {},
-    journalPublishers: {},
-    hooks: {},
   }));
   const lock = decodePrivateProjectLocalLock(lockBytes);
   const captureDigest = digest("capture");
@@ -397,7 +389,6 @@ function candidateFixture(
       entrypoint: { path: "flow.py", suffix: "py" },
       settings: {},
       attachments: {},
-      slots: {},
     }),
     disposition: {
       state: "unavailable",

@@ -3,7 +3,6 @@ import { createHash } from "node:crypto";
 
 import {
   createPrivateExternalSubmissionOrigin,
-  createPrivateHookDerivedOrigin,
   createPrivateRootRunRequest,
   decodePrivateRootRunOrigin,
   encodePrivateRootRunOrigin,
@@ -30,36 +29,6 @@ describe("private root Run origin state", () => {
     expect(decodePrivateRootRunOrigin(bytes)).toEqual(origin);
     expect(privateRootRunOriginDigest(origin)).toMatch(/^sha256:[0-9a-f]{64}$/);
     expect(privateRootRunOriginDigest(origin)).toBe(privateRootRunOriginDigest(structuredClone(origin)));
-  });
-
-  test("normalizes one Hook-derived origin keyed only by exact revision and Event", () => {
-    const origin = createPrivateHookDerivedOrigin({
-      hookRevisionDigest: digest("hook-revision"),
-      eventId: digest("event"),
-    });
-    expect(origin).toEqual({
-      kind: "private-root-hook-derived-origin/1",
-      hookRevisionDigest: digest("hook-revision"),
-      eventId: digest("event"),
-    });
-    expect(Object.isFrozen(origin)).toBeTrue();
-    expect(decodePrivateRootRunOrigin(encodePrivateRootRunOrigin(origin))).toEqual(origin);
-    expect(privateRootRunOriginDigest(origin)).toBe(
-      "sha256:ab5bd80f35bd3194f5a117b9c8079d2250ed0f1be14365472bc5bb6d92041d9b",
-    );
-
-    const changedRevision = createPrivateHookDerivedOrigin({
-      hookRevisionDigest: digest("other-hook-revision"),
-      eventId: digest("event"),
-    });
-    const changedEvent = createPrivateHookDerivedOrigin({
-      hookRevisionDigest: digest("hook-revision"),
-      eventId: digest("other-event"),
-    });
-    expect(privateRootRunOriginDigest(changedRevision)).not.toBe(privateRootRunOriginDigest(origin));
-    expect(privateRootRunOriginDigest(changedEvent)).not.toBe(privateRootRunOriginDigest(origin));
-    expect(privateRootRunOriginDigest(createPrivateExternalSubmissionOrigin("event")))
-      .not.toBe(privateRootRunOriginDigest(origin));
   });
 
   test("derives one origin-aware Run identity from closed normalized inputs", () => {
@@ -91,13 +60,6 @@ describe("private root Run origin state", () => {
       { ...input, origin: createPrivateExternalSubmissionOrigin("ticket-2") },
       { ...input, requestDigest: digest("other-request") },
       { ...input, coordinatorEpoch: 8 },
-      {
-        ...input,
-        origin: createPrivateHookDerivedOrigin({
-          hookRevisionDigest: digest("hook"),
-          eventId: digest("event"),
-        }),
-      },
     ]) {
       expect(privateRootRunIdentityDigest(changed)).not.toBe(runId);
     }
@@ -120,17 +82,9 @@ describe("private root Run origin state", () => {
   });
 
   test("rejects open, noncanonical, or out-of-bound origins", () => {
-    const hook = createPrivateHookDerivedOrigin({
-      hookRevisionDigest: digest("hook"),
-      eventId: digest("event"),
-    });
     for (const invalid of [
       null,
       [],
-      { kind: "hook-derived", hookRevisionDigest: digest("hook"), eventId: digest("event") },
-      { ...hook, extra: true },
-      { ...hook, hookRevisionDigest: `sha256:${"A".repeat(64)}` },
-      { ...hook, eventId: "event" },
       { kind: "private-root-external-submission-origin/1", submissionId: "", extra: false },
     ]) {
       expect(() => normalizePrivateRootRunOrigin(invalid)).toThrow();
@@ -141,11 +95,11 @@ describe("private root Run origin state", () => {
     expect(createPrivateExternalSubmissionOrigin("🚀".repeat(1024)).submissionId)
       .toHaveLength(2048);
 
-    const canonical = encodePrivateRootRunOrigin(hook);
+    const canonical = encodePrivateRootRunOrigin(createPrivateExternalSubmissionOrigin("ticket"));
     expect(() => decodePrivateRootRunOrigin(encoder.encode(` ${new TextDecoder().decode(canonical)}`)))
       .toThrow("not canonical JSON/1");
     expect(() => decodePrivateRootRunOrigin(encoder.encode(
-      '{"eventId":"x","eventId":"x","hookRevisionDigest":"x","kind":"private-root-hook-derived-origin/1"}',
+      '{"kind":"private-root-external-submission-origin/1","submissionId":"x","submissionId":"x"}',
     ))).toThrow("duplicate object member");
   });
 
@@ -164,7 +118,7 @@ describe("private root Run origin state", () => {
       { ...valid, requestDigest: `sha256:${"A".repeat(64)}` },
       { ...valid, coordinatorEpoch: 0 },
       { ...valid, coordinatorEpoch: Number.MAX_SAFE_INTEGER + 1 },
-      { ...valid, origin: { kind: "private-root-hook-derived-origin/1" } },
+      { ...valid, origin: { kind: "private-root-external-submission-origin/1" } },
     ]) {
       expect(() => normalizePrivateRootRunIdentityInput(invalid)).toThrow();
       expect(() => privateRootRunIdentityDigest(invalid as never)).toThrow();

@@ -24,14 +24,10 @@ import {
 import { compileEmbeddedSchema } from "../schema/index.js";
 import { capturePackageDirectory } from "../package/capture.js";
 import {
-  type HookDefinition,
-  type JournalPublisherDefinition,
-  normalizeHookDefinition,
-  normalizeJournalPublisherDefinition,
-  normalizePrivateHookJigDefinition,
+  normalizeJigDefinition,
   normalizePackageBindingDefinition,
   type BindingDefinition,
-  type PrivateHookJigDefinition,
+  type JigDefinition,
 } from "./author.js";
 import {
   isCapturedAuthorClosure,
@@ -64,12 +60,9 @@ let evaluationSequence = 0;
 
 export type AuthorEvaluationExpectation =
   | "project"
-  | "binding"
-  | "hook";
+  | "binding";
 
-type AuthoringProfile =
-  | "project-authoring/1"
-  | "private-project-authoring-hooks/1";
+type AuthoringProfile = "project-authoring/1";
 
 export interface PrivateAuthorEvaluatorOptions {
   readonly backend: PrivateLinuxCgroupBackend;
@@ -85,7 +78,6 @@ export interface EvaluatorProfile {
   readonly authoringProfile: AuthoringProfile;
   readonly evaluatorDigest: string;
   readonly authoringSdkDigest: string;
-  readonly experimentalHookAuthoringSdkDigest: string;
   readonly schemaDigest: string;
   readonly evaluatorPackageDigest: string;
   readonly runtimeExecutable: string;
@@ -117,8 +109,7 @@ export interface EvaluatorProfile {
 }
 
 export interface EvaluatedAuthorDeclaration<
-  Value extends PrivateHookJigDefinition | BindingDefinition | HookDefinition =
-    PrivateHookJigDefinition | BindingDefinition | HookDefinition,
+  Value extends JigDefinition | BindingDefinition = JigDefinition | BindingDefinition,
 > {
   readonly expected: AuthorEvaluationExpectation;
   readonly source: {
@@ -199,31 +190,23 @@ export async function evaluateAuthorClosure(
     const [
       workerBytes,
       sdkBytes,
-      hookSdkBytes,
-      publicSchemaBytes,
-      hookSchemaBytes,
+      schemaBytes,
       runtimeDigest,
     ] = await Promise.all([
       toolchain.read("internal/project-evaluator-worker.js"),
       toolchain.read("internal/project-evaluator-sdk.bundle.js"),
-      toolchain.read("internal/experimental-hook-evaluator-sdk.bundle.js"),
       toolchain.read("project-authoring-1.schema.json"),
-      toolchain.read("internal/private-project-authoring-hooks-1.schema.json"),
       digestFile(bunPath),
     ]).catch((error) => unavailable(
       "PROJECT_EVALUATOR_UNAVAILABLE",
       `cannot seal evaluator toolchain: ${errorText(error)}`,
     ));
-    const authoringProfile = authoringProfileFor(expected);
-    const schemaBytes = authoringProfile === "project-authoring/1"
-      ? publicSchemaBytes
-      : hookSchemaBytes;
+    const authoringProfile = "project-authoring/1" as const;
     const profileBase = Object.freeze({
       protocol: PROTOCOL,
       authoringProfile,
       evaluatorDigest: digestBytes(workerBytes),
       authoringSdkDigest: digestBytes(sdkBytes),
-      experimentalHookAuthoringSdkDigest: digestBytes(hookSdkBytes),
       schemaDigest: digestBytes(schemaBytes),
       evaluatorPackageDigest: toolchain.digest,
       runtimeExecutable: bunPath,
@@ -363,16 +346,11 @@ export async function evaluateAuthorClosure(
         value,
         "PROJECT_AUTHORING_SCHEMA_INVALID",
       );
-      let normalized:
-        | PrivateHookJigDefinition
-        | BindingDefinition
-        | HookDefinition;
+      let normalized: JigDefinition | BindingDefinition;
       try {
         normalized = expected === "project"
-          ? normalizePrivateHookJigDefinition(value)
-          : expected === "binding"
-            ? normalizeBindingDefinition(value)
-            : normalizeHookDefinition(value);
+          ? normalizeJigDefinition(value)
+          : normalizePackageBindingDefinition(value);
       } catch (error) {
         invalid(
           "PROJECT_DECLARATION_INVALID",
@@ -486,14 +464,12 @@ function contextualAuthorSchema(bytes: Uint8Array, expected: AuthorEvaluationExp
   }
   const definition = expected === "project"
     ? "project"
-    : expected === "binding"
-      ? "bindingDefinition"
-      : "hookDefinition";
+    : "bindingDefinition";
   try {
     return compileEmbeddedSchema(
       Object.freeze({ $ref: `#/$defs/${definition}` }),
       {
-        path: schemaPathFor(expected),
+        path: "project-authoring-1.schema.json",
         rootDefs: document.$defs as JsonObject,
       },
     );
@@ -503,25 +479,6 @@ function contextualAuthorSchema(bytes: Uint8Array, expected: AuthorEvaluationExp
       `captured authoring schema cannot compile: ${errorText(error)}`,
     );
   }
-}
-
-function normalizeBindingDefinition(value: JsonValue): BindingDefinition {
-  if (isRecord(value) && value.kind === "journal-publisher") {
-    return normalizeJournalPublisherDefinition(value);
-  }
-  return normalizePackageBindingDefinition(value);
-}
-
-function authoringProfileFor(expected: AuthorEvaluationExpectation): AuthoringProfile {
-  if (expected === "binding") return "project-authoring/1";
-  return "private-project-authoring-hooks/1";
-}
-
-function schemaPathFor(expected: AuthorEvaluationExpectation): string {
-  const profile = authoringProfileFor(expected);
-  return profile === "project-authoring/1"
-    ? "project-authoring-1.schema.json"
-    : "private-project-authoring-hooks-1.schema.json";
 }
 
 function exactKeys(value: object, expected: readonly string[]): boolean {

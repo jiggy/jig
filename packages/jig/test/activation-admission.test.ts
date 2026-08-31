@@ -18,14 +18,13 @@ describe("private activation admission", () => {
       candidateRevision: 7,
       candidateDigest: digest("candidate"),
       lockDigest: digest("lock"),
-      hookBoundaryDigest: digest("hook-boundary"),
     });
     const bytes = encodePrivateActivationAdmission(admission);
     expect(new TextDecoder().decode(bytes)).toBe(
-      '{"baseGeneration":"sha256:d7bb43beeee67aacf5f0ae376511b9a632f0dd0923a3c37a06e8edd607687b28","candidateDigest":"sha256:dda18a0e21ae47c53b4309434cbc02ae8bf764fa83a6defbb719431242722aa7","candidateRevision":7,"hookBoundaryDigest":"sha256:242763b952ae04c158b7fd87044806cad190e1d5554b783d51dc8b488f2f7bf7","kind":"private-activation-admission/2","lockDigest":"sha256:0c030586945fe504b604ecc2e875c38ede400cd5cd73da9730302162e6b02c6f","planDigest":"sha256:64879f7d6b960a01909762d911a32d4582c20010c5641ee90278b644a9e3b525"}\n',
+      '{"baseGeneration":"sha256:d7bb43beeee67aacf5f0ae376511b9a632f0dd0923a3c37a06e8edd607687b28","candidateDigest":"sha256:dda18a0e21ae47c53b4309434cbc02ae8bf764fa83a6defbb719431242722aa7","candidateRevision":7,"kind":"private-activation-admission/2","lockDigest":"sha256:0c030586945fe504b604ecc2e875c38ede400cd5cd73da9730302162e6b02c6f","planDigest":"sha256:64879f7d6b960a01909762d911a32d4582c20010c5641ee90278b644a9e3b525"}\n',
     );
     expect(privateActivationAdmissionDigest(admission)).toBe(
-      "sha256:06d5ca92048b1889ae8f5ddd586efe21ae81441c948d545ea56ac1018fc4d12e",
+      "sha256:020cd152d0eb18b195fee49ad2097beaf3d91ec0311d02f47ac37e4f76cba1d6",
     );
     expect(decodePrivateActivationAdmission(bytes)).toEqual(admission);
     expect(Object.isFrozen(admission)).toBeTrue();
@@ -38,7 +37,6 @@ describe("private activation admission", () => {
       candidateRevision: 1,
       candidateDigest: digest("first-candidate"),
       lockDigest: digest("first-lock"),
-      hookBoundaryDigest: digest("first-hook-boundary"),
     });
     expect(first.baseGeneration).toBeNull();
     expect(createPrivateActivationAdmission({

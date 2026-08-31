@@ -113,17 +113,6 @@ outcomes:
       }
     });
   });
-
-  test("rejects host misuse with a Service inspection", async () => {
-    await withInspectedPackage({
-      "FLOW.md": flowMetadata("name: service\ndescription: Service package.\nservice: 1"),
-      "flow.ts": "export {};\n",
-    }, async (inspected) => {
-      expect(() => admitPrivatePackageResult(inspected, succeeded("done", null))).toThrow(
-        "only a Run package can admit a Run result",
-      );
-    });
-  });
 });
 
 function succeeded(outcome: string, output: JsonValue): RunHostTerminal {

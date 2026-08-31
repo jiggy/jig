@@ -109,7 +109,6 @@ function inertHost(): PrivateProjectSessionHost {
   return Object.freeze({
     backend: Object.freeze({}) as never,
     bunRuntimeSupport: Object.freeze({}) as never,
-    directRuntimeSupport: Object.freeze({}) as never,
     jigDistributionPath: "/unreachable-test-distribution",
     runTimeoutMs: 1_000,
   });

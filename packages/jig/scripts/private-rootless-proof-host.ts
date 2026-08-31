@@ -21,7 +21,6 @@ export async function openRootlessBunProofHost(): Promise<PrivateProjectSessionH
   return Object.freeze({
     backend: new PrivateLinuxCgroupBackend({ bunPath }),
     bunRuntimeSupport: bun,
-    directRuntimeSupport: bun,
     jigDistributionPath: await realpath(join(import.meta.dir, "..", "dist")),
     runTimeoutMs: RUN_TIMEOUT_MS,
   });

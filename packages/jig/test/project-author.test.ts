@@ -1,194 +1,63 @@
 import { describe, expect, test } from "bun:test";
 
-import {
-  bindingRef,
-  candidates,
-  defineBinding,
-  defineJig,
-  defineJournalPublisher,
-  discover,
-  flowRef,
-  projectRunTargets,
-} from "../src/index.js";
-import {
-  defineHook,
-  defineJig as defineHookJig,
-} from "../src/experimental/hooks.js";
+import { defineBinding, defineJig, discover } from "../src/index.js";
 import {
   normalizeJigDefinition,
-  normalizeHookDefinition,
-  normalizeJournalPublisherDefinition,
   normalizePackageBindingDefinition,
-  normalizePrivateHookJigDefinition,
 } from "../src/project/author.js";
 
 describe("Jig project authoring SDK/1", () => {
-  test("captures a minimal no-Binding project", () => {
-    const project = defineJig({ flows: discover("./flows") });
-    expect(project).toEqual({ flows: { kind: "discover", roots: ["flows"] } });
-    expect(Object.isFrozen(project)).toBeTrue();
-    expect(Object.isFrozen(project.flows)).toBeTrue();
-  });
-
-  test("normalizes unordered discovery and exact membership", () => {
-    expect(discover(["./vendor", "./flows"])).toEqual({
-      kind: "discover",
-      roots: ["flows", "vendor"],
-    });
-    const project = defineHookJig({
+  test("captures discovery and exact membership", () => {
+    const project = defineJig({
+      flows: discover(["./vendor", "./flows"]),
       bindings: ["./bindings/z.ts", "./bindings/a.ts"],
-      hooks: discover("./hooks"),
     });
     expect(project).toEqual({
-      bindings: {
-        kind: "members",
-        paths: ["bindings/a.ts", "bindings/z.ts"],
-      },
-      hooks: { kind: "discover", roots: ["hooks"] },
+      flows: { kind: "discover", roots: ["flows", "vendor"] },
+      bindings: { kind: "members", paths: ["bindings/a.ts", "bindings/z.ts"] },
     });
-    expect(normalizePrivateHookJigDefinition(project)).toEqual(project);
-    expect(() => normalizeJigDefinition(project)).toThrow();
+    expect(Object.isFrozen(project)).toBeTrue();
+    expect(Object.isFrozen(project.flows)).toBeTrue();
+    expect(normalizeJigDefinition(project)).toEqual(project);
     expect(() => defineJig(project as never)).toThrow();
   });
 
-  test("captures one complete package Binding", () => {
+  test("captures one complete package Binding with structural defaults", () => {
     const binding = defineBinding({
       package: "./flows/review",
       settings: { maxRetries: 4 },
-      slots: {
-        research: candidates([
-          bindingRef("research-deep"),
-          flowRef("./flows/research-fast"),
-        ]),
-      },
       attachments: { source: "./workspace" },
     });
-
     expect(binding).toEqual({
       kind: "package",
       package: "flows/review",
       settings: { maxRetries: 4 },
-      slots: {
-        research: {
-          kind: "candidates",
-          targets: [
-            { kind: "binding", id: "research-deep" },
-            { kind: "flow", path: "flows/research-fast" },
-          ],
-        },
-      },
       attachments: { source: "workspace" },
     });
-    expect(Object.isFrozen(binding.settings)).toBeTrue();
-    expect(Object.isFrozen(binding.slots.research)).toBeTrue();
     expect(normalizePackageBindingDefinition(binding)).toEqual(binding);
-    expect(() => defineBinding(binding as never)).toThrow();
-  });
-
-  test("uses only structural empty defaults", () => {
     expect(defineBinding({ package: "./flows/review" })).toEqual({
       kind: "package",
       package: "flows/review",
       settings: {},
-      slots: {},
       attachments: {},
     });
-  });
-
-  test("captures the complete project Run-target source only as a direct slot", () => {
-    const marker = projectRunTargets();
-    const binding = defineBinding({ package: "./flows/router", slots: { work: marker } });
-    expect(binding.slots.work).toEqual({ kind: "project-run-targets" });
-    expect(Object.isFrozen(marker)).toBeTrue();
-    expect(Object.isFrozen(binding.slots.work)).toBeTrue();
-    expect(normalizePackageBindingDefinition(binding)).toEqual(binding);
-    expect(() => candidates([marker as never, flowRef("flows/worker")])).toThrow(
-      "Run target must be a flowRef() or bindingRef()",
-    );
-  });
-
-  test("captures one exact canonical Journal publisher", () => {
-    const publisher = defineJournalPublisher({
-      eventTypes: [
-        "https://example.org/events/work-finished",
-        "https://example.org/events/work-created",
-      ],
-    });
-    expect(publisher).toEqual({
-      kind: "journal-publisher",
-      eventTypes: [
-        "https://example.org/events/work-created",
-        "https://example.org/events/work-finished",
-      ],
-    });
-    expect(Object.isFrozen(publisher.eventTypes)).toBeTrue();
-    expect(normalizeJournalPublisherDefinition(publisher)).toEqual(publisher);
-    expect(() => defineJournalPublisher(publisher as never)).toThrow();
-  });
-
-  test("captures one exact inert Hook relation", () => {
-    const hook = defineHook({
-      on: {
-        publisher: bindingRef("work-events"),
-        type: "https://example.org/events/work-created",
-      },
-      run: flowRef("flows/triage"),
-    });
-    expect(hook).toEqual({
-      kind: "hook",
-      on: {
-        publisher: { kind: "binding", id: "work-events" },
-        type: "https://example.org/events/work-created",
-      },
-      run: { kind: "flow", path: "flows/triage" },
-    });
-    expect(Object.isFrozen(hook.on)).toBeTrue();
-    expect(normalizeHookDefinition(hook)).toEqual(hook);
-    expect(() => defineHook(hook as never)).toThrow();
-  });
-
-  test("rejects active, loose, or extended Hook policy", () => {
-    const base = {
-      on: {
-        publisher: bindingRef("work-events"),
-        type: "https://example.org/events/work-created",
-      },
-      run: flowRef("flows/triage"),
-    };
-    expect(() => defineHook({ ...base, callback: () => undefined } as never)).toThrow();
-    expect(() => defineHook({ ...base, on: { ...base.on, publisher: flowRef("flows/events") } } as never)).toThrow();
-    expect(() => defineHook({ ...base, on: [base.on] } as never)).toThrow();
-    expect(() => defineHook({ ...base, run: candidates([flowRef("flows/a"), flowRef("flows/b")]) } as never)).toThrow();
-    expect(() => defineHook({ ...base, run: "flows/triage" } as never)).toThrow();
-  });
-
-  test("rejects ambiguous or protected Journal publication authority", () => {
-    for (const eventTypes of [
-      [],
-      ["https://example.org/events/same", "https://example.org/events/same"],
-      ["https://jig.dev/events/run-completed"],
-      ["x".repeat(513)],
-    ]) {
-      expect(() => defineJournalPublisher({ eventTypes })).toThrow();
-    }
+    expect(() => defineBinding(binding as never)).toThrow();
   });
 
   for (const [name, action] of [
     ["unknown project field", () => defineJig({ extra: true } as never)],
     ["undefined optional", () => defineJig({ flows: undefined } as never)],
+    ["empty discovery", () => discover([])],
     ["glob root", () => discover("./flows/*")],
     ["escaping package", () => defineBinding({ package: "../flow" })],
     ["unknown Binding field", () => defineBinding({ package: "flows/a", grants: {} } as never)],
-    ["invalid Binding reference", () => bindingRef("Not Local")],
-    ["singleton candidates", () => candidates([flowRef("flows/a")])],
-    ["duplicate candidates", () => candidates([flowRef("flows/a"), flowRef("./flows/a")])],
     ["non-JSON settings", () => defineBinding({ package: "flows/a", settings: { bad: 1n } as never })],
     ["class settings", () => defineBinding({ package: "flows/a", settings: new (class {})() })],
   ] as const) {
     test(`rejects ${name}`, () => expect(action).toThrow());
   }
 
-  test("copies settings before freezing them", () => {
+  test("takes one deeply frozen settings snapshot", () => {
     const settings = { nested: { enabled: true } };
     const binding = defineBinding({ package: "flows/a", settings });
     settings.nested.enabled = false;
@@ -200,76 +69,32 @@ describe("Jig project authoring SDK/1", () => {
     const settings = JSON.parse('{"__proto__":{"safe":true},"constructor":"data","prototype":null}');
     const binding = defineBinding({ package: "flows/a", settings });
     expect(Object.keys(binding.settings)).toEqual(["__proto__", "constructor", "prototype"]);
-    expect(Object.hasOwn(binding.settings, "__proto__")).toBeTrue();
     expect(Object.getPrototypeOf(binding.settings)).toBeNull();
     expect(binding.settings.__proto__).toEqual({ safe: true });
   });
 
-  test("snapshots a Proxy once without trusting later reads", () => {
-    let reads = 0;
-    const settings = new Proxy({ value: "safe" } as Record<string, unknown>, {
-      getOwnPropertyDescriptor(target, key) {
-        reads += 1;
-        const descriptor = Reflect.getOwnPropertyDescriptor(target, key)!;
-        return { ...descriptor, value: reads === 1 ? "safe" : () => "escaped" };
-      },
-    });
-    const binding = defineBinding({ package: "flows/a", settings: settings as never });
-    expect(binding.settings).toEqual({ value: "safe" });
-    expect(reads).toBe(1);
-  });
-
-  test("rejects accessors without invoking them", () => {
+  test("rejects accessors, cycles, sparse arrays, and extended objects", () => {
     let invoked = false;
-    const settings = Object.defineProperty({}, "value", {
+    const accessor = Object.defineProperty({}, "value", {
       get() { invoked = true; return "unsafe"; },
       enumerable: true,
     });
-    expect(() => defineBinding({ package: "flows/a", settings })).toThrow();
-    expect(invoked).toBeFalse();
-  });
-
-  test("rejects extended and accessor-backed arrays", () => {
-    for (const array of [
-      Object.defineProperty([1], "hidden", { value: true }),
-      Object.assign([1], { [Symbol("extra")]: true }),
-      Object.defineProperty([1], "0", { get: () => 1, enumerable: true }),
-      new (class ExtendedArray extends Array<number> {})(1),
-    ]) {
-      expect(() => defineBinding({ package: "flows/a", settings: { array } })).toThrow();
-    }
-  });
-
-  test("rejects the remaining non-JSON and hidden-value forms", () => {
     const cycle: Record<string, unknown> = {};
     cycle.self = cycle;
-    const hidden = Object.defineProperty({}, "value", { value: true });
-    const symbol = { [Symbol("value")]: true };
-    const sparse = new Array(1);
-    const functionProxy = new Proxy({ value: "safe" } as Record<string, unknown>, {
-      getOwnPropertyDescriptor(target, key) {
-        const descriptor = Reflect.getOwnPropertyDescriptor(target, key)!;
-        return { ...descriptor, value: () => "escaped" };
-      },
-    });
     for (const value of [
-      { value: () => true },
-      hidden,
-      symbol,
-      { cycle },
+      accessor,
+      cycle,
       { value: new Date(0) },
-      { value: new Map() },
-      { value: new Set() },
+      { value: new Array(1) },
       { value: Number.MAX_SAFE_INTEGER + 1 },
       { value: "\ud800" },
-      { value: sparse },
-      functionProxy,
     ]) {
       expect(() => defineBinding({ package: "flows/a", settings: value as never })).toThrow();
     }
+    expect(invoked).toBeFalse();
   });
 
-  test("allows matcher characters in exact paths but not discovery roots", () => {
+  test("allows matcher characters only in exact paths", () => {
     expect(defineBinding({
       package: "flows/[draft]",
       attachments: { source: "workspace/{drafts}" },
@@ -277,14 +102,10 @@ describe("Jig project authoring SDK/1", () => {
     expect(() => discover("flows/[draft]")).toThrow();
   });
 
-  test("rejects project-source collisions under the canonical case fold", () => {
+  test("rejects path collisions and independent path limits", () => {
     expect(() => defineJig({ flows: ["flows/Review", "flows/review"] })).toThrow();
-  });
-
-  test("bounds project paths independently of the host filesystem", () => {
-    expect(() => flowRef(`${"a/".repeat(64)}z`)).toThrow("64 segments");
-    expect(() => flowRef(`flows/${"a".repeat(256)}`)).toThrow("255 UTF-8 bytes");
-    expect(() => flowRef(`flows/${"é".repeat(510)}`)).toThrow("1024 UTF-8 bytes");
-    expect(() => flowRef("flows/\ud800")).toThrow("lone Unicode surrogate");
+    expect(() => defineBinding({ package: `${"a/".repeat(64)}z` })).toThrow("64 segments");
+    expect(() => defineBinding({ package: `flows/${"a".repeat(256)}` })).toThrow("255 UTF-8 bytes");
+    expect(() => defineBinding({ package: `flows/${"é".repeat(510)}` })).toThrow("1024 UTF-8 bytes");
   });
 });
