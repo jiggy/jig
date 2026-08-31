@@ -57,7 +57,6 @@ describe("private project Plan review", () => {
 
     expect(rendered.mediaType).toBe("text/plain; charset=utf-8");
     expect(rendered.text).toContain('"packagePath": "flows/review"');
-    expect(rendered.text).toContain('"generationEffect": "create"');
     expect(rendered.text).toContain('"settings": {');
     expect(rendered.text).toContain('"style": "focused"');
     expect(rendered.text).toContain(
@@ -77,17 +76,29 @@ describe("private project Plan review", () => {
     expect(rendered.text).not.toContain("private-observation-sentinel");
     expect(rendered.text).not.toContain("recipeDigest");
     expect(rendered.text).not.toContain("observationDigest");
+    expect(rendered.text).not.toContain(digest);
+    expect(rendered.text).not.toContain("digest");
+    expect(rendered.text).not.toContain('"operation"');
+    expect(rendered.text).not.toContain("lockMode");
     expect(Object.isFrozen(rendered)).toBe(true);
   });
 
-  test("distinguishes generation replacement from lock-only repair", () => {
+  test("does not expose admission operation or generation state", () => {
     const admission = reviewPlan("admission", `sha256:${"b".repeat(64)}`);
     const repair = reviewPlan("lock-repair", `sha256:${"b".repeat(64)}`);
 
-    expect(renderPrivateProjectPlanReview({ plan: admission, baseCandidate: null } as PrivateActivationReviewPlan).text)
-      .toContain('"generationEffect": "replace"');
-    expect(renderPrivateProjectPlanReview({ plan: repair, baseCandidate: null } as PrivateActivationReviewPlan).text)
-      .toContain('"generationEffect": "unchanged"');
+    const admissionText = renderPrivateProjectPlanReview({
+      plan: admission,
+      baseCandidate: null,
+    } as PrivateActivationReviewPlan).text;
+    const repairText = renderPrivateProjectPlanReview({
+      plan: repair,
+      baseCandidate: null,
+    } as PrivateActivationReviewPlan).text;
+    expect(admissionText).toBe(repairText);
+    expect(admissionText).not.toContain("admission");
+    expect(admissionText).not.toContain("lock-repair");
+    expect(admissionText).not.toContain("generation");
   });
 
   test("shows current and proposed state with explicit additions, removals, and changes", () => {

@@ -34,30 +34,19 @@ export function renderPrivateProjectPlanReview(
   const changes = projectChanges(
     current,
     proposed,
+    review.baseCandidate?.lock.packages ?? {},
+    plan.proposed.lock.packages,
     review.baseCandidate?.candidate.targets ?? [],
     plan.proposed.targets,
   );
   const proposal = {
-    operation: plan.operation,
-    generationEffect: plan.operation === "lock-repair"
-      ? "unchanged"
-      : plan.baseGeneration === null
-        ? "create"
-        : "replace",
-    lockMode: plan.lockMode,
-    observedLock: plan.observedLock.state === "absent"
-      ? { state: "absent" as const }
-      : { state: "present" as const, digest: plan.observedLock.digest },
-    proposedLockDigest: plan.proposed.lockDigest,
     changes,
     current,
     proposed,
   };
   const writer = new BoundedAsciiWriter(maximumBytes);
   writer.write("Jig project plan review\n\n");
-  writer.write(
-    "This rendering is review evidence. Only the accompanying retained plan digest is apply authority.\n\n",
-  );
+  writer.write("Review the project changes below before applying them.\n\n");
   writeAsciiJson(writer, proposal, 0);
   writer.write("\n");
   const text = writer.finish();
@@ -75,7 +64,6 @@ function projectCandidate(
     target: request.target,
     mode: request.mode,
     packagePath: request.packagePath,
-    packageDigest: request.package.digest,
     entrypoint: request.entrypoint,
     settings: request.settings,
     attachments: request.attachments,
@@ -85,7 +73,10 @@ function projectCandidate(
   }));
   return {
     portablePolicy: {
-      packages: lock.packages,
+      packages: Object.fromEntries(Object.entries(lock.packages).map(([path, value]) => [path, {
+        directRun: value.directRun,
+        attachments: value.attachments,
+      }])),
       bindings: lock.bindings,
     },
     targets,
@@ -95,6 +86,8 @@ function projectCandidate(
 function projectChanges(
   current: ReturnType<typeof projectCandidate> | null,
   proposed: ReturnType<typeof projectCandidate>,
+  currentPackages: PrivateActivationReviewPlan["candidate"]["lock"]["packages"],
+  proposedPackages: PrivateActivationReviewPlan["candidate"]["lock"]["packages"],
   currentTargets: PrivateActivationReviewPlan["candidate"]["candidate"]["targets"],
   proposedTargets: PrivateActivationReviewPlan["candidate"]["candidate"]["targets"],
 ) {
@@ -104,8 +97,8 @@ function projectChanges(
   );
   return {
     packages: recordChanges(
-      current?.portablePolicy.packages ?? {},
-      proposed.portablePolicy.packages,
+      currentPackages,
+      proposedPackages,
     ),
     bindings: recordChanges(
       current?.portablePolicy.bindings ?? {},
