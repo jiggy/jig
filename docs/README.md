@@ -37,6 +37,10 @@ Start here:
 
 Current implementation frontier:
 
+- [`design-review/200-inherited-rootless-acquisition.md`](design-review/200-inherited-rootless-acquisition.md)
+  closes strict recognition of one already-inherited rootless Linux envelope
+  without `AGENT_*` variables, ancestor scanning, setup, registration, or
+  fallback. The durable Project Session join remains open.
 - [`design-review/199-compiled-bun-runtime-feasibility.md`](design-review/199-compiled-bun-runtime-feasibility.md)
   proves that the installed release can own one exact built-in Bun recipe,
   potentially using the compiled Jig executable itself, without ambient Bun,
