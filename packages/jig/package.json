@@ -11,8 +11,7 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
-    },
-    "./schema/project-authoring-1": "./dist/project-authoring-1.schema.json"
+    }
   },
   "bin": {
     "jig": "./bin/jig"
@@ -23,7 +22,6 @@
     "dist/index.d.ts",
     "dist/project/author.d.ts",
     "dist/json.d.ts",
-    "dist/project-authoring-1.schema.json",
     "libexec/linux-rootless-supervisor.js",
     "libexec/evaluator/project-evaluator-worker.js",
     "libexec/evaluator/project-evaluator-sdk.bundle.js",
@@ -31,7 +29,7 @@
     "README.md"
   ],
   "scripts": {
-    "build": "bun run clean && mkdir -p bin libexec/evaluator && bun node_modules/typescript/bin/tsc -p tsconfig.json && bun build src/index.ts --target=bun --format=esm --outfile=dist/index.js && bun build src/internal/linux-rootless-supervisor.ts --target=bun --format=esm --outfile=libexec/linux-rootless-supervisor.js && bun build src/internal/project-evaluator-worker.ts --target=bun --format=esm --outfile=libexec/evaluator/project-evaluator-worker.js && bun build src/project/evaluator-sdk-entry.ts --target=bun --format=esm --outfile=libexec/evaluator/project-evaluator-sdk.bundle.js && cp ../../docs/spec/machine/project-authoring-1.schema.json dist/project-authoring-1.schema.json && cp ../../docs/spec/machine/project-authoring-1.schema.json libexec/evaluator/project-authoring-1.schema.json && bun build src/installed-cli.ts --compile --target=bun-linux-x64-baseline --outfile=bin/jig",
+    "build": "bun run clean && mkdir -p bin libexec/evaluator && bun node_modules/typescript/bin/tsc -p tsconfig.json && bun build src/index.ts --target=bun --format=esm --outfile=dist/index.js && bun build src/internal/linux-rootless-supervisor.ts --target=bun --format=esm --outfile=libexec/linux-rootless-supervisor.js && bun build src/internal/project-evaluator-worker.ts --target=bun --format=esm --outfile=libexec/evaluator/project-evaluator-worker.js && bun build src/project/evaluator-sdk-entry.ts --target=bun --format=esm --outfile=libexec/evaluator/project-evaluator-sdk.bundle.js && cp ../../docs/spec/machine/project-authoring-1.schema.json libexec/evaluator/project-authoring-1.schema.json && bun build src/installed-cli.ts --compile --target=bun-linux-x64-baseline --outfile=bin/jig",
     "clean": "bun -e \"import { rm } from 'node:fs/promises'; for (const path of ['dist', 'bin', 'libexec']) await rm(path, { recursive: true, force: true })\"",
     "prepack": "bun run build",
     "test": "bun test",

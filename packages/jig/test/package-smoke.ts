@@ -11,7 +11,6 @@ const expectedInstalledFiles = [
   "dist/index.d.ts",
   "dist/index.js",
   "dist/json.d.ts",
-  "dist/project-authoring-1.schema.json",
   "dist/project/author.d.ts",
   "libexec/evaluator/project-authoring-1.schema.json",
   "libexec/evaluator/project-evaluator-sdk.bundle.js",
@@ -90,15 +89,6 @@ if (project.flows.roots[0] !== "flows" || binding.package !== "flows/review" ||
     binding.settings.profile !== "fast") throw new Error("bad package exports");
 `);
   await run(["bun", "smoke.mjs"], consumer);
-
-  await writeFile(join(consumer, "schema-smoke.mjs"), `
-import { readFile } from "node:fs/promises";
-const path = import.meta.resolve("@jigging/jig/schema/project-authoring-1");
-const schema = JSON.parse(await readFile(new URL(path), "utf8"));
-if (schema.$schema !== "https://flow.dev/schemas/schema-1.json") throw new Error("bad packaged schema");
-if (!schema.$defs?.packageBinding) throw new Error("missing package Binding schema");
-`);
-  await run(["bun", "schema-smoke.mjs"], consumer);
 
   await writeFile(join(consumer, "smoke.ts"), `
 import { defineBinding, defineJig, discover, type JigDefinitionInput, type PackageBindingInput } from "@jigging/jig";
