@@ -37,6 +37,11 @@ Start here:
 
 Current implementation frontier:
 
+- [`design-review/199-compiled-bun-runtime-feasibility.md`](design-review/199-compiled-bun-runtime-feasibility.md)
+  proves that the installed release can own one exact built-in Bun recipe,
+  potentially using the compiled Jig executable itself, without ambient Bun,
+  runtime registration, or FLOW runtime metadata. The durable rootless join
+  and final release layout remain open.
 - [`design-review/198-post-rootless-product-roadmap.md`](design-review/198-post-rootless-product-roadmap.md)
   is the current product ordering: join admitted Project Session execution to
   the proved rootless mechanism, move evaluation and necessary preparation
