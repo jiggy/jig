@@ -5,6 +5,7 @@
   "scripts": {
     "test": "bun test packages/flow-sdk packages/jig conformance/run-1",
     "test:jig": "bun test packages/jig",
+    "test:jig:baseline": "bun scripts/test-operational-baseline.ts",
     "test:run-1": "bun test conformance/run-1",
     "test:release": "sh scripts/test-release.sh"
   }
