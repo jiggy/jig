@@ -57,7 +57,8 @@ admission mechanics internal.
 The Flow runtime has no network, ambient `PATH`, package installation, or
 lifecycle scripts. A `flow.ts` may import supported built-ins and explicit
 package-local files; every other dependency must already be bundled or
-vendored into its FLOW package.
+vendored into its FLOW package. A missing dependency fails the Run; Jig never
+installs it.
 
 Bindings use an explicit target:
 

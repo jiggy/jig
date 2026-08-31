@@ -131,6 +131,8 @@ therefore be one of:
 Jig does not run a package manager, lifecycle script, installer, or dependency
 download for a Flow. Authors may use their normal toolchain before packaging;
 the admitted package must already contain its complete executable closure.
+If a dependency is missing, the Run fails; Jig does not try to repair the
+package or fetch anything.
 For nontrivial Run/1 handling, bundle or vendor a conforming SDK rather than
 growing the minimal protocol example above.
 

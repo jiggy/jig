@@ -49,6 +49,7 @@ try {
   assert.equal(initialized.stderr, "");
 
   await writeHelloFlow(project);
+  await writeMissingDependencyFlow(project);
 
   const approved = await run([jig, "check", project, "--yes"], consumer, [0], 120_000);
   assert.match(approved.stdout, /^Jig project plan review\n/);
@@ -82,6 +83,14 @@ try {
   const rejectedTerminal = requireRecord(JSON.parse(schemaInvalid.stdout));
   assert.equal(rejectedTerminal.status, "failed");
   assert.equal(rejectedTerminal.code, "INVALID_INPUT");
+
+  const unsupportedDependency = await run([
+    jig, "run", "flow:flows/missing-dependency",
+  ], project, [1], 120_000);
+  assert.equal(unsupportedDependency.stderr, "");
+  const dependencyTerminal = requireRecord(JSON.parse(unsupportedDependency.stdout));
+  assert.equal(dependencyTerminal.status, "failed");
+  assert.equal(dependencyTerminal.code, "CHANNEL_LOST");
 
   const executed = await run([
     jig, "run", "flow:flows/hello", "--input", JSON.stringify({ name: "Ada" }),
@@ -210,6 +219,22 @@ async function writeHelloFlow(project: string): Promise<void> {
     "}",
     "",
   ].join("\n"));
+}
+
+async function writeMissingDependencyFlow(project: string): Promise<void> {
+  const flow = join(project, "flows", "missing-dependency");
+  await mkdir(flow);
+  await writeFile(join(flow, "FLOW.md"), [
+    "---",
+    "name: missing-dependency",
+    "description: Prove that unsupported dependencies fail without installation.",
+    "---",
+    "",
+  ].join("\n"));
+  await writeFile(
+    join(flow, "flow.ts"),
+    'import "jig-alpha-deliberately-missing";\n',
+  );
 }
 
 async function run(
