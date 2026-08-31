@@ -120,6 +120,8 @@ async function compileArtifact(entrypoint: string, artifact: string): Promise<vo
     process.execPath,
     "build",
     "--compile",
+    "--no-compile-autoload-dotenv",
+    "--no-compile-autoload-bunfig",
     // An explicit cross-target makes the artifact independent of the
     // development host's current Bun executable.
     "--target=bun-linux-x64-baseline",

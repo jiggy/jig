@@ -53,17 +53,50 @@ try {
   assert.deepEqual(installedManifest.os, ["linux"]);
   assert.deepEqual(installedManifest.cpu, ["x64"]);
   assert.deepEqual(installedManifest.libc, ["glibc"]);
+  const buildScript = requireStringRecord(installedManifest.scripts).build;
+  assert.match(buildScript, /--no-compile-autoload-dotenv/);
+  assert.match(buildScript, /--no-compile-autoload-bunfig/);
 
   const executable = join(installed, "bin", "jig");
   const command = join(consumer, "node_modules", ".bin", "jig");
   assert.notEqual((await stat(executable)).mode & 0o111, 0);
   assert.equal((await readFile(executable)).subarray(0, 4).toString("hex"), "7f454c46");
+
+  // Project-controlled Bun configuration must not execute before Jig can
+  // enter its containment boundary. Exercise the installed executable in Bun
+  // mode so both dotenv loading and bunfig preloads are directly observable.
+  const ambientMarker = join(consumer, "ambient-marker");
+  await writeFile(join(consumer, ".env"), "JIG_AMBIENT_POISON=loaded\n");
+  await writeFile(join(consumer, "bunfig.toml"), 'preload = ["./ambient-preload.mjs"]\n');
+  await writeFile(
+    join(consumer, "ambient-preload.mjs"),
+    `await Bun.write(${JSON.stringify(ambientMarker)}, "executed");\n`,
+  );
   const help = await run([command, "--help"], consumer);
   assert.equal(help.stderr, "");
   assert.match(help.stdout, /^Usage:\n  jig init --bare <directory>$/m);
   assert.match(help.stdout, /^  jig check \[project\] \[--yes\]$/m);
   assert.match(help.stdout, /^  jig run <flow:path\|binding:id> \[--input JSON\]$/m);
   assert.doesNotMatch(help.stdout, /setup|package check|planDigest/);
+  await assert.rejects(stat(ambientMarker), { code: "ENOENT" });
+
+  const ambient = await run(
+    [
+      executable,
+      "--no-env-file", "--no-install", "--config=/dev/null",
+      "-e", 'process.stdout.write(process.env.JIG_AMBIENT_POISON ?? "clean")',
+    ],
+    consumer,
+    { BUN_BE_BUN: "1" },
+  );
+  assert.deepEqual(ambient, { stdout: "clean", stderr: "" });
+  await assert.rejects(stat(ambientMarker), { code: "ENOENT" });
+
+  await Promise.all([
+    rm(join(consumer, ".env")),
+    rm(join(consumer, "bunfig.toml")),
+    rm(join(consumer, "ambient-preload.mjs")),
+  ]);
 
   const bun = await run([command, "--version"], consumer, { BUN_BE_BUN: "1" });
   assert.equal(bun.stdout, "1.3.3\n");
@@ -137,6 +170,12 @@ async function listFiles(root: string, prefix = ""): Promise<string[]> {
     else throw new Error(`installed package contains a non-file member: ${path}`);
   }
   return output.sort();
+}
+
+function requireStringRecord(value: unknown): Record<string, string> {
+  assert(value !== null && typeof value === "object" && !Array.isArray(value));
+  for (const member of Object.values(value)) assert.equal(typeof member, "string");
+  return value as Record<string, string>;
 }
 
 async function run(
