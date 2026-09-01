@@ -19,22 +19,16 @@ import { privateDomainDigest } from "./identity.js";
 
 const DIGEST = /^sha256:[0-9a-f]{64}$/;
 const LOCAL_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
-const MAX_METADATA_MEMBERS = 256;
 const validatedLocks = new WeakSet<object>();
 
 export interface PrivateLockPackage {
   readonly digest: string;
   readonly directRun: boolean;
-  readonly attachments: Readonly<Record<string, "read" | "read-write">>;
 }
 
 export interface PrivateLockBinding {
   readonly packagePath: string;
   readonly settings: JsonObject;
-  readonly attachments: Readonly<Record<string, {
-    readonly source: string;
-    readonly access: "read" | "read-write";
-  }>>;
 }
 
 export interface PrivateProjectLocalLock {
@@ -50,15 +44,9 @@ export function createPrivateProjectLocalLock(
   const packages: Record<string, PrivateLockPackage> = Object.create(null) as
     Record<string, PrivateLockPackage>;
   for (const flow of linked.flows) {
-    const attachments: Record<string, "read" | "read-write"> = Object.create(null) as
-      Record<string, "read" | "read-write">;
-    for (const name of Object.keys(flow.metadata.attachments ?? {}).sort()) {
-      attachments[name] = flow.metadata.attachments![name]!;
-    }
     packages[flow.provenance.projectPath] = Object.freeze({
       digest: flow.package.digest,
       directRun: flow.directRun,
-      attachments: Object.freeze(attachments),
     });
   }
   const bindings: Record<string, PrivateLockBinding> = Object.create(null) as
@@ -67,7 +55,6 @@ export function createPrivateProjectLocalLock(
     bindings[binding.id] = Object.freeze({
       packagePath: binding.packagePath,
       settings: binding.settings,
-      attachments: binding.attachments,
     });
   }
   const lock = normalizeLock({ packages, bindings });
@@ -127,30 +114,15 @@ function normalizePackages(value: unknown): PrivateProjectLocalLock["packages"] 
     projectPath(path, `package ${JSON.stringify(path)}`);
     const item = exactObject(
       input[path],
-      ["digest", "directRun", "attachments"],
+      ["digest", "directRun"],
       `package ${path}`,
     );
     if (typeof item.directRun !== "boolean") {
       throw new TypeError(`package ${path} directRun must be boolean`);
     }
-    const attachments = stringMap(
-      item.attachments,
-      `package ${path} attachments`,
-      (entry, label) => {
-        if (entry !== "read" && entry !== "read-write") {
-          throw new TypeError(`${label} must be read or read-write`);
-        }
-        return entry;
-      },
-      MAX_METADATA_MEMBERS,
-    );
-    if (item.directRun && Object.keys(attachments).length !== 0) {
-      throw new TypeError(`direct Run package ${path} cannot require attachments`);
-    }
     output[path] = Object.freeze({
       digest: digest(item.digest, `package ${path}`),
       directRun: item.directRun,
-      attachments,
     });
   }
   return Object.freeze(output);
@@ -164,29 +136,13 @@ function normalizeBindings(value: unknown): PrivateProjectLocalLock["bindings"] 
     localName(id, `Binding ${JSON.stringify(id)}`);
     const item = exactObject(
       input[id],
-      ["packagePath", "settings", "attachments"],
+      ["packagePath", "settings"],
       `Binding ${id}`,
     );
     const settings = object(item.settings, `Binding ${id} settings`);
-    const attachments = stringMap(
-      item.attachments,
-      `Binding ${id} attachments`,
-      (entry, label) => {
-        const attachment = exactObject(entry, ["source", "access"], label);
-        if (attachment.access !== "read" && attachment.access !== "read-write") {
-          throw new TypeError(`${label} access must be read or read-write`);
-        }
-        return Object.freeze({
-          source: projectPath(attachment.source, `${label} source`),
-          access: attachment.access,
-        });
-      },
-      MAX_METADATA_MEMBERS,
-    );
     output[id] = Object.freeze({
       packagePath: projectPath(item.packagePath, `Binding ${id} packagePath`),
       settings,
-      attachments,
     });
   }
   return Object.freeze(output);
@@ -199,34 +155,7 @@ function validateReferences(
   for (const [id, binding] of Object.entries(bindings)) {
     const selected = packages[binding.packagePath];
     if (selected === undefined) throw new TypeError(`Binding ${id} selects an unknown package`);
-    const configured = Object.keys(binding.attachments).sort();
-    const declared = Object.keys(selected.attachments).sort();
-    if (configured.join("\0") !== declared.join("\0")) {
-      throw new TypeError(`Binding ${id} attachments do not match its package`);
-    }
-    for (const name of declared) {
-      if (binding.attachments[name]!.access !== selected.attachments[name]) {
-        throw new TypeError(`Binding ${id} attachment ${name} access does not match its package`);
-      }
-    }
   }
-}
-
-function stringMap<T>(
-  value: unknown,
-  label: string,
-  normalize: (value: JsonValue, label: string) => T,
-  limit: number,
-): Readonly<Record<string, T>> {
-  const input = object(value, label);
-  const keys = Object.keys(input);
-  if (keys.length > limit) throw new TypeError(`${label} exceeds ${limit} members`);
-  const output: Record<string, T> = Object.create(null) as Record<string, T>;
-  for (const key of keys.sort()) {
-    localName(key, `${label} key`);
-    output[key] = normalize(input[key]!, `${label}.${key}`);
-  }
-  return Object.freeze(output);
 }
 
 function projectPath(value: unknown, label: string): string {

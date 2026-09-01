@@ -22,24 +22,21 @@ describe("Jig project authoring SDK/1", () => {
     expect(() => defineJig(project as never)).toThrow();
   });
 
-  test("captures one complete package Binding with structural defaults", () => {
+  test("captures one package Binding with structural defaults", () => {
     const binding = defineBinding({
       package: "./flows/review",
       settings: { maxRetries: 4 },
-      attachments: { source: "./workspace" },
     });
     expect(binding).toEqual({
       kind: "package",
       package: "flows/review",
       settings: { maxRetries: 4 },
-      attachments: { source: "workspace" },
     });
     expect(normalizePackageBindingDefinition(binding)).toEqual(binding);
     expect(defineBinding({ package: "./flows/review" })).toEqual({
       kind: "package",
       package: "flows/review",
       settings: {},
-      attachments: {},
     });
     expect(() => defineBinding(binding as never)).toThrow();
   });
@@ -51,6 +48,7 @@ describe("Jig project authoring SDK/1", () => {
     ["glob root", () => discover("./flows/*")],
     ["escaping package", () => defineBinding({ package: "../flow" })],
     ["unknown Binding field", () => defineBinding({ package: "flows/a", grants: {} } as never)],
+    ["unsupported attachments", () => defineBinding({ package: "flows/a", attachments: {} } as never)],
     ["non-JSON settings", () => defineBinding({ package: "flows/a", settings: { bad: 1n } as never })],
     ["class settings", () => defineBinding({ package: "flows/a", settings: new (class {})() })],
   ] as const) {
@@ -95,10 +93,7 @@ describe("Jig project authoring SDK/1", () => {
   });
 
   test("allows matcher characters only in exact paths", () => {
-    expect(defineBinding({
-      package: "flows/[draft]",
-      attachments: { source: "workspace/{drafts}" },
-    }).attachments.source).toBe("workspace/{drafts}");
+    expect(defineBinding({ package: "flows/[draft]" }).package).toBe("flows/[draft]");
     expect(() => discover("flows/[draft]")).toThrow();
   });
 

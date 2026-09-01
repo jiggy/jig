@@ -39,9 +39,9 @@ The project initially needs no `package.json`, compiler configuration, setup
 command, or visible lock. Jig creates protected `.jig/` state as needed. The
 first approved project change creates `jig.lock`.
 
-`jig.ts`, Flow packages, Binding declarations, attachments, and `jig.lock` are
-user-owned files. `.jig/` contains local admission and lifecycle state. It is
-not project source, is not portable, and is never exposed to package code.
+`jig.ts`, Flow packages, Binding declarations, and `jig.lock` are user-owned
+files. `.jig/` contains local admission and lifecycle state. It is not project
+source, is not portable, and is never exposed to package code.
 
 ## 2. Project sources
 
@@ -189,26 +189,12 @@ present `settings.schema.json` validates it; without that schema, nonempty
 settings are invalid. Jig does not merge defaults, environment values, or
 per-invocation overrides into settings.
 
-A package that declares attachments requires the Binding to map every declared
-name exactly once:
-
-```ts
-export default defineBinding({
-  package: "./flows/format",
-  attachments: {
-    source: "./workspace",
-  },
-});
-```
-
-Each source is a confined project-relative path. The access mode comes from
-the package declaration and cannot be widened by the Binding. `.jig` remains
-excluded even when a mapped ancestor contains it.
-
-The alpha executor currently admits only targets whose exact recipe needs no
-attachment. Attachment-bearing Bindings remain valid project configuration
-but are unavailable for execution until the installed host can enforce their
-declared projection.
+This alpha has no project attachment mapping. Portable FLOW packages may still
+declare attachments in `FLOW.md`, and Jig retains that declaration with the
+captured package. Such a package is not a direct target. A Binding which
+selects it rejects the complete project candidate with a bounded diagnostic;
+it does not create an attachment projection or an unavailable placeholder
+target.
 
 Bindings contain no runtime command, environment map, package-manager policy,
 or generic permission bag.
@@ -224,7 +210,7 @@ One planning attempt:
 1. captures the exact author module graph;
 2. evaluates and retains its inert project and Binding values;
 3. captures and retains every selected Package/1 tree;
-4. links packages, settings, attachments, and target identities;
+4. links packages, settings, and target identities;
 5. selects one exact installed-host recipe for every target;
 6. derives the complete portable lock; and
 7. publishes one retained candidate and human-readable review.
@@ -251,8 +237,7 @@ meaning without admitting it.
 
 - selected package paths and Package/1 digests;
 - direct-target eligibility;
-- declared attachments; and
-- Binding package choices, settings, and attachment mappings.
+- Binding package choices and settings.
 
 It contains no runtime path, runtime version guess, host closure, sandbox
 detail, process identity, coordinator epoch, or local approval.
@@ -292,9 +277,9 @@ binding:reviewer
 ```
 
 An unprefixed name is not guessed. A direct Flow receives empty settings and
-no attachments. A Binding receives exactly its admitted settings and mappings.
-Callers cannot override package source, runtime, environment, attachments,
-authority, deadline policy, or containment.
+no attachments. A Binding receives exactly its admitted settings. Callers
+cannot override package source, runtime, environment, authority, deadline
+policy, or containment, and cannot introduce an attachment projection.
 
 Each submission has one bounded project-local idempotency key and JSON/1 input.
 The first accepted request stores the exact target and canonical input before
@@ -379,8 +364,9 @@ The direct-alpha project implementation must prove at least:
    closed; unsafe paths, symlinks, aliases, and collisions reject.
 3. Only the captured static TypeScript closure is evaluated, under bounded
    authority, and apply never reevaluates it.
-4. Invalid package metadata, schemas, Binding settings, attachment mappings,
-   or dangling package references reject the complete candidate.
+4. Invalid package metadata, schemas, Binding settings, attachment-bearing
+   Binding targets, or dangling package references reject the complete
+   candidate.
 5. Source changes grant no authority before explicit apply.
 6. A Plan binds the exact candidate, lock, host readiness observation, and
    base admission; stale apply changes nothing.

@@ -14,21 +14,16 @@ const lock = {
     "flows/configured": {
       digest,
       directRun: false,
-      attachments: { source: "read" },
     },
     "flows/direct": {
       digest,
       directRun: true,
-      attachments: {},
     },
   },
   bindings: {
     configured: {
       packagePath: "flows/configured",
       settings: { retries: 2 },
-      attachments: {
-        source: { source: "workspace", access: "read" },
-      },
     },
   },
 };
@@ -49,9 +44,6 @@ describe("Jig lock/1 shape schema", () => {
     ["a missing package map", changed(lock, (item) => { delete item.packages; })],
     ["an unknown package field", changed(lock, (item) => {
       item.packages["flows/direct"].runtime = "bun";
-    })],
-    ["attachments on a direct Run", changed(lock, (item) => {
-      item.packages["flows/direct"].attachments = { source: "read" };
     })],
     ["an unknown Binding field", changed(lock, (item) => {
       item.bindings.configured.grants = {};

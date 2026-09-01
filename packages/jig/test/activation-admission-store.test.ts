@@ -789,7 +789,6 @@ async function createFixture(
         "flows/run": {
           digest: flow.digest,
           directRun: true,
-          attachments: {},
         },
       },
       bindings: {},

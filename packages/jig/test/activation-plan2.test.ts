@@ -406,7 +406,6 @@ function candidateFixture(
   const packages: Record<string, JsonValue> = Object.fromEntries(orderedPaths.map((path) => [path, {
     digest: digest(`package:${path}`),
     directRun: true,
-    attachments: {},
   }]));
   const pathTail = ["x".repeat(220), "y".repeat(240), "z".repeat(240), "w".repeat(240)];
   for (let index = 0; index < extraInertPackages; index += 1) {
@@ -414,7 +413,6 @@ function candidateFixture(
     packages[path] = {
       digest: digest(`package:${path}`),
       directRun: false,
-      attachments: {},
     };
   }
   const lockBytes = withLf(canonicalJson({

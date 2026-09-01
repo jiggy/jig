@@ -16,7 +16,6 @@ const project = defineJig({
 const binding = defineBinding({
   package: "./flows/review",
   settings: { retries: 2 },
-  attachments: { source: "./workspace" },
 });
 
 function changed(value: unknown, mutate: (copy: Record<string, any>) => void): unknown {
@@ -36,6 +35,7 @@ describe("Project Authoring SDK/1 shape schema", () => {
     ["unknown source kind", changed(project, (item) => { item.flows.kind = "glob"; })],
     ["missing discovery roots", changed(project, (item) => { delete item.flows.roots; })],
     ["unknown Binding field", changed(binding, (item) => { item.grants = {}; })],
+    ["unsupported Binding attachments", changed(binding, (item) => { item.attachments = {}; })],
     ["missing normalized settings", changed(binding, (item) => { delete item.settings; })],
     ["oversized project path", changed(binding, (item) => { item.package = "a".repeat(1025); })],
   ] as const) {

@@ -48,13 +48,11 @@ export interface PackageBindingDefinition {
   readonly kind: "package";
   readonly package: string;
   readonly settings: JsonObject;
-  readonly attachments: Readonly<Record<string, string>>;
 }
 
 export interface PackageBindingInput {
   readonly package: string;
   readonly settings?: JsonObject;
-  readonly attachments?: Readonly<Record<string, string>>;
 }
 
 export type BindingDefinition = PackageBindingDefinition;
@@ -125,8 +123,8 @@ function normalizeBinding(
   assertClosedObject(
     captured,
     canonical
-      ? ["kind", "package", "settings", "attachments"]
-      : ["package", "settings", "attachments"],
+      ? ["kind", "package", "settings"]
+      : ["package", "settings"],
     "Binding definition",
   );
   if (canonical && captured.kind !== "package") {
@@ -137,10 +135,7 @@ function normalizeBinding(
   const settings = Object.hasOwn(captured, "settings")
     ? expectJsonObject(captured.settings, "settings")
     : emptyRecord();
-  const attachments = Object.hasOwn(captured, "attachments")
-    ? normalizeAttachments(captured.attachments as unknown as Readonly<Record<string, string>>)
-    : emptyRecord();
-  return record({ kind: "package", package: packagePath, settings, attachments }) as unknown as PackageBindingDefinition;
+  return record({ kind: "package", package: packagePath, settings }) as unknown as PackageBindingDefinition;
 }
 
 function normalizeSource(
@@ -177,18 +172,6 @@ function normalizeSource(
   );
   if (roots.length === 0) throw new TypeError(`${field} discovery requires at least one root`);
   return record({ kind: "discover", roots }) as unknown as DiscoverySource;
-}
-
-function normalizeAttachments(
-  value: Readonly<Record<string, string>> | undefined,
-): Readonly<Record<string, string>> {
-  const input = assertRecord(value, "attachments");
-  const output: Record<string, string> = {};
-  for (const key of sortedKeys(input)) {
-    validateLocalName(key, "attachment name");
-    output[key] = normalizeProjectPath(input[key], `attachment ${key}`);
-  }
-  return record(output);
 }
 
 function normalizeUniquePaths(

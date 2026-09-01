@@ -33,12 +33,6 @@
       "minLength": 71,
       "maxLength": 71
     },
-    "access": {
-      "enum": [
-        "read",
-        "read-write"
-      ]
-    },
     "package": {
       "type": "object",
       "properties": {
@@ -47,60 +41,11 @@
         },
         "directRun": {
           "type": "boolean"
-        },
-        "attachments": {
-          "type": "object",
-          "description": "Declared attachment access keyed by LocalName.",
-          "additionalProperties": {
-            "$ref": "#/$defs/access"
-          },
-          "maxProperties": 256
         }
       },
       "required": [
         "digest",
-        "directRun",
-        "attachments"
-      ],
-      "additionalProperties": false,
-      "allOf": [
-        {
-          "if": {
-            "properties": {
-              "directRun": {
-                "const": true
-              }
-            },
-            "required": [
-              "directRun"
-            ]
-          },
-          "then": {
-            "properties": {
-              "attachments": {
-                "maxProperties": 0
-              }
-            }
-          }
-        }
-      ]
-    },
-    "bindingAttachment": {
-      "type": "object",
-      "properties": {
-        "source": {
-          "type": "string",
-          "description": "A canonical project-relative attachment source path.",
-          "minLength": 1,
-          "maxLength": 1024
-        },
-        "access": {
-          "$ref": "#/$defs/access"
-        }
-      },
-      "required": [
-        "source",
-        "access"
+        "directRun"
       ],
       "additionalProperties": false
     },
@@ -117,20 +62,11 @@
           "type": "object",
           "additionalProperties": true,
           "maxProperties": 65536
-        },
-        "attachments": {
-          "type": "object",
-          "description": "Configured attachment mappings keyed by LocalName.",
-          "additionalProperties": {
-            "$ref": "#/$defs/bindingAttachment"
-          },
-          "maxProperties": 256
         }
       },
       "required": [
         "packagePath",
-        "settings",
-        "attachments"
+        "settings"
       ],
       "additionalProperties": false
     }

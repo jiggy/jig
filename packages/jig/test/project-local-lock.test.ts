@@ -43,7 +43,7 @@ describe("private package-project portable lock projection", () => {
     );
   });
 
-  test("projects exact package, Binding settings, and attachment choices", async () => {
+  test("projects exact packages and Binding settings", async () => {
     await withFlows(projectTrees(), async (flows) => {
       const project = linkedProject(flows, 3);
       const lock = createPrivateProjectLocalLock(project);
@@ -53,16 +53,13 @@ describe("private package-project portable lock projection", () => {
 
       expect(lock.packages["flows/configured"]).toMatchObject({
         directRun: false,
-        attachments: { source: "read-write" },
       });
       expect(lock.packages["flows/worker"]).toMatchObject({
         directRun: true,
-        attachments: {},
       });
       expect(lock.bindings.configured).toEqual({
         packagePath: "flows/configured",
         settings: { maxRetries: 3 },
-        attachments: { source: { source: "workspace", access: "read-write" } },
       });
 
       const encoded = encodePrivateProjectLocalLock(lock);
@@ -70,7 +67,7 @@ describe("private package-project portable lock projection", () => {
       expect(encodePrivateProjectLocalLock(decoded)).toEqual(encoded);
       expect(privateProjectLocalLockDigest(decoded)).toBe(privateProjectLocalLockDigest(lock));
       expect(Object.isFrozen(decoded.packages["flows/configured"])).toBeTrue();
-      expect(Object.isFrozen(decoded.bindings.configured.attachments.source)).toBeTrue();
+      expect(Object.isFrozen(decoded.bindings.configured)).toBeTrue();
     });
   });
 
@@ -127,14 +124,8 @@ describe("private package-project portable lock projection", () => {
         value.packages["flows/worker"].digest = `sha256:${"A".repeat(64)}`;
       }, "digest must be sha256");
       expectInvalid(base, (value) => {
-        value.packages["flows/configured"].directRun = true;
-      }, "cannot require attachments");
-      expectInvalid(base, (value) => {
         value.bindings.configured.packagePath = "flows/missing";
       }, "selects an unknown package");
-      expectInvalid(base, (value) => {
-        value.bindings.configured.attachments.source.access = "read";
-      }, "access does not match");
       expectInvalid(base, (value) => {
         value.packages["FLOWS/WORKER"] = value.packages["flows/worker"];
       }, "collide");
@@ -145,19 +136,12 @@ describe("private package-project portable lock projection", () => {
         value.bindings.configured.packagePath = ".jig/configured";
       }, "protected .jig");
       expectInvalid(base, (value) => {
-        value.bindings.configured.attachments.source.source = ".jIg/secret";
-      }, "protected .jig");
-      expectInvalid(base, (value) => {
         value.packages["flows/configured"].unexpected = true;
       }, "must contain exactly");
     });
   });
 
-  test("enforces attachment and aggregate activation-target bounds", () => {
-    expect(() => decodePrivateProjectLocalLock(lockBytes(attachmentBoundLock(256)))).not.toThrow();
-    expect(() => decodePrivateProjectLocalLock(lockBytes(attachmentBoundLock(257)))).toThrow(
-      "exceeds 256 members",
-    );
+  test("enforces the aggregate activation-target bound", () => {
     expect(() => decodePrivateProjectLocalLock(lockBytes(rootPackageCollection(257)))).not.toThrow();
     expect(() => decodePrivateProjectLocalLock(lockBytes(rootPackageCollection(4_097)))).toThrow(
       "activation targets exceed 4096 targets",
@@ -171,30 +155,12 @@ describe("private package-project portable lock projection", () => {
   });
 });
 
-function attachmentBoundLock(count: number): unknown {
-  const attachments = Object.fromEntries(Array.from({ length: count }, (_, index) => [
-    `slot-${index}`,
-    "read",
-  ]));
-  return {
-    packages: {
-      "flows/bounded": {
-        digest: `sha256:${"b".repeat(64)}`,
-        directRun: false,
-        attachments,
-      },
-    },
-    bindings: {},
-  };
-}
-
 function rootPackageCollection(count: number): unknown {
   const packages = Object.fromEntries(Array.from({ length: count }, (_, index) => [
     `flows/item-${index}`,
     {
       digest: `sha256:${"e".repeat(64)}`,
       directRun: true,
-      attachments: {},
     },
   ]));
   return { packages, bindings: {} };
@@ -204,9 +170,7 @@ function projectTrees(): Record<string, Record<string, string>> {
   return {
     "flows/configured": {
       "FLOW.md": metadata(`name: configured
-description: Configured.
-attachments:
-  source: read-write`),
+description: Configured.`),
       "flow.ts": "export {};\n",
       "settings.schema.json": schema({
         type: "object",
@@ -228,7 +192,6 @@ function linkedProject(flows: readonly RetainedFlowInput[], maxRetries: number):
     bindings: [binding("bindings/configured.ts", {
       package: "flows/configured",
       settings: { maxRetries },
-      attachments: { source: "workspace" },
     })],
   });
 }

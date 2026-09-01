@@ -106,13 +106,11 @@ describe("private package-project linker", () => {
     });
   });
 
-  test("links a basic Binding with validated settings and attachments", async () => {
+  test("links a basic Binding with validated settings", async () => {
     await withFlows({
       "flows/review": {
         "FLOW.md": metadata(`name: review
-description: Review.
-attachments:
-  source: read-write`),
+description: Review.`),
         "flow.ts": "export {};\n",
         "settings.schema.json": schema({
           type: "object",
@@ -127,7 +125,6 @@ attachments:
         bindings: [binding("bindings/review.ts", {
           package: "flows/review",
           settings: { maxRetries: 0 },
-          attachments: { source: "workspace" },
         })],
       }), "PROJECT_BINDING_SETTINGS_INVALID", "/settings/maxRetries");
       const value = linkPackageProject({
@@ -135,7 +132,6 @@ attachments:
         bindings: [binding("bindings/review.ts", {
           package: "flows/review",
           settings: { maxRetries: 3 },
-          attachments: { source: "workspace" },
         })],
       });
       expect(value.bindings).toEqual([{
@@ -144,7 +140,6 @@ attachments:
         declarationPath: "bindings/review.ts",
         packagePath: "flows/review",
         settings: { maxRetries: 3 },
-        attachments: { source: { source: "workspace", access: "read-write" } },
       }]);
       expect(value.flows[0]!.directRun).toBeFalse();
     });
@@ -190,7 +185,7 @@ uses:
     });
   });
 
-  test("requires exact settings and attachment declarations", async () => {
+  test("requires declared settings and rejects attachment-bearing Binding targets", async () => {
     await withFlows({
       "flows/plain": run("plain"),
       "flows/configured": {
@@ -211,16 +206,7 @@ attachments:
       expectCode(() => linkPackageProject({
         flows,
         bindings: [binding("bindings/configured.ts", { package: "flows/configured" })],
-      }), "PROJECT_BINDING_ATTACHMENTS", "/attachments/source");
-      for (const source of [".jig/private", ".JIG/private"]) {
-        expectCode(() => linkPackageProject({
-          flows,
-          bindings: [binding("bindings/configured.ts", {
-            package: "flows/configured",
-            attachments: { source },
-          })],
-        }), "PROJECT_BINDING_ATTACHMENT_PROTECTED", "/attachments/source");
-      }
+      }), "PROJECT_BINDING_ATTACHMENTS_UNSUPPORTED", "/package");
     });
   });
 
@@ -229,8 +215,6 @@ attachments:
       "flows/immutable": {
         "FLOW.md": metadata(`name: immutable
 description: Immutable.
-attachments:
-  source: read
 x-state:
   nested:
     - safe`),
@@ -239,15 +223,11 @@ x-state:
     }, async (flows) => {
       const value = linkPackageProject({
         flows,
-        bindings: [binding("bindings/immutable.ts", {
-          package: "flows/immutable",
-          attachments: { source: "workspace" },
-        })],
+        bindings: [binding("bindings/immutable.ts", { package: "flows/immutable" })],
       });
       const metadata = value.flows[0]!.metadata;
       expect(Object.isFrozen(metadata)).toBeTrue();
       expect(Object.isFrozen(value.flows[0]!.entrypoint)).toBeTrue();
-      expect(Object.isFrozen(metadata.attachments)).toBeTrue();
       expect(Object.isFrozen(metadata.extensions["x-state"])).toBeTrue();
       expect(Object.isFrozen((metadata.extensions["x-state"] as { nested: readonly string[] }).nested)).toBeTrue();
       expect(() => { (metadata as { name: string }).name = "changed"; }).toThrow();

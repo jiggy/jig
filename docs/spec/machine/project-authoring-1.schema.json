@@ -95,20 +95,12 @@
         "settings": {
           "type": "object",
           "maxProperties": 65536
-        },
-        "attachments": {
-          "type": "object",
-          "additionalProperties": {
-            "$ref": "#/$defs/projectPath"
-          },
-          "maxProperties": 65536
         }
       },
       "required": [
         "kind",
         "package",
-        "settings",
-        "attachments"
+        "settings"
       ],
       "additionalProperties": false
     },

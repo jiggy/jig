@@ -66,7 +66,6 @@ function projectCandidate(
     packagePath: request.packagePath,
     entrypoint: request.entrypoint,
     settings: request.settings,
-    attachments: request.attachments,
     availability: disposition.state === "ready"
       ? { state: "ready" as const }
       : { state: "unavailable" as const, code: disposition.code },
@@ -75,7 +74,6 @@ function projectCandidate(
     portablePolicy: {
       packages: Object.fromEntries(Object.entries(lock.packages).map(([path, value]) => [path, {
         directRun: value.directRun,
-        attachments: value.attachments,
       }])),
       bindings: lock.bindings,
     },

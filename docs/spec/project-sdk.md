@@ -72,14 +72,17 @@ import { defineBinding } from "@jigging/jig";
 export default defineBinding({
   package: "./flows/review",
   settings: { maxRetries: 4 },
-  attachments: { workspace: "./workspace" },
 });
 ```
 
-`package` is required. Omitted `settings` and `attachments` become empty
-objects. Settings must satisfy the package's `settings.schema.json` when one
-exists. Attachment names and access modes come from `FLOW.md`; a Binding can
-select project-relative sources but cannot widen the package declaration.
+`package` is required. Omitting `settings` produces an empty object. Settings
+must satisfy the package's `settings.schema.json` when one exists.
+
+This alpha has no project attachment mapping. A selected FLOW package may
+declare attachments as portable package metadata, but it cannot then be a
+direct target, and a Binding which selects it rejects the complete project
+candidate. Supporting attachment projection later must be an explicit host
+feature rather than an inert authoring placeholder today.
 
 Binding identity is the declaration filename's LocalName basename. For
 example, `bindings/review.ts` has ID `review`. There is no duplicate `id`
@@ -87,7 +90,7 @@ field, profile inheritance, overlay, ambient environment fallback, or per-Run
 settings override.
 
 Bindings are optional. A discovered Run package which is valid with empty
-settings and declares no required attachment or capability use is also an
+settings and declares no attachment or capability use is also an
 exact direct Flow target. There is no hidden generated Binding.
 
 ## Value rules
@@ -129,8 +132,7 @@ or one normalized Binding value:
 {
   "kind": "package",
   "package": "flows/review",
-  "settings": {},
-  "attachments": {}
+  "settings": {}
 }
 ```
 
@@ -144,5 +146,6 @@ applied retained Plan.
 
 SDK/1 does not define child-Flow slots, candidate catalogues, semantic choice,
 Hooks, Services, Journal publishers, Agent selection, generic grants, runtime
-selection, sandbox selection, or administration. Those concepts are absent
-from the direct alpha rather than represented by placeholders.
+selection, sandbox selection, attachment projection, or administration. Those
+concepts are absent from the direct alpha rather than represented by
+placeholders.

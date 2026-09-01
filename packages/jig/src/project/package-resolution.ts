@@ -23,7 +23,6 @@ import {
 import type { PackageEntrypoint } from "../package/inspect.js";
 import {
   requirePackageProjectValue,
-  type LinkedPackageBinding,
   type PackageProjectValue,
   type RunTargetIdentity,
 } from "./package-project.js";
@@ -32,7 +31,6 @@ import {
   type PrivateRetainedPackageProject,
 } from "./retained-project.js";
 import {
-  isProtectedProjectPath,
   normalizeProjectPath,
 } from "./paths.js";
 
@@ -49,7 +47,10 @@ export interface PrivateActivationRequest {
   readonly package: PackageArtifactRef;
   readonly entrypoint: PackageEntrypoint;
   readonly settings: JsonObject;
-  readonly attachments: LinkedPackageBinding["attachments"];
+  readonly attachments: Readonly<Record<string, {
+    readonly source: string;
+    readonly access: "read" | "read-write";
+  }>>;
 }
 
 export type PrivateResolutionUnavailableCode = PrivateActivationUnavailableCode;
@@ -121,7 +122,7 @@ export function buildPrivateActivationRequests(
       package: flow.package,
       entrypoint: flow.entrypoint,
       settings: binding.settings,
-      attachments: binding.attachments,
+      attachments: emptyRecord(),
     }));
   }
 
@@ -359,7 +360,6 @@ function semanticProject(project: PackageProjectValue): JsonValue {
       id: binding.id,
       packagePath: binding.packagePath,
       settings: binding.settings,
-      attachments: binding.attachments,
     })),
   } as unknown as JsonValue;
 }
@@ -442,25 +442,12 @@ function requireLocalName(value: unknown, label: string): string {
   return value;
 }
 
-function normalizeRequestAttachments(value: unknown): LinkedPackageBinding["attachments"] {
+function normalizeRequestAttachments(value: unknown): PrivateActivationRequest["attachments"] {
   const input = snapshotJsonObject(value, "activation attachments");
-  const keys = Object.keys(input);
-  if (keys.length > 256) throw new TypeError("activation attachments exceed 256 members");
-  const output: Record<string, { readonly source: string; readonly access: "read" | "read-write" }> =
-    Object.create(null) as Record<string, { readonly source: string; readonly access: "read" | "read-write" }>;
-  for (const name of keys.sort()) {
-    requireLocalName(name, "activation attachment name");
-    const attachment = exactObject(input[name], ["source", "access"], `activation attachment ${name}`);
-    const source = normalizeProjectPath(attachment.source, `activation attachment ${name} source`);
-    if (isProtectedProjectPath(source)) {
-      throw new TypeError(`activation attachment ${name} source uses protected .jig state`);
-    }
-    if (attachment.access !== "read" && attachment.access !== "read-write") {
-      throw new TypeError(`activation attachment ${name} access must be read or read-write`);
-    }
-    output[name] = Object.freeze({ source, access: attachment.access });
+  if (Object.keys(input).length !== 0) {
+    throw new TypeError("activation attachments are unsupported by the direct alpha");
   }
-  return Object.freeze(output);
+  return emptyRecord();
 }
 
 function snapshotJsonObject(value: unknown, label: string): JsonObject {

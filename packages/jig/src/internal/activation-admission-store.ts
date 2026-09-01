@@ -3229,14 +3229,9 @@ async function reacquireCandidateArtifacts(
 }
 
 function requirePackageProjection(path: string, expected: PrivateLockPackage, inspected: InspectedPackage): void {
-  const attachments: Record<string, JsonValue> = Object.create(null) as Record<string, JsonValue>;
-  for (const name of Object.keys(inspected.metadata.attachments ?? {}).sort()) {
-    attachments[name] = inspected.metadata.attachments![name]!;
-  }
   const observed: JsonValue = {
     digest: inspected.digest,
     directRun: isDirectRunEligible(inspected),
-    attachments,
   };
   if (!sameBytes(canonicalJson(observed), canonicalJson(expected as unknown as JsonValue))) {
     invalid("ADMISSION_ARTIFACT_MISMATCH", `stored Package/1 ${path} no longer matches its candidate lock`);

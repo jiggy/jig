@@ -804,7 +804,7 @@ function requireRequestLockProjection(
     const binding = lock.bindings[request.target.id];
     if (binding === undefined ||
         !sameJson(binding.settings, request.settings) ||
-        !sameJson(binding.attachments, request.attachments)) {
+        Object.keys(request.attachments).length !== 0) {
       throw new TypeError("activation request Binding configuration does not match its lock projection");
     }
     return;

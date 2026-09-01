@@ -18,14 +18,12 @@ describe("private project Plan review", () => {
             "flows/review": {
               digest,
               directRun: false,
-              attachments: { source: "read" },
             },
           },
           bindings: {
             review: {
               packagePath: "flows/review",
               settings: {},
-              attachments: { source: { source: "workspace", access: "read" } },
             },
           },
         },
@@ -41,7 +39,7 @@ describe("private project Plan review", () => {
               hidden: "\u202e\u200bline\n\t\u0000é😀",
               "\u202ekey": "value",
             },
-            attachments: { source: { source: "workspace", access: "read" } },
+            attachments: {},
             digest: `sha256:${"b".repeat(64)}`,
           },
           disposition: {
@@ -69,12 +67,12 @@ describe("private project Plan review", () => {
       const code = value.codePointAt(0)!;
       return code === 0x0a || code >= 0x20 && code <= 0x7e;
     })).toBe(true);
-    expect(rendered.text).toContain('"access": "read"');
     expect(rendered.text).toContain('"state": "ready"');
     expect(rendered.text).not.toContain("private-recipe-sentinel");
     expect(rendered.text).not.toContain("private-observation-sentinel");
     expect(rendered.text).not.toContain("recipeDigest");
     expect(rendered.text).not.toContain("observationDigest");
+    expect(rendered.text).not.toContain("attachments");
     expect(rendered.text).not.toContain(digest);
     expect(rendered.text).not.toContain("digest");
     expect(rendered.text).not.toContain('"operation"');
@@ -105,8 +103,8 @@ describe("private project Plan review", () => {
     const plan = reviewPlan("admission", `sha256:${"b".repeat(64)}`);
     const current = {
       lock: {
-        packages: { "flows/old": { digest, directRun: false, attachments: {} } },
-        bindings: { review: { packagePath: "flows/old", settings: {}, attachments: {} } },
+        packages: { "flows/old": { digest, directRun: false } },
+        bindings: { review: { packagePath: "flows/old", settings: {} } },
       },
       candidate: {
         targets: [{
@@ -128,8 +126,8 @@ describe("private project Plan review", () => {
       proposed: {
         ...plan.proposed,
         lock: {
-          packages: { "flows/new": { digest, directRun: false, attachments: {} } },
-          bindings: { review: { packagePath: "flows/new", settings: {}, attachments: {} } },
+          packages: { "flows/new": { digest, directRun: false } },
+          bindings: { review: { packagePath: "flows/new", settings: {} } },
         },
         targets: [{
           request: {

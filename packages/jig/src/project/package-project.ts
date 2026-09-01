@@ -54,10 +54,6 @@ export interface LinkedPackageBinding {
   readonly declarationPath: string;
   readonly packagePath: string;
   readonly settings: JsonObject;
-  readonly attachments: Readonly<Record<string, {
-    readonly source: string;
-    readonly access: "read" | "read-write";
-  }>>;
 }
 
 export interface PackageProjectValue {
@@ -234,6 +230,14 @@ function prepareBindings(
         "/package",
       );
     }
+    if (Object.keys(flow.inspected.metadata.attachments ?? {}).length !== 0) {
+      invalid(
+        "PROJECT_BINDING_ATTACHMENTS_UNSUPPORTED",
+        `Binding ${id} selects a package that requires attachments, which the direct alpha does not project`,
+        declarationPath,
+        "/package",
+      );
+    }
     validateSettings(definition.settings, flow.inspected, declarationPath);
     return Object.freeze({ id, declarationPath, definition, flow });
   });
@@ -243,55 +247,14 @@ function prepareBindings(
 }
 
 function linkBinding(prepared: PreparedBinding): LinkedPackageBinding {
-  const { id, declarationPath, definition, flow } = prepared;
+  const { id, declarationPath, definition } = prepared;
   return Object.freeze({
     kind: "package" as const,
     id,
     declarationPath,
     packagePath: definition.package,
     settings: definition.settings,
-    attachments: linkAttachments(definition.attachments, flow.inspected, declarationPath),
   });
-}
-
-function linkAttachments(
-  configured: Readonly<Record<string, string>>,
-  inspected: InspectedPackage,
-  path: string,
-): LinkedPackageBinding["attachments"] {
-  const declared = inspected.metadata.attachments ?? {};
-  const configuredKeys = Object.keys(configured).sort(compareProjectPaths);
-  const declaredKeys = Object.keys(declared).sort(compareProjectPaths);
-  if (configuredKeys.join("\0") !== declaredKeys.join("\0")) {
-    const differing = configuredKeys.find((name) => !Object.hasOwn(declared, name)) ??
-      declaredKeys.find((name) => !Object.hasOwn(configured, name));
-    invalid(
-      "PROJECT_BINDING_ATTACHMENTS",
-      "configured attachments must exactly match package attachment declarations",
-      path,
-      differing === undefined ? "/attachments" : attachmentPointer(differing),
-    );
-  }
-  const output: Record<string, {
-    readonly source: string;
-    readonly access: "read" | "read-write";
-  }> = Object.create(null) as Record<string, {
-    readonly source: string;
-    readonly access: "read" | "read-write";
-  }>;
-  for (const name of declaredKeys) {
-    const source = configured[name]!;
-    if (isProtectedProjectPath(source)) {
-      invalid(
-        "PROJECT_BINDING_ATTACHMENT_PROTECTED",
-        `attachment ${name} cannot expose .jig`,
-        path,
-        attachmentPointer(name),
-      );
-    }
-    output[name] = Object.freeze({ source, access: declared[name]! });
-  }
-  return freezeRecord(output);
 }
 
 function validateSettings(settings: JsonObject, inspected: InspectedPackage, path: string): void {
@@ -414,18 +377,6 @@ function readClosedRecord(
     output[field] = descriptor.value;
   }
   return output;
-}
-
-function attachmentPointer(name: string): string {
-  return `/attachments/${escapePointer(name)}`;
-}
-
-function escapePointer(value: string): string {
-  return value.replaceAll("~", "~0").replaceAll("/", "~1");
-}
-
-function freezeRecord<T>(value: Record<string, T>): Readonly<Record<string, T>> {
-  return Object.freeze(value);
 }
 
 function errorText(error: unknown): string {
