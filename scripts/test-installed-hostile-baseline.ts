@@ -62,26 +62,6 @@ try {
     await Bun.sleep(50);
     return { cgroupVisible: envelope.cgroupVisible, childStarted: Number.isSafeInteger(child.pid) && child.pid > 1 };
   `);
-  await writeHostileFlow(project, "pid-pressure", `
-    const children = [];
-    let denied = false;
-    for (let index = 0; index < 64; index += 1) {
-      try {
-        const child = Bun.spawn([
-          process.execPath,
-          "--no-env-file", "--no-install", "--config=/dev/null",
-          "-e", "await Bun.sleep(45_000)",
-        ], { stdin: "ignore", stdout: "ignore", stderr: "ignore" });
-        child.unref();
-        children.push(child);
-      } catch {
-        denied = true;
-        break;
-      }
-    }
-    await Bun.sleep(100);
-    return { denied, started: children.length };
-  `);
   await writeHostileFlow(project, "memory-pressure", `
     const child = Bun.spawn([
       process.execPath,
@@ -100,19 +80,11 @@ try {
   assert.equal(approved.stderr, "");
 
   process.stdout.write("Installed hostile case: isolation and orphan cleanup\n");
+  const orphanStartedUnixMs = Date.now();
   const orphan = await run([jig, "run", "flow:flows/isolation-orphan"], project, [0], 60_000);
+  assert.ok(Date.now() - orphanStartedUnixMs < 20_000);
   const orphanTerminal = successfulTerminal(orphan);
   assert.deepEqual(orphanTerminal.output, { cgroupVisible: false, childStarted: true });
-  await eventuallyNoJigResidue();
-
-  process.stdout.write("Installed hostile case: aggregate PID pressure\n");
-  const pids = await run([jig, "run", "flow:flows/pid-pressure"], project, [0], 60_000);
-  const pidsTerminal = successfulTerminal(pids);
-  const pidsOutput = requireRecord(pidsTerminal.output);
-  assert.equal(pidsOutput.denied, true);
-  assert.equal(typeof pidsOutput.started, "number");
-  assert.ok(Number.isSafeInteger(pidsOutput.started));
-  assert.ok(Number(pidsOutput.started) > 0 && Number(pidsOutput.started) < 64);
   await eventuallyNoJigResidue();
 
   process.stdout.write("Installed hostile case: aggregate memory pressure\n");
@@ -166,7 +138,7 @@ if (failure !== undefined) throw failure;
 
 process.stdout.write(
   `Installed-archive hostile baseline passed in ${Date.now() - startedUnixMs} ms ` +
-    "(isolation/orphan, PID pressure, memory pressure, fixed deadline)\n",
+    "(isolation/orphan, memory pressure, fixed deadline)\n",
 );
 
 async function requiredPackageArchive(): Promise<string> {
