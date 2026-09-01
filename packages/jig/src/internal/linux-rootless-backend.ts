@@ -479,7 +479,10 @@ export class PrivateLinuxCgroupBackend {
     const data = requireSealedOwner(sealedOwner, this, plan);
     await requireSealedMounts(data.sealedPlan.readOnlyMounts);
     const currentMechanism = await observeMechanism(this.#options);
-    if (currentMechanism.digest !== data.mechanism.digest) {
+    if (currentMechanism.digest !== data.mechanism.digest ||
+        currentMechanism.delegatedCgroup !== data.mechanism.delegatedCgroup ||
+        currentMechanism.delegatedCgroupDevice !== data.mechanism.delegatedCgroupDevice ||
+        currentMechanism.delegatedCgroupInode !== data.mechanism.delegatedCgroupInode) {
       throw new Error("rootless Linux mechanism changed after sealing");
     }
     await requireOwnerState(data.identity);
@@ -1095,11 +1098,11 @@ async function observeMechanism(options: NormalizedOptions): Promise<PrivateLinu
     privateFileDigest(supervisorPath),
     privateFileDigest(authority.bubblewrapPath),
   ]);
-  const fields = {
+  // The mechanism identity describes reproducible host support. The delegated
+  // cgroup is invocation authority: retain and recheck it for this launch,
+  // but do not make every transient CLI scope a different admitted recipe.
+  const identity = {
     kind: "linux-rootless-cgroup-v2-bubblewrap-mechanism/1" as const,
-    delegatedCgroup: authority.delegatedCgroup,
-    delegatedCgroupDevice: String(scope.dev),
-    delegatedCgroupInode: String(scope.ino),
     trustedBubblewrapPath: authority.bubblewrapPath,
     trustedBubblewrapDigest: bubblewrapDigest,
     bubblewrapVersion: authority.bubblewrapVersion,
@@ -1116,8 +1119,11 @@ async function observeMechanism(options: NormalizedOptions): Promise<PrivateLinu
     startupTimeoutMs: options.startupTimeoutMs,
   };
   return Object.freeze({
-    ...fields,
-    digest: privateDomainDigest("JIG-Rootless-Linux-Mechanism/1", fields as unknown as JsonValue),
+    ...identity,
+    digest: privateDomainDigest("JIG-Rootless-Linux-Mechanism/1", identity as unknown as JsonValue),
+    delegatedCgroup: authority.delegatedCgroup,
+    delegatedCgroupDevice: String(scope.dev),
+    delegatedCgroupInode: String(scope.ino),
   });
 }
 
