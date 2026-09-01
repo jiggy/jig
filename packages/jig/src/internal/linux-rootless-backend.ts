@@ -37,6 +37,8 @@ const DIGEST = /^sha256:[0-9a-f]{64}$/;
 const ENVIRONMENT_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const CONTROL_BYTES = 64 * 1024;
 const CGROUP2_SUPER_MAGIC = 0x6367_7270n;
+const BOOT_ID_PATH = "/proc/sys/kernel/random/boot_id";
+const BOOT_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const DEVPTS_SUPER_MAGIC = 0x1cd1n;
 const PROC_SUPER_MAGIC = 0x9fa0n;
 const SYSFS_SUPER_MAGIC = 0x6265_6572n;
@@ -143,6 +145,7 @@ export interface PrivateLinuxBackendMechanismSupport {
 }
 
 export interface PrivateLinuxBackendLaunchAuthority {
+  readonly bootId: string;
   readonly delegatedCgroup: string;
   readonly delegatedCgroupDevice: string;
   readonly delegatedCgroupInode: string;
@@ -162,6 +165,7 @@ export interface PrivateLinuxSealedOwnerIdentity {
   readonly ownerToken: string;
   readonly mechanismDigest: string;
   readonly sealedPlanDigest: string;
+  readonly bootId: string;
   readonly delegatedCgroup: string;
   readonly delegatedCgroupDevice: string;
   readonly delegatedCgroupInode: string;
@@ -269,6 +273,7 @@ interface RecoveredFinal {
   readonly exitCode: null;
   readonly signal: null;
   readonly fenced: true;
+  readonly recoveryBootId: string;
   readonly evidence: PrivateLinuxEnforcementEvidence;
 }
 
@@ -377,6 +382,7 @@ export class PrivateLinuxCgroupBackend {
       ownerToken: allocated.allocation.ownerToken,
       mechanismDigest: mechanism.support.digest,
       sealedPlanDigest,
+      bootId: mechanism.authority.bootId,
       delegatedCgroup: mechanism.authority.delegatedCgroup,
       delegatedCgroupDevice: mechanism.authority.delegatedCgroupDevice,
       delegatedCgroupInode: mechanism.authority.delegatedCgroupInode,
@@ -440,20 +446,23 @@ export class PrivateLinuxCgroupBackend {
       ? normalizePrivateLinuxPreparedOwnerIdentity(value).owner
       : normalizePrivateLinuxSealedOwnerIdentity(value);
     await requireOwnerState(owner);
-    await requireDelegatedIdentity(owner);
     const prepared = preparedFor(owner);
     const existing = await tryReadFinal(prepared);
     if (existing !== undefined) return receiptFor(prepared, existing);
 
+    const recoveryBootId = await observeLinuxBootId();
+    const bootChanged = recoveryBootId !== owner.bootId;
+    if (!bootChanged) await requireDelegatedIdentity(owner);
+
     const claim = await claimCancellation(ownerRecord(owner));
-    if (claim === "active") {
+    if (claim === "active" && !bootChanged) {
       const completed = await tryReadFinal(prepared);
       if (completed !== undefined) return receiptFor(prepared, completed);
       throw new PrivateLinuxFenceUnconfirmedError(
         new Error("active rootless Linux cleanup owner has not published its final receipt"),
       );
     }
-    if (await pathExists(owner.runCgroup)) {
+    if (!bootChanged && await pathExists(owner.runCgroup)) {
       throw new PrivateLinuxFenceUnconfirmedError(
         new Error("cancelled rootless Linux owner still has a Run cgroup"),
       );
@@ -466,6 +475,7 @@ export class PrivateLinuxCgroupBackend {
       exitCode: null,
       signal: null,
       fenced: true,
+      recoveryBootId,
       evidence: emptyEvidence(),
     });
     await persistFinal(prepared, recovered);
@@ -832,7 +842,7 @@ export function normalizePrivateLinuxOwnerStateCancellation(
 
 export function normalizePrivateLinuxSealedOwnerIdentity(value: unknown): PrivateLinuxSealedOwnerIdentity {
   const record = exactRecord(value, [
-    "cancellationGraceMs", "cleanupTimeoutMs", "deadlineUnixMs", "delegatedCgroup",
+    "bootId", "cancellationGraceMs", "cleanupTimeoutMs", "deadlineUnixMs", "delegatedCgroup",
     "delegatedCgroupDevice", "delegatedCgroupInode", "digest", "kind", "mechanismDigest", "nonce",
     "ownerStateAllocationDigest", "ownerStateDevice", "ownerStateDirectory", "ownerStateInode",
     "ownerStateName", "ownerStateParent", "ownerStateParentDevice", "ownerStateParentInode", "ownerToken",
@@ -845,6 +855,7 @@ export function normalizePrivateLinuxSealedOwnerIdentity(value: unknown): Privat
       typeof record.ownerToken !== "string" || !TOKEN.test(record.ownerToken) ||
       typeof record.mechanismDigest !== "string" || !DIGEST.test(record.mechanismDigest) ||
       typeof record.sealedPlanDigest !== "string" || !DIGEST.test(record.sealedPlanDigest) ||
+      typeof record.bootId !== "string" || !BOOT_ID.test(record.bootId) ||
       typeof record.delegatedCgroup !== "string" || !canonicalCgroup(record.delegatedCgroup) ||
       typeof record.delegatedCgroupDevice !== "string" || !nonnegativeIntegerText(record.delegatedCgroupDevice) ||
       typeof record.delegatedCgroupInode !== "string" || !positiveIntegerText(record.delegatedCgroupInode) ||
@@ -871,6 +882,7 @@ export function normalizePrivateLinuxSealedOwnerIdentity(value: unknown): Privat
     ownerToken: record.ownerToken,
     mechanismDigest: record.mechanismDigest,
     sealedPlanDigest: record.sealedPlanDigest,
+    bootId: record.bootId,
     delegatedCgroup: record.delegatedCgroup,
     delegatedCgroupDevice: record.delegatedCgroupDevice,
     delegatedCgroupInode: record.delegatedCgroupInode,
@@ -1006,7 +1018,8 @@ interface ReleaseReference {
   readonly directoryDevice: string;
   readonly directoryInode: string;
   readonly ownerToken: string;
-  readonly requiredClaim: "cancelled" | "active";
+  readonly requiredClaim: "cancelled" | "active" | "recovered";
+  readonly ownerBootId?: string;
   readonly expectedOwnerDigest?: string;
   readonly runCgroup?: string;
   readonly mechanismDigest?: string;
@@ -1050,7 +1063,8 @@ function releaseReferenceForOwner(ownerValue: unknown, proofValue: unknown): Rel
     directoryDevice: owner.ownerStateDevice,
     directoryInode: owner.ownerStateInode,
     ownerToken: owner.ownerToken,
-    requiredClaim: proof.stopReason === "recovered" ? "cancelled" : "active",
+    requiredClaim: proof.stopReason === "recovered" ? "recovered" : "active",
+    ...(proof.stopReason === "recovered" ? { ownerBootId: owner.bootId } : {}),
     expectedOwnerDigest: prepared.digest,
     runCgroup: owner.runCgroup,
     mechanismDigest: owner.mechanismDigest,
@@ -1083,8 +1097,9 @@ async function observeMechanism(options: NormalizedOptions): Promise<PrivateLinu
       supervisorPath !== options.supervisorPath) {
     throw new Error("rootless Linux support paths must be canonical");
   }
-  const [scope, bun, bunLibraries, supervisor, bubblewrap] = await Promise.all([
+  const [scope, bootId, bun, bunLibraries, supervisor, bubblewrap] = await Promise.all([
     lstat(authority.delegatedCgroup, { bigint: true }),
+    observeLinuxBootId(),
     lstat(bunPath),
     lstat(bunHostLibraryPath),
     lstat(supervisorPath),
@@ -1125,6 +1140,7 @@ async function observeMechanism(options: NormalizedOptions): Promise<PrivateLinu
     digest: privateDomainDigest("JIG-Rootless-Linux-Mechanism/1", supportFields as unknown as JsonValue),
   });
   const launchAuthority = Object.freeze({
+    bootId,
     delegatedCgroup: authority.delegatedCgroup,
     delegatedCgroupDevice: String(scope.dev),
     delegatedCgroupInode: String(scope.ino),
@@ -1133,12 +1149,30 @@ async function observeMechanism(options: NormalizedOptions): Promise<PrivateLinu
   return Object.freeze({ support, authority: launchAuthority });
 }
 
+async function observeLinuxBootId(): Promise<string> {
+  const [resolved, information, filesystem, text] = await Promise.all([
+    realpath(BOOT_ID_PATH),
+    lstat(BOOT_ID_PATH),
+    statfs(BOOT_ID_PATH),
+    readFile(BOOT_ID_PATH, "utf8"),
+  ]);
+  if (resolved !== BOOT_ID_PATH || !information.isFile() || information.isSymbolicLink() ||
+      (Number(information.mode) & 0o222) !== 0 || BigInt(filesystem.type) !== PROC_SUPER_MAGIC ||
+      !text.endsWith("\n") || text.indexOf("\n") !== text.length - 1) {
+    throw new Error("Linux boot identity is unavailable");
+  }
+  const bootId = text.slice(0, -1);
+  if (!BOOT_ID.test(bootId)) throw new Error("Linux boot identity is unavailable");
+  return bootId;
+}
+
 /** Private launch guard; this is not a public Backend or host extension seam. */
 export function requirePrivateLinuxMechanismUnchanged(
   sealed: PrivateLinuxBackendMechanismObservation,
   current: PrivateLinuxBackendMechanismObservation,
 ): void {
   if (current.support.digest !== sealed.support.digest ||
+      current.authority.bootId !== sealed.authority.bootId ||
       current.authority.delegatedCgroup !== sealed.authority.delegatedCgroup ||
       current.authority.delegatedCgroupDevice !== sealed.authority.delegatedCgroupDevice ||
       current.authority.delegatedCgroupInode !== sealed.authority.delegatedCgroupInode) {
@@ -1495,12 +1529,16 @@ async function ensureAllocationDirectory(allocation: PrivateLinuxOwnerStateAlloc
 }
 
 async function requireDelegatedIdentity(owner: PrivateLinuxSealedOwnerIdentity): Promise<void> {
-  const information = await lstat(owner.delegatedCgroup, { bigint: true });
-  if (!information.isDirectory() || information.isSymbolicLink() ||
-      String(information.dev) !== owner.delegatedCgroupDevice ||
-      String(information.ino) !== owner.delegatedCgroupInode ||
-      BigInt((await statfs(owner.delegatedCgroup)).type) !== CGROUP2_SUPER_MAGIC) {
-    throw new PrivateLinuxFenceUnconfirmedError(new Error("delegated cgroup identity changed"));
+  try {
+    const information = await lstat(owner.delegatedCgroup, { bigint: true });
+    if (!information.isDirectory() || information.isSymbolicLink() ||
+        String(information.dev) !== owner.delegatedCgroupDevice ||
+        String(information.ino) !== owner.delegatedCgroupInode ||
+        BigInt((await statfs(owner.delegatedCgroup)).type) !== CGROUP2_SUPER_MAGIC) {
+      throw new Error("delegated cgroup identity changed");
+    }
+  } catch (error) {
+    throw asFenceUnconfirmed(error);
   }
 }
 
@@ -1600,10 +1638,12 @@ function normalizeFinal(value: unknown): FinalRecord {
   const record = ordinaryRecord(value, "rootless Linux final receipt");
   if (record.type === "recovered") {
     const exact = exactRecord(record, [
-      "evidence", "exitCode", "fenced", "ownerDigest", "runCgroup", "signal", "stopReason", "type",
+      "evidence", "exitCode", "fenced", "ownerDigest", "recoveryBootId", "runCgroup", "signal",
+      "stopReason", "type",
     ], "rootless Linux recovered receipt");
     if (typeof exact.ownerDigest !== "string" || !DIGEST.test(exact.ownerDigest) ||
         typeof exact.runCgroup !== "string" || !canonicalCgroup(exact.runCgroup) ||
+        typeof exact.recoveryBootId !== "string" || !BOOT_ID.test(exact.recoveryBootId) ||
         exact.stopReason !== "recovered" || exact.exitCode !== null || exact.signal !== null || exact.fenced !== true) {
       throw new TypeError("rootless Linux recovered receipt is invalid");
     }
@@ -1615,6 +1655,7 @@ function normalizeFinal(value: unknown): FinalRecord {
       exitCode: null,
       signal: null,
       fenced: true,
+      recoveryBootId: exact.recoveryBootId,
       evidence: normalizeEvidence(exact.evidence),
     });
   }
@@ -1698,7 +1739,8 @@ function emptyEvidence(): PrivateLinuxEnforcementEvidence {
 }
 
 interface ReleaseFileExpectation {
-  readonly claim: "active" | "cancelled";
+  readonly claim: "active" | "cancelled" | "recovered";
+  readonly ownerBootId?: string;
   readonly finalOwnerDigest?: string;
 }
 
@@ -1715,12 +1757,14 @@ async function requireReleaseFiles(reference: ReleaseReference): Promise<void> {
     }),
   });
   const claim = parseJsonLine(await readFile(join(reference.directory, "claim.json"), "utf8"), "owner claim");
-  if (claim.state !== reference.requiredClaim || claim.kind !== "private-linux-owner-claim/1" ||
+  if ((claim.state !== "active" && claim.state !== "cancelled") ||
+      claim.kind !== "private-linux-owner-claim/1" ||
       claim.allocationDigest !== reference.allocationDigest) {
     throw new Error("rootless Linux owner claim does not permit release");
   }
   const expectation: ReleaseFileExpectation = {
     claim: reference.requiredClaim,
+    ...(reference.ownerBootId === undefined ? {} : { ownerBootId: reference.ownerBootId }),
     ...(reference.expectedOwnerDigest === undefined ? {} : { finalOwnerDigest: reference.expectedOwnerDigest }),
   };
   if (expectation.finalOwnerDigest !== undefined) {
@@ -1731,6 +1775,14 @@ async function requireReleaseFiles(reference: ReleaseReference): Promise<void> {
     if (final.ownerDigest !== expectation.finalOwnerDigest || !final.fenced) {
       throw new Error("rootless Linux final receipt does not permit release");
     }
+    const rebootRecovery = expectation.claim === "recovered" && final.type === "recovered" &&
+      expectation.ownerBootId !== undefined && final.recoveryBootId !== expectation.ownerBootId;
+    if (claim.state !== (expectation.claim === "recovered" ? "cancelled" : expectation.claim) &&
+        !(claim.state === "active" && rebootRecovery)) {
+      throw new Error("rootless Linux owner claim does not permit release");
+    }
+  } else if (claim.state !== expectation.claim) {
+    throw new Error("rootless Linux owner claim does not permit release");
   }
   await requireReleasableEntries(reference);
 }
