@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, readdir, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { isAbsolute, join, resolve } from "node:path";
 
 const packageRoot = resolve(import.meta.dir, "..");
 const temporary = await mkdtemp(join(tmpdir(), "jig-package-"));
@@ -27,14 +27,12 @@ try {
   const consumer = join(temporary, "consumer");
   await mkdir(artifacts);
   await mkdir(consumer);
-  await run(["bun", "pm", "pack", "--ignore-scripts", "--destination", artifacts], packageRoot);
-  const archives = (await readdir(artifacts)).filter((name) => name.endsWith(".tgz"));
-  assert.equal(archives.length, 1);
+  const archive = await selectArchive(artifacts);
 
   await writeFile(join(consumer, "package.json"), JSON.stringify({
     private: true,
     type: "module",
-    dependencies: { "@jigging/jig": `file:${join(artifacts, archives[0]!)}` },
+    dependencies: { "@jigging/jig": `file:${archive}` },
   }));
   await run([
     "bun", "install", "--ignore-scripts", "--no-progress",
@@ -161,6 +159,24 @@ void binding;
   ], packageRoot);
 } finally {
   await rm(temporary, { recursive: true, force: true });
+}
+
+async function selectArchive(artifacts: string): Promise<string> {
+  const supplied = process.env.JIG_PACKAGE_ARCHIVE;
+  if (supplied !== undefined) {
+    if (!isAbsolute(supplied) || supplied.includes("\0") || !supplied.endsWith(".tgz")) {
+      throw new Error("JIG_PACKAGE_ARCHIVE must name one absolute .tgz file");
+    }
+    const canonical = await realpath(supplied);
+    if (canonical !== supplied || !(await stat(canonical)).isFile()) {
+      throw new Error("JIG_PACKAGE_ARCHIVE must name one canonical regular file");
+    }
+    return canonical;
+  }
+  await run(["bun", "pm", "pack", "--ignore-scripts", "--destination", artifacts], packageRoot);
+  const archives = (await readdir(artifacts)).filter((name) => name.endsWith(".tgz"));
+  assert.equal(archives.length, 1);
+  return join(artifacts, archives[0]!);
 }
 
 async function listFiles(root: string, prefix = ""): Promise<string[]> {
