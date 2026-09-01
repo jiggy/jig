@@ -1,8 +1,21 @@
 {
   "name": "@flowmd/sdk",
-  "version": "0.0.0",
+  "version": "0.1.0-alpha.1",
   "private": true,
   "description": "TypeScript SDK for FLOW Run/1",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jigmd/jig.git",
+    "directory": "packages/flow-sdk"
+  },
+  "homepage": "https://github.com/jigmd/jig/tree/main/packages/flow-sdk#readme",
+  "bugs": {
+    "url": "https://github.com/jigmd/jig/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "type": "module",
   "sideEffects": false,
   "types": "./dist/index.d.ts",
@@ -14,10 +27,11 @@
   },
   "files": [
     "dist",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "scripts": {
-    "build": "bun run clean && bunx --bun tsc -p tsconfig.json",
+    "build": "bun run clean && bun node_modules/typescript/bin/tsc -p tsconfig.json",
     "clean": "bun -e \"import { rm } from 'node:fs/promises'; await rm('dist', { recursive: true, force: true })\"",
     "prepack": "bun run build",
     "test": "bun test",

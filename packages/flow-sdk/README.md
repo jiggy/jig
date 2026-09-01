@@ -2,10 +2,10 @@
 
 Minimal, dependency-free TypeScript projection of FLOW Run/1.
 
-This is a private `0.0.0` candidate, not a stable release. Its authoritative
-source-checkout documents are `docs/spec/run-sdk.md` and
-`docs/spec/run-protocol.md`. Stable external documentation URLs will be added
-before publication. This installed README contains a minimal quickstart.
+This is a prerelease `0.1.0-alpha.1` candidate. Its authoritative documents
+are the [Run SDK/1](https://github.com/jigmd/jig/blob/main/docs/spec/run-sdk.md)
+and [Run/1](https://github.com/jigmd/jig/blob/main/docs/spec/run-protocol.md)
+specifications.
 
 Finite work uses `serve()`:
 
@@ -13,24 +13,20 @@ Finite work uses `serve()`:
 import { serve, type RunContext, type RunResult } from "@flowmd/sdk";
 
 await serve(async (run: RunContext): Promise<RunResult> => {
-  const child = await run.callFlow({
-    operationId: "research:1",
-    slot: "research",
-    intent: "Research this request.",
-    input: run.input,
-  });
-
-  return { outcome: "done", output: child.output };
+  return { outcome: "done", output: { received: run.input } };
 });
 ```
 
 `serve()` owns the process's protocol stdin and stdout and serves exactly one
-root Run. Root cancellation is exposed through `run.signal`. An already or
-later aborted call-specific `AbortSignal` rejects that call with
-`OperationError` code `CANCELLED` and sends the matching Run/1 cancellation
-notification if the request reached the wire. A cancellation-only catch must
-rethrow every other error. Cancellation does not claim that remote work was
-undone.
+root Run. Root cancellation is exposed through `run.signal`.
+
+Run/1 also defines `run.callFlow()` and `run.callEffect()` as portable
+operations. Jig's direct-run alpha does not provide child Flows or effects, so
+it answers those calls with `OperationError` code `UNAVAILABLE`. A
+call-specific `AbortSignal` rejects a cancelled call with code `CANCELLED` and
+sends the matching Run/1 cancellation notification if the request reached the
+wire. A cancellation-only catch must rethrow every other error. Cancellation
+does not claim that remote work was undone.
 
 The SDK permits at most 64 live outbound requests; another call made while all
 64 are live fails locally with `OperationError` code `RESOURCE_EXHAUSTED`. It

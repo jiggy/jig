@@ -4,7 +4,9 @@ import {
   mkdir,
   readFile,
   readdir,
+  realpath,
   rm,
+  stat,
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -19,17 +21,7 @@ try {
   await mkdir(artifacts);
   await mkdir(consumer);
 
-  await run([
-    "bun",
-    "pm",
-    "pack",
-    "--ignore-scripts",
-    "--destination",
-    artifacts,
-  ], packageRoot);
-  const packed = (await readdir(artifacts)).filter((name) => name.endsWith(".tgz"));
-  assert.equal(packed.length, 1);
-  const archive = join(artifacts, packed[0]!);
+  const archive = await selectArchive(artifacts);
 
   await writeFile(
     join(consumer, "package.json"),
@@ -55,7 +47,7 @@ try {
   const installed = join(consumer, "node_modules", "@flowmd", "sdk");
   assert.deepEqual(
     (await readdir(installed)).sort(),
-    ["README.md", "dist", "package.json"],
+    ["LICENSE", "README.md", "dist", "package.json"],
   );
   assert.deepEqual(
     (await readdir(join(installed, "dist"))).sort(),
@@ -81,6 +73,9 @@ try {
     await readFile(join(installed, "package.json"), "utf8"),
   ) as Record<string, unknown>;
   assert.equal(manifest.private, true);
+  assert.equal(manifest.version, "0.1.0-alpha.1");
+  assert.equal(manifest.license, "Apache-2.0");
+  assert.deepEqual(manifest.publishConfig, { access: "public" });
   assert.equal(manifest.types, "./dist/index.d.ts");
 
   await writeFile(
@@ -145,11 +140,36 @@ void new OperationError("UNAVAILABLE");
     }),
   );
   await run(
-    ["bunx", "--bun", "tsc", "-p", join(consumer, "tsconfig.json")],
+    ["bun", join(packageRoot, "node_modules", "typescript", "bin", "tsc"), "-p", join(consumer, "tsconfig.json")],
     packageRoot,
   );
 } finally {
   await rm(temporary, { recursive: true, force: true });
+}
+
+async function selectArchive(artifacts: string): Promise<string> {
+  const supplied = Bun.env.FLOW_SDK_PACKAGE_ARCHIVE;
+  if (supplied !== undefined) {
+    if (!isAbsolute(supplied) || supplied.includes("\0") || !supplied.endsWith(".tgz")) {
+      throw new Error("FLOW_SDK_PACKAGE_ARCHIVE must name one absolute .tgz file");
+    }
+    const canonical = await realpath(supplied);
+    if (canonical !== supplied || !(await stat(canonical)).isFile()) {
+      throw new Error("FLOW_SDK_PACKAGE_ARCHIVE must name one canonical regular file");
+    }
+    return canonical;
+  }
+  await run([
+    "bun",
+    "pm",
+    "pack",
+    "--ignore-scripts",
+    "--destination",
+    artifacts,
+  ], packageRoot);
+  const packed = (await readdir(artifacts)).filter((name) => name.endsWith(".tgz"));
+  assert.equal(packed.length, 1);
+  return join(artifacts, packed[0]!);
 }
 
 async function run(command: string[], cwd: string): Promise<{
