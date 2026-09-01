@@ -24,13 +24,24 @@ Do not restore or cherry-pick the old subsystem wholesale.
 These records are useful negative evidence, not suspended implementations:
 
 - Jig Graph's Sley lowering was removed after the experiment showed that the
-  wrapper was much larger than direct Sley for the available consumer. See
-  `1b9a5a4`; retry only for a real independently stored graph that direct Sley
-  cannot represent adequately.
+  wrapper was much larger than direct Sley for the available consumer. Its
+  implementation and tests were deliberately removed before commit; the only
+  durable record is review `1b9a5a4`. Retry only for a real independently
+  stored graph that direct Sley cannot represent adequately.
+- The former durable Bun native-preparation lifecycle runs from `b2ebfe4`
+  through `f99d799`; its final source, tests, and reviews are available at
+  `6aa93e1`, and `06eac5d` deleted it. The direct alpha now has the smaller
+  locked Bun-only path established by `c6740f7`, `ec4f61d`, `51aafd7`, and
+  `48ca203`. The old controllers, store, tables, and recovery tests are
+  failure-case evidence, not code to restore.
 - The Nix retention work is isolated at branch
   `experiments/nix-runtime-retention` (`d34ccb6`), with quarantine and roadmap
   corrections at `d6a0ad2` and `7ebd25f`. It must not return as Jig runtime or
   package-manager architecture.
-- The privileged cgroup proof was superseded by the canonical rootless path in
-  `b9f9473`. Its hostile tests may inform future containment work, but its host
-  authority model must not be restored as an alpha fallback.
+- The privileged cgroup proof begins at `4ab1caf` and closes through
+  `820b2d4`. Its final backend and proof review are available at
+  `b9f9473^:packages/jig/src/internal/linux-cgroup-backend.ts` and
+  `b9f9473^:docs/design-review/105-phase-2-linux-cgroup-proof.md`; `b9f9473`
+  deleted it in favor of the canonical rootless path. Its hostile tests may
+  inform future containment work, but its host authority model must not be
+  restored as an alpha fallback.
