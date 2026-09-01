@@ -98,6 +98,7 @@ provision() {
   [ "$(stat -fc %T "$CGROUP_ROOT")" = cgroup2fs ] || fail "cgroup v2 is unavailable"
   require_controllers "$CGROUP_ROOT/cgroup.controllers"
   run_delegated /bin/true
+  run_acquisition_host /bin/true
   verify_namespaces
 
   printf '%s\n' "GitHub rootless host preflight passed"
@@ -131,7 +132,8 @@ run_delegated() {
   manager=$(fixed_executable /usr/bin/systemd-run /bin/systemd-run) ||
     fail "systemd-run is unavailable"
   self=$(canonical_self)
-  unit="jig-ci-$(random_hex 12).service"
+  execution_path=$(ci_execution_path) || fail "the exact CI Bun executable is unavailable"
+  unit="jigci-delegated-$(random_hex 12).service"
   # A GitHub runner is a system service outside the new user's cgroup tree, so
   # the user manager must spawn this process. systemd 254+ places it directly
   # in the leaf subgroup without an attach-after-start migration.
@@ -143,6 +145,9 @@ run_delegated() {
     --pipe \
     --service-type=exec \
     --same-dir \
+    --setenv=PATH="$execution_path" \
+    --setenv=XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" \
+    --setenv=DBUS_SESSION_BUS_ADDRESS="$DBUS_SESSION_BUS_ADDRESS" \
     --property="Delegate=cpu memory pids" \
     --property=DelegateSubgroup=jig \
     --unit="$unit" \
@@ -158,7 +163,7 @@ enter_delegated() {
     fi
   done < /proc/self/cgroup
   case $relative in
-    /*/jig-ci-*.service/jig) ;;
+    /*/jigci-delegated-*.service/jig) ;;
     *) fail "the command did not enter its exact delegated service subgroup" ;;
   esac
   child=$CGROUP_ROOT$relative
@@ -171,9 +176,14 @@ enter_delegated() {
   [ -w "$scope/cgroup.kill" ] || fail "the delegated cgroup cannot be killed as one tree"
   [ -z "$(cat "$scope/cgroup.procs")" ] || fail "the delegated parent cgroup is populated"
   require_controllers "$scope/cgroup.controllers"
-  require_controllers "$scope/cgroup.subtree_control"
   children=$(find "$scope" -mindepth 1 -maxdepth 1 -type d -printf '%f\n')
   [ "$children" = jig ] || fail "the delegated parent is not exclusive to the jig subgroup"
+
+  # Delegate= makes the controllers available to the unit, but systemd leaves
+  # activation inside the delegated unit to its unprivileged owner. Complete
+  # that host-side delegation only after proving this is our exclusive cgroup.
+  printf '%s\n' '+cpu +memory +pids' > "$scope/cgroup.subtree_control"
+  require_controllers "$scope/cgroup.subtree_control"
 
   for control in cpu.max memory.max pids.max cgroup.events cgroup.kill; do
     [ -e "$child/$control" ] || fail "the delegated child lacks $control"
@@ -187,34 +197,89 @@ enter_delegated() {
   exec "$@"
 }
 
+run_acquisition_host() {
+  manager=$(fixed_executable /usr/bin/systemd-run /bin/systemd-run) ||
+    fail "systemd-run is unavailable"
+  self=$(canonical_self)
+  execution_path=$(ci_execution_path) || fail "the exact CI Bun executable is unavailable"
+  unit="jigci-acquisition-$(random_hex 12).service"
+  # Keep this transport deliberately short of Jig's exact inherited contract.
+  # The installed command must therefore exercise its own transient scope
+  # acquisition instead of taking the inherited-delegation fast path.
+  "$manager" \
+    --user \
+    --wait \
+    --collect \
+    --quiet \
+    --pipe \
+    --service-type=exec \
+    --same-dir \
+    --setenv=PATH="$execution_path" \
+    --setenv=XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" \
+    --setenv=DBUS_SESSION_BUS_ADDRESS="$DBUS_SESSION_BUS_ADDRESS" \
+    --property=Delegate=pids \
+    --property=DelegateSubgroup=transport \
+    --unit="$unit" \
+    -- "$self" enter-acquisition-host "$@"
+}
+
+enter_acquisition_host() {
+  [ "$(id -u)" -ne 0 ] || fail "rootless acquisition conformance must remain unprivileged"
+  relative=
+  while IFS=: read -r hierarchy controllers path; do
+    if [ "$hierarchy" = 0 ] && [ -z "$controllers" ]; then
+      relative=$path
+    fi
+  done < /proc/self/cgroup
+  case $relative in
+    /*/jigci-acquisition-*.service/transport) ;;
+    *) fail "the command did not enter its exact acquisition transport subgroup" ;;
+  esac
+  service=${CGROUP_ROOT}${relative%/transport}
+  if has_required_controllers "$service/cgroup.subtree_control"; then
+    fail "the acquisition transport unexpectedly satisfies the inherited delegation contract"
+  fi
+  exec "$@"
+}
+
 assert_clean() {
   uid=$(id -u)
-  failure=false
-
-  units=$(systemctl --user list-units --all --plain --no-legend 'jig-*' 2>/dev/null || true)
-  if [ -n "$units" ]; then
-    printf '%s\n' "$units" >&2
-    failure=true
-  fi
-
   user_slice=$CGROUP_ROOT/user.slice/user-$uid.slice/user@$uid.service
-  if [ -d "$user_slice" ]; then
-    cgroups=$(find "$user_slice" -type d -name 'jig-*' -print 2>/dev/null || true)
-    if [ -n "$cgroups" ]; then
-      printf '%s\n' "$cgroups" >&2
-      failure=true
+  deadline=100
+  while :; do
+    units=$(systemctl --user list-units --all --plain --no-legend \
+      'jig-*' 'jigci-*' 2>/dev/null || true)
+    cgroups=
+    if [ -d "$user_slice" ]; then
+      cgroups=$(find "$user_slice" -type d \
+        \( -name 'jig-*' -o -name 'jigci-*' \) -print 2>/dev/null || true)
     fi
-  fi
+    temporary=$(find "${TMPDIR:-/tmp}" -maxdepth 1 \
+      \( -name 'jig-rootless-*' -o -name 'jig-operational-baseline-*' \) -print 2>/dev/null || true)
+    if [ -z "$units" ] && [ -z "$cgroups" ] && [ -z "$temporary" ]; then
+      printf '%s\n' "GitHub rootless host residue check passed"
+      return 0
+    fi
+    [ "$deadline" -gt 0 ] || break
+    sleep 0.1
+    deadline=$((deadline - 1))
+  done
 
-  temporary=$(find "${TMPDIR:-/tmp}" -maxdepth 1 \
-    \( -name 'jig-rootless-*' -o -name 'jig-operational-baseline-*' \) -print 2>/dev/null || true)
-  if [ -n "$temporary" ]; then
-    printf '%s\n' "$temporary" >&2
-    failure=true
-  fi
+  [ -z "$units" ] || printf '%s\n' "$units" >&2
+  [ -z "$cgroups" ] || printf '%s\n' "$cgroups" >&2
+  [ -z "$temporary" ] || printf '%s\n' "$temporary" >&2
+  fail "Jig execution residue remained"
+}
 
-  [ "$failure" = false ] || fail "Jig execution residue remained"
-  printf '%s\n' "GitHub rootless host residue check passed"
+has_required_controllers() {
+  values=$(cat "$1")
+  for controller in $REQUIRED_CONTROLLERS; do
+    case " $values " in
+      *" $controller "*) ;;
+      *) return 1 ;;
+    esac
+  done
+  return 0
 }
 
 require_controllers() {
@@ -236,6 +301,12 @@ fixed_executable() {
     fi
   done
   return 1
+}
+
+ci_execution_path() {
+  bun=$(fixed_executable "${JIG_CI_BUN:-}") || return 1
+  [ "$bun" = "$JIG_CI_BUN" ] || return 1
+  printf '%s\n' "${bun%/*}:/usr/bin:/bin"
 }
 
 canonical_self() {
@@ -270,6 +341,16 @@ case ${1:-provision} in
     shift
     [ "$#" -gt 0 ] || fail "enter-delegated requires a command"
     enter_delegated "$@"
+    ;;
+  run-acquisition-host)
+    shift
+    [ "$#" -gt 0 ] || fail "run-acquisition-host requires a command"
+    run_acquisition_host "$@"
+    ;;
+  enter-acquisition-host)
+    shift
+    [ "$#" -gt 0 ] || fail "enter-acquisition-host requires a command"
+    enter_acquisition_host "$@"
     ;;
   assert-clean)
     assert_clean
