@@ -163,6 +163,30 @@ describe("private project Flow source capture", () => {
     });
   });
 
+  linuxTest("rejects generated node_modules before generic package capture", async () => {
+    await withProject(async (root) => {
+      await packageFiles(root, "flows/locked", {
+        "FLOW.md": metadata("locked"),
+        "flow.ts": "export {};\n",
+      });
+      await mkdir(join(root, "outside-dependency"));
+      await symlink(
+        join(root, "outside-dependency"),
+        join(root, "flows", "locked", "node_modules"),
+      );
+      try {
+        await captureFlowSource(root, discover("flows"));
+        throw new Error("expected generated dependency rejection");
+      } catch (error) {
+        expect(error).toBeInstanceOf(CheckError);
+        expect(error).toMatchObject({
+          code: "PACKAGE_BUN_NODE_MODULES",
+          path: "flows/locked/node_modules",
+        });
+      }
+    });
+  });
+
   linuxTest("cleans prior member snapshots and descriptors after a partial failure", async () => {
     await withProject(async (root) => {
       await packageFiles(root, "flows/a-good", {

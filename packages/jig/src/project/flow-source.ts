@@ -283,6 +283,7 @@ async function captureMember(
   handle: FileHandle,
   provenance: FlowMemberProvenance,
 ): Promise<CapturedFlowMember> {
+  await rejectGeneratedNodeModules(handle, provenance.projectPath);
   const captured = await captureOpenedPackageDirectory(provenance.projectPath, handle);
   try {
     const inspected = await inspectCapturedPackage(captured);
@@ -291,6 +292,20 @@ async function captureMember(
     await captured.dispose();
     throw error;
   }
+}
+
+async function rejectGeneratedNodeModules(handle: FileHandle, projectPath: string): Promise<void> {
+  try {
+    await lstat(`/proc/self/fd/${handle.fd}/node_modules`);
+  } catch (error) {
+    if (isMissing(error)) return;
+    throw error;
+  }
+  invalid(
+    "PACKAGE_BUN_NODE_MODULES",
+    "node_modules is generated state; remove it and let jig check prepare the locked dependencies",
+    `${projectPath}/node_modules`,
+  );
 }
 
 async function openProjectDirectory(
