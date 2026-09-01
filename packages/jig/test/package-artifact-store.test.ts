@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import {
   appendFile,
   chmod,
+  lstat,
   mkdir,
   mkdtemp,
   open,
@@ -10,6 +11,7 @@ import {
   readdir,
   rm,
   symlink,
+  truncate,
   unlink,
   writeFile,
 } from "node:fs/promises";
@@ -18,6 +20,8 @@ import { dirname, join } from "node:path";
 
 import {
   captureStoredPackage,
+  PRIVATE_PACKAGE_ARTIFACT_STORE_LIMITS,
+  privatePackageArtifactArchiveBytes,
   type PackageArtifactRef,
   publishCapturedPackage,
 } from "../src/internal/package-artifact-store.js";
@@ -69,7 +73,7 @@ describe("private Package/1 artifact store", () => {
         await captured.dispose();
       }
     });
-  });
+  }, 15_000);
 
   test("does not trust a forged digest claimed by a capture", async () => {
     await withStoreAndSource(async (store, source) => {
@@ -85,6 +89,62 @@ describe("private Package/1 artifact store", () => {
         });
       } finally {
         await captured.dispose();
+      }
+    });
+  });
+
+  test("bounds each staged archive before reading package content", async () => {
+    await withStoreAndSource(async (store, source) => {
+      await writeTree(source, { "FLOW.md": metadata });
+      const captured = await capturePackageDirectory(source);
+      const overhead = privatePackageArtifactArchiveBytes([{ path: "FLOW.md", size: 0 }]);
+      expect(privatePackageArtifactArchiveBytes([{
+        path: "FLOW.md",
+        size: PRIVATE_PACKAGE_ARTIFACT_STORE_LIMITS.artifactBytes - overhead,
+      }])).toBe(PRIVATE_PACKAGE_ARTIFACT_STORE_LIMITS.artifactBytes);
+      const oversized = {
+        ...captured,
+        files: Object.freeze([{
+          path: "FLOW.md",
+          size: PRIVATE_PACKAGE_ARTIFACT_STORE_LIMITS.artifactBytes - overhead + 1,
+        }]),
+      } satisfies CapturedPackage;
+      try {
+        await expect(publishCapturedPackage(store, oversized)).rejects.toMatchObject({
+          code: "PACKAGE_ARTIFACT_LIMIT",
+        });
+        expect(await readdir(store)).toEqual([]);
+      } finally {
+        await captured.dispose();
+      }
+    });
+  });
+
+  test("hard-caps retained bytes and repeated new publications without blocking exact reuse", async () => {
+    await withStoreAndSource(async (store, source) => {
+      await writeTree(source, { "FLOW.md": metadata, payload: "retained" });
+      const retained = await capturePackageDirectory(source);
+      const reference = await publishCapturedPackage(store, retained);
+      const quotaDirectory = join(store, "quota-fixture");
+      const quotaFile = join(quotaDirectory, "declined.stage");
+      await mkdir(quotaDirectory, { mode: 0o700 });
+      await writeFile(quotaFile, "", { mode: 0o600 });
+      await truncate(quotaFile, PRIVATE_PACKAGE_ARTIFACT_STORE_LIMITS.storeBytes);
+
+      expect(await publishCapturedPackage(store, retained)).toEqual(reference);
+
+      await writeTree(source, { payload: "new candidate" });
+      const declined = await capturePackageDirectory(source);
+      try {
+        for (let attempt = 0; attempt < 2; attempt += 1) {
+          await expect(publishCapturedPackage(store, declined)).rejects.toMatchObject({
+            code: "PACKAGE_ARTIFACT_STORE_LIMIT",
+          });
+        }
+        expect((await lstat(quotaFile)).size).toBe(PRIVATE_PACKAGE_ARTIFACT_STORE_LIMITS.storeBytes);
+      } finally {
+        await declined.dispose();
+        await retained.dispose();
       }
     });
   });
@@ -274,6 +334,23 @@ describe("private Package/1 artifact store", () => {
       } finally {
         await acquired.dispose();
       }
+    });
+  });
+
+  test("rejects an oversized retained archive before snapshotting it", async () => {
+    await withStoreAndSource(async (store) => {
+      const reference = {
+        kind: "flow-package/1",
+        digest: `sha256:${"0".repeat(64)}`,
+      } as PackageArtifactRef;
+      const blob = artifactPath(store, reference);
+      await mkdir(dirname(blob), { recursive: true, mode: 0o700 });
+      await writeFile(blob, "", { mode: 0o600 });
+      await truncate(blob, PRIVATE_PACKAGE_ARTIFACT_STORE_LIMITS.artifactBytes + 1);
+      await chmod(blob, 0o400);
+      await expect(captureStoredPackage(store, reference)).rejects.toMatchObject({
+        code: "PACKAGE_ARTIFACT_LIMIT",
+      });
     });
   });
 

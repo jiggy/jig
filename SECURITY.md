@@ -18,8 +18,10 @@ execute. Every terminal path fences the complete process tree and removes its
 rootless owner state before reporting completion.
 
 Project evaluation and the fixed dependency installer use the same boundary.
-Only the trusted installer may inherit networking, solely during `jig check`;
-lifecycle scripts are disabled and the later Flow Run remains offline.
+Only the trusted preparation worker inherits networking, solely during
+`jig check`. It validates the authored lock before invoking the fixed
+installer's first fetch; authored package code and lifecycle scripts never
+execute, and the later Flow Run remains offline.
 
 ## Supported trust boundary
 
@@ -31,7 +33,7 @@ The alpha does not defend against:
   operating-system user;
 - physical access or compromise outside the supported host; or
 - denial of service within the documented resource ceilings or through
-  storage retained by an explicitly approved project.
+  bounded content-addressed storage retained while a project is checked.
 
 An unsupported host or missing containment capability fails closed. Do not
 replace cgroup-v2 ownership with `ulimit`, per-process accounting,
@@ -44,9 +46,26 @@ same descendant and cleanup boundary.
 | --- | ---: | ---: | ---: | ---: |
 | Flow Run | 30 seconds | 256 MiB | 48 | 50% of one CPU |
 | Project evaluation | 3 seconds | 256 MiB | 64 | 50% of one CPU |
-| Locked dependency preparation | 60 seconds | 512 MiB | 64 | one CPU |
+| One locked dependency preparation | 60 seconds | 512 MiB | 64 | one CPU |
 
 These limits are fixed in this alpha and are not project configuration.
+
+After bounded project capture, one `jig check` dependency-planning phase uses
+one 180-second cancellation deadline, performs at most 16 distinct dependency
+preparations, and accepts at most 256 MiB of prepared file content across
+them. Each contained preparation has the earlier 60-second hard deadline.
+Each accepts at most 4,096 source files and 16 MiB of source content, and
+produces at most 4,096 files and 32 MiB of prepared content.
+
+The protected Package/1 store accepts at most 64 MiB per canonical artifact
+and 1 GiB per project. Checking may retain content-addressed source and
+prepared artifacts before the user approves a Plan. Declined and superseded
+artifacts therefore continue to consume the same fixed cap; Jig does not
+silently garbage-collect review evidence in this alpha. Exact retained bytes
+remain reusable at the cap, while a check requiring any new artifact fails
+closed. This alpha has no selective reclamation command. Reclaiming space
+requires closing Jig and intentionally removing the project's protected
+`.jig` state, which also discards its local admission and Run history.
 
 ## Reporting a vulnerability
 

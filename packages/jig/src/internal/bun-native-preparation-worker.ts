@@ -15,6 +15,7 @@ import {
   PRIVATE_BUN_PREPARATION_LIMITS,
   PRIVATE_BUN_PREPARED_MESSAGE_BYTES,
   PRIVATE_BUN_SOURCE_MESSAGE_BYTES,
+  encodePrivateBunMessage,
   privateBunMessageFits,
 } from "./bun-native-preparation-protocol.js";
 
@@ -237,7 +238,10 @@ function ordinaryRecord(value: unknown): Record<string, unknown> | undefined {
 }
 
 function send(value: Readonly<Record<string, unknown>>): Promise<void> {
-  const bytes = `${JSON.stringify(value)}\n`;
+  return enqueue(encodePrivateBunMessage(value));
+}
+
+function enqueue(bytes: Uint8Array): Promise<void> {
   outputQueue = outputQueue.then(async () => {
     if (!process.stdout.write(bytes)) await new Promise<void>((resolve) => process.stdout.once("drain", resolve));
   });
@@ -245,11 +249,11 @@ function send(value: Readonly<Record<string, unknown>>): Promise<void> {
 }
 
 function sendPrepared(files: readonly SourceFile[]): Promise<void> {
-  const bytes = JSON.stringify({ type: "prepared", files });
-  if (!privateBunMessageFits(Buffer.byteLength(bytes), PRIVATE_BUN_PREPARED_MESSAGE_BYTES)) {
+  const bytes = encodePrivateBunMessage({ type: "prepared", files });
+  if (!privateBunMessageFits(bytes.byteLength - 1, PRIVATE_BUN_PREPARED_MESSAGE_BYTES)) {
     throw new WorkerFailure("PACKAGE_BUN_OUTPUT_LIMIT", "prepared dependency tree is too large");
   }
-  return send({ type: "prepared", files });
+  return enqueue(bytes);
 }
 
 async function* jsonLines(

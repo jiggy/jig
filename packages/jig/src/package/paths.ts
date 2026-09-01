@@ -4,6 +4,8 @@ import { invalid, unavailable } from "../diagnostics.js";
 const encoder = new TextEncoder();
 const REQUIRED_UNICODE_VERSION = "15.1";
 
+export const PACKAGE_1_MAX_PATH_BYTES = 1_024;
+
 /** Test NFC with the exact Unicode database fixed by Package/1. */
 export function isNfc15_1(value: string): boolean {
   const actual = process.versions.unicode;
@@ -26,8 +28,8 @@ export function validateLogicalPath(path: string): string {
   }
   const segments = path.split("/");
   if (segments.length > 64) invalid("PACKAGE_PATH_LIMIT", `logical path exceeds 64 segments`, path);
-  if (encoder.encode(path).byteLength > 1_024) {
-    invalid("PACKAGE_PATH_LIMIT", `logical path exceeds 1024 UTF-8 bytes`, path);
+  if (encoder.encode(path).byteLength > PACKAGE_1_MAX_PATH_BYTES) {
+    invalid("PACKAGE_PATH_LIMIT", `logical path exceeds ${PACKAGE_1_MAX_PATH_BYTES} UTF-8 bytes`, path);
   }
   for (const segment of segments) {
     if (segment.length === 0 || segment === "." || segment === "..") {

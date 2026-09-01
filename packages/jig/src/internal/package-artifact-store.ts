@@ -5,6 +5,7 @@ import {
   lstat,
   mkdir,
   open,
+  opendir,
   unlink,
   type FileHandle,
 } from "node:fs/promises";
@@ -18,20 +19,28 @@ import {
   type CapturedPackage,
   type CapturedPackageBacking,
 } from "../package/capture.js";
-import { encodePackage1, PACKAGE_1_LIMITS } from "../package/digest.js";
+import { encodePackage1, packageDigest, PACKAGE_1_LIMITS } from "../package/digest.js";
 import {
   assertNoPathCollisions,
   comparePathBytes,
+  PACKAGE_1_MAX_PATH_BYTES,
   validateLogicalPath,
 } from "../package/paths.js";
 
 const ARTIFACT_KIND = "flow-package/1";
 const DIGEST_PATTERN = /^sha256:([0-9a-f]{64})$/;
 const HEADER = Buffer.from("FLOW-Package/1\0", "ascii");
-const MAX_PATH_BYTES = 1_024;
 const COPY_CHUNK_BYTES = 1024 * 1024;
+const MIB = 1024 * 1024;
 // Linux O_TMPFILE is __O_TMPFILE | O_DIRECTORY; Node does not expose it.
 const O_TMPFILE = 0o20000000 | constants.O_DIRECTORY;
+
+export const PRIVATE_PACKAGE_ARTIFACT_STORE_LIMITS = Object.freeze({
+  artifactBytes: 64 * MIB,
+  storeBytes: 1024 * MIB,
+});
+
+const publicationTurns = new Map<string, Promise<void>>();
 
 declare const packageArtifactDigestBrand: unique symbol;
 
@@ -53,7 +62,32 @@ export async function publishCapturedPackage(
   storeRoot: string,
   captured: CapturedPackage,
 ): Promise<PackageArtifactRef> {
+  const key = resolve(storeRoot);
+  const prior = publicationTurns.get(key);
+  let release!: () => void;
+  const turn = new Promise<void>((resolveTurn) => { release = resolveTurn; });
+  publicationTurns.set(key, turn);
+  if (prior !== undefined) await prior;
+  try {
+    return await publishCapturedPackageExclusive(storeRoot, captured);
+  } finally {
+    release();
+    if (publicationTurns.get(key) === turn) publicationTurns.delete(key);
+  }
+}
+
+async function publishCapturedPackageExclusive(
+  storeRoot: string,
+  captured: CapturedPackage,
+): Promise<PackageArtifactRef> {
   const digest = parsePackageDigest(captured.digest);
+  const artifactBytes = privatePackageArtifactArchiveBytes(captured.files);
+  if (artifactBytes > PRIVATE_PACKAGE_ARTIFACT_STORE_LIMITS.artifactBytes) {
+    unavailable(
+      "PACKAGE_ARTIFACT_LIMIT",
+      `Package/1 artifact exceeds the fixed ${PRIVATE_PACKAGE_ARTIFACT_STORE_LIMITS.artifactBytes}-byte alpha limit`,
+    );
+  }
   const location = await openArtifactShard(storeRoot, digest, true);
   const stage = `${location.directoryPath}/.stage-${process.pid}-${randomUUID()}`;
   let stageHandle: FileHandle | undefined;
@@ -62,6 +96,32 @@ export async function publishCapturedPackage(
   let failure: unknown;
 
   try {
+    const existing = await tryCapturePackageArtifactFile(
+      location.finalPath,
+      digest,
+      `stored Package/1 ${digest}`,
+      location.ownerUid,
+    );
+    if (existing !== undefined) {
+      await existing.dispose();
+      const observedDigest = await digestCapturedPackage(captured);
+      if (observedDigest !== digest) {
+        invalid(
+          "PACKAGE_ARTIFACT_SOURCE_MISMATCH",
+          `captured Package/1 bytes produced ${observedDigest}, not ${digest}`,
+        );
+      }
+      return packageArtifactRef(digest);
+    }
+
+    const retainedBytes = await retainedStoreBytes(storeRoot, location.ownerUid);
+    if (retainedBytes + artifactBytes > PRIVATE_PACKAGE_ARTIFACT_STORE_LIMITS.storeBytes) {
+      unavailable(
+        "PACKAGE_ARTIFACT_STORE_LIMIT",
+        `protected Package/1 store exceeds the fixed ${PRIVATE_PACKAGE_ARTIFACT_STORE_LIMITS.storeBytes}-byte alpha limit`,
+      );
+    }
+
     stageHandle = await open(
       stage,
       constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW,
@@ -162,6 +222,26 @@ export async function publishCapturedPackage(
   if (failure !== undefined) throw failure;
   if (result === undefined) throw new Error("Package/1 publication produced no result");
   return result;
+}
+
+/** Exact canonical archive size derived without staging package bytes. */
+export function privatePackageArtifactArchiveBytes(
+  files: readonly { readonly path: string; readonly size: number }[],
+): number {
+  let bytes = HEADER.byteLength + 8;
+  for (const file of files) {
+    validateLogicalPath(file.path);
+    const pathBytes = Buffer.byteLength(file.path);
+    if (pathBytes > PACKAGE_1_MAX_PATH_BYTES ||
+        !Number.isSafeInteger(file.size) || file.size < 0) {
+      invalid("PACKAGE_ARTIFACT_SOURCE_INVALID", "captured Package/1 metadata is invalid", file.path);
+    }
+    bytes += 1 + 4 + pathBytes + 8 + file.size;
+    if (!Number.isSafeInteger(bytes)) {
+      invalid("PACKAGE_ARTIFACT_SOURCE_INVALID", "captured Package/1 archive size is invalid");
+    }
+  }
+  return bytes;
 }
 
 /** Acquire a newly verified invocation-local capture of one retained package. */
@@ -368,6 +448,53 @@ function descriptorPath(handle: FileHandle): string {
   return `/proc/self/fd/${handle.fd}`;
 }
 
+async function tryCapturePackageArtifactFile(
+  path: string,
+  expectedDigest: PackageDigest,
+  sourceLabel: string,
+  expectedOwnerUid: bigint,
+): Promise<CapturedPackage | undefined> {
+  try {
+    return await capturePackageArtifactFile(path, expectedDigest, sourceLabel, expectedOwnerUid);
+  } catch (error) {
+    if (hasCode(error, "ENOENT")) return undefined;
+    throw error;
+  }
+}
+
+async function retainedStoreBytes(storeRoot: string, expectedOwnerUid: bigint): Promise<number> {
+  let total = 0n;
+  const maximum = BigInt(PRIVATE_PACKAGE_ARTIFACT_STORE_LIMITS.storeBytes);
+
+  async function visit(path: string): Promise<void> {
+    const directory = await opendir(path);
+    for await (const entry of directory) {
+      const childPath = `${path}/${entry.name}`;
+      const information = await lstat(childPath, { bigint: true });
+      if (information.isSymbolicLink()) {
+        invalid("PACKAGE_ARTIFACT_STORE", "protected Package/1 store contains a symlink");
+      }
+      if (information.isDirectory()) {
+        requireProtectedDirectory(
+          information,
+          "protected Package/1 store directory",
+          expectedOwnerUid,
+        );
+        await visit(childPath);
+        continue;
+      }
+      if (!information.isFile() || information.uid !== expectedOwnerUid || information.nlink < 1n) {
+        invalid("PACKAGE_ARTIFACT_STORE", "protected Package/1 store contains an unsafe entry");
+      }
+      total += information.size;
+      if (total > maximum) return;
+    }
+  }
+
+  await visit(resolve(storeRoot));
+  return total > BigInt(Number.MAX_SAFE_INTEGER) ? Number.MAX_SAFE_INTEGER : Number(total);
+}
+
 async function capturePackageArtifactFile(
   path: string,
   expectedDigest: PackageDigest,
@@ -380,6 +507,12 @@ async function capturePackageArtifactFile(
     handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
     const before = await handle.stat({ bigint: true });
     requireArtifactFile(before, sourceLabel, expectedOwnerUid);
+    if (before.size > BigInt(PRIVATE_PACKAGE_ARTIFACT_STORE_LIMITS.artifactBytes)) {
+      unavailable(
+        "PACKAGE_ARTIFACT_LIMIT",
+        `Package/1 artifact exceeds the fixed ${PRIVATE_PACKAGE_ARTIFACT_STORE_LIMITS.artifactBytes}-byte alpha limit`,
+      );
+    }
     snapshot = await openAnonymousArchiveSnapshot();
     const parsed = await parsePackageArchive(handle, before, expectedDigest, snapshot);
     const after = await handle.stat({ bigint: true });
@@ -442,7 +575,7 @@ async function parsePackageArchive(
     const marker = await readHashed(1, "Package/1 record marker");
     if (marker[0] !== 0x01) artifactCorrupt("stored artifact has an invalid Package/1 record marker");
     const pathBytes = bigintToNumber(readUnsigned(await readHashed(4, "Package/1 path length")), "path length");
-    if (pathBytes < 1 || pathBytes > MAX_PATH_BYTES) artifactCorrupt("stored artifact has an invalid Package/1 path length");
+    if (pathBytes < 1 || pathBytes > PACKAGE_1_MAX_PATH_BYTES) artifactCorrupt("stored artifact has an invalid Package/1 path length");
     const rawPath = await readHashed(pathBytes, "Package/1 path");
     let logicalPath: string;
     try {
@@ -626,6 +759,21 @@ async function writeCapturedArchive(
   if (failure !== undefined) throw failure;
   if (iteratorFailure !== undefined) throw iteratorFailure;
   return `sha256:${hash.digest("hex")}`;
+}
+
+async function digestCapturedPackage(captured: CapturedPackage): Promise<string> {
+  try {
+    return await packageDigest(
+      captured.files,
+      (file) => captured.stream(file.path),
+    );
+  } catch (error) {
+    if (error instanceof CheckError || isResourceError(error)) throw error;
+    invalid(
+      "PACKAGE_ARTIFACT_SOURCE_INVALID",
+      `captured Package/1 stream is inconsistent: ${errorText(error)}`,
+    );
+  }
 }
 
 async function writeAll(handle: FileHandle, bytes: Uint8Array): Promise<void> {

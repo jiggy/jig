@@ -132,6 +132,18 @@ only default-registry integrity-pinned sources accepted. Unsupported or
 unlocked dependency sources fail closed before an applicable Plan is
 published.
 
+Preparation ignores ambient configuration: the worker and installer receive
+no ambient variables or env file, only fixed loader support, `/dev/null` as
+Bun configuration, the exact runtime selected by Jig, and an explicit npm
+registry. A package-local root `.npmrc` is rejected because Bun treats it as a
+separate configuration input.
+Other package-manager files have no effect on this fixed Bun invocation; Jig
+does not maintain a growing filename blacklist. Git, GitHub, tarball, file,
+workspace, custom-registry, and non-integrity lock entries are rejected before
+the trusted installer starts a fetch. A default-registry npm alias is accepted
+only when the resolved lock tuple names that registry and carries supported
+SRI integrity.
+
 The admitted target pins the separately retained prepared Package/1 while the
 portable lock continues to identify the reviewed source Package/1. A Run
 performs no install or fetch and has no network, lifecycle scripts, or ambient
@@ -143,6 +155,24 @@ the current runtime and containment mechanism. Final publication reacquires
 the retained bytes and compare-and-sets the captured policy heads. Missing or
 corrupt retained execution bytes fail closed; they are not silently fetched
 again under an otherwise unchanged admission.
+
+After bounded project capture, the alpha's dependency-planning phase permits
+16 distinct actual preparations, 256 MiB of aggregate prepared content, and
+one 180-second cancellation deadline. Each contained preparation has the
+earlier 60-second hard deadline. Reused admitted execution packages consume
+none of the preparation count or output budget. One package accepts at most
+4,096 source files and 16 MiB before installation and at most 4,096 files and
+32 MiB after installation.
+
+Source, author-closure, and prepared Package/1 artifacts share one protected
+content-addressed store. Its fixed limits are 64 MiB per canonical artifact
+and 1 GiB per project. Check may retain immutable evidence even when the Plan
+is later declined or superseded; that evidence still consumes the cap. The
+alpha performs no implicit garbage collection. Existing exact artifacts can
+be reused at the cap, but a new artifact fails closed until the closed
+project's protected `.jig` state is intentionally removed along with its local
+admission and Run history. There is no selective reclamation command in this
+alpha.
 
 ### Why preparation belongs to `check`
 

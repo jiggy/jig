@@ -5,9 +5,11 @@ import {
   PRIVATE_BUN_PREPARATION_LIMITS,
   PRIVATE_BUN_PREPARED_MESSAGE_BYTES,
   PRIVATE_BUN_SOURCE_MESSAGE_BYTES,
+  encodePrivateBunMessage,
   maximumPrivateBunFileMessageBytes,
   privateBunMessageFits,
 } from "../src/internal/bun-native-preparation-protocol.js";
+import { PACKAGE_1_MAX_PATH_BYTES } from "../src/package/paths.js";
 
 const INTEGRITY = "sha512-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==";
 
@@ -17,6 +19,9 @@ describe("private Bun preparation policy", () => {
     ["GitHub", ["value@github:example/value#abcdef", {}]],
     ["tarball", ["value@https://example.invalid/value.tgz", {}]],
     ["file", ["value@file:../value", {}]],
+    ["four-field Git", ["value@git+https://github.com/example/value.git#abcdef", "", {}, INTEGRITY]],
+    ["four-field tarball", ["value@https://example.invalid/value.tgz", "", {}, INTEGRITY]],
+    ["short integrity", ["value@1.0.0", "", {}, "sha512-A"]],
   ])("rejects a %s package source", (_label, resolution) => {
     expect(() => requirePrivateBunLockPolicy(lock({ value: resolution }))).toThrow(
       "unsupported Bun lock source",
@@ -45,7 +50,7 @@ describe("private Bun preparation policy", () => {
     })).not.toThrow();
   });
 
-  test("derives line bounds which contain every admitted raw value", () => {
+  test("derives line bounds which contain an actual near-limit encoded value", () => {
     expect(PRIVATE_BUN_SOURCE_MESSAGE_BYTES).toBe(
       maximumPrivateBunFileMessageBytes(
         "source",
@@ -60,7 +65,24 @@ describe("private Bun preparation policy", () => {
         PRIVATE_BUN_PREPARATION_LIMITS.preparedBytes,
       ),
     );
-    expect(privateBunMessageFits(PRIVATE_BUN_PREPARED_MESSAGE_BYTES - 1, PRIVATE_BUN_PREPARED_MESSAGE_BYTES)).toBeTrue();
+    const segment = "\u0001".repeat(255);
+    const path = `${`p0000${"\u0001".repeat(250)}`}/${segment}/${segment}/${"\u0001".repeat(254)}/x`;
+    expect(Buffer.byteLength(path)).toBe(PACKAGE_1_MAX_PATH_BYTES);
+    const content = Buffer.alloc(
+      PRIVATE_BUN_PREPARATION_LIMITS.sourceBytes /
+        PRIVATE_BUN_PREPARATION_LIMITS.sourceFiles,
+      0xa5,
+    ).toString("base64");
+    const files = Array.from(
+      { length: PRIVATE_BUN_PREPARATION_LIMITS.sourceFiles },
+      (_, index) => ({
+        path: path.replace("0000", index.toString(16).padStart(4, "0")),
+        content,
+      }),
+    );
+    const actual = encodePrivateBunMessage({ type: "source", files }).byteLength - 1;
+    expect(privateBunMessageFits(actual, PRIVATE_BUN_SOURCE_MESSAGE_BYTES)).toBeTrue();
+    expect(PRIVATE_BUN_SOURCE_MESSAGE_BYTES - actual).toBeLessThan(256 * 1024);
     expect(privateBunMessageFits(PRIVATE_BUN_PREPARED_MESSAGE_BYTES, PRIVATE_BUN_PREPARED_MESSAGE_BYTES)).toBeTrue();
     expect(privateBunMessageFits(PRIVATE_BUN_PREPARED_MESSAGE_BYTES + 1, PRIVATE_BUN_PREPARED_MESSAGE_BYTES)).toBeFalse();
   });

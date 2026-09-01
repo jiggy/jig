@@ -25,6 +25,10 @@ import {
 import type { PrivateInstalledBunSupport } from "./installed-bun-support.js";
 import { inspectPrivateBunPackageInput } from "./bun-package-input.js";
 import {
+  createPrivateBunPreparationBudget,
+  type PrivateBunPreparationBudget,
+} from "./bun-native-preparation-budget.js";
+import {
   preparePrivateBunPackage,
   recoverPrivateBunPreparationOwner,
 } from "./bun-native-preparation.js";
@@ -140,6 +144,7 @@ function createSession(
 
     async plan(value: ProjectPlanRequest): Promise<ProjectPlanResult> {
       const leave = enterOperation();
+      let preparationBudget: PrivateBunPreparationBudget | undefined;
       try {
         const request = normalizeProjectPlanRequest(value);
         planningCancellation.signal.throwIfAborted();
@@ -164,10 +169,11 @@ function createSession(
             "project has no exact Run target",
           );
         }
+        preparationBudget = createPrivateBunPreparationBudget(planningCancellation.signal);
         const recipes: PrivateDirectRunRecipe[] = [];
         const executionPackages = new Map<string, PackageArtifactRef>();
         for (const request of requests) {
-          planningCancellation.signal.throwIfAborted();
+          preparationBudget.signal.throwIfAborted();
           if (request.mode !== "run") {
             throw new ProjectAdministrationError(
               "UNAVAILABLE",
@@ -197,15 +203,18 @@ function createSession(
                     }
                   }
                   if (executionPackage === undefined) {
+                    preparationBudget.reserve(request.package.digest, request.packagePath);
                     const prepared = await preparePrivateBunPackage({
                       captured: source,
                       installedSupport: host.installedBunSupport,
                       backend: host.backend,
                       projectRoot: owner.root.requestedPath,
                       coordinator: owner.coordinator,
-                      signal: planningCancellation.signal,
+                      deadlineUnixMs: preparationBudget.deadlineUnixMs,
+                      signal: preparationBudget.signal,
                     });
                     try {
+                      preparationBudget.retain(prepared.files, request.packagePath);
                       executionPackage = await publishCapturedPackage(packageStoreRoot, prepared);
                     } finally {
                       await prepared.dispose();
@@ -233,7 +242,7 @@ function createSession(
             throw error;
           }
         }
-        planningCancellation.signal.throwIfAborted();
+        preparationBudget.signal.throwIfAborted();
         const mechanismDigests = new Set(recipes.map(({ mechanismDigest }) => mechanismDigest));
         if (mechanismDigests.size !== 1) {
           throw new Error("planned targets did not resolve through one exact host mechanism");
@@ -254,7 +263,7 @@ function createSession(
           resolveRetainedPackageProjectObservation(aggregate, planning),
           recipes,
         );
-        planningCancellation.signal.throwIfAborted();
+        preparationBudget.signal.throwIfAborted();
         let review: PrivateProjectPlanReview | undefined;
         const result = await publishPrivateActivationReviewPlan({
           projectRoot: owner.root,
@@ -266,7 +275,9 @@ function createSession(
             review = renderPrivateProjectPlanReview(applicable);
           },
         });
+        preparationBudget.signal.throwIfAborted();
         await owner.verify();
+        preparationBudget.signal.throwIfAborted();
         if (result.state === "unchanged") return Object.freeze({ state: "unchanged" as const });
         if (review === undefined) throw new Error("applicable project Plan has no validated review");
         const publicResult = Object.freeze({
@@ -280,6 +291,7 @@ function createSession(
       } catch (error) {
         throw handleOperationError(error, "plan");
       } finally {
+        preparationBudget?.dispose();
         leave();
       }
     },

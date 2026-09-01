@@ -1,5 +1,6 @@
+import { PACKAGE_1_MAX_PATH_BYTES } from "../package/paths.js";
+
 const MIB = 1024 * 1024;
-const MAX_PATH_BYTES = 1_024;
 const MAX_JSON_BYTES_PER_PATH_BYTE = 6;
 
 export const PRIVATE_BUN_PREPARATION_LIMITS = Object.freeze({
@@ -26,7 +27,7 @@ export function maximumPrivateBunFileMessageBytes(
   requireNonnegativeInteger(maximumContentBytes, "content bytes");
   const emptyMessageBytes = Buffer.byteLength(JSON.stringify({ type, files: [] }));
   const emptyFileBytes = Buffer.byteLength(JSON.stringify({ path: "", content: "" }));
-  const pathBytes = maximumFiles * MAX_PATH_BYTES * MAX_JSON_BYTES_PER_PATH_BYTE;
+  const pathBytes = maximumFiles * PACKAGE_1_MAX_PATH_BYTES * MAX_JSON_BYTES_PER_PATH_BYTE;
   const contentBytes = 4 * (Math.ceil(maximumContentBytes / 3) + maximumFiles);
   const separators = Math.max(0, maximumFiles - 1);
   const result = emptyMessageBytes + maximumFiles * emptyFileBytes +
@@ -49,6 +50,13 @@ export const PRIVATE_BUN_PREPARED_MESSAGE_BYTES = maximumPrivateBunFileMessageBy
 
 export function privateBunMessageFits(bytes: number, maximum: number): boolean {
   return Number.isSafeInteger(bytes) && bytes >= 0 && bytes <= maximum;
+}
+
+/** Encode exactly one newline-delimited worker message. */
+export function encodePrivateBunMessage(value: unknown): Uint8Array {
+  const json = JSON.stringify(value);
+  if (json === undefined) throw new TypeError("Bun preparation message is not JSON-serializable");
+  return new TextEncoder().encode(`${json}\n`);
 }
 
 function requireNonnegativeInteger(value: number, label: string): void {

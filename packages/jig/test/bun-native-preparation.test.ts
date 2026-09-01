@@ -22,7 +22,7 @@ const HOSTILE = process.env.JIG_LINUX_ROOTLESS_HOSTILE === "1";
 const proofDescribe = HOSTILE ? describe.serial : describe.skip;
 
 proofDescribe("private contained Bun dependency preparation", () => {
-  test("prepares one frozen transitive graph without lifecycle scripts or residue", async () => {
+  test("prepares one frozen transitive graph without lifecycle scripts or authored Bun config", async () => {
     const initialTemporary = new Set((await readdir(tmpdir())).filter(rootlessTemporaryEntry));
     const initialCgroups = new Set(await rootlessCgroups());
     const root = await fixture();
@@ -200,6 +200,11 @@ async function fixture(): Promise<string> {
     scripts: { postinstall: "touch postinstall-ran" },
     dependencies: { "is-odd": "3.0.1", zod: "4.1.5" },
   }, null, 2)}\n`);
+  await writeFile(join(root, "bunfig.toml"), [
+    "[install]",
+    'registry = "https://packages.example.invalid"',
+    "",
+  ].join("\n"));
   await writeFile(join(root, "bun.lock"), `{
   "lockfileVersion": 1,
   "configVersion": 1,

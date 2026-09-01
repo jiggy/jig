@@ -27,6 +27,7 @@ import {
   PRIVATE_BUN_PREPARATION_LIMITS,
   PRIVATE_BUN_PREPARED_MESSAGE_BYTES,
   PRIVATE_BUN_SOURCE_MESSAGE_BYTES,
+  encodePrivateBunMessage,
   privateBunMessageFits,
 } from "./bun-native-preparation-protocol.js";
 import {
@@ -86,7 +87,7 @@ export async function preparePrivateBunPackage(input: {
   await revalidatePrivateInstalledBunSupport(installedSupport);
   const backend = requirePrivateLinuxCgroupBackend(input.backend);
   const source = await sourceMessage(input.captured);
-  const sourceBytes = new TextEncoder().encode(`${JSON.stringify(source)}\n`);
+  const sourceBytes = encodePrivateBunMessage(source);
   if (!privateBunMessageFits(sourceBytes.byteLength - 1, PRIVATE_BUN_SOURCE_MESSAGE_BYTES)) {
     throw new CheckError("invalid", "PACKAGE_BUN_INPUT_LIMIT", "locked Bun package is too large to prepare");
   }
