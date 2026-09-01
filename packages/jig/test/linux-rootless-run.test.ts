@@ -154,6 +154,25 @@ delegatedDescribe("private rootless Linux Run", () => {
       "rootless Linux mechanism changed after sealing",
     );
   });
+
+  test("recovers and releases an unadmitted owner on the same boot", async () => {
+    const host = await hostConfiguration();
+    const fixture = await createFixture("console.log('unreachable');");
+    const ownerStateParent = await mkdtemp(join(tmpdir(), "jig-rootless-same-boot-owner-"));
+    try {
+      const owner = await host.backend.seal(plan(host, fixture, "same-boot-recovery"), {
+        parent: ownerStateParent,
+        name: "owner",
+      });
+      const receipt = await host.backend.recoverFence(owner.identity);
+      expect(receipt).toMatchObject({ fenced: true, stopReason: "recovered" });
+      await releasePrivateLinuxOwnerState(owner.identity, receipt);
+      expect(await missing(owner.identity.ownerStateDirectory)).toBe(true);
+    } finally {
+      await rm(fixture, { recursive: true, force: true });
+      await rm(ownerStateParent, { recursive: true, force: true });
+    }
+  });
 });
 
 hostileDescribe("private rootless Linux hostile envelope", () => {
