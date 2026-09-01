@@ -233,9 +233,36 @@ The deadline is exposed as context, not implemented as an SDK timer. Jig or
 another host remains responsible for enforcing it and terminating an
 uncooperative process.
 
-## 7. Minimal examples
+## 7. Minimal root examples
 
 TypeScript:
+
+```ts
+import { serve } from "@flowmd/sdk";
+
+await serve(async (run) => ({ outcome: "done", output: run.input }));
+```
+
+Python:
+
+```python
+from flowmd_sdk import RunContext, RunResult, serve
+
+
+async def run(context: RunContext) -> RunResult:
+    return {"outcome": "done", "output": context.input}
+
+
+serve(run)
+```
+
+These root-only examples work with the direct Jig alpha. That host currently
+answers component-originated `flow/call` and `effect/call` operations with
+`UNAVAILABLE`; the operations remain part of portable Run/1.
+
+## 8. Portable child-call examples
+
+A host which supplies a child-Flow slot may execute the following TypeScript:
 
 ```ts
 import { serve } from "@flowmd/sdk";
@@ -250,7 +277,7 @@ await serve(async (run) => {
 });
 ```
 
-Python:
+The equivalent Python is:
 
 ```python
 from flowmd_sdk import RunContext, RunResult, serve
