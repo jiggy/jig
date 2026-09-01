@@ -1,9 +1,9 @@
 # npm prerelease publishing
 
-Jig publishes npm prereleases from one manual GitHub Actions workflow. The
-workflow builds each candidate once, checks its manifest and recorded digest,
-publishes those exact archives with npm trusted publishing, then downloads the
-registry archives and requires their bytes and selected dist-tag to match.
+Jig publishes one npm package per manual GitHub Actions dispatch. The workflow
+builds that candidate once, checks its manifest and recorded digest, publishes
+that exact archive with npm trusted publishing, then downloads the registry
+archive and requires its bytes and selected dist-tag to match.
 
 The workflow never chooses or changes a version, writes to Git, creates a tag,
 or publishes from a rebuilt archive. `alpha` and `next` are the only permitted
@@ -13,29 +13,30 @@ dist-tags; `latest` is untouched.
 
 Prepare one reviewed commit on `main` which:
 
-1. sets the same exact prerelease version in `packages/flow-sdk/package.json`
-   and `packages/jig/package.json`;
-2. removes each package's `private` guard;
-3. updates the packed-package assertions to that final manifest;
-4. contains every source, lock, notice, and manifest change for that release;
+1. sets the exact prerelease version in the package manifest;
+2. removes that package's `private` guard;
+3. updates its packed-package assertions to that final manifest;
+4. contains every source, lock, notice, and manifest change for the release;
    and
 5. passes the source, packed-package, Operational Baseline/1, and applicable
    Linux hostile gates.
 
-Do not remove the private guards before that final release change. The publish
-workflow deliberately stops with a specific error while either guard remains.
+Do not remove a private guard before that final release change. The publish
+workflow deliberately stops with a specific error while the selected package's
+guard remains.
 
-From GitHub Actions, run **Publish npm prerelease** on `main`. Enter the exact
-manifest version and select `alpha` or `next`. The `npm-alpha` environment
-should require maintainer approval and permit deployment only from `main`.
+From GitHub Actions, run **Publish npm prerelease** on `main`. Select one
+package, enter its exact manifest version, and select `alpha` or `next`. Publish
+`flow` first and wait for its refetch gate to pass; then dispatch `jig`. A Jig
+failure cannot strand Flow inside the same workflow. If npm did not accept the
+Jig version, dispatch Jig again; if acceptance is uncertain, inspect that exact
+registry version before doing anything else.
 
 The workflow uses a GitHub-hosted Ubuntu runner, Node 24, npm 11.6.2, Bun
-1.3.3, least repository permissions, and npm OIDC. It first proves that neither
-immutable npm version exists. Both archives are built and verified before the
-first publish. npm cannot publish two packages transactionally, so the Flow
-SDK is published first; a later Jig failure must be repaired with the same
-unchanged version only if npm reports that Jig was never accepted. Never
-republish or replace an accepted npm version.
+1.3.3, least repository permissions, and npm OIDC. It first proves that the
+selected immutable npm version does not exist. It never inspects or publishes
+the other package's manifest, candidate, or npm version. Never republish or
+replace an accepted npm version.
 
 ## One-time package bootstrap
 
