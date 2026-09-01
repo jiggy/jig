@@ -255,7 +255,8 @@ assert_clean() {
         \( -name 'jig-*' -o -name 'jigci-*' \) -print 2>/dev/null || true)
     fi
     temporary=$(find "${TMPDIR:-/tmp}" -maxdepth 1 \
-      \( -name 'jig-rootless-*' -o -name 'jig-operational-baseline-*' \) -print 2>/dev/null || true)
+      \( -name 'jig-rootless-*' -o -name 'jig-operational-baseline-*' \
+         -o -name 'jig-installed-hostile-baseline-*' \) -print 2>/dev/null || true)
     if [ -z "$units" ] && [ -z "$cgroups" ] && [ -z "$temporary" ]; then
       printf '%s\n' "GitHub rootless host residue check passed"
       return 0

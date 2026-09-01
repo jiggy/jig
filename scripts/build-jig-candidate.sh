@@ -106,6 +106,7 @@ fi
 
 JIG_PACKAGE_ARCHIVE="$archive" bun "$package/test/package-smoke.ts"
 JIG_PACKAGE_ARCHIVE="$archive" bun "$temporary/source/scripts/test-operational-baseline.ts"
+JIG_PACKAGE_ARCHIVE="$archive" bun "$temporary/source/scripts/test-installed-hostile-baseline.ts"
 
 mkdir -p -- "$temporary/npm-consumer"
 "$JIG_NPM" install \
@@ -187,7 +188,7 @@ commit=$(git -C "$repository" rev-parse HEAD)
   printf '{\n'
   printf '  "archive": "%s",\n' "$filename"
   printf '  "commit": "%s",\n' "$commit"
-  printf '  "gates": ["package-smoke", "operational-baseline-1", "npm-local-install-help", "npm-global-install-help"],\n'
+  printf '  "gates": ["package-smoke", "operational-baseline-1", "installed-hostile-baseline", "npm-local-install-help", "npm-global-install-help"],\n'
   printf '  "npmExecutable": "%s",\n' "$JIG_NPM"
   printf '  "npmVersion": "%s",\n' "$npm_version"
   printf '  "runtimePackage": "@oven/bun-linux-x64-baseline@1.3.3",\n'

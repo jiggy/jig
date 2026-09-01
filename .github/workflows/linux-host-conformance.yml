@@ -7,6 +7,7 @@ on:
       - ".github/workflows/linux-host-conformance.yml"
       - "packages/jig/**"
       - "scripts/ci/provision-github-rootless-host.sh"
+      - "scripts/test-installed-hostile-baseline.ts"
       - "scripts/test-operational-baseline.ts"
   push:
     branches:
@@ -15,6 +16,7 @@ on:
       - ".github/workflows/linux-host-conformance.yml"
       - "packages/jig/**"
       - "scripts/ci/provision-github-rootless-host.sh"
+      - "scripts/test-installed-hostile-baseline.ts"
       - "scripts/test-operational-baseline.ts"
 
 permissions:
@@ -106,6 +108,12 @@ jobs:
           scripts/ci/provision-github-rootless-host.sh run-acquisition-host
           env "JIG_PACKAGE_ARCHIVE=$JIG_PACKAGE_ARCHIVE"
           "$JIG_CI_BUN" scripts/test-operational-baseline.ts
+
+      - name: Attack the packed CLI inside the proved envelope
+        run: >-
+          scripts/ci/provision-github-rootless-host.sh run-acquisition-host
+          env "JIG_PACKAGE_ARCHIVE=$JIG_PACKAGE_ARCHIVE"
+          "$JIG_CI_BUN" scripts/test-installed-hostile-baseline.ts
 
       - name: Require zero host residue
         if: always()
