@@ -1,7 +1,7 @@
 # FLOW Schema/1 files
 
 **Status:** prerelease specification candidate. The checked-in
-[`schema-1.json`](machine/schema-1.json) machine meta-schema uses the
+[`schema-1.json`](https://flow.jig.md/schemas/schema-1.json) machine meta-schema uses the
 provisional identifier `https://flow.jig.md/schemas/schema-1.json`; it has not
 been published at that URI. Independent cross-implementation fixtures remain
 a release gate.
@@ -236,9 +236,9 @@ code; its command and SDK result models remain release-gated.
 
 The companion examples are:
 
-- [`input.schema.json`](examples/schema-files/input.schema.json)
-- [`settings.schema.json`](examples/schema-files/settings.schema.json)
-- [`result.schema.json`](examples/schema-files/result.schema.json)
+- [`input.schema.json`](https://github.com/jigmd/jig/blob/main/docs/spec/examples/schema-files/input.schema.json)
+- [`settings.schema.json`](https://github.com/jigmd/jig/blob/main/docs/spec/examples/schema-files/settings.schema.json)
+- [`result.schema.json`](https://github.com/jigmd/jig/blob/main/docs/spec/examples/schema-files/result.schema.json)
 
 They demonstrate shape validation and outcome/output correlation. They are
 examples, not implicit schemas for packages which omit the files.

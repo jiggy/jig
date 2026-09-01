@@ -111,7 +111,7 @@ Jig never guesses an unprefixed target.
 
 The complete runnable example and current specification map are in the
 [repository README](https://github.com/jigmd/jig#readme) and
-[`docs/README.md`](https://github.com/jigmd/jig/blob/main/docs/README.md).
+[`docs/guide/index.md`](https://github.com/jigmd/jig/blob/main/docs/guide/index.md).
 
 This is a prerelease alpha. It does not expose Services, Hooks, event sources,
 Agent providers, Semantic Choice, Jig Graph, runtime registries, or sandbox

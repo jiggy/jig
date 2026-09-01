@@ -30,9 +30,9 @@ cleanup() {
 trap cleanup EXIT HUP INT TERM
 
 curl --fail --location --silent --show-error "$base/" > "$temporary/index.html"
-curl --fail --location --silent --show-error "$base/docs/" > "$temporary/docs.html"
+curl --fail --location --silent --show-error "$base/guide/" > "$temporary/docs.html"
 grep -Fq '<title>Jig and FLOW</title>' "$temporary/index.html"
-grep -Fq '<title>Documentation — Jig and FLOW</title>' "$temporary/docs.html"
+grep -Fq '<title>Jig and FLOW specifications - Jig + FLOW</title>' "$temporary/docs.html"
 
 while IFS='|' read -r source route
 do

@@ -8,7 +8,11 @@ if [ "$#" -ne 1 ]; then
 fi
 
 javascript=$(command -v node || command -v bun) || {
-  echo "Node or Bun is required to validate the Pages artifact" >&2
+  echo "Node or Bun is required to build the Pages artifact" >&2
+  exit 2
+}
+bun=$(command -v bun) || {
+  echo "Bun is required to build the Pages artifact" >&2
   exit 2
 }
 
@@ -31,7 +35,8 @@ cleanup() {
 }
 trap cleanup EXIT HUP INT TERM
 
-cp -R -- "$repository/site/." "$staging/"
+JIG_PAGES_OUTPUT="$staging" "$bun" run --cwd "$repository/site" build
+cp -R -- "$repository/site/public/." "$staging/"
 mkdir -p -- "$staging/schemas"
 
 actual=$(

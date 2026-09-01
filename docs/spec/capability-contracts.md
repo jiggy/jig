@@ -1,7 +1,7 @@
 # FLOW Capability Contract/1
 
 **Status:** prerelease specification candidate. The checked-in
-[`capability-contract-1.schema.json`](machine/capability-contract-1.schema.json)
+[`capability-contract-1.schema.json`](https://flow.jig.md/schemas/capability-contract-1.schema.json)
 machine schema uses the provisional identifier
 `https://flow.jig.md/schemas/capability-contract-1.schema.json`; it has not been
 published at that URI. Independent digest/Schema/1 fixtures and
@@ -26,7 +26,7 @@ rather than an ordinary child Flow disguised as an API.
 
 One self-contained JSON descriptor is the only public interface format. The
 sole normative session-store example is the parseable
-[`session-store.capability.json`](examples/capability-contracts/session-store.capability.json),
+[`session-store.capability.json`](https://github.com/jigmd/jig/blob/main/docs/spec/examples/capability-contracts/session-store.capability.json),
 whose Capability Contract/1 digest is
 `sha256:95717125236427f83f401e2f942bb4df46e95867ac34828d719cc9795e5b3e98`.
 This document does not duplicate the same public URI/version descriptor in a

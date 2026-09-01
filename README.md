@@ -163,7 +163,7 @@ fails closed or is prepared again before another review.
 ## Documentation
 
 - [Public website](https://flow.jig.md/)
-- [Specification map](docs/README.md)
+- [Specification map](docs/guide/index.md)
 - [FLOW Package/1](docs/spec/package-format.md)
 - [FLOW Run/1](docs/spec/run-protocol.md)
 - [FLOW Schema/1](docs/spec/schema-files.md)

@@ -361,7 +361,7 @@ exists are not Run/1 errors.
 `PROTOCOL_ERROR` and `CHANNEL_LOST` are local terminal classifications, not
 `-32000` values sent over a channel which can no longer be trusted. The
 machine-readable registry is
-[`machine/run-1-errors.json`](machine/run-1-errors.json).
+[`run-1-errors.json`](https://flow.jig.md/schemas/run-1-errors.json).
 
 ## 8. Cancellation
 
@@ -446,7 +446,7 @@ process exit; there is no hidden cleanup-acknowledgement protocol.
 ## 10. Machine interface and SDK projection
 
 The closed message schema is
-[`machine/run-1.schema.json`](machine/run-1.schema.json). Direction and response
+[`run-1.json`](https://flow.jig.md/schemas/run-1.json). Direction and response
 correlation remain protocol state and cannot be proven by a context-free JSON
 Schema document. Framing and JSON/1 validation happen before schema validation.
 

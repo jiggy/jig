@@ -297,4 +297,4 @@ serve(run)
 
 The implementations live under `packages/flow-sdk/` and
 `packages/flowmd-sdk/`. The shared executable seed is
-[`conformance/run-1/`](../../conformance/run-1/).
+[`conformance/run-1/`](https://github.com/jigmd/jig/tree/main/conformance/run-1).

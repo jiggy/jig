@@ -1,0 +1,11 @@
+{
+  "name": "jig-documentation",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "rspress build"
+  },
+  "devDependencies": {
+    "@rspress/core": "2.0.21"
+  }
+}
