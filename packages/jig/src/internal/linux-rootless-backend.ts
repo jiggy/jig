@@ -124,12 +124,9 @@ export interface PrivateLinuxOwnerStateReleaseReceipt {
   readonly released: true;
 }
 
-export interface PrivateLinuxBackendMechanismObservation {
+export interface PrivateLinuxBackendMechanismSupport {
   readonly kind: "linux-rootless-cgroup-v2-bubblewrap-mechanism/1";
   readonly digest: string;
-  readonly delegatedCgroup: string;
-  readonly delegatedCgroupDevice: string;
-  readonly delegatedCgroupInode: string;
   readonly trustedBubblewrapPath: string;
   readonly trustedBubblewrapDigest: string;
   readonly bubblewrapVersion: string;
@@ -140,10 +137,21 @@ export interface PrivateLinuxBackendMechanismObservation {
   readonly trustedSupervisorDigest: string;
   readonly cgroupVersion: 2;
   readonly controllers: readonly ["cpu", "memory", "pids"];
-  readonly scopeEmpty: true;
   readonly payloadUid: number;
   readonly payloadGid: number;
   readonly startupTimeoutMs: number;
+}
+
+export interface PrivateLinuxBackendLaunchAuthority {
+  readonly delegatedCgroup: string;
+  readonly delegatedCgroupDevice: string;
+  readonly delegatedCgroupInode: string;
+  readonly scopeEmpty: true;
+}
+
+export interface PrivateLinuxBackendMechanismObservation {
+  readonly support: PrivateLinuxBackendMechanismSupport;
+  readonly authority: PrivateLinuxBackendLaunchAuthority;
 }
 
 export interface PrivateLinuxSealedOwnerIdentity {
@@ -357,7 +365,7 @@ export class PrivateLinuxCgroupBackend {
       sealPlan(snapshot),
     ]);
     const sealedPlanDigest = privateDomainDigest("JIG-Rootless-Linux-Sealed-Plan/1", {
-      mechanismDigest: mechanism.digest,
+      mechanismDigest: mechanism.support.digest,
       plan: sealedPlan as unknown as JsonValue,
     });
     const nonce = randomBytes(12).toString("hex");
@@ -367,12 +375,12 @@ export class PrivateLinuxCgroupBackend {
       runId: sealedPlan.runId,
       nonce,
       ownerToken: allocated.allocation.ownerToken,
-      mechanismDigest: mechanism.digest,
+      mechanismDigest: mechanism.support.digest,
       sealedPlanDigest,
-      delegatedCgroup: mechanism.delegatedCgroup,
-      delegatedCgroupDevice: mechanism.delegatedCgroupDevice,
-      delegatedCgroupInode: mechanism.delegatedCgroupInode,
-      runCgroup: join(mechanism.delegatedCgroup, `jig-run-${sealedPlan.runId}-${nonce}`),
+      delegatedCgroup: mechanism.authority.delegatedCgroup,
+      delegatedCgroupDevice: mechanism.authority.delegatedCgroupDevice,
+      delegatedCgroupInode: mechanism.authority.delegatedCgroupInode,
+      runCgroup: join(mechanism.authority.delegatedCgroup, `jig-run-${sealedPlan.runId}-${nonce}`),
       deadlineUnixMs: sealedPlan.limits.deadlineUnixMs,
       cancellationGraceMs: sealedPlan.limits.cancellationGraceMs,
       cleanupTimeoutMs: sealedPlan.limits.cleanupTimeoutMs,
@@ -479,12 +487,7 @@ export class PrivateLinuxCgroupBackend {
     const data = requireSealedOwner(sealedOwner, this, plan);
     await requireSealedMounts(data.sealedPlan.readOnlyMounts);
     const currentMechanism = await observeMechanism(this.#options);
-    if (currentMechanism.digest !== data.mechanism.digest ||
-        currentMechanism.delegatedCgroup !== data.mechanism.delegatedCgroup ||
-        currentMechanism.delegatedCgroupDevice !== data.mechanism.delegatedCgroupDevice ||
-        currentMechanism.delegatedCgroupInode !== data.mechanism.delegatedCgroupInode) {
-      throw new Error("rootless Linux mechanism changed after sealing");
-    }
+    requirePrivateLinuxMechanismUnchanged(data.mechanism, currentMechanism);
     await requireOwnerState(data.identity);
 
     const controlDirectory = await mkdtemp(join(tmpdir(), "jig-rootless-control-"));
@@ -497,10 +500,10 @@ export class PrivateLinuxCgroupBackend {
       await listen(server, controlPath);
       const accepted = acceptOne(server, this.#options.startupTimeoutMs);
       supervisor = requirePipedChild(spawn(
-        data.mechanism.trustedCoordinatorBunPath,
+        data.mechanism.support.trustedCoordinatorBunPath,
         [
           ...BUN_POLICY,
-          data.mechanism.trustedSupervisorPath,
+          data.mechanism.support.trustedSupervisorPath,
           "--supervisor",
           controlPath,
           String(this.#options.startupTimeoutMs),
@@ -508,7 +511,7 @@ export class PrivateLinuxCgroupBackend {
         {
           cwd: "/",
           env: {
-            LD_LIBRARY_PATH: data.mechanism.trustedCoordinatorLibraryPath,
+            LD_LIBRARY_PATH: data.mechanism.support.trustedCoordinatorLibraryPath,
           },
           detached: true,
           stdio: ["pipe", "pipe", "pipe"],
@@ -1101,7 +1104,7 @@ async function observeMechanism(options: NormalizedOptions): Promise<PrivateLinu
   // The mechanism identity describes reproducible host support. The delegated
   // cgroup is invocation authority: retain and recheck it for this launch,
   // but do not make every transient CLI scope a different admitted recipe.
-  const identity = {
+  const supportFields = {
     kind: "linux-rootless-cgroup-v2-bubblewrap-mechanism/1" as const,
     trustedBubblewrapPath: authority.bubblewrapPath,
     trustedBubblewrapDigest: bubblewrapDigest,
@@ -1113,18 +1116,34 @@ async function observeMechanism(options: NormalizedOptions): Promise<PrivateLinu
     trustedSupervisorDigest: supervisorDigest,
     cgroupVersion: 2 as const,
     controllers: Object.freeze(["cpu", "memory", "pids"] as const),
-    scopeEmpty: true as const,
     payloadUid: authority.payloadUid,
     payloadGid: authority.payloadGid,
     startupTimeoutMs: options.startupTimeoutMs,
   };
-  return Object.freeze({
-    ...identity,
-    digest: privateDomainDigest("JIG-Rootless-Linux-Mechanism/1", identity as unknown as JsonValue),
+  const support = Object.freeze({
+    ...supportFields,
+    digest: privateDomainDigest("JIG-Rootless-Linux-Mechanism/1", supportFields as unknown as JsonValue),
+  });
+  const launchAuthority = Object.freeze({
     delegatedCgroup: authority.delegatedCgroup,
     delegatedCgroupDevice: String(scope.dev),
     delegatedCgroupInode: String(scope.ino),
+    scopeEmpty: true as const,
   });
+  return Object.freeze({ support, authority: launchAuthority });
+}
+
+/** Private launch guard; this is not a public Backend or host extension seam. */
+export function requirePrivateLinuxMechanismUnchanged(
+  sealed: PrivateLinuxBackendMechanismObservation,
+  current: PrivateLinuxBackendMechanismObservation,
+): void {
+  if (current.support.digest !== sealed.support.digest ||
+      current.authority.delegatedCgroup !== sealed.authority.delegatedCgroup ||
+      current.authority.delegatedCgroupDevice !== sealed.authority.delegatedCgroupDevice ||
+      current.authority.delegatedCgroupInode !== sealed.authority.delegatedCgroupInode) {
+    throw new Error("rootless Linux mechanism changed after sealing");
+  }
 }
 
 function supervisorConfiguration(data: SealedOwnerData): object {
@@ -1142,30 +1161,30 @@ function supervisorConfiguration(data: SealedOwnerData): object {
     command: data.sealedPlan.command,
     environment: data.sealedPlan.environment,
     network: data.sealedPlan.network,
-    bunPath: data.mechanism.trustedCoordinatorBunPath,
-    bunHostLibraryPath: data.mechanism.trustedCoordinatorLibraryPath,
-    bubblewrapPath: data.mechanism.trustedBubblewrapPath,
-    payloadUid: data.mechanism.payloadUid,
-    payloadGid: data.mechanism.payloadGid,
-    supervisorPath: data.mechanism.trustedSupervisorPath,
+    bunPath: data.mechanism.support.trustedCoordinatorBunPath,
+    bunHostLibraryPath: data.mechanism.support.trustedCoordinatorLibraryPath,
+    bubblewrapPath: data.mechanism.support.trustedBubblewrapPath,
+    payloadUid: data.mechanism.support.payloadUid,
+    payloadGid: data.mechanism.support.payloadGid,
+    supervisorPath: data.mechanism.support.trustedSupervisorPath,
   });
 }
 
 function envelopeFor(data: SealedOwnerData): PrivateLinuxEnvelopeIdentity {
   return Object.freeze({
     kind: "linux-rootless-cgroup-v2-bubblewrap/1",
-    mechanismDigest: data.mechanism.digest,
+    mechanismDigest: data.mechanism.support.digest,
     sealedPlanDigest: data.identity.sealedPlanDigest,
-    trustedBubblewrapPath: data.mechanism.trustedBubblewrapPath,
-    trustedBubblewrapDigest: data.mechanism.trustedBubblewrapDigest,
-    trustedCoordinatorBunPath: data.mechanism.trustedCoordinatorBunPath,
-    trustedCoordinatorBunDigest: data.mechanism.trustedCoordinatorBunDigest,
-    trustedSupervisorPath: data.mechanism.trustedSupervisorPath,
-    trustedSupervisorDigest: data.mechanism.trustedSupervisorDigest,
+    trustedBubblewrapPath: data.mechanism.support.trustedBubblewrapPath,
+    trustedBubblewrapDigest: data.mechanism.support.trustedBubblewrapDigest,
+    trustedCoordinatorBunPath: data.mechanism.support.trustedCoordinatorBunPath,
+    trustedCoordinatorBunDigest: data.mechanism.support.trustedCoordinatorBunDigest,
+    trustedSupervisorPath: data.mechanism.support.trustedSupervisorPath,
+    trustedSupervisorDigest: data.mechanism.support.trustedSupervisorDigest,
     cgroupVersion: 2,
-    controllers: data.mechanism.controllers,
-    payloadUid: data.mechanism.payloadUid,
-    payloadGid: data.mechanism.payloadGid,
+    controllers: data.mechanism.support.controllers,
+    payloadUid: data.mechanism.support.payloadUid,
+    payloadGid: data.mechanism.support.payloadGid,
     limits: data.sealedPlan.limits,
     privateProcessFilesystem: true,
     privateRuntimeDevices: true,

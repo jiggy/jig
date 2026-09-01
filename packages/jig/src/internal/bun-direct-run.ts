@@ -9,7 +9,7 @@ import {
 import { privateDomainDigest } from "./identity.js";
 import {
   requirePrivateLinuxCgroupBackend,
-  type PrivateLinuxBackendMechanismObservation,
+  type PrivateLinuxBackendMechanismSupport,
   type PrivateLinuxCgroupBackend,
 } from "./linux-rootless-backend.js";
 import {
@@ -97,10 +97,11 @@ export async function planPrivateBunDirectRun(input: {
     installedSupportDigest: installedSupport.digest,
   });
   const mechanism = await backend.observeMechanism();
+  const support = mechanism.support;
   const adapter = Object.freeze({ artifactDigest: adapterDigest, revision: ADAPTER_REVISION });
   const backendIdentity = Object.freeze({
-    artifactDigest: mechanism.trustedSupervisorDigest,
-    revision: mechanism.kind,
+    artifactDigest: support.trustedSupervisorDigest,
+    revision: support.kind,
   });
   const inspectionDigest = privateDomainDigest("JIG-Private-Bun-Inspection/1", {
     package: request.package,
@@ -111,7 +112,7 @@ export async function planPrivateBunDirectRun(input: {
   const authorityDigest = privateDomainDigest("JIG-Private-Bun-Authority/1", {
     attachments: request.attachments,
   } as unknown as JsonValue);
-  const launchEnvelopeDigest = logicalLaunchDigest(request, executionPackage, installedSupport, mechanism);
+  const launchEnvelopeDigest = logicalLaunchDigest(request, executionPackage, installedSupport, support);
   const observation = createPrivateActivationRecipeObservation({
     requestDigest: request.digest,
     adapter,
@@ -130,7 +131,7 @@ export async function planPrivateBunDirectRun(input: {
     kind: "private-bun-direct-recipe/1" as const,
     requestDigest: request.digest,
     installedSupportDigest: installedSupport.digest,
-    mechanismDigest: mechanism.digest,
+    mechanismDigest: support.digest,
     observationDigest: observation.digest,
   });
   const recipe = Object.freeze({
@@ -140,7 +141,7 @@ export async function planPrivateBunDirectRun(input: {
     executionPackage,
     installedSupport,
     backend,
-    mechanismDigest: mechanism.digest,
+    mechanismDigest: support.digest,
     observation,
     sandboxExecutablePath: installedSupport.sandboxExecutablePath,
     packageDestination: PACKAGE_DESTINATION,
@@ -166,7 +167,7 @@ function logicalLaunchDigest(
   request: PrivateActivationRequest,
   executionPackage: PackageArtifactRef,
   installedSupport: PrivateInstalledBunSupport,
-  mechanism: PrivateLinuxBackendMechanismObservation,
+  mechanism: PrivateLinuxBackendMechanismSupport,
 ): string {
   return privateDomainDigest("JIG-Private-Bun-Logical-Launch/1", {
     requestDigest: request.digest,

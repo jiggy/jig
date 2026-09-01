@@ -625,7 +625,7 @@ async function revalidateRecipe(recipe: PrivateDirectRunRecipe): Promise<void> {
     recipe.backend.observeMechanism(),
     revalidatePrivateInstalledBunSupport(recipe.installedSupport),
   ]);
-  if (mechanism.digest !== recipe.mechanismDigest) {
+  if (mechanism.support.digest !== recipe.mechanismDigest) {
     throw new Error("direct Run recipe no longer matches retained host support");
   }
 }

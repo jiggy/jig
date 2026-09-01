@@ -59,6 +59,56 @@ hostile("prepares and collects one real transient delegated user scope", async (
   }
 });
 
+hostile("keeps support identity stable while transient launch authority changes", async () => {
+  const manager = await fixedManager();
+  const delegationUrl = new URL("../src/internal/linux-rootless-delegation.ts", import.meta.url).href;
+  const backendUrl = new URL("../src/internal/linux-rootless-backend.ts", import.meta.url).href;
+  const results = [
+    `/tmp/jig-rootless-mechanism-${randomBytes(12).toString("hex")}.json`,
+    `/tmp/jig-rootless-mechanism-${randomBytes(12).toString("hex")}.json`,
+  ] as const;
+  try {
+    for (const resultPath of results) {
+      const unit = `jig-${randomBytes(12).toString("hex")}.scope`;
+      const script = [
+        `import { acquireOrReexecutePrivateRootlessLinux } from ${JSON.stringify(delegationUrl)};`,
+        `import { PrivateLinuxCgroupBackend } from ${JSON.stringify(backendUrl)};`,
+        "import { realpath, writeFile } from 'node:fs/promises';",
+        "import { dirname } from 'node:path';",
+        "const acquired = await acquireOrReexecutePrivateRootlessLinux();",
+        "if (acquired.kind !== 'private-rootless-linux-ready/1') throw new Error('not ready');",
+        "const loader = await realpath('/lib64/ld-linux-x86-64.so.2');",
+        "const backend = new PrivateLinuxCgroupBackend({",
+        "  bunPath: await realpath(process.execPath), bunHostLibraryPath: dirname(loader),",
+        "});",
+        "const observation = await backend.observeMechanism();",
+        `await writeFile(${JSON.stringify(resultPath)}, JSON.stringify(observation), { mode: 0o600 });`,
+      ].join("\n");
+      const execution = await reexecutePrivateRootlessLinuxCommand(
+        manager,
+        unit,
+        [process.execPath, "--no-env-file", "--no-install", "--config=/dev/null", "-e", script],
+        "/",
+        process.env,
+        2_000,
+        10_000,
+      );
+      expect(execution).toMatchObject({ exitCode: 0, signal: null });
+    }
+
+    const first = JSON.parse(await Bun.file(results[0]).text()) as {
+      readonly support: Readonly<Record<string, unknown>>;
+      readonly authority: { readonly delegatedCgroup: string; readonly delegatedCgroupInode: string };
+    };
+    const second = JSON.parse(await Bun.file(results[1]).text()) as typeof first;
+    expect(first.support).toEqual(second.support);
+    expect(first.authority.delegatedCgroup).not.toBe(second.authority.delegatedCgroup);
+    expect(first.authority.delegatedCgroupInode).not.toBe(second.authority.delegatedCgroupInode);
+  } finally {
+    await Promise.all(results.map((path) => rm(path, { force: true })));
+  }
+});
+
 hostile("manager lifetime timer collects a no-ack scope after wrapper loss", async () => {
   const manager = await fixedManager();
   const control = await fixedControl();

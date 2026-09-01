@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 import {
   PrivateLinuxCgroupBackend,
   PrivateLinuxFenceUnconfirmedError,
+  requirePrivateLinuxMechanismUnchanged,
   releasePrivateLinuxOwnerState,
   type PrivateLinuxReadOnlyMount,
   type PrivateLinuxLaunchPlan,
@@ -135,6 +136,23 @@ delegatedDescribe("private rootless Linux Run", () => {
     } finally {
       await rm(fixture, { recursive: true, force: true });
     }
+  });
+
+  test("rejects changed launch authority under the same support identity", async () => {
+    const host = await hostConfiguration();
+    const sealed = await host.backend.observeMechanism();
+    const changed = Object.freeze({
+      support: sealed.support,
+      authority: Object.freeze({
+        ...sealed.authority,
+        delegatedCgroupInode: String(BigInt(sealed.authority.delegatedCgroupInode) + 1n),
+      }),
+    });
+
+    expect(() => requirePrivateLinuxMechanismUnchanged(sealed, sealed)).not.toThrow();
+    expect(() => requirePrivateLinuxMechanismUnchanged(sealed, changed)).toThrow(
+      "rootless Linux mechanism changed after sealing",
+    );
   });
 });
 
