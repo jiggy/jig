@@ -31,5 +31,12 @@ Agent providers, Semantic Choice, Jig Graph, runtime registries, sandbox
 registries, and compatibility formats. Its installed command surface is
 exactly `init --bare`, `check`, and `run`.
 
+## Historical evidence
+
+[`experiments.md`](experiments.md) is a non-normative Git locator for deleted
+implementation experiments and the conditions under which their evidence may
+be reconsidered. Git history remains the archive; the old implementations are
+not current or compatible code.
+
 The `https://flow.dev/...` values in prerelease machine files are provisional
 identifiers, not claims that those URLs currently resolve.
