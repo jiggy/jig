@@ -34,8 +34,6 @@ export function renderPrivateProjectPlanReview(
   const changes = projectChanges(
     current,
     proposed,
-    review.baseCandidate?.lock.packages ?? {},
-    plan.proposed.lock.packages,
     review.baseCandidate?.candidate.targets ?? [],
     plan.proposed.targets,
   );
@@ -73,6 +71,7 @@ function projectCandidate(
   return {
     portablePolicy: {
       packages: Object.fromEntries(Object.entries(lock.packages).map(([path, value]) => [path, {
+        digest: value.digest,
         directRun: value.directRun,
       }])),
       bindings: lock.bindings,
@@ -84,8 +83,6 @@ function projectCandidate(
 function projectChanges(
   current: ReturnType<typeof projectCandidate> | null,
   proposed: ReturnType<typeof projectCandidate>,
-  currentPackages: PrivateActivationReviewPlan["candidate"]["lock"]["packages"],
-  proposedPackages: PrivateActivationReviewPlan["candidate"]["lock"]["packages"],
   currentTargets: PrivateActivationReviewPlan["candidate"]["candidate"]["targets"],
   proposedTargets: PrivateActivationReviewPlan["candidate"]["candidate"]["targets"],
 ) {
@@ -95,8 +92,8 @@ function projectChanges(
   );
   return {
     packages: recordChanges(
-      currentPackages,
-      proposedPackages,
+      current?.portablePolicy.packages ?? {},
+      proposed.portablePolicy.packages,
     ),
     bindings: recordChanges(
       current?.portablePolicy.bindings ?? {},

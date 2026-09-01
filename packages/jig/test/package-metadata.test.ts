@@ -102,6 +102,20 @@ x-example:
     );
   });
 
+  test("locates an unknown metadata member without reflecting it in the public message", () => {
+    try {
+      parseFlowDocument(flow("name: exact\ndescription: Exact.\nformat: 2"));
+      throw new Error("expected CheckError");
+    } catch (error) {
+      expect(error).toBeInstanceOf(CheckError);
+      expect(error).toMatchObject({
+        code: "METADATA_FIELD",
+        path: "FLOW.md",
+        pointer: "/format",
+      });
+    }
+  });
+
   test("enforces frontmatter bytes, depth, and total nodes inclusively", () => {
     expect(() => parseFlowDocument(paddedDocument(262_144))).not.toThrow();
     expectCheckError(() => parseFlowDocument(paddedDocument(262_145)));

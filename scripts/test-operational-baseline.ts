@@ -54,7 +54,7 @@ try {
   assert.equal(
     malformed.stderr,
     'INVALID_CANDIDATE: the project definition is invalid; ' +
-      'METADATA_DELIMITER at "flows/malformed/FLOW.md"\n',
+      'METADATA_FIELD at "flows/malformed/FLOW.md" pointer "/format"\n',
   );
   assert.doesNotMatch(malformed.stderr, /\.jig|coordinator|sqlite|\/tmp\//i);
   await assert.rejects(stat(join(project, "jig.lock")), { code: "ENOENT" });
@@ -69,7 +69,10 @@ try {
   assert.match(approved.stdout, /^Jig project plan review\n/);
   assert.match(approved.stdout, /\nproject is ready\n$/);
   assert.equal(approved.stderr, "");
-  assert.doesNotMatch(approved.stdout, /sha256:|planDigest|coordinator|cgroup|bubblewrap/i);
+  assert.doesNotMatch(
+    approved.stdout,
+    /planDigest|lockDigest|recipeDigest|observationDigest|coordinator|cgroup|bubblewrap/i,
+  );
 
   const lock = JSON.parse(await readFile(join(project, "jig.lock"), "utf8")) as unknown;
   assert.deepEqual(Object.keys(requireRecord(lock)).sort(), ["bindings", "packages"]);
@@ -77,6 +80,12 @@ try {
     packagePath: "flows/hello",
     settings: { prefix: "Welcome" },
   });
+  for (const value of Object.values(requireRecord(requireRecord(lock).packages))) {
+    const digest = requireRecord(value).digest;
+    assert.equal(typeof digest, "string");
+    assert.match(digest, /^sha256:[0-9a-f]{64}$/);
+    assert.match(approved.stdout, new RegExp(digest));
+  }
 
   const lockedPackage = requireRecord(
     requireRecord(requireRecord(lock).packages)["flows/locked-dependency"],
@@ -292,7 +301,14 @@ async function writeHelloFlow(project: string): Promise<void> {
 async function writeMalformedFlow(project: string): Promise<void> {
   const flow = join(project, "flows", "malformed");
   await mkdir(flow);
-  await writeFile(join(flow, "FLOW.md"), "not FLOW Metadata/1\n");
+  await writeFile(join(flow, "FLOW.md"), [
+    "---",
+    "name: malformed",
+    "description: Exercise one bounded author diagnostic.",
+    "format: 1",
+    "---",
+    "",
+  ].join("\n"));
 }
 
 async function writeFriendlyBinding(project: string): Promise<void> {

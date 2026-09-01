@@ -59,9 +59,15 @@ jig check
 jig run flow:flows/example --input '{}'
 ```
 
-`jig check` shows the complete proposed project change and asks for approval.
+`jig check` shows the complete proposed project change, including exact
+current and proposed Package/1 content digests, and asks for approval. It is
+not a source-file diff; inspect editable source with your normal tools.
 `--yes` records an approval non-interactively. The CLI keeps review and
 admission mechanics internal.
+
+A target is marked changed when its package identity or exact execution
+evidence changes. Package digests appear once in the package section;
+host-specific evidence remains private.
 
 For ordinary dependencies, place `package.json` and text `bun.lock` beside
 `flow.ts`; do not include `node_modules`. `jig check` prepares the frozen

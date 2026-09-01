@@ -218,7 +218,12 @@ function validateMetadata(root: JsonObject): FlowMetadata {
   for (const [key, value] of Object.entries(root)) {
     if (known.has(key)) continue;
     if (key.startsWith("x-") && isLocalName(key.slice(2))) extensions[key] = value;
-    else invalid("METADATA_FIELD", `unknown Metadata/1 field ${key}`, "FLOW.md");
+    else invalid(
+      "METADATA_FIELD",
+      `unknown Metadata/1 field ${key}`,
+      "FLOW.md",
+      `/${key.replaceAll("~", "~0").replaceAll("/", "~1")}`,
+    );
   }
   const name = requireLocalName(root.name, "name");
   const description = requireDescription(root.description, "description");

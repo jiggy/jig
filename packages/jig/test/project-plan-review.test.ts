@@ -73,8 +73,7 @@ describe("private project Plan review", () => {
     expect(rendered.text).not.toContain("recipeDigest");
     expect(rendered.text).not.toContain("observationDigest");
     expect(rendered.text).not.toContain("attachments");
-    expect(rendered.text).not.toContain(digest);
-    expect(rendered.text).not.toContain("digest");
+    expect(rendered.text).toContain(`"digest": "${digest}"`);
     expect(rendered.text).not.toContain('"operation"');
     expect(rendered.text).not.toContain("lockMode");
     expect(Object.isFrozen(rendered)).toBe(true);
@@ -157,6 +156,53 @@ describe("private project Plan review", () => {
       removed: ["flows/old"],
     });
     expect(value.changes.targets.changed).toEqual(["binding:review"]);
+  });
+
+  test("shows exact package identity changes and their affected target", () => {
+    const oldDigest = `sha256:${"a".repeat(64)}`;
+    const newDigest = `sha256:${"b".repeat(64)}`;
+    const plan = reviewPlan("admission", newDigest);
+    const target = (digest: string) => ({
+      request: {
+        target: { kind: "flow" as const, path: "flows/review" },
+        mode: "run" as const,
+        packagePath: "flows/review",
+        package: { digest },
+        entrypoint: { path: "flow.ts", suffix: "ts" },
+        settings: {},
+        attachments: {},
+      },
+      disposition: { state: "ready" as const },
+    });
+    const current = {
+      lock: {
+        packages: { "flows/review": { digest: oldDigest, directRun: true } },
+        bindings: {},
+      },
+      candidate: { targets: [target(oldDigest)] },
+    };
+    const proposed = {
+      ...plan,
+      proposed: {
+        ...plan.proposed,
+        lock: {
+          packages: { "flows/review": { digest: newDigest, directRun: true } },
+          bindings: {},
+        },
+        targets: [target(newDigest)],
+      },
+    };
+
+    const text = renderPrivateProjectPlanReview({
+      plan: proposed,
+      baseCandidate: current,
+    } as unknown as PrivateActivationReviewPlan).text;
+    const value = JSON.parse(text.slice(text.indexOf("{")));
+
+    expect(value.current.portablePolicy.packages["flows/review"].digest).toBe(oldDigest);
+    expect(value.proposed.portablePolicy.packages["flows/review"].digest).toBe(newDigest);
+    expect(value.changes.packages.changed).toEqual(["flows/review"]);
+    expect(value.changes.targets.changed).toEqual(["flow:flows/review"]);
   });
 
   test("fails before allocating a review larger than its public envelope", () => {

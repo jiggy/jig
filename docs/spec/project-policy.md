@@ -222,8 +222,18 @@ or run package code.
 If any target has no exact supported recipe, this alpha planning operation
 returns `UNAVAILABLE` and publishes no applicable Plan. A successful review
 shows the complete added, removed, and changed package, Binding, and target
-identities. Its text is bounded and escapes project-controlled Unicode so
-terminal control characters cannot alter the consent display.
+identities. Current and proposed package entries include their full Package/1
+content digest, which is the same portable identity written to `jig.lock`.
+The review is not a source-file diff; authors inspect editable source with
+their editor or version-control tools before approval. Its text is bounded and
+escapes project-controlled Unicode so terminal control characters cannot
+alter the consent display.
+
+The target change summary describes affected admitted execution targets. A
+target may therefore be marked changed because its selected package identity
+or exact host execution evidence changed even when its visible configuration
+fields did not. Package digests are shown once in the package section; private
+recipe and host-observation identities are never exposed by the review.
 
 A successful planning result is either `unchanged` or one applicable retained
 Plan. The Plan digest is an internal authorization token carried by the CLI;

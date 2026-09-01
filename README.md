@@ -105,10 +105,16 @@ Review and admit the project:
 jig check
 ```
 
-`jig check` displays the complete project change and asks for approval. Use
-`jig check --yes` only when approval is already explicit, such as in a
+`jig check` displays the complete project change, including the exact current
+and proposed Package/1 content digests, and asks for approval. It does not
+replace reviewing editable source with your editor or version-control tools.
+Use `jig check --yes` only when approval is already explicit, such as in a
 non-interactive acceptance test. The CLI carries its internal review token;
 users do not manage plan IDs or admission records.
+
+A target is marked changed when its package identity or exact execution
+evidence changes. Package digests are shown once in the package section;
+host-specific evidence remains private.
 
 Run the admitted Flow:
 
