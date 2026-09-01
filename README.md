@@ -108,9 +108,11 @@ jig check
 `jig check` displays the complete project change, including the exact current
 and proposed Package/1 content digests, and asks for approval. It does not
 replace reviewing editable source with your editor or version-control tools.
-Use `jig check --yes` only when approval is already explicit, such as in a
-non-interactive acceptance test. The CLI carries its internal review token;
-users do not manage plan IDs or admission records.
+When both standard input and output are terminals, Jig prompts for approval.
+Otherwise it prints the review and exits with `JIG_APPROVAL_REQUIRED`; inspect
+that output, then use `jig check --yes` only when approval is explicit. The CLI
+carries its internal review token; users do not manage plan IDs or admission
+records.
 
 A target is marked changed when its package identity or exact execution
 evidence changes. Package digests are shown once in the package section;

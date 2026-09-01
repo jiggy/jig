@@ -61,9 +61,11 @@ jig run flow:flows/example --input '{}'
 
 `jig check` shows the complete proposed project change, including exact
 current and proposed Package/1 content digests, and asks for approval. It is
-not a source-file diff; inspect editable source with your normal tools.
-`--yes` records an approval non-interactively. The CLI keeps review and
-admission mechanics internal.
+not a source-file diff; inspect editable source with your normal tools. When
+standard input and output are both terminals, Jig prompts for approval.
+Otherwise it prints the review and exits with `JIG_APPROVAL_REQUIRED`; `--yes`
+records an already explicit approval. The CLI keeps review and admission
+mechanics internal.
 
 A target is marked changed when its package identity or exact execution
 evidence changes. Package digests appear once in the package section;
