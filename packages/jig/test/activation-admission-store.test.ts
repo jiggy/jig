@@ -15,12 +15,14 @@ import { join } from "node:path";
 
 import {
   applyPrivateActivationReviewPlan,
+  capturePrivateActivationPlanningBase,
   closePrivateRootExecution,
   initializePrivateActivationState,
   listPrivateRootExecutionWork,
   loadPrivateRootRunForCoordinator,
   openPrivateProjectCoordinator,
   readPrivateBunPreparationOwner,
+  readPrivateAdmittedExecutionReuse,
   reacquirePrivateRootExecutionWork,
   recordPrivateRootExecutionCheckpoint,
   replacePrivateBunPreparationOwner,
@@ -200,6 +202,25 @@ describe.serial("direct alpha activation store", () => {
       expect(decodePrivateProjectLocalLock(
         new Uint8Array(await readFile(join(fixture.root, "jig.lock"))),
       ).packages["flows/run"]!.digest).toBe(fixture.flow.digest);
+    } finally {
+      await fixture.dispose();
+    }
+  });
+
+  test("reopens prepared execution bytes only from the captured active admission", async () => {
+    const fixture = await createFixture("ready");
+    try {
+      const request = fixture.candidate.candidate.targets[0]!.request;
+      const before = await capturePrivateActivationPlanningBase({ projectRoot: fixture.root });
+      expect(readPrivateAdmittedExecutionReuse({ planningBase: before, request })).toBeUndefined();
+
+      await admit(fixture);
+      const after = await capturePrivateActivationPlanningBase({ projectRoot: fixture.root });
+      expect(readPrivateAdmittedExecutionReuse({ planningBase: after, request })).toEqual({
+        recipeDigest: digest("direct-recipe"),
+        observationDigest: digest("direct-observation"),
+        executionPackage: fixture.flow,
+      });
     } finally {
       await fixture.dispose();
     }

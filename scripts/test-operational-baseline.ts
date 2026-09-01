@@ -61,8 +61,24 @@ try {
   const lock = JSON.parse(await readFile(join(project, "jig.lock"), "utf8")) as unknown;
   assert.deepEqual(Object.keys(requireRecord(lock)).sort(), ["bindings", "packages"]);
 
-  const unchanged = await run([jig, "check", project, "--yes"], consumer, [0], 120_000);
-  assert.deepEqual(unchanged, { stdout: "project is ready\n", stderr: "", exitCode: 0 });
+  const lockedPackage = requireRecord(
+    requireRecord(requireRecord(lock).packages)["flows/locked-dependency"],
+  );
+  assert.equal(typeof lockedPackage.digest, "string");
+  assert.match(lockedPackage.digest as string, /^sha256:[0-9a-f]{64}$/);
+  const preparationGuard = join(
+    project,
+    ".jig",
+    "private-preparation-linux-owners",
+    `prep-${(lockedPackage.digest as string).slice("sha256:".length, "sha256:".length + 48)}`,
+  );
+  await mkdir(preparationGuard, { mode: 0o700 });
+  try {
+    const unchanged = await run([jig, "check", project, "--yes"], consumer, [0], 120_000);
+    assert.deepEqual(unchanged, { stdout: "project is ready\n", stderr: "", exitCode: 0 });
+  } finally {
+    await rm(preparationGuard, { recursive: true, force: true });
+  }
 
   const invalidTarget = await run([jig, "run", "hello"], project, [1], 60_000);
   assert.equal(invalidTarget.stdout, "");

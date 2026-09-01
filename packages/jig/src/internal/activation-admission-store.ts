@@ -8,6 +8,10 @@ import { canonicalJson, decodeJson1, Json1Error, JSON_1_LIMITS, type JsonValue }
 import { inspectCapturedPackage, type InspectedPackage } from "../package/inspect.js";
 import { SchemaDiagnostic } from "../schema/index.js";
 import type { RunTargetIdentity } from "../project/package-project.js";
+import {
+  requirePrivateActivationRequest,
+  type PrivateActivationRequest,
+} from "../project/package-resolution.js";
 import { isDirectRunEligible } from "../project/flow-source.js";
 import { privateActivationTargetKey } from "./activation-planning.js";
 import { privateDomainDigest } from "./identity.js";
@@ -16,7 +20,11 @@ import {
   requirePrivateProjectRoot,
   type PrivateProjectRoot,
 } from "../project/root.js";
-import { captureStoredPackage, normalizePackageArtifactRef } from "./package-artifact-store.js";
+import {
+  captureStoredPackage,
+  normalizePackageArtifactRef,
+  type PackageArtifactRef,
+} from "./package-artifact-store.js";
 import {
   decodePrivateProjectLocalLock,
   encodePrivateProjectLocalLock,
@@ -299,6 +307,13 @@ interface PrivateActivationPlanningSnapshot {
     readonly revision: number | null;
     readonly digest: string | null;
   };
+  readonly admittedCandidate: PrivateActivationCandidateArtifactV5 | null;
+}
+
+export interface PrivateAdmittedExecutionReuse {
+  readonly recipeDigest: string;
+  readonly observationDigest: string;
+  readonly executionPackage: PackageArtifactRef;
 }
 
 export interface PrivateActivationReviewPlan {
@@ -408,6 +423,19 @@ export async function capturePrivateActivationPlanningBase(input: {
     const base = await immediate(owner, () => {
       const candidate = readCandidateHead(owner.database, owner.root);
       const admission = readAdmissionHead(owner.database, owner.root);
+      let admittedCandidate: PrivateActivationCandidateArtifactV5 | null = null;
+      if (admission.revision !== null) {
+        const receipt = loadAndCrossCheckAdmission(
+          owner.database,
+          requireAdmissionRow(owner.database, admission.revision),
+          owner.root,
+        );
+        admittedCandidate = loadCandidateRow(requireCandidateRow(
+          owner.database,
+          BigInt(receipt.admission.candidateRevision),
+        ));
+        requireCandidateRoot(admittedCandidate, owner.root);
+      }
       const snapshot = Object.freeze({
         projectRoot: Object.freeze({
           device: owner.root.information.dev.toString(),
@@ -425,6 +453,7 @@ export async function capturePrivateActivationPlanningBase(input: {
             ? null
             : requireAdmissionRow(owner.database, admission.revision).admission_digest,
         }),
+        admittedCandidate,
       });
       const token = Object.freeze({}) as PrivateActivationPlanningBase;
       authenticPlanningBases.set(token, snapshot);
@@ -438,6 +467,28 @@ export async function capturePrivateActivationPlanningBase(input: {
   } finally {
     await disposeOperation(owner, undefined, failure);
   }
+}
+
+/**
+ * Reopen the exact prepared execution reference admitted for one unchanged
+ * request. The opaque planning base keeps this lookup tied to the same heads
+ * that final Candidate publication will compare-and-set.
+ */
+export function readPrivateAdmittedExecutionReuse(input: {
+  readonly planningBase: PrivateActivationPlanningBase;
+  readonly request: PrivateActivationRequest;
+}): PrivateAdmittedExecutionReuse | undefined {
+  const base = requirePrivateActivationPlanningBase(input.planningBase);
+  const request = requirePrivateActivationRequest(input.request);
+  const target = base.admittedCandidate?.candidate.targets.find(
+    (candidate) => candidate.request.digest === request.digest,
+  );
+  if (target?.disposition.state !== "ready") return undefined;
+  return Object.freeze({
+    recipeDigest: target.disposition.recipeDigest,
+    observationDigest: target.disposition.observationDigest,
+    executionPackage: target.disposition.executionPackage,
+  });
 }
 
 /**

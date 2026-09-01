@@ -16,6 +16,7 @@ import {
   applyPrivateActivationReviewPlan,
   capturePrivateActivationPlanningBase,
   publishPrivateActivationReviewPlan,
+  readPrivateAdmittedExecutionReuse,
 } from "./activation-admission-store.js";
 import { createPrivateActivationCandidateV5 } from "./activation-admission.js";
 import {
@@ -182,18 +183,33 @@ function createSession(
                 if (dependencyInput.state === "direct") {
                   executionPackage = request.package;
                 } else {
-                  const prepared = await preparePrivateBunPackage({
-                    captured: source,
-                    installedSupport: host.installedBunSupport,
-                    backend: host.backend,
-                    projectRoot: owner.root.requestedPath,
-                    coordinator: owner.coordinator,
-                    signal: planningCancellation.signal,
-                  });
-                  try {
-                    executionPackage = await publishCapturedPackage(packageStoreRoot, prepared);
-                  } finally {
-                    await prepared.dispose();
+                  const admitted = readPrivateAdmittedExecutionReuse({ planningBase, request });
+                  if (admitted !== undefined) {
+                    const current = await planPrivateDirectRun({
+                      request,
+                      executionPackage: admitted.executionPackage,
+                      installedSupport: host.installedBunSupport,
+                      backend: host.backend,
+                    });
+                    if (current.digest === admitted.recipeDigest &&
+                        current.observation.digest === admitted.observationDigest) {
+                      executionPackage = admitted.executionPackage;
+                    }
+                  }
+                  if (executionPackage === undefined) {
+                    const prepared = await preparePrivateBunPackage({
+                      captured: source,
+                      installedSupport: host.installedBunSupport,
+                      backend: host.backend,
+                      projectRoot: owner.root.requestedPath,
+                      coordinator: owner.coordinator,
+                      signal: planningCancellation.signal,
+                    });
+                    try {
+                      executionPackage = await publishCapturedPackage(packageStoreRoot, prepared);
+                    } finally {
+                      await prepared.dispose();
+                    }
                   }
                 }
               } finally {
