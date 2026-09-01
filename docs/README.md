@@ -33,10 +33,10 @@ exactly `init --bare`, `check`, and `run`.
 
 ## Historical evidence
 
-[`experiments.md`](experiments.md) is a non-normative Git locator for deleted
-implementation experiments and the conditions under which their evidence may
-be reconsidered. Git history remains the archive; the old implementations are
-not current or compatible code.
+[`suspended-experiments.md`](suspended-experiments.md) is a non-normative Git
+locator for deleted implementation experiments and the exact conditions under
+which their evidence may be reconsidered. Git history remains the archive; the
+old implementations are not current or compatible code.
 
 The `https://flow.jig.md/...` values in prerelease machine files are provisional
 identifiers, not claims that those URLs currently resolve.
