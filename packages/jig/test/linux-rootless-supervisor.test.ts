@@ -275,7 +275,6 @@ async function invokeSupervisor(
     cwd: "/",
     detached: true,
     env: {
-      BUN_BE_BUN: "1",
       LD_LIBRARY_PATH: dirname(await realpath("/lib64/ld-linux-x86-64.so.2")),
     },
     stdio: ["ignore", "pipe", "pipe"],

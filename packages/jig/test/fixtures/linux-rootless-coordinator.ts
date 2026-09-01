@@ -35,7 +35,7 @@ const plan = {
     cancellationGraceMs: 250,
   },
   readOnlyMounts: [...configuration.mounts, { source: configuration.fixture, destination: "/package" }],
-  command: ["/jig-runtime/jig", "--no-env-file", "--no-install", "--config=/dev/null", "/package/flow.ts"],
+  command: ["/jig-runtime/bun", "--no-env-file", "--no-install", "--config=/dev/null", "/package/flow.ts"],
 };
 const allocation = await planPrivateLinuxOwnerStateAllocation({
   parent: configuration.ownerStateParent,

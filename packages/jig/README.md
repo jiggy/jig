@@ -20,8 +20,11 @@ The package is not yet published. Once the alpha clears its release gates:
 npm install --global @jigging/jig@0.1.0-alpha.1
 ```
 
-The packed artifact contains Bun 1.3.3 as its fixed executable and its
-Jig-owned support files. It has no runtime npm dependencies.
+Installing Jig also installs `@oven/bun-linux-x64-baseline@1.3.3` as an exact
+external runtime dependency. Bun is not embedded in or bundled with the
+`@jigging/jig` archive. npm verifies the installed package; Jig selects only
+that closed package-local path, authenticates its version, revision, and digest
+before evaluator or Flow bytes execute, and revalidates it before each launch.
 
 ## Supported host
 
@@ -29,12 +32,13 @@ The alpha requires:
 
 - Linux x86_64 with glibc 2.17 or newer and an SSE4.2-capable baseline CPU;
 - Bubblewrap 0.12 or newer at `/usr/bin/bwrap`;
+- GNU `readlink -f` at `/usr/bin/readlink` or `/bin/readlink`;
 - cgroup v2 with delegated `cpu`, `memory`, and `pids` controllers;
 - a systemd user manager with transient delegated scopes; and
 - unprivileged user, mount, PID, network, IPC, UTS, and cgroup namespaces.
 
-It does not use `sudo`, download a runtime, or expose host control to Flow
-code.
+Jig commands do not use `sudo`, download runtimes, or expose host control to
+Flow code. Runtime installation is handled once by npm with the Jig package.
 
 Flow Runs are fixed at 30 seconds, 256 MiB aggregate memory, 48 aggregate
 PIDs, and 50% of one CPU. Project evaluation is fixed at 3 seconds, 256 MiB,

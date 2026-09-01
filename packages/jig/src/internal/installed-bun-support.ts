@@ -1,6 +1,6 @@
 import { constants } from "node:fs";
 import { access, lstat, realpath } from "node:fs/promises";
-import { basename, dirname, join } from "node:path";
+import { dirname, join } from "node:path";
 
 import type { JsonValue } from "../json.js";
 import type { PrivateLinuxReadOnlyMount } from "./linux-rootless-backend.js";
@@ -13,18 +13,31 @@ const LIBRARIES = Object.freeze([
   "libdl.so.2",
   "libpthread.so.0",
 ] as const);
-const BUN_DESTINATION = "/jig-runtime/jig";
+const BUN_DESTINATION = "/jig-runtime/bun";
 const LIBRARY_DESTINATION = "/jig-runtime/lib";
 const EVALUATOR_DESTINATION = "/jig-evaluator";
 const PREPARATION_WORKER_DESTINATION = "/jig-preparation-worker.js";
+const BUN_PACKAGE = join("@oven", "bun-linux-x64-baseline", "bin", "bun");
+const BUN_VERSION = "1.3.3";
+const BUN_REVISION = "274e01c737e85f8142070a9745b43a2ba09fce4c";
+const BUN_DIGEST = "sha256:e666c943af70078a72bad00757a094776a54621fecd83eb4aa982760f9186839";
 const authenticSupports = new WeakSet<object>();
+
+export interface PrivateInstalledBunLocation {
+  readonly releaseRoot: string;
+  readonly executablePath: string;
+  readonly installedCliPath: string;
+}
 
 export interface PrivateInstalledBunSupport {
   readonly kind: "private-installed-bun-support/1";
   readonly digest: string;
+  readonly releaseRoot: string;
   readonly executablePath: string;
   readonly executableDigest: string;
   readonly sandboxExecutablePath: typeof BUN_DESTINATION;
+  readonly installedCliPath: string;
+  readonly installedCliDigest: string;
   readonly hostLibraryDirectory: string;
   readonly runtimeMounts: readonly PrivateLinuxReadOnlyMount[];
   readonly supervisorPath: string;
@@ -37,22 +50,38 @@ export interface PrivateInstalledBunSupport {
 }
 
 /**
- * Resolve the one fixed Linux-x64 release layout around a compiled Jig binary.
- *
- * The optional executable exists only so private tests can construct the same
- * layout around a copied Bun executable. Product code always uses process.execPath.
+ * Resolve the one fixed Linux-x64 release layout and exact npm-supplied Bun.
  */
 export async function openPrivateInstalledBunSupport(
-  executableInput: string = process.execPath,
+  location: PrivateInstalledBunLocation,
 ): Promise<PrivateInstalledBunSupport> {
   if (process.platform !== "linux" || process.arch !== "x64") {
     throw new Error("the installed Bun host requires Linux x64");
   }
-  const executablePath = await exactRegularFile(executableInput, true, "installed Jig executable");
-  if (basename(executablePath) !== "jig" || basename(dirname(executablePath)) !== "bin") {
-    throw new Error("the installed Jig executable is outside the fixed release layout");
+  const releaseRoot = await exactDirectory(location.releaseRoot, "installed Jig release");
+  if (releaseRoot !== location.releaseRoot) {
+    throw new Error("the installed Jig release path is not canonical");
   }
-  const releaseRoot = dirname(dirname(executablePath));
+  const executablePath = await exactRegularFile(
+    location.executablePath,
+    true,
+    "installed Bun executable",
+  );
+  if (executablePath !== location.executablePath) {
+    throw new Error("the installed Bun executable path is not canonical");
+  }
+  const selectedExecutable = await resolveInstalledBun(releaseRoot);
+  if (executablePath !== selectedExecutable) {
+    throw new Error("Jig was not started with its exact installed Bun dependency");
+  }
+  const installedCliPath = await exactRegularFile(
+    join(releaseRoot, "libexec", "installed-cli.js"),
+    false,
+    "installed Jig command",
+  );
+  if (installedCliPath !== location.installedCliPath) {
+    throw new Error("Jig was not started with its exact installed command");
+  }
   const supervisorPath = await exactRegularFile(
     join(releaseRoot, "libexec", "linux-rootless-supervisor.js"),
     false,
@@ -92,6 +121,7 @@ export async function openPrivateInstalledBunSupport(
   })));
   const [
     executableDigest,
+    installedCliDigest,
     supervisorDigest,
     loaderDigest,
     libraryDigests,
@@ -99,6 +129,7 @@ export async function openPrivateInstalledBunSupport(
     preparationWorkerDigest,
   ] = await Promise.all([
     privateFileDigest(executablePath),
+    privateFileDigest(installedCliPath),
     privateFileDigest(supervisorPath),
     privateFileDigest(loaderPath),
     Promise.all(libraries.map(async ({ name, path }) => Object.freeze({
@@ -111,6 +142,13 @@ export async function openPrivateInstalledBunSupport(
     }))),
     privateFileDigest(preparationWorkerPath),
   ]);
+  const bun = (globalThis as typeof globalThis & {
+    readonly Bun?: { readonly version?: unknown; readonly revision?: unknown };
+  }).Bun;
+  if (bun?.version !== BUN_VERSION || bun.revision !== BUN_REVISION ||
+      executableDigest !== BUN_DIGEST) {
+    throw new Error("the exact installed Bun runtime is unavailable");
+  }
   const evaluatorSupportDigest = privateDomainDigest(
     "JIG-Installed-Evaluator-Support/1",
     evaluatorDigests as unknown as JsonValue,
@@ -119,6 +157,7 @@ export async function openPrivateInstalledBunSupport(
     kind: "private-installed-bun-support/1" as const,
     platform: "linux-x64-glibc",
     executableDigest,
+    installedCliDigest,
     supervisorDigest,
     loader: Object.freeze({ destination: ELF_INTERPRETER, digest: loaderDigest }),
     libraries: libraryDigests,
@@ -136,9 +175,12 @@ export async function openPrivateInstalledBunSupport(
   const support = Object.freeze({
     kind: identity.kind,
     digest: privateDomainDigest("JIG-Installed-Bun-Support/1", identity as unknown as JsonValue),
+    releaseRoot,
     executablePath,
     executableDigest,
     sandboxExecutablePath: BUN_DESTINATION,
+    installedCliPath,
+    installedCliDigest,
     hostLibraryDirectory,
     runtimeMounts,
     supervisorPath,
@@ -164,13 +206,33 @@ export function requirePrivateInstalledBunSupport(value: unknown): PrivateInstal
 /** Re-read every trusted byte immediately before an evaluator or Flow launch. */
 export async function revalidatePrivateInstalledBunSupport(value: unknown): Promise<void> {
   const support = requirePrivateInstalledBunSupport(value);
-  const current = await openPrivateInstalledBunSupport(support.executablePath);
+  const current = await openPrivateInstalledBunSupport({
+    releaseRoot: support.releaseRoot,
+    executablePath: support.executablePath,
+    installedCliPath: support.installedCliPath,
+  });
   if (current.digest !== support.digest || current.executablePath !== support.executablePath ||
+      current.installedCliPath !== support.installedCliPath ||
       current.supervisorPath !== support.supervisorPath ||
       current.evaluatorSupportPath !== support.evaluatorSupportPath ||
       current.preparationWorkerPath !== support.preparationWorkerPath) {
     throw new Error("installed Bun support changed after selection");
   }
+}
+
+async function resolveInstalledBun(releaseRoot: string): Promise<string> {
+  const candidates = [
+    join(releaseRoot, "node_modules", BUN_PACKAGE),
+    join(releaseRoot, "..", "..", BUN_PACKAGE),
+  ];
+  for (const candidate of candidates) {
+    try {
+      return await exactRegularFile(candidate, true, "installed Bun executable");
+    } catch {
+      // npm may install the exact direct dependency nested or hoisted.
+    }
+  }
+  throw new Error("the exact installed Bun dependency is unavailable");
 }
 
 async function exactRegularFile(path: string, executable: boolean, label: string): Promise<string> {

@@ -21,14 +21,18 @@ The alpha supports one host shape:
 
 - Linux x86_64 with glibc 2.17 or newer and an SSE4.2-capable baseline CPU;
 - Bubblewrap 0.12 or newer at `/usr/bin/bwrap`;
+- GNU `readlink -f` at `/usr/bin/readlink` or `/bin/readlink`;
 - cgroup v2 with delegated `cpu`, `memory`, and `pids` controllers;
 - a systemd user manager able to create transient scopes with `Delegate=yes`;
 - unprivileged user, mount, PID, network, IPC, UTS, and cgroup namespaces.
 
-The planned `0.1.0-alpha.1` artifact embeds Bun 1.3.3 as the fixed application
-and Flow runtime. Jig acquires a transient delegated scope when `check` or
-`run` needs one. This requires no `sudo` and exposes no host-control channel to
-Flow code. An unsupported host fails closed.
+Installing the planned `0.1.0-alpha.1` package also installs the exact external
+runtime dependency `@oven/bun-linux-x64-baseline@1.3.3`. Bun is not embedded in
+or bundled with Jig. npm verifies the installed package; Jig selects only that
+closed package-local path, authenticates its version, revision, and digest
+before evaluator or Flow bytes execute, and revalidates it before each launch.
+`check` and `run` acquire a transient delegated scope without `sudo` or a
+host-control channel exposed to Flow code.
 
 Flow Runs are fixed at 30 seconds, 256 MiB aggregate memory, 48 aggregate
 PIDs, and 50% of one CPU. Project evaluation is fixed at 3 seconds, 256 MiB,
@@ -39,7 +43,7 @@ channel are documented in [SECURITY.md](SECURITY.md).
 ## Quickstart
 
 The package is not yet published. Once the alpha clears its release gates,
-install it with an npm-compatible client:
+install it with npm:
 
 ```console
 npm install --global @jigging/jig@0.1.0-alpha.1

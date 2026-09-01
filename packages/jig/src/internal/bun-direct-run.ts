@@ -55,7 +55,7 @@ export interface PrivateBunDirectRecipe {
   readonly backend: PrivateLinuxCgroupBackend;
   readonly mechanismDigest: string;
   readonly observation: PrivateActivationRecipeObservation;
-  readonly sandboxExecutablePath: "/jig-runtime/jig";
+  readonly sandboxExecutablePath: "/jig-runtime/bun";
   readonly packageDestination: "/package";
   readonly scratch: "/work";
   readonly wallClockCeilingMs: number;
@@ -181,7 +181,6 @@ function logicalLaunchDigest(
     resourceCeilings: RESOURCE_CEILINGS,
     wallClockCeilingMs: MAX_WALL_CLOCK_MS,
     environment: Object.freeze({
-      BUN_BE_BUN: "1",
       LD_LIBRARY_PATH: "/jig-runtime/lib",
     }),
     bunPolicy: BUN_POLICY,

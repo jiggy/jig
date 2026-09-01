@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { mkdtemp, mkdir, readFile, readdir, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { isAbsolute, join, resolve } from "node:path";
@@ -14,6 +15,7 @@ const expectedInstalledFiles = [
   "dist/index.js",
   "dist/json.d.ts",
   "dist/project/author.d.ts",
+  "libexec/installed-cli.js",
   "libexec/evaluator/project-authoring-1.schema.json",
   "libexec/evaluator/project-evaluator-sdk.bundle.js",
   "libexec/evaluator/project-evaluator-worker.js",
@@ -45,7 +47,9 @@ try {
   ) as Record<string, unknown>;
   assert.deepEqual(installedFiles, expectedInstalledFiles);
   assert.deepEqual(installedManifest.bin, { jig: "./bin/jig" });
-  assert.equal(installedManifest.dependencies, undefined);
+  assert.deepEqual(installedManifest.dependencies, {
+    "@oven/bun-linux-x64-baseline": "1.3.3",
+  });
   assert.equal(installedManifest.private, true);
   assert.equal(installedManifest.version, "0.1.0-alpha.1");
   assert.equal(installedManifest.license, "MPL-2.0");
@@ -53,13 +57,17 @@ try {
   assert.deepEqual(installedManifest.cpu, ["x64"]);
   assert.deepEqual(installedManifest.libc, ["glibc"]);
   const buildScript = requireStringRecord(installedManifest.scripts).build;
-  assert.match(buildScript, /--no-compile-autoload-dotenv/);
-  assert.match(buildScript, /--no-compile-autoload-bunfig/);
+  assert.doesNotMatch(buildScript, /--compile/);
+  assert.match(buildScript, /libexec\/installed-cli\.js/);
 
   const executable = join(installed, "bin", "jig");
   const command = join(consumer, "node_modules", ".bin", "jig");
   assert.notEqual((await stat(executable)).mode & 0o111, 0);
-  assert.equal((await readFile(executable)).subarray(0, 4).toString("hex"), "7f454c46");
+  const launcher = await readFile(executable, "utf8");
+  assert.match(launcher, /^#!\/bin\/sh\n/);
+  assert.match(launcher, /\/usr\/bin\/readlink/);
+  assert.match(launcher, /\/bin\/readlink/);
+  assert.doesNotMatch(launcher, /command -v|\bPATH\b/);
 
   // Project-controlled Bun configuration must not execute before Jig can
   // enter its containment boundary. Exercise the installed executable in Bun
@@ -79,32 +87,33 @@ try {
   assert.doesNotMatch(help.stdout, /setup|package check|planDigest/);
   await assert.rejects(stat(ambientMarker), { code: "ENOENT" });
 
-  const ambient = await run(
-    [
-      executable,
-      "--no-env-file", "--no-install", "--config=/dev/null",
-      "-e", 'process.stdout.write(process.env.JIG_AMBIENT_POISON ?? "clean")',
-    ],
-    consumer,
-    { BUN_BE_BUN: "1" },
-  );
-  assert.deepEqual(ambient, { stdout: "clean", stderr: "" });
-  await assert.rejects(stat(ambientMarker), { code: "ENOENT" });
-
   await Promise.all([
     rm(join(consumer, ".env")),
     rm(join(consumer, "bunfig.toml")),
     rm(join(consumer, "ambient-preload.mjs")),
   ]);
 
-  const bun = await run([command, "--version"], consumer, { BUN_BE_BUN: "1" });
+  const runtime = join(
+    consumer,
+    "node_modules",
+    "@oven",
+    "bun-linux-x64-baseline",
+    "bin",
+    "bun",
+  );
+  const runtimeBytes = await readFile(runtime);
+  assert.equal(
+    createHash("sha256").update(runtimeBytes).digest("hex"),
+    "e666c943af70078a72bad00757a094776a54621fecd83eb4aa982760f9186839",
+  );
+  const bun = await run([runtime, "--version"], consumer);
   assert.equal(bun.stdout, "1.3.3\n");
   assert.equal(bun.stderr, "");
-  const revision = await run([command, "--revision"], consumer, { BUN_BE_BUN: "1" });
+  const revision = await run([runtime, "--revision"], consumer);
   assert.equal(revision.stdout, "1.3.3+274e01c73\n");
   assert.match(
     await readFile(join(installed, "THIRD_PARTY_NOTICES"), "utf8"),
-    /Bun 1\.3\.3 revision\s+`274e01c73`/,
+    /EXTERNAL RUNTIME DEPENDENCY — NOT INCLUDED/,
   );
 
   const bareProject = join(consumer, "bare-project");

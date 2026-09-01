@@ -458,7 +458,7 @@ function plan(
       ...host.mounts,
       { source: fixture, destination: "/package" },
     ],
-    command: ["/jig-runtime/jig", ...["--no-env-file", "--no-install", "--config=/dev/null"], "/package/flow.ts"],
+    command: ["/jig-runtime/bun", ...["--no-env-file", "--no-install", "--config=/dev/null"], "/package/flow.ts"],
   };
 }
 
@@ -469,7 +469,7 @@ async function runtimeMounts(
 ): Promise<readonly PrivateLinuxReadOnlyMount[]> {
   const libraries = ["libc.so.6", "libm.so.6", "libdl.so.2", "libpthread.so.0"];
   return Object.freeze([
-    Object.freeze({ source: bun, destination: "/jig-runtime/jig" }),
+    Object.freeze({ source: bun, destination: "/jig-runtime/bun" }),
     Object.freeze({ source: loader, destination: "/lib64/ld-linux-x86-64.so.2" }),
     ...await Promise.all(libraries.map(async (name) => Object.freeze({
       source: await realpath(join(libraryDirectory, name)),

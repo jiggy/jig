@@ -1,3 +1,7 @@
+import { realpath } from "node:fs/promises";
+import { dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+
 import { main, type PrivateCliCommandHost } from "./cli.js";
 import { openPrivateInstalledBunHost } from "./internal/installed-bun-host.js";
 import {
@@ -11,7 +15,22 @@ interface InstalledCliOutcome {
   readonly signal: NodeJS.Signals | null;
 }
 
-/** The one installed alpha entrypoint. It is bundled into `bin/jig`. */
+const BUN_POLICY = Object.freeze([
+  "--no-env-file",
+  "--no-install",
+  "--config=/dev/null",
+] as const);
+const installedCliPath = await realpath(fileURLToPath(import.meta.url));
+const releaseRoot = dirname(dirname(installedCliPath));
+const executablePath = await realpath(process.execPath);
+if (process.argv[0] !== executablePath || process.argv[1] !== installedCliPath ||
+    await realpath("/proc/self/exe") !== executablePath ||
+    process.execArgv.length !== BUN_POLICY.length ||
+    process.execArgv.some((value, index) => value !== BUN_POLICY[index])) {
+  throw new Error("the installed Jig command has an invalid startup posture");
+}
+
+/** The one installed alpha entrypoint. It is bundled into `libexec`. */
 async function runPrivateInstalledCli(
   arguments_: readonly string[] = process.argv.slice(2),
   signal?: AbortSignal,
@@ -24,7 +43,11 @@ async function runPrivateInstalledCli(
     const delegation = await acquireOrReexecutePrivateRootlessLinux();
     if (delegation.kind === "private-rootless-linux-reexecuted/1") return delegation;
 
-    const installedHost = await openPrivateInstalledBunHost();
+    const installedHost = await openPrivateInstalledBunHost({
+      releaseRoot: await realpath(releaseRoot),
+      executablePath,
+      installedCliPath,
+    });
     const host: PrivateCliCommandHost = Object.freeze({
       acquire: (project: string) => openPrivateProjectSession({
         directory: project,

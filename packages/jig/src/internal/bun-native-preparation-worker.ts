@@ -91,7 +91,7 @@ async function requireSupportedLock(): Promise<void> {
       lockCopy,
     ], {
       cwd: "/work",
-      env: { BUN_BE_BUN: "1", LD_LIBRARY_PATH: "/jig-runtime/lib" },
+      env: { LD_LIBRARY_PATH: "/jig-runtime/lib" },
     }, 2 * 1024 * 1024, 64 * 1024);
     if (result.exit !== 0 || result.stderr !== "") throw new Error("lock parser failed");
     value = JSON.parse(result.stdout);
@@ -142,7 +142,6 @@ async function install(): Promise<void> {
   ], {
     cwd: PACKAGE_ROOT,
     env: {
-      BUN_BE_BUN: "1",
       LD_LIBRARY_PATH: "/jig-runtime/lib",
     },
   }, 64 * 1024, 64 * 1024);

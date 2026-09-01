@@ -1,6 +1,6 @@
 import { execFile, spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { constants } from "node:fs";
+import { constants, realpathSync } from "node:fs";
 import {
   access,
   mkdir,
@@ -45,6 +45,11 @@ const CONTROL_TIMEOUT_MS = 2_000;
 const CONTROL_OUTPUT_BYTES = 16 * 1024;
 const COLLECTION_TIMEOUT_MS = 2_000;
 const MAX_MOVE_ROUNDS = 32;
+const BUN_POLICY = Object.freeze([
+  "--no-env-file",
+  "--no-install",
+  "--config=/dev/null",
+] as const);
 
 interface PrivateFileInformation {
   readonly uid: number;
@@ -811,11 +816,13 @@ const systemDependencies: PrivateRootlessLinuxDelegationDependencies = Object.fr
 });
 
 function currentCommand(): [string, ...string[]] {
-  if (process.argv[0] === process.execPath) {
-    return [process.execPath, ...process.argv.slice(1)];
+  if (process.argv[0] === process.execPath &&
+      process.argv[1]?.endsWith("/libexec/installed-cli.js") &&
+      isAbsolute(process.argv[1]) && realpathSync(process.argv[1]) === process.argv[1] &&
+      realpathSync(process.execPath) === process.execPath &&
+      process.execArgv.length === BUN_POLICY.length &&
+      process.execArgv.every((value, index) => value === BUN_POLICY[index])) {
+    return [process.execPath, ...BUN_POLICY, ...process.argv.slice(1)];
   }
-  if (process.argv[0] === "bun" && process.argv[1]?.startsWith("/$bunfs/")) {
-    return [process.execPath, ...process.argv.slice(2)];
-  }
-  throw new Error("the current Bun invocation cannot be reexecuted exactly");
+  throw new Error("the installed Jig command cannot be reexecuted exactly");
 }

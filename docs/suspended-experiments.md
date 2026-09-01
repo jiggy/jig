@@ -43,11 +43,6 @@ read with `git show commit:path`.
   Nix may be reconsidered only as an explicitly selected project-environment
   integration. It must not become Jig runtime retention, dependency locking,
   package-manager lifecycle, or FLOW vocabulary.
-- **Durable native Bun preparation:** the former lifecycle runs from
-  `b2ebfe4` through `f99d799`, with its final tree at `6aa93e1`; `06eac5d`
-  deleted it. Its recovery and failure tests are evidence only. Do not rebuild
-  a package-manager subsystem unless a supported package rule cannot be met by
-  a substantially smaller, bounded preparation step.
 - **Compiled-Bun distribution:** review
   `6aa93e1:docs/design-review/199-compiled-bun-runtime-feasibility.md` proves
   the runtime mechanism; `cb5b343`, `f75fb56`, and `7aa66d8` record the later

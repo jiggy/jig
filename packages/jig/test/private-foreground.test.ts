@@ -6,10 +6,10 @@ import { tmpdir } from "node:os";
 
 import { openPrivateProjectSession } from "../src/internal/project-session-controller.js";
 import { openPrivateInstalledBunHost } from "../src/internal/installed-bun-host.js";
+import { installedBunLocation } from "./fixtures/installed-bun-location.js";
 
 const HOSTILE = process.env.JIG_LINUX_ROOTLESS_HOSTILE === "1";
 const proofDescribe = HOSTILE ? describe.serial : describe.skip;
-const installedExecutable = join(import.meta.dir, "..", "bin", "jig");
 const initialRootlessTemporaryState = new Set(
   (await readdir(tmpdir())).filter(rootlessTemporaryEntry),
 );
@@ -47,7 +47,7 @@ proofDescribe("private rootless project session", () => {
 
       session = await openPrivateProjectSession({
         directory: root,
-        host: await openPrivateInstalledBunHost(installedExecutable),
+        host: await openPrivateInstalledBunHost(installedBunLocation),
       });
       const failure = await session.plan({ lockMode: "update" })
         .then(() => undefined, (error) => error);
@@ -142,7 +142,7 @@ proofDescribe("private rootless project session", () => {
 
       const cancellationSession = await openPrivateProjectSession({
         directory: root,
-        host: await openPrivateInstalledBunHost(installedExecutable),
+        host: await openPrivateInstalledBunHost(installedBunLocation),
       });
       const cancellationRequest = {
         submissionId: "foreground-close-cancel",
@@ -161,7 +161,7 @@ proofDescribe("private rootless project session", () => {
 
       const cancellationRecovery = await openPrivateProjectSession({
         directory: root,
-        host: await openPrivateInstalledBunHost(installedExecutable),
+        host: await openPrivateInstalledBunHost(installedBunLocation),
       });
       expect(await cancellationRecovery.rootAdministration.startRun(cancellationRequest))
         .toEqual(cancelledReceipt);
@@ -196,7 +196,7 @@ proofDescribe("private rootless project session", () => {
 
       const crashRecovery = await openPrivateProjectSession({
         directory: root,
-        host: await openPrivateInstalledBunHost(installedExecutable),
+        host: await openPrivateInstalledBunHost(installedBunLocation),
       });
       expect(await crashRecovery.rootAdministration.startRun(crashRequest)).toEqual(crashedReceipt);
       expect(await crashRecovery.rootAdministration.runStatus(crashedReceipt)).toMatchObject({
@@ -213,7 +213,7 @@ proofDescribe("private rootless project session", () => {
       // Closing the recovered session releases exclusive project authority.
       const reopened = await openPrivateProjectSession({
         directory: root,
-        host: await openPrivateInstalledBunHost(installedExecutable),
+        host: await openPrivateInstalledBunHost(installedBunLocation),
       });
       await reopened.close();
       await waitForRootlessCgroups(initialRootlessCgroups);

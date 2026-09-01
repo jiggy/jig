@@ -99,6 +99,10 @@ archive_sha256=${hash_line%% *}
 printf '%s\n' "$hash_line" > "$archive.sha256"
 tar -tzf "$archive" > "$temporary/inventory"
 LC_ALL=C sort "$temporary/inventory" > "$archive.files"
+if grep -F '/node_modules/' "$temporary/inventory" >/dev/null; then
+  echo "the Jig archive unexpectedly contains installed dependencies" >&2
+  exit 1
+fi
 
 JIG_PACKAGE_ARCHIVE="$archive" bun "$package/test/package-smoke.ts"
 JIG_PACKAGE_ARCHIVE="$archive" bun "$temporary/source/scripts/test-operational-baseline.ts"
@@ -112,8 +116,23 @@ mkdir -p -- "$temporary/npm-consumer"
   --no-fund \
   "$archive"
 npm_jig="$temporary/npm-consumer/node_modules/.bin/jig"
+npm_bun="$temporary/npm-consumer/node_modules/@oven/bun-linux-x64-baseline/bin/bun"
 if [ ! -x "$npm_jig" ]; then
   echo "npm did not install the Jig executable" >&2
+  exit 1
+fi
+if [ ! -x "$npm_bun" ]; then
+  echo "npm did not install the exact Jig Bun dependency" >&2
+  exit 1
+fi
+runtime_version=$("$npm_bun" --version)
+runtime_revision=$("$npm_bun" --revision)
+runtime_hash_line=$(sha256sum "$npm_bun")
+runtime_sha256=${runtime_hash_line%% *}
+if [ "$runtime_version" != "1.3.3" ] ||
+   [ "$runtime_revision" != "1.3.3+274e01c73" ] ||
+   [ "$runtime_sha256" != "e666c943af70078a72bad00757a094776a54621fecd83eb4aa982760f9186839" ]; then
+  echo "npm installed the wrong Jig Bun dependency" >&2
   exit 1
 fi
 "$npm_jig" --help > "$temporary/npm-help"
@@ -142,6 +161,9 @@ commit=$(git -C "$repository" rev-parse HEAD)
   printf '  "gates": ["package-smoke", "operational-baseline-1", "npm-install-help"],\n'
   printf '  "npmExecutable": "%s",\n' "$JIG_NPM"
   printf '  "npmVersion": "%s",\n' "$npm_version"
+  printf '  "runtimePackage": "@oven/bun-linux-x64-baseline@1.3.3",\n'
+  printf '  "runtimeRevision": "%s",\n' "$runtime_revision"
+  printf '  "runtimeSha256": "%s",\n' "$runtime_sha256"
   printf '  "sha256": "%s"\n' "$archive_sha256"
   printf '}\n'
 } > "$staging/SUCCESS.json"

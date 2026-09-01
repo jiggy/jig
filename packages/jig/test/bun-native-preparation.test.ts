@@ -16,10 +16,10 @@ import {
 import { openPrivateInstalledBunHost } from "../src/internal/installed-bun-host.js";
 import { PrivateLinuxFenceUnconfirmedError } from "../src/internal/linux-rootless-backend.js";
 import { capturePackageDirectory } from "../src/package/capture.js";
+import { installedBunLocation } from "./fixtures/installed-bun-location.js";
 
 const HOSTILE = process.env.JIG_LINUX_ROOTLESS_HOSTILE === "1";
 const proofDescribe = HOSTILE ? describe.serial : describe.skip;
-const executable = join(import.meta.dir, "..", "bin", "jig");
 
 proofDescribe("private contained Bun dependency preparation", () => {
   test("prepares one frozen transitive graph without lifecycle scripts or residue", async () => {
@@ -32,7 +32,7 @@ proofDescribe("private contained Bun dependency preparation", () => {
         await initializePrivateActivationState({ projectRoot: root });
         const coordinator = await openPrivateProjectCoordinator({ projectRoot: root });
         try {
-        const host = await openPrivateInstalledBunHost(executable);
+        const host = await openPrivateInstalledBunHost(installedBunLocation);
         const first = await preparePrivateBunPackage({
           captured,
           installedSupport: host.installedBunSupport,
@@ -89,7 +89,7 @@ proofDescribe("private contained Bun dependency preparation", () => {
         await initializePrivateActivationState({ projectRoot: root });
         const coordinator = await openPrivateProjectCoordinator({ projectRoot: root });
         try {
-        const host = await openPrivateInstalledBunHost(executable);
+        const host = await openPrivateInstalledBunHost(installedBunLocation);
         await expect(preparePrivateBunPackage({
           captured,
           installedSupport: host.installedBunSupport,
@@ -125,10 +125,9 @@ proofDescribe("private contained Bun dependency preparation", () => {
         join(import.meta.dir, "fixtures", "bun-preparation-coordinator.ts"),
         projectRoot,
         packageRoot,
-        executable,
       ], {
         cwd: "/",
-        env: { ...process.env, BUN_BE_BUN: "1" },
+        env: process.env,
         stdio: ["ignore", "pipe", "pipe"],
       });
       const closed = childClose(helper);
@@ -143,7 +142,7 @@ proofDescribe("private contained Bun dependency preparation", () => {
       const exit = await closed;
       expect(exit.signal).toBe("SIGKILL");
 
-      const host = await openPrivateInstalledBunHost(executable);
+      const host = await openPrivateInstalledBunHost(installedBunLocation);
       const coordinator = await openPrivateProjectCoordinator({ projectRoot });
       try {
         await recoverEventually({

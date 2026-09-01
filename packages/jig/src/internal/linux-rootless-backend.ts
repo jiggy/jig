@@ -505,7 +505,6 @@ export class PrivateLinuxCgroupBackend {
         {
           cwd: "/",
           env: {
-            BUN_BE_BUN: "1",
             LD_LIBRARY_PATH: data.mechanism.trustedCoordinatorLibraryPath,
           },
           detached: true,

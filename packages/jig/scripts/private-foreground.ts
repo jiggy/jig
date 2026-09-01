@@ -10,7 +10,19 @@ import { join } from "node:path";
 import { openPrivateProjectSession } from "../src/internal/project-session-controller.js";
 import { openPrivateInstalledBunHost } from "../src/internal/installed-bun-host.js";
 
-const installedExecutable = join(import.meta.dir, "..", "bin", "jig");
+const releaseRoot = join(import.meta.dir, "..");
+const installedBunLocation = Object.freeze({
+  releaseRoot,
+  executablePath: join(
+    releaseRoot,
+    "node_modules",
+    "@oven",
+    "bun-linux-x64-baseline",
+    "bin",
+    "bun",
+  ),
+  installedCliPath: join(releaseRoot, "libexec", "installed-cli.js"),
+});
 
 // Proof-host dogfood only. This file is intentionally outside src/, exports no
 // API, and must not become a shortcut around a future reviewed control plane.
@@ -59,7 +71,7 @@ async function withProjectSession<Value>(
 ): Promise<Value> {
   const session = await openPrivateProjectSession({
     directory,
-    host: await openPrivateInstalledBunHost(installedExecutable),
+    host: await openPrivateInstalledBunHost(installedBunLocation),
   });
   let operationFailed = false;
   let operationFailure: unknown;

@@ -17,6 +17,13 @@ const SCOPE = `/sys/fs/cgroup/user.slice/${UNIT}`;
 const CHILD = `${SCOPE}/jig`;
 const TOKEN = "ab".repeat(32);
 const SOCKET = "jig-rootless-acquisition-0123456789abcdef0123456789abcdef";
+const COMMAND = [
+  "/opt/jig/node_modules/@oven/bun-linux-x64-baseline/bin/bun",
+  "--no-env-file",
+  "--no-install",
+  "--config=/dev/null",
+  "/opt/jig/libexec/installed-cli.js",
+] as const;
 
 describe("private rootless Linux delegation", () => {
   test("continues in-process when strict inherited acquisition succeeds", async () => {
@@ -43,7 +50,7 @@ describe("private rootless Linux delegation", () => {
     const dependencies = orchestrationDependencies({
       acquire: async () => { throw new PrivateRootlessLinuxAcquisitionError(); },
       environment: () => environment,
-      currentCommand: () => ["/opt/jig/bin/jig", "run", "answer"],
+      currentCommand: () => [...COMMAND, "run", "answer"],
       currentDirectory: () => "/project",
       nonce: () => "0123456789abcdef01234567",
       resolveManager: async () => "/bin/systemd-run",
@@ -65,7 +72,7 @@ describe("private rootless Linux delegation", () => {
     expect(request).toEqual({
       managerPath: "/bin/systemd-run",
       unit: UNIT,
-      command: ["/opt/jig/bin/jig", "run", "answer"],
+      command: [...COMMAND, "run", "answer"],
       directory: "/project",
       environment,
     });
@@ -189,7 +196,7 @@ function orchestrationDependencies(
   return {
     acquire: async () => { throw new Error("unavailable"); },
     environment: () => ({}),
-    currentCommand: () => ["/opt/jig/bin/jig"],
+    currentCommand: () => [...COMMAND],
     currentDirectory: () => "/project",
     nonce: () => "0123456789abcdef01234567",
     resolveManager: async () => "/usr/bin/systemd-run",

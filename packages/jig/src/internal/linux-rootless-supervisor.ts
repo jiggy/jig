@@ -16,7 +16,7 @@ import { posix } from "node:path";
 import type { Readable } from "node:stream";
 
 const POLICY = Object.freeze(["--no-env-file", "--no-install", "--config=/dev/null"] as const);
-const SANDBOX_BUN = "/jig-runtime/jig";
+const SANDBOX_BUN = "/jig-runtime/bun";
 const SANDBOX_LIBRARY_PATH = "/jig-runtime/lib";
 const MAX_CONTROL_BYTES = 64 * 1024;
 // The source checkout executes this file as TypeScript while packed builds
@@ -202,7 +202,6 @@ async function superviseConnected(control: Socket, startupDeadlineUnixMs: number
       {
         cwd: "/",
         env: {
-          BUN_BE_BUN: "1",
           LD_LIBRARY_PATH: configuration.bunHostLibraryPath,
         },
         stdio: ["inherit", "inherit", "inherit", "pipe"],
@@ -338,7 +337,6 @@ function bubblewrapArguments(configuration: Configuration): string[] {
     result.push("--setenv", name, value);
   }
   result.push(
-    "--setenv", "BUN_BE_BUN", "1",
     "--setenv", "LD_LIBRARY_PATH", SANDBOX_LIBRARY_PATH,
     "--uid", String(configuration.payloadUid),
     "--gid", String(configuration.payloadGid),
@@ -616,8 +614,8 @@ function absolute(path: string): boolean {
 function requireFixedBunPosture(label: string): void {
   const environmentKeys = Object.keys(process.env).sort();
   if (process.cwd() !== "/" ||
-      environmentKeys.join("\0") !== "BUN_BE_BUN\0LD_LIBRARY_PATH" ||
-      process.env.BUN_BE_BUN !== "1" || !absolute(process.env.LD_LIBRARY_PATH ?? "") ||
+      environmentKeys.join("\0") !== "LD_LIBRARY_PATH" ||
+      !absolute(process.env.LD_LIBRARY_PATH ?? "") ||
       process.execArgv.length !== POLICY.length ||
       process.execArgv.some((value, index) => value !== POLICY[index])) {
     throw new Error(`rootless ${label} has an invalid startup posture`);

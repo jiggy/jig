@@ -1,29 +1,20 @@
-THIRD-PARTY MATERIAL IN THE JIG EXECUTABLE
-==========================================
+THIRD-PARTY MATERIAL USED BY JIG
+================================
 
 This file records third-party material included by the current Jig build. It
 does not replace any third-party license or cure an unmet distribution term.
 
-Bun 1.3.3
----------
+EXTERNAL RUNTIME DEPENDENCY — NOT INCLUDED
+------------------------------------------
 
-`bin/jig` is produced by `bun build --compile` using Bun 1.3.3 revision
-`274e01c73` and contains a copy of that runtime. Bun's release license
-inventory is:
+`@jigging/jig` declares an exact dependency on
+`@oven/bun-linux-x64-baseline@1.3.3`. Package managers obtain that package
+separately; its bytes are not included or bundled in the Jig archive.
+
+Bun and the third-party components contained in Bun are governed by their
+respective terms:
 
 https://github.com/oven-sh/bun/blob/bun-v1.3.3/LICENSE.md
-
-That inventory says Bun itself is MIT-licensed, lists its embedded and linked
-third-party works, and states that JavaScriptCore and WebKit are statically
-linked under LGPL-2. It also states that static linking requires application
-object form sufficient for a recipient to modify the library and relink the
-application.
-
-PUBLICATION BLOCKER: the current Jig package does not contain a pinned complete
-license bundle for the Bun runtime and its linked works, or the relinkable
-materials required by the LGPL static-link condition described by Bun. The
-compiled executable must not be published until those requirements have an
-exact, reviewed, reproducible solution. This notice alone is not that solution.
 
 yaml 2.9.0
 ----------
