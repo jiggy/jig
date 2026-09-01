@@ -173,7 +173,8 @@ fails closed or is prepared again before another review.
 
 Licenses are mapped in [LICENSES.md](LICENSES.md). FLOW is founder-stewarded
 under the public process in [Governance.md](Governance.md), and contributions
-use the [DCO 1.1 process](CONTRIBUTING.md).
+use the [DCO 1.1 process](CONTRIBUTING.md). Maintainer prerelease steps are in
+[RELEASING.md](RELEASING.md).
 
 Jig is prerelease software. Services, Hooks, event sources, Agent providers,
 Semantic Choice, Jig Graph, and extension registries are not part of this
