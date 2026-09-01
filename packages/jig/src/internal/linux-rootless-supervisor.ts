@@ -130,6 +130,7 @@ async function superviseConnected(control: Socket, startupDeadlineUnixMs: number
 
   let cgroupCreated = false;
   let child: ChildProcess | undefined;
+  let childExit: ReturnType<typeof childClose> | undefined;
   let stopReason: StopReason | undefined;
   let admitted = false;
   let resolveAdmission!: () => void;
@@ -207,7 +208,7 @@ async function superviseConnected(control: Socket, startupDeadlineUnixMs: number
         stdio: ["inherit", "inherit", "inherit", "pipe"],
       },
     );
-    const exitPromise = childClose(launched);
+    childExit = childClose(launched);
     child = launched;
     const ready = await readReady(launched);
     safeSend(control, {
@@ -216,7 +217,7 @@ async function superviseConnected(control: Socket, startupDeadlineUnixMs: number
       payloadPid: ready,
       supervisorPid: process.pid,
     } satisfies ReadyMessage);
-    const exit = await exitPromise;
+    const exit = await childExit;
     exitCode = exit.code;
     exitSignal = exit.signal;
     stopReason ??= "payload_exit";
@@ -227,7 +228,16 @@ async function superviseConnected(control: Socket, startupDeadlineUnixMs: number
     clearTimeout(deadline);
     let cleanupError: string | undefined;
     try {
+      child?.kill("SIGKILL");
       await killRun();
+      // Spawn failure is already a setup failure; settlement still precedes cleanup.
+      if (childExit !== undefined) {
+        await withinTimeout(
+          childExit.catch(() => undefined),
+          limits.cleanupTimeoutMs,
+          "rootless entry child did not settle",
+        );
+      }
       if (cgroupCreated) {
         await waitUntilEmpty(runCgroup, limits.cleanupTimeoutMs);
         evidence = await readEvidence(runCgroup);
@@ -616,8 +626,22 @@ function requireFixedBunPosture(label: string): void {
 
 function childClose(child: ChildProcess): Promise<{ readonly code: number | null; readonly signal: string | null }> {
   return new Promise((resolve, reject) => {
-    child.once("error", reject);
-    child.once("close", (code, signal) => resolve({ code, signal }));
+    let failure: unknown;
+    child.on("error", (error) => { failure ??= error; });
+    child.once("close", (code, signal) => {
+      if (failure === undefined) resolve({ code, signal });
+      else reject(failure);
+    });
+  });
+}
+
+function withinTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(message)), timeoutMs);
+    promise.then(
+      (value) => { clearTimeout(timer); resolve(value); },
+      (error) => { clearTimeout(timer); reject(error); },
+    );
   });
 }
 

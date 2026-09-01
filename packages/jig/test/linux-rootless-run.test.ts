@@ -241,6 +241,44 @@ hostileDescribe("private rootless Linux hostile envelope", () => {
     }
   });
 
+  test("settles the entry child before publishing a pre-readiness deadline fence", async () => {
+    const host = await hostConfiguration();
+    const fixture = await createFixture("console.log('unreachable');");
+    const ownerStateParent = await mkdtemp(join(tmpdir(), "jig-rootless-deadline-owner-"));
+    const enteredMarker = join(ownerStateParent, "entry-entered");
+    const settledMarker = join(ownerStateParent, "entry-settled");
+    const delayedSupervisor = await delayedReadinessSupervisor(enteredMarker, settledMarker);
+    const backend = new PrivateLinuxCgroupBackend({
+      bunPath: host.bun,
+      bunHostLibraryPath: host.bunHostLibraryPath,
+      supervisorPath: delayedSupervisor.path,
+    });
+    const launchPlan = plan(host, fixture, "readiness-deadline", { deadlineMs: 8_000 });
+    const owner = await backend.seal(launchPlan, {
+      parent: ownerStateParent,
+      name: "deadline-owner",
+    });
+    let released = false;
+    try {
+      await expect(owner.admit()).rejects.toThrow();
+      expect(await readFile(enteredMarker, "utf8")).toBe("entered\n");
+      expect(await readFile(settledMarker, "utf8")).toBe("settled\n");
+
+      const receipt = await waitForFence(backend, owner.identity, 5_000);
+      expect(receipt).toMatchObject({ fenced: true, stopReason: "deadline" });
+      expect(await missing(owner.identity.runCgroup)).toBe(true);
+      await releasePrivateLinuxOwnerState(owner.identity, receipt);
+      released = true;
+      await waitForNoRunCgroups();
+    } finally {
+      if (released) {
+        await rm(fixture, { recursive: true, force: true });
+        await rm(delayedSupervisor.root, { recursive: true, force: true });
+        await rm(ownerStateParent, { recursive: true, force: true });
+      }
+    }
+  });
+
   test("cancels during prepared admission without starting package code", async () => {
     const host = await hostConfiguration();
     const marker = join(await mkdtemp(join(tmpdir(), "jig-rootless-marker-")), "ran");
@@ -446,6 +484,59 @@ async function createFixture(source: string): Promise<string> {
   return directory;
 }
 
+async function delayedReadinessSupervisor(enteredMarker: string, settledMarker: string): Promise<{
+  readonly path: string;
+  readonly root: string;
+}> {
+  const root = await mkdtemp(join(tmpdir(), "jig-rootless-delayed-supervisor-"));
+  const path = join(root, "linux-rootless-supervisor.ts");
+  const sourcePath = fileURLToPath(new URL("../src/internal/linux-rootless-supervisor.ts", import.meta.url));
+  let source = await readFile(sourcePath, "utf8");
+  source = replaceOnce(
+    source,
+    'import { closeSync, readFileSync, statSync, writeSync } from "node:fs";',
+    'import { closeSync, readFileSync, statSync, writeFileSync, writeSync } from "node:fs";',
+  );
+  source = replaceOnce(
+    source,
+    "  await requireActiveClaim(ownerStateDirectory!, ownerToken!, ownerStateAllocationDigest!);\n" +
+      "  writeSync(3, `${process.pid}\\n`);",
+    "  await requireActiveClaim(ownerStateDirectory!, ownerToken!, ownerStateAllocationDigest!);\n" +
+      `  writeFileSync(${JSON.stringify(enteredMarker)}, "entered\\n");\n` +
+      "  await Bun.sleep(20_000);\n" +
+      "  writeSync(3, `${process.pid}\\n`);",
+  );
+  source = replaceOnce(
+    source,
+    "    let failure: unknown;",
+    '    let failure: unknown = new Error("forced child-close failure");',
+  );
+  source = replaceOnce(
+    source,
+    '    child.once("close", (code, signal) => {\n' +
+      '      if (failure === undefined) resolve({ code, signal });\n' +
+      '      else reject(failure);\n' +
+      '    });',
+    '    child.once("close", (code, signal) => {\n' +
+      '      const timer = setTimeout(() => {\n' +
+      `        writeFileSync(${JSON.stringify(settledMarker)}, "settled\\n");\n` +
+      '        if (failure === undefined) resolve({ code, signal });\n' +
+      '        else reject(failure);\n' +
+      '      }, 1_000);\n' +
+    '    });',
+  );
+  await writeFile(path, source, { mode: 0o600 });
+  return Object.freeze({ path: await realpath(path), root });
+}
+
+function replaceOnce(source: string, pattern: string, replacement: string): string {
+  const offset = source.indexOf(pattern);
+  if (offset === -1 || source.indexOf(pattern, offset + pattern.length) !== -1) {
+    throw new Error("rootless delayed-supervisor fixture no longer matches its trusted source");
+  }
+  return `${source.slice(0, offset)}${replacement}${source.slice(offset + pattern.length)}`;
+}
+
 async function collect(stream: AsyncIterable<Uint8Array>): Promise<string> {
   let result = "";
   for await (const bytes of stream) result += Buffer.from(bytes).toString("utf8");
@@ -501,7 +592,10 @@ async function childExit(child: ReturnType<typeof spawn>): Promise<void> {
 }
 
 function rootlessTemporaryEntry(entry: string): boolean {
-  return entry.startsWith("jig-rootless-control-") || entry.startsWith("jig-rootless-owner-");
+  return entry.startsWith("jig-rootless-control-") ||
+    entry.startsWith("jig-rootless-owner-") ||
+    entry.startsWith("jig-rootless-deadline-owner-") ||
+    entry.startsWith("jig-rootless-delayed-supervisor-");
 }
 
 async function waitForFence(
