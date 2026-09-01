@@ -9,7 +9,7 @@
     "url": "git+https://github.com/jigmd/jig.git",
     "directory": "packages/flow-sdk"
   },
-  "homepage": "https://github.com/jigmd/jig/tree/main/packages/flow-sdk#readme",
+  "homepage": "https://flow.jig.md/docs/",
   "bugs": {
     "url": "https://github.com/jigmd/jig/issues"
   },

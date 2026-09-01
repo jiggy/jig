@@ -9,7 +9,7 @@
     "url": "git+https://github.com/jigmd/jig.git",
     "directory": "packages/jig"
   },
-  "homepage": "https://github.com/jigmd/jig#readme",
+  "homepage": "https://flow.jig.md/",
   "bugs": {
     "url": "https://github.com/jigmd/jig/issues"
   },

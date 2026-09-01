@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Jig is a local, secure host for admitted FLOW packages.">
+    <title>Jig and FLOW</title>
+    <link rel="stylesheet" href="/assets/site.css">
+  </head>
+  <body>
+    <header>
+      <a class="brand" href="/">Jig + FLOW</a>
+      <nav aria-label="Primary navigation">
+        <a href="/docs/">Docs</a>
+        <a href="https://github.com/jigmd/jig">GitHub</a>
+      </nav>
+    </header>
+    <main>
+      <section class="hero">
+        <div class="eyebrow">Direct-run alpha</div>
+        <h1>Run exact workflows. Keep authority explicit.</h1>
+        <p class="lead">
+          FLOW packages are ordinary editable files. Jig captures their exact
+          meaning, asks you to approve changes, and runs only admitted bytes in
+          a rootless Linux boundary.
+        </p>
+        <div class="actions">
+          <a class="button primary" href="https://github.com/jigmd/jig#quickstart">Quickstart</a>
+          <a class="button" href="/docs/">Read the specifications</a>
+        </div>
+      </section>
+      <section class="grid" aria-label="Jig alpha principles">
+        <article class="card">
+          <h2>Three commands</h2>
+          <pre><code>jig init --bare my-project
+jig check
+jig run flow:flows/hello</code></pre>
+        </article>
+        <article class="card">
+          <h2>One review boundary</h2>
+          <p>
+            Source proposes. An explicit review admits one immutable project
+            generation. Live files never silently become execution authority.
+          </p>
+        </article>
+        <article class="card">
+          <h2>One secure host</h2>
+          <p>
+            The first alpha supports one fail-closed Linux, cgroup-v2, systemd,
+            and Bubblewrap path. There is no privileged or weaker fallback.
+          </p>
+        </article>
+      </section>
+    </main>
+    <footer>
+      FLOW is openly implementable and founder-stewarded. Jig is prerelease
+      software.
+    </footer>
+  </body>
+</html>
