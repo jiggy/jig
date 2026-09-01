@@ -68,39 +68,38 @@ description: Return a greeting for the supplied name.
 # Hello
 ```
 
+Declare the exact FLOW SDK in `flows/hello/package.json`:
+
+```json
+{
+  "private": true,
+  "dependencies": {
+    "@jigging/flow": "0.1.0-alpha.1"
+  }
+}
+```
+
+With Bun 1.3.3 available as an authoring tool, generate its text lock without
+installing a project-local dependency tree:
+
+```console
+cd flows/hello
+bun install --lockfile-only
+cd ../..
+```
+
 Create `flows/hello/flow.ts`:
 
 ```ts
-import { createInterface } from "node:readline";
+import { serve } from "@jigging/flow";
 
-const lines = createInterface({ input: process.stdin, crlfDelay: Infinity });
-
-for await (const line of lines) {
-  const request = JSON.parse(line) as {
-    jsonrpc: string;
-    id: string;
-    method: string;
-    params: { input: { name?: unknown } };
-  };
-  if (request.jsonrpc !== "2.0" || request.method !== "flow/run") {
-    throw new Error("expected one FLOW Run/1 request");
-  }
-  const name = typeof request.params.input.name === "string"
-    ? request.params.input.name
+await serve(async (run) => {
+  const name = typeof run.input === "object" && run.input !== null &&
+      !Array.isArray(run.input) && typeof run.input.name === "string"
+    ? run.input.name
     : "world";
-  const response = JSON.stringify({
-    jsonrpc: "2.0",
-    id: request.id,
-    result: {
-      outcome: "done",
-      output: { message: `Hello, ${name}!` },
-    },
-  });
-  await new Promise<void>((resolve, reject) => {
-    process.stdout.write(`${response}\n`, (error) => error ? reject(error) : resolve());
-  });
-  break;
-}
+  return { outcome: "done", output: { message: `Hello, ${name}!` } };
+});
 ```
 
 Review and admit the project:
@@ -146,12 +145,12 @@ The alpha follows normal Bun package authoring. A `flow.ts` may import:
 - a production dependency declared in a package-local `package.json` and
   locked by a package-local text `bun.lock`.
 
-Do not add `node_modules` to the FLOW package. Generate the lock with Bun—for
-example, `bun install --lockfile-only`—and let `jig check` prepare the exact
-locked production tree. Preparation runs the release-owned Bun installer in
-the same rootless envelope as a Run, with lifecycle scripts disabled. The
-alpha accepts only integrity-pinned packages from the default npm registry;
-unsupported sources fail during `check`.
+Do not add `node_modules` to the FLOW package. Generate the lock with Bun
+1.3.3—for example, `bun install --lockfile-only`—and let `jig check` prepare
+the exact locked production tree. Preparation runs the release-owned Bun
+installer in the same rootless envelope as a Run, with lifecycle scripts
+disabled. The alpha accepts only integrity-pinned packages from the default
+npm registry; unsupported sources fail during `check`.
 
 Jig retains the prepared tree beside the reviewed source package and pins it
 in the admitted target. `jig run` then uses only those retained bytes, with no
