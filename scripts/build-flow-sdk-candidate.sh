@@ -199,7 +199,6 @@ commit=$(git -C "$repository" rev-parse HEAD)
   printf '  "nodeVersion": "%s",\n' "$node_version"
   printf '  "npmExecutable": "%s",\n' "$FLOW_NPM"
   printf '  "npmVersion": "%s",\n' "$npm_version"
-  printf '  "privateCandidate": true,\n'
   printf '  "sha256": "%s"\n' "$archive_sha256"
   printf '}\n'
 } > "$staging/SUCCESS.json"

@@ -1,5 +1,5 @@
 {
-  "name": "@flowmd/run-1-conformance",
+  "name": "@jigging/flow-run-1-conformance",
   "private": true,
   "type": "module",
   "devDependencies": {
