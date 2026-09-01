@@ -14,9 +14,10 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { createBareProject, type BareInitFileSystem } from "../src/bare-init.js";
 import { main, type PrivateCliCommandHost, type PrivateCliOptions } from "../src/cli.js";
-import type {
-  ProjectPlanResult,
-  ProjectSession,
+import {
+  ProjectAdministrationError,
+  type ProjectPlanResult,
+  type ProjectSession,
 } from "../src/administration/project.js";
 import type {
   RootAdministration,
@@ -391,8 +392,33 @@ describe("finite Jig project commands", () => {
     );
   });
 
+  test("renders invalid project diagnostics with terminal-safe relative locations", async () => {
+    const events: string[] = [];
+    const failure = new ProjectAdministrationError(
+      "INVALID_CANDIDATE",
+      "project candidate is invalid",
+      {
+        code: "PROJECT_BINDING_SETTINGS_INVALID",
+        path: "bindings/review-\u202e.ts",
+        pointer: "/settings/prefix\n",
+      },
+    );
+    const invocation = commandInvocation(fakeHost(fakeSession(events, { planFailure: failure }), events));
+
+    expect(await main(["check", "--yes"], invocation.options)).toBe(1);
+    expect(events).toEqual(["acquire:/project", "plan:update", "close"]);
+    expect(invocation.output).toBe("");
+    expect(invocation.error).toBe(
+      "INVALID_CANDIDATE: the project definition is invalid; " +
+      "PROJECT_BINDING_SETTINGS_INVALID at " +
+      '"bindings/review-\\u202e.ts" pointer "/settings/prefix\\u000a"\n',
+    );
+    expect(invocation.error).not.toContain("\u202e");
+  });
+
   interface FakeSessionOptions {
     readonly plan?: ProjectPlanResult;
+    readonly planFailure?: unknown;
     readonly terminal?: RootRunTerminal;
     readonly captureRequest?: (request: StartRootRunRequest) => void;
     readonly pendingObservations?: number;
@@ -430,6 +456,7 @@ describe("finite Jig project commands", () => {
       rootAdministration,
       async plan(request) {
         events.push(`plan:${request.lockMode}`);
+        if (options.planFailure !== undefined) throw options.planFailure;
         return options.plan ?? { state: "unchanged" };
       },
       async apply(request) {

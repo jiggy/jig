@@ -1,10 +1,13 @@
 import { types as utilTypes } from "node:util";
 
 import { validateJson1 } from "../json.js";
+import { isProtectedProjectPath, validateProjectPath } from "../project/paths.js";
 import type { RootAdministration } from "./root.js";
 
 const DIGEST = /^sha256:[0-9a-f]{64}$/;
+const DIAGNOSTIC_CODE = /^[A-Z][A-Z0-9_]{0,127}$/;
 const MAX_MESSAGE_SCALARS = 1_024;
+const MAX_POINTER_SCALARS = 1_024;
 
 export type ProjectAdministrationErrorCode =
   | "INVALID_REQUEST"
@@ -22,6 +25,13 @@ export type ProjectAdministrationErrorCode =
 export interface ProjectAdministrationErrorValue {
   readonly code: ProjectAdministrationErrorCode;
   readonly message: string;
+  readonly diagnostic?: ProjectInvalidCandidateDiagnostic;
+}
+
+export interface ProjectInvalidCandidateDiagnostic {
+  readonly code: string;
+  readonly path: string;
+  readonly pointer?: string;
 }
 
 export interface ProjectPlanRequest {
@@ -58,8 +68,13 @@ export interface ProjectSession {
 
 export class ProjectAdministrationError extends Error {
   readonly code: ProjectAdministrationErrorCode;
+  readonly diagnostic?: ProjectInvalidCandidateDiagnostic;
 
-  constructor(code: ProjectAdministrationErrorCode, message: string) {
+  constructor(
+    code: ProjectAdministrationErrorCode,
+    message: string,
+    diagnostic?: ProjectInvalidCandidateDiagnostic,
+  ) {
     requireErrorCode(code);
     const messageScalars = typeof message === "string" ? scalarLength(message) : 0;
     try {
@@ -73,10 +88,20 @@ export class ProjectAdministrationError extends Error {
     super(message);
     this.name = "ProjectAdministrationError";
     this.code = code;
+    if (diagnostic !== undefined) {
+      if (code !== "INVALID_CANDIDATE") {
+        throw new TypeError("project diagnostic requires INVALID_CANDIDATE");
+      }
+      this.diagnostic = normalizeInvalidCandidateDiagnostic(diagnostic);
+    }
   }
 
   toJSON(): ProjectAdministrationErrorValue {
-    return Object.freeze({ code: this.code, message: this.message });
+    return Object.freeze({
+      code: this.code,
+      message: this.message,
+      ...(this.diagnostic === undefined ? {} : { diagnostic: this.diagnostic }),
+    });
   }
 }
 
@@ -135,4 +160,62 @@ function invalidRequest(message: string): never {
 
 function scalarLength(value: string): number {
   return [...value].length;
+}
+
+function normalizeInvalidCandidateDiagnostic(
+  value: ProjectInvalidCandidateDiagnostic,
+): ProjectInvalidCandidateDiagnostic {
+  if (value === null || typeof value !== "object" || Array.isArray(value) ||
+      utilTypes.isProxy(value) ||
+      Object.getPrototypeOf(value) !== Object.prototype && Object.getPrototypeOf(value) !== null) {
+    throw new TypeError("project diagnostic is invalid");
+  }
+  const actual = Reflect.ownKeys(value);
+  const allowed = ["code", "path", "pointer"];
+  if (actual.some((key) => typeof key !== "string" || !allowed.includes(key)) ||
+      !actual.includes("code") || !actual.includes("path")) {
+    throw new TypeError("project diagnostic is invalid");
+  }
+  const fields: Record<string, unknown> = Object.create(null) as Record<string, unknown>;
+  for (const key of actual as string[]) {
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    if (descriptor === undefined || !("value" in descriptor) || !descriptor.enumerable) {
+      throw new TypeError("project diagnostic is invalid");
+    }
+    fields[key] = descriptor.value;
+  }
+
+  const code = fields.code;
+  if (typeof code !== "string" || !DIAGNOSTIC_CODE.test(code)) {
+    throw new TypeError("project diagnostic code is invalid");
+  }
+
+  const path = fields.path;
+  try { validateProjectPath(path, "project diagnostic path"); } catch {
+    throw new TypeError("project diagnostic path is invalid");
+  }
+  if (isProtectedProjectPath(path)) {
+    throw new TypeError("project diagnostic path is invalid");
+  }
+
+  let pointer: string | undefined;
+  if (actual.includes("pointer")) {
+    if (typeof fields.pointer !== "string") {
+      throw new TypeError("project diagnostic pointer is invalid");
+    }
+    try { validateJson1(fields.pointer); } catch {
+      throw new TypeError("project diagnostic pointer is invalid");
+    }
+    if (scalarLength(fields.pointer) > MAX_POINTER_SCALARS ||
+        fields.pointer !== "" && (!fields.pointer.startsWith("/") || /~(?:[^01]|$)/.test(fields.pointer))) {
+      throw new TypeError("project diagnostic pointer is invalid");
+    }
+    pointer = fields.pointer;
+  }
+
+  return Object.freeze({
+    code,
+    path,
+    ...(pointer === undefined ? {} : { pointer }),
+  });
 }

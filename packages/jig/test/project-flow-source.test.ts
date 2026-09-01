@@ -156,10 +156,31 @@ describe("private project Flow source capture", () => {
   linuxTest("rejects malformed selected packages instead of hiding them", async () => {
     await withProject(async (root) => {
       await packageFiles(root, "flows/bad", { "FLOW.md": "not frontmatter\n" });
-      await expectCode(
-        () => captureFlowSource(root, discover("flows")),
-        "METADATA_DELIMITER",
-      );
+      const failure = await captureFlowSource(root, discover("flows"))
+        .then(() => undefined, (error) => error);
+      expect(failure).toBeInstanceOf(CheckError);
+      expect(failure).toMatchObject({
+        code: "METADATA_DELIMITER",
+        path: "flows/bad/FLOW.md",
+      });
+    });
+  });
+
+  linuxTest("scopes malformed package schemas to one project-relative location", async () => {
+    await withProject(async (root) => {
+      await packageFiles(root, "flows/bad-schema", {
+        "FLOW.md": metadata("bad-schema"),
+        "flow.ts": "export {};\n",
+        "input.schema.json": "not JSON\n",
+      });
+      const failure = await captureFlowSource(root, discover("flows"))
+        .then(() => undefined, (error) => error);
+      expect(failure).toBeInstanceOf(CheckError);
+      expect(failure).toMatchObject({
+        code: "SCHEMA_INVALID_JSON",
+        path: "flows/bad-schema/input.schema.json",
+        pointer: "",
+      });
     });
   });
 

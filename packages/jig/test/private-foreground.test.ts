@@ -32,6 +32,41 @@ describe("private foreground command boundary", () => {
 });
 
 proofDescribe("private rootless project session", () => {
+  test("preserves one bounded malformed-source diagnostic through a real session", async () => {
+    const root = await mkdtemp(join(tmpdir(), "jig-private-diagnostic-"));
+    let session: Awaited<ReturnType<typeof openPrivateProjectSession>> | undefined;
+    try {
+      const malformed = join(root, "flows", "malformed");
+      await mkdir(malformed, { recursive: true });
+      await writeFile(join(root, "jig.ts"), [
+        'import { defineJig, discover } from "@jigging/jig";',
+        'export default defineJig({ flows: discover("flows") });',
+        "",
+      ].join("\n"));
+      await writeFile(join(malformed, "FLOW.md"), "not Metadata/1\n");
+
+      session = await openPrivateProjectSession({
+        directory: root,
+        host: await openPrivateInstalledBunHost(installedExecutable),
+      });
+      const failure = await session.plan({ lockMode: "update" })
+        .then(() => undefined, (error) => error);
+      expect(failure).toMatchObject({
+        code: "INVALID_CANDIDATE",
+        message: "project candidate is invalid",
+        diagnostic: {
+          code: "METADATA_DELIMITER",
+          path: "flows/malformed/FLOW.md",
+        },
+      });
+      expect(JSON.stringify(failure)).not.toContain(root);
+      expect(JSON.stringify(failure)).not.toContain("not Metadata/1");
+    } finally {
+      await session?.close().catch(() => undefined);
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   test("reviews, admits, executes, replays, cancels, and recovers one exact Bun Flow", async () => {
     const root = await mkdtemp(join(tmpdir(), "jig-private-foreground-"));
     try {

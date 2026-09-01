@@ -5,8 +5,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { ProjectAdministrationError } from "../src/administration/project.js";
+import { CheckError } from "../src/diagnostics.js";
 import {
   openPrivateProjectSession,
+  projectError,
   type PrivateProjectSessionHost,
 } from "../src/internal/project-session-controller.js";
 
@@ -102,6 +104,101 @@ describe("private finite project session", () => {
       message: "project directory is unavailable",
     });
     expect(JSON.stringify(failure)).not.toContain(root);
+  });
+
+  test("accepts only bounded project-relative invalid-candidate diagnostics", () => {
+    const diagnostic = Object.freeze({
+      code: "METADATA_DELIMITER",
+      path: "flows/bad/FLOW.md",
+      pointer: "",
+    });
+    const failure = new ProjectAdministrationError(
+      "INVALID_CANDIDATE",
+      "project candidate is invalid",
+      diagnostic,
+    );
+    expect(failure.diagnostic).toEqual(diagnostic);
+    expect(Object.isFrozen(failure.diagnostic)).toBeTrue();
+    expect(failure.toJSON()).toEqual({
+      code: "INVALID_CANDIDATE",
+      message: "project candidate is invalid",
+      diagnostic,
+    });
+
+    expect(() => new ProjectAdministrationError(
+      "INVALID_CANDIDATE",
+      "project candidate is invalid",
+      { ...diagnostic, path: ".jig/private" },
+    )).toThrow("project diagnostic path is invalid");
+    expect(() => new ProjectAdministrationError(
+      "UNAVAILABLE",
+      "project is unavailable",
+      diagnostic,
+    )).toThrow("project diagnostic requires INVALID_CANDIDATE");
+    expect(() => new ProjectAdministrationError(
+      "INVALID_CANDIDATE",
+      "project candidate is invalid",
+      { ...diagnostic, code: "not-stable" },
+    )).toThrow("project diagnostic code is invalid");
+    expect(() => new ProjectAdministrationError(
+      "INVALID_CANDIDATE",
+      "project candidate is invalid",
+      { ...diagnostic, pointer: "/bad~2pointer" },
+    )).toThrow("project diagnostic pointer is invalid");
+    const accessor = Object.create(null) as Record<string, unknown>;
+    Object.defineProperties(accessor, {
+      code: { enumerable: true, get: () => "METADATA_DELIMITER" },
+      path: { enumerable: true, value: "flows/bad/FLOW.md" },
+    });
+    expect(() => new ProjectAdministrationError(
+      "INVALID_CANDIDATE",
+      "project candidate is invalid",
+      accessor as never,
+    )).toThrow("project diagnostic is invalid");
+    expect(() => new ProjectAdministrationError(
+      "INVALID_CANDIDATE",
+      "project candidate is invalid",
+      new Proxy(diagnostic, {}) as never,
+    )).toThrow("project diagnostic is invalid");
+  });
+
+  test("admits only source diagnostic code families and closes private state codes", () => {
+    const privateFailure = new CheckError(
+      "invalid",
+      "ADMISSION_STATE_CORRUPT",
+      "private admission detail",
+      "flows/apparently-public",
+    );
+    expect(projectError(privateFailure, "plan").toJSON()).toEqual({
+      code: "INTERNAL",
+      message: "plan failed",
+    });
+
+    const protectedFailure = new CheckError(
+      "invalid",
+      "METADATA_DELIMITER",
+      "protected detail",
+      ".jig/activation.sqlite",
+    );
+    expect(projectError(protectedFailure, "plan").toJSON()).toEqual({
+      code: "INVALID_CANDIDATE",
+      message: "project candidate is invalid",
+    });
+
+    const sourceFailure = new CheckError(
+      "invalid",
+      "METADATA_DELIMITER",
+      "project-controlled text which must not cross the boundary",
+      "flows/bad/FLOW.md",
+    );
+    expect(projectError(sourceFailure, "plan").toJSON()).toEqual({
+      code: "INVALID_CANDIDATE",
+      message: "project candidate is invalid",
+      diagnostic: {
+        code: "METADATA_DELIMITER",
+        path: "flows/bad/FLOW.md",
+      },
+    });
   });
 });
 

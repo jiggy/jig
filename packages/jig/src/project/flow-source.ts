@@ -284,14 +284,37 @@ async function captureMember(
   provenance: FlowMemberProvenance,
 ): Promise<CapturedFlowMember> {
   await rejectGeneratedNodeModules(handle, provenance.projectPath);
-  const captured = await captureOpenedPackageDirectory(provenance.projectPath, handle);
+  let captured: CapturedPackage | undefined;
   try {
+    captured = await captureOpenedPackageDirectory(provenance.projectPath, handle);
     const inspected = await inspectCapturedPackage(captured);
     return Object.freeze({ provenance: Object.freeze(provenance), captured, inspected });
   } catch (error) {
-    await captured.dispose();
-    throw error;
+    await captured?.dispose();
+    throw scopePackageDiagnostic(error, provenance.projectPath);
   }
+}
+
+function scopePackageDiagnostic(error: unknown, projectPath: string): unknown {
+  if (error instanceof SchemaDiagnostic) {
+    return new CheckError(
+      "invalid",
+      error.code,
+      error.message,
+      `${projectPath}/${error.path}`,
+      error.schemaPointer,
+    );
+  }
+  if (!(error instanceof CheckError) || error.path === projectPath) {
+    return error;
+  }
+  return new CheckError(
+    error.kind,
+    error.code,
+    error.message,
+    error.path === undefined ? projectPath : `${projectPath}/${error.path}`,
+    error.pointer,
+  );
 }
 
 async function rejectGeneratedNodeModules(handle: FileHandle, projectPath: string): Promise<void> {

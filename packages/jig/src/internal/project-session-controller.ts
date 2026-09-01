@@ -418,7 +418,11 @@ function requireProtectedStore(information: BigIntStats, projectDevice: bigint):
   }
 }
 
-function projectError(error: unknown, operation: "acquire" | "plan" | "apply"): ProjectAdministrationError {
+/** Package-private closed projection from implementation failures. */
+export function projectError(
+  error: unknown,
+  operation: "acquire" | "plan" | "apply",
+): ProjectAdministrationError {
   if (error instanceof ProjectAdministrationError) return error;
   if (error instanceof CheckError) {
     if (error.code === "COORDINATOR_BUSY" || error.code === "ADMISSION_STATE_BUSY" ||
@@ -443,14 +447,60 @@ function projectError(error: unknown, operation: "acquire" | "plan" | "apply"): 
     )) {
       return new ProjectAdministrationError("PROJECT_UNSAFE", "project directory or protected state is unsafe");
     }
-    if (operation === "plan" && error.kind === "invalid") {
-      return new ProjectAdministrationError("INVALID_CANDIDATE", "project candidate is invalid");
+    if (operation === "plan" && error.kind === "invalid" &&
+        error.path !== undefined && isCandidateDiagnosticCode(error.code)) {
+      try {
+        return new ProjectAdministrationError(
+          "INVALID_CANDIDATE",
+          "project candidate is invalid",
+          {
+            code: error.code,
+            path: error.path,
+            ...(error.pointer === undefined ? {} : { pointer: error.pointer }),
+          },
+        );
+      } catch {
+        return new ProjectAdministrationError("INVALID_CANDIDATE", "project candidate is invalid");
+      }
     }
     if (error.kind === "unavailable") {
       return new ProjectAdministrationError("UNAVAILABLE", `${operation} is unavailable`);
     }
   }
   return new ProjectAdministrationError("INTERNAL", `${operation} failed`);
+}
+
+function isCandidateDiagnosticCode(code: string): boolean {
+  return code.startsWith("CAPABILITY_") ||
+    code.startsWith("METADATA_") ||
+    code.startsWith("SCHEMA_") ||
+    code.startsWith("PACKAGE_BUN_") ||
+    code.startsWith("PROJECT_BINDING_") ||
+    code.startsWith("PROJECT_DECLARATION_") ||
+    code.startsWith("PROJECT_EVALUATION_") ||
+    code.startsWith("PROJECT_EVALUATOR_") ||
+    code.startsWith("PROJECT_MEMBER_") ||
+    code.startsWith("PROJECT_SOURCE_") ||
+    [
+      "PACKAGE_ENTRYPOINT_AMBIGUOUS",
+      "PACKAGE_FILE_LIMIT",
+      "PACKAGE_FLOW_MISSING",
+      "PACKAGE_HARDLINK",
+      "PACKAGE_LIMIT",
+      "PACKAGE_PATH",
+      "PACKAGE_PATH_COLLISION",
+      "PACKAGE_PATH_LIMIT",
+      "PACKAGE_PATH_NFC",
+      "PACKAGE_PATH_UTF8",
+      "PACKAGE_REFERENCE_MISSING",
+      "PACKAGE_ROOT",
+      "PACKAGE_SELECTOR",
+      "PACKAGE_SPECIAL_FILE",
+      "PACKAGE_SYMLINK",
+      "PROJECT_FLOW_CAPABILITY_UNSUPPORTED",
+      "PROJECT_FLOW_COLLISION",
+      "PROJECT_FLOW_MODE_UNSUPPORTED",
+    ].includes(code);
 }
 
 function isRootIdentityLoss(error: unknown, owner: PrivateProjectSessionOwner): boolean {

@@ -329,7 +329,9 @@ function renderFailure(error: unknown, runtime: CliRuntime): 1 | 2 {
   }
   if (error instanceof ProjectAdministrationError) {
     const projected = projectError(error.code);
-    runtime.writeError(renderDiagnostic(error.code, projected.message));
+    runtime.writeError(error.code === "INVALID_CANDIDATE" && error.diagnostic !== undefined
+      ? renderInvalidCandidate(error)
+      : renderDiagnostic(error.code, projected.message));
     return projected.exitCode;
   }
   if (error instanceof RootAdministrationError) {
@@ -383,6 +385,31 @@ function rootError(code: RootAdministrationError["code"]): {
 
 function renderDiagnostic(code: string, message: string): string {
   return `${code}: ${message}\n`;
+}
+
+function renderInvalidCandidate(error: ProjectAdministrationError): string {
+  const diagnostic = error.diagnostic;
+  if (diagnostic === undefined) return renderDiagnostic(error.code, "the project definition is invalid");
+  const pointer = diagnostic.pointer === undefined
+    ? ""
+    : ` pointer ${asciiJsonString(diagnostic.pointer)}`;
+  return `${error.code}: the project definition is invalid; ${diagnostic.code} at ` +
+    `${asciiJsonString(diagnostic.path)}${pointer}\n`;
+}
+
+function asciiJsonString(value: string): string {
+  let output = '"';
+  for (const scalar of value) {
+    const code = scalar.codePointAt(0)!;
+    if (scalar === '"' || scalar === "\\") output += `\\${scalar}`;
+    else if (code >= 0x20 && code <= 0x7e) output += scalar;
+    else if (code <= 0xffff) output += `\\u${code.toString(16).padStart(4, "0")}`;
+    else {
+      const adjusted = code - 0x10000;
+      output += `\\u${(0xd800 + (adjusted >> 10)).toString(16)}\\u${(0xdc00 + (adjusted & 0x3ff)).toString(16)}`;
+    }
+  }
+  return `${output}"`;
 }
 
 if (import.meta.main) {
