@@ -29,7 +29,7 @@ try {
     JSON.stringify({
       private: true,
       type: "module",
-      dependencies: { "@flowmd/sdk": `file:${archive}` },
+      dependencies: { "@jigging/flow": `file:${archive}` },
     }),
   );
   await run([
@@ -45,7 +45,7 @@ try {
     "1",
   ], consumer);
 
-  const installed = join(consumer, "node_modules", "@flowmd", "sdk");
+  const installed = join(consumer, "node_modules", "@jigging", "flow");
   assert.deepEqual(
     (await readdir(installed)).sort(),
     ["LICENSE", "README.md", "dist", "package.json"],
@@ -81,7 +81,7 @@ try {
 
   await writeFile(
     join(consumer, "smoke.mjs"),
-    `import { EffectError, OperationError } from "@flowmd/sdk";
+    `import { EffectError, OperationError } from "@jigging/flow";
 const operation = new OperationError("UNAVAILABLE");
 const effect = new EffectError("not-found", null);
 if (operation.code !== "UNAVAILABLE" || effect.errorName !== "not-found") {
@@ -105,7 +105,7 @@ if (operation.code !== "UNAVAILABLE" || effect.errorName !== "not-found") {
 
   await writeFile(
     join(consumer, "root-flow.mjs"),
-    `import { serve } from "@flowmd/sdk";
+    `import { serve } from "@jigging/flow";
 await serve(async (run) => ({
   outcome: "done",
   output: { input: run.input, settings: run.settings },
@@ -143,7 +143,7 @@ await serve(async (run) => ({
 
   await writeFile(
     join(consumer, "smoke.ts"),
-    `import { OperationError, type JsonValue, type RunHandler, type RunResult } from "@flowmd/sdk";
+    `import { OperationError, type JsonValue, type RunHandler, type RunResult } from "@jigging/flow";
 const handler: RunHandler = async (run) => ({
   outcome: "done",
   output: await run.callEffect({

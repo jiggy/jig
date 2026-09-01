@@ -450,7 +450,7 @@ The closed message schema is
 correlation remain protocol state and cannot be proven by a context-free JSON
 Schema document. Framing and JSON/1 validation happen before schema validation.
 
-The TypeScript package `@flowmd/sdk` and Python distribution/import
+The TypeScript package `@jigging/flow` and Python distribution/import
 `flowmd-sdk`/`flowmd_sdk` expose the same semantic surface:
 
 ```text

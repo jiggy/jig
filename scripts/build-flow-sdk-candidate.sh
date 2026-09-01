@@ -1,6 +1,6 @@
 #!/bin/sh
 
-# Build one @flowmd/sdk archive from an archived checkout of the current
+# Build one @jigging/flow archive from an archived checkout of the current
 # commit, then test those exact bytes without rebuilding them.
 
 set -eu
@@ -143,7 +143,7 @@ PATH="$release_path:${PATH:-/usr/bin:/bin}" \
 
 set -- "$temporary"/artifacts/*.tgz
 if [ "$#" -ne 1 ] || [ ! -f "$1" ]; then
-  echo "the clean build did not produce exactly one @flowmd/sdk archive" >&2
+  echo "the clean build did not produce exactly one @jigging/flow archive" >&2
   exit 1
 fi
 
@@ -177,7 +177,7 @@ PATH="$release_path:${PATH:-/usr/bin:/bin}" \
 (
   cd "$temporary/npm-consumer"
   "$FLOW_NODE" --input-type=module -e \
-    'const sdk = await import("@flowmd/sdk"); if (typeof sdk.serve !== "function" || typeof sdk.OperationError !== "function" || typeof sdk.EffectError !== "function") process.exit(70)'
+    'const sdk = await import("@jigging/flow"); if (typeof sdk.serve !== "function" || typeof sdk.OperationError !== "function" || typeof sdk.EffectError !== "function") process.exit(70)'
 )
 
 verified_hash_line=$(cd "$staging" && sha256sum "$filename")

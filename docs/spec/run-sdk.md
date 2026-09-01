@@ -2,7 +2,7 @@
 
 **Status:** closed candidate projection of
 [`FLOW Run/1`](run-protocol.md). The TypeScript implementation is staged as
-private `@flowmd/sdk@0.1.0-alpha.1`; the Python implementation remains an
+private `@jigging/flow@0.1.0-alpha.1`; the Python implementation remains an
 unpublished `0.0.0` candidate. The complete shared corpus has passed under the
 Bun peer and an independently implemented Python host peer; publication and a
 general third-party conformance label remain separate release decisions.
@@ -13,7 +13,7 @@ Run/1 owns the protocol and this projection must be corrected.
 
 ## 1. Surface and ownership
 
-The TypeScript package root is `@flowmd/sdk`. The Python distribution is
+The TypeScript package root is `@jigging/flow`. The Python distribution is
 `flowmd-sdk`, imported as `flowmd_sdk`. These root modules expose Run SDK/1
 only.
 
@@ -238,7 +238,7 @@ uncooperative process.
 TypeScript:
 
 ```ts
-import { serve } from "@flowmd/sdk";
+import { serve } from "@jigging/flow";
 
 await serve(async (run) => ({ outcome: "done", output: run.input }));
 ```
@@ -265,7 +265,7 @@ answers component-originated `flow/call` and `effect/call` operations with
 A host which supplies a child-Flow slot may execute the following TypeScript:
 
 ```ts
-import { serve } from "@flowmd/sdk";
+import { serve } from "@jigging/flow";
 
 await serve(async (run) => {
   const child = await run.callFlow({

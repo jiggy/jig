@@ -100,7 +100,7 @@ export function stdioTransport(): Transport {
     };
   }
 
-  throw new Error("@flowmd/sdk could not find protocol stdin and stdout");
+  throw new Error("@jigging/flow could not find protocol stdin and stdout");
 }
 
 export async function* readFrames(

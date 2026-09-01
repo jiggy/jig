@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "@flowmd/sdk",
+      "name": "@jigging/flow",
       "devDependencies": {
         "typescript": "7.0.2",
       },

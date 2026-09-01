@@ -1,4 +1,4 @@
-# @flowmd/sdk
+# @jigging/flow
 
 Minimal, dependency-free TypeScript projection of FLOW Run/1.
 
@@ -15,7 +15,7 @@ Once the package is published, add the exact alpha to a FLOW package with
 Bun's ordinary dependency workflow:
 
 ```console
-bun add --exact @flowmd/sdk@0.1.0-alpha.1
+bun add --exact @jigging/flow@0.1.0-alpha.1
 ```
 
 Keep the resulting `package.json` and text `bun.lock` beside `flow.ts`. Jig's
@@ -25,7 +25,7 @@ admitted Run then reuses the prepared package without installing or fetching.
 Finite work uses `serve()`:
 
 ```ts
-import { serve, type RunContext, type RunResult } from "@flowmd/sdk";
+import { serve, type RunContext, type RunResult } from "@jigging/flow";
 
 await serve(async (run: RunContext): Promise<RunResult> => {
   return { outcome: "done", output: { received: run.input } };

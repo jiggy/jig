@@ -8,7 +8,7 @@ set -eu
 case ${FLOW_NODE:-} in
   /*) ;;
   *)
-    echo "The @flowmd/sdk compatibility gate requires an absolute Node executable; set FLOW_NODE." >&2
+    echo "The @jigging/flow compatibility gate requires an absolute Node executable; set FLOW_NODE." >&2
     exit 1
     ;;
 esac

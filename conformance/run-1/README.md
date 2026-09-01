@@ -20,7 +20,7 @@ The current corpus has five layers:
   operation-identity, and hostile-response cases.
 
 `sley-integration.test.ts` separately runs one external component implemented
-with published `@jigging/sley` and the private local `@flowmd/sdk` candidate.
+with published `@jigging/sley` and the private local `@jigging/flow` candidate.
 It proves that a graph can sit behind the ordinary Run/1 boundary and exercises
 the component-local unwrapping needed to preserve an existing Run/1
 operational classification through Sley's structured failure wrapper. This is
