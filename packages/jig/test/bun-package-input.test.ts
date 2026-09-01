@@ -58,6 +58,15 @@ describe("private Bun package input", () => {
       code: "PACKAGE_BUN_NODE_MODULES",
       path: "node_modules",
     },
+    {
+      files: {
+        "package.json": '{"dependencies":{"@example/value":"1.0.0"}}\n',
+        "bun.lock": '{"lockfileVersion":1,"workspaces":{"":{"dependencies":{"@example/value":"1.0.0"}}},"packages":{}}\n',
+        ".npmrc": "@example:registry=https://packages.example.invalid/\n",
+      },
+      code: "PACKAGE_BUN_CONFIG_UNSUPPORTED",
+      path: ".npmrc",
+    },
   ])("rejects incomplete or generated dependency input: $code", async ({ files, code, path }) => {
     await withPackage({
       "FLOW.md": metadata(),

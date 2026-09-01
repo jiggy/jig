@@ -58,6 +58,14 @@ export async function inspectPrivateBunPackageInput(
       LOCK,
     );
   }
+  if (paths.has(".npmrc")) {
+    throw diagnostic(
+      "invalid",
+      "PACKAGE_BUN_CONFIG_UNSUPPORTED",
+      "the direct alpha does not allow package-local .npmrc to influence dependency preparation",
+      ".npmrc",
+    );
+  }
   return Object.freeze({
     state: "locked" as const,
     manifestPath: MANIFEST,

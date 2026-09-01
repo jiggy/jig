@@ -76,7 +76,7 @@ proofDescribe("private contained Bun dependency preparation", () => {
     }
   }, 120_000);
 
-  test("rejects non-registry lock sources before granting network", async () => {
+  test("rejects non-registry lock sources before installer fetch", async () => {
     const root = await fixture();
     try {
       await writeFile(join(root, "bun.lock"), `${JSON.stringify({

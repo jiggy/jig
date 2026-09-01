@@ -24,6 +24,12 @@ import {
 } from "./activation-admission-store.js";
 import { privateDomainDigest } from "./identity.js";
 import {
+  PRIVATE_BUN_PREPARATION_LIMITS,
+  PRIVATE_BUN_PREPARED_MESSAGE_BYTES,
+  PRIVATE_BUN_SOURCE_MESSAGE_BYTES,
+  privateBunMessageFits,
+} from "./bun-native-preparation-protocol.js";
+import {
   requirePrivateInstalledBunSupport,
   revalidatePrivateInstalledBunSupport,
   type PrivateInstalledBunSupport,
@@ -43,12 +49,6 @@ import {
   type PrivateLinuxSealedOwnerIdentity,
 } from "./linux-rootless-backend.js";
 
-const MAX_SOURCE_FILES = 4_096;
-const MAX_SOURCE_BYTES = 16 * 1024 * 1024;
-const MAX_PREPARED_FILES = 16_384;
-const MAX_PREPARED_BYTES = 64 * 1024 * 1024;
-const MAX_SOURCE_LINE_BYTES = 32 * 1024 * 1024;
-const MAX_WORKER_LINE_BYTES = 128 * 1024 * 1024;
 const PREPARATION_WALL_MS = 60_000;
 const BUN_POLICY = Object.freeze(["--no-env-file", "--no-install", "--config=/dev/null"] as const);
 const WORKER_FAILURE_CODES = new Set([
@@ -75,6 +75,7 @@ export async function preparePrivateBunPackage(input: {
   readonly backend: PrivateLinuxCgroupBackend;
   readonly projectRoot: string;
   readonly coordinator: PrivateProjectCoordinator;
+  readonly deadlineUnixMs?: number;
   readonly signal?: AbortSignal;
 }): Promise<CapturedPackage> {
   const classification = await inspectPrivateBunPackageInput(input.captured);
@@ -86,7 +87,7 @@ export async function preparePrivateBunPackage(input: {
   const backend = requirePrivateLinuxCgroupBackend(input.backend);
   const source = await sourceMessage(input.captured);
   const sourceBytes = new TextEncoder().encode(`${JSON.stringify(source)}\n`);
-  if (sourceBytes.byteLength > MAX_SOURCE_LINE_BYTES) {
+  if (!privateBunMessageFits(sourceBytes.byteLength - 1, PRIVATE_BUN_SOURCE_MESSAGE_BYTES)) {
     throw new CheckError("invalid", "PACKAGE_BUN_INPUT_LIMIT", "locked Bun package is too large to prepare");
   }
   await recoverPrivateBunPreparationOwner(input);
@@ -98,7 +99,10 @@ export async function preparePrivateBunPackage(input: {
       pids: 64,
       cpuQuotaMicros: 100_000,
       cpuPeriodMicros: 100_000,
-      deadlineUnixMs: now + PREPARATION_WALL_MS,
+      deadlineUnixMs: Math.min(
+        now + PREPARATION_WALL_MS,
+        input.deadlineUnixMs ?? Number.MAX_SAFE_INTEGER,
+      ),
       cancellationGraceMs: 1_000,
       cleanupTimeoutMs: 5_000,
     },
@@ -186,7 +190,7 @@ async function interact(
   try {
     await component.write(sourceBytes);
     await component.closeInput();
-    for await (const value of jsonLines(component.stdout, MAX_WORKER_LINE_BYTES)) {
+    for await (const value of jsonLines(component.stdout, PRIVATE_BUN_PREPARED_MESSAGE_BYTES)) {
       const message = ordinaryRecord(value, "preparation message");
       if (message.type === "prepared") {
         if (terminal !== undefined || !Array.isArray(message.files)) throw protocolFailure();
@@ -337,26 +341,29 @@ function hasCode(error: unknown, code: string): boolean {
 }
 
 async function sourceMessage(captured: CapturedPackage): Promise<Readonly<Record<string, unknown>>> {
-  if (captured.files.length > MAX_SOURCE_FILES) {
+  if (captured.files.length > PRIVATE_BUN_PREPARATION_LIMITS.sourceFiles) {
     throw new CheckError("invalid", "PACKAGE_BUN_INPUT_LIMIT", "locked Bun package has too many files");
   }
   const files: { readonly path: string; readonly content: string }[] = [];
   let total = 0;
   for (const file of captured.files) {
     total += file.size;
-    if (total > MAX_SOURCE_BYTES) {
+    if (total > PRIVATE_BUN_PREPARATION_LIMITS.sourceBytes) {
       throw new CheckError("invalid", "PACKAGE_BUN_INPUT_LIMIT", "locked Bun package is too large to prepare");
     }
     files.push(Object.freeze({
       path: file.path,
-      content: Buffer.from(await captured.read(file.path, MAX_SOURCE_BYTES)).toString("base64"),
+      content: Buffer.from(await captured.read(
+        file.path,
+        PRIVATE_BUN_PREPARATION_LIMITS.sourceBytes,
+      )).toString("base64"),
     }));
   }
   return Object.freeze({ type: "source", files: Object.freeze(files) });
 }
 
 async function capturedFromPrepared(value: readonly unknown[]): Promise<CapturedPackage> {
-  if (value.length > MAX_PREPARED_FILES) throw protocolFailure();
+  if (value.length > PRIVATE_BUN_PREPARATION_LIMITS.preparedFiles) throw protocolFailure();
   const contents = new Map<string, Uint8Array>();
   const files: CapturedFile[] = [];
   let total = 0;
@@ -372,7 +379,7 @@ async function capturedFromPrepared(value: readonly unknown[]): Promise<Captured
     prior = record.path;
     const bytes = decodeBase64(record.content, record.path);
     total += bytes.byteLength;
-    if (total > MAX_PREPARED_BYTES) throw protocolFailure();
+    if (total > PRIVATE_BUN_PREPARATION_LIMITS.preparedBytes) throw protocolFailure();
     contents.set(record.path, bytes);
     files.push(Object.freeze({ path: record.path, size: bytes.byteLength }));
   }

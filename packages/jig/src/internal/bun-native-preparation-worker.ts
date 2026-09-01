@@ -10,14 +10,16 @@ import {
 } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
+import { requirePrivateBunLockPolicy } from "./bun-native-lock-policy.js";
+import {
+  PRIVATE_BUN_PREPARATION_LIMITS,
+  PRIVATE_BUN_PREPARED_MESSAGE_BYTES,
+  PRIVATE_BUN_SOURCE_MESSAGE_BYTES,
+  privateBunMessageFits,
+} from "./bun-native-preparation-protocol.js";
+
 const PACKAGE_ROOT = "/work/package";
 const CACHE_ROOT = "/work/cache";
-const MAX_SOURCE_FILES = 4_096;
-const MAX_SOURCE_BYTES = 16 * 1024 * 1024;
-const MAX_PREPARED_FILES = 16_384;
-const MAX_PREPARED_BYTES = 64 * 1024 * 1024;
-const MAX_INPUT_LINE_BYTES = 32 * 1024 * 1024;
-const MAX_OUTPUT_LINE_BYTES = 128 * 1024 * 1024;
 const PATH = /^(?!\/)(?!.*(?:^|\/)\.\.?(?:\/|$))(?!.*\/\/)[^\0]+$/;
 
 interface SourceFile {
@@ -34,7 +36,10 @@ class WorkerFailure extends Error {
 let outputQueue = Promise.resolve();
 
 try {
-  const iterator = jsonLines(process.stdin, MAX_INPUT_LINE_BYTES)[Symbol.asyncIterator]();
+  const iterator = jsonLines(
+    process.stdin,
+    PRIVATE_BUN_SOURCE_MESSAGE_BYTES,
+  )[Symbol.asyncIterator]();
   const first = await iterator.next();
   if (first.done) throw new WorkerFailure("PACKAGE_BUN_PROTOCOL", "preparation source is missing");
   const source = requireSource(first.value);
@@ -98,24 +103,7 @@ async function requireSupportedLock(): Promise<void> {
   } catch {
     throw new WorkerFailure("PACKAGE_BUN_LOCK_INVALID", "bun.lock is not valid for the pinned Bun runtime");
   }
-  const lock = ordinaryRecord(value);
-  const workspaces = ordinaryRecord(lock?.workspaces);
-  const packages = ordinaryRecord(lock?.packages);
-  if (lock?.lockfileVersion !== 1 || workspaces === undefined || packages === undefined ||
-      Object.keys(workspaces).length !== 1 || !("" in workspaces) ||
-      lock.patchedDependencies !== undefined) {
-    unsupportedSource();
-  }
-  for (const resolution of Object.values(packages)) {
-    if (!Array.isArray(resolution) || resolution.length !== 4 ||
-        typeof resolution[0] !== "string" || typeof resolution[1] !== "string" ||
-        resolution[1] !== "" && resolution[1] !== "https://registry.npmjs.org" &&
-        resolution[1] !== "https://registry.npmjs.org/" ||
-        ordinaryRecord(resolution[2]) === undefined ||
-        typeof resolution[3] !== "string" || !/^sha(?:256|512)-[A-Za-z0-9+/]+={0,2}$/.test(resolution[3])) {
-      unsupportedSource();
-    }
-  }
+  try { requirePrivateBunLockPolicy(value); } catch { unsupportedSource(); }
 }
 
 function unsupportedSource(): never {
@@ -181,12 +169,12 @@ async function capturePrepared(): Promise<readonly SourceFile[]> {
       if (!information.isFile() || information.isSymbolicLink() || information.nlink !== 1) {
         throw new WorkerFailure("PACKAGE_BUN_OUTPUT_UNSUPPORTED", "prepared dependencies contain a link or special file");
       }
-      if (files.length >= MAX_PREPARED_FILES) {
+      if (files.length >= PRIVATE_BUN_PREPARATION_LIMITS.preparedFiles) {
         throw new WorkerFailure("PACKAGE_BUN_OUTPUT_LIMIT", "prepared dependency tree has too many files");
       }
       const bytes = new Uint8Array(await readFile(physical));
       total += bytes.byteLength;
-      if (total > MAX_PREPARED_BYTES) {
+      if (total > PRIVATE_BUN_PREPARATION_LIMITS.preparedBytes) {
         throw new WorkerFailure("PACKAGE_BUN_OUTPUT_LIMIT", "prepared dependency tree is too large");
       }
       files.push(Object.freeze({ path, content: Buffer.from(bytes).toString("base64") }));
@@ -199,7 +187,8 @@ async function capturePrepared(): Promise<readonly SourceFile[]> {
 
 function requireSource(value: unknown): { readonly files: readonly SourceFile[] } {
   const root = ordinaryRecord(value);
-  if (root?.type !== "source" || !Array.isArray(root.files) || root.files.length > MAX_SOURCE_FILES) {
+  if (root?.type !== "source" || !Array.isArray(root.files) ||
+      root.files.length > PRIVATE_BUN_PREPARATION_LIMITS.sourceFiles) {
     throw new WorkerFailure("PACKAGE_BUN_PROTOCOL", "preparation source is invalid");
   }
   const files: SourceFile[] = [];
@@ -217,7 +206,7 @@ function requireSource(value: unknown): { readonly files: readonly SourceFile[] 
     prior = file.path;
     const bytes = decodeBase64(file.content, file.path);
     total += bytes.byteLength;
-    if (total > MAX_SOURCE_BYTES) {
+    if (total > PRIVATE_BUN_PREPARATION_LIMITS.sourceBytes) {
       throw new WorkerFailure("PACKAGE_BUN_INPUT_LIMIT", "locked Bun package is too large to prepare");
     }
     files.push(Object.freeze({ path: file.path, content: file.content }));
@@ -257,7 +246,7 @@ function send(value: Readonly<Record<string, unknown>>): Promise<void> {
 
 function sendPrepared(files: readonly SourceFile[]): Promise<void> {
   const bytes = JSON.stringify({ type: "prepared", files });
-  if (Buffer.byteLength(bytes) > MAX_OUTPUT_LINE_BYTES) {
+  if (!privateBunMessageFits(Buffer.byteLength(bytes), PRIVATE_BUN_PREPARED_MESSAGE_BYTES)) {
     throw new WorkerFailure("PACKAGE_BUN_OUTPUT_LIMIT", "prepared dependency tree is too large");
   }
   return send({ type: "prepared", files });
