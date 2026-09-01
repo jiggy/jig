@@ -113,7 +113,7 @@ jobs:
         if: inputs.package == 'jig'
         run: |
           set -eu
-          JIG_CI_BUN=$(command -v bun)
+          JIG_CI_BUN=$(readlink -f "$(command -v bun)")
           export JIG_CI_BUN
           scripts/ci/provision-github-rootless-host.sh provision
           printf 'ready=true\n' >> "$GITHUB_OUTPUT"
