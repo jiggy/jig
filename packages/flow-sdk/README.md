@@ -11,16 +11,28 @@ The technical candidate deliberately retains `private: true` and cannot be
 published. The final release candidate removes that guard before its archive
 is built and tested.
 
-Once the package is published, add the exact alpha to a FLOW package with
-Bun's ordinary dependency workflow:
+Once the package is published, declare the exact alpha in the FLOW package's
+`package.json`:
 
-```console
-bun add --exact @jigging/flow@0.1.0-alpha.1
+```json
+{
+  "private": true,
+  "dependencies": {
+    "@jigging/flow": "0.1.0-alpha.1"
+  }
+}
 ```
 
-Keep the resulting `package.json` and text `bun.lock` beside `flow.ts`. Jig's
-direct-run alpha prepares that locked dependency during `jig check`; the
-admitted Run then reuses the prepared package without installing or fetching.
+Generate only the text lock with Bun 1.3.3:
+
+```console
+bun install --lockfile-only
+```
+
+Keep `package.json` and `bun.lock` beside `flow.ts`; do not add `node_modules`
+to the FLOW package. Jig's direct-run alpha prepares that locked dependency
+during `jig check`; the admitted Run then reuses the prepared package without
+installing or fetching.
 
 Finite work uses `serve()`:
 

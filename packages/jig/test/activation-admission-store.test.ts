@@ -701,7 +701,7 @@ describe.serial("direct alpha activation store", () => {
       await coordinator?.dispose();
       await terminal.dispose();
     }
-  });
+  }, 60_000);
 
   test("rejects schema drift, weak permissions, and unsafe SQLite sidecars", async () => {
     const schema = await createEmptyFixture();

@@ -75,6 +75,12 @@ fi
 
 bun_version=$("$bun_bin" --version)
 bun_revision=$("$bun_bin" --revision)
+if ! "$bun_bin" -e \
+    'if (Bun.version !== "1.3.3" || Bun.revision !== "274e01c737e85f8142070a9745b43a2ba09fce4c") process.exit(70)'
+then
+  echo "the FLOW SDK candidate requires exact Bun 1.3.3 revision 274e01c737e85f8142070a9745b43a2ba09fce4c" >&2
+  exit 2
+fi
 node_version=$("$FLOW_NODE" --version)
 npm_version=$("$FLOW_NPM" --version)
 for identity in "$bun_version" "$bun_revision" "$node_version" "$npm_version"

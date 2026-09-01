@@ -26,17 +26,19 @@ workflow deliberately stops with a specific error while the selected package's
 guard remains.
 
 From GitHub Actions, run **Publish npm prerelease** on `main`. Select one
-package, enter its exact manifest version, and select `alpha` or `next`. Publish
-`flow` first and wait for its refetch gate to pass; then dispatch `jig` with the
-same version and tag. The Jig publish job enforces that order against npm.
+package, enter its exact manifest version, and select `alpha` or `next`. For the
+first paired alpha, publish `flow` first and wait for its refetch gate to pass;
+then dispatch `jig` with Jig's own manifest version. Package versions are
+independent even when a paired release happens to use matching versions.
 
-The unprivileged build job checks out source without persisted credentials,
-installs the exact build tools, builds and tests once, and uploads the complete
-candidate directory for seven days. It has neither an environment nor OIDC
-authority. The protected publish job has no checkout and executes no project
-or build code. It downloads that candidate, checks its manifest, commit, and
-digest, then uses the npm bundled with Node 24 after requiring npm 11.5.1 or
-newer.
+The build job checks out source without persisted credentials, installs the
+exact build tools, builds and tests once, and uploads the complete candidate
+directory for seven days. It has neither an environment nor OIDC authority.
+For a Jig candidate only, it uses the existing provisioner to prepare the
+disposable runner, while Jig and Flow code remain unprivileged. The protected
+publish job has no checkout and executes no project or build code. It downloads
+that candidate, checks its manifest, commit, and digest, then uses the npm
+bundled with Node 24 after requiring npm 11.5.1 or newer.
 
 If npm reports the exact version absent, the publish job submits it. If the
 version already exists—or npm accepted it but its response was lost—the job
@@ -45,6 +47,11 @@ persisted candidate. Use GitHub's **Re-run failed jobs** action to retry that
 publish job against the same retained candidate. A fresh workflow dispatch
 always builds a new candidate and is not an uncertainty retry. Never republish
 or replace an accepted npm version.
+
+Only after the registry archive and dist-tag converge, create one annotated,
+package-specific source tag on the exact candidate commit: `flow-v<version>` or
+`jig-v<version>`. Push that tag separately. The workflow intentionally has no
+Git write authority and never tags an unverified publication.
 
 ## One-time package bootstrap
 
@@ -82,6 +89,10 @@ npm pack "@jigging/flow@$FLOW_VERSION" --pack-destination .tmp/npm-bootstrap/ref
 test "$(sha256sum .tmp/npm-bootstrap/flow/*.tgz | cut -d' ' -f1)" = \
   "$(sha256sum .tmp/npm-bootstrap/refetched-flow/*.tgz | cut -d' ' -f1)"
 test "$(npm view @jigging/flow dist-tags.alpha)" = "$FLOW_VERSION"
+FLOW_COMMIT=$(node -p "require('./.tmp/npm-bootstrap/flow/SUCCESS.json').commit")
+FLOW_TAG="flow-v$FLOW_VERSION"
+git tag --annotate "$FLOW_TAG" "$FLOW_COMMIT" --message "@jigging/flow@$FLOW_VERSION"
+git push origin "refs/tags/$FLOW_TAG"
 ```
 
 Before publishing Jig, install the still-local Jig candidate into a temporary
@@ -103,6 +114,10 @@ npm pack "@jigging/jig@$JIG_VERSION" --pack-destination .tmp/npm-bootstrap/refet
 test "$(sha256sum .tmp/npm-bootstrap/jig/*.tgz | cut -d' ' -f1)" = \
   "$(sha256sum .tmp/npm-bootstrap/refetched-jig/*.tgz | cut -d' ' -f1)"
 test "$(npm view @jigging/jig dist-tags.alpha)" = "$JIG_VERSION"
+JIG_COMMIT=$(node -p "require('./.tmp/npm-bootstrap/jig/SUCCESS.json').commit")
+JIG_TAG="jig-v$JIG_VERSION"
+git tag --annotate "$JIG_TAG" "$JIG_COMMIT" --message "@jigging/jig@$JIG_VERSION"
+git push origin "refs/tags/$JIG_TAG"
 ```
 
 These two first publications are the only exception to OIDC provenance; the

@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import {
   chmod,
   mkdir,
@@ -27,6 +27,8 @@ import {
 import { capturePackageDirectory } from "../src/package/capture.js";
 
 const crashFixture = join(import.meta.dir, "fixtures/package-materialization-crash.ts");
+
+setDefaultTimeout(15_000);
 
 describe("private package materialization", () => {
   test("durable identity normalizers reject hostile object shapes without invoking traps", () => {

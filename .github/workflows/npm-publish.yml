@@ -108,6 +108,16 @@ jobs:
           bun --version
           bun --revision
 
+      - name: Provision Jig's disposable rootless host
+        id: jig_host
+        if: inputs.package == 'jig'
+        run: |
+          set -eu
+          JIG_CI_BUN=$(command -v bun)
+          export JIG_CI_BUN
+          scripts/ci/provision-github-rootless-host.sh provision
+          printf 'ready=true\n' >> "$GITHUB_OUTPUT"
+
       - name: Build and test selected candidate once
         run: |
           set -eu
@@ -121,6 +131,10 @@ jobs:
             export JIG_NPM
             scripts/build-jig-candidate.sh "$RUNNER_TEMP/candidate"
           fi
+
+      - name: Require zero Jig host residue
+        if: always() && steps.jig_host.outputs.ready == 'true'
+        run: scripts/ci/provision-github-rootless-host.sh assert-clean
 
       - name: Upload exact candidate
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -209,17 +223,6 @@ jobs:
           }
           NODE
           printf 'archive=%s\n' "$archive" >> "$GITHUB_OUTPUT"
-
-      - name: Require verified Flow before Jig
-        if: inputs.package == 'jig'
-        run: |
-          set -eu
-          tagged=$(npm view @jigging/flow "dist-tags.$RELEASE_TAG" --json)
-          expected=$(RELEASE_VERSION="$RELEASE_VERSION" node -p 'JSON.stringify(process.env.RELEASE_VERSION)')
-          if [ "$tagged" != "$expected" ]; then
-            echo "publish and verify @jigging/flow@$RELEASE_VERSION with the $RELEASE_TAG tag before Jig" >&2
-            exit 1
-          fi
 
       - name: Publish or converge exact registry version
         env:

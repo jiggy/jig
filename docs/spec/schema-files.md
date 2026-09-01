@@ -1,10 +1,9 @@
 # FLOW Schema/1 files
 
-**Status:** prerelease specification candidate. The checked-in
-[`schema-1.json`](https://flow.jig.md/schemas/schema-1.json) machine meta-schema uses the
-provisional identifier `https://flow.jig.md/schemas/schema-1.json`; it has not
-been published at that URI. Independent cross-implementation fixtures remain
-a release gate.
+**Status:** prerelease specification candidate. The machine meta-schema is
+published as
+[`schema-1.json`](https://flow.jig.md/schemas/schema-1.json). Independent
+cross-implementation fixtures remain a release gate.
 
 FLOW packages may expose three fixed, inert JSON Schema files. They describe
 values; they are never runtime mailboxes, configuration stores, templates, or

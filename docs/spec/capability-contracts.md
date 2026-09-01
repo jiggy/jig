@@ -1,11 +1,10 @@
 # FLOW Capability Contract/1
 
-**Status:** prerelease specification candidate. The checked-in
-[`capability-contract-1.schema.json`](https://flow.jig.md/schemas/capability-contract-1.schema.json)
-machine schema uses the provisional identifier
-`https://flow.jig.md/schemas/capability-contract-1.schema.json`; it has not been
-published at that URI. Independent digest/Schema/1 fixtures and
-consumer/provider conformance remain release gates.
+**Status:** prerelease specification candidate. The machine schema is
+published as
+[`capability-contract-1.schema.json`](https://flow.jig.md/schemas/capability-contract-1.schema.json).
+Independent digest/Schema/1 fixtures and consumer/provider conformance remain
+release gates.
 
 Most Flows need no formal contract. Generic `flow/call` already means “perform
 this bounded piece of work and return one outcome.” A Capability Contract is

@@ -28,6 +28,10 @@ before evaluator or Flow bytes execute, and revalidates it before each launch.
 
 ## Supported host
 
+The alpha has been independently tested on a provisioned Ubuntu 24.04 x86_64
+host. Other Linux x86_64 hosts meeting the requirements below have not yet been
+independently validated; Jig fails closed when a required capability is absent.
+
 The alpha requires:
 
 - Linux x86_64 with glibc 2.17 or newer and an SSE4.2-capable baseline CPU;
@@ -36,6 +40,8 @@ The alpha requires:
 - cgroup v2 with delegated `cpu`, `memory`, and `pids` controllers;
 - a systemd user manager with transient delegated scopes; and
 - unprivileged user, mount, PID, network, IPC, UTS, and cgroup namespaces.
+
+The glibc and SSE4.2 floors come from the selected Bun baseline runtime.
 
 Jig commands do not use `sudo`, download runtimes, or expose host control to
 Flow code. Runtime installation is handled once by npm with the Jig package.
