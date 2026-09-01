@@ -100,8 +100,8 @@ printf '%s\n' "$hash_line" > "$archive.sha256"
 tar -tzf "$archive" > "$temporary/inventory"
 LC_ALL=C sort "$temporary/inventory" > "$archive.files"
 
-JIG_PACKAGE_ARCHIVE="$archive" bun "$repository/packages/jig/test/package-smoke.ts"
-JIG_PACKAGE_ARCHIVE="$archive" bun "$repository/scripts/test-operational-baseline.ts"
+JIG_PACKAGE_ARCHIVE="$archive" bun "$package/test/package-smoke.ts"
+JIG_PACKAGE_ARCHIVE="$archive" bun "$temporary/source/scripts/test-operational-baseline.ts"
 
 mkdir -p -- "$temporary/npm-consumer"
 "$JIG_NPM" install \
