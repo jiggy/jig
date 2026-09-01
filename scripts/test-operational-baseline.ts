@@ -49,6 +49,7 @@ try {
   assert.equal(initialized.stderr, "");
 
   await writeHelloFlow(project);
+  await writeFriendlyBinding(project);
   await writeLockedDependencyFlow(project);
   await writeMissingDependencyFlow(project);
 
@@ -60,6 +61,10 @@ try {
 
   const lock = JSON.parse(await readFile(join(project, "jig.lock"), "utf8")) as unknown;
   assert.deepEqual(Object.keys(requireRecord(lock)).sort(), ["bindings", "packages"]);
+  assert.deepEqual(requireRecord(requireRecord(lock).bindings).friendly, {
+    packagePath: "flows/hello",
+    settings: { prefix: "Welcome" },
+  });
 
   const lockedPackage = requireRecord(
     requireRecord(requireRecord(lock).packages)["flows/locked-dependency"],
@@ -141,6 +146,18 @@ try {
     stderrTruncated: false,
   });
   assert.doesNotMatch(executed.stdout, /sha256:|runId|coordinator|cgroup|bubblewrap|\/tmp\//i);
+
+  const bound = await run([
+    jig, "run", "binding:friendly", "--input", JSON.stringify({ name: "Ada" }),
+  ], project, [0], 120_000);
+  assert.equal(bound.stderr, "");
+  const boundTerminal = requireRecord(JSON.parse(bound.stdout));
+  assert.equal(boundTerminal.status, "succeeded");
+  assert.equal(boundTerminal.outcome, "done");
+  assert.deepEqual(boundTerminal.output, {
+    greeting: "Welcome, Ada!",
+    received: { name: "Ada" },
+  });
 } catch (error) {
   failure = error;
 }
@@ -204,6 +221,12 @@ async function writeHelloFlow(project: string): Promise<void> {
     required: ["name"],
     additionalProperties: false,
   }));
+  await writeFile(join(flow, "settings.schema.json"), JSON.stringify({
+    $schema: "https://flow.jig.md/schemas/schema-1.json",
+    type: "object",
+    properties: { prefix: { type: "string" } },
+    additionalProperties: false,
+  }));
   await writeFile(join(flow, "result.schema.json"), JSON.stringify({
     $schema: "https://flow.jig.md/schemas/schema-1.json",
     type: "object",
@@ -237,18 +260,31 @@ async function writeHelloFlow(project: string): Promise<void> {
     '    throw new Error("expected one FLOW Run/1 request");',
     "  }",
     "  const received = request.params.input;",
+    '  const prefix = request.params.settings.prefix ?? "Hello";',
     "  const response = {",
     '    jsonrpc: "2.0",',
     "    id: request.id,",
     "    result: {",
     '      outcome: "done",',
-    "      output: { greeting: `Hello, ${received.name}!`, received },",
+    "      output: { greeting: `${prefix}, ${received.name}!`, received },",
     "    },",
     "  };",
     "  process.stdout.write(`${JSON.stringify(response)}\\n`);",
     "  lines.close();",
     "  break;",
     "}",
+    "",
+  ].join("\n"));
+}
+
+async function writeFriendlyBinding(project: string): Promise<void> {
+  await writeFile(join(project, "bindings", "friendly.ts"), [
+    'import { defineBinding } from "@jigging/jig";',
+    "",
+    "export default defineBinding({",
+    '  package: "./flows/hello",',
+    '  settings: { prefix: "Welcome" },',
+    "});",
     "",
   ].join("\n"));
 }
