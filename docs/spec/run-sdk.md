@@ -1,10 +1,11 @@
 # FLOW Run SDK/1
 
 **Status:** closed candidate projection of
-[`FLOW Run/1`](run-protocol.md). The implementations remain private `0.0.0`
-packages. The complete shared corpus has passed under the Bun peer and an
-independently implemented Python host peer; publication and a general
-third-party conformance label remain separate release decisions.
+[`FLOW Run/1`](run-protocol.md). The TypeScript implementation is staged as
+private `@flowmd/sdk@0.1.0-alpha.1`; the Python implementation remains an
+unpublished `0.0.0` candidate. The complete shared corpus has passed under the
+Bun peer and an independently implemented Python host peer; publication and a
+general third-party conformance label remain separate release decisions.
 
 This document fixes the public component-author interface for the Run/1
 slice. It does not add wire behavior. When this document and Run/1 differ,

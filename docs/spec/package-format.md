@@ -115,7 +115,9 @@ custom outcomes.
 
 Each `attachments` key is a `LocalName`. Its value is exactly `read` or
 `read-write`. Metadata declares required attachment names and maximum access;
-a project Binding supplies their project-local sources.
+attachment-source mapping is host policy outside Package/1. A host may expose
+that mapping through Bindings or another explicit mechanism. The current Jig
+direct alpha exposes no attachment mapping.
 
 ### Format evolution
 
