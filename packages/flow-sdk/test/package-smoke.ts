@@ -14,6 +14,7 @@ import { isAbsolute, join, resolve } from "node:path";
 
 const packageRoot = resolve(import.meta.dir, "..");
 const temporary = await mkdtemp(join(tmpdir(), "flow-sdk-package-"));
+const bun = process.execPath;
 
 try {
   const artifacts = join(temporary, "artifacts");
@@ -32,7 +33,7 @@ try {
     }),
   );
   await run([
-    "bun",
+    bun,
     "install",
     "--ignore-scripts",
     "--no-progress",
@@ -88,7 +89,7 @@ if (operation.code !== "UNAVAILABLE" || effect.errorName !== "not-found") {
 }
 `,
   );
-  await run(["bun", "smoke.mjs"], consumer);
+  await run([bun, "smoke.mjs"], consumer);
   const node = Bun.env.FLOW_NODE;
   if (node === undefined || node === "" || !isAbsolute(node)) {
     throw new Error("Node was not supplied; set FLOW_NODE to its exact executable");
@@ -101,6 +102,44 @@ if (operation.code !== "UNAVAILABLE" || effect.errorName !== "not-found") {
   assert.equal(nodeIdentity.stdout, "FLOW_NODE_OK\n");
   assert.equal(nodeIdentity.stderr, "");
   await run([node, "smoke.mjs"], consumer);
+
+  await writeFile(
+    join(consumer, "root-flow.mjs"),
+    `import { serve } from "@flowmd/sdk";
+await serve(async (run) => ({
+  outcome: "done",
+  output: { input: run.input, settings: run.settings },
+}));
+`,
+  );
+  const request = `${JSON.stringify({
+    jsonrpc: "2.0",
+    id: "package:smoke",
+    method: "flow/run",
+    params: {
+      protocol: "run/1",
+      input: { source: "packed-archive" },
+      settings: { mode: "root-only" },
+      attachments: {},
+      scratch: "/tmp/flow-sdk-package-smoke",
+      deadlineUnixMs: 4_000_000_000_000,
+    },
+  })}\n`;
+  for (const runtime of [bun, node]) {
+    const served = await run([runtime, "root-flow.mjs"], consumer, request);
+    assert.equal(served.stderr, "");
+    assert.deepEqual(JSON.parse(served.stdout), {
+      jsonrpc: "2.0",
+      id: "package:smoke",
+      result: {
+        outcome: "done",
+        output: {
+          input: { source: "packed-archive" },
+          settings: { mode: "root-only" },
+        },
+      },
+    });
+  }
 
   await writeFile(
     join(consumer, "smoke.ts"),
@@ -140,7 +179,7 @@ void new OperationError("UNAVAILABLE");
     }),
   );
   await run(
-    ["bun", join(packageRoot, "node_modules", "typescript", "bin", "tsc"), "-p", join(consumer, "tsconfig.json")],
+    [bun, join(packageRoot, "node_modules", "typescript", "bin", "tsc"), "-p", join(consumer, "tsconfig.json")],
     packageRoot,
   );
 } finally {
@@ -160,7 +199,7 @@ async function selectArchive(artifacts: string): Promise<string> {
     return canonical;
   }
   await run([
-    "bun",
+    bun,
     "pm",
     "pack",
     "--ignore-scripts",
@@ -172,15 +211,18 @@ async function selectArchive(artifacts: string): Promise<string> {
   return join(artifacts, packed[0]!);
 }
 
-async function run(command: string[], cwd: string): Promise<{
+async function run(command: string[], cwd: string, input?: string): Promise<{
   readonly stdout: string;
   readonly stderr: string;
 }> {
   const process = Bun.spawn(command, {
     cwd,
+    stdin: "pipe",
     stdout: "pipe",
     stderr: "pipe",
   });
+  if (input !== undefined) process.stdin.write(input);
+  process.stdin.end();
   const timeout = setTimeout(() => process.kill(), 30_000);
   const [exitCode, stdout, stderr] = await Promise.all([
     process.exited,

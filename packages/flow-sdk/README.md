@@ -7,6 +7,21 @@ are the [Run SDK/1](https://github.com/jigmd/jig/blob/main/docs/spec/run-sdk.md)
 and [Run/1](https://github.com/jigmd/jig/blob/main/docs/spec/run-protocol.md)
 specifications.
 
+The technical candidate deliberately retains `private: true` and cannot be
+published. The final release candidate removes that guard before its archive
+is built and tested.
+
+Once the package is published, add the exact alpha to a FLOW package with
+Bun's ordinary dependency workflow:
+
+```console
+bun add --exact @flowmd/sdk@0.1.0-alpha.1
+```
+
+Keep the resulting `package.json` and text `bun.lock` beside `flow.ts`. Jig's
+direct-run alpha prepares that locked dependency during `jig check`; the
+admitted Run then reuses the prepared package without installing or fetching.
+
 Finite work uses `serve()`:
 
 ```ts
