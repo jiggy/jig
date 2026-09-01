@@ -44,7 +44,7 @@ cd my-project
 ```
 
 Place packages under `flows/<name>/`. Each package has exact-case `FLOW.md`
-and, for this alpha, one dependency-closed `flow.ts`. The generated `jig.ts`
+and, for this alpha, one `flow.ts`. The generated `jig.ts`
 explicitly discovers `./flows` and `./bindings`.
 
 ```console
@@ -56,11 +56,17 @@ jig run flow:flows/example --input '{}'
 `--yes` records an approval non-interactively. The CLI keeps review and
 admission mechanics internal.
 
-The Flow runtime has no network, ambient `PATH`, package installation, or
-lifecycle scripts. A `flow.ts` may import supported built-ins and explicit
-package-local files; every other dependency must already be bundled or
-vendored into its FLOW package. A missing dependency fails the Run; Jig never
-installs it.
+For ordinary dependencies, place `package.json` and text `bun.lock` beside
+`flow.ts`; do not include `node_modules`. `jig check` prepares the frozen
+production dependency tree inside the same rootless envelope, using the fixed
+Bun runtime, the default npm registry, and no lifecycle scripts. Unsupported
+or unlocked sources fail before admission.
+
+The admitted Run uses only the retained prepared bytes. It has no network,
+ambient `PATH`, package installation, or lifecycle scripts. Packages with no
+runtime dependencies continue to run directly, and already bundled
+package-local code remains valid. An unchanged `jig check` reuses the admitted
+prepared tree only while its source and host evidence still match.
 
 Bindings use an explicit target:
 

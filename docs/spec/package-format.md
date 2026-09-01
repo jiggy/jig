@@ -225,14 +225,23 @@ Those are provenance or admission evidence, not package identity.
 
 ## 7. Direct-alpha execution boundary
 
-The first Jig host executes one dependency-closed `flow.ts` with Bun. The
-entrypoint either omits a selector or selects exact `bun`. Bun runs with
-installation and environment-file loading disabled. Jig performs no network
-fetch, package-manager install, lifecycle script, or ambient `PATH` lookup.
+The first Jig host executes one `flow.ts` with Bun. The entrypoint either omits
+a selector or selects exact `bun`. A source package may use supported
+built-ins, package-local modules, and production dependencies declared by a
+root `package.json` and locked by a root text `bun.lock`. A source tree
+containing `node_modules` is invalid for this host.
 
-The package tree must already contain every application dependency it needs.
-This is an alpha host rule, not Package/1 metadata and not a portable runtime
-profile.
+During `jig check`, the host may prepare the exact frozen production dependency
+tree in its rootless containment boundary. The fixed installer ignores
+lifecycle scripts and accepts only integrity-pinned packages from the default
+npm registry. The source Package/1 remains the reviewed and portable package;
+the prepared Package/1 is host-owned execution evidence pinned by the admitted
+target. Neither preparation state nor its digest appears in `FLOW.md`.
+
+At execution, Bun loads only the retained prepared tree. The Run has no
+network, package installation, lifecycle scripts, environment-file loading,
+or ambient `PATH` lookup. These are alpha host rules, not Package/1 metadata
+or a portable runtime profile.
 
 A direct Flow target additionally requires:
 
@@ -261,7 +270,9 @@ Conforming implementations must prove at least:
    change identity; path, content, or extra-file changes do.
 7. Traversal, absolute, backslash, NUL, non-NFC, case-fold collision, symlink,
    and unproved hardlink cases reject consistently.
-8. Execution consumes exactly the staged tree whose digest was admitted.
+8. Execution consumes exactly the Package/1 tree selected and admitted for
+   execution; a host that prepares dependencies keeps the reviewed source and
+   prepared execution references distinct.
 9. Independent streaming digest implementations produce identical results.
 10. An unavailable runtime fails closed and does not select instruction
     execution implicitly.

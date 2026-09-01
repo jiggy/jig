@@ -58,7 +58,7 @@ description: Return a greeting for the supplied name.
 # Hello
 ```
 
-Create this dependency-closed `flows/hello/flow.ts`:
+Create `flows/hello/flow.ts`:
 
 ```ts
 import { createInterface } from "node:readline";
@@ -121,21 +121,27 @@ unprefixed target.
 
 ## Dependency rule
 
-The alpha runs only a dependency-closed `flow.ts`. Jig invokes it with package
-installation disabled and gives it no network or ambient `PATH`. Imports must
-therefore be one of:
+The alpha follows normal Bun package authoring. A `flow.ts` may import:
 
 - a Bun or Node built-in supported by the fixed runtime;
 - an explicit package-local file; or
-- code already bundled or vendored into the FLOW package.
+- a production dependency declared in a package-local `package.json` and
+  locked by a package-local text `bun.lock`.
 
-Jig does not run a package manager, lifecycle script, installer, or dependency
-download for a Flow. Authors may use their normal toolchain before packaging;
-the admitted package must already contain its complete executable closure.
-If a dependency is missing, the Run fails; Jig does not try to repair the
-package or fetch anything.
-For nontrivial Run/1 handling, bundle or vendor a conforming SDK rather than
-growing the minimal protocol example above.
+Do not add `node_modules` to the FLOW package. Generate the lock with Bun—for
+example, `bun install --lockfile-only`—and let `jig check` prepare the exact
+locked production tree. Preparation runs the release-owned Bun installer in
+the same rootless envelope as a Run, with lifecycle scripts disabled. The
+alpha accepts only integrity-pinned packages from the default npm registry;
+unsupported sources fail during `check`.
+
+Jig retains the prepared tree beside the reviewed source package and pins it
+in the admitted target. `jig run` then uses only those retained bytes, with no
+network, installation, lifecycle scripts, or ambient `PATH`. Bundling a
+dependency into package-local files remains valid, but is no longer required.
+An unchanged later `jig check` reuses the exact admitted tree when the source,
+runtime, and containment evidence still match; missing or changed evidence
+fails closed or is prepared again before another review.
 
 ## Documentation
 

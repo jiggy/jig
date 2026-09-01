@@ -123,10 +123,40 @@ A Flow is a direct Run target only when it:
 Direct eligibility is structural. Host execution support is planned
 separately, so an eligible target can still be unavailable on this host.
 
-The first alpha host has one exact recipe: a dependency-closed `flow.ts` run by
-Bun inside the rootless execution envelope. It performs no dependency install,
-network fetch, lifecycle script, or ambient runtime lookup. Unsupported
-entrypoints fail closed.
+The first alpha host has one exact recipe: `flow.ts` run by Bun inside the
+rootless execution envelope. A package with production dependencies supplies
+ordinary root `package.json` and text `bun.lock` files and omits generated
+`node_modules`. During planning, Jig prepares the frozen production tree with
+the fixed Bun installer in the same envelope, lifecycle scripts disabled, and
+only default-registry integrity-pinned sources accepted. Unsupported or
+unlocked dependency sources fail closed before an applicable Plan is
+published.
+
+The admitted target pins the separately retained prepared Package/1 while the
+portable lock continues to identify the reviewed source Package/1. A Run
+performs no install or fetch and has no network, lifecycle scripts, or ambient
+runtime lookup. A package without runtime dependencies needs no preparation.
+
+Planning may reuse the execution Package from the active admission only when
+the current request reproduces its exact recipe and observation digests under
+the current runtime and containment mechanism. Final publication reacquires
+the retained bytes and compare-and-sets the captured policy heads. Missing or
+corrupt retained execution bytes fail closed; they are not silently fetched
+again under an otherwise unchanged admission.
+
+### Why preparation belongs to `check`
+
+Requiring every TypeScript author to bundle dependencies was rejected because
+it replaces Bun's ordinary manifest-and-lock workflow with a Jig-specific
+packaging chore. Installing during `run` was also rejected: execution would
+then depend on mutable registry state, network availability, installer side
+effects, and a larger live authority boundary.
+
+Preparation at `check` keeps both useful properties. Authors use normal Bun
+inputs, while review and admission still pin every byte that execution can
+load. The prepared tree is not a second user lock or a portable FLOW concept;
+it is private content-addressed host evidence. Bundling remains an optional
+authoring choice for packages that prefer a self-contained source tree.
 
 ## 5. Bindings
 
@@ -310,6 +340,13 @@ Package code receives:
 It does not receive the host environment, network, host process tree, writable
 cgroup controls, general devices, inherited descriptors, project source,
 `.jig`, or host-control channels.
+
+Dependency preparation uses the same ownership, cgroup, filesystem, process,
+and cleanup boundary. Only Jig's fixed installer and worker execute there;
+package source is handled as data and lifecycle scripts are disabled. That
+trusted preparation process may inherit host networking long enough to fetch
+the validated lock from the fixed registry. The resulting package is captured
+before admission. This does not give the later Flow Run network access.
 
 CPU throttling is not a deadline, so the trusted owner also enforces a hard
 wall-clock limit. Every completion, failure, session close, and coordinator
