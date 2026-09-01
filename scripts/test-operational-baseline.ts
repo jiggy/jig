@@ -49,6 +49,7 @@ try {
   assert.equal(initialized.stderr, "");
 
   await writeHelloFlow(project);
+  await writeLockedDependencyFlow(project);
   await writeMissingDependencyFlow(project);
 
   const approved = await run([jig, "check", project, "--yes"], consumer, [0], 120_000);
@@ -91,6 +92,21 @@ try {
   const dependencyTerminal = requireRecord(JSON.parse(unsupportedDependency.stdout));
   assert.equal(dependencyTerminal.status, "failed");
   assert.equal(dependencyTerminal.code, "CHANNEL_LOST");
+
+  const dependencyRun = await run([
+    jig, "run", "flow:flows/locked-dependency", "--input", "3",
+  ], project, [0], 120_000);
+  assert.equal(dependencyRun.stderr, "");
+  const dependencyResult = requireRecord(JSON.parse(dependencyRun.stdout));
+  assert.equal(dependencyResult.status, "succeeded");
+  assert.equal(dependencyResult.outcome, "done");
+  assert.deepEqual(dependencyResult.output, { odd: true });
+  await assert.rejects(stat(join(project, "flows", "locked-dependency", "node_modules")), {
+    code: "ENOENT",
+  });
+  await assert.rejects(stat(join(project, "flows", "locked-dependency", "postinstall-ran")), {
+    code: "ENOENT",
+  });
 
   const executed = await run([
     jig, "run", "flow:flows/hello", "--input", JSON.stringify({ name: "Ada" }),
@@ -235,6 +251,55 @@ async function writeMissingDependencyFlow(project: string): Promise<void> {
     join(flow, "flow.ts"),
     'import "jig-alpha-deliberately-missing";\n',
   );
+}
+
+async function writeLockedDependencyFlow(project: string): Promise<void> {
+  const flow = join(project, "flows", "locked-dependency");
+  await mkdir(flow);
+  await writeFile(join(flow, "FLOW.md"), [
+    "---",
+    "name: locked-dependency",
+    "description: Run one ordinary locked Bun production dependency.",
+    "---",
+    "",
+  ].join("\n"));
+  await writeFile(join(flow, "package.json"), `${JSON.stringify({
+    name: "jig-locked-dependency-baseline",
+    private: true,
+    scripts: { postinstall: "touch postinstall-ran" },
+    dependencies: { "is-odd": "3.0.1" },
+  }, null, 2)}\n`);
+  await writeFile(join(flow, "bun.lock"), `{
+  "lockfileVersion": 1,
+  "configVersion": 1,
+  "workspaces": {
+    "": {
+      "name": "jig-locked-dependency-baseline",
+      "dependencies": { "is-odd": "3.0.1" },
+    },
+  },
+  "packages": {
+    "is-number": ["is-number@6.0.0", "", {}, "sha512-Wu1VHeILBK8KAWJUAiSZQX94GmOE45Rg6/538fKwiloUu21KncEkYGPqob2oSZ5mUT73vLGrHQjKw3KMPwfDzg=="],
+    "is-odd": ["is-odd@3.0.1", "", { "dependencies": { "is-number": "^6.0.0" } }, "sha512-CQpnWPrDwmP1+SMHXZhtLtJv90yiyVfluGsX5iNCVkrhQtU3TQHsUWPG9wkdk9Lgd5yNpAg9jQEo90CBaXgWMA=="],
+  },
+}\n`);
+  await writeFile(join(flow, "flow.ts"), [
+    'import isOdd from "is-odd";',
+    'import { createInterface } from "node:readline";',
+    "",
+    "const lines = createInterface({ input: process.stdin });",
+    "for await (const line of lines) {",
+    "  const request = JSON.parse(line);",
+    "  process.stdout.write(`${JSON.stringify({",
+    '    jsonrpc: "2.0",',
+    "    id: request.id,",
+    '    result: { outcome: "done", output: { odd: isOdd(request.params.input) } },',
+    "  })}\\n`);",
+    "  lines.close();",
+    "  break;",
+    "}",
+    "",
+  ].join("\n"));
 }
 
 async function run(

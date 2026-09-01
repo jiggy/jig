@@ -8,9 +8,34 @@ import {
   cancelPrivateLinuxOwnerStateAllocation,
   normalizePrivateLinuxOwnerStateAllocationIdentity,
   planPrivateLinuxOwnerStateAllocation,
+  privateLinuxResolverProjection,
   PrivateLinuxFenceUnconfirmedError,
   releasePrivateLinuxOwnerState,
 } from "../src/internal/linux-rootless-backend.js";
+
+describe("private Linux resolver projection", () => {
+  test("permits only the host resolver alias at its exact sandbox destination", () => {
+    expect(privateLinuxResolverProjection(
+      "/etc/resolv.conf",
+      "/run/systemd/resolve/stub-resolv.conf",
+      "/etc/resolv.conf",
+    )).toBeTrue();
+    expect(privateLinuxResolverProjection(
+      "/etc/resolv.conf",
+      "/run/NetworkManager/resolv.conf",
+      "/etc/resolv.conf",
+    )).toBeTrue();
+    for (const [requested, resolved, destination] of [
+      ["/run/systemd/resolve/stub-resolv.conf", "/run/systemd/resolve/stub-resolv.conf", "/etc/resolv.conf"],
+      ["/etc/resolv.conf", "/run/secrets/resolv.conf", "/etc/secret"],
+      ["/etc/resolv.conf", "/run/secrets/token", "/etc/resolv.conf"],
+      ["/etc/resolv.conf", "/proc/self/status", "/etc/resolv.conf"],
+      ["/etc/resolv.conf", "/run/systemd/resolve", "/etc/resolv.conf"],
+    ] as const) {
+      expect(privateLinuxResolverProjection(requested, resolved, destination)).toBeFalse();
+    }
+  });
+});
 
 describe("private Linux durable owner allocation", () => {
   test("plans without creating a leaf and cancellation is durable and idempotent", async () => {
@@ -55,6 +80,34 @@ describe("private Linux durable owner allocation", () => {
         kind: "private-linux-owner-state/1",
         token: allocation.ownerToken,
       });
+    } finally {
+      await rm(parent, { recursive: true, force: true });
+    }
+  });
+
+  test("cancels a sealed owner before any supervisor claims it", async () => {
+    const parent = await protectedDirectory("jig-linux-owner-sealed-");
+    try {
+      const allocation = await planPrivateLinuxOwnerStateAllocation({ parent, name: "run-sealed" });
+      await mkdir(allocation.directory, { mode: 0o700 });
+      await writeFile(join(allocation.directory, "owner.json"), `${JSON.stringify({
+        allocationDigest: allocation.digest,
+        kind: "private-linux-owner-state/1",
+        mechanismDigest: privateDomainDigest("test-mechanism", {}),
+        ownerDigest: privateDomainDigest("test-owner", {}),
+        runCgroup: `/sys/fs/cgroup/jig-never-created-${process.pid}`,
+        sealedPlanDigest: privateDomainDigest("test-plan", {}),
+        token: allocation.ownerToken,
+      })}\n`, { mode: 0o600 });
+
+      const cancellation = await cancelPrivateLinuxOwnerStateAllocation(allocation);
+      expect(JSON.parse(await readFile(join(allocation.directory, "owner.json"), "utf8"))).toEqual({
+        allocationDigest: allocation.digest,
+        kind: "private-linux-owner-state/1",
+        token: allocation.ownerToken,
+      });
+      await releasePrivateLinuxOwnerState(allocation, cancellation);
+      await expect(lstat(allocation.directory)).rejects.toMatchObject({ code: "ENOENT" });
     } finally {
       await rm(parent, { recursive: true, force: true });
     }

@@ -20,8 +20,10 @@ import {
   listPrivateRootExecutionWork,
   loadPrivateRootRunForCoordinator,
   openPrivateProjectCoordinator,
+  readPrivateBunPreparationOwner,
   reacquirePrivateRootExecutionWork,
   recordPrivateRootExecutionCheckpoint,
+  replacePrivateBunPreparationOwner,
   submitPrivateRootRun,
   type PrivateProjectCoordinator,
   type PrivateRootRunTerminal,
@@ -42,6 +44,7 @@ import {
   privateProjectLocalLockDigest,
 } from "../src/internal/project-local-lock.js";
 import {
+  normalizePackageArtifactRef,
   publishCapturedPackage,
   type PackageArtifactRef,
 } from "../src/internal/package-artifact-store.js";
@@ -85,6 +88,56 @@ describe.serial("direct alpha activation store", () => {
     }
   });
 
+  test("compare-and-sets one cumulative preparation cleanup proof", async () => {
+    const fixture = await createEmptyFixture();
+    let coordinator: PrivateProjectCoordinator | undefined;
+    try {
+      coordinator = await openPrivateProjectCoordinator({ projectRoot: fixture.root });
+      expect(await readPrivateBunPreparationOwner({
+        projectRoot: fixture.root,
+        coordinator,
+      })).toBeNull();
+      const allocation = { kind: "test-preparation-owner", stage: "allocation" } as const;
+      const first = await replacePrivateBunPreparationOwner({
+        projectRoot: fixture.root,
+        coordinator,
+        expectedDigest: null,
+        value: allocation,
+      });
+      expect(first?.value).toEqual(allocation);
+      await expect(replacePrivateBunPreparationOwner({
+        projectRoot: fixture.root,
+        coordinator,
+        expectedDigest: null,
+        value: allocation,
+      })).rejects.toMatchObject({ code: "PREPARATION_OWNER_CONFLICT" });
+      const sealed = { ...allocation, stage: "sealed" } as const;
+      const second = await replacePrivateBunPreparationOwner({
+        projectRoot: fixture.root,
+        coordinator,
+        expectedDigest: first!.digest,
+        value: sealed,
+      });
+      expect((await readPrivateBunPreparationOwner({
+        projectRoot: fixture.root,
+        coordinator,
+      }))?.value).toEqual(sealed);
+      await replacePrivateBunPreparationOwner({
+        projectRoot: fixture.root,
+        coordinator,
+        expectedDigest: second!.digest,
+        value: null,
+      });
+      expect(await readPrivateBunPreparationOwner({
+        projectRoot: fixture.root,
+        coordinator,
+      })).toBeNull();
+    } finally {
+      await coordinator?.dispose();
+      await fixture.dispose();
+    }
+  });
+
   test("applies and exactly replays sequential admission generations", async () => {
     const fixture = await createFixture();
     try {
@@ -120,6 +173,84 @@ describe.serial("direct alpha activation store", () => {
       } finally {
         database.close(true);
       }
+    } finally {
+      await fixture.dispose();
+    }
+  });
+
+  test("admits a retained execution Package distinct from the source Package", async () => {
+    const fixture = await createFixture("ready");
+    try {
+      const executionPackage = await retainDistinctExecutionPackage(fixture, "retained");
+      const candidate = insertExecutionCandidate(fixture, executionPackage, "retained");
+      const plan = seedPlan(fixture, candidate, {
+        baseGeneration: null,
+        observedLock: "absent",
+        operation: "admission",
+      });
+
+      const admitted = requireAdmission(await applyPlan(fixture, plan));
+      expect(admitted.admission.candidateRevision).toBe(2);
+      expect(candidate.candidate.targets[0]!.request.package).toEqual(fixture.flow);
+      expect(candidate.candidate.targets[0]!.disposition).toMatchObject({
+        state: "ready",
+        executionPackage,
+      });
+      expect(executionPackage).not.toEqual(fixture.flow);
+      expect(decodePrivateProjectLocalLock(
+        new Uint8Array(await readFile(join(fixture.root, "jig.lock"))),
+      ).packages["flows/run"]!.digest).toBe(fixture.flow.digest);
+    } finally {
+      await fixture.dispose();
+    }
+  });
+
+  test("missing execution Package fails before Candidate, Plan, or admission mutation", async () => {
+    const fixture = await createFixture("ready");
+    try {
+      const missing = normalizePackageArtifactRef({
+        kind: "flow-package/1",
+        digest: digest("missing-execution-package"),
+      });
+      const candidate = insertExecutionCandidate(fixture, missing, "missing");
+      const plan = seedPlan(fixture, candidate, {
+        baseGeneration: null,
+        observedLock: "absent",
+        operation: "admission",
+      });
+      const before = activationAuthoritySnapshot(fixture.database);
+
+      await expect(applyPlan(fixture, plan)).rejects.toMatchObject({
+        code: "PACKAGE_ARTIFACT_MISSING",
+      });
+      expect(activationAuthoritySnapshot(fixture.database)).toEqual(before);
+      await expect(stat(join(fixture.root, "jig.lock"))).rejects.toMatchObject({ code: "ENOENT" });
+    } finally {
+      await fixture.dispose();
+    }
+  });
+
+  test("corrupt execution Package fails before Candidate, Plan, or admission mutation", async () => {
+    const fixture = await createFixture("ready");
+    try {
+      const executionPackage = await retainDistinctExecutionPackage(fixture, "corrupt");
+      const candidate = insertExecutionCandidate(fixture, executionPackage, "corrupt");
+      const plan = seedPlan(fixture, candidate, {
+        baseGeneration: null,
+        observedLock: "absent",
+        operation: "admission",
+      });
+      const artifact = packageArtifactPath(fixture.store, executionPackage);
+      await chmod(artifact, 0o600);
+      await writeFile(artifact, "corrupt\n");
+      await chmod(artifact, 0o400);
+      const before = activationAuthoritySnapshot(fixture.database);
+
+      await expect(applyPlan(fixture, plan)).rejects.toMatchObject({
+        code: "PACKAGE_ARTIFACT_CORRUPT",
+      });
+      expect(activationAuthoritySnapshot(fixture.database)).toEqual(before);
+      await expect(stat(join(fixture.root, "jig.lock"))).rejects.toMatchObject({ code: "ENOENT" });
     } finally {
       await fixture.dispose();
     }
@@ -659,6 +790,7 @@ async function createFixture(
             state: "ready",
             recipeDigest: digest("direct-recipe"),
             observationDigest: digest("direct-observation"),
+            executionPackage: flow,
           }
         : {
             state: "unavailable",
@@ -733,6 +865,49 @@ function insertCandidate(
     lock: encodePrivateProjectLocalLock(fixture.candidate.lock),
   });
   insertCandidateRow(fixture.database, next, candidate, true);
+  return candidate;
+}
+
+function insertExecutionCandidate(
+  fixture: Fixture,
+  executionPackage: PackageArtifactRef,
+  label: string,
+): PrivateActivationCandidateArtifactV5 {
+  const database = openSqlite(fixture.database, "readonly");
+  const revision = database.query("SELECT revision FROM candidate_head WHERE singleton = 1").get()
+    .revision as number;
+  database.close(true);
+  const target = fixture.candidate.candidate.targets[0]!;
+  if (target.disposition.state !== "ready") throw new Error("test fixture target is not ready");
+  const targets = [{
+    request: target.request,
+    disposition: {
+      ...target.disposition,
+      recipeDigest: digest(`direct-recipe:${label}`),
+      observationDigest: digest(`direct-observation:${label}`),
+      executionPackage,
+    },
+  }];
+  const captureDigest = digest(`capture-execution:${label}`);
+  const planningObservationDigest = digest(`planning-execution:${label}`);
+  const candidate = decodePrivateActivationCandidateV5({
+    candidate: json1({
+      ...fixture.candidate.candidate,
+      captureDigest,
+      activationMeaningDigest: activationMeaning(
+        fixture.candidate.candidate.observedSemanticDigest,
+        targets,
+      ),
+      resolutionInputDigest: privateDomainDigest(
+        "JIG-Package-Project-Resolution-Input/1",
+        { captureDigest, planningObservationDigest },
+      ),
+      planningObservationDigest,
+      targets,
+    } as unknown as JsonValue),
+    lock: encodePrivateProjectLocalLock(fixture.candidate.lock),
+  });
+  insertCandidateRow(fixture.database, revision + 1, candidate, true);
   return candidate;
 }
 
@@ -911,6 +1086,53 @@ async function retainPackage(store: string, source: string): Promise<PackageArti
     return await publishCapturedPackage(store, captured);
   } finally {
     await captured.dispose();
+  }
+}
+
+async function retainDistinctExecutionPackage(
+  fixture: Fixture,
+  label: string,
+): Promise<PackageArtifactRef> {
+  const source = join(fixture.base, `execution-${label}`);
+  await mkdir(join(source, "node_modules", "dependency"), { recursive: true });
+  await writeFile(join(source, "FLOW.md"), [
+    "---",
+    "name: run",
+    "description: Prepared direct alpha store fixture.",
+    "---",
+    "",
+  ].join("\n"));
+  await writeFile(join(source, "flow.ts"), "#!/usr/bin/env bun\nimport 'dependency';\nexport {};\n");
+  await writeFile(join(source, "node_modules", "dependency", "index.js"), "export {};\n");
+  return await retainPackage(fixture.store, source);
+}
+
+function packageArtifactPath(store: string, reference: PackageArtifactRef): string {
+  const hexadecimal = reference.digest.slice("sha256:".length);
+  return join(store, "packages", "v1", "sha256", hexadecimal.slice(0, 2), `${hexadecimal.slice(2)}.pkg`);
+}
+
+function activationAuthoritySnapshot(databasePath: string): Readonly<Record<string, unknown>> {
+  const database = openSqlite(databasePath, "readonly");
+  try {
+    return Object.freeze({
+      candidateHead: database.query("SELECT singleton, revision FROM candidate_head ORDER BY singleton").all(),
+      candidates: database.query([
+        "SELECT revision, candidate_digest, hex(candidate_bytes) AS candidate_bytes,",
+        "hex(lock_bytes) AS lock_bytes FROM candidates ORDER BY revision",
+      ].join(" ")).all(),
+      plans: database.query([
+        "SELECT plan_digest, candidate_revision, hex(plan_bytes) AS plan_bytes",
+        "FROM review_plans ORDER BY plan_digest",
+      ].join(" ")).all(),
+      admissionHead: database.query("SELECT singleton, revision FROM admission_head ORDER BY singleton").all(),
+      admissions: database.query([
+        "SELECT revision, admission_digest, base_generation, plan_digest,",
+        "hex(admission_bytes) AS admission_bytes FROM admissions ORDER BY revision",
+      ].join(" ")).all(),
+    });
+  } finally {
+    database.close(true);
   }
 }
 

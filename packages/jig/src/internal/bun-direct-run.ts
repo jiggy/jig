@@ -12,6 +12,10 @@ import {
   type PrivateLinuxBackendMechanismObservation,
   type PrivateLinuxCgroupBackend,
 } from "./linux-rootless-backend.js";
+import {
+  normalizePackageArtifactRef,
+  type PackageArtifactRef,
+} from "./package-artifact-store.js";
 import type { JsonValue } from "../json.js";
 import {
   requirePrivateActivationRequest,
@@ -46,6 +50,7 @@ export interface PrivateBunDirectRecipe {
   readonly kind: "private-bun-direct-recipe/1";
   readonly digest: string;
   readonly request: PrivateActivationRequest;
+  readonly executionPackage: PackageArtifactRef;
   readonly installedSupport: PrivateInstalledBunSupport;
   readonly backend: PrivateLinuxCgroupBackend;
   readonly mechanismDigest: string;
@@ -65,11 +70,13 @@ export async function planPrivateBunDirectRun(input: {
   readonly request: PrivateActivationRequest;
   readonly installedSupport: PrivateInstalledBunSupport;
   readonly backend: PrivateLinuxCgroupBackend;
+  readonly executionPackage?: PackageArtifactRef;
   readonly selector?: string;
 }): Promise<PrivateBunDirectRecipe> {
   const request = requirePrivateActivationRequest(input.request);
   const installedSupport = requirePrivateInstalledBunSupport(input.installedSupport);
   const backend = requirePrivateLinuxCgroupBackend(input.backend);
+  const executionPackage = normalizePackageArtifactRef(input.executionPackage ?? request.package);
   const selector = input.selector ?? DEFAULT_SELECTOR;
   if (request.mode !== "run" ||
       request.entrypoint.path !== "flow.ts" || request.entrypoint.suffix !== "ts" ||
@@ -97,13 +104,14 @@ export async function planPrivateBunDirectRun(input: {
   });
   const inspectionDigest = privateDomainDigest("JIG-Private-Bun-Inspection/1", {
     package: request.package,
+    executionPackage,
     entrypoint: request.entrypoint,
     selector,
   } as unknown as JsonValue);
   const authorityDigest = privateDomainDigest("JIG-Private-Bun-Authority/1", {
     attachments: request.attachments,
   } as unknown as JsonValue);
-  const launchEnvelopeDigest = logicalLaunchDigest(request, installedSupport, mechanism);
+  const launchEnvelopeDigest = logicalLaunchDigest(request, executionPackage, installedSupport, mechanism);
   const observation = createPrivateActivationRecipeObservation({
     requestDigest: request.digest,
     adapter,
@@ -129,6 +137,7 @@ export async function planPrivateBunDirectRun(input: {
     kind: identity.kind,
     digest: privateDomainDigest("JIG-Private-Bun-Direct-Recipe/1", identity as unknown as JsonValue),
     request,
+    executionPackage,
     installedSupport,
     backend,
     mechanismDigest: mechanism.digest,
@@ -155,12 +164,14 @@ export function requirePrivateBunDirectRecipe(value: unknown): PrivateBunDirectR
 
 function logicalLaunchDigest(
   request: PrivateActivationRequest,
+  executionPackage: PackageArtifactRef,
   installedSupport: PrivateInstalledBunSupport,
   mechanism: PrivateLinuxBackendMechanismObservation,
 ): string {
   return privateDomainDigest("JIG-Private-Bun-Logical-Launch/1", {
     requestDigest: request.digest,
     package: request.package,
+    executionPackage,
     entrypoint: request.entrypoint,
     installedSupportDigest: installedSupport.digest,
     executableDigest: installedSupport.executableDigest,

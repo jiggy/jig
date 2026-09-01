@@ -55,6 +55,7 @@ interface Configuration {
   readonly readOnlyMounts: readonly Mount[];
   readonly command: readonly [string, ...string[]];
   readonly environment: Readonly<Record<string, string>>;
+  readonly network: "isolated" | "inherited";
   readonly bunPath: string;
   readonly bunHostLibraryPath: string;
   readonly bubblewrapPath: string;
@@ -300,6 +301,7 @@ async function innerMain(command: readonly string[]): Promise<void> {
 function bubblewrapArguments(configuration: Configuration): string[] {
   const result = [
     "--unshare-all",
+    ...(configuration.network === "inherited" ? ["--share-net"] : []),
     "--unshare-user",
     "--disable-userns",
     "--assert-userns-disabled",
@@ -313,6 +315,7 @@ function bubblewrapArguments(configuration: Configuration): string[] {
     "--tmpfs", "/tmp",
     "--tmpfs", "/run",
     "--dir", "/work",
+    "--dir", "/etc",
     "--dir", "/jig",
     "--dir", "/jig-runtime",
     "--dir", "/jig-runtime/lib",
@@ -426,7 +429,7 @@ function requireStart(value: unknown): Configuration {
   const configuration = (value as { configuration: Configuration }).configuration;
   const keys = [
     "bubblewrapPath", "bunHostLibraryPath", "bunPath", "command", "delegatedCgroup", "environment", "limits",
-    "mechanismDigest", "ownerDigest",
+    "mechanismDigest", "network", "ownerDigest",
     "ownerStateAllocationDigest", "ownerStateDirectory", "ownerToken", "payloadGid",
     "payloadUid", "readOnlyMounts", "runCgroup", "sealedPlanDigest", "supervisorPath",
   ];
@@ -446,6 +449,7 @@ function requireStart(value: unknown): Configuration {
       typeof configuration.ownerStateAllocationDigest !== "string" ||
       !DIGEST.test(configuration.ownerStateAllocationDigest) ||
       typeof configuration.ownerToken !== "string" || !OWNER_TOKEN.test(configuration.ownerToken) ||
+      (configuration.network !== "isolated" && configuration.network !== "inherited") ||
       !positiveInteger(configuration.payloadUid) || !positiveInteger(configuration.payloadGid) ||
       !validLimits(configuration.limits) || !validMounts(configuration.readOnlyMounts) ||
       !validEnvironment(configuration.environment) || !Array.isArray(configuration.command) ||

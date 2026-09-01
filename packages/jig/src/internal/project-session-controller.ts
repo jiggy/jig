@@ -22,6 +22,16 @@ import {
   createPrivateActivationPlanningObservation,
 } from "./activation-planning.js";
 import type { PrivateInstalledBunSupport } from "./installed-bun-support.js";
+import { inspectPrivateBunPackageInput } from "./bun-package-input.js";
+import {
+  preparePrivateBunPackage,
+  recoverPrivateBunPreparationOwner,
+} from "./bun-native-preparation.js";
+import {
+  captureStoredPackage,
+  publishCapturedPackage,
+  type PackageArtifactRef,
+} from "./package-artifact-store.js";
 import {
   planPrivateDirectRun,
   type PrivateDirectRunRecipe,
@@ -67,6 +77,11 @@ export async function openPrivateProjectSession(input: {
   try {
     owner = await openPrivateProjectSessionOwner(input.directory);
     const packageStoreRoot = await preparePackageStore(owner);
+    await recoverPrivateBunPreparationOwner({
+      projectRoot: owner.root.requestedPath,
+      coordinator: owner.coordinator,
+      backend: input.host.backend,
+    });
     roots = await attachPrivateRootAdministrationController({
       coordinator: owner.coordinator,
       projectRoot: owner.root.requestedPath,
@@ -149,6 +164,7 @@ function createSession(
           );
         }
         const recipes: PrivateDirectRunRecipe[] = [];
+        const executionPackages = new Map<string, PackageArtifactRef>();
         for (const request of requests) {
           planningCancellation.signal.throwIfAborted();
           if (request.mode !== "run") {
@@ -158,8 +174,36 @@ function createSession(
             );
           }
           try {
+            let executionPackage = executionPackages.get(request.package.digest);
+            if (executionPackage === undefined) {
+              const source = await captureStoredPackage(packageStoreRoot, request.package);
+              try {
+                const dependencyInput = await inspectPrivateBunPackageInput(source);
+                if (dependencyInput.state === "direct") {
+                  executionPackage = request.package;
+                } else {
+                  const prepared = await preparePrivateBunPackage({
+                    captured: source,
+                    installedSupport: host.installedBunSupport,
+                    backend: host.backend,
+                    projectRoot: owner.root.requestedPath,
+                    coordinator: owner.coordinator,
+                    signal: planningCancellation.signal,
+                  });
+                  try {
+                    executionPackage = await publishCapturedPackage(packageStoreRoot, prepared);
+                  } finally {
+                    await prepared.dispose();
+                  }
+                }
+              } finally {
+                await source.dispose();
+              }
+              executionPackages.set(request.package.digest, executionPackage);
+            }
             recipes.push(await planPrivateDirectRun({
               request,
+              executionPackage,
               installedSupport: host.installedBunSupport,
               backend: host.backend,
             }));

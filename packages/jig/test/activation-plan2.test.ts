@@ -39,6 +39,51 @@ describe("private Candidate/5", () => {
     expect(Object.isFrozen(artifact.candidate.targets)).toBeTrue();
   });
 
+  test("pins one valid execution Package/1 in every ready target", () => {
+    const first = readyCandidateFixture("prepared:first");
+    const second = readyCandidateFixture("prepared:second");
+    const encoded = encodePrivateActivationCandidateV5(first);
+    const decoded = decodePrivateActivationCandidateV5(encoded);
+
+    expect(decoded.candidate.targets[0]!.disposition).toEqual({
+      state: "ready",
+      recipeDigest: digest("ready-recipe"),
+      observationDigest: digest("ready-observation"),
+      executionPackage: {
+        kind: "flow-package/1",
+        digest: digest("prepared:first"),
+      },
+    });
+    expect(privateActivationCandidateDigestV5(decoded)).toBe(
+      privateActivationCandidateDigestV5(first),
+    );
+    expect(second.candidate.observedSemanticDigest).toBe(
+      first.candidate.observedSemanticDigest,
+    );
+    expect(second.candidate.activationMeaningDigest).not.toBe(
+      first.candidate.activationMeaningDigest,
+    );
+    expect(privateActivationCandidateDigestV5(second)).not.toBe(
+      privateActivationCandidateDigestV5(first),
+    );
+
+    const missing = json(encoded.candidate);
+    delete missing.targets[0].disposition.executionPackage;
+    missing.activationMeaningDigest = activationMeaningDigest(
+      missing.observedSemanticDigest,
+      missing.targets,
+    );
+    expectInvalidCandidate(encoded, missing, "must contain exactly");
+
+    const malformed = json(encoded.candidate);
+    malformed.targets[0].disposition.executionPackage.digest = "not-a-digest";
+    malformed.activationMeaningDigest = activationMeaningDigest(
+      malformed.observedSemanticDigest,
+      malformed.targets,
+    );
+    expectInvalidCandidate(encoded, malformed, "Package/1 artifact digest");
+  });
+
   test("rejects an invalid kind and every uncommitted final meaning", () => {
     const valid = encodePrivateActivationCandidateV5(candidateFixture());
     const candidate = json(valid.candidate);
@@ -64,6 +109,7 @@ describe("private Candidate/5", () => {
           state: "ready",
           recipeDigest: digest("new-recipe"),
           observationDigest: digest("planning-observation"),
+          executionPackage: candidate.targets[0].request.package,
         },
       }],
     }, "activation meaning digest");
@@ -421,6 +467,36 @@ function candidateFixture(
     })),
     lock: lockBytes,
   });
+}
+
+function readyCandidateFixture(executionPackage: string) {
+  const unavailable = candidateFixture();
+  const encoded = encodePrivateActivationCandidateV5(unavailable);
+  const candidate = json(encoded.candidate);
+  candidate.targets[0].disposition = {
+    state: "ready",
+    recipeDigest: digest("ready-recipe"),
+    observationDigest: digest("ready-observation"),
+    executionPackage: {
+      kind: "flow-package/1",
+      digest: digest(executionPackage),
+    },
+  };
+  candidate.activationMeaningDigest = activationMeaningDigest(
+    candidate.observedSemanticDigest,
+    candidate.targets,
+  );
+  return decodePrivateActivationCandidateV5({
+    candidate: withLf(canonicalJson(candidate)),
+    lock: encoded.lock,
+  });
+}
+
+function activationMeaningDigest(observedSemanticDigest: string, targets: unknown): string {
+  return privateDomainDigest(
+    "JIG-Private-Activation-Meaning/1",
+    { observedSemanticDigest, targets } as unknown as JsonValue,
+  );
 }
 
 function expectInvalidCandidate(

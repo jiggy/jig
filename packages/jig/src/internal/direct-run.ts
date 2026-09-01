@@ -8,6 +8,7 @@ import {
   type PrivateInstalledBunSupport,
 } from "./installed-bun-support.js";
 import type { PrivateLinuxCgroupBackend } from "./linux-rootless-backend.js";
+import type { PackageArtifactRef } from "./package-artifact-store.js";
 import {
   requirePrivateActivationRequest,
   type PrivateActivationRequest,
@@ -21,6 +22,7 @@ export async function planPrivateDirectRun(input: {
   readonly request: PrivateActivationRequest;
   readonly installedSupport: PrivateDirectRunInstalledSupport;
   readonly backend: PrivateLinuxCgroupBackend;
+  readonly executionPackage?: PackageArtifactRef;
 }): Promise<PrivateDirectRunRecipe> {
   const request = requirePrivateActivationRequest(input.request);
   if (request.entrypoint.path !== "flow.ts") {

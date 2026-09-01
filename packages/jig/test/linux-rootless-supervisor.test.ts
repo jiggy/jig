@@ -161,6 +161,7 @@ interface Configuration {
   readonly readOnlyMounts: readonly [];
   readonly command: readonly [string, ...string[]];
   readonly environment: Readonly<Record<string, string>>;
+  readonly network: "isolated";
   readonly bunPath: string;
   readonly bunHostLibraryPath: string;
   readonly bubblewrapPath: string;
@@ -214,6 +215,7 @@ async function fixtureFor(runId: string): Promise<Fixture> {
       `await Bun.write(${JSON.stringify(marker)}, "ran")`,
     ],
     environment: {},
+    network: "isolated",
     bunPath,
     bunHostLibraryPath,
     bubblewrapPath: "/usr/bin/bwrap",

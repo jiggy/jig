@@ -109,7 +109,7 @@ const CREATE_CANDIDATE_HEAD = "CREATE TABLE candidate_head (singleton INTEGER PR
 const CREATE_REVIEW_PLANS = "CREATE TABLE review_plans (plan_digest TEXT PRIMARY KEY, candidate_revision INTEGER NOT NULL REFERENCES candidates(revision), plan_bytes BLOB NOT NULL CHECK (length(plan_bytes) BETWEEN 1 AND 16777216)) STRICT";
 const CREATE_ADMISSIONS = "CREATE TABLE admissions (revision INTEGER PRIMARY KEY CHECK (revision BETWEEN 1 AND 9007199254740991), admission_digest TEXT NOT NULL UNIQUE, base_generation TEXT UNIQUE REFERENCES admissions(admission_digest), plan_digest TEXT NOT NULL UNIQUE REFERENCES review_plans(plan_digest), admission_bytes BLOB NOT NULL CHECK (length(admission_bytes) BETWEEN 1 AND 16777216)) STRICT";
 const CREATE_ADMISSION_HEAD = "CREATE TABLE admission_head (singleton INTEGER PRIMARY KEY CHECK (singleton = 1), revision INTEGER REFERENCES admissions(revision)) STRICT";
-const CREATE_COORDINATOR_HEAD = "CREATE TABLE coordinator_head (singleton INTEGER PRIMARY KEY CHECK (singleton = 1), epoch INTEGER NOT NULL CHECK (epoch BETWEEN 0 AND 9007199254740991)) STRICT";
+const CREATE_COORDINATOR_HEAD = "CREATE TABLE coordinator_head (singleton INTEGER PRIMARY KEY CHECK (singleton = 1), epoch INTEGER NOT NULL CHECK (epoch BETWEEN 0 AND 9007199254740991), preparation_owner_digest TEXT, preparation_owner_bytes BLOB, CHECK ((preparation_owner_digest IS NULL) = (preparation_owner_bytes IS NULL)), CHECK (preparation_owner_bytes IS NULL OR length(preparation_owner_bytes) BETWEEN 1 AND 16777216)) STRICT";
 const CREATE_ROOT_RUNS = "CREATE TABLE root_runs (run_id TEXT PRIMARY KEY, origin_digest TEXT NOT NULL UNIQUE, origin_bytes BLOB NOT NULL CHECK (length(origin_bytes) BETWEEN 1 AND 16777216), admission_digest TEXT NOT NULL REFERENCES admissions(admission_digest), candidate_revision INTEGER NOT NULL REFERENCES candidates(revision), coordinator_epoch INTEGER NOT NULL CHECK (coordinator_epoch BETWEEN 1 AND 9007199254740991), request_bytes BLOB NOT NULL CHECK (length(request_bytes) BETWEEN 1 AND 16777216)) STRICT";
 const CREATE_ROOT_SPAWN_INTENTS = "CREATE TABLE root_spawn_intents (run_id TEXT PRIMARY KEY REFERENCES root_runs(run_id), intent_digest TEXT NOT NULL UNIQUE, intent_bytes BLOB NOT NULL CHECK (length(intent_bytes) BETWEEN 1 AND 16777216)) STRICT";
 const CREATE_ROOT_EXECUTION_LIFECYCLES = "CREATE TABLE root_execution_lifecycles (run_id TEXT PRIMARY KEY REFERENCES root_spawn_intents(run_id), allocation_digest TEXT NOT NULL UNIQUE, allocation_bytes BLOB NOT NULL CHECK (length(allocation_bytes) BETWEEN 1 AND 16777216), plan_digest TEXT UNIQUE, plan_bytes BLOB, backing_digest TEXT UNIQUE, backing_bytes BLOB, sandbox_digest TEXT UNIQUE, sandbox_bytes BLOB, prepared_digest TEXT UNIQUE, prepared_bytes BLOB, provisional_digest TEXT UNIQUE, provisional_bytes BLOB, fence_digest TEXT UNIQUE, fence_bytes BLOB, release_digest TEXT UNIQUE, release_bytes BLOB, admitted_digest TEXT UNIQUE, admitted_bytes BLOB, CHECK ((plan_digest IS NULL) = (plan_bytes IS NULL)), CHECK ((backing_digest IS NULL) = (backing_bytes IS NULL)), CHECK ((sandbox_digest IS NULL) = (sandbox_bytes IS NULL)), CHECK ((prepared_digest IS NULL) = (prepared_bytes IS NULL)), CHECK ((provisional_digest IS NULL) = (provisional_bytes IS NULL)), CHECK ((fence_digest IS NULL) = (fence_bytes IS NULL)), CHECK ((release_digest IS NULL) = (release_bytes IS NULL)), CHECK ((admitted_digest IS NULL) = (admitted_bytes IS NULL)), CHECK (backing_digest IS NULL OR plan_digest IS NOT NULL), CHECK (sandbox_digest IS NULL OR backing_digest IS NOT NULL), CHECK (prepared_digest IS NULL OR sandbox_digest IS NOT NULL), CHECK (fence_digest IS NULL OR sandbox_digest IS NOT NULL), CHECK (admitted_digest IS NULL OR (provisional_digest IS NOT NULL AND release_digest IS NOT NULL))) STRICT";
@@ -330,6 +330,11 @@ export interface PrivateProjectCoordinator {
   readonly recoveredRootRuns: readonly PrivateRootRunSnapshot[];
   verify(): Promise<void>;
   dispose(): Promise<void>;
+}
+
+export interface PrivateBunPreparationOwnerFact {
+  readonly digest: string;
+  readonly value: JsonValue;
 }
 
 export interface PrivateRootRunSubmission {
@@ -583,6 +588,71 @@ export async function openPrivateProjectCoordinator(input: {
       throw new AggregateError(failures, "project coordinator acquisition and cleanup did not both complete");
     }
     throw error;
+  }
+}
+
+/** Read the single private cleanup proof for an interrupted Bun preparation. */
+export async function readPrivateBunPreparationOwner(input: {
+  readonly projectRoot: string;
+  readonly coordinator: PrivateProjectCoordinator;
+}): Promise<PrivateBunPreparationOwnerFact | null> {
+  const coordinator = requirePrivateProjectCoordinator(input.coordinator);
+  await coordinator.verify();
+  const owner = await openStateOwner(input.projectRoot, false);
+  let failure: unknown;
+  try {
+    requireCoordinatorRoot(coordinator, owner.root);
+    const fact = readBunPreparationOwner(owner.database);
+    await coordinator.verify();
+    await owner.finish();
+    return fact;
+  } catch (error) {
+    failure = error;
+    throw error;
+  } finally {
+    await disposeOperation(owner, undefined, failure);
+  }
+}
+
+/** Compare-and-set the one cumulative Bun preparation cleanup proof. */
+export async function replacePrivateBunPreparationOwner(input: {
+  readonly projectRoot: string;
+  readonly coordinator: PrivateProjectCoordinator;
+  readonly expectedDigest: string | null;
+  readonly value: JsonValue | null;
+}): Promise<PrivateBunPreparationOwnerFact | null> {
+  const coordinator = requirePrivateProjectCoordinator(input.coordinator);
+  await coordinator.verify();
+  if (input.expectedDigest !== null) requireDigest(input.expectedDigest, "Bun preparation owner");
+  const encoded = input.value === null ? null : canonicalJson(input.value);
+  if (encoded !== null) requireStoredSize(encoded, "Bun preparation owner");
+  const digest = input.value === null
+    ? null
+    : privateDomainDigest("JIG-Private-Bun-Preparation-Owner/1", input.value);
+  const owner = await openStateOwner(input.projectRoot, false);
+  let failure: unknown;
+  try {
+    requireCoordinatorRoot(coordinator, owner.root);
+    const fact = await immediate(owner, () => {
+      const current = readBunPreparationOwner(owner.database);
+      if ((current?.digest ?? null) !== input.expectedDigest) {
+        invalid("PREPARATION_OWNER_CONFLICT", "Bun preparation cleanup ownership changed");
+      }
+      const changed = runFinalized(owner.database,
+        "UPDATE coordinator_head SET preparation_owner_digest = ?1, preparation_owner_bytes = ?2 WHERE singleton = 1 AND preparation_owner_digest IS ?3",
+        [digest, encoded, input.expectedDigest],
+      ).changes;
+      if (changed !== 1) corrupt("Bun preparation cleanup owner compare-and-set failed");
+      return readBunPreparationOwner(owner.database);
+    });
+    await coordinator.verify();
+    await owner.finish();
+    return fact;
+  } catch (error) {
+    failure = error;
+    throw error;
+  } finally {
+    await disposeOperation(owner, undefined, failure);
   }
 }
 
@@ -2281,6 +2351,43 @@ function readCoordinatorEpoch(database: SqliteDatabase): bigint {
   return rows[0]!.epoch;
 }
 
+function readBunPreparationOwner(database: SqliteDatabase): PrivateBunPreparationOwnerFact | null {
+  const query = statement<{
+    readonly singleton: bigint;
+    readonly preparation_owner_digest: string | null;
+    readonly preparation_owner_bytes: Uint8Array | null;
+  }>(database,
+    "SELECT singleton, preparation_owner_digest, preparation_owner_bytes FROM coordinator_head",
+  ).safeIntegers(true);
+  let rows: readonly {
+    readonly singleton: bigint;
+    readonly preparation_owner_digest: string | null;
+    readonly preparation_owner_bytes: Uint8Array | null;
+  }[];
+  try { rows = query.all(); }
+  finally { query.finalize(); }
+  if (rows.length !== 1 || rows[0]!.singleton !== 1n) corrupt("coordinator head singleton is invalid");
+  const row = rows[0]!;
+  if ((row.preparation_owner_digest === null) !== (row.preparation_owner_bytes === null)) {
+    corrupt("Bun preparation cleanup owner pair is incomplete");
+  }
+  if (row.preparation_owner_digest === null) return null;
+  requireDigest(row.preparation_owner_digest, "stored Bun preparation owner");
+  const bytes = copiedBlob(row.preparation_owner_bytes!, "stored Bun preparation owner");
+  requireStoredSize(bytes, "stored Bun preparation owner");
+  let value: JsonValue;
+  try { value = decodeJson1(bytes); }
+  catch { corrupt("stored Bun preparation owner is invalid"); }
+  if (!sameBytes(bytes, canonicalJson(value)) ||
+      row.preparation_owner_digest !== privateDomainDigest(
+        "JIG-Private-Bun-Preparation-Owner/1",
+        value,
+      )) {
+    corrupt("stored Bun preparation owner differs from its durable identity");
+  }
+  return Object.freeze({ digest: row.preparation_owner_digest, value });
+}
+
 function requireCandidateRow(database: SqliteDatabase, revision: bigint): CandidateRow {
   const query = statement<CandidateRow>(database,
     "SELECT revision, candidate_digest, candidate_bytes, lock_bytes FROM candidates WHERE revision = ?1",
@@ -3029,6 +3136,10 @@ async function reacquireCandidateArtifacts(
     const digests = new Set<string>([
       candidate.candidate.declarationArtifact.package.digest,
       ...Object.values(candidate.lock.packages).map((entry) => entry.digest),
+      ...candidate.candidate.targets.flatMap((target) =>
+        target.disposition.state === "ready"
+          ? [target.disposition.executionPackage.digest]
+          : []),
     ]);
     for (const digest of [...digests].sort()) {
       const reference = normalizePackageArtifactRef({ kind: "flow-package/1", digest });

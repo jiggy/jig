@@ -62,6 +62,7 @@ export interface PrivateActivationCandidateTarget {
         readonly state: "ready";
         readonly recipeDigest: string;
         readonly observationDigest: string;
+        readonly executionPackage: PackageArtifactRef;
       }
     | {
         readonly state: "unavailable";
@@ -181,6 +182,7 @@ export function createPrivateActivationCandidateV5(
         state: "ready" as const,
         recipeDigest: recipe.digest,
         observationDigest: recipe.observation.digest,
+        executionPackage: recipe.executionPackage,
       });
     } else {
       disposition = target.disposition;
@@ -741,7 +743,7 @@ function normalizeTarget(input: unknown): PrivateActivationCandidateTarget {
   if (state === "ready") {
     const ready = exactObject(
       value.disposition,
-      ["state", "recipeDigest", "observationDigest"],
+      ["state", "recipeDigest", "observationDigest", "executionPackage"],
       "target disposition",
     );
     return Object.freeze({
@@ -750,6 +752,7 @@ function normalizeTarget(input: unknown): PrivateActivationCandidateTarget {
         state: "ready" as const,
         recipeDigest: requireDigest(ready.recipeDigest, "target recipe"),
         observationDigest: requireDigest(ready.observationDigest, "target observation"),
+        executionPackage: normalizePackageArtifactRef(ready.executionPackage),
       }),
     });
   }

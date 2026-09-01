@@ -146,7 +146,7 @@ async function startOrResumeCurrentExecution(
         allocatePrivatePackageMaterialization({
           protectedParent: roots.materializations,
           name: `root-${hexadecimal}`,
-          packageDigest: recipe.request.package.digest,
+          packageDigest: recipe.executionPackage.digest,
           ownerToken: work.lifecycle.allocation.digest,
         }),
         planPrivateLinuxOwnerStateAllocation({
@@ -176,7 +176,7 @@ async function startOrResumeCurrentExecution(
         plan,
         work,
         recipe,
-        recipe.request.package.digest,
+        recipe.executionPackage.digest,
       );
     }
 
@@ -565,7 +565,7 @@ async function materializeRootBacking(
   recipe: PrivateDirectRunRecipe,
   allocation: PrivatePackageMaterializationAllocationIdentity,
 ): Promise<PrivatePackageMaterializationLease> {
-  const captured = await captureStoredPackage(input.packageStoreRoot, recipe.request.package);
+  const captured = await captureStoredPackage(input.packageStoreRoot, recipe.executionPackage);
   try {
     return await materializePrivatePackageLease(
       captured,
@@ -589,6 +589,7 @@ async function reproduceRecipe(
   }
   const recipe = await planPrivateDirectRun({
     request,
+    executionPackage: target.disposition.executionPackage,
     installedSupport: input.installedSupport,
     backend: input.backend,
   });

@@ -14,14 +14,17 @@ describe("fixed installed Bun support", () => {
     const root = await mkdtemp(join(tmpdir(), "jig-installed-support-"));
     const executable = join(root, "bin", "jig");
     const evaluator = join(root, "libexec", "evaluator");
+    const preparation = join(root, "libexec", "preparation");
     try {
       await mkdir(join(root, "bin"), { recursive: true });
       await mkdir(evaluator, { recursive: true });
+      await mkdir(preparation, { recursive: true });
       await copyFile(process.execPath, executable);
       await writeFile(join(root, "libexec", "linux-rootless-supervisor.js"), "supervisor\n");
       await writeFile(join(evaluator, "project-evaluator-worker.js"), "worker\n");
       await writeFile(join(evaluator, "project-evaluator-sdk.bundle.js"), "sdk\n");
       await writeFile(join(evaluator, "project-authoring-1.schema.json"), "{}\n");
+      await writeFile(join(preparation, "bun-native-preparation-worker.js"), "preparation\n");
 
       const support = await openPrivateInstalledBunSupport(executable);
       expect(requirePrivateInstalledBunSupport(support)).toBe(support);
@@ -30,6 +33,7 @@ describe("fixed installed Bun support", () => {
       );
       expect((await openPrivateInstalledBunSupport(executable)).digest).toBe(support.digest);
       expect(support.sandboxExecutablePath).toBe("/jig-runtime/jig");
+      expect(support.sandboxPreparationWorkerPath).toBe("/jig-preparation-worker.js");
       expect(support.runtimeMounts.map(({ destination }) => destination)).toEqual([
         "/jig-runtime/jig",
         "/lib64/ld-linux-x86-64.so.2",
@@ -38,6 +42,13 @@ describe("fixed installed Bun support", () => {
         "/jig-runtime/lib/libdl.so.2",
         "/jig-runtime/lib/libpthread.so.0",
       ]);
+      await expect(revalidatePrivateInstalledBunSupport(support)).resolves.toBeUndefined();
+
+      await writeFile(join(preparation, "bun-native-preparation-worker.js"), "changed\n");
+      await expect(revalidatePrivateInstalledBunSupport(support)).rejects.toThrow(
+        "installed Bun support changed after selection",
+      );
+      await writeFile(join(preparation, "bun-native-preparation-worker.js"), "preparation\n");
       await expect(revalidatePrivateInstalledBunSupport(support)).resolves.toBeUndefined();
 
       await writeFile(join(evaluator, "project-evaluator-worker.js"), "changed\n");

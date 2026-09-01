@@ -70,12 +70,17 @@ export interface PrivateLinuxLaunchPlan {
   readonly readOnlyMounts: readonly PrivateLinuxReadOnlyMount[];
   readonly command: readonly [string, ...string[]];
   readonly environment?: Readonly<Record<string, string>>;
+  readonly network?: "isolated" | "inherited";
 }
 
-interface SealedLaunchPlan extends Omit<PrivateLinuxLaunchPlan, "limits" | "readOnlyMounts" | "environment"> {
+interface SealedLaunchPlan extends Omit<
+  PrivateLinuxLaunchPlan,
+  "limits" | "readOnlyMounts" | "environment" | "network"
+> {
   readonly limits: Required<PrivateLinuxCgroupLimits>;
   readonly readOnlyMounts: readonly SealedMount[];
   readonly environment: Readonly<Record<string, string>>;
+  readonly network: "isolated" | "inherited";
 }
 
 export interface PrivateLinuxCgroupBackendOptions {
@@ -205,6 +210,7 @@ export interface PrivateLinuxEnvelopeIdentity {
   readonly limits: Required<PrivateLinuxCgroupLimits>;
   readonly privateProcessFilesystem: true;
   readonly privateRuntimeDevices: true;
+  readonly network: "isolated" | "inherited";
 }
 
 export interface PrivateLinuxEnforcementEvidence {
@@ -712,10 +718,25 @@ export async function cancelPrivateLinuxOwnerStateAllocation(
   const allocation = normalizePrivateLinuxOwnerStateAllocationIdentity(value);
   await requireAllocationParent(allocation);
   const directory = await ensureAllocationDirectory(allocation);
-  await ensureOwnerRecord(ownerRecord(allocation));
-  const claim = await claimCancellation(ownerRecord(allocation));
+  const allocationRecord = ownerRecord(allocation);
+  const existing = await allocationCancellationRecord(allocation, allocationRecord);
+  const claim = await claimCancellation(existing);
   if (claim === "active") {
     throw new PrivateLinuxFenceUnconfirmedError(new Error("rootless Linux owner is already active"));
+  }
+  if (existing.ownerDigest !== undefined) {
+    if (existing.runCgroup === undefined || await pathExists(existing.runCgroup)) {
+      throw new PrivateLinuxFenceUnconfirmedError(
+        new Error("sealed rootless Linux owner may have entered execution"),
+      );
+    }
+    const entries = await readdir(allocation.directory);
+    if (entries.some((name) => name !== "owner.json" && name !== "claim.json")) {
+      throw new Error("rootless Linux owner state contains unexpected entries");
+    }
+    await unlink(join(allocation.directory, "owner.json"));
+    await ensureOwnerRecord(allocationRecord);
+    await syncDirectory(allocation.directory);
   }
   const fields = {
     kind: "private-linux-owner-state-cancellation/1" as const,
@@ -728,6 +749,48 @@ export async function cancelPrivateLinuxOwnerStateAllocation(
     ...fields,
     digest: privateDomainDigest("JIG-Rootless-Linux-Owner-Cancellation/1", fields),
   });
+}
+
+async function allocationCancellationRecord(
+  allocation: PrivateLinuxOwnerStateAllocationIdentity,
+  minimal: OwnerRecordReference,
+): Promise<OwnerRecordReference> {
+  try {
+    await ensureOwnerRecord(minimal);
+    return minimal;
+  } catch (error) {
+    let record: Record<string, unknown>;
+    try {
+      record = parseJsonLine(
+        await readFile(join(allocation.directory, "owner.json"), "utf8"),
+        "rootless Linux owner record",
+      );
+    } catch {
+      throw error;
+    }
+    const keys = [
+      "allocationDigest", "kind", "mechanismDigest", "ownerDigest", "runCgroup",
+      "sealedPlanDigest", "token",
+    ];
+    if (Object.keys(record).sort().join("\0") !== keys.sort().join("\0") ||
+        record.kind !== "private-linux-owner-state/1" ||
+        record.allocationDigest !== allocation.digest || record.token !== allocation.ownerToken ||
+        typeof record.ownerDigest !== "string" || !DIGEST.test(record.ownerDigest) ||
+        typeof record.mechanismDigest !== "string" || !DIGEST.test(record.mechanismDigest) ||
+        typeof record.sealedPlanDigest !== "string" || !DIGEST.test(record.sealedPlanDigest) ||
+        typeof record.runCgroup !== "string" || !canonicalCgroup(record.runCgroup)) {
+      throw error;
+    }
+    return {
+      allocationDigest: allocation.digest,
+      directory: allocation.directory,
+      ownerToken: allocation.ownerToken,
+      ownerDigest: record.ownerDigest,
+      runCgroup: record.runCgroup,
+      mechanismDigest: record.mechanismDigest,
+      sealedPlanDigest: record.sealedPlanDigest,
+    };
+  }
 }
 
 export function normalizePrivateLinuxOwnerStateCancellation(
@@ -1073,6 +1136,7 @@ function supervisorConfiguration(data: SealedOwnerData): object {
     readOnlyMounts: data.sealedPlan.readOnlyMounts.map(({ source, destination }) => ({ source, destination })),
     command: data.sealedPlan.command,
     environment: data.sealedPlan.environment,
+    network: data.sealedPlan.network,
     bunPath: data.mechanism.trustedCoordinatorBunPath,
     bunHostLibraryPath: data.mechanism.trustedCoordinatorLibraryPath,
     bubblewrapPath: data.mechanism.trustedBubblewrapPath,
@@ -1100,6 +1164,7 @@ function envelopeFor(data: SealedOwnerData): PrivateLinuxEnvelopeIdentity {
     limits: data.sealedPlan.limits,
     privateProcessFilesystem: true,
     privateRuntimeDevices: true,
+    network: data.sealedPlan.network,
   });
 }
 
@@ -1124,7 +1189,9 @@ async function sealPlan(plan: PrivateLinuxLaunchPlan): Promise<SealedLaunchPlan>
       lstat(source, { bigint: true }),
       statfs(source),
     ]);
-    if (protectedHostSource(source) || protectedFilesystem(BigInt(filesystem.type))) {
+    if ((protectedHostSource(source) &&
+        !privateLinuxResolverProjection(mount.source, source, mount.destination)) ||
+        protectedFilesystem(BigInt(filesystem.type))) {
       throw new TypeError("host pseudo-filesystem cannot enter the rootless sandbox");
     }
     const sourceType = information.isDirectory() ? "directory" : information.isFile() ? "file" : undefined;
@@ -1188,12 +1255,17 @@ function snapshotPlan(value: PrivateLinuxLaunchPlan): SealedLaunchPlan {
     }
     environment[name] = content;
   }
+  const network = value.network ?? "isolated";
+  if (network !== "isolated" && network !== "inherited") {
+    throw new TypeError("rootless Linux network policy is invalid");
+  }
   return Object.freeze({
     runId: value.runId,
     limits: normalizedLimits,
     readOnlyMounts: Object.freeze(mounts) as unknown as readonly SealedMount[],
     command: Object.freeze([...value.command]) as unknown as readonly [string, ...string[]],
     environment: Object.freeze(environment),
+    network,
   });
 }
 
@@ -1887,6 +1959,18 @@ function protectedDestination(value: string): boolean {
 function protectedHostSource(value: string): boolean {
   return value === "/" || ["/dev", "/proc", "/run", "/sys"]
     .some((root) => value === root || value.startsWith(`${root}/`));
+}
+
+/** Pure policy seam for the one trusted resolver-file projection. */
+export function privateLinuxResolverProjection(
+  requestedSource: string,
+  resolvedSource: string,
+  destination: string,
+): boolean {
+  if (requestedSource !== "/etc/resolv.conf" || destination !== "/etc/resolv.conf" ||
+      !resolvedSource.startsWith("/run/")) return false;
+  const name = posix.basename(resolvedSource);
+  return name === "resolv.conf" || name === "stub-resolv.conf";
 }
 
 function protectedFilesystem(type: bigint): boolean {

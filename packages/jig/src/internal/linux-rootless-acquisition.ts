@@ -17,6 +17,7 @@ const MAX_PROCESS_OUTPUT_BYTES = 16 * 1024;
 const REQUIRED_CONTROLLERS = Object.freeze(["cpu", "memory", "pids"] as const);
 const REQUIRED_BUBBLEWRAP_FEATURES = Object.freeze([
   "--unshare-all",
+  "--share-net",
   "--unshare-user",
   "--disable-userns",
   "--assert-userns-disabled",
@@ -217,6 +218,7 @@ function requireBubblewrapVersion(result: PrivateExecutionResult): string {
 function bubblewrapFeatureProbe(path: string): readonly string[] {
   const arguments_ = [
     "--unshare-all",
+    "--share-net",
     "--unshare-user",
     "--disable-userns",
     "--assert-userns-disabled",

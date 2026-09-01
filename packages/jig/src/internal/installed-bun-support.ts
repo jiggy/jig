@@ -16,6 +16,7 @@ const LIBRARIES = Object.freeze([
 const BUN_DESTINATION = "/jig-runtime/jig";
 const LIBRARY_DESTINATION = "/jig-runtime/lib";
 const EVALUATOR_DESTINATION = "/jig-evaluator";
+const PREPARATION_WORKER_DESTINATION = "/jig-preparation-worker.js";
 const authenticSupports = new WeakSet<object>();
 
 export interface PrivateInstalledBunSupport {
@@ -30,6 +31,9 @@ export interface PrivateInstalledBunSupport {
   readonly supervisorDigest: string;
   readonly evaluatorSupportPath: string;
   readonly evaluatorSupportDigest: string;
+  readonly preparationWorkerPath: string;
+  readonly preparationWorkerDigest: string;
+  readonly sandboxPreparationWorkerPath: typeof PREPARATION_WORKER_DESTINATION;
 }
 
 /**
@@ -70,6 +74,11 @@ export async function openPrivateInstalledBunSupport(
       `installed evaluator asset ${name}`,
     ),
   })));
+  const preparationWorkerPath = await exactRegularFile(
+    join(releaseRoot, "libexec", "preparation", "bun-native-preparation-worker.js"),
+    false,
+    "installed Bun preparation worker",
+  );
 
   const loaderPath = await exactRegularFile(ELF_INTERPRETER, true, "supported-host ELF interpreter");
   const hostLibraryDirectory = dirname(loaderPath);
@@ -87,6 +96,7 @@ export async function openPrivateInstalledBunSupport(
     loaderDigest,
     libraryDigests,
     evaluatorDigests,
+    preparationWorkerDigest,
   ] = await Promise.all([
     privateFileDigest(executablePath),
     privateFileDigest(supervisorPath),
@@ -99,6 +109,7 @@ export async function openPrivateInstalledBunSupport(
       name,
       digest: await privateFileDigest(path),
     }))),
+    privateFileDigest(preparationWorkerPath),
   ]);
   const evaluatorSupportDigest = privateDomainDigest(
     "JIG-Installed-Evaluator-Support/1",
@@ -112,6 +123,7 @@ export async function openPrivateInstalledBunSupport(
     loader: Object.freeze({ destination: ELF_INTERPRETER, digest: loaderDigest }),
     libraries: libraryDigests,
     evaluatorSupportDigest,
+    preparationWorkerDigest,
   });
   const runtimeMounts = Object.freeze([
     Object.freeze({ source: executablePath, destination: BUN_DESTINATION }),
@@ -133,6 +145,9 @@ export async function openPrivateInstalledBunSupport(
     supervisorDigest,
     evaluatorSupportPath,
     evaluatorSupportDigest,
+    preparationWorkerPath,
+    preparationWorkerDigest,
+    sandboxPreparationWorkerPath: PREPARATION_WORKER_DESTINATION,
   });
   authenticSupports.add(support);
   return support;
@@ -152,7 +167,8 @@ export async function revalidatePrivateInstalledBunSupport(value: unknown): Prom
   const current = await openPrivateInstalledBunSupport(support.executablePath);
   if (current.digest !== support.digest || current.executablePath !== support.executablePath ||
       current.supervisorPath !== support.supervisorPath ||
-      current.evaluatorSupportPath !== support.evaluatorSupportPath) {
+      current.evaluatorSupportPath !== support.evaluatorSupportPath ||
+      current.preparationWorkerPath !== support.preparationWorkerPath) {
     throw new Error("installed Bun support changed after selection");
   }
 }

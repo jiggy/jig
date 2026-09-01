@@ -17,6 +17,7 @@ const expectedInstalledFiles = [
   "libexec/evaluator/project-authoring-1.schema.json",
   "libexec/evaluator/project-evaluator-sdk.bundle.js",
   "libexec/evaluator/project-evaluator-worker.js",
+  "libexec/preparation/bun-native-preparation-worker.js",
   "libexec/linux-rootless-supervisor.js",
   "package.json",
 ].sort();
@@ -122,6 +123,7 @@ try {
     "libexec/linux-rootless-supervisor.js",
     "libexec/evaluator/project-evaluator-worker.js",
     "libexec/evaluator/project-evaluator-sdk.bundle.js",
+    "libexec/preparation/bun-native-preparation-worker.js",
   ]) {
     const source = await readFile(join(installed, relative), "utf8");
     assert.doesNotMatch(source, /(?:from|import\()\s*["']\.\.?\//);
