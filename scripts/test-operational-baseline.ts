@@ -408,9 +408,13 @@ async function run(
     new Response(child.stderr).text(),
   ]).finally(() => clearTimeout(timeout));
   if (!acceptedExitCodes.includes(exitCode)) {
-    throw new Error(`${command[0]} exited ${exitCode}\n${stdout}${stderr}`);
+    throw new Error(`${command.map(shellWord).join(" ")} exited ${exitCode}\n${stdout}${stderr}`);
   }
   return { stdout, stderr, exitCode };
+}
+
+function shellWord(value: string): string {
+  return /^[A-Za-z0-9_./:=@+-]+$/.test(value) ? value : JSON.stringify(value);
 }
 
 function requireRecord(value: unknown): Record<string, unknown> {

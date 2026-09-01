@@ -17,6 +17,7 @@ import { RunHostSession } from "../src/run/session.js";
 const HOSTILE = process.env.JIG_LINUX_ROOTLESS_HOSTILE === "1";
 const hostileDescribe = HOSTILE ? describe.serial : describe.skip;
 const delegatedCgroup = process.env.AGENT_DELEGATED_CGROUP;
+const delegatedDescribe = delegatedCgroup === undefined ? describe.skip : describe;
 const initialRootlessTemporaryState = new Set(
   (await readdir(tmpdir())).filter(rootlessTemporaryEntry),
 );
@@ -27,7 +28,7 @@ afterAll(async () => {
   if (portableBunRoot !== undefined) await rm(portableBunRoot, { recursive: true, force: true });
 });
 
-describe("private rootless Linux Run", () => {
+delegatedDescribe("private rootless Linux Run", () => {
   test("preflights and executes one isolated payload", async () => {
     const host = await hostConfiguration();
     const fixture = await createFixture(`

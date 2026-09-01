@@ -81,18 +81,24 @@ describe("private declaration-source capture", () => {
       await rm(join(root, "one", "Bad.ts"));
       await writeFile(join(root, "one", "same.ts"), "export default {};\n");
       await link(join(root, "one", "same.ts"), join(root, "two", "hard.ts"));
-      await symlink("same.ts", join(root, "one", "linked.ts"));
       const second = await openPrivateProjectRoot(root);
       try {
         await expect(captureDeclarationSource(second, discover("one"))).rejects.toMatchObject({
           code: "PROJECT_MEMBER_COLLISION",
         });
-        await expect(captureDeclarationSource(second, {
+      } finally {
+        await second.dispose();
+      }
+
+      await symlink("same.ts", join(root, "one", "linked.ts"));
+      const third = await openPrivateProjectRoot(root);
+      try {
+        await expect(captureDeclarationSource(third, {
           kind: "members",
           paths: ["one/linked.ts"],
         })).rejects.toMatchObject({ code: "PROJECT_SOURCE_SYMLINK" });
       } finally {
-        await second.dispose();
+        await third.dispose();
       }
     });
   });
