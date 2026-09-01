@@ -147,6 +147,35 @@ do
   fi
 done
 
+mkdir -p -- "$temporary/npm-global"
+"$JIG_NPM" install \
+  --global \
+  --prefix "$temporary/npm-global" \
+  --ignore-scripts \
+  --no-package-lock \
+  --no-audit \
+  --no-fund \
+  "$archive"
+global_jig="$temporary/npm-global/bin/jig"
+global_bun="$temporary/npm-global/lib/node_modules/@jigging/jig/node_modules/@oven/bun-linux-x64-baseline/bin/bun"
+if [ ! -x "$global_jig" ] || [ ! -x "$global_bun" ]; then
+  echo "npm did not create the exact global Jig installation" >&2
+  exit 1
+fi
+global_runtime_hash_line=$(sha256sum "$global_bun")
+global_runtime_sha256=${global_runtime_hash_line%% *}
+if [ "$global_runtime_sha256" != "$runtime_sha256" ]; then
+  echo "the global Jig installation contains the wrong Bun runtime" >&2
+  exit 1
+fi
+"$global_jig" --help > "$temporary/npm-global-help"
+local_help_hash_line=$(sha256sum "$temporary/npm-help")
+global_help_hash_line=$(sha256sum "$temporary/npm-global-help")
+if [ "${local_help_hash_line%% *}" != "${global_help_hash_line%% *}" ]; then
+  echo "the local and global npm installations exposed different commands" >&2
+  exit 1
+fi
+
 verified_hash_line=$(cd "$staging" && sha256sum "$filename")
 if [ "$verified_hash_line" != "$hash_line" ]; then
   echo "the candidate archive changed while its gates were running" >&2
@@ -158,7 +187,7 @@ commit=$(git -C "$repository" rev-parse HEAD)
   printf '{\n'
   printf '  "archive": "%s",\n' "$filename"
   printf '  "commit": "%s",\n' "$commit"
-  printf '  "gates": ["package-smoke", "operational-baseline-1", "npm-install-help"],\n'
+  printf '  "gates": ["package-smoke", "operational-baseline-1", "npm-local-install-help", "npm-global-install-help"],\n'
   printf '  "npmExecutable": "%s",\n' "$JIG_NPM"
   printf '  "npmVersion": "%s",\n' "$npm_version"
   printf '  "runtimePackage": "@oven/bun-linux-x64-baseline@1.3.3",\n'
