@@ -48,6 +48,18 @@ try {
   assert.equal(initialized.stdout, "created bare Jig project\n");
   assert.equal(initialized.stderr, "");
 
+  await writeMalformedFlow(project);
+  const malformed = await run([jig, "check", project, "--yes"], consumer, [1], 120_000);
+  assert.equal(malformed.stdout, "");
+  assert.equal(
+    malformed.stderr,
+    'INVALID_CANDIDATE: the project definition is invalid; ' +
+      'METADATA_DELIMITER at "flows/malformed/FLOW.md"\n',
+  );
+  assert.doesNotMatch(malformed.stderr, /\.jig|coordinator|sqlite|\/tmp\//i);
+  await assert.rejects(stat(join(project, "jig.lock")), { code: "ENOENT" });
+  await rm(join(project, "flows", "malformed"), { recursive: true });
+
   await writeHelloFlow(project);
   await writeFriendlyBinding(project);
   await writeLockedDependencyFlow(project);
@@ -275,6 +287,12 @@ async function writeHelloFlow(project: string): Promise<void> {
     "}",
     "",
   ].join("\n"));
+}
+
+async function writeMalformedFlow(project: string): Promise<void> {
+  const flow = join(project, "flows", "malformed");
+  await mkdir(flow);
+  await writeFile(join(flow, "FLOW.md"), "not FLOW Metadata/1\n");
 }
 
 async function writeFriendlyBinding(project: string): Promise<void> {
