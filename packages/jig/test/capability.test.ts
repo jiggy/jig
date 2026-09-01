@@ -59,7 +59,7 @@ describe("Capability Contract/1", () => {
     expect(parsed.descriptor.id).toBe("https://example.org/contracts/session-store");
     expect(parsed.descriptor.version).toBe("1.0.0");
     expect(parsed.digest).toBe(
-      "sha256:a8273fd117aa2f2aa8ee8805c0d598b3e1f3bad9036d368d8847bd41513158c5",
+      "sha256:95717125236427f83f401e2f942bb4df46e95867ac34828d719cc9795e5b3e98",
     );
     expect([...parsed.schemas.keys()].sort()).toEqual([
       "/methods/read/errors/not-found",
@@ -186,7 +186,7 @@ describe("Capability Contract/1", () => {
 
   test("preserves JSON/1 duplicate-member and BOM rejection", () => {
     const duplicate = encoder.encode(
-      '{"$schema":"https://flow.dev/schemas/capability-contract-1.schema.json",' +
+      '{"$schema":"https://flow.jig.md/schemas/capability-contract-1.schema.json",' +
         '"flowCapabilityContract":1,"id":"https://example.org/contracts/x",' +
         '"version":"1.0.0","version":"2.0.0","methods":{}}',
     );

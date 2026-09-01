@@ -8,7 +8,7 @@ import type { JsonValue } from "../src/json.js";
 import { checkPackageDirectory, type InspectedPackage } from "../src/package/inspect.js";
 import type { RunDiagnostics, RunHostTerminal } from "../src/run/session.js";
 
-const schemaUri = "https://flow.dev/schemas/schema-1.json";
+const schemaUri = "https://flow.jig.md/schemas/schema-1.json";
 const diagnostics = Object.freeze({
   stderr: "component diagnostic\n",
   stderrBytes: 21,

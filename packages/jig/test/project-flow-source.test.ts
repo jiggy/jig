@@ -18,7 +18,7 @@ import {
 } from "../src/project/flow-source.js";
 import { SchemaDiagnostic } from "../src/schema/index.js";
 
-const schemaUri = "https://flow.dev/schemas/schema-1.json";
+const schemaUri = "https://flow.jig.md/schemas/schema-1.json";
 const linuxTest = process.platform === "linux" ? test : test.skip;
 
 describe("private project Flow source capture", () => {

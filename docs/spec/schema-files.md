@@ -2,7 +2,7 @@
 
 **Status:** prerelease specification candidate. The checked-in
 [`schema-1.json`](machine/schema-1.json) machine meta-schema uses the
-provisional identifier `https://flow.dev/schemas/schema-1.json`; it has not
+provisional identifier `https://flow.jig.md/schemas/schema-1.json`; it has not
 been published at that URI. Independent cross-implementation fixtures remain
 a release gate.
 
@@ -64,7 +64,7 @@ Validation failure is `INVALID_RESULT`.
 Each file is a JSON object whose root contains this exact declaration:
 
 ```json
-"$schema": "https://flow.dev/schemas/schema-1.json"
+"$schema": "https://flow.jig.md/schemas/schema-1.json"
 ```
 
 Schema/1 is a closed, resource-bounded dialect of JSON Schema 2020-12. Boolean

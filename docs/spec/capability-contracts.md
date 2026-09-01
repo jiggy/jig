@@ -3,7 +3,7 @@
 **Status:** prerelease specification candidate. The checked-in
 [`capability-contract-1.schema.json`](machine/capability-contract-1.schema.json)
 machine schema uses the provisional identifier
-`https://flow.dev/schemas/capability-contract-1.schema.json`; it has not been
+`https://flow.jig.md/schemas/capability-contract-1.schema.json`; it has not been
 published at that URI. Independent digest/Schema/1 fixtures and
 consumer/provider conformance remain release gates.
 
@@ -28,7 +28,7 @@ One self-contained JSON descriptor is the only public interface format. The
 sole normative session-store example is the parseable
 [`session-store.capability.json`](examples/capability-contracts/session-store.capability.json),
 whose Capability Contract/1 digest is
-`sha256:a8273fd117aa2f2aa8ee8805c0d598b3e1f3bad9036d368d8847bd41513158c5`.
+`sha256:95717125236427f83f401e2f942bb4df46e95867ac34828d719cc9795e5b3e98`.
 This document does not duplicate the same public URI/version descriptor in a
 Markdown block.
 
@@ -73,7 +73,7 @@ $defs                    optional local schema-definition map
 ```
 
 `$schema` is exactly
-`https://flow.dev/schemas/capability-contract-1.schema.json`. `methods` has
+`https://flow.jig.md/schemas/capability-contract-1.schema.json`. `methods` has
 1–256 `LocalName` keys, where `LocalName` is a 1–64 character lower-ASCII slug
 matching `[a-z0-9]+(?:-[a-z0-9]+)*`. Each method object has exactly `input`, `output`, and
 `errors`; the first two are Schema/1 schemas and `errors` is a 0–128 member map

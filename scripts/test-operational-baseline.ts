@@ -166,14 +166,14 @@ async function writeHelloFlow(project: string): Promise<void> {
     "",
   ].join("\n"));
   await writeFile(join(flow, "input.schema.json"), JSON.stringify({
-    $schema: "https://flow.dev/schemas/schema-1.json",
+    $schema: "https://flow.jig.md/schemas/schema-1.json",
     type: "object",
     properties: { name: { type: "string" } },
     required: ["name"],
     additionalProperties: false,
   }));
   await writeFile(join(flow, "result.schema.json"), JSON.stringify({
-    $schema: "https://flow.dev/schemas/schema-1.json",
+    $schema: "https://flow.jig.md/schemas/schema-1.json",
     type: "object",
     properties: {
       outcome: { const: "done" },

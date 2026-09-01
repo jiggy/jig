@@ -1,5 +1,5 @@
 {
-  "$schema": "https://flow.dev/schemas/schema-1.json",
+  "$schema": "https://flow.jig.md/schemas/schema-1.json",
   "title": "Ticket input",
   "type": "object",
   "properties": {
@@ -23,6 +23,9 @@
       "maxItems": 32
     }
   },
-  "required": ["ticketId", "request"],
+  "required": [
+    "ticketId",
+    "request"
+  ],
   "additionalProperties": false
 }

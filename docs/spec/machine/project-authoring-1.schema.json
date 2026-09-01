@@ -1,9 +1,13 @@
 {
-  "$schema": "https://flow.dev/schemas/schema-1.json",
+  "$schema": "https://flow.jig.md/schemas/schema-1.json",
   "title": "Jig project authoring value/1",
   "oneOf": [
-    { "$ref": "#/$defs/project" },
-    { "$ref": "#/$defs/bindingDefinition" }
+    {
+      "$ref": "#/$defs/project"
+    },
+    {
+      "$ref": "#/$defs/bindingDefinition"
+    }
   ],
   "$defs": {
     "localName": {
@@ -19,57 +23,93 @@
     "discoverSource": {
       "type": "object",
       "properties": {
-        "kind": { "const": "discover" },
+        "kind": {
+          "const": "discover"
+        },
         "roots": {
           "type": "array",
-          "items": { "$ref": "#/$defs/projectPath" },
+          "items": {
+            "$ref": "#/$defs/projectPath"
+          },
           "minItems": 1,
           "maxItems": 65536
         }
       },
-      "required": ["kind", "roots"],
+      "required": [
+        "kind",
+        "roots"
+      ],
       "additionalProperties": false
     },
     "membersSource": {
       "type": "object",
       "properties": {
-        "kind": { "const": "members" },
+        "kind": {
+          "const": "members"
+        },
         "paths": {
           "type": "array",
-          "items": { "$ref": "#/$defs/projectPath" },
+          "items": {
+            "$ref": "#/$defs/projectPath"
+          },
           "maxItems": 65536
         }
       },
-      "required": ["kind", "paths"],
+      "required": [
+        "kind",
+        "paths"
+      ],
       "additionalProperties": false
     },
     "source": {
       "oneOf": [
-        { "$ref": "#/$defs/discoverSource" },
-        { "$ref": "#/$defs/membersSource" }
+        {
+          "$ref": "#/$defs/discoverSource"
+        },
+        {
+          "$ref": "#/$defs/membersSource"
+        }
       ]
     },
     "project": {
       "type": "object",
       "properties": {
-        "flows": { "$ref": "#/$defs/source" },
-        "bindings": { "$ref": "#/$defs/source" }
+        "flows": {
+          "$ref": "#/$defs/source"
+        },
+        "bindings": {
+          "$ref": "#/$defs/source"
+        }
       },
       "additionalProperties": false
     },
     "packageBinding": {
       "type": "object",
       "properties": {
-        "kind": { "const": "package" },
-        "package": { "$ref": "#/$defs/projectPath" },
-        "settings": { "type": "object", "maxProperties": 65536 },
+        "kind": {
+          "const": "package"
+        },
+        "package": {
+          "$ref": "#/$defs/projectPath"
+        },
+        "settings": {
+          "type": "object",
+          "maxProperties": 65536
+        },
         "attachments": {
           "type": "object",
-          "additionalProperties": { "$ref": "#/$defs/projectPath" },
+          "additionalProperties": {
+            "$ref": "#/$defs/projectPath"
+          },
           "maxProperties": 65536
         }
       },
-      "required": ["kind", "package", "settings", "attachments"],
+      "required": [
+        "kind",
+        "package",
+        "settings",
+        "attachments"
+      ],
       "additionalProperties": false
     },
     "bindingDefinition": {

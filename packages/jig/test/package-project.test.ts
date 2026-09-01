@@ -18,7 +18,7 @@ import {
   type RetainedFlowInput,
 } from "../src/project/retained-flow.js";
 
-const schemaUri = "https://flow.dev/schemas/schema-1.json";
+const schemaUri = "https://flow.jig.md/schemas/schema-1.json";
 
 describe("private package-project linker", () => {
   test("retains captured Flow members without taking source ownership", async () => {
@@ -278,7 +278,7 @@ function schema(value: Record<string, unknown>): string {
 
 function capability(id: string): string {
   return JSON.stringify({
-    $schema: "https://flow.dev/schemas/capability-contract-1.schema.json",
+    $schema: "https://flow.jig.md/schemas/capability-contract-1.schema.json",
     flowCapabilityContract: 1,
     id,
     version: "1.0.0",

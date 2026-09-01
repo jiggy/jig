@@ -1,5 +1,5 @@
 {
-  "$schema": "https://flow.dev/schemas/schema-1.json",
+  "$schema": "https://flow.jig.md/schemas/schema-1.json",
   "title": "Jig lock/1",
   "description": "The portable desired-state value stored as canonical JSON/1 plus LF in jig.lock. Project-path, LocalName, digest, collision, protected-path, aggregate-target, and canonical-byte rules are additionally enforced by Jig.",
   "type": "object",

@@ -1,6 +1,6 @@
 import type { JsonObject, JsonValue } from "../json.js";
 
-export const SCHEMA_1_URI = "https://flow.dev/schemas/schema-1.json";
+export const SCHEMA_1_URI = "https://flow.jig.md/schemas/schema-1.json";
 
 export const SCHEMA_1_LIMITS = Object.freeze({
   bytes: 262_144,

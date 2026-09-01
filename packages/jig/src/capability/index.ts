@@ -15,7 +15,7 @@ import {
 } from "../schema/index.js";
 
 export const CAPABILITY_CONTRACT_SCHEMA =
-  "https://flow.dev/schemas/capability-contract-1.schema.json";
+  "https://flow.jig.md/schemas/capability-contract-1.schema.json";
 
 export const CAPABILITY_CONTRACT_LIMITS = Object.freeze({
   bytes: 262_144,

@@ -1,13 +1,15 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://flow.dev/schemas/schema-1.json",
+  "$id": "https://flow.jig.md/schemas/schema-1.json",
   "title": "FLOW Schema/1 file",
   "description": "Machine-checkable structural profile for a root Schema/1 file. Reference existence, acyclicity, aggregate limits, and the deterministic work meter are additional normative checks.",
   "type": "object",
-  "required": ["$schema"],
+  "required": [
+    "$schema"
+  ],
   "properties": {
     "$schema": {
-      "const": "https://flow.dev/schemas/schema-1.json"
+      "const": "https://flow.jig.md/schemas/schema-1.json"
     },
     "$defs": {
       "type": "object",
@@ -185,10 +187,23 @@
       }
     },
     "simple-type": {
-      "enum": ["null", "boolean", "object", "array", "number", "integer", "string"]
+      "enum": [
+        "null",
+        "boolean",
+        "object",
+        "array",
+        "number",
+        "integer",
+        "string"
+      ]
     },
     "scalar": {
-      "type": ["null", "boolean", "number", "string"]
+      "type": [
+        "null",
+        "boolean",
+        "number",
+        "string"
+      ]
     },
     "nonempty-schema-array": {
       "type": "array",

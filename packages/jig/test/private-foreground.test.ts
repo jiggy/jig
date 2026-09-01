@@ -222,7 +222,7 @@ async function writeProject(root: string): Promise<void> {
     "",
   ].join("\n"));
   await writeFile(join(worker, "input.schema.json"), JSON.stringify({
-    $schema: "https://flow.dev/schemas/schema-1.json",
+    $schema: "https://flow.jig.md/schemas/schema-1.json",
     type: "object",
     properties: {
       ticket: { type: "string" },
@@ -232,7 +232,7 @@ async function writeProject(root: string): Promise<void> {
     additionalProperties: false,
   }));
   await writeFile(join(worker, "result.schema.json"), JSON.stringify({
-    $schema: "https://flow.dev/schemas/schema-1.json",
+    $schema: "https://flow.jig.md/schemas/schema-1.json",
     type: "object",
     properties: {
       outcome: { const: "done" },

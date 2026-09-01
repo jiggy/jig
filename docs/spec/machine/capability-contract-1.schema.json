@@ -1,11 +1,11 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://flow.dev/schemas/capability-contract-1.schema.json",
+  "$id": "https://flow.jig.md/schemas/capability-contract-1.schema.json",
   "title": "FLOW Capability Contract/1 descriptor",
   "type": "object",
   "properties": {
     "$schema": {
-      "const": "https://flow.dev/schemas/capability-contract-1.schema.json"
+      "const": "https://flow.jig.md/schemas/capability-contract-1.schema.json"
     },
     "flowCapabilityContract": {
       "const": 1

@@ -1,5 +1,5 @@
 {
-  "$schema": "https://flow.dev/schemas/schema-1.json",
+  "$schema": "https://flow.jig.md/schemas/schema-1.json",
   "title": "Gauntlet settings",
   "type": "object",
   "properties": {
@@ -14,6 +14,9 @@
       "maximum": 1
     }
   },
-  "required": ["maxRetries", "minimumScore"],
+  "required": [
+    "maxRetries",
+    "minimumScore"
+  ],
   "additionalProperties": false
 }

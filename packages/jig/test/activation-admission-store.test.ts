@@ -618,7 +618,7 @@ async function createFixture(
     ].join("\n"));
     await writeFile(join(flowSource, "flow.ts"), "#!/usr/bin/env bun\nexport {};\n");
     await writeFile(join(flowSource, "input.schema.json"), JSON.stringify({
-      $schema: "https://flow.dev/schemas/schema-1.json",
+      $schema: "https://flow.jig.md/schemas/schema-1.json",
       type: "object",
       properties: {
         value: { type: "string" },

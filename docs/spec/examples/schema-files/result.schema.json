@@ -1,5 +1,5 @@
 {
-  "$schema": "https://flow.dev/schemas/schema-1.json",
+  "$schema": "https://flow.jig.md/schemas/schema-1.json",
   "title": "Gauntlet result",
   "$defs": {
     "doneOutput": {
@@ -16,7 +16,10 @@
           "maximum": 1
         }
       },
-      "required": ["artifact", "score"],
+      "required": [
+        "artifact",
+        "score"
+      ],
       "additionalProperties": false
     },
     "blockedOutput": {
@@ -28,7 +31,9 @@
           "maxLength": 8192
         }
       },
-      "required": ["reason"],
+      "required": [
+        "reason"
+      ],
       "additionalProperties": false
     }
   },
@@ -36,19 +41,33 @@
     {
       "type": "object",
       "properties": {
-        "outcome": { "const": "done" },
-        "output": { "$ref": "#/$defs/doneOutput" }
+        "outcome": {
+          "const": "done"
+        },
+        "output": {
+          "$ref": "#/$defs/doneOutput"
+        }
       },
-      "required": ["outcome", "output"],
+      "required": [
+        "outcome",
+        "output"
+      ],
       "additionalProperties": false
     },
     {
       "type": "object",
       "properties": {
-        "outcome": { "const": "blocked" },
-        "output": { "$ref": "#/$defs/blockedOutput" }
+        "outcome": {
+          "const": "blocked"
+        },
+        "output": {
+          "$ref": "#/$defs/blockedOutput"
+        }
       },
-      "required": ["outcome", "output"],
+      "required": [
+        "outcome",
+        "output"
+      ],
       "additionalProperties": false
     }
   ]

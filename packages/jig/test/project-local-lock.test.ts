@@ -24,7 +24,7 @@ import {
 } from "../src/project/retained-flow.js";
 
 const encoder = new TextEncoder();
-const schemaUri = "https://flow.dev/schemas/schema-1.json";
+const schemaUri = "https://flow.jig.md/schemas/schema-1.json";
 
 describe("private package-project portable lock projection", () => {
   test("has one empty canonical byte vector and authenticated identity", () => {

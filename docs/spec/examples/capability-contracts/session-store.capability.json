@@ -1,5 +1,5 @@
 {
-  "$schema": "https://flow.dev/schemas/capability-contract-1.schema.json",
+  "$schema": "https://flow.jig.md/schemas/capability-contract-1.schema.json",
   "flowCapabilityContract": 1,
   "id": "https://example.org/contracts/session-store",
   "version": "1.0.0",
@@ -28,7 +28,9 @@
           "maxLength": 128
         }
       },
-      "required": ["sessionId"],
+      "required": [
+        "sessionId"
+      ],
       "additionalProperties": false
     },
     "Session": {
@@ -40,7 +42,9 @@
           "maxLength": 128
         }
       },
-      "required": ["sessionId"],
+      "required": [
+        "sessionId"
+      ],
       "additionalProperties": false
     },
     "NotFound": {
@@ -52,7 +56,9 @@
           "maxLength": 128
         }
       },
-      "required": ["sessionId"],
+      "required": [
+        "sessionId"
+      ],
       "additionalProperties": false
     }
   }

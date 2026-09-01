@@ -38,5 +38,5 @@ implementation experiments and the conditions under which their evidence may
 be reconsidered. Git history remains the archive; the old implementations are
 not current or compatible code.
 
-The `https://flow.dev/...` values in prerelease machine files are provisional
+The `https://flow.jig.md/...` values in prerelease machine files are provisional
 identifiers, not claims that those URLs currently resolve.
