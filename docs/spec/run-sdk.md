@@ -14,9 +14,7 @@ Run/1 owns the protocol and this projection must be corrected.
 
 The TypeScript package root is `@flowmd/sdk`. The Python distribution is
 `flowmd-sdk`, imported as `flowmd_sdk`. These root modules expose Run SDK/1
-only. The separately gated Service SDK/1 candidate uses
-`@flowmd/sdk/service` and `flowmd_sdk.service`; importing this Run surface does
-not imply Service/1 conformance.
+only.
 
 Both expose only:
 
@@ -37,7 +35,7 @@ arguments and uses ordinary task cancellation.
 
 `serve` owns protocol stdin and stdout for the process and serves exactly one
 root Run. Application logs go to stderr. Calling other protocol, resolver,
-Binding, provider, sandbox, Jig administration, Service, Agent, or graph APIs
+Binding, provider, sandbox, Jig administration, Agent, or graph APIs
 through this SDK is impossible because none are exposed.
 
 ## 2. TypeScript

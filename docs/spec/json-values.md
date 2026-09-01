@@ -4,9 +4,8 @@ FLOW uses JSON as a bounded cross-language value format. JSON/1 fixes the
 parts which ordinary host parsers otherwise disagree about; it is not a new
 serialization syntax.
 
-It applies to protocol frames, settings, inputs, results, Service values,
-Event data, schemas, and descriptors unless a particular protocol or value
-seam states a lower limit.
+It applies to protocol frames, settings, inputs, results, schemas, and
+descriptors unless a particular protocol or value seam states a lower limit.
 
 ## Syntax and strings
 

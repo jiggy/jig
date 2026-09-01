@@ -4,8 +4,8 @@ Jig is a local host for [FLOW](docs/spec/package-format.md) packages. It
 captures ordinary project files, shows the proposed change for review, admits
 the approved bytes, and runs an exact target in a rootless Linux envelope.
 
-The current release is a deliberately narrow direct-run alpha. It provides
-three commands:
+The current release candidate is a deliberately narrow direct-run alpha. It
+provides three commands:
 
 ```text
 jig init --bare <directory>
@@ -25,14 +25,15 @@ The alpha supports one host shape:
 - a systemd user manager able to create transient scopes with `Delegate=yes`;
 - unprivileged user, mount, PID, network, IPC, UTS, and cgroup namespaces.
 
-The `0.1.0-alpha.1` artifact embeds Bun 1.3.3 as the fixed application and
-Flow runtime. Jig acquires a transient delegated scope when `check` or `run`
-needs one. This requires no `sudo` and exposes no host-control channel to Flow
-code. An unsupported host fails closed.
+The planned `0.1.0-alpha.1` artifact embeds Bun 1.3.3 as the fixed application
+and Flow runtime. Jig acquires a transient delegated scope when `check` or
+`run` needs one. This requires no `sudo` and exposes no host-control channel to
+Flow code. An unsupported host fails closed.
 
 ## Quickstart
 
-Install the alpha with an npm-compatible client:
+The package is not yet published. Once the alpha clears its release gates,
+install it with an npm-compatible client:
 
 ```console
 npm install --global @jigging/jig@0.1.0-alpha.1

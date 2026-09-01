@@ -186,8 +186,9 @@ Each attachment has exactly:
 ```
 
 `path` is a nonempty runtime-native path inside the already prepared sandbox.
-`access` is exactly `read` or `read-write`. The outer Sandbox Backend, not an
-SDK path helper, enforces the view. One Run has at most 256 named attachments.
+`access` is exactly `read` or `read-write`. The outer execution envelope, not
+an SDK path helper, enforces the view. One Run has at most 256 named
+attachments.
 
 There is no Run ID, parent ID, trigger field, correlation field, provider
 identity, slot inventory, grant, enforcement receipt, or negotiated limit
@@ -352,9 +353,9 @@ recorded cancellation/deadline terminal condition determines `CANCELLED` or
 That decision fixes the request-level result or error. Overall Run acceptance
 also requires the clean process completion described in Section 9.
 
-Host-internal distinctions such as which Binding, provider, Runtime Adapter,
-or Sandbox Backend was unavailable belong in durable host diagnostics, not the
-portable error taxonomy. Activation failures which occur before a channel
+Host-internal distinctions such as which Binding, provider, runtime selection,
+or execution envelope was unavailable belong in durable host diagnostics, not
+the portable error taxonomy. Activation failures which occur before a channel
 exists are not Run/1 errors.
 
 `PROTOCOL_ERROR` and `CHANNEL_LOST` are local terminal classifications, not

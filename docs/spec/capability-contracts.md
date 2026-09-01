@@ -1,26 +1,26 @@
 # FLOW Capability Contract/1
 
-**Status:** reviewed descriptor semantics with a published
-`capability-contract-1.schema.json` machine schema. Independent
-digest/Schema/1 fixtures and consumer/provider conformance remain release
-gates.
+**Status:** prerelease specification candidate. The checked-in
+[`capability-contract-1.schema.json`](machine/capability-contract-1.schema.json)
+machine schema uses the provisional identifier
+`https://flow.dev/schemas/capability-contract-1.schema.json`; it has not been
+published at that URI. Independent digest/Schema/1 fixtures and
+consumer/provider conformance remain release gates.
 
 Most Flows need no formal contract. Generic `flow/call` already means “perform
 this bounded piece of work and return one outcome.” A Capability Contract is
-for a stable machine interface which must be called repeatedly or precisely,
-regardless of whether the provider is host-native or a mounted FLOW Service.
+for a stable machine interface which must be called repeatedly or precisely.
 
 The division is:
 
 ```text
 flow/call       open-ended work, selected by intent, no contract required
 effect/call     a bound capability; local opaque or exact public contract
-Service/1       one portable provider lifecycle for contracted capabilities
 ```
 
 Complexity alone never requires a contract. A one-method contract is valid
-when it is a stable reusable host seam, such as Agent Run, rather than an
-ordinary child Flow disguised as an API.
+when it is a stable reusable seam, such as the session-store example below,
+rather than an ordinary child Flow disguised as an API.
 
 ## 1. Descriptor
 
@@ -207,75 +207,18 @@ an explicit `local: true` declaration instead; missing a descriptor never
 means “weak public contract.”
 
 Carrying the descriptor is intentional progressive disclosure. Most Flows
-carry none. A Flow which depends on a strict service seam pays for one small,
+carry none. A Flow which depends on a strict capability seam pays for one small,
 self-contained, offline-inspectable interface. Internal content-addressed
 storage may deduplicate identical copies; v1 does not add a contract package
 manager, ambient contract catalogue, or network fetch to save those bytes.
 
-A FLOW Service advertises descriptors with the same exact Package/1
-author-reference syntax:
+Capability Contract/1 does not define provider declaration, discovery,
+registration, lifecycle, or locking. Before dispatch, a host which binds the
+slot must independently establish a trusted provider and match the provider's
+exact contract URI, version, and descriptor digest. The identity URI is never
+an instruction to fetch from the network.
 
-```yaml
-provides:
-  sessions: ./contracts/session-store.capability.json
-```
-
-Before provider code loads, the host reads and bounds the descriptor, validates
-it, computes its digest, and matches the consumer's independently derived
-triple.
-
-Provider descriptor bytes may come from an exact FLOW Service package or a
-trusted host-native registration. A content-addressed cache or optional index
-may locate already known bytes, but the identity URI is never an instruction
-to fetch from the network and no central registry is required.
-
-For a FLOW Service provider, the eventual public lock records the consumer
-package/path and independently derived contract triple separately from the
-provider source locator, immutable source revision, exact provider Package/1
-digest, and selected export. The current private package-project projection
-records only project-local package paths/digests and the selected provider
-Binding/export; it deliberately does not define upstream source provenance or
-the public `jig.lock` schema.
-
-A host-capability Binding is only conditionally portable. Its eventual
-portable lock evidence may record the project-authored inert host-capability
-reference and the consumer-carried contract triple or explicit local effect
-requirement, once that authoring model is closed. The receiving host's resolved
-registration snapshot, provider-module artifact/revision, host-policy decision,
-authority attenuation, and live provider generation remain protected local
-activation evidence under `.jig/` and never become portable lock entries.
-
-Locking a descriptor selected from providers without a consumer-carried
-descriptor would pin later drift but would not prove which interface the
-consumer was authored against. This is why the digest belongs in the lock and
-normalized state while the exact source bytes—not a handwritten digest—belong
-with the consumer.
-
-## 5. Relationship to Service/1
-
-Capability Contract/1 is lifecycle-neutral. A host-native effect provider can
-implement it directly. Service/1 is FLOW's optional portable lifecycle for a
-long-lived process to provide one or more such contracts.
-
-Service/1 supports bounded request/response JSON and multiple outstanding
-`service/invoke` calls on one Mount with out-of-order responses. Each invocation
-is a separate owner which pins consumer Binding, provider generation, method,
-contract, host-allocated deadline, and operation key. The Mount's complete dependency
-set and complete export set are fixed for its lifetime.
-Cancelling one invocation cannot cancel a sibling or the Mount.
-
-Concurrent invocation does not promise serialization, linearizability, or
-transaction isolation. Those are provider/contract semantics. Provider loss
-invalidates generations and cancels or loses their invocations; replacement
-never heals an existing Binding. An invocation is never replayed merely because
-its response was lost.
-
-Service/1 v1 does not gain callbacks, streams, subscriptions, delegated or
-generic resource handles, transparent object export, or portable UI objects.
-Polling, bounded long-poll, `changes-since`, and durable Journal Events cover
-v1.
-
-## 6. Required conformance cases
+## 5. Required conformance cases
 
 1. An ordinary child Flow runs without a contract.
 2. A local opaque effect has no portability claim and cannot masquerade as a
@@ -290,10 +233,8 @@ v1.
 7. Independent TypeScript and Python implementations compute the same
    domain-separated full-descriptor digest.
 8. Another SHA-256-bearing object cannot substitute for the contract digest.
-9. A consumer and provider resolve offline from their exact descriptors without
-   dereferencing the identity URI; the lock records the derived triple.
+9. A consumer resolves its exact descriptor offline without dereferencing the
+   identity URI; a trusted provider claim matches the same exact triple.
 10. An untrusted conflicting claimant cannot globally quarantine an exact
     trusted consumer/provider match.
 11. Descriptor validation occurs before provider execution.
-12. Concurrent Service invocations have isolated owners and cancellation.
-13. Provider loss never transparently rebinds or replays an invocation.

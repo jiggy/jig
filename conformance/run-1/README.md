@@ -27,11 +27,6 @@ operational classification through Sley's structured failure wrapper. This is
 integration evidence, not another independent Run/1 peer, a Sley conformance
 claim, or a public FLOW-to-Sley adapter API.
 
-[`external-author/`](external-author/) preserves the briefs for the separate
-instruction-restricted author/evaluator gate. It contains no solution or
-evaluator implementation; each run is regenerated from current packed
-artifacts and a sealed public-document packet.
-
 Run it with:
 
 ```console

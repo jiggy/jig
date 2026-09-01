@@ -1,28 +1,24 @@
 # FLOW Schema/1 files
 
-**Status:** reviewed architecture specification with a published
-`https://flow.dev/schemas/schema-1.json` machine meta-schema. Independent
-cross-implementation fixtures remain a release gate.
+**Status:** prerelease specification candidate. The checked-in
+[`schema-1.json`](machine/schema-1.json) machine meta-schema uses the
+provisional identifier `https://flow.dev/schemas/schema-1.json`; it has not
+been published at that URI. Independent cross-implementation fixtures remain
+a release gate.
 
 FLOW packages may expose three fixed, inert JSON Schema files. They describe
 values; they are never runtime mailboxes, configuration stores, templates, or
 code.
 
-| File | Valid package mode | Exact value validated |
-|---|---|---|
-| `input.schema.json` | Run | `flow/run.params.input` |
-| `settings.schema.json` | Run or Service | The complete immutable Binding `settings` object |
-| `result.schema.json` | Run | The complete normal `{ "outcome", "output" }` result |
+| File | Exact value validated |
+|---|---|
+| `input.schema.json` | `flow/run.params.input` |
+| `settings.schema.json` | The complete immutable Binding `settings` object |
+| `result.schema.json` | The complete normal `{ "outcome", "output" }` result |
 
 The third name is `result`, not `output`, because a package may declare several
 outcomes whose legal output shapes differ. Validating the complete value lets a
 schema express that correlation; an output-only schema could not.
-
-Service packages use their Capability Contract/1 descriptors for method inputs,
-results, and named errors. A Service package containing `input.schema.json` or
-`result.schema.json` is invalid. V1 has no dual-mode package.
-Capability descriptor rules are specified in
-[`capability-contracts.md`](capability-contracts.md).
 
 ## 1. Absence has exact semantics
 
@@ -31,7 +27,7 @@ Capability descriptor rules are specified in
 - Without `input.schema.json`, any value admitted by the bounded FLOW JSON
   data model is valid input.
 - Without `settings.schema.json`, the only valid settings value is `{}`. A
-  package must publish a settings schema to expose a configurable seam.
+  package must contain a settings schema to expose a configurable seam.
 - Without `result.schema.json`, any result satisfying the Run/1 base envelope
   and declared-outcome rules is valid.
 
@@ -45,7 +41,7 @@ snapshot, before package code or instructions can run.
 
 Settings are first required to be one complete JSON object and are then
 validated against `settings.schema.json` during Binding normalization,
-before runtime probing, dependency preparation, or Service mounting. There is
+before runtime selection or execution. There is
 no inheritance, merge, per-Run overlay, environment fallback, or default
 insertion.
 
@@ -54,10 +50,7 @@ A value expected to vary from one invocation to another is Run input. Durable
 working data belongs in an attachment or bound capability. These three seams
 replace variable interpolation rather than hiding it elsewhere.
 
-Input is validated against the actual call value before a Run process or
-instruction Agent starts. For open-ended Flow resolution it is also a
-deterministic eligibility check: a candidate whose input schema rejects the
-actual value cannot reach a Semantic Choice ranker.
+Input is validated against the actual call value before a Run process starts.
 
 A normal component result first passes the Run/1 envelope checks: it has one
 declared domain outcome and an `output` value, and it is not a protocol,

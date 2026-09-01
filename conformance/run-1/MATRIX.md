@@ -64,9 +64,4 @@ portable Run/1 pass/fail rule.
 
 Package build and clean-install checks prove artifact shape and importability.
 The Python source-distribution smoke permits ordinary PEP 517 build-dependency
-resolution; it is not claimed to be an offline or hermetic build proof. A
-separate instruction-restricted author and independent evaluator passed the
-SDK, Package/1, Schema/1, and bounded Run/1 gate against the same packed
-TypeScript SDK artifact. The repeatable exercise contract is retained in
-[`external-author/`](external-author/); historical solutions and evaluator
-workspaces are deliberately absent.
+resolution; it is not claimed to be an offline or hermetic build proof.

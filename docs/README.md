@@ -19,7 +19,7 @@ in [`../conformance/run-1/`](../conformance/run-1/).
 
 ## Jig direct alpha
 
-- [`../README.md`](../README.md) — supported-host requirements and a runnable
+- [`../README.md`](../README.md) — supported-host requirements and the planned
   installed quickstart.
 - [`spec/project-sdk.md`](spec/project-sdk.md) — inert `jig.ts` and Binding
   authoring values.
@@ -30,3 +30,6 @@ The direct alpha deliberately excludes Services, Hooks, Journal providers,
 Agent providers, Semantic Choice, Jig Graph, runtime registries, sandbox
 registries, and compatibility formats. Its installed command surface is
 exactly `init --bare`, `check`, and `run`.
+
+The `https://flow.dev/...` values in prerelease machine files are provisional
+identifiers, not claims that those URLs currently resolve.
