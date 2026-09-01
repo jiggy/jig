@@ -51,7 +51,8 @@ if [ -e "$archive" ] || [ -e "$archive.sha256" ] || [ -e "$archive.files" ]; the
 fi
 cp -- "$1" "$archive"
 (cd "$output" && sha256sum "$filename" > "$filename.sha256")
-tar -tzf "$archive" | LC_ALL=C sort > "$archive.files"
+tar -tzf "$archive" > "$temporary/inventory"
+LC_ALL=C sort "$temporary/inventory" > "$archive.files"
 
 JIG_PACKAGE_ARCHIVE="$archive" bun "$repository/packages/jig/test/package-smoke.ts"
 JIG_PACKAGE_ARCHIVE="$archive" bun "$repository/scripts/test-operational-baseline.ts"
