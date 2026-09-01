@@ -185,7 +185,7 @@ async function fixtureFor(runId: string): Promise<Fixture> {
   const ownerStateDirectory = join(root, "owner");
   await mkdir(ownerStateDirectory, { mode: 0o700 });
   const marker = join(root, "payload-ran");
-  const bunPath = await realpath("/bin/bun");
+  const bunPath = await realpath(process.execPath);
   const bunHostLibraryPath = dirname(await realpath("/lib64/ld-linux-x86-64.so.2"));
   const delegatedCgroup = `/sys/fs/cgroup/jig-supervisor-test-${randomBytes(8).toString("hex")}`;
   const runCgroup = `${delegatedCgroup}/jig-run-${runId}-${randomBytes(12).toString("hex")}`;
@@ -264,7 +264,7 @@ async function invokeSupervisor(
   const server = createServer();
   await listen(server, controlPath);
   const accepted = acceptOne(server);
-  const bunPath = await realpath("/bin/bun");
+  const bunPath = await realpath(process.execPath);
   const child = spawn(bunPath, [
     ...POLICY,
     SUPERVISOR,

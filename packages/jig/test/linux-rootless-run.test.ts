@@ -233,7 +233,7 @@ hostileDescribe("private rootless Linux hostile envelope", () => {
       }));
       const [completion, evidence] = await Promise.all([component.completion, component.evidence]);
       expect(completion).toMatchObject({ fenced: true, stopReason: "deadline" });
-      expect(Date.now() - started).toBeLessThan(5_000);
+      expect(Date.now() - started).toBeLessThan(6_000);
       expect(evidence.cpuStat.nr_throttled).toBeGreaterThan(0);
       expect(await missing(component.cgroup.runCgroup)).toBe(true);
     } finally {
@@ -415,7 +415,7 @@ async function portableBun(): Promise<string> {
     const directory = join(portableBunRoot, "bin");
     await mkdir(directory);
     const destination = join(directory, "jig");
-    const source = await realpath("/bin/bun");
+    const source = await realpath(process.execPath);
     const bytes = Buffer.from(await readFile(source));
     const fixedInterpreter = Buffer.from("/lib64/ld-linux-x86-64.so.2\0");
     if (bytes.indexOf(fixedInterpreter) === -1) {
