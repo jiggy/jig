@@ -165,8 +165,7 @@ async function startOrResumeCurrentExecution(
         packageAllocation,
         ownerAllocation,
       });
-      await recordCheckpoint(input, work.run.runId, "plan", plan as unknown as JsonValue);
-      work = await reacquire(input);
+      work = await advanceCheckpoint(input, work, "plan", plan as unknown as JsonValue);
     } else {
       plan = parsePlan(work.lifecycle.plan.value);
       recipe = await reproduceRecipe(input, work);
@@ -199,8 +198,7 @@ async function startOrResumeCurrentExecution(
         lease = await materializeRootBacking(input, recipe, plan.packageAllocation);
       }
       backing = Object.freeze({ kind: BACKING_KIND, lease: lease.identity });
-      await recordCheckpoint(input, work.run.runId, "backing", backing as unknown as JsonValue);
-      work = await reacquire(input);
+      work = await advanceCheckpoint(input, work, "backing", backing as unknown as JsonValue);
     } else {
       lease = await reacquirePrivatePackageMaterializationLease(
         plan.packageAllocation.parent.path,
@@ -219,7 +217,7 @@ async function startOrResumeCurrentExecution(
       backendPlan(recipe, lease.root, work.run.runId, plan),
       plan.ownerAllocation,
     );
-    await recordCheckpoint(input, work.run.runId, "sandbox", {
+    work = await advanceCheckpoint(input, work, "sandbox", {
       kind: SANDBOX_KIND,
       owner: sealed.identity,
     } as unknown as JsonValue);
@@ -231,7 +229,7 @@ async function startOrResumeCurrentExecution(
     let fence: PrivateLinuxConfirmedEnforcementReceipt;
     try {
       const component = await sealed.admit(stop.enforcementSignal, async (prepared) => {
-        await recordCheckpoint(input, work.run.runId, "prepared", {
+        work = await advanceCheckpoint(input, work, "prepared", {
           kind: PREPARED_KIND,
           prepared,
         } as unknown as JsonValue);
@@ -250,7 +248,12 @@ async function startOrResumeCurrentExecution(
         ...(input.signal === undefined ? {} : { signal: input.signal }),
       }, { cancellationGraceMs: plan.cancellationGraceMs }).run();
       observedTerminal = provisional;
-      await recordCheckpoint(input, work.run.runId, "provisional", provisional as unknown as JsonValue);
+      work = await advanceCheckpoint(
+        input,
+        work,
+        "provisional",
+        provisional as unknown as JsonValue,
+      );
       try {
         fence = await component.enforcement;
       } catch (error) {
@@ -266,9 +269,9 @@ async function startOrResumeCurrentExecution(
         // Persist a known protocol/cancellation/deadline result before a
         // possibly unconfirmed fence can make this invocation return pending.
         try {
-          await recordCheckpoint(
+          work = await advanceCheckpoint(
             input,
-            work.run.runId,
+            work,
             "provisional",
             knownTerminal as unknown as JsonValue,
           );
@@ -302,15 +305,19 @@ async function startOrResumeCurrentExecution(
       // delayed. Its confirmed typed receipt outranks a generic startup error.
       provisional = knownTerminal ?? terminalAfterConfirmedFence(error, fence);
       if (knownTerminal === undefined) {
-        await recordCheckpoint(input, work.run.runId, "provisional", provisional as unknown as JsonValue);
+        work = await advanceCheckpoint(
+          input,
+          work,
+          "provisional",
+          provisional as unknown as JsonValue,
+        );
       }
     }
 
-    await recordCheckpoint(input, work.run.runId, "fence", {
+    work = await advanceCheckpoint(input, work, "fence", {
       kind: FENCE_KIND,
       receipt: fence,
     } as unknown as JsonValue);
-    work = await reacquire(input);
     return terminal(await releaseAdmitAndClose(input, work));
   } catch (error) {
     if (error instanceof PrivateLinuxFenceUnconfirmedError) {
@@ -346,7 +353,12 @@ async function settleSealedWithoutAdmission(
   owner: PrivateLinuxSealedOwnerIdentity,
   provisional: PrivateRootRunTerminal,
 ): Promise<PrivateRootExecutionDisposition> {
-  await recordCheckpoint(input, initial.run.runId, "provisional", provisional as unknown as JsonValue);
+  let work = await advanceCheckpoint(
+    input,
+    initial,
+    "provisional",
+    provisional as unknown as JsonValue,
+  );
   let fence: PrivateLinuxConfirmedEnforcementReceipt;
   try {
     fence = await input.backend.recoverFence(owner);
@@ -356,11 +368,11 @@ async function settleSealedWithoutAdmission(
     }
     throw error;
   }
-  await recordCheckpoint(input, initial.run.runId, "fence", {
+  work = await advanceCheckpoint(input, work, "fence", {
     kind: FENCE_KIND,
     receipt: fence,
   } as unknown as JsonValue);
-  return terminal(await releaseAdmitAndClose(input, await reacquire(input)));
+  return terminal(await releaseAdmitAndClose(input, work));
 }
 
 async function recoverCurrentExecution(
@@ -374,8 +386,12 @@ async function recoverCurrentExecution(
     ? undefined
     : parseFence(work.lifecycle.fence.value).receipt;
   if (work.lifecycle.provisional === undefined && knownTerminal !== undefined) {
-    await recordCheckpoint(input, work.run.runId, "provisional", knownTerminal as unknown as JsonValue);
-    work = await reacquire(input);
+    work = await advanceCheckpoint(
+      input,
+      work,
+      "provisional",
+      knownTerminal as unknown as JsonValue,
+    );
   }
   if (work.lifecycle.sandbox !== undefined && work.lifecycle.fence === undefined) {
     const sandbox = parseSandbox(work.lifecycle.sandbox.value);
@@ -388,18 +404,19 @@ async function recoverCurrentExecution(
       }
       throw error;
     }
-    await recordCheckpoint(input, work.run.runId, "fence", {
+    work = await advanceCheckpoint(input, work, "fence", {
       kind: FENCE_KIND,
       receipt,
     } as unknown as JsonValue);
     confirmedFence = receipt;
-    work = await reacquire(input);
   }
   if (work.lifecycle.provisional === undefined) {
-    await recordCheckpoint(input, work.run.runId, "provisional", (
-      knownTerminal ?? terminalAfterRecoveredFence(confirmedFence, fallbackError)
-    ) as unknown as JsonValue);
-    work = await reacquire(input);
+    work = await advanceCheckpoint(
+      input,
+      work,
+      "provisional",
+      (knownTerminal ?? terminalAfterRecoveredFence(confirmedFence, fallbackError)) as unknown as JsonValue,
+    );
   }
   try {
     return terminal(await releaseAdmitAndClose(input, work));
@@ -427,11 +444,10 @@ async function recoverOlderExecution(
       }
       throw error;
     }
-    await recordCheckpoint(input, work.run.runId, "fence", {
+    work = await advanceCheckpoint(input, work, "fence", {
       kind: FENCE_KIND,
       receipt,
     } as unknown as JsonValue);
-    work = await reacquire(input);
   }
   if (work.lifecycle.provisional === undefined) {
     const lost = Object.freeze({
@@ -439,8 +455,7 @@ async function recoverOlderExecution(
       code: "COORDINATOR_LOST" as const,
       message: "the prior coordinator disappeared before an independently proved result",
     });
-    await recordCheckpoint(input, work.run.runId, "provisional", lost as unknown as JsonValue);
-    work = await reacquire(input);
+    work = await advanceCheckpoint(input, work, "provisional", lost as unknown as JsonValue);
   }
   try {
     return terminal(await releaseAdmitAndClose(input, work));
@@ -458,8 +473,12 @@ async function settleBeforeSandbox(
   _plan: PrivateDirectRootPlanRecord,
   provisional: PrivateRootRunTerminal,
 ): Promise<PrivateRootExecutionDisposition> {
-  await recordCheckpoint(input, work.run.runId, "provisional", provisional as unknown as JsonValue);
-  work = await reacquire(input);
+  work = await advanceCheckpoint(
+    input,
+    work,
+    "provisional",
+    provisional as unknown as JsonValue,
+  );
   try {
     return terminal(await releaseAdmitAndClose(input, work));
   } catch (error) {
@@ -475,8 +494,13 @@ async function settleWithoutPlan(
   work: PrivateReacquiredRootExecutionWork,
   provisional: PrivateRootRunTerminal,
 ): Promise<PrivateRootRunSnapshot> {
-  await recordCheckpoint(input, work.run.runId, "provisional", provisional as unknown as JsonValue);
-  await recordCheckpoint(input, work.run.runId, "release", {
+  work = await advanceCheckpoint(
+    input,
+    work,
+    "provisional",
+    provisional as unknown as JsonValue,
+  );
+  work = await advanceCheckpoint(input, work, "release", {
     kind: RELEASE_KIND,
     planDigest: null,
     backingDigest: null,
@@ -484,10 +508,8 @@ async function settleWithoutPlan(
     packageReleased: true,
     ownerRelease: null,
   } as unknown as JsonValue);
-  work = await reacquire(input);
   const admitted = normalizePrivateRootTerminal(work.lifecycle.provisional!.value);
-  await recordCheckpoint(input, work.run.runId, "admitted", admitted as unknown as JsonValue);
-  work = await reacquire(input);
+  work = await advanceCheckpoint(input, work, "admitted", admitted as unknown as JsonValue);
   return await closeFromAdmitted(input, work);
 }
 
@@ -522,7 +544,7 @@ async function releaseAdmitAndClose(
         ownerRelease = await releasePrivateLinuxOwnerState(plan.ownerAllocation, cancelled);
       }
     }
-    await recordCheckpoint(input, work.run.runId, "release", {
+    work = await advanceCheckpoint(input, work, "release", {
       kind: RELEASE_KIND,
       planDigest: work.lifecycle.plan?.digest ?? null,
       backingDigest: work.lifecycle.backing?.digest ?? null,
@@ -530,26 +552,24 @@ async function releaseAdmitAndClose(
       packageReleased: true,
       ownerRelease,
     } as unknown as JsonValue);
-    work = await reacquire(input);
   }
 
   if (work.lifecycle.admitted === undefined) {
     const provisional = normalizePrivateRootTerminal(work.lifecycle.provisional!.value);
     const admitted = provisional.status === "succeeded"
-      ? await admitProtectedResult(input, provisional)
+      ? await admitProtectedResult(input, work, provisional)
       : provisional;
-    await recordCheckpoint(input, work.run.runId, "admitted", admitted as unknown as JsonValue);
-    work = await reacquire(input);
+    work = await advanceCheckpoint(input, work, "admitted", admitted as unknown as JsonValue);
   }
   return await closeFromAdmitted(input, work);
 }
 
 async function admitProtectedResult(
   input: RootExecutionInput,
+  work: PrivateReacquiredRootExecutionWork,
   provisional: Extract<RunHostTerminal, { readonly status: "succeeded" }>,
 ): Promise<RunHostTerminal> {
-  const refreshed = await reacquire(input);
-  const target = findPrivateActivationCandidateTargetV5(refreshed.candidate, refreshed.run.target);
+  const target = findPrivateActivationCandidateTargetV5(work.candidate, work.run.target);
   if (target === undefined) throw new Error("durable root Run target is absent from its candidate");
   const request = target.request;
   const captured = await captureStoredPackage(input.packageStoreRoot, request.package);
@@ -684,6 +704,20 @@ async function recordCheckpoint(
     }
   }
   throw first;
+}
+
+/** Advance healthy in-process work from the exact lifecycle just committed. */
+async function advanceCheckpoint(
+  input: RootExecutionInput,
+  work: PrivateReacquiredRootExecutionWork,
+  checkpoint: PrivateRootExecutionCheckpointName,
+  value: JsonValue,
+): Promise<PrivateReacquiredRootExecutionWork> {
+  const lifecycle = await recordCheckpoint(input, work.run.runId, checkpoint, value);
+  if (lifecycle.runId !== work.run.runId) {
+    throw new Error("committed root execution lifecycle belongs to another Run");
+  }
+  return Object.freeze({ ...work, lifecycle });
 }
 
 async function reacquire(input: RootExecutionInput): Promise<PrivateReacquiredRootExecutionWork> {

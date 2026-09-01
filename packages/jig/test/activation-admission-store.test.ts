@@ -491,7 +491,19 @@ describe.serial("direct alpha activation store", () => {
         "admitted",
         successTerminal({ accepted: false }) as unknown as JsonValue,
       )).rejects.toMatchObject({ code: "RUN_TERMINAL_CONFLICT" });
-      await checkpoint(fixture, coordinator, runId, "admitted", terminal as unknown as JsonValue);
+      const admitted = await checkpoint(
+        fixture,
+        coordinator,
+        runId,
+        "admitted",
+        terminal as unknown as JsonValue,
+      );
+      expect((await reacquirePrivateRootExecutionWork({
+        coordinator,
+        projectRoot: fixture.root,
+        packageStoreRoot: fixture.store,
+        runId,
+      })).lifecycle).toEqual(admitted);
 
       const completed = await closePrivateRootExecution({
         coordinator,
@@ -536,6 +548,12 @@ describe.serial("direct alpha activation store", () => {
         .rejects.toMatchObject({ code: "COORDINATOR_BUSY" });
       const deadlineUnixMs = Date.now() + 60_000;
       const created = await submitReadyRun(fixture, first, "recover", deadlineUnixMs);
+      const beforeRestart = await reacquirePrivateRootExecutionWork({
+        coordinator: first,
+        projectRoot: fixture.root,
+        packageStoreRoot: fixture.store,
+        runId: created.run.runId,
+      });
       await first.dispose();
       first = undefined;
 
@@ -554,12 +572,14 @@ describe.serial("direct alpha activation store", () => {
         projectRoot: fixture.root,
         epoch: "older",
       })).map(({ run }) => run.runId)).toEqual([created.run.runId]);
-      expect((await reacquirePrivateRootExecutionWork({
+      const recovered = await reacquirePrivateRootExecutionWork({
         coordinator: replacement,
         projectRoot: fixture.root,
         packageStoreRoot: fixture.store,
         runId: created.run.runId,
-      })).run).toEqual(created.run);
+      });
+      expect(recovered.run).toEqual(created.run);
+      expect(recovered.lifecycle).toEqual(beforeRestart.lifecycle);
 
       const replay = await submitPrivateRootRun({
         coordinator: replacement,

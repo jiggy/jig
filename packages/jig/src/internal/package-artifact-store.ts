@@ -174,7 +174,9 @@ export async function captureStoredPackage(
   let captured: CapturedPackage | undefined;
   try {
     location = await openArtifactShard(storeRoot, digest, false);
-    await location.directory.sync();
+    // Publication synchronizes both the artifact and its shard before it
+    // returns a reference. Acquisition rechecks the exact inode and complete
+    // Package/1 digest; syncing an unchanged directory here adds no evidence.
     captured = await capturePackageArtifactFile(
       location.finalPath,
       digest,
