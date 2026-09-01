@@ -19,7 +19,7 @@ There is no setup command, daemon, runtime registry, or sandbox selector.
 
 The alpha supports one host shape:
 
-- Linux x86_64 with glibc;
+- Linux x86_64 with glibc 2.17 or newer and an SSE4.2-capable baseline CPU;
 - Bubblewrap 0.12 or newer at `/usr/bin/bwrap`;
 - cgroup v2 with delegated `cpu`, `memory`, and `pids` controllers;
 - a systemd user manager able to create transient scopes with `Delegate=yes`;
@@ -29,6 +29,12 @@ The planned `0.1.0-alpha.1` artifact embeds Bun 1.3.3 as the fixed application
 and Flow runtime. Jig acquires a transient delegated scope when `check` or
 `run` needs one. This requires no `sudo` and exposes no host-control channel to
 Flow code. An unsupported host fails closed.
+
+Flow Runs are fixed at 30 seconds, 256 MiB aggregate memory, 48 aggregate
+PIDs, and 50% of one CPU. Project evaluation is fixed at 3 seconds, 256 MiB,
+64 PIDs, and 50% CPU. Locked dependency preparation is fixed at 60 seconds,
+512 MiB, 64 PIDs, and one CPU. The threat boundary and private reporting
+channel are documented in [SECURITY.md](SECURITY.md).
 
 ## Quickstart
 

@@ -27,7 +27,7 @@ Jig-owned support files. It has no runtime npm dependencies.
 
 The alpha requires:
 
-- Linux x86_64 with glibc;
+- Linux x86_64 with glibc 2.17 or newer and an SSE4.2-capable baseline CPU;
 - Bubblewrap 0.12 or newer at `/usr/bin/bwrap`;
 - cgroup v2 with delegated `cpu`, `memory`, and `pids` controllers;
 - a systemd user manager with transient delegated scopes; and
@@ -35,6 +35,13 @@ The alpha requires:
 
 It does not use `sudo`, download a runtime, or expose host control to Flow
 code.
+
+Flow Runs are fixed at 30 seconds, 256 MiB aggregate memory, 48 aggregate
+PIDs, and 50% of one CPU. Project evaluation is fixed at 3 seconds, 256 MiB,
+64 PIDs, and 50% CPU. Locked dependency preparation is fixed at 60 seconds,
+512 MiB, 64 PIDs, and one CPU. See the repository
+[`SECURITY.md`](https://github.com/jigmd/jig/blob/main/SECURITY.md) for the
+threat boundary and private reporting channel.
 
 ## Use
 
