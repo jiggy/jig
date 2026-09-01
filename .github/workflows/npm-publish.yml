@@ -25,30 +25,31 @@ on:
           - alpha
           - next
 
-permissions:
-  contents: read
-  id-token: write
-
 concurrency:
   group: npm-prerelease-publish
   cancel-in-progress: false
 
 jobs:
-  publish:
-    environment: npm-alpha
+  build:
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 40
+    permissions:
+      contents: read
     env:
       RELEASE_PACKAGE: ${{ inputs.package }}
       RELEASE_VERSION: ${{ inputs.version }}
       RELEASE_TAG: ${{ inputs.dist_tag }}
+    outputs:
+      artifact_name: ${{ steps.selected.outputs.artifact_name }}
+      package_name: ${{ steps.selected.outputs.package_name }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: '24'
-          registry-url: https://registry.npmjs.org
 
       - name: Select and validate exact package
         id: selected
@@ -94,9 +95,11 @@ jobs:
             throw new Error(`${manifest.name} must publish with public access`);
           }
           NODE
+          artifact_name="npm-candidate-$RELEASE_PACKAGE-$RELEASE_VERSION-$GITHUB_SHA"
+          printf 'artifact_name=%s\n' "$artifact_name" >> "$GITHUB_OUTPUT"
           printf 'package_name=%s\n' "$package_name" >> "$GITHUB_OUTPUT"
 
-      - name: Install exact release tools
+      - name: Install exact build tools
         run: |
           set -eu
           npm install --global npm@11.6.2
@@ -105,23 +108,7 @@ jobs:
           bun --version
           bun --revision
 
-      - name: Refuse an existing version
-        env:
-          PACKAGE_NAME: ${{ steps.selected.outputs.package_name }}
-        run: |
-          set -eu
-          error_file="$RUNNER_TEMP/npm-view-error"
-          if npm view "$PACKAGE_NAME@$RELEASE_VERSION" version --json > /dev/null 2> "$error_file"; then
-            echo "$PACKAGE_NAME@$RELEASE_VERSION already exists; npm versions are immutable" >&2
-            exit 1
-          fi
-          if ! grep -F 'E404' "$error_file" > /dev/null; then
-            echo "npm could not prove that $PACKAGE_NAME@$RELEASE_VERSION is absent" >&2
-            sed -n '1,20p' "$error_file" >&2
-            exit 1
-          fi
-
-      - name: Build selected candidate once
+      - name: Build and test selected candidate once
         run: |
           set -eu
           if [ "$RELEASE_PACKAGE" = flow ]; then
@@ -135,15 +122,60 @@ jobs:
             scripts/build-jig-candidate.sh "$RUNNER_TEMP/candidate"
           fi
 
-      - name: Verify exact candidate manifest and digest
+      - name: Upload exact candidate
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ${{ steps.selected.outputs.artifact_name }}
+          path: ${{ runner.temp }}/candidate
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    needs: build
+    environment: npm-alpha
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      actions: read
+      id-token: write
+    env:
+      PACKAGE_NAME: ${{ needs.build.outputs.package_name }}
+      RELEASE_PACKAGE: ${{ inputs.package }}
+      RELEASE_VERSION: ${{ inputs.version }}
+      RELEASE_TAG: ${{ inputs.dist_tag }}
+    steps:
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+          registry-url: https://registry.npmjs.org
+
+      - name: Require trusted-publishing npm
+        run: |
+          set -eu
+          npm_version=$(npm --version)
+          NPM_VERSION=$npm_version node --input-type=module <<'NODE'
+          const parsed = (process.env.NPM_VERSION ?? "").split(".").map(Number);
+          if (parsed.length < 3 || parsed.some((part) => !Number.isInteger(part)) ||
+              parsed[0] < 11 || (parsed[0] === 11 && parsed[1] < 5) ||
+              (parsed[0] === 11 && parsed[1] === 5 && parsed[2] < 1)) {
+            throw new Error(`npm >=11.5.1 is required for trusted publishing; found ${process.env.NPM_VERSION}`);
+          }
+          NODE
+          printf 'npm %s\n' "$npm_version"
+
+      - name: Download exact persisted candidate
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: ${{ needs.build.outputs.artifact_name }}
+          path: ${{ runner.temp }}/candidate
+
+      - name: Verify persisted candidate
         id: candidate
-        env:
-          EXPECTED_NAME: ${{ steps.selected.outputs.package_name }}
         run: |
           set -eu
           set -- "$RUNNER_TEMP/candidate"/*.tgz
           if [ "$#" -ne 1 ] || [ ! -f "$1" ]; then
-            echo "$EXPECTED_NAME did not produce exactly one candidate archive" >&2
+            echo "$PACKAGE_NAME did not persist exactly one candidate archive" >&2
             exit 1
           fi
           archive=$1
@@ -163,8 +195,8 @@ jobs:
           const manifest = JSON.parse(await readFile(process.env.CANDIDATE_MANIFEST, "utf8"));
           const success = JSON.parse(await readFile(process.env.CANDIDATE_SUCCESS, "utf8"));
           const digest = createHash("sha256").update(await readFile(archive)).digest("hex");
-          if (manifest.name !== process.env.EXPECTED_NAME || manifest.version !== process.env.RELEASE_VERSION) {
-            throw new Error(`candidate manifest mismatch for ${process.env.EXPECTED_NAME}`);
+          if (manifest.name !== process.env.PACKAGE_NAME || manifest.version !== process.env.RELEASE_VERSION) {
+            throw new Error(`candidate manifest mismatch for ${process.env.PACKAGE_NAME}`);
           }
           if (manifest.private === true) {
             throw new Error(`${manifest.name} candidate is still private`);
@@ -178,35 +210,73 @@ jobs:
           NODE
           printf 'archive=%s\n' "$archive" >> "$GITHUB_OUTPUT"
 
-      - name: Publish exact candidate with npm trusted publishing
-        env:
-          ARCHIVE: ${{ steps.candidate.outputs.archive }}
-        run: npm publish "$ARCHIVE" --access public --tag "$RELEASE_TAG" --provenance --ignore-scripts
-
-      - name: Refetch and compare published archive
-        env:
-          ARCHIVE: ${{ steps.candidate.outputs.archive }}
-          PACKAGE_NAME: ${{ steps.selected.outputs.package_name }}
+      - name: Require verified Flow before Jig
+        if: inputs.package == 'jig'
         run: |
           set -eu
-          mkdir -p "$RUNNER_TEMP/refetched"
-          npm pack "$PACKAGE_NAME@$RELEASE_VERSION" --pack-destination "$RUNNER_TEMP/refetched" --ignore-scripts > /dev/null
-          set -- "$RUNNER_TEMP/refetched"/*.tgz
-          if [ "$#" -ne 1 ] || [ ! -f "$1" ]; then
-            echo "npm did not refetch exactly one archive for $PACKAGE_NAME@$RELEASE_VERSION" >&2
-            exit 1
-          fi
-          candidate_digest=$(sha256sum "$ARCHIVE")
-          candidate_digest=${candidate_digest%% *}
-          registry_digest=$(sha256sum "$1")
-          registry_digest=${registry_digest%% *}
-          if [ "$candidate_digest" != "$registry_digest" ]; then
-            echo "registry bytes differ from the proved $PACKAGE_NAME candidate" >&2
-            exit 1
-          fi
-          tagged=$(npm view "$PACKAGE_NAME" "dist-tags.$RELEASE_TAG" --json)
+          tagged=$(npm view @jigging/flow "dist-tags.$RELEASE_TAG" --json)
           expected=$(RELEASE_VERSION="$RELEASE_VERSION" node -p 'JSON.stringify(process.env.RELEASE_VERSION)')
           if [ "$tagged" != "$expected" ]; then
-            echo "$PACKAGE_NAME@$RELEASE_VERSION did not receive the $RELEASE_TAG dist-tag" >&2
+            echo "publish and verify @jigging/flow@$RELEASE_VERSION with the $RELEASE_TAG tag before Jig" >&2
             exit 1
           fi
+
+      - name: Publish or converge exact registry version
+        env:
+          ARCHIVE: ${{ steps.candidate.outputs.archive }}
+        run: |
+          set -eu
+          presence_error="$RUNNER_TEMP/npm-presence-error"
+          if npm view "$PACKAGE_NAME@$RELEASE_VERSION" version --json > /dev/null 2> "$presence_error"; then
+            publish_status=0
+          elif grep -F 'E404' "$presence_error" > /dev/null; then
+            set +e
+            npm publish "$ARCHIVE" --access public --tag "$RELEASE_TAG" --provenance --ignore-scripts
+            publish_status=$?
+            set -e
+          else
+            echo "npm could not determine whether $PACKAGE_NAME@$RELEASE_VERSION exists" >&2
+            sed -n '1,20p' "$presence_error" >&2
+            exit 1
+          fi
+
+          mkdir -p "$RUNNER_TEMP/refetched"
+          refetched=
+          attempt=1
+          while [ "$attempt" -le 6 ]; do
+            rm -f "$RUNNER_TEMP/refetched"/*.tgz
+            if npm pack "$PACKAGE_NAME@$RELEASE_VERSION" \
+                --pack-destination "$RUNNER_TEMP/refetched" --ignore-scripts > /dev/null 2>&1; then
+              set -- "$RUNNER_TEMP/refetched"/*.tgz
+              if [ "$#" -eq 1 ] && [ -f "$1" ]; then
+                refetched=$1
+                break
+              fi
+            fi
+            if [ "$attempt" -lt 6 ]; then sleep 5; fi
+            attempt=$((attempt + 1))
+          done
+          if [ -z "$refetched" ]; then
+            echo "npm did not expose $PACKAGE_NAME@$RELEASE_VERSION after six attempts (publish exit $publish_status)" >&2
+            exit 1
+          fi
+
+          candidate_digest=$(sha256sum "$ARCHIVE")
+          candidate_digest=${candidate_digest%% *}
+          registry_digest=$(sha256sum "$refetched")
+          registry_digest=${registry_digest%% *}
+          if [ "$candidate_digest" != "$registry_digest" ]; then
+            echo "registry bytes differ from the persisted $PACKAGE_NAME candidate" >&2
+            exit 1
+          fi
+
+          expected=$(RELEASE_VERSION="$RELEASE_VERSION" node -p 'JSON.stringify(process.env.RELEASE_VERSION)')
+          attempt=1
+          while [ "$attempt" -le 6 ]; do
+            tagged=$(npm view "$PACKAGE_NAME" "dist-tags.$RELEASE_TAG" --json 2> /dev/null || true)
+            if [ "$tagged" = "$expected" ]; then exit 0; fi
+            if [ "$attempt" -lt 6 ]; then sleep 5; fi
+            attempt=$((attempt + 1))
+          done
+          echo "$PACKAGE_NAME@$RELEASE_VERSION did not converge on the $RELEASE_TAG dist-tag (publish exit $publish_status)" >&2
+          exit 1
