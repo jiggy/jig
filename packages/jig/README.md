@@ -1,7 +1,7 @@
 # `@jigging/jig`
 
 Jig is a local, secure host for admitted FLOW packages. The direct-run alpha
-candidate has one finite command surface:
+has one finite command surface:
 
 ```text
 jig init --bare <directory>
@@ -13,8 +13,6 @@ There is no `jig setup`. `check` and `run` transparently acquire the rootless
 authority they need or fail closed.
 
 ## Install
-
-The package is not yet published. Once the alpha clears its release gates:
 
 ```console
 npm install --global @jigging/jig@0.1.0-alpha.1

@@ -50,7 +50,7 @@ try {
   assert.deepEqual(installedManifest.dependencies, {
     "@oven/bun-linux-x64-baseline": "1.3.3",
   });
-  assert.equal(installedManifest.private, true);
+  assert.equal(Object.hasOwn(installedManifest, "private"), false);
   assert.equal(installedManifest.version, "0.1.0-alpha.1");
   assert.equal(installedManifest.license, "MPL-2.0");
   assert.deepEqual(installedManifest.os, ["linux"]);

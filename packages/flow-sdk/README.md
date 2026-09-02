@@ -2,17 +2,12 @@
 
 Minimal, dependency-free TypeScript projection of FLOW Run/1.
 
-This is a prerelease `0.1.0-alpha.1` candidate. Its authoritative documents
+This is the prerelease `0.1.0-alpha.1` package. Its authoritative documents
 are the [Run SDK/1](https://github.com/jigmd/jig/blob/main/docs/spec/run-sdk.md)
 and [Run/1](https://github.com/jigmd/jig/blob/main/docs/spec/run-protocol.md)
 specifications.
 
-The technical candidate deliberately retains `private: true` and cannot be
-published. The final release candidate removes that guard before its archive
-is built and tested.
-
-Once the package is published, declare the exact alpha in the FLOW package's
-`package.json`:
+Declare the exact alpha in the FLOW package's `package.json`:
 
 ```json
 {

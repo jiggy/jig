@@ -32,7 +32,7 @@ The required host shape is:
 
 The glibc and SSE4.2 floors come from the selected Bun baseline runtime.
 
-Installing the planned `0.1.0-alpha.1` package also installs the exact external
+Installing `@jigging/jig@0.1.0-alpha.1` also installs the exact external
 runtime dependency `@oven/bun-linux-x64-baseline@1.3.3`. Bun is not embedded in
 or bundled with Jig. npm verifies the installed package; Jig selects only that
 closed package-local path, authenticates its version, revision, and digest
@@ -48,8 +48,7 @@ channel are documented in [SECURITY.md](SECURITY.md).
 
 ## Quickstart
 
-The package is not yet published. Once the alpha clears its release gates,
-install it with npm:
+Install the alpha with npm:
 
 ```console
 npm install --global @jigging/jig@0.1.0-alpha.1

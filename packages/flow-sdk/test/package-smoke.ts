@@ -73,7 +73,7 @@ try {
   const manifest = JSON.parse(
     await readFile(join(installed, "package.json"), "utf8"),
   ) as Record<string, unknown>;
-  assert.equal(manifest.private, true);
+  assert.equal(Object.hasOwn(manifest, "private"), false);
   assert.equal(manifest.version, "0.1.0-alpha.1");
   assert.equal(manifest.license, "Apache-2.0");
   assert.deepEqual(manifest.publishConfig, { access: "public" });
