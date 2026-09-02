@@ -56,90 +56,29 @@ Git write authority and never tags an unverified publication.
 ## One-time package bootstrap
 
 npm can attach a trusted publisher only to a package which already exists.
-The first real prerelease of each package therefore needs one authenticated
-publication. Do not publish a placeholder package.
-
-From the exact reviewed release commit, with Node 24 and npm 11.6.2 or newer,
-restore Jig's locked development tools. The Bun already available in the shell
-is used only for this frozen, script-disabled install; it does not build either
-release candidate:
+Create each identity once with an inert `0.0.0` package. Publish it only under
+the `bootstrap` tag, never `latest` or `alpha`:
 
 ```console
-ambient_bun="$(command -v bun)"
-"$ambient_bun" install --cwd packages/jig --frozen-lockfile --ignore-scripts --config=/dev/null
-
-release_bun="$PWD/packages/jig/node_modules/@oven/bun-linux-x64-baseline/bin/bun"
-test "$("$release_bun" --version)" = "1.3.3"
-test "$("$release_bun" --revision)" = "1.3.3+274e01c73"
-export PATH="$(dirname "$release_bun"):$PATH"
-
-export FLOW_NODE="$(command -v node)"
-export FLOW_NPM="$(command -v npm)"
-export JIG_NPM="$FLOW_NPM"
-scripts/build-flow-sdk-candidate.sh .tmp/npm-bootstrap/flow
-scripts/build-jig-candidate.sh .tmp/npm-bootstrap/jig
-```
-
-Do not substitute an unversioned system or Nixpkgs Bun for `release_bun`.
-`packages/jig/bun.lock` pins the official baseline binary package, and both
-candidate builders independently reject any Bun whose full release identity is
-not the selected `1.3.3` revision.
-
-Check both `SUCCESS.json` records and archive digests. Authenticate
-interactively with an npm owner account protected by two-factor
-authentication, then publish Flow under the prerelease tag:
-
-```console
+identity_root=$(mktemp -d .tmp/npm-identities.XXXXXX)
+mkdir "$identity_root/flow" "$identity_root/jig"
+printf '%s\n' '{"name":"@jigging/flow","version":"0.0.0","description":"Identity placeholder for official FLOW releases.","license":"Apache-2.0","files":[],"publishConfig":{"access":"public"}}' > "$identity_root/flow/package.json"
+printf '%s\n' '{"name":"@jigging/jig","version":"0.0.0","description":"Identity placeholder for official Jig releases.","license":"MPL-2.0","files":[],"publishConfig":{"access":"public"}}' > "$identity_root/jig/package.json"
 npm login --auth-type=web
-npm publish .tmp/npm-bootstrap/flow/*.tgz --access public --tag alpha --ignore-scripts
+bun publish "$identity_root/flow" --access public --tag bootstrap
+bun publish "$identity_root/jig" --access public --tag bootstrap
+test "$(npm view @jigging/flow dist-tags.bootstrap)" = "0.0.0"
+test "$(npm view @jigging/jig dist-tags.bootstrap)" = "0.0.0"
+npm dist-tag rm @jigging/flow latest
+npm dist-tag rm @jigging/jig latest
+npm deprecate '@jigging/flow@0.0.0' 'Identity bootstrap only; install @jigging/flow@alpha.'
+npm deprecate '@jigging/jig@0.0.0' 'Identity bootstrap only; install @jigging/jig@alpha.'
 ```
 
-Refetch that exact version, compare its archive digest with the local candidate,
-and confirm the tag before publishing Jig:
-
-```console
-FLOW_VERSION=$(node -p "require('./packages/flow-sdk/package.json').version")
-mkdir -p .tmp/npm-bootstrap/refetched-flow
-npm pack "@jigging/flow@$FLOW_VERSION" --pack-destination .tmp/npm-bootstrap/refetched-flow --ignore-scripts
-test "$(sha256sum .tmp/npm-bootstrap/flow/*.tgz | cut -d' ' -f1)" = \
-  "$(sha256sum .tmp/npm-bootstrap/refetched-flow/*.tgz | cut -d' ' -f1)"
-test "$(npm view @jigging/flow dist-tags.alpha)" = "$FLOW_VERSION"
-FLOW_COMMIT=$(node -p "require('./.tmp/npm-bootstrap/flow/SUCCESS.json').commit")
-FLOW_TAG="flow-v$FLOW_VERSION"
-git tag --annotate "$FLOW_TAG" "$FLOW_COMMIT" --message "@jigging/flow@$FLOW_VERSION"
-git push origin "refs/tags/$FLOW_TAG"
-```
-
-Before publishing Jig, install the still-local Jig candidate into a temporary
-consumer and complete the root README quickstart on the supported rootless
-host. The example Flow's `package.json` must name
-the exact version printed by `$FLOW_VERSION` (for example,
-`"@jigging/flow": "0.1.0-alpha.1"`). Generate `bun.lock` from the ordinary
-default npm registry, then require `jig check`, `jig run`, and the expected
-greeting terminal to succeed. A file archive, local registry, workspace link,
-or unpublished SDK tree does not satisfy this author smoke.
-
-Only after that gate passes, publish and refetch Jig:
-
-```console
-npm publish .tmp/npm-bootstrap/jig/*.tgz --access public --tag alpha --ignore-scripts
-JIG_VERSION=$(node -p "require('./packages/jig/package.json').version")
-mkdir -p .tmp/npm-bootstrap/refetched-jig
-npm pack "@jigging/jig@$JIG_VERSION" --pack-destination .tmp/npm-bootstrap/refetched-jig --ignore-scripts
-test "$(sha256sum .tmp/npm-bootstrap/jig/*.tgz | cut -d' ' -f1)" = \
-  "$(sha256sum .tmp/npm-bootstrap/refetched-jig/*.tgz | cut -d' ' -f1)"
-test "$(npm view @jigging/jig dist-tags.alpha)" = "$JIG_VERSION"
-JIG_COMMIT=$(node -p "require('./.tmp/npm-bootstrap/jig/SUCCESS.json').commit")
-JIG_TAG="jig-v$JIG_VERSION"
-git tag --annotate "$JIG_TAG" "$JIG_COMMIT" --message "@jigging/jig@$JIG_VERSION"
-git push origin "refs/tags/$JIG_TAG"
-```
-
-These two first publications are the only exception to OIDC provenance; the
-absence of provenance is expected only for this bootstrap. Do not put an npm
-token in this repository or in GitHub Actions.
-
-Immediately configure the trusted publisher on both npm package settings:
+These two inert identity versions are the only publications without OIDC
+provenance. They contain no implementation and are not selected by an install
+tag used by Jig or FLOW. Immediately configure the same trusted publisher on
+both npm package settings:
 
 ```text
 Provider:       GitHub Actions
@@ -152,8 +91,11 @@ Allowed actions: npm publish
 
 In the GitHub repository, create the `npm` environment, require the
 desired maintainers as reviewers, and restrict its deployment branch to
-`main`. Subsequent prereleases use only the workflow and OIDC. The repository
-must be public for the intended provenance and public-release posture.
+`main`. Then publish `@jigging/flow@0.1.0-alpha.1` and
+`@jigging/jig@0.1.0-alpha.1`, in that order, through the ordinary GitHub
+workflow above. Every functional release is built, proved, published,
+refetched, and compared there. Do not put an npm token in this repository or
+in GitHub Actions.
 
 The official npm setup is documented at
 <https://docs.npmjs.com/trusted-publishers/>.
