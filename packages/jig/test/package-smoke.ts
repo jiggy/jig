@@ -51,7 +51,7 @@ try {
     "@oven/bun-linux-x64-baseline": "1.3.3",
   });
   assert.equal(Object.hasOwn(installedManifest, "private"), false);
-  assert.equal(installedManifest.version, "0.1.0-alpha.3");
+  assert.equal(installedManifest.version, "0.1.0-alpha.4");
   assert.equal(installedManifest.license, "MPL-2.0");
   assert.deepEqual(installedManifest.os, ["linux"]);
   assert.deepEqual(installedManifest.cpu, ["x64"]);
@@ -83,7 +83,10 @@ try {
   assert.equal(help.stderr, "");
   assert.match(help.stdout, /^Usage:\n  jig init --bare <directory>$/m);
   assert.match(help.stdout, /^  jig check \[project\] \[--yes\]$/m);
-  assert.match(help.stdout, /^  jig run <flow:path\|binding:id> \[--input JSON\]$/m);
+  assert.match(
+    help.stdout,
+    /^  jig run <flow:path\|binding:id> \[--input JSON\] \[--timeout DURATION\]$/m,
+  );
   assert.doesNotMatch(help.stdout, /setup|package check|planDigest/);
   await assert.rejects(stat(ambientMarker), { code: "ENOENT" });
 

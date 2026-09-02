@@ -37,7 +37,7 @@ describe("private rootless Linux delegation", () => {
       },
     });
 
-    await expect(acquireOrReexecutePrivateRootlessLinux(dependencies)).resolves.toEqual({
+    await expect(acquireOrReexecutePrivateRootlessLinux({ dependencies })).resolves.toEqual({
       kind: "private-rootless-linux-ready/1",
       observation,
     });
@@ -46,6 +46,7 @@ describe("private rootless Linux delegation", () => {
 
   test("reexecutes the exact current command once through the fixed manager", async () => {
     const environment = { KEEP: "exact" };
+    const commandLifetimeMs = 86_700_000;
     let request: unknown;
     const dependencies = orchestrationDependencies({
       acquire: async () => { throw new PrivateRootlessLinuxAcquisitionError(); },
@@ -54,8 +55,22 @@ describe("private rootless Linux delegation", () => {
       currentDirectory: () => "/project",
       nonce: () => "0123456789abcdef01234567",
       resolveManager: async () => "/bin/systemd-run",
-      reexecute: async (managerPath, unit, command, directory, actualEnvironment) => {
-        request = { managerPath, unit, command, directory, environment: actualEnvironment };
+      reexecute: async (
+        managerPath,
+        unit,
+        command,
+        directory,
+        actualEnvironment,
+        actualCommandLifetimeMs,
+      ) => {
+        request = {
+          managerPath,
+          unit,
+          command,
+          directory,
+          environment: actualEnvironment,
+          commandLifetimeMs: actualCommandLifetimeMs,
+        };
         return {
           kind: "private-rootless-linux-reexecuted/1",
           exitCode: 7,
@@ -64,7 +79,10 @@ describe("private rootless Linux delegation", () => {
       },
     });
 
-    await expect(acquireOrReexecutePrivateRootlessLinux(dependencies)).resolves.toEqual({
+    await expect(acquireOrReexecutePrivateRootlessLinux({
+      dependencies,
+      commandLifetimeMs,
+    })).resolves.toEqual({
       kind: "private-rootless-linux-reexecuted/1",
       exitCode: 7,
       signal: null,
@@ -75,6 +93,7 @@ describe("private rootless Linux delegation", () => {
       command: [...COMMAND, "run", "answer"],
       directory: "/project",
       environment,
+      commandLifetimeMs,
     });
   });
 
@@ -101,7 +120,7 @@ describe("private rootless Linux delegation", () => {
       },
     });
 
-    await expect(acquireOrReexecutePrivateRootlessLinux(dependencies)).resolves.toMatchObject({
+    await expect(acquireOrReexecutePrivateRootlessLinux({ dependencies })).resolves.toMatchObject({
       kind: "private-rootless-linux-ready/1",
     });
     expect(prepared).toEqual([UNIT]);
@@ -110,6 +129,24 @@ describe("private rootless Linux delegation", () => {
       delegatedCgroup: SCOPE,
     }]);
     expect(environment).toEqual({});
+  });
+
+  test("rejects command lifetimes outside the bounded rootless envelope before acquisition", async () => {
+    let acquisitions = 0;
+    const dependencies = orchestrationDependencies({
+      acquire: async () => {
+        acquisitions += 1;
+        throw new Error("acquisition was not expected");
+      },
+    });
+
+    for (const commandLifetimeMs of [99, 86_700_001, 100.5]) {
+      await expect(acquireOrReexecutePrivateRootlessLinux({
+        dependencies,
+        commandLifetimeMs,
+      })).rejects.toBeInstanceOf(PrivateRootlessLinuxAcquisitionError);
+    }
+    expect(acquisitions).toBe(0);
   });
 
   test("collapses invalid child state and missing manager support to one error", async () => {
@@ -127,7 +164,7 @@ describe("private rootless Linux delegation", () => {
         reexecute: async () => { throw new Error("user manager failed"); },
       }),
     ]) {
-      const error = await acquireOrReexecutePrivateRootlessLinux(dependencies)
+      const error = await acquireOrReexecutePrivateRootlessLinux({ dependencies })
         .then(() => undefined, (failure) => failure);
       expect(error).toBeInstanceOf(PrivateRootlessLinuxAcquisitionError);
       expect(error).toMatchObject({

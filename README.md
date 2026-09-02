@@ -10,7 +10,7 @@ provides three commands:
 ```text
 jig init --bare <directory>
 jig check [project] [--yes]
-jig run <flow:path|binding:id> [--input JSON]
+jig run <flow:path|binding:id> [--input JSON] [--timeout DURATION]
 ```
 
 There is no setup command, daemon, runtime registry, or sandbox selector.
@@ -32,7 +32,7 @@ The required host shape is:
 
 The glibc and SSE4.2 floors come from the selected Bun baseline runtime.
 
-Installing `@jigging/jig@0.1.0-alpha.3` also installs the exact external
+Installing `@jigging/jig@0.1.0-alpha.4` also installs the exact external
 runtime dependency `@oven/bun-linux-x64-baseline@1.3.3`. Bun is not embedded in
 or bundled with Jig. npm verifies the installed package; Jig selects only that
 closed package-local path, authenticates its version, revision, and digest
@@ -40,18 +40,20 @@ before evaluator or Flow bytes execute, and revalidates it before each launch.
 `check` and `run` acquire a transient delegated scope without `sudo` or a
 host-control channel exposed to Flow code.
 
-Flow Runs are fixed at 30 seconds, 256 MiB aggregate memory, 48 aggregate
-PIDs, and 50% of one CPU. Project evaluation is fixed at 3 seconds, 256 MiB,
-64 PIDs, and 50% CPU. Locked dependency preparation is fixed at 60 seconds,
-512 MiB, 64 PIDs, and one CPU. The threat boundary and private reporting
-channel are documented in [SECURITY.md](SECURITY.md).
+Flow Runs default to 30 seconds. `jig run --timeout DURATION` accepts a
+positive integer followed by `ms`, `s`, `m`, or `h`, up to 24 hours. The
+execution scopes remain fixed at 256 MiB aggregate memory, 48 aggregate PIDs,
+and 50% of one CPU. Project evaluation is fixed at 3 seconds, 256 MiB, 64
+PIDs, and 50% CPU. Locked dependency preparation is fixed at 60 seconds, 512
+MiB, 64 PIDs, and one CPU. The threat boundary and private reporting channel
+are documented in [SECURITY.md](SECURITY.md).
 
 ## Quickstart
 
 Install the alpha with npm:
 
 ```console
-npm install --global @jigging/jig@0.1.0-alpha.3
+npm install --global @jigging/jig@0.1.0-alpha.4
 ```
 
 Create a project and one Flow package:
@@ -132,6 +134,10 @@ Run the admitted Flow:
 jig run flow:flows/hello --input '{"name":"Ada"}'
 ```
 
+For a longer Run, add a bounded duration such as `--timeout 2m`. The timeout
+starts when Jig accepts the root Run. Project acquisition happens before it;
+mandatory fencing and cleanup may finish afterward.
+
 The terminal result is JSON:
 
 ```json
@@ -171,6 +177,14 @@ the exact locked production tree. Preparation runs the release-owned Bun
 installer in the same rootless envelope as a Run, with lifecycle scripts
 disabled. The alpha accepts only integrity-pinned packages from the default
 npm registry; unsupported sources fail during `check`.
+
+A dependency-free package needs no `bun.lock`; omit it rather than preserving
+an empty or stale lock.
+
+Each optional `input.schema.json`, `settings.schema.json`, or
+`result.schema.json` is a FLOW Schema/1 file. Its root begins with the exact
+declaration `"$schema": "https://flow.jig.md/schemas/schema-1.json"`; see the
+[Schema/1 specification](docs/flow/spec/schema-files.md).
 
 Jig retains the prepared tree beside the reviewed source package and pins it
 in the admitted target. `jig run` then uses only those retained bytes, with no

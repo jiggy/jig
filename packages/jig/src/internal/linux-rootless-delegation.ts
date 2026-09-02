@@ -19,6 +19,10 @@ import {
   PrivateRootlessLinuxAcquisitionError,
   type PrivateRootlessLinuxAcquisitionObservation,
 } from "./linux-rootless-acquisition.js";
+import {
+  PRIVATE_MAX_ROOT_RUN_TIMEOUT_MS,
+  PRIVATE_ROOTLESS_COMMAND_OVERHEAD_ALLOWANCE_MS,
+} from "./root-run-timeout-policy.js";
 
 const CGROUP_ROOT = "/sys/fs/cgroup";
 const CGROUP2_SUPER_MAGIC = 0x6367_7270n;
@@ -41,6 +45,8 @@ const TOKEN_VARIABLE = "JIG_PRIVATE_ROOTLESS_READY_TOKEN";
 const READY_TIMEOUT_MS = 5_000;
 const STARTUP_TIMEOUT_MS = 5_000;
 const COMMAND_LIFETIME_MS = 5 * 60_000;
+const MAX_COMMAND_LIFETIME_MS =
+  PRIVATE_MAX_ROOT_RUN_TIMEOUT_MS + PRIVATE_ROOTLESS_COMMAND_OVERHEAD_ALLOWANCE_MS;
 const CONTROL_TIMEOUT_MS = 2_000;
 const CONTROL_OUTPUT_BYTES = 16 * 1024;
 const COLLECTION_TIMEOUT_MS = 2_000;
@@ -93,6 +99,7 @@ export interface PrivateRootlessLinuxDelegationDependencies {
     command: readonly [string, ...string[]],
     directory: string,
     environment: NodeJS.ProcessEnv,
+    commandLifetimeMs: number,
   ) => Promise<PrivateRootlessLinuxReexecution>;
 }
 
@@ -119,8 +126,17 @@ export type PrivateRootlessLinuxDelegation =
  * it must not continue the original command in the undelegated process.
  */
 export async function acquireOrReexecutePrivateRootlessLinux(
-  dependencies: PrivateRootlessLinuxDelegationDependencies = systemDependencies,
+  input: {
+    readonly commandLifetimeMs?: number;
+    readonly dependencies?: PrivateRootlessLinuxDelegationDependencies;
+  } = {},
 ): Promise<PrivateRootlessLinuxDelegation> {
+  const dependencies = input.dependencies ?? systemDependencies;
+  const commandLifetimeMs = input.commandLifetimeMs ?? COMMAND_LIFETIME_MS;
+  if (!Number.isSafeInteger(commandLifetimeMs) || commandLifetimeMs < 100 ||
+      commandLifetimeMs > MAX_COMMAND_LIFETIME_MS) {
+    throw new PrivateRootlessLinuxAcquisitionError();
+  }
   try {
     const observation = await dependencies.acquire();
     return ready(observation);
@@ -150,7 +166,14 @@ export async function acquireOrReexecutePrivateRootlessLinux(
     if (!isAbsolute(directory) || directory.includes("\0")) {
       throw new Error("invalid current directory");
     }
-    return await dependencies.reexecute(managerPath, unit, command, directory, environment);
+    return await dependencies.reexecute(
+      managerPath,
+      unit,
+      command,
+      directory,
+      environment,
+      commandLifetimeMs,
+    );
   } catch {
     throw new PrivateRootlessLinuxAcquisitionError();
   }
@@ -317,7 +340,7 @@ export async function reexecutePrivateRootlessLinuxCommand(
 ): Promise<PrivateRootlessLinuxReexecution> {
   if (!UNIT.test(unit) || !Number.isSafeInteger(startupTimeoutMs) || startupTimeoutMs < 100 ||
       startupTimeoutMs > 60_000 || !Number.isSafeInteger(commandLifetimeMs) ||
-      commandLifetimeMs < 100 || commandLifetimeMs > 24 * 60 * 60_000) {
+      commandLifetimeMs < 100 || commandLifetimeMs > MAX_COMMAND_LIFETIME_MS) {
     throw new Error("invalid transient scope timing policy");
   }
   const controlPath = await resolveControl();
@@ -812,7 +835,23 @@ const systemDependencies: PrivateRootlessLinuxDelegationDependencies = Object.fr
   resolveManager,
   prepareScope: (unit: string) => preparePrivateRootlessLinuxScope(unit),
   acknowledgeReady,
-  reexecute: reexecutePrivateRootlessLinuxCommand,
+  reexecute: (
+    managerPath: string,
+    unit: string,
+    command: readonly [string, ...string[]],
+    directory: string,
+    environment: NodeJS.ProcessEnv,
+    commandLifetimeMs: number,
+  ) =>
+    reexecutePrivateRootlessLinuxCommand(
+      managerPath,
+      unit,
+      command,
+      directory,
+      environment,
+      STARTUP_TIMEOUT_MS,
+      commandLifetimeMs,
+    ),
 });
 
 function currentCommand(): [string, ...string[]] {

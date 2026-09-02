@@ -6,7 +6,7 @@ has one finite command surface:
 ```text
 jig init --bare <directory>
 jig check [project] [--yes]
-jig run <flow:path|binding:id> [--input JSON]
+jig run <flow:path|binding:id> [--input JSON] [--timeout DURATION]
 ```
 
 There is no `jig setup`. `check` and `run` transparently acquire the rootless
@@ -15,7 +15,7 @@ authority they need or fail closed.
 ## Install
 
 ```console
-npm install --global @jigging/jig@0.1.0-alpha.3
+npm install --global @jigging/jig@0.1.0-alpha.4
 ```
 
 Installing Jig also installs `@oven/bun-linux-x64-baseline@1.3.3` as an exact
@@ -44,10 +44,12 @@ The glibc and SSE4.2 floors come from the selected Bun baseline runtime.
 Jig commands do not use `sudo`, download runtimes, or expose host control to
 Flow code. Runtime installation is handled once by npm with the Jig package.
 
-Flow Runs are fixed at 30 seconds, 256 MiB aggregate memory, 48 aggregate
-PIDs, and 50% of one CPU. Project evaluation is fixed at 3 seconds, 256 MiB,
-64 PIDs, and 50% CPU. Locked dependency preparation is fixed at 60 seconds,
-512 MiB, 64 PIDs, and one CPU. See the repository
+Flow Runs default to 30 seconds. `jig run --timeout DURATION` accepts a
+positive integer followed by `ms`, `s`, `m`, or `h`, up to 24 hours. Flow
+execution scopes remain fixed at 256 MiB aggregate memory, 48 aggregate PIDs,
+and 50% of one CPU. Project evaluation is fixed at 3 seconds, 256 MiB, 64
+PIDs, and 50% CPU. Locked dependency preparation is fixed at 60 seconds, 512
+MiB, 64 PIDs, and one CPU. See the repository
 [`SECURITY.md`](https://github.com/jigmd/jig/blob/main/SECURITY.md) for the
 threat boundary and private reporting channel.
 
@@ -81,6 +83,10 @@ jig check
 jig run flow:flows/example --input '{}'
 ```
 
+For a longer Run, add a bounded duration such as `--timeout 2m`. The timeout
+starts when Jig accepts the root Run. Project acquisition happens before it;
+mandatory fencing and cleanup may finish afterward.
+
 `jig check` shows the complete proposed project change, including exact
 current and proposed Package/1 content digests, and asks for approval. It is
 not a source-file diff; inspect editable source with your normal tools. When
@@ -98,6 +104,11 @@ For ordinary dependencies, place `package.json` and text `bun.lock` beside
 production dependency tree inside the same rootless envelope, using the fixed
 Bun runtime, the default npm registry, and no lifecycle scripts. Unsupported
 or unlocked sources fail before admission.
+
+A dependency-free package needs no `bun.lock`; omit it rather than preserving
+an empty or stale lock. Optional package schemas are FLOW Schema/1 files and
+must begin with the exact root declaration
+`"$schema": "https://flow.jig.md/schemas/schema-1.json"`.
 
 The admitted Run uses only the retained prepared bytes. It has no network,
 ambient `PATH`, package installation, or lifecycle scripts. Packages with no

@@ -17,18 +17,27 @@ import {
 import { BareInitError, initializeBareProject } from "./bare-init.js";
 import { canonicalJson, decodeJson1, type JsonValue } from "./json.js";
 import { bindingRef, flowRef, type RunTargetRef } from "./project/author.js";
+import {
+  PRIVATE_DEFAULT_ROOT_RUN_TIMEOUT_MS,
+  PRIVATE_MAX_ROOT_RUN_TIMEOUT_MS,
+  PRIVATE_ROOTLESS_COMMAND_OVERHEAD_ALLOWANCE_MS,
+  privateRootlessCommandLifetime,
+} from "./internal/root-run-timeout-policy.js";
 
 const HELP = `Usage:
   jig init --bare <directory>
   jig check [project] [--yes]
-  jig run <flow:path|binding:id> [--input JSON]`;
+  jig run <flow:path|binding:id> [--input JSON] [--timeout DURATION]`;
 
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
 
 /** Private injection seam until the installed host owns project acquisition. */
 export interface PrivateCliCommandHost {
-  acquire(project: string): Promise<ProjectSession>;
+  acquire(
+    project: string,
+    options?: { readonly runTimeoutMs?: number },
+  ): Promise<ProjectSession>;
   pause?(milliseconds: number): Promise<void>;
 }
 
@@ -154,7 +163,7 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
       runtime.host.pause ?? defaultPause,
       runtime.signal,
     );
-  });
+  }, { runTimeoutMs: parsed.timeoutMs });
   runtime.writeOutput(`${textDecoder.decode(canonicalJson(publicTerminal(status.terminal)))}\n`);
   return status.terminal.status === "succeeded" ? 0 : status.terminal.status === "failed" ? 1 : 2;
 }
@@ -178,17 +187,70 @@ function parseCheck(
 
 function parseRun(
   arguments_: readonly string[],
-): { readonly target: RunTargetRef; readonly input: JsonValue } {
-  if (arguments_.length !== 2 && arguments_.length !== 4 ||
-      arguments_.length === 4 && arguments_[2] !== "--input") {
+): { readonly target: RunTargetRef; readonly input: JsonValue; readonly timeoutMs: number } {
+  if (arguments_.length < 2) throw new CliDiagnostic("JIG_USAGE", HELP, 2);
+  const target = parseTarget(arguments_[1]!);
+  let input: JsonValue = {};
+  let timeoutMs = PRIVATE_DEFAULT_ROOT_RUN_TIMEOUT_MS;
+  let sawInput = false;
+  let sawTimeout = false;
+  for (let index = 2; index < arguments_.length; index += 2) {
+    const option = arguments_[index];
+    const value = arguments_[index + 1];
+    if (value === undefined) throw new CliDiagnostic("JIG_USAGE", HELP, 2);
+    if (option === "--input" && !sawInput) {
+      sawInput = true;
+      try {
+        input = decodeJson1(textEncoder.encode(value));
+      } catch {
+        throw new CliDiagnostic("JIG_RUN_INPUT_INVALID", "--input must be FLOW JSON/1", 1);
+      }
+      continue;
+    }
+    if (option === "--timeout" && !sawTimeout) {
+      sawTimeout = true;
+      timeoutMs = parseRunTimeout(value);
+      continue;
+    }
     throw new CliDiagnostic("JIG_USAGE", HELP, 2);
   }
-  const target = parseTarget(arguments_[1]!);
-  if (arguments_.length === 2) return { target, input: {} };
+  return { target, input, timeoutMs };
+}
+
+function parseRunTimeout(value: string): number {
+  const match = /^([1-9][0-9]*)(ms|s|m|h)$/.exec(value);
+  if (match === null) return invalidRunTimeout();
+  const quantity = Number(match[1]);
+  const factor = match[2] === "ms"
+    ? 1
+    : match[2] === "s"
+      ? 1_000
+      : match[2] === "m"
+        ? 60_000
+        : 3_600_000;
+  const milliseconds = quantity * factor;
+  if (!Number.isSafeInteger(milliseconds) || milliseconds > PRIVATE_MAX_ROOT_RUN_TIMEOUT_MS) {
+    return invalidRunTimeout();
+  }
+  return milliseconds;
+}
+
+function invalidRunTimeout(): never {
+  throw new CliDiagnostic(
+    "JIG_RUN_TIMEOUT_INVALID",
+    "--timeout must be a positive integer followed by ms, s, m, or h, up to 24h",
+    1,
+  );
+}
+
+/** Private installed-launcher seam; it deliberately exposes no package API. */
+export function privateCliCommandLifetimeMs(arguments_: readonly string[]): number {
+  if (arguments_[0] !== "run") return PRIVATE_ROOTLESS_COMMAND_OVERHEAD_ALLOWANCE_MS;
   try {
-    return { target, input: decodeJson1(textEncoder.encode(arguments_[3]!)) };
+    return privateRootlessCommandLifetime(parseRun(arguments_).timeoutMs);
   } catch {
-    throw new CliDiagnostic("JIG_RUN_INPUT_INVALID", "--input must be FLOW JSON/1", 1);
+    // `main` renders invalid invocations inside this short bounded envelope.
+    return PRIVATE_ROOTLESS_COMMAND_OVERHEAD_ALLOWANCE_MS;
   }
 }
 
@@ -210,9 +272,10 @@ async function withProjectSession<T>(
   project: string,
   runtime: CliRuntime,
   operation: (session: ProjectSession) => Promise<T>,
+  acquisition?: { readonly runTimeoutMs?: number },
 ): Promise<T> {
   runtime.signal?.throwIfAborted();
-  const session = await runtime.host.acquire(project);
+  const session = await runtime.host.acquire(project, acquisition);
   let closePromise: Promise<void> | undefined;
   const close = () => closePromise ??= session.close();
   const onAbort = () => { void close().catch(() => undefined); };

@@ -79,6 +79,7 @@ try {
   assert.deepEqual(requireRecord(requireRecord(lock).bindings).friendly, {
     packagePath: "flows/hello",
     settings: { prefix: "Welcome" },
+    slots: {},
   });
   for (const value of Object.values(requireRecord(requireRecord(lock).packages))) {
     const digest = requireRecord(value).digest;
@@ -167,6 +168,20 @@ try {
     stderrTruncated: false,
   });
   assert.doesNotMatch(executed.stdout, /sha256:|runId|coordinator|cgroup|bubblewrap|\/tmp\//i);
+
+  const deadline = await run([
+    jig,
+    "run",
+    "flow:flows/hello",
+    "--input",
+    JSON.stringify({ name: "Deadline" }),
+    "--timeout",
+    "1ms",
+  ], project, [1], 120_000);
+  assert.equal(deadline.stderr, "");
+  const deadlineTerminal = requireRecord(JSON.parse(deadline.stdout));
+  assert.equal(deadlineTerminal.status, "failed");
+  assert.equal(deadlineTerminal.code, "DEADLINE_EXCEEDED");
 
   const bound = await run([
     jig, "run", "binding:friendly", "--input", JSON.stringify({ name: "Ada" }),

@@ -333,8 +333,10 @@ binding:reviewer
 
 An unprefixed name is not guessed. A direct Flow receives empty settings and
 no attachments. A Binding receives exactly its admitted settings. Callers
-cannot override package source, runtime, environment, authority, deadline
-policy, or containment, and cannot introduce an attachment projection.
+cannot override package source, runtime, environment, authority, the host
+deadline ceiling, or containment, and cannot introduce an attachment
+projection. The installed CLI may choose one root execution duration within
+the host's fixed policy; it does not change admitted project meaning.
 
 Each submission has one bounded project-local idempotency key and JSON/1 input.
 The first accepted request stores the exact target and canonical input before
@@ -344,6 +346,10 @@ changed reuse conflicts and never dispatches again.
 After allocation, Jig validates the actual input against
 `input.schema.json`, when present. Invalid input terminates that same durable
 Run without starting package code.
+
+Package schema roots use FLOW Schema/1 and therefore declare exactly
+`"$schema": "https://flow.jig.md/schemas/schema-1.json"`. This is a portable
+package rule, not Jig project authoring metadata.
 
 The host launches one Run/1 process from the exact admitted package bytes in a
 rootless Linux envelope. It validates the returned outcome and the complete
@@ -415,9 +421,13 @@ the validated lock from the fixed registry. The resulting package is captured
 before admission. This does not give the later Flow Run network access.
 
 CPU throttling is not a deadline, so the trusted owner also enforces a hard
-wall-clock limit. Every completion, failure, session close, and coordinator
-loss kills the whole cgroup, waits until it is unpopulated, removes its
-resources, and surfaces cleanup failure. There is no weaker fallback path.
+wall-clock limit. Root Runs default to 30 seconds; the installed CLI accepts a
+positive integer duration with `ms`, `s`, `m`, or `h`, up to 24 hours. This
+deadline begins with the accepted root Run. Project acquisition precedes it,
+and mandatory fencing and cleanup may settle afterward. Every completion,
+failure, session close, and coordinator loss kills the whole cgroup, waits
+until it is unpopulated, removes its resources, and surfaces cleanup failure.
+There is no weaker fallback path.
 
 Containment details are Jig host internals. FLOW metadata cannot choose or
 weaken them.

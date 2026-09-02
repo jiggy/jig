@@ -2,7 +2,11 @@ import { realpath } from "node:fs/promises";
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { main, type PrivateCliCommandHost } from "./cli.js";
+import {
+  main,
+  privateCliCommandLifetimeMs,
+  type PrivateCliCommandHost,
+} from "./cli.js";
 import { openPrivateInstalledBunHost } from "./internal/installed-bun-host.js";
 import {
   acquireOrReexecutePrivateRootlessLinux,
@@ -40,7 +44,9 @@ async function runPrivateInstalledCli(
   }
 
   try {
-    const delegation = await acquireOrReexecutePrivateRootlessLinux();
+    const delegation = await acquireOrReexecutePrivateRootlessLinux({
+      commandLifetimeMs: privateCliCommandLifetimeMs(arguments_),
+    });
     if (delegation.kind === "private-rootless-linux-reexecuted/1") return delegation;
 
     const installedHost = await openPrivateInstalledBunHost({
@@ -49,9 +55,14 @@ async function runPrivateInstalledCli(
       installedCliPath,
     });
     const host: PrivateCliCommandHost = Object.freeze({
-      acquire: (project: string) => openPrivateProjectSession({
+      acquire: (
+        project: string,
+        options?: { readonly runTimeoutMs?: number },
+      ) => openPrivateProjectSession({
         directory: project,
-        host: installedHost,
+        host: options?.runTimeoutMs === undefined
+          ? installedHost
+          : Object.freeze({ ...installedHost, runTimeoutMs: options.runTimeoutMs }),
       }),
     });
     return exit(await main(arguments_, {

@@ -13,7 +13,12 @@ import {
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { createBareProject, type BareInitFileSystem } from "../src/bare-init.js";
-import { main, type PrivateCliCommandHost, type PrivateCliOptions } from "../src/cli.js";
+import {
+  main,
+  privateCliCommandLifetimeMs,
+  type PrivateCliCommandHost,
+  type PrivateCliOptions,
+} from "../src/cli.js";
 import {
   ProjectAdministrationError,
   type ProjectPlanResult,
@@ -200,7 +205,9 @@ describe("finite Jig project commands", () => {
     expect(await main(["--help"], invocation.options)).toBe(0);
     expect(invocation.output).toContain("jig init --bare <directory>");
     expect(invocation.output).toContain("jig check [project] [--yes]");
-    expect(invocation.output).toContain("jig run <flow:path|binding:id> [--input JSON]");
+    expect(invocation.output).toContain(
+      "jig run <flow:path|binding:id> [--input JSON] [--timeout DURATION]",
+    );
     expect(invocation.output).not.toContain("package check");
 
     const removed = commandInvocation(unusedHost());
@@ -288,14 +295,16 @@ describe("finite Jig project commands", () => {
       diagnostics: { stderr: "", stderrBytes: 0, stderrTruncated: false },
     };
     let request: StartRootRunRequest | undefined;
+    let acquisition: { readonly runTimeoutMs?: number } | undefined;
     const host = fakeHost(fakeSession(events, {
       terminal,
       captureRequest: (value) => { request = value; },
       pendingObservations: 1,
-    }), events, async () => { events.push("pause"); });
+    }), events, async () => { events.push("pause"); }, (value) => { acquisition = value; });
     const invocation = commandInvocation(host, { createSubmissionId: () => "private-submission" });
 
     expect(await main(["run", "flow:./flows/work"], invocation.options)).toBe(0);
+    expect(acquisition).toEqual({ runTimeoutMs: 30_000 });
     expect(request).toEqual({
       submissionId: "private-submission",
       target: { kind: "flow", path: "flows/work" },
@@ -314,6 +323,90 @@ describe("finite Jig project commands", () => {
     expect(invocation.output).not.toContain(digest);
     expect(invocation.output).not.toContain("private-submission");
     expect(invocation.error).toBe("");
+  });
+
+  test("run accepts timeout units and input in either option order", async () => {
+    const cases = [
+      { input: "ms", timeoutMs: 1, options: ["--timeout", "1ms", "--input", '{"case":"ms"}'] },
+      { input: "s", timeoutMs: 2_000, options: ["--input", '{"case":"s"}', "--timeout", "2s"] },
+      { input: "m", timeoutMs: 180_000, options: ["--timeout", "3m", "--input", '{"case":"m"}'] },
+      { input: "h", timeoutMs: 86_400_000, options: ["--input", '{"case":"h"}', "--timeout", "24h"] },
+    ] as const;
+
+    for (const { input, timeoutMs, options } of cases) {
+      const events: string[] = [];
+      let request: StartRootRunRequest | undefined;
+      let acquisition: { readonly runTimeoutMs?: number } | undefined;
+      const invocation = commandInvocation(fakeHost(fakeSession(events, {
+        captureRequest: (value) => { request = value; },
+      }), events, undefined, (value) => { acquisition = value; }), {
+        createSubmissionId: () => "timeout-submission",
+      });
+
+      expect(await main(["run", "binding:review", ...options], invocation.options)).toBe(0);
+      expect(acquisition).toEqual({ runTimeoutMs: timeoutMs });
+      expect(request).toEqual({
+        submissionId: "timeout-submission",
+        target: { kind: "binding", id: "review" },
+        input: { case: input },
+      });
+      expect(invocation.error).toBe("");
+    }
+  });
+
+  test("run rejects malformed, zero, overflowing, and over-limit timeouts before acquisition", async () => {
+    for (const duration of [
+      "",
+      "0ms",
+      "01ms",
+      "+1s",
+      "1.5s",
+      "1",
+      "1d",
+      "24h1m",
+      "25h",
+      "86400001ms",
+      "9007199254740992ms",
+    ]) {
+      const invocation = commandInvocation(unusedHost());
+      expect(await main([
+        "run",
+        "flow:flows/work",
+        "--timeout",
+        duration,
+      ], invocation.options), duration).toBe(1);
+      expect(invocation.error).toBe(
+        "JIG_RUN_TIMEOUT_INVALID: --timeout must be a positive integer followed by " +
+        "ms, s, m, or h, up to 24h\n",
+      );
+    }
+
+    const duplicate = commandInvocation(unusedHost());
+    expect(await main([
+      "run",
+      "flow:flows/work",
+      "--timeout",
+      "1s",
+      "--timeout",
+      "2s",
+    ], duplicate.options)).toBe(2);
+    expect(duplicate.error).toContain("Usage:");
+  });
+
+  test("installed command lifetime encloses Run cleanup without extending invalid commands", () => {
+    expect(privateCliCommandLifetimeMs(["run", "flow:flows/work"])).toBe(330_000);
+    expect(privateCliCommandLifetimeMs([
+      "run",
+      "flow:flows/work",
+      "--input",
+      "{}",
+      "--timeout",
+      "24h",
+    ])).toBe(86_700_000);
+    expect(privateCliCommandLifetimeMs(["run", "flow:flows/work", "--timeout", "invalid"])).toBe(
+      300_000,
+    );
+    expect(privateCliCommandLifetimeMs(["check"])).toBe(300_000);
   });
 
   test("run parses bounded JSON/1 and maps failure and loss to stable exits", async () => {
@@ -474,10 +567,14 @@ describe("finite Jig project commands", () => {
     session: ProjectSession,
     events: string[],
     pause?: (milliseconds: number) => Promise<void>,
+    captureAcquisition?: (
+      options: { readonly runTimeoutMs?: number } | undefined,
+    ) => void,
   ): PrivateCliCommandHost {
     return {
-      async acquire(project) {
+      async acquire(project, options) {
         events.push(`acquire:${project}`);
+        captureAcquisition?.(options);
         return session;
       },
       ...(pause === undefined ? {} : { pause }),

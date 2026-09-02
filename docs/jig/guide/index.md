@@ -11,7 +11,7 @@ deliberately exposes one finite product path:
 ```text
 jig init --bare <directory>
 jig check [project]
-jig run <target>
+jig run <target> [--input JSON] [--timeout DURATION]
 ```
 
 - The [repository quickstart](https://github.com/jigmd/jig#quickstart) covers
@@ -22,6 +22,11 @@ jig run <target>
   review, admission, and exact direct-Run behavior.
 - The [security boundary](https://github.com/jigmd/jig/blob/main/SECURITY.md)
   states the threat model, host requirements, and fixed resource limits.
+
+Optional package schema files use [FLOW Schema/1](https://flow.jig.md/spec/schema-files)
+and begin with the exact root declaration
+`"$schema": "https://flow.jig.md/schemas/schema-1.json"`. Dependency-free
+packages omit `bun.lock`; an empty or stale lock is not a valid fixture.
 
 The Jig-specific machine files are published under
 [`/schemas/`](https://jig.md/schemas/project-authoring-1.schema.json). FLOW's
@@ -42,6 +47,11 @@ catalogue, resolver, or Agent surface.
 The alpha admits one active child operation per parent; excess distinct
 concurrent calls receive `RESOURCE_EXHAUSTED`, while sequential calls remain
 available.
+
+Root Runs default to 30 seconds. `--timeout` accepts a positive integer plus
+`ms`, `s`, `m`, or `h`, up to 24 hours. Children share the parent's remaining
+absolute deadline; they cannot extend it. Acquisition precedes that execution
+deadline, and mandatory fencing and cleanup may settle afterward.
 
 The direct alpha excludes Services, Hooks, Journal providers, Agent providers,
 Semantic Choice, Jig Graph, schedulers, catalogues, runtime registries, sandbox

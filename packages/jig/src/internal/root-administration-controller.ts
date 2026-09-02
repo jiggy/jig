@@ -19,8 +19,7 @@ import {
   type PrivateRootRunSnapshot,
 } from "./activation-admission-store.js";
 import type { PrivateRootExecutionDisposition } from "./root-run-controller.js";
-
-const MAX_RUN_TIMEOUT_MS = 86_400_000;
+import { requirePrivateRootRunTimeout } from "./root-run-timeout-policy.js";
 
 export interface PrivateRootAdministrationController {
   readonly administration: RootAdministration;
@@ -328,9 +327,7 @@ function projectTerminal(run: PrivateRootRunSnapshot): unknown {
 }
 
 function requireRunTimeout(value: number): void {
-  if (!Number.isSafeInteger(value) || value < 1 || value > MAX_RUN_TIMEOUT_MS) {
-    throw new TypeError(`root Run timeout must be between 1 and ${MAX_RUN_TIMEOUT_MS} milliseconds`);
-  }
+  requirePrivateRootRunTimeout(value);
 }
 
 function deadlineFromNow(timeoutMs: number): number {

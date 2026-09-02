@@ -140,7 +140,7 @@ fi
 for expected in \
   "  jig init --bare <directory>" \
   "  jig check [project] [--yes]" \
-  "  jig run <flow:path|binding:id> [--input JSON]"
+  "  jig run <flow:path|binding:id> [--input JSON] [--timeout DURATION]"
 do
   if ! grep -F -x "$expected" "$temporary/npm-help" >/dev/null; then
     echo "the npm-installed Jig executable exposed the wrong command surface" >&2

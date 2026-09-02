@@ -4,8 +4,7 @@ import {
 } from "./installed-bun-support.js";
 import { PrivateLinuxCgroupBackend } from "./linux-rootless-backend.js";
 import type { PrivateProjectSessionHost } from "./project-session-controller.js";
-
-const RUN_TIMEOUT_MS = 60_000;
+import { PRIVATE_DEFAULT_ROOT_RUN_TIMEOUT_MS } from "./root-run-timeout-policy.js";
 
 /** Open the one fixed installed alpha host. This is not a public host SPI. */
 export async function openPrivateInstalledBunHost(
@@ -19,6 +18,6 @@ export async function openPrivateInstalledBunHost(
       supervisorPath: installedBunSupport.supervisorPath,
     }),
     installedBunSupport,
-    runTimeoutMs: RUN_TIMEOUT_MS,
+    runTimeoutMs: PRIVATE_DEFAULT_ROOT_RUN_TIMEOUT_MS,
   });
 }

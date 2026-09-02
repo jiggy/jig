@@ -40,15 +40,20 @@ replace cgroup-v2 ownership with `ulimit`, per-process accounting,
 process-group killing, or `/proc` polling; those mechanisms do not enforce the
 same descendant and cleanup boundary.
 
-## Fixed alpha ceilings
+## Alpha ceilings
 
 | Operation | Wall clock | Aggregate memory | Aggregate PIDs | CPU quota |
 | --- | ---: | ---: | ---: | ---: |
-| Each Flow execution scope | 30 seconds | 256 MiB | 48 | 50% of one CPU |
+| Each Flow execution scope | root deadline, at most 24 hours | 256 MiB | 48 | 50% of one CPU |
 | Project evaluation | 3 seconds | 256 MiB | 64 | 50% of one CPU |
 | One locked dependency preparation | 60 seconds | 512 MiB | 64 | one CPU |
 
-These limits are fixed in this alpha and are not project configuration.
+Root Runs default to 30 seconds. The trusted CLI caller may select a positive
+integer duration with `--timeout`, using `ms`, `s`, `m`, or `h`, up to 24
+hours. This is invocation policy, not FLOW metadata, project configuration, or
+Flow-controlled authority. The deadline starts when the root Run is accepted;
+project acquisition happens before it, and mandatory fencing and cleanup may
+finish afterward. The memory, PID, and CPU ceilings in the table are fixed.
 
 A Binding child runs in a second execution scope while its parent remains
 live. Jig admits at most one active child per parent, so this alpha can have at

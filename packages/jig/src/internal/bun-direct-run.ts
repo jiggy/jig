@@ -21,12 +21,12 @@ import {
   requirePrivateActivationRequest,
   type PrivateActivationRequest,
 } from "../project/package-resolution.js";
+import { PRIVATE_MAX_ROOT_RUN_TIMEOUT_MS } from "./root-run-timeout-policy.js";
 
 const ADAPTER_REVISION = "private-bun-direct/1";
 const DEFAULT_SELECTOR = "bun";
 const PACKAGE_DESTINATION = "/package";
 const SCRATCH = "/work";
-const MAX_WALL_CLOCK_MS = 30_000;
 const BUN_POLICY = Object.freeze([
   "--no-env-file",
   "--no-install",
@@ -146,7 +146,7 @@ export async function planPrivateBunDirectRun(input: {
     sandboxExecutablePath: installedSupport.sandboxExecutablePath,
     packageDestination: PACKAGE_DESTINATION,
     scratch: SCRATCH,
-    wallClockCeilingMs: MAX_WALL_CLOCK_MS,
+    wallClockCeilingMs: PRIVATE_MAX_ROOT_RUN_TIMEOUT_MS,
     resourceCeilings: RESOURCE_CEILINGS,
     bunPolicy: BUN_POLICY,
     privateProcessFilesystem: true,
@@ -180,7 +180,7 @@ function logicalLaunchDigest(
     packageDestination: PACKAGE_DESTINATION,
     scratch: SCRATCH,
     resourceCeilings: RESOURCE_CEILINGS,
-    wallClockCeilingMs: MAX_WALL_CLOCK_MS,
+    wallClockCeilingMs: PRIVATE_MAX_ROOT_RUN_TIMEOUT_MS,
     environment: Object.freeze({
       LD_LIBRARY_PATH: "/jig-runtime/lib",
     }),
