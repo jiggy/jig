@@ -146,11 +146,11 @@ Provider:       GitHub Actions
 Organization:   jigmd
 Repository:     jig
 Workflow file:  npm-publish.yml
-Environment:    npm-alpha
+Environment:    npm
 Allowed actions: npm publish
 ```
 
-In the GitHub repository, create the `npm-alpha` environment, require the
+In the GitHub repository, create the `npm` environment, require the
 desired maintainers as reviewers, and restrict its deployment branch to
 `main`. Subsequent prereleases use only the workflow and OIDC. The repository
 must be public for the intended provenance and public-release posture.

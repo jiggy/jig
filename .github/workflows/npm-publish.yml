@@ -146,7 +146,7 @@ jobs:
 
   publish:
     needs: build
-    environment: npm-alpha
+    environment: npm
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
