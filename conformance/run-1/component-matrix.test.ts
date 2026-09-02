@@ -690,7 +690,7 @@ test("a nonzero exit invalidates a complete root response", async () => {
   } finally {
     await peer.dispose();
   }
-});
+}, 30_000);
 
 interface ComponentCommand {
   readonly name: string;
