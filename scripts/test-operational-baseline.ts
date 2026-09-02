@@ -136,13 +136,13 @@ try {
   assert.equal(dependencyTerminal.code, "CHANNEL_LOST");
 
   const dependencyRun = await run([
-    jig, "run", "flow:flows/locked-dependency", "--input", "3",
-  ], project, [0], 120_000);
+    jig, "run", "flow:flows/locked-dependency", "--input", JSON.stringify("ada"),
+  ], project, [0], 45_000);
   assert.equal(dependencyRun.stderr, "");
   const dependencyResult = requireRecord(JSON.parse(dependencyRun.stdout));
   assert.equal(dependencyResult.status, "succeeded");
   assert.equal(dependencyResult.outcome, "done");
-  assert.deepEqual(dependencyResult.output, { odd: true });
+  assert.deepEqual(dependencyResult.output, { capitalized: "Ada" });
   await assert.rejects(stat(join(project, "flows", "locked-dependency", "node_modules")), {
     code: "ENOENT",
   });
@@ -353,7 +353,7 @@ async function writeLockedDependencyFlow(project: string): Promise<void> {
     name: "jig-locked-dependency-baseline",
     private: true,
     scripts: { postinstall: "touch postinstall-ran" },
-    dependencies: { "is-odd": "3.0.1" },
+    dependencies: { lodash: "4.17.21" },
   }, null, 2)}\n`);
   await writeFile(join(flow, "bun.lock"), `{
   "lockfileVersion": 1,
@@ -361,16 +361,15 @@ async function writeLockedDependencyFlow(project: string): Promise<void> {
   "workspaces": {
     "": {
       "name": "jig-locked-dependency-baseline",
-      "dependencies": { "is-odd": "3.0.1" },
+      "dependencies": { "lodash": "4.17.21" },
     },
   },
   "packages": {
-    "is-number": ["is-number@6.0.0", "", {}, "sha512-Wu1VHeILBK8KAWJUAiSZQX94GmOE45Rg6/538fKwiloUu21KncEkYGPqob2oSZ5mUT73vLGrHQjKw3KMPwfDzg=="],
-    "is-odd": ["is-odd@3.0.1", "", { "dependencies": { "is-number": "^6.0.0" } }, "sha512-CQpnWPrDwmP1+SMHXZhtLtJv90yiyVfluGsX5iNCVkrhQtU3TQHsUWPG9wkdk9Lgd5yNpAg9jQEo90CBaXgWMA=="],
+    "lodash": ["lodash@4.17.21", "", {}, "sha512-v2kDEe57lecTulaDIuNTPy3Ry4gLGJ6Z1O3vE1krgXZNrsQ+LFTGHVxVjcXPs17LhbZVGedAJv8XZ1tvj5FvSg=="],
   },
 }\n`);
   await writeFile(join(flow, "flow.ts"), [
-    'import isOdd from "is-odd";',
+    'import capitalize from "lodash/capitalize.js";',
     'import { createInterface } from "node:readline";',
     "",
     "const lines = createInterface({ input: process.stdin });",
@@ -379,7 +378,7 @@ async function writeLockedDependencyFlow(project: string): Promise<void> {
     "  process.stdout.write(`${JSON.stringify({",
     '    jsonrpc: "2.0",',
     "    id: request.id,",
-    '    result: { outcome: "done", output: { odd: isOdd(request.params.input) } },',
+    '    result: { outcome: "done", output: { capitalized: capitalize(request.params.input) } },',
     "  })}\\n`);",
     "  lines.close();",
     "  break;",

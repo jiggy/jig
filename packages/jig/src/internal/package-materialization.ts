@@ -883,7 +883,6 @@ async function removeTree(root: FileHandle, filesystem: BigIntStats): Promise<vo
         await child.handle.close();
       }
       await rmdir(path);
-      await root.sync();
       continue;
     }
     if (!observed.isFile()) {
@@ -903,8 +902,11 @@ async function removeTree(root: FileHandle, filesystem: BigIntStats): Promise<vo
     }
     await requireChildIdentity(root, name, information!);
     await unlink(path);
-    await root.sync();
   }
+  // The tree is reconstructible from its immutable Package/1 artifact. One
+  // directory barrier is enough to make cleanup progress observable without
+  // turning every dependency file into a separate synchronous transaction.
+  await root.sync();
 }
 
 async function requireEntries(directory: FileHandle, expected: readonly string[]): Promise<void> {
@@ -1194,9 +1196,11 @@ async function copyCapturedFile(
         `captured stream for ${logicalPath} had ${observedBytes} bytes; expected ${expectedBytes}`,
       );
     }
-    await handle.sync();
     await handle.chmod(0o444);
-    await handle.sync();
+    // Run backing is a verified, disposable projection of immutable retained
+    // bytes. Its durable identity and cleanup owner are recorded separately;
+    // syncing every projected file makes ordinary dependency trees unusably
+    // slow without adding execution authority or restart evidence.
   } finally {
     await handle.close();
   }
