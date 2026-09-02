@@ -1,0 +1,13 @@
+# FLOW
+
+FLOW defines portable workflow packages and finite process contracts.
+
+- Landing page: https://flow.jig.md/
+- Specification map: https://flow.jig.md/guide/
+- Package/1: https://flow.jig.md/spec/package-format
+- Run/1: https://flow.jig.md/spec/run-protocol
+- Run SDK/1: https://flow.jig.md/spec/run-sdk
+- Schema/1: https://flow.jig.md/spec/schema-files
+- Machine schemas: https://flow.jig.md/schemas/schema-1.json
+- Source and conformance: https://github.com/jigmd/jig
+- Jig host: https://jig.md/

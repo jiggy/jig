@@ -1,19 +1,19 @@
 ---
 pageType: home
-title: Jig and FLOW
-description: Run exact workflows while keeping authority explicit.
+title: Jig
+description: A local, secure host for admitted FLOW packages.
 
 hero:
-  name: Jig + FLOW
+  name: Jig
   text: Run exact workflows. Keep authority explicit.
-  tagline: FLOW packages are ordinary editable files. Jig reviews their exact meaning and runs only admitted bytes in a rootless Linux boundary.
+  tagline: Jig reviews the exact meaning of ordinary FLOW packages and runs only admitted bytes inside one fail-closed rootless Linux boundary.
   actions:
     - theme: brand
       text: Quickstart
-      link: https://github.com/jigmd/jig#quickstart
-    - theme: alt
-      text: Read the specifications
       link: /guide/
+    - theme: alt
+      text: Learn about FLOW
+      link: https://flow.jig.md/
 
 features:
   - title: Three commands
@@ -23,6 +23,6 @@ features:
     details: Source proposes. Explicit review admits one immutable project generation. Live files never silently become execution authority.
     icon: "✓"
   - title: One secure host
-    details: The first alpha has one fail-closed Linux, cgroup-v2, systemd, and Bubblewrap path. There is no weaker fallback.
+    details: The first alpha has one Linux, cgroup-v2, systemd, and Bubblewrap path. There is no weaker fallback.
     icon: "◼"
 ---

@@ -3,9 +3,9 @@
 Minimal, dependency-free Python projection of FLOW Run/1.
 
 This is a private `0.0.0` candidate, not a stable release. Its authoritative
-source-checkout documents are `docs/spec/run-sdk.md` and
-`docs/spec/run-protocol.md`. Stable external documentation URLs will be added
-before publication. This installed README contains a minimal quickstart.
+documents are [Run SDK/1](https://flow.jig.md/spec/run-sdk) and
+[Run/1](https://flow.jig.md/spec/run-protocol). This installed README contains
+a minimal quickstart.
 
 Finite work uses `serve()`:
 

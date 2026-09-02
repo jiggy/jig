@@ -6,7 +6,7 @@ import Ajv2020 from "ajv/dist/2020.js";
 
 import goldenTrace from "./fixtures/golden-trace.json";
 import { ComponentPeer, type Message } from "./harness/peer";
-import schema from "../../docs/spec/machine/run-1.schema.json";
+import schema from "../../docs/flow/spec/machine/run-1.schema.json";
 
 const root = resolve(import.meta.dir, "../..");
 const typescriptComponent = [process.execPath, resolve(import.meta.dir, "components/flow.ts")];

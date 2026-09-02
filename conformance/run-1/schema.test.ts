@@ -2,8 +2,8 @@ import { describe, expect, test } from "bun:test";
 import Ajv2020 from "ajv/dist/2020.js";
 
 import cases from "./fixtures/messages.json";
-import errorRegistry from "../../docs/spec/machine/run-1-errors.json";
-import schema from "../../docs/spec/machine/run-1.schema.json";
+import errorRegistry from "../../docs/flow/spec/machine/run-1-errors.json";
+import schema from "../../docs/flow/spec/machine/run-1.schema.json";
 
 const ajv = new Ajv2020({ allErrors: true, strict: true });
 ajv.addSchema(schema);

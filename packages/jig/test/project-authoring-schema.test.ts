@@ -5,7 +5,7 @@ import { defineBinding, defineJig, discover } from "../src/index.js";
 import { compileSchemaFile, SchemaDiagnostic } from "../src/schema/index.js";
 
 const schema = compileSchemaFile(await readFile(new URL(
-  "../../../docs/spec/machine/project-authoring-1.schema.json",
+  "../../../docs/jig/spec/machine/project-authoring-1.schema.json",
   import.meta.url,
 )), "project-authoring-1.schema.json");
 

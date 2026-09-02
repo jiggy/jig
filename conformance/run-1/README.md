@@ -1,7 +1,8 @@
 # Run/1 conformance slice
 
 This directory contains pre-release executable evidence for the closed
-candidate in [`docs/spec/run-protocol.md`](../../docs/spec/run-protocol.md).
+candidate in
+[`docs/flow/spec/run-protocol.md`](../../docs/flow/spec/run-protocol.md).
 It is deliberately separate from the SDK implementations.
 
 The current corpus has five layers:

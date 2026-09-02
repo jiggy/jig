@@ -5,12 +5,13 @@ import { defineConfig } from "@rspress/core";
 const siteDirectory = import.meta.dirname;
 
 export default defineConfig({
-  root: resolve(siteDirectory, "../docs"),
-  outDir: process.env.JIG_PAGES_OUTPUT ?? resolve(siteDirectory, "doc_build"),
+  root: resolve(siteDirectory, "../../docs/flow"),
+  outDir:
+    process.env.PUBLIC_SITE_OUTPUT ?? resolve(siteDirectory, "doc_build"),
   siteOrigin: "https://flow.jig.md",
-  title: "Jig + FLOW",
-  description: "A local, secure host for admitted FLOW packages.",
-  logoText: "Jig + FLOW",
+  title: "FLOW",
+  description: "Portable workflow packages and process contracts.",
+  logoText: "FLOW",
   builderConfig: {
     output: {
       cleanDistPath: false,
@@ -18,7 +19,8 @@ export default defineConfig({
   },
   themeConfig: {
     nav: [
-      { text: "Docs", link: "/guide/" },
+      { text: "Specifications", link: "/guide/" },
+      { text: "Jig", link: "https://jig.md/" },
       { text: "GitHub", link: "https://github.com/jigmd/jig" },
     ],
     sidebar: {
@@ -31,20 +33,16 @@ export default defineConfig({
             { text: "Package/1", link: "/spec/package-format" },
             { text: "Run/1", link: "/spec/run-protocol" },
             { text: "Run SDK/1", link: "/spec/run-sdk" },
-            { text: "Capability Contract/1", link: "/spec/capability-contracts" },
-          ],
-        },
-        {
-          text: "Jig direct alpha",
-          items: [
-            { text: "Project Authoring SDK", link: "/spec/project-sdk" },
-            { text: "Project and execution policy", link: "/spec/project-policy" },
+            {
+              text: "Capability Contract/1",
+              link: "/spec/capability-contracts",
+            },
           ],
         },
       ],
     },
     footer: {
-      message: "FLOW is openly implementable and founder-stewarded. Jig is prerelease software.",
+      message: "FLOW is openly implementable and founder-stewarded.",
     },
   },
 });

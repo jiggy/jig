@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "jig-documentation",
+      "name": "public-site-build",
       "devDependencies": {
         "@rspress/core": "2.0.21",
       },

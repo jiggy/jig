@@ -3,9 +3,8 @@
 Minimal, dependency-free TypeScript projection of FLOW Run/1.
 
 This is the prerelease `0.1.0-alpha.1` package. Its authoritative documents
-are the [Run SDK/1](https://github.com/jigmd/jig/blob/main/docs/spec/run-sdk.md)
-and [Run/1](https://github.com/jigmd/jig/blob/main/docs/spec/run-protocol.md)
-specifications.
+are the [Run SDK/1](https://flow.jig.md/spec/run-sdk) and
+[Run/1](https://flow.jig.md/spec/run-protocol) specifications.
 
 Declare the exact alpha in the FLOW package's `package.json`:
 

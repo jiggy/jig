@@ -16,7 +16,7 @@ import { SchemaDiagnostic } from "../src/schema/index.js";
 const encoder = new TextEncoder();
 const examplePath = resolve(
   import.meta.dir,
-  "../../../docs/spec/examples/capability-contracts/session-store.capability.json",
+  "../../../docs/flow/spec/examples/capability-contracts/session-store.capability.json",
 );
 
 function descriptor(overrides: Record<string, unknown> = {}): Record<string, unknown> {
@@ -270,7 +270,7 @@ describe("Capability Contract/1", () => {
   test("publishes a machine schema whose local-reference pattern accepts Schema/1 refs", async () => {
     const machinePath = resolve(
       import.meta.dir,
-      "../../../docs/spec/machine/capability-contract-1.schema.json",
+      "../../../docs/flow/spec/machine/capability-contract-1.schema.json",
     );
     const machine = JSON.parse(await readFile(machinePath, "utf8")) as {
       $defs: {

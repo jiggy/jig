@@ -116,7 +116,7 @@ normalizes their result. Forged helper output acquires no trust.
 ## Machine shape
 
 The closed machine schema is
-[`project-authoring-1.schema.json`](https://flow.jig.md/schemas/project-authoring-1.schema.json).
+[`project-authoring-1.schema.json`](https://jig.md/schemas/project-authoring-1.schema.json).
 It validates either a normalized project value:
 
 ```json

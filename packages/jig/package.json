@@ -8,7 +8,7 @@
     "url": "git+https://github.com/jigmd/jig.git",
     "directory": "packages/jig"
   },
-  "homepage": "https://flow.jig.md/",
+  "homepage": "https://jig.md/",
   "bugs": {
     "url": "https://github.com/jigmd/jig/issues"
   },
@@ -55,7 +55,7 @@
   ],
   "scripts": {
     "verify:build-bun": "bun -e \"if (Bun.version !== '1.3.3' || Bun.revision !== '274e01c737e85f8142070a9745b43a2ba09fce4c') throw new Error('Jig must be built with exact Bun 1.3.3 revision 274e01c737e85f8142070a9745b43a2ba09fce4c')\"",
-    "build": "bun run verify:build-bun && bun run clean && mkdir -p bin libexec/evaluator libexec/preparation && cp scripts/installed-jig.sh bin/jig && chmod 755 bin/jig && bun node_modules/typescript/bin/tsc -p tsconfig.json && bun build src/index.ts --target=bun --format=esm --outfile=dist/index.js && bun build src/installed-cli.ts --target=bun --format=esm --outfile=libexec/installed-cli.js && bun build src/internal/linux-rootless-supervisor.ts --target=bun --format=esm --outfile=libexec/linux-rootless-supervisor.js && bun build src/internal/project-evaluator-worker.ts --target=bun --format=esm --outfile=libexec/evaluator/project-evaluator-worker.js && bun build src/internal/bun-native-preparation-worker.ts --target=bun --format=esm --outfile=libexec/preparation/bun-native-preparation-worker.js && bun build src/project/evaluator-sdk-entry.ts --target=bun --format=esm --outfile=libexec/evaluator/project-evaluator-sdk.bundle.js && cp ../../docs/spec/machine/project-authoring-1.schema.json libexec/evaluator/project-authoring-1.schema.json",
+    "build": "bun run verify:build-bun && bun run clean && mkdir -p bin libexec/evaluator libexec/preparation && cp scripts/installed-jig.sh bin/jig && chmod 755 bin/jig && bun node_modules/typescript/bin/tsc -p tsconfig.json && bun build src/index.ts --target=bun --format=esm --outfile=dist/index.js && bun build src/installed-cli.ts --target=bun --format=esm --outfile=libexec/installed-cli.js && bun build src/internal/linux-rootless-supervisor.ts --target=bun --format=esm --outfile=libexec/linux-rootless-supervisor.js && bun build src/internal/project-evaluator-worker.ts --target=bun --format=esm --outfile=libexec/evaluator/project-evaluator-worker.js && bun build src/internal/bun-native-preparation-worker.ts --target=bun --format=esm --outfile=libexec/preparation/bun-native-preparation-worker.js && bun build src/project/evaluator-sdk-entry.ts --target=bun --format=esm --outfile=libexec/evaluator/project-evaluator-sdk.bundle.js && cp ../../docs/jig/spec/machine/project-authoring-1.schema.json libexec/evaluator/project-authoring-1.schema.json",
     "clean": "bun -e \"import { rm } from 'node:fs/promises'; for (const path of ['dist', 'bin', 'libexec']) await rm(path, { recursive: true, force: true })\"",
     "prepack": "bun run build",
     "test": "bun test",

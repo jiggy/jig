@@ -1,0 +1,11 @@
+# Jig
+
+Jig is a local, secure host for admitted FLOW packages.
+
+- Landing page: https://jig.md/
+- Direct-alpha guide: https://jig.md/guide/
+- Project Authoring SDK: https://jig.md/spec/project-sdk
+- Project and execution policy: https://jig.md/spec/project-policy
+- Security boundary: https://github.com/jigmd/jig/blob/main/SECURITY.md
+- Source and installation: https://github.com/jigmd/jig
+- FLOW specifications: https://flow.jig.md/

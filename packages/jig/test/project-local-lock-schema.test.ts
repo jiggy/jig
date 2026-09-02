@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 import { compileSchemaFile, SchemaDiagnostic } from "../src/schema/index.js";
 
 const schema = compileSchemaFile(await readFile(new URL(
-  "../../../docs/spec/machine/jig-lock-1.schema.json",
+  "../../../docs/jig/spec/machine/jig-lock-1.schema.json",
   import.meta.url,
 )), "jig-lock-1.schema.json");
 

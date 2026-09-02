@@ -1,6 +1,6 @@
 # Jig and FLOW
 
-Jig is a local host for [FLOW](docs/spec/package-format.md) packages. It
+Jig is a local host for [FLOW](docs/flow/spec/package-format.md) packages. It
 captures ordinary project files, shows the proposed change for review, admits
 the approved bytes, and runs an exact target in a rootless Linux envelope.
 
@@ -167,13 +167,14 @@ fails closed or is prepared again before another review.
 
 ## Documentation
 
-- [Public website](https://flow.jig.md/)
-- [Specification map](docs/guide/index.md)
-- [FLOW Package/1](docs/spec/package-format.md)
-- [FLOW Run/1](docs/spec/run-protocol.md)
-- [FLOW Schema/1](docs/spec/schema-files.md)
-- [Jig Project Authoring SDK](docs/spec/project-sdk.md)
-- [Jig direct-alpha project policy](docs/spec/project-policy.md)
+- [Jig website](https://jig.md/)
+- [Jig direct-alpha guide](docs/jig/guide/index.md)
+- [FLOW website](https://flow.jig.md/)
+- [FLOW Package/1](docs/flow/spec/package-format.md)
+- [FLOW Run/1](docs/flow/spec/run-protocol.md)
+- [FLOW Schema/1](docs/flow/spec/schema-files.md)
+- [Jig Project Authoring SDK](docs/jig/spec/project-sdk.md)
+- [Jig direct-alpha project policy](docs/jig/spec/project-policy.md)
 
 Licenses are mapped in [LICENSES.md](LICENSES.md). FLOW is founder-stewarded
 under the public process in [Governance.md](Governance.md), and contributions
