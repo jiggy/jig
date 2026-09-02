@@ -295,9 +295,9 @@ async function writeProject(root: string): Promise<void> {
 function bunWorkerProgram(): string {
   return [
     "#!/usr/bin/env bun",
-    'import { serve } from "./flow-sdk/index.ts";',
+    'import { handle } from "./flow-sdk/index.ts";',
     "",
-    "await serve(async (context) => {",
+    "await handle(async (context) => {",
     '  const delayMs = typeof context.input === "object" && context.input !== null &&',
     '    "delayMs" in context.input && typeof context.input.delayMs === "number"',
     "    ? context.input.delayMs",

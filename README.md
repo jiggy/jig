@@ -79,7 +79,7 @@ Declare the exact FLOW SDK in `flows/hello/package.json`:
 {
   "private": true,
   "dependencies": {
-    "@jigging/flow": "0.1.0-alpha.1"
+    "@jigging/flow": "0.1.0-alpha.2"
   }
 }
 ```
@@ -96,9 +96,9 @@ cd ../..
 Create `flows/hello/flow.ts`:
 
 ```ts
-import { serve } from "@jigging/flow";
+import { handle } from "@jigging/flow";
 
-await serve(async (run) => {
+await handle(async (run) => {
   const name = typeof run.input === "object" && run.input !== null &&
       !Array.isArray(run.input) && typeof run.input.name === "string"
     ? run.input.name

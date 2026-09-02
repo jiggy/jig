@@ -1,14 +1,14 @@
 import asyncio
 
-from flowmd_sdk import OperationError, serve
+from flowmd_sdk import OperationError, handle
 
 
-async def handle(run):
-    case = run.input.get("case")
+async def run(context):
+    case = context.input.get("case")
     if case == "fanout-65":
         calls = [
             asyncio.create_task(
-                run.call_effect(
+                context.call_effect(
                     operation_id=f"fanout:{index + 1}",
                     slot="sink",
                     method="write",
@@ -22,7 +22,7 @@ async def handle(run):
 
     if case == "operation-identity":
         async def call():
-            return await run.call_effect(
+            return await context.call_effect(
                 operation_id="shared:1",
                 slot="sink",
                 method="write",
@@ -35,7 +35,7 @@ async def handle(run):
         replay = await call()
         conflict = None
         try:
-            await run.call_effect(
+            await context.call_effect(
                 operation_id="shared:1",
                 slot="sink",
                 method="write",
@@ -55,7 +55,7 @@ async def handle(run):
 
     if case == "cancel-shared-waiter":
         async def call_shared():
-            return await run.call_effect(
+            return await context.call_effect(
                 operation_id="shared-cancel:1",
                 slot="sink",
                 method="write",
@@ -66,7 +66,7 @@ async def handle(run):
         await asyncio.sleep(0)
         survivor = asyncio.create_task(call_shared())
         await asyncio.sleep(0)
-        await run.call_effect(
+        await context.call_effect(
             operation_id="release-shared-cancel:1",
             slot="control",
             method="release",
@@ -89,7 +89,7 @@ async def handle(run):
     if case == "uncertain-replay":
         async def call_uncertain(operation_id):
             try:
-                return await run.call_effect(
+                return await context.call_effect(
                     operation_id=operation_id,
                     slot="sink",
                     method="write",
@@ -111,7 +111,7 @@ async def handle(run):
         rejected = None
         for index in range(1, 65_538):
             try:
-                await run.call_effect(
+                await context.call_effect(
                     operation_id=f"lifetime:{index}",
                     slot="sink",
                     method="write",
@@ -126,7 +126,7 @@ async def handle(run):
         }
 
     if case == "one-flow":
-        child = await run.call_flow(
+        child = await context.call_flow(
             operation_id="child:1",
             slot="child",
             input=None,
@@ -134,13 +134,13 @@ async def handle(run):
         return {"outcome": "done", "output": child}
 
     if case == "two-effects":
-        first = await run.call_effect(
+        first = await context.call_effect(
             operation_id="first:1",
             slot="sink",
             method="write",
             input={"sequence": 1},
         )
-        second = await run.call_effect(
+        second = await context.call_effect(
             operation_id="second:1",
             slot="sink",
             method="write",
@@ -150,13 +150,13 @@ async def handle(run):
 
     if case == "cancel-one-call":
         child = asyncio.create_task(
-            run.call_flow(
+            context.call_flow(
                 operation_id="cancelled-child:1",
                 slot="child",
                 input=None,
             )
         )
-        await run.call_effect(
+        await context.call_effect(
             operation_id="release-cancel:1",
             slot="control",
             method="release",
@@ -173,13 +173,13 @@ async def handle(run):
 
     if case == "abandoned-call":
         asyncio.create_task(
-            run.call_flow(
+            context.call_flow(
                 operation_id="abandoned-child:1",
                 slot="child",
                 input=None,
             )
         )
-        await run.call_effect(
+        await context.call_effect(
             operation_id="release-abandon:1",
             slot="control",
             method="release",
@@ -190,4 +190,4 @@ async def handle(run):
     return {"outcome": "done", "output": None}
 
 
-serve(handle)
+handle(run)

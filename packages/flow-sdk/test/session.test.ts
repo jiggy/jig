@@ -140,7 +140,7 @@ function rootRequest(id = "host:1"): JsonObject {
 }
 
 describe("RunSession", () => {
-  test("serves one ordinary root Run", async () => {
+  test("handles one ordinary root Run", async () => {
     const transport = new MemoryTransport();
     const session = new RunSession(transport, async (run) => {
       return {

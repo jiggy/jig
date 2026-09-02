@@ -7,10 +7,10 @@ documents are [Run SDK/1](https://flow.jig.md/spec/run-sdk) and
 [Run/1](https://flow.jig.md/spec/run-protocol). This installed README contains
 a minimal quickstart.
 
-Finite work uses `serve()`:
+Finite work uses `handle()`:
 
 ```python
-from flowmd_sdk import RunContext, RunResult, serve
+from flowmd_sdk import RunContext, RunResult, handle
 
 
 async def run(context: RunContext) -> RunResult:
@@ -23,11 +23,14 @@ async def run(context: RunContext) -> RunResult:
     return {"outcome": "done", "output": child["output"]}
 
 
-serve(run)
+handle(run)
 ```
 
-`serve()` owns the process's protocol stdin and stdout and serves exactly one
-root Run. Handler cancellation uses ordinary `asyncio.CancelledError`.
+`handle()` owns the process's protocol stdin and stdout and handles exactly one
+root Run. Once called, it routes ordinary `print()` and `sys.stdout` output to
+diagnostic stderr, including output after `handle()` returns. Output written
+before `handle()` begins and raw writes to file descriptor 1 remain invalid
+protocol output. Handler cancellation uses ordinary `asyncio.CancelledError`.
 Cancelling a task awaiting `call_flow()` or `call_effect()` sends the matching
 Run/1 cancellation notification.
 

@@ -1,12 +1,25 @@
 from __future__ import annotations
 
 import asyncio
+import sys
 
-from flowmd_sdk import EffectError, OperationError, RunContext, RunResult, serve
+from flowmd_sdk import EffectError, OperationError, RunContext, RunResult, handle
+
+
+logged = False
 
 
 async def run(context: RunContext) -> RunResult:
+    global logged
     mode = context.input.get("mode") if isinstance(context.input, dict) else None
+
+    if mode == "logging":
+        print("handler print")
+        print("handler flush", flush=True)
+        sys.stdout.write("handler stdout write\n")
+        sys.stdout.flush()
+        logged = True
+        return {"outcome": "done", "output": "logged"}
 
     if mode == "calls":
         child = await context.call_flow(
@@ -163,4 +176,6 @@ async def run(context: RunContext) -> RunResult:
     return {"outcome": "done", "output": context.input}
 
 
-serve(run)
+handle(run)
+if logged:
+    print("after handle")

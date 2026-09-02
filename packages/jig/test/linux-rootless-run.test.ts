@@ -89,8 +89,8 @@ delegatedDescribe("private rootless Linux Run", () => {
   test("executes one FLOW Run/1 component through the rootless envelope", async () => {
     const host = await hostConfiguration();
     const fixture = await createFixture(`
-      import { serve } from "/flow-sdk/src/index.ts";
-      await serve(async (run) => ({ outcome: "done", output: { input: run.input, settings: run.settings } }));
+      import { handle } from "/flow-sdk/src/index.ts";
+      await handle(async (run) => ({ outcome: "done", output: { input: run.input, settings: run.settings } }));
     `);
     const sdk = fileURLToPath(new URL("../../flow-sdk", import.meta.url));
     try {

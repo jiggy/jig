@@ -1,19 +1,19 @@
-from flowmd_sdk import EffectError, serve
+from flowmd_sdk import EffectError, handle
 
 
-async def handle(run):
+async def run(context):
     import asyncio
 
     research_task = asyncio.create_task(
-        run.call_flow(
+        context.call_flow(
             operation_id="research:1",
             slot="research",
             intent="Find a useful comparison target.",
-            input=run.input,
+            input=context.input,
         )
     )
     stored_task = asyncio.create_task(
-        run.call_effect(
+        context.call_effect(
             operation_id="store:1",
             slot="artifacts",
             method="write",
@@ -25,7 +25,7 @@ async def handle(run):
     missing = None
 
     try:
-        await run.call_effect(
+        await context.call_effect(
             operation_id="missing:1",
             slot="artifacts",
             method="read",
@@ -44,4 +44,4 @@ async def handle(run):
     }
 
 
-serve(handle)
+handle(run)

@@ -74,17 +74,21 @@ try {
     await readFile(join(installed, "package.json"), "utf8"),
   ) as Record<string, unknown>;
   assert.equal(Object.hasOwn(manifest, "private"), false);
-  assert.equal(manifest.version, "0.1.0-alpha.1");
+  assert.equal(manifest.version, "0.1.0-alpha.2");
   assert.equal(manifest.license, "Apache-2.0");
   assert.deepEqual(manifest.publishConfig, { access: "public" });
   assert.equal(manifest.types, "./dist/index.d.ts");
 
   await writeFile(
     join(consumer, "smoke.mjs"),
-    `import { EffectError, OperationError } from "@jigging/flow";
+    `import { EffectError, OperationError, handle } from "@jigging/flow";
 const operation = new OperationError("UNAVAILABLE");
 const effect = new EffectError("not-found", null);
-if (operation.code !== "UNAVAILABLE" || effect.errorName !== "not-found") {
+if (
+  operation.code !== "UNAVAILABLE" ||
+  effect.errorName !== "not-found" ||
+  typeof handle !== "function"
+) {
   throw new Error("installed runtime exports are invalid");
 }
 `,
@@ -105,11 +109,15 @@ if (operation.code !== "UNAVAILABLE" || effect.errorName !== "not-found") {
 
   await writeFile(
     join(consumer, "root-flow.mjs"),
-    `import { serve } from "@jigging/flow";
-await serve(async (run) => ({
-  outcome: "done",
-  output: { input: run.input, settings: run.settings },
-}));
+    `import { handle } from "@jigging/flow";
+await handle(async (run) => {
+  console.log("packed handler log");
+  return {
+    outcome: "done",
+    output: { input: run.input, settings: run.settings },
+  };
+});
+console.log("packed after handle");
 `,
   );
   const request = `${JSON.stringify({
@@ -126,9 +134,9 @@ await serve(async (run) => ({
     },
   })}\n`;
   for (const runtime of [bun, node]) {
-    const served = await run([runtime, "root-flow.mjs"], consumer, request);
-    assert.equal(served.stderr, "");
-    assert.deepEqual(JSON.parse(served.stdout), {
+    const handled = await run([runtime, "root-flow.mjs"], consumer, request);
+    assert.equal(handled.stderr, "packed handler log\npacked after handle\n");
+    assert.deepEqual(JSON.parse(handled.stdout), {
       jsonrpc: "2.0",
       id: "package:smoke",
       result: {

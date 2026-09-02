@@ -183,7 +183,7 @@ PATH="$release_path:${PATH:-/usr/bin:/bin}" \
 (
   cd "$temporary/npm-consumer"
   "$FLOW_NODE" --input-type=module -e \
-    'const sdk = await import("@jigging/flow"); if (typeof sdk.serve !== "function" || typeof sdk.OperationError !== "function" || typeof sdk.EffectError !== "function") process.exit(70)'
+    'const sdk = await import("@jigging/flow"); if (typeof sdk.handle !== "function" || typeof sdk.OperationError !== "function" || typeof sdk.EffectError !== "function") process.exit(70)'
 )
 
 verified_hash_line=$(cd "$staging" && sha256sum "$filename")

@@ -62,15 +62,15 @@ Place packages under `flows/<name>/`. Each package has exact-case `FLOW.md`
 and, for this alpha, one `flow.ts`. The generated `jig.ts`
 explicitly discovers `./flows` and `./bindings`.
 
-The paired `@jigging/flow@0.1.0-alpha.1` package provides the small Run/1
+The paired `@jigging/flow@0.1.0-alpha.2` package provides the small Run/1
 authoring API. Declare it exactly in the Flow's `package.json`, generate a text
-`bun.lock` with Bun 1.3.3 and `bun install --lockfile-only`, then serve one
+`bun.lock` with Bun 1.3.3 and `bun install --lockfile-only`, then handle one
 finite Run:
 
 ```ts
-import { serve } from "@jigging/flow";
+import { handle } from "@jigging/flow";
 
-await serve(async (run) => ({
+await handle(async (run) => ({
   outcome: "done",
   output: { received: run.input },
 }));

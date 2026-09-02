@@ -2,7 +2,7 @@ import { Flow, RunError, node } from "@jigging/sley";
 
 import {
   OperationError,
-  serve,
+  handle,
   type JsonObject,
   type JsonValue,
   type RunContext,
@@ -19,7 +19,7 @@ interface State {
   result?: RunResult;
 }
 
-await serve(async (run) => {
+await handle(async (run) => {
   try {
     const state = await buildGraph(run).run({ request: parseRequest(run.input) });
     if (state.result === undefined) {

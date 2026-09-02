@@ -2,7 +2,7 @@
 
 **Status:** closed candidate projection of
 [`FLOW Run/1`](run-protocol.md). The TypeScript implementation is
-`@jigging/flow@0.1.0-alpha.1`; the Python implementation remains an unpublished
+`@jigging/flow@0.1.0-alpha.2`; the Python implementation remains an unpublished
 `0.0.0` candidate. The complete shared corpus has passed under the Bun peer and
 an independently implemented Python host peer; a general third-party
 conformance label remains a separate release decision.
@@ -20,7 +20,7 @@ only.
 Both expose only:
 
 ```text
-serve
+handle
 RunContext
 RunResult
 OperationError
@@ -34,10 +34,21 @@ The TypeScript projection additionally names `FlowCall`, `EffectCall`, and
 `CallOptions`; Python expresses the same values as keyword-only method
 arguments and uses ordinary task cancellation.
 
-`serve` owns protocol stdin and stdout for the process and serves exactly one
-root Run. Application logs go to stderr. Calling other protocol, resolver,
-Binding, provider, sandbox, Jig administration, Agent, or graph APIs
-through this SDK is impossible because none are exposed.
+`handle` owns protocol stdin and stdout for the process and handles exactly one
+root Run. After it assumes ownership, the TypeScript SDK routes ordinary
+`console.log()`, `console.info()`, and `console.debug()` output to stderr and
+the Python SDK routes ordinary `print()` and `sys.stdout` output to stderr. The
+redirection remains installed after the one-shot call so later application
+output cannot become trailing protocol bytes.
+
+Output written before `handle` begins and raw writes to stdout or file
+descriptor 1 remain invalid protocol output. Bare Run/1 implementations are
+responsible for keeping protocol stdout clean. The SDK never treats malformed
+protocol output as a log.
+
+Calling other protocol, resolver, Binding, provider, sandbox, Jig
+administration, Agent, or graph APIs through this SDK is impossible because
+none are exposed.
 
 ## 2. TypeScript
 
@@ -86,7 +97,7 @@ interface RunContext {
 
 type RunHandler = (context: RunContext) => Promise<RunResult>;
 
-declare function serve(handler: RunHandler): Promise<void>;
+declare function handle(handler: RunHandler): Promise<void>;
 ```
 
 `run.signal` reports root cancellation. If a call-specific signal is already
@@ -158,10 +169,10 @@ class RunContext(Protocol):
 
 RunHandler = Callable[[RunContext], Awaitable[RunResult]]
 
-def serve(handler: RunHandler) -> None: ...
+def handle(handler: RunHandler) -> None: ...
 ```
 
-`serve` owns and creates the process event loop, so it is a synchronous
+`handle` owns and creates the process event loop, so it is a synchronous
 entrypoint and rejects use inside an already-running `asyncio` loop. Root
 cancellation cancels the handler task with ordinary `asyncio.CancelledError`.
 Cancelling a task awaiting `call_flow` or `call_effect` cancels that local wait
@@ -238,22 +249,22 @@ uncooperative process.
 TypeScript:
 
 ```ts
-import { serve } from "@jigging/flow";
+import { handle } from "@jigging/flow";
 
-await serve(async (run) => ({ outcome: "done", output: run.input }));
+await handle(async (run) => ({ outcome: "done", output: run.input }));
 ```
 
 Python:
 
 ```python
-from flowmd_sdk import RunContext, RunResult, serve
+from flowmd_sdk import RunContext, RunResult, handle
 
 
 async def run(context: RunContext) -> RunResult:
     return {"outcome": "done", "output": context.input}
 
 
-serve(run)
+handle(run)
 ```
 
 These root-only examples work with the direct Jig alpha. That host currently
@@ -265,9 +276,9 @@ answers component-originated `flow/call` and `effect/call` operations with
 A host which supplies a child-Flow slot may execute the following TypeScript:
 
 ```ts
-import { serve } from "@jigging/flow";
+import { handle } from "@jigging/flow";
 
-await serve(async (run) => {
+await handle(async (run) => {
   const child = await run.callFlow({
     operationId: "research:1",
     slot: "research",
@@ -280,7 +291,7 @@ await serve(async (run) => {
 The equivalent Python is:
 
 ```python
-from flowmd_sdk import RunContext, RunResult, serve
+from flowmd_sdk import RunContext, RunResult, handle
 
 
 async def run(context: RunContext) -> RunResult:
@@ -292,7 +303,7 @@ async def run(context: RunContext) -> RunResult:
     return {"outcome": "done", "output": child["output"]}
 
 
-serve(run)
+handle(run)
 ```
 
 The implementations live under `packages/flow-sdk/` and

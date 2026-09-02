@@ -189,6 +189,20 @@ class RuntimeTests(unittest.TestCase):
         )
         self.component.wait()
 
+    def test_handle_reserves_protocol_stdout_and_redirects_ordinary_output(self) -> None:
+        self.component.send(root_request("logging"))
+        response = self.component.receive()
+        self.assertEqual(
+            response["result"],
+            {"outcome": "done", "output": "logged"},
+        )
+        self.component.wait()
+        self.assertEqual(self.component.remaining_stdout(), b"")
+        self.assertEqual(
+            self.component.remaining_stderr(),
+            b"handler print\nhandler flush\nhandler stdout write\nafter handle\n",
+        )
+
     def test_deadline_is_context_not_a_python_timer(self) -> None:
         request = root_request("echo")
         params = request["params"]

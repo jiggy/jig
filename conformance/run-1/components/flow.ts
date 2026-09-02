@@ -1,6 +1,6 @@
-import { EffectError, serve } from "../../../packages/flow-sdk/src/index";
+import { EffectError, handle } from "../../../packages/flow-sdk/src/index";
 
-await serve(async (run) => {
+await handle(async (run) => {
   const researchPromise = run.callFlow({
     operationId: "research:1",
     slot: "research",

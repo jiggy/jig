@@ -1,6 +1,6 @@
-import { OperationError, serve } from "../../../packages/flow-sdk/src/index";
+import { OperationError, handle } from "../../../packages/flow-sdk/src/index";
 
-await serve(async (run) => {
+await handle(async (run) => {
   const input = run.input as { case?: unknown };
   switch (input.case) {
     case "fanout-65": {

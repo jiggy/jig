@@ -20,7 +20,7 @@ either direction        request/cancel
 
 ## 1. Process and framing
 
-One component process serves exactly one root `flow/run` request. The channel
+One component process handles exactly one root `flow/run` request. The channel
 is full-duplex JSON-RPC 2.0 over stdio:
 
 ```text
@@ -454,7 +454,7 @@ The TypeScript package `@jigging/flow` and Python distribution/import
 `flowmd-sdk`/`flowmd_sdk` expose the same semantic surface:
 
 ```text
-serve(handler)
+handle(handler)
 RunContext
 RunResult
 callFlow / call_flow

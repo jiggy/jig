@@ -253,8 +253,9 @@ def _flow_error_from_wire(value: Any) -> OperationError:
 
 
 class _Runtime:
-    def __init__(self, handler: RunHandler):
+    def __init__(self, handler: RunHandler, protocol_output: Any | None = None):
         self._handler = handler
+        self._protocol_output = protocol_output
         self._loop: asyncio.AbstractEventLoop | None = None
         self._frames: asyncio.Queue[Any] = asyncio.Queue(maxsize=_QUEUE_LIMIT)
         self._reader_stop = threading.Event()
@@ -376,8 +377,13 @@ class _Runtime:
                 elif self._terminal_phase != "open":
                     return False
                 try:
-                    sys.stdout.buffer.write(payload)
-                    sys.stdout.buffer.flush()
+                    output = (
+                        self._protocol_output
+                        if self._protocol_output is not None
+                        else sys.stdout.buffer
+                    )
+                    output.write(payload)
+                    output.flush()
                 except Exception:
                     if publishes_root:
                         self._terminal_phase = "root_write_failed"
@@ -943,8 +949,8 @@ class _Runtime:
             self._done.set()
 
 
-def serve(handler: RunHandler) -> None:
-    """Serve exactly one FLOW Run/1 request over this process's stdio."""
+def handle(handler: RunHandler) -> None:
+    """Handle exactly one FLOW Run/1 request over this process's stdio."""
 
     if not callable(handler):
         raise TypeError("handler must be callable")
@@ -953,5 +959,11 @@ def serve(handler: RunHandler) -> None:
     except RuntimeError:
         pass
     else:
-        raise RuntimeError("serve() cannot run inside an existing asyncio event loop")
-    asyncio.run(_Runtime(handler).run())
+        raise RuntimeError("handle() cannot run inside an existing asyncio event loop")
+    protocol_output = sys.stdout.buffer
+    # `print()` and ordinary `sys.stdout` writes are application diagnostics.
+    # Keep the original binary stream private for Run/1 and leave redirection
+    # installed after the one-shot handler so later output cannot become a
+    # trailing protocol frame.
+    sys.stdout = sys.stderr
+    asyncio.run(_Runtime(handler, protocol_output).run())

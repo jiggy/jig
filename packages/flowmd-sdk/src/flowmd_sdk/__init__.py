@@ -1,4 +1,4 @@
-from ._runtime import serve
+from ._runtime import handle
 from ._types import (
     Attachment,
     AttachmentAccess,
@@ -25,5 +25,5 @@ __all__ = [
     "RunContext",
     "RunHandler",
     "RunResult",
-    "serve",
+    "handle",
 ]

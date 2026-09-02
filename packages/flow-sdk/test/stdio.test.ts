@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 
-test("serve uses strict protocol stdio end to end", async () => {
+test("handle reserves protocol stdout and redirects ordinary logs", async () => {
   const child = Bun.spawn([process.execPath, `${import.meta.dir}/fixture-flow.ts`], {
     stdin: "pipe",
     stdout: "pipe",
@@ -26,7 +26,7 @@ test("serve uses strict protocol stdio end to end", async () => {
   const output = await new Response(child.stdout).text();
   const error = await new Response(child.stderr).text();
   expect(await child.exited).toBe(0);
-  expect(error).toBe("");
+  expect(error).toBe("handler log\nhandler info\nhandler debug\nafter handle\n");
   expect(output.endsWith("\n")).toBe(true);
   expect(JSON.parse(output)).toEqual({
     jsonrpc: "2.0",

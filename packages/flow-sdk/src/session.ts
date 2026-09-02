@@ -99,7 +99,7 @@ export class RunSession {
     private readonly transport: Transport,
     private readonly handler: RunHandler,
   ) {
-    // `serve()` owns this promise, but keeping an internal rejection handler
+    // `handle()` owns this promise, but keeping an internal rejection handler
     // prevents a channel error from becoming an unhandled rejection first.
     void this.completion.promise.catch(() => undefined);
   }
