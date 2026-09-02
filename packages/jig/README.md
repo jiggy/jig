@@ -120,3 +120,5 @@ The complete runnable example and current specification map are in the
 This is a prerelease alpha. It does not expose Services, Hooks, event sources,
 Agent providers, Semantic Choice, Jig Graph, runtime registries, or sandbox
 registries.
+
+Copyright © 2026 Victor Duarte <zvictor> and contributors.

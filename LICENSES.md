@@ -1,5 +1,7 @@
 # Repository licensing
 
+Copyright © 2026 Victor Duarte <zvictor> and contributors.
+
 This repository contains several separately licensed works. The most specific
 entry below controls. Third-party material retains its own license as recorded
 in the relevant notice file. Package license and notice files reproduce or
