@@ -59,16 +59,31 @@ npm can attach a trusted publisher only to a package which already exists.
 The first real prerelease of each package therefore needs one authenticated
 publication. Do not publish a placeholder package.
 
-From the exact reviewed release commit, with Node 24, npm 11.6.2 or newer, and
-Bun 1.3.3 installed, build the two candidates once:
+From the exact reviewed release commit, with Node 24 and npm 11.6.2 or newer,
+restore Jig's locked development tools. The Bun already available in the shell
+is used only for this frozen, script-disabled install; it does not build either
+release candidate:
 
 ```console
+ambient_bun="$(command -v bun)"
+"$ambient_bun" install --cwd packages/jig --frozen-lockfile --ignore-scripts --config=/dev/null
+
+release_bun="$PWD/packages/jig/node_modules/@oven/bun-linux-x64-baseline/bin/bun"
+test "$("$release_bun" --version)" = "1.3.3"
+test "$("$release_bun" --revision)" = "1.3.3+274e01c73"
+export PATH="$(dirname "$release_bun"):$PATH"
+
 export FLOW_NODE="$(command -v node)"
 export FLOW_NPM="$(command -v npm)"
 export JIG_NPM="$FLOW_NPM"
 scripts/build-flow-sdk-candidate.sh .tmp/npm-bootstrap/flow
 scripts/build-jig-candidate.sh .tmp/npm-bootstrap/jig
 ```
+
+Do not substitute an unversioned system or Nixpkgs Bun for `release_bun`.
+`packages/jig/bun.lock` pins the official baseline binary package, and both
+candidate builders independently reject any Bun whose full release identity is
+not the selected `1.3.3` revision.
 
 Check both `SUCCESS.json` records and archive digests. Authenticate
 interactively with an npm owner account protected by two-factor
