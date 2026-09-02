@@ -8,7 +8,8 @@ on:
     inputs:
       revision:
         description: Exact jigmd/jig commit SHA to deploy
-        required: true
+        required: false
+        default: main
         type: string
 
 permissions:
