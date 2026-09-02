@@ -209,7 +209,7 @@ are JSON-RPC failures. They never masquerade as package outcomes.
 
 ## 4. `flow/call`
 
-While its root request is pending, the component may request one child Flow:
+While its root request is pending, the component may issue child Flow requests:
 
 ```json
 {
@@ -233,11 +233,17 @@ targets and candidate sets are project Binding data outside Package/1.
 describes the requested work for that already admitted slot; it does not name
 candidates, configure a resolver, grant catalogue access, or widen authority.
 Exact project binding still wins, and an absent intent never means
-catalogue-wide discovery.
+catalogue-wide discovery. It is not delivered to the child unless component
+code also includes that information in `input`.
 
 Success returns the same complete `{ outcome, output }` value as `flow/run`.
-Nested execution is a host operation, not graph merging or settings/authority
-inheritance.
+Run/1 carries only the bounded JSON/1 `input` into the requested operation and
+returns only that complete JSON/1 Run result. It does not define how a host
+selects or configures the admitted child. Nested execution is a host operation,
+not graph merging or implicit settings, attachment, or authority inheritance.
+Hosts may impose smaller concurrency or retained-result budgets and report
+`RESOURCE_EXHAUSTED`; the Run/1 identity, replay, cancellation, and lifetime
+rules still apply.
 
 ## 5. `effect/call`
 

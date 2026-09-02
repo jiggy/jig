@@ -51,7 +51,7 @@ try {
     "@oven/bun-linux-x64-baseline": "1.3.3",
   });
   assert.equal(Object.hasOwn(installedManifest, "private"), false);
-  assert.equal(installedManifest.version, "0.1.0-alpha.2");
+  assert.equal(installedManifest.version, "0.1.0-alpha.3");
   assert.equal(installedManifest.license, "MPL-2.0");
   assert.deepEqual(installedManifest.os, ["linux"]);
   assert.deepEqual(installedManifest.cpu, ["x64"]);
@@ -139,9 +139,15 @@ try {
   await writeFile(join(consumer, "smoke.mjs"), `
 import { defineBinding, defineJig, discover } from "@jigging/jig";
 const project = defineJig({ flows: discover("./flows") });
-const binding = defineBinding({ package: "./flows/review", settings: { profile: "fast" } });
+const binding = defineBinding({
+  package: "./flows/review",
+  settings: { profile: "fast" },
+  slots: { worker: "./flows/worker" },
+});
 if (project.flows.roots[0] !== "flows" || binding.package !== "flows/review" ||
-    binding.settings.profile !== "fast") throw new Error("bad package exports");
+    binding.settings.profile !== "fast" || binding.slots.worker !== "flows/worker") {
+  throw new Error("bad package exports");
+}
 `);
   await run(["bun", "smoke.mjs"], consumer);
 
@@ -149,7 +155,11 @@ if (project.flows.roots[0] !== "flows" || binding.package !== "flows/review" ||
 import { defineBinding, defineJig, discover, type JigDefinitionInput, type PackageBindingInput } from "@jigging/jig";
 const input: JigDefinitionInput = { flows: discover("./flows") };
 const project = defineJig(input);
-const bindingInput: PackageBindingInput = { package: "./flows/router", settings: { profile: "fast" } };
+const bindingInput: PackageBindingInput = {
+  package: "./flows/router",
+  settings: { profile: "fast" },
+  slots: { worker: "./flows/worker" },
+};
 const binding = defineBinding(bindingInput);
 void project;
 void binding;

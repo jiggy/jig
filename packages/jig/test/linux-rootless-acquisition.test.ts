@@ -4,6 +4,7 @@ import { constants } from "node:fs";
 import {
   acquirePrivateRootlessLinux,
   PrivateRootlessLinuxAcquisitionError,
+  revalidatePrivateRootlessLinux,
   type PrivateRootlessLinuxAcquisitionDependencies,
 } from "../src/internal/linux-rootless-acquisition.js";
 
@@ -105,6 +106,43 @@ describe("private rootless Linux acquisition", () => {
     expect(fixture.reads).not.toContain(`${grandparent}/cgroup.procs`);
     expect(fixture.reads).not.toContain(`${grandparent}/cgroup.controllers`);
     expect(fixture.reads).not.toContain(`${grandparent}/cgroup.subtree_control`);
+  });
+
+  test("revalidates only the retained authority and exact active Run children", async () => {
+    const fixture = validFixture();
+    const retained = await acquirePrivateRootlessLinux(fixture.dependencies);
+    const active = `${DELEGATED}/jig-run-root-one-${"a".repeat(24)}`;
+    fixture.directories.set(DELEGATED, ["payload", active.slice(DELEGATED.length + 1)]);
+
+    expect(await revalidatePrivateRootlessLinux(
+      retained,
+      Object.freeze([active]),
+      fixture.dependencies,
+    )).toEqual(retained);
+    await expect(revalidatePrivateRootlessLinux(retained, [], fixture.dependencies))
+      .rejects.toBeInstanceOf(PrivateRootlessLinuxAcquisitionError);
+
+    fixture.directories.set(DELEGATED, [
+      "payload",
+      active.slice(DELEGATED.length + 1),
+      "unrelated",
+    ]);
+    await expect(revalidatePrivateRootlessLinux(retained, [active], fixture.dependencies))
+      .rejects.toMatchObject({ code: "SANDBOX_UNAVAILABLE" });
+  });
+
+  test("rejects retained authority and support drift", async () => {
+    const fixture = validFixture();
+    const retained = await acquirePrivateRootlessLinux(fixture.dependencies);
+
+    fixture.text.set("/proc/self/cgroup", "0::/user.slice/other.scope/payload\n");
+    await expect(revalidatePrivateRootlessLinux(retained, [], fixture.dependencies))
+      .rejects.toMatchObject({ code: "SANDBOX_UNAVAILABLE" });
+
+    fixture.text.set("/proc/self/cgroup", "0::/user.slice/session.scope/payload\n");
+    fixture.version = "0.13.0";
+    await expect(revalidatePrivateRootlessLinux(retained, [], fixture.dependencies))
+      .rejects.toMatchObject({ code: "SANDBOX_UNAVAILABLE" });
   });
 });
 

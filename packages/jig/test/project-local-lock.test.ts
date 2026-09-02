@@ -60,6 +60,7 @@ describe("private package-project portable lock projection", () => {
       expect(lock.bindings.configured).toEqual({
         packagePath: "flows/configured",
         settings: { maxRetries: 3 },
+        slots: { worker: "flows/worker" },
       });
 
       const encoded = encodePrivateProjectLocalLock(lock);
@@ -68,6 +69,35 @@ describe("private package-project portable lock projection", () => {
       expect(privateProjectLocalLockDigest(decoded)).toBe(privateProjectLocalLockDigest(lock));
       expect(Object.isFrozen(decoded.packages["flows/configured"])).toBeTrue();
       expect(Object.isFrozen(decoded.bindings.configured)).toBeTrue();
+    });
+  });
+
+  test("canonically orders slots and changes identity for add, remove, and retarget", async () => {
+    await withFlows(projectTrees(), async (flows) => {
+      const base = createPrivateProjectLocalLock(linkedProject(flows, 3, {
+        worker: "flows/worker",
+      }));
+      const reordered = createPrivateProjectLocalLock(linkedProject(flows, 3, {
+        worker: "flows/worker",
+        backup: "flows/backup",
+      }));
+      expect(Object.keys(reordered.bindings.configured!.slots)).toEqual(["backup", "worker"]);
+
+      const variants = [
+        createPrivateProjectLocalLock(linkedProject(flows, 3, {})),
+        reordered,
+        createPrivateProjectLocalLock(linkedProject(flows, 3, {
+          worker: "flows/backup",
+        })),
+      ];
+      for (const variant of variants) {
+        expect(encodePrivateProjectLocalLock(variant)).not.toEqual(
+          encodePrivateProjectLocalLock(base),
+        );
+        expect(privateProjectLocalLockDigest(variant)).not.toBe(
+          privateProjectLocalLockDigest(base),
+        );
+      }
     });
   });
 
@@ -136,6 +166,32 @@ describe("private package-project portable lock projection", () => {
         value.bindings.configured.packagePath = ".jig/configured";
       }, "protected .jig");
       expectInvalid(base, (value) => {
+        delete value.bindings.configured.slots;
+      }, "must contain exactly");
+      expectInvalid(base, (value) => {
+        value.bindings.configured.slots = [];
+      }, "slots must be an object");
+      expectInvalid(base, (value) => {
+        value.bindings.configured.slots = { Bad: "flows/worker" };
+      }, "must be a LocalName");
+      expectInvalid(base, (value) => {
+        value.bindings.configured.slots = { worker: "../worker" };
+      }, "invalid path segment");
+      expectInvalid(base, (value) => {
+        value.bindings.configured.slots = Object.fromEntries(
+          Array.from({ length: 257 }, (_, index) => [`slot-${index}`, "flows/worker"]),
+        );
+      }, "exceed 256 entries");
+      expectInvalid(base, (value) => {
+        value.bindings.configured.slots = { worker: "flows/missing" };
+      }, "selects an unknown package");
+      expectInvalid(base, (value) => {
+        value.bindings.configured.slots = { worker: "flows/configured" };
+      }, "selects its own package");
+      expectInvalid(base, (value) => {
+        value.packages["flows/worker"].directRun = false;
+      }, "must select a direct Run package");
+      expectInvalid(base, (value) => {
         value.packages["flows/configured"].unexpected = true;
       }, "must contain exactly");
     });
@@ -183,15 +239,24 @@ description: Configured.`),
       "FLOW.md": metadata("name: worker\ndescription: Worker."),
       "flow.ts": "export {};\n",
     },
+    "flows/backup": {
+      "FLOW.md": metadata("name: backup\ndescription: Backup."),
+      "flow.ts": "export {};\n",
+    },
   };
 }
 
-function linkedProject(flows: readonly RetainedFlowInput[], maxRetries: number): PackageProjectValue {
+function linkedProject(
+  flows: readonly RetainedFlowInput[],
+  maxRetries: number,
+  slots: Readonly<Record<string, string>> = { worker: "flows/worker" },
+): PackageProjectValue {
   return linkPackageProject({
     flows,
     bindings: [binding("bindings/configured.ts", {
       package: "flows/configured",
       settings: { maxRetries },
+      slots,
     })],
   });
 }

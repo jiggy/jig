@@ -54,6 +54,7 @@ export interface LinkedPackageBinding {
   readonly declarationPath: string;
   readonly packagePath: string;
   readonly settings: JsonObject;
+  readonly slots: Readonly<Record<string, string>>;
 }
 
 export interface PackageProjectValue {
@@ -239,6 +240,13 @@ function prepareBindings(
       );
     }
     validateSettings(definition.settings, flow.inspected, declarationPath);
+    validateFlowSlots(
+      id,
+      definition.package,
+      definition.slots,
+      flowByPath,
+      declarationPath,
+    );
     return Object.freeze({ id, declarationPath, definition, flow });
   });
   bindings.sort((left, right) => compareProjectPaths(left.id, right.id));
@@ -254,7 +262,49 @@ function linkBinding(prepared: PreparedBinding): LinkedPackageBinding {
     declarationPath,
     packagePath: definition.package,
     settings: definition.settings,
+    slots: definition.slots,
   });
+}
+
+function validateFlowSlots(
+  bindingId: string,
+  parentPath: string,
+  slots: Readonly<Record<string, string>>,
+  flowByPath: ReadonlyMap<string, PreparedFlow>,
+  declarationPath: string,
+): void {
+  for (const [name, targetPath] of Object.entries(slots)) {
+    const pointer = `/slots/${pointerToken(name)}`;
+    const target = flowByPath.get(targetPath);
+    if (target === undefined) {
+      invalid(
+        "PROJECT_BINDING_SLOT_MISSING",
+        `Binding ${bindingId} slot ${name} selects unknown Flow member ${targetPath}`,
+        declarationPath,
+        pointer,
+      );
+    }
+    if (targetPath === parentPath) {
+      invalid(
+        "PROJECT_BINDING_SLOT_RECURSIVE",
+        `Binding ${bindingId} slot ${name} selects its own Flow package`,
+        declarationPath,
+        pointer,
+      );
+    }
+    if (!target.value.directRun) {
+      invalid(
+        "PROJECT_BINDING_SLOT_NOT_DIRECT",
+        `Binding ${bindingId} slot ${name} must select a direct-eligible Flow package`,
+        declarationPath,
+        pointer,
+      );
+    }
+  }
+}
+
+function pointerToken(value: string): string {
+  return value.replaceAll("~", "~0").replaceAll("/", "~1");
 }
 
 function validateSettings(settings: JsonObject, inspected: InspectedPackage, path: string): void {

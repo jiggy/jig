@@ -25,6 +25,7 @@ import type { JsonValue } from "../json.js";
 import type { ExactComponentExit, ExactComponentProcess } from "../run/session.js";
 import {
   acquirePrivateRootlessLinux,
+  revalidatePrivateRootlessLinux,
   type PrivateRootlessLinuxAcquisitionObservation,
 } from "./linux-rootless-acquisition.js";
 import { privateDomainDigest, privateFileDigest } from "./identity.js";
@@ -149,7 +150,6 @@ export interface PrivateLinuxBackendLaunchAuthority {
   readonly delegatedCgroup: string;
   readonly delegatedCgroupDevice: string;
   readonly delegatedCgroupInode: string;
-  readonly scopeEmpty: true;
 }
 
 export interface PrivateLinuxBackendMechanismObservation {
@@ -332,11 +332,19 @@ interface SealedOwnerData {
   readonly automaticOwnerStateParent?: string;
 }
 
+interface InitialMechanismObservation {
+  readonly acquisition: PrivateRootlessLinuxAcquisitionObservation;
+  readonly mechanism: PrivateLinuxBackendMechanismObservation;
+}
+
 const authenticSealedOwners = new WeakMap<object, SealedOwnerData>();
 
 /** One private Linux implementation; this is not a public Backend SPI. */
 export class PrivateLinuxCgroupBackend {
   readonly #options: NormalizedOptions;
+  #acquisition: PrivateRootlessLinuxAcquisitionObservation | undefined;
+  #initialObservation: Promise<InitialMechanismObservation> | undefined;
+  readonly #activeRunCgroups = new Set<string>();
 
   constructor(options: PrivateLinuxCgroupBackendOptions) {
     const sourcePath = fileURLToPath(import.meta.url);
@@ -356,7 +364,7 @@ export class PrivateLinuxCgroupBackend {
 
   async observeMechanism(): Promise<PrivateLinuxBackendMechanismObservation> {
     requirePrivateLinuxCgroupBackend(this);
-    return await observeMechanism(this.#options);
+    return await this.#observeMechanism();
   }
 
   async seal(
@@ -366,7 +374,7 @@ export class PrivateLinuxCgroupBackend {
     requirePrivateLinuxCgroupBackend(this);
     const snapshot = snapshotPlan(plan);
     const [mechanism, sealedPlan] = await Promise.all([
-      observeMechanism(this.#options),
+      this.#observeMechanism(),
       sealPlan(snapshot),
     ]);
     const sealedPlanDigest = privateDomainDigest("JIG-Rootless-Linux-Sealed-Plan/1", {
@@ -423,7 +431,18 @@ export class PrivateLinuxCgroupBackend {
       ) => {
         if (admitted) return Promise.reject(new TypeError("sealed rootless Linux owner was already admitted"));
         admitted = true;
-        return this.launch(plan, signal, result, beforeAdmission);
+        this.#activeRunCgroups.add(identity.runCgroup);
+        return this.launch(plan, signal, result, beforeAdmission).then(
+          (component) => {
+            const release = (): void => { this.#activeRunCgroups.delete(identity.runCgroup); };
+            void component.enforcement.then(release, release);
+            return component;
+          },
+          (error): never => {
+            this.#activeRunCgroups.delete(identity.runCgroup);
+            throw error;
+          },
+        );
       },
     });
     authenticSealedOwners.set(result, Object.freeze({
@@ -438,6 +457,36 @@ export class PrivateLinuxCgroupBackend {
         : { automaticOwnerStateParent: allocated.automaticParent }),
     }));
     return result;
+  }
+
+  async #observeMechanism(): Promise<PrivateLinuxBackendMechanismObservation> {
+    if (this.#acquisition === undefined) {
+      const initial = this.#initialObservation ??= observeInitialMechanism(this.#options);
+      try {
+        const observed = await initial;
+        this.#acquisition = observed.acquisition;
+        return observed.mechanism;
+      } catch (error) {
+        if (this.#initialObservation === initial) this.#initialObservation = undefined;
+        throw error;
+      }
+    }
+    let acquisition: PrivateRootlessLinuxAcquisitionObservation;
+    try {
+      acquisition = await revalidatePrivateRootlessLinux(
+        this.#acquisition,
+        Object.freeze([...this.#activeRunCgroups].sort()),
+      );
+    } catch {
+      // A trusted admit may create a newly tracked sibling between the active
+      // set snapshot and the filesystem observation. One fresh observation
+      // closes that race; an untracked sibling or any other drift still fails.
+      acquisition = await revalidatePrivateRootlessLinux(
+        this.#acquisition,
+        Object.freeze([...this.#activeRunCgroups].sort()),
+      );
+    }
+    return await observeMechanismWithAuthority(this.#options, acquisition);
   }
 
   async recoverFence(value: unknown): Promise<PrivateLinuxConfirmedEnforcementReceipt> {
@@ -496,7 +545,7 @@ export class PrivateLinuxCgroupBackend {
     }
     const data = requireSealedOwner(sealedOwner, this, plan);
     await requireSealedMounts(data.sealedPlan.readOnlyMounts);
-    const currentMechanism = await observeMechanism(this.#options);
+    const currentMechanism = await this.#observeMechanism();
     requirePrivateLinuxMechanismUnchanged(data.mechanism, currentMechanism);
     await requireOwnerState(data.identity);
 
@@ -1086,8 +1135,18 @@ function releaseReceipt(reference: ReleaseReference): PrivateLinuxOwnerStateRele
   });
 }
 
-async function observeMechanism(options: NormalizedOptions): Promise<PrivateLinuxBackendMechanismObservation> {
+async function observeInitialMechanism(options: NormalizedOptions): Promise<InitialMechanismObservation> {
   const authority = await acquirePrivateRootlessLinux();
+  return Object.freeze({
+    acquisition: authority,
+    mechanism: await observeMechanismWithAuthority(options, authority),
+  });
+}
+
+async function observeMechanismWithAuthority(
+  options: NormalizedOptions,
+  authority: PrivateRootlessLinuxAcquisitionObservation,
+): Promise<PrivateLinuxBackendMechanismObservation> {
   const [bunPath, bunHostLibraryPath, supervisorPath] = await Promise.all([
     realpath(options.bunPath),
     realpath(options.bunHostLibraryPath),
@@ -1144,7 +1203,6 @@ async function observeMechanism(options: NormalizedOptions): Promise<PrivateLinu
     delegatedCgroup: authority.delegatedCgroup,
     delegatedCgroupDevice: String(scope.dev),
     delegatedCgroupInode: String(scope.ino),
-    scopeEmpty: true as const,
   });
   return Object.freeze({ support, authority: launchAuthority });
 }

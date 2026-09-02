@@ -84,6 +84,56 @@ describe("private Candidate/5", () => {
     expectInvalidCandidate(encoded, malformed, "Package/1 artifact digest");
   });
 
+  test("makes the exact Binding slot map part of request and Candidate identity", () => {
+    const bug = slottedCandidateFixture({ work: "flows/bug" });
+    const question = slottedCandidateFixture({ work: "flows/question" });
+    const bugRequest = bug.candidate.targets.find(
+      ({ request }) => request.target.kind === "binding",
+    )!.request;
+    const questionRequest = question.candidate.targets.find(
+      ({ request }) => request.target.kind === "binding",
+    )!.request;
+
+    expect(bugRequest.flowSlots).toEqual({ work: "flows/bug" });
+    expect(Object.isFrozen(bugRequest.flowSlots)).toBeTrue();
+    expect(questionRequest.digest).not.toBe(bugRequest.digest);
+    expect(question.candidate.activationMeaningDigest).not.toBe(
+      bug.candidate.activationMeaningDigest,
+    );
+    expect(privateActivationCandidateDigestV5(question)).not.toBe(
+      privateActivationCandidateDigestV5(bug),
+    );
+
+    const encoded = encodePrivateActivationCandidateV5(bug);
+    const mismatched = json(encoded.candidate);
+    const binding = mismatched.targets.find(
+      ({ request }: any) => request.target.kind === "binding",
+    );
+    binding.request.flowSlots = { work: "flows/question" };
+    binding.request.digest = requestDigest(binding.request);
+    mismatched.activationMeaningDigest = activationMeaningDigest(
+      mismatched.observedSemanticDigest,
+      mismatched.targets,
+    );
+    expectInvalidCandidate(
+      encoded,
+      mismatched,
+      "Binding configuration does not match its lock projection",
+    );
+
+    const direct = json(encoded.candidate);
+    const directTarget = direct.targets.find(
+      ({ request }: any) => request.target.kind === "flow" && request.packagePath === "flows/router",
+    );
+    directTarget.request.flowSlots = { work: "flows/bug" };
+    directTarget.request.digest = requestDigest(directTarget.request);
+    direct.activationMeaningDigest = activationMeaningDigest(
+      direct.observedSemanticDigest,
+      direct.targets,
+    );
+    expectInvalidCandidate(encoded, direct, "direct Flow activation request must have empty configuration");
+  });
+
   test("rejects an invalid kind and every uncommitted final meaning", () => {
     const valid = encodePrivateActivationCandidateV5(candidateFixture());
     const candidate = json(valid.candidate);
@@ -272,6 +322,35 @@ describe("private Plan/2", () => {
       observedLock: { state: "absent" },
       operation: "admission",
     })).toThrow("exact proposed lock observation");
+  });
+
+  test("reopens an exact slotted request through Candidate and Plan bytes", () => {
+    const candidate = slottedCandidateFixture({
+      question: "flows/question",
+      bug: "flows/bug",
+    });
+    const reopenedCandidate = decodePrivateActivationCandidateV5(
+      encodePrivateActivationCandidateV5(candidate),
+    );
+    const plan = createPrivateActivationPlanV2({
+      candidate: reopenedCandidate,
+      candidateRevision: 3,
+      baseGeneration: null,
+      lockMode: "update",
+      observedLock: { state: "absent" },
+      operation: "admission",
+    });
+    const reopenedPlan = decodePrivateActivationPlanV2(encodePrivateActivationPlanV2(plan));
+    const request = reopenedPlan.proposed.targets.find(
+      ({ request }) => request.target.kind === "binding",
+    )!.request;
+
+    expect(request.flowSlots).toEqual({
+      bug: "flows/bug",
+      question: "flows/question",
+    });
+    expect(Object.isFrozen(request.flowSlots)).toBeTrue();
+    expect(reopenedPlan.proposed.lock.bindings.router!.slots).toEqual(request.flowSlots);
   });
 
   test("rejects mismatched embedded evidence and alternate encodings", () => {
@@ -490,6 +569,92 @@ function readyCandidateFixture(executionPackage: string) {
   });
 }
 
+function slottedCandidateFixture(slots: Readonly<Record<string, string>>) {
+  const packages = {
+    "flows/bug": {
+      digest: digest("package:flows/bug"),
+      directRun: true,
+    },
+    "flows/question": {
+      digest: digest("package:flows/question"),
+      directRun: true,
+    },
+    "flows/router": {
+      digest: digest("package:flows/router"),
+      directRun: true,
+    },
+  };
+  const lockBytes = withLf(canonicalJson({
+    packages,
+    bindings: {
+      router: {
+        packagePath: "flows/router",
+        settings: { style: "brief" },
+        slots,
+      },
+    },
+  }));
+  const lock = decodePrivateProjectLocalLock(lockBytes);
+  const target = (path: keyof typeof packages) => ({
+    request: activationRequest({
+      target: { kind: "flow", path },
+      mode: "run",
+      packagePath: path,
+      package: { kind: "flow-package/1", digest: packages[path].digest },
+      entrypoint: { path: "flow.ts", suffix: "ts" },
+      settings: {},
+      attachments: {},
+    }),
+    disposition: {
+      state: "unavailable",
+      code: "RUNTIME_UNAVAILABLE",
+      evidenceDigests: [digest(`runtime-evidence:${path}`)],
+    },
+  });
+  const targets = [{
+    request: activationRequest({
+      target: { kind: "binding", id: "router" },
+      mode: "run",
+      packagePath: "flows/router",
+      package: { kind: "flow-package/1", digest: packages["flows/router"].digest },
+      entrypoint: { path: "flow.ts", suffix: "ts" },
+      settings: { style: "brief" },
+      flowSlots: slots,
+      attachments: {},
+    }),
+    disposition: {
+      state: "unavailable",
+      code: "RUNTIME_UNAVAILABLE",
+      evidenceDigests: [digest("runtime-evidence:binding:router")],
+    },
+  }, target("flows/bug"), target("flows/question"), target("flows/router")];
+  const captureDigest = digest("slotted-capture");
+  const planningObservationDigest = digest("slotted-planning");
+  const observedSemanticDigest = digest("slotted-semantics");
+  return decodePrivateActivationCandidateV5({
+    candidate: withLf(canonicalJson({
+      kind: "private-activation-candidate/5",
+      projectRoot: { device: "64768", inode: "123456" },
+      captureDigest,
+      observedSemanticDigest,
+      activationMeaningDigest: activationMeaningDigest(observedSemanticDigest, targets),
+      resolutionInputDigest: privateDomainDigest(
+        "JIG-Package-Project-Resolution-Input/1",
+        { captureDigest, planningObservationDigest },
+      ),
+      planningObservationDigest,
+      lockDigest: privateProjectLocalLockDigest(lock),
+      declarationArtifact: {
+        kind: "author-closure/1",
+        closureDigest: digest("slotted-declaration-closure"),
+        package: { kind: "flow-package/1", digest: digest("slotted-declarations") },
+      },
+      targets,
+    })),
+    lock: lockBytes,
+  });
+}
+
 function activationMeaningDigest(observedSemanticDigest: string, targets: unknown): string {
   return privateDomainDigest(
     "JIG-Private-Activation-Meaning/1",
@@ -527,11 +692,16 @@ function expectInvalidPlan(plan: unknown, message: string): void {
 }
 
 function activationRequest(value: Record<string, unknown>): Record<string, unknown> {
-  const request = { kind: "activation-request/2", ...value };
+  const request = { kind: "activation-request/3", flowSlots: {}, ...value };
   return {
     ...request,
-    digest: privateDomainDigest("JIG-Activation-Request/2", request as unknown as JsonValue),
+    digest: privateDomainDigest("JIG-Activation-Request/3", request as unknown as JsonValue),
   };
+}
+
+function requestDigest(value: Record<string, unknown>): string {
+  const { digest: _digest, ...content } = value;
+  return privateDomainDigest("JIG-Activation-Request/3", content as unknown as JsonValue);
 }
 
 function withLf(body: Uint8Array): Uint8Array {

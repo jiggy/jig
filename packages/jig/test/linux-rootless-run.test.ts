@@ -119,6 +119,30 @@ delegatedDescribe("private rootless Linux Run", () => {
     }
   });
 
+  test("revalidates one retained authority while its own Run is active", async () => {
+    const host = await hostConfiguration();
+    const waiting = await createFixture("await new Promise(() => {});");
+    const finite = await createFixture("console.log('second');");
+    let first: Awaited<ReturnType<PrivateLinuxCgroupBackend["launch"]>> | undefined;
+    try {
+      const before = await host.backend.observeMechanism();
+      first = await host.backend.launch(plan(host, waiting, "retained-first"));
+      const during = await host.backend.observeMechanism();
+      expect(during.support).toEqual(before.support);
+      expect(during.authority).toEqual(before.authority);
+
+      const second = await host.backend.launch(plan(host, finite, "retained-second"));
+      await second.closeInput();
+      expect(await second.completion).toMatchObject({ exitCode: 0, fenced: true });
+      expect(await missing(second.cgroup.runCgroup)).toBe(true);
+    } finally {
+      await first?.terminate().catch(() => undefined);
+      await rm(waiting, { recursive: true, force: true });
+      await rm(finite, { recursive: true, force: true });
+      await waitForNoRunCgroups();
+    }
+  });
+
   test("rejects mount aliases into protected host or payload namespaces", async () => {
     const host = await hostConfiguration();
     const fixture = await createFixture("console.log('unreachable');");

@@ -111,6 +111,7 @@ const BUSY_TIMEOUT_MS = 250;
 const MAX_STORED_BYTES = 16_777_216;
 const MAX_SAFE_REVISION = BigInt(Number.MAX_SAFE_INTEGER);
 const DIGEST = /^sha256:[0-9a-f]{64}$/;
+const WIRE_ID = /^[A-Za-z0-9][A-Za-z0-9._:/-]*$/;
 
 const CREATE_CANDIDATES = "CREATE TABLE candidates (revision INTEGER PRIMARY KEY CHECK (revision BETWEEN 1 AND 9007199254740991), candidate_digest TEXT NOT NULL, candidate_bytes BLOB NOT NULL CHECK (length(candidate_bytes) BETWEEN 1 AND 16777216), lock_bytes BLOB NOT NULL CHECK (length(lock_bytes) BETWEEN 1 AND 16777216)) STRICT";
 const CREATE_CANDIDATE_HEAD = "CREATE TABLE candidate_head (singleton INTEGER PRIMARY KEY CHECK (singleton = 1), revision INTEGER REFERENCES candidates(revision)) STRICT";
@@ -121,6 +122,7 @@ const CREATE_COORDINATOR_HEAD = "CREATE TABLE coordinator_head (singleton INTEGE
 const CREATE_ROOT_RUNS = "CREATE TABLE root_runs (run_id TEXT PRIMARY KEY, origin_digest TEXT NOT NULL UNIQUE, origin_bytes BLOB NOT NULL CHECK (length(origin_bytes) BETWEEN 1 AND 16777216), admission_digest TEXT NOT NULL REFERENCES admissions(admission_digest), candidate_revision INTEGER NOT NULL REFERENCES candidates(revision), coordinator_epoch INTEGER NOT NULL CHECK (coordinator_epoch BETWEEN 1 AND 9007199254740991), request_bytes BLOB NOT NULL CHECK (length(request_bytes) BETWEEN 1 AND 16777216)) STRICT";
 const CREATE_ROOT_SPAWN_INTENTS = "CREATE TABLE root_spawn_intents (run_id TEXT PRIMARY KEY REFERENCES root_runs(run_id), intent_digest TEXT NOT NULL UNIQUE, intent_bytes BLOB NOT NULL CHECK (length(intent_bytes) BETWEEN 1 AND 16777216)) STRICT";
 const CREATE_ROOT_EXECUTION_LIFECYCLES = "CREATE TABLE root_execution_lifecycles (run_id TEXT PRIMARY KEY REFERENCES root_spawn_intents(run_id), allocation_digest TEXT NOT NULL UNIQUE, allocation_bytes BLOB NOT NULL CHECK (length(allocation_bytes) BETWEEN 1 AND 16777216), plan_digest TEXT UNIQUE, plan_bytes BLOB, backing_digest TEXT UNIQUE, backing_bytes BLOB, sandbox_digest TEXT UNIQUE, sandbox_bytes BLOB, prepared_digest TEXT UNIQUE, prepared_bytes BLOB, provisional_digest TEXT UNIQUE, provisional_bytes BLOB, fence_digest TEXT UNIQUE, fence_bytes BLOB, release_digest TEXT UNIQUE, release_bytes BLOB, admitted_digest TEXT UNIQUE, admitted_bytes BLOB, CHECK ((plan_digest IS NULL) = (plan_bytes IS NULL)), CHECK ((backing_digest IS NULL) = (backing_bytes IS NULL)), CHECK ((sandbox_digest IS NULL) = (sandbox_bytes IS NULL)), CHECK ((prepared_digest IS NULL) = (prepared_bytes IS NULL)), CHECK ((provisional_digest IS NULL) = (provisional_bytes IS NULL)), CHECK ((fence_digest IS NULL) = (fence_bytes IS NULL)), CHECK ((release_digest IS NULL) = (release_bytes IS NULL)), CHECK ((admitted_digest IS NULL) = (admitted_bytes IS NULL)), CHECK (backing_digest IS NULL OR plan_digest IS NOT NULL), CHECK (sandbox_digest IS NULL OR backing_digest IS NOT NULL), CHECK (prepared_digest IS NULL OR sandbox_digest IS NOT NULL), CHECK (fence_digest IS NULL OR sandbox_digest IS NOT NULL), CHECK (admitted_digest IS NULL OR (provisional_digest IS NOT NULL AND release_digest IS NOT NULL))) STRICT";
+const CREATE_ROOT_CHILD_OWNERS = "CREATE TABLE root_child_owners (parent_run_id TEXT NOT NULL REFERENCES root_execution_lifecycles(run_id), operation_id TEXT NOT NULL, allocation_digest TEXT NOT NULL UNIQUE, allocation_bytes BLOB NOT NULL CHECK (length(allocation_bytes) BETWEEN 1 AND 16777216), sandbox_digest TEXT UNIQUE, sandbox_bytes BLOB, fence_digest TEXT UNIQUE, fence_bytes BLOB, cleanup_digest TEXT UNIQUE, cleanup_bytes BLOB, CHECK ((sandbox_digest IS NULL) = (sandbox_bytes IS NULL)), CHECK ((fence_digest IS NULL) = (fence_bytes IS NULL)), CHECK ((cleanup_digest IS NULL) = (cleanup_bytes IS NULL)), CHECK (fence_digest IS NULL OR sandbox_digest IS NOT NULL), CHECK (cleanup_digest IS NULL OR fence_digest IS NOT NULL), PRIMARY KEY (parent_run_id, operation_id)) STRICT";
 const CREATE_ROOT_TERMINALS = "CREATE TABLE root_terminals (run_id TEXT PRIMARY KEY REFERENCES root_runs(run_id), terminal_digest TEXT NOT NULL, terminal_bytes BLOB NOT NULL CHECK (length(terminal_bytes) BETWEEN 1 AND 16777216)) STRICT";
 const CREATE_COORDINATOR_LOCK = "CREATE TABLE coordinator_lock (singleton INTEGER PRIMARY KEY CHECK (singleton = 1)) STRICT";
 const EXPECTED_SCHEMA = Object.freeze([
@@ -130,6 +132,7 @@ const EXPECTED_SCHEMA = Object.freeze([
   Object.freeze({ type: "table", name: "candidates", table: "candidates", sql: CREATE_CANDIDATES }),
   Object.freeze({ type: "table", name: "coordinator_head", table: "coordinator_head", sql: CREATE_COORDINATOR_HEAD }),
   Object.freeze({ type: "table", name: "review_plans", table: "review_plans", sql: CREATE_REVIEW_PLANS }),
+  Object.freeze({ type: "table", name: "root_child_owners", table: "root_child_owners", sql: CREATE_ROOT_CHILD_OWNERS }),
   Object.freeze({ type: "table", name: "root_execution_lifecycles", table: "root_execution_lifecycles", sql: CREATE_ROOT_EXECUTION_LIFECYCLES }),
   Object.freeze({ type: "table", name: "root_runs", table: "root_runs", sql: CREATE_ROOT_RUNS }),
   Object.freeze({ type: "table", name: "root_spawn_intents", table: "root_spawn_intents", sql: CREATE_ROOT_SPAWN_INTENTS }),
@@ -283,6 +286,19 @@ interface RootExecutionLifecycleRow {
   readonly admitted_bytes: Uint8Array | null;
 }
 
+interface RootChildOwnerRow {
+  readonly parent_run_id: string;
+  readonly operation_id: string;
+  readonly allocation_digest: string;
+  readonly allocation_bytes: Uint8Array;
+  readonly sandbox_digest: string | null;
+  readonly sandbox_bytes: Uint8Array | null;
+  readonly fence_digest: string | null;
+  readonly fence_bytes: Uint8Array | null;
+  readonly cleanup_digest: string | null;
+  readonly cleanup_bytes: Uint8Array | null;
+}
+
 /**
  * Invocation-local compare-and-set token for an activation-planning attempt.
  * It is deliberately neither serializable authority nor a public project
@@ -382,6 +398,20 @@ export interface PrivateRootExecutionLifecycle {
   readonly fence?: PrivateRootExecutionFact;
   readonly release?: PrivateRootExecutionFact;
   readonly admitted?: PrivateRootExecutionFact;
+}
+
+export interface PrivateRootChildOwnerFact {
+  readonly digest: string;
+  readonly value: JsonValue;
+}
+
+export interface PrivateRootChildOwnerLifecycle {
+  readonly parentRunId: string;
+  readonly operationId: string;
+  readonly allocation: PrivateRootChildOwnerFact;
+  readonly sandbox?: PrivateRootChildOwnerFact;
+  readonly fence?: PrivateRootChildOwnerFact;
+  readonly cleanup?: PrivateRootChildOwnerFact;
 }
 
 export interface PrivateRootExecutionWork {
@@ -913,6 +943,321 @@ export async function recordPrivateRootExecutionCheckpoint(input: {
   }
 }
 
+/**
+ * Durably own one invocation-local child envelope before any child resource
+ * can be created. This is a cleanup ledger, not child history: successful
+ * cleanup deletes the row and no child terminal is retained here.
+ */
+export async function allocatePrivateRootChildOwner(input: {
+  readonly coordinator: PrivateProjectCoordinator;
+  readonly projectRoot: string;
+  readonly parentRunId: string;
+  readonly operationId: string;
+  readonly allocation: JsonValue;
+}): Promise<PrivateRootChildOwnerLifecycle> {
+  const coordinator = requirePrivateProjectCoordinator(input.coordinator);
+  await coordinator.verify();
+  requireDigest(input.parentRunId, "parent root Run");
+  requireWireId(input.operationId, "child operation");
+  const bytes = canonicalJson(input.allocation);
+  requireStoredSize(bytes, "child owner allocation");
+  const digest = privateDomainDigest("JIG-Private-Root-Child-Owner-Allocation/1", input.allocation);
+  const owner = await openStateOwner(input.projectRoot, false);
+  let failure: unknown;
+  try {
+    requireCoordinatorRoot(coordinator, owner.root);
+    const lifecycle = await immediate(owner, async () => {
+      await coordinator.verify();
+      const runRow = requireRootRunRow(owner.database, input.parentRunId);
+      const run = loadRootRunSnapshot(owner.database, runRow, owner.root);
+      if (run.state === "terminal") invalid("RUN_ALREADY_TERMINAL", "parent root Run is already terminal");
+      if (run.coordinatorEpoch !== coordinator.epoch) {
+        invalid("RUN_OWNER_CHANGED", "only the active parent coordinator may allocate child work");
+      }
+      const existing = findRootChildOwner(owner.database, input.parentRunId, input.operationId);
+      if (existing !== null) {
+        const loaded = loadRootChildOwner(existing);
+        if (loaded.allocation.digest !== digest || !sameBytes(existing.allocation_bytes, bytes)) {
+          invalid("RUN_CHILD_OWNER_CONFLICT", "child operation owner was reused differently");
+        }
+        return loaded;
+      }
+      if (countRootChildOwners(owner.database, input.parentRunId) !== 0n) {
+        invalid("RUN_CHILD_CAPACITY", "the parent Run already has an active child operation");
+      }
+      runFinalized(owner.database,
+        "INSERT INTO root_child_owners(parent_run_id, operation_id, allocation_digest, allocation_bytes) VALUES (?1, ?2, ?3, ?4)",
+        [input.parentRunId, input.operationId, digest, bytes],
+      );
+      return loadRootChildOwner(requireRootChildOwner(
+        owner.database,
+        input.parentRunId,
+        input.operationId,
+      ));
+    });
+    await owner.finish();
+    return lifecycle;
+  } catch (error) {
+    failure = error;
+    throw error;
+  } finally {
+    await disposeOperation(owner, undefined, failure);
+  }
+}
+
+/** Record the sealed owner before the Backend may admit child package code. */
+export async function recordPrivateRootChildSandbox(input: {
+  readonly coordinator: PrivateProjectCoordinator;
+  readonly projectRoot: string;
+  readonly parentRunId: string;
+  readonly operationId: string;
+  readonly allocationDigest: string;
+  readonly sandbox: JsonValue;
+}): Promise<PrivateRootChildOwnerLifecycle> {
+  const coordinator = requirePrivateProjectCoordinator(input.coordinator);
+  await coordinator.verify();
+  requireDigest(input.parentRunId, "parent root Run");
+  requireWireId(input.operationId, "child operation");
+  requireDigest(input.allocationDigest, "child allocation");
+  const bytes = canonicalJson(input.sandbox);
+  requireStoredSize(bytes, "child sandbox owner");
+  const digest = privateDomainDigest("JIG-Private-Root-Child-Sandbox/1", input.sandbox);
+  const owner = await openStateOwner(input.projectRoot, false);
+  let failure: unknown;
+  try {
+    requireCoordinatorRoot(coordinator, owner.root);
+    const lifecycle = await immediate(owner, async () => {
+      await coordinator.verify();
+      const row = requireRootChildOwner(owner.database, input.parentRunId, input.operationId);
+      if (row.allocation_digest !== input.allocationDigest) {
+        invalid("RUN_CHILD_OWNER_CONFLICT", "child sandbox names a different allocation");
+      }
+      if (row.sandbox_digest !== null) {
+        if (row.sandbox_digest !== digest || !sameBytes(row.sandbox_bytes!, bytes)) {
+          invalid("RUN_CHILD_OWNER_CONFLICT", "child sandbox owner differs");
+        }
+        return loadRootChildOwner(row);
+      }
+      const runRow = requireRootRunRow(owner.database, input.parentRunId);
+      const run = loadRootRunSnapshot(owner.database, runRow, owner.root);
+      if (run.state === "terminal") invalid("RUN_ALREADY_TERMINAL", "parent root Run is already terminal");
+      if (run.coordinatorEpoch !== coordinator.epoch) {
+        invalid("RUN_OWNER_CHANGED", "only the active parent coordinator may seal child work");
+      }
+      const changed = runFinalized(owner.database,
+        "UPDATE root_child_owners SET sandbox_digest = ?1, sandbox_bytes = ?2 WHERE parent_run_id = ?3 AND operation_id = ?4 AND sandbox_digest IS NULL",
+        [digest, bytes, input.parentRunId, input.operationId],
+      ).changes;
+      if (changed !== 1) corrupt("child sandbox owner compare-and-set failed");
+      return loadRootChildOwner(requireRootChildOwner(
+        owner.database,
+        input.parentRunId,
+        input.operationId,
+      ));
+    });
+    await owner.finish();
+    return lifecycle;
+  } catch (error) {
+    failure = error;
+    throw error;
+  } finally {
+    await disposeOperation(owner, undefined, failure);
+  }
+}
+
+/** Persist the exact process-tree fence before releasing any child resource. */
+export async function recordPrivateRootChildFence(input: {
+  readonly coordinator: PrivateProjectCoordinator;
+  readonly projectRoot: string;
+  readonly parentRunId: string;
+  readonly operationId: string;
+  readonly allocationDigest: string;
+  readonly sandboxDigest: string;
+  readonly fence: JsonValue;
+}): Promise<PrivateRootChildOwnerLifecycle> {
+  const coordinator = requirePrivateProjectCoordinator(input.coordinator);
+  await coordinator.verify();
+  requireDigest(input.parentRunId, "parent root Run");
+  requireWireId(input.operationId, "child operation");
+  requireDigest(input.allocationDigest, "child allocation");
+  requireDigest(input.sandboxDigest, "child sandbox");
+  const bytes = canonicalJson(input.fence);
+  requireStoredSize(bytes, "child fence");
+  const digest = privateDomainDigest("JIG-Private-Root-Child-Fence/1", input.fence);
+  const owner = await openStateOwner(input.projectRoot, false);
+  let failure: unknown;
+  try {
+    requireCoordinatorRoot(coordinator, owner.root);
+    const lifecycle = await immediate(owner, async () => {
+      await coordinator.verify();
+      const row = requireRootChildOwner(owner.database, input.parentRunId, input.operationId);
+      if (row.allocation_digest !== input.allocationDigest || row.sandbox_digest !== input.sandboxDigest) {
+        invalid("RUN_CHILD_OWNER_CONFLICT", "child fence names a different owner");
+      }
+      if (row.fence_digest !== null) {
+        if (row.fence_digest !== digest || !sameBytes(row.fence_bytes!, bytes)) {
+          invalid("RUN_CHILD_OWNER_CONFLICT", "child fence differs");
+        }
+        return loadRootChildOwner(row);
+      }
+      const changed = runFinalized(owner.database,
+        "UPDATE root_child_owners SET fence_digest = ?1, fence_bytes = ?2 WHERE parent_run_id = ?3 AND operation_id = ?4 AND fence_digest IS NULL",
+        [digest, bytes, input.parentRunId, input.operationId],
+      ).changes;
+      if (changed !== 1) corrupt("child fence compare-and-set failed");
+      return loadRootChildOwner(requireRootChildOwner(
+        owner.database,
+        input.parentRunId,
+        input.operationId,
+      ));
+    });
+    await owner.finish();
+    return lifecycle;
+  } catch (error) {
+    failure = error;
+    throw error;
+  } finally {
+    await disposeOperation(owner, undefined, failure);
+  }
+}
+
+/** Record completed physical cleanup before the active ledger row may vanish. */
+export async function recordPrivateRootChildCleanup(input: {
+  readonly coordinator: PrivateProjectCoordinator;
+  readonly projectRoot: string;
+  readonly parentRunId: string;
+  readonly operationId: string;
+  readonly allocationDigest: string;
+  readonly sandboxDigest: string;
+  readonly fenceDigest: string;
+  readonly cleanup: JsonValue;
+}): Promise<PrivateRootChildOwnerLifecycle> {
+  const coordinator = requirePrivateProjectCoordinator(input.coordinator);
+  await coordinator.verify();
+  requireDigest(input.parentRunId, "parent root Run");
+  requireWireId(input.operationId, "child operation");
+  requireDigest(input.allocationDigest, "child allocation");
+  requireDigest(input.sandboxDigest, "child sandbox");
+  requireDigest(input.fenceDigest, "child fence");
+  const bytes = canonicalJson(input.cleanup);
+  requireStoredSize(bytes, "child cleanup");
+  const digest = privateDomainDigest("JIG-Private-Root-Child-Cleanup/1", input.cleanup);
+  const owner = await openStateOwner(input.projectRoot, false);
+  let failure: unknown;
+  try {
+    requireCoordinatorRoot(coordinator, owner.root);
+    const lifecycle = await immediate(owner, async () => {
+      await coordinator.verify();
+      const row = requireRootChildOwner(owner.database, input.parentRunId, input.operationId);
+      if (row.allocation_digest !== input.allocationDigest || row.sandbox_digest !== input.sandboxDigest ||
+          row.fence_digest !== input.fenceDigest) {
+        invalid("RUN_CHILD_OWNER_CONFLICT", "child cleanup names different durable evidence");
+      }
+      if (row.cleanup_digest !== null) {
+        if (row.cleanup_digest !== digest || !sameBytes(row.cleanup_bytes!, bytes)) {
+          invalid("RUN_CHILD_OWNER_CONFLICT", "child cleanup differs");
+        }
+        return loadRootChildOwner(row);
+      }
+      const changed = runFinalized(owner.database,
+        "UPDATE root_child_owners SET cleanup_digest = ?1, cleanup_bytes = ?2 WHERE parent_run_id = ?3 AND operation_id = ?4 AND cleanup_digest IS NULL",
+        [digest, bytes, input.parentRunId, input.operationId],
+      ).changes;
+      if (changed !== 1) corrupt("child cleanup compare-and-set failed");
+      return loadRootChildOwner(requireRootChildOwner(
+        owner.database,
+        input.parentRunId,
+        input.operationId,
+      ));
+    });
+    await owner.finish();
+    return lifecycle;
+  } catch (error) {
+    failure = error;
+    throw error;
+  } finally {
+    await disposeOperation(owner, undefined, failure);
+  }
+}
+
+/** List every active child envelope which must be fenced before parent close. */
+export async function listPrivateRootChildOwners(input: {
+  readonly coordinator: PrivateProjectCoordinator;
+  readonly projectRoot: string;
+  readonly parentRunId: string;
+}): Promise<readonly PrivateRootChildOwnerLifecycle[]> {
+  const coordinator = requirePrivateProjectCoordinator(input.coordinator);
+  await coordinator.verify();
+  requireDigest(input.parentRunId, "parent root Run");
+  const owner = await openStateOwner(input.projectRoot, false);
+  let failure: unknown;
+  try {
+    requireCoordinatorRoot(coordinator, owner.root);
+    const query = statement<RootChildOwnerRow>(owner.database, [
+      "SELECT parent_run_id, operation_id, allocation_digest, allocation_bytes, sandbox_digest, sandbox_bytes, fence_digest, fence_bytes, cleanup_digest, cleanup_bytes",
+      "FROM root_child_owners WHERE parent_run_id = ?1 ORDER BY operation_id",
+    ].join(" "));
+    let rows: readonly RootChildOwnerRow[];
+    try { rows = query.all(input.parentRunId).map(copiedRootChildOwnerRow); }
+    finally { query.finalize(); }
+    const values = Object.freeze(rows.map(loadRootChildOwner));
+    await owner.finish();
+    return values;
+  } catch (error) {
+    failure = error;
+    throw error;
+  } finally {
+    await disposeOperation(owner, undefined, failure);
+  }
+}
+
+/** Delete one ledger entry only after its exact resources were fenced and released. */
+export async function closePrivateRootChildOwner(input: {
+  readonly coordinator: PrivateProjectCoordinator;
+  readonly projectRoot: string;
+  readonly parentRunId: string;
+  readonly operationId: string;
+  readonly allocationDigest: string;
+  readonly sandboxDigest: string | null;
+  readonly fenceDigest: string | null;
+  readonly cleanupDigest: string | null;
+}): Promise<void> {
+  const coordinator = requirePrivateProjectCoordinator(input.coordinator);
+  await coordinator.verify();
+  requireDigest(input.parentRunId, "parent root Run");
+  requireWireId(input.operationId, "child operation");
+  requireDigest(input.allocationDigest, "child allocation");
+  if (input.sandboxDigest !== null) requireDigest(input.sandboxDigest, "child sandbox");
+  if (input.fenceDigest !== null) requireDigest(input.fenceDigest, "child fence");
+  if (input.cleanupDigest !== null) requireDigest(input.cleanupDigest, "child cleanup");
+  const owner = await openStateOwner(input.projectRoot, false);
+  let failure: unknown;
+  try {
+    requireCoordinatorRoot(coordinator, owner.root);
+    await immediate(owner, async () => {
+      await coordinator.verify();
+      const row = findRootChildOwner(owner.database, input.parentRunId, input.operationId);
+      if (row === null) return;
+      if (row.allocation_digest !== input.allocationDigest || row.sandbox_digest !== input.sandboxDigest ||
+          row.fence_digest !== input.fenceDigest || row.cleanup_digest !== input.cleanupDigest ||
+          row.sandbox_digest !== null && row.cleanup_digest === null) {
+        invalid("RUN_CHILD_OWNER_CONFLICT", "child owner close differs from durable ownership");
+      }
+      const changed = runFinalized(owner.database,
+        "DELETE FROM root_child_owners WHERE parent_run_id = ?1 AND operation_id = ?2 AND allocation_digest = ?3",
+        [input.parentRunId, input.operationId, input.allocationDigest],
+      ).changes;
+      if (changed !== 1) corrupt("child owner close compare-and-delete failed");
+    });
+    await owner.finish();
+  } catch (error) {
+    failure = error;
+    throw error;
+  } finally {
+    await disposeOperation(owner, undefined, failure);
+  }
+}
+
 /** List unresolved spawn work without granting execution authority. */
 export async function listPrivateRootExecutionWork(input: {
   readonly coordinator: PrivateProjectCoordinator;
@@ -1055,6 +1400,9 @@ export async function closePrivateRootExecution(input: {
       const lifecycleRow = requireRootExecutionLifecycle(owner.database, input.runId);
       const lifecycle = loadRootExecutionLifecycle(owner.database, lifecycleRow, runRow);
       requireExecutionClosable(lifecycle);
+      if (countRootChildOwners(owner.database, input.runId) !== 0n) {
+        invalid("RUN_EXECUTION_INCOMPLETE", "root Run still owns child execution resources");
+      }
       const admitted = normalizePrivateRootTerminal(lifecycle.admitted!.value);
       if (!sameBytes(privateRootTerminalBytes(admitted), privateRootTerminalBytes(terminal))) {
         invalid("RUN_TERMINAL_CONFLICT", "final terminal differs from its admitted terminal checkpoint");
@@ -1070,6 +1418,14 @@ export async function closePrivateRootExecution(input: {
   } finally {
     await disposeOperation(owner, undefined, failure);
   }
+}
+
+function countRootChildOwners(database: SqliteDatabase, parentRunId: string): bigint {
+  const query = statement<{ readonly count: bigint }>(database,
+    "SELECT count(*) AS count FROM root_child_owners WHERE parent_run_id = ?1",
+  );
+  try { return query.get(parentRunId)?.count ?? 0n; }
+  finally { query.finalize(); }
 }
 
 /** Reopen one durable root Run while proving affinity to a live coordinator. */
@@ -1354,6 +1710,132 @@ function requireRootExecutionLifecycle(
   const row = findRootExecutionLifecycle(database, runId);
   if (row === null) invalid("RUN_EXECUTION_UNALLOCATED", "root Run has no durable execution allocation");
   return row;
+}
+
+function findRootChildOwner(
+  database: SqliteDatabase,
+  parentRunId: string,
+  operationId: string,
+): RootChildOwnerRow | null {
+  const query = statement<RootChildOwnerRow>(database, [
+    "SELECT parent_run_id, operation_id, allocation_digest, allocation_bytes, sandbox_digest, sandbox_bytes, fence_digest, fence_bytes, cleanup_digest, cleanup_bytes",
+    "FROM root_child_owners WHERE parent_run_id = ?1 AND operation_id = ?2",
+  ].join(" "));
+  try {
+    const row = query.get(parentRunId, operationId);
+    return row === null ? null : copiedRootChildOwnerRow(row);
+  } finally { query.finalize(); }
+}
+
+function requireRootChildOwner(
+  database: SqliteDatabase,
+  parentRunId: string,
+  operationId: string,
+): RootChildOwnerRow {
+  const row = findRootChildOwner(database, parentRunId, operationId);
+  if (row === null) invalid("RUN_CHILD_OWNER_MISSING", "child operation has no durable cleanup owner");
+  return row;
+}
+
+function copiedRootChildOwnerRow(row: RootChildOwnerRow): RootChildOwnerRow {
+  return Object.freeze({
+    parent_run_id: row.parent_run_id,
+    operation_id: row.operation_id,
+    allocation_digest: row.allocation_digest,
+    allocation_bytes: copiedBlob(row.allocation_bytes, "stored child owner allocation"),
+    sandbox_digest: row.sandbox_digest,
+    sandbox_bytes: copiedOptionalBlob(row.sandbox_bytes, "stored child sandbox owner"),
+    fence_digest: row.fence_digest,
+    fence_bytes: copiedOptionalBlob(row.fence_bytes, "stored child fence"),
+    cleanup_digest: row.cleanup_digest,
+    cleanup_bytes: copiedOptionalBlob(row.cleanup_bytes, "stored child cleanup"),
+  });
+}
+
+function loadRootChildOwner(row: RootChildOwnerRow): PrivateRootChildOwnerLifecycle {
+  requireDigest(row.parent_run_id, "stored child parent Run");
+  requireWireId(row.operation_id, "stored child operation");
+  requireProtectedDigest(row.allocation_digest, "stored child allocation");
+  const allocation = decodeCanonicalChildFact(
+    row.allocation_bytes,
+    row.allocation_digest,
+    "JIG-Private-Root-Child-Owner-Allocation/1",
+    "stored child owner allocation",
+  );
+  if ((row.sandbox_digest === null) !== (row.sandbox_bytes === null)) {
+    corrupt("stored child sandbox owner pair is incomplete");
+  }
+  if ((row.fence_digest === null) !== (row.fence_bytes === null) ||
+      row.fence_digest !== null && row.sandbox_digest === null) {
+    corrupt("stored child fence pair is incomplete");
+  }
+  if ((row.cleanup_digest === null) !== (row.cleanup_bytes === null) ||
+      row.cleanup_digest !== null && row.fence_digest === null) {
+    corrupt("stored child cleanup pair is incomplete");
+  }
+  let sandbox: PrivateRootChildOwnerFact | undefined;
+  if (row.sandbox_digest !== null && row.sandbox_bytes !== null) {
+    requireProtectedDigest(row.sandbox_digest, "stored child sandbox");
+    sandbox = Object.freeze({
+      digest: row.sandbox_digest,
+      value: decodeCanonicalChildFact(
+        row.sandbox_bytes,
+        row.sandbox_digest,
+        "JIG-Private-Root-Child-Sandbox/1",
+        "stored child sandbox owner",
+      ),
+    });
+  }
+  let fence: PrivateRootChildOwnerFact | undefined;
+  if (row.fence_digest !== null && row.fence_bytes !== null) {
+    requireProtectedDigest(row.fence_digest, "stored child fence");
+    fence = Object.freeze({
+      digest: row.fence_digest,
+      value: decodeCanonicalChildFact(
+        row.fence_bytes,
+        row.fence_digest,
+        "JIG-Private-Root-Child-Fence/1",
+        "stored child fence",
+      ),
+    });
+  }
+  let cleanup: PrivateRootChildOwnerFact | undefined;
+  if (row.cleanup_digest !== null && row.cleanup_bytes !== null) {
+    requireProtectedDigest(row.cleanup_digest, "stored child cleanup");
+    cleanup = Object.freeze({
+      digest: row.cleanup_digest,
+      value: decodeCanonicalChildFact(
+        row.cleanup_bytes,
+        row.cleanup_digest,
+        "JIG-Private-Root-Child-Cleanup/1",
+        "stored child cleanup",
+      ),
+    });
+  }
+  return Object.freeze({
+    parentRunId: row.parent_run_id,
+    operationId: row.operation_id,
+    allocation: Object.freeze({ digest: row.allocation_digest, value: allocation }),
+    ...(sandbox === undefined ? {} : { sandbox }),
+    ...(fence === undefined ? {} : { fence }),
+    ...(cleanup === undefined ? {} : { cleanup }),
+  });
+}
+
+function decodeCanonicalChildFact(
+  bytesValue: Uint8Array,
+  digestValue: string,
+  domain: string,
+  label: string,
+): JsonValue {
+  const bytes = copiedBlob(bytesValue, label);
+  let value: JsonValue;
+  try { value = decodeJson1(bytes); }
+  catch { corrupt(`${label} is invalid`); }
+  if (!sameBytes(bytes, canonicalJson(value)) || privateDomainDigest(domain, value) !== digestValue) {
+    corrupt(`${label} differs from its durable identity`);
+  }
+  return value;
 }
 
 function copiedRootExecutionLifecycleRow(row: RootExecutionLifecycleRow): RootExecutionLifecycleRow {
@@ -2289,6 +2771,7 @@ function initializeOrVerifySchema(database: SqliteDatabase, root: PrivateProject
       database.exec(CREATE_ROOT_RUNS);
       database.exec(CREATE_ROOT_SPAWN_INTENTS);
       database.exec(CREATE_ROOT_EXECUTION_LIFECYCLES);
+      database.exec(CREATE_ROOT_CHILD_OWNERS);
       database.exec(CREATE_ROOT_TERMINALS);
       database.exec("INSERT INTO candidate_head(singleton, revision) VALUES (1, NULL)");
       database.exec("INSERT INTO admission_head(singleton, revision) VALUES (1, NULL)");
@@ -3389,6 +3872,12 @@ function copiedOptionalBlob(value: unknown, label: string): Uint8Array | null {
 
 function requireDigest(value: unknown, label: string): asserts value is string {
   if (typeof value !== "string" || !DIGEST.test(value)) throw new TypeError(`${label} digest must be sha256: followed by 64 lowercase hexadecimal digits`);
+}
+
+function requireWireId(value: unknown, label: string): asserts value is string {
+  if (typeof value !== "string" || value.length > 128 || !WIRE_ID.test(value)) {
+    throw new TypeError(`${label} ID is invalid`);
+  }
 }
 
 function requireProtectedDigest(value: unknown, label: string): asserts value is string {

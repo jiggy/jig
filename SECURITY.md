@@ -44,11 +44,17 @@ same descendant and cleanup boundary.
 
 | Operation | Wall clock | Aggregate memory | Aggregate PIDs | CPU quota |
 | --- | ---: | ---: | ---: | ---: |
-| Flow Run | 30 seconds | 256 MiB | 48 | 50% of one CPU |
+| Each Flow execution scope | 30 seconds | 256 MiB | 48 | 50% of one CPU |
 | Project evaluation | 3 seconds | 256 MiB | 64 | 50% of one CPU |
 | One locked dependency preparation | 60 seconds | 512 MiB | 64 | one CPU |
 
 These limits are fixed in this alpha and are not project configuration.
+
+A Binding child runs in a second execution scope while its parent remains
+live. Jig admits at most one active child per parent, so this alpha can have at
+most the parent and one child scope active for one root Run. The table's CPU,
+memory, and PID ceilings apply to each scope, not to their combined total. A
+child's wall deadline is capped by the parent's remaining deadline.
 
 After bounded project capture, one `jig check` dependency-planning phase uses
 one 180-second cancellation deadline, performs at most 16 distinct dependency

@@ -13,6 +13,8 @@ import {
 const ROOT_ID = "host:1";
 const MAX_PENDING_COMPONENT_REQUESTS = 64;
 const MAX_COMPONENT_REQUEST_IDS = 65_536;
+const MAX_RETAINED_OPERATION_BYTES = 32 * 1024 * 1024;
+const MAX_QUEUED_RESPONSE_BYTES = 32 * 1024 * 1024;
 const WIRE_ID = /^[A-Za-z0-9][A-Za-z0-9._:/-]*$/;
 const LOCAL_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const encoder = new TextEncoder();
@@ -260,6 +262,8 @@ export class RunHostSession {
   private readonly stderrChunks: Uint8Array[] = [];
   private readonly ownedTasks = new Set<Promise<void>>();
   private writeTail: Promise<void> = Promise.resolve();
+  private retainedOperationBytes = 0;
+  private queuedResponseBytes = 0;
   private rootWritten = false;
   private rootOpen = false;
   private rootResponse?: RootTerminal;
@@ -557,14 +561,14 @@ export class RunHostSession {
           ? "no effect dispatcher is installed"
           : "no child Flow dispatcher is installed",
       );
-      const settled = {
+      const settled: OperationRecord = {
         signature: operation.signature,
         controller: new AbortController(),
         waiters: new Set<string>(),
-        terminal,
-      } satisfies OperationRecord;
+      };
       this.operations.set(operation.operationId, settled);
-      this.queueOperationResponse(request.id, terminal);
+      this.settleOperation(settled, terminal);
+      this.queueOperationResponse(request.id, settled.terminal!);
       return;
     }
 
@@ -582,7 +586,9 @@ export class RunHostSession {
         .then((terminal) => normalizeEffectOperationTerminal(terminal)))
       .catch((error) => failedOperation(
         error instanceof InvalidDispatcherResult ? "INVALID_RESULT" : "EXECUTION_FAILED",
-        boundedMessage(errorText(error)),
+        error instanceof InvalidDispatcherResult
+          ? "the host dispatcher returned an invalid result"
+          : "the host operation failed",
       ))
       .then((terminal) => this.settleOperation(record, terminal));
     this.own(task);
@@ -653,11 +659,19 @@ export class RunHostSession {
   }
 
   private queueResponse(id: string, value: JsonObject): void {
+    const line = encodeFrame(value);
+    if (this.queuedResponseBytes + line.byteLength > MAX_QUEUED_RESPONSE_BYTES) {
+      this.recordResourceFailure("component responses exceeded the host queue byte budget");
+      this.startTermination();
+      return;
+    }
     this.pendingResponses += 1;
-    this.own(this.sendFrame(value, () => {
+    this.queuedResponseBytes += line.byteLength;
+    this.own(this.sendEncodedFrame(line, () => {
       // The response decision is terminal when it reaches the transport, not
       // when an adapter-specific write completion callback eventually fires.
       this.pendingResponses -= 1;
+      this.queuedResponseBytes -= line.byteLength;
     }).then(
       () => undefined,
       (error) => {
@@ -678,12 +692,26 @@ export class RunHostSession {
 
   private settleOperation(operation: OperationRecord, terminal: NormalizedOperationTerminal): void {
     if (operation.terminal !== undefined) return;
-    operation.terminal = terminal;
+    operation.terminal = this.retainOperationTerminal(terminal);
     for (const id of operation.waiters) {
       this.operationWaiters.delete(id);
-      this.queueOperationResponse(id, terminal);
+      this.queueOperationResponse(id, operation.terminal);
     }
     operation.waiters.clear();
+  }
+
+  private retainOperationTerminal(terminal: NormalizedOperationTerminal): NormalizedOperationTerminal {
+    const bytes = canonicalJson(terminal as unknown as JsonValue).byteLength;
+    if (this.retainedOperationBytes + bytes > MAX_RETAINED_OPERATION_BYTES) {
+      const exhausted = failedOperation(
+        "RESOURCE_EXHAUSTED",
+        "operation replay results exceeded the host byte budget",
+      );
+      this.retainedOperationBytes += canonicalJson(exhausted as unknown as JsonValue).byteLength;
+      return exhausted;
+    }
+    this.retainedOperationBytes += bytes;
+    return terminal;
   }
 
   private queueOperationResponse(id: string, terminal: NormalizedOperationTerminal): void {
@@ -701,10 +729,10 @@ export class RunHostSession {
   }
 
   private sendFrame(value: JsonObject, onWriteStart?: () => void): Promise<void> {
-    const payload = canonicalJson(value);
-    const line = new Uint8Array(payload.byteLength + 1);
-    line.set(payload);
-    line[payload.byteLength] = 0x0a;
+    return this.sendEncodedFrame(encodeFrame(value), onWriteStart);
+  }
+
+  private sendEncodedFrame(line: Uint8Array, onWriteStart?: () => void): Promise<void> {
     const write = this.writeTail.then(() => {
       onWriteStart?.();
       return this.process.write(line);
@@ -914,6 +942,14 @@ export class RunHostSession {
       await Promise.allSettled([...this.ownedTasks]);
     }
   }
+}
+
+function encodeFrame(value: JsonObject): Uint8Array {
+  const payload = canonicalJson(value);
+  const line = new Uint8Array(payload.byteLength + 1);
+  line.set(payload);
+  line[payload.byteLength] = 0x0a;
+  return line;
 }
 
 function rootRequest(invocation: RunHostInvocation): JsonObject {

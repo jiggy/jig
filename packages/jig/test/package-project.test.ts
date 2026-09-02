@@ -140,8 +140,55 @@ description: Review.`),
         declarationPath: "bindings/review.ts",
         packagePath: "flows/review",
         settings: { maxRetries: 3 },
+        slots: {},
       }]);
       expect(value.flows[0]!.directRun).toBeFalse();
+    });
+  });
+
+  test("links exact direct child Flow slots and rejects invalid relations", async () => {
+    await withFlows({
+      "flows/router": run("router"),
+      "flows/bug": run("bug"),
+      "flows/configured": {
+        "FLOW.md": metadata("name: configured\ndescription: Configured."),
+        "flow.ts": "export {};\n",
+        "settings.schema.json": schema({
+          type: "object",
+          required: ["value"],
+        }),
+      },
+    }, async (flows) => {
+      const value = linkPackageProject({
+        flows,
+        bindings: [binding("bindings/router.ts", {
+          package: "flows/router",
+          slots: { bug: "flows/bug" },
+        })],
+      });
+      expect(value.bindings[0]!.slots).toEqual({ bug: "flows/bug" });
+
+      expectCode(() => linkPackageProject({
+        flows,
+        bindings: [binding("bindings/router.ts", {
+          package: "flows/router",
+          slots: { bug: "flows/missing" },
+        })],
+      }), "PROJECT_BINDING_SLOT_MISSING", "/slots/bug");
+      expectCode(() => linkPackageProject({
+        flows,
+        bindings: [binding("bindings/router.ts", {
+          package: "flows/router",
+          slots: { loop: "flows/router" },
+        })],
+      }), "PROJECT_BINDING_SLOT_RECURSIVE", "/slots/loop");
+      expectCode(() => linkPackageProject({
+        flows,
+        bindings: [binding("bindings/router.ts", {
+          package: "flows/router",
+          slots: { configured: "flows/configured" },
+        })],
+      }), "PROJECT_BINDING_SLOT_NOT_DIRECT", "/slots/configured");
     });
   });
 

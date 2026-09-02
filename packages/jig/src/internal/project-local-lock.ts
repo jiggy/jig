@@ -29,6 +29,7 @@ export interface PrivateLockPackage {
 export interface PrivateLockBinding {
   readonly packagePath: string;
   readonly settings: JsonObject;
+  readonly slots: Readonly<Record<string, string>>;
 }
 
 export interface PrivateProjectLocalLock {
@@ -55,6 +56,7 @@ export function createPrivateProjectLocalLock(
     bindings[binding.id] = Object.freeze({
       packagePath: binding.packagePath,
       settings: binding.settings,
+      slots: binding.slots,
     });
   }
   const lock = normalizeLock({ packages, bindings });
@@ -136,13 +138,15 @@ function normalizeBindings(value: unknown): PrivateProjectLocalLock["bindings"] 
     localName(id, `Binding ${JSON.stringify(id)}`);
     const item = exactObject(
       input[id],
-      ["packagePath", "settings"],
+      ["packagePath", "settings", "slots"],
       `Binding ${id}`,
     );
     const settings = object(item.settings, `Binding ${id} settings`);
+    const slots = normalizeSlots(item.slots, `Binding ${id}`);
     output[id] = Object.freeze({
       packagePath: projectPath(item.packagePath, `Binding ${id} packagePath`),
       settings,
+      slots,
     });
   }
   return Object.freeze(output);
@@ -155,7 +159,31 @@ function validateReferences(
   for (const [id, binding] of Object.entries(bindings)) {
     const selected = packages[binding.packagePath];
     if (selected === undefined) throw new TypeError(`Binding ${id} selects an unknown package`);
+    for (const [name, path] of Object.entries(binding.slots)) {
+      const target = packages[path];
+      if (target === undefined) {
+        throw new TypeError(`Binding ${id} slot ${name} selects an unknown package`);
+      }
+      if (path === binding.packagePath) {
+        throw new TypeError(`Binding ${id} slot ${name} selects its own package`);
+      }
+      if (!target.directRun) {
+        throw new TypeError(`Binding ${id} slot ${name} must select a direct Run package`);
+      }
+    }
   }
+}
+
+function normalizeSlots(value: unknown, label: string): Readonly<Record<string, string>> {
+  const input = object(value, `${label} slots`);
+  const names = Object.keys(input);
+  if (names.length > 256) throw new TypeError(`${label} slots exceed 256 entries`);
+  const output: Record<string, string> = Object.create(null) as Record<string, string>;
+  for (const name of names.sort()) {
+    localName(name, `${label} slot`);
+    output[name] = projectPath(input[name], `${label} slot ${name}`);
+  }
+  return Object.freeze(output);
 }
 
 function projectPath(value: unknown, label: string): string {

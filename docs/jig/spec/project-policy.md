@@ -207,6 +207,9 @@ export default defineBinding({
   settings: {
     strict: true,
   },
+  slots: {
+    research: "./flows/research",
+  },
 });
 ```
 
@@ -218,6 +221,18 @@ retarget it.
 present `settings.schema.json` validates it; without that schema, nonempty
 settings are invalid. Jig does not merge defaults, environment values, or
 per-invocation overrides into settings.
+
+`slots` is an optional map of at most 256 LocalName keys to project-relative
+Flow package paths. Omission normalizes to `{}`. Every path must name another
+selected Flow package which is eligible as a direct Flow target; a slot cannot
+name the Binding's own package, another Binding, an instruction-only package,
+or a Flow requiring settings, attachments, or capabilities. Linking captures
+the exact relations in the candidate, and apply admits them with their targets
+in the same immutable generation.
+
+Slots are Binding-local. Starting `flow:flows/review` never borrows slots from
+`binding:reviewer`, and no direct `flow:` target has slots. The map is neither
+a candidate catalogue nor authority to select a different child at runtime.
 
 This alpha has no project attachment mapping. Portable FLOW packages may still
 declare attachments in `FLOW.md`, and Jig retains that declaration with the
@@ -240,7 +255,7 @@ One planning attempt:
 1. captures the exact author module graph;
 2. evaluates and retains its inert project and Binding values;
 3. captures and retains every selected Package/1 tree;
-4. links packages, settings, and target identities;
+4. links packages, settings, exact child slots, and target identities;
 5. selects one exact installed-host recipe for every target;
 6. derives the complete portable lock; and
 7. publishes one retained candidate and human-readable review.
@@ -277,7 +292,7 @@ meaning without admitting it.
 
 - selected package paths and Package/1 digests;
 - direct-target eligibility;
-- Binding package choices and settings.
+- Binding package choices, settings, and exact child slots.
 
 It contains no runtime path, runtime version guess, host closure, sandbox
 detail, process identity, coordinator epoch, or local approval.
@@ -334,6 +349,32 @@ The host launches one Run/1 process from the exact admitted package bytes in a
 rootless Linux envelope. It validates the returned outcome and the complete
 result against package declarations and `result.schema.json`. A success is
 published only after the complete process tree is fenced, reaped, and cleaned.
+
+While a Binding Run remains open, its package may use Run/1 `flow/call` with
+one of that Binding's admitted slot names. Jig resolves the name only to the
+exact direct Flow target captured in the same admitted generation. The call
+carries one JSON/1 input and returns that child's complete JSON/1 Run result;
+there is no argument or response channel for target selection, settings,
+attachments, or host authority.
+
+Each child starts in a fresh Run/1 context with its own scratch directory,
+empty settings and attachments, and no child slots. Parent settings and
+attachments are not inherited. Its effective deadline is the earlier of its
+own direct-Run ceiling and the parent's deadline, so it can never outlive or
+widen the parent deadline.
+
+Run/1 owns child operation identity, duplicate joins, conflicting reuse,
+cancellation races, and `UNCERTAIN` completion. Jig does not automatically
+replay possibly dispatched child work; a deliberate retry uses a new
+`operationId`. The child is invocation-local owned work, not an independently
+addressable Run. Its terminal exists only as the parent-owned Run/1 operation
+result; Jig creates no child Run history and exposes no child administration,
+scheduler, catalogue, resolver, or Agent surface.
+
+The direct alpha admits one active child operation per parent. A distinct
+concurrent operation receives `RESOURCE_EXHAUSTED`; identical waiters join the
+same operation, and sequential child calls are not constrained by this
+Jig-specific active-child bound. Run/1's request-lifetime limit still applies.
 
 A Run is `pending` until it has one durable terminal:
 
@@ -404,9 +445,9 @@ The direct-alpha project implementation must prove at least:
    closed; unsafe paths, symlinks, aliases, and collisions reject.
 3. Only the captured static TypeScript closure is evaluated, under bounded
    authority, and apply never reevaluates it.
-4. Invalid package metadata, schemas, Binding settings, attachment-bearing
-   Binding targets, or dangling package references reject the complete
-   candidate.
+4. Invalid package metadata, schemas, Binding settings or slots,
+   attachment-bearing Binding targets, or dangling package references reject
+   the complete candidate.
 5. Source changes grant no authority before explicit apply.
 6. A Plan binds the exact candidate, lock, host readiness observation, and
    base admission; stale apply changes nothing.
@@ -427,3 +468,6 @@ The direct-alpha project implementation must prove at least:
     filesystem isolation, deadline enforcement, cancellation, or whole-tree
     cleanup.
 14. Repeated Runs leave no process, cgroup, scratch, or private-device residue.
+15. Binding-local child calls resolve only exact same-generation direct Flow
+    targets, receive fresh empty settings and attachments, cannot exceed the
+    parent deadline, and leave no separately addressable child history.

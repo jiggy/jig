@@ -14,16 +14,22 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import {
+  allocatePrivateRootChildOwner,
   applyPrivateActivationReviewPlan,
   capturePrivateActivationPlanningBase,
+  closePrivateRootChildOwner,
   closePrivateRootExecution,
   initializePrivateActivationState,
+  listPrivateRootChildOwners,
   listPrivateRootExecutionWork,
   loadPrivateRootRunForCoordinator,
   openPrivateProjectCoordinator,
   readPrivateBunPreparationOwner,
   readPrivateAdmittedExecutionReuse,
   reacquirePrivateRootExecutionWork,
+  recordPrivateRootChildCleanup,
+  recordPrivateRootChildFence,
+  recordPrivateRootChildSandbox,
   recordPrivateRootExecutionCheckpoint,
   replacePrivateBunPreparationOwner,
   submitPrivateRootRun,
@@ -60,6 +66,7 @@ const TABLES = [
   "candidates",
   "coordinator_head",
   "review_plans",
+  "root_child_owners",
   "root_execution_lifecycles",
   "root_runs",
   "root_spawn_intents",
@@ -69,7 +76,7 @@ const TABLES = [
 setDefaultTimeout(30_000);
 
 describe.serial("direct alpha activation store", () => {
-  test("creates only the current ten-table schema", async () => {
+  test("creates only the current eleven-table schema", async () => {
     const fixture = await createEmptyFixture();
     try {
       const database = openSqlite(fixture.database, "readonly");
@@ -87,6 +94,502 @@ describe.serial("direct alpha activation store", () => {
         .rejects.toMatchObject({ code: "ENOENT" });
     } finally {
       await fixture.dispose();
+    }
+  });
+
+  test("retains only active child cleanup ownership", async () => {
+    const fixture = await createFixture("ready");
+    let coordinator: PrivateProjectCoordinator | undefined;
+    try {
+      await admit(fixture);
+      coordinator = await openPrivateProjectCoordinator({ projectRoot: fixture.root });
+      const submitted = await submitReadyRun(fixture, coordinator, "child-owner");
+      const allocation = await allocatePrivateRootChildOwner({
+        coordinator,
+        projectRoot: fixture.root,
+        parentRunId: submitted.run.runId,
+        operationId: "dispatch:1",
+        allocation: { kind: "test-child-allocation", value: 1 },
+      });
+      expect(await listPrivateRootChildOwners({
+        coordinator,
+        projectRoot: fixture.root,
+        parentRunId: submitted.run.runId,
+      })).toEqual([allocation]);
+      const sandbox = await recordPrivateRootChildSandbox({
+        coordinator,
+        projectRoot: fixture.root,
+        parentRunId: submitted.run.runId,
+        operationId: "dispatch:1",
+        allocationDigest: allocation.allocation.digest,
+        sandbox: { kind: "test-child-sandbox", value: 2 },
+      });
+      expect(sandbox.sandbox?.digest).toMatch(/^sha256:/);
+
+      await expect(allocatePrivateRootChildOwner({
+        coordinator,
+        projectRoot: fixture.root,
+        parentRunId: submitted.run.runId,
+        operationId: "dispatch:2",
+        allocation: { kind: "test-child-allocation", value: 2 },
+      })).rejects.toMatchObject({ code: "RUN_CHILD_CAPACITY" });
+
+      const terminal = successTerminal({ ok: true });
+      await settleExecution(fixture, coordinator, submitted.run.runId, terminal);
+      await expect(closePrivateRootExecution({
+        coordinator,
+        projectRoot: fixture.root,
+        runId: submitted.run.runId,
+        terminal,
+      })).rejects.toMatchObject({ code: "RUN_EXECUTION_INCOMPLETE" });
+
+      await expect(closePrivateRootChildOwner({
+        coordinator,
+        projectRoot: fixture.root,
+        parentRunId: submitted.run.runId,
+        operationId: "dispatch:1",
+        allocationDigest: sandbox.allocation.digest,
+        sandboxDigest: sandbox.sandbox!.digest,
+        fenceDigest: null,
+        cleanupDigest: null,
+      })).rejects.toMatchObject({ code: "RUN_CHILD_OWNER_CONFLICT" });
+      const fenced = await recordPrivateRootChildFence({
+        coordinator,
+        projectRoot: fixture.root,
+        parentRunId: submitted.run.runId,
+        operationId: "dispatch:1",
+        allocationDigest: sandbox.allocation.digest,
+        sandboxDigest: sandbox.sandbox!.digest,
+        fence: { kind: "test-child-fence", value: 3 },
+      });
+      await expect(closePrivateRootChildOwner({
+        coordinator,
+        projectRoot: fixture.root,
+        parentRunId: submitted.run.runId,
+        operationId: "dispatch:1",
+        allocationDigest: fenced.allocation.digest,
+        sandboxDigest: fenced.sandbox!.digest,
+        fenceDigest: fenced.fence!.digest,
+        cleanupDigest: null,
+      })).rejects.toMatchObject({ code: "RUN_CHILD_OWNER_CONFLICT" });
+      const cleaned = await recordPrivateRootChildCleanup({
+        coordinator,
+        projectRoot: fixture.root,
+        parentRunId: submitted.run.runId,
+        operationId: "dispatch:1",
+        allocationDigest: fenced.allocation.digest,
+        sandboxDigest: fenced.sandbox!.digest,
+        fenceDigest: fenced.fence!.digest,
+        cleanup: { kind: "test-child-cleanup", value: 4 },
+      });
+      await closePrivateRootChildOwner({
+        coordinator,
+        projectRoot: fixture.root,
+        parentRunId: submitted.run.runId,
+        operationId: "dispatch:1",
+        allocationDigest: cleaned.allocation.digest,
+        sandboxDigest: cleaned.sandbox!.digest,
+        fenceDigest: cleaned.fence!.digest,
+        cleanupDigest: cleaned.cleanup!.digest,
+      });
+      expect(await listPrivateRootChildOwners({
+        coordinator,
+        projectRoot: fixture.root,
+        parentRunId: submitted.run.runId,
+      })).toEqual([]);
+      expect(await closePrivateRootExecution({
+        coordinator,
+        projectRoot: fixture.root,
+        runId: submitted.run.runId,
+        terminal,
+      })).toMatchObject({ state: "terminal" });
+    } finally {
+      await coordinator?.dispose();
+      await fixture.dispose();
+    }
+  });
+
+  test("compare-and-sets every child cleanup fact and exact close", async () => {
+    const fixture = await createFixture("ready");
+    let coordinator: PrivateProjectCoordinator | undefined;
+    try {
+      await admit(fixture);
+      coordinator = await openPrivateProjectCoordinator({ projectRoot: fixture.root });
+      const submitted = await submitReadyRun(fixture, coordinator, "child-owner-cas");
+      const allocationValue = { kind: "test-child-allocation", value: 1 } as const;
+      const allocation = await allocatePrivateRootChildOwner({
+        coordinator,
+        projectRoot: fixture.root,
+        parentRunId: submitted.run.runId,
+        operationId: "dispatch:cas",
+        allocation: allocationValue,
+      });
+      expect(await allocatePrivateRootChildOwner({
+        coordinator,
+        projectRoot: fixture.root,
+        parentRunId: submitted.run.runId,
+        operationId: "dispatch:cas",
+        allocation: allocationValue,
+      })).toEqual(allocation);
+      await expect(allocatePrivateRootChildOwner({
+        coordinator,
+        projectRoot: fixture.root,
+        parentRunId: submitted.run.runId,
+        operationId: "dispatch:cas",
+        allocation: { ...allocationValue, value: 2 },
+      })).rejects.toMatchObject({ code: "RUN_CHILD_OWNER_CONFLICT" });
+
+      const sandboxValue = { kind: "test-child-sandbox", value: 2 } as const;
+      await expect(recordPrivateRootChildSandbox({
+        coordinator,
+        projectRoot: fixture.root,
+        parentRunId: submitted.run.runId,
+        operationId: "dispatch:cas",
+        allocationDigest: digest("wrong-child-allocation"),
+        sandbox: sandboxValue,
+      })).rejects.toMatchObject({ code: "RUN_CHILD_OWNER_CONFLICT" });
+      const sandbox = await recordPrivateRootChildSandbox({
+        coordinator,
+        projectRoot: fixture.root,
+        parentRunId: submitted.run.runId,
+        operationId: "dispatch:cas",
+        allocationDigest: allocation.allocation.digest,
+        sandbox: sandboxValue,
+      });
+      expect(await recordPrivateRootChildSandbox({
+        coordinator,
+        projectRoot: fixture.root,
+        parentRunId: submitted.run.runId,
+        operationId: "dispatch:cas",
+        allocationDigest: allocation.allocation.digest,
+        sandbox: sandboxValue,
+      })).toEqual(sandbox);
+      await expect(recordPrivateRootChildSandbox({
+        coordinator,
+        projectRoot: fixture.root,
+        parentRunId: submitted.run.runId,
+        operationId: "dispatch:cas",
+        allocationDigest: allocation.allocation.digest,
+        sandbox: { ...sandboxValue, value: 3 },
+      })).rejects.toMatchObject({ code: "RUN_CHILD_OWNER_CONFLICT" });
+      await expect(closePrivateRootChildOwner({
+        coordinator,
+        projectRoot: fixture.root,
+        parentRunId: submitted.run.runId,
+        operationId: "dispatch:cas",
+        allocationDigest: allocation.allocation.digest,
+        sandboxDigest: sandbox.sandbox!.digest,
+        fenceDigest: null,
+        cleanupDigest: null,
+      })).rejects.toMatchObject({ code: "RUN_CHILD_OWNER_CONFLICT" });
+
+      const fenceValue = { kind: "test-child-fence", value: 3 } as const;
+      await expect(recordPrivateRootChildFence({
+        coordinator,
+        projectRoot: fixture.root,
+        parentRunId: submitted.run.runId,
+        operationId: "dispatch:cas",
+        allocationDigest: allocation.allocation.digest,
+        sandboxDigest: digest("wrong-child-sandbox"),
+        fence: fenceValue,
+      })).rejects.toMatchObject({ code: "RUN_CHILD_OWNER_CONFLICT" });
+      const fence = await recordPrivateRootChildFence({
+        coordinator,
+        projectRoot: fixture.root,
+        parentRunId: submitted.run.runId,
+        operationId: "dispatch:cas",
+        allocationDigest: allocation.allocation.digest,
+        sandboxDigest: sandbox.sandbox!.digest,
+        fence: fenceValue,
+      });
+      expect(await recordPrivateRootChildFence({
+        coordinator,
+        projectRoot: fixture.root,
+        parentRunId: submitted.run.runId,
+        operationId: "dispatch:cas",
+        allocationDigest: allocation.allocation.digest,
+        sandboxDigest: sandbox.sandbox!.digest,
+        fence: fenceValue,
+      })).toEqual(fence);
+      await expect(recordPrivateRootChildFence({
+        coordinator,
+        projectRoot: fixture.root,
+        parentRunId: submitted.run.runId,
+        operationId: "dispatch:cas",
+        allocationDigest: allocation.allocation.digest,
+        sandboxDigest: sandbox.sandbox!.digest,
+        fence: { ...fenceValue, value: 4 },
+      })).rejects.toMatchObject({ code: "RUN_CHILD_OWNER_CONFLICT" });
+
+      const cleanupValue = { kind: "test-child-cleanup", value: 4 } as const;
+      await expect(recordPrivateRootChildCleanup({
+        coordinator,
+        projectRoot: fixture.root,
+        parentRunId: submitted.run.runId,
+        operationId: "dispatch:cas",
+        allocationDigest: allocation.allocation.digest,
+        sandboxDigest: sandbox.sandbox!.digest,
+        fenceDigest: digest("wrong-child-fence"),
+        cleanup: cleanupValue,
+      })).rejects.toMatchObject({ code: "RUN_CHILD_OWNER_CONFLICT" });
+      const cleanup = await recordPrivateRootChildCleanup({
+        coordinator,
+        projectRoot: fixture.root,
+        parentRunId: submitted.run.runId,
+        operationId: "dispatch:cas",
+        allocationDigest: allocation.allocation.digest,
+        sandboxDigest: sandbox.sandbox!.digest,
+        fenceDigest: fence.fence!.digest,
+        cleanup: cleanupValue,
+      });
+      expect(await recordPrivateRootChildCleanup({
+        coordinator,
+        projectRoot: fixture.root,
+        parentRunId: submitted.run.runId,
+        operationId: "dispatch:cas",
+        allocationDigest: allocation.allocation.digest,
+        sandboxDigest: sandbox.sandbox!.digest,
+        fenceDigest: fence.fence!.digest,
+        cleanup: cleanupValue,
+      })).toEqual(cleanup);
+      await expect(recordPrivateRootChildCleanup({
+        coordinator,
+        projectRoot: fixture.root,
+        parentRunId: submitted.run.runId,
+        operationId: "dispatch:cas",
+        allocationDigest: allocation.allocation.digest,
+        sandboxDigest: sandbox.sandbox!.digest,
+        fenceDigest: fence.fence!.digest,
+        cleanup: { ...cleanupValue, value: 5 },
+      })).rejects.toMatchObject({ code: "RUN_CHILD_OWNER_CONFLICT" });
+
+      await expect(closePrivateRootChildOwner({
+        coordinator,
+        projectRoot: fixture.root,
+        parentRunId: submitted.run.runId,
+        operationId: "dispatch:cas",
+        allocationDigest: allocation.allocation.digest,
+        sandboxDigest: sandbox.sandbox!.digest,
+        fenceDigest: fence.fence!.digest,
+        cleanupDigest: digest("wrong-child-cleanup"),
+      })).rejects.toMatchObject({ code: "RUN_CHILD_OWNER_CONFLICT" });
+      const close = {
+        coordinator,
+        projectRoot: fixture.root,
+        parentRunId: submitted.run.runId,
+        operationId: "dispatch:cas",
+        allocationDigest: allocation.allocation.digest,
+        sandboxDigest: sandbox.sandbox!.digest,
+        fenceDigest: fence.fence!.digest,
+        cleanupDigest: cleanup.cleanup!.digest,
+      } as const;
+      await closePrivateRootChildOwner(close);
+      await closePrivateRootChildOwner(close);
+      expect(await listPrivateRootChildOwners({
+        coordinator,
+        projectRoot: fixture.root,
+        parentRunId: submitted.run.runId,
+      })).toEqual([]);
+    } finally {
+      await coordinator?.dispose();
+      await fixture.dispose();
+    }
+  });
+
+  test("lets a replacement replay child facts but not seal old unowned work", async () => {
+    const replayFixture = await createFixture("ready");
+    let first: PrivateProjectCoordinator | undefined;
+    let replacement: PrivateProjectCoordinator | undefined;
+    try {
+      await admit(replayFixture);
+      first = await openPrivateProjectCoordinator({ projectRoot: replayFixture.root });
+      const submitted = await submitReadyRun(replayFixture, first, "child-owner-replay");
+      const allocationValue = { kind: "test-child-allocation", value: 1 } as const;
+      const sandboxValue = { kind: "test-child-sandbox", value: 2 } as const;
+      const fenceValue = { kind: "test-child-fence", value: 3 } as const;
+      const cleanupValue = { kind: "test-child-cleanup", value: 4 } as const;
+      const allocation = await allocatePrivateRootChildOwner({
+        coordinator: first,
+        projectRoot: replayFixture.root,
+        parentRunId: submitted.run.runId,
+        operationId: "dispatch:replay",
+        allocation: allocationValue,
+      });
+      const sandbox = await recordPrivateRootChildSandbox({
+        coordinator: first,
+        projectRoot: replayFixture.root,
+        parentRunId: submitted.run.runId,
+        operationId: "dispatch:replay",
+        allocationDigest: allocation.allocation.digest,
+        sandbox: sandboxValue,
+      });
+      const fence = await recordPrivateRootChildFence({
+        coordinator: first,
+        projectRoot: replayFixture.root,
+        parentRunId: submitted.run.runId,
+        operationId: "dispatch:replay",
+        allocationDigest: allocation.allocation.digest,
+        sandboxDigest: sandbox.sandbox!.digest,
+        fence: fenceValue,
+      });
+      const cleanup = await recordPrivateRootChildCleanup({
+        coordinator: first,
+        projectRoot: replayFixture.root,
+        parentRunId: submitted.run.runId,
+        operationId: "dispatch:replay",
+        allocationDigest: allocation.allocation.digest,
+        sandboxDigest: sandbox.sandbox!.digest,
+        fenceDigest: fence.fence!.digest,
+        cleanup: cleanupValue,
+      });
+      await first.dispose();
+      first = undefined;
+      replacement = await openPrivateProjectCoordinator({ projectRoot: replayFixture.root });
+
+      await expect(allocatePrivateRootChildOwner({
+        coordinator: replacement,
+        projectRoot: replayFixture.root,
+        parentRunId: submitted.run.runId,
+        operationId: "dispatch:replay",
+        allocation: allocationValue,
+      })).rejects.toMatchObject({ code: "RUN_OWNER_CHANGED" });
+      expect(await listPrivateRootChildOwners({
+        coordinator: replacement,
+        projectRoot: replayFixture.root,
+        parentRunId: submitted.run.runId,
+      })).toEqual([cleanup]);
+      expect(await recordPrivateRootChildSandbox({
+        coordinator: replacement,
+        projectRoot: replayFixture.root,
+        parentRunId: submitted.run.runId,
+        operationId: "dispatch:replay",
+        allocationDigest: allocation.allocation.digest,
+        sandbox: sandboxValue,
+      })).toEqual(cleanup);
+      expect(await recordPrivateRootChildFence({
+        coordinator: replacement,
+        projectRoot: replayFixture.root,
+        parentRunId: submitted.run.runId,
+        operationId: "dispatch:replay",
+        allocationDigest: allocation.allocation.digest,
+        sandboxDigest: sandbox.sandbox!.digest,
+        fence: fenceValue,
+      })).toEqual(cleanup);
+      expect(await recordPrivateRootChildCleanup({
+        coordinator: replacement,
+        projectRoot: replayFixture.root,
+        parentRunId: submitted.run.runId,
+        operationId: "dispatch:replay",
+        allocationDigest: allocation.allocation.digest,
+        sandboxDigest: sandbox.sandbox!.digest,
+        fenceDigest: fence.fence!.digest,
+        cleanup: cleanupValue,
+      })).toEqual(cleanup);
+    } finally {
+      await replacement?.dispose();
+      await first?.dispose();
+      await replayFixture.dispose();
+    }
+
+    const transitionFixture = await createFixture("ready");
+    first = undefined;
+    replacement = undefined;
+    try {
+      await admit(transitionFixture);
+      first = await openPrivateProjectCoordinator({ projectRoot: transitionFixture.root });
+      const submitted = await submitReadyRun(transitionFixture, first, "child-owner-transition");
+      const allocation = await allocatePrivateRootChildOwner({
+        coordinator: first,
+        projectRoot: transitionFixture.root,
+        parentRunId: submitted.run.runId,
+        operationId: "dispatch:unsealed",
+        allocation: { kind: "test-child-allocation", value: 1 },
+      });
+      await first.dispose();
+      first = undefined;
+      replacement = await openPrivateProjectCoordinator({ projectRoot: transitionFixture.root });
+      await expect(recordPrivateRootChildSandbox({
+        coordinator: replacement,
+        projectRoot: transitionFixture.root,
+        parentRunId: submitted.run.runId,
+        operationId: "dispatch:unsealed",
+        allocationDigest: allocation.allocation.digest,
+        sandbox: { kind: "test-child-sandbox", value: 2 },
+      })).rejects.toMatchObject({ code: "RUN_OWNER_CHANGED" });
+      await closePrivateRootChildOwner({
+        coordinator: replacement,
+        projectRoot: transitionFixture.root,
+        parentRunId: submitted.run.runId,
+        operationId: "dispatch:unsealed",
+        allocationDigest: allocation.allocation.digest,
+        sandboxDigest: null,
+        fenceDigest: null,
+        cleanupDigest: null,
+      });
+    } finally {
+      await replacement?.dispose();
+      await first?.dispose();
+      await transitionFixture.dispose();
+    }
+  });
+
+  test("fails closed on incomplete retained child fact pairs", async () => {
+    for (const corruptStage of ["sandbox", "fence", "cleanup"] as const) {
+      const fixture = await createFixture("ready");
+      let coordinator: PrivateProjectCoordinator | undefined;
+      try {
+        await admit(fixture);
+        coordinator = await openPrivateProjectCoordinator({ projectRoot: fixture.root });
+        const submitted = await submitReadyRun(fixture, coordinator, `child-pair-${corruptStage}`);
+        const allocation = await allocatePrivateRootChildOwner({
+          coordinator,
+          projectRoot: fixture.root,
+          parentRunId: submitted.run.runId,
+          operationId: "dispatch:corrupt",
+          allocation: { kind: "test-child-allocation", value: 1 },
+        });
+        const sandbox = await recordPrivateRootChildSandbox({
+          coordinator,
+          projectRoot: fixture.root,
+          parentRunId: submitted.run.runId,
+          operationId: "dispatch:corrupt",
+          allocationDigest: allocation.allocation.digest,
+          sandbox: { kind: "test-child-sandbox", value: 2 },
+        });
+        const fence = await recordPrivateRootChildFence({
+          coordinator,
+          projectRoot: fixture.root,
+          parentRunId: submitted.run.runId,
+          operationId: "dispatch:corrupt",
+          allocationDigest: allocation.allocation.digest,
+          sandboxDigest: sandbox.sandbox!.digest,
+          fence: { kind: "test-child-fence", value: 3 },
+        });
+        await recordPrivateRootChildCleanup({
+          coordinator,
+          projectRoot: fixture.root,
+          parentRunId: submitted.run.runId,
+          operationId: "dispatch:corrupt",
+          allocationDigest: allocation.allocation.digest,
+          sandboxDigest: sandbox.sandbox!.digest,
+          fenceDigest: fence.fence!.digest,
+          cleanup: { kind: "test-child-cleanup", value: 4 },
+        });
+
+        const database = openSqlite(fixture.database, "readwrite");
+        database.exec("PRAGMA ignore_check_constraints=ON");
+        database.query(`UPDATE root_child_owners SET ${corruptStage}_bytes = NULL`)
+          .run();
+        database.close(true);
+        await expect(listPrivateRootChildOwners({
+          coordinator,
+          projectRoot: fixture.root,
+          parentRunId: submitted.run.runId,
+        })).rejects.toMatchObject({ code: "ADMISSION_STATE_CORRUPT" });
+      } finally {
+        await coordinator?.dispose();
+        await fixture.dispose();
+      }
     }
   });
 
@@ -222,6 +725,45 @@ describe.serial("direct alpha activation store", () => {
         executionPackage: fixture.flow,
       });
     } finally {
+      await fixture.dispose();
+    }
+  });
+
+  test("reopens the exact Binding slot map from its admitted Candidate", async () => {
+    const fixture = await createFixture("ready");
+    let coordinator: PrivateProjectCoordinator | undefined;
+    try {
+      const candidate = await insertSlottedCandidate(fixture);
+      const plan = seedPlan(fixture, candidate, {
+        baseGeneration: null,
+        observedLock: "absent",
+        operation: "admission",
+      });
+      requireAdmission(await applyPlan(fixture, plan));
+      coordinator = await openPrivateProjectCoordinator({ projectRoot: fixture.root });
+      const submitted = await submitPrivateRootRun({
+        coordinator,
+        projectRoot: fixture.root,
+        packageStoreRoot: fixture.store,
+        submissionId: "slotted-admission",
+        target: { kind: "binding", id: "router" },
+        input: { value: "slotted" },
+        deadlineUnixMs: Date.now() + 60_000,
+      });
+      const reopened = await reacquirePrivateRootExecutionWork({
+        coordinator,
+        projectRoot: fixture.root,
+        packageStoreRoot: fixture.store,
+        runId: submitted.run.runId,
+      });
+      const request = reopened.candidate.candidate.targets.find(
+        ({ request }) => request.target.kind === "binding",
+      )!.request;
+      expect(request.flowSlots).toEqual({ child: "flows/child" });
+      expect(Object.isFrozen(request.flowSlots)).toBeTrue();
+      expect(reopened.candidate.lock.bindings.router!.slots).toEqual(request.flowSlots);
+    } finally {
+      await coordinator?.dispose();
       await fixture.dispose();
     }
   });
@@ -951,6 +1493,82 @@ function insertExecutionCandidate(
   return candidate;
 }
 
+async function insertSlottedCandidate(
+  fixture: Fixture,
+): Promise<PrivateActivationCandidateArtifactV5> {
+  const child = await retainDistinctExecutionPackage(fixture, "slotted-child");
+  const lockBytes = json1({
+    packages: {
+      "flows/child": { digest: child.digest, directRun: true },
+      "flows/run": { digest: fixture.flow.digest, directRun: true },
+    },
+    bindings: {
+      router: {
+        packagePath: "flows/run",
+        settings: {},
+        slots: { child: "flows/child" },
+      },
+    },
+  });
+  const lock = decodePrivateProjectLocalLock(lockBytes);
+  const parent = fixture.candidate.candidate.targets[0]!;
+  if (parent.disposition.state !== "ready") throw new Error("test fixture target is not ready");
+  const { kind: _kind, digest: _requestDigest, ...parentContent } = parent.request;
+  const targets = [{
+    request: activationRequest({
+      ...parentContent,
+      target: { kind: "binding", id: "router" },
+      flowSlots: { child: "flows/child" },
+    }),
+    disposition: {
+      ...parent.disposition,
+      recipeDigest: digest("slotted-parent-recipe"),
+      observationDigest: digest("slotted-parent-observation"),
+    },
+  }, {
+    request: activationRequest({
+      target: { kind: "flow", path: "flows/child" },
+      mode: "run",
+      packagePath: "flows/child",
+      package: child,
+      entrypoint: { path: "flow.ts", suffix: "ts" },
+      settings: {},
+      attachments: {},
+    }),
+    disposition: {
+      state: "ready",
+      recipeDigest: digest("slotted-child-recipe"),
+      observationDigest: digest("slotted-child-observation"),
+      executionPackage: child,
+    },
+  }, parent];
+  const captureDigest = digest("slotted-capture");
+  const planningObservationDigest = digest("slotted-planning");
+  const observedSemanticDigest = digest("slotted-meaning");
+  const candidate = decodePrivateActivationCandidateV5({
+    candidate: json1({
+      ...fixture.candidate.candidate,
+      captureDigest,
+      observedSemanticDigest,
+      activationMeaningDigest: activationMeaning(observedSemanticDigest, targets),
+      resolutionInputDigest: privateDomainDigest(
+        "JIG-Package-Project-Resolution-Input/1",
+        { captureDigest, planningObservationDigest },
+      ),
+      planningObservationDigest,
+      lockDigest: privateProjectLocalLockDigest(lock),
+      targets,
+    } as unknown as JsonValue),
+    lock: lockBytes,
+  });
+  const database = openSqlite(fixture.database, "readonly");
+  const revision = database.query("SELECT revision FROM candidate_head WHERE singleton = 1").get()
+    .revision as number;
+  database.close(true);
+  insertCandidateRow(fixture.database, revision + 1, candidate, true);
+  return candidate;
+}
+
 function insertCandidateRow(
   databasePath: string,
   revision: number,
@@ -1106,10 +1724,10 @@ function successTerminal(output: JsonValue): PrivateRootRunTerminal {
 }
 
 function activationRequest(content: Record<string, unknown>): Record<string, unknown> {
-  const request = { kind: "activation-request/2", ...content };
+  const request = { kind: "activation-request/3", flowSlots: {}, ...content };
   return {
     ...request,
-    digest: privateDomainDigest("JIG-Activation-Request/2", request as unknown as JsonValue),
+    digest: privateDomainDigest("JIG-Activation-Request/3", request as unknown as JsonValue),
   };
 }
 

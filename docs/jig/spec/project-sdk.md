@@ -72,11 +72,26 @@ import { defineBinding } from "@jigging/jig";
 export default defineBinding({
   package: "./flows/review",
   settings: { maxRetries: 4 },
+  slots: {
+    research: "./flows/research",
+  },
 });
 ```
 
 `package` is required. Omitting `settings` produces an empty object. Settings
 must satisfy the package's `settings.schema.json` when one exists.
+
+`slots` is an optional map with at most 256 entries. Each key is a LocalName
+used by this Binding's package as a Run/1 `flow/call` slot. Each value is the
+project-relative path of another selected Flow package which is eligible as a
+direct Flow target. The Binding cannot select its own package through a slot.
+Omitting `slots` normalizes to `{}`.
+
+Slots are exact project links, not requests for later resolution. Check binds
+each slot to the named direct Flow target in the same candidate, and apply
+admits that complete relation into one immutable generation. Slots belong only
+to the Binding declaration: running the package through its `flow:` identity
+has no slots, even when a Binding for that package does.
 
 This alpha has no project attachment mapping. A selected FLOW package may
 declare attachments as portable package metadata, but it cannot then be a
@@ -132,7 +147,8 @@ or one normalized Binding value:
 {
   "kind": "package",
   "package": "flows/review",
-  "settings": {}
+  "settings": {},
+  "slots": {}
 }
 ```
 
@@ -144,8 +160,9 @@ applied retained Plan.
 
 ## Deliberate exclusions
 
-SDK/1 does not define child-Flow slots, candidate catalogues, semantic choice,
-Hooks, Services, Journal publishers, Agent selection, generic grants, runtime
-selection, sandbox selection, attachment projection, or administration. Those
-concepts are absent from the direct alpha rather than represented by
+SDK/1 does not define dynamic child-Flow resolution, candidate catalogues,
+semantic choice, Hooks, Services, Journal publishers, Agent selection, generic
+grants, runtime selection, sandbox selection, attachment projection, or
+administration. A Binding's exact `slots` map is the complete child-Flow
+authoring surface; the excluded concepts are absent rather than represented by
 placeholders.

@@ -28,7 +28,22 @@ The Jig-specific machine files are published under
 portable specifications and machine files remain independently published at
 [flow.jig.md](https://flow.jig.md/).
 
+The alpha's child-call slice is exact and deliberately small. A Binding may
+map at most 256 LocalName `slots` to other selected direct Flow packages;
+omission means `{}`. Those targets come from the same admitted generation,
+while a direct `flow:` Run has no slots. Each Run/1 `flow/call` exchanges only
+JSON/1 input and a complete JSON/1 result with a fresh child context: settings
+and attachments are empty, it has no slots, and its deadline cannot exceed the
+parent's. Run/1 governs operation identity, duplicate joins and conflicts,
+cancellation, and uncertainty; uncertain dispatch is not automatically
+replayed. Jig supplies no separate child history, administration, scheduler,
+catalogue, resolver, or Agent surface.
+
+The alpha admits one active child operation per parent; excess distinct
+concurrent calls receive `RESOURCE_EXHAUSTED`, while sequential calls remain
+available.
+
 The direct alpha excludes Services, Hooks, Journal providers, Agent providers,
-Semantic Choice, Jig Graph, runtime registries, sandbox registries, and
-compatibility formats. Its public surface grows only after one concrete
-vertical earns it.
+Semantic Choice, Jig Graph, schedulers, catalogues, runtime registries, sandbox
+registries, and compatibility formats. Its public surface grows only after one
+concrete vertical earns it.

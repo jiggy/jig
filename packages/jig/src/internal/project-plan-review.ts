@@ -90,6 +90,15 @@ function projectChanges(
     Object.fromEntries(currentTargets.map((target) => [targetKey(target.request.target), target])),
     Object.fromEntries(proposedTargets.map((target) => [targetKey(target.request.target), target])),
   );
+  const changedTargets = new Set(targetChanges.changed);
+  for (const id of changedBindingSlotDependencies(
+    current,
+    proposed,
+    currentTargets,
+    proposedTargets,
+  )) {
+    changedTargets.add(`binding:${id}`);
+  }
   return {
     packages: recordChanges(
       current?.portablePolicy.packages ?? {},
@@ -99,8 +108,35 @@ function projectChanges(
       current?.portablePolicy.bindings ?? {},
       proposed.portablePolicy.bindings,
     ),
-    targets: targetChanges,
+    targets: {
+      ...targetChanges,
+      changed: [...changedTargets].sort(compareUtf16),
+    },
   };
+}
+
+function changedBindingSlotDependencies(
+  current: ReturnType<typeof projectCandidate> | null,
+  proposed: ReturnType<typeof projectCandidate>,
+  currentTargets: PrivateActivationReviewPlan["candidate"]["candidate"]["targets"],
+  proposedTargets: PrivateActivationReviewPlan["candidate"]["candidate"]["targets"],
+): readonly string[] {
+  if (current === null) return [];
+  const currentFlows = new Map(currentTargets.flatMap((target) =>
+    target.request.target.kind === "flow" ? [[target.request.target.path, target] as const] : []));
+  const proposedFlows = new Map(proposedTargets.flatMap((target) =>
+    target.request.target.kind === "flow" ? [[target.request.target.path, target] as const] : []));
+  const changed: string[] = [];
+  for (const [id, binding] of Object.entries(proposed.portablePolicy.bindings)) {
+    const prior = current.portablePolicy.bindings[id];
+    if (prior === undefined) continue;
+    const paths = new Set([...Object.values(prior.slots), ...Object.values(binding.slots)]);
+    if ([...paths].some((path) =>
+      current.portablePolicy.packages[path]?.digest !== proposed.portablePolicy.packages[path]?.digest ||
+      JSON.stringify(currentFlows.get(path)) !== JSON.stringify(proposedFlows.get(path))
+    )) changed.push(id);
+  }
+  return changed.sort(compareUtf16);
 }
 
 function recordChanges(

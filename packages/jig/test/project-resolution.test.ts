@@ -52,11 +52,35 @@ describe("private package resolution", () => {
       expect(() => restorePrivateActivationRequest({
         ...structuredClone(requests[0]!),
         kind: "invalid-activation-request-kind",
-      })).toThrow("activation request kind must be activation-request/2");
+      })).toThrow("activation request kind must be activation-request/3");
       expect(() => restorePrivateActivationRequest({
         ...structuredClone(requests[0]!),
         target: { kind: "unknown", id: "z" },
       })).toThrow("activation target kind must be flow or binding");
+      const withoutSlots = structuredClone(requests[0]!) as any;
+      delete withoutSlots.flowSlots;
+      expect(() => restorePrivateActivationRequest(withoutSlots)).toThrow(
+        "activation request must contain exactly",
+      );
+      expect(() => restorePrivateActivationRequest({
+        ...structuredClone(requests[0]!),
+        flowSlots: [],
+      })).toThrow("activation Flow slots must be an object");
+      expect(() => restorePrivateActivationRequest({
+        ...structuredClone(requests[0]!),
+        flowSlots: { Bad: "flows/a" },
+      })).toThrow("activation Flow slot must be a LocalName");
+      expect(() => restorePrivateActivationRequest({
+        ...structuredClone(requests[0]!),
+        flowSlots: Object.fromEntries(Array.from({ length: 257 }, (_, index) => [
+          `slot-${index}`,
+          "flows/a",
+        ])),
+      })).toThrow("activation Flow slots exceed 256 entries");
+      expect(() => restorePrivateActivationRequest({
+        ...structuredClone(requests[0]!),
+        flowSlots: { child: "flows/a" },
+      })).toThrow("activation request digest does not match its canonical content");
       expect(requests.map(({ target }) => target)).toEqual([
         { kind: "binding", id: "z" },
         { kind: "flow", path: "flows/a" },
@@ -88,6 +112,57 @@ describe("private package resolution", () => {
       expect(() => requirePrivateRetainedResolutionObservation(resolution)).toThrow(
         "resolution observation was not tied to the retained aggregate boundary",
       );
+    });
+  });
+
+  test("pins exact frozen slots in Binding requests and their identities", async () => {
+    const trees = {
+      "flows/router": run("router"),
+      "flows/bug": run("bug"),
+      "flows/question": run("question"),
+    };
+    let firstRequestDigest: string | undefined;
+    let firstSemanticDigest: string | undefined;
+    await withProject(trees, [
+      binding("bindings/router.ts", {
+        package: "flows/router",
+        slots: { question: "flows/question", bug: "flows/bug" },
+      }),
+    ], async (project) => {
+      const requests = buildPrivateActivationRequests(project);
+      const configured = requests.find(({ target }) => target.kind === "binding")!;
+      expect(configured.flowSlots).toEqual({
+        bug: "flows/bug",
+        question: "flows/question",
+      });
+      expect(Object.keys(configured.flowSlots)).toEqual(["bug", "question"]);
+      expect(Object.isFrozen(configured.flowSlots)).toBeTrue();
+      for (const request of requests.filter(({ target }) => target.kind === "flow")) {
+        expect(request.flowSlots).toEqual({});
+        expect(Object.isFrozen(request.flowSlots)).toBeTrue();
+      }
+      firstRequestDigest = configured.digest;
+      firstSemanticDigest = resolveLinkedPackageProjectObservation(
+        project,
+        digest("slot-capture"),
+        planning(requests, () => "planned"),
+      ).semanticDigest;
+    });
+
+    await withProject(trees, [
+      binding("bindings/router.ts", {
+        package: "flows/router",
+        slots: { question: "flows/bug", bug: "flows/question" },
+      }),
+    ], async (project) => {
+      const requests = buildPrivateActivationRequests(project);
+      const configured = requests.find(({ target }) => target.kind === "binding")!;
+      expect(configured.digest).not.toBe(firstRequestDigest);
+      expect(resolveLinkedPackageProjectObservation(
+        project,
+        digest("slot-capture"),
+        planning(requests, () => "planned"),
+      ).semanticDigest).not.toBe(firstSemanticDigest);
     });
   });
 

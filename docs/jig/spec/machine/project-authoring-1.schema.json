@@ -95,12 +95,20 @@
         "settings": {
           "type": "object",
           "maxProperties": 65536
+        },
+        "slots": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/projectPath"
+          },
+          "maxProperties": 256
         }
       },
       "required": [
         "kind",
         "package",
-        "settings"
+        "settings",
+        "slots"
       ],
       "additionalProperties": false
     },

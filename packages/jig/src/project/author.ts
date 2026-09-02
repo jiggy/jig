@@ -48,11 +48,13 @@ export interface PackageBindingDefinition {
   readonly kind: "package";
   readonly package: string;
   readonly settings: JsonObject;
+  readonly slots: Readonly<Record<string, string>>;
 }
 
 export interface PackageBindingInput {
   readonly package: string;
   readonly settings?: JsonObject;
+  readonly slots?: Readonly<Record<string, string>>;
 }
 
 export type BindingDefinition = PackageBindingDefinition;
@@ -123,8 +125,8 @@ function normalizeBinding(
   assertClosedObject(
     captured,
     canonical
-      ? ["kind", "package", "settings"]
-      : ["package", "settings"],
+      ? ["kind", "package", "settings", "slots"]
+      : ["package", "settings", "slots"],
     "Binding definition",
   );
   if (canonical && captured.kind !== "package") {
@@ -135,7 +137,23 @@ function normalizeBinding(
   const settings = Object.hasOwn(captured, "settings")
     ? expectJsonObject(captured.settings, "settings")
     : emptyRecord();
-  return record({ kind: "package", package: packagePath, settings }) as unknown as PackageBindingDefinition;
+  const slots = Object.hasOwn(captured, "slots")
+    ? normalizeFlowSlots(captured.slots)
+    : emptyRecord<string>();
+  return record({ kind: "package", package: packagePath, settings, slots }) as unknown as PackageBindingDefinition;
+}
+
+function normalizeFlowSlots(value: unknown): Readonly<Record<string, string>> {
+  const input = snapshotJsonObject(value, "slots");
+  if (Object.keys(input).length > 256) {
+    throw new TypeError("slots exceed 256 entries");
+  }
+  const output: Record<string, string> = Object.create(null) as Record<string, string>;
+  for (const name of Object.keys(input).sort(compareUtf8)) {
+    validateLocalName(name, "slot name");
+    output[name] = normalizeProjectPath(input[name], `slot ${name}`);
+  }
+  return Object.freeze(output);
 }
 
 function normalizeSource(

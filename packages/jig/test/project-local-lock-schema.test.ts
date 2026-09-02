@@ -24,6 +24,7 @@ const lock = {
     configured: {
       packagePath: "flows/configured",
       settings: { retries: 2 },
+      slots: { direct: "flows/direct" },
     },
   },
 };

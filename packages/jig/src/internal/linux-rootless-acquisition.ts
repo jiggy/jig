@@ -91,8 +91,29 @@ export async function acquirePrivateRootlessLinux(
   }
 }
 
+/**
+ * Revalidate one authority obtained by the strict acquisition above.
+ *
+ * A live Backend may own Run cgroups beside its coordinator leaf. Only exact
+ * child paths supplied by that same Backend are permitted; a new delegation,
+ * an unknown sibling, or any other authority drift still fails closed.
+ */
+export async function revalidatePrivateRootlessLinux(
+  retained: PrivateRootlessLinuxAcquisitionObservation,
+  activeRunCgroups: readonly string[],
+  dependencies: PrivateRootlessLinuxAcquisitionDependencies = systemDependencies,
+): Promise<PrivateRootlessLinuxAcquisitionObservation> {
+  try {
+    return await observe(dependencies, retained, activeRunCgroups);
+  } catch {
+    throw new PrivateRootlessLinuxAcquisitionError();
+  }
+}
+
 async function observe(
   dependencies: PrivateRootlessLinuxAcquisitionDependencies,
+  retained?: PrivateRootlessLinuxAcquisitionObservation,
+  activeRunCgroups: readonly string[] = Object.freeze([]),
 ): Promise<PrivateRootlessLinuxAcquisitionObservation> {
   const uid = dependencies.uid();
   const gid = dependencies.gid();
@@ -112,6 +133,11 @@ async function observe(
       posix.dirname(`${delegatedCgroup}/child`) !== delegatedCgroup) {
     throw new Error("the current cgroup has no safe immediate parent");
   }
+  if (retained !== undefined &&
+      (retained.currentCgroup !== currentCgroup || retained.delegatedCgroup !== delegatedCgroup ||
+        retained.payloadUid !== uid || retained.payloadGid !== gid)) {
+    throw new Error("the inherited rootless Linux authority changed");
+  }
   if (await dependencies.resolve(currentCgroup) !== currentCgroup ||
       await dependencies.resolve(delegatedCgroup) !== delegatedCgroup) {
     throw new Error("the inherited cgroup path is not canonical");
@@ -130,8 +156,19 @@ async function observe(
     throw new Error("the immediate parent cgroup is populated");
   }
   const childDirectories = [...await dependencies.listDirectories(delegatedCgroup)].sort();
-  if (childDirectories.length !== 1 || childDirectories[0] !== posix.basename(currentCgroup)) {
-    throw new Error("the immediate parent cgroup is not exclusive to this payload");
+  const currentName = posix.basename(currentCgroup);
+  const allowedChildren = new Set([currentName]);
+  for (const path of activeRunCgroups) {
+    if (typeof path !== "string" || posix.dirname(path) !== delegatedCgroup ||
+        posix.normalize(path) !== path || path.includes("\0") || path === currentCgroup) {
+      throw new Error("an active Run cgroup is outside the retained delegation");
+    }
+    allowedChildren.add(posix.basename(path));
+  }
+  if (!childDirectories.includes(currentName) ||
+      childDirectories.some((name) => !allowedChildren.has(name)) ||
+      retained === undefined && childDirectories.length !== 1) {
+    throw new Error("the immediate parent cgroup is not exclusive to this payload and its active Runs");
   }
 
   requireWords(
@@ -169,6 +206,11 @@ async function observe(
   );
   if (featureResult.stderr !== "" || featureResult.stdout.trim() !== `bubblewrap ${version}`) {
     throw new Error("Bubblewrap feature probe returned an unexpected result");
+  }
+
+  if (retained !== undefined &&
+      (retained.bubblewrapPath !== bubblewrapPath || retained.bubblewrapVersion !== version)) {
+    throw new Error("rootless Linux support changed after acquisition");
   }
 
   return Object.freeze({

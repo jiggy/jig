@@ -15,7 +15,7 @@ authority they need or fail closed.
 ## Install
 
 ```console
-npm install --global @jigging/jig@0.1.0-alpha.2
+npm install --global @jigging/jig@0.1.0-alpha.3
 ```
 
 Installing Jig also installs `@oven/bun-linux-x64-baseline@1.3.3` as an exact
@@ -62,7 +62,7 @@ Place packages under `flows/<name>/`. Each package has exact-case `FLOW.md`
 and, for this alpha, one `flow.ts`. The generated `jig.ts`
 explicitly discovers `./flows` and `./bindings`.
 
-The paired `@jigging/flow@0.1.0-alpha.2` package provides the small Run/1
+The paired `@jigging/flow@0.1.0-alpha.3` package provides the small Run/1
 authoring API. Declare it exactly in the Flow's `package.json`, generate a text
 `bun.lock` with Bun 1.3.3 and `bun install --lockfile-only`, then handle one
 finite Run:
@@ -105,20 +105,45 @@ runtime dependencies continue to run directly, and already bundled
 package-local code remains valid. An unchanged `jig check` reuses the admitted
 prepared tree only while its source and host evidence still match.
 
-Bindings use an explicit target:
+Bindings use an explicit target. A declaration may also give its package exact
+child-Flow slots:
+
+```ts
+import { defineBinding } from "@jigging/jig";
+
+export default defineBinding({
+  package: "./flows/reviewer",
+  slots: { research: "./flows/research" },
+});
+```
 
 ```console
 jig run binding:reviewer --input '{}'
 ```
 
-Jig never guesses an unprefixed target.
+`slots` is optional and omission normalizes to `{}`. It maps at most 256
+LocalName keys to other selected, direct-eligible Flow package paths in the
+same admitted generation. Slots belong to the Binding; a direct `flow:` Run
+has none.
+
+Each `flow/call` carries JSON/1 input into a fresh child context and returns a
+complete JSON/1 Run result. The child receives empty settings and attachments,
+no inherited slots, and a deadline no later than its parent. Run/1 controls
+operation identity, duplicate joins, conflicting reuse, cancellation, and
+uncertainty; Jig does not replay uncertain dispatch automatically. There is no
+separate child history, administration, scheduler, catalogue, resolver, or
+Agent surface. Jig also never guesses an unprefixed target.
+
+The alpha admits one active child operation per parent; excess distinct
+concurrent calls receive `RESOURCE_EXHAUSTED`, while sequential calls remain
+available.
 
 The complete runnable example and current specification map are in the
 [repository README](https://github.com/jigmd/jig#readme) and
 [`docs/jig/guide/index.md`](https://github.com/jigmd/jig/blob/main/docs/jig/guide/index.md).
 
 This is a prerelease alpha. It does not expose Services, Hooks, event sources,
-Agent providers, Semantic Choice, Jig Graph, runtime registries, or sandbox
-registries.
+Agent providers, Semantic Choice, Jig Graph, schedulers, catalogues, runtime
+registries, or sandbox registries.
 
 Copyright © 2026 Victor Duarte <zvictor> and contributors.

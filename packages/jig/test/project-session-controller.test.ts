@@ -199,6 +199,23 @@ describe("private finite project session", () => {
         path: "flows/bad/FLOW.md",
       },
     });
+
+    const slotFailure = new CheckError(
+      "invalid",
+      "PROJECT_BINDING_SLOT_MISSING",
+      "project-controlled slot detail",
+      "bindings/router.ts",
+      "/slots/work",
+    );
+    expect(projectError(slotFailure, "plan").toJSON()).toEqual({
+      code: "INVALID_CANDIDATE",
+      message: "project candidate is invalid",
+      diagnostic: {
+        code: "PROJECT_BINDING_SLOT_MISSING",
+        path: "bindings/router.ts",
+        pointer: "/slots/work",
+      },
+    });
   });
 });
 

@@ -2,7 +2,7 @@
 
 Minimal, dependency-free TypeScript projection of FLOW Run/1.
 
-This is the prerelease `0.1.0-alpha.2` package. Its authoritative documents
+This is the prerelease `0.1.0-alpha.3` package. Its authoritative documents
 are the [Run SDK/1](https://flow.jig.md/spec/run-sdk) and
 [Run/1](https://flow.jig.md/spec/run-protocol) specifications.
 
@@ -12,7 +12,7 @@ Declare the exact alpha in the FLOW package's `package.json`:
 {
   "private": true,
   "dependencies": {
-    "@jigging/flow": "0.1.0-alpha.2"
+    "@jigging/flow": "0.1.0-alpha.3"
   }
 }
 ```
@@ -46,12 +46,14 @@ stdout remain invalid protocol output. Root cancellation is exposed through
 `run.signal`.
 
 Run/1 also defines `run.callFlow()` and `run.callEffect()` as portable
-operations. Jig's direct-run alpha does not provide child Flows or effects, so
-it answers those calls with `OperationError` code `UNAVAILABLE`. A
-call-specific `AbortSignal` rejects a cancelled call with code `CANCELLED` and
-sends the matching Run/1 cancellation notification if the request reached the
-wire. A cancellation-only catch must rethrow every other error. Cancellation
-does not claim that remote work was undone.
+operations. Jig supplies `callFlow()` only when the invoked Binding maps that
+slot to one exact admitted direct Flow; a direct `flow:` Run has no slots. The
+current Jig alpha does not provide effects. An unavailable operation rejects
+with `OperationError` code `UNAVAILABLE`. A call-specific `AbortSignal`
+rejects a cancelled call with code `CANCELLED` and sends the matching Run/1
+cancellation notification if the request reached the wire. A cancellation-only
+catch must rethrow every other error. Cancellation does not claim that remote
+work was undone.
 
 The SDK permits at most 64 live outbound requests; another call made while all
 64 are live fails locally with `OperationError` code `RESOURCE_EXHAUSTED`. It

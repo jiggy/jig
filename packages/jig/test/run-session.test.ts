@@ -211,6 +211,29 @@ describe("private RunHostSession", () => {
     expect(await running).toMatchObject({ status: "succeeded" });
   });
 
+  test("bounds retained operation results and replays the bounded failure", async () => {
+    const process = new FakeProcess();
+    let calls = 0;
+    const session = new RunHostSession(process, invocation(), {}, {
+      async callFlow() {
+        calls += 1;
+        return { status: "succeeded", result: { outcome: "done", output: { answer: 42 } } };
+      },
+    });
+    (session as unknown as { retainedOperationBytes: number }).retainedOperationBytes = 32 * 1024 * 1024;
+    const running = session.run();
+    await process.nextHost();
+    const params = { operationId: "bounded:1", slot: "child", input: null };
+    process.emit(request("component:1", "flow/call", params));
+    expect(operationCode(await process.nextHost())).toBe("RESOURCE_EXHAUSTED");
+    process.emit(request("component:2", "flow/call", params));
+    expect(operationCode(await process.nextHost())).toBe("RESOURCE_EXHAUSTED");
+    expect(calls).toBe(1);
+    process.emit(result(null));
+    process.finish(0);
+    expect(await running).toMatchObject({ status: "succeeded" });
+  });
+
   test("dispatches effect values and declared errors with the complete snapshotted call", async () => {
     const process = new FakeProcess();
     const calls: RunHostEffectCall[] = [];
@@ -312,6 +335,30 @@ describe("private RunHostSession", () => {
     conflict.emit(result(null));
     conflict.finish(0);
     expect(await conflictRun).toMatchObject({ status: "succeeded" });
+  });
+
+  test("does not expose rejected dispatcher diagnostics to package code", async () => {
+    const process = new FakeProcess();
+    const running = new RunHostSession(process, invocation(), {}, {
+      async callFlow() {
+        throw new Error("private /host/path and coordinator detail");
+      },
+    }).run();
+    await process.nextHost();
+    process.emit(request("component:1", "flow/call", {
+      operationId: "private:1",
+      slot: "child",
+      input: null,
+    }));
+    expect(await process.nextHost()).toMatchObject({
+      error: {
+        data: { code: "EXECUTION_FAILED" },
+        message: "the host operation failed",
+      },
+    });
+    process.emit(result(null));
+    process.finish(0);
+    expect(await running).toMatchObject({ status: "succeeded" });
   });
 
   test("rejects a conflicting operation while the first dispatch is pending", async () => {
@@ -453,6 +500,16 @@ describe("private RunHostSession", () => {
 
     process.emit(result(null));
     process.finish(0);
+    expect(await running).toMatchObject({ status: "failed", code: "RESOURCE_EXHAUSTED" });
+  });
+
+  test("bounds queued response bytes before retaining another frame", async () => {
+    const process = new FakeProcess();
+    const session = new RunHostSession(process, invocation());
+    (session as unknown as { queuedResponseBytes: number }).queuedResponseBytes = 32 * 1024 * 1024;
+    const running = session.run();
+    await process.nextHost();
+    process.emit(request("component:1", "unknown/request", {}));
     expect(await running).toMatchObject({ status: "failed", code: "RESOURCE_EXHAUSTED" });
   });
 

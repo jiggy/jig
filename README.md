@@ -32,7 +32,7 @@ The required host shape is:
 
 The glibc and SSE4.2 floors come from the selected Bun baseline runtime.
 
-Installing `@jigging/jig@0.1.0-alpha.2` also installs the exact external
+Installing `@jigging/jig@0.1.0-alpha.3` also installs the exact external
 runtime dependency `@oven/bun-linux-x64-baseline@1.3.3`. Bun is not embedded in
 or bundled with Jig. npm verifies the installed package; Jig selects only that
 closed package-local path, authenticates its version, revision, and digest
@@ -51,7 +51,7 @@ channel are documented in [SECURITY.md](SECURITY.md).
 Install the alpha with npm:
 
 ```console
-npm install --global @jigging/jig@0.1.0-alpha.2
+npm install --global @jigging/jig@0.1.0-alpha.3
 ```
 
 Create a project and one Flow package:
@@ -79,7 +79,7 @@ Declare the exact FLOW SDK in `flows/hello/package.json`:
 {
   "private": true,
   "dependencies": {
-    "@jigging/flow": "0.1.0-alpha.2"
+    "@jigging/flow": "0.1.0-alpha.3"
   }
 }
 ```
@@ -141,6 +141,21 @@ The terminal result is JSON:
 A Binding is addressed explicitly as `binding:<id>`. Jig never guesses an
 unprefixed target.
 
+A Binding may also define up to 256 child-Flow `slots`, mapping LocalName keys
+to selected direct Flow package paths. The map is exact and Binding-local:
+omission means `{}`, targets come from the same admitted generation, and a
+direct `flow:` Run never borrows the Binding's slots. A `flow/call` passes only
+JSON/1 input into a fresh child context and returns the complete JSON/1 result;
+the child has empty settings and attachments and no slots, and its deadline
+cannot exceed the parent's. Run/1 governs operation identity, duplicate joins
+and conflicts, cancellation, and uncertainty; uncertain dispatch is not
+automatically replayed. Jig creates no separate child history, administration,
+scheduler, catalogue, resolver, or Agent surface.
+
+The alpha admits one active child operation per parent; excess distinct
+concurrent calls receive `RESOURCE_EXHAUSTED`, while sequential calls remain
+available.
+
 ## Dependency rule
 
 The alpha follows normal Bun package authoring. A `flow.ts` may import:
@@ -182,5 +197,5 @@ use the [DCO 1.1 process](CONTRIBUTING.md). Maintainer prerelease steps are in
 [RELEASING.md](RELEASING.md).
 
 Jig is prerelease software. Services, Hooks, event sources, Agent providers,
-Semantic Choice, Jig Graph, and extension registries are not part of this
-alpha surface.
+Semantic Choice, Jig Graph, schedulers, catalogues, and extension registries
+are not part of this alpha surface.

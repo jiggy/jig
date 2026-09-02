@@ -5,7 +5,12 @@ import { CheckError } from "../diagnostics.js";
 import { type JsonValue } from "../json.js";
 import { inspectCapturedPackage } from "../package/inspect.js";
 import { findPrivateActivationCandidateTargetV5 } from "./activation-admission.js";
-import { RunHostSession, type RunHostTerminal } from "../run/session.js";
+import {
+  RunHostSession,
+  type RunHostFlowOperationTerminal,
+  type RunHostOperationDispatcher,
+  type RunHostTerminal,
+} from "../run/session.js";
 import {
   closePrivateRootExecution,
   reacquirePrivateRootExecutionWork,
@@ -53,6 +58,10 @@ import {
   failedPrivateRootTerminal,
   normalizePrivateRootTerminal,
 } from "./root-run-state.js";
+import {
+  executePrivateRootFlowCall,
+  recoverPrivateRootFlowCallOwners,
+} from "./root-flow-call-controller.js";
 
 const PLAN_KIND = "private-direct-root-plan/1";
 const BACKING_KIND = "private-direct-root-backing/1";
@@ -105,6 +114,14 @@ export async function executePrivateRootRunLaunch(input: {
 }): Promise<PrivateRootExecutionDisposition> {
   await input.coordinator.verify();
   let work = await reacquire(input);
+  try {
+    await recoverPrivateRootFlowCallOwners(childInput(input, work));
+  } catch (error) {
+    if (error instanceof PrivateLinuxFenceUnconfirmedError) {
+      return Object.freeze({ state: "pending", reason: "fence-unconfirmed" });
+    }
+    throw error;
+  }
   if (work.lifecycle.admitted !== undefined) {
     return terminal(await closeFromAdmitted(input, work));
   }
@@ -239,6 +256,8 @@ async function startOrResumeCurrentExecution(
       // delivery and the helper's absolute timer owns the hard fence after
       // grace; aborting the Backend signal here would skip that protocol.
       stop.releaseStartupEnforcement();
+      const parent = work;
+      const dispatcher = childDispatcher(input, parent, plan.effectiveDeadlineUnixMs);
       provisional = await new RunHostSession(component, {
         input: work.run.input,
         settings: recipe.request.settings,
@@ -246,8 +265,36 @@ async function startOrResumeCurrentExecution(
         scratch: recipe.scratch,
         deadlineUnixMs: plan.effectiveDeadlineUnixMs,
         ...(input.signal === undefined ? {} : { signal: input.signal }),
-      }, { cancellationGraceMs: plan.cancellationGraceMs }).run();
+      }, { cancellationGraceMs: plan.cancellationGraceMs }, dispatcher).run();
       observedTerminal = provisional;
+      try {
+        await recoverPrivateRootFlowCallOwners(childInput(input, parent));
+      } catch (error) {
+        if (!(error instanceof PrivateLinuxFenceUnconfirmedError)) throw error;
+        // The root result is known, but it cannot become terminal while a
+        // possibly dispatched child still lacks a confirmed fence. Preserve
+        // that result, fence the parent, and let the next owner resume child
+        // cleanup before publication.
+        work = await advanceCheckpoint(
+          input,
+          work,
+          "provisional",
+          provisional as unknown as JsonValue,
+        );
+        try {
+          fence = await component.enforcement;
+        } catch (fenceError) {
+          if (fenceError instanceof PrivateLinuxFenceUnconfirmedError) {
+            return Object.freeze({ state: "pending", reason: "fence-unconfirmed" });
+          }
+          throw fenceError;
+        }
+        work = await advanceCheckpoint(input, work, "fence", {
+          kind: FENCE_KIND,
+          receipt: fence,
+        } as unknown as JsonValue);
+        return Object.freeze({ state: "pending", reason: "fence-unconfirmed" });
+      }
       work = await advanceCheckpoint(
         input,
         work,
@@ -907,6 +954,52 @@ class FirstStop {
 }
 
 type RootExecutionInput = Parameters<typeof executePrivateRootRunLaunch>[0];
+
+function childInput(
+  input: RootExecutionInput,
+  parent: PrivateReacquiredRootExecutionWork,
+) {
+  return {
+    projectRoot: input.projectRoot,
+    packageStoreRoot: input.packageStoreRoot,
+    parent,
+    coordinator: input.coordinator,
+    installedSupport: input.installedSupport,
+    backend: input.backend,
+  } as const;
+}
+
+function childDispatcher(
+  input: RootExecutionInput,
+  parent: PrivateReacquiredRootExecutionWork,
+  parentDeadlineUnixMs: number,
+): RunHostOperationDispatcher | undefined {
+  const target = findPrivateActivationCandidateTargetV5(parent.candidate, parent.run.target);
+  if (target === undefined || Object.keys(target.request.flowSlots).length === 0) return undefined;
+  let active = false;
+  return Object.freeze({
+    callFlow: async (call, signal): Promise<RunHostFlowOperationTerminal> => {
+      if (active) {
+        return Object.freeze({
+          status: "failed" as const,
+          code: "RESOURCE_EXHAUSTED" as const,
+          message: "the parent Run already has an active child operation",
+        });
+      }
+      active = true;
+      try {
+        return await executePrivateRootFlowCall({
+          ...childInput(input, parent),
+          call,
+          parentDeadlineUnixMs,
+          signal,
+        });
+      } finally {
+        active = false;
+      }
+    },
+  } satisfies RunHostOperationDispatcher);
+}
 
 function terminal(run: PrivateRootRunSnapshot): PrivateRootExecutionDisposition {
   return Object.freeze({ state: "terminal" as const, run });

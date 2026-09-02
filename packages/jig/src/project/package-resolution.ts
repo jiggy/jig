@@ -39,7 +39,7 @@ const authenticRetainedObservations = new WeakSet<object>();
 const authenticActivationRequests = new WeakSet<object>();
 
 export interface PrivateActivationRequest {
-  readonly kind: "activation-request/2";
+  readonly kind: "activation-request/3";
   readonly digest: string;
   readonly target: RunTargetIdentity;
   readonly mode: "run";
@@ -47,6 +47,7 @@ export interface PrivateActivationRequest {
   readonly package: PackageArtifactRef;
   readonly entrypoint: PackageEntrypoint;
   readonly settings: JsonObject;
+  readonly flowSlots: Readonly<Record<string, string>>;
   readonly attachments: Readonly<Record<string, {
     readonly source: string;
     readonly access: "read" | "read-write";
@@ -106,6 +107,7 @@ export function buildPrivateActivationRequests(
       package: flow.package,
       entrypoint: flow.entrypoint,
       settings: emptyRecord(),
+      flowSlots: emptyRecord(),
       attachments: emptyRecord(),
     }));
   }
@@ -122,6 +124,7 @@ export function buildPrivateActivationRequests(
       package: flow.package,
       entrypoint: flow.entrypoint,
       settings: binding.settings,
+      flowSlots: binding.slots,
       attachments: emptyRecord(),
     }));
   }
@@ -159,10 +162,11 @@ export function restorePrivateActivationRequest(value: unknown): PrivateActivati
     "package",
     "entrypoint",
     "settings",
+    "flowSlots",
     "attachments",
   ], "activation request");
-  if (root.kind !== "activation-request/2") {
-    throw new TypeError("activation request kind must be activation-request/2");
+  if (root.kind !== "activation-request/3") {
+    throw new TypeError("activation request kind must be activation-request/3");
   }
   const targetValue = exactRecord(root.target, "activation target");
   let target: RunTargetIdentity;
@@ -217,6 +221,7 @@ export function restorePrivateActivationRequest(value: unknown): PrivateActivati
       ...(entrypointValue.selector === undefined ? {} : { selector: entrypointValue.selector }),
     }),
     settings: snapshotJsonObject(root.settings, "activation settings"),
+    flowSlots: normalizeRequestFlowSlots(root.flowSlots),
     attachments: normalizeRequestAttachments(root.attachments),
   });
   if (root.digest !== request.digest) {
@@ -313,19 +318,20 @@ export function requirePrivateRetainedResolutionObservation(
 
 function createRequest(input: Omit<PrivateActivationRequest, "kind" | "digest">): PrivateActivationRequest {
   const valueWithoutDigest = Object.freeze({
-    kind: "activation-request/2" as const,
+    kind: "activation-request/3" as const,
     target: input.target,
     mode: input.mode,
     packagePath: input.packagePath,
     package: input.package,
     entrypoint: input.entrypoint,
     settings: input.settings,
+    flowSlots: input.flowSlots,
     attachments: input.attachments,
   });
   const request = Object.freeze({
     ...valueWithoutDigest,
     digest: privateDomainDigest(
-      "JIG-Activation-Request/2",
+      "JIG-Activation-Request/3",
       valueWithoutDigest as unknown as JsonValue,
     ),
   });
@@ -360,6 +366,7 @@ function semanticProject(project: PackageProjectValue): JsonValue {
       id: binding.id,
       packagePath: binding.packagePath,
       settings: binding.settings,
+      slots: binding.slots,
     })),
   } as unknown as JsonValue;
 }
@@ -448,6 +455,19 @@ function normalizeRequestAttachments(value: unknown): PrivateActivationRequest["
     throw new TypeError("activation attachments are unsupported by the direct alpha");
   }
   return emptyRecord();
+}
+
+function normalizeRequestFlowSlots(value: unknown): PrivateActivationRequest["flowSlots"] {
+  const input = snapshotJsonObject(value, "activation Flow slots");
+  if (Object.keys(input).length > 256) {
+    throw new TypeError("activation Flow slots exceed 256 entries");
+  }
+  const output: Record<string, string> = Object.create(null) as Record<string, string>;
+  for (const name of Object.keys(input).sort()) {
+    requireLocalName(name, "activation Flow slot");
+    output[name] = normalizeProjectPath(input[name], `activation Flow slot ${name}`);
+  }
+  return Object.freeze(output);
 }
 
 function snapshotJsonObject(value: unknown, label: string): JsonObject {

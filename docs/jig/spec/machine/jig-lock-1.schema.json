@@ -62,11 +62,22 @@
           "type": "object",
           "additionalProperties": true,
           "maxProperties": 65536
+        },
+        "slots": {
+          "type": "object",
+          "description": "Exact child-Flow package paths keyed by consumer-local slot name.",
+          "additionalProperties": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1024
+          },
+          "maxProperties": 256
         }
       },
       "required": [
         "packagePath",
-        "settings"
+        "settings",
+        "slots"
       ],
       "additionalProperties": false
     }
