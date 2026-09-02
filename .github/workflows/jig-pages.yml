@@ -1,0 +1,29 @@
+name: Trigger Jig Pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/jig-pages.yml'
+      - 'site/bun.lock'
+      - 'site/package.json'
+      - 'site/jig/**'
+      - 'docs/jig/**'
+      - 'scripts/build-site.sh'
+
+permissions:
+  contents: read
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Deploy this Jig revision
+        env:
+          GH_TOKEN: ${{ secrets.JIG_SITE_DISPATCH_TOKEN }}
+          SOURCE_REVISION: ${{ github.sha }}
+        run: >-
+          gh workflow run pages.yml
+          --repo jigmd/jig-site
+          --ref main
+          -f revision="$SOURCE_REVISION"
