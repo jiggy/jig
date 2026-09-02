@@ -1,54 +1,48 @@
-# npm prerelease publishing
+# Automatic npm prereleases
 
-Jig publishes one npm package per manual GitHub Actions dispatch. The workflow
-builds that candidate once, checks its manifest and recorded digest, publishes
-that exact archive with npm trusted publishing, then downloads the registry
-archive and requires its bytes and selected dist-tag to match.
+The exact prerelease version in each public package manifest is release intent.
+After CI succeeds for a reviewed merge to `main`, the release workflow
+automatically builds both package candidates, tests their exact archives,
+publishes any version not yet present on npm, refetches the registry bytes, and
+creates package-specific annotated source tags.
 
-The workflow never chooses or changes a version, writes to Git, creates a tag,
-or publishes from a rebuilt archive. `alpha` and `next` are the only permitted
-dist-tags; `latest` is untouched.
+There is no release button, version input, npm token, or separately rebuilt
+archive. The workflow publishes through npm trusted publishing in the `npm`
+GitHub environment. `@jigging/flow` always converges before `@jigging/jig`.
+The build matrix has no OIDC or Git write authority; the publish job has no
+checkout and executes no repository code.
 
-## Ordinary release
+## Releasing a version
 
-Prepare one reviewed commit on `main` which:
+In the ordinary reviewed change:
 
-1. sets the exact prerelease version in the package manifest;
-2. removes that package's `private` guard;
-3. updates its packed-package assertions to that final manifest;
-4. contains every source, lock, notice, and manifest change for the release;
-   and
-5. passes the source, packed-package, Operational Baseline/1, and applicable
-   Linux hostile gates.
+1. set the desired exact prerelease version in each package being released;
+2. keep `private` absent and `publishConfig.access` equal to `public`;
+3. update packed-package assertions and public documentation for that version;
+4. include every source, lock, notice, and manifest change for the release; and
+5. merge only after the source, packed-package, Operational Baseline/1, and
+   applicable Linux hostile gates pass.
 
-Do not remove a private guard before that final release change. The publish
-workflow deliberately stops with a specific error while the selected package's
-guard remains.
+The supported prerelease forms are `*-alpha.*` and `*-next.*`; their first
+prerelease identifier selects the npm dist-tag. `latest` is never moved by this
+workflow.
 
-From GitHub Actions, run **Publish npm prerelease** on `main`. Select one
-package, enter its exact manifest version, and select `alpha` or `next`. For the
-first paired alpha, publish `flow` first and wait for its refetch gate to pass;
-then dispatch `jig` with Jig's own manifest version. Package versions are
-independent even when a paired release happens to use matching versions.
+On the successful CI result, both candidates are built once in parallel from
+CI's exact source revision. The publish job consumes only those retained
+archives and processes Flow before Jig. If a version already exists, its
+registry archive must be byte-for-byte identical to the candidate. Changed
+package bytes under an existing version fail with an instruction to bump that
+package's version; npm versions are never replaced.
 
-The build job checks out source without persisted credentials, installs the
-exact build tools, builds and tests once, and uploads the complete candidate
-directory for seven days. It has neither an environment nor OIDC authority.
-For a Jig candidate only, it uses the existing provisioner to prepare the
-disposable runner, while Jig and Flow code remain unprivileged. The protected
-publish job has no checkout and executes no project or build code. It downloads
-that candidate, checks its manifest, commit, and digest, then uses the npm
-bundled with Node 24 after requiring npm 11.5.1 or newer.
+After registry convergence, the workflow creates any missing
+`flow-v<version>` or `jig-v<version>` tag. A newly published version must tag
+the exact candidate commit. An existing tag is never moved; when its package
+was unchanged, it remains on the earlier release commit.
 
-If npm reports the exact version absent, the publish job submits it. If the
-version already exists—or npm accepted it but its response was lost—the job
-downloads it and succeeds only when its bytes and exact dist-tag match the
-persisted candidate. Use GitHub's **Re-run failed jobs** action to retry that
-publish job against the same retained candidate. A fresh workflow dispatch
-always builds a new candidate and is not an uncertainty retry. Never republish
-or replace an accepted npm version.
+## Failure recovery
 
-Only after the registry archive and dist-tag converge, create one annotated,
-package-specific source tag on the exact candidate commit: `flow-v<version>` or
-`jig-v<version>`. Push that tag separately. The workflow intentionally has no
-Git write authority and never tags an unverified publication.
+If candidate construction fails, fix the source in a new reviewed commit. If
+publication may have succeeded but its response or a later gate failed, use
+GitHub's **Re-run failed jobs** action. The successful build matrix is not
+rerun, and the publish job converges against its retained seven-day artifacts.
+A later push is a new candidate, not an uncertainty retry.

@@ -1,29 +1,14 @@
-name: Publish npm prerelease
+name: Publish npm prereleases
 
-run-name: Publish ${{ inputs.package }} ${{ inputs.version }} with ${{ inputs.dist_tag }}
+run-name: Publish pending npm prereleases from ${{ github.event.workflow_run.head_sha }}
 
 on:
-  workflow_dispatch:
-    inputs:
-      package:
-        description: Package to publish
-        required: true
-        type: choice
-        options:
-          - flow
-          - jig
-      version:
-        description: Exact prerelease version already present in the selected manifest
-        required: true
-        type: string
-      dist_tag:
-        description: npm prerelease dist-tag
-        required: true
-        default: alpha
-        type: choice
-        options:
-          - alpha
-          - next
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+
+env:
+  SOURCE_REVISION: ${{ github.event.workflow_run.head_sha }}
 
 concurrency:
   group: npm-prerelease-publish
@@ -31,27 +16,32 @@ concurrency:
 
 jobs:
   build:
+    name: Build ${{ matrix.package }} candidate
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main'
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     permissions:
       contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        package: [flow, jig]
     env:
-      RELEASE_PACKAGE: ${{ inputs.package }}
-      RELEASE_VERSION: ${{ inputs.version }}
-      RELEASE_TAG: ${{ inputs.dist_tag }}
-    outputs:
-      artifact_name: ${{ steps.selected.outputs.artifact_name }}
-      package_name: ${{ steps.selected.outputs.package_name }}
+      RELEASE_PACKAGE: ${{ matrix.package }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          ref: ${{ env.SOURCE_REVISION }}
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: '24'
 
-      - name: Select and validate exact package
+      - name: Select and validate package
         id: selected
         run: |
           set -eu
@@ -73,31 +63,22 @@ jobs:
             node --input-type=module <<'NODE'
           import { readFile } from "node:fs/promises";
 
-          const selected = process.env.RELEASE_VERSION ?? "";
-          const prerelease = /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*$/;
-          if (!prerelease.test(selected)) {
-            throw new Error(`version must be one exact prerelease version, received ${JSON.stringify(selected)}`);
-          }
-          if (process.env.RELEASE_TAG !== "alpha" && process.env.RELEASE_TAG !== "next") {
-            throw new Error("dist-tag must be alpha or next");
-          }
-          if (process.env.GITHUB_REF !== "refs/heads/main") {
-            throw new Error("npm prereleases must be dispatched from the main branch");
-          }
           const manifest = JSON.parse(await readFile(process.env.PACKAGE_MANIFEST, "utf8"));
-          if (manifest.name !== process.env.EXPECTED_NAME || manifest.version !== selected) {
-            throw new Error(`${process.env.PACKAGE_MANIFEST} does not declare ${process.env.EXPECTED_NAME}@${selected}`);
+          const prerelease = /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)-(alpha|next)(?:\.[0-9A-Za-z-]+)*$/;
+          if (manifest.name !== process.env.EXPECTED_NAME || !prerelease.test(manifest.version)) {
+            throw new Error(`${process.env.PACKAGE_MANIFEST} must declare one exact alpha or next version for ${process.env.EXPECTED_NAME}`);
           }
           if (manifest.private === true) {
-            throw new Error(`${manifest.name} is still private; remove its private guard in the reviewed release commit before publishing`);
+            throw new Error(`${manifest.name} is still private`);
           }
           if (manifest.publishConfig?.access !== "public") {
             throw new Error(`${manifest.name} must publish with public access`);
           }
           NODE
-          artifact_name="npm-candidate-$RELEASE_PACKAGE-$RELEASE_VERSION-$GITHUB_SHA"
+          version=$(PACKAGE_MANIFEST=$manifest node --input-type=module -e \
+            'import { readFileSync } from "node:fs"; process.stdout.write(JSON.parse(readFileSync(process.env.PACKAGE_MANIFEST, "utf8")).version)')
+          artifact_name="npm-candidate-$RELEASE_PACKAGE-$version-$SOURCE_REVISION"
           printf 'artifact_name=%s\n' "$artifact_name" >> "$GITHUB_OUTPUT"
-          printf 'package_name=%s\n' "$package_name" >> "$GITHUB_OUTPUT"
 
       - name: Install exact build tools
         run: |
@@ -110,7 +91,7 @@ jobs:
 
       - name: Provision Jig's disposable rootless host
         id: jig_host
-        if: inputs.package == 'jig'
+        if: matrix.package == 'jig'
         run: |
           set -eu
           JIG_CI_BUN=$(readlink -f "$(command -v bun)")
@@ -118,7 +99,7 @@ jobs:
           scripts/ci/provision-github-rootless-host.sh provision
           printf 'ready=true\n' >> "$GITHUB_OUTPUT"
 
-      - name: Build and test selected candidate once
+      - name: Build and test exact candidate
         run: |
           set -eu
           if [ "$RELEASE_PACKAGE" = flow ]; then
@@ -145,18 +126,19 @@ jobs:
           retention-days: 7
 
   publish:
+    name: Publish exact candidates
     needs: build
     environment: npm
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 20
     permissions:
       actions: read
       id-token: write
-    env:
-      PACKAGE_NAME: ${{ needs.build.outputs.package_name }}
-      RELEASE_PACKAGE: ${{ inputs.package }}
-      RELEASE_VERSION: ${{ inputs.version }}
-      RELEASE_TAG: ${{ inputs.dist_tag }}
+    outputs:
+      flow_new: ${{ steps.release.outputs.flow_new }}
+      flow_version: ${{ steps.release.outputs.flow_version }}
+      jig_new: ${{ steps.release.outputs.jig_new }}
+      jig_version: ${{ steps.release.outputs.jig_version }}
     steps:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
@@ -177,109 +159,163 @@ jobs:
           NODE
           printf 'npm %s\n' "$npm_version"
 
-      - name: Download exact persisted candidate
+      - name: Download exact persisted candidates
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
-          name: ${{ needs.build.outputs.artifact_name }}
-          path: ${{ runner.temp }}/candidate
+          pattern: npm-candidate-*-${{ env.SOURCE_REVISION }}
+          path: ${{ runner.temp }}/candidates
 
-      - name: Verify persisted candidate
-        id: candidate
+      - name: Publish or converge Flow, then Jig
+        id: release
         run: |
           set -eu
-          set -- "$RUNNER_TEMP/candidate"/*.tgz
-          if [ "$#" -ne 1 ] || [ ! -f "$1" ]; then
-            echo "$PACKAGE_NAME did not persist exactly one candidate archive" >&2
-            exit 1
-          fi
-          archive=$1
-          filename=$(basename -- "$archive")
-          (cd "$RUNNER_TEMP/candidate" && sha256sum --check "$filename.sha256" > /dev/null)
-          manifest="$RUNNER_TEMP/candidate-package.json"
-          tar -xOzf "$archive" package/package.json > "$manifest"
-          CANDIDATE_ARCHIVE="$archive" \
-          CANDIDATE_MANIFEST="$manifest" \
-          CANDIDATE_SUCCESS="$RUNNER_TEMP/candidate/SUCCESS.json" \
-            node --input-type=module <<'NODE'
-          import { createHash } from "node:crypto";
-          import { readFile } from "node:fs/promises";
-          import { basename } from "node:path";
 
-          const archive = process.env.CANDIDATE_ARCHIVE;
-          const manifest = JSON.parse(await readFile(process.env.CANDIDATE_MANIFEST, "utf8"));
-          const success = JSON.parse(await readFile(process.env.CANDIDATE_SUCCESS, "utf8"));
-          const digest = createHash("sha256").update(await readFile(archive)).digest("hex");
-          if (manifest.name !== process.env.PACKAGE_NAME || manifest.version !== process.env.RELEASE_VERSION) {
-            throw new Error(`candidate manifest mismatch for ${process.env.PACKAGE_NAME}`);
-          }
-          if (manifest.private === true) {
-            throw new Error(`${manifest.name} candidate is still private`);
-          }
-          if (success.archive !== basename(archive) || success.sha256 !== digest) {
-            throw new Error(`${manifest.name} candidate evidence does not match its archive`);
-          }
-          if (success.commit !== process.env.GITHUB_SHA) {
-            throw new Error(`${manifest.name} candidate was not built from this workflow commit`);
-          }
-          NODE
-          printf 'archive=%s\n' "$archive" >> "$GITHUB_OUTPUT"
-
-      - name: Publish or converge exact registry version
-        env:
-          ARCHIVE: ${{ steps.candidate.outputs.archive }}
-        run: |
-          set -eu
-          presence_error="$RUNNER_TEMP/npm-presence-error"
-          if npm view "$PACKAGE_NAME@$RELEASE_VERSION" version --json > /dev/null 2> "$presence_error"; then
-            publish_status=0
-          elif grep -F 'E404' "$presence_error" > /dev/null; then
-            set +e
-            npm publish "$ARCHIVE" --access public --tag "$RELEASE_TAG" --provenance --ignore-scripts
-            publish_status=$?
-            set -e
-          else
-            echo "npm could not determine whether $PACKAGE_NAME@$RELEASE_VERSION exists" >&2
-            sed -n '1,20p' "$presence_error" >&2
-            exit 1
-          fi
-
-          mkdir -p "$RUNNER_TEMP/refetched"
-          refetched=
-          attempt=1
-          while [ "$attempt" -le 6 ]; do
-            rm -f "$RUNNER_TEMP/refetched"/*.tgz
-            if npm pack "$PACKAGE_NAME@$RELEASE_VERSION" \
-                --pack-destination "$RUNNER_TEMP/refetched" --ignore-scripts > /dev/null 2>&1; then
-              set -- "$RUNNER_TEMP/refetched"/*.tgz
-              if [ "$#" -eq 1 ] && [ -f "$1" ]; then
-                refetched=$1
-                break
-              fi
+          publish_candidate() {
+            package_kind=$1
+            package_name=$2
+            set -- "$RUNNER_TEMP"/candidates/npm-candidate-"$package_kind"-*-$SOURCE_REVISION/*.tgz
+            if [ "$#" -ne 1 ] || [ ! -f "$1" ]; then
+              echo "$package_name did not persist exactly one candidate archive" >&2
+              exit 1
             fi
-            if [ "$attempt" -lt 6 ]; then sleep 5; fi
-            attempt=$((attempt + 1))
-          done
-          if [ -z "$refetched" ]; then
-            echo "npm did not expose $PACKAGE_NAME@$RELEASE_VERSION after six attempts (publish exit $publish_status)" >&2
-            exit 1
-          fi
+            archive=$1
+            candidate_directory=$(dirname -- "$archive")
+            filename=$(basename -- "$archive")
+            (cd "$candidate_directory" && sha256sum --check "$filename.sha256" > /dev/null)
+            manifest="$RUNNER_TEMP/$package_kind-package.json"
+            tar -xOzf "$archive" package/package.json > "$manifest"
 
-          candidate_digest=$(sha256sum "$ARCHIVE")
-          candidate_digest=${candidate_digest%% *}
-          registry_digest=$(sha256sum "$refetched")
-          registry_digest=${registry_digest%% *}
-          if [ "$candidate_digest" != "$registry_digest" ]; then
-            echo "registry bytes differ from the persisted $PACKAGE_NAME candidate" >&2
-            exit 1
-          fi
+            metadata=$(\
+              CANDIDATE_ARCHIVE=$archive \
+              CANDIDATE_MANIFEST=$manifest \
+              CANDIDATE_SUCCESS="$candidate_directory/SUCCESS.json" \
+              EXPECTED_NAME=$package_name \
+              node --input-type=module -e '
+                import { createHash } from "node:crypto";
+                import { readFile } from "node:fs/promises";
+                import { basename } from "node:path";
+                const archive = process.env.CANDIDATE_ARCHIVE;
+                const manifest = JSON.parse(await readFile(process.env.CANDIDATE_MANIFEST, "utf8"));
+                const success = JSON.parse(await readFile(process.env.CANDIDATE_SUCCESS, "utf8"));
+                const digest = createHash("sha256").update(await readFile(archive)).digest("hex");
+                const match = /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)-(alpha|next)(?:\.[0-9A-Za-z-]+)*$/.exec(manifest.version);
+                if (manifest.name !== process.env.EXPECTED_NAME || match === null) throw new Error(`candidate manifest mismatch for ${process.env.EXPECTED_NAME}`);
+                if (manifest.private === true || manifest.publishConfig?.access !== "public") throw new Error(`${manifest.name} candidate is not public`);
+                if (success.archive !== basename(archive) || success.sha256 !== digest) throw new Error(`${manifest.name} candidate evidence does not match its archive`);
+                if (success.commit !== process.env.SOURCE_REVISION) throw new Error(`${manifest.name} candidate was not built from the successful CI revision`);
+                process.stdout.write(`${manifest.version}\n${match[4]}\n`);
+              '
+            )
+            version=$(printf '%s\n' "$metadata" | sed -n '1p')
+            release_tag=$(printf '%s\n' "$metadata" | sed -n '2p')
 
-          expected=$(RELEASE_VERSION="$RELEASE_VERSION" node -p 'JSON.stringify(process.env.RELEASE_VERSION)')
-          attempt=1
-          while [ "$attempt" -le 6 ]; do
-            tagged=$(npm view "$PACKAGE_NAME" "dist-tags.$RELEASE_TAG" --json 2> /dev/null || true)
-            if [ "$tagged" = "$expected" ]; then exit 0; fi
-            if [ "$attempt" -lt 6 ]; then sleep 5; fi
-            attempt=$((attempt + 1))
-          done
-          echo "$PACKAGE_NAME@$RELEASE_VERSION did not converge on the $RELEASE_TAG dist-tag (publish exit $publish_status)" >&2
-          exit 1
+            presence_error="$RUNNER_TEMP/$package_kind-presence-error"
+            new_release=false
+            if npm view "$package_name@$version" version --json > /dev/null 2> "$presence_error"; then
+              publish_status=0
+            elif grep -F 'E404' "$presence_error" > /dev/null; then
+              new_release=true
+              set +e
+              npm publish "$archive" --access public --tag "$release_tag" --provenance --ignore-scripts
+              publish_status=$?
+              set -e
+            else
+              echo "npm could not determine whether $package_name@$version exists" >&2
+              sed -n '1,20p' "$presence_error" >&2
+              exit 1
+            fi
+
+            refetched_directory="$RUNNER_TEMP/refetched-$package_kind"
+            mkdir -p "$refetched_directory"
+            refetched=
+            attempt=1
+            while [ "$attempt" -le 6 ]; do
+              rm -f "$refetched_directory"/*.tgz
+              if npm pack "$package_name@$version" \
+                  --pack-destination "$refetched_directory" --ignore-scripts > /dev/null 2>&1; then
+                set -- "$refetched_directory"/*.tgz
+                if [ "$#" -eq 1 ] && [ -f "$1" ]; then
+                  refetched=$1
+                  break
+                fi
+              fi
+              if [ "$attempt" -lt 6 ]; then sleep 5; fi
+              attempt=$((attempt + 1))
+            done
+            if [ -z "$refetched" ]; then
+              echo "npm did not expose $package_name@$version after six attempts (publish exit $publish_status)" >&2
+              exit 1
+            fi
+
+            candidate_digest=$(sha256sum "$archive")
+            candidate_digest=${candidate_digest%% *}
+            registry_digest=$(sha256sum "$refetched")
+            registry_digest=${registry_digest%% *}
+            if [ "$candidate_digest" != "$registry_digest" ]; then
+              echo "registry bytes differ from the persisted $package_name candidate; bump its version" >&2
+              exit 1
+            fi
+
+            expected=$(RELEASE_VERSION=$version node -p 'JSON.stringify(process.env.RELEASE_VERSION)')
+            attempt=1
+            while [ "$attempt" -le 6 ]; do
+              tagged=$(npm view "$package_name" "dist-tags.$release_tag" --json 2> /dev/null || true)
+              if [ "$tagged" = "$expected" ]; then break; fi
+              if [ "$attempt" -lt 6 ]; then sleep 5; fi
+              attempt=$((attempt + 1))
+            done
+            if [ "$tagged" != "$expected" ]; then
+              echo "$package_name@$version did not converge on the $release_tag dist-tag (publish exit $publish_status)" >&2
+              exit 1
+            fi
+            printf '%s_new=%s\n' "$package_kind" "$new_release" >> "$GITHUB_OUTPUT"
+            printf '%s_version=%s\n' "$package_kind" "$version" >> "$GITHUB_OUTPUT"
+          }
+
+          publish_candidate flow @jigging/flow
+          publish_candidate jig @jigging/jig
+
+  tag:
+    name: Tag published source
+    needs: publish
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Create or verify annotated package tags
+        env:
+          FLOW_NEW: ${{ needs.publish.outputs.flow_new }}
+          FLOW_VERSION: ${{ needs.publish.outputs.flow_version }}
+          GH_TOKEN: ${{ github.token }}
+          JIG_NEW: ${{ needs.publish.outputs.jig_new }}
+          JIG_VERSION: ${{ needs.publish.outputs.jig_version }}
+          SOURCE_REVISION: ${{ env.SOURCE_REVISION }}
+        run: |
+          set -eu
+
+          converge_tag() {
+            tag=$1
+            message=$2
+            require_current=$3
+            if ref_type=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$tag" --jq .object.type 2> /dev/null); then
+              ref_sha=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$tag" --jq .object.sha)
+              if [ "$ref_type" = tag ]; then
+                target=$(gh api "repos/$GITHUB_REPOSITORY/git/tags/$ref_sha" --jq .object.sha)
+              else
+                target=$ref_sha
+              fi
+              if [ "$require_current" = true ] && [ "$target" != "$SOURCE_REVISION" ]; then
+                echo "$tag already names a different source revision" >&2
+                exit 1
+              fi
+              return
+            fi
+            tag_object=$(gh api --method POST "repos/$GITHUB_REPOSITORY/git/tags" \
+              -f tag="$tag" -f message="$message" -f object="$SOURCE_REVISION" \
+              -f type=commit --jq .sha)
+            gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" \
+              -f ref="refs/tags/$tag" -f sha="$tag_object" > /dev/null
+          }
+
+          converge_tag "flow-v$FLOW_VERSION" "@jigging/flow $FLOW_VERSION" "$FLOW_NEW"
+          converge_tag "jig-v$JIG_VERSION" "@jigging/jig $JIG_VERSION" "$JIG_NEW"
