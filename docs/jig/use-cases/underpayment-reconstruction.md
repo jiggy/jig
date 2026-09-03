@@ -1,7 +1,14 @@
 # Underpayment reconstruction
 
-[The catalogue](./) is the source of truth for this non-normative brief's
-maturity, topology, and next gate.
+[The use-case index](./) records this non-normative brief's current evidence
+state. The [source-linked reconstruction family](./catalogue.md#2-source-linked-reconstruction-and-exact-calculation)
+provides its broader comparison set.
+
+**Evidence state:** `specified`, not demonstrated.
+
+**Claim under test:** independently distributed extraction and rule packages
+can reduce professional review work without transferring adjudication to an
+Agent or weakening source and arithmetic traceability.
 
 ## Outcome
 
@@ -123,11 +130,17 @@ Domain rules, professional oversight, OCR quality, and privacy policy remain
 application responsibilities regardless of how input and result transport is
 eventually implemented.
 
-## Evidence
+## Evidence and falsifier
 
 This case is specified but cannot yet be probed honestly against the public
 alpha. The next evidence is a domain-reviewed fixture corpus and an exact
 input/output contract independent of any proposed Jig API.
+
+The Jig-specific hypothesis fails if a local extraction application feeding
+the same calculator matches its accuracy, review time, and cross-party
+maintenance cost. It also fails if independently packaged rules make source
+and version provenance harder—not easier—for the reviewing professional to
+understand.
 
 ## Variants
 

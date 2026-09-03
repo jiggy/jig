@@ -29,8 +29,26 @@ export default defineConfig({
         {
           text: "Use cases",
           items: [
-            { text: "Catalogue", link: "/use-cases/" },
-            { text: "Pattern notebook", link: "/use-cases/patterns" },
+            { text: "Overview and method", link: "/use-cases/" },
+            { text: "Case catalogue", link: "/use-cases/catalogue" },
+            { text: "Pattern handbook", link: "/use-cases/patterns" },
+          ],
+        },
+        {
+          text: "Specified briefs",
+          items: [
+            {
+              text: "Confidential benchmark",
+              link: "/use-cases/confidential-benchmark",
+            },
+            {
+              text: "Underpayment reconstruction",
+              link: "/use-cases/underpayment-reconstruction",
+            },
+            {
+              text: "Futureproof event plan",
+              link: "/use-cases/futureproof-event-plan",
+            },
           ],
         },
       ],

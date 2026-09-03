@@ -1,7 +1,14 @@
 # Confidential benchmark
 
-[The catalogue](./) is the source of truth for this non-normative brief's
-maturity, topology, and next gate.
+[The use-case index](./) records this non-normative brief's current evidence
+state. The [contained foreign computation family](./catalogue.md#1-contained-foreign-computation)
+provides its broader comparison set.
+
+**Evidence state:** `specified`, not demonstrated.
+
+**Claim under test:** an independent host can preserve exact admission and a
+bounded execution envelope across an author/operator trust boundary. This
+brief does not claim that arbitrary output is safe to disclose.
 
 ## Outcome
 
@@ -124,7 +131,7 @@ A faithful probe first needs a bounded input path that does not place secret
 bytes in command arguments. That requirement does not imply a particular Jig
 API, attachment model, or implementation.
 
-## Evidence
+## Evidence and falsifier
 
 This case is specified but not demonstrated. A clean-room builder may first
 prove containment with public cases, but must stop and report the secret-input
@@ -132,6 +139,12 @@ gap rather than changing Jig to make the complete example pass. Once that gap
 is addressed independently, the builder should receive only public Jig and
 FLOW documentation, exact packages, this brief, and the hostile-test
 expectations.
+
+The Jig-specific hypothesis fails if a competently configured disposable VM
+or CI sandbox gives the same author/operator workflow, reviewability, and
+cleanup with no material additional integration. The confidentiality claim
+fails on any author-observable egress or unexpected secret retention, even if
+the numerical benchmark result is correct.
 
 ## Variants
 

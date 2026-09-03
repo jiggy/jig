@@ -1,7 +1,14 @@
 # Futureproof event plan
 
-[The catalogue](./) is the source of truth for this non-normative brief's
-maturity, topology, and next gate.
+[The use-case index](./) records this non-normative brief's current evidence
+state. The [explicit uncertainty family](./catalogue.md#6-decisions-under-explicit-uncertainty)
+provides its broader comparison set.
+
+**Evidence state:** `specified`, not demonstrated.
+
+**Claim under test:** scenario-isolated calls reduce false claims that one
+choice is robust, relative to one Agent shown every scenario, without hiding
+ordinary model variance or granting the Agent additional authority.
 
 ## Outcome
 
@@ -115,12 +122,17 @@ dynamic catalogue, Event, Hook, Service, or new public SDK surface.
 The organizer passes the small input through JSON/1. A future user interface
 may improve the experience but is not part of this use case's proof.
 
-## Evidence
+## Evidence and falsifier
 
 This case is specified and appears ready for a clean-room design probe. The
 probe builder receives this brief, public documentation, exact released
 packages, and a fixed evaluation set. The builder may report a platform gap
 but may not add an API to Jig while consuming it.
+
+The orchestration hypothesis fails if isolation does not reduce false robust
+choices under the stated cost and accuracy bounds, or if a deterministic
+comparison table produces equivalent decisions. A successful implementation
+that misses those outcome thresholds proves only that the API can be used.
 
 ## Variants
 

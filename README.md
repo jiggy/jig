@@ -204,7 +204,7 @@ fails closed or is prepared again before another review.
 
 - [Jig website](https://jig.md/)
 - [Jig direct-alpha guide](docs/jig/guide/index.md)
-- [Jig use-case catalogue](docs/jig/use-cases/index.md)
+- [Jig use-case research](docs/jig/use-cases/index.md)
 - [FLOW website](https://flow.jig.md/)
 - [FLOW Package/1](docs/flow/spec/package-format.md)
 - [FLOW Run/1](docs/flow/spec/run-protocol.md)
