@@ -17,8 +17,24 @@ const researchSidebar = [
   },
 ];
 
+const guideSidebar = [
+  {
+    text: "Guides",
+    items: [
+      { text: "Direct alpha", link: "/guide/" },
+      {
+        text: "Choosing a workflow structure",
+        link: "/guide/workflow-design",
+      },
+    ],
+  },
+];
+
 export default defineConfig({
   root: resolve(siteDirectory, "../../docs/jig"),
+  route: {
+    exclude: ["**/AGENTS.md"],
+  },
   outDir:
     process.env.PUBLIC_SITE_OUTPUT ?? resolve(siteDirectory, "doc_build"),
   siteOrigin: "https://jig.md",
@@ -38,6 +54,7 @@ export default defineConfig({
       { text: "GitHub", link: "https://github.com/jigmd/jig" },
     ],
     sidebar: {
+      "/guide/": guideSidebar,
       "/use-cases": researchSidebar,
       "/orchestration-patterns": researchSidebar,
       "/spec/": [

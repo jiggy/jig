@@ -6,6 +6,9 @@ const siteDirectory = import.meta.dirname;
 
 export default defineConfig({
   root: resolve(siteDirectory, "../../docs/flow"),
+  route: {
+    exclude: ["**/AGENTS.md"],
+  },
   outDir:
     process.env.PUBLIC_SITE_OUTPUT ?? resolve(siteDirectory, "doc_build"),
   siteOrigin: "https://flow.jig.md",

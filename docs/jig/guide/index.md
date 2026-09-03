@@ -32,6 +32,8 @@ the reviewed proposal into admission.
   a complete first Flow and the supported-host requirements.
 - The [use-case catalogue](../use-cases.md) records uniformly scoped product
   hypotheses for future probes and tutorials.
+- [Choosing a workflow structure](./workflow-design.md) explains where Agent
+  judgment, deterministic checks, graph structure, and host authority belong.
 - [Candidate orchestration patterns](../orchestration-patterns.md) records the
   reusable methods those use cases may test.
 - [Project Authoring SDK/1](../spec/project-sdk.md) defines inert `jig.ts` and

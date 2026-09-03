@@ -1,0 +1,56 @@
+# Private Jig host
+
+## Purpose
+
+Owns Jig's trusted private machinery for admission, retained artifacts,
+project and Run lifecycles, rootless Linux containment, dependency preparation,
+child calls, and Agent providers.
+
+## Ownership
+
+- Activation planning, admission storage, project sessions, root controllers,
+  and durable lifecycle state.
+- Package artifact retention, materialization, and preparation.
+- Installed Bun authentication, rootless acquisition, delegation,
+  containment, supervision, and execution.
+- Agent clients and launchers, capability enforcement, credential isolation,
+  structured results, and package-local skill projection.
+
+## Local Contracts
+
+- Every `Private*` export remains package-private and is not an extension SPI.
+- Strictly parse, bound, snapshot, and authenticate values crossing a trust
+  boundary. Decoding inert bytes must not mint authority.
+- Preserve the sequence observe, identify, plan, seal, admit, revalidate,
+  execute. Never execute mutable project source or stale host evidence.
+- Flow code receives no ambient host authority. Minimize environment, mounts,
+  executables, network, credentials, and capabilities explicitly.
+- Provider credentials are host configuration and must not enter Flow input,
+  project state, artifacts, diagnostics, or unrelated provider processes.
+- Deadlines and cancellation fence descendants, settle each terminal once,
+  and complete bounded cleanup. Do not replay uncertain operations.
+- Durable transitions use exact identities and conflict-safe commits;
+  recovery must not create duplicate owners or official Runs.
+- Fail closed on unsupported hosts, changed bytes, missing enforcement,
+  malformed protocol, cleanup failure, or unverifiable provenance.
+
+## Work Guidance
+
+- Under the prerelease rule, replace old formats completely; do not retain
+  readers, migrations, or aliases.
+- Add negative, hostile, race, restart, and cleanup evidence for
+  trust-boundary changes.
+- Do not weaken production checks for an unprovisioned unit test. Use private
+  injection seams for units and the proof host for kernel behavior.
+- A provider adapter may narrow common Agent authority, never widen it.
+
+## Verification
+
+- Run the directly corresponding `packages/jig/test/` files, then
+  `bun test packages/jig`.
+- Containment, delegation, preparation, process-lifecycle, or Agent authority
+  changes require the provisioned hostile-host suite and residue check.
+
+## Child DOX Index
+
+- None.

@@ -7,7 +7,11 @@ context, and others make iteration or choice easier to inspect.
 They are ideas to test, not built-in commands or rules every workflow should
 follow. Start with a simple sequence and use a named pattern only when its
 extra structure prevents a real failure. Links lead to possible examples in
-the [use-case catalogue](./use-cases.md).
+the [use-case catalogue](./use-cases.md). Prompt techniques, generic graph
+shapes, feedback sources, and specialized optimizers remain implementation
+choices unless an enforced structure prevents a distinct failure; the
+[workflow-design guide](./guide/workflow-design.md) explains that boundary and
+links to related methods.
 
 ## Blackboard to fixpoint
 
