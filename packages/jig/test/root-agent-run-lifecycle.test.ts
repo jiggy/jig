@@ -47,6 +47,8 @@ const nativePiGatewayTest = HOSTILE && nativePiPath !== undefined &&
     nativePiGatewayModel !== undefined && process.env.OPENROUTER_API_KEY !== undefined
   ? test
   : test.skip;
+const NATIVE_AGENT_TIMEOUT_MS = 120_000;
+const NATIVE_AGENT_TEST_TIMEOUT_MS = 180_000;
 const initialTemporaryState = new Set(
   (await readdir(tmpdir())).filter(rootlessTemporaryEntry),
 );
@@ -67,10 +69,13 @@ proofDescribe("private contained Agent Run lifecycle", () => {
       await writeProject(root);
       session = await openPrivateProjectSession({
         directory: root,
-        host: await openPrivateInstalledBunHost(installedBunLocation, {
-          CODEX_HOME: process.env.CODEX_HOME,
-          CODEX_PATH: await realpath(nativeCodexPath!),
-          JIG_AGENT_CLIENT: "codex",
+        host: Object.freeze({
+          ...await openPrivateInstalledBunHost(installedBunLocation, {
+            CODEX_HOME: process.env.CODEX_HOME,
+            CODEX_PATH: await realpath(nativeCodexPath!),
+            JIG_AGENT_CLIENT: "codex",
+          }),
+          runTimeoutMs: NATIVE_AGENT_TIMEOUT_MS,
         }),
       });
       const plan = await session.plan({ lockMode: "update" });
@@ -81,6 +86,7 @@ proofDescribe("private contained Agent Run lifecycle", () => {
         session.rootAdministration,
         "native-codex-subscription",
         "success",
+        NATIVE_AGENT_TEST_TIMEOUT_MS,
       )).toMatchObject({
         state: "terminal",
         terminal: {
@@ -110,7 +116,7 @@ proofDescribe("private contained Agent Run lifecycle", () => {
       await session?.close().catch(() => undefined);
       await rm(root, { recursive: true, force: true });
     }
-  }, 90_000);
+  }, NATIVE_AGENT_TEST_TIMEOUT_MS);
 
   nativeCodexGatewayTest("executes native Codex through ACP with an explicit OpenRouter gateway", async () => {
     const root = await mkdtemp(join(tmpdir(), "jig-native-codex-gateway-project-"));
@@ -119,11 +125,14 @@ proofDescribe("private contained Agent Run lifecycle", () => {
       await writeProject(root);
       session = await openPrivateProjectSession({
         directory: root,
-        host: await openPrivateInstalledBunHost(installedBunLocation, {
-          CODEX_PATH: await realpath(nativeCodexPath!),
-          JIG_AGENT_CLIENT: "codex",
-          OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY,
-          OPENROUTER_MODEL: nativeCodexGatewayModel,
+        host: Object.freeze({
+          ...await openPrivateInstalledBunHost(installedBunLocation, {
+            CODEX_PATH: await realpath(nativeCodexPath!),
+            JIG_AGENT_CLIENT: "codex",
+            OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY,
+            OPENROUTER_MODEL: nativeCodexGatewayModel,
+          }),
+          runTimeoutMs: NATIVE_AGENT_TIMEOUT_MS,
         }),
       });
       const plan = await session.plan({ lockMode: "update" });
@@ -134,6 +143,7 @@ proofDescribe("private contained Agent Run lifecycle", () => {
         session.rootAdministration,
         "native-codex-openrouter",
         "gateway",
+        NATIVE_AGENT_TEST_TIMEOUT_MS,
       );
       expect(terminal).toMatchObject({
         state: "terminal",
@@ -159,7 +169,7 @@ proofDescribe("private contained Agent Run lifecycle", () => {
       await session?.close().catch(() => undefined);
       await rm(root, { recursive: true, force: true });
     }
-  }, 90_000);
+  }, NATIVE_AGENT_TEST_TIMEOUT_MS);
 
   nativeClaudeGatewayTest("executes native Claude Code through ACP with an explicit OpenRouter gateway", async () => {
     const root = await mkdtemp(join(tmpdir(), "jig-native-claude-gateway-project-"));
@@ -168,11 +178,14 @@ proofDescribe("private contained Agent Run lifecycle", () => {
       await writeProject(root);
       session = await openPrivateProjectSession({
         directory: root,
-        host: await openPrivateInstalledBunHost(installedBunLocation, {
-          CLAUDE_PATH: await realpath(nativeClaudePath!),
-          JIG_AGENT_CLIENT: "claude",
-          OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY,
-          OPENROUTER_MODEL: nativeClaudeGatewayModel,
+        host: Object.freeze({
+          ...await openPrivateInstalledBunHost(installedBunLocation, {
+            CLAUDE_PATH: await realpath(nativeClaudePath!),
+            JIG_AGENT_CLIENT: "claude",
+            OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY,
+            OPENROUTER_MODEL: nativeClaudeGatewayModel,
+          }),
+          runTimeoutMs: NATIVE_AGENT_TIMEOUT_MS,
         }),
       });
       const plan = await session.plan({ lockMode: "update" });
@@ -183,6 +196,7 @@ proofDescribe("private contained Agent Run lifecycle", () => {
         session.rootAdministration,
         "native-claude-openrouter",
         "gateway",
+        NATIVE_AGENT_TEST_TIMEOUT_MS,
       );
       expect(terminal).toMatchObject({
         state: "terminal",
@@ -208,7 +222,7 @@ proofDescribe("private contained Agent Run lifecycle", () => {
       await session?.close().catch(() => undefined);
       await rm(root, { recursive: true, force: true });
     }
-  }, 90_000);
+  }, NATIVE_AGENT_TEST_TIMEOUT_MS);
 
   nativePiGatewayTest("executes native Pi through ACP with an explicit OpenRouter gateway", async () => {
     const root = await mkdtemp(join(tmpdir(), "jig-native-pi-gateway-project-"));
@@ -217,11 +231,14 @@ proofDescribe("private contained Agent Run lifecycle", () => {
       await writeProject(root);
       session = await openPrivateProjectSession({
         directory: root,
-        host: await openPrivateInstalledBunHost(installedBunLocation, {
-          JIG_AGENT_CLIENT: "pi",
-          OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY,
-          OPENROUTER_MODEL: nativePiGatewayModel,
-          PI_PATH: await realpath(nativePiPath!),
+        host: Object.freeze({
+          ...await openPrivateInstalledBunHost(installedBunLocation, {
+            JIG_AGENT_CLIENT: "pi",
+            OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY,
+            OPENROUTER_MODEL: nativePiGatewayModel,
+            PI_PATH: await realpath(nativePiPath!),
+          }),
+          runTimeoutMs: NATIVE_AGENT_TIMEOUT_MS,
         }),
       });
       const plan = await session.plan({ lockMode: "update" });
@@ -232,6 +249,7 @@ proofDescribe("private contained Agent Run lifecycle", () => {
         session.rootAdministration,
         "native-pi-openrouter",
         "gateway",
+        NATIVE_AGENT_TEST_TIMEOUT_MS,
       );
       expect(terminal).toMatchObject({
         state: "terminal",
@@ -257,7 +275,7 @@ proofDescribe("private contained Agent Run lifecycle", () => {
       await session?.close().catch(() => undefined);
       await rm(root, { recursive: true, force: true });
     }
-  }, 90_000);
+  }, NATIVE_AGENT_TEST_TIMEOUT_MS);
 
   test("fences deterministic provider success, invalid output, cancellation, deadline, and loss", async () => {
     const root = await mkdtemp(join(tmpdir(), "jig-agent-lifecycle-project-"));
