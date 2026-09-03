@@ -1,322 +1,388 @@
 # Candidate orchestration patterns
 
-These non-normative methods may appear inside the
-[Jig use cases](./use-cases.md). They are not Jig APIs, Sley primitives, or
-recommended architecture. Ordinary sequencing, fan-out, branching, and joins
-need no branded pattern.
+Orchestration patterns are reusable ways to organize work that one ordinary
+prompt may not handle reliably. Some separate evidence, some protect private
+context, and others make iteration or choice easier to inspect.
 
-Every method below is a `candidate`. It becomes established only after two
-independently supported use cases show that removing its irreducible property
-worsens the outcome against a simpler baseline.
-
-The minimum topology is the least arrangement that preserves that property,
-not the largest arrangement imaginable. A second persona with the same
-context, tools, authority, and failure modes is not an independent Agent.
-
-Mechanism tags are descriptive only: `deterministic-step`, `sequence`,
-`parallel`, `branch`, `join`, `bounded-loop`, `wait`, `authorized-choice`, and
-`fact-trigger`.
+They are ideas to test, not built-in commands or rules every workflow should
+follow. Start with a simple sequence and use a named pattern only when its
+extra structure prevents a real failure. Links lead to possible examples in
+the [use-case catalogue](./use-cases.md).
 
 ## Blackboard to fixpoint
 
-`minimum single-agent` · `fact-trigger`, `join`, `bounded-loop`
+Specialist roles add findings to a shared record. New findings trigger only
+the roles that depend on them; work stops when no finding can trigger more
+work.
 
-- **Failure prevented:** A fixed schedule repeatedly runs irrelevant roles or
+*Candidate pattern · One Agent*
+
+- **Problem it solves:** A fixed schedule repeatedly runs irrelevant roles or
   misses useful work unlocked by newly established facts.
-- **Protocol:** Roles append typed immutable deltas; deterministic activation
+- **How it works:** Roles append typed immutable deltas; deterministic activation
   invokes only affected roles; provenance is retained; execution stops at
   quiescence or a hard budget.
-- **Irreducible property:** Incremental activation from facts rather than
+- **Why the structure matters:** Incremental activation from facts rather than
   polling or repeated global reinterpretation.
-- **Collapse when:** A known sequence, event handler, or one bounded loop
+- **Use something simpler when:** A known sequence, event handler, or one bounded loop
   produces the same result.
-- **Candidate cases:** [Software factory](./use-cases.md#software-factory) and
+- **Possible uses:** [Software factory](./use-cases.md#software-factory) and
   [persistent job-search campaign](./use-cases.md#persistent-job-search-campaign),
   but neither yet establishes the method.
-- **Evidence gate:** Demonstrate useful work avoided, termination, provenance,
+- **What would prove it:** Demonstrate useful work avoided, termination, provenance,
   and better recovery than a simple sequential loop.
 
 ## Bounded semantic dispatch
 
-`minimum single-agent` · `authorized-choice`, `branch`
+A model chooses only among actions the system owner has already approved.
+Ordinary software verifies the choice before anything runs.
 
-- **Failure prevented:** Free-text interpretation becomes authority to invent,
+*Candidate pattern · One Agent*
+
+- **Problem it solves:** Free-text interpretation becomes authority to invent,
   install, or invoke an unapproved procedure.
-- **Protocol:** Deterministic code constructs the complete eligible set; one
+- **How it works:** Deterministic code constructs the complete eligible set; one
   Agent returns an ID or abstention; code validates and invokes the exact map.
-- **Irreducible property:** Semantic ranking remains powerless over admission
+- **Why the structure matters:** Semantic ranking remains powerless over admission
   and eligibility.
-- **Collapse when:** A menu, form, classifier, or predicate selects reliably.
-- **Candidate cases:** [Repair diagnostic](./use-cases.md#repair-diagnostic),
+- **Use something simpler when:** A menu, form, classifier, or predicate
+  selects reliably.
+- **Possible uses:** [Repair diagnostic](./use-cases.md#repair-diagnostic),
   [vetted rule front desk](./use-cases.md#vetted-rule-front-desk),
   [approved waste disposition](./use-cases.md#approved-waste-disposition), and
   [approved release transform](./use-cases.md#approved-release-transform).
-- **Evidence gate:** Test adversarial out-of-set requests and show better task
+- **What would prove it:** Test adversarial out-of-set requests and show better task
   completion than the best deterministic router with zero unauthorized calls.
 
 ## Causal discrimination cascade
 
-`minimum single-agent` · `sequence`, `branch`, `bounded-loop`
+Competing explanations make testable predictions before more evidence is
+gathered. The best safe, affordable check is run, the explanations are updated,
+and the cycle repeats within a fixed limit.
 
-- **Failure prevented:** One plausible diagnosis suppresses rival explanations
+*Candidate pattern · One Agent*
+
+- **Problem it solves:** One plausible diagnosis suppresses rival explanations
   before discriminating evidence is acquired.
-- **Protocol:** Commit rival causal models and predicted observations; choose
+- **How it works:** Commit rival causal models and predicted observations; choose
   the cheapest authorized discriminator; update; stop at a fixed test budget.
-- **Irreducible property:** Rival models remain separate until evidence, rather
+- **Why the structure matters:** Rival models remain separate until evidence, rather
   than being averaged into one narrative.
-- **Collapse when:** A professional procedure already fixes the next safe test
+- **Use something simpler when:** A professional procedure already fixes the
+  next safe test
   or one diagnostician preserves alternatives equally well.
-- **Candidate cases:** [Household energy investigation](./use-cases.md#household-energy-investigation)
+- **Possible uses:**
+  [Household energy investigation](./use-cases.md#household-energy-investigation)
   and, as a possible later step, [repair diagnostic](./use-cases.md#repair-diagnostic).
-- **Evidence gate:** On known causes, reduce premature closure without more
+- **What would prove it:** On known causes, reduce premature closure without more
   unsafe tests, cost, or delay than the strongest diagnostic baseline.
 
 ## Controlled assumption reveal
 
-`minimum single-agent` · `branch`, `join`, `deterministic-step`
+The same adviser evaluates each possible future separately, without being
+shown the other scenarios. It commits to each choice before the choices are
+compared.
 
-- **Failure prevented:** A holistic recommendation hides that its action flips
+*Candidate pattern · One Agent*
+
+- **Problem it solves:** A holistic recommendation hides that its action flips
   under one declared assumption.
-- **Protocol:** Invoke one logical role over sealed assumption bundles; commit
+- **How it works:** Invoke one logical role over sealed assumption bundles; commit
   closed action IDs; compare those IDs and supplied conditions exactly.
-- **Irreducible property:** Cross-scenario blindness until commitment.
-- **Collapse when:** Consequences can be calculated, an all-context call is as
+- **Why the structure matters:** Cross-scenario blindness until commitment.
+- **Use something simpler when:** Consequences can be calculated, an
+  all-context call is as
   sensitive, or ordinary model variance exceeds assumption sensitivity.
-- **Candidate case:** [Futureproof event plan](./use-cases.md#futureproof-event-plan).
-- **Evidence gate:** At equal calls and budget, reduce false robustness versus
+- **Possible use:** [Futureproof event plan](./use-cases.md#futureproof-event-plan).
+- **What would prove it:** At equal calls and budget, reduce false robustness versus
   all-context and identical non-Jig implementations.
 
 ## Double-entry reconciliation
 
-`minimum single-agent` · `parallel`, `join`, `deterministic-step`
+Two passes use different evidence, methods, or known failure tendencies to
+turn the same source into structured facts. Exact comparison exposes their
+disagreements instead of blending them away.
 
-- **Failure prevented:** One reconstruction silently omits or mistranscribes a
+*Candidate pattern · One Agent*
+
+- **Problem it solves:** One reconstruction silently omits or mistranscribes a
   material fact.
-- **Protocol:** Build two typed records through paths that differ in evidence,
+- **How it works:** Build two typed records through paths that differ in evidence,
   procedure, or measured failure behavior; canonicalize syntax only; compare
   exact fields; send disputed source spans to a resolver or human.
-- **Irreducible property:** Independent commitment followed by field-level
+- **Why the structure matters:** Independent commitment followed by field-level
   disagreement, not narrative consensus.
-- **Collapse when:** Both passes share their dominant failure mode or a
+- **Use something simpler when:** Both passes share their dominant failure mode or a
   deterministic parser covers the format.
-- **Candidate cases:** Possible extensions to
+- **Possible uses:** Possible extensions to
   [underpayment reconstruction](./use-cases.md#underpayment-reconstruction)
-  and [protocol deviation reconstruction](./use-cases.md#protocol-deviation-reconstruction).
+  and
+  [protocol deviation reconstruction](./use-cases.md#protocol-deviation-reconstruction).
   Their current minimum designs do not instantiate double entry.
-- **Evidence gate:** Reduce missed material facts enough to offset false
+- **What would prove it:** Reduce missed material facts enough to offset false
   conflicts, resolution time, and the second call.
 
 ## Gauntlet
 
-`minimum single-agent` · `sequence`, `bounded-loop`, `deterministic-step`
+A draft must pass a series of explicit checks. Failed checks return precise
+problems for limited repair attempts instead of an open-ended rewrite.
 
-- **Failure prevented:** An artifact is declared complete by the same
+*Candidate pattern · One Agent*
+
+- **Problem it solves:** An artifact is declared complete by the same
   unbounded process that produced it.
-- **Protocol:** Build; run declared gates; return typed failures to the relevant
+- **How it works:** Build; run declared gates; return typed failures to the relevant
   repair stage; stop on acceptance, a blocking failure, or an iteration cap.
-- **Irreducible property:** Explicit progressive gates and bounded,
+- **Why the structure matters:** Explicit progressive gates and bounded,
   evidence-driven repair.
-- **Collapse when:** Existing exact tests plus one Agent produce the same
+- **Use something simpler when:** Existing exact tests plus one Agent produce the same
   quality, or no observable acceptance criterion exists.
-- **Candidate cases:** [Grant proposal workshop](./use-cases.md#grant-proposal-workshop),
+- **Possible uses:** [Grant proposal workshop](./use-cases.md#grant-proposal-workshop),
   [truthful job application](./use-cases.md#truthful-job-application), and
   [software factory](./use-cases.md#software-factory).
-- **Evidence gate:** Improve accepted quality or escaped-defect rate against one
+- **What would prove it:** Improve accepted quality or escaped-defect rate against one
   strong Agent at equal tools and budget, including all added latency and cost.
 
 ## Independent jury
 
-`minimum multi-agent` · `parallel`, `join`, `deterministic-step`
+Several independent reviewers decide separately using the same closed answer
+set. A fixed rule combines their decisions while preserving disagreement.
 
-- **Failure prevented:** One unstable closed judgment becomes the decision
+*Candidate pattern · Multiple Agents*
+
+- **Problem it solves:** One unstable closed judgment becomes the decision
   without exposing disagreement.
-- **Protocol:** Jurors with different evidence, procedures, skills, model
+- **How it works:** Jurors with different evidence, procedures, skills, model
   lineage, or empirically distinct failure behavior commit allowed values; a
   deterministic threshold aggregates them and preserves dissent.
-- **Irreducible property:** Independent commitment before aggregation.
-- **Collapse when:** Independence is asserted only from separate calls, errors
+- **Why the structure matters:** Independent commitment before aggregation.
+- **Use something simpler when:** Independence is asserted only from separate
+  calls, errors
   are strongly correlated, no closed rubric exists, or one calibrated
   classifier performs as well. Majority is not truth.
-- **Candidate cases:** Potentially [AI response release gate](./use-cases.md#ai-response-release-gate)
+- **Possible uses:** Potentially
+  [AI response release gate](./use-cases.md#ai-response-release-gate)
   or [near-miss normalization](./use-cases.md#near-miss-normalization), but only
   after single-reviewer errors justify it.
-- **Evidence gate:** Measure individual and correlated errors, collective
+- **What would prove it:** Measure individual and correlated errors, collective
   confident mistakes, cost, and latency against one calibrated reviewer.
 
 ## Information-gain interview
 
-`minimum single-agent` · `sequence`, `branch`, `bounded-loop`
+Each question is chosen because its answer could change the eventual decision.
+The interview stops when further questions cannot help enough or its limit is
+reached.
 
-- **Failure prevented:** A conversational system asks low-value questions or
+*Candidate pattern · One Agent*
+
+- **Problem it solves:** A conversational system asks low-value questions or
   commits while materially different decision states remain.
-- **Protocol:** Maintain surviving states; require an `answer -> states` map;
+- **How it works:** Maintain surviving states; require an `answer -> states` map;
   choose by declared information gain and user effort; stop at a question cap.
-- **Irreducible property:** Question choice is tied to which decisions it can
+- **Why the structure matters:** Question choice is tied to which decisions it can
   change.
-- **Collapse when:** A stable form or decision tree already defines the same
+- **Use something simpler when:** A stable form or decision tree already
+  defines the same
   partitions.
-- **Candidate cases:** Possible clarification extensions to
+- **Possible uses:** Possible clarification extensions to
   [repair diagnostic](./use-cases.md#repair-diagnostic) and
   [vetted rule front desk](./use-cases.md#vetted-rule-front-desk). Their
   current minimum designs make one choice and do not instantiate an interview.
-- **Evidence gate:** Reduce user effort or wrong early decisions relative to
+- **What would prove it:** Reduce user effort or wrong early decisions relative to
   the form and one unconstrained conversational Agent.
 
 ## Invariant-preserving lens relay
 
-`minimum single-agent` · `sequence`, `deterministic-step`
+An item passes through focused editing stages, each allowed to change only
+specified parts. Protected facts are checked after every stage.
 
-- **Failure prevented:** Specialized transformations accidentally change facts
+*Candidate pattern · One Agent*
+
+- **Problem it solves:** Specialized transformations accidentally change facts
   or fields outside their authority.
-- **Protocol:** Use a structured artifact; declare writable fields per stage;
+- **How it works:** Use a structured artifact; declare writable fields per stage;
   validate protected invariants before and after every transform.
-- **Irreducible property:** Mechanically enforced edit scopes between reusable
+- **Why the structure matters:** Mechanically enforced edit scopes between reusable
   transformations.
-- **Collapse when:** One constrained transformation performs all edits or the
+- **Use something simpler when:** One constrained transformation performs all
+  edits or the
   claimed invariants cannot be checked.
-- **Candidate cases:** [Public notice adaptation](./use-cases.md#public-notice-adaptation)
+- **Possible uses:** [Public notice adaptation](./use-cases.md#public-notice-adaptation)
   and [compartmentalized accession](./use-cases.md#compartmentalized-accession).
-- **Evidence gate:** Improve specialist quality while producing no more
+- **What would prove it:** Improve specialist quality while producing no more
   invariant violations than one carefully constrained editor.
 
 ## Meet-in-the-middle planning
 
-`minimum single-agent` · `parallel`, `join`
+One planning pass works forward from present constraints while another works
+backward from the goal. Only feasible meeting points become candidate plans.
 
-- **Failure prevented:** Present constraints distort goal prerequisites, or
+*Candidate pattern · One Agent*
+
+- **Problem it solves:** Present constraints distort goal prerequisites, or
   goal knowledge makes a forward plan pretend unavailable steps are feasible.
-- **Protocol:** Search forward and backward independently; encode bounded
+- **How it works:** Search forward and backward independently; encode bounded
   frontier states; join only exact compatible bridges; expose unmatched states.
-- **Irreducible property:** Search-direction isolation before compatibility.
-- **Collapse when:** Ordinary forward planning or explicit graph search finds
+- **Why the structure matters:** Search-direction isolation before compatibility.
+- **Use something simpler when:** Ordinary forward planning or explicit graph
+  search finds
   the same valid bridge more cheaply.
-- **Candidate case:** [Career transition bridge](./use-cases.md#career-transition-bridge).
-- **Evidence gate:** Find more actionable valid bridges or fewer missing
+- **Possible use:** [Career transition bridge](./use-cases.md#career-transition-bridge).
+- **What would prove it:** Find more actionable valid bridges or fewer missing
   prerequisites than one strong planner on frozen cases.
 
 ## Option-preserving commitment ladder
 
-`minimum single-agent` · `sequence`, `wait`, `deterministic-step`
+The plan advances through stages as deadlines approach or new facts arrive.
+It makes reversible, time-sensitive choices first and postpones commitments
+that would benefit from later information.
 
-- **Failure prevented:** A plan closes valuable options early or delays a
+*Candidate pattern · One Agent*
+
+- **Problem it solves:** A plan closes valuable options early or delays a
   reversible, time-critical step unnecessarily.
-- **Protocol:** Classify deadline, reversibility, delay cost, dependencies, and
+- **How it works:** Classify deadline, reversibility, delay cost, dependencies, and
   future facts; commit only authorized safe steps; retain revisit conditions.
-- **Irreducible property:** Explicit option value and authorization at each
+- **Why the structure matters:** Explicit option value and authorization at each
   commitment.
-- **Collapse when:** No meaningful future information exists or a static
+- **Use something simpler when:** No meaningful future information exists or a static
   schedule captures every dependency.
-- **Candidate cases:** Possible later extensions to
+- **Possible uses:** Possible later extensions to
   [futureproof event plan](./use-cases.md#futureproof-event-plan) and
   [career transition bridge](./use-cases.md#career-transition-bridge). Their
   current minimum designs recommend; they do not wait and revisit commitments.
-- **Evidence gate:** Compared with one static schedule, reduce avoidable
+- **What would prove it:** Compared with one static schedule, reduce avoidable
   irreversible decisions without increasing missed deadlines or operator
   burden.
 
 ## Orthogonal coverage grid
 
-`minimum single-agent` · `parallel`, `join`
+Two different ways of dividing a subject are developed independently and
+crossed. Empty or risky intersections reveal gaps that either view might hide.
 
-- **Failure prevented:** One taxonomy creates false confidence while omissions
+*Candidate pattern · One Agent*
+
+- **Problem it solves:** One taxonomy creates false confidence while omissions
   exist only at intersections with another framing.
-- **Protocol:** Derive and freeze two axes separately; cross them exactly;
+- **How it works:** Derive and freeze two axes separately; cross them exactly;
   investigate empty or high-risk cells with source evidence.
-- **Irreducible property:** Genuinely different decompositions before crossing.
-- **Collapse when:** Both axes are already known, correlated, or easily applied
+- **Why the structure matters:** Genuinely different decompositions before crossing.
+- **Use something simpler when:** Both axes are already known, correlated, or
+  easily applied
   by one analyst.
-- **Candidate case:** [Curriculum blind-spot audit](./use-cases.md#curriculum-blind-spot-audit).
-- **Evidence gate:** Recover seeded intersection-only omissions with acceptable
+- **Possible use:**
+  [Curriculum blind-spot audit](./use-cases.md#curriculum-blind-spot-audit).
+- **What would prove it:** Recover seeded intersection-only omissions with acceptable
   false gaps, effort, and cost versus the established rubric.
 
 ## Privacy membrane
 
-`minimum single-agent` · `sequence`, `join`
+One trusted step removes information another role should not see. Only the
+approved, reduced view crosses the boundary, including in errors and logs.
 
-- **Failure prevented:** A restricted task receives identities or secrets it
+*Candidate pattern · One Agent*
+
+- **Problem it solves:** A restricted task receives identities or secrets it
   does not need because one context performs every step.
-- **Protocol:** A trusted stage retains secret-bearing input; project an
+- **How it works:** A trusted stage retains secret-bearing input; project an
   approved representation; accept only a declared restricted-role result.
-- **Irreducible property:** Enforced read separation across inputs, skills,
+- **Why the structure matters:** Enforced read separation across inputs, skills,
   errors, diagnostics, results, and retained history.
-- **Collapse when:** One fully authorized local Agent is acceptable or indirect
+- **Use something simpler when:** One fully authorized local Agent is
+  acceptable or indirect
   identifiers defeat the projection.
-- **Candidate cases:** [Private feedback analysis](./use-cases.md#private-feedback-analysis)
+- **Possible uses:**
+  [Private feedback analysis](./use-cases.md#private-feedback-analysis)
   and [compartmentalized accession](./use-cases.md#compartmentalized-accession).
-- **Evidence gate:** Against an ordinary trusted projection pipeline, prevent
+- **What would prove it:** Against an ordinary trusted projection pipeline, prevent
   more seeded direct and indirect leakage without destroying analytical
   utility or increasing operator error.
 
 ## Red-team challenge
 
-`minimum single-agent` · `sequence`, `bounded-loop`
+A dedicated challenger tests a frozen proposal against a specific threat or
+failure model. Someone with authority decides which findings require repair.
 
-- **Failure prevented:** Cooperative drafting suppresses adversarial failure
+*Candidate pattern · One Agent*
+
+- **Problem it solves:** Cooperative drafting suppresses adversarial failure
   paths in a plausible artifact.
-- **Protocol:** Freeze the proposal and threat model; report reproducible
+- **How it works:** Freeze the proposal and threat model; report reproducible
   findings with severity; an authorized owner accepts findings; repair under a
   finite rule.
-- **Irreducible property:** Committed adversarial search separated from
+- **Why the structure matters:** Committed adversarial search separated from
   remediation acceptance.
-- **Collapse when:** Exact tests cover the threat or criticism has no explicit
+- **Use something simpler when:** Exact tests cover the threat or criticism has
+  no explicit
   attacker, evidence, severity, or owner.
-- **Candidate cases:** [Software factory](./use-cases.md#software-factory) and
+- **Possible uses:** [Software factory](./use-cases.md#software-factory) and
   [grant proposal workshop](./use-cases.md#grant-proposal-workshop) where a
   concrete exclusion or abuse model exists.
-- **Evidence gate:** Compared with exact tests and cooperative review of the
+- **What would prove it:** Compared with exact tests and cooperative review of the
   same artifact, find more seeded and realistic failures without overwhelming
   owners with false findings or regressing protected goals during repair.
 
 ## Research/review separation
 
-`minimum single-agent` · `sequence`, `join`
+One role gathers sources and states what they support; another independently
+decides which claims are trustworthy enough to use.
 
-- **Failure prevented:** Evidence acquisition quietly becomes authority to
+*Candidate pattern · One Agent*
+
+- **Problem it solves:** Evidence acquisition quietly becomes authority to
   accept its own claims.
-- **Protocol:** Research emits source-linked claims; a separately scoped role
+- **How it works:** Research emits source-linked claims; a separately scoped role
   accepts, rejects, or qualifies them; composition uses only accepted claims.
-- **Irreducible property:** Evidence collection and claim acceptance have
+- **Why the structure matters:** Evidence collection and claim acceptance have
   distinct authority.
-- **Collapse when:** Mechanical citation checks or one Agent achieve equal
+- **Use something simpler when:** Mechanical citation checks or one Agent achieve equal
   support and omission rates.
-- **Candidate cases:** [Procurement evidence brief](./use-cases.md#procurement-evidence-brief)
+- **Possible uses:**
+  [Procurement evidence brief](./use-cases.md#procurement-evidence-brief)
   and a possible extension to
   [truthful job application](./use-cases.md#truthful-job-application).
-- **Evidence gate:** Reduce unsupported claims or material omissions enough to
+- **What would prove it:** Reduce unsupported claims or material omissions enough to
   offset the independent review call and added latency.
 
 ## Scenario-action regret matrix
 
-`minimum agentless` · `branch`, `join`,
-`deterministic-step`
+Every allowed action is compared across several plausible scenarios. For each
+one, “regret” is how far an action falls short of that scenario's best choice;
+the comparison exposes robust choices without guessing at probabilities.
 
-- **Failure prevented:** A decision pretends disputed scenario probabilities
+*Candidate pattern · No Agent required*
+
+- **Problem it solves:** A decision pretends disputed scenario probabilities
   are known or hides a dominated action.
-- **Protocol:** Cross bounded scenarios and authorized actions; populate one
+- **How it works:** Cross bounded scenarios and authorized actions; populate one
   consequence schema; compute dominance, regret, and thresholds exactly.
-- **Irreducible property:** Explicit comparable consequences across the whole
+- **Why the structure matters:** Explicit comparable consequences across the whole
   matrix.
-- **Collapse when:** Consequences lack a defensible scale or an existing
+- **Use something simpler when:** Consequences lack a defensible scale or an existing
   optimizer already represents the problem.
-- **Candidate case:** An alternative design for
+- **Possible use:** An alternative design for
   [futureproof event plan](./use-cases.md#futureproof-event-plan).
-- **Evidence gate:** Improve realized regret or decision effort against a
+- **What would prove it:** Improve realized regret or decision effort against a
   manual table without inventing probabilities or filling unknown cells.
 
 ## State-machine policy compiler
 
-`minimum single-agent` · `sequence`, `deterministic-step`
+A prose policy is turned into explicit situations, permitted actions, and
+observable triggers. Ambiguity and dead ends are checked before approval.
 
-- **Failure prevented:** Prose policy is reinterpreted differently on every
+*Candidate pattern · One Agent*
+
+- **Problem it solves:** Prose policy is reinterpreted differently on every
   event or contains hidden dead ends and forbidden transitions.
-- **Protocol:** Elicit states, observable facts, permitted actions, defaults,
+- **How it works:** Elicit states, observable facts, permitted actions, defaults,
   and terminals; compile; check reachability and ambiguity; require approval.
-- **Irreducible property:** Runtime behavior follows an inspected finite policy
+- **Why the structure matters:** Runtime behavior follows an inspected finite policy
   rather than fresh semantic judgment.
-- **Collapse when:** The policy is already formal or irreducible discretion
+- **Use something simpler when:** The policy is already formal or irreducible discretion
   makes compilation misleading.
-- **Candidate case:** [Cold-chain exception packet](./use-cases.md#cold-chain-exception-packet),
+- **Possible use:**
+  [Cold-chain exception packet](./use-cases.md#cold-chain-exception-packet),
   if its SOP cannot already be encoded directly.
-- **Evidence gate:** Compared with a directly authored finite policy, match
+- **What would prove it:** Compared with a directly authored finite policy, match
   expert-labelled traces, surface more source-policy omissions and
   contradictions, and introduce no unsafe implicit transitions.
