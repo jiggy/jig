@@ -432,16 +432,23 @@ It does not receive the host environment, network, host process tree, writable
 cgroup controls, general devices, inherited descriptors, project source,
 `.jig`, or host-control channels.
 
-The Agent provider is a separate bounded process. It uses the official OpenAI
-client and Responses request/response model. Native OpenAI is the primary
-flavor and reads `OPENAI_API_KEY` plus an explicit `OPENAI_MODEL`; an optional
-OpenRouter flavor reads `OPENROUTER_API_KEY` plus an explicit
-`OPENROUTER_MODEL` and changes only the fixed endpoint and credential
-convention. Among workload processes, only the provider receives the selected
-credential and inherited network access. Jig supplies no default model. The
-parent Flow remains network-isolated and keyless. The provider receives no
-model tools and cannot widen the Flow's exact admitted child slots. Provider
-selection and configuration are not FLOW or Binding inputs in this alpha.
+The Agent implementation is a separate bounded process. The host may use the
+official OpenAI client and Responses API directly, or select native Codex,
+Claude Code, or Pi through one private ACP mechanism. OpenRouter is only an
+explicit gateway flavor selected with `OPENROUTER_MODEL` and
+`OPENROUTER_API_KEY`; it is never the default. Jig supplies no default API
+model. Client, model, executable path, and credentials are trusted host
+configuration, not FLOW or Binding inputs.
+
+Among workload processes, only the selected Agent scope receives its bounded
+credential projection and inherited network access. The parent Flow remains
+network-isolated and keyless. A native client starts with an empty work
+directory; Jig advertises no ACP filesystem, terminal, or MCP client
+capability, supplies no MCP servers, and grants no permission request. Fixed
+profiles disable client tools, extensions, plugins, and native skills. Selected
+FLOW skills become bounded instruction text only. No Agent implementation can
+widen the Flow's exact admitted child slots, and none creates a public provider
+registry or SPI.
 
 Dependency preparation uses the same ownership, cgroup, filesystem, process,
 and cleanup boundary. Only Jig's fixed installer and worker execute there;

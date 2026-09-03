@@ -150,12 +150,12 @@ concurrent calls receive `RESOURCE_EXHAUSTED`, while sequential calls remain
 available.
 
 One experimental [Agent Run capability](https://jig.md/spec/agent-run) is
-available through ordinary Run/1 `effect/call`. The alpha uses the official
-OpenAI client and Responses API model. Native OpenAI use requires explicit
-`OPENAI_MODEL` and `OPENAI_API_KEY` host configuration. An optional OpenRouter
-flavor uses the same implementation with explicit `OPENROUTER_MODEL` and
-`OPENROUTER_API_KEY`. Jig supplies no default model and exposes no provider
-choice to a Flow or Binding.
+available through ordinary Run/1 `effect/call`. The host may call the OpenAI
+Responses API directly or run native Codex, Claude Code, or Pi through one
+private ACP mechanism. OpenRouter is only an explicit gateway flavor selected
+with `OPENROUTER_MODEL` and `OPENROUTER_API_KEY`; it is never the default.
+Client, model, executable path, and credentials are trusted host configuration,
+not FLOW or Binding inputs. Jig exposes no provider registry.
 
 The complete runnable example and current specification map are in the
 [repository README](https://github.com/jigmd/jig#readme) and

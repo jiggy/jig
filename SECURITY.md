@@ -21,14 +21,24 @@ Project evaluation, the fixed dependency installer, and the fixed Agent
 provider worker use the same containment mechanism in separate scopes. The
 preparation worker inherits networking only during `jig check`; it validates
 the authored lock before the fixed installer's first fetch. The Agent worker
-inherits networking only for an admitted Agent `effect/call`. It receives the
-credential and explicit model for the one configured OpenAI Responses flavor,
-plus instructions and explicitly selected skill contents, through a transient
-private channel. Native OpenAI uses `OPENAI_API_KEY` and `OPENAI_MODEL`; the
-optional OpenRouter flavor uses `OPENROUTER_API_KEY` and `OPENROUTER_MODEL`.
-The secret, instructions, and skills do not enter the Flow environment, launch
-arguments, Plans, locks, or retained Run state; the endpoint and model are
-reviewed as provider identity but are not exposed to the Flow.
+inherits networking only for an admitted Agent `effect/call`. The host may use
+the OpenAI Responses API directly, or native Codex, Claude Code, or Pi through
+one private ACP mechanism. OpenRouter is only an explicit gateway flavor,
+selected with `OPENROUTER_MODEL` and `OPENROUTER_API_KEY`; it is never a
+default. Client paths, models, and credentials are trusted host configuration,
+not FLOW values.
+
+The selected Agent scope receives its bounded credential projection,
+instructions, and selected skill text through a transient private channel. A
+native ACP client starts with an empty work directory. Jig provides it no
+filesystem, terminal, or MCP client capability, no MCP servers, and no
+persistent permission. Fixed profiles disable client tools, extensions,
+plugins, and native skills. The secret, instructions, and skills do not enter
+the Flow environment, launch arguments, Plans, locks, or retained Run state;
+non-secret client, protocol flavor, model, and exact support identities are
+reviewed as provider identity but are not exposed to the Flow. Jig exposes no
+public provider SPI or registry.
+
 Authored package code and lifecycle scripts never execute during preparation,
 and every Flow Run remains offline.
 

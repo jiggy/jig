@@ -73,11 +73,12 @@ One experimental [Agent Run capability](../spec/agent-run.md) is also
 available through ordinary Run/1 `effect/call`. An Agent-capable Flow carries
 the exact Jig-owned descriptor, may project an explicit package-local skill
 subset, and can use the structured result to select one of its Binding's exact
-child slots. The host uses the official OpenAI client and Responses API model.
-Native OpenAI use requires explicit `OPENAI_MODEL` and `OPENAI_API_KEY`; an
-optional OpenRouter flavor uses the same implementation with explicit
-`OPENROUTER_MODEL` and `OPENROUTER_API_KEY`. There is no default model,
-package-selected provider, provider registry, or semantic router.
+child slots. The host may call the OpenAI Responses API directly or run native
+Codex, Claude Code, or Pi through one private ACP mechanism. OpenRouter is only
+an explicit gateway flavor selected with `OPENROUTER_MODEL` and
+`OPENROUTER_API_KEY`; it is never the default. Client, model, executable path,
+and credentials are trusted host configuration. There is no package-selected
+provider, provider registry, or semantic router.
 
 Root Runs default to 30 seconds. `--timeout` accepts a positive integer plus
 `ms`, `s`, `m`, or `h`, up to 24 hours. Children share the parent's remaining
@@ -89,7 +90,7 @@ On success, `jig run` prints one JSON object containing `status`, `outcome`,
 `result.schema.json` validates the nested `{ outcome, output }` Run result.
 Omitting `--input` supplies `{}`.
 
-The direct alpha excludes Services, Hooks, Journal providers, configurable
-Agent providers, Agent sessions, Semantic Choice, Jig Graph, schedulers,
+The direct alpha excludes Services, Hooks, Journal providers, a public Agent
+provider SPI, Agent sessions, Semantic Choice, Jig Graph, schedulers,
 catalogues, runtime registries, sandbox registries, and compatibility formats.
 Its public surface grows only after one concrete vertical earns it.

@@ -172,63 +172,80 @@ Exactly one child is a property of this example's completed path, not a new
 host rule. A blocked or limited Agent result reaches no child, and another
 Flow may make additional sequential calls within its admitted slots.
 
-## The alpha provider implementation
+## Alpha host implementations
 
-The current Jig host supplies one OpenAI Responses implementation using the
-official OpenAI JavaScript SDK. Its primary flavor calls OpenAI directly:
+Every implementation below serves the same Agent Run contract. A Flow cannot
+select a client, endpoint, model, executable, or credential. Those are trusted
+host configuration used by both `jig check` and `jig run`.
 
-```text
-endpoint  https://api.openai.com/v1
-model     OPENAI_MODEL
-secret    OPENAI_API_KEY
-```
-
-OpenRouter is an optional OpenAI-compatible endpoint flavor of that same
-implementation:
+With `JIG_AGENT_CLIENT` unset, Jig uses the official OpenAI JavaScript SDK and
+Responses API directly:
 
 ```text
-endpoint  https://openrouter.ai/api/v1
-model     OPENROUTER_MODEL
-secret    OPENROUTER_API_KEY
+OpenAI       OPENAI_MODEL + OPENAI_API_KEY
+OpenRouter   OPENROUTER_MODEL + OPENROUTER_API_KEY
 ```
 
-Configure one complete pair in the environment which runs both `jig check`
-and `jig run`. Configuring both complete flavors is ambiguous and rejected.
-Jig supplies no default model. These are host configuration: none enters
-`FLOW.md`, a Binding, `jig.lock`, retained Run state, or the Flow process. The
-selected endpoint and model enter provider identity and the reviewed Plan; the
-secret does not. Changing the model or flavor therefore requires a new `jig
-check` and approval, while rotating only the selected key does not.
+OpenRouter is an explicit gateway flavor, never the default. Exactly one
+complete pair may be configured, and Jig supplies no default API model. Direct
+OpenAI calls use `https://api.openai.com/v1`; the OpenRouter flavor changes the
+base URL and credential convention to `https://openrouter.ai/api/v1`. It does
+not replace OpenAI's request and response model.
 
-Jig does not use OpenRouter's separate SDK because this slice needs none of
-its provider-routing, metadata, or account APIs. OpenRouter contributes only
-its endpoint and credential convention to the OpenAI implementation.
+Native Agent clients use one private Agent Client Protocol (ACP) mechanism.
+Each client contributes only the configuration needed to launch its own ACP
+adapter:
 
-The Flow remains inside its ordinary network-isolated, keyless sandbox. The
-trusted host reads the selected key, then runs the fixed provider worker in a separate
-bounded sandbox; among workload processes, only that worker receives network
-and the key. The worker constructs the OpenAI client with the selected fixed
-endpoint, then sends instructions and selected skill contents to that endpoint
-and the operator-selected model. The worker has ordinary inherited network
-access rather than endpoint-filtered egress; its exact trusted bytes, not a
-network-policy framework, limit what it does. It requests one response with
-`store: false` and exposes no model tools, but that flag is not a promise about
-every provider's retention or training policy. The provider flavor and model
-are not author choices in this alpha.
+| Client | Host selection | Subscription configuration |
+| --- | --- | --- |
+| Codex | `JIG_AGENT_CLIENT=codex`, `CODEX_PATH` | Existing `CODEX_HOME` (or `~/.codex`) authentication; model fixed to `gpt-5.3-codex-spark` |
+| Claude Code | `JIG_AGENT_CLIENT=claude`, `CLAUDE_PATH` | `CLAUDE_CODE_OAUTH_TOKEN`; optional `CLAUDE_MODEL` |
+| Pi | `JIG_AGENT_CLIENT=pi`, `PI_PATH` | `PI_PROVIDER` plus `PI_MODEL`; authentication from `PI_CODING_AGENT_DIR/auth.json` or `~/.pi/agent/auth.json` |
 
-If no complete credential/model pair or exact provider support is present,
-checking a project containing an Agent-bearing target reports it unavailable.
-A capability-free target in
-an already admitted generation remains runnable because its recipe does not
-depend on the Agent provider.
+The current Pi profile accepts the official self-contained Linux x64 Pi
+0.84.4 release layout. It does not interpret the multi-file npm installation
+or make Node part of Jig's runtime closure.
+
+For any native client, setting `OPENROUTER_MODEL` together with
+`OPENROUTER_API_KEY` explicitly selects the OpenRouter gateway instead of its
+subscription configuration. The pair is shared host vocabulary; Jig does not
+hard-code a development model into a client profile. Pi subscription support
+is currently bounded to its `anthropic` and `openai-codex` providers.
+
+Jig reads native credentials in trusted host code and gives the contained
+client only the bounded credential projection needed for one provider
+lifetime. Credential sources are not mounted. The selected non-secret client,
+model, protocol flavor, and exact executable/support identities enter provider
+identity and the reviewed Plan; secrets do not. Changing non-secret behavior
+requires another `jig check` and approval, while rotating only the selected
+credential does not.
+
+The Flow remains in its ordinary network-isolated, keyless sandbox. Direct API
+work and native ACP clients run in separate bounded scopes with inherited
+network access. Each native client starts in an empty work directory. Jig's ACP
+peer advertises no filesystem, terminal, or MCP client capability, supplies no
+MCP servers, and rejects permission requests. The fixed client profiles also
+disable their tool, extension, plugin, and native-skill surfaces. Selected
+FLOW skills are rendered into the call instructions as bounded read-only text;
+they are not exposed as a client filesystem or native skill installation.
+
+These workers have ordinary inherited network access rather than
+endpoint-filtered egress; their exact trusted bytes and configuration, not a
+network-policy framework, limit what they do. The direct Responses worker asks
+for `store: false`, but that flag is not a promise about every endpoint's
+retention or training policy.
+
+If the selected client, executable support, credential, or model is missing or
+invalid, checking an Agent-bearing target reports it unavailable. A
+capability-free target in an already admitted generation remains runnable
+because its recipe does not depend on the Agent implementation.
 
 Root `jig run --timeout DURATION` bounds the complete sequence, including the
 Agent call and any selected child. The default is 30 seconds and the maximum
-is 24 hours; neither the provider nor a child can extend the root's absolute
-deadline.
+is 24 hours; neither an API worker, native client, nor child can extend the
+root's absolute deadline. Cancellation fences Jig's complete local Agent
+scope, though it cannot retract a remote request already accepted.
 
-This is deliberately one contract and one OpenAI Responses implementation.
-There is no provider registry or SPI, package-selected provider profile, model
-selector, semantic catalogue,
-`SemanticChoice`, Agent session, tool runner, Agent-authored Flow identity, or
-general routing framework.
+There is no public provider registry or SPI, package-selected provider profile,
+model selector, semantic catalogue, `SemanticChoice`, Agent session,
+Agent-authored Flow identity, or general routing framework.

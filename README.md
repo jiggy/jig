@@ -165,11 +165,13 @@ available.
 One experimental [Agent Run capability](docs/jig/spec/agent-run.md) is
 available through ordinary Run/1 `effect/call`. An Agent-capable Flow carries
 the exact Jig-owned contract, and a Binding can combine that result with its
-exact child slots. The alpha uses the official OpenAI client and Responses API
-model. Native OpenAI use requires explicit `OPENAI_MODEL` and `OPENAI_API_KEY`
-host configuration. An optional OpenRouter flavor uses the same implementation
-with explicit `OPENROUTER_MODEL` and `OPENROUTER_API_KEY`. Jig supplies no
-default model and exposes no provider choice to a Flow or Binding.
+exact child slots. The host may use the official OpenAI client and Responses
+API directly, or run native Codex, Claude Code, or Pi through one private ACP
+mechanism. OpenRouter is only an explicit gateway flavor selected with
+`OPENROUTER_MODEL` and `OPENROUTER_API_KEY`; it is never Jig's default. Client,
+model, executable path, and credentials are trusted host configuration, not
+FLOW or Binding inputs. Jig supplies no default API model and exposes no
+provider registry.
 
 ## Dependency rule
 
@@ -221,6 +223,6 @@ under the public process in [Governance.md](Governance.md), and contributions
 use the [DCO 1.1 process](CONTRIBUTING.md). Maintainer prerelease steps are in
 [RELEASING.md](RELEASING.md).
 
-Jig is prerelease software. Services, Hooks, event sources, configurable Agent
-providers, Agent sessions, Semantic Choice, Jig Graph, schedulers, catalogues,
-and extension registries are not part of this alpha surface.
+Jig is prerelease software. Services, Hooks, event sources, a public Agent
+provider SPI, Agent sessions, Semantic Choice, Jig Graph, schedulers,
+catalogues, and extension registries are not part of this alpha surface.
