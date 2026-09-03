@@ -15,6 +15,15 @@ transitional, or compatibility-only code, schemas, formats, migrations, tests,
 aliases, or documentation. When one design replaces another, remove the old
 path completely in the same change.
 
+Registry-visible development alphas do not by themselves establish a
+compatibility promise. Until the owner explicitly promotes a Jig, FLOW, or
+Capability Contract interface, keep its current version provisional: replace
+draft semantics in place and keep implementation, schemas, fixtures, and
+documentation synchronized instead of creating prerelease version archaeology.
+This does not permit overwriting an immutable package archive; advance the
+package prerelease identifier when publishing changed bytes without treating
+that identifier as a compatibility or migration obligation.
+
 Preserve compatibility only when the user explicitly requires it for an
 already released external interface.
 
