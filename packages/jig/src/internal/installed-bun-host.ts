@@ -8,6 +8,8 @@ import { PRIVATE_DEFAULT_ROOT_RUN_TIMEOUT_MS } from "./root-run-timeout-policy.j
 import { openPrivateOpenAIAgentProvider } from "./openai-agent-provider.js";
 import { openPrivateOpenRouterAgentFlavor } from "./openrouter-agent-flavor.js";
 import { openPrivateCodexAgentProvider } from "./codex-agent-provider.js";
+import { openPrivateClaudeAgentProvider } from "./claude-agent-provider.js";
+import { openPrivatePiAgentProvider } from "./pi-agent-provider.js";
 
 const AGENT_CLIENT = "JIG_AGENT_CLIENT";
 
@@ -22,6 +24,10 @@ export async function openPrivateInstalledBunHost(
     ? openApiAgentProvider(installedBunSupport, environment)
     : client === "codex"
       ? await openPrivateCodexAgentProvider(installedBunSupport.releaseRoot, environment)
+      : client === "claude"
+        ? await openPrivateClaudeAgentProvider(installedBunSupport.releaseRoot, environment)
+        : client === "pi"
+          ? await openPrivatePiAgentProvider(installedBunSupport.releaseRoot, environment)
       : (() => { throw new Error("the native Agent client is unsupported"); })();
   return Object.freeze({
     backend: new PrivateLinuxCgroupBackend({

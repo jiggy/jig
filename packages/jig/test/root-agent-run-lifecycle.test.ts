@@ -35,6 +35,18 @@ const nativeCodexGatewayTest = HOSTILE && nativeCodexPath !== undefined &&
     nativeCodexGatewayModel !== undefined && process.env.OPENROUTER_API_KEY !== undefined
   ? test
   : test.skip;
+const nativeClaudePath = process.env.JIG_CLAUDE_PROOF_PATH;
+const nativeClaudeGatewayModel = process.env.JIG_CLAUDE_OPENROUTER_MODEL;
+const nativeClaudeGatewayTest = HOSTILE && nativeClaudePath !== undefined &&
+    nativeClaudeGatewayModel !== undefined && process.env.OPENROUTER_API_KEY !== undefined
+  ? test
+  : test.skip;
+const nativePiPath = process.env.JIG_PI_PROOF_PATH;
+const nativePiGatewayModel = process.env.JIG_PI_OPENROUTER_MODEL;
+const nativePiGatewayTest = HOSTILE && nativePiPath !== undefined &&
+    nativePiGatewayModel !== undefined && process.env.OPENROUTER_API_KEY !== undefined
+  ? test
+  : test.skip;
 const initialTemporaryState = new Set(
   (await readdir(tmpdir())).filter(rootlessTemporaryEntry),
 );
@@ -135,14 +147,107 @@ proofDescribe("private contained Agent Run lifecycle", () => {
           },
         },
       });
-      const output = terminal.state === "terminal" && terminal.terminal.status === "succeeded"
-        ? terminal.terminal.output
-        : undefined;
-      const agent = output !== null && typeof output === "object" && "agent" in output
-        ? output.agent
-        : undefined;
-      expect(typeof agent === "object" && agent !== null && "text" in agent &&
-        typeof agent.text === "string" && agent.text.length > 0).toBe(true);
+      const text = agentText(terminal);
+      expect(text).toContain("READY");
+      expect(text).not.toContain(process.env.OPENROUTER_API_KEY!);
+      await expectNoAgentOwner(root);
+      await session.close();
+      session = undefined;
+      await waitForCgroups(initialCgroups);
+      await waitForTemporaryState(initialTemporaryState);
+    } finally {
+      await session?.close().catch(() => undefined);
+      await rm(root, { recursive: true, force: true });
+    }
+  }, 90_000);
+
+  nativeClaudeGatewayTest("executes native Claude Code through ACP with an explicit OpenRouter gateway", async () => {
+    const root = await mkdtemp(join(tmpdir(), "jig-native-claude-gateway-project-"));
+    let session: Awaited<ReturnType<typeof openPrivateProjectSession>> | undefined;
+    try {
+      await writeProject(root);
+      session = await openPrivateProjectSession({
+        directory: root,
+        host: await openPrivateInstalledBunHost(installedBunLocation, {
+          CLAUDE_PATH: await realpath(nativeClaudePath!),
+          JIG_AGENT_CLIENT: "claude",
+          OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY,
+          OPENROUTER_MODEL: nativeClaudeGatewayModel,
+        }),
+      });
+      const plan = await session.plan({ lockMode: "update" });
+      if (plan.state !== "applicable") throw new Error("native Claude fixture did not produce a Plan");
+      await session.apply({ planDigest: plan.planDigest });
+
+      const terminal = await runToTerminal(
+        session.rootAdministration,
+        "native-claude-openrouter",
+        "gateway",
+      );
+      expect(terminal).toMatchObject({
+        state: "terminal",
+        terminal: {
+          status: "succeeded",
+          outcome: "done",
+          output: {
+            status: "succeeded",
+            parentHasKey: false,
+            agent: { outcome: "completed" },
+          },
+        },
+      });
+      const text = agentText(terminal);
+      expect(text).toContain("READY");
+      expect(text).not.toContain(process.env.OPENROUTER_API_KEY!);
+      await expectNoAgentOwner(root);
+      await session.close();
+      session = undefined;
+      await waitForCgroups(initialCgroups);
+      await waitForTemporaryState(initialTemporaryState);
+    } finally {
+      await session?.close().catch(() => undefined);
+      await rm(root, { recursive: true, force: true });
+    }
+  }, 90_000);
+
+  nativePiGatewayTest("executes native Pi through ACP with an explicit OpenRouter gateway", async () => {
+    const root = await mkdtemp(join(tmpdir(), "jig-native-pi-gateway-project-"));
+    let session: Awaited<ReturnType<typeof openPrivateProjectSession>> | undefined;
+    try {
+      await writeProject(root);
+      session = await openPrivateProjectSession({
+        directory: root,
+        host: await openPrivateInstalledBunHost(installedBunLocation, {
+          JIG_AGENT_CLIENT: "pi",
+          OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY,
+          OPENROUTER_MODEL: nativePiGatewayModel,
+          PI_PATH: await realpath(nativePiPath!),
+        }),
+      });
+      const plan = await session.plan({ lockMode: "update" });
+      if (plan.state !== "applicable") throw new Error("native Pi fixture did not produce a Plan");
+      await session.apply({ planDigest: plan.planDigest });
+
+      const terminal = await runToTerminal(
+        session.rootAdministration,
+        "native-pi-openrouter",
+        "gateway",
+      );
+      expect(terminal).toMatchObject({
+        state: "terminal",
+        terminal: {
+          status: "succeeded",
+          outcome: "done",
+          output: {
+            status: "succeeded",
+            parentHasKey: false,
+            agent: { outcome: "completed" },
+          },
+        },
+      });
+      const text = agentText(terminal);
+      expect(text).toContain("READY");
+      expect(text).not.toContain(process.env.OPENROUTER_API_KEY!);
       await expectNoAgentOwner(root);
       await session.close();
       session = undefined;
@@ -503,7 +608,9 @@ function flowProgram(): string {
     "  try {",
     "    const agent = await run.callEffect({",
     '      operationId: `agent:${input.scenario}`, slot: "agent", method: "run",',
-    '      input: { instructions: `scenario:${input.scenario}`, skills: ["selected"],',
+    '      input: { instructions: input.scenario === "gateway"',
+    '        ? "Reply with exactly READY and nothing else."',
+    '        : `scenario:${input.scenario}`, skills: ["selected"],',
     '        ...(input.scenario === "gateway" ? {} : {',
     '          responseSchema: input.scenario === "schema-input-invalid"',
     '            ? { $schema: "https://flow.jig.md/schemas/schema-1.json", type: "unknown" }',
@@ -541,6 +648,20 @@ async function runToTerminal(
   return await waitForTerminal(administration, receipt, timeoutMs);
 }
 
+function agentText(terminal: Awaited<ReturnType<typeof waitForTerminal>>): string {
+  const output = terminal.state === "terminal" && terminal.terminal.status === "succeeded"
+    ? terminal.terminal.output
+    : undefined;
+  const agent = output !== null && typeof output === "object" && "agent" in output
+    ? output.agent
+    : undefined;
+  if (typeof agent !== "object" || agent === null || !("text" in agent) ||
+      typeof agent.text !== "string") {
+    throw new Error("native Agent result omitted its text");
+  }
+  return agent.text;
+}
+
 async function waitForTerminal(
   administration: RootAdministration,
   receipt: StartRootRunReceipt,
@@ -552,9 +673,9 @@ async function waitForTerminal(
     if (status.state === "terminal") return status;
     await Bun.sleep(20);
   }
-  throw new Error(`Agent fixture Run did not become terminal: ${JSON.stringify(
-    await administration.runStatus(receipt),
-  )}`);
+  const finalStatus = await administration.runStatus(receipt);
+  if (finalStatus.state === "terminal") return finalStatus;
+  throw new Error(`Agent fixture Run did not become terminal: ${JSON.stringify(finalStatus)}`);
 }
 
 async function waitForAgentSandbox(root: string, runId: string): Promise<void> {

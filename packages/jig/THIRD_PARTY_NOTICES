@@ -58,6 +58,33 @@ Copyright 2025 JetBrains s.r.o.
 Licensed under the Apache License, Version 2.0. The complete adapter license is
 shipped as `libexec/agent/codex-acp.LICENSE`.
 
+@agentclientprotocol/claude-agent-acp 0.73.0
+-------------------------------------------------
+
+Jig bundles the official ACP adapter for native Claude Code as optional inert
+support. The adapter is selected only when the operator explicitly enables
+Claude Code; Jig does not include the native Claude executable or credentials.
+
+Copyright 2025 Zed Industries
+
+The adapter is licensed under Apache-2.0. Its bundle includes Anthropic's
+Claude Agent SDK, whose use is governed by Anthropic's legal agreements. The
+applicable texts are shipped as `libexec/agent/claude-agent-acp.LICENSE` and
+`libexec/agent/claude-agent-sdk.LICENSE`.
+
+pi-acp 0.0.33
+-------------
+
+Jig bundles the ACP adapter for native Pi as optional inert support. The
+adapter is selected only when the operator explicitly enables Pi; Jig does not
+include credentials or the operator-supplied native Pi executable and sibling
+runtime-support files.
+
+Copyright (c) 2026 Sergii Kozak
+
+Licensed under MIT. The complete license is shipped as
+`libexec/agent/pi-acp.LICENSE`.
+
 Unicode 15.1.0 CaseFolding data
 --------------------------------
 

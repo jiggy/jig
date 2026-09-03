@@ -142,6 +142,26 @@ describe("private ACP Agent provider", () => {
     expect(privateAcpAgentRuntime(nested).nestedUserNamespaces).toBe(true);
     expect(ordinary.digest).not.toBe(nested.digest);
   });
+
+  test("binds and revalidates an executable ACP adapter requirement", async () => {
+    const support = await files();
+    await chmod(support.adapter, 0o700);
+    const provider = await createPrivateAcpAgentProvider({
+      client: "test-client",
+      model: "provider/model",
+      credentialMode: "gateway",
+      adapterPath: support.adapter,
+      sandboxAdapterPath: "/agent/adapter.js",
+      adapterExecutable: true,
+      executablePath: support.executable,
+      sandboxExecutablePath: "/agent/client",
+      environment: { CLIENT_PATH: "/agent/client" },
+    });
+    await chmod(support.adapter, 0o600);
+    await expect(revalidatePrivateAcpAgentProvider(provider)).rejects.toThrow(
+      "ACP adapter is unavailable",
+    );
+  });
 });
 
 async function provider(

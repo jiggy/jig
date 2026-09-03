@@ -32,6 +32,8 @@ export interface PrivateAcpAgentProviderConfiguration {
   readonly credentialMode: string;
   readonly adapterPath: string;
   readonly sandboxAdapterPath: string;
+  /** Whether the ACP adapter is also invoked directly by its native bridge. */
+  readonly adapterExecutable?: boolean;
   readonly executablePath: string;
   readonly sandboxExecutablePath: string;
   readonly environment: Readonly<Record<string, string>>;
@@ -61,6 +63,7 @@ export interface PrivateAcpReadOnlyMount extends PrivateLinuxReadOnlyMount {
 export interface PrivateAcpAgentRuntime {
   readonly adapterPath: string;
   readonly sandboxAdapterPath: string;
+  readonly adapterExecutable: boolean;
   readonly executablePath: string;
   readonly sandboxExecutablePath: string;
   readonly environment: Readonly<Record<string, string>>;
@@ -94,7 +97,11 @@ export async function createPrivateAcpAgentProvider(
   requireIdentifier(value.client, "client");
   requireIdentifier(value.model, "model");
   requireIdentifier(value.credentialMode, "credential mode");
-  const adapterPath = await exactFile(value.adapterPath, false, "ACP adapter");
+  const adapterExecutable = value.adapterExecutable ?? false;
+  if (typeof adapterExecutable !== "boolean") {
+    throw new Error("ACP Agent adapter policy is invalid");
+  }
+  const adapterPath = await exactFile(value.adapterPath, adapterExecutable, "ACP adapter");
   const executablePath = await exactFile(value.executablePath, true, "native Agent client");
   if (adapterPath !== value.adapterPath || executablePath !== value.executablePath) {
     throw new Error("ACP Agent support paths must be canonical");
@@ -115,7 +122,11 @@ export async function createPrivateAcpAgentProvider(
   const startupInput = value.startupInput === undefined
     ? undefined
     : normalizeStartupInput(value.startupInput);
-  if (value.revalidateStartupInput !== undefined && startupInput === undefined) {
+  const revalidateStartupInput = value.revalidateStartupInput;
+  if (revalidateStartupInput !== undefined && typeof revalidateStartupInput !== "function") {
+    throw new Error("ACP Agent startup-input validation is invalid");
+  }
+  if (revalidateStartupInput !== undefined && startupInput === undefined) {
     throw new Error("ACP Agent startup-input validation has no input");
   }
   const nestedUserNamespaces = value.nestedUserNamespaces ?? false;
@@ -138,6 +149,7 @@ export async function createPrivateAcpAgentProvider(
     model: value.model,
     credentialMode: value.credentialMode,
     adapterDigest,
+    adapterExecutable,
     executableDigest,
     sandboxAdapterPath: value.sandboxAdapterPath,
     sandboxExecutablePath: value.sandboxExecutablePath,
@@ -170,6 +182,7 @@ export async function createPrivateAcpAgentProvider(
   authenticProviders.set(provider, Object.freeze({
     adapterPath,
     sandboxAdapterPath: value.sandboxAdapterPath,
+    adapterExecutable,
     executablePath,
     sandboxExecutablePath: value.sandboxExecutablePath,
     environment,
@@ -179,7 +192,7 @@ export async function createPrivateAcpAgentProvider(
     ...(authentication === undefined ? {} : { authentication }),
     ...(startupInput === undefined ? {} : {
       startupInput: (): Uint8Array => {
-        value.revalidateStartupInput?.();
+        revalidateStartupInput?.();
         return startupInput.slice();
       },
     }),
@@ -214,7 +227,7 @@ export async function revalidatePrivateAcpAgentProvider(value: unknown): Promise
   const provider = requirePrivateAcpAgentProvider(value);
   const runtime = privateAcpAgentRuntime(provider);
   const [adapterPath, executablePath] = await Promise.all([
-    exactFile(runtime.adapterPath, false, "ACP adapter"),
+    exactFile(runtime.adapterPath, runtime.adapterExecutable, "ACP adapter"),
     exactFile(runtime.executablePath, true, "native Agent client"),
   ]);
   const [adapterDigest, executableDigest] = await Promise.all([

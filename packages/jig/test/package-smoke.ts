@@ -22,6 +22,13 @@ const expectedInstalledFiles = [
   "libexec/agent/codex-acp.js",
   "libexec/agent/codex-agent-launcher.js",
   "libexec/agent/codex-requirements.toml",
+  "libexec/agent/claude-agent-acp.LICENSE",
+  "libexec/agent/claude-agent-acp.js",
+  "libexec/agent/claude-agent-launcher.js",
+  "libexec/agent/claude-agent-sdk.LICENSE",
+  "libexec/agent/pi-acp.LICENSE",
+  "libexec/agent/pi-acp.js",
+  "libexec/agent/pi-agent-launcher.js",
   "libexec/evaluator/project-authoring-1.schema.json",
   "libexec/evaluator/project-evaluator-sdk.bundle.js",
   "libexec/evaluator/project-evaluator-worker.js",
@@ -67,8 +74,10 @@ try {
   assert.match(buildScript, /libexec\/installed-cli\.js/);
 
   const executable = join(installed, "bin", "jig");
+  const piLauncher = join(installed, "libexec", "agent", "pi-agent-launcher.js");
   const command = join(consumer, "node_modules", ".bin", "jig");
   assert.notEqual((await stat(executable)).mode & 0o111, 0);
+  assert.notEqual((await stat(piLauncher)).mode & 0o111, 0);
   const launcher = await readFile(executable, "utf8");
   assert.match(launcher, /^#!\/bin\/sh\n/);
   assert.match(launcher, /\/usr\/bin\/readlink/);
@@ -141,6 +150,10 @@ try {
     "libexec/evaluator/project-evaluator-sdk.bundle.js",
     "libexec/agent/openai-responses-worker.js",
     "libexec/agent/codex-agent-launcher.js",
+    "libexec/agent/claude-agent-acp.js",
+    "libexec/agent/claude-agent-launcher.js",
+    "libexec/agent/pi-acp.js",
+    "libexec/agent/pi-agent-launcher.js",
     "libexec/preparation/bun-native-preparation-worker.js",
   ]) {
     const source = await readFile(join(installed, relative), "utf8");
