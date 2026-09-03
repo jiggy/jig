@@ -19,16 +19,7 @@ export async function openPrivateInstalledBunHost(
   environment: Readonly<Record<string, string | undefined>> = process.env,
 ): Promise<PrivateProjectSessionHost> {
   const installedBunSupport = await openPrivateInstalledBunSupport(location);
-  const client = environment[AGENT_CLIENT];
-  const agentProvider = client === undefined
-    ? openApiAgentProvider(installedBunSupport, environment)
-    : client === "codex"
-      ? await openPrivateCodexAgentProvider(installedBunSupport.releaseRoot, environment)
-      : client === "claude"
-        ? await openPrivateClaudeAgentProvider(installedBunSupport.releaseRoot, environment)
-        : client === "pi"
-          ? await openPrivatePiAgentProvider(installedBunSupport.releaseRoot, environment)
-      : (() => { throw new Error("the native Agent client is unsupported"); })();
+  const agentProvider = await tryOpenAgentProvider(installedBunSupport, environment);
   return Object.freeze({
     backend: new PrivateLinuxCgroupBackend({
       bunPath: installedBunSupport.executablePath,
@@ -39,6 +30,27 @@ export async function openPrivateInstalledBunHost(
     runTimeoutMs: PRIVATE_DEFAULT_ROOT_RUN_TIMEOUT_MS,
     ...(agentProvider === undefined ? {} : { agentProvider }),
   });
+}
+
+async function tryOpenAgentProvider(
+  installedBunSupport: Awaited<ReturnType<typeof openPrivateInstalledBunSupport>>,
+  environment: Readonly<Record<string, string | undefined>>,
+): Promise<PrivateProjectSessionHost["agentProvider"]> {
+  try {
+    const client = environment[AGENT_CLIENT];
+    return client === undefined
+      ? openApiAgentProvider(installedBunSupport, environment)
+      : client === "codex"
+        ? await openPrivateCodexAgentProvider(installedBunSupport.releaseRoot, environment)
+        : client === "claude"
+          ? await openPrivateClaudeAgentProvider(installedBunSupport.releaseRoot, environment)
+          : client === "pi"
+            ? await openPrivatePiAgentProvider(installedBunSupport.releaseRoot, environment)
+            : (() => { throw new Error("the native Agent client is unsupported"); })();
+  } catch {
+    // Provider support is target-scoped; Agent-bearing recipe planning rejects its absence.
+    return undefined;
+  }
 }
 
 function openApiAgentProvider(

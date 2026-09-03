@@ -69,9 +69,10 @@ describe("private native Codex Agent provider", () => {
       CODEX_PATH: fixture.executablePath,
       OPENROUTER_MODEL: "provider/test-model",
     })).rejects.toThrow("gateway credential is unavailable");
-    await expect(openPrivateInstalledBunHost(installedBunLocation, {
+    const unsupported = await openPrivateInstalledBunHost(installedBunLocation, {
       JIG_AGENT_CLIENT: "unknown",
-    })).rejects.toThrow("native Agent client is unsupported");
+    });
+    expect(unsupported.agentProvider).toBeUndefined();
   });
 
   test("projects canonical subscription state without its refresh credential", async () => {

@@ -43,6 +43,9 @@ child calls, and Agent providers.
 - Do not weaken production checks for an unprovisioned unit test. Use private
   injection seams for units and the proof host for kernel behavior.
 - A provider adapter may narrow common Agent authority, never widen it.
+- Direct OpenAI/OpenRouter and native Codex, Claude Code, and Pi are the
+  owner-selected initial Agent breadth. Close missing evidence with focused
+  tests; do not remove one solely because prerelease live coverage lags.
 
 ## Verification
 

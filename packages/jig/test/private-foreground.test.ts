@@ -42,6 +42,41 @@ describe("private foreground command boundary", () => {
 });
 
 proofDescribe("private rootless project session", () => {
+  test("keeps unavailable Agent configuration out of capability-free check and Run", async () => {
+    const root = await mkdtemp(join(tmpdir(), "jig-private-agent-isolation-"));
+    let session: Awaited<ReturnType<typeof openPrivateProjectSession>> | undefined;
+    try {
+      await writeCapabilityFreeProject(root);
+      const host = await openPrivateInstalledBunHost(installedBunLocation, {
+        JIG_AGENT_CLIENT: "codex",
+      });
+      expect(host.agentProvider).toBeUndefined();
+      session = await openPrivateProjectSession({ directory: root, host });
+
+      const plan = await session.plan({ lockMode: "update" });
+      if (plan.state !== "applicable") {
+        throw new Error("capability-free project did not produce a Plan");
+      }
+      await session.apply({ planDigest: plan.planDigest });
+      const receipt = await session.rootAdministration.startRun({
+        submissionId: "agent-isolation",
+        target: { kind: "flow", path: "flows/worker" },
+        input: { ticket: "unrelated" },
+      });
+      expect(await waitForTerminalStatus(session.rootAdministration, receipt)).toMatchObject({
+        state: "terminal",
+        terminal: {
+          status: "succeeded",
+          outcome: "done",
+          output: { worker: { ticket: "unrelated" } },
+        },
+      });
+    } finally {
+      await session?.close().catch(() => undefined);
+      await rm(root, { recursive: true, force: true });
+    }
+  }, 300_000);
+
   test("preserves one bounded malformed-source diagnostic through a real session", async () => {
     const root = await mkdtemp(join(tmpdir(), "jig-private-diagnostic-"));
     let session: Awaited<ReturnType<typeof openPrivateProjectSession>> | undefined;
@@ -700,6 +735,22 @@ async function writeProject(root: string): Promise<void> {
     "});",
     "",
   ].join("\n"));
+}
+
+async function writeCapabilityFreeProject(root: string): Promise<void> {
+  const worker = join(root, "flows", "worker");
+  await mkdir(worker, { recursive: true });
+  await writeFile(join(root, "jig.ts"), [
+    'import { defineJig } from "@jigging/jig";',
+    'export default defineJig({ flows: ["./flows/worker"] });',
+    "",
+  ].join("\n"));
+  await writeFile(
+    join(worker, "FLOW.md"),
+    metadata("agent-isolation", "Returns its input without an Agent capability."),
+  );
+  await writeFile(join(worker, "flow.ts"), bunWorkerProgram());
+  await copyFlowSdk(worker);
 }
 
 async function writeAgentRouterProject(root: string): Promise<void> {

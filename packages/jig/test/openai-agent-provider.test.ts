@@ -96,12 +96,13 @@ describe("private OpenAI Agent provider", () => {
     expect(nativeWithIncompleteFlavor.agentProvider?.baseURL).toBe(PRIVATE_OPENAI_BASE_URL);
     expect(openRouterWithIncompleteNative.agentProvider?.baseURL)
       .toBe(PRIVATE_OPENROUTER_BASE_URL);
-    await expect(openPrivateInstalledBunHost(installedBunLocation, {
+    const ambiguous = await openPrivateInstalledBunHost(installedBunLocation, {
       OPENAI_API_KEY: "native-secret",
       OPENAI_MODEL: "native-model",
       OPENROUTER_API_KEY: "router-secret",
       OPENROUTER_MODEL: "router/model",
-    })).rejects.toThrow("configuration is ambiguous");
+    });
+    expect(ambiguous.agentProvider).toBeUndefined();
   });
 
   test("rejects malformed complete configuration", async () => {

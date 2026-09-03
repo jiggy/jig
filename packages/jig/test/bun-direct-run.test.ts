@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test";
 import type { JsonValue } from "../src/json.js";
 import { planPrivateBunDirectRun } from "../src/internal/bun-direct-run.js";
 import { privateDomainDigest } from "../src/internal/identity.js";
+import { openPrivateInstalledBunHost } from "../src/internal/installed-bun-host.js";
 import { openPrivateInstalledBunSupport } from "../src/internal/installed-bun-support.js";
 import { openPrivateOpenAIAgentProvider } from "../src/internal/openai-agent-provider.js";
 import { openPrivateOpenRouterAgentFlavor } from "../src/internal/openrouter-agent-flavor.js";
@@ -101,6 +102,41 @@ describe("private Bun direct Run", () => {
     expect(first.observation.digest).not.toBe(differentFlavor.observation.digest);
     expect(first.agentProvider).toBe(firstProvider);
     expect(JSON.stringify(first.observation)).not.toContain("secret");
+  });
+
+  test("keeps unavailable Agent configuration scoped to Agent-bearing recipes", async () => {
+    const backend = new StaticMechanismBackend({
+      bunPath: "/test/bun",
+      bunHostLibraryPath: "/test/lib",
+    });
+    const environments = [
+      { JIG_AGENT_CLIENT: "unknown" },
+      { JIG_AGENT_CLIENT: "codex" },
+      { OPENAI_API_KEY: "test-secret", OPENAI_MODEL: "invalid model" },
+      {
+        OPENAI_API_KEY: "native-secret",
+        OPENAI_MODEL: "native-model",
+        OPENROUTER_API_KEY: "router-secret",
+        OPENROUTER_MODEL: "router/model",
+      },
+    ] as const;
+
+    for (const environment of environments) {
+      const host = await openPrivateInstalledBunHost(installedBunLocation, environment);
+      expect(host.agentProvider).toBeUndefined();
+      await expect(planPrivateBunDirectRun({
+        request: activationRequest(),
+        installedSupport: host.installedBunSupport,
+        backend,
+        agentProvider: host.agentProvider,
+      })).resolves.toMatchObject({ request: { capabilities: {} } });
+      await expect(planPrivateBunDirectRun({
+        request: activationRequest(true),
+        installedSupport: host.installedBunSupport,
+        backend,
+        agentProvider: host.agentProvider,
+      })).rejects.toThrow("Agent provider was not produced");
+    }
   });
 });
 
