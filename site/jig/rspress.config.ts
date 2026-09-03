@@ -20,10 +20,20 @@ export default defineConfig({
   themeConfig: {
     nav: [
       { text: "Quickstart", link: "/guide/" },
+      { text: "Use cases", link: "/use-cases/" },
       { text: "FLOW", link: "https://flow.jig.md/" },
       { text: "GitHub", link: "https://github.com/jigmd/jig" },
     ],
     sidebar: {
+      "/use-cases/": [
+        {
+          text: "Use cases",
+          items: [
+            { text: "Catalogue", link: "/use-cases/" },
+            { text: "Pattern notebook", link: "/use-cases/patterns" },
+          ],
+        },
+      ],
       "/spec/": [
         {
           text: "Jig direct alpha",

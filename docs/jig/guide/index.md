@@ -30,6 +30,8 @@ the reviewed proposal into admission.
 
 - The [repository quickstart](https://github.com/jigmd/jig#quickstart) provides
   a complete first Flow and the supported-host requirements.
+- The [use-case catalogue](../use-cases/) records non-normative product
+  hypotheses, specified probe briefs, and their evidence maturity.
 - [Project Authoring SDK/1](../spec/project-sdk.md) defines inert `jig.ts` and
   Binding authoring values.
 - [Project and execution policy](../spec/project-policy.md) defines capture,
