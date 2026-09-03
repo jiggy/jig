@@ -12,11 +12,25 @@ export interface PrivateAcpTurnRequest {
   readonly cwd: string;
   readonly instructions: string;
   readonly signal?: AbortSignal;
+  readonly sessionMeta?: Readonly<Record<string, unknown>>;
+  readonly configuration?: readonly PrivateAcpSessionConfiguration[];
+  readonly modeId?: string;
   readonly authentication?: {
     readonly request: acp.AuthenticateRequest;
     readonly clientAuthCapabilities?: NonNullable<acp.ClientCapabilities["auth"]>;
   };
 }
+
+export type PrivateAcpSessionConfiguration =
+  | {
+      readonly configId: string;
+      readonly value: string;
+    }
+  | {
+      readonly configId: string;
+      readonly type: "boolean";
+      readonly value: boolean;
+    };
 
 export interface PrivateAcpTurnResult {
   readonly stopReason: acp.StopReason;
@@ -42,10 +56,6 @@ export async function runPrivateAcpTurn(
     ({ agent, params }) => {
       if (request.signal?.aborted) {
         return { outcome: { outcome: "cancelled" as const } };
-      }
-      const allowed = params.options.find(({ kind }) => kind === "allow_once");
-      if (allowed !== undefined) {
-        return { outcome: { outcome: "selected" as const, optionId: allowed.optionId } };
       }
       const rejected = params.options.find(({ kind }) => kind === "reject_once");
       if (rejected !== undefined) {
@@ -83,44 +93,60 @@ export async function runPrivateAcpTurn(
     }
 
     const canClose = initialized.agentCapabilities?.sessionCapabilities?.close != null;
-    const session = await agent.buildSession({ cwd: request.cwd, mcpServers: [] })
+    const session = await agent.buildSession({
+      cwd: request.cwd,
+      mcpServers: [],
+      ...(request.sessionMeta === undefined ? {} : { _meta: request.sessionMeta }),
+    })
       .start(cancellationOptions(request.signal));
     try {
-        const cancel = (): void => {
-          void agent.notify(
-            acp.methods.agent.session.cancel,
-            { sessionId: session.sessionId },
-          ).catch(() => undefined);
-        };
-        request.signal?.addEventListener("abort", cancel, { once: true });
-        try {
-          const prompt = session.prompt(
-            request.instructions,
-            cancellationOptions(request.signal),
-          );
-          for (;;) {
-            const message = await session.nextUpdate();
-            if (message.kind === "stop") {
-              await prompt;
-              return Object.freeze({ stopReason: message.stopReason, text });
-            }
-            updateCount += 1;
-            if (updateCount > ACP_UPDATE_COUNT) {
-              throw new PrivateAcpProtocolError("the ACP agent exceeded its update limit");
-            }
-            const update = message.update;
-            if (update.sessionUpdate !== "agent_message_chunk" ||
-                update.content.type !== "text") continue;
-            const bytes = encoder.encode(update.content.text).byteLength;
-            if (textBytes + bytes > ACP_TEXT_BYTES) {
-              throw new PrivateAcpProtocolError("the ACP agent exceeded its text limit");
-            }
-            textBytes += bytes;
-            text += update.content.text;
+      for (const option of request.configuration ?? []) {
+        await agent.request(acp.methods.agent.session.setConfigOption, {
+          sessionId: session.sessionId,
+          ...option,
+        }, cancellationOptions(request.signal));
+      }
+      if (request.modeId !== undefined) {
+        await agent.request(acp.methods.agent.session.setMode, {
+          sessionId: session.sessionId,
+          modeId: request.modeId,
+        }, cancellationOptions(request.signal));
+      }
+      const cancel = (): void => {
+        void agent.notify(
+          acp.methods.agent.session.cancel,
+          { sessionId: session.sessionId },
+        ).catch(() => undefined);
+      };
+      request.signal?.addEventListener("abort", cancel, { once: true });
+      try {
+        const prompt = session.prompt(
+          request.instructions,
+          cancellationOptions(request.signal),
+        );
+        for (;;) {
+          const message = await session.nextUpdate();
+          if (message.kind === "stop") {
+            await prompt;
+            return Object.freeze({ stopReason: message.stopReason, text });
           }
-        } finally {
-          request.signal?.removeEventListener("abort", cancel);
+          updateCount += 1;
+          if (updateCount > ACP_UPDATE_COUNT) {
+            throw new PrivateAcpProtocolError("the ACP agent exceeded its update limit");
+          }
+          const update = message.update;
+          if (update.sessionUpdate !== "agent_message_chunk" ||
+              update.content.type !== "text") continue;
+          const bytes = encoder.encode(update.content.text).byteLength;
+          if (textBytes + bytes > ACP_TEXT_BYTES) {
+            throw new PrivateAcpProtocolError("the ACP agent exceeded its text limit");
+          }
+          textBytes += bytes;
+          text += update.content.text;
         }
+      } finally {
+        request.signal?.removeEventListener("abort", cancel);
+      }
     } finally {
       session.dispose();
       if (canClose) {
@@ -182,9 +208,17 @@ export class PrivateAcpProtocolError extends Error {
 function requireTurnRequest(request: PrivateAcpTurnRequest): void {
   if (!request.cwd.startsWith("/") || request.cwd.includes("\0") ||
       request.instructions.length === 0 || request.instructions.includes("\0") ||
-      encoder.encode(request.instructions).byteLength > ACP_INSTRUCTION_BYTES) {
+      encoder.encode(request.instructions).byteLength > ACP_INSTRUCTION_BYTES ||
+      (request.configuration?.length ?? 0) > 16 ||
+      request.configuration?.some(({ configId, value }) =>
+        !validIdentifier(configId) || typeof value === "string" && !validIdentifier(value)) ||
+      request.modeId !== undefined && !validIdentifier(request.modeId)) {
     throw new PrivateAcpProtocolError("the ACP turn request is invalid");
   }
+}
+
+function validIdentifier(value: string): boolean {
+  return value.length > 0 && value.length <= 1_024 && !value.includes("\0");
 }
 
 function cancellationOptions(signal: AbortSignal | undefined): acp.SendRequestOptions {

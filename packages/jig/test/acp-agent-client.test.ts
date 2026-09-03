@@ -7,15 +7,15 @@ import {
 } from "../src/internal/acp-agent-client.js";
 
 describe("private ACP Agent client", () => {
-  test("runs one stable v1 turn and grants no persistent permission", async () => {
+  test("runs one stable v1 turn and rejects native tool authority", async () => {
     let permission: acp.RequestPermissionResponse | undefined;
     const agent = deterministicAgent(async (connection, sessionId) => {
       permission = await connection.request(acp.methods.client.session.requestPermission, {
         sessionId,
         toolCall: { toolCallId: "safe-scratch", title: "write scratch" },
         options: [
-          { optionId: "always", name: "Always", kind: "allow_always" },
           { optionId: "once", name: "Once", kind: "allow_once" },
+          { optionId: "reject", name: "No", kind: "reject_once" },
         ],
       });
       await message(connection, sessionId, "hello ");
@@ -27,7 +27,7 @@ describe("private ACP Agent client", () => {
       cwd: "/work",
       instructions: "answer once",
     })).resolves.toEqual({ stopReason: "end_turn", text: "hello world" });
-    expect(permission).toEqual({ outcome: { outcome: "selected", optionId: "once" } });
+    expect(permission).toEqual({ outcome: { outcome: "selected", optionId: "reject" } });
   });
 
   test("rejects once without granting a persistent permission", async () => {
@@ -98,6 +98,36 @@ describe("private ACP Agent client", () => {
     ]);
   });
 
+  test("configures one native session before prompting", async () => {
+    const observed: string[] = [];
+    const agent = deterministicAgent(async (_connection, sessionId) => {
+      observed.push(`prompt:${sessionId}`);
+      return "end_turn";
+    }, {
+      setConfigOption: ({ params }) => {
+        observed.push(`config:${params.configId}:${String(params.value)}`);
+        return { configOptions: [] };
+      },
+      setMode: ({ params }) => {
+        observed.push(`mode:${params.modeId}`);
+        return {};
+      },
+    });
+
+    await expect(runPrivateAcpTurn(agent, {
+      cwd: "/work",
+      instructions: "answer once",
+      configuration: [{ configId: "model", value: "provider/model" }],
+      modeId: "read-only",
+      sessionMeta: { native: { persist: false } },
+    })).resolves.toEqual({ stopReason: "end_turn", text: "" });
+    expect(observed).toEqual([
+      "config:model:provider/model",
+      "mode:read-only",
+      "prompt:test-session",
+    ]);
+  });
+
   test("rejects invalid requests and bounded text overflow", async () => {
     await expect(runPrivateAcpTurn(deterministicAgent(async () => "end_turn"), {
       cwd: "relative",
@@ -120,6 +150,10 @@ function deterministicAgent(
   handlers: {
     readonly initialize?: acp.AgentRequestHandler<typeof acp.methods.agent.initialize>;
     readonly authenticate?: acp.AgentRequestHandler<typeof acp.methods.agent.authenticate>;
+    readonly setConfigOption?: acp.AgentRequestHandler<
+      typeof acp.methods.agent.session.setConfigOption
+    >;
+    readonly setMode?: acp.AgentRequestHandler<typeof acp.methods.agent.session.setMode>;
     readonly sessionNew?: () => void;
   } = {},
 ): acp.AgentApp {
@@ -129,6 +163,11 @@ function deterministicAgent(
       agentCapabilities: { loadSession: false },
     })))
     .onRequest(acp.methods.agent.authenticate, handlers.authenticate ?? (() => ({})))
+    .onRequest(
+      acp.methods.agent.session.setConfigOption,
+      handlers.setConfigOption ?? (() => ({ configOptions: [] })),
+    )
+    .onRequest(acp.methods.agent.session.setMode, handlers.setMode ?? (() => ({})))
     .onRequest(acp.methods.agent.session.new, () => {
       handlers.sessionNew?.();
       return { sessionId: "test-session" };
