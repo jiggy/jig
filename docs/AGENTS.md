@@ -9,6 +9,8 @@ catalogues, and recovery records for FLOW and Jig.
 
 - `flow/` owns portable FLOW meaning and explanatory FLOW guidance.
 - `jig/` owns Jig host contracts, current guidance, and product research.
+- `maintainer-reentry.md` owns the living orientation, invariant, historical
+  lesson, and current-frontier guide for returning maintainers.
 - `suspended-experiments.md` is a recovery index for deleted work.
 - `site/` renders and publishes this content; it does not own its meaning.
 

@@ -1,5 +1,13 @@
 # Repository instructions
 
+## Maintainer re-entry
+
+Before selecting or expanding product work, read
+[`docs/maintainer-reentry.md`](docs/maintainer-reentry.md) and verify its dated
+state snapshot against Git, package registries, and current automation. Treat
+the stable boundaries and stop rules as current guidance; treat recorded
+versions and checkpoints as facts to re-check.
+
 ## No prerelease compatibility
 
 Jig and FLOW are prerelease projects. Do not retain deprecated, superseded,
@@ -90,7 +98,24 @@ Default section order:
 
 ## User Preferences
 
-When the user requests a durable behavior change, record it here or in the relevant child AGENTS.md
+- Keep the first releases radically simple: no `jig setup`, user-visible
+  lifecycle machinery, second lock protocol, or framework added merely to
+  make private implementation convenient.
+- Stop for owner direction before a change materially expands product concepts
+  or chooses between genuinely different product directions. It is preferable
+  to report a precise blocker early than to overcomplicate the solution.
+- Never absorb a development sandbox, proof-host package manager, credential,
+  model, or other local limitation into Jig or FLOW architecture. Ask for the
+  exact generic environment capability or report its absence.
+- Keep design probes disposable under `.tmp/design-probes-round-*`. Independent
+  probe agents receive published artifacts and public documentation, not
+  internal source, roadmaps, old probes, or permission to modify the platform
+  they are evaluating.
+- Use `@jigging/*` package names for now. Keep FLOW technically and publicly
+  distinct from Jig while retaining the monorepo until separation has concrete
+  value.
+- When the user requests a durable behavior change, record it here or in the
+  relevant child `AGENTS.md`.
 
 ## Child DOX Index
 

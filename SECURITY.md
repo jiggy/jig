@@ -64,7 +64,7 @@ same descendant and cleanup boundary.
 | Operation | Wall clock | Aggregate memory | Aggregate PIDs | CPU quota |
 | --- | ---: | ---: | ---: | ---: |
 | Each Flow execution scope | root deadline, at most 24 hours | 256 MiB | 48 | 50% of one CPU |
-| Each Agent provider scope | parent's remaining root deadline | 256 MiB | 48 | 50% of one CPU |
+| Each Agent provider scope | parent's remaining root deadline | 256 MiB | 128 | 50% of one CPU |
 | Project evaluation | 3 seconds | 256 MiB | 64 | 50% of one CPU |
 | One locked dependency preparation | 60 seconds | 512 MiB | 64 | one CPU |
 
