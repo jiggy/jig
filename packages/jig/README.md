@@ -15,7 +15,7 @@ authority they need or fail closed.
 ## Install
 
 ```console
-npm install --global @jigging/jig@0.1.0-alpha.4
+npm install --global @jigging/jig@0.1.0-alpha.5
 ```
 
 Installing Jig also installs `@oven/bun-linux-x64-baseline@1.3.3` as an exact
@@ -142,19 +142,24 @@ complete JSON/1 Run result. The child receives empty settings and attachments,
 no inherited slots, and a deadline no later than its parent. Run/1 controls
 operation identity, duplicate joins, conflicting reuse, cancellation, and
 uncertainty; Jig does not replay uncertain dispatch automatically. There is no
-separate child history, administration, scheduler, catalogue, resolver, or
-Agent surface. Jig also never guesses an unprefixed target.
+separate child history, administration, scheduler, catalogue, or resolver. Jig
+also never guesses an unprefixed target.
 
 The alpha admits one active child operation per parent; excess distinct
 concurrent calls receive `RESOURCE_EXHAUSTED`, while sequential calls remain
 available.
+
+One experimental [Agent Run capability](https://jig.md/spec/agent-run) is
+available through ordinary Run/1 `effect/call`. The alpha fixes one OpenRouter
+provider and model; it does not expose provider selection or a provider
+registry.
 
 The complete runnable example and current specification map are in the
 [repository README](https://github.com/jigmd/jig#readme) and
 [`docs/jig/guide/index.md`](https://github.com/jigmd/jig/blob/main/docs/jig/guide/index.md).
 
 This is a prerelease alpha. It does not expose Services, Hooks, event sources,
-Agent providers, Semantic Choice, Jig Graph, schedulers, catalogues, runtime
-registries, or sandbox registries.
+configurable Agent providers, Agent sessions, Semantic Choice, Jig Graph,
+schedulers, catalogues, runtime registries, or sandbox registries.
 
 Copyright © 2026 Victor Duarte <zvictor> and contributors.

@@ -17,11 +17,16 @@ Jig applies aggregate CPU, memory, and process limits before package code can
 execute. Every terminal path fences the complete process tree and removes its
 rootless owner state before reporting completion.
 
-Project evaluation and the fixed dependency installer use the same boundary.
-Only the trusted preparation worker inherits networking, solely during
-`jig check`. It validates the authored lock before invoking the fixed
-installer's first fetch; authored package code and lifecycle scripts never
-execute, and the later Flow Run remains offline.
+Project evaluation, the fixed dependency installer, and the fixed Agent
+provider worker use the same containment mechanism in separate scopes. The
+preparation worker inherits networking only during `jig check`; it validates
+the authored lock before the fixed installer's first fetch. The Agent worker
+inherits networking only for an admitted Agent `effect/call`. It receives the
+operator's `OPENROUTER_API_KEY`, instructions, and explicitly selected skill
+contents through a transient private channel. Those values do not enter the
+Flow environment, launch arguments, Plans, locks, or retained Run state.
+Authored package code and lifecycle scripts never execute during preparation,
+and every Flow Run remains offline.
 
 ## Supported trust boundary
 
@@ -45,6 +50,7 @@ same descendant and cleanup boundary.
 | Operation | Wall clock | Aggregate memory | Aggregate PIDs | CPU quota |
 | --- | ---: | ---: | ---: | ---: |
 | Each Flow execution scope | root deadline, at most 24 hours | 256 MiB | 48 | 50% of one CPU |
+| Each Agent provider scope | parent's remaining root deadline | 256 MiB | 48 | 50% of one CPU |
 | Project evaluation | 3 seconds | 256 MiB | 64 | 50% of one CPU |
 | One locked dependency preparation | 60 seconds | 512 MiB | 64 | one CPU |
 
@@ -55,11 +61,12 @@ Flow-controlled authority. The deadline starts when the root Run is accepted;
 project acquisition happens before it, and mandatory fencing and cleanup may
 finish afterward. The memory, PID, and CPU ceilings in the table are fixed.
 
-A Binding child runs in a second execution scope while its parent remains
-live. Jig admits at most one active child per parent, so this alpha can have at
-most the parent and one child scope active for one root Run. The table's CPU,
-memory, and PID ceilings apply to each scope, not to their combined total. A
-child's wall deadline is capped by the parent's remaining deadline.
+A Binding child Flow or Agent provider runs in a second execution scope while
+its parent remains live. Jig admits at most one active child operation per
+parent, so this alpha can have at most the parent and one child scope active
+for one root Run. The table's CPU, memory, and PID ceilings apply to each
+scope, not to their combined total. Every child operation's wall deadline is
+capped by the parent's remaining deadline.
 
 After bounded project capture, one `jig check` dependency-planning phase uses
 one 180-second cancellation deadline, performs at most 16 distinct dependency

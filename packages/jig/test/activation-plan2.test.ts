@@ -485,6 +485,7 @@ function candidateFixture(
   const packages: Record<string, JsonValue> = Object.fromEntries(orderedPaths.map((path) => [path, {
     digest: digest(`package:${path}`),
     directRun: true,
+    uses: {},
   }]));
   const pathTail = ["x".repeat(220), "y".repeat(240), "z".repeat(240), "w".repeat(240)];
   for (let index = 0; index < extraInertPackages; index += 1) {
@@ -492,6 +493,7 @@ function candidateFixture(
     packages[path] = {
       digest: digest(`package:${path}`),
       directRun: false,
+      uses: {},
     };
   }
   const lockBytes = withLf(canonicalJson({
@@ -574,14 +576,17 @@ function slottedCandidateFixture(slots: Readonly<Record<string, string>>) {
     "flows/bug": {
       digest: digest("package:flows/bug"),
       directRun: true,
+      uses: {},
     },
     "flows/question": {
       digest: digest("package:flows/question"),
       directRun: true,
+      uses: {},
     },
     "flows/router": {
       digest: digest("package:flows/router"),
       directRun: true,
+      uses: {},
     },
   };
   const lockBytes = withLf(canonicalJson({
@@ -692,16 +697,16 @@ function expectInvalidPlan(plan: unknown, message: string): void {
 }
 
 function activationRequest(value: Record<string, unknown>): Record<string, unknown> {
-  const request = { kind: "activation-request/3", flowSlots: {}, ...value };
+  const request = { kind: "activation-request/4", capabilities: {}, flowSlots: {}, ...value };
   return {
     ...request,
-    digest: privateDomainDigest("JIG-Activation-Request/3", request as unknown as JsonValue),
+    digest: privateDomainDigest("JIG-Activation-Request/4", request as unknown as JsonValue),
   };
 }
 
 function requestDigest(value: Record<string, unknown>): string {
   const { digest: _digest, ...content } = value;
-  return privateDomainDigest("JIG-Activation-Request/3", content as unknown as JsonValue);
+  return privateDomainDigest("JIG-Activation-Request/4", content as unknown as JsonValue);
 }
 
 function withLf(body: Uint8Array): Uint8Array {

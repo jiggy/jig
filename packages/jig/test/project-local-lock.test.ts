@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
@@ -22,9 +22,18 @@ import {
   retainFlowSourcePackages,
   type RetainedFlowInput,
 } from "../src/project/retained-flow.js";
+import {
+  AGENT_RUN_CONTRACT_DIGEST,
+  AGENT_RUN_CONTRACT_ID,
+  AGENT_RUN_CONTRACT_VERSION,
+} from "../src/internal/private-agent-run.js";
 
 const encoder = new TextEncoder();
 const schemaUri = "https://flow.jig.md/schemas/schema-1.json";
+const agentRunContract = await readFile(new URL(
+  "../../../docs/jig/spec/contracts/agent-run.capability.json",
+  import.meta.url,
+), "utf8");
 
 describe("private package-project portable lock projection", () => {
   test("has one empty canonical byte vector and authenticated identity", () => {
@@ -53,9 +62,11 @@ describe("private package-project portable lock projection", () => {
 
       expect(lock.packages["flows/configured"]).toMatchObject({
         directRun: false,
+        uses: {},
       });
       expect(lock.packages["flows/worker"]).toMatchObject({
         directRun: true,
+        uses: {},
       });
       expect(lock.bindings.configured).toEqual({
         packagePath: "flows/configured",
@@ -98,6 +109,35 @@ describe("private package-project portable lock projection", () => {
           privateProjectLocalLockDigest(base),
         );
       }
+    });
+  });
+
+  test("projects exact Agent capability uses into portable lock identity", async () => {
+    await withFlows({
+      "flows/router": {
+        "FLOW.md": metadata(`name: router
+description: Router.
+uses:
+  agent:
+    contract: ./contracts/agent-run.capability.json`),
+        "flow.ts": "export {};\n",
+        "contracts/agent-run.capability.json": agentRunContract,
+      },
+    }, async (flows) => {
+      const lock = createPrivateProjectLocalLock(linkPackageProject({ flows, bindings: [] }));
+      expect(lock.packages["flows/router"]!.uses).toEqual({
+        agent: {
+          id: AGENT_RUN_CONTRACT_ID,
+          version: AGENT_RUN_CONTRACT_VERSION,
+          digest: AGENT_RUN_CONTRACT_DIGEST,
+        },
+      });
+      expect(Object.isFrozen(lock.packages["flows/router"]!.uses.agent)).toBeTrue();
+      const decoded = decodePrivateProjectLocalLock(encodePrivateProjectLocalLock(lock));
+      expect(decoded).toEqual(lock);
+      expectInvalid(structuredClone(lock), (value) => {
+        value.packages["flows/router"].uses.agent.version = "2.0.0";
+      }, "must select the exact Agent Run contract");
     });
   });
 
@@ -190,7 +230,16 @@ describe("private package-project portable lock projection", () => {
       }, "selects its own package");
       expectInvalid(base, (value) => {
         value.packages["flows/worker"].directRun = false;
-      }, "must select a direct Run package");
+      }, "must select a capability-free direct Run package");
+      expectInvalid(base, (value) => {
+        value.packages["flows/worker"].uses = {
+          agent: {
+            id: AGENT_RUN_CONTRACT_ID,
+            version: AGENT_RUN_CONTRACT_VERSION,
+            digest: AGENT_RUN_CONTRACT_DIGEST,
+          },
+        };
+      }, "must select a capability-free direct Run package");
       expectInvalid(base, (value) => {
         value.packages["flows/configured"].unexpected = true;
       }, "must contain exactly");
@@ -217,6 +266,7 @@ function rootPackageCollection(count: number): unknown {
     {
       digest: `sha256:${"e".repeat(64)}`,
       directRun: true,
+      uses: {},
     },
   ]));
   return { packages, bindings: {} };

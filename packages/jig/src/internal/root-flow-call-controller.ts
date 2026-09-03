@@ -256,7 +256,18 @@ export async function recoverPrivateRootFlowCallOwners(input: ChildInput): Promi
     projectRoot: input.projectRoot,
     parentRunId: input.parent.run.runId,
   });
-  for (const owner of owners) await recoverOne(input, owner);
+  for (const owner of owners) {
+    if (isPrivateRootFlowCallOwner(owner)) await recoverOne(input, owner);
+  }
+}
+
+/** Distinguish Flow cleanup rows from other invocation-local child work. */
+export function isPrivateRootFlowCallOwner(
+  lifecycle: PrivateRootChildOwnerLifecycle,
+): boolean {
+  const value = lifecycle.allocation.value;
+  return value !== null && typeof value === "object" && !Array.isArray(value) &&
+    (value as Record<string, JsonValue>).kind === ALLOCATION_KIND;
 }
 
 function selectChild(parent: PrivateReacquiredRootExecutionWork, slot: string) {
@@ -268,7 +279,8 @@ function selectChild(parent: PrivateReacquiredRootExecutionWork, slot: string) {
   if (path === undefined) return undefined;
   const child = findPrivateActivationCandidateTargetV5(parent.candidate, { kind: "flow", path });
   if (child === undefined || child.request.target.kind !== "flow" ||
-      child.request.packagePath !== path || Object.keys(child.request.flowSlots).length !== 0) {
+      child.request.packagePath !== path || Object.keys(child.request.flowSlots).length !== 0 ||
+      Object.keys(child.request.capabilities).length !== 0) {
     throw new Error("admitted Flow slot does not name one direct child target");
   }
   return child;
@@ -571,7 +583,8 @@ async function requireAllocationMatchesParent(
     .map((path) => findPrivateActivationCandidateTargetV5(input.parent.candidate, { kind: "flow" as const, path }))
     .find((target) => target?.request.digest === allocation.requestDigest);
   if (selected === undefined || selected.request.target.kind !== "flow" ||
-      selected.disposition.state !== "ready" || Object.keys(selected.request.flowSlots).length !== 0) {
+      selected.disposition.state !== "ready" || Object.keys(selected.request.flowSlots).length !== 0 ||
+      Object.keys(selected.request.capabilities).length !== 0) {
     throw new Error("durable child allocation is not an admitted direct Flow");
   }
   const roots = await protectedWorkRoots(input.projectRoot);

@@ -116,7 +116,8 @@ FLOW Package/1 tree. Package paths and digests enter the project candidate.
 A Flow is a direct Run target only when it:
 
 - has one code entrypoint;
-- declares no capability use;
+- declares no capability use, or one slot using the exact Jig Agent Run
+  Capability Contract;
 - declares no attachment; and
 - accepts `{}` as settings.
 
@@ -226,7 +227,9 @@ per-invocation overrides into settings.
 Flow package paths. Omission normalizes to `{}`. Every path must name another
 selected Flow package which is eligible as a direct Flow target; a slot cannot
 name the Binding's own package, another Binding, an instruction-only package,
-or a Flow requiring settings, attachments, or capabilities. Linking captures
+or a Flow requiring settings, attachments, or capabilities. In particular,
+an Agent-capable Flow may be a root target but may not be a child slot in this
+one-level composition boundary. Linking captures
 the exact relations in the candidate, and apply admits them with their targets
 in the same immutable generation.
 
@@ -375,12 +378,28 @@ replay possibly dispatched child work; a deliberate retry uses a new
 `operationId`. The child is invocation-local owned work, not an independently
 addressable Run. Its terminal exists only as the parent-owned Run/1 operation
 result; Jig creates no child Run history and exposes no child administration,
-scheduler, catalogue, resolver, or Agent surface.
+scheduler, catalogue, or resolver.
 
 The direct alpha admits one active child operation per parent. A distinct
 concurrent operation receives `RESOURCE_EXHAUSTED`; identical waiters join the
 same operation, and sequential child calls are not constrained by this
 Jig-specific active-child bound. Run/1's request-lifetime limit still applies.
+
+An Agent-capable root package may instead use ordinary Run/1 `effect/call`
+through its one exact admitted Agent Run Capability Contract slot. The `run`
+method accepts instructions, an optional exact package-local skill selection,
+and an optional response Schema/1 value. Its wire success is
+`{ "value": { "outcome", "text", "structured"? } }`; Run SDK/1 unwraps the
+outer `value`. A completed structured result is validated against the caller's
+schema before it is returned to the package.
+
+Selected skills are immediate `skills/<name>/` subtrees containing exact-case
+`SKILL.md`. Omission selects none. They are copied from the immutable admitted
+package and passed as read-only guidance only to that call; they grant no
+tools, network, filesystem, child target, or other authority. Agent and child
+calls share the parent's one-active-operation limit and absolute deadline.
+Possibly dispatched Agent work is fenced and reported as uncertain rather
+than automatically replayed.
 
 A Run is `pending` until it has one durable terminal:
 
@@ -412,6 +431,14 @@ Package code receives:
 It does not receive the host environment, network, host process tree, writable
 cgroup controls, general devices, inherited descriptors, project source,
 `.jig`, or host-control channels.
+
+The one Agent provider is a separate bounded process. The trusted host reads
+`OPENROUTER_API_KEY`; among workload processes, only the provider receives the
+credential, inherited network access, and the fixed OpenRouter endpoint and
+model. The parent Flow remains network-isolated and keyless. The provider
+receives no model tools and cannot widen the Flow's exact admitted child slots.
+Provider selection and configuration are not FLOW or Binding inputs in this
+alpha.
 
 Dependency preparation uses the same ownership, cgroup, filesystem, process,
 and cleanup boundary. Only Jig's fixed installer and worker execute there;
@@ -481,3 +508,7 @@ The direct-alpha project implementation must prove at least:
 15. Binding-local child calls resolve only exact same-generation direct Flow
     targets, receive fresh empty settings and attachments, cannot exceed the
     parent deadline, and leave no separately addressable child history.
+16. One exact Agent Run capability projects only explicitly selected
+    package-local skill subtrees, validates structured output, remains inside
+    the parent deadline, and gives the Flow neither network nor its provider
+    credential.

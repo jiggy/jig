@@ -7,6 +7,7 @@ import {
 } from "../json.js";
 import {
   requirePackageProjectValue,
+  type LinkedCapabilityUse,
   type PackageProjectValue,
 } from "../project/package-project.js";
 import {
@@ -16,6 +17,11 @@ import {
 } from "../project/paths.js";
 import { PRIVATE_ACTIVATION_TARGET_LIMIT } from "./activation-planning.js";
 import { privateDomainDigest } from "./identity.js";
+import {
+  AGENT_RUN_CONTRACT_DIGEST,
+  AGENT_RUN_CONTRACT_ID,
+  AGENT_RUN_CONTRACT_VERSION,
+} from "./private-agent-run.js";
 
 const DIGEST = /^sha256:[0-9a-f]{64}$/;
 const LOCAL_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -24,6 +30,7 @@ const validatedLocks = new WeakSet<object>();
 export interface PrivateLockPackage {
   readonly digest: string;
   readonly directRun: boolean;
+  readonly uses: Readonly<Record<string, LinkedCapabilityUse>>;
 }
 
 export interface PrivateLockBinding {
@@ -48,6 +55,7 @@ export function createPrivateProjectLocalLock(
     packages[flow.provenance.projectPath] = Object.freeze({
       digest: flow.package.digest,
       directRun: flow.directRun,
+      uses: flow.uses,
     });
   }
   const bindings: Record<string, PrivateLockBinding> = Object.create(null) as
@@ -116,7 +124,7 @@ function normalizePackages(value: unknown): PrivateProjectLocalLock["packages"] 
     projectPath(path, `package ${JSON.stringify(path)}`);
     const item = exactObject(
       input[path],
-      ["digest", "directRun"],
+      ["digest", "directRun", "uses"],
       `package ${path}`,
     );
     if (typeof item.directRun !== "boolean") {
@@ -125,6 +133,37 @@ function normalizePackages(value: unknown): PrivateProjectLocalLock["packages"] 
     output[path] = Object.freeze({
       digest: digest(item.digest, `package ${path}`),
       directRun: item.directRun,
+      uses: normalizeUses(item.uses, `package ${path}`),
+    });
+  }
+  return Object.freeze(output);
+}
+
+function normalizeUses(
+  value: unknown,
+  label: string,
+): Readonly<Record<string, LinkedCapabilityUse>> {
+  const input = object(value, `${label} uses`);
+  const names = Object.keys(input);
+  if (names.length > 1) throw new TypeError(`${label} uses exceed 1 entry`);
+  const output: Record<string, LinkedCapabilityUse> = Object.create(null) as
+    Record<string, LinkedCapabilityUse>;
+  for (const name of names.sort()) {
+    localName(name, `${label} capability slot`);
+    const item = exactObject(
+      input[name],
+      ["id", "version", "digest"],
+      `${label} capability slot ${name}`,
+    );
+    if (item.id !== AGENT_RUN_CONTRACT_ID ||
+        item.version !== AGENT_RUN_CONTRACT_VERSION ||
+        item.digest !== AGENT_RUN_CONTRACT_DIGEST) {
+      throw new TypeError(`${label} capability slot ${name} must select the exact Agent Run contract`);
+    }
+    output[name] = Object.freeze({
+      id: AGENT_RUN_CONTRACT_ID,
+      version: AGENT_RUN_CONTRACT_VERSION,
+      digest: AGENT_RUN_CONTRACT_DIGEST,
     });
   }
   return Object.freeze(output);
@@ -167,8 +206,8 @@ function validateReferences(
       if (path === binding.packagePath) {
         throw new TypeError(`Binding ${id} slot ${name} selects its own package`);
       }
-      if (!target.directRun) {
-        throw new TypeError(`Binding ${id} slot ${name} must select a direct Run package`);
+      if (!target.directRun || Object.keys(target.uses).length !== 0) {
+        throw new TypeError(`Binding ${id} slot ${name} must select a capability-free direct Run package`);
       }
     }
   }

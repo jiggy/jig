@@ -270,7 +270,9 @@ handle(run)
 These root-only examples work with the direct Jig alpha. A direct `flow:` Run
 has no child-Flow slots, so its `flow/call` operations receive `UNAVAILABLE`.
 The current host supplies `flow/call` only for exact slots on the invoked
-Binding; it does not yet supply `effect/call`.
+Binding. It supplies `effect/call` only for the exact
+[Jig Agent Run capability](https://jig.md/spec/agent-run); other effect slots
+receive `UNAVAILABLE`.
 
 ## 8. Child-call examples
 
@@ -318,8 +320,8 @@ slots.
 The caller-supplied `operationId` retains all Run/1 join, conflict,
 cancellation, and uncertainty semantics. Uncertain dispatch is not
 automatically replayed. Jig creates no separately addressable child history,
-administration, scheduler, catalogue, resolver, or Agent surface through this
-SDK.
+administration, scheduler, catalogue, resolver, or Agent-specific surface in
+this SDK.
 
 The current Jig alpha admits one active child operation per parent. A distinct
 concurrent operation receives `RESOURCE_EXHAUSTED`; identical waiters join,

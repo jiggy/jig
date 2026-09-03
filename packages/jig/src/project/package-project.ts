@@ -3,6 +3,12 @@ import type { JsonObject, JsonValue } from "../json.js";
 import type { InspectedPackage } from "../package/inspect.js";
 import { SchemaDiagnostic } from "../schema/index.js";
 import {
+  AGENT_RUN_CONTRACT_DIGEST,
+  AGENT_RUN_CONTRACT_ID,
+  AGENT_RUN_CONTRACT_VERSION,
+  assertAgentRunContract,
+} from "../internal/private-agent-run.js";
+import {
   defineBinding,
   normalizePackageBindingDefinition,
   type BindingDefinition,
@@ -40,8 +46,15 @@ export interface LinkedFlow {
   readonly package: RetainedFlowInput["package"];
   readonly mode: "run";
   readonly metadata: InspectedPackage["metadata"];
+  readonly uses: Readonly<Record<string, LinkedCapabilityUse>>;
   readonly entrypoint?: InspectedPackage["entrypoint"];
   readonly directRun: boolean;
+}
+
+export interface LinkedCapabilityUse {
+  readonly id: string;
+  readonly version: string;
+  readonly digest: string;
 }
 
 export type RunTargetIdentity =
@@ -134,19 +147,17 @@ function prepareFlows(values: readonly unknown[], budget: WorkBudget): readonly 
         retained.provenance.projectPath,
       );
     }
-    if (Object.keys(retained.inspected.metadata.uses ?? {}).length !== 0) {
-      invalid(
-        "PROJECT_FLOW_CAPABILITY_UNSUPPORTED",
-        "the direct alpha does not configure Flow capabilities",
-        retained.provenance.projectPath,
-      );
-    }
+    const uses = projectSupportedCapabilityUses(
+      retained.inspected,
+      retained.provenance.projectPath,
+    );
     budget.consume(1 + Object.keys(retained.inspected.metadata.attachments ?? {}).length);
     const linked = Object.freeze({
       provenance: retained.provenance,
       package: retained.package,
       mode: "run" as const,
       metadata: retained.inspected.metadata,
+      uses,
       ...(retained.inspected.entrypoint === undefined
         ? {}
         : { entrypoint: retained.inspected.entrypoint }),
@@ -167,6 +178,49 @@ function prepareFlows(values: readonly unknown[], budget: WorkBudget): readonly 
     invalid("PROJECT_FLOW_COLLISION", errorText(error));
   }
   return Object.freeze(flows);
+}
+
+export function projectSupportedCapabilityUses(
+  inspected: InspectedPackage,
+  packagePath: string,
+): Readonly<Record<string, LinkedCapabilityUse>> {
+  const declarations = Object.entries(inspected.metadata.uses ?? {});
+  if (declarations.length === 0) return Object.freeze(Object.create(null));
+  if (declarations.length !== 1) {
+    invalid(
+      "PROJECT_FLOW_CAPABILITY_UNSUPPORTED",
+      "the direct alpha supports at most one Agent Run capability slot per package",
+      packagePath,
+    );
+  }
+  const [slot, declaration] = declarations[0]!;
+  if (declaration.contract === undefined) {
+    invalid(
+      "PROJECT_FLOW_CAPABILITY_UNSUPPORTED",
+      "the direct alpha supports only the exact Agent Run capability contract",
+      packagePath,
+      `/uses/${pointerToken(slot)}`,
+    );
+  }
+  const reference = inspected.usedContracts.find((candidate) => candidate.slot === slot);
+  if (reference === undefined) throw new Error("inspected capability reference invariant violated");
+  try {
+    assertAgentRunContract(reference.contract);
+  } catch (error) {
+    invalid(
+      "PROJECT_FLOW_CAPABILITY_UNSUPPORTED",
+      errorText(error),
+      packagePath,
+      `/uses/${pointerToken(slot)}`,
+    );
+  }
+  return Object.freeze({
+    [slot]: Object.freeze({
+      id: AGENT_RUN_CONTRACT_ID,
+      version: AGENT_RUN_CONTRACT_VERSION,
+      digest: AGENT_RUN_CONTRACT_DIGEST,
+    }),
+  });
 }
 
 function prepareBindings(
@@ -225,8 +279,8 @@ function prepareBindings(
     }
     if (flow.inspected.entrypoint === undefined) {
       invalid(
-        "PROJECT_BINDING_AGENT_REQUIRED",
-        `Binding ${id} selects an instruction-only package but the direct alpha has no Agent provider`,
+        "PROJECT_BINDING_ENTRYPOINT_REQUIRED",
+        `Binding ${id} selects an instruction-only package without a supported code entrypoint`,
         declarationPath,
         "/package",
       );
@@ -292,10 +346,10 @@ function validateFlowSlots(
         pointer,
       );
     }
-    if (!target.value.directRun) {
+    if (!target.value.directRun || Object.keys(target.value.uses).length !== 0) {
       invalid(
         "PROJECT_BINDING_SLOT_NOT_DIRECT",
-        `Binding ${bindingId} slot ${name} must select a direct-eligible Flow package`,
+        `Binding ${bindingId} slot ${name} must select a capability-free direct Flow package`,
         declarationPath,
         pointer,
       );

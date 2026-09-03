@@ -73,6 +73,7 @@ function projectCandidate(
       packages: Object.fromEntries(Object.entries(lock.packages).map(([path, value]) => [path, {
         digest: value.digest,
         directRun: value.directRun,
+        uses: value.uses,
       }])),
       bindings: lock.bindings,
     },

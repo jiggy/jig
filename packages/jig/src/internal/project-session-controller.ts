@@ -44,6 +44,7 @@ import {
 import { privateDomainDigest } from "./identity.js";
 import { validateJson1 } from "../json.js";
 import type { PrivateLinuxCgroupBackend } from "./linux-rootless-backend.js";
+import type { PrivateOpenRouterAgentProvider } from "./openrouter-agent-provider.js";
 import { renderPrivateProjectPlanReview } from "./project-plan-review.js";
 import type { PrivateProjectPlanReview } from "./project-plan-review.js";
 import {
@@ -68,6 +69,7 @@ export interface PrivateProjectSessionHost {
   readonly backend: PrivateLinuxCgroupBackend;
   readonly installedBunSupport: PrivateInstalledBunSupport;
   readonly runTimeoutMs: number;
+  readonly agentProvider?: PrivateOpenRouterAgentProvider | undefined;
 }
 
 /** Open one finite project session against already selected trusted machinery. */
@@ -99,6 +101,7 @@ export async function openPrivateProjectSession(input: {
         coordinator,
         installedSupport: input.host.installedBunSupport,
         backend: input.host.backend,
+        agentProvider: input.host.agentProvider,
         signal,
       }),
       onProjectIdentityLoss: () => {
@@ -196,6 +199,7 @@ function createSession(
                       executionPackage: admitted.executionPackage,
                       installedSupport: host.installedBunSupport,
                       backend: host.backend,
+                      agentProvider: host.agentProvider,
                     });
                     if (current.digest === admitted.recipeDigest &&
                         current.observation.digest === admitted.observationDigest) {
@@ -231,6 +235,7 @@ function createSession(
               executionPackage,
               installedSupport: host.installedBunSupport,
               backend: host.backend,
+              agentProvider: host.agentProvider,
             }));
           } catch (error) {
             if (error instanceof TypeError) {

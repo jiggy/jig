@@ -5,12 +5,14 @@ import {
 import { PrivateLinuxCgroupBackend } from "./linux-rootless-backend.js";
 import type { PrivateProjectSessionHost } from "./project-session-controller.js";
 import { PRIVATE_DEFAULT_ROOT_RUN_TIMEOUT_MS } from "./root-run-timeout-policy.js";
+import { openPrivateOpenRouterAgentProvider } from "./openrouter-agent-provider.js";
 
 /** Open the one fixed installed alpha host. This is not a public host SPI. */
 export async function openPrivateInstalledBunHost(
   location: PrivateInstalledBunLocation,
 ): Promise<PrivateProjectSessionHost> {
   const installedBunSupport = await openPrivateInstalledBunSupport(location);
+  const agentProvider = openPrivateOpenRouterAgentProvider(installedBunSupport);
   return Object.freeze({
     backend: new PrivateLinuxCgroupBackend({
       bunPath: installedBunSupport.executablePath,
@@ -19,5 +21,6 @@ export async function openPrivateInstalledBunHost(
     }),
     installedBunSupport,
     runTimeoutMs: PRIVATE_DEFAULT_ROOT_RUN_TIMEOUT_MS,
+    ...(agentProvider === undefined ? {} : { agentProvider }),
   });
 }

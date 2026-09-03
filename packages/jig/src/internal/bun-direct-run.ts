@@ -22,6 +22,11 @@ import {
   type PrivateActivationRequest,
 } from "../project/package-resolution.js";
 import { PRIVATE_MAX_ROOT_RUN_TIMEOUT_MS } from "./root-run-timeout-policy.js";
+import {
+  requirePrivateOpenRouterAgentProvider,
+  type PrivateOpenRouterAgentProvider,
+} from "./openrouter-agent-provider.js";
+import { AGENT_RUN_CONTRACT_DIGEST } from "./private-agent-run.js";
 
 const ADAPTER_REVISION = "private-bun-direct/1";
 const DEFAULT_SELECTOR = "bun";
@@ -63,6 +68,7 @@ export interface PrivateBunDirectRecipe {
   readonly bunPolicy: typeof BUN_POLICY;
   readonly privateProcessFilesystem: true;
   readonly privateRuntimeDevices: true;
+  readonly agentProvider?: PrivateOpenRouterAgentProvider | undefined;
 }
 
 /** Plan one exact, dependency-closed Bun flow.ts Run. */
@@ -72,6 +78,7 @@ export async function planPrivateBunDirectRun(input: {
   readonly backend: PrivateLinuxCgroupBackend;
   readonly executionPackage?: PackageArtifactRef;
   readonly selector?: string;
+  readonly agentProvider?: PrivateOpenRouterAgentProvider | undefined;
 }): Promise<PrivateBunDirectRecipe> {
   const request = requirePrivateActivationRequest(input.request);
   const installedSupport = requirePrivateInstalledBunSupport(input.installedSupport);
@@ -90,6 +97,15 @@ export async function planPrivateBunDirectRun(input: {
     if (Object.keys(request.settings).length !== 0) {
       throw new TypeError("private Bun direct Flow recipe requires zero configuration");
     }
+  }
+  const capabilityUses = Object.values(request.capabilities);
+  const agentProvider = capabilityUses.length === 0
+    ? undefined
+    : requirePrivateOpenRouterAgentProvider(input.agentProvider);
+  if (capabilityUses.some(({ digest }) => digest !== AGENT_RUN_CONTRACT_DIGEST) ||
+      capabilityUses.length > 1 ||
+      agentProvider !== undefined && agentProvider.contractDigest !== AGENT_RUN_CONTRACT_DIGEST) {
+    throw new TypeError("private Bun recipe requires the exact supported Agent capability");
   }
 
   const adapterDigest = privateDomainDigest("JIG-Private-Bun-Direct-Adapter/1", {
@@ -111,8 +127,15 @@ export async function planPrivateBunDirectRun(input: {
   } as unknown as JsonValue);
   const authorityDigest = privateDomainDigest("JIG-Private-Bun-Authority/1", {
     attachments: request.attachments,
+    capabilities: request.capabilities,
   } as unknown as JsonValue);
-  const launchEnvelopeDigest = logicalLaunchDigest(request, executionPackage, installedSupport, support);
+  const launchEnvelopeDigest = logicalLaunchDigest(
+    request,
+    executionPackage,
+    installedSupport,
+    support,
+    agentProvider,
+  );
   const observation = createPrivateActivationRecipeObservation({
     requestDigest: request.digest,
     adapter,
@@ -133,6 +156,7 @@ export async function planPrivateBunDirectRun(input: {
     installedSupportDigest: installedSupport.digest,
     mechanismDigest: support.digest,
     observationDigest: observation.digest,
+    ...(agentProvider === undefined ? {} : { agentProviderDigest: agentProvider.digest }),
   });
   const recipe = Object.freeze({
     kind: identity.kind,
@@ -151,6 +175,7 @@ export async function planPrivateBunDirectRun(input: {
     bunPolicy: BUN_POLICY,
     privateProcessFilesystem: true,
     privateRuntimeDevices: true,
+    ...(agentProvider === undefined ? {} : { agentProvider }),
   });
   authenticRecipes.add(recipe);
   return recipe;
@@ -168,6 +193,7 @@ function logicalLaunchDigest(
   executionPackage: PackageArtifactRef,
   installedSupport: PrivateInstalledBunSupport,
   mechanism: PrivateLinuxBackendMechanismSupport,
+  agentProvider: PrivateOpenRouterAgentProvider | undefined,
 ): string {
   return privateDomainDigest("JIG-Private-Bun-Logical-Launch/1", {
     requestDigest: request.digest,
@@ -186,5 +212,7 @@ function logicalLaunchDigest(
     }),
     bunPolicy: BUN_POLICY,
     runtimePredicates: RUNTIME_PREDICATES,
+    capabilities: request.capabilities,
+    ...(agentProvider === undefined ? {} : { agentProviderDigest: agentProvider.digest }),
   } as unknown as JsonValue);
 }

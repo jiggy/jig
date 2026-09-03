@@ -3,6 +3,11 @@ import { type FileHandle, lstat, open, opendir } from "node:fs/promises";
 
 import { CheckError, invalid, unavailable } from "../diagnostics.js";
 import {
+  AGENT_RUN_CONTRACT_DIGEST,
+  AGENT_RUN_CONTRACT_ID,
+  AGENT_RUN_CONTRACT_VERSION,
+} from "../internal/private-agent-run.js";
+import {
   captureOpenedPackageDirectory,
   type CapturedPackage,
 } from "../package/capture.js";
@@ -629,7 +634,17 @@ function assertProjectPathCollisions(paths: readonly string[]): void {
 
 export function isDirectRunEligible(inspected: InspectedPackage): boolean {
   if (inspected.mode !== "run" || inspected.entrypoint === undefined) return false;
-  if (Object.keys(inspected.metadata.uses ?? {}).length > 0) return false;
+  const uses = Object.entries(inspected.metadata.uses ?? {});
+  if (uses.length > 1) return false;
+  if (uses.length === 1) {
+    const [slot, declaration] = uses[0]!;
+    if (declaration.contract === undefined) return false;
+    const reference = inspected.usedContracts.find((candidate) => candidate.slot === slot);
+    if (reference === undefined ||
+        reference.contract.descriptor.id !== AGENT_RUN_CONTRACT_ID ||
+        reference.contract.descriptor.version !== AGENT_RUN_CONTRACT_VERSION ||
+        reference.contract.digest !== AGENT_RUN_CONTRACT_DIGEST) return false;
+  }
   if (Object.keys(inspected.metadata.attachments ?? {}).length > 0) return false;
   try {
     inspected.schemas.settings?.validate({}, "DIRECT_SETTINGS_INVALID");

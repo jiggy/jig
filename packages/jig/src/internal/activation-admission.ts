@@ -800,6 +800,9 @@ function requireRequestLockProjection(
   if (packageValue === undefined || packageValue.digest !== request.package.digest) {
     throw new TypeError("activation request package does not match its lock projection");
   }
+  if (!sameJson(packageValue.uses, request.capabilities)) {
+    throw new TypeError("activation request capability uses do not match its lock projection");
+  }
   if (request.target.kind === "binding") {
     const binding = lock.bindings[request.target.id];
     if (binding === undefined ||

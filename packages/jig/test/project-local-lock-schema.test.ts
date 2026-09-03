@@ -14,10 +14,18 @@ const lock = {
     "flows/configured": {
       digest,
       directRun: false,
+      uses: {},
     },
     "flows/direct": {
       digest,
       directRun: true,
+      uses: {
+        agent: {
+          id: "https://jig.md/contracts/agent-run",
+          version: "1.0.0",
+          digest: "sha256:5a0f06495323419d275eeff92617d9287647ece137dacc9c5c6d50466d65c0f0",
+        },
+      },
     },
   },
   bindings: {
@@ -48,6 +56,9 @@ describe("Jig lock/1 shape schema", () => {
     })],
     ["an unknown Binding field", changed(lock, (item) => {
       item.bindings.configured.grants = {};
+    })],
+    ["a different capability contract", changed(lock, (item) => {
+      item.packages["flows/direct"].uses.agent.id = "https://example.org/contracts/agent";
     })],
   ] as const) {
     test(`rejects ${name}`, () => {

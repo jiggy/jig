@@ -4,6 +4,12 @@ import type { JsonValue } from "../src/json.js";
 import { planPrivateBunDirectRun } from "../src/internal/bun-direct-run.js";
 import { privateDomainDigest } from "../src/internal/identity.js";
 import { openPrivateInstalledBunSupport } from "../src/internal/installed-bun-support.js";
+import { openPrivateOpenRouterAgentProvider } from "../src/internal/openrouter-agent-provider.js";
+import {
+  AGENT_RUN_CONTRACT_DIGEST,
+  AGENT_RUN_CONTRACT_ID,
+  AGENT_RUN_CONTRACT_VERSION,
+} from "../src/internal/private-agent-run.js";
 import {
   PrivateLinuxCgroupBackend,
   type PrivateLinuxBackendMechanismObservation,
@@ -29,6 +35,45 @@ describe("private Bun direct Run", () => {
     });
 
     expect(recipe.wallClockCeilingMs).toBe(86_400_000);
+  });
+
+  test("requires the fixed Agent provider without identifying its credential", async () => {
+    const installedSupport = await openPrivateInstalledBunSupport(installedBunLocation);
+    const backend = new StaticMechanismBackend({
+      bunPath: "/test/bun",
+      bunHostLibraryPath: "/test/lib",
+    });
+    const request = activationRequest(true);
+
+    await expect(planPrivateBunDirectRun({
+      request,
+      installedSupport,
+      backend,
+    })).rejects.toThrow("Agent provider was not produced");
+
+    const firstProvider = openPrivateOpenRouterAgentProvider(installedSupport, {
+      OPENROUTER_API_KEY: "first-secret",
+    })!;
+    const rotatedProvider = openPrivateOpenRouterAgentProvider(installedSupport, {
+      OPENROUTER_API_KEY: "rotated-secret",
+    })!;
+    const first = await planPrivateBunDirectRun({
+      request,
+      installedSupport,
+      backend,
+      agentProvider: firstProvider,
+    });
+    const rotated = await planPrivateBunDirectRun({
+      request,
+      installedSupport,
+      backend,
+      agentProvider: rotatedProvider,
+    });
+
+    expect(first.digest).toBe(rotated.digest);
+    expect(first.observation.digest).toBe(rotated.observation.digest);
+    expect(first.agentProvider).toBe(firstProvider);
+    expect(JSON.stringify(first.observation)).not.toContain("secret");
   });
 });
 
@@ -64,9 +109,9 @@ const MECHANISM: PrivateLinuxBackendMechanismObservation = Object.freeze({
   }),
 });
 
-function activationRequest(): PrivateActivationRequest {
+function activationRequest(agent = false): PrivateActivationRequest {
   const fields = Object.freeze({
-    kind: "activation-request/3" as const,
+    kind: "activation-request/4" as const,
     target: Object.freeze({ kind: "flow" as const, path: "flows/example" }),
     mode: "run" as const,
     packagePath: "flows/example",
@@ -76,13 +121,22 @@ function activationRequest(): PrivateActivationRequest {
     }),
     entrypoint: Object.freeze({ path: "flow.ts", suffix: "ts", selector: "bun" }),
     settings: Object.freeze({}),
+    capabilities: agent
+      ? Object.freeze({
+          agent: Object.freeze({
+            id: AGENT_RUN_CONTRACT_ID,
+            version: AGENT_RUN_CONTRACT_VERSION,
+            digest: AGENT_RUN_CONTRACT_DIGEST,
+          }),
+        })
+      : Object.freeze({}),
     flowSlots: Object.freeze({}),
     attachments: Object.freeze({}),
   });
   return restorePrivateActivationRequest(Object.freeze({
     ...fields,
     digest: privateDomainDigest(
-      "JIG-Activation-Request/3",
+      "JIG-Activation-Request/4",
       fields as unknown as JsonValue,
     ),
   }));

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
@@ -17,8 +17,17 @@ import {
   retainFlowSourcePackages,
   type RetainedFlowInput,
 } from "../src/project/retained-flow.js";
+import {
+  AGENT_RUN_CONTRACT_DIGEST,
+  AGENT_RUN_CONTRACT_ID,
+  AGENT_RUN_CONTRACT_VERSION,
+} from "../src/internal/private-agent-run.js";
 
 const schemaUri = "https://flow.jig.md/schemas/schema-1.json";
+const agentRunContract = await readFile(new URL(
+  "../../../docs/jig/spec/contracts/agent-run.capability.json",
+  import.meta.url,
+), "utf8");
 
 describe("private package-project linker", () => {
   test("retains captured Flow members without taking source ownership", async () => {
@@ -192,7 +201,7 @@ description: Review.`),
     });
   });
 
-  test("rejects capability-bearing packages at the direct-alpha linker boundary", async () => {
+  test("rejects capabilities other than exact Agent Run at the alpha linker boundary", async () => {
     await withFlows({
       "flows/consumer": {
         "FLOW.md": metadata(`name: consumer
@@ -208,6 +217,89 @@ uses:
         () => linkPackageProject({ flows, bindings: [] }),
         "PROJECT_FLOW_CAPABILITY_UNSUPPORTED",
       );
+    });
+  });
+
+  test("admits exactly one Agent Run capability slot and freezes its exact identity", async () => {
+    await withFlows({
+      "flows/agent-consumer": {
+        "FLOW.md": metadata(`name: agent-consumer
+description: Agent consumer.
+uses:
+  agent:
+    contract: ./contracts/agent-run.capability.json`),
+        "flow.ts": "export {};\n",
+        "contracts/agent-run.capability.json": agentRunContract,
+      },
+    }, async ([flow]) => {
+      const linked = linkPackageProject({ flows: [flow!], bindings: [] });
+      expect(linked.flows[0]!.directRun).toBeTrue();
+      expect(linked.flows[0]!.uses).toEqual({
+        agent: {
+          id: AGENT_RUN_CONTRACT_ID,
+          version: AGENT_RUN_CONTRACT_VERSION,
+          digest: AGENT_RUN_CONTRACT_DIGEST,
+        },
+      });
+      expect(Object.isFrozen(linked.flows[0]!.uses)).toBeTrue();
+      expect(Object.isFrozen(linked.flows[0]!.uses.agent)).toBeTrue();
+    });
+  });
+
+  test("rejects local and multiple capability uses", async () => {
+    await withFlows({
+      "flows/local": {
+        "FLOW.md": metadata(`name: local
+description: Local.
+uses:
+  agent:
+    local: true`),
+        "flow.ts": "export {};\n",
+      },
+      "flows/multiple": {
+        "FLOW.md": metadata(`name: multiple
+description: Multiple.
+uses:
+  primary:
+    contract: ./contracts/agent-run.capability.json
+  secondary:
+    contract: ./contracts/agent-run.capability.json`),
+        "flow.ts": "export {};\n",
+        "contracts/agent-run.capability.json": agentRunContract,
+      },
+    }, async ([local, multiple]) => {
+      expectCode(
+        () => linkPackageProject({ flows: [local!], bindings: [] }),
+        "PROJECT_FLOW_CAPABILITY_UNSUPPORTED",
+        "/uses/agent",
+      );
+      expectCode(
+        () => linkPackageProject({ flows: [multiple!], bindings: [] }),
+        "PROJECT_FLOW_CAPABILITY_UNSUPPORTED",
+      );
+    });
+  });
+
+  test("keeps exact child Flow slots capability-free", async () => {
+    await withFlows({
+      "flows/router": run("router"),
+      "flows/agent-child": {
+        "FLOW.md": metadata(`name: agent-child
+description: Agent child.
+uses:
+  agent:
+    contract: ./contracts/agent-run.capability.json`),
+        "flow.ts": "export {};\n",
+        "contracts/agent-run.capability.json": agentRunContract,
+      },
+    }, async (flows) => {
+      expectCode(() => linkPackageProject({
+        flows,
+        bindings: [binding("bindings/router.ts", {
+          package: "flows/router",
+          slots: { agent: "flows/agent-child" },
+        })],
+      }), "PROJECT_BINDING_SLOT_NOT_DIRECT", "/slots/agent");
     });
   });
 

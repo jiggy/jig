@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { createRequire } from "node:module";
-import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { lstat, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -19,6 +19,7 @@ import { installedBunLocation } from "./fixtures/installed-bun-location.js";
 
 const HOSTILE = process.env.JIG_LINUX_ROOTLESS_HOSTILE === "1";
 const proofDescribe = HOSTILE ? describe.serial : describe.skip;
+const agentProofTest = process.env.JIG_OPENROUTER_AGENT_PROOF === "1" ? test : test.skip;
 const initialRootlessTemporaryState = new Set(
   (await readdir(tmpdir())).filter(rootlessTemporaryEntry),
 );
@@ -331,6 +332,55 @@ proofDescribe("private rootless project session", () => {
       await rm(root, { recursive: true, force: true });
     }
   }, 300_000);
+
+  agentProofTest("executes one contained Agent choice and exact child without retaining its key", async () => {
+    const root = await mkdtemp(join(tmpdir(), "jig-private-agent-router-"));
+    let session: Awaited<ReturnType<typeof openPrivateProjectSession>> | undefined;
+    try {
+      await writeAgentRouterProject(root);
+      session = await openPrivateProjectSession({
+        directory: root,
+        host: await openPrivateInstalledBunHost(installedBunLocation),
+      });
+      const plan = await session.plan({ lockMode: "update" });
+      if (plan.state !== "applicable") throw new Error("Agent router did not produce a Plan");
+      expect(plan.review.text).toContain("https://jig.md/contracts/agent-run");
+      await session.apply({ planDigest: plan.planDigest });
+
+      const started = Date.now();
+      const receipt = await session.rootAdministration.startRun({
+        submissionId: "agent-router-live",
+        target: { kind: "binding", id: "ticket-router" },
+        input: { route: "technical", ticket: "Login fails after password reset" },
+      });
+      const status = await waitForTerminalStatus(session.rootAdministration, receipt);
+      expect(Date.now() - started).toBeLessThan(30_000);
+      expect(status).toMatchObject({
+        state: "terminal",
+        terminal: {
+          status: "succeeded",
+          outcome: "done",
+          output: {
+            route: "technical",
+            parentHasKey: false,
+            child: {
+              outcome: "done",
+              output: { handled: "technical" },
+            },
+          },
+        },
+      });
+      await session.close();
+      session = undefined;
+      await expectNoChildResidue(root);
+      expect(await treeContains(root, process.env.OPENROUTER_API_KEY!)).toBeFalse();
+      await waitForRootlessCgroups(initialRootlessCgroups);
+      await waitForRootlessTemporaryState(initialRootlessTemporaryState);
+    } finally {
+      await session?.close().catch(() => undefined);
+      await rm(root, { recursive: true, force: true });
+    }
+  }, 180_000);
 
   test("reviews, admits, executes, replays, cancels, and recovers one exact Bun Flow", async () => {
     const root = await mkdtemp(join(tmpdir(), "jig-private-foreground-"));
@@ -651,6 +701,95 @@ async function writeProject(root: string): Promise<void> {
   ].join("\n"));
 }
 
+async function writeAgentRouterProject(root: string): Promise<void> {
+  const router = join(root, "flows", "ticket-router");
+  const billing = join(root, "flows", "billing");
+  const technical = join(root, "flows", "technical");
+  await Promise.all([router, billing, technical, join(root, "bindings")]
+    .map((path) => mkdir(path, { recursive: true })));
+  await writeFile(join(root, "jig.ts"), [
+    'import { defineJig, discover } from "@jigging/jig";',
+    'export default defineJig({ flows: discover("flows"), bindings: discover("bindings") });',
+    "",
+  ].join("\n"));
+
+  await mkdir(join(router, "contracts"));
+  await writeFile(
+    join(router, "contracts", "agent-run.capability.json"),
+    await readFile(join(import.meta.dir, "..", "..", "..", "docs", "jig", "spec", "contracts", "agent-run.capability.json")),
+  );
+  await mkdir(join(router, "skills", "ticket-routing"), { recursive: true });
+  await writeFile(
+    join(router, "skills", "ticket-routing", "SKILL.md"),
+    "# Ticket routing\n\nCopy the ticket's explicit `route` field exactly.\n",
+  );
+  await writeFile(join(router, "FLOW.md"), [
+    "---",
+    "name: ticket-router",
+    "description: Uses one Agent choice before calling an exact child.",
+    "uses:",
+    "  agent:",
+    "    contract: ./contracts/agent-run.capability.json",
+    "---",
+    "",
+  ].join("\n"));
+  await writeFile(join(router, "flow.ts"), agentRouterProgram());
+  await copyFlowSdk(router);
+
+  for (const [directory, route] of [[billing, "billing"], [technical, "technical"]] as const) {
+    await writeFile(join(directory, "FLOW.md"), metadata(route, `Handles one ${route} ticket.`));
+    await writeFile(join(directory, "flow.ts"), [
+      '#!/usr/bin/env bun',
+      'import { handle } from "./flow-sdk/index.ts";',
+      `await handle(async (run) => ({ outcome: "done", output: { handled: ${JSON.stringify(route)}, input: run.input } }));`,
+      "",
+    ].join("\n"));
+    await copyFlowSdk(directory);
+  }
+  await writeFile(join(root, "bindings", "ticket-router.ts"), [
+    'import { defineBinding } from "@jigging/jig";',
+    "export default defineBinding({",
+    '  package: "./flows/ticket-router",',
+    "  slots: {",
+    '    billing: "./flows/billing",',
+    '    technical: "./flows/technical",',
+    "  },",
+    "});",
+    "",
+  ].join("\n"));
+}
+
+function agentRouterProgram(): string {
+  return [
+    '#!/usr/bin/env bun',
+    'import { handle } from "./flow-sdk/index.ts";',
+    "const responseSchema = {",
+    '  $schema: "https://flow.jig.md/schemas/schema-1.json",',
+    '  type: "object", properties: { route: { enum: ["billing", "technical"] } },',
+    '  required: ["route"], additionalProperties: false,',
+    "};",
+    "await handle(async (run) => {",
+    '  const input = run.input as { route: "billing" | "technical"; ticket: string };',
+    "  const agent = await run.callEffect({",
+    '    operationId: "choose-route", slot: "agent", method: "run",',
+    "    input: {",
+    '      instructions: `Return route exactly equal to this ticket route: ${JSON.stringify(input)}`,',
+    '      skills: ["ticket-routing"], responseSchema,',
+    "    },",
+    '  }) as { outcome: string; structured?: { route: "billing" | "technical" } };',
+    '  if (agent.outcome !== "completed" || agent.structured === undefined) throw new Error("Agent did not choose");',
+    "  const child = await run.callFlow({",
+    '    operationId: "dispatch-route", slot: agent.structured.route, input,',
+    "  });",
+    "  return { outcome: \"done\", output: {",
+    "    route: agent.structured.route, child,",
+    "    parentHasKey: process.env.OPENROUTER_API_KEY !== undefined,",
+    "  } };",
+    "});",
+    "",
+  ].join("\n");
+}
+
 function metadata(name: string, description: string): string {
   return `---\nname: ${name}\ndescription: ${description}\n---\n`;
 }
@@ -959,7 +1098,17 @@ async function expectNoChildResidue(root: string): Promise<void> {
     directoryEntries(join(root, ".jig", "private-root-linux-owners")),
   ]);
   expect(materializations.filter((entry) => entry.startsWith("child-"))).toEqual([]);
-  expect(owners.filter((entry) => entry.startsWith("c-"))).toEqual([]);
+  expect(owners.filter((entry) => entry.startsWith("c-") || entry.startsWith("a-"))).toEqual([]);
+}
+
+async function treeContains(root: string, needle: string): Promise<boolean> {
+  const encoded = Buffer.from(needle);
+  for (const relative of await readdir(root, { recursive: true })) {
+    const path = join(root, relative);
+    const information = await lstat(path);
+    if (information.isFile() && Buffer.from(await readFile(path)).includes(encoded)) return true;
+  }
+  return false;
 }
 
 async function directoryEntries(path: string): Promise<string[]> {
@@ -1018,8 +1167,9 @@ async function waitForChildSandbox(root: string, runId: string): Promise<void> {
 async function waitForTerminalStatus(
   administration: RootAdministration,
   receipt: StartRootRunReceipt,
+  timeoutMs = 30_000,
 ) {
-  const deadline = Date.now() + 30_000;
+  const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     const status = await administration.runStatus(receipt);
     if (status.state === "terminal") return status;

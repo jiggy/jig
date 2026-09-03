@@ -22,10 +22,12 @@ describe("fixed installed Bun support", () => {
       "bun",
     );
     const installedCli = join(root, "libexec", "installed-cli.js");
+    const agent = join(root, "libexec", "agent");
     const evaluator = join(root, "libexec", "evaluator");
     const preparation = join(root, "libexec", "preparation");
     try {
       await mkdir(join(executable, ".."), { recursive: true });
+      await mkdir(agent, { recursive: true });
       await mkdir(evaluator, { recursive: true });
       await mkdir(preparation, { recursive: true });
       await copyFile(installedBunLocation.executablePath, executable);
@@ -34,6 +36,7 @@ describe("fixed installed Bun support", () => {
       await writeFile(join(evaluator, "project-evaluator-worker.js"), "worker\n");
       await writeFile(join(evaluator, "project-evaluator-sdk.bundle.js"), "sdk\n");
       await writeFile(join(evaluator, "project-authoring-1.schema.json"), "{}\n");
+      await writeFile(join(agent, "openrouter-responses-worker.js"), "agent worker\n");
       await writeFile(join(preparation, "bun-native-preparation-worker.js"), "preparation\n");
 
       const location = { releaseRoot: root, executablePath: executable, installedCliPath: installedCli };
@@ -44,6 +47,7 @@ describe("fixed installed Bun support", () => {
       );
       expect((await openPrivateInstalledBunSupport(location)).digest).toBe(support.digest);
       expect(support.sandboxExecutablePath).toBe("/jig-runtime/bun");
+      expect(support.sandboxAgentWorkerPath).toBe("/jig-agent-worker.js");
       expect(support.sandboxPreparationWorkerPath).toBe("/jig-preparation-worker.js");
       expect(support.runtimeMounts.map(({ destination }) => destination)).toEqual([
         "/jig-runtime/bun",
@@ -60,6 +64,13 @@ describe("fixed installed Bun support", () => {
         "installed Bun support changed after selection",
       );
       await writeFile(join(preparation, "bun-native-preparation-worker.js"), "preparation\n");
+      await expect(revalidatePrivateInstalledBunSupport(support)).resolves.toBeUndefined();
+
+      await writeFile(join(agent, "openrouter-responses-worker.js"), "changed\n");
+      await expect(revalidatePrivateInstalledBunSupport(support)).rejects.toThrow(
+        "installed Bun support changed after selection",
+      );
+      await writeFile(join(agent, "openrouter-responses-worker.js"), "agent worker\n");
       await expect(revalidatePrivateInstalledBunSupport(support)).resolves.toBeUndefined();
 
       await writeFile(installedCli, "changed command\n");

@@ -7,7 +7,10 @@ import { CheckError, invalid, unavailable } from "../diagnostics.js";
 import { canonicalJson, decodeJson1, Json1Error, JSON_1_LIMITS, type JsonValue } from "../json.js";
 import { inspectCapturedPackage, type InspectedPackage } from "../package/inspect.js";
 import { SchemaDiagnostic } from "../schema/index.js";
-import type { RunTargetIdentity } from "../project/package-project.js";
+import {
+  projectSupportedCapabilityUses,
+  type RunTargetIdentity,
+} from "../project/package-project.js";
 import {
   requirePrivateActivationRequest,
   type PrivateActivationRequest,
@@ -3712,10 +3715,17 @@ async function reacquireCandidateArtifacts(
 }
 
 function requirePackageProjection(path: string, expected: PrivateLockPackage, inspected: InspectedPackage): void {
-  const observed: JsonValue = {
+  let uses: PrivateLockPackage["uses"];
+  try {
+    uses = projectSupportedCapabilityUses(inspected, path);
+  } catch {
+    invalid("ADMISSION_ARTIFACT_MISMATCH", `stored Package/1 ${path} no longer matches its candidate lock`);
+  }
+  const observed = {
     digest: inspected.digest,
     directRun: isDirectRunEligible(inspected),
-  };
+    uses,
+  } as unknown as JsonValue;
   if (!sameBytes(canonicalJson(observed), canonicalJson(expected as unknown as JsonValue))) {
     invalid("ADMISSION_ARTIFACT_MISMATCH", `stored Package/1 ${path} no longer matches its candidate lock`);
   }

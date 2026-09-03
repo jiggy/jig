@@ -42,18 +42,25 @@ and attachments are empty, it has no slots, and its deadline cannot exceed the
 parent's. Run/1 governs operation identity, duplicate joins and conflicts,
 cancellation, and uncertainty; uncertain dispatch is not automatically
 replayed. Jig supplies no separate child history, administration, scheduler,
-catalogue, resolver, or Agent surface.
+catalogue, or resolver.
 
 The alpha admits one active child operation per parent; excess distinct
 concurrent calls receive `RESOURCE_EXHAUSTED`, while sequential calls remain
 available.
+
+One experimental [Agent Run capability](../spec/agent-run.md) is also
+available through ordinary Run/1 `effect/call`. An Agent-capable Flow carries
+the exact Jig-owned descriptor, may project an explicit package-local skill
+subset, and can use the structured result to select one of its Binding's exact
+child slots. The host currently fixes one OpenRouter Responses provider and
+model; there is no provider registry or semantic router.
 
 Root Runs default to 30 seconds. `--timeout` accepts a positive integer plus
 `ms`, `s`, `m`, or `h`, up to 24 hours. Children share the parent's remaining
 absolute deadline; they cannot extend it. Acquisition precedes that execution
 deadline, and mandatory fencing and cleanup may settle afterward.
 
-The direct alpha excludes Services, Hooks, Journal providers, Agent providers,
-Semantic Choice, Jig Graph, schedulers, catalogues, runtime registries, sandbox
-registries, and compatibility formats. Its public surface grows only after one
-concrete vertical earns it.
+The direct alpha excludes Services, Hooks, Journal providers, configurable
+Agent providers, Agent sessions, Semantic Choice, Jig Graph, schedulers,
+catalogues, runtime registries, sandbox registries, and compatibility formats.
+Its public surface grows only after one concrete vertical earns it.

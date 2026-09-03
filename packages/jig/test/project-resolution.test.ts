@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
@@ -12,6 +12,11 @@ import {
   type PrivateActivationRecipeObservationInput,
 } from "../src/internal/activation-planning.js";
 import { privateDomainDigest } from "../src/internal/identity.js";
+import {
+  AGENT_RUN_CONTRACT_DIGEST,
+  AGENT_RUN_CONTRACT_ID,
+  AGENT_RUN_CONTRACT_VERSION,
+} from "../src/internal/private-agent-run.js";
 import { defineBinding, defineJig } from "../src/project/author.js";
 import { captureFlowSource } from "../src/project/flow-source.js";
 import {
@@ -30,6 +35,11 @@ import {
   type PrivateActivationRequest,
 } from "../src/project/package-resolution.js";
 import { retainFlowSourcePackages } from "../src/project/retained-flow.js";
+
+const agentRunContract = await readFile(new URL(
+  "../../../docs/jig/spec/contracts/agent-run.capability.json",
+  import.meta.url,
+), "utf8");
 
 describe("private package resolution", () => {
   test("authenticates inputs, canonically orders targets, and freezes results", async () => {
@@ -52,7 +62,7 @@ describe("private package resolution", () => {
       expect(() => restorePrivateActivationRequest({
         ...structuredClone(requests[0]!),
         kind: "invalid-activation-request-kind",
-      })).toThrow("activation request kind must be activation-request/3");
+      })).toThrow("activation request kind must be activation-request/4");
       expect(() => restorePrivateActivationRequest({
         ...structuredClone(requests[0]!),
         target: { kind: "unknown", id: "z" },
@@ -163,6 +173,39 @@ describe("private package resolution", () => {
         digest("slot-capture"),
         planning(requests, () => "planned"),
       ).semanticDigest).not.toBe(firstSemanticDigest);
+    });
+  });
+
+  test("pins exact Agent capability identity into Flow and Binding requests", async () => {
+    await withProject({
+      "flows/router": {
+        "FLOW.md": metadata(`name: router
+description: Router.
+uses:
+  agent:
+    contract: ./contracts/agent-run.capability.json`),
+        "flow.ts": "export {};\n",
+        "contracts/agent-run.capability.json": agentRunContract,
+      },
+    }, [binding("bindings/router.ts", { package: "flows/router" })], async (project) => {
+      const requests = buildPrivateActivationRequests(project);
+      expect(requests).toHaveLength(2);
+      for (const request of requests) {
+        expect(request.capabilities).toEqual({
+          agent: {
+            id: AGENT_RUN_CONTRACT_ID,
+            version: AGENT_RUN_CONTRACT_VERSION,
+            digest: AGENT_RUN_CONTRACT_DIGEST,
+          },
+        });
+        expect(Object.isFrozen(request.capabilities)).toBeTrue();
+        expect(Object.isFrozen(request.capabilities.agent)).toBeTrue();
+        expect(restorePrivateActivationRequest(structuredClone(request))).toEqual(request);
+        expect(() => restorePrivateActivationRequest({
+          ...structuredClone(request),
+          capabilities: {},
+        })).toThrow("activation request digest does not match its canonical content");
+      }
     });
   });
 

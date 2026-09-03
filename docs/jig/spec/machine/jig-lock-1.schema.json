@@ -41,11 +41,40 @@
         },
         "directRun": {
           "type": "boolean"
+        },
+        "uses": {
+          "type": "object",
+          "description": "Exact admitted Capability Contract uses keyed by the package-local slot name.",
+          "additionalProperties": {
+            "$ref": "#/$defs/capabilityUse"
+          },
+          "maxProperties": 1
         }
       },
       "required": [
         "digest",
-        "directRun"
+        "directRun",
+        "uses"
+      ],
+      "additionalProperties": false
+    },
+    "capabilityUse": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "const": "https://jig.md/contracts/agent-run"
+        },
+        "version": {
+          "const": "1.0.0"
+        },
+        "digest": {
+          "const": "sha256:5a0f06495323419d275eeff92617d9287647ece137dacc9c5c6d50466d65c0f0"
+        }
+      },
+      "required": [
+        "id",
+        "version",
+        "digest"
       ],
       "additionalProperties": false
     },

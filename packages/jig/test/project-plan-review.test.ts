@@ -18,6 +18,13 @@ describe("private project Plan review", () => {
             "flows/review": {
               digest,
               directRun: false,
+              uses: {
+                agent: {
+                  id: "https://jig.md/contracts/agent-run",
+                  version: "1.0.0",
+                  digest: "sha256:5a0f06495323419d275eeff92617d9287647ece137dacc9c5c6d50466d65c0f0",
+                },
+              },
             },
           },
           bindings: {
@@ -76,6 +83,7 @@ describe("private project Plan review", () => {
     expect(rendered.text).not.toContain("observationDigest");
     expect(rendered.text).not.toContain("attachments");
     expect(rendered.text).toContain(`"digest": "${digest}"`);
+    expect(rendered.text).toContain('"id": "https://jig.md/contracts/agent-run"');
     expect(rendered.text).not.toContain('"operation"');
     expect(rendered.text).not.toContain("lockMode");
     expect(Object.isFrozen(rendered)).toBe(true);
@@ -104,7 +112,7 @@ describe("private project Plan review", () => {
     const plan = reviewPlan("admission", `sha256:${"b".repeat(64)}`);
     const current = {
       lock: {
-        packages: { "flows/old": { digest, directRun: false } },
+        packages: { "flows/old": { digest, directRun: false, uses: {} } },
         bindings: { review: { packagePath: "flows/old", settings: {}, slots: {} } },
       },
       candidate: {
@@ -128,7 +136,7 @@ describe("private project Plan review", () => {
       proposed: {
         ...plan.proposed,
         lock: {
-          packages: { "flows/new": { digest, directRun: false } },
+          packages: { "flows/new": { digest, directRun: false, uses: {} } },
           bindings: { review: { packagePath: "flows/new", settings: {}, slots: {} } },
         },
         targets: [{
@@ -181,7 +189,7 @@ describe("private project Plan review", () => {
     });
     const current = {
       lock: {
-        packages: { "flows/review": { digest: oldDigest, directRun: true } },
+        packages: { "flows/review": { digest: oldDigest, directRun: true, uses: {} } },
         bindings: {},
       },
       candidate: { targets: [target(oldDigest)] },
@@ -191,7 +199,7 @@ describe("private project Plan review", () => {
       proposed: {
         ...plan.proposed,
         lock: {
-          packages: { "flows/review": { digest: newDigest, directRun: true } },
+          packages: { "flows/review": { digest: newDigest, directRun: true, uses: {} } },
           bindings: {},
         },
         targets: [target(newDigest)],
@@ -249,9 +257,9 @@ describe("private project Plan review", () => {
     ) => ({
       lock: {
         packages: {
-          "flows/bug": { digest: childDigest, directRun: true },
-          "flows/question": { digest: oldChildDigest, directRun: true },
-          "flows/router": { digest: parentDigest, directRun: true },
+          "flows/bug": { digest: childDigest, directRun: true, uses: {} },
+          "flows/question": { digest: oldChildDigest, directRun: true, uses: {} },
+          "flows/router": { digest: parentDigest, directRun: true, uses: {} },
         },
         bindings: {
           router: {

@@ -32,7 +32,7 @@ The required host shape is:
 
 The glibc and SSE4.2 floors come from the selected Bun baseline runtime.
 
-Installing `@jigging/jig@0.1.0-alpha.4` also installs the exact external
+Installing `@jigging/jig@0.1.0-alpha.5` also installs the exact external
 runtime dependency `@oven/bun-linux-x64-baseline@1.3.3`. Bun is not embedded in
 or bundled with Jig. npm verifies the installed package; Jig selects only that
 closed package-local path, authenticates its version, revision, and digest
@@ -53,7 +53,7 @@ are documented in [SECURITY.md](SECURITY.md).
 Install the alpha with npm:
 
 ```console
-npm install --global @jigging/jig@0.1.0-alpha.4
+npm install --global @jigging/jig@0.1.0-alpha.5
 ```
 
 Create a project and one Flow package:
@@ -156,11 +156,17 @@ the child has empty settings and attachments and no slots, and its deadline
 cannot exceed the parent's. Run/1 governs operation identity, duplicate joins
 and conflicts, cancellation, and uncertainty; uncertain dispatch is not
 automatically replayed. Jig creates no separate child history, administration,
-scheduler, catalogue, resolver, or Agent surface.
+scheduler, catalogue, or resolver.
 
 The alpha admits one active child operation per parent; excess distinct
 concurrent calls receive `RESOURCE_EXHAUSTED`, while sequential calls remain
 available.
+
+One experimental [Agent Run capability](docs/jig/spec/agent-run.md) is
+available through ordinary Run/1 `effect/call`. An Agent-capable Flow carries
+the exact Jig-owned contract, and a Binding can combine that result with its
+exact child slots. The alpha fixes one OpenRouter provider and model; it does
+not expose provider selection or a provider registry.
 
 ## Dependency rule
 
@@ -204,12 +210,13 @@ fails closed or is prepared again before another review.
 - [FLOW Schema/1](docs/flow/spec/schema-files.md)
 - [Jig Project Authoring SDK](docs/jig/spec/project-sdk.md)
 - [Jig direct-alpha project policy](docs/jig/spec/project-policy.md)
+- [Jig Agent Run capability](docs/jig/spec/agent-run.md)
 
 Licenses are mapped in [LICENSES.md](LICENSES.md). FLOW is founder-stewarded
 under the public process in [Governance.md](Governance.md), and contributions
 use the [DCO 1.1 process](CONTRIBUTING.md). Maintainer prerelease steps are in
 [RELEASING.md](RELEASING.md).
 
-Jig is prerelease software. Services, Hooks, event sources, Agent providers,
-Semantic Choice, Jig Graph, schedulers, catalogues, and extension registries
-are not part of this alpha surface.
+Jig is prerelease software. Services, Hooks, event sources, configurable Agent
+providers, Agent sessions, Semantic Choice, Jig Graph, schedulers, catalogues,
+and extension registries are not part of this alpha surface.

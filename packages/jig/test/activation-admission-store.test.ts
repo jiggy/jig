@@ -1351,6 +1351,7 @@ async function createFixture(
         "flows/run": {
           digest: flow.digest,
           directRun: true,
+          uses: {},
         },
       },
       bindings: {},
@@ -1499,8 +1500,8 @@ async function insertSlottedCandidate(
   const child = await retainDistinctExecutionPackage(fixture, "slotted-child");
   const lockBytes = json1({
     packages: {
-      "flows/child": { digest: child.digest, directRun: true },
-      "flows/run": { digest: fixture.flow.digest, directRun: true },
+      "flows/child": { digest: child.digest, directRun: true, uses: {} },
+      "flows/run": { digest: fixture.flow.digest, directRun: true, uses: {} },
     },
     bindings: {
       router: {
@@ -1724,10 +1725,10 @@ function successTerminal(output: JsonValue): PrivateRootRunTerminal {
 }
 
 function activationRequest(content: Record<string, unknown>): Record<string, unknown> {
-  const request = { kind: "activation-request/3", flowSlots: {}, ...content };
+  const request = { kind: "activation-request/4", capabilities: {}, flowSlots: {}, ...content };
   return {
     ...request,
-    digest: privateDomainDigest("JIG-Activation-Request/3", request as unknown as JsonValue),
+    digest: privateDomainDigest("JIG-Activation-Request/4", request as unknown as JsonValue),
   };
 }
 

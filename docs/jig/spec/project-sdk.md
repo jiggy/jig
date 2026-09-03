@@ -105,8 +105,9 @@ field, profile inheritance, overlay, ambient environment fallback, or per-Run
 settings override.
 
 Bindings are optional. A discovered Run package which is valid with empty
-settings and declares no attachment or capability use is also an
-exact direct Flow target. There is no hidden generated Binding.
+settings, declares no attachment, and uses either no capability or the one
+exact [Jig Agent Run contract](agent-run.md) is also an exact direct Flow
+target. There is no hidden generated Binding.
 
 ## Value rules
 

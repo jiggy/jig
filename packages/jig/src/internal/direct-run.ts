@@ -13,6 +13,7 @@ import {
   requirePrivateActivationRequest,
   type PrivateActivationRequest,
 } from "../project/package-resolution.js";
+import type { PrivateOpenRouterAgentProvider } from "./openrouter-agent-provider.js";
 
 export type PrivateDirectRunRecipe = PrivateBunDirectRecipe;
 export type PrivateDirectRunInstalledSupport = PrivateInstalledBunSupport;
@@ -23,6 +24,7 @@ export async function planPrivateDirectRun(input: {
   readonly installedSupport: PrivateDirectRunInstalledSupport;
   readonly backend: PrivateLinuxCgroupBackend;
   readonly executionPackage?: PackageArtifactRef;
+  readonly agentProvider?: PrivateOpenRouterAgentProvider | undefined;
 }): Promise<PrivateDirectRunRecipe> {
   const request = requirePrivateActivationRequest(input.request);
   if (request.entrypoint.path !== "flow.ts") {

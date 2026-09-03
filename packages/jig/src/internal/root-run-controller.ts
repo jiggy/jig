@@ -7,6 +7,7 @@ import { inspectCapturedPackage } from "../package/inspect.js";
 import { findPrivateActivationCandidateTargetV5 } from "./activation-admission.js";
 import {
   RunHostSession,
+  type RunHostEffectOperationTerminal,
   type RunHostFlowOperationTerminal,
   type RunHostOperationDispatcher,
   type RunHostTerminal,
@@ -62,6 +63,11 @@ import {
   executePrivateRootFlowCall,
   recoverPrivateRootFlowCallOwners,
 } from "./root-flow-call-controller.js";
+import {
+  executePrivateRootAgentRun,
+  recoverPrivateRootAgentRunOwners,
+} from "./root-agent-run-controller.js";
+import type { PrivateOpenRouterAgentProvider } from "./openrouter-agent-provider.js";
 
 const PLAN_KIND = "private-direct-root-plan/1";
 const BACKING_KIND = "private-direct-root-backing/1";
@@ -110,12 +116,13 @@ export async function executePrivateRootRunLaunch(input: {
   readonly coordinator: PrivateProjectCoordinator;
   readonly installedSupport: PrivateDirectRunInstalledSupport;
   readonly backend: PrivateLinuxCgroupBackend;
+  readonly agentProvider?: PrivateOpenRouterAgentProvider | undefined;
   readonly signal?: AbortSignal;
 }): Promise<PrivateRootExecutionDisposition> {
   await input.coordinator.verify();
   let work = await reacquire(input);
   try {
-    await recoverPrivateRootFlowCallOwners(childInput(input, work));
+    await recoverPrivateRootOperationOwners(operationInput(input, work));
   } catch (error) {
     if (error instanceof PrivateLinuxFenceUnconfirmedError) {
       return Object.freeze({ state: "pending", reason: "fence-unconfirmed" });
@@ -257,7 +264,7 @@ async function startOrResumeCurrentExecution(
       // grace; aborting the Backend signal here would skip that protocol.
       stop.releaseStartupEnforcement();
       const parent = work;
-      const dispatcher = childDispatcher(input, parent, plan.effectiveDeadlineUnixMs);
+      const dispatcher = operationDispatcher(input, parent, plan.effectiveDeadlineUnixMs);
       provisional = await new RunHostSession(component, {
         input: work.run.input,
         settings: recipe.request.settings,
@@ -268,7 +275,7 @@ async function startOrResumeCurrentExecution(
       }, { cancellationGraceMs: plan.cancellationGraceMs }, dispatcher).run();
       observedTerminal = provisional;
       try {
-        await recoverPrivateRootFlowCallOwners(childInput(input, parent));
+        await recoverPrivateRootOperationOwners(operationInput(input, parent));
       } catch (error) {
         if (!(error instanceof PrivateLinuxFenceUnconfirmedError)) throw error;
         // The root result is known, but it cannot become terminal while a
@@ -659,6 +666,7 @@ async function reproduceRecipe(
     executionPackage: target.disposition.executionPackage,
     installedSupport: input.installedSupport,
     backend: input.backend,
+    agentProvider: input.agentProvider,
   });
   if (recipe.digest !== work.intent.recipeDigest ||
       recipe.observation.digest !== work.intent.observationDigest) {
@@ -955,7 +963,7 @@ class FirstStop {
 
 type RootExecutionInput = Parameters<typeof executePrivateRootRunLaunch>[0];
 
-function childInput(
+function operationInput(
   input: RootExecutionInput,
   parent: PrivateReacquiredRootExecutionWork,
 ) {
@@ -966,39 +974,83 @@ function childInput(
     coordinator: input.coordinator,
     installedSupport: input.installedSupport,
     backend: input.backend,
+    agentProvider: input.agentProvider,
   } as const;
 }
 
-function childDispatcher(
+async function recoverPrivateRootOperationOwners(
+  input: ReturnType<typeof operationInput>,
+): Promise<void> {
+  await recoverPrivateRootFlowCallOwners(input);
+  await recoverPrivateRootAgentRunOwners(input);
+}
+
+function operationDispatcher(
   input: RootExecutionInput,
   parent: PrivateReacquiredRootExecutionWork,
   parentDeadlineUnixMs: number,
 ): RunHostOperationDispatcher | undefined {
   const target = findPrivateActivationCandidateTargetV5(parent.candidate, parent.run.target);
-  if (target === undefined || Object.keys(target.request.flowSlots).length === 0) return undefined;
+  if (target === undefined) return undefined;
+  const hasFlows = Object.keys(target.request.flowSlots).length !== 0;
+  const hasAgent = Object.keys(target.request.capabilities).length !== 0;
+  if (!hasFlows && !hasAgent) return undefined;
   let active = false;
+  const enter = async <T>(run: () => Promise<T>, unavailable: T): Promise<T> => {
+    if (active) return unavailable;
+    active = true;
+    try {
+      return await run();
+    } finally {
+      active = false;
+    }
+  };
   return Object.freeze({
-    callFlow: async (call, signal): Promise<RunHostFlowOperationTerminal> => {
-      if (active) {
-        return Object.freeze({
-          status: "failed" as const,
-          code: "RESOURCE_EXHAUSTED" as const,
-          message: "the parent Run already has an active child operation",
-        });
-      }
-      active = true;
-      try {
-        return await executePrivateRootFlowCall({
-          ...childInput(input, parent),
+    ...(hasFlows ? {
+      callFlow: async (call, signal): Promise<RunHostFlowOperationTerminal> => enter(
+        () => executePrivateRootFlowCall({
+          ...operationInput(input, parent),
           call,
           parentDeadlineUnixMs,
           signal,
-        });
-      } finally {
-        active = false;
-      }
-    },
+        }),
+        operationBusy(),
+      ),
+    } : {}),
+    ...(hasAgent ? {
+      callEffect: async (call, signal): Promise<RunHostEffectOperationTerminal> => {
+        if (input.agentProvider === undefined) {
+          return Object.freeze({
+            status: "failed" as const,
+            code: "UNAVAILABLE" as const,
+            message: "the admitted Agent provider is unavailable",
+          });
+        }
+        return enter(
+          () => executePrivateRootAgentRun({
+            ...operationInput(input, parent),
+            agentProvider: input.agentProvider!,
+            call,
+            parentDeadlineUnixMs,
+            signal,
+          }),
+          operationBusy(),
+        );
+      },
+    } : {}),
   } satisfies RunHostOperationDispatcher);
+}
+
+function operationBusy(): {
+  readonly status: "failed";
+  readonly code: "RESOURCE_EXHAUSTED";
+  readonly message: string;
+} {
+  return Object.freeze({
+    status: "failed" as const,
+    code: "RESOURCE_EXHAUSTED" as const,
+    message: "the parent Run already has an active child operation",
+  });
 }
 
 function terminal(run: PrivateRootRunSnapshot): PrivateRootExecutionDisposition {

@@ -15,6 +15,11 @@ import {
   type PackageArtifactRef,
 } from "../internal/package-artifact-store.js";
 import {
+  AGENT_RUN_CONTRACT_DIGEST,
+  AGENT_RUN_CONTRACT_ID,
+  AGENT_RUN_CONTRACT_VERSION,
+} from "../internal/private-agent-run.js";
+import {
   canonicalJson,
   decodeJson1,
   type JsonObject,
@@ -24,6 +29,7 @@ import type { PackageEntrypoint } from "../package/inspect.js";
 import {
   requirePackageProjectValue,
   type PackageProjectValue,
+  type LinkedCapabilityUse,
   type RunTargetIdentity,
 } from "./package-project.js";
 import {
@@ -39,7 +45,7 @@ const authenticRetainedObservations = new WeakSet<object>();
 const authenticActivationRequests = new WeakSet<object>();
 
 export interface PrivateActivationRequest {
-  readonly kind: "activation-request/3";
+  readonly kind: "activation-request/4";
   readonly digest: string;
   readonly target: RunTargetIdentity;
   readonly mode: "run";
@@ -47,6 +53,7 @@ export interface PrivateActivationRequest {
   readonly package: PackageArtifactRef;
   readonly entrypoint: PackageEntrypoint;
   readonly settings: JsonObject;
+  readonly capabilities: Readonly<Record<string, LinkedCapabilityUse>>;
   readonly flowSlots: Readonly<Record<string, string>>;
   readonly attachments: Readonly<Record<string, {
     readonly source: string;
@@ -107,6 +114,7 @@ export function buildPrivateActivationRequests(
       package: flow.package,
       entrypoint: flow.entrypoint,
       settings: emptyRecord(),
+      capabilities: flow.uses,
       flowSlots: emptyRecord(),
       attachments: emptyRecord(),
     }));
@@ -124,6 +132,7 @@ export function buildPrivateActivationRequests(
       package: flow.package,
       entrypoint: flow.entrypoint,
       settings: binding.settings,
+      capabilities: flow.uses,
       flowSlots: binding.slots,
       attachments: emptyRecord(),
     }));
@@ -162,11 +171,12 @@ export function restorePrivateActivationRequest(value: unknown): PrivateActivati
     "package",
     "entrypoint",
     "settings",
+    "capabilities",
     "flowSlots",
     "attachments",
   ], "activation request");
-  if (root.kind !== "activation-request/3") {
-    throw new TypeError("activation request kind must be activation-request/3");
+  if (root.kind !== "activation-request/4") {
+    throw new TypeError("activation request kind must be activation-request/4");
   }
   const targetValue = exactRecord(root.target, "activation target");
   let target: RunTargetIdentity;
@@ -221,6 +231,7 @@ export function restorePrivateActivationRequest(value: unknown): PrivateActivati
       ...(entrypointValue.selector === undefined ? {} : { selector: entrypointValue.selector }),
     }),
     settings: snapshotJsonObject(root.settings, "activation settings"),
+    capabilities: normalizeRequestCapabilities(root.capabilities),
     flowSlots: normalizeRequestFlowSlots(root.flowSlots),
     attachments: normalizeRequestAttachments(root.attachments),
   });
@@ -318,20 +329,21 @@ export function requirePrivateRetainedResolutionObservation(
 
 function createRequest(input: Omit<PrivateActivationRequest, "kind" | "digest">): PrivateActivationRequest {
   const valueWithoutDigest = Object.freeze({
-    kind: "activation-request/3" as const,
+    kind: "activation-request/4" as const,
     target: input.target,
     mode: input.mode,
     packagePath: input.packagePath,
     package: input.package,
     entrypoint: input.entrypoint,
     settings: input.settings,
+    capabilities: input.capabilities,
     flowSlots: input.flowSlots,
     attachments: input.attachments,
   });
   const request = Object.freeze({
     ...valueWithoutDigest,
     digest: privateDomainDigest(
-      "JIG-Activation-Request/3",
+      "JIG-Activation-Request/4",
       valueWithoutDigest as unknown as JsonValue,
     ),
   });
@@ -360,6 +372,7 @@ function semanticProject(project: PackageProjectValue): JsonValue {
       mode: flow.mode,
       entrypoint: flow.entrypoint ?? null,
       directRun: flow.directRun,
+      uses: flow.uses,
     })),
     bindings: project.bindings.map((binding) => ({
       kind: binding.kind,
@@ -455,6 +468,34 @@ function normalizeRequestAttachments(value: unknown): PrivateActivationRequest["
     throw new TypeError("activation attachments are unsupported by the direct alpha");
   }
   return emptyRecord();
+}
+
+function normalizeRequestCapabilities(value: unknown): PrivateActivationRequest["capabilities"] {
+  const input = snapshotJsonObject(value, "activation capability uses");
+  if (Object.keys(input).length > 1) {
+    throw new TypeError("activation capability uses exceed 1 entry");
+  }
+  const output: Record<string, LinkedCapabilityUse> = Object.create(null) as
+    Record<string, LinkedCapabilityUse>;
+  for (const name of Object.keys(input).sort()) {
+    requireLocalName(name, "activation capability slot");
+    const item = exactObject(
+      input[name],
+      ["id", "version", "digest"],
+      `activation capability slot ${name}`,
+    );
+    if (item.id !== AGENT_RUN_CONTRACT_ID ||
+        item.version !== AGENT_RUN_CONTRACT_VERSION ||
+        item.digest !== AGENT_RUN_CONTRACT_DIGEST) {
+      throw new TypeError(`activation capability slot ${name} must select the exact Agent Run contract`);
+    }
+    output[name] = Object.freeze({
+      id: AGENT_RUN_CONTRACT_ID,
+      version: AGENT_RUN_CONTRACT_VERSION,
+      digest: AGENT_RUN_CONTRACT_DIGEST,
+    });
+  }
+  return Object.freeze(output);
 }
 
 function normalizeRequestFlowSlots(value: unknown): PrivateActivationRequest["flowSlots"] {

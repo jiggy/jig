@@ -80,6 +80,10 @@ docs/flow/spec/machine/schema-1.json|schema-1.json|https://flow.jig.md/schemas/s
     schema_map='docs/jig/spec/machine/jig-lock-1.schema.json|jig-lock-1.schema.json|-
 docs/jig/spec/machine/project-authoring-1.schema.json|project-authoring-1.schema.json|-'
     forbidden_page='spec/package-format.html'
+    mkdir -p -- "$staging/contracts"
+    cp -- \
+      "$repository/docs/jig/spec/contracts/agent-run.capability.json" \
+      "$staging/contracts/agent-run.capability.json"
     ;;
 esac
 
