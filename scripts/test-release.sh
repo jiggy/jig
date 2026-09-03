@@ -30,9 +30,11 @@ if ! "$python_bin" --version >/dev/null 2>&1; then
   exit 1
 fi
 
+bun run --cwd packages/flow-sdk build
+bun run --cwd packages/jig build
 bun test packages/flow-sdk packages/jig conformance/run-1
-bun run --cwd packages/flow-sdk test:package
-bun run --cwd packages/jig test:package
+bun packages/flow-sdk/test/package-smoke.ts
+bun packages/jig/test/package-smoke.ts
 
 PYTHONDONTWRITEBYTECODE=1 \
 PYTHONPATH=packages/flowmd-sdk/src \
