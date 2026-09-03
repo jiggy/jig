@@ -29,9 +29,10 @@ combines deterministic tests, an Agent judgment or edit, and bounded repetition.
 The table places each concern where it can actually be implemented or enforced;
 it does not force the whole method into one category.
 
-Jig should be able to host these methods without having to own each one. A
-prompt can request a limit or permission, but only ordinary code or the host can
-enforce it.
+You do not need a dedicated Jig feature for every workflow method. Implement
+the method in the Flow, and rely on Jig only for the boundaries the host must
+enforce. A prompt can request a limit or permission, but only ordinary code or
+the host can enforce it.
 
 ## Add structure only for a stated reason
 
@@ -53,29 +54,10 @@ enforce it.
 These are design choices, not maturity levels. A useful application may need
 no Agent, no graph, or no host-managed service.
 
-## When a method earns a pattern brief
-
-Add a candidate to the [orchestration-pattern catalogue](../orchestration-patterns.md)
-only when it:
-
-- addresses a recurring, named failure;
-- has a minimum structure whose removal changes its claim;
-- is more than ordinary sequencing, branching, fan-out, joining, or waiting;
-- plausibly applies to materially different jobs;
-- states its inputs, outputs, stopping rule, failure path, and collapse
-  condition; and
-- defines a falsifiable comparison with the strongest simpler alternative,
-  including cost and latency.
-
-Call it supported only after comparative evidence shows that the structure—not
-extra calls, tokens, tools, or authority—caused the improvement and that the
-result transfers beyond its first example. Otherwise describe it plainly as a
-local recipe or use its established name.
-
 ## Related method families
 
-These methods are useful design references and probe baselines. They do not
-each need a Jig-owned pattern brief:
+These established approaches can provide a useful starting point when a simple
+sequence is not enough:
 
 - **Refinement and verification:** [Self-Refine](https://arxiv.org/abs/2303.17651),
   [Reflexion](https://arxiv.org/abs/2303.11366),
@@ -97,6 +79,5 @@ each need a Jig-owned pattern brief:
 - **Human governance:** checkpoints, exception-based escalation, risk-tiered
   approval, and [trustworthy Agent controls](https://www.anthropic.com/research/trustworthy-agents).
 
-Probe the distinguishing mechanism of a family with one strong representative
-and an equal-resource simpler baseline. Add another branded implementation
-only when it introduces a genuinely different structure or failure model.
+The [orchestration-pattern catalogue](../orchestration-patterns.md) explores
+reusable structures that may be especially useful in Jig applications.
