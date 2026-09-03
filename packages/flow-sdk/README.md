@@ -47,13 +47,14 @@ stdout remain invalid protocol output. Root cancellation is exposed through
 
 Run/1 also defines `run.callFlow()` and `run.callEffect()` as portable
 operations. Jig supplies `callFlow()` only when the invoked Binding maps that
-slot to one exact admitted direct Flow; a direct `flow:` Run has no slots. The
-current Jig alpha does not provide effects. An unavailable operation rejects
-with `OperationError` code `UNAVAILABLE`. A call-specific `AbortSignal`
-rejects a cancelled call with code `CANCELLED` and sends the matching Run/1
-cancellation notification if the request reached the wire. A cancellation-only
-catch must rethrow every other error. Cancellation does not claim that remote
-work was undone.
+slot to one exact admitted direct Flow; a direct `flow:` Run has no child
+slots. Jig supplies `callEffect()` only for its exact experimental
+[Agent Run capability](https://jig.md/spec/agent-run); other effect slots are
+unavailable. An unavailable operation rejects with `OperationError` code
+`UNAVAILABLE`. A call-specific `AbortSignal` rejects a cancelled call with
+code `CANCELLED` and sends the matching Run/1 cancellation notification if
+the request reached the wire. A cancellation-only catch must rethrow every
+other error. Cancellation does not claim that remote work was undone.
 
 The SDK permits at most 64 live outbound requests; another call made while all
 64 are live fails locally with `OperationError` code `RESOURCE_EXHAUSTED`. It

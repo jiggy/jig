@@ -392,8 +392,8 @@ function renderFailure(error: unknown, runtime: CliRuntime): 1 | 2 {
   }
   if (error instanceof ProjectAdministrationError) {
     const projected = projectError(error.code);
-    runtime.writeError(error.code === "INVALID_CANDIDATE" && error.diagnostic !== undefined
-      ? renderInvalidCandidate(error)
+    runtime.writeError(error.diagnostic !== undefined
+      ? renderProjectDiagnostic(error, projected.message)
       : renderDiagnostic(error.code, projected.message));
     return projected.exitCode;
   }
@@ -450,13 +450,13 @@ function renderDiagnostic(code: string, message: string): string {
   return `${code}: ${message}\n`;
 }
 
-function renderInvalidCandidate(error: ProjectAdministrationError): string {
+function renderProjectDiagnostic(error: ProjectAdministrationError, message: string): string {
   const diagnostic = error.diagnostic;
-  if (diagnostic === undefined) return renderDiagnostic(error.code, "the project definition is invalid");
+  if (diagnostic === undefined) return renderDiagnostic(error.code, message);
   const pointer = diagnostic.pointer === undefined
     ? ""
     : ` pointer ${asciiJsonString(diagnostic.pointer)}`;
-  return `${error.code}: the project definition is invalid; ${diagnostic.code} at ` +
+  return `${error.code}: ${message}; ${diagnostic.code} at ` +
     `${asciiJsonString(diagnostic.path)}${pointer}\n`;
 }
 

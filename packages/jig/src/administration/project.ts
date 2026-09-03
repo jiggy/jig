@@ -25,10 +25,10 @@ export type ProjectAdministrationErrorCode =
 export interface ProjectAdministrationErrorValue {
   readonly code: ProjectAdministrationErrorCode;
   readonly message: string;
-  readonly diagnostic?: ProjectInvalidCandidateDiagnostic;
+  readonly diagnostic?: ProjectAdministrationDiagnostic;
 }
 
-export interface ProjectInvalidCandidateDiagnostic {
+export interface ProjectAdministrationDiagnostic {
   readonly code: string;
   readonly path: string;
   readonly pointer?: string;
@@ -68,12 +68,12 @@ export interface ProjectSession {
 
 export class ProjectAdministrationError extends Error {
   readonly code: ProjectAdministrationErrorCode;
-  readonly diagnostic?: ProjectInvalidCandidateDiagnostic;
+  readonly diagnostic?: ProjectAdministrationDiagnostic;
 
   constructor(
     code: ProjectAdministrationErrorCode,
     message: string,
-    diagnostic?: ProjectInvalidCandidateDiagnostic,
+    diagnostic?: ProjectAdministrationDiagnostic,
   ) {
     requireErrorCode(code);
     const messageScalars = typeof message === "string" ? scalarLength(message) : 0;
@@ -89,10 +89,10 @@ export class ProjectAdministrationError extends Error {
     this.name = "ProjectAdministrationError";
     this.code = code;
     if (diagnostic !== undefined) {
-      if (code !== "INVALID_CANDIDATE") {
-        throw new TypeError("project diagnostic requires INVALID_CANDIDATE");
+      if (code !== "INVALID_CANDIDATE" && code !== "UNAVAILABLE") {
+        throw new TypeError("project diagnostic requires INVALID_CANDIDATE or UNAVAILABLE");
       }
-      this.diagnostic = normalizeInvalidCandidateDiagnostic(diagnostic);
+      this.diagnostic = normalizeProjectAdministrationDiagnostic(diagnostic);
     }
   }
 
@@ -162,9 +162,9 @@ function scalarLength(value: string): number {
   return [...value].length;
 }
 
-function normalizeInvalidCandidateDiagnostic(
-  value: ProjectInvalidCandidateDiagnostic,
-): ProjectInvalidCandidateDiagnostic {
+function normalizeProjectAdministrationDiagnostic(
+  value: ProjectAdministrationDiagnostic,
+): ProjectAdministrationDiagnostic {
   if (value === null || typeof value !== "object" || Array.isArray(value) ||
       utilTypes.isProxy(value) ||
       Object.getPrototypeOf(value) !== Object.prototype && Object.getPrototypeOf(value) !== null) {

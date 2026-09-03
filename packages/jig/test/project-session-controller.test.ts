@@ -9,6 +9,7 @@ import { CheckError } from "../src/diagnostics.js";
 import {
   openPrivateProjectSession,
   projectError,
+  scopePrivatePackagePlanningError,
   type PrivateProjectSessionHost,
 } from "../src/internal/project-session-controller.js";
 
@@ -131,10 +132,10 @@ describe("private finite project session", () => {
       { ...diagnostic, path: ".jig/private" },
     )).toThrow("project diagnostic path is invalid");
     expect(() => new ProjectAdministrationError(
-      "UNAVAILABLE",
-      "project is unavailable",
+      "PROJECT_BUSY",
+      "project is busy",
       diagnostic,
-    )).toThrow("project diagnostic requires INVALID_CANDIDATE");
+    )).toThrow("project diagnostic requires INVALID_CANDIDATE or UNAVAILABLE");
     expect(() => new ProjectAdministrationError(
       "INVALID_CANDIDATE",
       "project candidate is invalid",
@@ -216,6 +217,53 @@ describe("private finite project session", () => {
         pointer: "/slots/work",
       },
     });
+
+    const unavailable = new CheckError(
+      "unavailable",
+      "PACKAGE_BUN_SOURCE_UNSUPPORTED",
+      "project-controlled text which must not cross the boundary",
+      "flows/dependent/bun.lock",
+    );
+    expect(projectError(unavailable, "plan").toJSON()).toEqual({
+      code: "UNAVAILABLE",
+      message: "plan is unavailable",
+      diagnostic: {
+        code: "PACKAGE_BUN_SOURCE_UNSUPPORTED",
+        path: "flows/dependent/bun.lock",
+      },
+    });
+
+    const privateUnavailable = new CheckError(
+      "unavailable",
+      "PACKAGE_BUN_PROTOCOL",
+      "private protocol detail",
+      ".jig/private",
+    );
+    expect(projectError(privateUnavailable, "plan").toJSON()).toEqual({
+      code: "UNAVAILABLE",
+      message: "plan is unavailable",
+    });
+  });
+
+  test("scopes an unsupported Bun source to its project package", () => {
+    const failure = new CheckError(
+      "unavailable",
+      "PACKAGE_BUN_SOURCE_UNSUPPORTED",
+      "private worker detail",
+      "bun.lock",
+    );
+    expect(scopePrivatePackagePlanningError(failure, "flows/dependent")).toMatchObject({
+      kind: "unavailable",
+      code: "PACKAGE_BUN_SOURCE_UNSUPPORTED",
+      path: "flows/dependent/bun.lock",
+    });
+
+    const unrelated = new CheckError(
+      "unavailable",
+      "PACKAGE_BUN_PREPARATION_FAILED",
+      "private worker detail",
+    );
+    expect(scopePrivatePackagePlanningError(unrelated, "flows/dependent")).toBe(unrelated);
   });
 });
 

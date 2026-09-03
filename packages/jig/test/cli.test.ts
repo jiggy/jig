@@ -509,6 +509,29 @@ describe("finite Jig project commands", () => {
     expect(invocation.error).not.toContain("\u202e");
   });
 
+  test("renders a bounded package unavailability without exposing its private message", async () => {
+    const events: string[] = [];
+    const failure = new ProjectAdministrationError(
+      "UNAVAILABLE",
+      "private preparation message and /private/path",
+      {
+        code: "PACKAGE_BUN_SOURCE_UNSUPPORTED",
+        path: "flows/dependent/bun.lock",
+      },
+    );
+    const invocation = commandInvocation(fakeHost(fakeSession(events, { planFailure: failure }), events));
+
+    expect(await main(["check", "--yes"], invocation.options)).toBe(2);
+    expect(events).toEqual(["acquire:/project", "plan:update", "close"]);
+    expect(invocation.output).toBe("");
+    expect(invocation.error).toBe(
+      "UNAVAILABLE: the project command is unavailable; " +
+      'PACKAGE_BUN_SOURCE_UNSUPPORTED at "flows/dependent/bun.lock"\n',
+    );
+    expect(invocation.error).not.toContain("private preparation message");
+    expect(invocation.error).not.toContain("/private/path");
+  });
+
   interface FakeSessionOptions {
     readonly plan?: ProjectPlanResult;
     readonly planFailure?: unknown;

@@ -248,7 +248,8 @@ or a portable runtime profile.
 A direct Flow target additionally requires:
 
 - an exact code entrypoint;
-- no capability use;
+- no capability use, except that the current Jig alpha also admits one slot
+  using its exact [Agent Run Capability Contract](https://jig.md/spec/agent-run);
 - no attachment; and
 - `{}` accepted by `settings.schema.json`, when present.
 

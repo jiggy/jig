@@ -238,6 +238,8 @@ function createSession(
               agentProvider: host.agentProvider,
             }));
           } catch (error) {
+            const scoped = scopePrivatePackagePlanningError(error, request.packagePath);
+            if (scoped !== error) throw scoped;
             if (error instanceof TypeError) {
               throw new ProjectAdministrationError(
                 "UNAVAILABLE",
@@ -481,10 +483,45 @@ export function projectError(
       }
     }
     if (error.kind === "unavailable") {
+      if (operation === "plan" && error.path !== undefined &&
+          isUnavailableDiagnosticCode(error.code)) {
+        try {
+          return new ProjectAdministrationError(
+            "UNAVAILABLE",
+            `${operation} is unavailable`,
+            {
+              code: error.code,
+              path: error.path,
+              ...(error.pointer === undefined ? {} : { pointer: error.pointer }),
+            },
+          );
+        } catch {
+          // An invalid or protected location remains a closed unavailability.
+        }
+      }
       return new ProjectAdministrationError("UNAVAILABLE", `${operation} is unavailable`);
     }
   }
   return new ProjectAdministrationError("INTERNAL", `${operation} failed`);
+}
+
+/** Package-private projection of one known package-local preparation failure. */
+export function scopePrivatePackagePlanningError(error: unknown, packagePath: string): unknown {
+  if (!(error instanceof CheckError) || error.kind !== "unavailable" ||
+      error.code !== "PACKAGE_BUN_SOURCE_UNSUPPORTED" || error.path !== "bun.lock") {
+    return error;
+  }
+  return new CheckError(
+    error.kind,
+    error.code,
+    error.message,
+    `${packagePath}/bun.lock`,
+    error.pointer,
+  );
+}
+
+function isUnavailableDiagnosticCode(code: string): boolean {
+  return code === "PACKAGE_BUN_SOURCE_UNSUPPORTED";
 }
 
 function isCandidateDiagnosticCode(code: string): boolean {
