@@ -103,6 +103,9 @@ try {
     /^  jig run <flow:path\|binding:id> \[--input JSON\] \[--timeout DURATION\]$/m,
   );
   assert.doesNotMatch(help.stdout, /setup|package check|planDigest/);
+  const runHelp = await run([command, "run", "--help"], consumer);
+  assert.equal(runHelp.stderr, "");
+  assert.equal(runHelp.stdout, help.stdout);
   await assert.rejects(stat(ambientMarker), { code: "ENOENT" });
 
   await Promise.all([

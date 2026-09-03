@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import {
   main,
   privateCliCommandLifetimeMs,
+  privateCliRequiresHost,
   type PrivateCliCommandHost,
 } from "./cli.js";
 import { openPrivateInstalledBunHost } from "./internal/installed-bun-host.js";
@@ -39,7 +40,7 @@ async function runPrivateInstalledCli(
   arguments_: readonly string[] = process.argv.slice(2),
   signal?: AbortSignal,
 ): Promise<InstalledCliOutcome> {
-  if (arguments_[0] !== "check" && arguments_[0] !== "run") {
+  if (!privateCliRequiresHost(arguments_)) {
     return exit(await main(arguments_, signal === undefined ? {} : { signal }));
   }
 

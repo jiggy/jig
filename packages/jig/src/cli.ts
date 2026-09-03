@@ -79,7 +79,7 @@ export async function main(
   options: PrivateCliOptions = {},
 ): Promise<number> {
   const runtime = cliRuntime(options);
-  if (arguments_.length === 1 && (arguments_[0] === "--help" || arguments_[0] === "-h")) {
+  if (isHelpRequest(arguments_)) {
     runtime.writeOutput(`${HELP}\n`);
     return 0;
   }
@@ -97,6 +97,17 @@ export async function main(
     }
     return renderFailure(error, runtime);
   }
+}
+
+/** Whether the installed command needs to acquire the private execution host. */
+export function privateCliRequiresHost(arguments_: readonly string[]): boolean {
+  return !isHelpRequest(arguments_) && (arguments_[0] === "check" || arguments_[0] === "run");
+}
+
+function isHelpRequest(arguments_: readonly string[]): boolean {
+  const help = arguments_.at(-1) === "--help" || arguments_.at(-1) === "-h";
+  return help && (arguments_.length === 1 || arguments_.length === 2 &&
+    (arguments_[0] === "init" || arguments_[0] === "check" || arguments_[0] === "run"));
 }
 
 async function executeInit(arguments_: readonly string[], runtime: CliRuntime): Promise<number> {

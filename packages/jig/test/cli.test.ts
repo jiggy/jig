@@ -201,14 +201,22 @@ describe("finite Jig project commands", () => {
   const digest = `sha256:${"a".repeat(64)}`;
 
   test("help exposes only init, check, and run", async () => {
-    const invocation = commandInvocation(unusedHost());
-    expect(await main(["--help"], invocation.options)).toBe(0);
-    expect(invocation.output).toContain("jig init --bare <directory>");
-    expect(invocation.output).toContain("jig check [project] [--yes]");
-    expect(invocation.output).toContain(
-      "jig run <flow:path|binding:id> [--input JSON] [--timeout DURATION]",
-    );
-    expect(invocation.output).not.toContain("package check");
+    for (const arguments_ of [
+      ["--help"],
+      ["init", "--help"],
+      ["check", "-h"],
+      ["run", "--help"],
+    ]) {
+      const invocation = commandInvocation(unusedHost());
+      expect(await main(arguments_, invocation.options)).toBe(0);
+      expect(invocation.output).toContain("jig init --bare <directory>");
+      expect(invocation.output).toContain("jig check [project] [--yes]");
+      expect(invocation.output).toContain(
+        "jig run <flow:path|binding:id> [--input JSON] [--timeout DURATION]",
+      );
+      expect(invocation.output).not.toContain("package check");
+      expect(invocation.error).toBe("");
+    }
 
     const removed = commandInvocation(unusedHost());
     expect(await main(["package", "check", "."], removed.options)).toBe(2);

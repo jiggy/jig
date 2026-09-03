@@ -269,6 +269,10 @@ invalid, checking an Agent-bearing target reports it unavailable. A
 capability-free target in an already admitted generation remains runnable
 because its recipe does not depend on the Agent implementation.
 
+`jig check` authenticates and admits the selected local configuration. It does
+not send a remote health-check request, so `ready` does not assert that a model
+endpoint is currently reachable or accepting requests.
+
 Root `jig run --timeout DURATION` bounds the complete sequence, including the
 Agent call and any selected child. The default is 30 seconds and the maximum
 is 24 hours; neither an API worker, native client, nor child can extend the
