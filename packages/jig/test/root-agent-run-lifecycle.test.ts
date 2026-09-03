@@ -26,6 +26,15 @@ import { installedBunLocation } from "./fixtures/installed-bun-location.js";
 
 const HOSTILE = process.env.JIG_LINUX_ROOTLESS_HOSTILE === "1";
 const proofDescribe = HOSTILE ? describe.serial : describe.skip;
+const nativeCodexPath = process.env.JIG_CODEX_PROOF_PATH;
+const nativeCodexTest = HOSTILE && nativeCodexPath !== undefined && process.env.CODEX_HOME !== undefined
+  ? test
+  : test.skip;
+const nativeCodexGatewayModel = process.env.JIG_CODEX_OPENROUTER_MODEL;
+const nativeCodexGatewayTest = HOSTILE && nativeCodexPath !== undefined &&
+    nativeCodexGatewayModel !== undefined && process.env.OPENROUTER_API_KEY !== undefined
+  ? test
+  : test.skip;
 const initialTemporaryState = new Set(
   (await readdir(tmpdir())).filter(rootlessTemporaryEntry),
 );
@@ -39,6 +48,112 @@ interface DispatchEvent {
 }
 
 proofDescribe("private contained Agent Run lifecycle", () => {
+  nativeCodexTest("executes native Codex through ACP with the existing subscription", async () => {
+    const root = await mkdtemp(join(tmpdir(), "jig-native-codex-project-"));
+    let session: Awaited<ReturnType<typeof openPrivateProjectSession>> | undefined;
+    try {
+      await writeProject(root);
+      session = await openPrivateProjectSession({
+        directory: root,
+        host: await openPrivateInstalledBunHost(installedBunLocation, {
+          CODEX_HOME: process.env.CODEX_HOME,
+          CODEX_PATH: await realpath(nativeCodexPath!),
+          JIG_AGENT_CLIENT: "codex",
+        }),
+      });
+      const plan = await session.plan({ lockMode: "update" });
+      if (plan.state !== "applicable") throw new Error("native Codex fixture did not produce a Plan");
+      await session.apply({ planDigest: plan.planDigest });
+
+      expect(await runToTerminal(
+        session.rootAdministration,
+        "native-codex-subscription",
+        "success",
+      )).toMatchObject({
+        state: "terminal",
+        terminal: {
+          status: "succeeded",
+          outcome: "done",
+          output: {
+            status: "succeeded",
+            parentHasKey: false,
+            agent: {
+              outcome: "completed",
+              structured: {
+                route: "technical",
+                keyLocation: "stdin",
+                selectedSkill: "present",
+                hiddenSkill: "absent",
+              },
+            },
+          },
+        },
+      });
+      await expectNoAgentOwner(root);
+      await session.close();
+      session = undefined;
+      await waitForCgroups(initialCgroups);
+      await waitForTemporaryState(initialTemporaryState);
+    } finally {
+      await session?.close().catch(() => undefined);
+      await rm(root, { recursive: true, force: true });
+    }
+  }, 90_000);
+
+  nativeCodexGatewayTest("executes native Codex through ACP with an explicit OpenRouter gateway", async () => {
+    const root = await mkdtemp(join(tmpdir(), "jig-native-codex-gateway-project-"));
+    let session: Awaited<ReturnType<typeof openPrivateProjectSession>> | undefined;
+    try {
+      await writeProject(root);
+      session = await openPrivateProjectSession({
+        directory: root,
+        host: await openPrivateInstalledBunHost(installedBunLocation, {
+          CODEX_PATH: await realpath(nativeCodexPath!),
+          JIG_AGENT_CLIENT: "codex",
+          OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY,
+          OPENROUTER_MODEL: nativeCodexGatewayModel,
+        }),
+      });
+      const plan = await session.plan({ lockMode: "update" });
+      if (plan.state !== "applicable") throw new Error("native Codex fixture did not produce a Plan");
+      await session.apply({ planDigest: plan.planDigest });
+
+      const terminal = await runToTerminal(
+        session.rootAdministration,
+        "native-codex-openrouter",
+        "gateway",
+      );
+      expect(terminal).toMatchObject({
+        state: "terminal",
+        terminal: {
+          status: "succeeded",
+          outcome: "done",
+          output: {
+            status: "succeeded",
+            parentHasKey: false,
+            agent: { outcome: "completed" },
+          },
+        },
+      });
+      const output = terminal.state === "terminal" && terminal.terminal.status === "succeeded"
+        ? terminal.terminal.output
+        : undefined;
+      const agent = output !== null && typeof output === "object" && "agent" in output
+        ? output.agent
+        : undefined;
+      expect(typeof agent === "object" && agent !== null && "text" in agent &&
+        typeof agent.text === "string" && agent.text.length > 0).toBe(true);
+      await expectNoAgentOwner(root);
+      await session.close();
+      session = undefined;
+      await waitForCgroups(initialCgroups);
+      await waitForTemporaryState(initialTemporaryState);
+    } finally {
+      await session?.close().catch(() => undefined);
+      await rm(root, { recursive: true, force: true });
+    }
+  }, 90_000);
+
   test("fences deterministic provider success, invalid output, cancellation, deadline, and loss", async () => {
     const root = await mkdtemp(join(tmpdir(), "jig-agent-lifecycle-project-"));
     const releaseRoot = await mkdtemp(join(tmpdir(), "jig-agent-lifecycle-release-"));
@@ -354,6 +469,7 @@ async function writeProject(root: string): Promise<void> {
           "malformed",
           "slow",
           "recovery",
+          "gateway",
         ],
       },
     },
@@ -388,9 +504,11 @@ function flowProgram(): string {
     "    const agent = await run.callEffect({",
     '      operationId: `agent:${input.scenario}`, slot: "agent", method: "run",',
     '      input: { instructions: `scenario:${input.scenario}`, skills: ["selected"],',
-    '        responseSchema: input.scenario === "schema-input-invalid"',
-    '          ? { $schema: "https://flow.jig.md/schemas/schema-1.json", type: "unknown" }',
-    '          : responseSchema },',
+    '        ...(input.scenario === "gateway" ? {} : {',
+    '          responseSchema: input.scenario === "schema-input-invalid"',
+    '            ? { $schema: "https://flow.jig.md/schemas/schema-1.json", type: "unknown" }',
+    '            : responseSchema,',
+    '        }) },',
     "    });",
     '    return { outcome: "done", output: { status: "succeeded", agent,',
     "      parentHasKey: process.env.OPENAI_API_KEY !== undefined ||",
@@ -434,7 +552,9 @@ async function waitForTerminal(
     if (status.state === "terminal") return status;
     await Bun.sleep(20);
   }
-  throw new Error("Agent fixture Run did not become terminal");
+  throw new Error(`Agent fixture Run did not become terminal: ${JSON.stringify(
+    await administration.runStatus(receipt),
+  )}`);
 }
 
 async function waitForAgentSandbox(root: string, runId: string): Promise<void> {

@@ -18,6 +18,10 @@ const expectedInstalledFiles = [
   "libexec/installed-cli.js",
   "libexec/agent/openai.LICENSE",
   "libexec/agent/openai-responses-worker.js",
+  "libexec/agent/codex-acp.LICENSE",
+  "libexec/agent/codex-acp.js",
+  "libexec/agent/codex-agent-launcher.js",
+  "libexec/agent/codex-requirements.toml",
   "libexec/evaluator/project-authoring-1.schema.json",
   "libexec/evaluator/project-evaluator-sdk.bundle.js",
   "libexec/evaluator/project-evaluator-worker.js",
@@ -136,6 +140,7 @@ try {
     "libexec/evaluator/project-evaluator-worker.js",
     "libexec/evaluator/project-evaluator-sdk.bundle.js",
     "libexec/agent/openai-responses-worker.js",
+    "libexec/agent/codex-agent-launcher.js",
     "libexec/preparation/bun-native-preparation-worker.js",
   ]) {
     const source = await readFile(join(installed, relative), "utf8");

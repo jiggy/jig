@@ -74,6 +74,8 @@ export interface PrivateLinuxLaunchPlan {
   readonly command: readonly [string, ...string[]];
   readonly environment?: Readonly<Record<string, string>>;
   readonly network?: "isolated" | "inherited";
+  /** Permit a trusted nested sandbox to create child user namespaces. */
+  readonly nestedUserNamespaces?: boolean;
 }
 
 interface SealedLaunchPlan extends Omit<
@@ -84,6 +86,7 @@ interface SealedLaunchPlan extends Omit<
   readonly readOnlyMounts: readonly SealedMount[];
   readonly environment: Readonly<Record<string, string>>;
   readonly network: "isolated" | "inherited";
+  readonly nestedUserNamespaces: boolean;
 }
 
 export interface PrivateLinuxCgroupBackendOptions {
@@ -223,6 +226,7 @@ export interface PrivateLinuxEnvelopeIdentity {
   readonly privateProcessFilesystem: true;
   readonly privateRuntimeDevices: true;
   readonly network: "isolated" | "inherited";
+  readonly nestedUserNamespaces: boolean;
 }
 
 export interface PrivateLinuxEnforcementEvidence {
@@ -1253,6 +1257,7 @@ function supervisorConfiguration(data: SealedOwnerData): object {
     command: data.sealedPlan.command,
     environment: data.sealedPlan.environment,
     network: data.sealedPlan.network,
+    nestedUserNamespaces: data.sealedPlan.nestedUserNamespaces,
     bunPath: data.mechanism.support.trustedCoordinatorBunPath,
     bunHostLibraryPath: data.mechanism.support.trustedCoordinatorLibraryPath,
     bubblewrapPath: data.mechanism.support.trustedBubblewrapPath,
@@ -1281,6 +1286,7 @@ function envelopeFor(data: SealedOwnerData): PrivateLinuxEnvelopeIdentity {
     privateProcessFilesystem: true,
     privateRuntimeDevices: true,
     network: data.sealedPlan.network,
+    nestedUserNamespaces: data.sealedPlan.nestedUserNamespaces,
   });
 }
 
@@ -1375,6 +1381,10 @@ function snapshotPlan(value: PrivateLinuxLaunchPlan): SealedLaunchPlan {
   if (network !== "isolated" && network !== "inherited") {
     throw new TypeError("rootless Linux network policy is invalid");
   }
+  const nestedUserNamespaces = value.nestedUserNamespaces ?? false;
+  if (typeof nestedUserNamespaces !== "boolean") {
+    throw new TypeError("rootless Linux nested-user-namespace policy is invalid");
+  }
   return Object.freeze({
     runId: value.runId,
     limits: normalizedLimits,
@@ -1382,6 +1392,7 @@ function snapshotPlan(value: PrivateLinuxLaunchPlan): SealedLaunchPlan {
     command: Object.freeze([...value.command]) as unknown as readonly [string, ...string[]],
     environment: Object.freeze(environment),
     network,
+    nestedUserNamespaces,
   });
 }
 

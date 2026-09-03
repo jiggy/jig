@@ -1,0 +1,5 @@
+allowed_approval_policies = ["on-request"]
+allowed_sandbox_modes = ["read-only", "workspace-write"]
+
+[permissions.filesystem]
+deny_read = ["/tmp/codex-home/auth.json"]

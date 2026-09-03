@@ -23,9 +23,9 @@ import {
 } from "../project/package-resolution.js";
 import { PRIVATE_MAX_ROOT_RUN_TIMEOUT_MS } from "./root-run-timeout-policy.js";
 import {
-  requirePrivateOpenAIAgentProvider,
-  type PrivateOpenAIAgentProvider,
-} from "./openai-agent-provider.js";
+  requirePrivateAgentProvider,
+  type PrivateAgentProvider,
+} from "./agent-provider.js";
 import { AGENT_RUN_CONTRACT_DIGEST } from "./private-agent-run.js";
 
 const ADAPTER_REVISION = "private-bun-direct/1";
@@ -68,7 +68,7 @@ export interface PrivateBunDirectRecipe {
   readonly bunPolicy: typeof BUN_POLICY;
   readonly privateProcessFilesystem: true;
   readonly privateRuntimeDevices: true;
-  readonly agentProvider?: PrivateOpenAIAgentProvider | undefined;
+  readonly agentProvider?: PrivateAgentProvider | undefined;
 }
 
 /** Plan one exact, dependency-closed Bun flow.ts Run. */
@@ -78,7 +78,7 @@ export async function planPrivateBunDirectRun(input: {
   readonly backend: PrivateLinuxCgroupBackend;
   readonly executionPackage?: PackageArtifactRef;
   readonly selector?: string;
-  readonly agentProvider?: PrivateOpenAIAgentProvider | undefined;
+  readonly agentProvider?: PrivateAgentProvider | undefined;
 }): Promise<PrivateBunDirectRecipe> {
   const request = requirePrivateActivationRequest(input.request);
   const installedSupport = requirePrivateInstalledBunSupport(input.installedSupport);
@@ -101,7 +101,7 @@ export async function planPrivateBunDirectRun(input: {
   const capabilityUses = Object.values(request.capabilities);
   const agentProvider = capabilityUses.length === 0
     ? undefined
-    : requirePrivateOpenAIAgentProvider(input.agentProvider);
+    : requirePrivateAgentProvider(input.agentProvider);
   if (capabilityUses.some(({ digest }) => digest !== AGENT_RUN_CONTRACT_DIGEST) ||
       capabilityUses.length > 1 ||
       agentProvider !== undefined && agentProvider.contractDigest !== AGENT_RUN_CONTRACT_DIGEST) {
@@ -193,7 +193,7 @@ function logicalLaunchDigest(
   executionPackage: PackageArtifactRef,
   installedSupport: PrivateInstalledBunSupport,
   mechanism: PrivateLinuxBackendMechanismSupport,
-  agentProvider: PrivateOpenAIAgentProvider | undefined,
+  agentProvider: PrivateAgentProvider | undefined,
 ): string {
   return privateDomainDigest("JIG-Private-Bun-Logical-Launch/1", {
     requestDigest: request.digest,

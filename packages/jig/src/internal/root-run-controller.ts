@@ -67,7 +67,7 @@ import {
   executePrivateRootAgentRun,
   recoverPrivateRootAgentRunOwners,
 } from "./root-agent-run-controller.js";
-import type { PrivateOpenAIAgentProvider } from "./openai-agent-provider.js";
+import type { PrivateAgentProvider } from "./agent-provider.js";
 
 const PLAN_KIND = "private-direct-root-plan/1";
 const BACKING_KIND = "private-direct-root-backing/1";
@@ -116,7 +116,7 @@ export async function executePrivateRootRunLaunch(input: {
   readonly coordinator: PrivateProjectCoordinator;
   readonly installedSupport: PrivateDirectRunInstalledSupport;
   readonly backend: PrivateLinuxCgroupBackend;
-  readonly agentProvider?: PrivateOpenAIAgentProvider | undefined;
+  readonly agentProvider?: PrivateAgentProvider | undefined;
   readonly signal?: AbortSignal;
 }): Promise<PrivateRootExecutionDisposition> {
   await input.coordinator.verify();

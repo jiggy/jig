@@ -56,6 +56,7 @@ interface Configuration {
   readonly command: readonly [string, ...string[]];
   readonly environment: Readonly<Record<string, string>>;
   readonly network: "isolated" | "inherited";
+  readonly nestedUserNamespaces: boolean;
   readonly bunPath: string;
   readonly bunHostLibraryPath: string;
   readonly bubblewrapPath: string;
@@ -312,14 +313,15 @@ function bubblewrapArguments(configuration: Configuration): string[] {
     "--unshare-all",
     ...(configuration.network === "inherited" ? ["--share-net"] : []),
     "--unshare-user",
-    "--disable-userns",
-    "--assert-userns-disabled",
+    ...(configuration.nestedUserNamespaces
+      ? []
+      : ["--disable-userns", "--assert-userns-disabled"]),
     "--as-pid-1",
     "--die-with-parent",
     "--new-session",
     "--clearenv",
     "--proc", "/proc",
-    "--remount-ro", "/proc",
+    ...(configuration.nestedUserNamespaces ? [] : ["--remount-ro", "/proc"]),
     "--dev", "/dev",
     "--tmpfs", "/tmp",
     "--tmpfs", "/run",
@@ -437,7 +439,7 @@ function requireStart(value: unknown): Configuration {
   const configuration = (value as { configuration: Configuration }).configuration;
   const keys = [
     "bubblewrapPath", "bunHostLibraryPath", "bunPath", "command", "delegatedCgroup", "environment", "limits",
-    "mechanismDigest", "network", "ownerDigest",
+    "mechanismDigest", "nestedUserNamespaces", "network", "ownerDigest",
     "ownerStateAllocationDigest", "ownerStateDirectory", "ownerToken", "payloadGid",
     "payloadUid", "readOnlyMounts", "runCgroup", "sealedPlanDigest", "supervisorPath",
   ];
@@ -458,6 +460,7 @@ function requireStart(value: unknown): Configuration {
       !DIGEST.test(configuration.ownerStateAllocationDigest) ||
       typeof configuration.ownerToken !== "string" || !OWNER_TOKEN.test(configuration.ownerToken) ||
       (configuration.network !== "isolated" && configuration.network !== "inherited") ||
+      typeof configuration.nestedUserNamespaces !== "boolean" ||
       !positiveInteger(configuration.payloadUid) || !positiveInteger(configuration.payloadGid) ||
       !validLimits(configuration.limits) || !validMounts(configuration.readOnlyMounts) ||
       !validEnvironment(configuration.environment) || !Array.isArray(configuration.command) ||

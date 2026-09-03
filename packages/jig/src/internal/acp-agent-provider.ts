@@ -12,6 +12,7 @@ import { snapshotPrivateOrdinaryJson } from "./private-ordinary-json.js";
 
 const IDENTIFIER = /^[A-Za-z0-9][A-Za-z0-9._:/+-]{0,255}$/;
 const SECRET_ENVIRONMENT_NAME = /(AUTH|CREDENTIAL|KEY|SECRET|TOKEN)/i;
+const STARTUP_INPUT_BYTES = 64 * 1024;
 const authenticProviders = new WeakMap<PrivateAcpAgentProvider, PrivateAcpAgentRuntime>();
 
 export interface PrivateAcpAgentProvider {
@@ -37,6 +38,12 @@ export interface PrivateAcpAgentProviderConfiguration {
   readonly configuration?: readonly PrivateAcpSessionConfiguration[];
   readonly modeId?: string;
   readonly sessionMeta?: Readonly<Record<string, unknown>>;
+  /** The native client starts its own unprivileged Linux sandbox. */
+  readonly nestedUserNamespaces?: boolean;
+  /** Secret or ephemeral client bootstrap bytes, never part of provider identity. */
+  readonly startupInput?: Uint8Array;
+  /** Recheck ephemeral startup authority immediately before each launch. */
+  readonly revalidateStartupInput?: () => void;
   readonly authentication?: {
     readonly request: acp.AuthenticateRequest;
     readonly clientAuthCapabilities?: NonNullable<acp.ClientCapabilities["auth"]>;
@@ -60,8 +67,11 @@ export interface PrivateAcpAgentRuntime {
   readonly configuration: readonly PrivateAcpSessionConfiguration[];
   readonly modeId?: string;
   readonly sessionMeta?: Readonly<Record<string, unknown>>;
+  readonly nestedUserNamespaces: boolean;
   readonly authentication?: PrivateAcpAgentProviderConfiguration["authentication"];
   readonly readOnlyMounts: readonly PrivateLinuxReadOnlyMount[];
+  /** Return a fresh copy of bounded bootstrap bytes for one process. */
+  readonly startupInput?: () => Uint8Array;
 }
 
 interface ExactMount extends PrivateLinuxReadOnlyMount {
@@ -102,6 +112,16 @@ export async function createPrivateAcpAgentProvider(
   const authentication = value.authentication === undefined
     ? undefined
     : normalizeAuthentication(value.authentication);
+  const startupInput = value.startupInput === undefined
+    ? undefined
+    : normalizeStartupInput(value.startupInput);
+  if (value.revalidateStartupInput !== undefined && startupInput === undefined) {
+    throw new Error("ACP Agent startup-input validation has no input");
+  }
+  const nestedUserNamespaces = value.nestedUserNamespaces ?? false;
+  if (typeof nestedUserNamespaces !== "boolean") {
+    throw new Error("ACP Agent nested-user-namespace policy is invalid");
+  }
   const exactMounts = Object.freeze(await Promise.all((value.readOnlyMounts ?? []).map(
     normalizeMount,
   )));
@@ -126,6 +146,8 @@ export async function createPrivateAcpAgentProvider(
     sessionMeta: sessionMeta ?? null,
     ...(value.modeId === undefined ? {} : { modeId: value.modeId }),
     authentication: authentication?.identity ?? null,
+    hasStartupInput: startupInput !== undefined,
+    nestedUserNamespaces,
     mounts: exactMounts.map(({ destination, role, digest }) => Object.freeze({
       destination,
       role,
@@ -155,10 +177,25 @@ export async function createPrivateAcpAgentProvider(
     ...(value.modeId === undefined ? {} : { modeId: value.modeId }),
     ...(sessionMeta === undefined ? {} : { sessionMeta }),
     ...(authentication === undefined ? {} : { authentication }),
+    ...(startupInput === undefined ? {} : {
+      startupInput: (): Uint8Array => {
+        value.revalidateStartupInput?.();
+        return startupInput.slice();
+      },
+    }),
+    nestedUserNamespaces,
     readOnlyMounts,
     exactMounts,
   }) as StoredRuntime);
   return provider;
+}
+
+function normalizeStartupInput(value: Uint8Array): Uint8Array {
+  if (!(value instanceof Uint8Array) || value.byteLength === 0 ||
+      value.byteLength > STARTUP_INPUT_BYTES) {
+    throw new Error("ACP Agent startup input is invalid");
+  }
+  return value.slice();
 }
 
 export function requirePrivateAcpAgentProvider(value: unknown): PrivateAcpAgentProvider {

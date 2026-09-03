@@ -77,6 +77,71 @@ describe("private ACP Agent provider", () => {
       "support changed after selection",
     );
   });
+
+  test("keeps bounded startup credentials out of provider identity", async () => {
+    const support = await files();
+    let valid = true;
+    const base = {
+      client: "test-client",
+      model: "provider/model",
+      credentialMode: "subscription",
+      adapterPath: support.adapter,
+      sandboxAdapterPath: "/agent/adapter.js",
+      executablePath: support.executable,
+      sandboxExecutablePath: "/agent/client",
+      environment: { CLIENT_PATH: "/agent/client" },
+    } as const;
+    const first = await createPrivateAcpAgentProvider({
+      ...base,
+      startupInput: new TextEncoder().encode("first-secret"),
+      revalidateStartupInput: () => {
+        if (!valid) throw new Error("startup authority expired");
+      },
+    });
+    const rotated = await createPrivateAcpAgentProvider({
+      ...base,
+      startupInput: new TextEncoder().encode("rotated-secret"),
+    });
+    expect(first.digest).toBe(rotated.digest);
+    expect(new TextDecoder().decode(privateAcpAgentRuntime(first).startupInput!()))
+      .toBe("first-secret");
+    expect(JSON.stringify(first)).not.toContain("secret");
+    valid = false;
+    expect(() => privateAcpAgentRuntime(first).startupInput!()).toThrow(
+      "startup authority expired",
+    );
+    await expect(createPrivateAcpAgentProvider({
+      ...base,
+      startupInput: new Uint8Array(65_537),
+    })).rejects.toThrow("startup input is invalid");
+    await expect(createPrivateAcpAgentProvider({
+      ...base,
+      revalidateStartupInput: () => undefined,
+    })).rejects.toThrow("startup-input validation has no input");
+  });
+
+  test("binds nested native sandbox authority into provider identity", async () => {
+    const support = await files();
+    const base = {
+      client: "test-client",
+      model: "provider/model",
+      credentialMode: "subscription",
+      adapterPath: support.adapter,
+      sandboxAdapterPath: "/agent/adapter.js",
+      executablePath: support.executable,
+      sandboxExecutablePath: "/agent/client",
+      environment: { CLIENT_PATH: "/agent/client" },
+    } as const;
+    const ordinary = await createPrivateAcpAgentProvider(base);
+    const nested = await createPrivateAcpAgentProvider({
+      ...base,
+      nestedUserNamespaces: true,
+    });
+
+    expect(privateAcpAgentRuntime(ordinary).nestedUserNamespaces).toBe(false);
+    expect(privateAcpAgentRuntime(nested).nestedUserNamespaces).toBe(true);
+    expect(ordinary.digest).not.toBe(nested.digest);
+  });
 });
 
 async function provider(

@@ -46,6 +46,18 @@ Copyright 2026 OpenAI
 Licensed under the Apache License, Version 2.0. The complete license is shipped
 as `libexec/agent/openai.LICENSE`.
 
+@agentclientprotocol/codex-acp 1.8.0
+------------------------------------
+
+Jig ships the official ACP adapter for native OpenAI Codex as an inert support
+asset. It is selected only when the operator explicitly enables the native
+Codex client; Jig does not include the Codex executable or its credentials.
+
+Copyright 2025 JetBrains s.r.o.
+
+Licensed under the Apache License, Version 2.0. The complete adapter license is
+shipped as `libexec/agent/codex-acp.LICENSE`.
+
 Unicode 15.1.0 CaseFolding data
 --------------------------------
 

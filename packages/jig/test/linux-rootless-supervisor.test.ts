@@ -162,6 +162,7 @@ interface Configuration {
   readonly command: readonly [string, ...string[]];
   readonly environment: Readonly<Record<string, string>>;
   readonly network: "isolated";
+  readonly nestedUserNamespaces: false;
   readonly bunPath: string;
   readonly bunHostLibraryPath: string;
   readonly bubblewrapPath: string;
@@ -216,6 +217,7 @@ async function fixtureFor(runId: string): Promise<Fixture> {
     ],
     environment: {},
     network: "isolated",
+    nestedUserNamespaces: false,
     bunPath,
     bunHostLibraryPath,
     bubblewrapPath: "/usr/bin/bwrap",

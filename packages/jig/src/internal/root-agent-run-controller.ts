@@ -2,7 +2,7 @@ import { lstat, mkdir, realpath } from "node:fs/promises";
 import { join } from "node:path";
 
 import { CheckError } from "../diagnostics.js";
-import { canonicalJson, type JsonObject, type JsonValue } from "../json.js";
+import { canonicalJson, decodeJson1, type JsonObject, type JsonValue } from "../json.js";
 import { inspectCapturedPackage } from "../package/inspect.js";
 import { SchemaDiagnostic } from "../schema/index.js";
 import {
@@ -47,8 +47,21 @@ import {
   type PrivateLinuxSealedOwnerIdentity,
 } from "./linux-rootless-backend.js";
 import {
+  privateAcpAgentRuntime,
+  revalidatePrivateAcpAgentProvider,
+} from "./acp-agent-provider.js";
+import {
+  PrivateAcpProtocolError,
+  privateAcpComponentStream,
+  runPrivateAcpTurn,
+  type PrivateAcpTurnResult,
+} from "./acp-agent-client.js";
+import {
+  requirePrivateAgentProvider,
+  type PrivateAgentProvider,
+} from "./agent-provider.js";
+import {
   privateOpenAIAgentCredential,
-  requirePrivateOpenAIAgentProvider,
   type PrivateOpenAIAgentProvider,
 } from "./openai-agent-provider.js";
 import {
@@ -60,7 +73,6 @@ import {
   PRIVATE_OPENAI_RESPONSES_PROTOCOL,
   PRIVATE_OPENAI_RESPONSES_RESPONSE_BYTES,
   type PrivateOpenAIResponsesErrorCode,
-  type PrivateOpenAIResponsesRequest,
   type PrivateOpenAIResponsesWorkerResponse,
 } from "./openai-responses-protocol.js";
 import { captureStoredPackage } from "./package-artifact-store.js";
@@ -82,6 +94,7 @@ const SANDBOX_KIND = "private-root-agent-sandbox/1";
 const CLEANUP_KIND = "private-root-agent-cleanup/1";
 const CANCELLATION_GRACE_MS = 1_000;
 const PROVIDER_STDERR_BYTES = 64 * 1024;
+const AGENT_PROVIDER_MINIMUM_PIDS = 128;
 const PROVIDER_INSTRUCTION_BYTES = 1_048_576;
 const DIGEST = /^sha256:[0-9a-f]{64}$/;
 const decoder = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
@@ -117,17 +130,18 @@ interface AgentRecoveryInput {
   readonly coordinator: PrivateProjectCoordinator;
   readonly installedSupport: PrivateDirectRunInstalledSupport;
   readonly backend: PrivateLinuxCgroupBackend;
-  readonly agentProvider?: PrivateOpenAIAgentProvider | undefined;
+  readonly agentProvider?: PrivateAgentProvider | undefined;
 }
 
 interface AgentInput extends AgentRecoveryInput {
-  readonly agentProvider: PrivateOpenAIAgentProvider;
+  readonly agentProvider: PrivateAgentProvider;
 }
 
 interface PreparedCall {
   readonly input: PreparedAgentRunInput;
   readonly contract: Parameters<typeof parseAgentRunResult>[0];
-  readonly request: Omit<PrivateOpenAIResponsesRequest, "apiKey">;
+  readonly instructions: string;
+  readonly responseSchema?: JsonObject;
   readonly digest: string;
 }
 
@@ -148,12 +162,13 @@ export async function executePrivateRootAgentRun(
   }
   if (input.signal.aborted) return failed("CANCELLED", "the Agent Run was cancelled");
 
-  let provider: PrivateOpenAIAgentProvider;
+  let provider: PrivateAgentProvider;
   let recipe: PrivateDirectRunRecipe;
   try {
-    provider = requirePrivateOpenAIAgentProvider(input.agentProvider);
+    provider = requirePrivateAgentProvider(input.agentProvider);
     if (provider.contractDigest !== selected.digest ||
-        provider.workerDigest !== input.installedSupport.agentWorkerDigest) {
+        provider.kind === "private-openai-agent-provider/1" &&
+          provider.workerDigest !== input.installedSupport.agentWorkerDigest) {
       throw new Error("Agent provider identity differs from admitted host support");
     }
     recipe = await reproduceParentRecipe(input);
@@ -250,7 +265,7 @@ export async function executePrivateRootAgentRun(
   try {
     await revalidateProviderSupport(recipe, provider);
     const sealed = await input.backend.seal(
-      backendPlan(recipe, effectiveDeadlineUnixMs, identity),
+      backendPlan(recipe, provider, effectiveDeadlineUnixMs, identity),
       ownerAllocation,
     );
     const sandbox: AgentSandbox = Object.freeze({ kind: SANDBOX_KIND, owner: sealed.identity });
@@ -265,13 +280,7 @@ export async function executePrivateRootAgentRun(
 
     attemptedDispatch = true;
     const component = await sealed.admit(input.signal);
-    execution = await interactWithProvider(
-      component,
-      encodePrivateOpenAIResponsesRequest({
-        ...prepared.request,
-        apiKey: privateOpenAIAgentCredential(provider),
-      }),
-    );
+    execution = await interactWithProvider(component, provider, prepared, input.signal);
     await releaseKnownAgent(input, lifecycle, execution.fence);
   } catch (error) {
     try {
@@ -302,15 +311,12 @@ export async function executePrivateRootAgentRun(
     return failed("EXECUTION_FAILED", "the Agent provider process failed");
   }
 
-  let response: PrivateOpenAIResponsesWorkerResponse;
-  try {
-    response = decodePrivateOpenAIResponsesResponse(execution.output);
-  } catch {
-    return failed("INVALID_RESULT", "the Agent provider returned an invalid result");
+  if (execution.cancelled) {
+    return failed("CANCELLED", "the Agent Run was cancelled");
   }
-  if (response.status === "error") return providerFailure(response.code);
+  if (execution.failure !== undefined) return providerFailure(execution.failure);
   try {
-    const value = parseAgentRunResult(prepared.contract, prepared.input, response.value);
+    const value = parseAgentRunResult(prepared.contract, prepared.input, execution.value);
     return Object.freeze({
       status: "succeeded" as const,
       result: Object.freeze({ value: value as unknown as JsonValue }),
@@ -432,9 +438,25 @@ export function renderPrivateAgentRunInstructions(
   return rendered;
 }
 
+function renderPrivateAcpStructuredInstructions(
+  instructions: string,
+  responseSchema: JsonObject,
+): string {
+  const schema = decoder.decode(canonicalJson(responseSchema as JsonValue));
+  const rendered = [
+    instructions,
+    "Return only one JSON value matching this canonical FLOW Schema/1 schema:",
+    schema,
+  ].join("\n");
+  if (encoder.encode(rendered).byteLength > PROVIDER_INSTRUCTION_BYTES) {
+    throw new AgentInstructionLimitError();
+  }
+  return rendered;
+}
+
 async function prepareCall(
   input: AgentInput & { readonly call: RunHostEffectCall },
-  provider: PrivateOpenAIAgentProvider,
+  provider: PrivateAgentProvider,
 ): Promise<PreparedCall> {
   const target = requireParentTarget(input.parent);
   const captured = await captureStoredPackage(input.packageStoreRoot, target.request.package);
@@ -450,23 +472,25 @@ async function prepareCall(
     assertAgentRunContract(reference.contract);
     const prepared = parseAgentRunInput(reference.contract, input.call.input);
     const manifest = await projectAgentRunSkills(captured, prepared.selectedSkills);
-    const instructions = renderPrivateAgentRunInstructions(prepared.input.instructions, manifest);
+    let instructions = renderPrivateAgentRunInstructions(prepared.input.instructions, manifest);
     const responseSchema = prepared.input.responseSchema as JsonObject | undefined;
     if (responseSchema !== undefined) assertPrivateAgentResponseSchema(responseSchema);
-    const request = Object.freeze({
-      protocol: PRIVATE_OPENAI_RESPONSES_PROTOCOL,
-      baseURL: provider.baseURL,
-      model: provider.model,
+    if (provider.kind === "private-acp-agent-provider/1" && responseSchema !== undefined) {
+      instructions = renderPrivateAcpStructuredInstructions(instructions, responseSchema);
+    }
+    const requestIdentity = Object.freeze({
+      providerDigest: provider.digest,
       instructions,
       ...(responseSchema === undefined ? {} : { responseSchema }),
     });
     return Object.freeze({
       input: prepared,
       contract: reference.contract,
-      request,
+      instructions,
+      ...(responseSchema === undefined ? {} : { responseSchema }),
       digest: privateDomainDigest(
-        "JIG-Private-OpenAI-Responses-Request/1",
-        request as unknown as JsonValue,
+        "JIG-Private-Agent-Request/1",
+        requestIdentity as unknown as JsonValue,
       ),
     });
   } finally {
@@ -520,14 +544,18 @@ async function reproduceParentRecipe(input: AgentInput): Promise<PrivateDirectRu
 
 async function revalidateProviderSupport(
   recipe: PrivateDirectRunRecipe,
-  provider: PrivateOpenAIAgentProvider,
+  provider: PrivateAgentProvider,
 ): Promise<void> {
   const [mechanism] = await Promise.all([
     recipe.backend.observeMechanism(),
     revalidatePrivateInstalledBunSupport(recipe.installedSupport),
+    provider.kind === "private-acp-agent-provider/1"
+      ? revalidatePrivateAcpAgentProvider(provider)
+      : Promise.resolve(),
   ]);
   if (mechanism.support.digest !== recipe.mechanismDigest ||
-      recipe.installedSupport.agentWorkerDigest !== provider.workerDigest ||
+      provider.kind === "private-openai-agent-provider/1" &&
+        recipe.installedSupport.agentWorkerDigest !== provider.workerDigest ||
       recipe.agentProvider?.digest !== provider.digest) {
     throw new Error("Agent provider support changed after admission");
   }
@@ -535,55 +563,180 @@ async function revalidateProviderSupport(
 
 function backendPlan(
   recipe: PrivateDirectRunRecipe,
+  provider: PrivateAgentProvider,
   deadlineUnixMs: number,
   identity: string,
 ): PrivateLinuxLaunchPlan {
+  const acp = provider.kind === "private-acp-agent-provider/1"
+    ? privateAcpAgentRuntime(provider)
+    : undefined;
   return Object.freeze({
     runId: `agent-${identity.slice(0, 42)}`,
     limits: Object.freeze({
       ...recipe.resourceCeilings,
+      pids: Math.max(recipe.resourceCeilings.pids, AGENT_PROVIDER_MINIMUM_PIDS),
       deadlineUnixMs,
       cancellationGraceMs: CANCELLATION_GRACE_MS,
     }),
     readOnlyMounts: Object.freeze([
       ...recipe.installedSupport.runtimeMounts,
       { source: "/etc/resolv.conf", destination: "/etc/resolv.conf" },
-      {
+      ...(acp === undefined ? [{
         source: recipe.installedSupport.agentWorkerPath,
         destination: recipe.installedSupport.sandboxAgentWorkerPath,
-      },
+      }] : [
+        { source: acp.adapterPath, destination: acp.sandboxAdapterPath },
+        { source: acp.executablePath, destination: acp.sandboxExecutablePath },
+        ...acp.readOnlyMounts,
+      ]),
     ]),
-    command: Object.freeze([
-      recipe.sandboxExecutablePath,
-      ...recipe.bunPolicy,
-      recipe.installedSupport.sandboxAgentWorkerPath,
-    ]) as readonly [string, ...string[]],
+    command: Object.freeze(acp === undefined
+      ? [
+          recipe.sandboxExecutablePath,
+          ...recipe.bunPolicy,
+          recipe.installedSupport.sandboxAgentWorkerPath,
+        ]
+      : [recipe.sandboxExecutablePath, ...recipe.bunPolicy, acp.sandboxAdapterPath]) as
+        readonly [string, ...string[]],
+    ...(acp === undefined ? {} : { environment: acp.environment }),
     network: "inherited",
+    ...(acp?.nestedUserNamespaces === true ? { nestedUserNamespaces: true } : {}),
   });
 }
 
 interface ProviderExecution {
-  readonly output: Uint8Array;
   readonly fence: PrivateLinuxConfirmedEnforcementReceipt;
+  readonly value?: unknown;
+  readonly failure?: PrivateOpenAIResponsesErrorCode;
+  readonly cancelled: boolean;
 }
 
 async function interactWithProvider(
   component: PrivateLinuxComponentProcess,
-  request: Uint8Array,
+  provider: PrivateAgentProvider,
+  prepared: PreparedCall,
+  signal: AbortSignal,
+): Promise<ProviderExecution> {
+  if (provider.kind === "private-acp-agent-provider/1") {
+    return await interactWithAcpProvider(component, provider, prepared, signal);
+  }
+  return await interactWithOpenAIProvider(component, provider, prepared);
+}
+
+async function interactWithOpenAIProvider(
+  component: PrivateLinuxComponentProcess,
+  provider: PrivateOpenAIAgentProvider,
+  prepared: PreparedCall,
 ): Promise<ProviderExecution> {
   const output = collectBounded(component.stdout, PRIVATE_OPENAI_RESPONSES_RESPONSE_BYTES);
   const stderr = discardBounded(component.stderr, PROVIDER_STDERR_BYTES);
   try {
-    await component.write(request);
+    await component.write(encodePrivateOpenAIResponsesRequest({
+      protocol: PRIVATE_OPENAI_RESPONSES_PROTOCOL,
+      apiKey: privateOpenAIAgentCredential(provider),
+      baseURL: provider.baseURL,
+      model: provider.model,
+      instructions: prepared.instructions,
+      ...(prepared.responseSchema === undefined ? {} : {
+        responseSchema: prepared.responseSchema,
+      }),
+    }));
     await component.closeInput();
     const [bytes, fence] = await Promise.all([output, component.enforcement, stderr])
       .then(([bytes, fence]) => [bytes, fence] as const);
-    return Object.freeze({ output: bytes, fence });
+    let response: PrivateOpenAIResponsesWorkerResponse;
+    try {
+      response = decodePrivateOpenAIResponsesResponse(bytes);
+    } catch {
+      return Object.freeze({
+        fence,
+        failure: "AGENT_PROVIDER_RESPONSE_INVALID" as const,
+        cancelled: false,
+      });
+    }
+    return response.status === "error"
+      ? Object.freeze({ fence, failure: response.code, cancelled: false })
+      : Object.freeze({ fence, value: response.value, cancelled: false });
   } catch (error) {
     await component.terminate().catch(() => undefined);
     await Promise.allSettled([output, stderr, component.enforcement]);
     throw error;
   }
+}
+
+async function interactWithAcpProvider(
+  component: PrivateLinuxComponentProcess,
+  provider: Extract<PrivateAgentProvider, { readonly kind: "private-acp-agent-provider/1" }>,
+  prepared: PreparedCall,
+  signal: AbortSignal,
+): Promise<ProviderExecution> {
+  const runtime = privateAcpAgentRuntime(provider);
+  const stderr = discardBounded(component.stderr, PROVIDER_STDERR_BYTES);
+  try {
+    if (runtime.startupInput !== undefined) {
+      await component.write(runtime.startupInput());
+    }
+    const turn = await runPrivateAcpTurn(privateAcpComponentStream(component), {
+      cwd: "/work",
+      instructions: prepared.instructions,
+      signal,
+      configuration: runtime.configuration,
+      ...(runtime.modeId === undefined ? {} : { modeId: runtime.modeId }),
+      ...(runtime.sessionMeta === undefined ? {} : { sessionMeta: runtime.sessionMeta }),
+      ...(runtime.authentication === undefined ? {} : {
+        authentication: {
+          request: runtime.authentication.request,
+          ...(runtime.authentication.clientAuthCapabilities === undefined ? {} : {
+            clientAuthCapabilities: runtime.authentication.clientAuthCapabilities,
+          }),
+        },
+      }),
+    });
+    await component.closeInput();
+    const [fence] = await Promise.all([component.enforcement, stderr]);
+    if (turn.stopReason === "cancelled") {
+      return Object.freeze({ fence, cancelled: true });
+    }
+    try {
+      return Object.freeze({
+        fence,
+        value: acpResultValue(turn, prepared.responseSchema !== undefined),
+        cancelled: false,
+      });
+    } catch {
+      return Object.freeze({
+        fence,
+        failure: "AGENT_PROVIDER_RESPONSE_INVALID" as const,
+        cancelled: false,
+      });
+    }
+  } catch (error) {
+    await component.terminate().catch(() => undefined);
+    await Promise.allSettled([stderr, component.enforcement]);
+    if (error instanceof PrivateAcpProtocolError) {
+      throw error;
+    }
+    throw error;
+  }
+}
+
+function acpResultValue(
+  turn: PrivateAcpTurnResult,
+  structuredRequested: boolean,
+): Readonly<Record<string, unknown>> {
+  const outcome = turn.stopReason === "end_turn"
+    ? "completed"
+    : turn.stopReason === "refusal"
+      ? "blocked"
+      : "limit";
+  if (!structuredRequested || outcome !== "completed") {
+    return Object.freeze({ outcome, text: turn.text });
+  }
+  return Object.freeze({
+    outcome,
+    text: turn.text,
+    structured: decodeJson1(encoder.encode(turn.text)),
+  });
 }
 
 async function releaseKnownAgent(

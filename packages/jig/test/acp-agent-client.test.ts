@@ -106,7 +106,15 @@ describe("private ACP Agent client", () => {
     }, {
       setConfigOption: ({ params }) => {
         observed.push(`config:${params.configId}:${String(params.value)}`);
-        return { configOptions: [] };
+        return {
+          configOptions: [{
+            id: params.configId,
+            name: params.configId,
+            type: "select",
+            currentValue: String(params.value),
+            options: [{ value: String(params.value), name: String(params.value) }],
+          }],
+        };
       },
       setMode: ({ params }) => {
         observed.push(`mode:${params.modeId}`);
@@ -126,6 +134,17 @@ describe("private ACP Agent client", () => {
       "mode:read-only",
       "prompt:test-session",
     ]);
+  });
+
+  test("fails closed when an agent does not retain required configuration", async () => {
+    const agent = deterministicAgent(async () => "end_turn", {
+      setConfigOption: () => ({ configOptions: [] }),
+    });
+    await expect(runPrivateAcpTurn(agent, {
+      cwd: "/work",
+      instructions: "answer once",
+      configuration: [{ configId: "model", value: "required/model" }],
+    })).rejects.toThrow("did not apply the required session configuration");
   });
 
   test("rejects invalid requests and bounded text overflow", async () => {

@@ -101,10 +101,16 @@ export async function runPrivateAcpTurn(
       .start(cancellationOptions(request.signal));
     try {
       for (const option of request.configuration ?? []) {
-        await agent.request(acp.methods.agent.session.setConfigOption, {
+        const configured = await agent.request(acp.methods.agent.session.setConfigOption, {
           sessionId: session.sessionId,
           ...option,
         }, cancellationOptions(request.signal));
+        const current = configured.configOptions.find(({ id }) => id === option.configId);
+        if (current === undefined || current.currentValue !== option.value) {
+          throw new PrivateAcpProtocolError(
+            "the ACP agent did not apply the required session configuration",
+          );
+        }
       }
       if (request.modeId !== undefined) {
         await agent.request(acp.methods.agent.session.setMode, {

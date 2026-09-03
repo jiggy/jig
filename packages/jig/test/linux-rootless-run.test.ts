@@ -67,6 +67,7 @@ delegatedDescribe("private rootless Linux Run", () => {
       expect(stderr).toBe("");
       expect(completion).toMatchObject({ exitCode: 0, signal: null, fenced: true, stopReason: "payload_exit" });
       expect(component.envelope.network).toBe("isolated");
+      expect(component.envelope.nestedUserNamespaces).toBe(false);
       const isolation = JSON.parse(stdout) as { readonly nspid: string };
       expect(isolation).toMatchObject({
         cgroupVisible: false,
