@@ -407,6 +407,11 @@ skills. Codex subscription mode currently fixes
 `gpt-5.3-codex-spark`. OpenRouter overrides are host/test flavors, not user
 package configuration.
 
+Direct OpenAI/OpenRouter and native Codex, Claude Code, and Pi are the
+owner-selected initial profiles because they cover the most relevant popular
+Agent paths. When a profile lacks prerelease live evidence, improve that
+evidence rather than silently narrowing the selected product breadth.
+
 The native profiles share transport and lifecycle ownership, but their
 credential formats and executable layouts remain concrete. Do not add another
 client or publish an ACP/provider SPI until independent installed evidence
@@ -467,17 +472,19 @@ DCO 1.1, no copyright assignment, and no broad relicensing CLA. Jig is to
 remain OSI-open. FLOW is founder-stewarded and openly implementable, not
 independently governed. Sponsors do not purchase specification outcomes.
 
-The npm workflow is automatic after a successful push CI result. Exact
+The npm workflow starts automatically after a successful push CI result. Exact
 prerelease versions in manifests are release intent. Candidate jobs build and
 test unprivileged archives, persist them, and receive no publication or Git
-authority. The protected `npm` environment publisher has OIDC but no checkout;
-it publishes the retained bytes, then refetches and compares them. A separate
-job with only Git contents authority creates or verifies package-specific
-annotated tags. The publisher never replaces an npm version or moves `latest`.
-The protected publisher environment is named `npm`; `alpha` and `next` are
-package dist-tags, not separate authority environments. Publication should
-not require the owner to dispatch a workflow manually. Third-party GitHub
-Actions remain pinned by full commit identity.
+authority. A separate read-only authorization job requires complete Linux Host
+Conformance from the exact same `main` push revision. The protected `npm`
+environment publisher has OIDC but no checkout; it publishes the retained
+bytes only after both gates succeed, then refetches and compares them. A
+separate job with only Git contents authority creates or verifies
+package-specific annotated tags. The publisher never replaces an npm version
+or moves `latest`. The protected publisher environment is named `npm`; `alpha`
+and `next` are package dist-tags, not separate authority environments.
+Publication should not require the owner to dispatch a workflow manually.
+Third-party GitHub Actions remain pinned by full commit identity.
 
 Both npm package identities need trusted-publisher records bound to repository
 `jigmd/jig`, workflow `.github/workflows/npm-publish.yml`, and environment
@@ -490,11 +497,11 @@ not need a version bump. Do not weaken this rule or rebuild during publication.
 A small pre-merge archive/version guard is preferable to a large release
 framework.
 
-The automatic publisher currently follows ordinary CI, not the separate full
-Linux Host Conformance workflow. Its Jig candidate job does provision a host
-and run packed operational and installed-hostile baselines. Decide explicitly
-whether that is the sufficient irreversible gate or whether publication must
-consume same-SHA full Host Conformance.
+The automatic publisher follows ordinary CI and then waits, fail closed, for a
+successful complete Linux Host Conformance run from the exact same `main` push
+revision. Host Conformance runs on every `main` push so every potentially
+published revision can satisfy that gate. Candidate construction separately
+retains and checks the exact archives that the publisher consumes.
 
 The exact external Bun dependency is
 `@oven/bun-linux-x64-baseline@1.3.3`. Jig authenticates its version, revision,
@@ -838,10 +845,8 @@ First close already-earned release hygiene:
 1. publish the `93c1b39` CLI-help correction under a new Jig prerelease;
 2. add the smallest guard against package changes under an already-published
    version;
-3. decide whether publication must mechanically wait for same-SHA full Linux
-   Host Conformance;
-4. record the `alpha.6` tag/provenance anomaly; and
-5. make the `latest`/`alpha` posture unambiguous.
+3. record the `alpha.6` tag/provenance anomaly; and
+4. make the `latest`/`alpha` posture unambiguous.
 
 Then independently stress the Agent surface already present. A useful
 installed-artifact matrix covers direct OpenAI, explicit OpenRouter, Codex

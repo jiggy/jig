@@ -12,12 +12,6 @@ on:
   push:
     branches:
       - main
-    paths:
-      - ".github/workflows/linux-host-conformance.yml"
-      - "packages/jig/**"
-      - "scripts/ci/provision-github-rootless-host.sh"
-      - "scripts/test-installed-hostile-baseline.ts"
-      - "scripts/test-operational-baseline.ts"
 
 permissions:
   contents: read
@@ -102,6 +96,13 @@ jobs:
           env JIG_LINUX_ROOTLESS_HOSTILE=1
           "$JIG_CI_BUN" test packages/jig/test/private-foreground.test.ts
           --timeout 30000
+
+      - name: Prove the deterministic Agent lifecycle
+        run: >-
+          scripts/ci/provision-github-rootless-host.sh run-delegated
+          env JIG_LINUX_ROOTLESS_HOSTILE=1
+          "$JIG_CI_BUN" test packages/jig/test/root-agent-run-lifecycle.test.ts
+          --timeout 180000
 
       - name: Run Operational Baseline/1 against the packed archive
         run: >-

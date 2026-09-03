@@ -15,6 +15,30 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  authorize:
+    name: Require same-revision Linux Host Conformance
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ env.SOURCE_REVISION }}
+
+      - name: Require successful Linux Host Conformance
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          scripts/require-linux-host-conformance.sh
+          "$GITHUB_REPOSITORY" "$SOURCE_REVISION"
+
   build:
     name: Build ${{ matrix.package }} candidate
     if: >-
@@ -127,7 +151,7 @@ jobs:
 
   publish:
     name: Publish exact candidates
-    needs: build
+    needs: [authorize, build]
     environment: npm
     runs-on: ubuntu-24.04
     timeout-minutes: 40

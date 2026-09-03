@@ -1,10 +1,11 @@
 # Automatic npm prereleases
 
 The exact prerelease version in each public package manifest is release intent.
-After CI succeeds for a reviewed merge to `main`, the release workflow
-automatically builds both package candidates, tests their exact archives,
-publishes any version not yet present on npm, refetches the registry bytes, and
-creates package-specific annotated source tags.
+After CI succeeds for a reviewed merge to `main`, the release workflow builds
+both package candidates and tests their exact archives while a read-only gate
+waits for complete Linux Host Conformance on that same push revision. Only
+after both succeed may it publish a version not yet present on npm, refetch the
+registry bytes, and create package-specific annotated source tags.
 
 There is no release button, version input, npm token, or separately rebuilt
 archive. The workflow publishes through npm trusted publishing in the `npm`
@@ -21,14 +22,17 @@ In the ordinary reviewed change:
 3. update packed-package assertions and public documentation for that version;
 4. include every source, lock, notice, and manifest change for the release; and
 5. merge only after the source, packed-package, Operational Baseline/1, and
-   applicable Linux hostile gates pass.
+   applicable pull-request Linux hostile gates pass. Publication additionally
+   requires complete Linux Host Conformance on the exact merged revision.
 
 The supported prerelease forms are `*-alpha.*` and `*-next.*`; their first
 prerelease identifier selects the npm dist-tag. `latest` is never moved by this
 workflow.
 
 On the successful CI result, both candidates are built once in parallel from
-CI's exact source revision. The publish job consumes only those retained
+CI's exact source revision. A separate authorization job accepts only a
+successful `main` push run of the complete Linux Host Conformance workflow for
+that same revision. The publish job consumes only the retained candidate
 archives and processes Flow before Jig. If a version already exists, its
 registry archive must be byte-for-byte identical to the candidate. Changed
 package bytes under an existing version fail with an instruction to bump that
@@ -45,4 +49,6 @@ If candidate construction fails, fix the source in a new reviewed commit. If
 publication may have succeeded but its response or a later gate failed, use
 GitHub's **Re-run failed jobs** action. The successful build matrix is not
 rerun, and the publish job converges against its retained seven-day artifacts.
-A later push is a new candidate, not an uncertainty retry.
+If Host Conformance failed because of a transient host fault, rerun that exact
+workflow before rerunning the failed authorization and publication jobs. A
+later push is a new candidate, not an uncertainty retry.

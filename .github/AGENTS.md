@@ -17,6 +17,8 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   publication or Git-write authority.
 - Build, test, publish, and tag the exact triggering source and retained
   candidate bytes. Never rebuild a release during publication.
+- Publish only after CI and the complete Linux Host Conformance workflow have
+  both succeeded for the exact triggering source revision.
 - Keep path filters synchronized with every real workflow input.
 - Keep FLOW and Jig site publication independent.
 

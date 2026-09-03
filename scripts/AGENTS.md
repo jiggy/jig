@@ -8,6 +8,8 @@ operational baselines, and public-site assembly.
 ## Ownership
 
 - Root scripts own unprivileged source, package, release, and site operations.
+- `require-linux-host-conformance.sh` owns the bounded, read-only check that an
+  exact publication revision passed the complete Linux host workflow.
 - `ci/` owns disposable CI-host provisioning.
 
 ## Local Contracts
@@ -30,6 +32,8 @@ operational baselines, and public-site assembly.
 
 - Run the changed script against a fresh temporary destination and exercise at
   least one expected failure path.
+- Validate the Host Conformance authorization script with `shellcheck` and
+  success plus fail-closed API fixtures.
 
 ## Child DOX Index
 
