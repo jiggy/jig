@@ -172,34 +172,53 @@ Exactly one child is a property of this example's completed path, not a new
 host rule. A blocked or limited Agent result reaches no child, and another
 Flow may make additional sequential calls within its admitted slots.
 
-## The one alpha provider
+## The alpha provider implementation
 
-The current Jig host supplies one concrete provider:
+The current Jig host supplies one OpenAI Responses implementation using the
+official OpenAI JavaScript SDK. Its primary flavor calls OpenAI directly:
 
 ```text
-API shape  OpenAI Responses API
-endpoint   https://openrouter.ai/api/v1
-model      google/gemini-3.5-flash-lite
-secret     OPENROUTER_API_KEY
+endpoint  https://api.openai.com/v1
+model     OPENAI_MODEL
+secret    OPENAI_API_KEY
 ```
 
-Export `OPENROUTER_API_KEY` in the environment which runs both `jig check` and
-`jig run`. The key is host configuration: it does not enter `FLOW.md`, a
-Binding, `jig.lock`, the Plan, retained Run state, or the Flow process.
+OpenRouter is an optional OpenAI-compatible endpoint flavor of that same
+implementation:
+
+```text
+endpoint  https://openrouter.ai/api/v1
+model     OPENROUTER_MODEL
+secret    OPENROUTER_API_KEY
+```
+
+Configure one complete pair in the environment which runs both `jig check`
+and `jig run`. Configuring both complete flavors is ambiguous and rejected.
+Jig supplies no default model. These are host configuration: none enters
+`FLOW.md`, a Binding, `jig.lock`, retained Run state, or the Flow process. The
+selected endpoint and model enter provider identity and the reviewed Plan; the
+secret does not. Changing the model or flavor therefore requires a new `jig
+check` and approval, while rotating only the selected key does not.
+
+Jig does not use OpenRouter's separate SDK because this slice needs none of
+its provider-routing, metadata, or account APIs. OpenRouter contributes only
+its endpoint and credential convention to the OpenAI implementation.
 
 The Flow remains inside its ordinary network-isolated, keyless sandbox. The
-trusted host reads the key, then runs the fixed provider worker in a separate
+trusted host reads the selected key, then runs the fixed provider worker in a separate
 bounded sandbox; among workload processes, only that worker receives network
-and the key. Instructions and selected skill contents are sent to OpenRouter
-and its selected Google model. The worker has ordinary inherited network
+and the key. The worker constructs the OpenAI client with the selected fixed
+endpoint, then sends instructions and selected skill contents to that endpoint
+and the operator-selected model. The worker has ordinary inherited network
 access rather than endpoint-filtered egress; its exact trusted bytes, not a
 network-policy framework, limit what it does. It requests one response with
 `store: false` and exposes no model tools, but that flag is not a promise about
-every third-party retention or training policy. The provider and selected
-model are not author choices in this alpha.
+every provider's retention or training policy. The provider flavor and model
+are not author choices in this alpha.
 
-If the key or exact provider support is absent, checking a project containing
-an Agent-bearing target reports it unavailable. A capability-free target in
+If no complete credential/model pair or exact provider support is present,
+checking a project containing an Agent-bearing target reports it unavailable.
+A capability-free target in
 an already admitted generation remains runnable because its recipe does not
 depend on the Agent provider.
 
@@ -208,7 +227,8 @@ Agent call and any selected child. The default is 30 seconds and the maximum
 is 24 hours; neither the provider nor a child can extend the root's absolute
 deadline.
 
-This is deliberately one contract and one provider. There is no provider
-registry or SPI, provider profile, model selector, semantic catalogue,
+This is deliberately one contract and one OpenAI Responses implementation.
+There is no provider registry or SPI, package-selected provider profile, model
+selector, semantic catalogue,
 `SemanticChoice`, Agent session, tool runner, Agent-authored Flow identity, or
 general routing framework.

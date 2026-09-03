@@ -36,7 +36,7 @@ describe("fixed installed Bun support", () => {
       await writeFile(join(evaluator, "project-evaluator-worker.js"), "worker\n");
       await writeFile(join(evaluator, "project-evaluator-sdk.bundle.js"), "sdk\n");
       await writeFile(join(evaluator, "project-authoring-1.schema.json"), "{}\n");
-      await writeFile(join(agent, "openrouter-responses-worker.js"), "agent worker\n");
+      await writeFile(join(agent, "openai-responses-worker.js"), "agent worker\n");
       await writeFile(join(preparation, "bun-native-preparation-worker.js"), "preparation\n");
 
       const location = { releaseRoot: root, executablePath: executable, installedCliPath: installedCli };
@@ -66,11 +66,11 @@ describe("fixed installed Bun support", () => {
       await writeFile(join(preparation, "bun-native-preparation-worker.js"), "preparation\n");
       await expect(revalidatePrivateInstalledBunSupport(support)).resolves.toBeUndefined();
 
-      await writeFile(join(agent, "openrouter-responses-worker.js"), "changed\n");
+      await writeFile(join(agent, "openai-responses-worker.js"), "changed\n");
       await expect(revalidatePrivateInstalledBunSupport(support)).rejects.toThrow(
         "installed Bun support changed after selection",
       );
-      await writeFile(join(agent, "openrouter-responses-worker.js"), "agent worker\n");
+      await writeFile(join(agent, "openai-responses-worker.js"), "agent worker\n");
       await expect(revalidatePrivateInstalledBunSupport(support)).resolves.toBeUndefined();
 
       await writeFile(installedCli, "changed command\n");

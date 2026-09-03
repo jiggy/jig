@@ -39,7 +39,7 @@ openai 7.9.0
 ------------
 
 Jig bundles portions of the official OpenAI TypeScript and JavaScript library
-in its private OpenRouter Responses worker.
+in its private OpenAI Responses worker.
 
 Copyright 2026 OpenAI
 

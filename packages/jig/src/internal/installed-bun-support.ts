@@ -113,7 +113,7 @@ export async function openPrivateInstalledBunSupport(
     "installed Bun preparation worker",
   );
   const agentWorkerPath = await exactRegularFile(
-    join(releaseRoot, "libexec", "agent", "openrouter-responses-worker.js"),
+    join(releaseRoot, "libexec", "agent", "openai-responses-worker.js"),
     false,
     "installed Agent provider worker",
   );

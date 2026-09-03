@@ -10,11 +10,9 @@ import {
   validateJson1,
 } from "../json.js";
 import {
-  PRIVATE_OPENROUTER_RESPONSES_BASE_URL,
-  PrivateOpenRouterResponsesError,
-  PRIVATE_OPENROUTER_RESPONSES_MODEL,
-  type PrivateOpenRouterResponsesResult,
-} from "./openrouter-responses-protocol.js";
+  PrivateOpenAIResponsesError,
+  type PrivateOpenAIResponsesResult,
+} from "./openai-responses-protocol.js";
 
 const MAX_INSTRUCTION_CHARACTERS = 1_048_576;
 const MAX_RESPONSE_SCHEMA_BYTES = 256 * 1024;
@@ -23,37 +21,37 @@ const MAX_OUTPUT_TOKENS = 4_096;
 const MAX_ENUM_PROPERTIES = 32;
 const MAX_ENUM_VALUES = 256;
 
-export type PrivateOpenRouterFetch = (
+export type PrivateOpenAIFetch = (
   input: string | URL | Request,
   init?: RequestInit,
 ) => Promise<Response>;
 
-export interface PrivateOpenRouterResponsesCreateClient {
+export interface PrivateOpenAIResponsesCreateClient {
   create(body: ResponseCreateParamsNonStreaming): Promise<unknown>;
 }
 
-export interface PrivateOpenRouterResponsesClientRequest {
+export interface PrivateOpenAIResponsesClientRequest {
   readonly baseURL: string;
   readonly model: string;
   readonly instructions: string;
   readonly responseSchema?: JsonObject;
 }
 
-export interface PrivateOpenRouterResponsesClientDependencies {
+export interface PrivateOpenAIResponsesClientDependencies {
   readonly apiKey: string;
   /** Test seam: production uses the bundled OpenAI SDK with the global fetch. */
-  readonly fetch?: PrivateOpenRouterFetch;
+  readonly fetch?: PrivateOpenAIFetch;
   /** Test seam: production creates exactly one bundled OpenAI Responses client. */
-  readonly client?: PrivateOpenRouterResponsesCreateClient;
+  readonly client?: PrivateOpenAIResponsesCreateClient;
 }
 
-/** The first provider proves only the closed enum-object shape routing needs. */
-export function assertPrivateOpenRouterResponseSchema(schema: JsonObject): void {
+/** Jig's first Agent slice accepts only the closed enum-object shape routing needs. */
+export function assertPrivateAgentResponseSchema(schema: JsonObject): void {
   if (!exactKeys(schema, ["$schema", "additionalProperties", "properties", "required", "type"]) ||
       schema.$schema !== "https://flow.jig.md/schemas/schema-1.json" ||
       schema.type !== "object" || schema.additionalProperties !== false ||
       ordinaryRecord(schema.properties) === undefined || !Array.isArray(schema.required)) {
-    throw new TypeError("OpenRouter responseSchema must be one closed enum object");
+    throw new TypeError("Agent responseSchema must be one closed enum object");
   }
   const properties = schema.properties as JsonObject;
   const names = Object.keys(properties);
@@ -61,7 +59,7 @@ export function assertPrivateOpenRouterResponseSchema(schema: JsonObject): void 
       schema.required.length !== names.length ||
       new Set(schema.required).size !== names.length ||
       schema.required.some((name) => typeof name !== "string" || !Object.hasOwn(properties, name))) {
-    throw new TypeError("OpenRouter responseSchema must require every enum property");
+    throw new TypeError("Agent responseSchema must require every enum property");
   }
   for (const value of Object.values(properties)) {
     const property = ordinaryRecord(value);
@@ -70,7 +68,7 @@ export function assertPrivateOpenRouterResponseSchema(schema: JsonObject): void 
         property.enum.length > MAX_ENUM_VALUES ||
         property.enum.some((item) => typeof item !== "string") ||
         new Set(property.enum).size !== property.enum.length) {
-      throw new TypeError("OpenRouter responseSchema properties must be string enums");
+      throw new TypeError("Agent responseSchema properties must be string enums");
     }
   }
 }
@@ -80,16 +78,16 @@ export function assertPrivateOpenRouterResponseSchema(schema: JsonObject): void 
  * Agent Run value. Dispatch retry is disabled; process ownership and abort
  * fencing remain the responsibility of the containing worker controller.
  */
-export async function requestPrivateOpenRouterResponse(
-  request: PrivateOpenRouterResponsesClientRequest,
-  dependencies: PrivateOpenRouterResponsesClientDependencies,
-): Promise<PrivateOpenRouterResponsesResult> {
-  requireClientRequest(request, dependencies.client !== undefined || dependencies.fetch !== undefined);
+export async function requestPrivateOpenAIResponse(
+  request: PrivateOpenAIResponsesClientRequest,
+  dependencies: PrivateOpenAIResponsesClientDependencies,
+): Promise<PrivateOpenAIResponsesResult> {
+  requireClientRequest(request);
   requireApiKey(dependencies.apiKey);
   if (dependencies.client !== undefined && dependencies.fetch !== undefined) {
-    throw new PrivateOpenRouterResponsesError(
+    throw new PrivateOpenAIResponsesError(
       "AGENT_PROVIDER_CONFIGURATION",
-      "OpenRouter Responses test transport is ambiguous",
+      "OpenAI Responses test transport is ambiguous",
     );
   }
 
@@ -105,18 +103,18 @@ export async function requestPrivateOpenRouterResponse(
   } catch {
     // Provider and SDK errors are intentionally not reflected: an upstream
     // diagnostic can contain request data, endpoint credentials, or headers.
-    throw new PrivateOpenRouterResponsesError(
+    throw new PrivateOpenAIResponsesError(
       "AGENT_PROVIDER_UNAVAILABLE",
-      "OpenRouter Responses request failed",
+      "OpenAI Responses request failed",
     );
   }
-  return normalizePrivateOpenRouterResponse(response, request.responseSchema !== undefined);
+  return normalizePrivateOpenAIResponse(response, request.responseSchema !== undefined);
 }
 
-export function normalizePrivateOpenRouterResponse(
+export function normalizePrivateOpenAIResponse(
   response: unknown,
   structuredRequested: boolean,
-): PrivateOpenRouterResponsesResult {
+): PrivateOpenAIResponsesResult {
   const record = ordinaryRecord(response);
   if (record === undefined ||
       (record.status !== "completed" && record.status !== "incomplete" &&
@@ -127,9 +125,9 @@ export function normalizePrivateOpenRouterResponse(
   }
   if ((Object.hasOwn(record, "error") && record.error !== null) ||
       record.status === "failed" || record.status === "cancelled") {
-    throw new PrivateOpenRouterResponsesError(
+    throw new PrivateOpenAIResponsesError(
       "AGENT_PROVIDER_UNAVAILABLE",
-      "OpenRouter Responses request did not complete",
+      "OpenAI Responses request did not complete",
     );
   }
   if (record.status === "queued" || record.status === "in_progress") {
@@ -137,7 +135,7 @@ export function normalizePrivateOpenRouterResponse(
   }
 
   const content = responseContent(record, record.status === "incomplete");
-  let outcome: PrivateOpenRouterResponsesResult["outcome"];
+  let outcome: PrivateOpenAIResponsesResult["outcome"];
   if (content.refusals.length > 0) {
     outcome = "blocked";
   } else if (record.status === "incomplete") {
@@ -156,9 +154,9 @@ export function normalizePrivateOpenRouterResponse(
     return Object.freeze({ outcome, text, structured });
   } catch {
     if (outcome !== "completed") return Object.freeze({ outcome, text });
-    throw new PrivateOpenRouterResponsesError(
+    throw new PrivateOpenAIResponsesError(
       "AGENT_PROVIDER_RESPONSE_INVALID",
-      "OpenRouter structured response is not valid JSON/1",
+      "OpenAI structured response is not valid JSON/1",
     );
   }
 }
@@ -166,8 +164,8 @@ export function normalizePrivateOpenRouterResponse(
 function sdkClient(
   baseURL: string,
   apiKey: string,
-  injectedFetch: PrivateOpenRouterFetch | undefined,
-): PrivateOpenRouterResponsesCreateClient {
+  injectedFetch: PrivateOpenAIFetch | undefined,
+): PrivateOpenAIResponsesCreateClient {
   const sdk = new OpenAI({
     baseURL,
     apiKey,
@@ -195,7 +193,7 @@ const SILENT_LOGGER = Object.freeze({
 });
 
 function createBody(
-  request: PrivateOpenRouterResponsesClientRequest,
+  request: PrivateOpenAIResponsesClientRequest,
 ): ResponseCreateParamsNonStreaming {
   const base = {
     model: request.model,
@@ -211,14 +209,14 @@ function createBody(
       format: {
         type: "json_schema",
         name: RESPONSE_FORMAT_NAME,
-        schema: providerSchema(request.responseSchema),
+        schema: openAIResponseSchema(request.responseSchema),
         strict: true,
       },
     },
   };
 }
 
-function providerSchema(responseSchema: JsonObject): Record<string, unknown> {
+function openAIResponseSchema(responseSchema: JsonObject): Record<string, unknown> {
   // Schema/1's root declaration identifies Jig's validator dialect, not a
   // provider meta-schema. Keep the exact input untouched and remove only that
   // declaration from the provider-facing copy.
@@ -227,47 +225,36 @@ function providerSchema(responseSchema: JsonObject): Record<string, unknown> {
   );
 }
 
-function requireClientRequest(
-  request: PrivateOpenRouterResponsesClientRequest,
-  injectedTransport: boolean,
-): void {
+function requireClientRequest(request: PrivateOpenAIResponsesClientRequest): void {
   if (request === null || typeof request !== "object" ||
       typeof request.baseURL !== "string" || typeof request.model !== "string" ||
       typeof request.instructions !== "string" ||
       !boundedCharacters(request.instructions, MAX_INSTRUCTION_CHARACTERS)) {
-    throw new PrivateOpenRouterResponsesError(
+    throw new PrivateOpenAIResponsesError(
       "AGENT_PROVIDER_CONFIGURATION",
-      "OpenRouter Responses client request is invalid",
+      "OpenAI Responses client request is invalid",
     );
   }
   try {
     validateJson1(request.instructions);
   } catch {
-    throw new PrivateOpenRouterResponsesError(
+    throw new PrivateOpenAIResponsesError(
       "AGENT_PROVIDER_CONFIGURATION",
-      "OpenRouter Responses instructions are not valid JSON/1 text",
+      "OpenAI Responses instructions are not valid JSON/1 text",
     );
   }
   requireEndpoint(request.baseURL);
   if (!/^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$/.test(request.model)) {
-    throw new PrivateOpenRouterResponsesError(
+    throw new PrivateOpenAIResponsesError(
       "AGENT_PROVIDER_CONFIGURATION",
-      "OpenRouter Responses model is invalid",
-    );
-  }
-  if (!injectedTransport &&
-      (request.baseURL !== PRIVATE_OPENROUTER_RESPONSES_BASE_URL ||
-        request.model !== PRIVATE_OPENROUTER_RESPONSES_MODEL)) {
-    throw new PrivateOpenRouterResponsesError(
-      "AGENT_PROVIDER_CONFIGURATION",
-      "OpenRouter Responses production configuration is not pinned",
+      "OpenAI Responses model is invalid",
     );
   }
   if (request.responseSchema !== undefined) {
     if (ordinaryRecord(request.responseSchema) === undefined) {
-      throw new PrivateOpenRouterResponsesError(
+      throw new PrivateOpenAIResponsesError(
         "AGENT_PROVIDER_CONFIGURATION",
-        "OpenRouter response schema is invalid",
+        "OpenAI response schema is invalid",
       );
     }
     let bytes: Uint8Array;
@@ -275,15 +262,15 @@ function requireClientRequest(
       validateJson1(request.responseSchema);
       bytes = canonicalJson(request.responseSchema);
     } catch {
-      throw new PrivateOpenRouterResponsesError(
+      throw new PrivateOpenAIResponsesError(
         "AGENT_PROVIDER_CONFIGURATION",
-        "OpenRouter response schema is not valid JSON/1",
+        "OpenAI response schema is not valid JSON/1",
       );
     }
     if (bytes.byteLength > MAX_RESPONSE_SCHEMA_BYTES) {
-      throw new PrivateOpenRouterResponsesError(
+      throw new PrivateOpenAIResponsesError(
         "AGENT_PROVIDER_CONFIGURATION",
-        "OpenRouter response schema exceeds its byte bound",
+        "OpenAI response schema exceeds its byte bound",
       );
     }
   }
@@ -299,26 +286,26 @@ function requireEndpoint(baseURL: string): void {
   } catch {
     throw invalidEndpoint();
   }
-  if ((parsed.protocol !== "https:" && parsed.protocol !== "http:") ||
+  if (parsed.protocol !== "https:" ||
       parsed.username !== "" || parsed.password !== "" || parsed.search !== "" ||
       parsed.hash !== "") {
     throw invalidEndpoint();
   }
 }
 
-function invalidEndpoint(): PrivateOpenRouterResponsesError {
-  return new PrivateOpenRouterResponsesError(
+function invalidEndpoint(): PrivateOpenAIResponsesError {
+  return new PrivateOpenAIResponsesError(
     "AGENT_PROVIDER_CONFIGURATION",
-    "OpenRouter Responses base URL is invalid",
+    "OpenAI Responses base URL is invalid",
   );
 }
 
 function requireApiKey(apiKey: string): void {
   if (typeof apiKey !== "string" || apiKey.trim().length === 0 || apiKey.includes("\0") ||
       new TextEncoder().encode(apiKey).byteLength > 16_384) {
-    throw new PrivateOpenRouterResponsesError(
+    throw new PrivateOpenAIResponsesError(
       "AGENT_PROVIDER_CONFIGURATION",
-      "OPENROUTER_API_KEY is unavailable",
+      "OpenAI Responses API key is unavailable",
     );
   }
 }
@@ -365,9 +352,9 @@ function joinBounded(parts: readonly string[], separator: string): string {
     bytes += new TextEncoder().encode(part).byteLength;
     if (index !== 0) bytes += separatorBytes;
     if (bytes > JSON_1_LIMITS.stringBytes) {
-      throw new PrivateOpenRouterResponsesError(
+      throw new PrivateOpenAIResponsesError(
         "AGENT_PROVIDER_OUTPUT_LIMIT",
-        "OpenRouter Responses text exceeds its byte bound",
+        "OpenAI Responses text exceeds its byte bound",
       );
     }
   }
@@ -398,9 +385,9 @@ function boundedCharacters(value: string, maximum: number): boolean {
   return true;
 }
 
-function invalidResponse(): PrivateOpenRouterResponsesError {
-  return new PrivateOpenRouterResponsesError(
+function invalidResponse(): PrivateOpenAIResponsesError {
+  return new PrivateOpenAIResponsesError(
     "AGENT_PROVIDER_RESPONSE_INVALID",
-    "OpenRouter Responses returned an invalid final response",
+    "OpenAI Responses returned an invalid final response",
   );
 }

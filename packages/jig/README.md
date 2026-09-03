@@ -15,7 +15,7 @@ authority they need or fail closed.
 ## Install
 
 ```console
-npm install --global @jigging/jig@0.1.0-alpha.5
+npm install --global @jigging/jig@0.1.0-alpha.6
 ```
 
 Installing Jig also installs `@oven/bun-linux-x64-baseline@1.3.3` as an exact
@@ -150,16 +150,20 @@ concurrent calls receive `RESOURCE_EXHAUSTED`, while sequential calls remain
 available.
 
 One experimental [Agent Run capability](https://jig.md/spec/agent-run) is
-available through ordinary Run/1 `effect/call`. The alpha fixes one OpenRouter
-provider and model; it does not expose provider selection or a provider
-registry.
+available through ordinary Run/1 `effect/call`. The alpha uses the official
+OpenAI client and Responses API model. Native OpenAI use requires explicit
+`OPENAI_MODEL` and `OPENAI_API_KEY` host configuration. An optional OpenRouter
+flavor uses the same implementation with explicit `OPENROUTER_MODEL` and
+`OPENROUTER_API_KEY`. Jig supplies no default model and exposes no provider
+choice to a Flow or Binding.
 
 The complete runnable example and current specification map are in the
 [repository README](https://github.com/jigmd/jig#readme) and
 [`docs/jig/guide/index.md`](https://github.com/jigmd/jig/blob/main/docs/jig/guide/index.md).
 
 This is a prerelease alpha. It does not expose Services, Hooks, event sources,
-configurable Agent providers, Agent sessions, Semantic Choice, Jig Graph,
-schedulers, catalogues, runtime registries, or sandbox registries.
+a provider registry or package-selected provider configuration, Agent sessions,
+Semantic Choice, Jig Graph, schedulers, catalogues, runtime registries, or
+sandbox registries.
 
 Copyright © 2026 Victor Duarte <zvictor> and contributors.

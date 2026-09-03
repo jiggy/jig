@@ -44,7 +44,10 @@ proofDescribe("private contained Agent Run lifecycle", () => {
     const releaseRoot = await mkdtemp(join(tmpdir(), "jig-agent-lifecycle-release-"));
     const events: DispatchEvent[] = [];
     const server = await dispatchServer(events);
-    const priorKey = process.env.OPENROUTER_API_KEY;
+    const priorKey = process.env.OPENAI_API_KEY;
+    const priorModel = process.env.OPENAI_MODEL;
+    const priorOpenRouterKey = process.env.OPENROUTER_API_KEY;
+    const priorOpenRouterModel = process.env.OPENROUTER_MODEL;
     let session: Awaited<ReturnType<typeof openPrivateProjectSession>> | undefined;
     try {
       const address = server.address();
@@ -52,7 +55,10 @@ proofDescribe("private contained Agent Run lifecycle", () => {
       const key = `http://127.0.0.1:${address.port}/dispatch?proof=transient`;
       const location = await writeInstalledFixture(releaseRoot);
       await writeProject(root);
-      process.env.OPENROUTER_API_KEY = key;
+      delete process.env.OPENROUTER_API_KEY;
+      delete process.env.OPENROUTER_MODEL;
+      process.env.OPENAI_API_KEY = key;
+      process.env.OPENAI_MODEL = "provider/test-model";
 
       session = await openPrivateProjectSession({
         directory: root,
@@ -206,7 +212,7 @@ proofDescribe("private contained Agent Run lifecycle", () => {
       expect(await crashed.exited).toBe(137);
       await waitForCgroups(initialCgroups);
 
-      delete process.env.OPENROUTER_API_KEY;
+      delete process.env.OPENAI_API_KEY;
       session = await openPrivateProjectSession({
         directory: root,
         host: await openPrivateInstalledBunHost(location),
@@ -232,8 +238,14 @@ proofDescribe("private contained Agent Run lifecycle", () => {
       await waitForTemporaryState(initialTemporaryState);
     } finally {
       await session?.close().catch(() => undefined);
-      if (priorKey === undefined) delete process.env.OPENROUTER_API_KEY;
-      else process.env.OPENROUTER_API_KEY = priorKey;
+      if (priorKey === undefined) delete process.env.OPENAI_API_KEY;
+      else process.env.OPENAI_API_KEY = priorKey;
+      if (priorModel === undefined) delete process.env.OPENAI_MODEL;
+      else process.env.OPENAI_MODEL = priorModel;
+      if (priorOpenRouterKey === undefined) delete process.env.OPENROUTER_API_KEY;
+      else process.env.OPENROUTER_API_KEY = priorOpenRouterKey;
+      if (priorOpenRouterModel === undefined) delete process.env.OPENROUTER_MODEL;
+      else process.env.OPENROUTER_MODEL = priorOpenRouterModel;
       await closeServer(server);
       await Promise.all([
         rm(root, { recursive: true, force: true }),
@@ -261,7 +273,7 @@ async function writeInstalledFixture(root: string): Promise<PrivateInstalledBunL
   ].map((path) => mkdir(join(root, path), { recursive: true })));
   await Promise.all(files.map((path) => copyFile(join(source, path), join(root, path))));
   await writeFile(
-    join(root, "libexec/agent/openrouter-responses-worker.js"),
+    join(root, "libexec/agent/openai-responses-worker.js"),
     deterministicWorker(),
   );
   const executablePath = await realpath(installedBunLocation.executablePath);
@@ -284,7 +296,8 @@ function deterministicWorker(): string {
     'const scenarios = ["schema-invalid", "malformed", "recovery", "success", "slow"];',
     'const scenario = scenarios.find((value) => marker(`scenario:${value}`));',
     'if (scenario === undefined || typeof request.apiKey !== "string") throw new Error("invalid fixture request");',
-    'const event = { scenario, keyInEnvironment: process.env.OPENROUTER_API_KEY !== undefined,',
+    'const event = { scenario, keyInEnvironment: process.env.OPENAI_API_KEY !== undefined ||',
+    '  process.env.OPENROUTER_API_KEY !== undefined,',
     '  selectedSkill: marker("SELECTED_SKILL_MARKER"), hiddenSkill: marker("HIDDEN_SKILL_MARKER") };',
     'const response = await fetch(request.apiKey, { method: "POST", body: JSON.stringify(event) });',
     'if (!response.ok) throw new Error("fixture observer rejected dispatch");',
@@ -294,7 +307,7 @@ function deterministicWorker(): string {
     '  keyLocation: event.keyInEnvironment ? "environment" : "stdin",',
     '  selectedSkill: event.selectedSkill ? "present" : "absent",',
     '  hiddenSkill: event.hiddenSkill ? "present" : "absent" };',
-    'process.stdout.write(JSON.stringify({ protocol: "jig-private-openrouter-responses/1", status: "ok",',
+    'process.stdout.write(JSON.stringify({ protocol: "jig-private-openai-responses/1", status: "ok",',
     '  value: { outcome: "completed", text: JSON.stringify(structured), structured } }));',
     "",
   ].join("\n");
@@ -380,7 +393,8 @@ function flowProgram(): string {
     '          : responseSchema },',
     "    });",
     '    return { outcome: "done", output: { status: "succeeded", agent,',
-    "      parentHasKey: process.env.OPENROUTER_API_KEY !== undefined } };",
+    "      parentHasKey: process.env.OPENAI_API_KEY !== undefined ||",
+    "        process.env.OPENROUTER_API_KEY !== undefined } };",
     "  } catch (error) {",
     '    const code = typeof error === "object" && error !== null && "code" in error',
     '      ? String((error as { code: unknown }).code) : "UNKNOWN";',

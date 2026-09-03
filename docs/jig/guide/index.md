@@ -17,7 +17,7 @@ jig run <target> [--input JSON] [--timeout DURATION]
 Install the current alpha directly from npm:
 
 ```console
-npm install --global @jigging/jig@0.1.0-alpha.5
+npm install --global @jigging/jig@0.1.0-alpha.6
 ```
 
 `jig init --bare my-project` creates a new project directory; the destination
@@ -73,8 +73,11 @@ One experimental [Agent Run capability](../spec/agent-run.md) is also
 available through ordinary Run/1 `effect/call`. An Agent-capable Flow carries
 the exact Jig-owned descriptor, may project an explicit package-local skill
 subset, and can use the structured result to select one of its Binding's exact
-child slots. The host currently fixes one OpenRouter Responses provider and
-model; there is no provider registry or semantic router.
+child slots. The host uses the official OpenAI client and Responses API model.
+Native OpenAI use requires explicit `OPENAI_MODEL` and `OPENAI_API_KEY`; an
+optional OpenRouter flavor uses the same implementation with explicit
+`OPENROUTER_MODEL` and `OPENROUTER_API_KEY`. There is no default model,
+package-selected provider, provider registry, or semantic router.
 
 Root Runs default to 30 seconds. `--timeout` accepts a positive integer plus
 `ms`, `s`, `m`, or `h`, up to 24 hours. Children share the parent's remaining

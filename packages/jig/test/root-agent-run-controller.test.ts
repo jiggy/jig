@@ -23,6 +23,7 @@ describe("private root Agent Run controller", () => {
     expect(first).toContain('"instructions":"Review the patch"');
     expect(first).toContain('"name":"review"');
     expect(first).toContain('"content":"Review carefully.","path":"SKILL.md"');
+    expect(first).not.toContain("OPENAI_API_KEY");
     expect(first).not.toContain("OPENROUTER_API_KEY");
   });
 

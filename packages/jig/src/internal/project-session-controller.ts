@@ -44,7 +44,7 @@ import {
 import { privateDomainDigest } from "./identity.js";
 import { validateJson1 } from "../json.js";
 import type { PrivateLinuxCgroupBackend } from "./linux-rootless-backend.js";
-import type { PrivateOpenRouterAgentProvider } from "./openrouter-agent-provider.js";
+import type { PrivateOpenAIAgentProvider } from "./openai-agent-provider.js";
 import { renderPrivateProjectPlanReview } from "./project-plan-review.js";
 import type { PrivateProjectPlanReview } from "./project-plan-review.js";
 import {
@@ -69,7 +69,7 @@ export interface PrivateProjectSessionHost {
   readonly backend: PrivateLinuxCgroupBackend;
   readonly installedBunSupport: PrivateInstalledBunSupport;
   readonly runTimeoutMs: number;
-  readonly agentProvider?: PrivateOpenRouterAgentProvider | undefined;
+  readonly agentProvider?: PrivateOpenAIAgentProvider | undefined;
 }
 
 /** Open one finite project session against already selected trusted machinery. */

@@ -17,7 +17,7 @@ const expectedInstalledFiles = [
   "dist/project/author.d.ts",
   "libexec/installed-cli.js",
   "libexec/agent/openai.LICENSE",
-  "libexec/agent/openrouter-responses-worker.js",
+  "libexec/agent/openai-responses-worker.js",
   "libexec/evaluator/project-authoring-1.schema.json",
   "libexec/evaluator/project-evaluator-sdk.bundle.js",
   "libexec/evaluator/project-evaluator-worker.js",
@@ -53,7 +53,7 @@ try {
     "@oven/bun-linux-x64-baseline": "1.3.3",
   });
   assert.equal(Object.hasOwn(installedManifest, "private"), false);
-  assert.equal(installedManifest.version, "0.1.0-alpha.5");
+  assert.equal(installedManifest.version, "0.1.0-alpha.6");
   assert.equal(installedManifest.license, "MPL-2.0");
   assert.deepEqual(installedManifest.os, ["linux"]);
   assert.deepEqual(installedManifest.cpu, ["x64"]);
@@ -135,7 +135,7 @@ try {
     "libexec/linux-rootless-supervisor.js",
     "libexec/evaluator/project-evaluator-worker.js",
     "libexec/evaluator/project-evaluator-sdk.bundle.js",
-    "libexec/agent/openrouter-responses-worker.js",
+    "libexec/agent/openai-responses-worker.js",
     "libexec/preparation/bun-native-preparation-worker.js",
   ]) {
     const source = await readFile(join(installed, relative), "utf8");

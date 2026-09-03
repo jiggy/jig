@@ -2,22 +2,23 @@ import { describe, expect, test } from "bun:test";
 
 import type { JsonObject } from "../src/json.js";
 import {
-  assertPrivateOpenRouterResponseSchema,
-  normalizePrivateOpenRouterResponse,
-  requestPrivateOpenRouterResponse,
-  type PrivateOpenRouterResponsesClientRequest,
-} from "../src/internal/openrouter-responses-client.js";
+  assertPrivateAgentResponseSchema,
+  normalizePrivateOpenAIResponse,
+  requestPrivateOpenAIResponse,
+  type PrivateOpenAIResponsesClientRequest,
+} from "../src/internal/openai-responses-client.js";
 import {
-  decodePrivateOpenRouterResponsesRequest,
-  decodePrivateOpenRouterResponsesResponse,
-  encodePrivateOpenRouterResponsesFailure,
-  encodePrivateOpenRouterResponsesRequest,
-  encodePrivateOpenRouterResponsesSuccess,
-  PRIVATE_OPENROUTER_RESPONSES_BASE_URL,
-  PrivateOpenRouterResponsesError,
-  PRIVATE_OPENROUTER_RESPONSES_MODEL,
-  PRIVATE_OPENROUTER_RESPONSES_PROTOCOL,
-} from "../src/internal/openrouter-responses-protocol.js";
+  decodePrivateOpenAIResponsesRequest,
+  decodePrivateOpenAIResponsesResponse,
+  encodePrivateOpenAIResponsesFailure,
+  encodePrivateOpenAIResponsesRequest,
+  encodePrivateOpenAIResponsesSuccess,
+  PrivateOpenAIResponsesError,
+  PRIVATE_OPENAI_RESPONSES_PROTOCOL,
+} from "../src/internal/openai-responses-protocol.js";
+
+const TEST_BASE_URL = "https://provider.example/api/v1";
+const TEST_MODEL = "provider/test-model";
 
 const RESPONSE_SCHEMA = Object.freeze({
   $schema: "https://flow.jig.md/schemas/schema-1.json",
@@ -37,24 +38,24 @@ const ROUTE_SCHEMA = Object.freeze({
   additionalProperties: false,
 }) as JsonObject;
 
-describe("private OpenRouter Responses client", () => {
-  test("accepts only the closed enum-object response shape proved by the provider", () => {
-    expect(() => assertPrivateOpenRouterResponseSchema(ROUTE_SCHEMA)).not.toThrow();
-    expect(() => assertPrivateOpenRouterResponseSchema(RESPONSE_SCHEMA)).toThrow("string enums");
-    expect(() => assertPrivateOpenRouterResponseSchema({
+describe("private OpenAI Responses client", () => {
+  test("accepts only the closed enum-object response shape supported by the Agent slice", () => {
+    expect(() => assertPrivateAgentResponseSchema(ROUTE_SCHEMA)).not.toThrow();
+    expect(() => assertPrivateAgentResponseSchema(RESPONSE_SCHEMA)).toThrow("string enums");
+    expect(() => assertPrivateAgentResponseSchema({
       ...ROUTE_SCHEMA,
       additionalProperties: true,
     } as JsonObject)).toThrow("closed enum object");
   });
   test("uses the OpenAI Responses API with a variable base URL and strict structured output", async () => {
-    const apiKey = "test-openrouter-secret";
+    const apiKey = "test-provider-secret";
     let outboundURL: string | undefined;
     let outboundHeaders: Headers | undefined;
     let outboundBody: Record<string, unknown> | undefined;
 
-    const result = await requestPrivateOpenRouterResponse({
-      baseURL: "https://provider.example/api/v1",
-      model: "example/test-model",
+    const result = await requestPrivateOpenAIResponse({
+      baseURL: TEST_BASE_URL,
+      model: TEST_MODEL,
       instructions: "Return the answer.",
       responseSchema: RESPONSE_SCHEMA,
     }, {
@@ -85,7 +86,7 @@ describe("private OpenRouter Responses client", () => {
     expect(outboundURL).toBe("https://provider.example/api/v1/responses");
     expect(outboundHeaders?.get("authorization")).toBe(`Bearer ${apiKey}`);
     expect(outboundBody).toEqual({
-      model: "example/test-model",
+      model: TEST_MODEL,
       input: "Return the answer.",
       max_output_tokens: 4096,
       store: false,
@@ -114,7 +115,7 @@ describe("private OpenRouter Responses client", () => {
   });
 
   test("scans all standard message content before using the SDK convenience field", async () => {
-    const result = await requestPrivateOpenRouterResponse(clientRequest(), {
+    const result = await requestPrivateOpenAIResponse(clientRequest(), {
       apiKey: "test-key",
       client: {
         async create() {
@@ -138,7 +139,7 @@ describe("private OpenRouter Responses client", () => {
     });
     expect(result).toEqual({ outcome: "completed", text: "alpha beta" });
 
-    expect(normalizePrivateOpenRouterResponse({
+    expect(normalizePrivateOpenAIResponse({
       status: "completed",
       error: null,
       output: [],
@@ -147,34 +148,34 @@ describe("private OpenRouter Responses client", () => {
   });
 
   test("maps incomplete and refusal responses without disguising transport failures", () => {
-    expect(normalizePrivateOpenRouterResponse({
+    expect(normalizePrivateOpenAIResponse({
       status: "incomplete",
       error: null,
       incomplete_details: { reason: "max_output_tokens" },
       output: [{ type: "message", content: [{ type: "output_text", text: "partial" }] }],
     }, false)).toEqual({ outcome: "limit", text: "partial" });
 
-    expect(normalizePrivateOpenRouterResponse({
+    expect(normalizePrivateOpenAIResponse({
       status: "incomplete",
       error: null,
       incomplete_details: { reason: "max_output_tokens" },
       output: [{ type: "reasoning", summary: [] }],
     }, false)).toEqual({ outcome: "limit", text: "" });
 
-    expect(normalizePrivateOpenRouterResponse({
+    expect(normalizePrivateOpenAIResponse({
       status: "incomplete",
       error: null,
       incomplete_details: { reason: "content_filter" },
       output: [{ type: "message", content: [{ type: "output_text", text: "filtered" }] }],
     }, false)).toEqual({ outcome: "blocked", text: "filtered" });
 
-    expect(normalizePrivateOpenRouterResponse({
+    expect(normalizePrivateOpenAIResponse({
       status: "completed",
       error: null,
       output: [{ type: "message", content: [{ type: "refusal", refusal: "cannot comply" }] }],
     }, false)).toEqual({ outcome: "blocked", text: "cannot comply" });
 
-    expect(() => normalizePrivateOpenRouterResponse({
+    expect(() => normalizePrivateOpenAIResponse({
       status: "failed",
       error: { message: "provider failure" },
       output: [],
@@ -182,7 +183,7 @@ describe("private OpenRouter Responses client", () => {
   });
 
   test("requires completed structured output to be JSON/1", () => {
-    expect(() => normalizePrivateOpenRouterResponse({
+    expect(() => normalizePrivateOpenAIResponse({
       status: "completed",
       error: null,
       output: [{ type: "message", content: [{ type: "output_text", text: "not json" }] }],
@@ -195,7 +196,7 @@ describe("private OpenRouter Responses client", () => {
     const apiKey = "secret-that-must-not-escape";
     let failure: unknown;
     try {
-      await requestPrivateOpenRouterResponse(clientRequest(), {
+      await requestPrivateOpenAIResponse(clientRequest(), {
         apiKey,
         client: {
           async create() {
@@ -206,10 +207,10 @@ describe("private OpenRouter Responses client", () => {
     } catch (error) {
       failure = error;
     }
-    expect(failure).toBeInstanceOf(PrivateOpenRouterResponsesError);
+    expect(failure).toBeInstanceOf(PrivateOpenAIResponsesError);
     expect(failure).toMatchObject({
       code: "AGENT_PROVIDER_UNAVAILABLE",
-      message: "OpenRouter Responses request failed",
+      message: "OpenAI Responses request failed",
     });
     expect(String(failure)).not.toContain(apiKey);
     expect((failure as Error).stack).not.toContain(apiKey);
@@ -219,7 +220,7 @@ describe("private OpenRouter Responses client", () => {
     let calls = 0;
     let failure: unknown;
     try {
-      await requestPrivateOpenRouterResponse(clientRequest(), {
+      await requestPrivateOpenAIResponse(clientRequest(), {
         apiKey: "test-key",
         fetch: async () => {
           calls += 1;
@@ -235,60 +236,65 @@ describe("private OpenRouter Responses client", () => {
     expect(calls).toBe(1);
     expect(failure).toMatchObject({
       code: "AGENT_PROVIDER_UNAVAILABLE",
-      message: "OpenRouter Responses request failed",
+      message: "OpenAI Responses request failed",
     });
   });
 
-  test("does not permit an unpinned production endpoint or model", async () => {
-    await expect(requestPrivateOpenRouterResponse({
+  test("validates but does not choose the provider endpoint or model", async () => {
+    await expect(requestPrivateOpenAIResponse({
       ...clientRequest(),
-      model: "different/model",
-    }, { apiKey: "test-key" })).rejects.toMatchObject({
+      baseURL: "http://provider.example/api/v1",
+    }, { apiKey: "test-key", client: unusedClient })).rejects.toMatchObject({
+      code: "AGENT_PROVIDER_CONFIGURATION",
+    });
+    await expect(requestPrivateOpenAIResponse({
+      ...clientRequest(),
+      model: "invalid model",
+    }, { apiKey: "test-key", client: unusedClient })).rejects.toMatchObject({
       code: "AGENT_PROVIDER_CONFIGURATION",
     });
   });
 });
 
-describe("private OpenRouter Responses worker protocol", () => {
-  test("round-trips the exact closed production request", () => {
+describe("private OpenAI Responses worker protocol", () => {
+  test("round-trips one provider-configured request", () => {
     const request = {
-      protocol: PRIVATE_OPENROUTER_RESPONSES_PROTOCOL,
+      protocol: PRIVATE_OPENAI_RESPONSES_PROTOCOL,
       apiKey: "transient-test-key",
-      baseURL: PRIVATE_OPENROUTER_RESPONSES_BASE_URL,
-      model: PRIVATE_OPENROUTER_RESPONSES_MODEL,
+      baseURL: TEST_BASE_URL,
+      model: TEST_MODEL,
       instructions: "Answer succinctly.",
       responseSchema: RESPONSE_SCHEMA,
     } as const;
-    const encoded = encodePrivateOpenRouterResponsesRequest(request);
-    expect(new TextDecoder().decode(encoded)).not.toContain("OPENROUTER_API_KEY");
-    expect(decodePrivateOpenRouterResponsesRequest(encoded)).toEqual(request);
+    const encoded = encodePrivateOpenAIResponsesRequest(request);
+    expect(decodePrivateOpenAIResponsesRequest(encoded)).toEqual(request);
   });
 
-  test("rejects endpoint/model drift and malformed result envelopes", () => {
-    expect(() => encodePrivateOpenRouterResponsesRequest({
-      protocol: PRIVATE_OPENROUTER_RESPONSES_PROTOCOL,
+  test("rejects malformed provider configuration and result envelopes", () => {
+    expect(() => encodePrivateOpenAIResponsesRequest({
+      protocol: PRIVATE_OPENAI_RESPONSES_PROTOCOL,
       apiKey: "transient-test-key",
-      baseURL: PRIVATE_OPENROUTER_RESPONSES_BASE_URL,
-      model: "openrouter/free",
+      baseURL: "http://provider.example/api/v1",
+      model: TEST_MODEL,
       instructions: "Answer.",
     })).toThrow(expect.objectContaining({ code: "AGENT_PROVIDER_PROTOCOL" }));
 
-    expect(() => decodePrivateOpenRouterResponsesResponse(new TextEncoder().encode(JSON.stringify({
-      protocol: PRIVATE_OPENROUTER_RESPONSES_PROTOCOL,
+    expect(() => decodePrivateOpenAIResponsesResponse(new TextEncoder().encode(JSON.stringify({
+      protocol: PRIVATE_OPENAI_RESPONSES_PROTOCOL,
       status: "ok",
       value: { outcome: "invented", text: "bad" },
     })))).toThrow(expect.objectContaining({ code: "AGENT_PROVIDER_PROTOCOL" }));
   });
 
   test("round-trips bounded success and failure responses", () => {
-    expect(decodePrivateOpenRouterResponsesResponse(
-      encodePrivateOpenRouterResponsesSuccess({
+    expect(decodePrivateOpenAIResponsesResponse(
+      encodePrivateOpenAIResponsesSuccess({
         outcome: "completed",
         text: "done",
         structured: { answer: "yes" },
       }),
     )).toEqual({
-      protocol: PRIVATE_OPENROUTER_RESPONSES_PROTOCOL,
+      protocol: PRIVATE_OPENAI_RESPONSES_PROTOCOL,
       status: "ok",
       value: {
         outcome: "completed",
@@ -296,13 +302,13 @@ describe("private OpenRouter Responses worker protocol", () => {
         structured: { answer: "yes" },
       },
     });
-    expect(decodePrivateOpenRouterResponsesResponse(
-      encodePrivateOpenRouterResponsesFailure(
+    expect(decodePrivateOpenAIResponsesResponse(
+      encodePrivateOpenAIResponsesFailure(
         "AGENT_PROVIDER_UNAVAILABLE",
         "provider unavailable",
       ),
     )).toEqual({
-      protocol: PRIVATE_OPENROUTER_RESPONSES_PROTOCOL,
+      protocol: PRIVATE_OPENAI_RESPONSES_PROTOCOL,
       status: "error",
       code: "AGENT_PROVIDER_UNAVAILABLE",
       message: "provider unavailable",
@@ -310,13 +316,19 @@ describe("private OpenRouter Responses worker protocol", () => {
   });
 });
 
-function clientRequest(): PrivateOpenRouterResponsesClientRequest {
+function clientRequest(): PrivateOpenAIResponsesClientRequest {
   return {
-    baseURL: PRIVATE_OPENROUTER_RESPONSES_BASE_URL,
-    model: PRIVATE_OPENROUTER_RESPONSES_MODEL,
+    baseURL: TEST_BASE_URL,
+    model: TEST_MODEL,
     instructions: "Answer.",
   };
 }
+
+const unusedClient = Object.freeze({
+  async create(): Promise<never> {
+    throw new Error("invalid requests must not reach the client");
+  },
+});
 
 function jsonResponse(value: unknown): Response {
   return new Response(JSON.stringify(value), {

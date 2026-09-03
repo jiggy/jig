@@ -4,7 +4,8 @@ import type { JsonValue } from "../src/json.js";
 import { planPrivateBunDirectRun } from "../src/internal/bun-direct-run.js";
 import { privateDomainDigest } from "../src/internal/identity.js";
 import { openPrivateInstalledBunSupport } from "../src/internal/installed-bun-support.js";
-import { openPrivateOpenRouterAgentProvider } from "../src/internal/openrouter-agent-provider.js";
+import { openPrivateOpenAIAgentProvider } from "../src/internal/openai-agent-provider.js";
+import { openPrivateOpenRouterAgentFlavor } from "../src/internal/openrouter-agent-flavor.js";
 import {
   AGENT_RUN_CONTRACT_DIGEST,
   AGENT_RUN_CONTRACT_ID,
@@ -37,7 +38,7 @@ describe("private Bun direct Run", () => {
     expect(recipe.wallClockCeilingMs).toBe(86_400_000);
   });
 
-  test("requires the fixed Agent provider without identifying its credential", async () => {
+  test("requires an authenticated Agent provider without identifying its credential", async () => {
     const installedSupport = await openPrivateInstalledBunSupport(installedBunLocation);
     const backend = new StaticMechanismBackend({
       bunPath: "/test/bun",
@@ -51,11 +52,21 @@ describe("private Bun direct Run", () => {
       backend,
     })).rejects.toThrow("Agent provider was not produced");
 
-    const firstProvider = openPrivateOpenRouterAgentProvider(installedSupport, {
-      OPENROUTER_API_KEY: "first-secret",
+    const firstProvider = openPrivateOpenAIAgentProvider(installedSupport, {
+      OPENAI_API_KEY: "first-secret",
+      OPENAI_MODEL: "provider/test-model",
     })!;
-    const rotatedProvider = openPrivateOpenRouterAgentProvider(installedSupport, {
-      OPENROUTER_API_KEY: "rotated-secret",
+    const rotatedProvider = openPrivateOpenAIAgentProvider(installedSupport, {
+      OPENAI_API_KEY: "rotated-secret",
+      OPENAI_MODEL: "provider/test-model",
+    })!;
+    const differentModelProvider = openPrivateOpenAIAgentProvider(installedSupport, {
+      OPENAI_API_KEY: "first-secret",
+      OPENAI_MODEL: "provider/other-model",
+    })!;
+    const differentFlavorProvider = openPrivateOpenRouterAgentFlavor(installedSupport, {
+      OPENROUTER_API_KEY: "first-secret",
+      OPENROUTER_MODEL: "provider/test-model",
     })!;
     const first = await planPrivateBunDirectRun({
       request,
@@ -69,9 +80,25 @@ describe("private Bun direct Run", () => {
       backend,
       agentProvider: rotatedProvider,
     });
+    const differentModel = await planPrivateBunDirectRun({
+      request,
+      installedSupport,
+      backend,
+      agentProvider: differentModelProvider,
+    });
+    const differentFlavor = await planPrivateBunDirectRun({
+      request,
+      installedSupport,
+      backend,
+      agentProvider: differentFlavorProvider,
+    });
 
     expect(first.digest).toBe(rotated.digest);
     expect(first.observation.digest).toBe(rotated.observation.digest);
+    expect(first.digest).not.toBe(differentModel.digest);
+    expect(first.observation.digest).not.toBe(differentModel.observation.digest);
+    expect(first.digest).not.toBe(differentFlavor.digest);
+    expect(first.observation.digest).not.toBe(differentFlavor.observation.digest);
     expect(first.agentProvider).toBe(firstProvider);
     expect(JSON.stringify(first.observation)).not.toContain("secret");
   });

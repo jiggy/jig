@@ -32,7 +32,7 @@ The required host shape is:
 
 The glibc and SSE4.2 floors come from the selected Bun baseline runtime.
 
-Installing `@jigging/jig@0.1.0-alpha.5` also installs the exact external
+Installing `@jigging/jig@0.1.0-alpha.6` also installs the exact external
 runtime dependency `@oven/bun-linux-x64-baseline@1.3.3`. Bun is not embedded in
 or bundled with Jig. npm verifies the installed package; Jig selects only that
 closed package-local path, authenticates its version, revision, and digest
@@ -53,7 +53,7 @@ are documented in [SECURITY.md](SECURITY.md).
 Install the alpha with npm:
 
 ```console
-npm install --global @jigging/jig@0.1.0-alpha.5
+npm install --global @jigging/jig@0.1.0-alpha.6
 ```
 
 Create a project and one Flow package:
@@ -165,8 +165,11 @@ available.
 One experimental [Agent Run capability](docs/jig/spec/agent-run.md) is
 available through ordinary Run/1 `effect/call`. An Agent-capable Flow carries
 the exact Jig-owned contract, and a Binding can combine that result with its
-exact child slots. The alpha fixes one OpenRouter provider and model; it does
-not expose provider selection or a provider registry.
+exact child slots. The alpha uses the official OpenAI client and Responses API
+model. Native OpenAI use requires explicit `OPENAI_MODEL` and `OPENAI_API_KEY`
+host configuration. An optional OpenRouter flavor uses the same implementation
+with explicit `OPENROUTER_MODEL` and `OPENROUTER_API_KEY`. Jig supplies no
+default model and exposes no provider choice to a Flow or Binding.
 
 ## Dependency rule
 

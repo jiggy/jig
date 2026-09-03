@@ -119,12 +119,13 @@ source-coordinate convention; those are application components or external
 preprocessing, not presumed Jig responsibilities. None of these requirements
 is a promised Jig feature.
 
-The alpha's fixed Agent provider sends instructions, selected skills, and any
-records included in those instructions to OpenRouter and its selected Google
-model. `store: false` is not a general retention guarantee. Real wage records
-require an explicitly acceptable data processor or a suitably isolated local
-provider; the current provider must not be treated as appropriate merely
-because the Flow is contained.
+The alpha Agent implementation sends instructions, selected skills, and any
+records included in those instructions to the configured endpoint and
+operator-selected model. With the optional OpenRouter flavor, both OpenRouter
+and its selected upstream provider are in that data path. `store: false` is not
+a general retention guarantee. Real wage records require an explicitly
+acceptable data processor; the configured provider must not be treated as
+appropriate merely because the Flow is contained.
 
 Domain rules, professional oversight, OCR quality, and privacy policy remain
 application responsibilities regardless of how input and result transport is

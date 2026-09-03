@@ -22,9 +22,13 @@ provider worker use the same containment mechanism in separate scopes. The
 preparation worker inherits networking only during `jig check`; it validates
 the authored lock before the fixed installer's first fetch. The Agent worker
 inherits networking only for an admitted Agent `effect/call`. It receives the
-operator's `OPENROUTER_API_KEY`, instructions, and explicitly selected skill
-contents through a transient private channel. Those values do not enter the
-Flow environment, launch arguments, Plans, locks, or retained Run state.
+credential and explicit model for the one configured OpenAI Responses flavor,
+plus instructions and explicitly selected skill contents, through a transient
+private channel. Native OpenAI uses `OPENAI_API_KEY` and `OPENAI_MODEL`; the
+optional OpenRouter flavor uses `OPENROUTER_API_KEY` and `OPENROUTER_MODEL`.
+The secret, instructions, and skills do not enter the Flow environment, launch
+arguments, Plans, locks, or retained Run state; the endpoint and model are
+reviewed as provider identity but are not exposed to the Flow.
 Authored package code and lifecycle scripts never execute during preparation,
 and every Flow Run remains offline.
 

@@ -1,27 +1,27 @@
-import { requestPrivateOpenRouterResponse } from "./openrouter-responses-client.js";
+import { requestPrivateOpenAIResponse } from "./openai-responses-client.js";
 import {
-  decodePrivateOpenRouterResponsesRequest,
-  encodePrivateOpenRouterResponsesFailure,
-  encodePrivateOpenRouterResponsesSuccess,
-  PrivateOpenRouterResponsesError,
-  PRIVATE_OPENROUTER_RESPONSES_REQUEST_BYTES,
-  type PrivateOpenRouterResponsesErrorCode,
-} from "./openrouter-responses-protocol.js";
+  decodePrivateOpenAIResponsesRequest,
+  encodePrivateOpenAIResponsesFailure,
+  encodePrivateOpenAIResponsesSuccess,
+  PrivateOpenAIResponsesError,
+  PRIVATE_OPENAI_RESPONSES_REQUEST_BYTES,
+  type PrivateOpenAIResponsesErrorCode,
+} from "./openai-responses-protocol.js";
 
 await main();
 
 async function main(): Promise<void> {
   let output: Uint8Array;
   try {
-    const input = await readBoundedInput(PRIVATE_OPENROUTER_RESPONSES_REQUEST_BYTES);
-    const request = decodePrivateOpenRouterResponsesRequest(input);
-    const value = await requestPrivateOpenRouterResponse(request, {
+    const input = await readBoundedInput(PRIVATE_OPENAI_RESPONSES_REQUEST_BYTES);
+    const request = decodePrivateOpenAIResponsesRequest(input);
+    const value = await requestPrivateOpenAIResponse(request, {
       apiKey: request.apiKey,
     });
-    output = encodePrivateOpenRouterResponsesSuccess(value);
+    output = encodePrivateOpenAIResponsesSuccess(value);
   } catch (error) {
     const failure = safeFailure(error);
-    output = encodePrivateOpenRouterResponsesFailure(failure.code, failure.message);
+    output = encodePrivateOpenAIResponsesFailure(failure.code, failure.message);
   }
   try {
     await writeOutput(output);
@@ -39,9 +39,9 @@ async function readBoundedInput(maximum: number): Promise<Uint8Array> {
       : new Uint8Array(raw.buffer, raw.byteOffset, raw.byteLength);
     total += chunk.byteLength;
     if (total > maximum) {
-      throw new PrivateOpenRouterResponsesError(
+      throw new PrivateOpenAIResponsesError(
         "AGENT_PROVIDER_PROTOCOL",
-        "OpenRouter Responses worker request exceeds its byte bound",
+        "OpenAI Responses worker request exceeds its byte bound",
       );
     }
     chunks.push(chunk.slice());
@@ -56,15 +56,15 @@ async function readBoundedInput(maximum: number): Promise<Uint8Array> {
 }
 
 function safeFailure(error: unknown): {
-  readonly code: PrivateOpenRouterResponsesErrorCode;
+  readonly code: PrivateOpenAIResponsesErrorCode;
   readonly message: string;
 } {
-  if (error instanceof PrivateOpenRouterResponsesError) {
+  if (error instanceof PrivateOpenAIResponsesError) {
     return Object.freeze({ code: error.code, message: error.message });
   }
   return Object.freeze({
     code: "AGENT_PROVIDER_UNAVAILABLE",
-    message: "OpenRouter Responses worker failed",
+    message: "OpenAI Responses worker failed",
   });
 }
 

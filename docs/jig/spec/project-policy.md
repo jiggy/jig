@@ -432,13 +432,16 @@ It does not receive the host environment, network, host process tree, writable
 cgroup controls, general devices, inherited descriptors, project source,
 `.jig`, or host-control channels.
 
-The one Agent provider is a separate bounded process. The trusted host reads
-`OPENROUTER_API_KEY`; among workload processes, only the provider receives the
-credential, inherited network access, and the fixed OpenRouter endpoint and
-model. The parent Flow remains network-isolated and keyless. The provider
-receives no model tools and cannot widen the Flow's exact admitted child slots.
-Provider selection and configuration are not FLOW or Binding inputs in this
-alpha.
+The Agent provider is a separate bounded process. It uses the official OpenAI
+client and Responses request/response model. Native OpenAI is the primary
+flavor and reads `OPENAI_API_KEY` plus an explicit `OPENAI_MODEL`; an optional
+OpenRouter flavor reads `OPENROUTER_API_KEY` plus an explicit
+`OPENROUTER_MODEL` and changes only the fixed endpoint and credential
+convention. Among workload processes, only the provider receives the selected
+credential and inherited network access. Jig supplies no default model. The
+parent Flow remains network-isolated and keyless. The provider receives no
+model tools and cannot widen the Flow's exact admitted child slots. Provider
+selection and configuration are not FLOW or Binding inputs in this alpha.
 
 Dependency preparation uses the same ownership, cgroup, filesystem, process,
 and cleanup boundary. Only Jig's fixed installer and worker execute there;

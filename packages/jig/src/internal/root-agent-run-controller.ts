@@ -47,22 +47,22 @@ import {
   type PrivateLinuxSealedOwnerIdentity,
 } from "./linux-rootless-backend.js";
 import {
-  privateOpenRouterAgentCredential,
-  requirePrivateOpenRouterAgentProvider,
-  type PrivateOpenRouterAgentProvider,
-} from "./openrouter-agent-provider.js";
+  privateOpenAIAgentCredential,
+  requirePrivateOpenAIAgentProvider,
+  type PrivateOpenAIAgentProvider,
+} from "./openai-agent-provider.js";
 import {
-  assertPrivateOpenRouterResponseSchema,
-} from "./openrouter-responses-client.js";
+  assertPrivateAgentResponseSchema,
+} from "./openai-responses-client.js";
 import {
-  decodePrivateOpenRouterResponsesResponse,
-  encodePrivateOpenRouterResponsesRequest,
-  PRIVATE_OPENROUTER_RESPONSES_PROTOCOL,
-  PRIVATE_OPENROUTER_RESPONSES_RESPONSE_BYTES,
-  type PrivateOpenRouterResponsesErrorCode,
-  type PrivateOpenRouterResponsesRequest,
-  type PrivateOpenRouterResponsesWorkerResponse,
-} from "./openrouter-responses-protocol.js";
+  decodePrivateOpenAIResponsesResponse,
+  encodePrivateOpenAIResponsesRequest,
+  PRIVATE_OPENAI_RESPONSES_PROTOCOL,
+  PRIVATE_OPENAI_RESPONSES_RESPONSE_BYTES,
+  type PrivateOpenAIResponsesErrorCode,
+  type PrivateOpenAIResponsesRequest,
+  type PrivateOpenAIResponsesWorkerResponse,
+} from "./openai-responses-protocol.js";
 import { captureStoredPackage } from "./package-artifact-store.js";
 import {
   AGENT_RUN_CONTRACT_DIGEST,
@@ -117,17 +117,17 @@ interface AgentRecoveryInput {
   readonly coordinator: PrivateProjectCoordinator;
   readonly installedSupport: PrivateDirectRunInstalledSupport;
   readonly backend: PrivateLinuxCgroupBackend;
-  readonly agentProvider?: PrivateOpenRouterAgentProvider | undefined;
+  readonly agentProvider?: PrivateOpenAIAgentProvider | undefined;
 }
 
 interface AgentInput extends AgentRecoveryInput {
-  readonly agentProvider: PrivateOpenRouterAgentProvider;
+  readonly agentProvider: PrivateOpenAIAgentProvider;
 }
 
 interface PreparedCall {
   readonly input: PreparedAgentRunInput;
   readonly contract: Parameters<typeof parseAgentRunResult>[0];
-  readonly request: Omit<PrivateOpenRouterResponsesRequest, "apiKey">;
+  readonly request: Omit<PrivateOpenAIResponsesRequest, "apiKey">;
   readonly digest: string;
 }
 
@@ -148,10 +148,10 @@ export async function executePrivateRootAgentRun(
   }
   if (input.signal.aborted) return failed("CANCELLED", "the Agent Run was cancelled");
 
-  let provider: PrivateOpenRouterAgentProvider;
+  let provider: PrivateOpenAIAgentProvider;
   let recipe: PrivateDirectRunRecipe;
   try {
-    provider = requirePrivateOpenRouterAgentProvider(input.agentProvider);
+    provider = requirePrivateOpenAIAgentProvider(input.agentProvider);
     if (provider.contractDigest !== selected.digest ||
         provider.workerDigest !== input.installedSupport.agentWorkerDigest) {
       throw new Error("Agent provider identity differs from admitted host support");
@@ -267,9 +267,9 @@ export async function executePrivateRootAgentRun(
     const component = await sealed.admit(input.signal);
     execution = await interactWithProvider(
       component,
-      encodePrivateOpenRouterResponsesRequest({
+      encodePrivateOpenAIResponsesRequest({
         ...prepared.request,
-        apiKey: privateOpenRouterAgentCredential(provider),
+        apiKey: privateOpenAIAgentCredential(provider),
       }),
     );
     await releaseKnownAgent(input, lifecycle, execution.fence);
@@ -302,9 +302,9 @@ export async function executePrivateRootAgentRun(
     return failed("EXECUTION_FAILED", "the Agent provider process failed");
   }
 
-  let response: PrivateOpenRouterResponsesWorkerResponse;
+  let response: PrivateOpenAIResponsesWorkerResponse;
   try {
-    response = decodePrivateOpenRouterResponsesResponse(execution.output);
+    response = decodePrivateOpenAIResponsesResponse(execution.output);
   } catch {
     return failed("INVALID_RESULT", "the Agent provider returned an invalid result");
   }
@@ -434,7 +434,7 @@ export function renderPrivateAgentRunInstructions(
 
 async function prepareCall(
   input: AgentInput & { readonly call: RunHostEffectCall },
-  provider: PrivateOpenRouterAgentProvider,
+  provider: PrivateOpenAIAgentProvider,
 ): Promise<PreparedCall> {
   const target = requireParentTarget(input.parent);
   const captured = await captureStoredPackage(input.packageStoreRoot, target.request.package);
@@ -452,9 +452,9 @@ async function prepareCall(
     const manifest = await projectAgentRunSkills(captured, prepared.selectedSkills);
     const instructions = renderPrivateAgentRunInstructions(prepared.input.instructions, manifest);
     const responseSchema = prepared.input.responseSchema as JsonObject | undefined;
-    if (responseSchema !== undefined) assertPrivateOpenRouterResponseSchema(responseSchema);
+    if (responseSchema !== undefined) assertPrivateAgentResponseSchema(responseSchema);
     const request = Object.freeze({
-      protocol: PRIVATE_OPENROUTER_RESPONSES_PROTOCOL,
+      protocol: PRIVATE_OPENAI_RESPONSES_PROTOCOL,
       baseURL: provider.baseURL,
       model: provider.model,
       instructions,
@@ -465,7 +465,7 @@ async function prepareCall(
       contract: reference.contract,
       request,
       digest: privateDomainDigest(
-        "JIG-Private-OpenRouter-Agent-Request/1",
+        "JIG-Private-OpenAI-Responses-Request/1",
         request as unknown as JsonValue,
       ),
     });
@@ -520,7 +520,7 @@ async function reproduceParentRecipe(input: AgentInput): Promise<PrivateDirectRu
 
 async function revalidateProviderSupport(
   recipe: PrivateDirectRunRecipe,
-  provider: PrivateOpenRouterAgentProvider,
+  provider: PrivateOpenAIAgentProvider,
 ): Promise<void> {
   const [mechanism] = await Promise.all([
     recipe.backend.observeMechanism(),
@@ -571,7 +571,7 @@ async function interactWithProvider(
   component: PrivateLinuxComponentProcess,
   request: Uint8Array,
 ): Promise<ProviderExecution> {
-  const output = collectBounded(component.stdout, PRIVATE_OPENROUTER_RESPONSES_RESPONSE_BYTES);
+  const output = collectBounded(component.stdout, PRIVATE_OPENAI_RESPONSES_RESPONSE_BYTES);
   const stderr = discardBounded(component.stderr, PROVIDER_STDERR_BYTES);
   try {
     await component.write(request);
@@ -724,7 +724,7 @@ async function requireAllocationMatchesParent(
 }
 
 function providerFailure(
-  code: PrivateOpenRouterResponsesErrorCode,
+  code: PrivateOpenAIResponsesErrorCode,
 ): RunHostEffectOperationTerminal {
   if (code === "AGENT_PROVIDER_OUTPUT_LIMIT") {
     return failed("RESOURCE_EXHAUSTED", "the Agent provider result exceeded its fixed bound");
