@@ -89,6 +89,9 @@ has a 1 MiB bound. Omitting `skills`, or passing `[]`, selects none. A skill
 grants no Flow, filesystem, network, tool, or host authority, and unselected
 package files are not projected.
 
+`SKILL.md` and its supporting files are plain UTF-8 guidance. Jig does not
+require frontmatter or define another skill metadata grammar.
+
 ## Exact ticket router
 
 This Flow asks the Agent for one value from a closed enum, then calls the
@@ -164,6 +167,10 @@ The model returns data, not authority. The response schema limits its answer
 to `billing` or `technical`, and Jig resolves that name only through the
 Binding's exact same-generation slots. The two children must be ordinary
 capability-free direct Flow targets in this one-level alpha.
+
+Exactly one child is a property of this example's completed path, not a new
+host rule. A blocked or limited Agent result reaches no child, and another
+Flow may make additional sequential calls within its admitted slots.
 
 ## The one alpha provider
 

@@ -10,12 +10,26 @@ deliberately exposes one finite product path:
 
 ```text
 jig init --bare <directory>
-jig check [project]
+jig check [project] [--yes]
 jig run <target> [--input JSON] [--timeout DURATION]
 ```
 
-- The [repository quickstart](https://github.com/jigmd/jig#quickstart) covers
-  installation, supported hosts, and the complete three-command path.
+Install the current alpha directly from npm:
+
+```console
+npm install --global @jigging/jig@0.1.0-alpha.5
+```
+
+`jig init --bare my-project` creates a new project directory; the destination
+must not already exist. Add packages beneath `flows/`, review them with
+`jig check`, and run an admitted `flow:<path>` or `binding:<id>` target.
+Interactive `jig check` asks for approval. In a noninteractive environment,
+inspect its review and rerun it with `--yes` only when approval is explicit.
+There is no separate apply command: the same finite `check` invocation carries
+the reviewed proposal into admission.
+
+- The [repository quickstart](https://github.com/jigmd/jig#quickstart) provides
+  a complete first Flow and the supported-host requirements.
 - [Project Authoring SDK/1](../spec/project-sdk.md) defines inert `jig.ts` and
   Binding authoring values.
 - [Project and execution policy](../spec/project-policy.md) defines capture,
@@ -27,6 +41,11 @@ Optional package schema files use [FLOW Schema/1](https://flow.jig.md/spec/schem
 and begin with the exact root declaration
 `"$schema": "https://flow.jig.md/schemas/schema-1.json"`. Dependency-free
 packages omit `bun.lock`; an empty or stale lock is not a valid fixture.
+When a `flow.ts` imports `@jigging/flow` or another production dependency,
+first create that package's own `package.json`, then run
+`bun install --lockfile-only` from the package directory with Bun 1.3.3. Keep
+the resulting text `bun.lock`, but do not place `node_modules` in the Flow
+package; `jig check` prepares the admitted dependency tree.
 
 The Jig-specific machine files are published under
 [`/schemas/`](https://jig.md/schemas/project-authoring-1.schema.json). FLOW's
@@ -59,6 +78,11 @@ Root Runs default to 30 seconds. `--timeout` accepts a positive integer plus
 `ms`, `s`, `m`, or `h`, up to 24 hours. Children share the parent's remaining
 absolute deadline; they cannot extend it. Acquisition precedes that execution
 deadline, and mandatory fencing and cleanup may settle afterward.
+
+On success, `jig run` prints one JSON object containing `status`, `outcome`,
+`output`, and bounded `diagnostics`. This is the command result; FLOW's
+`result.schema.json` validates the nested `{ outcome, output }` Run result.
+Omitting `--input` supplies `{}`.
 
 The direct alpha excludes Services, Hooks, Journal providers, configurable
 Agent providers, Agent sessions, Semantic Choice, Jig Graph, schedulers,
