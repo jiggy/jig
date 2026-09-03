@@ -17,7 +17,7 @@ jig run <target> [--input JSON] [--timeout DURATION]
 Install the current alpha directly from npm:
 
 ```console
-npm install --global @jigging/jig@0.1.0-alpha.6
+npm install --global @jigging/jig@0.1.0-alpha.7
 ```
 
 `jig init --bare my-project` creates a new project directory; the destination

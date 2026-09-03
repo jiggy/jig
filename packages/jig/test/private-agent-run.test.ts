@@ -56,14 +56,39 @@ describe("private Agent Run contract", () => {
     })).toEqual({ outcome: "blocked", text: "No suitable action." });
   });
 
-  test("requires responseSchema results and validates their structured value", () => {
+  test("requires recursive responseSchema results and validates their structured value", () => {
     const prepared = parseAgentRunInput(contract, {
-      instructions: "Return a score.",
+      instructions: "Return bounded evidence.",
       responseSchema: {
         $schema: SCHEMA_1_URI,
         type: "object",
-        properties: { score: { type: "integer", minimum: 0 } },
-        required: ["score"],
+        properties: {
+          assessment: {
+            type: "object",
+            properties: {
+              status: { type: "string", enum: ["clear", "ambiguous"] },
+              amount: { type: ["integer", "null"] },
+              note: { type: ["string", "null"] },
+              sources: {
+                type: "array",
+                minItems: 0,
+                maxItems: 2,
+                items: {
+                  type: "object",
+                  properties: {
+                    page: { type: "integer" },
+                    excerpt: { type: "string" },
+                  },
+                  required: ["page", "excerpt"],
+                  additionalProperties: false,
+                },
+              },
+            },
+            required: ["status", "amount", "note", "sources"],
+            additionalProperties: false,
+          },
+        },
+        required: ["assessment"],
         additionalProperties: false,
       },
     });
@@ -75,13 +100,38 @@ describe("private Agent Run contract", () => {
     expect(() => parseAgentRunResult(contract, prepared, {
       outcome: "completed",
       text: "invalid",
-      structured: { score: -1 },
+      structured: {
+        assessment: {
+          status: "clear",
+          amount: 1_500,
+          note: null,
+          sources: [{ page: 1 }],
+        },
+      },
     })).toThrow(expect.objectContaining({ code: "AGENT_RUN_STRUCTURED_INVALID" }));
     expect(parseAgentRunResult(contract, prepared, {
       outcome: "completed",
       text: "valid",
-      structured: { score: 2 },
-    })).toEqual({ outcome: "completed", text: "valid", structured: { score: 2 } });
+      structured: {
+        assessment: {
+          status: "clear",
+          amount: 1_500,
+          note: null,
+          sources: [{ page: 1, excerpt: "base pay" }],
+        },
+      },
+    })).toEqual({
+      outcome: "completed",
+      text: "valid",
+      structured: {
+        assessment: {
+          status: "clear",
+          amount: 1_500,
+          note: null,
+          sources: [{ page: 1, excerpt: "base pay" }],
+        },
+      },
+    });
     expect(parseAgentRunResult(contract, prepared, {
       outcome: "limit",
       text: "output limit reached",

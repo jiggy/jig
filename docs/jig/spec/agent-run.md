@@ -61,10 +61,39 @@ On the Run/1 wire, a successful effect response is
 which requested `responseSchema` includes `structured`, and Jig validates that
 value against the supplied FLOW Schema/1 schema before returning it.
 
-The first provider accepts a deliberately small structured-output subset: one
-closed object with 1–32 required properties, each a nonempty enum of strings.
-Use an unstructured call for other result shapes. Unsupported schemas fail
-before provider dispatch rather than being translated approximately.
+The alpha accepts one bounded recursive structured-output profile. Its root is
+a nonempty closed object with the FLOW Schema/1 `$schema` identifier. Every
+object:
+
+- has `type: "object"`, 1–32 properties, and
+  `additionalProperties: false`;
+- lists every property exactly once in `required`, so optional fields are not
+  part of this profile; and
+- contains only values from this same recursive profile.
+
+Values may be:
+
+- another closed object;
+- a homogeneous array with one `items` schema and a required integer
+  `maxItems` from 0 through 256; `minItems` may additionally bound the lower
+  end;
+- a string, optionally restricted by a nonempty string `enum`;
+- a JSON/1 safe integer; or
+- a nullable string or safe integer, expressed by including `"null"` in its
+  `type` array.
+
+A nullable string enum includes `null` and at least one string in `enum`;
+otherwise its `type` declaration and allowed values would disagree.
+
+The complete schema is limited to eight schema levels including the root, 128
+properties across all objects, and 256 enum members across all string enums.
+Property names and enum strings together may contain at most 120,000 Unicode
+characters; an enum with more than 250 members has a 15,000-character limit.
+Descriptions may guide the provider but grant no authority. References,
+definitions, applicators such as `anyOf`, free-form maps, optional properties,
+booleans, non-integer numbers, and nullable objects or arrays are outside this
+profile. Use an unstructured call for other result shapes. Unsupported schemas
+fail before provider dispatch rather than being translated approximately.
 
 `operationId` has the ordinary Run/1 meaning: use one stable identity for one
 logical call. Reusing it with changed slot, method, or input conflicts. Work
@@ -110,7 +139,7 @@ const routeSchema = {
   $schema: "https://flow.jig.md/schemas/schema-1.json",
   type: "object",
   properties: {
-    route: { enum: ["billing", "technical"] },
+    route: { type: "string", enum: ["billing", "technical"] },
   },
   required: ["route"],
   additionalProperties: false,

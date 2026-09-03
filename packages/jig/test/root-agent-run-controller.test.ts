@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import {
+  decodePrivateAcpStructuredText,
   isPrivateRootAgentRunOwner,
   renderPrivateAgentRunInstructions,
 } from "../src/internal/root-agent-run-controller.js";
@@ -65,6 +66,16 @@ describe("private root Agent Run controller", () => {
         value: { kind: "private-root-child-owner-allocation/1" },
       },
     })).toBe(false);
+  });
+
+  test("normalizes only raw JSON/1 and the exact text-only ACP JSON presentation", () => {
+    const value = { decision: { route: "technical", evidence: [{ page: 2 }] } };
+    const json = JSON.stringify(value);
+    expect(decodePrivateAcpStructuredText(json)).toEqual(value);
+    expect(decodePrivateAcpStructuredText(`\n\`\`\`json\n${json}\n\`\`\`\n`)).toEqual(value);
+    expect(() => decodePrivateAcpStructuredText(`Result:\n\`\`\`json\n${json}\n\`\`\``)).toThrow();
+    expect(() => decodePrivateAcpStructuredText(`\`\`\`\n${json}\n\`\`\``)).toThrow();
+    expect(() => decodePrivateAcpStructuredText("```json\nnot-json\n```")).toThrow();
   });
 });
 

@@ -23,29 +23,107 @@ const TEST_MODEL = "provider/test-model";
 const RESPONSE_SCHEMA = Object.freeze({
   $schema: "https://flow.jig.md/schemas/schema-1.json",
   type: "object",
-  properties: Object.freeze({ answer: Object.freeze({ type: "string" }) }),
-  required: Object.freeze(["answer"]),
+  description: "One bounded extraction result.",
+  properties: Object.freeze({
+    decision: Object.freeze({
+      type: "object",
+      properties: Object.freeze({
+        route: Object.freeze({
+          type: "string",
+          enum: Object.freeze(["billing", "technical"]),
+        }),
+        note: Object.freeze({ type: Object.freeze(["string", "null"]) }),
+        attempts: Object.freeze({ type: "integer" }),
+        evidence: Object.freeze({
+          type: "array",
+          minItems: 0,
+          maxItems: 2,
+          items: Object.freeze({
+            type: "object",
+            properties: Object.freeze({
+              page: Object.freeze({ type: "integer" }),
+              amount: Object.freeze({ type: Object.freeze(["integer", "null"]) }),
+              excerpt: Object.freeze({ type: Object.freeze(["string", "null"]) }),
+            }),
+            required: Object.freeze(["page", "amount", "excerpt"]),
+            additionalProperties: false,
+          }),
+        }),
+      }),
+      required: Object.freeze(["route", "note", "attempts", "evidence"]),
+      additionalProperties: false,
+    }),
+  }),
+  required: Object.freeze(["decision"]),
   additionalProperties: false,
 }) as JsonObject;
 
-const ROUTE_SCHEMA = Object.freeze({
-  $schema: "https://flow.jig.md/schemas/schema-1.json",
-  type: "object",
-  properties: Object.freeze({
-    route: Object.freeze({ enum: Object.freeze(["billing", "technical"]) }),
+const RESPONSE_VALUE = Object.freeze({
+  decision: Object.freeze({
+    route: "technical",
+    note: null,
+    attempts: 1,
+    evidence: Object.freeze([
+      Object.freeze({ page: 2, amount: null, excerpt: "bounded source" }),
+    ]),
   }),
-  required: Object.freeze(["route"]),
-  additionalProperties: false,
-}) as JsonObject;
+});
 
 describe("private OpenAI Responses client", () => {
-  test("accepts only the closed enum-object response shape supported by the Agent slice", () => {
-    expect(() => assertPrivateAgentResponseSchema(ROUTE_SCHEMA)).not.toThrow();
-    expect(() => assertPrivateAgentResponseSchema(RESPONSE_SCHEMA)).toThrow("string enums");
+  test("accepts the bounded recursive structured-output profile", () => {
+    expect(() => assertPrivateAgentResponseSchema(RESPONSE_SCHEMA)).not.toThrow();
+    expect(() => assertPrivateAgentResponseSchema(closedSchema({
+      value: { type: ["null", "integer"] },
+    }))).not.toThrow();
+  });
+
+  test("rejects open, optional, unbounded, and unsupported response shapes", () => {
     expect(() => assertPrivateAgentResponseSchema({
-      ...ROUTE_SCHEMA,
+      ...closedSchema({ value: { type: "string" } }),
       additionalProperties: true,
-    } as JsonObject)).toThrow("closed enum object");
+    } as JsonObject)).toThrow();
+    expect(() => assertPrivateAgentResponseSchema({
+      ...closedSchema({ value: { type: "string" } }),
+      required: [],
+    } as JsonObject)).toThrow();
+    expect(() => assertPrivateAgentResponseSchema(closedSchema({
+      values: { type: "array", items: { type: "string" } },
+    }))).toThrow();
+    expect(() => assertPrivateAgentResponseSchema(closedSchema({
+      values: { type: "array", items: { type: "string" }, maxItems: 257 },
+    }))).toThrow();
+    expect(() => assertPrivateAgentResponseSchema(closedSchema({
+      value: { type: "boolean" },
+    }))).toThrow();
+    expect(() => assertPrivateAgentResponseSchema(closedSchema({
+      value: { type: "number" },
+    }))).toThrow();
+    expect(() => assertPrivateAgentResponseSchema(closedSchema({
+      value: { type: "object", additionalProperties: true },
+    }))).toThrow();
+    expect(() => assertPrivateAgentResponseSchema(closedSchema({
+      value: { type: ["string", "null"], enum: ["known"] },
+    }))).toThrow();
+    expect(() => assertPrivateAgentResponseSchema(closedSchema({
+      value: { type: ["string", "null"], enum: [null] },
+    }))).toThrow();
+    expect(() => assertPrivateAgentResponseSchema(closedSchema({
+      value: { type: ["string", "null"], enum: ["known", null] },
+    }))).not.toThrow();
+  });
+
+  test("rejects response shapes beyond recursive and aggregate bounds", () => {
+    expect(() => assertPrivateAgentResponseSchema(deepSchema(10))).toThrow();
+
+    const properties: Record<string, JsonObject> = {};
+    for (let outer = 0; outer < 32; outer += 1) {
+      const nested: Record<string, JsonObject> = {};
+      for (let inner = 0; inner < 4; inner += 1) {
+        nested[`field${inner}`] = { type: "integer" };
+      }
+      properties[`group${outer}`] = closedObject(nested);
+    }
+    expect(() => assertPrivateAgentResponseSchema(closedSchema(properties))).toThrow();
   });
   test("uses the OpenAI Responses API with a variable base URL and strict structured output", async () => {
     const apiKey = "test-provider-secret";
@@ -77,7 +155,11 @@ describe("private OpenAI Responses client", () => {
             type: "message",
             role: "assistant",
             status: "completed",
-            content: [{ type: "output_text", text: '{"answer":"yes"}', annotations: [] }],
+            content: [{
+              type: "output_text",
+              text: JSON.stringify(RESPONSE_VALUE),
+              annotations: [],
+            }],
           }],
         });
       },
@@ -97,8 +179,35 @@ describe("private OpenAI Responses client", () => {
           name: "jig_agent_run_result",
           schema: {
             type: "object",
-            properties: { answer: { type: "string" } },
-            required: ["answer"],
+            description: "One bounded extraction result.",
+            properties: {
+              decision: {
+                type: "object",
+                properties: {
+                  route: { type: "string", enum: ["billing", "technical"] },
+                  note: { type: ["string", "null"] },
+                  attempts: { type: "integer" },
+                  evidence: {
+                    type: "array",
+                    minItems: 0,
+                    maxItems: 2,
+                    items: {
+                      type: "object",
+                      properties: {
+                        page: { type: "integer" },
+                        amount: { type: ["integer", "null"] },
+                        excerpt: { type: ["string", "null"] },
+                      },
+                      required: ["page", "amount", "excerpt"],
+                      additionalProperties: false,
+                    },
+                  },
+                },
+                required: ["route", "note", "attempts", "evidence"],
+                additionalProperties: false,
+              },
+            },
+            required: ["decision"],
             additionalProperties: false,
           },
           strict: true,
@@ -109,8 +218,8 @@ describe("private OpenAI Responses client", () => {
     expect(RESPONSE_SCHEMA.$schema).toBe("https://flow.jig.md/schemas/schema-1.json");
     expect(result).toEqual({
       outcome: "completed",
-      text: '{"answer":"yes"}',
-      structured: { answer: "yes" },
+      text: JSON.stringify(RESPONSE_VALUE),
+      structured: RESPONSE_VALUE,
     });
   });
 
@@ -322,6 +431,30 @@ function clientRequest(): PrivateOpenAIResponsesClientRequest {
     model: TEST_MODEL,
     instructions: "Answer.",
   };
+}
+
+function closedSchema(properties: Record<string, JsonObject>): JsonObject {
+  return {
+    $schema: "https://flow.jig.md/schemas/schema-1.json",
+    ...closedObject(properties),
+  };
+}
+
+function closedObject(properties: Record<string, JsonObject>): JsonObject {
+  return {
+    type: "object",
+    properties,
+    required: Object.keys(properties),
+    additionalProperties: false,
+  };
+}
+
+function deepSchema(depth: number): JsonObject {
+  let property: JsonObject = { type: "string" };
+  for (let index = 0; index < depth; index += 1) {
+    property = closedObject({ value: property });
+  }
+  return closedSchema({ value: property });
 }
 
 const unusedClient = Object.freeze({

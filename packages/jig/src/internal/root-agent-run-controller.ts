@@ -66,6 +66,7 @@ import {
 } from "./openai-agent-provider.js";
 import {
   assertPrivateAgentResponseSchema,
+  projectPrivateAgentResponseSchema,
 } from "./openai-responses-client.js";
 import {
   decodePrivateOpenAIResponsesResponse,
@@ -442,10 +443,13 @@ function renderPrivateAcpStructuredInstructions(
   instructions: string,
   responseSchema: JsonObject,
 ): string {
-  const schema = decoder.decode(canonicalJson(responseSchema as JsonValue));
+  const schema = decoder.decode(canonicalJson(
+    projectPrivateAgentResponseSchema(responseSchema) as JsonObject,
+  ));
   const rendered = [
     instructions,
     "Return only one JSON value matching this canonical FLOW Schema/1 schema:",
+    "Do not wrap the JSON value in Markdown or a code fence.",
     schema,
   ].join("\n");
   if (encoder.encode(rendered).byteLength > PROVIDER_INSTRUCTION_BYTES) {
@@ -735,8 +739,19 @@ function acpResultValue(
   return Object.freeze({
     outcome,
     text: turn.text,
-    structured: decodeJson1(encoder.encode(turn.text)),
+    structured: decodePrivateAcpStructuredText(turn.text),
   });
+}
+
+/** Normalize the one JSON Markdown presentation emitted by current text-only ACP clients. */
+export function decodePrivateAcpStructuredText(text: string): JsonValue {
+  try {
+    return decodeJson1(encoder.encode(text));
+  } catch (rawError) {
+    const match = /^```json\r?\n([\s\S]*)\r?\n```$/.exec(text.trim());
+    if (match === null) throw rawError;
+    return decodeJson1(encoder.encode(match[1]!));
+  }
 }
 
 async function releaseKnownAgent(

@@ -49,6 +49,19 @@ const nativePiGatewayTest = HOSTILE && nativePiPath !== undefined &&
   : test.skip;
 const NATIVE_AGENT_TIMEOUT_MS = 120_000;
 const NATIVE_AGENT_TEST_TIMEOUT_MS = 180_000;
+const EXPECTED_STRUCTURED_AGENT_RESULT = Object.freeze({
+  decision: Object.freeze({
+    route: "technical",
+    evidence: Object.freeze([Object.freeze({
+      keyLocation: "stdin",
+      selectedSkill: "present",
+      hiddenSkill: "absent",
+      sourceLine: 1,
+      amount: null,
+    })]),
+    ambiguity: null,
+  }),
+});
 const initialTemporaryState = new Set(
   (await readdir(tmpdir())).filter(rootlessTemporaryEntry),
 );
@@ -97,12 +110,7 @@ proofDescribe("private contained Agent Run lifecycle", () => {
             parentHasKey: false,
             agent: {
               outcome: "completed",
-              structured: {
-                route: "technical",
-                keyLocation: "stdin",
-                selectedSkill: "present",
-                hiddenSkill: "absent",
-              },
+              structured: EXPECTED_STRUCTURED_AGENT_RESULT,
             },
           },
         },
@@ -142,7 +150,7 @@ proofDescribe("private contained Agent Run lifecycle", () => {
       const terminal = await runToTerminal(
         session.rootAdministration,
         "native-codex-openrouter",
-        "gateway",
+        "gateway-text",
         NATIVE_AGENT_TEST_TIMEOUT_MS,
       );
       expect(terminal).toMatchObject({
@@ -153,13 +161,14 @@ proofDescribe("private contained Agent Run lifecycle", () => {
           output: {
             status: "succeeded",
             parentHasKey: false,
-            agent: { outcome: "completed" },
+            agent: {
+              outcome: "completed",
+            },
           },
         },
       });
-      const text = agentText(terminal);
-      expect(text).toContain("READY");
-      expect(text).not.toContain(process.env.OPENROUTER_API_KEY!);
+      expect(agentText(terminal)).toContain("READY");
+      expect(JSON.stringify(terminal)).not.toContain(process.env.OPENROUTER_API_KEY!);
       await expectNoAgentOwner(root);
       await session.close();
       session = undefined;
@@ -206,13 +215,14 @@ proofDescribe("private contained Agent Run lifecycle", () => {
           output: {
             status: "succeeded",
             parentHasKey: false,
-            agent: { outcome: "completed" },
+            agent: {
+              outcome: "completed",
+              structured: EXPECTED_STRUCTURED_AGENT_RESULT,
+            },
           },
         },
       });
-      const text = agentText(terminal);
-      expect(text).toContain("READY");
-      expect(text).not.toContain(process.env.OPENROUTER_API_KEY!);
+      expect(JSON.stringify(terminal)).not.toContain(process.env.OPENROUTER_API_KEY!);
       await expectNoAgentOwner(root);
       await session.close();
       session = undefined;
@@ -259,13 +269,14 @@ proofDescribe("private contained Agent Run lifecycle", () => {
           output: {
             status: "succeeded",
             parentHasKey: false,
-            agent: { outcome: "completed" },
+            agent: {
+              outcome: "completed",
+              structured: EXPECTED_STRUCTURED_AGENT_RESULT,
+            },
           },
         },
       });
-      const text = agentText(terminal);
-      expect(text).toContain("READY");
-      expect(text).not.toContain(process.env.OPENROUTER_API_KEY!);
+      expect(JSON.stringify(terminal)).not.toContain(process.env.OPENROUTER_API_KEY!);
       await expectNoAgentOwner(root);
       await session.close();
       session = undefined;
@@ -317,12 +328,7 @@ proofDescribe("private contained Agent Run lifecycle", () => {
             parentHasKey: false,
             agent: {
               outcome: "completed",
-              structured: {
-                route: "technical",
-                keyLocation: "stdin",
-                selectedSkill: "present",
-                hiddenSkill: "absent",
-              },
+              structured: EXPECTED_STRUCTURED_AGENT_RESULT,
             },
           },
         },
@@ -541,10 +547,13 @@ function deterministicWorker(): string {
     'if (!response.ok) throw new Error("fixture observer rejected dispatch");',
     'if (scenario === "slow" || scenario === "recovery") await Bun.sleep(60_000);',
     'if (scenario === "malformed") { process.stdout.write("not-json"); process.exit(0); }',
-    'const structured = { route: scenario === "schema-invalid" ? "invalid" : "technical",',
-    '  keyLocation: event.keyInEnvironment ? "environment" : "stdin",',
-    '  selectedSkill: event.selectedSkill ? "present" : "absent",',
-    '  hiddenSkill: event.hiddenSkill ? "present" : "absent" };',
+    'const structured = { decision: {',
+    '  route: scenario === "schema-invalid" ? "invalid" : "technical",',
+    '  evidence: [{ keyLocation: event.keyInEnvironment ? "environment" : "stdin",',
+    '    selectedSkill: event.selectedSkill ? "present" : "absent",',
+    '    hiddenSkill: event.hiddenSkill ? "present" : "absent", sourceLine: 1, amount: null }],',
+    '  ambiguity: null,',
+    '} };',
     'process.stdout.write(JSON.stringify({ protocol: "jig-private-openai-responses/1", status: "ok",',
     '  value: { outcome: "completed", text: JSON.stringify(structured), structured } }));',
     "",
@@ -593,6 +602,7 @@ async function writeProject(root: string): Promise<void> {
           "slow",
           "recovery",
           "gateway",
+          "gateway-text",
         ],
       },
     },
@@ -615,10 +625,21 @@ function flowProgram(): string {
     "const responseSchema = {",
     '  $schema: "https://flow.jig.md/schemas/schema-1.json", type: "object",',
     "  properties: {",
-    '    route: { enum: ["technical"] }, keyLocation: { enum: ["stdin"] },',
-    '    selectedSkill: { enum: ["present"] }, hiddenSkill: { enum: ["absent"] },',
+    '    decision: { type: "object", properties: {',
+    '      route: { type: "string", enum: ["technical"] },',
+    '      evidence: { type: "array", minItems: 1, maxItems: 1, items: {',
+    '        type: "object", properties: {',
+    '          keyLocation: { type: "string", enum: ["stdin"] },',
+    '          selectedSkill: { type: "string", enum: ["present"] },',
+    '          hiddenSkill: { type: "string", enum: ["absent"] },',
+    '          sourceLine: { type: "integer" }, amount: { type: ["integer", "null"] },',
+    '        }, required: ["keyLocation", "selectedSkill", "hiddenSkill", "sourceLine", "amount"],',
+    '        additionalProperties: false,',
+    '      } },',
+    '      ambiguity: { type: ["string", "null"] },',
+    '    }, required: ["route", "evidence", "ambiguity"], additionalProperties: false },',
     "  },",
-    '  required: ["route", "keyLocation", "selectedSkill", "hiddenSkill"],',
+    '  required: ["decision"],',
     "  additionalProperties: false,",
     "};",
     "await handle(async (run) => {",
@@ -627,9 +648,10 @@ function flowProgram(): string {
     "    const agent = await run.callEffect({",
     '      operationId: `agent:${input.scenario}`, slot: "agent", method: "run",',
     '      input: { instructions: input.scenario === "gateway"',
-    '        ? "Reply with exactly READY and nothing else."',
-    '        : `scenario:${input.scenario}`, skills: ["selected"],',
-    '        ...(input.scenario === "gateway" ? {} : {',
+    '        ? "Return only JSON matching the response schema. Set route to technical, evidence to one item with keyLocation stdin, selectedSkill present, hiddenSkill absent, sourceLine 1, and amount null; set ambiguity to null."',
+    '        : input.scenario === "gateway-text" ? "Reply with exactly READY and nothing else."',
+    '        : `scenario:${input.scenario}. Return sourceLine 1, amount null, and ambiguity null.`, skills: ["selected"],',
+    '        ...(input.scenario === "gateway-text" ? {} : {',
     '          responseSchema: input.scenario === "schema-input-invalid"',
     '            ? { $schema: "https://flow.jig.md/schemas/schema-1.json", type: "unknown" }',
     '            : responseSchema,',
