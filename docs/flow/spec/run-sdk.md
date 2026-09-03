@@ -1,11 +1,8 @@
 # FLOW Run SDK/1
 
-**Status:** closed candidate projection of
-[`FLOW Run/1`](run-protocol.md). The TypeScript implementation is
-`@jigging/flow@0.1.0-alpha.3`; the Python implementation remains an unpublished
-`0.0.0` candidate. The complete shared corpus has passed under the Bun peer and
-an independently implemented Python host peer; a general third-party
-conformance label remains a separate release decision.
+> *Status: prerelease SDK projection of [`FLOW Run/1`](run-protocol.md). The
+> TypeScript implementation is `@jigging/flow@0.1.0-alpha.3`; the Python
+> implementation is not yet published.*
 
 This document fixes the public component-author interface for the Run/1
 slice. It does not add wire behavior. When this document and Run/1 differ,
@@ -46,7 +43,7 @@ descriptor 1 remain invalid protocol output. Bare Run/1 implementations are
 responsible for keeping protocol stdout clean. The SDK never treats malformed
 protocol output as a log.
 
-Calling other protocol, resolver, Binding, provider, sandbox, Jig
+Calling other protocol, resolver, host-configuration, provider, sandbox,
 administration, Agent, or graph APIs through this SDK is impossible because
 none are exposed.
 
@@ -240,9 +237,8 @@ explicitly cancelled and observed local wait is not abandonment: the handler
 may return a result, but the SDK sends that root result only after the cancelled
 wire request settles.
 
-The deadline is exposed as context, not implemented as an SDK timer. Jig or
-another host remains responsible for enforcing it and terminating an
-uncooperative process.
+The deadline is exposed as context, not implemented as an SDK timer. The host
+is responsible for enforcing it and terminating an uncooperative process.
 
 ## 7. Minimal root examples
 
@@ -267,16 +263,13 @@ async def run(context: RunContext) -> RunResult:
 handle(run)
 ```
 
-These root-only examples work with the direct Jig alpha. A direct `flow:` Run
-has no child-Flow slots, so its `flow/call` operations receive `UNAVAILABLE`.
-The current host supplies `flow/call` only for exact slots on the invoked
-Binding. It supplies `effect/call` only for the exact
-[Jig Agent Run capability](https://jig.md/spec/agent-run); other effect slots
-receive `UNAVAILABLE`.
+These examples require only the root `flow/run` operation. Availability of
+child-Flow and effect slots is host configuration; calling an unavailable slot
+returns `UNAVAILABLE`.
 
 ## 8. Child-call examples
 
-A Binding-local child-Flow slot may execute the following TypeScript:
+A child-Flow slot may execute the following TypeScript:
 
 ```ts
 import { handle } from "@jigging/flow";
@@ -309,24 +302,19 @@ async def run(context: RunContext) -> RunResult:
 handle(run)
 ```
 
-In the current Jig host, the invoked Binding maps `research` to one selected
-direct Flow package in the same admitted generation. Only the JSON/1 `input`
-crosses through this SDK operation, and only the complete JSON/1 `RunResult`
-returns. Jig gives that child a fresh context with its own scratch directory,
-empty settings and attachments, no inherited slots, and an effective deadline
-no later than the parent's. A direct `flow:` Run never receives a Binding's
-slots.
+When a host binds `research`, only the JSON/1 `input` crosses through this SDK
+operation and only the complete JSON/1 `RunResult` returns. Child context,
+authorization, and resource policy belong to the host; the SDK creates no
+implicit inheritance.
 
 The caller-supplied `operationId` retains all Run/1 join, conflict,
 cancellation, and uncertainty semantics. Uncertain dispatch is not
-automatically replayed. Jig creates no separately addressable child history,
-administration, scheduler, catalogue, resolver, or Agent-specific surface in
-this SDK.
+automatically replayed. The SDK creates no separately addressable child
+history, administration, scheduler, catalogue, resolver, or Agent-specific
+surface.
 
-The current Jig alpha admits one active child operation per parent. A distinct
-concurrent operation receives `RESOURCE_EXHAUSTED`; identical waiters join,
-and sequential calls are not constrained by that Jig-specific active-child
-bound. The Run/1 request-lifetime limit still applies.
+A host may impose a lower child-concurrency limit and report
+`RESOURCE_EXHAUSTED`. The Run/1 request-lifetime limit still applies.
 
 The implementations live under `packages/flow-sdk/` and
 `packages/flowmd-sdk/`. The shared executable seed is

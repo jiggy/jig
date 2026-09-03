@@ -1,9 +1,7 @@
 # FLOW Schema/1 files
 
-**Status:** prerelease specification candidate. The machine meta-schema is
-published as
-[`schema-1.json`](https://flow.jig.md/schemas/schema-1.json). Independent
-cross-implementation fixtures remain a release gate.
+> *Status: prerelease specification candidate. The machine meta-schema is
+> published as [`schema-1.json`](https://flow.jig.md/schemas/schema-1.json).*
 
 FLOW packages may expose three fixed, inert JSON Schema files. They describe
 values; they are never runtime mailboxes, configuration stores, templates, or
@@ -12,7 +10,7 @@ code.
 | File | Exact value validated |
 |---|---|
 | `input.schema.json` | `flow/run.params.input` |
-| `settings.schema.json` | The complete immutable Binding `settings` object |
+| `settings.schema.json` | `flow/run.params.settings` |
 | `result.schema.json` | The complete normal `{ "outcome", "output" }` result |
 
 The third name is `result`, not `output`, because a package may declare several
@@ -21,7 +19,7 @@ schema express that correlation; an output-only schema could not.
 
 ## 1. Absence has exact semantics
 
-- Binding `settings` is always a JSON object, whether or not a schema exists.
+- Run `settings` is always a JSON object, whether or not a schema exists.
   Arrays, scalars, and `null` are never settings values.
 - Without `input.schema.json`, any value admitted by the bounded FLOW JSON
   data model is valid input.
@@ -30,17 +28,17 @@ schema express that correlation; an output-only schema could not.
 - Without `result.schema.json`, any result satisfying the Run/1 base envelope
   and declared-outcome rules is valid.
 
-Absence never asks Jig to infer a schema from TypeScript, Markdown,
+Absence never asks a host to infer a schema from TypeScript, Markdown,
 environment variables, defaults, examples, or an earlier invocation.
 
 ## 2. Validation points
 
-Jig parses and validates every present schema while creating the inert package
-snapshot, before package code or instructions can run.
+The host parses and validates every present schema while creating the inert
+package snapshot, before package code or instructions can run.
 
 Settings are first required to be one complete JSON object and are then
-validated against `settings.schema.json` during Binding normalization,
-before runtime selection or execution. There is
+validated against `settings.schema.json` before runtime selection or
+execution. There is
 no inheritance, merge, per-Run overlay, environment fallback, or default
 insertion.
 
@@ -54,8 +52,8 @@ Input is validated against the actual call value before a Run process starts.
 A normal component result first passes the Run/1 envelope checks: it has one
 declared domain outcome and an `output` value, and it is not a protocol,
 execution, cancellation, provider-loss, or uncertainty failure disguised as a
-domain outcome. After all owner work has quiesced, Jig validates the complete
-result against `result.schema.json`; only then may owner success commit.
+domain outcome. After all owner work has quiesced, the host validates the
+complete result against `result.schema.json`; only then may owner success commit.
 Validation failure is `INVALID_RESULT`.
 
 ## 3. Schema/1 dialect
@@ -226,10 +224,9 @@ standalone public schema digest. A package schema is identified by its
 containing Package/1 digest and canonical logical path; an embedded schema by
 its containing Capability Contract/1 digest and JSON Pointer. A host may use a
 private cache fingerprint, but that value is not a portable identity,
-compatibility token, lock input, or author-facing requirement. The future Jig
-inspection surface reports those containing identities and locations, plus
-schema compilation and example-fixture failures, without evaluating package
-code; its command and SDK result models remain release-gated.
+compatibility token, lock input, or author-facing requirement. A host may
+report those containing identities and locations, plus schema compilation and
+example-fixture failures, without evaluating package code.
 
 ## 6. Examples
 

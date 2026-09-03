@@ -22,6 +22,11 @@ companions.
   and inventories.
 - New, renamed, or removed public machine files require corresponding map,
   index, inventory, and test changes.
+- Keep host-specific execution policy in that host's documentation. Normative
+  FLOW text refers only to generic host responsibilities unless a clearly
+  labelled example requires a named host.
+- Present document status as a visibly separated, public-facing statement.
+  Do not include internal release gates, team workflow, or test-agent history.
 
 ## Work Guidance
 

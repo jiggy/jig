@@ -1,6 +1,6 @@
 # FLOW Package/1
 
-**Status:** prerelease specification candidate.
+> *Status: prerelease specification candidate.*
 
 A FLOW package is one immutable logical file tree. Its only required file is
 an exact-case root `FLOW.md`. A package may add zero or one obvious root
@@ -103,7 +103,7 @@ reference begins with exact `./`, then uses one or more canonical package path
 segments. It cannot contain an empty, `.`, `..`, backslash, absolute, encoded,
 or escaping form. The referenced regular file must exist in the staged package.
 
-Jig derives contract identity, version, and digest from the descriptor. Those
+A host derives contract identity, version, and digest from the descriptor. Those
 values are not copied into `FLOW.md`. The `local: true` form deliberately names
 a nonportable local seam. The two forms are mutually exclusive.
 
@@ -116,8 +116,7 @@ custom outcomes.
 Each `attachments` key is a `LocalName`. Its value is exactly `read` or
 `read-write`. Metadata declares required attachment names and maximum access;
 attachment-source mapping is host policy outside Package/1. A host may expose
-that mapping through Bindings or another explicit mechanism. The current Jig
-direct alpha exposes no attachment mapping.
+that mapping through an explicit configuration mechanism.
 
 ### Format evolution
 
@@ -159,7 +158,7 @@ A Run package may contain these exact optional root files:
 | File | Value validated |
 |---|---|
 | `input.schema.json` | Invocation input |
-| `settings.schema.json` | The complete immutable Binding settings object |
+| `settings.schema.json` | The complete immutable Run settings object |
 | `result.schema.json` | The complete `{ "outcome", "output" }` result |
 
 Each present file must compile as FLOW Schema/1 during inert package
@@ -225,39 +224,7 @@ The digest excludes source location, directories, timestamps, ownership,
 mode bits, inode identity, runtime selection, host policy, and sandbox state.
 Those are provenance or admission evidence, not package identity.
 
-## 7. Direct-alpha execution boundary
-
-The first Jig host executes one `flow.ts` with Bun. The entrypoint either omits
-a selector or selects exact `bun`. A source package may use supported
-built-ins, package-local modules, and production dependencies declared by a
-root `package.json` and locked by a root text `bun.lock`. A source tree
-containing `node_modules` is invalid for this host.
-
-During `jig check`, the host may prepare the exact frozen production dependency
-tree in its rootless containment boundary. The fixed installer ignores
-lifecycle scripts and accepts only integrity-pinned packages from the default
-npm registry. The source Package/1 remains the reviewed and portable package;
-the prepared Package/1 is host-owned execution evidence pinned by the admitted
-target. Neither preparation state nor its digest appears in `FLOW.md`.
-
-At execution, Bun loads only the retained prepared tree. The Run has no
-network, package installation, lifecycle scripts, environment-file loading,
-or ambient `PATH` lookup. These are alpha host rules, not Package/1 metadata
-or a portable runtime profile.
-
-A direct Flow target additionally requires:
-
-- an exact code entrypoint;
-- no capability use, except that the current Jig alpha also admits one slot
-  using its exact [Agent Run Capability Contract](https://jig.md/spec/agent-run);
-- no attachment; and
-- `{}` accepted by `settings.schema.json`, when present.
-
-A configured Binding may supply settings. A target unsupported by the installed
-host fails closed; Jig never silently interprets Markdown after code execution
-becomes unavailable.
-
-## 8. Required conformance
+## 7. Required conformance
 
 Conforming implementations must prove at least:
 
@@ -273,9 +240,4 @@ Conforming implementations must prove at least:
    change identity; path, content, or extra-file changes do.
 7. Traversal, absolute, backslash, NUL, non-NFC, case-fold collision, symlink,
    and unproved hardlink cases reject consistently.
-8. Execution consumes exactly the Package/1 tree selected and admitted for
-   execution; a host that prepares dependencies keeps the reviewed source and
-   prepared execution references distinct.
-9. Independent streaming digest implementations produce identical results.
-10. An unavailable runtime fails closed and does not select instruction
-    execution implicitly.
+8. Independent streaming digest implementations produce identical results.

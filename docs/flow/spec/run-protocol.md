@@ -1,12 +1,9 @@
 # FLOW Run/1
 
-**Status:** closed prerelease candidate. The schemas, error registry, SDKs, and
-conformance corpus named here are one release slice, and the complete shared
-corpus passes under two independent peers. No stable third-party conformance
-label has been published.
+> *Status: prerelease specification candidate.*
 
 Run/1 is the finite executable boundary for a FLOW package. It deliberately
-does not expose Jig's durable records, resolver, authority evidence, graph
+does not expose a host's durable records, resolver, authority evidence, graph
 model, provider identities, or application ontology.
 
 The complete protocol has four methods:
@@ -228,11 +225,11 @@ While its root request is pending, the component may issue child Flow requests:
 `operationId`, `slot`, and `input` are required. Here `slot` is the
 consumer-local name of one child-Flow resolution slot admitted by the host. It
 is not a capability slot and is not declared in `FLOW.md` `uses`; child-Flow
-targets and candidate sets are project Binding data outside Package/1.
+targets and candidate sets are host configuration outside Package/1.
 `intent` is the only optional member and is a 1–16,384 scalar string. It
 describes the requested work for that already admitted slot; it does not name
 candidates, configure a resolver, grant catalogue access, or widen authority.
-Exact project binding still wins, and an absent intent never means
+Exact host binding still wins, and an absent intent never means
 catalogue-wide discovery. It is not delivered to the child unless component
 code also includes that information in `input`.
 
@@ -300,7 +297,7 @@ same operationId + different canonical method/params
 The canonical comparison includes `flow/call` or `effect/call`, slot, method
 when present, intent when present, and input. Transport IDs and wait timing are
 not semantic input. The host chooses its persistence strategy; Run/1 does not
-standardize Jig's ledger schema, activation digest, internal lifetime IDs, or
+standardize a ledger schema, activation digest, internal lifetime IDs, or
 recovery database.
 
 Each transport request is one waiter even when several requests join the same
@@ -359,10 +356,10 @@ recorded cancellation/deadline terminal condition determines `CANCELLED` or
 That decision fixes the request-level result or error. Overall Run acceptance
 also requires the clean process completion described in Section 9.
 
-Host-internal distinctions such as which Binding, provider, runtime selection,
-or execution envelope was unavailable belong in durable host diagnostics, not
-the portable error taxonomy. Activation failures which occur before a channel
-exists are not Run/1 errors.
+Host-internal distinctions such as which host binding, provider, runtime
+selection, or execution envelope was unavailable belong in durable host
+diagnostics, not the portable error taxonomy. Activation failures which occur
+before a channel exists are not Run/1 errors.
 
 `PROTOCOL_ERROR` and `CHANNEL_LOST` are local terminal classifications, not
 `-32000` values sent over a channel which can no longer be trusted. The
@@ -471,14 +468,14 @@ JSON value types
 ```
 
 They do not expose JSON-RPC envelopes, transport IDs, pending tables,
-resolution, Bindings, providers, schema loading, sandboxes, Jig controls,
-Services, Agents, or graph types. `operationId` remains caller-supplied.
+resolution, host bindings, providers, schema loading, sandboxes,
+administration controls, Services, Agents, or graph types. `operationId`
+remains caller-supplied.
 
 The exact language projections and their cancellation/error behavior are
 closed in [`Run SDK/1`](run-sdk.md).
 
-The corpus under `conformance/run-1/` is executable evidence for this
-candidate. The complete shared matrix passes under the Bun peer and an
-independently implemented Python host peer rather than two wrappers around one
-codec. This closes the prerelease Run/1 implementation gate; publication and a
-general third-party conformance label remain separate decisions.
+The corpus under `conformance/run-1/` provides executable evidence for this
+candidate through separately implemented TypeScript and Python participants.
+Passing that repository corpus is not a certification of a third-party
+implementation.

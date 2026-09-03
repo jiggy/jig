@@ -1,10 +1,7 @@
 # FLOW Capability Contract/1
 
-**Status:** prerelease specification candidate. The machine schema is
-published as
-[`capability-contract-1.schema.json`](https://flow.jig.md/schemas/capability-contract-1.schema.json).
-Independent digest/Schema/1 fixtures and consumer/provider conformance remain
-release gates.
+> *Status: prerelease specification candidate. The machine schema is published
+> as [`capability-contract-1.schema.json`](https://flow.jig.md/schemas/capability-contract-1.schema.json).*
 
 Most Flows need no formal contract. Generic `flow/call` already means “perform
 this bounded piece of work and return one outcome.” A Capability Contract is
@@ -199,11 +196,11 @@ uses the Package/1 author-reference grammar: exact `./` prefix followed by
 canonical logical path segments. The prefix is stripped once without any
 other normalization, decoding, or case folding. The reference is confined to
 the same immutable staged package and resolves by exact case to one regular
-JSON file. Jig validates it before code loads and derives the contract URI,
-exact version, and canonical descriptor digest. Authors never copy a hash,
-URI, or version into the reference. A project-local nonportable effect may use
-an explicit `local: true` declaration instead; missing a descriptor never
-means “weak public contract.”
+JSON file. The host validates it before code loads and derives the contract
+URI, exact version, and canonical descriptor digest. Authors never copy a
+hash, URI, or version into the reference. A project-local nonportable effect
+may use an explicit `local: true` declaration instead; missing a descriptor
+never means “weak public contract.”
 
 Carrying the descriptor is intentional progressive disclosure. Most Flows
 carry none. A Flow which depends on a strict capability seam pays for one small,
