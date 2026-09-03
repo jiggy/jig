@@ -4,6 +4,19 @@ import { defineConfig } from "@rspress/core";
 
 const siteDirectory = import.meta.dirname;
 
+const researchSidebar = [
+  {
+    text: "Research",
+    items: [
+      { text: "Use cases", link: "/use-cases" },
+      {
+        text: "Candidate orchestration patterns",
+        link: "/orchestration-patterns",
+      },
+    ],
+  },
+];
+
 export default defineConfig({
   root: resolve(siteDirectory, "../../docs/jig"),
   outDir:
@@ -20,38 +33,13 @@ export default defineConfig({
   themeConfig: {
     nav: [
       { text: "Quickstart", link: "/guide/" },
-      { text: "Use cases", link: "/use-cases/" },
+      { text: "Use cases", link: "/use-cases" },
       { text: "FLOW", link: "https://flow.jig.md/" },
       { text: "GitHub", link: "https://github.com/jigmd/jig" },
     ],
     sidebar: {
-      "/use-cases/": [
-        {
-          text: "Use cases",
-          items: [
-            { text: "Overview and method", link: "/use-cases/" },
-            { text: "Case catalogue", link: "/use-cases/catalogue" },
-            { text: "Pattern handbook", link: "/use-cases/patterns" },
-          ],
-        },
-        {
-          text: "Specified briefs",
-          items: [
-            {
-              text: "Confidential benchmark",
-              link: "/use-cases/confidential-benchmark",
-            },
-            {
-              text: "Underpayment reconstruction",
-              link: "/use-cases/underpayment-reconstruction",
-            },
-            {
-              text: "Futureproof event plan",
-              link: "/use-cases/futureproof-event-plan",
-            },
-          ],
-        },
-      ],
+      "/use-cases": researchSidebar,
+      "/orchestration-patterns": researchSidebar,
       "/spec/": [
         {
           text: "Jig direct alpha",

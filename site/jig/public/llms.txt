@@ -4,9 +4,8 @@ Jig is a local, secure host for admitted FLOW packages.
 
 - Landing page: https://jig.md/
 - Direct-alpha guide: https://jig.md/guide/
-- Use-case evaluation method: https://jig.md/use-cases/
-- Non-normative case catalogue: https://jig.md/use-cases/catalogue
-- Non-normative pattern handbook: https://jig.md/use-cases/patterns
+- Non-normative use cases: https://jig.md/use-cases
+- Candidate orchestration patterns: https://jig.md/orchestration-patterns
 - Project Authoring SDK: https://jig.md/spec/project-sdk
 - Project and execution policy: https://jig.md/spec/project-policy
 - Agent Run capability: https://jig.md/spec/agent-run

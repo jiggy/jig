@@ -30,8 +30,10 @@ the reviewed proposal into admission.
 
 - The [repository quickstart](https://github.com/jigmd/jig#quickstart) provides
   a complete first Flow and the supported-host requirements.
-- The [use-case research](../use-cases/) separates evaluated case families,
-  specified probe briefs, orchestration patterns, and evidence maturity.
+- The [use-case catalogue](../use-cases.md) records uniformly scoped product
+  hypotheses for future probes and tutorials.
+- [Candidate orchestration patterns](../orchestration-patterns.md) records the
+  reusable methods those use cases may test.
 - [Project Authoring SDK/1](../spec/project-sdk.md) defines inert `jig.ts` and
   Binding authoring values.
 - [Project and execution policy](../spec/project-policy.md) defines capture,
