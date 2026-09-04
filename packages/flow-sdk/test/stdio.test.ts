@@ -26,7 +26,9 @@ test("handle reserves protocol stdout and redirects ordinary logs", async () => 
   const output = await new Response(child.stdout).text();
   const error = await new Response(child.stderr).text();
   expect(await child.exited).toBe(0);
-  expect(error).toBe("handler log\nhandler info\nhandler debug\nafter handle\n");
+  expect(error).toBe(
+    "handler log\nhandler info\nhandler debug\nimported library log\nafter handle\n",
+  );
   expect(output.endsWith("\n")).toBe(true);
   expect(JSON.parse(output)).toEqual({
     jsonrpc: "2.0",

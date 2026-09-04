@@ -1,7 +1,7 @@
 # FLOW Run SDK/1
 
 > *Status: prerelease SDK projection of [`FLOW Run/1`](run-protocol.md). The
-> TypeScript implementation is `@jigging/flow@0.1.0-alpha.3`; the Python
+> TypeScript implementation is `@jigging/flow@0.1.0-alpha.4`; the Python
 > implementation is not yet published.*
 
 This document fixes the public component-author interface for the Run/1
@@ -32,16 +32,18 @@ The TypeScript projection additionally names `FlowCall`, `EffectCall`, and
 arguments and uses ordinary task cancellation.
 
 `handle` owns protocol stdin and stdout for the process and handles exactly one
-root Run. After it assumes ownership, the TypeScript SDK routes ordinary
-`console.log()`, `console.info()`, and `console.debug()` output to stderr and
-the Python SDK routes ordinary `print()` and `sys.stdout` output to stderr. The
-redirection remains installed after the one-shot call so later application
-output cannot become trailing protocol bytes.
+root Run. The TypeScript SDK captures its transport first, then replaces the
+global console with one backed by stderr; an imported library that reads the
+current global console during the handler is therefore safe. The Python SDK
+routes ordinary `print()` and `sys.stdout` output to stderr. Redirection remains
+installed after the one-shot call so later application output cannot become
+trailing protocol bytes.
 
-Output written before `handle` begins and raw writes to stdout or file
-descriptor 1 remain invalid protocol output. Bare Run/1 implementations are
-responsible for keeping protocol stdout clean. The SDK never treats malformed
-protocol output as a log.
+Top-level import output, a console/stdout reference cached before `handle`, raw
+writes to stdout or file descriptor 1, and a child process inheriting stdout
+remain invalid protocol output. Bare Run/1 implementations are responsible for
+keeping protocol stdout clean. The SDK never treats malformed protocol output
+as a log.
 
 Calling other protocol, resolver, host-configuration, provider, sandbox,
 administration, Agent, or graph APIs through this SDK is impossible because

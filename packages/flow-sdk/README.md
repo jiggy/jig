@@ -2,7 +2,7 @@
 
 Minimal, dependency-free TypeScript projection of FLOW Run/1.
 
-This is the prerelease `0.1.0-alpha.3` package. Its authoritative documents
+This is the prerelease `0.1.0-alpha.4` package. Its authoritative documents
 are the [Run SDK/1](https://flow.jig.md/spec/run-sdk) and
 [Run/1](https://flow.jig.md/spec/run-protocol) specifications.
 
@@ -12,7 +12,7 @@ Declare the exact alpha in the FLOW package's `package.json`:
 {
   "private": true,
   "dependencies": {
-    "@jigging/flow": "0.1.0-alpha.3"
+    "@jigging/flow": "0.1.0-alpha.4"
   }
 }
 ```
@@ -39,11 +39,13 @@ await handle(async (run: RunContext): Promise<RunResult> => {
 ```
 
 `handle()` owns the process's protocol stdin and stdout and handles exactly one
-root Run. Once called, it routes ordinary `console.log()`, `console.info()`, and
-`console.debug()` output to diagnostic stderr, including output after
-`handle()` returns. Output written before `handle()` begins and raw writes to
-stdout remain invalid protocol output. Root cancellation is exposed through
-`run.signal`.
+root Run. It captures the transport first, then replaces the global console
+with one backed by diagnostic stderr, including after `handle()` returns. An
+imported library that reads the current global `console` while the handler runs
+is therefore safe. Top-level import logging, a console method cached before
+`handle()`, raw writes to stdout or file descriptor 1, and child processes that
+inherit stdout remain invalid protocol output. Root cancellation is exposed
+through `run.signal`.
 
 Run/1 also defines `run.callFlow()` and `run.callEffect()` as portable
 operations. Jig supplies `callFlow()` only when the invoked Binding maps that
