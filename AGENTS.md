@@ -3,10 +3,12 @@
 ## Maintainer re-entry
 
 Before selecting or expanding product work, read
-[`.agents/maintainer-reentry.md`](.agents/maintainer-reentry.md), then inspect
-Git, package registries, and current automation for present state. Read
-[`.agents/ROADMAP.md`](.agents/ROADMAP.md) for ordered long-term outcome gates;
-transient task lists and status reports belong in `.tmp/`.
+[`.agents/product-compass.md`](.agents/product-compass.md) for enduring product
+intent and [`.agents/maintainer-reentry.md`](.agents/maintainer-reentry.md) for
+engineering memory, then inspect Git, package registries, and current
+automation for present state. Read [`.agents/ROADMAP.md`](.agents/ROADMAP.md)
+for ordered long-term outcome gates; transient task lists and status reports
+belong in `.tmp/`.
 
 ## No prerelease compatibility
 

@@ -9,6 +9,9 @@ substitute for executable evidence. It explains how the pieces fit and why the
 important boundaries exist. Follow the applicable `AGENTS.md` files for binding
 work rules and the public documentation for current product behavior.
 
+Read the [`product compass`](product-compass.md) first when the product's
+purpose, audience, differentiation, or end state is not already clear.
+
 ## The one-minute model
 
 Jig is a small, local, fail-closed host for reviewed FLOW packages:
@@ -51,6 +54,7 @@ Use the narrowest canonical owner instead of copying mutable facts here:
 
 | Question | Canonical source |
 | --- | --- |
+| Why does this product exist? | [`product-compass.md`](product-compass.md) |
 | What rules bind this edit? | Root and nearest applicable `AGENTS.md` files |
 | What can a user do now? | [`README.md`](../README.md) and public documentation under [`docs/`](../docs/) |
 | What does FLOW mean? | Normative material under [`docs/flow/spec/`](../docs/flow/spec/) |

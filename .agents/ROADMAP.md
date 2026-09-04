@@ -5,6 +5,9 @@ status report, or promise that every later capability will be implemented.
 Current work and blockers belong in `.tmp/`; shipped behavior belongs in the
 public documentation and executable evidence.
 
+The enduring product intent and decision test live in
+[`product-compass.md`](product-compass.md); this file owns only outcome order.
+
 ## Ordering rule
 
 Each stage must produce one useful end-to-end result before the next stage may

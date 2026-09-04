@@ -2,11 +2,14 @@
 
 ## Purpose
 
-Owns the mutable internal orientation, recovery, and long-term planning that
-maintainers need, plus project-maintained skills for external libraries.
+Owns the durable product compass, mutable internal orientation, recovery, and
+long-term planning that maintainers need, plus project-maintained skills for
+external libraries.
 
 ## Ownership
 
+- `product-compass.md` preserves the enduring product intent, audience,
+  tradeoffs, end state, and decision test.
 - `maintainer-reentry.md` explains the project's stable mental models,
   engineering lessons, and working method.
 - `ROADMAP.md` orders long-term outcome gates without becoming a task tracker.
@@ -26,6 +29,9 @@ maintainers need, plus project-maintained skills for external libraries.
 - Edit these living records in place. Do not add dated snapshots, current
   blockers, release anomalies, or per-agent memoirs; Git and `.tmp/` preserve
   those histories.
+- Keep `product-compass.md` about why the product exists. Current behavior,
+  implementation mechanics, roadmap order, and research catalogues retain
+  their existing owners.
 - Before an approved vertical, use one transient `.tmp/` pre-mortem when it
   helps coordination. Promote only stable rules, decisions, and recovery gates
   into tracked documents when the vertical closes.
