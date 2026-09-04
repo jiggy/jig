@@ -29,6 +29,11 @@ that identifier as a compatibility or migration obligation.
 Preserve compatibility only when the user explicitly requires it for an
 already released external interface.
 
+This removal rule governs active product, test, schema, and normative
+documentation surfaces. It does not erase selected non-normative recovery
+landmarks or historical field notes isolated under `.agents/`; those records
+must remain explicitly subordinate and must never load a compatibility path.
+
 ---
 
 # DOX framework
@@ -95,7 +100,8 @@ Default section order:
 - Put broad rules in parent docs and concrete details in child docs
 - Prefer direct bullets with explicit names
 - Do not duplicate rules across many files unless each scope needs a local version
-- Delete stale notes instead of explaining history
+- Delete stale instructions from living docs instead of explaining history
+  there; keep only selected evidence in its designated non-normative owner
 - Trim obvious statements, repeated rules, misplaced detail, and warnings for risks that no longer exist
 
 ## Closeout
@@ -128,7 +134,8 @@ Default section order:
   they are evaluating.
 - Keep public material under `docs/`. Put internal engineering orientation,
   recovery indexes, and long-term planning under `.agents/`; keep per-vertical
-  pre-mortems and dated reports in `.tmp/` and promote only durable conclusions.
+  pre-mortems and dated reports in `.tmp/` and promote only durable conclusions
+  or exceptional causal evidence to their designated owners.
 - Historically valuable first-person engineering evidence may be promoted to
   `.agents/field-notes/` when Git and the living guides cannot preserve its
   causality. Field notes are optional, non-normative evidence and must never
@@ -141,8 +148,8 @@ Default section order:
 
 ## Child DOX Index
 
-- [.agents/AGENTS.md](.agents/AGENTS.md) — Internal maintainer orientation,
-  recovery and planning records, plus repository-native agent skills.
+- [.agents/AGENTS.md](.agents/AGENTS.md) — Internal product orientation,
+  recovery, planning, optional field notes, and repository-native agent skills.
 - [.github/AGENTS.md](.github/AGENTS.md) — Continuous integration, release,
   host-conformance, and public-site automation.
 - [conformance/AGENTS.md](conformance/AGENTS.md) — Implementation-independent

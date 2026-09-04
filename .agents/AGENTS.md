@@ -59,4 +59,3 @@ plus project-maintained skills for external libraries.
 
 - [field-notes/AGENTS.md](field-notes/AGENTS.md) — Optional non-normative
   engineering retrospectives and historical causal evidence.
-- `skills/` — Repository-native skills and their maintained references.

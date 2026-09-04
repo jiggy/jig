@@ -4,7 +4,7 @@
 - **Recorder:** Primary Codex maintainer session; no durable session identifier
   was recorded
 - **Evidence window:** Repository history through `b528e2a`
-**Scope:** Causal lessons from the exploratory platform work, direct-Run alpha,
+- **Scope:** Causal lessons from the exploratory platform work, direct-Run alpha,
 and first Agent integrations
 
 Current product intent lives in [`../product-compass.md`](../product-compass.md),
