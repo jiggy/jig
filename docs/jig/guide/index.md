@@ -17,7 +17,7 @@ jig run <target> [--input JSON] [--timeout DURATION]
 Install the current alpha directly from npm:
 
 ```console
-npm install --global @jigging/jig@0.1.0-alpha.7
+npm install --global @jigging/jig@0.1.0-alpha.8
 ```
 
 `jig init --bare my-project` creates a new project directory; the destination
@@ -51,7 +51,18 @@ When a `flow.ts` imports `@jigging/flow` or another production dependency,
 first create that package's own `package.json`, then run
 `bun install --lockfile-only` from the package directory with Bun 1.3.3. Keep
 the resulting text `bun.lock`, but do not place `node_modules` in the Flow
-package; `jig check` prepares the admitted dependency tree.
+package. Lock generation is author-side and may use the network and Bun's
+author-side cache even though it creates no project-local `node_modules`. On
+the first `jig check` after those inputs change, Jig downloads and installs the exact production tree through a
+contained trusted preparation process with default-registry network access and
+lifecycle scripts disabled. A declined Plan may therefore leave retained inert
+preparation evidence without admitting it.
+
+For unreleased code, prefer readable package-local source and relative imports.
+A monorepo may copy or bundle shared code into the finished Flow package before
+`jig check`; Jig does not resolve symlinks, `file:`, `workspace:`, or Git
+dependencies and does not own that author-side step. `jig run` never installs
+or fetches dependencies.
 
 The Jig-specific machine files are published under
 [`/schemas/`](https://jig.md/schemas/project-authoring-1.schema.json). FLOW's
@@ -77,12 +88,15 @@ One experimental [Agent Run capability](../spec/agent-run.md) is also
 available through ordinary Run/1 `effect/call`. An Agent-capable Flow carries
 the exact Jig-owned descriptor, may project an explicit package-local skill
 subset, and can use the structured result to select one of its Binding's exact
-child slots. The host may call the OpenAI Responses API directly or run native
-Codex, Claude Code, or Pi through one private ACP mechanism. OpenRouter is only
-an explicit gateway flavor selected with `OPENROUTER_MODEL` and
-`OPENROUTER_API_KEY`; it is never the default. Client, model, executable path,
-and credentials are trusted host configuration. There is no package-selected
-provider, provider registry, or semantic router.
+child slots. The host may use the official OpenAI JavaScript SDK against an
+operator-selected OpenAI-compatible endpoint, or run native Codex, Claude
+Code, or Pi through one private ACP mechanism. Direct configuration uses
+`OPENAI_API_KEY` and `OPENAI_MODEL`; optional `OPENAI_BASE_URL` and `OPENAI_API`
+select the HTTPS endpoint and either the `responses` (default) or
+`chat-completions` wire shape. Jig supplies no default model. Client, API,
+endpoint, model, executable path, and credentials are trusted host
+configuration. There is no package-selected provider, provider registry, or
+semantic router.
 
 Root Runs default to 30 seconds. `--timeout` accepts a positive integer plus
 `ms`, `s`, `m`, or `h`, up to 24 hours. Children share the parent's remaining

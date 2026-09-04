@@ -127,11 +127,13 @@ separately, so an eligible target can still be unavailable on this host.
 The first alpha host has one exact recipe: `flow.ts` run by Bun inside the
 rootless execution envelope. A package with production dependencies supplies
 ordinary root `package.json` and text `bun.lock` files and omits generated
-`node_modules`. During planning, Jig prepares the frozen production tree with
-the fixed Bun installer in the same envelope, lifecycle scripts disabled, and
-only default-registry integrity-pinned sources accepted. Unsupported or
-unlocked dependency sources fail closed before an applicable Plan is
-published.
+`node_modules`. Package-local source modules imported by relative path need no
+dependency entry. During planning, Jig prepares the frozen production tree
+with the fixed Bun installer through the same containment and ownership
+mechanism used by a Run, lifecycle scripts disabled, and only default-registry
+integrity-pinned sources accepted. Unlike a Run, the trusted preparation scope
+has registry network access. Unsupported or unlocked dependency sources fail
+closed before an applicable Plan is published.
 
 Preparation ignores ambient configuration: the worker and installer receive
 no ambient variables or env file, only fixed loader support, `/dev/null` as
@@ -144,6 +146,13 @@ workspace, custom-registry, and non-integrity lock entries are rejected before
 the trusted installer starts a fetch. A default-registry npm alias is accepted
 only when the resolved lock tuple names that registry and carries supported
 SRI integrity.
+
+Unreleased or monorepo-owned code must therefore be materialized as regular
+files inside the captured Flow package and imported relatively. Copying or
+bundling those files is an author-toolchain concern, not a Jig workspace or
+build protocol. Symlinks and hardlinks whose complete link set cannot be
+proved inside the captured package remain invalid; fully contained hardlinks
+are captured as independent regular-file records.
 
 The admitted target pins the separately retained prepared Package/1 while the
 portable lock continues to identify the reviewed source Package/1. A Run
@@ -433,11 +442,11 @@ cgroup controls, general devices, inherited descriptors, project source,
 `.jig`, or host-control channels.
 
 The Agent implementation is a separate bounded process. The host may use the
-official OpenAI client and Responses API directly, or select native Codex,
-Claude Code, or Pi through one private ACP mechanism. OpenRouter is only an
-explicit gateway flavor selected with `OPENROUTER_MODEL` and
-`OPENROUTER_API_KEY`; it is never the default. Jig supplies no default API
-model. Client, model, executable path, and credentials are trusted host
+official OpenAI JavaScript SDK against an operator-selected OpenAI-compatible
+endpoint, or select native Codex, Claude Code, or Pi through one private ACP
+mechanism. Direct configuration uses either the `responses` (default) or
+`chat-completions` wire shape. Jig supplies no default model. Client, API,
+endpoint, model, executable path, and credentials are trusted host
 configuration, not FLOW or Binding inputs.
 
 Among workload processes, only the selected Agent scope receives its bounded

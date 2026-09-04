@@ -15,7 +15,7 @@ authority they need or fail closed.
 ## Install
 
 ```console
-npm install --global @jigging/jig@0.1.0-alpha.7
+npm install --global @jigging/jig@0.1.0-alpha.8
 ```
 
 Installing Jig also installs `@oven/bun-linux-x64-baseline@1.3.3` as an exact
@@ -64,7 +64,7 @@ Place packages under `flows/<name>/`. Each package has exact-case `FLOW.md`
 and, for this alpha, one `flow.ts`. The generated `jig.ts`
 explicitly discovers `./flows` and `./bindings`.
 
-The paired `@jigging/flow@0.1.0-alpha.3` package provides the small Run/1
+The paired `@jigging/flow@0.1.0-alpha.4` package provides the small Run/1
 authoring API. Declare it exactly in the Flow's `package.json`, generate a text
 `bun.lock` with Bun 1.3.3 and `bun install --lockfile-only`, then handle one
 finite Run:
@@ -100,10 +100,21 @@ evidence changes. Package digests appear once in the package section;
 host-specific evidence remains private.
 
 For ordinary dependencies, place `package.json` and text `bun.lock` beside
-`flow.ts`; do not include `node_modules`. `jig check` prepares the frozen
-production dependency tree inside the same rootless envelope, using the fixed
-Bun runtime, the default npm registry, and no lifecycle scripts. Unsupported
-or unlocked sources fail before admission.
+`flow.ts`; do not include `node_modules`. `bun install --lockfile-only` is the
+author-side lock-generation step: it creates no project-local `node_modules`,
+but may use the network and Bun's author-side cache. On the first `jig check`
+after those inputs change, Jig downloads and installs the frozen production dependency tree
+in a contained trusted preparation process, using the fixed Bun runtime, the
+default npm registry, and no lifecycle scripts. It reuses the Run containment
+and ownership mechanism but deliberately has registry network access. A
+declined review may therefore have prepared bytes without granting authority.
+Unsupported or unlocked sources fail before admission.
+
+Unreleased code can remain ordinary readable files inside the Flow package and
+be imported relatively. Code shared from elsewhere must be copied or bundled
+into the finished package before `jig check`; Jig does not follow symlinks or
+resolve `file:`, `workspace:`, or Git dependencies and does not own that build
+step.
 
 A dependency-free package needs no `bun.lock`; omit it rather than preserving
 an empty or stale lock. Optional package schemas are FLOW Schema/1 files and
@@ -150,12 +161,15 @@ concurrent calls receive `RESOURCE_EXHAUSTED`, while sequential calls remain
 available.
 
 One experimental [Agent Run capability](https://jig.md/spec/agent-run) is
-available through ordinary Run/1 `effect/call`. The host may call the OpenAI
-Responses API directly or run native Codex, Claude Code, or Pi through one
-private ACP mechanism. OpenRouter is only an explicit gateway flavor selected
-with `OPENROUTER_MODEL` and `OPENROUTER_API_KEY`; it is never the default.
-Client, model, executable path, and credentials are trusted host configuration,
-not FLOW or Binding inputs. Jig exposes no provider registry.
+available through ordinary Run/1 `effect/call`. The host may use the official
+OpenAI JavaScript SDK against an operator-selected OpenAI-compatible endpoint,
+or run native Codex, Claude Code, or Pi through one private ACP mechanism.
+Direct API configuration uses `OPENAI_API_KEY` and `OPENAI_MODEL`; optional
+`OPENAI_BASE_URL` and `OPENAI_API` select the HTTPS endpoint and either the
+`responses` (default) or `chat-completions` wire shape. Jig supplies no default
+model. Client, API, endpoint, model, executable path, and credentials are
+trusted host configuration, not FLOW or Binding inputs, and Jig exposes no
+provider registry.
 
 The complete runnable example and current specification map are in the
 [repository README](https://github.com/jigmd/jig#readme) and
