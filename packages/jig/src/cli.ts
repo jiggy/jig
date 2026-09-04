@@ -26,7 +26,7 @@ import {
 
 const HELP = `Usage:
   jig init --bare <directory>
-  jig check [project] [--yes]
+  jig review [project] [--yes]
   jig run <flow:path|binding:id> [--input JSON] [--timeout DURATION]`;
 
 const textEncoder = new TextEncoder();
@@ -86,7 +86,7 @@ export async function main(
 
   try {
     if (arguments_[0] === "init") return await executeInit(arguments_, runtime);
-    if (arguments_[0] === "check") return await executeCheck(arguments_, runtime);
+    if (arguments_[0] === "review") return await executeReview(arguments_, runtime);
     if (arguments_[0] === "run") return await executeRun(arguments_, runtime);
     runtime.writeError(`${HELP}\n`);
     return 2;
@@ -101,13 +101,13 @@ export async function main(
 
 /** Whether the installed command needs to acquire the private execution host. */
 export function privateCliRequiresHost(arguments_: readonly string[]): boolean {
-  return !isHelpRequest(arguments_) && (arguments_[0] === "check" || arguments_[0] === "run");
+  return !isHelpRequest(arguments_) && (arguments_[0] === "review" || arguments_[0] === "run");
 }
 
 function isHelpRequest(arguments_: readonly string[]): boolean {
   const help = arguments_.at(-1) === "--help" || arguments_.at(-1) === "-h";
   return help && (arguments_.length === 1 || arguments_.length === 2 &&
-    (arguments_[0] === "init" || arguments_[0] === "check" || arguments_[0] === "run"));
+    (arguments_[0] === "init" || arguments_[0] === "review" || arguments_[0] === "run"));
 }
 
 async function executeInit(arguments_: readonly string[], runtime: CliRuntime): Promise<number> {
@@ -128,8 +128,8 @@ async function executeInit(arguments_: readonly string[], runtime: CliRuntime): 
   }
 }
 
-async function executeCheck(arguments_: readonly string[], runtime: CliRuntime): Promise<number> {
-  const parsed = parseCheck(arguments_, runtime.currentDirectory);
+async function executeReview(arguments_: readonly string[], runtime: CliRuntime): Promise<number> {
+  const parsed = parseReview(arguments_, runtime.currentDirectory);
   return await withProjectSession(parsed.project, runtime, async (session) => {
     const plan = await session.plan({ lockMode: "update" });
     if (plan.state === "unchanged") {
@@ -146,9 +146,15 @@ async function executeCheck(arguments_: readonly string[], runtime: CliRuntime):
           2,
         );
       }
-      const accepted = await runtime.confirm("Apply these project changes? [y/N] ", runtime.signal);
+      const accepted = await runtime.confirm(
+        "Admit this exact project revision? [y/N] ",
+        runtime.signal,
+      );
       if (!accepted) {
-        runtime.writeError(renderDiagnostic("JIG_CHANGES_DECLINED", "project changes were not applied"));
+        runtime.writeError(renderDiagnostic(
+          "JIG_CHANGES_DECLINED",
+          "project changes were not admitted",
+        ));
         return 1;
       }
     }
@@ -179,7 +185,7 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
   return status.terminal.status === "succeeded" ? 0 : status.terminal.status === "failed" ? 1 : 2;
 }
 
-function parseCheck(
+function parseReview(
   arguments_: readonly string[],
   currentDirectory: string,
 ): { readonly project: string; readonly yes: boolean } {

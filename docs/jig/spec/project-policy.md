@@ -176,7 +176,7 @@ none of the preparation count or output budget. One package accepts at most
 
 Source, author-closure, and prepared Package/1 artifacts share one protected
 content-addressed store. Its fixed limits are 64 MiB per canonical artifact
-and 1 GiB per project. Check may retain immutable evidence even when the Plan
+and 1 GiB per project. Review may retain immutable evidence even when the Plan
 is later declined or superseded; that evidence still consumes the cap. The
 alpha performs no implicit garbage collection. Existing exact artifacts can
 be reused at the cap, but a new artifact fails closed until the closed
@@ -184,7 +184,7 @@ project's protected `.jig` state is intentionally removed along with its local
 admission and Run history. There is no selective reclamation command in this
 alpha.
 
-### Why preparation belongs to `check`
+### Why preparation belongs to `review`
 
 Requiring every TypeScript author to bundle dependencies was rejected because
 it replaces Bun's ordinary manifest-and-lock workflow with a Jig-specific
@@ -192,8 +192,8 @@ packaging chore. Installing during `run` was also rejected: execution would
 then depend on mutable registry state, network availability, installer side
 effects, and a larger live authority boundary.
 
-Preparation at `check` keeps both useful properties. Authors use normal Bun
-inputs, while review and admission still pin every byte that execution can
+Preparation during `review` keeps both useful properties. Authors use normal
+Bun inputs, while review and admission still pin every byte that execution can
 load. The prepared tree is not a second user lock or a portable FLOW concept;
 it is private content-addressed host evidence. Bundling remains an optional
 authoring choice for packages that prefer a self-contained source tree.

@@ -16,7 +16,7 @@ product is already useful or when independent evidence favors a simpler path.
 
 ## Outcome gates
 
-1. **Direct local Flow.** A new user can install Jig, initialize and check one
+1. **Direct local Flow.** A new user can install Jig, initialize and review one
    project, run one exact admitted Flow or Binding, receive a finite result,
    and leave no execution residue.
 2. **Exact composition.** A Binding can map a small closed set of child slots,

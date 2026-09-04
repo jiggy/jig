@@ -2,7 +2,7 @@
 
 Minimal, dependency-free TypeScript projection of FLOW Run/1.
 
-This is the prerelease `0.1.0-alpha.4` package. Its authoritative documents
+This is the prerelease `0.1.0-alpha.5` package. Its authoritative documents
 are the [Run SDK/1](https://flow.jig.md/spec/run-sdk) and
 [Run/1](https://flow.jig.md/spec/run-protocol) specifications.
 
@@ -12,7 +12,7 @@ Declare the exact alpha in the FLOW package's `package.json`:
 {
   "private": true,
   "dependencies": {
-    "@jigging/flow": "0.1.0-alpha.4"
+    "@jigging/flow": "0.1.0-alpha.5"
   }
 }
 ```
@@ -25,7 +25,7 @@ bun install --lockfile-only
 
 Keep `package.json` and `bun.lock` beside `flow.ts`; do not add `node_modules`
 to the FLOW package. Jig's direct-run alpha prepares that locked dependency
-during `jig check`; the admitted Run then reuses the prepared package without
+during `jig review`; the admitted Run then reuses the prepared package without
 installing or fetching.
 
 Finite work uses `handle()`:
@@ -42,10 +42,26 @@ await handle(async (run: RunContext): Promise<RunResult> => {
 root Run. It captures the transport first, then replaces the global console
 with one backed by diagnostic stderr, including after `handle()` returns. An
 imported library that reads the current global `console` while the handler runs
-is therefore safe. Top-level import logging, a console method cached before
-`handle()`, raw writes to stdout or file descriptor 1, and child processes that
-inherit stdout remain invalid protocol output. Root cancellation is exposed
-through `run.signal`.
+is therefore safe. Logging from modules evaluated before `handle()`, a console
+method cached before `handle()`, raw writes to stdout or file descriptor 1, and
+child processes that inherit stdout remain invalid protocol output. Root
+cancellation is exposed through `run.signal`.
+
+If an application library logs through `console` while its module is first
+evaluated, import the application graph dynamically after `handle()` owns the
+channel:
+
+```ts
+import { handle } from "@jigging/flow";
+
+await handle(async (run) => {
+  const { runFlow } = await import("./application.js");
+  return runFlow(run);
+});
+```
+
+This also protects console methods cached by that later module graph. It does
+not make raw stdout or inherited child stdout valid protocol output.
 
 Run/1 also defines `run.callFlow()` and `run.callEffect()` as portable
 operations. Jig supplies `callFlow()` only when the invoked Binding maps that

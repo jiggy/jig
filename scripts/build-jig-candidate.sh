@@ -139,7 +139,7 @@ fi
 "$npm_jig" --help > "$temporary/npm-help"
 for expected in \
   "  jig init --bare <directory>" \
-  "  jig check [project] [--yes]" \
+  "  jig review [project] [--yes]" \
   "  jig run <flow:path|binding:id> [--input JSON] [--timeout DURATION]"
 do
   if ! grep -F -x "$expected" "$temporary/npm-help" >/dev/null; then

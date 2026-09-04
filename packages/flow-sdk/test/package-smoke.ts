@@ -74,7 +74,7 @@ try {
     await readFile(join(installed, "package.json"), "utf8"),
   ) as Record<string, unknown>;
   assert.equal(Object.hasOwn(manifest, "private"), false);
-  assert.equal(manifest.version, "0.1.0-alpha.4");
+  assert.equal(manifest.version, "0.1.0-alpha.5");
   assert.equal(manifest.license, "Apache-2.0");
   assert.deepEqual(manifest.publishConfig, { access: "public" });
   assert.equal(manifest.types, "./dist/index.d.ts");
@@ -134,7 +134,7 @@ console.log("packed after handle");
     },
   })}\n`;
   for (const runtime of [bun, node]) {
-    const handled = await run([runtime, "root-flow.mjs"], consumer, request);
+    const handled = await run([runtime, "root-flow.mjs"], consumer, request, true);
     assert.equal(handled.stderr, "packed handler log\npacked after handle\n");
     assert.deepEqual(JSON.parse(handled.stdout), {
       jsonrpc: "2.0",
@@ -145,6 +145,41 @@ console.log("packed after handle");
           input: { source: "packed-archive" },
           settings: { mode: "root-only" },
         },
+      },
+    });
+  }
+
+  await writeFile(
+    join(consumer, "application.mjs"),
+    `console.log("packed application top-level log");
+const cachedLog = console.log.bind(console);
+export function runFlow(run) {
+  cachedLog("packed application cached log");
+  return { outcome: "done", output: { input: run.input } };
+}
+`,
+  );
+  await writeFile(
+    join(consumer, "dynamic-root-flow.mjs"),
+    `import { handle } from "@jigging/flow";
+await handle(async (run) => {
+  const { runFlow } = await import("./application.mjs");
+  return runFlow(run);
+});
+`,
+  );
+  for (const runtime of [bun, node]) {
+    const handled = await run([runtime, "dynamic-root-flow.mjs"], consumer, request, true);
+    assert.equal(
+      handled.stderr,
+      "packed application top-level log\npacked application cached log\n",
+    );
+    assert.deepEqual(JSON.parse(handled.stdout), {
+      jsonrpc: "2.0",
+      id: "package:smoke",
+      result: {
+        outcome: "done",
+        output: { input: { source: "packed-archive" } },
       },
     });
   }
@@ -219,7 +254,12 @@ async function selectArchive(artifacts: string): Promise<string> {
   return join(artifacts, packed[0]!);
 }
 
-async function run(command: string[], cwd: string, input?: string): Promise<{
+async function run(
+  command: string[],
+  cwd: string,
+  input?: string,
+  keepInputOpen = false,
+): Promise<{
   readonly stdout: string;
   readonly stderr: string;
 }> {
@@ -230,7 +270,7 @@ async function run(command: string[], cwd: string, input?: string): Promise<{
     stderr: "pipe",
   });
   if (input !== undefined) process.stdin.write(input);
-  process.stdin.end();
+  if (!keepInputOpen) process.stdin.end();
   const timeout = setTimeout(() => process.kill(), 30_000);
   const [exitCode, stdout, stderr] = await Promise.all([
     process.exited,

@@ -87,11 +87,11 @@ project-relative path of another selected Flow package which is eligible as a
 direct Flow target. The Binding cannot select its own package through a slot.
 Omitting `slots` normalizes to `{}`.
 
-Slots are exact project links, not requests for later resolution. Check binds
-each slot to the named direct Flow target in the same candidate, and apply
-admits that complete relation into one immutable generation. Slots belong only
-to the Binding declaration: running the package through its `flow:` identity
-has no slots, even when a Binding for that package does.
+Slots are exact project links, not requests for later resolution. Project
+review binds each slot to the named direct Flow target in the same candidate,
+and admission retains that complete relation in one immutable generation.
+Slots belong only to the Binding declaration: running the package through its
+`flow:` identity has no slots, even when a Binding for that package does.
 
 This alpha has no project attachment mapping. A selected FLOW package may
 declare attachments as portable package metadata, but it cannot then be a

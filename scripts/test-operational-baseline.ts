@@ -49,7 +49,7 @@ try {
   assert.equal(initialized.stderr, "");
 
   await writeMalformedFlow(project);
-  const malformed = await run([jig, "check", project, "--yes"], consumer, [1], 120_000);
+  const malformed = await run([jig, "review", project, "--yes"], consumer, [1], 120_000);
   assert.equal(malformed.stdout, "");
   assert.equal(
     malformed.stderr,
@@ -65,7 +65,7 @@ try {
   await writeLockedDependencyFlow(project);
   await writeMissingDependencyFlow(project);
 
-  const approved = await run([jig, "check", project, "--yes"], consumer, [0], 120_000);
+  const approved = await run([jig, "review", project, "--yes"], consumer, [0], 120_000);
   assert.match(approved.stdout, /^Jig project plan review\n/);
   assert.match(approved.stdout, /\nproject is ready\n$/);
   assert.equal(approved.stderr, "");
@@ -101,7 +101,7 @@ try {
   );
   await mkdir(preparationGuard, { mode: 0o700 });
   try {
-    const unchanged = await run([jig, "check", project, "--yes"], consumer, [0], 120_000);
+    const unchanged = await run([jig, "review", project, "--yes"], consumer, [0], 120_000);
     assert.deepEqual(unchanged, { stdout: "project is ready\n", stderr: "", exitCode: 0 });
   } finally {
     await rm(preparationGuard, { recursive: true, force: true });

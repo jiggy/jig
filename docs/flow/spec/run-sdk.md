@@ -1,7 +1,7 @@
 # FLOW Run SDK/1
 
 > *Status: prerelease SDK projection of [`FLOW Run/1`](run-protocol.md). The
-> TypeScript implementation is `@jigging/flow@0.1.0-alpha.4`; the Python
+> TypeScript implementation is `@jigging/flow@0.1.0-alpha.5`; the Python
 > implementation is not yet published.*
 
 This document fixes the public component-author interface for the Run/1
@@ -39,11 +39,18 @@ routes ordinary `print()` and `sys.stdout` output to stderr. Redirection remains
 installed after the one-shot call so later application output cannot become
 trailing protocol bytes.
 
-Top-level import output, a console/stdout reference cached before `handle`, raw
-writes to stdout or file descriptor 1, and a child process inheriting stdout
-remain invalid protocol output. Bare Run/1 implementations are responsible for
-keeping protocol stdout clean. The SDK never treats malformed protocol output
-as a log.
+Output from modules evaluated before `handle`, a console/stdout reference
+cached before `handle`, raw writes to stdout or file descriptor 1, and a child
+process inheriting stdout remain invalid protocol output. Bare Run/1
+implementations are responsible for keeping protocol stdout clean. The SDK
+never treats malformed protocol output as a log.
+
+A TypeScript entrypoint may import only `handle` statically and dynamically
+import its application module from the handler. In that form the SDK installs
+console redirection before evaluating the later application graph, including
+its top-level console calls and any console methods it then caches. This is an
+authoring pattern, not a second SDK operation, and it does not make raw stdout
+or inherited child stdout valid.
 
 Calling other protocol, resolver, host-configuration, provider, sandbox,
 administration, Agent, or graph APIs through this SDK is impossible because

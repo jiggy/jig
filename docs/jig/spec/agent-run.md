@@ -205,7 +205,7 @@ Flow may make additional sequential calls within its admitted slots.
 
 Every implementation below serves the same Agent Run contract. A Flow cannot
 select a client, endpoint, model, executable, or credential. Those are trusted
-host configuration used by both `jig check` and `jig run`.
+host configuration used by both `jig review` and `jig run`.
 
 With `JIG_AGENT_CLIENT` unset, Jig uses the official OpenAI JavaScript SDK for
 one direct API call. The operator supplies:
@@ -262,7 +262,7 @@ client only the bounded credential projection needed for one provider
 lifetime. Credential sources are not mounted. The selected non-secret client,
 API, endpoint, model, and exact executable/support identities enter provider
 identity and the reviewed Plan; secrets do not. Changing non-secret behavior
-requires another `jig check` and approval, while rotating only the selected
+requires another `jig review` and approval, while rotating only the selected
 credential does not.
 
 The Flow remains in its ordinary network-isolated, keyless sandbox. Direct API
@@ -282,11 +282,11 @@ and neither setting is a promise about an endpoint's retention or training
 policy.
 
 If the selected client, executable support, credential, or model is missing or
-invalid, checking an Agent-bearing target reports it unavailable. A
+invalid, reviewing an Agent-bearing target reports it unavailable. A
 capability-free target in an already admitted generation remains runnable
 because its recipe does not depend on the Agent implementation.
 
-`jig check` authenticates and admits the selected local configuration. It does
+`jig review` authenticates and admits the selected local configuration. It does
 not send a remote health-check request, so `ready` does not assert that a model
 endpoint is currently reachable or accepting requests.
 

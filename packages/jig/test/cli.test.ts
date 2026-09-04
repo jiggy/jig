@@ -200,17 +200,17 @@ test("concurrent bare initializers have exactly one winner", async () => {
 describe("finite Jig project commands", () => {
   const digest = `sha256:${"a".repeat(64)}`;
 
-  test("help exposes only init, check, and run", async () => {
+  test("help exposes only init, review, and run", async () => {
     for (const arguments_ of [
       ["--help"],
       ["init", "--help"],
-      ["check", "-h"],
+      ["review", "-h"],
       ["run", "--help"],
     ]) {
       const invocation = commandInvocation(unusedHost());
       expect(await main(arguments_, invocation.options)).toBe(0);
       expect(invocation.output).toContain("jig init --bare <directory>");
-      expect(invocation.output).toContain("jig check [project] [--yes]");
+      expect(invocation.output).toContain("jig review [project] [--yes]");
       expect(invocation.output).toContain(
         "jig run <flow:path|binding:id> [--input JSON] [--timeout DURATION]",
       );
@@ -221,20 +221,24 @@ describe("finite Jig project commands", () => {
     const removed = commandInvocation(unusedHost());
     expect(await main(["package", "check", "."], removed.options)).toBe(2);
     expect(removed.error).toContain("Usage:");
+
+    const superseded = commandInvocation(unusedHost());
+    expect(await main(["check"], superseded.options)).toBe(2);
+    expect(superseded.error).toContain("Usage:");
   });
 
-  test("check plans a fixed update and closes one unchanged session", async () => {
+  test("review plans a fixed update and closes one unchanged session", async () => {
     const events: string[] = [];
     const host = fakeHost(fakeSession(events), events);
     const invocation = commandInvocation(host);
 
-    expect(await main(["check"], invocation.options)).toBe(0);
+    expect(await main(["review"], invocation.options)).toBe(0);
     expect(events).toEqual(["acquire:/project", "plan:update", "close"]);
     expect(invocation.output).toBe("project is ready\n");
     expect(invocation.error).toBe("");
   });
 
-  test("check reviews and applies an opaque token within the same session", async () => {
+  test("review applies its opaque proposal within the same session", async () => {
     const events: string[] = [];
     const plan: ProjectPlanResult = {
       state: "applicable",
@@ -245,7 +249,7 @@ describe("finite Jig project commands", () => {
     const host = fakeHost(fakeSession(events, { plan }), events);
     const invocation = commandInvocation(host);
 
-    expect(await main(["check", "workspace", "--yes"], invocation.options)).toBe(0);
+    expect(await main(["review", "workspace", "--yes"], invocation.options)).toBe(0);
     expect(events).toEqual([
       "acquire:workspace",
       "plan:update",
@@ -258,7 +262,7 @@ describe("finite Jig project commands", () => {
     expect(invocation.error).toBe("");
   });
 
-  test("check requires TTY confirmation unless --yes is explicit", async () => {
+  test("review requires TTY confirmation unless --yes is explicit", async () => {
     const plan: ProjectPlanResult = {
       state: "applicable",
       operation: "lock-repair",
@@ -269,7 +273,7 @@ describe("finite Jig project commands", () => {
     const nonInteractive = commandInvocation(
       fakeHost(fakeSession(nonInteractiveEvents, { plan }), nonInteractiveEvents),
     );
-    expect(await main(["check"], nonInteractive.options)).toBe(2);
+    expect(await main(["review"], nonInteractive.options)).toBe(2);
     expect(nonInteractiveEvents).toEqual(["acquire:/project", "plan:update", "close"]);
     expect(nonInteractive.output).toBe("review\n");
     expect(nonInteractive.error).toBe(
@@ -288,10 +292,10 @@ describe("finite Jig project commands", () => {
         },
       },
     );
-    expect(await main(["check"], declined.options)).toBe(1);
-    expect(prompt).toBe("Apply these project changes? [y/N] ");
+    expect(await main(["review"], declined.options)).toBe(1);
+    expect(prompt).toBe("Admit this exact project revision? [y/N] ");
     expect(declinedEvents).toEqual(["acquire:/project", "plan:update", "close"]);
-    expect(declined.error).toBe("JIG_CHANGES_DECLINED: project changes were not applied\n");
+    expect(declined.error).toBe("JIG_CHANGES_DECLINED: project changes were not admitted\n");
   });
 
   test("run uses the current project, explicit Flow target, default input, and no planning", async () => {
@@ -414,7 +418,7 @@ describe("finite Jig project commands", () => {
     expect(privateCliCommandLifetimeMs(["run", "flow:flows/work", "--timeout", "invalid"])).toBe(
       300_000,
     );
-    expect(privateCliCommandLifetimeMs(["check"])).toBe(300_000);
+    expect(privateCliCommandLifetimeMs(["review"])).toBe(300_000);
   });
 
   test("run parses bounded JSON/1 and maps failure and loss to stable exits", async () => {
@@ -461,7 +465,7 @@ describe("finite Jig project commands", () => {
     expect(input.error).toBe("JIG_RUN_INPUT_INVALID: --input must be FLOW JSON/1\n");
 
     const usage = commandInvocation(unusedHost());
-    expect(await main(["check", "--yes", "project"], usage.options)).toBe(2);
+    expect(await main(["review", "--yes", "project"], usage.options)).toBe(2);
     expect(usage.error).toContain("Usage:");
   });
 
@@ -487,7 +491,7 @@ describe("finite Jig project commands", () => {
     const invocation = commandInvocation({
       async acquire() { throw new Error("ENOENT /private/project/.jig/store.sqlite"); },
     });
-    expect(await main(["check", "project", "--yes"], invocation.options)).toBe(2);
+    expect(await main(["review", "project", "--yes"], invocation.options)).toBe(2);
     expect(invocation.error).toBe(
       "JIG_COMMAND_UNAVAILABLE: the command could not be completed\n",
     );
@@ -506,7 +510,7 @@ describe("finite Jig project commands", () => {
     );
     const invocation = commandInvocation(fakeHost(fakeSession(events, { planFailure: failure }), events));
 
-    expect(await main(["check", "--yes"], invocation.options)).toBe(1);
+    expect(await main(["review", "--yes"], invocation.options)).toBe(1);
     expect(events).toEqual(["acquire:/project", "plan:update", "close"]);
     expect(invocation.output).toBe("");
     expect(invocation.error).toBe(
@@ -529,7 +533,7 @@ describe("finite Jig project commands", () => {
     );
     const invocation = commandInvocation(fakeHost(fakeSession(events, { planFailure: failure }), events));
 
-    expect(await main(["check", "--yes"], invocation.options)).toBe(2);
+    expect(await main(["review", "--yes"], invocation.options)).toBe(2);
     expect(events).toEqual(["acquire:/project", "plan:update", "close"]);
     expect(invocation.output).toBe("");
     expect(invocation.error).toBe(

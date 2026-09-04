@@ -17,7 +17,7 @@ hero:
 
 features:
   - title: Three commands
-    details: Initialize a bare project, review it with jig check, and execute an exact target with jig run.
+    details: Initialize a bare project, review it with jig review, and execute an exact target with jig run.
     icon: "3"
   - title: One review boundary
     details: Source proposes. Explicit review admits one immutable project generation. Live files never silently become execution authority.

@@ -10,22 +10,22 @@ deliberately exposes one finite product path:
 
 ```text
 jig init --bare <directory>
-jig check [project] [--yes]
+jig review [project] [--yes]
 jig run <target> [--input JSON] [--timeout DURATION]
 ```
 
 Install the current alpha directly from npm:
 
 ```console
-npm install --global @jigging/jig@0.1.0-alpha.8
+npm install --global @jigging/jig@0.1.0-alpha.9
 ```
 
 `jig init --bare my-project` creates a new project directory; the destination
 must not already exist. Add packages beneath `flows/`, review them with
-`jig check`, and run an admitted `flow:<path>` or `binding:<id>` target.
-Interactive `jig check` asks for approval. In a noninteractive environment,
+`jig review`, and run an admitted `flow:<path>` or `binding:<id>` target.
+Interactive `jig review` asks for approval. In a noninteractive environment,
 inspect its review and rerun it with `--yes` only when approval is explicit.
-There is no separate apply command: the same finite `check` invocation carries
+There is no separate apply command: the same finite `review` invocation carries
 the reviewed proposal into admission.
 
 - The [repository quickstart](https://github.com/jigmd/jig#quickstart) provides
@@ -53,14 +53,15 @@ first create that package's own `package.json`, then run
 the resulting text `bun.lock`, but do not place `node_modules` in the Flow
 package. Lock generation is author-side and may use the network and Bun's
 author-side cache even though it creates no project-local `node_modules`. On
-the first `jig check` after those inputs change, Jig downloads and installs the exact production tree through a
-contained trusted preparation process with default-registry network access and
-lifecycle scripts disabled. A declined Plan may therefore leave retained inert
+the first `jig review` after those inputs change, Jig fetches the exact locked
+artifacts and materializes a private execution snapshot through a contained
+trusted preparation process with default-registry network access and lifecycle
+scripts disabled. A declined review may therefore leave retained inert
 preparation evidence without admitting it.
 
 For unreleased code, prefer readable package-local source and relative imports.
 A monorepo may copy or bundle shared code into the finished Flow package before
-`jig check`; Jig does not resolve symlinks, `file:`, `workspace:`, or Git
+`jig review`; Jig does not resolve symlinks, `file:`, `workspace:`, or Git
 dependencies and does not own that author-side step. `jig run` never installs
 or fetches dependencies.
 

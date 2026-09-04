@@ -5,17 +5,17 @@ has one finite command surface:
 
 ```text
 jig init --bare <directory>
-jig check [project] [--yes]
+jig review [project] [--yes]
 jig run <flow:path|binding:id> [--input JSON] [--timeout DURATION]
 ```
 
-There is no `jig setup`. `check` and `run` transparently acquire the rootless
+There is no `jig setup`. `review` and `run` transparently acquire the rootless
 authority they need or fail closed.
 
 ## Install
 
 ```console
-npm install --global @jigging/jig@0.1.0-alpha.8
+npm install --global @jigging/jig@0.1.0-alpha.9
 ```
 
 Installing Jig also installs `@oven/bun-linux-x64-baseline@1.3.3` as an exact
@@ -64,7 +64,7 @@ Place packages under `flows/<name>/`. Each package has exact-case `FLOW.md`
 and, for this alpha, one `flow.ts`. The generated `jig.ts`
 explicitly discovers `./flows` and `./bindings`.
 
-The paired `@jigging/flow@0.1.0-alpha.4` package provides the small Run/1
+The paired `@jigging/flow@0.1.0-alpha.5` package provides the small Run/1
 authoring API. Declare it exactly in the Flow's `package.json`, generate a text
 `bun.lock` with Bun 1.3.3 and `bun install --lockfile-only`, then handle one
 finite Run:
@@ -79,7 +79,7 @@ await handle(async (run) => ({
 ```
 
 ```console
-jig check
+jig review
 jig run flow:flows/example --input '{}'
 ```
 
@@ -87,7 +87,7 @@ For a longer Run, add a bounded duration such as `--timeout 2m`. The timeout
 starts when Jig accepts the root Run. Project acquisition happens before it;
 mandatory fencing and cleanup may finish afterward.
 
-`jig check` shows the complete proposed project change, including exact
+`jig review` shows the complete proposed project change, including exact
 current and proposed Package/1 content digests, and asks for approval. It is
 not a source-file diff; inspect editable source with your normal tools. When
 standard input and output are both terminals, Jig prompts for approval.
@@ -102,17 +102,18 @@ host-specific evidence remains private.
 For ordinary dependencies, place `package.json` and text `bun.lock` beside
 `flow.ts`; do not include `node_modules`. `bun install --lockfile-only` is the
 author-side lock-generation step: it creates no project-local `node_modules`,
-but may use the network and Bun's author-side cache. On the first `jig check`
-after those inputs change, Jig downloads and installs the frozen production dependency tree
-in a contained trusted preparation process, using the fixed Bun runtime, the
-default npm registry, and no lifecycle scripts. It reuses the Run containment
-and ownership mechanism but deliberately has registry network access. A
-declined review may therefore have prepared bytes without granting authority.
-Unsupported or unlocked sources fail before admission.
+but may use the network and Bun's author-side cache. On the first `jig review`
+after those inputs change, Jig fetches the frozen production artifacts and
+materializes a private execution snapshot in a contained trusted preparation
+process, using the fixed Bun runtime, the default npm registry, and no
+lifecycle scripts. It reuses the Run containment and ownership mechanism but
+deliberately has registry network access. A declined review may therefore have
+materialized inert evidence without granting authority. Unsupported or
+unlocked sources fail before admission.
 
 Unreleased code can remain ordinary readable files inside the Flow package and
 be imported relatively. Code shared from elsewhere must be copied or bundled
-into the finished package before `jig check`; Jig does not follow symlinks or
+into the finished package before `jig review`; Jig does not follow symlinks or
 resolve `file:`, `workspace:`, or Git dependencies and does not own that build
 step.
 
@@ -124,7 +125,7 @@ must begin with the exact root declaration
 The admitted Run uses only the retained prepared bytes. It has no network,
 ambient `PATH`, package installation, or lifecycle scripts. Packages with no
 runtime dependencies continue to run directly, and already bundled
-package-local code remains valid. An unchanged `jig check` reuses the admitted
+package-local code remains valid. An unchanged `jig review` reuses the admitted
 prepared tree only while its source and host evidence still match.
 
 Bindings use an explicit target. A declaration may also give its package exact

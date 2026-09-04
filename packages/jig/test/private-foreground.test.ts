@@ -42,7 +42,7 @@ describe("private foreground command boundary", () => {
 });
 
 proofDescribe("private rootless project session", () => {
-  test("keeps unavailable Agent configuration out of capability-free check and Run", async () => {
+  test("keeps unavailable Agent configuration out of capability-free review and Run", async () => {
     const root = await mkdtemp(join(tmpdir(), "jig-private-agent-isolation-"));
     let session: Awaited<ReturnType<typeof openPrivateProjectSession>> | undefined;
     try {

@@ -331,7 +331,7 @@ async function rejectGeneratedNodeModules(handle: FileHandle, projectPath: strin
   }
   invalid(
     "PACKAGE_BUN_NODE_MODULES",
-    "node_modules is generated state; remove it and let jig check prepare the locked dependencies",
+    "node_modules is generated state; remove it and let jig review prepare the locked dependencies",
     `${projectPath}/node_modules`,
   );
 }

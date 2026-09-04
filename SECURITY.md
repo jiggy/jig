@@ -19,7 +19,7 @@ rootless owner state before reporting completion.
 
 Project evaluation, the fixed dependency installer, and the fixed Agent
 provider worker use the same containment mechanism in separate scopes. The
-preparation worker inherits networking only during `jig check`; it validates
+preparation worker inherits networking only during `jig review`; it validates
 the authored lock before the fixed installer's first fetch. The Agent worker
 inherits networking only for an admitted Agent `effect/call`. The host may use
 the official OpenAI JavaScript SDK against an operator-selected HTTPS endpoint
@@ -52,7 +52,7 @@ The alpha does not defend against:
   operating-system user;
 - physical access or compromise outside the supported host; or
 - denial of service within the documented resource ceilings or through
-  bounded content-addressed storage retained while a project is checked.
+  bounded content-addressed storage retained while a project is reviewed.
 
 An unsupported host or missing containment capability fails closed. Do not
 replace cgroup-v2 ownership with `ulimit`, per-process accounting,
@@ -82,7 +82,7 @@ for one root Run. The table's CPU, memory, and PID ceilings apply to each
 scope, not to their combined total. Every child operation's wall deadline is
 capped by the parent's remaining deadline.
 
-After bounded project capture, one `jig check` dependency-planning phase uses
+After bounded project capture, one `jig review` dependency-planning phase uses
 one 180-second cancellation deadline, performs at most 16 distinct dependency
 preparations, and accepts at most 256 MiB of prepared file content across
 them. Each contained preparation has the earlier 60-second hard deadline.
@@ -90,11 +90,11 @@ Each accepts at most 4,096 source files and 16 MiB of source content, and
 produces at most 4,096 files and 32 MiB of prepared content.
 
 The protected Package/1 store accepts at most 64 MiB per canonical artifact
-and 1 GiB per project. Checking may retain content-addressed source and
+and 1 GiB per project. Review may retain content-addressed source and
 prepared artifacts before the user approves a Plan. Declined and superseded
 artifacts therefore continue to consume the same fixed cap; Jig does not
 silently garbage-collect review evidence in this alpha. Exact retained bytes
-remain reusable at the cap, while a check requiring any new artifact fails
+remain reusable at the cap, while a review requiring any new artifact fails
 closed. This alpha has no selective reclamation command. Reclaiming space
 requires closing Jig and intentionally removing the project's protected
 `.jig` state, which also discards its local admission and Run history.

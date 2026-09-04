@@ -9,7 +9,7 @@ provides three commands:
 
 ```text
 jig init --bare <directory>
-jig check [project] [--yes]
+jig review [project] [--yes]
 jig run <flow:path|binding:id> [--input JSON] [--timeout DURATION]
 ```
 
@@ -32,12 +32,12 @@ The required host shape is:
 
 The glibc and SSE4.2 floors come from the selected Bun baseline runtime.
 
-Installing `@jigging/jig@0.1.0-alpha.8` also installs the exact external
+Installing `@jigging/jig@0.1.0-alpha.9` also installs the exact external
 runtime dependency `@oven/bun-linux-x64-baseline@1.3.3`. Bun is not embedded in
 or bundled with Jig. npm verifies the installed package; Jig selects only that
 closed package-local path, authenticates its version, revision, and digest
 before evaluator or Flow bytes execute, and revalidates it before each launch.
-`check` and `run` acquire a transient delegated scope without `sudo` or a
+`review` and `run` acquire a transient delegated scope without `sudo` or a
 host-control channel exposed to Flow code.
 
 Flow Runs default to 30 seconds. `jig run --timeout DURATION` accepts a
@@ -53,7 +53,7 @@ are documented in [SECURITY.md](SECURITY.md).
 Install the alpha with npm:
 
 ```console
-npm install --global @jigging/jig@0.1.0-alpha.8
+npm install --global @jigging/jig@0.1.0-alpha.9
 ```
 
 Create a project and one Flow package:
@@ -81,7 +81,7 @@ Declare the exact FLOW SDK in `flows/hello/package.json`:
 {
   "private": true,
   "dependencies": {
-    "@jigging/flow": "0.1.0-alpha.4"
+    "@jigging/flow": "0.1.0-alpha.5"
   }
 }
 ```
@@ -112,15 +112,15 @@ await handle(async (run) => {
 Review and admit the project:
 
 ```console
-jig check
+jig review
 ```
 
-`jig check` displays the complete project change, including the exact current
+`jig review` displays the complete project change, including the exact current
 and proposed Package/1 content digests, and asks for approval. It does not
 replace reviewing editable source with your editor or version-control tools.
 When both standard input and output are terminals, Jig prompts for approval.
 Otherwise it prints the review and exits with `JIG_APPROVAL_REQUIRED`; inspect
-that output, then use `jig check --yes` only when approval is explicit. The CLI
+that output, then use `jig review --yes` only when approval is explicit. The CLI
 carries its internal review token; users do not manage plan IDs or admission
 records.
 
@@ -189,17 +189,18 @@ Do not add `node_modules` to the FLOW package. Generate the lock with Bun
 1.3.3—for example, `bun install --lockfile-only`. That author-side command
 writes the lock without creating project-local `node_modules`; it may still
 resolve dependencies over the network and populate Bun's author-side cache. On
-the first `jig check` after a manifest or lock change, Jig downloads and
-installs the exact locked production tree in a contained trusted preparation
-process. It reuses the Run containment and ownership mechanism, but deliberately
-has default-registry network access; lifecycle scripts remain disabled. A
-declined review may therefore have performed preparation even though it grants
-no execution authority. Unsupported sources fail during `check`.
+the first `jig review` after a manifest or lock change, Jig fetches the exact
+locked artifacts and materializes a private execution snapshot in a contained
+trusted preparation process. It reuses the Run containment and ownership
+mechanism, but deliberately has default-registry network access; lifecycle
+scripts remain disabled. A declined review may therefore have materialized
+inert evidence even though it grants no execution authority. Unsupported
+sources fail during review.
 
 For an unreleased library, put its readable source under the Flow package and
 import it relatively. If a monorepo owns the library elsewhere, materialize
 ordinary source or bundled files into the finished Flow package before
-`jig check`. Jig does not follow symlinks or resolve `file:`, `workspace:`, or
+`jig review`. Jig does not follow symlinks or resolve `file:`, `workspace:`, or
 Git dependencies, and it does not own that author-side build step. Here,
 bundling only means that author tooling emits dependency code as ordinary
 package-local files; it is optional, not an installation protocol.
@@ -216,7 +217,7 @@ Jig retains the prepared tree beside the reviewed source package and pins it
 in the admitted target. `jig run` then uses only those retained bytes, with no
 network, installation, lifecycle scripts, or ambient `PATH`. Bundling a
 dependency into package-local files remains valid, but is no longer required.
-An unchanged later `jig check` reuses the exact admitted tree when the source,
+An unchanged later `jig review` reuses the exact admitted tree when the source,
 runtime, and containment evidence still match; missing or changed evidence
 fails closed or is prepared again before another review.
 

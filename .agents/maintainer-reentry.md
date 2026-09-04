@@ -126,7 +126,7 @@ not evidence for a plugin system or public SPI.
 These invariants protect authority and uncertainty. Simplifying them away is
 not product simplification.
 
-1. **Planning is authority-neutral, not read-only.** Checking may capture,
+1. **Planning is authority-neutral, not read-only.** Review may capture,
    evaluate, prepare, and retain evidence. Before confirmation it must not
    modify visible project meaning, grant execution authority, or run package
    code.

@@ -75,7 +75,7 @@ try {
     return { escapedDeadline: true };
   `);
 
-  const approved = await run([jig, "check", project, "--yes"], consumer, [0], 120_000);
+  const approved = await run([jig, "review", project, "--yes"], consumer, [0], 120_000);
   assert.match(approved.stdout, /\nproject is ready\n$/);
   assert.equal(approved.stderr, "");
 
