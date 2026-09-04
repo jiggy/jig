@@ -63,13 +63,17 @@ Use the narrowest canonical owner instead of copying mutable facts here:
 | How is a release built and published? | [`RELEASING.md`](../RELEASING.md), manifests, and [`.github/AGENTS.md`](../.github/AGENTS.md) |
 | What outcomes come later? | [`ROADMAP.md`](ROADMAP.md) |
 | Where can deleted proof work be recovered? | [`suspended-experiments.md`](suspended-experiments.md) |
+| Where is optional first-person historical context? | [`field-notes/`](field-notes/) |
 | What is happening right now? | Git, current automation, and disposable `.tmp/` notes |
 
 On return, inspect the worktree and recent commits before acting. Compare the
 checkout with relevant remotes, package registries, tags, and automation rather
 than trusting an old report. Treat existing changes as someone else's until
-their ownership is understood. Read only the specifications relevant to the
-selected work; the re-entry path should not require loading the entire archive.
+their ownership is understood. Never reset or clean them to reconstruct the
+past. Stage exact paths and inspect `git diff --cached --name-only` before each
+commit. Read only the specifications relevant to the selected work; the
+re-entry path should not require loading the entire archive or optional field
+notes.
 
 ## Ownership boundaries
 
@@ -136,28 +140,32 @@ not product simplification.
    competing coordinators or authority issuers for the same project.
 6. **Approval consumes retained meaning.** It reopens reviewed bytes and never
    silently evaluates newer visible source.
-7. **One admitted generation executes.** Root and child resolution never use a
+7. **Visible lock publication precedes admission.** A crash between writing
+   the durable portable lock and the admission compare-and-set leaves the old
+   complete authority plus an inert lock. Replaying the retained proposal may
+   converge it; mixed authority is never exposed.
+8. **One admitted generation executes.** Root and child resolution never use a
    live directory or mutable catalogue.
-8. **Validate both sides.** Validate input before package code runs and validate
+9. **Validate both sides.** Validate input before package code runs and validate
    the declared outcome and result before success.
-9. **Intent precedes dispatch.** Durable request identity and content exist
+10. **Intent precedes dispatch.** Durable request identity and content exist
    before package or provider effects begin. Changed reuse conflicts.
-10. **Unknown dispatch stays unknown.** Possibly dispatched work is fenced, not
+11. **Unknown dispatch stays unknown.** Possibly dispatched work is fenced, not
     guessed successful or automatically sent again.
-11. **Support and launch authority differ.** Reproducible mechanism support may
+12. **Support and launch authority differ.** Reproducible mechanism support may
     be reviewed; ephemeral execution authority is reacquired and revalidated
     immediately before use.
-12. **Success follows fencing.** A valid response is insufficient until the
+13. **Success follows fencing.** A valid response is insufficient until the
     complete descendant tree is fenced, reaped, cleaned, and the result is
     admitted.
-13. **Cleanup outlives the coordinator.** A bounded owner must settle possibly
+14. **Cleanup outlives the coordinator.** A bounded owner must settle possibly
     launched work even when the coordinating process disappears.
-14. **Close revokes authority.** Closing a project session prevents new starts,
+15. **Close revokes authority.** Closing a project session prevents new starts,
     settles owned work, releases exclusive ownership, and preserves durable
     records.
-15. **Executable failure stays failure.** Missing runtime or provider support
+16. **Executable failure stays failure.** Missing runtime or provider support
     never turns prose into equivalent executable behavior.
-16. **Public failures are bounded.** Credentials and private host, store,
+17. **Public failures are bounded.** Credentials and private host, store,
     runtime, sandbox, and coordinator details never cross the user boundary.
 
 Durable machinery is justified by an observed authority, crash, uncertainty,
@@ -195,10 +203,11 @@ Backend boundary. One mechanism alone has not earned it.
 
 ## Dependency preparation and local development
 
-`jig check` is the authority-neutral point where exact locked production
-dependencies may be downloaded and prepared after relevant source changes.
-`jig run` performs no installation, network lookup, lifecycle script, or
-ambient runtime discovery; it consumes only retained admitted bytes.
+The current review operation is the authority-neutral point where exact locked
+artifacts may be fetched and a private execution snapshot materialized after
+relevant source changes. This is not an installation into the project or host.
+`jig run` performs no fetching, dependency materialization, lifecycle script,
+or ambient runtime discovery; it consumes only retained admitted bytes.
 
 The supported preparation is deliberately narrower than a general package
 manager. It accepts exact integrity-bearing packages from the fixed default npm
@@ -283,6 +292,8 @@ live in the root [`AGENTS.md`](../AGENTS.md). The durable method is:
 - give an independent builder only public artifacts, public documentation, the
   requested outcome, and explicit limits;
 - prohibit changes to the platform while it is being consumed;
+- record exact artifacts, public documents, commands, failed attempts, elapsed
+  time, bounded diagnostics, cleanup, and the claims proved or not proved;
 - include a malformed or failure case; and
 - deliberate separately before changing Jig or FLOW.
 
@@ -314,6 +325,14 @@ risk, or external ownership. Difficulty alone is not a blocker. A precise
 missing credential, infrastructure capability, external authority, or product
 choice is.
 
+Once an outcome boundary is agreed, carry it through implementation, focused
+proof, deletion of superseded work, and a stable commit. Own ordinary research,
+code, CI, and documentation work rather than handing it to the project owner.
+Ask the owner only for actual authority, credentials, external ownership, or a
+material product decision. Prefer evidence-backed disagreement and a smaller
+alternative to automatic agreement, and stop polishing a vertical once its
+first-release proof is sufficient.
+
 Completing a phase proves its bounded outcome; it does not select the next
 phase. The long-term ordering lives in [`ROADMAP.md`](ROADMAP.md). Current
 tasks and blockers are disposable operational state, not additions to this
@@ -334,6 +353,9 @@ Keep every claim smaller than its evidence. In particular:
 External reviewers are useful adversaries, not project authorities. Verify
 their claims, accept corrections supported by evidence, explain disagreements,
 and never implement a report wholesale.
+
+A skipped test, filtered hostile case, timed-out aggregate, or interrupted
+suite is not a pass. State the exact evidence that completed.
 
 ## Final note
 

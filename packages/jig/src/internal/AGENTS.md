@@ -25,6 +25,10 @@ child calls, and Agent providers.
   execute. Never execute mutable project source or stale host evidence.
 - Flow code receives no ambient host authority. Minimize environment, mounts,
   executables, network, credentials, and capabilities explicitly.
+- The networked Bun preparation worker currently receives the complete captured
+  package. Preserve the existing executable/configuration prohibitions and do
+  not widen that view; prefer a manifest-and-lock-only projection when a
+  concrete input seam can provide it without adding package-manager machinery.
 - Provider credentials are host configuration and must not enter Flow input,
   project state, artifacts, diagnostics, or unrelated provider processes.
 - Deadlines and cancellation fence descendants, settle each terminal once,

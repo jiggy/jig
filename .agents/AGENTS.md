@@ -2,9 +2,9 @@
 
 ## Purpose
 
-Owns the durable product compass, mutable internal orientation, recovery, and
-long-term planning that maintainers need, plus project-maintained skills for
-external libraries.
+Owns the durable product compass, mutable internal orientation, recovery,
+long-term planning, and optional historical field notes that maintainers need,
+plus project-maintained skills for external libraries.
 
 ## Ownership
 
@@ -15,6 +15,8 @@ external libraries.
 - `ROADMAP.md` orders long-term outcome gates without becoming a task tracker.
 - `suspended-experiments.md` points to deleted experiments only when their
   evidence may be useful under an explicit reconsideration gate.
+- `field-notes/` preserves selected first-person causal evidence without making
+  it current architecture or required re-entry reading.
 - `skills/` contains tracked skill entrypoints, guides, and references.
 - Product behavior, public API documentation, and user guides belong outside
   `.agents/`.
@@ -26,9 +28,11 @@ external libraries.
 - Binding work rules belong in the applicable `AGENTS.md`. Explanatory
   rationale belongs in `maintainer-reentry.md`; recovery landmarks belong in
   `suspended-experiments.md`.
-- Edit these living records in place. Do not add dated snapshots, current
-  blockers, release anomalies, or per-agent memoirs; Git and `.tmp/` preserve
-  those histories.
+- Edit the compass, re-entry guide, roadmap, and recovery index in place. Do
+  not put dated snapshots, current blockers, or release anomalies in them.
+- Promote a retrospective to `field-notes/` only when it preserves useful
+  first-hand causality that Git and the living records cannot. It remains
+  non-normative, is never default reading, and must not carry current status.
 - Keep `product-compass.md` about why the product exists. Current behavior,
   implementation mechanics, roadmap order, and research catalogues retain
   their existing owners.
@@ -53,4 +57,6 @@ external libraries.
 
 ## Child DOX Index
 
+- [field-notes/AGENTS.md](field-notes/AGENTS.md) — Optional non-normative
+  engineering retrospectives and historical causal evidence.
 - `skills/` — Repository-native skills and their maintained references.

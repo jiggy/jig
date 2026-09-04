@@ -129,6 +129,10 @@ Default section order:
 - Keep public material under `docs/`. Put internal engineering orientation,
   recovery indexes, and long-term planning under `.agents/`; keep per-vertical
   pre-mortems and dated reports in `.tmp/` and promote only durable conclusions.
+- Historically valuable first-person engineering evidence may be promoted to
+  `.agents/field-notes/` when Git and the living guides cannot preserve its
+  causality. Field notes are optional, non-normative evidence and must never
+  become a competing source of current product truth.
 - Use `@jigging/*` package names for now. Keep FLOW technically and publicly
   distinct from Jig while retaining the monorepo until separation has concrete
   value.

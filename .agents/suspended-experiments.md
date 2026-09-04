@@ -33,7 +33,9 @@ read with `git show commit:path`.
   `b9f9473^:packages/jig/src/internal/linux-cgroup-backend.ts` and
   `6aa93e1:docs/design-review/105-phase-2-linux-cgroup-proof.md`. `b9f9473`
   replaced it with the canonical rootless path. Reuse hostile-test lessons,
-  but never restore its host authority as a fallback.
+  but never restore its host authority as a fallback. The local
+  `wip/rootless-durable-backend` branch at `507a841` is transition evidence,
+  not a pending merge.
 - **Nix runtime retention:** the lab branch is
   `experiments/nix-runtime-retention` at `d34ccb6`; quarantine and correction
   commits are `d6a0ad2` and `7ebd25f`; disposition is
