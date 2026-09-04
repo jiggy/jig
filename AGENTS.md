@@ -3,10 +3,10 @@
 ## Maintainer re-entry
 
 Before selecting or expanding product work, read
-[`docs/maintainer-reentry.md`](docs/maintainer-reentry.md) and verify its dated
-state snapshot against Git, package registries, and current automation. Treat
-the stable boundaries and stop rules as current guidance; treat recorded
-versions and checkpoints as facts to re-check.
+[`.agents/maintainer-reentry.md`](.agents/maintainer-reentry.md), then inspect
+Git, package registries, and current automation for present state. Read
+[`.agents/ROADMAP.md`](.agents/ROADMAP.md) for ordered long-term outcome gates;
+transient task lists and status reports belong in `.tmp/`.
 
 ## No prerelease compatibility
 
@@ -116,10 +116,17 @@ Default section order:
 - Never absorb a development sandbox, proof-host package manager, credential,
   model, or other local limitation into Jig or FLOW architecture. Ask for the
   exact generic environment capability or report its absence.
-- Keep design probes disposable under `.tmp/design-probes-round-*`. Independent
+- Agent clients, endpoints, credentials, and models are trusted host choices,
+  never FLOW inputs or development defaults. Keep compatible endpoints named
+  by the wire API they actually implement and keep native clients thin over
+  the shared ACP lifecycle so future clients do not require FLOW changes.
+- Keep design probes disposable under `.tmp/design-probes-*`. Independent
   probe agents receive published artifacts and public documentation, not
   internal source, roadmaps, old probes, or permission to modify the platform
   they are evaluating.
+- Keep public material under `docs/`. Put internal engineering orientation,
+  recovery indexes, and long-term planning under `.agents/`; keep per-vertical
+  pre-mortems and dated reports in `.tmp/` and promote only durable conclusions.
 - Use `@jigging/*` package names for now. Keep FLOW technically and publicly
   distinct from Jig while retaining the monorepo until separation has concrete
   value.
@@ -128,14 +135,14 @@ Default section order:
 
 ## Child DOX Index
 
-- [.agents/AGENTS.md](.agents/AGENTS.md) — Repository-native agent skills and
-  their maintained guidance and reference sources.
+- [.agents/AGENTS.md](.agents/AGENTS.md) — Internal maintainer orientation,
+  recovery and planning records, plus repository-native agent skills.
 - [.github/AGENTS.md](.github/AGENTS.md) — Continuous integration, release,
   host-conformance, and public-site automation.
 - [conformance/AGENTS.md](conformance/AGENTS.md) — Implementation-independent
   executable evidence for versioned FLOW protocol candidates.
-- [docs/AGENTS.md](docs/AGENTS.md) — Specifications, current product guidance,
-  research catalogues, and recovery records.
+- [docs/AGENTS.md](docs/AGENTS.md) — Public specifications, current product
+  guidance, and research catalogues.
 - [packages/AGENTS.md](packages/AGENTS.md) — Publishable SDK and Jig host
   implementations, with their package-local tests and artifacts.
 - [scripts/AGENTS.md](scripts/AGENTS.md) — Build, verification,

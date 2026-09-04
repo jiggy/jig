@@ -2,28 +2,25 @@
 
 ## Purpose
 
-Owns the normative specifications, current product guidance, research
-catalogues, and recovery records for FLOW and Jig.
+Owns public normative specifications, current product guidance, and research
+catalogues for FLOW and Jig.
 
 ## Ownership
 
 - `flow/` owns portable FLOW meaning and explanatory FLOW guidance.
 - `jig/` owns Jig host contracts, current guidance, and product research.
-- `maintainer-reentry.md` owns the living orientation, invariant, historical
-  lesson, and current-frontier guide for returning maintainers.
-- `suspended-experiments.md` is a recovery index for deleted work.
 - `site/` renders and publishes this content; it does not own its meaning.
+- `AGENTS.md` is repository-operational metadata and is not public site
+  content.
 
 ## Local Contracts
 
-- Classify a document as specification, current guide, research, or recovery.
+- Classify a document as specification, current guide, or research.
   Do not mix those levels of authority.
 - Specifications define requirements. Guides explain shipped behavior and
   defer to specifications. Research records hypotheses and evidence gates,
   never availability or roadmap commitments.
 - Link to the canonical owner instead of duplicating rules across documents.
-- Git history preserves superseded designs. Recovery records do not make old
-  designs current or compatible.
 - Check `LICENSES.md` before moving content between documentation classes;
   their licenses differ.
 
