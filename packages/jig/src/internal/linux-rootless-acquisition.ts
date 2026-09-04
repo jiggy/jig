@@ -25,6 +25,7 @@ const REQUIRED_BUBBLEWRAP_FEATURES = Object.freeze([
   "--die-with-parent",
   "--new-session",
   "--clearenv",
+  "--ro-bind",
   "--remount-ro",
   "--cap-drop",
 ] as const);
@@ -268,7 +269,12 @@ function bubblewrapFeatureProbe(path: string): readonly string[] {
     "--die-with-parent",
     "--new-session",
     "--clearenv",
-    "--ro-bind", "/", "/",
+    // This fixed trusted probe needs the host root only to execute Bubblewrap
+    // and its loader. Keep that bootstrap mount separate from the small
+    // read-only bind used to exercise --ro-bind: recursively remounting the
+    // host root read-only tests unrelated host submounts which no Run sees.
+    "--bind", "/", "/",
+    "--ro-bind", path, path,
     "--proc", "/proc",
     "--remount-ro", "/proc",
     "--dev", "/dev",
