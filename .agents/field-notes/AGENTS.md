@@ -20,7 +20,9 @@ lost from Git diffs or made misleading if placed in a living guide.
 - Field notes are optional research material, never required maintainer re-entry
   reading and never a source of current status, blockers, interfaces, or tasks.
 - Include the date, recorder or session label when known, evidence window,
-  scope, and links to current canonical owners.
+  scope, and links to current canonical owners. Record an originating session
+  or thread identifier whenever the environment exposes one; for Codex, check
+  `CODEX_SESSION_ID` and `CODEX_THREAD_ID` before saying it is unavailable.
 - Do not store credentials, personal data, legal-risk admissions, mutable
   environment facts, or claims that cannot be tied to evidence.
 - Do not create a note for every agent or task. Promote one from `.tmp/` only

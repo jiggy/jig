@@ -1,11 +1,12 @@
 # Platform course corrections through the first agentic alpha
 
 - **Status:** Historical, non-normative field note
-- **Recorder:** Primary Codex maintainer session; no durable session identifier
-  was recorded
+- **Recorded:** 2026-09-04 UTC
+- **Recorder:** Primary Codex maintainer; Codex session/thread
+  `01a051cd-47ea-70a3-8348-836614a53dd1`
 - **Evidence window:** Repository history through `b528e2a`
 - **Scope:** Causal lessons from the exploratory platform work, direct-Run alpha,
-and first Agent integrations
+  and first Agent integrations
 
 Current product intent lives in [`../product-compass.md`](../product-compass.md),
 current engineering guidance in
@@ -19,6 +20,23 @@ state, personal observations, and historical causality in one required document.
 The living material was later routed to narrower owners. These observations are
 kept separately because the sequence of mistakes is useful evidence, while
 presenting it as current architecture would be misleading.
+
+## Evidence landmarks
+
+- Probe decontamination and disposal: `ac86d4f`, `17bd0d4`.
+- Direct Sley interoperability and rejected Jig lowering: `a4d1e28`,
+  `1b9a5a4`.
+- Nix retention detour and quarantine: `d34ccb6`, `d6a0ad2`.
+- Privileged proof and canonical rootless replacement: `fd0b307`, `b9f9473`.
+- Coupled subsystem deletion: `06eac5d`.
+- Contained dependency preparation and external Bun runtime: `ec4f61d`,
+  `61c1942`.
+- Protocol-named Agent configuration: `4d257ac`.
+- One-shot `handle()` and console isolation: `3119283`, `7873227`.
+- Premature next-phase selection and correction: `e78ffa7`, `abc8c3a`.
+
+The underpayment observation below is first-hand evidence from the named
+session. Its disposable probe tree was intentionally not retained.
 
 ## Observed course corrections
 

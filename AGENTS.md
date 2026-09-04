@@ -121,6 +121,11 @@ Default section order:
 - Stop for owner direction before a change materially expands product concepts
   or chooses between genuinely different product directions. It is preferable
   to report a precise blocker early than to overcomplicate the solution.
+- When the owner authorizes several independent verticals, a blocker in one
+  does not stop the others. Commit its stable in-scope work, retain unstable
+  evidence on a separate experimental branch only when it is worth keeping,
+  record only owner-actionable blockers in `.tmp/`, and continue the other
+  authorized verticals.
 - Never absorb a development sandbox, proof-host package manager, credential,
   model, or other local limitation into Jig or FLOW architecture. Ask for the
   exact generic environment capability or report its absence.

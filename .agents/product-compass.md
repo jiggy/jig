@@ -281,6 +281,9 @@ phase.
 15. **Minimalism applies to concepts and burden, not to deleting proved safety
     invariants.** Necessary private machinery may be deeper than the public
     experience.
+16. **The open local product remains whole.** Jig remains useful as
+    OSI-approved open-source local software; commercial products must not turn
+    it into a deliberately crippled community edition.
 
 ## Tradeoffs willingly accepted
 

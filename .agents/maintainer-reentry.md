@@ -325,6 +325,10 @@ risk, or external ownership. Difficulty alone is not a blocker. A precise
 missing credential, infrastructure capability, external authority, or product
 choice is.
 
+Treat legal, commercial, infrastructure, and security questions in proportion
+to specific evidence. Do not create a product subsystem to answer an
+unspecified concern, and do not ignore a concrete obligation or violation.
+
 Once an outcome boundary is agreed, carry it through implementation, focused
 proof, deletion of superseded work, and a stable commit. Own ordinary research,
 code, CI, and documentation work rather than handing it to the project owner.

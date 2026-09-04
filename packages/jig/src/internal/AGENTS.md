@@ -44,6 +44,9 @@ child calls, and Agent providers.
   readers, migrations, or aliases.
 - Add negative, hostile, race, restart, and cleanup evidence for
   trust-boundary changes.
+- Never start a fork storm, memory-pressure payload, or similarly hostile code
+  until preflight proves complete delegation and the launcher guarantees that
+  the payload begins inside its finished owner envelope.
 - Do not weaken production checks for an unprovisioned unit test. Use private
   injection seams for units and the proof host for kernel behavior.
 - A provider adapter may narrow common Agent authority, never widen it.

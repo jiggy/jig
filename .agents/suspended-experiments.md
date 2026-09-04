@@ -38,6 +38,9 @@ read with `git show commit:path`.
   `experiments/nix-runtime-retention` at `d34ccb6`; quarantine and correction
   commits are `d6a0ad2` and `7ebd25f`; disposition is
   `6aa93e1:docs/design-review/130-nix-experiment-disposition-and-next-slice.md`.
+  `nix-store -q --roots` is not a harmless read-only observer on the audited
+  daemon: it scans daemon-global roots and may prune unrelated stale
+  auto-roots. Never use it for production or shared-host verification.
   Nix may be reconsidered only as an explicitly selected project-environment
   integration. It must not become Jig runtime retention, dependency locking,
   package-manager lifecycle, or FLOW vocabulary.
