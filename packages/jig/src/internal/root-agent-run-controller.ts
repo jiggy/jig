@@ -67,15 +67,15 @@ import {
 import {
   assertPrivateAgentResponseSchema,
   projectPrivateAgentResponseSchema,
-} from "./openai-responses-client.js";
+} from "./openai-agent-client.js";
 import {
-  decodePrivateOpenAIResponsesResponse,
-  encodePrivateOpenAIResponsesRequest,
-  PRIVATE_OPENAI_RESPONSES_PROTOCOL,
-  PRIVATE_OPENAI_RESPONSES_RESPONSE_BYTES,
-  type PrivateOpenAIResponsesErrorCode,
-  type PrivateOpenAIResponsesWorkerResponse,
-} from "./openai-responses-protocol.js";
+  decodePrivateOpenAIAgentResponse,
+  encodePrivateOpenAIAgentRequest,
+  PRIVATE_OPENAI_AGENT_PROTOCOL,
+  PRIVATE_OPENAI_AGENT_RESPONSE_BYTES,
+  type PrivateOpenAIAgentErrorCode,
+  type PrivateOpenAIAgentWorkerResponse,
+} from "./openai-agent-protocol.js";
 import { captureStoredPackage } from "./package-artifact-store.js";
 import {
   AGENT_RUN_CONTRACT_DIGEST,
@@ -611,7 +611,7 @@ function backendPlan(
 interface ProviderExecution {
   readonly fence: PrivateLinuxConfirmedEnforcementReceipt;
   readonly value?: unknown;
-  readonly failure?: PrivateOpenAIResponsesErrorCode;
+  readonly failure?: PrivateOpenAIAgentErrorCode;
   readonly cancelled: boolean;
 }
 
@@ -632,12 +632,13 @@ async function interactWithOpenAIProvider(
   provider: PrivateOpenAIAgentProvider,
   prepared: PreparedCall,
 ): Promise<ProviderExecution> {
-  const output = collectBounded(component.stdout, PRIVATE_OPENAI_RESPONSES_RESPONSE_BYTES);
+  const output = collectBounded(component.stdout, PRIVATE_OPENAI_AGENT_RESPONSE_BYTES);
   const stderr = discardBounded(component.stderr, PROVIDER_STDERR_BYTES);
   try {
-    await component.write(encodePrivateOpenAIResponsesRequest({
-      protocol: PRIVATE_OPENAI_RESPONSES_PROTOCOL,
+    await component.write(encodePrivateOpenAIAgentRequest({
+      protocol: PRIVATE_OPENAI_AGENT_PROTOCOL,
       apiKey: privateOpenAIAgentCredential(provider),
+      api: provider.api,
       baseURL: provider.baseURL,
       model: provider.model,
       instructions: prepared.instructions,
@@ -648,9 +649,9 @@ async function interactWithOpenAIProvider(
     await component.closeInput();
     const [bytes, fence] = await Promise.all([output, component.enforcement, stderr])
       .then(([bytes, fence]) => [bytes, fence] as const);
-    let response: PrivateOpenAIResponsesWorkerResponse;
+    let response: PrivateOpenAIAgentWorkerResponse;
     try {
-      response = decodePrivateOpenAIResponsesResponse(bytes);
+      response = decodePrivateOpenAIAgentResponse(bytes);
     } catch {
       return Object.freeze({
         fence,
@@ -892,7 +893,7 @@ async function requireAllocationMatchesParent(
 }
 
 function providerFailure(
-  code: PrivateOpenAIResponsesErrorCode,
+  code: PrivateOpenAIAgentErrorCode,
 ): RunHostEffectOperationTerminal {
   if (code === "AGENT_PROVIDER_OUTPUT_LIMIT") {
     return failed("RESOURCE_EXHAUSTED", "the Agent provider result exceeded its fixed bound");

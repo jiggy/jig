@@ -22,11 +22,11 @@ provider worker use the same containment mechanism in separate scopes. The
 preparation worker inherits networking only during `jig check`; it validates
 the authored lock before the fixed installer's first fetch. The Agent worker
 inherits networking only for an admitted Agent `effect/call`. The host may use
-the OpenAI Responses API directly, or native Codex, Claude Code, or Pi through
-one private ACP mechanism. OpenRouter is only an explicit gateway flavor,
-selected with `OPENROUTER_MODEL` and `OPENROUTER_API_KEY`; it is never a
-default. Client paths, models, and credentials are trusted host configuration,
-not FLOW values.
+the official OpenAI JavaScript SDK against an operator-selected HTTPS endpoint
+with either the `responses` or `chat-completions` wire shape, or run native
+Codex, Claude Code, or Pi through one private ACP mechanism. Client paths,
+selected APIs, endpoints, models, and credentials are trusted host
+configuration, not FLOW values. Jig supplies no default model.
 
 The selected Agent scope receives its bounded credential projection,
 instructions, and selected skill text through a transient private channel. A
@@ -35,9 +35,9 @@ filesystem, terminal, or MCP client capability, no MCP servers, and no
 persistent permission. Fixed profiles disable client tools, extensions,
 plugins, and native skills. The secret, instructions, and skills do not enter
 the Flow environment, launch arguments, Plans, locks, or retained Run state;
-non-secret client, protocol flavor, model, and exact support identities are
-reviewed as provider identity but are not exposed to the Flow. Jig exposes no
-public provider SPI or registry.
+non-secret client, selected API, endpoint, model, and exact support identities
+are reviewed as provider identity but are not exposed to the Flow. Jig exposes
+no public provider SPI or registry.
 
 Authored package code and lifecycle scripts never execute during preparation,
 and every Flow Run remains offline.

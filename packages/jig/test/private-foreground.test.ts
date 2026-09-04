@@ -19,7 +19,7 @@ import { installedBunLocation } from "./fixtures/installed-bun-location.js";
 
 const HOSTILE = process.env.JIG_LINUX_ROOTLESS_HOSTILE === "1";
 const proofDescribe = HOSTILE ? describe.serial : describe.skip;
-const agentProofTest = process.env.JIG_OPENROUTER_AGENT_PROOF === "1" ? test : test.skip;
+const agentProofTest = process.env.JIG_OPENAI_AGENT_PROOF === "1" ? test : test.skip;
 const initialRootlessTemporaryState = new Set(
   (await readdir(tmpdir())).filter(rootlessTemporaryEntry),
 );
@@ -409,7 +409,7 @@ proofDescribe("private rootless project session", () => {
       await session.close();
       session = undefined;
       await expectNoChildResidue(root);
-      expect(await treeContains(root, process.env.OPENROUTER_API_KEY!)).toBeFalse();
+      expect(await treeContains(root, process.env.OPENAI_API_KEY!)).toBeFalse();
       await waitForRootlessCgroups(initialRootlessCgroups);
       await waitForRootlessTemporaryState(initialRootlessTemporaryState);
     } finally {
@@ -850,7 +850,7 @@ function agentRouterProgram(): string {
     "  });",
     "  return { outcome: \"done\", output: {",
     "    route: decision.route, evidence: decision.evidence, child,",
-    "    parentHasKey: process.env.OPENROUTER_API_KEY !== undefined,",
+    "    parentHasKey: process.env.OPENAI_API_KEY !== undefined,",
     "  } };",
     "});",
     "",

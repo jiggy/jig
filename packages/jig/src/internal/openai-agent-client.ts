@@ -1,4 +1,5 @@
 import OpenAI from "openai";
+import type { ChatCompletionCreateParamsNonStreaming } from "openai/resources/chat/completions/completions";
 import type { ResponseCreateParamsNonStreaming } from "openai/resources/responses/responses";
 
 import {
@@ -10,9 +11,11 @@ import {
   validateJson1,
 } from "../json.js";
 import {
-  PrivateOpenAIResponsesError,
-  type PrivateOpenAIResponsesResult,
-} from "./openai-responses-protocol.js";
+  PrivateOpenAIAgentError,
+  PRIVATE_OPENAI_APIS,
+  type PrivateOpenAIApi,
+  type PrivateOpenAIAgentResult,
+} from "./openai-agent-protocol.js";
 
 const MAX_INSTRUCTION_CHARACTERS = 1_048_576;
 const MAX_RESPONSE_SCHEMA_BYTES = 256 * 1024;
@@ -31,24 +34,32 @@ export type PrivateOpenAIFetch = (
   init?: RequestInit,
 ) => Promise<Response>;
 
-export interface PrivateOpenAIResponsesCreateClient {
-  create(body: ResponseCreateParamsNonStreaming): Promise<unknown>;
+export interface PrivateOpenAIAgentCreateClient {
+  create(
+    api: PrivateOpenAIApi,
+    body: PrivateOpenAIAgentCreateBody,
+  ): Promise<unknown>;
 }
 
-export interface PrivateOpenAIResponsesClientRequest {
+export interface PrivateOpenAIAgentClientRequest {
+  readonly api: PrivateOpenAIApi;
   readonly baseURL: string;
   readonly model: string;
   readonly instructions: string;
   readonly responseSchema?: JsonObject;
 }
 
-export interface PrivateOpenAIResponsesClientDependencies {
+export interface PrivateOpenAIAgentClientDependencies {
   readonly apiKey: string;
   /** Test seam: production uses the bundled OpenAI SDK with the global fetch. */
   readonly fetch?: PrivateOpenAIFetch;
-  /** Test seam: production creates exactly one bundled OpenAI Responses client. */
-  readonly client?: PrivateOpenAIResponsesCreateClient;
+  /** Test seam: production creates exactly one bundled OpenAI client. */
+  readonly client?: PrivateOpenAIAgentCreateClient;
 }
+
+type PrivateOpenAIAgentCreateBody =
+  | ResponseCreateParamsNonStreaming
+  | ChatCompletionCreateParamsNonStreaming;
 
 interface ResponseSchemaProfileState {
   properties: number;
@@ -191,20 +202,20 @@ function invalidSchemaProfile(): never {
 }
 
 /**
- * Make one non-streaming OpenAI Responses call and normalize only its final
+ * Make one non-streaming OpenAI-SDK call and normalize only its final
  * Agent Run value. Dispatch retry is disabled; process ownership and abort
  * fencing remain the responsibility of the containing worker controller.
  */
-export async function requestPrivateOpenAIResponse(
-  request: PrivateOpenAIResponsesClientRequest,
-  dependencies: PrivateOpenAIResponsesClientDependencies,
-): Promise<PrivateOpenAIResponsesResult> {
+export async function requestPrivateOpenAIAgent(
+  request: PrivateOpenAIAgentClientRequest,
+  dependencies: PrivateOpenAIAgentClientDependencies,
+): Promise<PrivateOpenAIAgentResult> {
   requireClientRequest(request);
   requireApiKey(dependencies.apiKey);
   if (dependencies.client !== undefined && dependencies.fetch !== undefined) {
-    throw new PrivateOpenAIResponsesError(
+    throw new PrivateOpenAIAgentError(
       "AGENT_PROVIDER_CONFIGURATION",
-      "OpenAI Responses test transport is ambiguous",
+      "OpenAI Agent test transport is ambiguous",
     );
   }
 
@@ -216,22 +227,36 @@ export async function requestPrivateOpenAIResponse(
   );
   let response: unknown;
   try {
-    response = await client.create(body);
+    response = await client.create(request.api, body);
   } catch {
     // Provider and SDK errors are intentionally not reflected: an upstream
     // diagnostic can contain request data, endpoint credentials, or headers.
-    throw new PrivateOpenAIResponsesError(
+    throw new PrivateOpenAIAgentError(
       "AGENT_PROVIDER_UNAVAILABLE",
-      "OpenAI Responses request failed",
+      "OpenAI Agent request failed",
     );
   }
-  return normalizePrivateOpenAIResponse(response, request.responseSchema !== undefined);
+  return normalizePrivateOpenAIAgentResponse(
+    response,
+    request.api,
+    request.responseSchema !== undefined,
+  );
 }
 
-export function normalizePrivateOpenAIResponse(
+export function normalizePrivateOpenAIAgentResponse(
   response: unknown,
+  api: PrivateOpenAIApi,
   structuredRequested: boolean,
-): PrivateOpenAIResponsesResult {
+): PrivateOpenAIAgentResult {
+  const result = api === "responses"
+    ? normalizeResponsesResult(response)
+    : normalizeChatCompletionsResult(response);
+  return attachStructuredResult(result, structuredRequested);
+}
+
+function normalizeResponsesResult(
+  response: unknown,
+): PrivateOpenAIAgentResult {
   const record = ordinaryRecord(response);
   if (record === undefined ||
       (record.status !== "completed" && record.status !== "incomplete" &&
@@ -242,7 +267,7 @@ export function normalizePrivateOpenAIResponse(
   }
   if ((Object.hasOwn(record, "error") && record.error !== null) ||
       record.status === "failed" || record.status === "cancelled") {
-    throw new PrivateOpenAIResponsesError(
+    throw new PrivateOpenAIAgentError(
       "AGENT_PROVIDER_UNAVAILABLE",
       "OpenAI Responses request did not complete",
     );
@@ -252,7 +277,7 @@ export function normalizePrivateOpenAIResponse(
   }
 
   const content = responseContent(record, record.status === "incomplete");
-  let outcome: PrivateOpenAIResponsesResult["outcome"];
+  let outcome: PrivateOpenAIAgentResult["outcome"];
   if (content.refusals.length > 0) {
     outcome = "blocked";
   } else if (record.status === "incomplete") {
@@ -265,13 +290,61 @@ export function normalizePrivateOpenAIResponse(
     ? joinBounded(content.refusals, "\n")
     : joinBounded(content.text, "");
 
-  if (!structuredRequested) return Object.freeze({ outcome, text });
+  return Object.freeze({ outcome, text });
+}
+
+function normalizeChatCompletionsResult(
+  response: unknown,
+): PrivateOpenAIAgentResult {
+  const record = ordinaryRecord(response);
+  if (record === undefined || !Array.isArray(record.choices) ||
+      record.choices.length !== 1) {
+    throw invalidResponse();
+  }
+  const choice = ordinaryRecord(record.choices[0]);
+  const message = choice === undefined ? undefined : ordinaryRecord(choice.message);
+  if (choice === undefined || message === undefined ||
+      message.role !== "assistant" ||
+      (choice.finish_reason !== "stop" && choice.finish_reason !== "length" &&
+        choice.finish_reason !== "content_filter") ||
+      (message.content !== null && typeof message.content !== "string") ||
+      (message.refusal !== undefined && message.refusal !== null &&
+        typeof message.refusal !== "string") ||
+      (Object.hasOwn(message, "tool_calls") && message.tool_calls !== undefined &&
+        message.tool_calls !== null) ||
+      (Object.hasOwn(message, "function_call") && message.function_call !== undefined &&
+        message.function_call !== null)) {
+    throw invalidResponse();
+  }
+  const refusal = typeof message.refusal === "string" ? message.refusal : undefined;
+  if (choice.finish_reason === "stop" && refusal === undefined &&
+      typeof message.content !== "string") {
+    throw invalidResponse();
+  }
+  const outcome: PrivateOpenAIAgentResult["outcome"] = refusal !== undefined ||
+      choice.finish_reason === "content_filter"
+    ? "blocked"
+    : choice.finish_reason === "length"
+      ? "limit"
+      : "completed";
+  const text = joinBounded(
+    [refusal ?? (typeof message.content === "string" ? message.content : "")],
+    "",
+  );
+  return Object.freeze({ outcome, text });
+}
+
+function attachStructuredResult(
+  result: PrivateOpenAIAgentResult,
+  structuredRequested: boolean,
+): PrivateOpenAIAgentResult {
+  if (!structuredRequested) return result;
   try {
-    const structured = decodeJson1(new TextEncoder().encode(text));
-    return Object.freeze({ outcome, text, structured });
+    const structured = decodeJson1(new TextEncoder().encode(result.text));
+    return Object.freeze({ ...result, structured });
   } catch {
-    if (outcome !== "completed") return Object.freeze({ outcome, text });
-    throw new PrivateOpenAIResponsesError(
+    if (result.outcome !== "completed") return result;
+    throw new PrivateOpenAIAgentError(
       "AGENT_PROVIDER_RESPONSE_INVALID",
       "OpenAI structured response is not valid JSON/1",
     );
@@ -282,7 +355,7 @@ function sdkClient(
   baseURL: string,
   apiKey: string,
   injectedFetch: PrivateOpenAIFetch | undefined,
-): PrivateOpenAIResponsesCreateClient {
+): PrivateOpenAIAgentCreateClient {
   const sdk = new OpenAI({
     baseURL,
     apiKey,
@@ -296,8 +369,13 @@ function sdkClient(
     ...(injectedFetch === undefined ? {} : { fetch: injectedFetch }),
   });
   return Object.freeze({
-    create(body: ResponseCreateParamsNonStreaming): Promise<unknown> {
-      return sdk.responses.create(body);
+    create(
+      api: PrivateOpenAIApi,
+      body: PrivateOpenAIAgentCreateBody,
+    ): Promise<unknown> {
+      return api === "responses"
+        ? sdk.responses.create(body as ResponseCreateParamsNonStreaming)
+        : sdk.chat.completions.create(body as ChatCompletionCreateParamsNonStreaming);
     },
   });
 }
@@ -310,7 +388,15 @@ const SILENT_LOGGER = Object.freeze({
 });
 
 function createBody(
-  request: PrivateOpenAIResponsesClientRequest,
+  request: PrivateOpenAIAgentClientRequest,
+): PrivateOpenAIAgentCreateBody {
+  return request.api === "responses"
+    ? createResponsesBody(request)
+    : createChatCompletionsBody(request);
+}
+
+function createResponsesBody(
+  request: PrivateOpenAIAgentClientRequest,
 ): ResponseCreateParamsNonStreaming {
   const base = {
     model: request.model,
@@ -333,6 +419,29 @@ function createBody(
   };
 }
 
+function createChatCompletionsBody(
+  request: PrivateOpenAIAgentClientRequest,
+): ChatCompletionCreateParamsNonStreaming {
+  const base: ChatCompletionCreateParamsNonStreaming = {
+    model: request.model,
+    messages: [{ role: "user", content: request.instructions }],
+    max_tokens: MAX_OUTPUT_TOKENS,
+    stream: false,
+  };
+  if (request.responseSchema === undefined) return base;
+  return {
+    ...base,
+    response_format: {
+      type: "json_schema",
+      json_schema: {
+        name: RESPONSE_FORMAT_NAME,
+        schema: projectPrivateAgentResponseSchema(request.responseSchema),
+        strict: true,
+      },
+    },
+  };
+}
+
 export function projectPrivateAgentResponseSchema(
   responseSchema: JsonObject,
 ): Record<string, unknown> {
@@ -344,34 +453,35 @@ export function projectPrivateAgentResponseSchema(
   );
 }
 
-function requireClientRequest(request: PrivateOpenAIResponsesClientRequest): void {
+function requireClientRequest(request: PrivateOpenAIAgentClientRequest): void {
   if (request === null || typeof request !== "object" ||
+      !(PRIVATE_OPENAI_APIS as readonly string[]).includes(request.api) ||
       typeof request.baseURL !== "string" || typeof request.model !== "string" ||
       typeof request.instructions !== "string" ||
       !boundedCharacters(request.instructions, MAX_INSTRUCTION_CHARACTERS)) {
-    throw new PrivateOpenAIResponsesError(
+    throw new PrivateOpenAIAgentError(
       "AGENT_PROVIDER_CONFIGURATION",
-      "OpenAI Responses client request is invalid",
+      "OpenAI Agent client request is invalid",
     );
   }
   try {
     validateJson1(request.instructions);
   } catch {
-    throw new PrivateOpenAIResponsesError(
+    throw new PrivateOpenAIAgentError(
       "AGENT_PROVIDER_CONFIGURATION",
-      "OpenAI Responses instructions are not valid JSON/1 text",
+      "OpenAI Agent instructions are not valid JSON/1 text",
     );
   }
   requireEndpoint(request.baseURL);
   if (!/^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$/.test(request.model)) {
-    throw new PrivateOpenAIResponsesError(
+    throw new PrivateOpenAIAgentError(
       "AGENT_PROVIDER_CONFIGURATION",
-      "OpenAI Responses model is invalid",
+      "OpenAI Agent model is invalid",
     );
   }
   if (request.responseSchema !== undefined) {
     if (ordinaryRecord(request.responseSchema) === undefined) {
-      throw new PrivateOpenAIResponsesError(
+      throw new PrivateOpenAIAgentError(
         "AGENT_PROVIDER_CONFIGURATION",
         "OpenAI response schema is invalid",
       );
@@ -381,13 +491,13 @@ function requireClientRequest(request: PrivateOpenAIResponsesClientRequest): voi
       validateJson1(request.responseSchema);
       bytes = canonicalJson(request.responseSchema);
     } catch {
-      throw new PrivateOpenAIResponsesError(
+      throw new PrivateOpenAIAgentError(
         "AGENT_PROVIDER_CONFIGURATION",
         "OpenAI response schema is not valid JSON/1",
       );
     }
     if (bytes.byteLength > MAX_RESPONSE_SCHEMA_BYTES) {
-      throw new PrivateOpenAIResponsesError(
+      throw new PrivateOpenAIAgentError(
         "AGENT_PROVIDER_CONFIGURATION",
         "OpenAI response schema exceeds its byte bound",
       );
@@ -395,7 +505,7 @@ function requireClientRequest(request: PrivateOpenAIResponsesClientRequest): voi
     try {
       assertPrivateAgentResponseSchema(request.responseSchema);
     } catch {
-      throw new PrivateOpenAIResponsesError(
+      throw new PrivateOpenAIAgentError(
         "AGENT_PROVIDER_CONFIGURATION",
         "OpenAI response schema is outside the supported profile",
       );
@@ -420,19 +530,19 @@ function requireEndpoint(baseURL: string): void {
   }
 }
 
-function invalidEndpoint(): PrivateOpenAIResponsesError {
-  return new PrivateOpenAIResponsesError(
+function invalidEndpoint(): PrivateOpenAIAgentError {
+  return new PrivateOpenAIAgentError(
     "AGENT_PROVIDER_CONFIGURATION",
-    "OpenAI Responses base URL is invalid",
+    "OpenAI Agent base URL is invalid",
   );
 }
 
 function requireApiKey(apiKey: string): void {
   if (typeof apiKey !== "string" || apiKey.trim().length === 0 || apiKey.includes("\0") ||
       new TextEncoder().encode(apiKey).byteLength > 16_384) {
-    throw new PrivateOpenAIResponsesError(
+    throw new PrivateOpenAIAgentError(
       "AGENT_PROVIDER_CONFIGURATION",
-      "OpenAI Responses API key is unavailable",
+      "OpenAI Agent API key is unavailable",
     );
   }
 }
@@ -479,9 +589,9 @@ function joinBounded(parts: readonly string[], separator: string): string {
     bytes += new TextEncoder().encode(part).byteLength;
     if (index !== 0) bytes += separatorBytes;
     if (bytes > JSON_1_LIMITS.stringBytes) {
-      throw new PrivateOpenAIResponsesError(
+      throw new PrivateOpenAIAgentError(
         "AGENT_PROVIDER_OUTPUT_LIMIT",
-        "OpenAI Responses text exceeds its byte bound",
+        "OpenAI Agent text exceeds its byte bound",
       );
     }
   }
@@ -512,9 +622,9 @@ function boundedCharacters(value: string, maximum: number): boolean {
   return true;
 }
 
-function invalidResponse(): PrivateOpenAIResponsesError {
-  return new PrivateOpenAIResponsesError(
+function invalidResponse(): PrivateOpenAIAgentError {
+  return new PrivateOpenAIAgentError(
     "AGENT_PROVIDER_RESPONSE_INVALID",
-    "OpenAI Responses returned an invalid final response",
+    "OpenAI Agent endpoint returned an invalid final response",
   );
 }

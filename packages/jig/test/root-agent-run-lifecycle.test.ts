@@ -30,23 +30,27 @@ const nativeCodexPath = process.env.JIG_CODEX_PROOF_PATH;
 const nativeCodexTest = HOSTILE && nativeCodexPath !== undefined && process.env.CODEX_HOME !== undefined
   ? test
   : test.skip;
-const nativeCodexGatewayModel = process.env.JIG_CODEX_OPENROUTER_MODEL;
-const nativeCodexGatewayTest = HOSTILE && nativeCodexPath !== undefined &&
-    nativeCodexGatewayModel !== undefined && process.env.OPENROUTER_API_KEY !== undefined
+const nativeCodexApiModel = process.env.JIG_CODEX_RESPONSES_MODEL;
+const nativeCodexApiTest = HOSTILE && nativeCodexPath !== undefined &&
+    nativeCodexApiModel !== undefined && process.env.OPENROUTER_API_KEY !== undefined
   ? test
   : test.skip;
 const nativeClaudePath = process.env.JIG_CLAUDE_PROOF_PATH;
-const nativeClaudeGatewayModel = process.env.JIG_CLAUDE_OPENROUTER_MODEL;
-const nativeClaudeGatewayTest = HOSTILE && nativeClaudePath !== undefined &&
-    nativeClaudeGatewayModel !== undefined && process.env.OPENROUTER_API_KEY !== undefined
+const nativeClaudeApiModel = process.env.JIG_CLAUDE_ANTHROPIC_MODEL;
+const nativeClaudeApiTest = HOSTILE && nativeClaudePath !== undefined &&
+    nativeClaudeApiModel !== undefined && process.env.OPENROUTER_API_KEY !== undefined
   ? test
   : test.skip;
 const nativePiPath = process.env.JIG_PI_PROOF_PATH;
-const nativePiGatewayModel = process.env.JIG_PI_OPENROUTER_MODEL;
-const nativePiGatewayTest = HOSTILE && nativePiPath !== undefined &&
-    nativePiGatewayModel !== undefined && process.env.OPENROUTER_API_KEY !== undefined
+const nativePiApiProvider = process.env.JIG_PI_API_PROVIDER;
+const nativePiApiModel = process.env.JIG_PI_API_MODEL;
+const nativePiApiTest = HOSTILE && nativePiPath !== undefined &&
+    nativePiApiProvider !== undefined && nativePiApiModel !== undefined &&
+    process.env.OPENROUTER_API_KEY !== undefined
   ? test
   : test.skip;
+const OPENROUTER_RESPONSES_TEST_BASE_URL = "https://openrouter.ai/api/v1";
+const OPENROUTER_ANTHROPIC_TEST_BASE_URL = "https://openrouter.ai/api";
 const NATIVE_AGENT_TIMEOUT_MS = 120_000;
 const NATIVE_AGENT_TEST_TIMEOUT_MS = 180_000;
 const EXPECTED_STRUCTURED_AGENT_RESULT = Object.freeze({
@@ -85,6 +89,7 @@ proofDescribe("private contained Agent Run lifecycle", () => {
         host: Object.freeze({
           ...await openPrivateInstalledBunHost(installedBunLocation, {
             CODEX_HOME: process.env.CODEX_HOME,
+            CODEX_MODEL: "gpt-5.3-codex-spark",
             CODEX_PATH: await realpath(nativeCodexPath!),
             JIG_AGENT_CLIENT: "codex",
           }),
@@ -126,8 +131,8 @@ proofDescribe("private contained Agent Run lifecycle", () => {
     }
   }, NATIVE_AGENT_TEST_TIMEOUT_MS);
 
-  nativeCodexGatewayTest("executes native Codex through ACP with an explicit OpenRouter gateway", async () => {
-    const root = await mkdtemp(join(tmpdir(), "jig-native-codex-gateway-project-"));
+  nativeCodexApiTest("executes native Codex through ACP with a Responses-compatible endpoint", async () => {
+    const root = await mkdtemp(join(tmpdir(), "jig-native-codex-api-project-"));
     let session: Awaited<ReturnType<typeof openPrivateProjectSession>> | undefined;
     try {
       await writeProject(root);
@@ -137,8 +142,10 @@ proofDescribe("private contained Agent Run lifecycle", () => {
           ...await openPrivateInstalledBunHost(installedBunLocation, {
             CODEX_PATH: await realpath(nativeCodexPath!),
             JIG_AGENT_CLIENT: "codex",
-            OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY,
-            OPENROUTER_MODEL: nativeCodexGatewayModel,
+            OPENAI_API: "responses",
+            OPENAI_API_KEY: process.env.OPENROUTER_API_KEY,
+            OPENAI_BASE_URL: OPENROUTER_RESPONSES_TEST_BASE_URL,
+            OPENAI_MODEL: nativeCodexApiModel,
           }),
           runTimeoutMs: NATIVE_AGENT_TIMEOUT_MS,
         }),
@@ -149,8 +156,8 @@ proofDescribe("private contained Agent Run lifecycle", () => {
 
       const terminal = await runToTerminal(
         session.rootAdministration,
-        "native-codex-openrouter",
-        "gateway-text",
+        "native-codex-api",
+        "api-text",
         NATIVE_AGENT_TEST_TIMEOUT_MS,
       );
       expect(terminal).toMatchObject({
@@ -180,8 +187,8 @@ proofDescribe("private contained Agent Run lifecycle", () => {
     }
   }, NATIVE_AGENT_TEST_TIMEOUT_MS);
 
-  nativeClaudeGatewayTest("executes native Claude Code through ACP with an explicit OpenRouter gateway", async () => {
-    const root = await mkdtemp(join(tmpdir(), "jig-native-claude-gateway-project-"));
+  nativeClaudeApiTest("executes native Claude Code through ACP with an Anthropic-compatible endpoint", async () => {
+    const root = await mkdtemp(join(tmpdir(), "jig-native-claude-api-project-"));
     let session: Awaited<ReturnType<typeof openPrivateProjectSession>> | undefined;
     try {
       await writeProject(root);
@@ -191,8 +198,10 @@ proofDescribe("private contained Agent Run lifecycle", () => {
           ...await openPrivateInstalledBunHost(installedBunLocation, {
             CLAUDE_PATH: await realpath(nativeClaudePath!),
             JIG_AGENT_CLIENT: "claude",
-            OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY,
-            OPENROUTER_MODEL: nativeClaudeGatewayModel,
+            ANTHROPIC_API_KEY: "",
+            ANTHROPIC_AUTH_TOKEN: process.env.OPENROUTER_API_KEY,
+            ANTHROPIC_BASE_URL: OPENROUTER_ANTHROPIC_TEST_BASE_URL,
+            ANTHROPIC_MODEL: nativeClaudeApiModel,
           }),
           runTimeoutMs: NATIVE_AGENT_TIMEOUT_MS,
         }),
@@ -203,8 +212,8 @@ proofDescribe("private contained Agent Run lifecycle", () => {
 
       const terminal = await runToTerminal(
         session.rootAdministration,
-        "native-claude-openrouter",
-        "gateway",
+        "native-claude-api",
+        "api-structured",
         NATIVE_AGENT_TEST_TIMEOUT_MS,
       );
       expect(terminal).toMatchObject({
@@ -234,8 +243,8 @@ proofDescribe("private contained Agent Run lifecycle", () => {
     }
   }, NATIVE_AGENT_TEST_TIMEOUT_MS);
 
-  nativePiGatewayTest("executes native Pi through ACP with an explicit OpenRouter gateway", async () => {
-    const root = await mkdtemp(join(tmpdir(), "jig-native-pi-gateway-project-"));
+  nativePiApiTest("executes native Pi through ACP with an explicit built-in API provider", async () => {
+    const root = await mkdtemp(join(tmpdir(), "jig-native-pi-api-project-"));
     let session: Awaited<ReturnType<typeof openPrivateProjectSession>> | undefined;
     try {
       await writeProject(root);
@@ -244,9 +253,10 @@ proofDescribe("private contained Agent Run lifecycle", () => {
         host: Object.freeze({
           ...await openPrivateInstalledBunHost(installedBunLocation, {
             JIG_AGENT_CLIENT: "pi",
-            OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY,
-            OPENROUTER_MODEL: nativePiGatewayModel,
+            PI_API_KEY: process.env.OPENROUTER_API_KEY,
+            PI_MODEL: nativePiApiModel,
             PI_PATH: await realpath(nativePiPath!),
+            PI_PROVIDER: nativePiApiProvider,
           }),
           runTimeoutMs: NATIVE_AGENT_TIMEOUT_MS,
         }),
@@ -257,8 +267,8 @@ proofDescribe("private contained Agent Run lifecycle", () => {
 
       const terminal = await runToTerminal(
         session.rootAdministration,
-        "native-pi-openrouter",
-        "gateway",
+        "native-pi-api",
+        "api-structured",
         NATIVE_AGENT_TEST_TIMEOUT_MS,
       );
       expect(terminal).toMatchObject({
@@ -295,8 +305,6 @@ proofDescribe("private contained Agent Run lifecycle", () => {
     const server = await dispatchServer(events);
     const priorKey = process.env.OPENAI_API_KEY;
     const priorModel = process.env.OPENAI_MODEL;
-    const priorOpenRouterKey = process.env.OPENROUTER_API_KEY;
-    const priorOpenRouterModel = process.env.OPENROUTER_MODEL;
     let session: Awaited<ReturnType<typeof openPrivateProjectSession>> | undefined;
     try {
       const address = server.address();
@@ -304,8 +312,6 @@ proofDescribe("private contained Agent Run lifecycle", () => {
       const key = `http://127.0.0.1:${address.port}/dispatch?proof=transient`;
       const location = await writeInstalledFixture(releaseRoot);
       await writeProject(root);
-      delete process.env.OPENROUTER_API_KEY;
-      delete process.env.OPENROUTER_MODEL;
       process.env.OPENAI_API_KEY = key;
       process.env.OPENAI_MODEL = "provider/test-model";
 
@@ -486,10 +492,6 @@ proofDescribe("private contained Agent Run lifecycle", () => {
       else process.env.OPENAI_API_KEY = priorKey;
       if (priorModel === undefined) delete process.env.OPENAI_MODEL;
       else process.env.OPENAI_MODEL = priorModel;
-      if (priorOpenRouterKey === undefined) delete process.env.OPENROUTER_API_KEY;
-      else process.env.OPENROUTER_API_KEY = priorOpenRouterKey;
-      if (priorOpenRouterModel === undefined) delete process.env.OPENROUTER_MODEL;
-      else process.env.OPENROUTER_MODEL = priorOpenRouterModel;
       await closeServer(server);
       await Promise.all([
         rm(root, { recursive: true, force: true }),
@@ -517,7 +519,7 @@ async function writeInstalledFixture(root: string): Promise<PrivateInstalledBunL
   ].map((path) => mkdir(join(root, path), { recursive: true })));
   await Promise.all(files.map((path) => copyFile(join(source, path), join(root, path))));
   await writeFile(
-    join(root, "libexec/agent/openai-responses-worker.js"),
+    join(root, "libexec/agent/openai-agent-worker.js"),
     deterministicWorker(),
   );
   const executablePath = await realpath(installedBunLocation.executablePath);
@@ -540,8 +542,7 @@ function deterministicWorker(): string {
     'const scenarios = ["schema-invalid", "malformed", "recovery", "success", "slow"];',
     'const scenario = scenarios.find((value) => marker(`scenario:${value}`));',
     'if (scenario === undefined || typeof request.apiKey !== "string") throw new Error("invalid fixture request");',
-    'const event = { scenario, keyInEnvironment: process.env.OPENAI_API_KEY !== undefined ||',
-    '  process.env.OPENROUTER_API_KEY !== undefined,',
+    'const event = { scenario, keyInEnvironment: process.env.OPENAI_API_KEY !== undefined,',
     '  selectedSkill: marker("SELECTED_SKILL_MARKER"), hiddenSkill: marker("HIDDEN_SKILL_MARKER") };',
     'const response = await fetch(request.apiKey, { method: "POST", body: JSON.stringify(event) });',
     'if (!response.ok) throw new Error("fixture observer rejected dispatch");',
@@ -554,7 +555,7 @@ function deterministicWorker(): string {
     '    hiddenSkill: event.hiddenSkill ? "present" : "absent", sourceLine: 1, amount: null }],',
     '  ambiguity: null,',
     '} };',
-    'process.stdout.write(JSON.stringify({ protocol: "jig-private-openai-responses/1", status: "ok",',
+    'process.stdout.write(JSON.stringify({ protocol: "jig-private-openai-agent/1", status: "ok",',
     '  value: { outcome: "completed", text: JSON.stringify(structured), structured } }));',
     "",
   ].join("\n");
@@ -601,8 +602,8 @@ async function writeProject(root: string): Promise<void> {
           "malformed",
           "slow",
           "recovery",
-          "gateway",
-          "gateway-text",
+          "api-structured",
+          "api-text",
         ],
       },
     },
@@ -647,11 +648,11 @@ function flowProgram(): string {
     "  try {",
     "    const agent = await run.callEffect({",
     '      operationId: `agent:${input.scenario}`, slot: "agent", method: "run",',
-    '      input: { instructions: input.scenario === "gateway"',
+    '      input: { instructions: input.scenario === "api-structured"',
     '        ? "Return only JSON matching the response schema. Set route to technical, evidence to one item with keyLocation stdin, selectedSkill present, hiddenSkill absent, sourceLine 1, and amount null; set ambiguity to null."',
-    '        : input.scenario === "gateway-text" ? "Reply with exactly READY and nothing else."',
+    '        : input.scenario === "api-text" ? "Reply with exactly READY and nothing else."',
     '        : `scenario:${input.scenario}. Return sourceLine 1, amount null, and ambiguity null.`, skills: ["selected"],',
-    '        ...(input.scenario === "gateway-text" ? {} : {',
+    '        ...(input.scenario === "api-text" ? {} : {',
     '          responseSchema: input.scenario === "schema-input-invalid"',
     '            ? { $schema: "https://flow.jig.md/schemas/schema-1.json", type: "unknown" }',
     '            : responseSchema,',
@@ -659,7 +660,9 @@ function flowProgram(): string {
     "    });",
     '    return { outcome: "done", output: { status: "succeeded", agent,',
     "      parentHasKey: process.env.OPENAI_API_KEY !== undefined ||",
-    "        process.env.OPENROUTER_API_KEY !== undefined } };",
+    "        process.env.ANTHROPIC_API_KEY !== undefined ||",
+    "        process.env.ANTHROPIC_AUTH_TOKEN !== undefined ||",
+    "        process.env.PI_API_KEY !== undefined } };",
     "  } catch (error) {",
     '    const code = typeof error === "object" && error !== null && "code" in error',
     '      ? String((error as { code: unknown }).code) : "UNKNOWN";',

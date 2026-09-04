@@ -10,7 +10,7 @@ import {
   PRIVATE_PI_SETTINGS,
 } from "../src/internal/pi-agent-launcher.js";
 import {
-  createPrivatePiOpenRouterAgentProvider,
+  createPrivatePiApiKeyAgentProvider,
   createPrivatePiSubscriptionAgentProvider,
   openPrivatePiAgentProvider,
 } from "../src/internal/pi-agent-provider.js";
@@ -28,26 +28,28 @@ afterEach(async () => {
 });
 
 describe("private native Pi Agent provider", () => {
-  test("opens Pi only from an explicit native path and OpenRouter override", async () => {
+  test("opens Pi only from an explicit native path and provider selection", async () => {
     const support = await files();
     const releaseRoot = join(support.launcherPath, "..", "..", "..");
     const provider = await openPrivatePiAgentProvider(releaseRoot, {
       PI_PATH: support.executablePath,
-      OPENROUTER_MODEL: "google/test-model:free",
-      OPENROUTER_API_KEY: "gateway-secret",
+      PI_PROVIDER: "openrouter",
+      PI_MODEL: "google/test-model:free",
+      PI_API_KEY: "gateway-secret",
     });
     expect(provider).toMatchObject({
       client: "pi",
-      credentialMode: "openrouter-gateway",
+      credentialMode: "pi-api-key",
       model: "openrouter/google/test-model:free",
     });
     for (const environment of [
       {
-        OPENROUTER_MODEL: "google/test-model:free",
-        OPENROUTER_API_KEY: "secret",
+        PI_PROVIDER: "openrouter",
+        PI_MODEL: "google/test-model:free",
+        PI_API_KEY: "secret",
       },
-      { PI_PATH: support.executablePath, OPENROUTER_API_KEY: "secret" },
-      { PI_PATH: support.executablePath, OPENROUTER_MODEL: "google/test-model:free" },
+      { PI_PATH: support.executablePath, PI_API_KEY: "secret" },
+      { PI_PATH: support.executablePath, PI_MODEL: "google/test-model:free" },
     ]) {
       await expect(openPrivatePiAgentProvider(releaseRoot, environment))
         .rejects.toThrow();
@@ -79,8 +81,6 @@ describe("private native Pi Agent provider", () => {
       PI_PROVIDER: "anthropic",
       PI_MODEL: "claude-test",
       PI_CODING_AGENT_DIR: agentDirectory,
-      // An unrelated shared key does not silently select the gateway flavor.
-      OPENROUTER_API_KEY: "unselected-gateway-secret",
     });
     const runtime = privateAcpAgentRuntime(provider);
     expect(provider).toMatchObject({
@@ -102,30 +102,40 @@ describe("private native Pi Agent provider", () => {
     expect(JSON.stringify(runtime.environment)).not.toContain("subscription-access");
   });
 
-  test("uses OpenRouter only as an explicit Pi provider flavor", async () => {
+  test("uses Pi's explicit built-in API-key provider and model selection", async () => {
     const support = await files();
-    const first = await createPrivatePiOpenRouterAgentProvider({
+    const first = await createPrivatePiApiKeyAgentProvider({
       ...support,
       apiKey: "first-gateway-secret",
+      provider: "openrouter",
       model: "google/test-model:free",
     });
-    const rotated = await createPrivatePiOpenRouterAgentProvider({
+    const rotated = await createPrivatePiApiKeyAgentProvider({
       ...support,
       apiKey: "rotated-gateway-secret",
+      provider: "openrouter",
       model: "google/test-model:free",
     });
-    const otherModel = await createPrivatePiOpenRouterAgentProvider({
+    const otherModel = await createPrivatePiApiKeyAgentProvider({
       ...support,
       apiKey: "first-gateway-secret",
+      provider: "openrouter",
       model: "other/test-model",
+    });
+    const mistral = await createPrivatePiApiKeyAgentProvider({
+      ...support,
+      apiKey: "first-gateway-secret",
+      provider: "mistral",
+      model: "ministral-test",
     });
     const runtime = privateAcpAgentRuntime(first);
 
     expect(first.digest).toBe(rotated.digest);
     expect(first.digest).not.toBe(otherModel.digest);
+    expect(first.digest).not.toBe(mistral.digest);
     expect(first).toMatchObject({
       client: "pi",
-      credentialMode: "openrouter-gateway",
+      credentialMode: "pi-api-key",
       model: "openrouter/google/test-model:free",
     });
     expect(runtime.environment).toEqual(environment(
@@ -199,7 +209,7 @@ describe("private native Pi Agent provider", () => {
       credentialMode: "pi-subscription",
       model: "openai-codex/test-model",
     });
-    expect(runtime.environment).toEqual(environment("openai-codex", "test-model"));
+    expect(runtime.environment).toEqual(environment("openai-codex", "test-model", true));
     expect(runtime.configuration).toEqual([{
       configId: "model",
       value: "openai-codex/test-model",
@@ -264,13 +274,15 @@ describe("private native Pi Agent provider", () => {
     }));
     await expect(openPrivatePiAgentProvider(releaseRoot, {
       PI_PATH: support.executablePath,
-      OPENROUTER_MODEL: "google/test-model:free",
-      OPENROUTER_API_KEY: "gateway-secret",
+      PI_PROVIDER: "openrouter",
+      PI_MODEL: "google/test-model:free",
+      PI_API_KEY: "gateway-secret",
     })).rejects.toThrow("native Pi package manifest is invalid");
     await rm(support.darkThemePath);
-    await expect(createPrivatePiOpenRouterAgentProvider({
+    await expect(createPrivatePiApiKeyAgentProvider({
       ...support,
       apiKey: "gateway-secret",
+      provider: "openrouter",
       model: "google/test-model:free",
     })).rejects.toThrow();
   });
@@ -338,15 +350,17 @@ describe("private native Pi Agent provider", () => {
       })),
     })).rejects.toThrow("subscription provider is invalid");
     for (const apiKey of ["", " padded ", "bad\0key", "x".repeat(64 * 1024)]) {
-      await expect(createPrivatePiOpenRouterAgentProvider({
+      await expect(createPrivatePiApiKeyAgentProvider({
         ...support,
         apiKey,
+        provider: "openrouter",
         model: "test-model",
-      })).rejects.toThrow("gateway credential is invalid");
+      })).rejects.toThrow("API credential is invalid");
     }
-    await expect(createPrivatePiOpenRouterAgentProvider({
+    await expect(createPrivatePiApiKeyAgentProvider({
       ...support,
       apiKey: "secret",
+      provider: "openrouter",
       model: "invalid model",
     })).rejects.toThrow("Pi model is invalid");
   });
@@ -358,12 +372,12 @@ function startupJson(startup: Uint8Array): unknown {
   return JSON.parse(decoder.decode(startup.slice(4)));
 }
 
-function environment(provider: string, model: string) {
+function environment(provider: string, model: string, subscription = false) {
   return {
     HOME: "/tmp/pi-home",
     JIG_PI_MODEL: model,
     JIG_PI_PROVIDER: provider,
-    JIG_PI_STARTUP_INPUT: "credential",
+    JIG_PI_STARTUP_INPUT: subscription ? "subscription" : "api-key",
     NO_BROWSER: "1",
     PI_ACP_PI_COMMAND: "/agent/pi-agent-launcher.js",
     PI_CODING_AGENT_DIR: "/tmp/pi-agent",

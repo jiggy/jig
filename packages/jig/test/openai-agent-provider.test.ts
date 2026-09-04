@@ -4,19 +4,16 @@ import { openPrivateInstalledBunHost } from "../src/internal/installed-bun-host.
 import { openPrivateInstalledBunSupport } from "../src/internal/installed-bun-support.js";
 import {
   openPrivateOpenAIAgentProvider,
-  PRIVATE_OPENAI_BASE_URL,
+  PRIVATE_OPENAI_DEFAULT_API,
+  PRIVATE_OPENAI_DEFAULT_BASE_URL,
   privateOpenAIAgentCredential,
   requirePrivateOpenAIAgentProvider,
 } from "../src/internal/openai-agent-provider.js";
-import {
-  openPrivateOpenRouterAgentFlavor,
-  PRIVATE_OPENROUTER_BASE_URL,
-} from "../src/internal/openrouter-agent-flavor.js";
 import { AGENT_RUN_CONTRACT_DIGEST } from "../src/internal/private-agent-run.js";
 import { installedBunLocation } from "./fixtures/installed-bun-location.js";
 
 describe("private OpenAI Agent provider", () => {
-  test("uses native OpenAI configuration with no default model", async () => {
+  test("uses the Responses API by default and keeps credentials out of identity", async () => {
     const support = await openPrivateInstalledBunSupport(installedBunLocation);
     expect(openPrivateOpenAIAgentProvider(support, {})).toBeUndefined();
 
@@ -37,7 +34,8 @@ describe("private OpenAI Agent provider", () => {
     expect(first.digest).not.toBe(differentModel.digest);
     expect(first).toMatchObject({
       contractDigest: AGENT_RUN_CONTRACT_DIGEST,
-      baseURL: PRIVATE_OPENAI_BASE_URL,
+      api: PRIVATE_OPENAI_DEFAULT_API,
+      baseURL: PRIVATE_OPENAI_DEFAULT_BASE_URL,
       model: "provider/test-model",
       workerDigest: support.agentWorkerDigest,
     });
@@ -48,61 +46,49 @@ describe("private OpenAI Agent provider", () => {
     );
   });
 
-  test("accepts OpenRouter only as an optional OpenAI-compatible flavor", async () => {
+  test("makes the selected endpoint, model, and API exact identity", async () => {
     const support = await openPrivateInstalledBunSupport(installedBunLocation);
-    const openRouter = openPrivateOpenRouterAgentFlavor(support, {
-      OPENROUTER_API_KEY: "test-secret",
-      OPENROUTER_MODEL: "provider/test-model",
-    })!;
-    const native = openPrivateOpenAIAgentProvider(support, {
+    const responses = openPrivateOpenAIAgentProvider(support, {
       OPENAI_API_KEY: "test-secret",
       OPENAI_MODEL: "provider/test-model",
+      OPENAI_BASE_URL: "https://gateway.example/v1",
+      OPENAI_API: "responses",
+    })!;
+    const chat = openPrivateOpenAIAgentProvider(support, {
+      OPENAI_API_KEY: "test-secret",
+      OPENAI_MODEL: "provider/test-model",
+      OPENAI_BASE_URL: "https://gateway.example/v1",
+      OPENAI_API: "chat-completions",
+    })!;
+    const otherEndpoint = openPrivateOpenAIAgentProvider(support, {
+      OPENAI_API_KEY: "test-secret",
+      OPENAI_MODEL: "provider/test-model",
+      OPENAI_BASE_URL: "https://other.example/v1",
+      OPENAI_API: "chat-completions",
     })!;
 
-    expect(openRouter).toMatchObject({
-      baseURL: PRIVATE_OPENROUTER_BASE_URL,
+    expect(chat).toMatchObject({
+      api: "chat-completions",
+      baseURL: "https://gateway.example/v1",
       model: "provider/test-model",
     });
-    expect(openRouter.digest).not.toBe(native.digest);
+    expect(chat.digest).not.toBe(responses.digest);
+    expect(chat.digest).not.toBe(otherEndpoint.digest);
   });
 
-  test("selects exactly one configured host flavor", async () => {
-    const native = await openPrivateInstalledBunHost(installedBunLocation, {
-      OPENAI_API_KEY: "native-secret",
-      OPENAI_MODEL: "native-model",
+  test("selects the same generic configuration in the installed host", async () => {
+    const host = await openPrivateInstalledBunHost(installedBunLocation, {
+      OPENAI_API_KEY: "gateway-secret",
+      OPENAI_MODEL: "gateway/model",
+      OPENAI_BASE_URL: "https://gateway.example/v1",
+      OPENAI_API: "chat-completions",
     });
-    const openRouter = await openPrivateInstalledBunHost(installedBunLocation, {
-      OPENROUTER_API_KEY: "router-secret",
-      OPENROUTER_MODEL: "router/model",
+    expect(host.agentProvider).toMatchObject({
+      kind: "private-openai-agent-provider/1",
+      api: "chat-completions",
+      baseURL: "https://gateway.example/v1",
+      model: "gateway/model",
     });
-    const nativeWithIncompleteFlavor = await openPrivateInstalledBunHost(
-      installedBunLocation,
-      {
-        OPENAI_API_KEY: "native-secret",
-        OPENAI_MODEL: "native-model",
-        OPENROUTER_API_KEY: "unused-partial-secret",
-      },
-    );
-    const openRouterWithIncompleteNative = await openPrivateInstalledBunHost(
-      installedBunLocation,
-      {
-        OPENAI_API_KEY: "unused-partial-secret",
-        OPENROUTER_API_KEY: "router-secret",
-        OPENROUTER_MODEL: "router/model",
-      },
-    );
-    expect(native.agentProvider?.baseURL).toBe(PRIVATE_OPENAI_BASE_URL);
-    expect(openRouter.agentProvider?.baseURL).toBe(PRIVATE_OPENROUTER_BASE_URL);
-    expect(nativeWithIncompleteFlavor.agentProvider?.baseURL).toBe(PRIVATE_OPENAI_BASE_URL);
-    expect(openRouterWithIncompleteNative.agentProvider?.baseURL)
-      .toBe(PRIVATE_OPENROUTER_BASE_URL);
-    const ambiguous = await openPrivateInstalledBunHost(installedBunLocation, {
-      OPENAI_API_KEY: "native-secret",
-      OPENAI_MODEL: "native-model",
-      OPENROUTER_API_KEY: "router-secret",
-      OPENROUTER_MODEL: "router/model",
-    });
-    expect(ambiguous.agentProvider).toBeUndefined();
   });
 
   test("rejects malformed complete configuration", async () => {
@@ -112,17 +98,19 @@ describe("private OpenAI Agent provider", () => {
       OPENAI_MODEL: "provider/test-model",
     })).toThrow("credential is invalid");
     expect(() => openPrivateOpenAIAgentProvider(support, {
-      OPENAI_API_KEY: "   ",
-      OPENAI_MODEL: "provider/test-model",
-    })).toThrow("credential is invalid");
-    expect(() => openPrivateOpenAIAgentProvider(support, {
-      OPENAI_API_KEY: `bad\0key`,
-      OPENAI_MODEL: "provider/test-model",
-    })).toThrow("credential is invalid");
-    expect(() => openPrivateOpenAIAgentProvider(support, {
       OPENAI_API_KEY: "test-secret",
       OPENAI_MODEL: "invalid model",
     })).toThrow("model is invalid");
+    expect(() => openPrivateOpenAIAgentProvider(support, {
+      OPENAI_API_KEY: "test-secret",
+      OPENAI_MODEL: "provider/test-model",
+      OPENAI_BASE_URL: "http://provider.example/v1",
+    })).toThrow("endpoint is invalid");
+    expect(() => openPrivateOpenAIAgentProvider(support, {
+      OPENAI_API_KEY: "test-secret",
+      OPENAI_MODEL: "provider/test-model",
+      OPENAI_API: "invented",
+    })).toThrow("API is invalid");
   });
 
   test("treats incomplete configuration as unavailable", async () => {
@@ -132,12 +120,8 @@ describe("private OpenAI Agent provider", () => {
     })).toBeUndefined();
     expect(openPrivateOpenAIAgentProvider(support, {
       OPENAI_MODEL: "provider/test-model",
-    })).toBeUndefined();
-    expect(openPrivateOpenRouterAgentFlavor(support, {
-      OPENROUTER_API_KEY: "test-secret",
-    })).toBeUndefined();
-    expect(openPrivateOpenRouterAgentFlavor(support, {
-      OPENROUTER_MODEL: "provider/test-model",
+      OPENAI_BASE_URL: "https://gateway.example/v1",
+      OPENAI_API: "chat-completions",
     })).toBeUndefined();
   });
 });

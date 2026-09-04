@@ -6,7 +6,6 @@ import { privateDomainDigest } from "../src/internal/identity.js";
 import { openPrivateInstalledBunHost } from "../src/internal/installed-bun-host.js";
 import { openPrivateInstalledBunSupport } from "../src/internal/installed-bun-support.js";
 import { openPrivateOpenAIAgentProvider } from "../src/internal/openai-agent-provider.js";
-import { openPrivateOpenRouterAgentFlavor } from "../src/internal/openrouter-agent-flavor.js";
 import {
   AGENT_RUN_CONTRACT_DIGEST,
   AGENT_RUN_CONTRACT_ID,
@@ -65,9 +64,11 @@ describe("private Bun direct Run", () => {
       OPENAI_API_KEY: "first-secret",
       OPENAI_MODEL: "provider/other-model",
     })!;
-    const differentFlavorProvider = openPrivateOpenRouterAgentFlavor(installedSupport, {
-      OPENROUTER_API_KEY: "first-secret",
-      OPENROUTER_MODEL: "provider/test-model",
+    const differentApiProvider = openPrivateOpenAIAgentProvider(installedSupport, {
+      OPENAI_API_KEY: "first-secret",
+      OPENAI_MODEL: "provider/test-model",
+      OPENAI_BASE_URL: "https://gateway.example/v1",
+      OPENAI_API: "chat-completions",
     })!;
     const first = await planPrivateBunDirectRun({
       request,
@@ -87,19 +88,19 @@ describe("private Bun direct Run", () => {
       backend,
       agentProvider: differentModelProvider,
     });
-    const differentFlavor = await planPrivateBunDirectRun({
+    const differentApi = await planPrivateBunDirectRun({
       request,
       installedSupport,
       backend,
-      agentProvider: differentFlavorProvider,
+      agentProvider: differentApiProvider,
     });
 
     expect(first.digest).toBe(rotated.digest);
     expect(first.observation.digest).toBe(rotated.observation.digest);
     expect(first.digest).not.toBe(differentModel.digest);
     expect(first.observation.digest).not.toBe(differentModel.observation.digest);
-    expect(first.digest).not.toBe(differentFlavor.digest);
-    expect(first.observation.digest).not.toBe(differentFlavor.observation.digest);
+    expect(first.digest).not.toBe(differentApi.digest);
+    expect(first.observation.digest).not.toBe(differentApi.observation.digest);
     expect(first.agentProvider).toBe(firstProvider);
     expect(JSON.stringify(first.observation)).not.toContain("secret");
   });
@@ -114,10 +115,9 @@ describe("private Bun direct Run", () => {
       { JIG_AGENT_CLIENT: "codex" },
       { OPENAI_API_KEY: "test-secret", OPENAI_MODEL: "invalid model" },
       {
-        OPENAI_API_KEY: "native-secret",
-        OPENAI_MODEL: "native-model",
-        OPENROUTER_API_KEY: "router-secret",
-        OPENROUTER_MODEL: "router/model",
+        OPENAI_API_KEY: "test-secret",
+        OPENAI_MODEL: "provider/test-model",
+        OPENAI_API: "invented",
       },
     ] as const;
 

@@ -9,7 +9,6 @@ import {
 } from "./acp-agent-provider.js";
 
 const PI_CLIENT = "pi";
-const OPENROUTER_PROVIDER = "openrouter";
 const SANDBOX_LAUNCHER_PATH = "/agent/pi-agent-launcher.js";
 const SANDBOX_ADAPTER_PATH = "/agent/pi-acp.js";
 const SANDBOX_EXECUTABLE_PATH = "/agent/pi";
@@ -30,11 +29,10 @@ const decoder = new TextDecoder("utf-8", { fatal: true });
 
 /**
  * Open the explicitly selected installed Pi client. This private alpha opener
- * currently accepts an OpenRouter gateway override; subscription credentials
- * are read from one explicit bounded host projection and then passed through
- * the same in-memory startup channel.
- * Merely having an OpenRouter key does not select Pi: JIG_AGENT_CLIENT must be
- * `pi`, and this opener also requires Pi-specific path and model settings.
+ * accepts one explicit Pi provider/model selection. PI_API_KEY selects Pi's
+ * built-in API-key path; without it, the same selection names one supported
+ * subscription projection. Jig does not define provider endpoints or a Pi
+ * provider registry.
  */
 export async function openPrivatePiAgentProvider(
   releaseRoot: string,
@@ -66,26 +64,20 @@ export async function openPrivatePiAgentProvider(
     ),
   });
 
-  const openRouterModel = environment.OPENROUTER_MODEL;
-  const subscriptionSelected = environment.PI_PROVIDER !== undefined ||
-    environment.PI_MODEL !== undefined;
-  if (openRouterModel !== undefined && subscriptionSelected) {
-    throw new Error("the Pi provider configuration is ambiguous");
-  }
-  if (openRouterModel !== undefined) {
-    const apiKey = environment.OPENROUTER_API_KEY;
-    if (apiKey === undefined) throw new Error("the OpenRouter gateway credential is unavailable");
-    return await createPrivatePiOpenRouterAgentProvider({
-      ...support,
-      apiKey,
-      model: openRouterModel,
-    });
-  }
-  if (subscriptionSelected) {
-    const provider = environment.PI_PROVIDER;
-    const model = environment.PI_MODEL;
+  const provider = environment.PI_PROVIDER;
+  const model = environment.PI_MODEL;
+  const apiKey = environment.PI_API_KEY;
+  if (provider !== undefined || model !== undefined || apiKey !== undefined) {
     if (provider === undefined || model === undefined) {
-      throw new Error("the Pi subscription configuration is unavailable");
+      throw new Error("the Pi provider configuration is unavailable");
+    }
+    if (apiKey !== undefined) {
+      return await createPrivatePiApiKeyAgentProvider({
+        ...support,
+        provider,
+        model,
+        apiKey,
+      });
     }
     const selectedProvider = requireSubscriptionProvider(provider);
     const configuredAgentDirectory = environment.PI_CODING_AGENT_DIR;
@@ -134,10 +126,11 @@ export interface PrivatePiAgentSupport {
   readonly certificatesPath: string;
 }
 
-export interface PrivatePiOpenRouterAgentConfiguration
+export interface PrivatePiApiKeyAgentConfiguration
   extends PrivatePiAgentSupport {
   readonly apiKey: string;
-  /** Exact OpenRouter model ID; Pi's provider prefix is derived internally. */
+  /** Exact built-in Pi provider ID, for example openrouter or mistral. */
+  readonly provider: string;
   readonly model: string;
 }
 
@@ -154,21 +147,23 @@ export interface PrivatePiSubscriptionAgentConfiguration
 }
 
 /**
- * Select Pi through OpenRouter only when the operator explicitly supplies
- * both its model and key. The key is projected through startup input, never
- * through the process environment or provider identity.
+ * Select one API-key-backed provider already implemented by Pi. The key is
+ * projected through startup input, never through the process environment or
+ * provider identity. Jig supplies no endpoint or provider implementation.
  */
-export async function createPrivatePiOpenRouterAgentProvider(
-  value: PrivatePiOpenRouterAgentConfiguration,
+export async function createPrivatePiApiKeyAgentProvider(
+  value: PrivatePiApiKeyAgentConfiguration,
 ): Promise<PrivateAcpAgentProvider> {
+  const provider = requireProvider(value.provider);
   const model = requireSelection(value.model, "Pi model");
-  const credential = openRouterCredential(value.apiKey);
+  const credential = apiKeyCredential(provider, value.apiKey);
   try {
     return await createPiProvider({
       support: value,
-      provider: OPENROUTER_PROVIDER,
+      provider,
       model,
-      credentialMode: "openrouter-gateway",
+      credentialMode: "pi-api-key",
+      credentialType: "api-key",
       credential,
     });
   } finally {
@@ -193,6 +188,7 @@ export async function createPrivatePiSubscriptionAgentProvider(
       provider,
       model,
       credentialMode: "pi-subscription",
+      credentialType: "subscription",
       credential,
     });
   } finally {
@@ -205,6 +201,7 @@ async function createPiProvider(value: {
   readonly provider: string;
   readonly model: string;
   readonly credentialMode: string;
+  readonly credentialType: "api-key" | "subscription";
   readonly credential: Uint8Array;
 }): Promise<PrivateAcpAgentProvider> {
   const selection = `${value.provider}/${value.model}`;
@@ -225,7 +222,7 @@ async function createPiProvider(value: {
         HOME: "/tmp/pi-home",
         JIG_PI_MODEL: value.model,
         JIG_PI_PROVIDER: value.provider,
-        JIG_PI_STARTUP_INPUT: "credential",
+        JIG_PI_STARTUP_INPUT: value.credentialType,
         NO_BROWSER: "1",
         PI_ACP_PI_COMMAND: SANDBOX_LAUNCHER_PATH,
         PI_CODING_AGENT_DIR: "/tmp/pi-agent",
@@ -274,33 +271,19 @@ async function createPiProvider(value: {
   }
 }
 
-function openRouterCredential(value: string): Uint8Array {
+function apiKeyCredential(provider: string, value: string): Uint8Array {
   if (typeof value !== "string" || value.length === 0 || value.trim() !== value ||
       value.includes("\0")) {
-    throw new Error("OpenRouter gateway credential is invalid");
+    throw new Error("Pi API credential is invalid");
   }
   const bytes = encoder.encode(JSON.stringify({
-    [OPENROUTER_PROVIDER]: { type: "api_key", key: value },
+    [provider]: { type: "api_key", key: value },
   }));
   if (bytes.byteLength > MAX_CREDENTIAL_BYTES) {
     bytes.fill(0);
-    throw new Error("OpenRouter gateway credential is invalid");
+    throw new Error("Pi API credential is invalid");
   }
   return bytes;
-}
-
-function requireOpenRouterCredential(value: Uint8Array): Uint8Array {
-  const parsed = parseCredential(value, "OpenRouter gateway credential");
-  if (!exactKeys(parsed, [OPENROUTER_PROVIDER])) {
-    throw new Error("OpenRouter gateway credential is invalid");
-  }
-  const entry = parsed[OPENROUTER_PROVIDER];
-  if (!isRecord(entry) || !exactKeys(entry, ["key", "type"]) ||
-      entry.type !== "api_key" || typeof entry.key !== "string" ||
-      entry.key.length === 0 || entry.key.trim() !== entry.key || entry.key.includes("\0")) {
-    throw new Error("OpenRouter gateway credential is invalid");
-  }
-  return encoder.encode(JSON.stringify(parsed));
 }
 
 function requireSubscriptionCredential(value: Uint8Array, provider: string): Uint8Array {

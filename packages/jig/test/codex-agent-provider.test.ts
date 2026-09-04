@@ -5,13 +5,12 @@ import { tmpdir } from "node:os";
 
 import { privateAcpAgentRuntime } from "../src/internal/acp-agent-provider.js";
 import {
-  createPrivateCodexOpenRouterAgentProvider,
+  createPrivateCodexOpenAIApiAgentProvider,
   createPrivateCodexSubscriptionAgentProvider,
   openPrivateCodexAgentProvider,
   projectPrivateCodexSubscriptionCredential,
-  PRIVATE_CODEX_OPENROUTER_BASE_URL,
+  PRIVATE_CODEX_DEFAULT_OPENAI_BASE_URL,
   PRIVATE_CODEX_REQUIREMENTS,
-  PRIVATE_CODEX_SUBSCRIPTION_MODEL,
 } from "../src/internal/codex-agent-provider.js";
 import { openPrivateInstalledBunHost } from "../src/internal/installed-bun-host.js";
 import { installedBunLocation } from "./fixtures/installed-bun-location.js";
@@ -24,7 +23,7 @@ afterEach(async () => {
 });
 
 describe("private native Codex Agent provider", () => {
-  test("selects subscription by default and OpenRouter only with an explicit model", async () => {
+  test("selects the Codex subscription by default and an explicit Responses API", async () => {
     const fixture = await files();
     const codexHome = join(fixture.root, "canonical-home");
     await mkdir(codexHome);
@@ -42,7 +41,14 @@ describe("private native Codex Agent provider", () => {
       {
         CODEX_HOME: codexHome,
         CODEX_PATH: fixture.executablePath,
-        OPENROUTER_API_KEY: "ignored-without-an-explicit-model",
+      },
+    );
+    const pinnedSubscription = await openPrivateCodexAgentProvider(
+      installedBunLocation.releaseRoot,
+      {
+        CODEX_HOME: codexHome,
+        CODEX_PATH: fixture.executablePath,
+        CODEX_MODEL: "gpt-5.3-codex-spark",
       },
     );
     const gateway = await openPrivateCodexAgentProvider(
@@ -50,25 +56,34 @@ describe("private native Codex Agent provider", () => {
       {
         CODEX_HOME: join(fixture.root, "missing-home"),
         CODEX_PATH: fixture.executablePath,
-        OPENROUTER_API_KEY: "gateway-secret",
-        OPENROUTER_MODEL: "provider/test-model",
+        OPENAI_API: "responses",
+        OPENAI_API_KEY: "gateway-secret",
+        OPENAI_BASE_URL: "https://gateway.example/v1",
+        OPENAI_MODEL: "provider/test-model",
       },
     );
 
     expect(subscription).toMatchObject({
       client: "openai-codex",
       credentialMode: "openai-subscription",
-      model: PRIVATE_CODEX_SUBSCRIPTION_MODEL,
+      model: "client-default",
     });
+    expect(pinnedSubscription.model).toBe("gpt-5.3-codex-spark");
     expect(gateway).toMatchObject({
       client: "openai-codex",
-      credentialMode: "openrouter-gateway",
+      credentialMode: "openai-responses-api-key",
       model: "provider/test-model",
     });
     await expect(openPrivateCodexAgentProvider(installedBunLocation.releaseRoot, {
       CODEX_PATH: fixture.executablePath,
-      OPENROUTER_MODEL: "provider/test-model",
-    })).rejects.toThrow("gateway credential is unavailable");
+      OPENAI_MODEL: "provider/test-model",
+    })).rejects.toThrow("Responses API configuration is unavailable");
+    await expect(openPrivateCodexAgentProvider(installedBunLocation.releaseRoot, {
+      CODEX_PATH: fixture.executablePath,
+      OPENAI_API: "chat-completions",
+      OPENAI_API_KEY: "gateway-secret",
+      OPENAI_MODEL: "provider/test-model",
+    })).rejects.toThrow("requires the OpenAI Responses API");
     const unsupported = await openPrivateInstalledBunHost(installedBunLocation, {
       JIG_AGENT_CLIENT: "unknown",
     });
@@ -96,7 +111,7 @@ describe("private native Codex Agent provider", () => {
     expect(JSON.stringify(projected)).not.toContain("canonical-id-secret");
   });
 
-  test("fixes subscription use to Spark without exposing canonical Codex credentials", async () => {
+  test("preserves the client subscription default without exposing canonical credentials", async () => {
     const support = await files();
     const credential = credentialBytes("account-one", "secret-one");
     const originalCredential = credential.slice();
@@ -109,13 +124,10 @@ describe("private native Codex Agent provider", () => {
 
     expect(provider).toMatchObject({
       client: "openai-codex",
-      model: PRIVATE_CODEX_SUBSCRIPTION_MODEL,
+      model: "client-default",
       credentialMode: "openai-subscription",
     });
-    expect(runtime.configuration).toEqual([{
-      configId: "model",
-      value: PRIVATE_CODEX_SUBSCRIPTION_MODEL,
-    }]);
+    expect(runtime.configuration).toEqual([]);
     expect(runtime.modeId).toBe("read-only");
     expect(runtime.authentication).toBeUndefined();
     expect(runtime.environment).toEqual({
@@ -130,7 +142,6 @@ describe("private native Codex Agent provider", () => {
         },
         history: { persistence: "none" },
         log_dir: "/tmp/codex-log",
-        model: PRIVATE_CODEX_SUBSCRIPTION_MODEL,
         sqlite_home: "/tmp/codex-state",
       }),
       CODEX_HOME: "/tmp/codex-home",
@@ -221,49 +232,65 @@ describe("private native Codex Agent provider", () => {
     })).rejects.toThrow("subscription credential is invalid");
   });
 
-  test("uses OpenRouter only as an explicit gateway flavor over native Codex", async () => {
+  test("uses an exact Responses-compatible endpoint without naming its operator", async () => {
     const support = await files();
-    const first = await createPrivateCodexOpenRouterAgentProvider({
+    const first = await createPrivateCodexOpenAIApiAgentProvider({
       ...support,
       apiKey: "first-secret",
+      baseURL: "https://gateway.example/v1",
       model: "provider/test-model",
     });
-    const rotated = await createPrivateCodexOpenRouterAgentProvider({
+    const rotated = await createPrivateCodexOpenAIApiAgentProvider({
       ...support,
       apiKey: "rotated-secret",
+      baseURL: "https://gateway.example/v1",
       model: "provider/test-model",
     });
-    const otherModel = await createPrivateCodexOpenRouterAgentProvider({
+    const otherModel = await createPrivateCodexOpenAIApiAgentProvider({
       ...support,
       apiKey: "first-secret",
+      baseURL: "https://gateway.example/v1",
       model: "provider/other-model",
+    });
+    const otherEndpoint = await createPrivateCodexOpenAIApiAgentProvider({
+      ...support,
+      apiKey: "first-secret",
+      baseURL: "https://other.example/v1",
+      model: "provider/test-model",
+    });
+    const defaultEndpoint = await createPrivateCodexOpenAIApiAgentProvider({
+      ...support,
+      apiKey: "first-secret",
+      model: "provider/test-model",
     });
     const runtime = privateAcpAgentRuntime(first);
 
     expect(first).toMatchObject({
       client: "openai-codex",
-      credentialMode: "openrouter-gateway",
+      credentialMode: "openai-responses-api-key",
       model: "provider/test-model",
     });
     expect(first.digest).toBe(rotated.digest);
     expect(first.digest).not.toBe(otherModel.digest);
+    expect(first.digest).not.toBe(otherEndpoint.digest);
+    expect(privateAcpAgentRuntime(defaultEndpoint).authentication?.identity.baseURL)
+      .toBe(PRIVATE_CODEX_DEFAULT_OPENAI_BASE_URL);
     expect(runtime.configuration).toEqual([{ configId: "model", value: "provider/test-model" }]);
     expect(runtime.modeId).toBe("read-only");
     expect(runtime.authentication).toEqual({
       identity: {
-        method: "gateway",
-        provider: "openrouter",
+        method: "api-key",
         protocol: "openai-responses",
-        baseURL: PRIVATE_CODEX_OPENROUTER_BASE_URL,
+        baseURL: "https://gateway.example/v1",
       },
       clientAuthCapabilities: { _meta: { gateway: true } },
       request: {
         methodId: "gateway",
         _meta: {
           gateway: {
-            baseUrl: PRIVATE_CODEX_OPENROUTER_BASE_URL,
+            baseUrl: "https://gateway.example/v1",
             headers: { Authorization: "Bearer first-secret" },
-            providerName: "OpenRouter",
+            providerName: "OpenAI Responses-compatible endpoint",
           },
         },
       },
@@ -280,24 +307,30 @@ describe("private native Codex Agent provider", () => {
     expect(JSON.stringify(runtime.environment)).not.toContain("first-secret");
   });
 
-  test("rejects malformed OpenRouter gateway configuration", async () => {
+  test("rejects malformed Responses API configuration", async () => {
     const support = await files();
-    await expect(createPrivateCodexOpenRouterAgentProvider({
+    await expect(createPrivateCodexOpenAIApiAgentProvider({
       ...support,
       apiKey: " ",
       model: "provider/test-model",
-    })).rejects.toThrow("gateway credential is invalid");
-    await expect(createPrivateCodexOpenRouterAgentProvider({
+    })).rejects.toThrow("Responses API credential is invalid");
+    await expect(createPrivateCodexOpenAIApiAgentProvider({
       ...support,
       apiKey: "secret",
       model: "invalid model",
     })).rejects.toThrow("model is invalid");
+    await expect(createPrivateCodexOpenAIApiAgentProvider({
+      ...support,
+      apiKey: "secret",
+      baseURL: "http://gateway.example/v1",
+      model: "provider/test-model",
+    })).rejects.toThrow("base URL is invalid");
   });
 
   test("requires the exact managed Codex constraints", async () => {
     const support = await files();
     await writeFile(support.requirementsPath, "allowed_sandbox_modes = []\n");
-    await expect(createPrivateCodexOpenRouterAgentProvider({
+    await expect(createPrivateCodexOpenAIApiAgentProvider({
       ...support,
       apiKey: "secret",
       model: "provider/test-model",

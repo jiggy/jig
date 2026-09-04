@@ -6,7 +6,6 @@ import { PrivateLinuxCgroupBackend } from "./linux-rootless-backend.js";
 import type { PrivateProjectSessionHost } from "./project-session-controller.js";
 import { PRIVATE_DEFAULT_ROOT_RUN_TIMEOUT_MS } from "./root-run-timeout-policy.js";
 import { openPrivateOpenAIAgentProvider } from "./openai-agent-provider.js";
-import { openPrivateOpenRouterAgentFlavor } from "./openrouter-agent-flavor.js";
 import { openPrivateCodexAgentProvider } from "./codex-agent-provider.js";
 import { openPrivateClaudeAgentProvider } from "./claude-agent-provider.js";
 import { openPrivatePiAgentProvider } from "./pi-agent-provider.js";
@@ -39,7 +38,7 @@ async function tryOpenAgentProvider(
   try {
     const client = environment[AGENT_CLIENT];
     return client === undefined
-      ? openApiAgentProvider(installedBunSupport, environment)
+      ? openPrivateOpenAIAgentProvider(installedBunSupport, environment)
       : client === "codex"
         ? await openPrivateCodexAgentProvider(installedBunSupport.releaseRoot, environment)
         : client === "claude"
@@ -51,19 +50,4 @@ async function tryOpenAgentProvider(
     // Provider support is target-scoped; Agent-bearing recipe planning rejects its absence.
     return undefined;
   }
-}
-
-function openApiAgentProvider(
-  installedBunSupport: Awaited<ReturnType<typeof openPrivateInstalledBunSupport>>,
-  environment: Readonly<Record<string, string | undefined>>,
-) {
-  const nativeAgentProvider = openPrivateOpenAIAgentProvider(installedBunSupport, environment);
-  const openRouterAgentProvider = openPrivateOpenRouterAgentFlavor(
-    installedBunSupport,
-    environment,
-  );
-  if (nativeAgentProvider !== undefined && openRouterAgentProvider !== undefined) {
-    throw new Error("the Agent provider configuration is ambiguous");
-  }
-  return nativeAgentProvider ?? openRouterAgentProvider;
 }

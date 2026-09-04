@@ -1,27 +1,27 @@
-import { requestPrivateOpenAIResponse } from "./openai-responses-client.js";
+import { requestPrivateOpenAIAgent } from "./openai-agent-client.js";
 import {
-  decodePrivateOpenAIResponsesRequest,
-  encodePrivateOpenAIResponsesFailure,
-  encodePrivateOpenAIResponsesSuccess,
-  PrivateOpenAIResponsesError,
-  PRIVATE_OPENAI_RESPONSES_REQUEST_BYTES,
-  type PrivateOpenAIResponsesErrorCode,
-} from "./openai-responses-protocol.js";
+  decodePrivateOpenAIAgentRequest,
+  encodePrivateOpenAIAgentFailure,
+  encodePrivateOpenAIAgentSuccess,
+  PrivateOpenAIAgentError,
+  PRIVATE_OPENAI_AGENT_REQUEST_BYTES,
+  type PrivateOpenAIAgentErrorCode,
+} from "./openai-agent-protocol.js";
 
 await main();
 
 async function main(): Promise<void> {
   let output: Uint8Array;
   try {
-    const input = await readBoundedInput(PRIVATE_OPENAI_RESPONSES_REQUEST_BYTES);
-    const request = decodePrivateOpenAIResponsesRequest(input);
-    const value = await requestPrivateOpenAIResponse(request, {
+    const input = await readBoundedInput(PRIVATE_OPENAI_AGENT_REQUEST_BYTES);
+    const request = decodePrivateOpenAIAgentRequest(input);
+    const value = await requestPrivateOpenAIAgent(request, {
       apiKey: request.apiKey,
     });
-    output = encodePrivateOpenAIResponsesSuccess(value);
+    output = encodePrivateOpenAIAgentSuccess(value);
   } catch (error) {
     const failure = safeFailure(error);
-    output = encodePrivateOpenAIResponsesFailure(failure.code, failure.message);
+    output = encodePrivateOpenAIAgentFailure(failure.code, failure.message);
   }
   try {
     await writeOutput(output);
@@ -39,9 +39,9 @@ async function readBoundedInput(maximum: number): Promise<Uint8Array> {
       : new Uint8Array(raw.buffer, raw.byteOffset, raw.byteLength);
     total += chunk.byteLength;
     if (total > maximum) {
-      throw new PrivateOpenAIResponsesError(
+      throw new PrivateOpenAIAgentError(
         "AGENT_PROVIDER_PROTOCOL",
-        "OpenAI Responses worker request exceeds its byte bound",
+        "OpenAI Agent worker request exceeds its byte bound",
       );
     }
     chunks.push(chunk.slice());
@@ -56,15 +56,15 @@ async function readBoundedInput(maximum: number): Promise<Uint8Array> {
 }
 
 function safeFailure(error: unknown): {
-  readonly code: PrivateOpenAIResponsesErrorCode;
+  readonly code: PrivateOpenAIAgentErrorCode;
   readonly message: string;
 } {
-  if (error instanceof PrivateOpenAIResponsesError) {
+  if (error instanceof PrivateOpenAIAgentError) {
     return Object.freeze({ code: error.code, message: error.message });
   }
   return Object.freeze({
     code: "AGENT_PROVIDER_UNAVAILABLE",
-    message: "OpenAI Responses worker failed",
+    message: "OpenAI Agent worker failed",
   });
 }
 

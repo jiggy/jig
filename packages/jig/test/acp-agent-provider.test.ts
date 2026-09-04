@@ -55,7 +55,7 @@ describe("private ACP Agent provider", () => {
       sandboxAdapterPath: "/agent/adapter.js",
       executablePath: support.executable,
       sandboxExecutablePath: "/agent/client",
-      environment: { OPENROUTER_API_KEY: "must-not-enter-the-process" },
+      environment: { PROVIDER_API_KEY: "must-not-enter-the-process" },
     })).rejects.toThrow("launch environment is invalid");
   });
 

@@ -4,11 +4,13 @@ import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 
 import { privateAcpAgentRuntime } from "../src/internal/acp-agent-provider.js";
+import { projectPrivateClaudeCredential } from
+  "../src/internal/claude-agent-launcher.js";
 import {
-  createPrivateClaudeOpenRouterAgentProvider,
+  createPrivateClaudeAnthropicApiAgentProvider,
   createPrivateClaudeSubscriptionAgentProvider,
   openPrivateClaudeAgentProvider,
-  PRIVATE_CLAUDE_OPENROUTER_BASE_URL,
+  PRIVATE_CLAUDE_DEFAULT_ANTHROPIC_BASE_URL,
 } from "../src/internal/claude-agent-provider.js";
 
 const temporary = new Set<string>();
@@ -18,22 +20,29 @@ afterEach(async () => {
 });
 
 describe("private native Claude Code Agent provider", () => {
-  test("selects subscription by default and OpenRouter only with an explicit model", async () => {
+  test("selects subscription by default and an explicit Anthropic-compatible API", async () => {
     const fixture = await files();
     const subscription = await openPrivateClaudeAgentProvider(fixture.releaseRoot, {
       CLAUDE_PATH: fixture.executablePath,
       CLAUDE_CODE_OAUTH_TOKEN: "subscription-secret",
-      OPENROUTER_API_KEY: "ignored-without-an-explicit-model",
     });
     const pinnedSubscription = await openPrivateClaudeAgentProvider(fixture.releaseRoot, {
       CLAUDE_PATH: fixture.executablePath,
       CLAUDE_CODE_OAUTH_TOKEN: "subscription-secret",
       CLAUDE_MODEL: "subscription/model",
     });
-    const gateway = await openPrivateClaudeAgentProvider(fixture.releaseRoot, {
+    const apiKey = await openPrivateClaudeAgentProvider(fixture.releaseRoot, {
       CLAUDE_PATH: fixture.executablePath,
-      OPENROUTER_API_KEY: "gateway-secret",
-      OPENROUTER_MODEL: "provider/test-model",
+      ANTHROPIC_API_KEY: "api-key-secret",
+      ANTHROPIC_BASE_URL: "https://gateway.example/anthropic",
+      ANTHROPIC_MODEL: "provider/test-model",
+    });
+    const authToken = await openPrivateClaudeAgentProvider(fixture.releaseRoot, {
+      CLAUDE_PATH: fixture.executablePath,
+      ANTHROPIC_API_KEY: "",
+      ANTHROPIC_AUTH_TOKEN: "auth-token-secret",
+      ANTHROPIC_BASE_URL: "https://gateway.example/anthropic",
+      ANTHROPIC_MODEL: "provider/test-model",
     });
 
     expect(subscription).toMatchObject({
@@ -42,15 +51,27 @@ describe("private native Claude Code Agent provider", () => {
       model: "default",
     });
     expect(pinnedSubscription.model).toBe("subscription/model");
-    expect(gateway).toMatchObject({
+    expect(apiKey).toMatchObject({
       client: "anthropic-claude-code",
-      credentialMode: "openrouter-gateway",
+      credentialMode: "anthropic-api-key",
       model: "provider/test-model",
     });
+    expect(authToken).toMatchObject({
+      client: "anthropic-claude-code",
+      credentialMode: "anthropic-auth-token",
+      model: "provider/test-model",
+    });
+    expect(authToken.digest).not.toBe(apiKey.digest);
     await expect(openPrivateClaudeAgentProvider(fixture.releaseRoot, {
       CLAUDE_PATH: fixture.executablePath,
-      OPENROUTER_MODEL: "provider/test-model",
-    })).rejects.toThrow("gateway credential is unavailable");
+      ANTHROPIC_API_KEY: "api-key-secret",
+      ANTHROPIC_AUTH_TOKEN: "auth-token-secret",
+      ANTHROPIC_MODEL: "provider/test-model",
+    })).rejects.toThrow("authentication is ambiguous");
+    await expect(openPrivateClaudeAgentProvider(fixture.releaseRoot, {
+      CLAUDE_PATH: fixture.executablePath,
+      ANTHROPIC_MODEL: "provider/test-model",
+    })).rejects.toThrow("API configuration is unavailable");
     await expect(openPrivateClaudeAgentProvider(fixture.releaseRoot, {
       CLAUDE_PATH: fixture.executablePath,
     })).rejects.toThrow("subscription credential is unavailable");
@@ -76,7 +97,7 @@ describe("private native Claude Code Agent provider", () => {
       credentialMode: "claude-subscription",
       model: "subscription/model",
     });
-    expect(runtime.environment).toEqual(environment("subscription/model", true));
+    expect(runtime.environment).toEqual(environment("subscription/model", "subscription"));
     expect(runtime.configuration).toEqual([]);
     expect(runtime.modeId).toBe("default");
     expect(runtime.sessionMeta).toEqual(sessionMeta("subscription/model"));
@@ -100,33 +121,51 @@ describe("private native Claude Code Agent provider", () => {
     expect(Object.keys(runtime.environment)).not.toContain("ANTHROPIC_AUTH_TOKEN");
   });
 
-  test("uses OpenRouter only as an explicit Anthropic gateway flavor", async () => {
+  test("uses one exact Anthropic-compatible endpoint without naming its operator", async () => {
     const support = await files();
-    const first = await createPrivateClaudeOpenRouterAgentProvider({
+    const first = await createPrivateClaudeAnthropicApiAgentProvider({
       ...support,
-      apiKey: "first-secret",
+      authentication: "api-key",
+      credential: "first-secret",
+      baseURL: "https://gateway.example/anthropic",
       model: "provider/test-model",
     });
-    const rotated = await createPrivateClaudeOpenRouterAgentProvider({
+    const rotated = await createPrivateClaudeAnthropicApiAgentProvider({
       ...support,
-      apiKey: "rotated-secret",
+      authentication: "api-key",
+      credential: "rotated-secret",
+      baseURL: "https://gateway.example/anthropic",
       model: "provider/test-model",
     });
-    const otherModel = await createPrivateClaudeOpenRouterAgentProvider({
+    const otherModel = await createPrivateClaudeAnthropicApiAgentProvider({
       ...support,
-      apiKey: "first-secret",
+      authentication: "api-key",
+      credential: "first-secret",
+      baseURL: "https://gateway.example/anthropic",
       model: "provider/other-model",
+    });
+    const otherEndpoint = await createPrivateClaudeAnthropicApiAgentProvider({
+      ...support,
+      authentication: "api-key",
+      credential: "first-secret",
+      baseURL: "https://other.example/anthropic",
+      model: "provider/test-model",
     });
     const runtime = privateAcpAgentRuntime(first);
 
     expect(first.digest).toBe(rotated.digest);
     expect(first.digest).not.toBe(otherModel.digest);
+    expect(first.digest).not.toBe(otherEndpoint.digest);
     expect(first).toMatchObject({
       client: "anthropic-claude-code",
-      credentialMode: "openrouter-gateway",
+      credentialMode: "anthropic-api-key",
       model: "provider/test-model",
     });
-    expect(runtime.environment).toEqual(environment("provider/test-model", false));
+    expect(runtime.environment).toEqual(environment(
+      "provider/test-model",
+      "api-key",
+      "https://gateway.example/anthropic",
+    ));
     expect(runtime.configuration).toEqual([]);
     expect(runtime.modeId).toBe("default");
     expect(runtime.sessionMeta).toEqual(sessionMeta("provider/test-model"));
@@ -134,6 +173,66 @@ describe("private native Claude Code Agent provider", () => {
     expect(new TextDecoder().decode(runtime.startupInput!().slice(4))).toBe("first-secret");
     expect(JSON.stringify(first)).not.toContain("first-secret");
     expect(JSON.stringify(runtime.environment)).not.toContain("first-secret");
+  });
+
+  test("makes bearer-token authentication exact without retaining its secret", async () => {
+    const support = await files();
+    const first = await createPrivateClaudeAnthropicApiAgentProvider({
+      ...support,
+      authentication: "auth-token",
+      credential: "first-bearer-secret",
+      baseURL: "https://gateway.example/anthropic",
+      model: "provider/test-model",
+    });
+    const rotated = await createPrivateClaudeAnthropicApiAgentProvider({
+      ...support,
+      authentication: "auth-token",
+      credential: "rotated-bearer-secret",
+      baseURL: "https://gateway.example/anthropic",
+      model: "provider/test-model",
+    });
+    const runtime = privateAcpAgentRuntime(first);
+
+    expect(first.digest).toBe(rotated.digest);
+    expect(first).toMatchObject({
+      credentialMode: "anthropic-auth-token",
+      model: "provider/test-model",
+    });
+    expect(runtime.environment).toEqual(environment(
+      "provider/test-model",
+      "auth-token",
+      "https://gateway.example/anthropic",
+    ));
+    expect(new TextDecoder().decode(runtime.startupInput!().slice(4)))
+      .toBe("first-bearer-secret");
+    expect(JSON.stringify(first)).not.toContain("bearer-secret");
+    expect(JSON.stringify(runtime.environment)).not.toContain("bearer-secret");
+  });
+
+  test("projects only the selected client credential and blanks a conflicting API key", () => {
+    const subscription: Record<string, string | undefined> = {
+      ANTHROPIC_API_KEY: "ambient-api-key",
+      ANTHROPIC_AUTH_TOKEN: "ambient-auth-token",
+    };
+    projectPrivateClaudeCredential(subscription, "subscription", "subscription-secret");
+    expect(subscription).toEqual({ CLAUDE_CODE_OAUTH_TOKEN: "subscription-secret" });
+
+    const apiKey: Record<string, string | undefined> = {
+      ANTHROPIC_AUTH_TOKEN: "ambient-auth-token",
+      CLAUDE_CODE_OAUTH_TOKEN: "ambient-subscription-token",
+    };
+    projectPrivateClaudeCredential(apiKey, "api-key", "api-key-secret");
+    expect(apiKey).toEqual({ ANTHROPIC_API_KEY: "api-key-secret" });
+
+    const authToken: Record<string, string | undefined> = {
+      ANTHROPIC_API_KEY: "ambient-api-key",
+      CLAUDE_CODE_OAUTH_TOKEN: "ambient-subscription-token",
+    };
+    projectPrivateClaudeCredential(authToken, "auth-token", "auth-token-secret");
+    expect(authToken).toEqual({
+      ANTHROPIC_API_KEY: "",
+      ANTHROPIC_AUTH_TOKEN: "auth-token-secret",
+    });
   });
 
   test("rejects malformed credentials and models", async () => {
@@ -144,25 +243,46 @@ describe("private native Claude Code Agent provider", () => {
         token,
       })).rejects.toThrow("subscription credential is invalid");
     }
-    await expect(createPrivateClaudeOpenRouterAgentProvider({
+    await expect(createPrivateClaudeAnthropicApiAgentProvider({
       ...support,
-      apiKey: " ",
+      authentication: "api-key",
+      credential: " ",
       model: "provider/test-model",
-    })).rejects.toThrow("gateway credential is invalid");
-    await expect(createPrivateClaudeOpenRouterAgentProvider({
+    })).rejects.toThrow("API credential is invalid");
+    await expect(createPrivateClaudeAnthropicApiAgentProvider({
       ...support,
-      apiKey: "secret",
+      authentication: "api-key",
+      credential: "secret",
       model: "invalid model",
     })).rejects.toThrow("model is invalid");
+    await expect(createPrivateClaudeAnthropicApiAgentProvider({
+      ...support,
+      authentication: "api-key",
+      credential: "secret",
+      baseURL: "http://gateway.example/anthropic",
+      model: "provider/test-model",
+    })).rejects.toThrow("base URL is invalid");
+    await expect(createPrivateClaudeAnthropicApiAgentProvider({
+      ...support,
+      authentication: "invented" as "api-key",
+      credential: "secret",
+      model: "provider/test-model",
+    })).rejects.toThrow("authentication is invalid");
   });
 });
 
-function environment(model: string, subscription: boolean) {
+function environment(
+  model: string,
+  credential: "subscription" | "api-key" | "auth-token",
+  baseURL?: string,
+) {
   return {
     ANTHROPIC_DEFAULT_HAIKU_MODEL: model,
     ANTHROPIC_DEFAULT_OPUS_MODEL: model,
     ANTHROPIC_DEFAULT_SONNET_MODEL: model,
-    ...(subscription ? {} : { ANTHROPIC_BASE_URL: PRIVATE_CLAUDE_OPENROUTER_BASE_URL }),
+    ...(credential === "subscription" ? {} : {
+      ANTHROPIC_BASE_URL: baseURL ?? PRIVATE_CLAUDE_DEFAULT_ANTHROPIC_BASE_URL,
+    }),
     ANTHROPIC_MODEL: model,
     CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
     CLAUDE_CODE_DISABLE_TERMINAL_TITLE: "1",
@@ -174,7 +294,7 @@ function environment(model: string, subscription: boolean) {
     CLAUDE_CONFIG_DIR: "/tmp/claude-config",
     CLAUDE_MODEL_CONFIG: JSON.stringify({ availableModels: [model] }),
     HOME: "/tmp/claude-home",
-    JIG_CLAUDE_STARTUP_INPUT: subscription ? "subscription" : "openrouter",
+    JIG_CLAUDE_STARTUP_INPUT: credential,
     NO_BROWSER: "1",
     SSL_CERT_FILE: "/etc/ssl/certs/ca-certificates.crt",
   };

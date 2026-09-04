@@ -43,9 +43,15 @@ child calls, and Agent providers.
 - Do not weaken production checks for an unprovisioned unit test. Use private
   injection seams for units and the proof host for kernel behavior.
 - A provider adapter may narrow common Agent authority, never widen it.
-- Direct OpenAI/OpenRouter and native Codex, Claude Code, and Pi are the
-  owner-selected initial Agent breadth. Close missing evidence with focused
-  tests; do not remove one solely because prerelease live coverage lags.
+- One direct official OpenAI-SDK client and native Codex, Claude Code, and Pi
+  are the owner-selected initial Agent breadth. Compatible endpoints remain
+  protocol-specific host configuration; an endpoint, credential, provider, or
+  model used in development must not become a product default.
+- Keep each native client a thin profile over the common ACP lifecycle. A new
+  client must not require FLOW changes, and a public provider/customization SPI
+  requires independent installed consumers to earn its shape.
+- Close missing evidence with focused tests; do not remove a selected client
+  solely because prerelease live coverage lags.
 
 ## Verification
 

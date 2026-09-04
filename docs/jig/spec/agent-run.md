@@ -16,8 +16,8 @@ digest   sha256:5a0f06495323419d275eeff92617d9287647ece137dacc9c5c6d50466d65c0f0
 method   run
 ```
 
-An Agent-using Flow vendors those exact descriptor bytes inside its own
-package and refers to the package-local copy from `FLOW.md`:
+An Agent-using Flow includes an exact package-local copy of those descriptor
+bytes and refers to it from `FLOW.md`:
 
 ```yaml
 ---
@@ -207,44 +207,60 @@ Every implementation below serves the same Agent Run contract. A Flow cannot
 select a client, endpoint, model, executable, or credential. Those are trusted
 host configuration used by both `jig check` and `jig run`.
 
-With `JIG_AGENT_CLIENT` unset, Jig uses the official OpenAI JavaScript SDK and
-Responses API directly:
+With `JIG_AGENT_CLIENT` unset, Jig uses the official OpenAI JavaScript SDK for
+one direct API call. The operator supplies:
 
-```text
-OpenAI       OPENAI_MODEL + OPENAI_API_KEY
-OpenRouter   OPENROUTER_MODEL + OPENROUTER_API_KEY
-```
+| Variable | Meaning |
+| --- | --- |
+| `OPENAI_API_KEY` | Required secret presented to the selected endpoint |
+| `OPENAI_MODEL` | Required endpoint-specific model identifier |
+| `OPENAI_BASE_URL` | Optional HTTPS API root; defaults to `https://api.openai.com/v1` |
+| `OPENAI_API` | Optional wire API: `responses` (default) or `chat-completions` |
 
-OpenRouter is an explicit gateway flavor, never the default. Exactly one
-complete pair may be configured, and Jig supplies no default API model. Direct
-OpenAI calls use `https://api.openai.com/v1`; the OpenRouter flavor changes the
-base URL and credential convention to `https://openrouter.ai/api/v1`. It does
-not replace OpenAI's request and response model.
+The base URL cannot contain credentials, a query, or a fragment. Jig supplies
+no default model. The API, endpoint, and model are reviewed provider identity;
+the key is not. `responses` uses the SDK's non-streaming Responses call.
+`chat-completions` uses its non-streaming Chat Completions call. When the Agent
+asks for structured data, the endpoint must accept the strict JSON Schema
+request shape used by the selected API. Compatibility here means that the
+endpoint implements this bounded request and response subset; it is not a
+claim of complete OpenAI API compatibility. Jig disables SDK retries and
+normalizes only one bounded final response.
+
+An OpenRouter endpoint can be selected with the same variables when it
+implements the selected subset. A direct Mistral endpoint uses those same
+variables with `OPENAI_API=chat-completions`. Neither has a separate Jig
+interface, credential name, provider object, or default model.
 
 Native Agent clients use one private Agent Client Protocol (ACP) mechanism.
 Each client contributes only the configuration needed to launch its own ACP
 adapter:
 
-| Client | Host selection | Subscription configuration |
-| --- | --- | --- |
-| Codex | `JIG_AGENT_CLIENT=codex`, `CODEX_PATH` | Existing `CODEX_HOME` (or `~/.codex`) authentication; model fixed to `gpt-5.3-codex-spark` |
-| Claude Code | `JIG_AGENT_CLIENT=claude`, `CLAUDE_PATH` | `CLAUDE_CODE_OAUTH_TOKEN`; optional `CLAUDE_MODEL` |
-| Pi | `JIG_AGENT_CLIENT=pi`, `PI_PATH` | `PI_PROVIDER` plus `PI_MODEL`; authentication from `PI_CODING_AGENT_DIR/auth.json` or `~/.pi/agent/auth.json` |
+| Client | Host selection | Subscription configuration | API configuration |
+| --- | --- | --- | --- |
+| Codex | `JIG_AGENT_CLIENT=codex`, `CODEX_PATH` | Existing `CODEX_HOME` (or `~/.codex`) authentication; optional `CODEX_MODEL`, with omission retaining the client default | `OPENAI_API_KEY` and `OPENAI_MODEL`; optional `OPENAI_BASE_URL`; `OPENAI_API` must be omitted or `responses` |
+| Claude Code | `JIG_AGENT_CLIENT=claude`, `CLAUDE_PATH` | `CLAUDE_CODE_OAUTH_TOKEN`; optional `CLAUDE_MODEL` | Exactly one of `ANTHROPIC_API_KEY` or `ANTHROPIC_AUTH_TOKEN`, plus `ANTHROPIC_MODEL`; optional `ANTHROPIC_BASE_URL` |
+| Pi | `JIG_AGENT_CLIENT=pi`, `PI_PATH` | `PI_PROVIDER` and `PI_MODEL`; authentication from `PI_CODING_AGENT_DIR/auth.json` or `~/.pi/agent/auth.json` | `PI_PROVIDER`, `PI_MODEL`, and `PI_API_KEY`, using a provider implemented by Pi |
 
 The current Pi profile accepts the official self-contained Linux x64 Pi
 0.84.4 release layout. It does not interpret the multi-file npm installation
 or make Node part of Jig's runtime closure.
 
-For any native client, setting `OPENROUTER_MODEL` together with
-`OPENROUTER_API_KEY` explicitly selects the OpenRouter gateway instead of its
-subscription configuration. The pair is shared host vocabulary; Jig does not
-hard-code a development model into a client profile. Pi subscription support
-is currently bounded to its `anthropic` and `openai-codex` providers.
+Native Codex's API-key path is Responses-compatible only; selecting
+`chat-completions` fails closed. Claude Code uses its Anthropic-compatible API
+path. `ANTHROPIC_API_KEY` selects API-key authentication;
+`ANTHROPIC_AUTH_TOKEN` selects bearer-token authentication, with the API-key
+channel explicitly blanked inside the client process. Supplying both nonempty
+credentials is ambiguous and fails closed. Pi delegates an API-key selection
+to the exact built-in provider named by `PI_PROVIDER`; Jig does not add an
+endpoint or provider registry. Pi
+subscription support is currently bounded to its `anthropic` and
+`openai-codex` providers. No native profile hard-codes a production model.
 
 Jig reads native credentials in trusted host code and gives the contained
 client only the bounded credential projection needed for one provider
 lifetime. Credential sources are not mounted. The selected non-secret client,
-model, protocol flavor, and exact executable/support identities enter provider
+API, endpoint, model, and exact executable/support identities enter provider
 identity and the reviewed Plan; secrets do not. Changing non-secret behavior
 requires another `jig check` and approval, while rotating only the selected
 credential does not.
@@ -260,9 +276,10 @@ they are not exposed as a client filesystem or native skill installation.
 
 These workers have ordinary inherited network access rather than
 endpoint-filtered egress; their exact trusted bytes and configuration, not a
-network-policy framework, limit what they do. The direct Responses worker asks
-for `store: false`, but that flag is not a promise about every endpoint's
-retention or training policy.
+network-policy framework, limit what they do. A direct Responses call asks for
+`store: false`; the Chat Completions path makes no equivalent retention claim,
+and neither setting is a promise about an endpoint's retention or training
+policy.
 
 If the selected client, executable support, credential, or model is missing or
 invalid, checking an Agent-bearing target reports it unavailable. A

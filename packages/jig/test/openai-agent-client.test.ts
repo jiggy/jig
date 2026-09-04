@@ -3,22 +3,26 @@ import { describe, expect, test } from "bun:test";
 import type { JsonObject } from "../src/json.js";
 import {
   assertPrivateAgentResponseSchema,
-  normalizePrivateOpenAIResponse,
-  requestPrivateOpenAIResponse,
-  type PrivateOpenAIResponsesClientRequest,
-} from "../src/internal/openai-responses-client.js";
+  normalizePrivateOpenAIAgentResponse,
+  requestPrivateOpenAIAgent,
+  type PrivateOpenAIAgentClientRequest,
+} from "../src/internal/openai-agent-client.js";
 import {
-  decodePrivateOpenAIResponsesRequest,
-  decodePrivateOpenAIResponsesResponse,
-  encodePrivateOpenAIResponsesFailure,
-  encodePrivateOpenAIResponsesRequest,
-  encodePrivateOpenAIResponsesSuccess,
-  PrivateOpenAIResponsesError,
-  PRIVATE_OPENAI_RESPONSES_PROTOCOL,
-} from "../src/internal/openai-responses-protocol.js";
+  decodePrivateOpenAIAgentRequest,
+  decodePrivateOpenAIAgentResponse,
+  encodePrivateOpenAIAgentFailure,
+  encodePrivateOpenAIAgentRequest,
+  encodePrivateOpenAIAgentSuccess,
+  PrivateOpenAIAgentError,
+  PRIVATE_OPENAI_AGENT_PROTOCOL,
+} from "../src/internal/openai-agent-protocol.js";
 
 const TEST_BASE_URL = "https://provider.example/api/v1";
 const TEST_MODEL = "provider/test-model";
+const mistralProof = process.env.JIG_MISTRAL_AGENT_PROOF === "1" &&
+    process.env.MISTRAL_API_KEY !== undefined
+  ? test
+  : test.skip;
 
 const RESPONSE_SCHEMA = Object.freeze({
   $schema: "https://flow.jig.md/schemas/schema-1.json",
@@ -69,7 +73,23 @@ const RESPONSE_VALUE = Object.freeze({
   }),
 });
 
-describe("private OpenAI Responses client", () => {
+describe("private OpenAI-compatible client", () => {
+  mistralProof("uses the OpenAI client against Mistral's Chat Completions endpoint", async () => {
+    const schema = closedSchema({ answer: { type: "string", enum: ["READY"] } });
+    const result = await requestPrivateOpenAIAgent({
+      api: "chat-completions",
+      baseURL: "https://api.mistral.ai/v1",
+      model: process.env.JIG_MISTRAL_AGENT_MODEL ?? "mistral-small-latest",
+      instructions: 'Return exactly {"answer":"READY"}.',
+      responseSchema: schema,
+    }, { apiKey: process.env.MISTRAL_API_KEY! });
+    expect(result).toMatchObject({
+      outcome: "completed",
+      structured: { answer: "READY" },
+    });
+    expect(JSON.parse(result.text)).toEqual({ answer: "READY" });
+  }, 60_000);
+
   test("accepts the bounded recursive structured-output profile", () => {
     expect(() => assertPrivateAgentResponseSchema(RESPONSE_SCHEMA)).not.toThrow();
     expect(() => assertPrivateAgentResponseSchema(closedSchema({
@@ -131,7 +151,8 @@ describe("private OpenAI Responses client", () => {
     let outboundHeaders: Headers | undefined;
     let outboundBody: Record<string, unknown> | undefined;
 
-    const result = await requestPrivateOpenAIResponse({
+    const result = await requestPrivateOpenAIAgent({
+      api: "responses",
       baseURL: TEST_BASE_URL,
       model: TEST_MODEL,
       instructions: "Return the answer.",
@@ -223,8 +244,97 @@ describe("private OpenAI Responses client", () => {
     });
   });
 
+  test("uses Chat Completions through the same SDK and normalizes structured output", async () => {
+    let outboundURL: string | undefined;
+    let outboundBody: Record<string, unknown> | undefined;
+    const result = await requestPrivateOpenAIAgent({
+      api: "chat-completions",
+      baseURL: TEST_BASE_URL,
+      model: TEST_MODEL,
+      instructions: "Return the answer.",
+      responseSchema: RESPONSE_SCHEMA,
+    }, {
+      apiKey: "test-provider-secret",
+      fetch: async (input, init) => {
+        const request = input instanceof Request ? input : undefined;
+        outboundURL = request?.url ?? String(input);
+        const body = request === undefined ? init?.body : await request.clone().text();
+        if (typeof body !== "string") throw new Error("test expected a JSON request body");
+        outboundBody = JSON.parse(body) as Record<string, unknown>;
+        return jsonResponse({
+          id: "completion-1",
+          object: "chat.completion",
+          created: 1,
+          model: TEST_MODEL,
+          choices: [{
+            index: 0,
+            finish_reason: "stop",
+            message: {
+              role: "assistant",
+              content: JSON.stringify(RESPONSE_VALUE),
+              refusal: null,
+            },
+          }],
+        });
+      },
+    });
+
+    expect(outboundURL).toBe("https://provider.example/api/v1/chat/completions");
+    expect(outboundBody).toEqual({
+      model: TEST_MODEL,
+      messages: [{ role: "user", content: "Return the answer." }],
+      max_tokens: 4096,
+      stream: false,
+      response_format: {
+        type: "json_schema",
+        json_schema: {
+          name: "jig_agent_run_result",
+          schema: {
+            type: "object",
+            description: "One bounded extraction result.",
+            properties: {
+              decision: {
+                type: "object",
+                properties: {
+                  route: { type: "string", enum: ["billing", "technical"] },
+                  note: { type: ["string", "null"] },
+                  attempts: { type: "integer" },
+                  evidence: {
+                    type: "array",
+                    minItems: 0,
+                    maxItems: 2,
+                    items: {
+                      type: "object",
+                      properties: {
+                        page: { type: "integer" },
+                        amount: { type: ["integer", "null"] },
+                        excerpt: { type: ["string", "null"] },
+                      },
+                      required: ["page", "amount", "excerpt"],
+                      additionalProperties: false,
+                    },
+                  },
+                },
+                required: ["route", "note", "attempts", "evidence"],
+                additionalProperties: false,
+              },
+            },
+            required: ["decision"],
+            additionalProperties: false,
+          },
+          strict: true,
+        },
+      },
+    });
+    expect(result).toEqual({
+      outcome: "completed",
+      text: JSON.stringify(RESPONSE_VALUE),
+      structured: RESPONSE_VALUE,
+    });
+  });
+
   test("scans all standard message content before using the SDK convenience field", async () => {
-    const result = await requestPrivateOpenAIResponse(clientRequest(), {
+    const result = await requestPrivateOpenAIAgent(clientRequest(), {
       apiKey: "test-key",
       client: {
         async create() {
@@ -248,55 +358,83 @@ describe("private OpenAI Responses client", () => {
     });
     expect(result).toEqual({ outcome: "completed", text: "alpha beta" });
 
-    expect(normalizePrivateOpenAIResponse({
+    expect(normalizePrivateOpenAIAgentResponse({
       status: "completed",
       error: null,
       output: [],
       output_text: "SDK fallback",
-    }, false)).toEqual({ outcome: "completed", text: "SDK fallback" });
+    }, "responses", false)).toEqual({ outcome: "completed", text: "SDK fallback" });
   });
 
   test("maps incomplete and refusal responses without disguising transport failures", () => {
-    expect(normalizePrivateOpenAIResponse({
+    expect(normalizePrivateOpenAIAgentResponse({
       status: "incomplete",
       error: null,
       incomplete_details: { reason: "max_output_tokens" },
       output: [{ type: "message", content: [{ type: "output_text", text: "partial" }] }],
-    }, false)).toEqual({ outcome: "limit", text: "partial" });
+    }, "responses", false)).toEqual({ outcome: "limit", text: "partial" });
 
-    expect(normalizePrivateOpenAIResponse({
+    expect(normalizePrivateOpenAIAgentResponse({
       status: "incomplete",
       error: null,
       incomplete_details: { reason: "max_output_tokens" },
       output: [{ type: "reasoning", summary: [] }],
-    }, false)).toEqual({ outcome: "limit", text: "" });
+    }, "responses", false)).toEqual({ outcome: "limit", text: "" });
 
-    expect(normalizePrivateOpenAIResponse({
+    expect(normalizePrivateOpenAIAgentResponse({
       status: "incomplete",
       error: null,
       incomplete_details: { reason: "content_filter" },
       output: [{ type: "message", content: [{ type: "output_text", text: "filtered" }] }],
-    }, false)).toEqual({ outcome: "blocked", text: "filtered" });
+    }, "responses", false)).toEqual({ outcome: "blocked", text: "filtered" });
 
-    expect(normalizePrivateOpenAIResponse({
+    expect(normalizePrivateOpenAIAgentResponse({
       status: "completed",
       error: null,
       output: [{ type: "message", content: [{ type: "refusal", refusal: "cannot comply" }] }],
-    }, false)).toEqual({ outcome: "blocked", text: "cannot comply" });
+    }, "responses", false)).toEqual({ outcome: "blocked", text: "cannot comply" });
 
-    expect(() => normalizePrivateOpenAIResponse({
+    expect(() => normalizePrivateOpenAIAgentResponse({
       status: "failed",
       error: { message: "provider failure" },
       output: [],
-    }, false)).toThrow(expect.objectContaining({ code: "AGENT_PROVIDER_UNAVAILABLE" }));
+    }, "responses", false)).toThrow(expect.objectContaining({
+      code: "AGENT_PROVIDER_UNAVAILABLE",
+    }));
   });
 
   test("requires completed structured output to be JSON/1", () => {
-    expect(() => normalizePrivateOpenAIResponse({
+    expect(() => normalizePrivateOpenAIAgentResponse({
       status: "completed",
       error: null,
       output: [{ type: "message", content: [{ type: "output_text", text: "not json" }] }],
-    }, true)).toThrow(expect.objectContaining({
+    }, "responses", true)).toThrow(expect.objectContaining({
+      code: "AGENT_PROVIDER_RESPONSE_INVALID",
+    }));
+  });
+
+  test("maps Chat Completions terminal reasons and rejects tool dispatch", () => {
+    expect(normalizePrivateOpenAIAgentResponse({
+      choices: [{
+        finish_reason: "length",
+        message: { role: "assistant", content: "partial", refusal: null },
+      }],
+    }, "chat-completions", false)).toEqual({ outcome: "limit", text: "partial" });
+    expect(normalizePrivateOpenAIAgentResponse({
+      choices: [{
+        finish_reason: "stop",
+        message: { role: "assistant", content: null, refusal: "cannot comply" },
+      }],
+    }, "chat-completions", false)).toEqual({
+      outcome: "blocked",
+      text: "cannot comply",
+    });
+    expect(() => normalizePrivateOpenAIAgentResponse({
+      choices: [{
+        finish_reason: "tool_calls",
+        message: { role: "assistant", content: null, tool_calls: [] },
+      }],
+    }, "chat-completions", false)).toThrow(expect.objectContaining({
       code: "AGENT_PROVIDER_RESPONSE_INVALID",
     }));
   });
@@ -305,7 +443,7 @@ describe("private OpenAI Responses client", () => {
     const apiKey = "secret-that-must-not-escape";
     let failure: unknown;
     try {
-      await requestPrivateOpenAIResponse(clientRequest(), {
+      await requestPrivateOpenAIAgent(clientRequest(), {
         apiKey,
         client: {
           async create() {
@@ -316,10 +454,10 @@ describe("private OpenAI Responses client", () => {
     } catch (error) {
       failure = error;
     }
-    expect(failure).toBeInstanceOf(PrivateOpenAIResponsesError);
+    expect(failure).toBeInstanceOf(PrivateOpenAIAgentError);
     expect(failure).toMatchObject({
       code: "AGENT_PROVIDER_UNAVAILABLE",
-      message: "OpenAI Responses request failed",
+      message: "OpenAI Agent request failed",
     });
     expect(String(failure)).not.toContain(apiKey);
     expect((failure as Error).stack).not.toContain(apiKey);
@@ -329,7 +467,7 @@ describe("private OpenAI Responses client", () => {
     let calls = 0;
     let failure: unknown;
     try {
-      await requestPrivateOpenAIResponse(clientRequest(), {
+      await requestPrivateOpenAIAgent(clientRequest(), {
         apiKey: "test-key",
         fetch: async () => {
           calls += 1;
@@ -345,18 +483,18 @@ describe("private OpenAI Responses client", () => {
     expect(calls).toBe(1);
     expect(failure).toMatchObject({
       code: "AGENT_PROVIDER_UNAVAILABLE",
-      message: "OpenAI Responses request failed",
+      message: "OpenAI Agent request failed",
     });
   });
 
   test("validates but does not choose the provider endpoint or model", async () => {
-    await expect(requestPrivateOpenAIResponse({
+    await expect(requestPrivateOpenAIAgent({
       ...clientRequest(),
       baseURL: "http://provider.example/api/v1",
     }, { apiKey: "test-key", client: unusedClient })).rejects.toMatchObject({
       code: "AGENT_PROVIDER_CONFIGURATION",
     });
-    await expect(requestPrivateOpenAIResponse({
+    await expect(requestPrivateOpenAIAgent({
       ...clientRequest(),
       model: "invalid model",
     }, { apiKey: "test-key", client: unusedClient })).rejects.toMatchObject({
@@ -365,45 +503,55 @@ describe("private OpenAI Responses client", () => {
   });
 });
 
-describe("private OpenAI Responses worker protocol", () => {
+describe("private OpenAI Agent worker protocol", () => {
   test("round-trips one provider-configured request", () => {
     const request = {
-      protocol: PRIVATE_OPENAI_RESPONSES_PROTOCOL,
+      protocol: PRIVATE_OPENAI_AGENT_PROTOCOL,
       apiKey: "transient-test-key",
+      api: "chat-completions",
       baseURL: TEST_BASE_URL,
       model: TEST_MODEL,
       instructions: "Answer succinctly.",
       responseSchema: RESPONSE_SCHEMA,
     } as const;
-    const encoded = encodePrivateOpenAIResponsesRequest(request);
-    expect(decodePrivateOpenAIResponsesRequest(encoded)).toEqual(request);
+    const encoded = encodePrivateOpenAIAgentRequest(request);
+    expect(decodePrivateOpenAIAgentRequest(encoded)).toEqual(request);
   });
 
   test("rejects malformed provider configuration and result envelopes", () => {
-    expect(() => encodePrivateOpenAIResponsesRequest({
-      protocol: PRIVATE_OPENAI_RESPONSES_PROTOCOL,
+    expect(() => encodePrivateOpenAIAgentRequest({
+      protocol: PRIVATE_OPENAI_AGENT_PROTOCOL,
       apiKey: "transient-test-key",
+      api: "responses",
       baseURL: "http://provider.example/api/v1",
       model: TEST_MODEL,
       instructions: "Answer.",
     })).toThrow(expect.objectContaining({ code: "AGENT_PROVIDER_PROTOCOL" }));
+    expect(() => encodePrivateOpenAIAgentRequest({
+      protocol: PRIVATE_OPENAI_AGENT_PROTOCOL,
+      apiKey: "transient-test-key",
+      api: "invented",
+      baseURL: TEST_BASE_URL,
+      model: TEST_MODEL,
+      instructions: "Answer.",
+    })).toThrow(expect.objectContaining({ code: "AGENT_PROVIDER_PROTOCOL" }));
 
-    expect(() => decodePrivateOpenAIResponsesResponse(new TextEncoder().encode(JSON.stringify({
-      protocol: PRIVATE_OPENAI_RESPONSES_PROTOCOL,
+    expect(() => decodePrivateOpenAIAgentResponse(new TextEncoder().encode(JSON.stringify({
+      protocol: PRIVATE_OPENAI_AGENT_PROTOCOL,
       status: "ok",
       value: { outcome: "invented", text: "bad" },
     })))).toThrow(expect.objectContaining({ code: "AGENT_PROVIDER_PROTOCOL" }));
   });
 
   test("round-trips bounded success and failure responses", () => {
-    expect(decodePrivateOpenAIResponsesResponse(
-      encodePrivateOpenAIResponsesSuccess({
+    expect(decodePrivateOpenAIAgentResponse(
+      encodePrivateOpenAIAgentSuccess({
         outcome: "completed",
         text: "done",
         structured: { answer: "yes" },
       }),
     )).toEqual({
-      protocol: PRIVATE_OPENAI_RESPONSES_PROTOCOL,
+      protocol: PRIVATE_OPENAI_AGENT_PROTOCOL,
       status: "ok",
       value: {
         outcome: "completed",
@@ -411,13 +559,13 @@ describe("private OpenAI Responses worker protocol", () => {
         structured: { answer: "yes" },
       },
     });
-    expect(decodePrivateOpenAIResponsesResponse(
-      encodePrivateOpenAIResponsesFailure(
+    expect(decodePrivateOpenAIAgentResponse(
+      encodePrivateOpenAIAgentFailure(
         "AGENT_PROVIDER_UNAVAILABLE",
         "provider unavailable",
       ),
     )).toEqual({
-      protocol: PRIVATE_OPENAI_RESPONSES_PROTOCOL,
+      protocol: PRIVATE_OPENAI_AGENT_PROTOCOL,
       status: "error",
       code: "AGENT_PROVIDER_UNAVAILABLE",
       message: "provider unavailable",
@@ -425,8 +573,9 @@ describe("private OpenAI Responses worker protocol", () => {
   });
 });
 
-function clientRequest(): PrivateOpenAIResponsesClientRequest {
+function clientRequest(): PrivateOpenAIAgentClientRequest {
   return {
+    api: "responses",
     baseURL: TEST_BASE_URL,
     model: TEST_MODEL,
     instructions: "Answer.",

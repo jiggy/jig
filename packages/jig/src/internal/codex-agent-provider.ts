@@ -20,13 +20,16 @@ const SANDBOX_REQUIREMENTS_PATH = "/etc/codex/requirements.toml";
 const SUBSCRIPTION_EXPIRY_MARGIN_MS = 5 * 60_000;
 const MAX_CREDENTIAL_BYTES = 64 * 1024 - 4;
 const MAX_SECRET_BYTES = 16 * 1024;
+const MAX_BASE_URL_CHARACTERS = 4_096;
 const encoder = new TextEncoder();
 const decoder = new TextDecoder("utf-8", { fatal: true });
-const OPENROUTER_API_KEY = "OPENROUTER_API_KEY";
-const OPENROUTER_MODEL = "OPENROUTER_MODEL";
+const OPENAI_API_KEY = "OPENAI_API_KEY";
+const OPENAI_MODEL = "OPENAI_MODEL";
+const OPENAI_BASE_URL = "OPENAI_BASE_URL";
+const OPENAI_API = "OPENAI_API";
+const CLIENT_DEFAULT_MODEL = "client-default";
 
-export const PRIVATE_CODEX_SUBSCRIPTION_MODEL = "gpt-5.3-codex-spark" as const;
-export const PRIVATE_CODEX_OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1" as const;
+export const PRIVATE_CODEX_DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1" as const;
 export const PRIVATE_CODEX_REQUIREMENTS = [
   'allowed_approval_policies = ["on-request"]',
   'allowed_sandbox_modes = ["read-only", "workspace-write"]',
@@ -57,17 +60,22 @@ export interface PrivateCodexSubscriptionAgentConfiguration extends PrivateCodex
    * refresh token, or complete CODEX_HOME is deliberately rejected.
    */
   readonly credential: Uint8Array;
+  /** Omission lets the installed Codex client select its own default model. */
+  readonly model?: string;
 }
 
-export interface PrivateCodexOpenRouterAgentConfiguration extends PrivateCodexAgentSupport {
+export interface PrivateCodexOpenAIApiAgentConfiguration extends PrivateCodexAgentSupport {
   readonly apiKey: string;
   readonly model: string;
+  /** Exact OpenAI Responses-compatible endpoint selected by trusted host policy. */
+  readonly baseURL?: string;
 }
 
 /**
  * Open the one native Codex flavor selected by trusted host configuration.
- * OpenRouter is used only when its model is explicitly selected; otherwise
- * Codex consumes the operator's existing ChatGPT subscription projection.
+ * A complete OpenAI Responses-compatible API configuration selects API-key
+ * mode; otherwise Codex consumes the operator's existing ChatGPT subscription
+ * projection. Endpoint configuration does not create a distinct provider.
  */
 export async function openPrivateCodexAgentProvider(
   releaseRoot: string,
@@ -85,19 +93,34 @@ export async function openPrivateCodexAgentProvider(
     certificatesPath: await ordinaryFile(HOST_CERTIFICATES_PATH, "host certificate bundle"),
     requirementsPath: join(releaseRoot, "libexec", "agent", "codex-requirements.toml"),
   });
-  const model = environment[OPENROUTER_MODEL];
-  if (model !== undefined) {
-    const apiKey = environment[OPENROUTER_API_KEY];
-    if (apiKey === undefined) {
-      throw new Error("the OpenRouter gateway credential is unavailable");
+  const apiKey = environment[OPENAI_API_KEY];
+  const apiModel = environment[OPENAI_MODEL];
+  const apiBaseURL = environment[OPENAI_BASE_URL];
+  const api = environment[OPENAI_API];
+  if (apiKey !== undefined || apiModel !== undefined || apiBaseURL !== undefined ||
+      api !== undefined) {
+    if (apiKey === undefined || apiModel === undefined) {
+      throw new Error("the OpenAI Responses API configuration is unavailable");
     }
-    return await createPrivateCodexOpenRouterAgentProvider({ ...support, apiKey, model });
+    if (api !== undefined && api !== "responses") {
+      throw new Error("native Codex requires the OpenAI Responses API");
+    }
+    return await createPrivateCodexOpenAIApiAgentProvider({
+      ...support,
+      apiKey,
+      model: apiModel,
+      ...(apiBaseURL === undefined ? {} : { baseURL: apiBaseURL }),
+    });
   }
   const sourceHome = environment.CODEX_HOME ?? join(homedir(), ".codex");
   const credential = await projectPrivateCodexSubscriptionCredential(
     join(sourceHome, "auth.json"),
   );
-  return await createPrivateCodexSubscriptionAgentProvider({ ...support, credential });
+  return await createPrivateCodexSubscriptionAgentProvider({
+    ...support,
+    credential,
+    ...(environment.CODEX_MODEL === undefined ? {} : { model: environment.CODEX_MODEL }),
+  });
 }
 
 /**
@@ -151,25 +174,26 @@ export async function projectPrivateCodexSubscriptionCredential(
 }
 
 /**
- * Select native Codex with an existing OpenAI subscription. The subscription
- * model is deliberately fixed; callers cannot turn this convenience path into
- * a general model-selection policy.
+ * Select native Codex with an existing OpenAI subscription. An explicit model
+ * is pinned by trusted host policy; omission preserves the native client's
+ * own default and sends no model override.
  */
 export async function createPrivateCodexSubscriptionAgentProvider(
   value: PrivateCodexSubscriptionAgentConfiguration,
 ): Promise<PrivateAcpAgentProvider> {
   await requireManagedRequirements(value.requirementsPath);
   const credential = requireSubscriptionCredential(value.credential);
+  const model = value.model;
   return await createPrivateAcpAgentProvider({
     client: CODEX_CLIENT,
-    model: PRIVATE_CODEX_SUBSCRIPTION_MODEL,
+    model: model ?? CLIENT_DEFAULT_MODEL,
     credentialMode: "openai-subscription",
     adapterPath: value.launcherPath,
     sandboxAdapterPath: SANDBOX_LAUNCHER_PATH,
     executablePath: value.executablePath,
     sandboxExecutablePath: SANDBOX_EXECUTABLE_PATH,
-    environment: codexEnvironment(true, PRIVATE_CODEX_SUBSCRIPTION_MODEL),
-    configuration: [{ configId: "model", value: PRIVATE_CODEX_SUBSCRIPTION_MODEL }],
+    environment: codexEnvironment(true, model),
+    configuration: model === undefined ? [] : [{ configId: "model", value: model }],
     modeId: "read-only",
     startupInput: frameStartupInput(credential),
     revalidateStartupInput: (): void => {
@@ -203,19 +227,20 @@ export async function createPrivateCodexSubscriptionAgentProvider(
 }
 
 /**
- * Select OpenRouter only as an explicit OpenAI-compatible gateway for native
- * Codex. The model and credential are supplied by trusted host policy; neither
- * becomes a global Codex default or a process environment variable.
+ * Select an exact OpenAI Responses-compatible API endpoint for native Codex.
+ * The endpoint and model are stable identity; the credential is supplied by
+ * trusted host policy and never becomes a process environment variable.
  */
-export async function createPrivateCodexOpenRouterAgentProvider(
-  value: PrivateCodexOpenRouterAgentConfiguration,
+export async function createPrivateCodexOpenAIApiAgentProvider(
+  value: PrivateCodexOpenAIApiAgentConfiguration,
 ): Promise<PrivateAcpAgentProvider> {
   requireApiKey(value.apiKey);
+  const baseURL = requireBaseURL(value.baseURL ?? PRIVATE_CODEX_DEFAULT_OPENAI_BASE_URL);
   await requireManagedRequirements(value.requirementsPath);
   return await createPrivateAcpAgentProvider({
     client: CODEX_CLIENT,
     model: value.model,
-    credentialMode: "openrouter-gateway",
+    credentialMode: "openai-responses-api-key",
     adapterPath: value.launcherPath,
     sandboxAdapterPath: SANDBOX_LAUNCHER_PATH,
     executablePath: value.executablePath,
@@ -248,19 +273,18 @@ export async function createPrivateCodexOpenRouterAgentProvider(
     ],
     authentication: {
       identity: {
-        method: "gateway",
-        provider: "openrouter",
+        method: "api-key",
         protocol: "openai-responses",
-        baseURL: PRIVATE_CODEX_OPENROUTER_BASE_URL,
+        baseURL,
       },
       clientAuthCapabilities: { _meta: { gateway: true } },
       request: {
         methodId: "gateway",
         _meta: {
           gateway: {
-            baseUrl: PRIVATE_CODEX_OPENROUTER_BASE_URL,
+            baseUrl: baseURL,
             headers: { Authorization: `Bearer ${value.apiKey}` },
-            providerName: "OpenRouter",
+            providerName: "OpenAI Responses-compatible endpoint",
           },
         },
       },
@@ -268,7 +292,10 @@ export async function createPrivateCodexOpenRouterAgentProvider(
   });
 }
 
-function codexEnvironment(subscription: boolean, model: string): Readonly<Record<string, string>> {
+function codexEnvironment(
+  subscription: boolean,
+  model: string | undefined,
+): Readonly<Record<string, string>> {
   return Object.freeze({
     CODEX_CONFIG: JSON.stringify({
       analytics: { enabled: false },
@@ -281,7 +308,7 @@ function codexEnvironment(subscription: boolean, model: string): Readonly<Record
       },
       history: { persistence: "none" },
       log_dir: "/tmp/codex-log",
-      model,
+      ...(model === undefined ? {} : { model }),
       sqlite_home: "/tmp/codex-state",
     }),
     CODEX_HOME: SANDBOX_CODEX_HOME,
@@ -407,6 +434,24 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function requireApiKey(value: string): void {
   if (typeof value !== "string" || value.trim().length === 0 || value.includes("\0") ||
       encoder.encode(value).byteLength > MAX_SECRET_BYTES) {
-    throw new Error("the OpenRouter gateway credential is invalid");
+    throw new Error("the OpenAI Responses API credential is invalid");
   }
+}
+
+function requireBaseURL(value: string): string {
+  if (typeof value !== "string" || value.length === 0 ||
+      value.length > MAX_BASE_URL_CHARACTERS) {
+    throw new Error("the OpenAI Responses API base URL is invalid");
+  }
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new Error("the OpenAI Responses API base URL is invalid");
+  }
+  if (url.protocol !== "https:" || url.username !== "" || url.password !== "" ||
+      url.search !== "" || url.hash !== "") {
+    throw new Error("the OpenAI Responses API base URL is invalid");
+  }
+  return url.href.endsWith("/") ? url.href.slice(0, -1) : url.href;
 }

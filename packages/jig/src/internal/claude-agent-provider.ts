@@ -16,9 +16,10 @@ const SANDBOX_CERTIFICATES_PATH = "/etc/ssl/certs/ca-certificates.crt";
 const HOST_ELF_INTERPRETER_PATH = "/lib64/ld-linux-x86-64.so.2";
 const SANDBOX_RUNTIME_LIBRARY_PATH = "/jig-runtime/lib/librt.so.1";
 const MAX_TOKEN_BYTES = 16 * 1024;
+const MAX_BASE_URL_CHARACTERS = 4_096;
 const encoder = new TextEncoder();
 
-export const PRIVATE_CLAUDE_OPENROUTER_BASE_URL = "https://openrouter.ai/api" as const;
+export const PRIVATE_CLAUDE_DEFAULT_ANTHROPIC_BASE_URL = "https://api.anthropic.com" as const;
 
 export interface PrivateClaudeAgentSupport {
   /** Exact Jig-owned startup launcher selected by trusted host policy. */
@@ -41,16 +42,21 @@ export interface PrivateClaudeSubscriptionAgentConfiguration
   readonly model?: string;
 }
 
-export interface PrivateClaudeOpenRouterAgentConfiguration
+export interface PrivateClaudeAnthropicApiAgentConfiguration
   extends PrivateClaudeAgentSupport {
-  readonly apiKey: string;
+  /** Exact Anthropic-compatible authentication scheme selected by host policy. */
+  readonly authentication: "api-key" | "auth-token";
+  readonly credential: string;
   readonly model: string;
+  /** Exact Anthropic-compatible endpoint selected by trusted host policy. */
+  readonly baseURL?: string;
 }
 
 /**
  * Open one native Claude Code flavor selected by trusted host configuration.
- * OpenRouter is selected only by an explicit model; otherwise an explicit
- * Claude subscription token is projected into the contained process.
+ * A complete Anthropic-compatible API configuration selects its exact
+ * authentication scheme; otherwise an explicit Claude subscription token is
+ * projected into the contained process.
  */
 export async function openPrivateClaudeAgentProvider(
   releaseRoot: string,
@@ -73,16 +79,26 @@ export async function openPrivateClaudeAgentProvider(
       "Claude runtime library",
     ),
   });
-  const gatewayModel = environment.OPENROUTER_MODEL;
-  if (gatewayModel !== undefined) {
-    const apiKey = environment.OPENROUTER_API_KEY;
-    if (apiKey === undefined) {
-      throw new Error("the OpenRouter gateway credential is unavailable");
+  const apiKey = environment.ANTHROPIC_API_KEY;
+  const authToken = environment.ANTHROPIC_AUTH_TOKEN;
+  const apiModel = environment.ANTHROPIC_MODEL;
+  const apiBaseURL = environment.ANTHROPIC_BASE_URL;
+  const hasApiKey = apiKey !== undefined && apiKey.length > 0;
+  const hasAuthToken = authToken !== undefined && authToken.length > 0;
+  if (hasApiKey && hasAuthToken) {
+    throw new Error("the Anthropic API authentication is ambiguous");
+  }
+  if (apiKey !== undefined || authToken !== undefined || apiModel !== undefined ||
+      apiBaseURL !== undefined) {
+    if (apiModel === undefined || !hasApiKey && !hasAuthToken) {
+      throw new Error("the Anthropic API configuration is unavailable");
     }
-    return await createPrivateClaudeOpenRouterAgentProvider({
+    return await createPrivateClaudeAnthropicApiAgentProvider({
       ...support,
-      apiKey,
-      model: gatewayModel,
+      authentication: hasAuthToken ? "auth-token" : "api-key",
+      credential: (hasAuthToken ? authToken : apiKey)!,
+      model: apiModel,
+      ...(apiBaseURL === undefined ? {} : { baseURL: apiBaseURL }),
     });
   }
   const token = environment.CLAUDE_CODE_OAUTH_TOKEN;
@@ -117,18 +133,20 @@ export async function createPrivateClaudeSubscriptionAgentProvider(
 }
 
 /**
- * Select OpenRouter as an explicit Anthropic-protocol gateway for native
- * Claude Code. The operator supplies both model and credential.
+ * Select an exact Anthropic-compatible API endpoint for native Claude Code.
+ * Endpoint and model are stable identity; the credential remains ephemeral.
  */
-export async function createPrivateClaudeOpenRouterAgentProvider(
-  value: PrivateClaudeOpenRouterAgentConfiguration,
+export async function createPrivateClaudeAnthropicApiAgentProvider(
+  value: PrivateClaudeAnthropicApiAgentConfiguration,
 ): Promise<PrivateAcpAgentProvider> {
-  const token = requireToken(value.apiKey, "OpenRouter gateway credential");
+  const authentication = requireAnthropicAuthentication(value.authentication);
+  const token = requireToken(value.credential, "Anthropic API credential");
+  const baseURL = requireBaseURL(value.baseURL ?? PRIVATE_CLAUDE_DEFAULT_ANTHROPIC_BASE_URL);
   const startupInput = frameStartupInput(token);
   try {
     return await createPrivateAcpAgentProvider({
-      ...baseConfiguration(value, value.model, "openrouter"),
-      credentialMode: "openrouter-gateway",
+      ...baseConfiguration(value, value.model, authentication, baseURL),
+      credentialMode: `anthropic-${authentication}`,
       startupInput,
     });
   } finally {
@@ -139,7 +157,8 @@ export async function createPrivateClaudeOpenRouterAgentProvider(
 function baseConfiguration(
   value: PrivateClaudeAgentSupport,
   model: string,
-  credential: "subscription" | "openrouter",
+  credential: "subscription" | "api-key" | "auth-token",
+  baseURL?: string,
 ) {
   return {
     client: CLAUDE_CLIENT,
@@ -153,8 +172,8 @@ function baseConfiguration(
       ANTHROPIC_DEFAULT_HAIKU_MODEL: model,
       ANTHROPIC_DEFAULT_OPUS_MODEL: model,
       ANTHROPIC_DEFAULT_SONNET_MODEL: model,
-      ...(credential === "openrouter"
-        ? { ANTHROPIC_BASE_URL: PRIVATE_CLAUDE_OPENROUTER_BASE_URL }
+      ...(credential === "api-key" || credential === "auth-token"
+        ? { ANTHROPIC_BASE_URL: baseURL! }
         : {}),
       CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
       CLAUDE_CODE_DISABLE_TERMINAL_TITLE: "1",
@@ -202,6 +221,13 @@ function baseConfiguration(
   };
 }
 
+function requireAnthropicAuthentication(value: unknown): "api-key" | "auth-token" {
+  if (value !== "api-key" && value !== "auth-token") {
+    throw new Error("the Anthropic API authentication is invalid");
+  }
+  return value;
+}
+
 function requireToken(value: string, label: string): Uint8Array {
   if (typeof value !== "string" || value.length === 0 || value.trim() !== value ||
       value.includes("\0")) {
@@ -212,6 +238,24 @@ function requireToken(value: string, label: string): Uint8Array {
     throw new Error(`${label} is invalid`);
   }
   return bytes;
+}
+
+function requireBaseURL(value: string): string {
+  if (typeof value !== "string" || value.length === 0 ||
+      value.length > MAX_BASE_URL_CHARACTERS) {
+    throw new Error("the Anthropic API base URL is invalid");
+  }
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new Error("the Anthropic API base URL is invalid");
+  }
+  if (url.protocol !== "https:" || url.username !== "" || url.password !== "" ||
+      url.search !== "" || url.hash !== "") {
+    throw new Error("the Anthropic API base URL is invalid");
+  }
+  return url.href.endsWith("/") ? url.href.slice(0, -1) : url.href;
 }
 
 function frameStartupInput(value: Uint8Array): Uint8Array {

@@ -64,13 +64,15 @@ async function main(): Promise<void> {
     await launchNativePi();
     return;
   }
-  if (startup !== "credential") throw new Error("Pi startup input mode is invalid");
+  if (startup !== "api-key" && startup !== "subscription") {
+    throw new Error("Pi startup input mode is invalid");
+  }
 
   const provider = requireProvider(process.env.JIG_PI_PROVIDER);
   const model = requireSelection(process.env.JIG_PI_MODEL, "Pi model");
   mkdirSync(PI_HOME, { recursive: false, mode: 0o700 });
   mkdirSync(PI_AGENT_DIR, { recursive: false, mode: 0o700 });
-  materializeCredential(provider);
+  materializeCredential(provider, startup === "api-key" ? "api_key" : "oauth");
   writeFileSync(SETTINGS_PATH, JSON.stringify(PRIVATE_PI_SETTINGS), {
     encoding: "utf8",
     flag: "wx",
@@ -98,7 +100,7 @@ export function privatePiModels(provider: string, model: string): unknown {
   };
 }
 
-function materializeCredential(provider: string): void {
+function materializeCredential(provider: string, type: "api_key" | "oauth"): void {
   const header = readExactly(4);
   const size = new DataView(header.buffer, header.byteOffset, header.byteLength)
     .getUint32(0, false);
@@ -113,7 +115,7 @@ function materializeCredential(provider: string): void {
       throw new Error("Pi startup input is invalid");
     }
     const entry = parsed[provider];
-    if (!isRecord(entry) || entry.type !== (provider === "openrouter" ? "api_key" : "oauth")) {
+    if (!isRecord(entry) || entry.type !== type) {
       throw new Error("Pi startup input is invalid");
     }
     descriptor = openSync(CREDENTIAL_PATH, "wx", 0o600);
