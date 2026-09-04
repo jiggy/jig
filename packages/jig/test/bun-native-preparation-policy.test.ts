@@ -38,6 +38,65 @@ describe("private Bun preparation policy", () => {
     }))).toThrow("unsupported Bun lock source");
   });
 
+  test.each([
+    ["file", "file:../value"],
+    ["Git", "git+https://github.com/example/value.git#abcdef"],
+    ["GitHub", "github:example/value#abcdef"],
+    ["GitHub shorthand", "example/value#abcdef"],
+    ["tarball", "https://example.invalid/value.tgz"],
+    ["workspace", "workspace:*"],
+    ["parent path", "../value"],
+    ["npm alias to file", "npm:value@file:../value"],
+    ["npm alias to Git", "npm:value@git+https://github.com/example/value.git#abcdef"],
+  ])("rejects a root %s request even when the package map is empty", (_label, request) => {
+    expect(() => requirePrivateBunLockPolicy({
+      lockfileVersion: 1,
+      workspaces: { "": { dependencies: { value: request } } },
+      packages: {},
+    })).toThrow("unsupported Bun lock source");
+  });
+
+  test.each([
+    "dependencies",
+    "devDependencies",
+    "optionalDependencies",
+    "peerDependencies",
+  ] as const)("rejects unsupported sources in package %s metadata", (field) => {
+    expect(() => requirePrivateBunLockPolicy(lock({
+      value: ["value@1.0.0", "", { [field]: { nested: "file:../nested" } }, INTEGRITY],
+    }))).toThrow("unsupported Bun lock source");
+  });
+
+  test("rejects malformed dependency maps and requests", () => {
+    expect(() => requirePrivateBunLockPolicy({
+      ...lock({}),
+      workspaces: { "": { dependencies: [] } },
+    })).toThrow("unsupported Bun lock source");
+    expect(() => requirePrivateBunLockPolicy({
+      ...lock({}),
+      workspaces: { "": { dependencies: { value: 1 } } },
+    })).toThrow("unsupported Bun lock source");
+  });
+
+  test("accepts default-registry requests in root and package metadata", () => {
+    expect(() => requirePrivateBunLockPolicy({
+      lockfileVersion: 1,
+      workspaces: {
+        "": {
+          dependencies: { value: "1.0.0", "hyphen-range": "1.2.3 - 2.3.4" },
+          devDependencies: { tagged: "next", "or-range": "1.2.3 || 2.x" },
+        },
+      },
+      packages: {
+        value: ["value@1.0.0", "", {
+          dependencies: { nested: "^2.0.0" },
+          optionalDependencies: { optional: ">= 2.1.2 < 3.0.0" },
+          peerDependencies: { peer: "^3.25.0 || ^4.0.0" },
+        }, INTEGRITY],
+      },
+    })).not.toThrow();
+  });
+
   test("accepts resolved default-registry provenance for an npm alias", () => {
     expect(() => requirePrivateBunLockPolicy({
       lockfileVersion: 1,
@@ -45,7 +104,9 @@ describe("private Bun preparation policy", () => {
         "": { dependencies: { alias: "npm:value@1.0.0" } },
       },
       packages: {
-        alias: ["value@1.0.0", "", {}, INTEGRITY],
+        alias: ["value@1.0.0", "", {
+          optionalDependencies: { "nested-alias": "npm:@example/value@^1.0.0" },
+        }, INTEGRITY],
       },
     })).not.toThrow();
   });
