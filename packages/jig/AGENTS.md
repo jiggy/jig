@@ -42,8 +42,10 @@ admitted FLOW packages.
   together when a public contract changes.
 - Keep fault-injection seams private.
 - Test fixtures use canonical dependency paths, including through Bun workspace
-  symlinks. Source-rewriting hostile fixtures must also construct successfully
-  in ordinary tests, so source formatting cannot silently break the host gate.
+  symlinks. Source-tree proof commands reuse `test/fixtures/installed-bun-location.ts`
+  rather than defining their own runtime locations. Source-rewriting hostile
+  fixtures must also construct successfully in ordinary tests, so source
+  formatting cannot silently break the host gate.
 - Consult `src/internal/AGENTS.md` for containment, durability, or Agent host
   work.
 

@@ -1,22 +1,8 @@
 import { RootAdministrationError, type StartRootRunRequest } from '../src/administration/root.js'
 import { ProjectAdministrationError, type ProjectSession } from '../src/administration/project.js'
-import { join } from 'node:path'
 import { openPrivateProjectSession } from '../src/internal/project-session-controller.js'
 import { openPrivateInstalledBunHost } from '../src/internal/installed-bun-host.js'
-
-const releaseRoot = join(import.meta.dir, '..')
-const installedBunLocation = Object.freeze({
-  releaseRoot,
-  executablePath: join(
-    releaseRoot,
-    'node_modules',
-    '@oven',
-    'bun-linux-x64-baseline',
-    'bin',
-    'bun',
-  ),
-  installedCliPath: join(releaseRoot, 'libexec', 'installed-cli.js'),
-})
+import { installedBunLocation } from '../test/fixtures/installed-bun-location.js'
 
 // Proof-host dogfood only. This file is intentionally outside src/, exports no
 // API, and must not become a shortcut around a future reviewed control plane.
