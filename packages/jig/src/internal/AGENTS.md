@@ -45,6 +45,10 @@ child calls, and Agent providers.
   releasing the child owner. Children cannot acquire another child slot map.
 - Fail closed on unsupported hosts, changed bytes, missing enforcement,
   malformed protocol, cleanup failure, or unverifiable provenance.
+- Resolve host tools from the fixed system locations, or Bubblewrap from the
+  operator's absolute `JIG_BWRAP_PATH`, never ambient `PATH`. An explicit
+  selection receives the same validation and cannot fall back on failure.
+  NixOS loader support mounts the real glibc files, not a shim or whole store.
 
 ## Work Guidance
 

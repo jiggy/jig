@@ -13,6 +13,7 @@ import {
 } from "node:fs/promises";
 import { createServer, connect, type Server, type Socket } from "node:net";
 import { isAbsolute, posix } from "node:path";
+import { privateLinuxHostToolCandidates } from "./linux-host-paths.js";
 
 import {
   acquirePrivateRootlessLinux,
@@ -27,14 +28,8 @@ import {
 const CGROUP_ROOT = "/sys/fs/cgroup";
 const CGROUP2_SUPER_MAGIC = 0x6367_7270n;
 const CHILD_NAME = "jig";
-const MANAGER_CANDIDATES = Object.freeze([
-  "/usr/bin/systemd-run",
-  "/bin/systemd-run",
-] as const);
-const CONTROL_CANDIDATES = Object.freeze([
-  "/usr/bin/systemctl",
-  "/bin/systemctl",
-] as const);
+const MANAGER_CANDIDATES = privateLinuxHostToolCandidates("systemd-run");
+const CONTROL_CANDIDATES = privateLinuxHostToolCandidates("systemctl");
 const REQUIRED_CONTROLLERS = Object.freeze(["cpu", "memory", "pids"] as const);
 const UNIT = /^jig-[0-9a-f]{24}\.scope$/;
 const TOKEN = /^[0-9a-f]{64}$/;

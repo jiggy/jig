@@ -45,6 +45,7 @@ delegatedDescribe("private rootless Linux Run", () => {
       let deviceMutationDenied = false;
       try { chmodSync("/dev/urandom", 0o777); } catch { deviceMutationDenied = true; }
       console.log(JSON.stringify({
+        hostOverrideVisible: process.env.JIG_BWRAP_PATH !== undefined,
         cgroupVisible: existsSync("/sys/fs/cgroup/cgroup.procs"),
         deviceMutationDenied,
         nestedUserDenied,
@@ -70,6 +71,7 @@ delegatedDescribe("private rootless Linux Run", () => {
       expect(component.envelope.nestedUserNamespaces).toBe(false);
       const isolation = JSON.parse(stdout) as { readonly nspid: string };
       expect(isolation).toMatchObject({
+        hostOverrideVisible: false,
         cgroupVisible: false,
         deviceMutationDenied: true,
         nestedUserDenied: true,

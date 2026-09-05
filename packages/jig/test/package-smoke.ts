@@ -82,6 +82,7 @@ try {
   assert.match(launcher, /^#!\/bin\/sh\n/);
   assert.match(launcher, /\/usr\/bin\/readlink/);
   assert.match(launcher, /\/bin\/readlink/);
+  assert.match(launcher, /\/run\/current-system\/sw\/bin\/readlink/);
   assert.doesNotMatch(launcher, /command -v|\bPATH\b/);
 
   // Project-controlled Bun configuration must not execute before Jig can

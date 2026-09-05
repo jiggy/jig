@@ -5,6 +5,7 @@ import { dirname, join } from "node:path";
 import type { JsonValue } from "../json.js";
 import type { PrivateLinuxReadOnlyMount } from "./linux-rootless-backend.js";
 import { privateDomainDigest, privateFileDigest } from "./identity.js";
+import { resolvePrivateLinuxHostLoader } from "./linux-host-paths.js";
 
 const ELF_INTERPRETER = "/lib64/ld-linux-x86-64.so.2";
 const LIBRARIES = Object.freeze([
@@ -118,7 +119,9 @@ export async function openPrivateInstalledBunSupport(
     "installed Agent provider worker",
   );
 
-  const loaderPath = await exactRegularFile(ELF_INTERPRETER, true, "supported-host ELF interpreter");
+  const loaderPath = await exactRegularFile(
+    await resolvePrivateLinuxHostLoader(), true, "supported-host ELF interpreter",
+  );
   const hostLibraryDirectory = dirname(loaderPath);
   const libraries = await Promise.all(LIBRARIES.map(async (name) => Object.freeze({
     name,

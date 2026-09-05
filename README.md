@@ -29,13 +29,25 @@ independently validated; Jig fails closed when a required capability is absent.
 The required host shape is:
 
 - Linux x86_64 with glibc 2.17 or newer and an SSE4.2-capable baseline CPU;
-- Bubblewrap 0.12 or newer at `/usr/bin/bwrap`;
-- GNU `readlink -f` at `/usr/bin/readlink` or `/bin/readlink`;
+- Bubblewrap 0.12 or newer and GNU `readlink -f`, located as described below;
 - cgroup v2 with delegated `cpu`, `memory`, and `pids` controllers;
 - a systemd user manager able to create transient scopes with `Delegate=yes`;
 - unprivileged user, mount, PID, network, IPC, UTS, and cgroup namespaces.
 
 The glibc and SSE4.2 floors come from the selected Bun baseline runtime.
+
+Jig looks for host tools in `/usr/bin`, `/bin`, and the NixOS system profile
+`/run/current-system/sw/bin`, not ambient `PATH`. Operators may instead select
+Bubblewrap through an absolute `JIG_BWRAP_PATH`; the development Nix shell
+supplies it this way without system-wide installation. Explicit selections
+receive the same validation and never fall back on failure. NixOS additionally requires
+`programs.nix-ld.enable = true` to execute the unmodified npm-supplied runtime;
+Jig resolves its real glibc loader through the system's
+`/run/current-system/sw/share/nix-ld/lib/ld.so`. Only the required loader and
+individual libraries enter a Run, not nix-ld or the Nix store as a whole.
+Systemd delegation and namespace requirements are unchanged. NixOS path
+support is included in this source candidate; independent NixOS host
+conformance has not yet been established.
 
 Installing `@jigging/jig@0.1.0-alpha.10` also installs the exact external
 runtime dependency `@oven/bun-linux-x64-baseline@1.3.3`. Bun is not embedded in

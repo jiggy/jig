@@ -1,5 +1,6 @@
 import { lstat, realpath } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import { resolvePrivateLinuxHostLoader } from "./linux-host-paths.js";
 
 import {
   createPrivateAcpAgentProvider,
@@ -13,7 +14,6 @@ const SANDBOX_ADAPTER_PATH = "/agent/claude-agent-acp.js";
 const SANDBOX_EXECUTABLE_PATH = "/agent/claude";
 const HOST_CERTIFICATES_PATH = "/etc/ssl/certs/ca-certificates.crt";
 const SANDBOX_CERTIFICATES_PATH = "/etc/ssl/certs/ca-certificates.crt";
-const HOST_ELF_INTERPRETER_PATH = "/lib64/ld-linux-x86-64.so.2";
 const SANDBOX_RUNTIME_LIBRARY_PATH = "/jig-runtime/lib/librt.so.1";
 const MAX_TOKEN_BYTES = 16 * 1024;
 const MAX_BASE_URL_CHARACTERS = 4_096;
@@ -75,7 +75,7 @@ export async function openPrivateClaudeAgentProvider(
       "host certificate bundle",
     ),
     runtimeLibraryPath: await ordinaryFile(
-      join(dirname(await realpath(HOST_ELF_INTERPRETER_PATH)), "librt.so.1"),
+      join(dirname(await resolvePrivateLinuxHostLoader()), "librt.so.1"),
       "Claude runtime library",
     ),
   });

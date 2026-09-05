@@ -9,10 +9,10 @@ import {
   statfs,
 } from "node:fs/promises";
 import { posix } from "node:path";
+import { privateLinuxHostToolCandidates, resolvePrivateLinuxHostPath } from "./linux-host-paths.js";
 
 const CGROUP_ROOT = "/sys/fs/cgroup";
 const CGROUP2_SUPER_MAGIC = 0x6367_7270n;
-const BUBBLEWRAP_PATH = "/usr/bin/bwrap";
 const MAX_PROCESS_OUTPUT_BYTES = 16 * 1024;
 const REQUIRED_CONTROLLERS = Object.freeze(["cpu", "memory", "pids"] as const);
 const REQUIRED_BUBBLEWRAP_FEATURES = Object.freeze([
@@ -45,6 +45,7 @@ interface PrivateExecutionResult {
 
 /** Test seam only. This is not a host, Backend, or runtime-provider SPI. */
 export interface PrivateRootlessLinuxAcquisitionDependencies {
+  readonly bubblewrapPath?: () => string | undefined;
   readonly uid: () => number | undefined;
   readonly gid: () => number | undefined;
   readonly readText: (path: string) => Promise<string>;
@@ -189,7 +190,15 @@ async function observe(
   await dependencies.requireAccess(`${currentCgroup}/cgroup.events`, constants.R_OK);
   await dependencies.requireAccess(`${currentCgroup}/cgroup.kill`, constants.W_OK);
 
-  const bubblewrapPath = await dependencies.resolve(BUBBLEWRAP_PATH);
+  const selectedPath = dependencies.bubblewrapPath?.();
+  if (selectedPath !== undefined &&
+      (!posix.isAbsolute(selectedPath) || selectedPath.includes("\0"))) {
+    throw new Error("JIG_BWRAP_PATH must be an absolute executable path");
+  }
+  const bubblewrapPath = await resolvePrivateLinuxHostPath(
+    selectedPath === undefined ? privateLinuxHostToolCandidates("bwrap") : [selectedPath],
+    dependencies.resolve,
+  );
   if (!bubblewrapPath.startsWith("/") || bubblewrapPath.includes("\0")) {
     throw new Error("Bubblewrap did not resolve to an absolute path");
   }
@@ -291,6 +300,7 @@ function bubblewrapFeatureProbe(path: string): readonly string[] {
 }
 
 const systemDependencies: PrivateRootlessLinuxAcquisitionDependencies = Object.freeze({
+  bubblewrapPath: () => process.env.JIG_BWRAP_PATH,
   uid: () => process.getuid?.(),
   gid: () => process.getgid?.(),
   readText: (path: string) => readFile(path, "utf8"),

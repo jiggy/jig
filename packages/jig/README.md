@@ -33,13 +33,23 @@ independently validated; Jig fails closed when a required capability is absent.
 The alpha requires:
 
 - Linux x86_64 with glibc 2.17 or newer and an SSE4.2-capable baseline CPU;
-- Bubblewrap 0.12 or newer at `/usr/bin/bwrap`;
-- GNU `readlink -f` at `/usr/bin/readlink` or `/bin/readlink`;
+- Bubblewrap 0.12 or newer and GNU `readlink -f`, located as described below;
 - cgroup v2 with delegated `cpu`, `memory`, and `pids` controllers;
 - a systemd user manager with transient delegated scopes; and
 - unprivileged user, mount, PID, network, IPC, UTS, and cgroup namespaces.
 
 The glibc and SSE4.2 floors come from the selected Bun baseline runtime.
+
+Host tools are resolved through `/usr/bin`, `/bin`, or the NixOS system profile
+`/run/current-system/sw/bin`, never ambient `PATH`. An operator may select
+Bubblewrap using an absolute `JIG_BWRAP_PATH`, including a shell-local Nix
+dependency. It receives the same validation and never falls back on failure.
+On NixOS, enable
+`programs.nix-ld.enable` for the unmodified npm runtime. Jig uses the real glibc
+loader at the system-managed `share/nix-ld/lib/ld.so` link, mounting only that
+loader and its required libraries into Runs. It does not mount nix-ld or the
+whole Nix store. NixOS path support is included in this source candidate;
+independent NixOS host conformance is not yet established.
 
 Jig commands do not use `sudo`, download runtimes, or expose host control to
 Flow code. Runtime installation is handled once by npm with the Jig package.

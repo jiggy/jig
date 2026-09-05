@@ -16,6 +16,8 @@ if [ -x /usr/bin/readlink ]; then
   readlink=/usr/bin/readlink
 elif [ -x /bin/readlink ]; then
   readlink=/bin/readlink
+elif [ -x /run/current-system/sw/bin/readlink ]; then
+  readlink=/run/current-system/sw/bin/readlink
 else
   fail
 fi

@@ -14,6 +14,65 @@ const DELEGATED = `${ROOT}/user.slice/session.scope`;
 const BWRAP = "/immutable/bubblewrap-0.12.0/bin/bwrap";
 
 describe("private rootless Linux acquisition", () => {
+  test("validates an exact operator-selected Bubblewrap and rejects later selection drift", async () => {
+    const fixture = validFixture();
+    let selected = BWRAP;
+    const dependencies = { ...fixture.dependencies, bubblewrapPath: () => selected };
+    const retained = await acquirePrivateRootlessLinux(dependencies);
+    expect(retained.bubblewrapPath).toBe(BWRAP);
+    expect(fixture.executions).toHaveLength(2);
+    expect(fixture.resolved).not.toContain("/usr/bin/bwrap");
+    fixture.version = "0.11.0";
+    await expect(revalidatePrivateRootlessLinux(retained, [], dependencies))
+      .rejects.toBeInstanceOf(PrivateRootlessLinuxAcquisitionError);
+    fixture.version = "0.12.0";
+    fixture.information.set(BWRAP, file(1_000, 0o4755));
+    await expect(acquirePrivateRootlessLinux(dependencies))
+      .rejects.toBeInstanceOf(PrivateRootlessLinuxAcquisitionError);
+    fixture.information.set(BWRAP, file(1_000, 0o755));
+    selected = "/another/bwrap";
+    fixture.information.set(selected, file(1_000, 0o755));
+    await expect(revalidatePrivateRootlessLinux(retained, [], dependencies))
+      .rejects.toBeInstanceOf(PrivateRootlessLinuxAcquisitionError);
+  });
+
+  for (const selected of ["", "bwrap", "./bwrap", "/invalid\0bwrap", "/missing/bwrap"]) {
+    test(`does not fall back from an invalid explicit Bubblewrap path ${JSON.stringify(selected)}`, async () => {
+      const fixture = validFixture();
+      await expect(acquirePrivateRootlessLinux({
+        ...fixture.dependencies, bubblewrapPath: () => selected,
+      })).rejects.toBeInstanceOf(PrivateRootlessLinuxAcquisitionError);
+      expect(fixture.executions).toHaveLength(0);
+      expect(fixture.resolved).not.toContain("/usr/bin/bwrap");
+    });
+  }
+
+  test("applies the same feature and authority checks to NixOS Bubblewrap", async () => {
+    const fixture = validFixture();
+    const dependencies = {
+      ...fixture.dependencies,
+      resolve: async (path: string) => {
+        if (path === "/usr/bin/bwrap" || path === "/bin/bwrap") {
+          throw Object.assign(new Error("missing"), { code: "ENOENT" });
+        }
+        if (path === "/run/current-system/sw/bin/bwrap") return BWRAP;
+        return fixture.dependencies.resolve(path);
+      },
+    };
+    const retained = await acquirePrivateRootlessLinux(dependencies);
+    expect(retained.bubblewrapPath).toBe(BWRAP);
+    expect(fixture.executions).toHaveLength(2);
+    fixture.version = "0.11.0";
+    await expect(revalidatePrivateRootlessLinux(retained, [], dependencies)).rejects.toMatchObject({
+      code: "SANDBOX_UNAVAILABLE",
+    });
+    fixture.version = "0.12.0";
+    fixture.information.set(BWRAP, file(1_000, 0o4755));
+    await expect(acquirePrivateRootlessLinux(dependencies)).rejects.toMatchObject({
+      code: "SANDBOX_UNAVAILABLE",
+    });
+  });
+
   test("derives only the current cgroup's exclusive immediate parent", async () => {
     const fixture = validFixture();
     const observation = await acquirePrivateRootlessLinux(fixture.dependencies);
