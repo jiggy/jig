@@ -39,13 +39,7 @@
       "maxProperties": 1024
     }
   },
-  "required": [
-    "$schema",
-    "flowCapabilityContract",
-    "id",
-    "version",
-    "methods"
-  ],
+  "required": ["$schema", "flowCapabilityContract", "id", "version", "methods"],
   "additionalProperties": false,
   "$defs": {
     "contractId": {
@@ -81,20 +75,11 @@
           "maxProperties": 128
         }
       },
-      "required": [
-        "input",
-        "output",
-        "errors"
-      ],
+      "required": ["input", "output", "errors"],
       "additionalProperties": false
     },
     "jsonScalar": {
-      "type": [
-        "null",
-        "boolean",
-        "number",
-        "string"
-      ]
+      "type": ["null", "boolean", "number", "string"]
     },
     "schemaArray": {
       "type": "array",
@@ -142,28 +127,12 @@
         "type": {
           "oneOf": [
             {
-              "enum": [
-                "array",
-                "boolean",
-                "integer",
-                "null",
-                "number",
-                "object",
-                "string"
-              ]
+              "enum": ["array", "boolean", "integer", "null", "number", "object", "string"]
             },
             {
               "type": "array",
               "items": {
-                "enum": [
-                  "array",
-                  "boolean",
-                  "integer",
-                  "null",
-                  "number",
-                  "object",
-                  "string"
-                ]
+                "enum": ["array", "boolean", "integer", "null", "number", "object", "string"]
               },
               "minItems": 1,
               "maxItems": 7,

@@ -19,8 +19,6 @@
       "maxItems": 16
     }
   },
-  "required": [
-    "findings"
-  ],
+  "required": ["findings"],
   "additionalProperties": false
 }

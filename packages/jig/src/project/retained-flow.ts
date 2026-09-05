@@ -1,19 +1,16 @@
 import {
   publishCapturedPackage,
   type PackageArtifactRef,
-} from "../internal/package-artifact-store.js";
-import type { InspectedPackage } from "../package/inspect.js";
-import type {
-  CapturedFlowSource,
-  FlowMemberProvenance,
-} from "./flow-source.js";
+} from '../internal/package-artifact-store.js'
+import type { InspectedPackage } from '../package/inspect.js'
+import type { CapturedFlowSource, FlowMemberProvenance } from './flow-source.js'
 
-const retainedInputs = new WeakSet<object>();
+const retainedInputs = new WeakSet<object>()
 
 export interface RetainedFlowInput {
-  readonly provenance: FlowMemberProvenance;
-  readonly package: PackageArtifactRef;
-  readonly inspected: InspectedPackage;
+  readonly provenance: FlowMemberProvenance
+  readonly package: PackageArtifactRef
+  readonly inspected: InspectedPackage
 }
 
 /**
@@ -24,22 +21,22 @@ export async function retainFlowSourcePackages(
   storeRoot: string,
   source: CapturedFlowSource,
 ): Promise<readonly RetainedFlowInput[]> {
-  const retained: RetainedFlowInput[] = [];
+  const retained: RetainedFlowInput[] = []
   for (const member of source.members) {
     const value = Object.freeze({
       provenance: member.provenance,
       package: await publishCapturedPackage(storeRoot, member.captured),
       inspected: member.inspected,
-    });
-    retainedInputs.add(value);
-    retained.push(value);
+    })
+    retainedInputs.add(value)
+    retained.push(value)
   }
-  return Object.freeze(retained);
+  return Object.freeze(retained)
 }
 
 export function requireRetainedFlowInput(value: unknown): RetainedFlowInput {
-  if (value === null || typeof value !== "object" || !retainedInputs.has(value)) {
-    throw new TypeError("Flow input was not produced by retained Package/1 inspection");
+  if (value === null || typeof value !== 'object' || !retainedInputs.has(value)) {
+    throw new TypeError('Flow input was not produced by retained Package/1 inspection')
   }
-  return value as RetainedFlowInput;
+  return value as RetainedFlowInput
 }

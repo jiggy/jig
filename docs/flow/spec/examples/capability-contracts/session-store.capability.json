@@ -28,9 +28,7 @@
           "maxLength": 128
         }
       },
-      "required": [
-        "sessionId"
-      ],
+      "required": ["sessionId"],
       "additionalProperties": false
     },
     "Session": {
@@ -42,9 +40,7 @@
           "maxLength": 128
         }
       },
-      "required": [
-        "sessionId"
-      ],
+      "required": ["sessionId"],
       "additionalProperties": false
     },
     "NotFound": {
@@ -56,9 +52,7 @@
           "maxLength": 128
         }
       },
-      "required": [
-        "sessionId"
-      ],
+      "required": ["sessionId"],
       "additionalProperties": false
     }
   }

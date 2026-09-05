@@ -3,11 +3,7 @@
   "type": "object",
   "properties": {
     "outcome": {
-      "enum": [
-        "done",
-        "blocked",
-        "limit"
-      ]
+      "enum": ["done", "blocked", "limit"]
     },
     "output": {
       "type": "object",
@@ -42,11 +38,7 @@
                         "maxItems": 32
                       }
                     },
-                    "required": [
-                      "requirementId",
-                      "claim",
-                      "citationIds"
-                    ],
+                    "required": ["requirementId", "claim", "citationIds"],
                     "additionalProperties": false
                   },
                   "maxItems": 16
@@ -59,11 +51,7 @@
                   "maxItems": 16
                 }
               },
-              "required": [
-                "title",
-                "sections",
-                "limitations"
-              ],
+              "required": ["title", "sections", "limitations"],
               "additionalProperties": false
             },
             {
@@ -78,11 +66,7 @@
               "properties": {
                 "verdict": {
                   "type": "string",
-                  "enum": [
-                    "approve",
-                    "revise",
-                    "blocked"
-                  ]
+                  "enum": ["approve", "revise", "blocked"]
                 },
                 "issues": {
                   "type": "array",
@@ -92,10 +76,7 @@
                   "maxItems": 16
                 }
               },
-              "required": [
-                "verdict",
-                "issues"
-              ],
+              "required": ["verdict", "issues"],
               "additionalProperties": false
             },
             {
@@ -126,20 +107,10 @@
                 "maxItems": 128
               },
               "verdict": {
-                "enum": [
-                  "approve",
-                  "revise",
-                  "blocked",
-                  "limit",
-                  "mechanical-check-failed"
-                ]
+                "enum": ["approve", "revise", "blocked", "limit", "mechanical-check-failed"]
               }
             },
-            "required": [
-              "attempt",
-              "feedback",
-              "verdict"
-            ],
+            "required": ["attempt", "feedback", "verdict"],
             "additionalProperties": false
           },
           "maxItems": 2
@@ -148,20 +119,10 @@
           "type": "string"
         }
       },
-      "required": [
-        "reason",
-        "proposal",
-        "review",
-        "attempts",
-        "history",
-        "markdown"
-      ],
+      "required": ["reason", "proposal", "review", "attempts", "history", "markdown"],
       "additionalProperties": false
     }
   },
-  "required": [
-    "outcome",
-    "output"
-  ],
+  "required": ["outcome", "output"],
   "additionalProperties": false
 }

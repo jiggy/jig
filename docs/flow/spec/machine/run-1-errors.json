@@ -14,8 +14,5 @@
     "UNCERTAIN",
     "EXECUTION_FAILED"
   ],
-  "local": [
-    "PROTOCOL_ERROR",
-    "CHANNEL_LOST"
-  ]
+  "local": ["PROTOCOL_ERROR", "CHANNEL_LOST"]
 }

@@ -1,6 +1,6 @@
-import OpenAI from "openai";
-import type { ChatCompletionCreateParamsNonStreaming } from "openai/resources/chat/completions/completions";
-import type { ResponseCreateParamsNonStreaming } from "openai/resources/responses/responses";
+import OpenAI from 'openai'
+import type { ChatCompletionCreateParamsNonStreaming } from 'openai/resources/chat/completions/completions'
+import type { ResponseCreateParamsNonStreaming } from 'openai/resources/responses/responses'
 
 import {
   canonicalJson,
@@ -9,73 +9,70 @@ import {
   type JsonObject,
   type JsonValue,
   validateJson1,
-} from "../json.js";
+} from '../json.js'
 import {
   PrivateOpenAIAgentError,
   PRIVATE_OPENAI_APIS,
   type PrivateOpenAIApi,
   type PrivateOpenAIAgentResult,
-} from "./openai-agent-protocol.js";
+} from './openai-agent-protocol.js'
 
-const MAX_INSTRUCTION_CHARACTERS = 1_048_576;
-const MAX_RESPONSE_SCHEMA_BYTES = 256 * 1024;
-const RESPONSE_FORMAT_NAME = "jig_agent_run_result";
-const MAX_OUTPUT_TOKENS = 4_096;
-const MAX_RESPONSE_SCHEMA_DEPTH = 8;
-const MAX_PROPERTIES_PER_OBJECT = 32;
-const MAX_RESPONSE_SCHEMA_PROPERTIES = 128;
-const MAX_ARRAY_ITEMS = 256;
-const MAX_RESPONSE_SCHEMA_ENUM_VALUES = 256;
-const MAX_RESPONSE_SCHEMA_SYMBOL_CHARACTERS = 120_000;
-const MAX_LARGE_ENUM_CHARACTERS = 15_000;
+const MAX_INSTRUCTION_CHARACTERS = 1_048_576
+const MAX_RESPONSE_SCHEMA_BYTES = 256 * 1024
+const RESPONSE_FORMAT_NAME = 'jig_agent_run_result'
+const MAX_OUTPUT_TOKENS = 4_096
+const MAX_RESPONSE_SCHEMA_DEPTH = 8
+const MAX_PROPERTIES_PER_OBJECT = 32
+const MAX_RESPONSE_SCHEMA_PROPERTIES = 128
+const MAX_ARRAY_ITEMS = 256
+const MAX_RESPONSE_SCHEMA_ENUM_VALUES = 256
+const MAX_RESPONSE_SCHEMA_SYMBOL_CHARACTERS = 120_000
+const MAX_LARGE_ENUM_CHARACTERS = 15_000
 
 export type PrivateOpenAIFetch = (
   input: string | URL | Request,
   init?: RequestInit,
-) => Promise<Response>;
+) => Promise<Response>
 
 export interface PrivateOpenAIAgentCreateClient {
-  create(
-    api: PrivateOpenAIApi,
-    body: PrivateOpenAIAgentCreateBody,
-  ): Promise<unknown>;
+  create(api: PrivateOpenAIApi, body: PrivateOpenAIAgentCreateBody): Promise<unknown>
 }
 
 export interface PrivateOpenAIAgentClientRequest {
-  readonly api: PrivateOpenAIApi;
-  readonly baseURL: string;
-  readonly model: string;
-  readonly instructions: string;
-  readonly responseSchema?: JsonObject;
+  readonly api: PrivateOpenAIApi
+  readonly baseURL: string
+  readonly model: string
+  readonly instructions: string
+  readonly responseSchema?: JsonObject
 }
 
 export interface PrivateOpenAIAgentClientDependencies {
-  readonly apiKey: string;
+  readonly apiKey: string
   /** Test seam: production uses the bundled OpenAI SDK with the global fetch. */
-  readonly fetch?: PrivateOpenAIFetch;
+  readonly fetch?: PrivateOpenAIFetch
   /** Test seam: production creates exactly one bundled OpenAI client. */
-  readonly client?: PrivateOpenAIAgentCreateClient;
+  readonly client?: PrivateOpenAIAgentCreateClient
 }
 
 type PrivateOpenAIAgentCreateBody =
   | ResponseCreateParamsNonStreaming
-  | ChatCompletionCreateParamsNonStreaming;
+  | ChatCompletionCreateParamsNonStreaming
 
 interface ResponseSchemaProfileState {
-  properties: number;
-  enumValues: number;
-  symbolCharacters: number;
+  properties: number
+  enumValues: number
+  symbolCharacters: number
 }
 
 /** Validate Jig's deliberately bounded recursive Agent structured-output profile. */
 export function assertPrivateAgentResponseSchema(schema: JsonObject): void {
-  if (schema.$schema !== "https://flow.jig.md/schemas/schema-1.json") invalidSchemaProfile();
+  if (schema.$schema !== 'https://flow.jig.md/schemas/schema-1.json') invalidSchemaProfile()
   const state: ResponseSchemaProfileState = {
     properties: 0,
     enumValues: 0,
     symbolCharacters: 0,
-  };
-  assertResponseSchemaNode(schema, 1, true, state);
+  }
+  assertResponseSchemaNode(schema, 1, true, state)
 }
 
 function assertResponseSchemaNode(
@@ -84,39 +81,41 @@ function assertResponseSchemaNode(
   root: boolean,
   state: ResponseSchemaProfileState,
 ): void {
-  const schema = ordinaryRecord(value);
-  if (schema === undefined || depth > MAX_RESPONSE_SCHEMA_DEPTH) invalidSchemaProfile();
+  const schema = ordinaryRecord(value)
+  if (schema === undefined || depth > MAX_RESPONSE_SCHEMA_DEPTH) invalidSchemaProfile()
 
-  if (schema.type === "object") {
-    assertClosedResponseObject(schema, depth, root, state);
-    return;
+  if (schema.type === 'object') {
+    assertClosedResponseObject(schema, depth, root, state)
+    return
   }
-  if (root || Object.hasOwn(schema, "$schema")) invalidSchemaProfile();
+  if (root || Object.hasOwn(schema, '$schema')) invalidSchemaProfile()
 
-  if (schema.type === "array") {
-    const baseExpected = Object.hasOwn(schema, "minItems")
-      ? ["items", "maxItems", "minItems", "type"]
-      : ["items", "maxItems", "type"];
-    if (!exactProfileKeys(schema, baseExpected) ||
-        !boundedNonnegativeInteger(schema.maxItems, MAX_ARRAY_ITEMS) ||
-        (Object.hasOwn(schema, "minItems") &&
-          (!boundedNonnegativeInteger(schema.minItems, MAX_ARRAY_ITEMS) ||
-            (schema.minItems as number) > (schema.maxItems as number)))) {
-      invalidSchemaProfile();
+  if (schema.type === 'array') {
+    const baseExpected = Object.hasOwn(schema, 'minItems')
+      ? ['items', 'maxItems', 'minItems', 'type']
+      : ['items', 'maxItems', 'type']
+    if (
+      !exactProfileKeys(schema, baseExpected) ||
+      !boundedNonnegativeInteger(schema.maxItems, MAX_ARRAY_ITEMS) ||
+      (Object.hasOwn(schema, 'minItems') &&
+        (!boundedNonnegativeInteger(schema.minItems, MAX_ARRAY_ITEMS) ||
+          (schema.minItems as number) > (schema.maxItems as number)))
+    ) {
+      invalidSchemaProfile()
     }
-    assertResponseSchemaNode(schema.items, depth + 1, false, state);
-    return;
+    assertResponseSchemaNode(schema.items, depth + 1, false, state)
+    return
   }
 
-  if (schema.type === "integer" || isNullableType(schema.type, "integer")) {
-    if (!exactProfileKeys(schema, ["type"])) invalidSchemaProfile();
-    return;
+  if (schema.type === 'integer' || isNullableType(schema.type, 'integer')) {
+    if (!exactProfileKeys(schema, ['type'])) invalidSchemaProfile()
+    return
   }
-  if (schema.type === "string" || isNullableType(schema.type, "string")) {
-    assertResponseString(schema, isNullableType(schema.type, "string"), state);
-    return;
+  if (schema.type === 'string' || isNullableType(schema.type, 'string')) {
+    assertResponseString(schema, isNullableType(schema.type, 'string'), state)
+    return
   }
-  invalidSchemaProfile();
+  invalidSchemaProfile()
 }
 
 function assertClosedResponseObject(
@@ -126,26 +125,33 @@ function assertClosedResponseObject(
   state: ResponseSchemaProfileState,
 ): void {
   const expected = root
-    ? ["$schema", "additionalProperties", "properties", "required", "type"]
-    : ["additionalProperties", "properties", "required", "type"];
-  const properties = ordinaryRecord(schema.properties);
-  if (!exactProfileKeys(schema, expected) || schema.additionalProperties !== false ||
-      properties === undefined || !Array.isArray(schema.required)) {
-    invalidSchemaProfile();
+    ? ['$schema', 'additionalProperties', 'properties', 'required', 'type']
+    : ['additionalProperties', 'properties', 'required', 'type']
+  const properties = ordinaryRecord(schema.properties)
+  if (
+    !exactProfileKeys(schema, expected) ||
+    schema.additionalProperties !== false ||
+    properties === undefined ||
+    !Array.isArray(schema.required)
+  ) {
+    invalidSchemaProfile()
   }
-  const names = Object.keys(properties);
-  if (names.length === 0 || names.length > MAX_PROPERTIES_PER_OBJECT ||
-      schema.required.length !== names.length ||
-      new Set(schema.required).size !== names.length ||
-      schema.required.some((name) => typeof name !== "string" || !Object.hasOwn(properties, name))) {
-    invalidSchemaProfile();
+  const names = Object.keys(properties)
+  if (
+    names.length === 0 ||
+    names.length > MAX_PROPERTIES_PER_OBJECT ||
+    schema.required.length !== names.length ||
+    new Set(schema.required).size !== names.length ||
+    schema.required.some((name) => typeof name !== 'string' || !Object.hasOwn(properties, name))
+  ) {
+    invalidSchemaProfile()
   }
-  state.properties += names.length;
-  if (state.properties > MAX_RESPONSE_SCHEMA_PROPERTIES) invalidSchemaProfile();
+  state.properties += names.length
+  if (state.properties > MAX_RESPONSE_SCHEMA_PROPERTIES) invalidSchemaProfile()
   for (const name of names) {
-    state.symbolCharacters += unicodeScalarLength(name);
-    if (state.symbolCharacters > MAX_RESPONSE_SCHEMA_SYMBOL_CHARACTERS) invalidSchemaProfile();
-    assertResponseSchemaNode(properties[name], depth + 1, false, state);
+    state.symbolCharacters += unicodeScalarLength(name)
+    if (state.symbolCharacters > MAX_RESPONSE_SCHEMA_SYMBOL_CHARACTERS) invalidSchemaProfile()
+    assertResponseSchemaNode(properties[name], depth + 1, false, state)
   }
 }
 
@@ -154,51 +160,63 @@ function assertResponseString(
   nullable: boolean,
   state: ResponseSchemaProfileState,
 ): void {
-  if (!Object.hasOwn(schema, "enum")) {
-    if (!exactProfileKeys(schema, ["type"])) invalidSchemaProfile();
-    return;
+  if (!Object.hasOwn(schema, 'enum')) {
+    if (!exactProfileKeys(schema, ['type'])) invalidSchemaProfile()
+    return
   }
-  if (!exactProfileKeys(schema, ["enum", "type"]) || !Array.isArray(schema.enum) ||
-      schema.enum.length === 0 || schema.enum.length > MAX_RESPONSE_SCHEMA_ENUM_VALUES ||
-      schema.enum.some((item) => typeof item !== "string" && (!nullable || item !== null)) ||
-      new Set(schema.enum).size !== schema.enum.length ||
-      (nullable && (!schema.enum.includes(null) ||
-        !schema.enum.some((item) => typeof item === "string")))) {
-    invalidSchemaProfile();
+  if (
+    !exactProfileKeys(schema, ['enum', 'type']) ||
+    !Array.isArray(schema.enum) ||
+    schema.enum.length === 0 ||
+    schema.enum.length > MAX_RESPONSE_SCHEMA_ENUM_VALUES ||
+    schema.enum.some((item) => typeof item !== 'string' && (!nullable || item !== null)) ||
+    new Set(schema.enum).size !== schema.enum.length ||
+    (nullable &&
+      (!schema.enum.includes(null) || !schema.enum.some((item) => typeof item === 'string')))
+  ) {
+    invalidSchemaProfile()
   }
-  state.enumValues += schema.enum.length;
+  state.enumValues += schema.enum.length
   const enumCharacters = schema.enum.reduce(
-    (total, item) => total + (typeof item === "string" ? unicodeScalarLength(item) : 0),
+    (total, item) => total + (typeof item === 'string' ? unicodeScalarLength(item) : 0),
     0,
-  );
+  )
   if (schema.enum.length > 250 && enumCharacters > MAX_LARGE_ENUM_CHARACTERS) {
-    invalidSchemaProfile();
+    invalidSchemaProfile()
   }
-  state.symbolCharacters += enumCharacters;
-  if (state.enumValues > MAX_RESPONSE_SCHEMA_ENUM_VALUES) invalidSchemaProfile();
-  if (state.symbolCharacters > MAX_RESPONSE_SCHEMA_SYMBOL_CHARACTERS) invalidSchemaProfile();
+  state.symbolCharacters += enumCharacters
+  if (state.enumValues > MAX_RESPONSE_SCHEMA_ENUM_VALUES) invalidSchemaProfile()
+  if (state.symbolCharacters > MAX_RESPONSE_SCHEMA_SYMBOL_CHARACTERS) invalidSchemaProfile()
 }
 
-function isNullableType(value: unknown, base: "integer" | "string"): boolean {
-  return Array.isArray(value) && value.length === 2 &&
-    new Set(value).size === 2 && value.includes(base) && value.includes("null");
+function isNullableType(value: unknown, base: 'integer' | 'string'): boolean {
+  return (
+    Array.isArray(value) &&
+    value.length === 2 &&
+    new Set(value).size === 2 &&
+    value.includes(base) &&
+    value.includes('null')
+  )
 }
 
 function exactProfileKeys(value: Record<string, unknown>, expected: readonly string[]): boolean {
-  if (Object.hasOwn(value, "description") && typeof value.description !== "string") return false;
-  return exactKeys(value, Object.hasOwn(value, "description") ? [...expected, "description"] : expected);
+  if (Object.hasOwn(value, 'description') && typeof value.description !== 'string') return false
+  return exactKeys(
+    value,
+    Object.hasOwn(value, 'description') ? [...expected, 'description'] : expected,
+  )
 }
 
 function boundedNonnegativeInteger(value: unknown, maximum: number): boolean {
-  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 && value <= maximum;
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 && value <= maximum
 }
 
 function unicodeScalarLength(value: string): number {
-  return [...value].length;
+  return [...value].length
 }
 
 function invalidSchemaProfile(): never {
-  throw new TypeError("Agent responseSchema must use the bounded structured-output profile");
+  throw new TypeError('Agent responseSchema must use the bounded structured-output profile')
 }
 
 /**
@@ -210,37 +228,31 @@ export async function requestPrivateOpenAIAgent(
   request: PrivateOpenAIAgentClientRequest,
   dependencies: PrivateOpenAIAgentClientDependencies,
 ): Promise<PrivateOpenAIAgentResult> {
-  requireClientRequest(request);
-  requireApiKey(dependencies.apiKey);
+  requireClientRequest(request)
+  requireApiKey(dependencies.apiKey)
   if (dependencies.client !== undefined && dependencies.fetch !== undefined) {
     throw new PrivateOpenAIAgentError(
-      "AGENT_PROVIDER_CONFIGURATION",
-      "OpenAI Agent test transport is ambiguous",
-    );
+      'AGENT_PROVIDER_CONFIGURATION',
+      'OpenAI Agent test transport is ambiguous',
+    )
   }
 
-  const body = createBody(request);
-  const client = dependencies.client ?? sdkClient(
-    request.baseURL,
-    dependencies.apiKey,
-    dependencies.fetch,
-  );
-  let response: unknown;
+  const body = createBody(request)
+  const client =
+    dependencies.client ?? sdkClient(request.baseURL, dependencies.apiKey, dependencies.fetch)
+  let response: unknown
   try {
-    response = await client.create(request.api, body);
+    response = await client.create(request.api, body)
   } catch {
     // Provider and SDK errors are intentionally not reflected: an upstream
     // diagnostic can contain request data, endpoint credentials, or headers.
-    throw new PrivateOpenAIAgentError(
-      "AGENT_PROVIDER_UNAVAILABLE",
-      "OpenAI Agent request failed",
-    );
+    throw new PrivateOpenAIAgentError('AGENT_PROVIDER_UNAVAILABLE', 'OpenAI Agent request failed')
   }
   return normalizePrivateOpenAIAgentResponse(
     response,
     request.api,
     request.responseSchema !== undefined,
-  );
+  )
 }
 
 export function normalizePrivateOpenAIAgentResponse(
@@ -248,106 +260,121 @@ export function normalizePrivateOpenAIAgentResponse(
   api: PrivateOpenAIApi,
   structuredRequested: boolean,
 ): PrivateOpenAIAgentResult {
-  const result = api === "responses"
-    ? normalizeResponsesResult(response)
-    : normalizeChatCompletionsResult(response);
-  return attachStructuredResult(result, structuredRequested);
+  const result =
+    api === 'responses'
+      ? normalizeResponsesResult(response)
+      : normalizeChatCompletionsResult(response)
+  return attachStructuredResult(result, structuredRequested)
 }
 
-function normalizeResponsesResult(
-  response: unknown,
-): PrivateOpenAIAgentResult {
-  const record = ordinaryRecord(response);
-  if (record === undefined ||
-      (record.status !== "completed" && record.status !== "incomplete" &&
-        record.status !== "failed" && record.status !== "cancelled" &&
-        record.status !== "queued" && record.status !== "in_progress") ||
-      !Array.isArray(record.output)) {
-    throw invalidResponse();
+function normalizeResponsesResult(response: unknown): PrivateOpenAIAgentResult {
+  const record = ordinaryRecord(response)
+  if (
+    record === undefined ||
+    (record.status !== 'completed' &&
+      record.status !== 'incomplete' &&
+      record.status !== 'failed' &&
+      record.status !== 'cancelled' &&
+      record.status !== 'queued' &&
+      record.status !== 'in_progress') ||
+    !Array.isArray(record.output)
+  ) {
+    throw invalidResponse()
   }
-  if ((Object.hasOwn(record, "error") && record.error !== null) ||
-      record.status === "failed" || record.status === "cancelled") {
+  if (
+    (Object.hasOwn(record, 'error') && record.error !== null) ||
+    record.status === 'failed' ||
+    record.status === 'cancelled'
+  ) {
     throw new PrivateOpenAIAgentError(
-      "AGENT_PROVIDER_UNAVAILABLE",
-      "OpenAI Responses request did not complete",
-    );
+      'AGENT_PROVIDER_UNAVAILABLE',
+      'OpenAI Responses request did not complete',
+    )
   }
-  if (record.status === "queued" || record.status === "in_progress") {
-    throw invalidResponse();
+  if (record.status === 'queued' || record.status === 'in_progress') {
+    throw invalidResponse()
   }
 
-  const content = responseContent(record, record.status === "incomplete");
-  let outcome: PrivateOpenAIAgentResult["outcome"];
+  const content = responseContent(record, record.status === 'incomplete')
+  let outcome: PrivateOpenAIAgentResult['outcome']
   if (content.refusals.length > 0) {
-    outcome = "blocked";
-  } else if (record.status === "incomplete") {
-    const details = ordinaryRecord(record.incomplete_details);
-    outcome = details?.reason === "content_filter" ? "blocked" : "limit";
+    outcome = 'blocked'
+  } else if (record.status === 'incomplete') {
+    const details = ordinaryRecord(record.incomplete_details)
+    outcome = details?.reason === 'content_filter' ? 'blocked' : 'limit'
   } else {
-    outcome = "completed";
+    outcome = 'completed'
   }
-  const text = outcome === "blocked" && content.refusals.length > 0
-    ? joinBounded(content.refusals, "\n")
-    : joinBounded(content.text, "");
+  const text =
+    outcome === 'blocked' && content.refusals.length > 0
+      ? joinBounded(content.refusals, '\n')
+      : joinBounded(content.text, '')
 
-  return Object.freeze({ outcome, text });
+  return Object.freeze({ outcome, text })
 }
 
-function normalizeChatCompletionsResult(
-  response: unknown,
-): PrivateOpenAIAgentResult {
-  const record = ordinaryRecord(response);
-  if (record === undefined || !Array.isArray(record.choices) ||
-      record.choices.length !== 1) {
-    throw invalidResponse();
+function normalizeChatCompletionsResult(response: unknown): PrivateOpenAIAgentResult {
+  const record = ordinaryRecord(response)
+  if (record === undefined || !Array.isArray(record.choices) || record.choices.length !== 1) {
+    throw invalidResponse()
   }
-  const choice = ordinaryRecord(record.choices[0]);
-  const message = choice === undefined ? undefined : ordinaryRecord(choice.message);
-  if (choice === undefined || message === undefined ||
-      message.role !== "assistant" ||
-      (choice.finish_reason !== "stop" && choice.finish_reason !== "length" &&
-        choice.finish_reason !== "content_filter") ||
-      (message.content !== null && typeof message.content !== "string") ||
-      (message.refusal !== undefined && message.refusal !== null &&
-        typeof message.refusal !== "string") ||
-      (Object.hasOwn(message, "tool_calls") && message.tool_calls !== undefined &&
-        message.tool_calls !== null) ||
-      (Object.hasOwn(message, "function_call") && message.function_call !== undefined &&
-        message.function_call !== null)) {
-    throw invalidResponse();
+  const choice = ordinaryRecord(record.choices[0])
+  const message = choice === undefined ? undefined : ordinaryRecord(choice.message)
+  if (
+    choice === undefined ||
+    message === undefined ||
+    message.role !== 'assistant' ||
+    (choice.finish_reason !== 'stop' &&
+      choice.finish_reason !== 'length' &&
+      choice.finish_reason !== 'content_filter') ||
+    (message.content !== null && typeof message.content !== 'string') ||
+    (message.refusal !== undefined &&
+      message.refusal !== null &&
+      typeof message.refusal !== 'string') ||
+    (Object.hasOwn(message, 'tool_calls') &&
+      message.tool_calls !== undefined &&
+      message.tool_calls !== null) ||
+    (Object.hasOwn(message, 'function_call') &&
+      message.function_call !== undefined &&
+      message.function_call !== null)
+  ) {
+    throw invalidResponse()
   }
-  const refusal = typeof message.refusal === "string" ? message.refusal : undefined;
-  if (choice.finish_reason === "stop" && refusal === undefined &&
-      typeof message.content !== "string") {
-    throw invalidResponse();
+  const refusal = typeof message.refusal === 'string' ? message.refusal : undefined
+  if (
+    choice.finish_reason === 'stop' &&
+    refusal === undefined &&
+    typeof message.content !== 'string'
+  ) {
+    throw invalidResponse()
   }
-  const outcome: PrivateOpenAIAgentResult["outcome"] = refusal !== undefined ||
-      choice.finish_reason === "content_filter"
-    ? "blocked"
-    : choice.finish_reason === "length"
-      ? "limit"
-      : "completed";
+  const outcome: PrivateOpenAIAgentResult['outcome'] =
+    refusal !== undefined || choice.finish_reason === 'content_filter'
+      ? 'blocked'
+      : choice.finish_reason === 'length'
+        ? 'limit'
+        : 'completed'
   const text = joinBounded(
-    [refusal ?? (typeof message.content === "string" ? message.content : "")],
-    "",
-  );
-  return Object.freeze({ outcome, text });
+    [refusal ?? (typeof message.content === 'string' ? message.content : '')],
+    '',
+  )
+  return Object.freeze({ outcome, text })
 }
 
 function attachStructuredResult(
   result: PrivateOpenAIAgentResult,
   structuredRequested: boolean,
 ): PrivateOpenAIAgentResult {
-  if (!structuredRequested) return result;
+  if (!structuredRequested) return result
   try {
-    const structured = decodeJson1(new TextEncoder().encode(result.text));
-    return Object.freeze({ ...result, structured });
+    const structured = decodeJson1(new TextEncoder().encode(result.text))
+    return Object.freeze({ ...result, structured })
   } catch {
-    if (result.outcome !== "completed") return result;
+    if (result.outcome !== 'completed') return result
     throw new PrivateOpenAIAgentError(
-      "AGENT_PROVIDER_RESPONSE_INVALID",
-      "OpenAI structured response is not valid JSON/1",
-    );
+      'AGENT_PROVIDER_RESPONSE_INVALID',
+      'OpenAI structured response is not valid JSON/1',
+    )
   }
 }
 
@@ -364,20 +391,17 @@ function sdkClient(
     project: null,
     webhookSecret: null,
     maxRetries: 0,
-    logLevel: "off",
+    logLevel: 'off',
     logger: SILENT_LOGGER,
     ...(injectedFetch === undefined ? {} : { fetch: injectedFetch }),
-  });
+  })
   return Object.freeze({
-    create(
-      api: PrivateOpenAIApi,
-      body: PrivateOpenAIAgentCreateBody,
-    ): Promise<unknown> {
-      return api === "responses"
+    create(api: PrivateOpenAIApi, body: PrivateOpenAIAgentCreateBody): Promise<unknown> {
+      return api === 'responses'
         ? sdk.responses.create(body as ResponseCreateParamsNonStreaming)
-        : sdk.chat.completions.create(body as ChatCompletionCreateParamsNonStreaming);
+        : sdk.chat.completions.create(body as ChatCompletionCreateParamsNonStreaming)
     },
-  });
+  })
 }
 
 const SILENT_LOGGER = Object.freeze({
@@ -385,14 +409,12 @@ const SILENT_LOGGER = Object.freeze({
   warn(): void {},
   info(): void {},
   debug(): void {},
-});
+})
 
-function createBody(
-  request: PrivateOpenAIAgentClientRequest,
-): PrivateOpenAIAgentCreateBody {
-  return request.api === "responses"
+function createBody(request: PrivateOpenAIAgentClientRequest): PrivateOpenAIAgentCreateBody {
+  return request.api === 'responses'
     ? createResponsesBody(request)
-    : createChatCompletionsBody(request);
+    : createChatCompletionsBody(request)
 }
 
 function createResponsesBody(
@@ -404,19 +426,19 @@ function createResponsesBody(
     max_output_tokens: MAX_OUTPUT_TOKENS,
     store: false,
     stream: false,
-  } as const;
-  if (request.responseSchema === undefined) return base;
+  } as const
+  if (request.responseSchema === undefined) return base
   return {
     ...base,
     text: {
       format: {
-        type: "json_schema",
+        type: 'json_schema',
         name: RESPONSE_FORMAT_NAME,
         schema: projectPrivateAgentResponseSchema(request.responseSchema),
         strict: true,
       },
     },
-  };
+  }
 }
 
 function createChatCompletionsBody(
@@ -424,22 +446,22 @@ function createChatCompletionsBody(
 ): ChatCompletionCreateParamsNonStreaming {
   const base: ChatCompletionCreateParamsNonStreaming = {
     model: request.model,
-    messages: [{ role: "user", content: request.instructions }],
+    messages: [{ role: 'user', content: request.instructions }],
     max_tokens: MAX_OUTPUT_TOKENS,
     stream: false,
-  };
-  if (request.responseSchema === undefined) return base;
+  }
+  if (request.responseSchema === undefined) return base
   return {
     ...base,
     response_format: {
-      type: "json_schema",
+      type: 'json_schema',
       json_schema: {
         name: RESPONSE_FORMAT_NAME,
         schema: projectPrivateAgentResponseSchema(request.responseSchema),
         strict: true,
       },
     },
-  };
+  }
 }
 
 export function projectPrivateAgentResponseSchema(
@@ -448,183 +470,195 @@ export function projectPrivateAgentResponseSchema(
   // Schema/1's root declaration identifies Jig's validator dialect, not a
   // provider meta-schema. Keep the exact input untouched and remove only that
   // declaration from the provider-facing copy.
-  return Object.fromEntries(
-    Object.entries(responseSchema).filter(([name]) => name !== "$schema"),
-  );
+  return Object.fromEntries(Object.entries(responseSchema).filter(([name]) => name !== '$schema'))
 }
 
 function requireClientRequest(request: PrivateOpenAIAgentClientRequest): void {
-  if (request === null || typeof request !== "object" ||
-      !(PRIVATE_OPENAI_APIS as readonly string[]).includes(request.api) ||
-      typeof request.baseURL !== "string" || typeof request.model !== "string" ||
-      typeof request.instructions !== "string" ||
-      !boundedCharacters(request.instructions, MAX_INSTRUCTION_CHARACTERS)) {
+  if (
+    request === null ||
+    typeof request !== 'object' ||
+    !(PRIVATE_OPENAI_APIS as readonly string[]).includes(request.api) ||
+    typeof request.baseURL !== 'string' ||
+    typeof request.model !== 'string' ||
+    typeof request.instructions !== 'string' ||
+    !boundedCharacters(request.instructions, MAX_INSTRUCTION_CHARACTERS)
+  ) {
     throw new PrivateOpenAIAgentError(
-      "AGENT_PROVIDER_CONFIGURATION",
-      "OpenAI Agent client request is invalid",
-    );
+      'AGENT_PROVIDER_CONFIGURATION',
+      'OpenAI Agent client request is invalid',
+    )
   }
   try {
-    validateJson1(request.instructions);
+    validateJson1(request.instructions)
   } catch {
     throw new PrivateOpenAIAgentError(
-      "AGENT_PROVIDER_CONFIGURATION",
-      "OpenAI Agent instructions are not valid JSON/1 text",
-    );
+      'AGENT_PROVIDER_CONFIGURATION',
+      'OpenAI Agent instructions are not valid JSON/1 text',
+    )
   }
-  requireEndpoint(request.baseURL);
+  requireEndpoint(request.baseURL)
   if (!/^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$/.test(request.model)) {
     throw new PrivateOpenAIAgentError(
-      "AGENT_PROVIDER_CONFIGURATION",
-      "OpenAI Agent model is invalid",
-    );
+      'AGENT_PROVIDER_CONFIGURATION',
+      'OpenAI Agent model is invalid',
+    )
   }
   if (request.responseSchema !== undefined) {
     if (ordinaryRecord(request.responseSchema) === undefined) {
       throw new PrivateOpenAIAgentError(
-        "AGENT_PROVIDER_CONFIGURATION",
-        "OpenAI response schema is invalid",
-      );
+        'AGENT_PROVIDER_CONFIGURATION',
+        'OpenAI response schema is invalid',
+      )
     }
-    let bytes: Uint8Array;
+    let bytes: Uint8Array
     try {
-      validateJson1(request.responseSchema);
-      bytes = canonicalJson(request.responseSchema);
+      validateJson1(request.responseSchema)
+      bytes = canonicalJson(request.responseSchema)
     } catch {
       throw new PrivateOpenAIAgentError(
-        "AGENT_PROVIDER_CONFIGURATION",
-        "OpenAI response schema is not valid JSON/1",
-      );
+        'AGENT_PROVIDER_CONFIGURATION',
+        'OpenAI response schema is not valid JSON/1',
+      )
     }
     if (bytes.byteLength > MAX_RESPONSE_SCHEMA_BYTES) {
       throw new PrivateOpenAIAgentError(
-        "AGENT_PROVIDER_CONFIGURATION",
-        "OpenAI response schema exceeds its byte bound",
-      );
+        'AGENT_PROVIDER_CONFIGURATION',
+        'OpenAI response schema exceeds its byte bound',
+      )
     }
     try {
-      assertPrivateAgentResponseSchema(request.responseSchema);
+      assertPrivateAgentResponseSchema(request.responseSchema)
     } catch {
       throw new PrivateOpenAIAgentError(
-        "AGENT_PROVIDER_CONFIGURATION",
-        "OpenAI response schema is outside the supported profile",
-      );
+        'AGENT_PROVIDER_CONFIGURATION',
+        'OpenAI response schema is outside the supported profile',
+      )
     }
   }
 }
 
 function requireEndpoint(baseURL: string): void {
   if (baseURL.length === 0 || baseURL.length > 4_096) {
-    throw invalidEndpoint();
+    throw invalidEndpoint()
   }
-  let parsed: URL;
+  let parsed: URL
   try {
-    parsed = new URL(baseURL);
+    parsed = new URL(baseURL)
   } catch {
-    throw invalidEndpoint();
+    throw invalidEndpoint()
   }
-  if (parsed.protocol !== "https:" ||
-      parsed.username !== "" || parsed.password !== "" || parsed.search !== "" ||
-      parsed.hash !== "") {
-    throw invalidEndpoint();
+  if (
+    parsed.protocol !== 'https:' ||
+    parsed.username !== '' ||
+    parsed.password !== '' ||
+    parsed.search !== '' ||
+    parsed.hash !== ''
+  ) {
+    throw invalidEndpoint()
   }
 }
 
 function invalidEndpoint(): PrivateOpenAIAgentError {
   return new PrivateOpenAIAgentError(
-    "AGENT_PROVIDER_CONFIGURATION",
-    "OpenAI Agent base URL is invalid",
-  );
+    'AGENT_PROVIDER_CONFIGURATION',
+    'OpenAI Agent base URL is invalid',
+  )
 }
 
 function requireApiKey(apiKey: string): void {
-  if (typeof apiKey !== "string" || apiKey.trim().length === 0 || apiKey.includes("\0") ||
-      new TextEncoder().encode(apiKey).byteLength > 16_384) {
+  if (
+    typeof apiKey !== 'string' ||
+    apiKey.trim().length === 0 ||
+    apiKey.includes('\0') ||
+    new TextEncoder().encode(apiKey).byteLength > 16_384
+  ) {
     throw new PrivateOpenAIAgentError(
-      "AGENT_PROVIDER_CONFIGURATION",
-      "OpenAI Agent API key is unavailable",
-    );
+      'AGENT_PROVIDER_CONFIGURATION',
+      'OpenAI Agent API key is unavailable',
+    )
   }
 }
 
-function responseContent(record: Record<string, unknown>, allowEmpty: boolean): {
-  readonly text: readonly string[];
-  readonly refusals: readonly string[];
+function responseContent(
+  record: Record<string, unknown>,
+  allowEmpty: boolean,
+): {
+  readonly text: readonly string[]
+  readonly refusals: readonly string[]
 } {
-  const text: string[] = [];
-  const refusals: string[] = [];
-  let foundText = false;
+  const text: string[] = []
+  const refusals: string[] = []
+  let foundText = false
   for (const rawItem of record.output as readonly unknown[]) {
-    const item = ordinaryRecord(rawItem);
-    if (item === undefined) throw invalidResponse();
-    if (item.type !== "message") continue;
-    if (!Array.isArray(item.content)) throw invalidResponse();
+    const item = ordinaryRecord(rawItem)
+    if (item === undefined) throw invalidResponse()
+    if (item.type !== 'message') continue
+    if (!Array.isArray(item.content)) throw invalidResponse()
     for (const rawPart of item.content) {
-      const part = ordinaryRecord(rawPart);
-      if (part === undefined) throw invalidResponse();
-      if (part.type === "output_text") {
-        if (typeof part.text !== "string") throw invalidResponse();
-        foundText = true;
-        text.push(part.text);
-      } else if (part.type === "refusal") {
-        if (typeof part.refusal !== "string") throw invalidResponse();
-        refusals.push(part.refusal);
+      const part = ordinaryRecord(rawPart)
+      if (part === undefined) throw invalidResponse()
+      if (part.type === 'output_text') {
+        if (typeof part.text !== 'string') throw invalidResponse()
+        foundText = true
+        text.push(part.text)
+      } else if (part.type === 'refusal') {
+        if (typeof part.refusal !== 'string') throw invalidResponse()
+        refusals.push(part.refusal)
       } else {
-        throw invalidResponse();
+        throw invalidResponse()
       }
     }
   }
-  if (!foundText && refusals.length === 0 && typeof record.output_text === "string") {
-    foundText = true;
-    text.push(record.output_text);
+  if (!foundText && refusals.length === 0 && typeof record.output_text === 'string') {
+    foundText = true
+    text.push(record.output_text)
   }
-  if (!foundText && refusals.length === 0 && !allowEmpty) throw invalidResponse();
-  return Object.freeze({ text: Object.freeze(text), refusals: Object.freeze(refusals) });
+  if (!foundText && refusals.length === 0 && !allowEmpty) throw invalidResponse()
+  return Object.freeze({ text: Object.freeze(text), refusals: Object.freeze(refusals) })
 }
 
 function joinBounded(parts: readonly string[], separator: string): string {
-  let bytes = 0;
-  const separatorBytes = new TextEncoder().encode(separator).byteLength;
+  let bytes = 0
+  const separatorBytes = new TextEncoder().encode(separator).byteLength
   for (const [index, part] of parts.entries()) {
-    bytes += new TextEncoder().encode(part).byteLength;
-    if (index !== 0) bytes += separatorBytes;
+    bytes += new TextEncoder().encode(part).byteLength
+    if (index !== 0) bytes += separatorBytes
     if (bytes > JSON_1_LIMITS.stringBytes) {
       throw new PrivateOpenAIAgentError(
-        "AGENT_PROVIDER_OUTPUT_LIMIT",
-        "OpenAI Agent text exceeds its byte bound",
-      );
+        'AGENT_PROVIDER_OUTPUT_LIMIT',
+        'OpenAI Agent text exceeds its byte bound',
+      )
     }
   }
-  return parts.join(separator);
+  return parts.join(separator)
 }
 
 function ordinaryRecord(value: unknown): Record<string, unknown> | undefined {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) return undefined;
-  const prototype = Object.getPrototypeOf(value);
-  if (prototype !== Object.prototype && prototype !== null) return undefined;
-  return value as Record<string, unknown>;
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return undefined
+  const prototype = Object.getPrototypeOf(value)
+  if (prototype !== Object.prototype && prototype !== null) return undefined
+  return value as Record<string, unknown>
 }
 
 function exactKeys(value: object, expected: readonly string[]): boolean {
-  const actual = Object.keys(value).sort();
-  const sorted = [...expected].sort();
-  return actual.length === sorted.length &&
-    actual.every((name, index) => name === sorted[index]);
+  const actual = Object.keys(value).sort()
+  const sorted = [...expected].sort()
+  return actual.length === sorted.length && actual.every((name, index) => name === sorted[index])
 }
 
 function boundedCharacters(value: string, maximum: number): boolean {
-  if (value.length === 0) return false;
-  let count = 0;
+  if (value.length === 0) return false
+  let count = 0
   for (const _character of value) {
-    count += 1;
-    if (count > maximum) return false;
+    count += 1
+    if (count > maximum) return false
   }
-  return true;
+  return true
 }
 
 function invalidResponse(): PrivateOpenAIAgentError {
   return new PrivateOpenAIAgentError(
-    "AGENT_PROVIDER_RESPONSE_INVALID",
-    "OpenAI Agent endpoint returned an invalid final response",
-  );
+    'AGENT_PROVIDER_RESPONSE_INVALID',
+    'OpenAI Agent endpoint returned an invalid final response',
+  )
 }

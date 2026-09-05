@@ -8,8 +8,8 @@ import {
   type RootRunStatusRequest,
   type StartRootRunReceipt,
   type StartRootRunRequest,
-} from "../administration/root.js";
-import { CheckError } from "../diagnostics.js";
+} from '../administration/root.js'
+import { CheckError } from '../diagnostics.js'
 import {
   listPrivateRootExecutionWork,
   loadPrivateRootRunForCoordinator,
@@ -17,16 +17,16 @@ import {
   submitPrivateRootRun,
   type PrivateProjectCoordinator,
   type PrivateRootRunSnapshot,
-} from "./activation-admission-store.js";
-import type { PrivateRootExecutionDisposition } from "./root-run-controller.js";
-import { requirePrivateRootRunTimeout } from "./root-run-timeout-policy.js";
+} from './activation-admission-store.js'
+import type { PrivateRootExecutionDisposition } from './root-run-controller.js'
+import { requirePrivateRootRunTimeout } from './root-run-timeout-policy.js'
 
 export interface PrivateRootAdministrationController {
-  readonly administration: RootAdministration;
+  readonly administration: RootAdministration
   /** Wait for work already accepted by this controller and surface host failures. */
-  drain(): Promise<void>;
+  drain(): Promise<void>
   /** Revoke this authority, cancel its active launches, and drain its work. */
-  dispose(): Promise<void>;
+  dispose(): Promise<void>
 }
 
 export interface PrivateRootLaunchExecutor {
@@ -42,7 +42,7 @@ export interface PrivateRootLaunchExecutor {
     runId: string,
     coordinator: PrivateProjectCoordinator,
     signal: AbortSignal,
-  ): Promise<PrivateRootExecutionDisposition>;
+  ): Promise<PrivateRootExecutionDisposition>
 }
 
 /**
@@ -52,34 +52,34 @@ export interface PrivateRootLaunchExecutor {
  * interface and never a value supplied by RootAdministration callers.
  */
 export async function openPrivateRootAdministrationController(input: {
-  readonly projectRoot: string;
-  readonly packageStoreRoot: string;
-  readonly runTimeoutMs: number;
-  readonly execute: PrivateRootLaunchExecutor;
-  readonly onProjectIdentityLoss?: () => void;
+  readonly projectRoot: string
+  readonly packageStoreRoot: string
+  readonly runTimeoutMs: number
+  readonly execute: PrivateRootLaunchExecutor
+  readonly onProjectIdentityLoss?: () => void
 }): Promise<PrivateRootAdministrationController> {
-  requireRunTimeout(input.runTimeoutMs);
-  if (typeof input.execute !== "function") throw new TypeError("root Run executor is required");
-  let coordinator: PrivateProjectCoordinator;
+  requireRunTimeout(input.runTimeoutMs)
+  if (typeof input.execute !== 'function') throw new TypeError('root Run executor is required')
+  let coordinator: PrivateProjectCoordinator
   try {
-    coordinator = await openPrivateProjectCoordinator({ projectRoot: input.projectRoot });
+    coordinator = await openPrivateProjectCoordinator({ projectRoot: input.projectRoot })
   } catch (error) {
-    throw administrationError(error, "open project coordinator");
+    throw administrationError(error, 'open project coordinator')
   }
   try {
-    const attached = await attachPrivateRootAdministrationController({ ...input, coordinator });
-    let disposal: Promise<void> | undefined;
+    const attached = await attachPrivateRootAdministrationController({ ...input, coordinator })
+    let disposal: Promise<void> | undefined
     return Object.freeze({
       administration: attached.administration,
       drain: attached.drain,
       dispose(): Promise<void> {
-        disposal ??= disposeOwnedController(attached, coordinator);
-        return disposal;
+        disposal ??= disposeOwnedController(attached, coordinator)
+        return disposal
       },
-    });
+    })
   } catch (error) {
-    await coordinator.dispose();
-    throw administrationError(error, "recover project coordinator");
+    await coordinator.dispose()
+    throw administrationError(error, 'recover project coordinator')
   }
 }
 
@@ -91,189 +91,214 @@ export async function openPrivateRootAdministrationController(input: {
  * sibling owner using that epoch has settled.
  */
 export async function attachPrivateRootAdministrationController(input: {
-  readonly coordinator: PrivateProjectCoordinator;
-  readonly projectRoot: string;
-  readonly packageStoreRoot: string;
-  readonly runTimeoutMs: number;
-  readonly execute: PrivateRootLaunchExecutor;
-  readonly onProjectIdentityLoss?: () => void;
+  readonly coordinator: PrivateProjectCoordinator
+  readonly projectRoot: string
+  readonly packageStoreRoot: string
+  readonly runTimeoutMs: number
+  readonly execute: PrivateRootLaunchExecutor
+  readonly onProjectIdentityLoss?: () => void
 }): Promise<PrivateRootAdministrationController> {
-  requireRunTimeout(input.runTimeoutMs);
-  if (typeof input.execute !== "function") throw new TypeError("root Run executor is required");
-  const created = createController(input);
+  requireRunTimeout(input.runTimeoutMs)
+  if (typeof input.execute !== 'function') throw new TypeError('root Run executor is required')
+  const created = createController(input)
   try {
-    await created.recoverOlder();
-    await created.pumpCurrent();
-    return created.controller;
+    await created.recoverOlder()
+    await created.pumpCurrent()
+    return created.controller
   } catch (error) {
-    try { await created.controller.dispose(); }
-    catch (cleanupError) {
+    try {
+      await created.controller.dispose()
+    } catch (cleanupError) {
       throw administrationError(
-        new AggregateError([error, cleanupError], "attached root controller recovery failed"),
-        "recover attached root controller",
-      );
+        new AggregateError([error, cleanupError], 'attached root controller recovery failed'),
+        'recover attached root controller',
+      )
     }
-    throw administrationError(error, "recover attached root controller");
+    throw administrationError(error, 'recover attached root controller')
   }
 }
 
 function createController(input: {
-  readonly projectRoot: string;
-  readonly packageStoreRoot: string;
-  readonly runTimeoutMs: number;
-  readonly execute: PrivateRootLaunchExecutor;
-  readonly coordinator: PrivateProjectCoordinator;
-  readonly onProjectIdentityLoss?: () => void;
+  readonly projectRoot: string
+  readonly packageStoreRoot: string
+  readonly runTimeoutMs: number
+  readonly execute: PrivateRootLaunchExecutor
+  readonly coordinator: PrivateProjectCoordinator
+  readonly onProjectIdentityLoss?: () => void
 }): {
-  readonly controller: PrivateRootAdministrationController;
-  recoverOlder(): Promise<void>;
-  pumpCurrent(): Promise<void>;
+  readonly controller: PrivateRootAdministrationController
+  recoverOlder(): Promise<void>
+  pumpCurrent(): Promise<void>
 } {
-  if (input.onProjectIdentityLoss !== undefined && typeof input.onProjectIdentityLoss !== "function") {
-    throw new TypeError("project identity-loss callback must be a function");
+  if (
+    input.onProjectIdentityLoss !== undefined &&
+    typeof input.onProjectIdentityLoss !== 'function'
+  ) {
+    throw new TypeError('project identity-loss callback must be a function')
   }
-  const cancellation = new AbortController();
-  const operations = new Set<Promise<void>>();
-  const tasks = new Map<string, Promise<void>>();
-  const failures: unknown[] = [];
-  let closed = false;
-  let identityLossNotified = false;
-  let disposal: Promise<void> | undefined;
+  const cancellation = new AbortController()
+  const operations = new Set<Promise<void>>()
+  const tasks = new Map<string, Promise<void>>()
+  const failures: unknown[] = []
+  let closed = false
+  let identityLossNotified = false
+  let disposal: Promise<void> | undefined
 
   const administration: RootAdministration = Object.freeze({
     async startRun(value: StartRootRunRequest): Promise<StartRootRunReceipt> {
-      requireOpen(closed);
-      let markSettled!: () => void;
-      const unsettled = new Promise<void>((resolve) => { markSettled = resolve; });
-      operations.add(unsettled);
+      requireOpen(closed)
+      let markSettled!: () => void
+      const unsettled = new Promise<void>((resolve) => {
+        markSettled = resolve
+      })
+      operations.add(unsettled)
       try {
-        const request = normalizeStartRootRunRequest(value);
-        const deadlineUnixMs = deadlineFromNow(input.runTimeoutMs);
-        const submission = await retryPrivateBusy(() => submitPrivateRootRun({
-          coordinator: input.coordinator,
-          projectRoot: input.projectRoot,
-          packageStoreRoot: input.packageStoreRoot,
-          submissionId: request.submissionId,
-          target: request.target,
-          input: request.input,
-          deadlineUnixMs,
-        }));
-        return Object.freeze({ runId: submission.run.runId });
+        const request = normalizeStartRootRunRequest(value)
+        const deadlineUnixMs = deadlineFromNow(input.runTimeoutMs)
+        const submission = await retryPrivateBusy(() =>
+          submitPrivateRootRun({
+            coordinator: input.coordinator,
+            projectRoot: input.projectRoot,
+            packageStoreRoot: input.packageStoreRoot,
+            submissionId: request.submissionId,
+            target: request.target,
+            input: request.input,
+            deadlineUnixMs,
+          }),
+        )
+        return Object.freeze({ runId: submission.run.runId })
       } catch (error) {
-        observeFailure(error);
-        throw administrationError(error, "start root Run");
+        observeFailure(error)
+        throw administrationError(error, 'start root Run')
       } finally {
-        try { await pumpCurrent(); } catch (error) { observeFailure(error); failures.push(error); }
-        operations.delete(unsettled);
-        markSettled();
+        try {
+          await pumpCurrent()
+        } catch (error) {
+          observeFailure(error)
+          failures.push(error)
+        }
+        operations.delete(unsettled)
+        markSettled()
       }
     },
 
     async runStatus(value: RootRunStatusRequest): Promise<RootRunStatus> {
-      requireOpen(closed);
-      let markSettled!: () => void;
-      const unsettled = new Promise<void>((resolve) => { markSettled = resolve; });
-      operations.add(unsettled);
+      requireOpen(closed)
+      let markSettled!: () => void
+      const unsettled = new Promise<void>((resolve) => {
+        markSettled = resolve
+      })
+      operations.add(unsettled)
       try {
-        const request = normalizeRootRunStatusRequest(value);
-        await pumpCurrent();
-        return projectStatus(await retryPrivateBusy(() => loadPrivateRootRunForCoordinator({
-          coordinator: input.coordinator,
-          projectRoot: input.projectRoot,
-          runId: request.runId,
-        })));
+        const request = normalizeRootRunStatusRequest(value)
+        await pumpCurrent()
+        return projectStatus(
+          await retryPrivateBusy(() =>
+            loadPrivateRootRunForCoordinator({
+              coordinator: input.coordinator,
+              projectRoot: input.projectRoot,
+              runId: request.runId,
+            }),
+          ),
+        )
       } catch (error) {
-        observeFailure(error);
-        throw administrationError(error, "read root Run status");
+        observeFailure(error)
+        throw administrationError(error, 'read root Run status')
       } finally {
-        operations.delete(unsettled);
-        markSettled();
+        operations.delete(unsettled)
+        markSettled()
       }
     },
-  });
+  })
 
   function schedule(runId: string): void {
-    if (tasks.has(runId)) return;
-    let task: Promise<void>;
+    if (tasks.has(runId)) return
+    let task: Promise<void>
     task = settleRun(runId)
-      .catch((error) => { observeFailure(error); failures.push(error); })
+      .catch((error) => {
+        observeFailure(error)
+        failures.push(error)
+      })
       .finally(() => {
-        if (tasks.get(runId) === task) tasks.delete(runId);
-      });
-    tasks.set(runId, task);
+        if (tasks.get(runId) === task) tasks.delete(runId)
+      })
+    tasks.set(runId, task)
   }
 
   async function settleRun(runId: string): Promise<void> {
-    const settled = await retryPrivateBusy(async () => await input.execute(
-      runId,
-      input.coordinator,
-      cancellation.signal,
-    ));
-    if (settled.state === "pending") {
+    const settled = await retryPrivateBusy(
+      async () => await input.execute(runId, input.coordinator, cancellation.signal),
+    )
+    if (settled.state === 'pending') {
       throw new RootAdministrationError(
-        "PROJECT_BUSY",
-        "root Run cleanup has not confirmed its complete execution fence",
-      );
+        'PROJECT_BUSY',
+        'root Run cleanup has not confirmed its complete execution fence',
+      )
     }
-    if (settled.run.runId !== runId || settled.run.state !== "terminal") {
-      throw new Error("trusted root Run executor returned no matching terminal");
+    if (settled.run.runId !== runId || settled.run.state !== 'terminal') {
+      throw new Error('trusted root Run executor returned no matching terminal')
     }
   }
 
   async function pumpCurrent(): Promise<void> {
-    const work = await retryPrivateBusy(() => listPrivateRootExecutionWork({
-      coordinator: input.coordinator,
-      projectRoot: input.projectRoot,
-      epoch: "current",
-    }));
-    for (const item of work) schedule(item.run.runId);
+    const work = await retryPrivateBusy(() =>
+      listPrivateRootExecutionWork({
+        coordinator: input.coordinator,
+        projectRoot: input.projectRoot,
+        epoch: 'current',
+      }),
+    )
+    for (const item of work) schedule(item.run.runId)
   }
 
   async function recoverOlder(): Promise<void> {
     try {
-      const work = await retryPrivateBusy(() => listPrivateRootExecutionWork({
-        coordinator: input.coordinator,
-        projectRoot: input.projectRoot,
-        epoch: "older",
-      }));
+      const work = await retryPrivateBusy(() =>
+        listPrivateRootExecutionWork({
+          coordinator: input.coordinator,
+          projectRoot: input.projectRoot,
+          epoch: 'older',
+        }),
+      )
       for (const item of work) {
-        const settled = await retryPrivateBusy(async () => await input.execute(
-          item.run.runId,
-          input.coordinator,
-          cancellation.signal,
-        ));
-        if (settled.state === "pending") {
+        const settled = await retryPrivateBusy(
+          async () => await input.execute(item.run.runId, input.coordinator, cancellation.signal),
+        )
+        if (settled.state === 'pending') {
           throw new RootAdministrationError(
-            "PROJECT_BUSY",
-            "a prior root Run still has unconfirmed execution ownership",
-          );
+            'PROJECT_BUSY',
+            'a prior root Run still has unconfirmed execution ownership',
+          )
         }
-        if (settled.run.runId !== item.run.runId || settled.run.state !== "terminal") {
-          throw new Error("trusted root Run recovery returned no matching terminal");
+        if (settled.run.runId !== item.run.runId || settled.run.state !== 'terminal') {
+          throw new Error('trusted root Run recovery returned no matching terminal')
         }
       }
     } catch (error) {
-      observeFailure(error);
-      throw error;
+      observeFailure(error)
+      throw error
     }
   }
 
   function observeFailure(error: unknown): void {
-    if (identityLossNotified || !isProjectIdentityLoss(error)) return;
-    identityLossNotified = true;
-    closed = true;
-    cancellation.abort(new Error("project identity was lost"));
-    try { input.onProjectIdentityLoss?.(); }
-    catch (callbackError) { failures.push(callbackError); }
+    if (identityLossNotified || !isProjectIdentityLoss(error)) return
+    identityLossNotified = true
+    closed = true
+    cancellation.abort(new Error('project identity was lost'))
+    try {
+      input.onProjectIdentityLoss?.()
+    } catch (callbackError) {
+      failures.push(callbackError)
+    }
   }
 
   async function drain(): Promise<void> {
-    while (operations.size > 0) await Promise.all([...operations]);
-    await pumpCurrent();
-    while (tasks.size > 0) await Promise.all([...tasks.values()]);
+    while (operations.size > 0) await Promise.all([...operations])
+    await pumpCurrent()
+    while (tasks.size > 0) await Promise.all([...tasks.values()])
     if (failures.length > 0) {
-      const captured = failures.splice(0, failures.length);
-      throw new AggregateError(captured, "root Run controller did not settle cleanly");
+      const captured = failures.splice(0, failures.length)
+      throw new AggregateError(captured, 'root Run controller did not settle cleanly')
     }
   }
 
@@ -281,111 +306,127 @@ function createController(input: {
     administration,
     drain,
     dispose(): Promise<void> {
-      if (disposal !== undefined) return disposal;
-      closed = true;
-      cancellation.abort(new Error("root Run controller disposed"));
-      disposal = drain();
-      return disposal;
+      if (disposal !== undefined) return disposal
+      closed = true
+      cancellation.abort(new Error('root Run controller disposed'))
+      disposal = drain()
+      return disposal
     },
-  });
-  return Object.freeze({ controller, recoverOlder, pumpCurrent });
+  })
+  return Object.freeze({ controller, recoverOlder, pumpCurrent })
 }
 
 async function disposeOwnedController(
   controller: PrivateRootAdministrationController,
   coordinator: PrivateProjectCoordinator,
 ): Promise<void> {
-  const failures: unknown[] = [];
-  try { await controller.dispose(); } catch (error) { failures.push(error); }
-  try { await coordinator.dispose(); } catch (error) { failures.push(error); }
-  if (failures.length > 0) throw new AggregateError(failures, "root Run controller cleanup failed");
+  const failures: unknown[] = []
+  try {
+    await controller.dispose()
+  } catch (error) {
+    failures.push(error)
+  }
+  try {
+    await coordinator.dispose()
+  } catch (error) {
+    failures.push(error)
+  }
+  if (failures.length > 0) throw new AggregateError(failures, 'root Run controller cleanup failed')
 }
 
 function projectStatus(run: PrivateRootRunSnapshot): RootRunStatus {
-  if (run.origin.kind !== "private-root-external-submission-origin/1") {
-    throw new RootAdministrationError("RUN_NOT_FOUND", "root Run does not exist");
+  if (run.origin.kind !== 'private-root-external-submission-origin/1') {
+    throw new RootAdministrationError('RUN_NOT_FOUND', 'root Run does not exist')
   }
-  const base = { runId: run.runId, submissionId: run.origin.submissionId, target: run.target };
-  const value = run.state === "spawn-intent"
-    ? { ...base, state: "pending" as const }
-    : { ...base, state: "terminal" as const, terminal: projectTerminal(run) };
-  return snapshotRootAdministrationJson(value, "root Run status") as unknown as RootRunStatus;
+  const base = { runId: run.runId, submissionId: run.origin.submissionId, target: run.target }
+  const value =
+    run.state === 'spawn-intent'
+      ? { ...base, state: 'pending' as const }
+      : { ...base, state: 'terminal' as const, terminal: projectTerminal(run) }
+  return snapshotRootAdministrationJson(value, 'root Run status') as unknown as RootRunStatus
 }
 
 function projectTerminal(run: PrivateRootRunSnapshot): unknown {
-  const terminal = run.terminal;
-  if (terminal === undefined) throw new Error("terminal root Run has no terminal record");
-  if (terminal.status === "succeeded") {
+  const terminal = run.terminal
+  if (terminal === undefined) throw new Error('terminal root Run has no terminal record')
+  if (terminal.status === 'succeeded') {
     return {
-      status: "succeeded",
+      status: 'succeeded',
       outcome: terminal.result.outcome,
       output: terminal.result.output,
       diagnostics: terminal.diagnostics,
-    };
+    }
   }
-  return terminal;
+  return terminal
 }
 
 function requireRunTimeout(value: number): void {
-  requirePrivateRootRunTimeout(value);
+  requirePrivateRootRunTimeout(value)
 }
 
 function deadlineFromNow(timeoutMs: number): number {
-  const deadline = Date.now() + timeoutMs;
+  const deadline = Date.now() + timeoutMs
   if (!Number.isSafeInteger(deadline)) {
-    throw new RootAdministrationError("UNAVAILABLE", "the host cannot represent a root Run deadline");
+    throw new RootAdministrationError(
+      'UNAVAILABLE',
+      'the host cannot represent a root Run deadline',
+    )
   }
-  return deadline;
+  return deadline
 }
 
 function requireOpen(closed: boolean): void {
-  if (closed) throw new RootAdministrationError("PROJECT_CLOSED", "project authority is closed");
+  if (closed) throw new RootAdministrationError('PROJECT_CLOSED', 'project authority is closed')
 }
 
 async function retryPrivateBusy<T>(action: () => Promise<T>): Promise<T> {
   for (let attempt = 1; attempt <= 8; attempt += 1) {
     try {
-      return await action();
+      return await action()
     } catch (error) {
-      if (!(error instanceof CheckError) || error.code !== "ADMISSION_STATE_BUSY" || attempt === 8) {
-        throw error;
+      if (
+        !(error instanceof CheckError) ||
+        error.code !== 'ADMISSION_STATE_BUSY' ||
+        attempt === 8
+      ) {
+        throw error
       }
-      await new Promise<void>((resolve) => setTimeout(resolve, attempt * 10));
+      await new Promise<void>((resolve) => setTimeout(resolve, attempt * 10))
     }
   }
-  throw new Error("unreachable root administration retry state");
+  throw new Error('unreachable root administration retry state')
 }
 
 function administrationError(error: unknown, operation: string): RootAdministrationError {
-  if (error instanceof RootAdministrationError) return error;
+  if (error instanceof RootAdministrationError) return error
   if (error instanceof CheckError) {
     switch (error.code) {
-      case "SUBMISSION_CONFLICT":
-        return new RootAdministrationError("SUBMISSION_CONFLICT", error.message);
-      case "RUN_MISSING":
-        return new RootAdministrationError("RUN_NOT_FOUND", "root Run does not exist");
-      case "COORDINATOR_BUSY":
-      case "ADMISSION_STATE_BUSY":
-        return new RootAdministrationError("PROJECT_BUSY", "project is temporarily busy");
-      case "COORDINATOR_CLOSED":
-      case "COORDINATOR_PROJECT_MISMATCH":
-      case "PROJECT_SOURCE_CHANGED":
-        return new RootAdministrationError("PROJECT_CLOSED", "project authority is closed");
-      case "ADMISSION_MISSING":
-      case "STALE_PLAN":
-        return new RootAdministrationError("UNAVAILABLE", "project has no usable active admission");
+      case 'SUBMISSION_CONFLICT':
+        return new RootAdministrationError('SUBMISSION_CONFLICT', error.message)
+      case 'RUN_MISSING':
+        return new RootAdministrationError('RUN_NOT_FOUND', 'root Run does not exist')
+      case 'COORDINATOR_BUSY':
+      case 'ADMISSION_STATE_BUSY':
+        return new RootAdministrationError('PROJECT_BUSY', 'project is temporarily busy')
+      case 'COORDINATOR_CLOSED':
+      case 'COORDINATOR_PROJECT_MISMATCH':
+      case 'PROJECT_SOURCE_CHANGED':
+        return new RootAdministrationError('PROJECT_CLOSED', 'project authority is closed')
+      case 'ADMISSION_MISSING':
+      case 'STALE_PLAN':
+        return new RootAdministrationError('UNAVAILABLE', 'project has no usable active admission')
       default:
-        if (error.kind === "unavailable") {
-          return new RootAdministrationError("UNAVAILABLE", `${operation} is unavailable`);
+        if (error.kind === 'unavailable') {
+          return new RootAdministrationError('UNAVAILABLE', `${operation} is unavailable`)
         }
     }
   }
-  return new RootAdministrationError("INTERNAL", `${operation} failed`);
+  return new RootAdministrationError('INTERNAL', `${operation} failed`)
 }
 
 function isProjectIdentityLoss(error: unknown): boolean {
-  return error instanceof CheckError && (
-    error.code === "COORDINATOR_PROJECT_MISMATCH" ||
-    error.code === "PROJECT_SOURCE_CHANGED"
-  );
+  return (
+    error instanceof CheckError &&
+    (error.code === 'COORDINATOR_PROJECT_MISMATCH' || error.code === 'PROJECT_SOURCE_CHANGED')
+  )
 }

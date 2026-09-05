@@ -23,9 +23,6 @@
       "maxItems": 32
     }
   },
-  "required": [
-    "ticketId",
-    "request"
-  ],
+  "required": ["ticketId", "request"],
   "additionalProperties": false
 }

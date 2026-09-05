@@ -1,9 +1,9 @@
-import { defineBinding } from "@jigging/jig";
+import { defineBinding } from '@jigging/jig'
 
 export default defineBinding({
-  package: "flows/workshop",
+  package: 'flows/workshop',
   slots: {
-    drafter: "flow:flows/drafter",
-    reviewer: "binding:reviewer",
+    drafter: 'flow:flows/drafter',
+    reviewer: 'binding:reviewer',
   },
-});
+})

@@ -2,7 +2,7 @@ export {
   compileEmbeddedSchema,
   compileEmbeddedSchemas,
   compileSchemaFile,
-} from "./compiler.js";
+} from './compiler.js'
 
 export {
   SCHEMA_1_LIMITS,
@@ -15,4 +15,4 @@ export {
   type SchemaDiagnosticShape,
   type SchemaValue,
   type SingleEmbeddedSchemaOptions,
-} from "./types.js";
+} from './types.js'

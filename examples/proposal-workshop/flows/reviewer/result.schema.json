@@ -12,11 +12,7 @@
           "properties": {
             "verdict": {
               "type": "string",
-              "enum": [
-                "approve",
-                "revise",
-                "blocked"
-              ]
+              "enum": ["approve", "revise", "blocked"]
             },
             "issues": {
               "type": "array",
@@ -26,27 +22,18 @@
               "maxItems": 16
             }
           },
-          "required": [
-            "verdict",
-            "issues"
-          ],
+          "required": ["verdict", "issues"],
           "additionalProperties": false
         }
       },
-      "required": [
-        "outcome",
-        "output"
-      ],
+      "required": ["outcome", "output"],
       "additionalProperties": false
     },
     {
       "type": "object",
       "properties": {
         "outcome": {
-          "enum": [
-            "blocked",
-            "limit"
-          ]
+          "enum": ["blocked", "limit"]
         },
         "output": {
           "type": "object",
@@ -55,16 +42,11 @@
               "type": "string"
             }
           },
-          "required": [
-            "reason"
-          ],
+          "required": ["reason"],
           "additionalProperties": false
         }
       },
-      "required": [
-        "outcome",
-        "output"
-      ],
+      "required": ["outcome", "output"],
       "additionalProperties": false
     }
   ]

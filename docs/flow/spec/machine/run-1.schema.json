@@ -47,16 +47,10 @@
           "minLength": 1
         },
         "access": {
-          "enum": [
-            "read",
-            "read-write"
-          ]
+          "enum": ["read", "read-write"]
         }
       },
-      "required": [
-        "path",
-        "access"
-      ],
+      "required": ["path", "access"],
       "additionalProperties": false
     },
     "attachments": {
@@ -77,10 +71,7 @@
         },
         "output": true
       },
-      "required": [
-        "outcome",
-        "output"
-      ],
+      "required": ["outcome", "output"],
       "additionalProperties": false
     },
     "effectResult": {
@@ -90,9 +81,7 @@
           "properties": {
             "value": true
           },
-          "required": [
-            "value"
-          ],
+          "required": ["value"],
           "additionalProperties": false
         },
         {
@@ -106,16 +95,11 @@
                 },
                 "data": true
               },
-              "required": [
-                "name",
-                "data"
-              ],
+              "required": ["name", "data"],
               "additionalProperties": false
             }
           },
-          "required": [
-            "error"
-          ],
+          "required": ["error"],
           "additionalProperties": false
         }
       ]
@@ -143,9 +127,7 @@
         },
         "details": true
       },
-      "required": [
-        "code"
-      ],
+      "required": ["code"],
       "additionalProperties": false
     },
     "flowRunParams": {
@@ -171,14 +153,7 @@
           "maximum": 9007199254740991
         }
       },
-      "required": [
-        "protocol",
-        "input",
-        "settings",
-        "attachments",
-        "scratch",
-        "deadlineUnixMs"
-      ],
+      "required": ["protocol", "input", "settings", "attachments", "scratch", "deadlineUnixMs"],
       "additionalProperties": false
     },
     "flowCallParams": {
@@ -197,11 +172,7 @@
         },
         "input": true
       },
-      "required": [
-        "operationId",
-        "slot",
-        "input"
-      ],
+      "required": ["operationId", "slot", "input"],
       "additionalProperties": false
     },
     "effectCallParams": {
@@ -218,12 +189,7 @@
         },
         "input": true
       },
-      "required": [
-        "operationId",
-        "slot",
-        "method",
-        "input"
-      ],
+      "required": ["operationId", "slot", "method", "input"],
       "additionalProperties": false
     },
     "requestCancelParams": {
@@ -233,9 +199,7 @@
           "$ref": "#/$defs/wireId"
         }
       },
-      "required": [
-        "requestId"
-      ],
+      "required": ["requestId"],
       "additionalProperties": false
     },
     "flowRunRequest": {
@@ -254,12 +218,7 @@
           "$ref": "#/$defs/flowRunParams"
         }
       },
-      "required": [
-        "jsonrpc",
-        "id",
-        "method",
-        "params"
-      ],
+      "required": ["jsonrpc", "id", "method", "params"],
       "additionalProperties": false
     },
     "flowCallRequest": {
@@ -278,12 +237,7 @@
           "$ref": "#/$defs/flowCallParams"
         }
       },
-      "required": [
-        "jsonrpc",
-        "id",
-        "method",
-        "params"
-      ],
+      "required": ["jsonrpc", "id", "method", "params"],
       "additionalProperties": false
     },
     "effectCallRequest": {
@@ -302,12 +256,7 @@
           "$ref": "#/$defs/effectCallParams"
         }
       },
-      "required": [
-        "jsonrpc",
-        "id",
-        "method",
-        "params"
-      ],
+      "required": ["jsonrpc", "id", "method", "params"],
       "additionalProperties": false
     },
     "requestCancelNotification": {
@@ -323,11 +272,7 @@
           "$ref": "#/$defs/requestCancelParams"
         }
       },
-      "required": [
-        "jsonrpc",
-        "method",
-        "params"
-      ],
+      "required": ["jsonrpc", "method", "params"],
       "additionalProperties": false
     },
     "runSuccessResponse": {
@@ -343,11 +288,7 @@
           "$ref": "#/$defs/runResult"
         }
       },
-      "required": [
-        "jsonrpc",
-        "id",
-        "result"
-      ],
+      "required": ["jsonrpc", "id", "result"],
       "additionalProperties": false
     },
     "effectSuccessResponse": {
@@ -363,11 +304,7 @@
           "$ref": "#/$defs/effectResult"
         }
       },
-      "required": [
-        "jsonrpc",
-        "id",
-        "result"
-      ],
+      "required": ["jsonrpc", "id", "result"],
       "additionalProperties": false
     },
     "flowErrorResponse": {
@@ -394,19 +331,11 @@
               "$ref": "#/$defs/flowErrorData"
             }
           },
-          "required": [
-            "code",
-            "message",
-            "data"
-          ],
+          "required": ["code", "message", "data"],
           "additionalProperties": false
         }
       },
-      "required": [
-        "jsonrpc",
-        "id",
-        "error"
-      ],
+      "required": ["jsonrpc", "id", "error"],
       "additionalProperties": false
     },
     "standardErrorResponse": {
@@ -442,18 +371,11 @@
             },
             "data": true
           },
-          "required": [
-            "code",
-            "message"
-          ],
+          "required": ["code", "message"],
           "additionalProperties": false
         }
       },
-      "required": [
-        "jsonrpc",
-        "id",
-        "error"
-      ],
+      "required": ["jsonrpc", "id", "error"],
       "additionalProperties": false
     },
     "invalidRequestResponse": {
@@ -483,18 +405,11 @@
             },
             "data": true
           },
-          "required": [
-            "code",
-            "message"
-          ],
+          "required": ["code", "message"],
           "additionalProperties": false
         }
       },
-      "required": [
-        "jsonrpc",
-        "id",
-        "error"
-      ],
+      "required": ["jsonrpc", "id", "error"],
       "additionalProperties": false
     },
     "correlatedStandardErrorResponse": {
@@ -510,29 +425,18 @@
           "type": "object",
           "properties": {
             "code": {
-              "enum": [
-                -32601,
-                -32602,
-                -32603
-              ]
+              "enum": [-32601, -32602, -32603]
             },
             "message": {
               "$ref": "#/$defs/errorMessage"
             },
             "data": true
           },
-          "required": [
-            "code",
-            "message"
-          ],
+          "required": ["code", "message"],
           "additionalProperties": false
         }
       },
-      "required": [
-        "jsonrpc",
-        "id",
-        "error"
-      ],
+      "required": ["jsonrpc", "id", "error"],
       "additionalProperties": false
     },
     "errorMessage": {

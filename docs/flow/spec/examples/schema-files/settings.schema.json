@@ -14,9 +14,6 @@
       "maximum": 1
     }
   },
-  "required": [
-    "maxRetries",
-    "minimumScore"
-  ],
+  "required": ["maxRetries", "minimumScore"],
   "additionalProperties": false
 }

@@ -26,10 +26,7 @@
                 "maxLength": 16000
               }
             },
-            "required": [
-              "id",
-              "description"
-            ],
+            "required": ["id", "description"],
             "additionalProperties": false
           },
           "maxItems": 16,
@@ -56,22 +53,14 @@
                 "maxLength": 16000
               }
             },
-            "required": [
-              "id",
-              "url",
-              "text"
-            ],
+            "required": ["id", "url", "text"],
             "additionalProperties": false
           },
           "maxItems": 32,
           "minItems": 1
         }
       },
-      "required": [
-        "objective",
-        "requirements",
-        "evidence"
-      ],
+      "required": ["objective", "requirements", "evidence"],
       "additionalProperties": false
     },
     "previous": {
@@ -101,11 +90,7 @@
                     "maxItems": 32
                   }
                 },
-                "required": [
-                  "requirementId",
-                  "claim",
-                  "citationIds"
-                ],
+                "required": ["requirementId", "claim", "citationIds"],
                 "additionalProperties": false
               },
               "maxItems": 16
@@ -118,11 +103,7 @@
               "maxItems": 16
             }
           },
-          "required": [
-            "title",
-            "sections",
-            "limitations"
-          ],
+          "required": ["title", "sections", "limitations"],
           "additionalProperties": false
         },
         {
@@ -138,10 +119,6 @@
       "maxItems": 128
     }
   },
-  "required": [
-    "request",
-    "previous",
-    "feedback"
-  ],
+  "required": ["request", "previous", "feedback"],
   "additionalProperties": false
 }

@@ -41,10 +41,7 @@
           "maxItems": 65536
         }
       },
-      "required": [
-        "kind",
-        "roots"
-      ],
+      "required": ["kind", "roots"],
       "additionalProperties": false
     },
     "membersSource": {
@@ -61,10 +58,7 @@
           "maxItems": 65536
         }
       },
-      "required": [
-        "kind",
-        "paths"
-      ],
+      "required": ["kind", "paths"],
       "additionalProperties": false
     },
     "source": {
@@ -110,12 +104,7 @@
           "maxProperties": 256
         }
       },
-      "required": [
-        "kind",
-        "package",
-        "settings",
-        "slots"
-      ],
+      "required": ["kind", "package", "settings", "slots"],
       "additionalProperties": false
     },
     "bindingDefinition": {

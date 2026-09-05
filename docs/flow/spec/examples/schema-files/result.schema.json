@@ -16,10 +16,7 @@
           "maximum": 1
         }
       },
-      "required": [
-        "artifact",
-        "score"
-      ],
+      "required": ["artifact", "score"],
       "additionalProperties": false
     },
     "blockedOutput": {
@@ -31,9 +28,7 @@
           "maxLength": 8192
         }
       },
-      "required": [
-        "reason"
-      ],
+      "required": ["reason"],
       "additionalProperties": false
     }
   },
@@ -48,10 +43,7 @@
           "$ref": "#/$defs/doneOutput"
         }
       },
-      "required": [
-        "outcome",
-        "output"
-      ],
+      "required": ["outcome", "output"],
       "additionalProperties": false
     },
     {
@@ -64,10 +56,7 @@
           "$ref": "#/$defs/blockedOutput"
         }
       },
-      "required": [
-        "outcome",
-        "output"
-      ],
+      "required": ["outcome", "output"],
       "additionalProperties": false
     }
   ]

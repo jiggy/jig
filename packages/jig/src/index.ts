@@ -4,4 +4,4 @@ export {
   discover,
   type JigDefinitionInput,
   type PackageBindingInput,
-} from "./project/author.js";
+} from './project/author.js'

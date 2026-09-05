@@ -1,3 +1,3 @@
 export function logFromImportedLibrary(): void {
-  console.log("imported library log");
+  console.log('imported library log')
 }

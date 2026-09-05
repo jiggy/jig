@@ -32,11 +32,7 @@
                     "maxItems": 32
                   }
                 },
-                "required": [
-                  "requirementId",
-                  "claim",
-                  "citationIds"
-                ],
+                "required": ["requirementId", "claim", "citationIds"],
                 "additionalProperties": false
               },
               "maxItems": 16
@@ -49,28 +45,18 @@
               "maxItems": 16
             }
           },
-          "required": [
-            "title",
-            "sections",
-            "limitations"
-          ],
+          "required": ["title", "sections", "limitations"],
           "additionalProperties": false
         }
       },
-      "required": [
-        "outcome",
-        "output"
-      ],
+      "required": ["outcome", "output"],
       "additionalProperties": false
     },
     {
       "type": "object",
       "properties": {
         "outcome": {
-          "enum": [
-            "blocked",
-            "limit"
-          ]
+          "enum": ["blocked", "limit"]
         },
         "output": {
           "type": "object",
@@ -79,16 +65,11 @@
               "type": "string"
             }
           },
-          "required": [
-            "reason"
-          ],
+          "required": ["reason"],
           "additionalProperties": false
         }
       },
-      "required": [
-        "outcome",
-        "output"
-      ],
+      "required": ["outcome", "output"],
       "additionalProperties": false
     }
   ]

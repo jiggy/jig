@@ -24,11 +24,7 @@
             "maxItems": 32
           }
         },
-        "required": [
-          "requirementId",
-          "claim",
-          "citationIds"
-        ],
+        "required": ["requirementId", "claim", "citationIds"],
         "additionalProperties": false
       },
       "maxItems": 16
@@ -41,10 +37,6 @@
       "maxItems": 16
     }
   },
-  "required": [
-    "title",
-    "sections",
-    "limitations"
-  ],
+  "required": ["title", "sections", "limitations"],
   "additionalProperties": false
 }

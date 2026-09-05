@@ -1,299 +1,340 @@
-import { spawn } from "node:child_process";
-import {
-  copyFile,
-  lstat,
-  mkdir,
-  opendir,
-  readFile,
-  rm,
-  writeFile,
-} from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { spawn } from 'node:child_process'
+import { copyFile, lstat, mkdir, opendir, readFile, rm, writeFile } from 'node:fs/promises'
+import { dirname, join } from 'node:path'
 
-import { requirePrivateBunLockPolicy } from "./bun-native-lock-policy.js";
+import { requirePrivateBunLockPolicy } from './bun-native-lock-policy.js'
 import {
   PRIVATE_BUN_PREPARATION_LIMITS,
   PRIVATE_BUN_PREPARED_MESSAGE_BYTES,
   PRIVATE_BUN_SOURCE_MESSAGE_BYTES,
   encodePrivateBunMessage,
   privateBunMessageFits,
-} from "./bun-native-preparation-protocol.js";
+} from './bun-native-preparation-protocol.js'
 
-const PACKAGE_ROOT = "/work/package";
-const CACHE_ROOT = "/work/cache";
-const PATH = /^(?!\/)(?!.*(?:^|\/)\.\.?(?:\/|$))(?!.*\/\/)[^\0]+$/;
+const PACKAGE_ROOT = '/work/package'
+const CACHE_ROOT = '/work/cache'
+const PATH = /^(?!\/)(?!.*(?:^|\/)\.\.?(?:\/|$))(?!.*\/\/)[^\0]+$/
 
 interface SourceFile {
-  readonly path: string;
-  readonly content: string;
+  readonly path: string
+  readonly content: string
 }
 
 class WorkerFailure extends Error {
-  constructor(readonly code: string, message: string) {
-    super(message);
+  constructor(
+    readonly code: string,
+    message: string,
+  ) {
+    super(message)
   }
 }
 
-let outputQueue = Promise.resolve();
+let outputQueue = Promise.resolve()
 
 try {
-  const iterator = jsonLines(
-    process.stdin,
-    PRIVATE_BUN_SOURCE_MESSAGE_BYTES,
-  )[Symbol.asyncIterator]();
-  const first = await iterator.next();
-  if (first.done) throw new WorkerFailure("PACKAGE_BUN_PROTOCOL", "preparation source is missing");
-  const source = requireSource(first.value);
+  const iterator = jsonLines(process.stdin, PRIVATE_BUN_SOURCE_MESSAGE_BYTES)[
+    Symbol.asyncIterator
+  ]()
+  const first = await iterator.next()
+  if (first.done) throw new WorkerFailure('PACKAGE_BUN_PROTOCOL', 'preparation source is missing')
+  const source = requireSource(first.value)
   if (!(await iterator.next()).done) {
-    throw new WorkerFailure("PACKAGE_BUN_PROTOCOL", "preparation source has trailing data");
+    throw new WorkerFailure('PACKAGE_BUN_PROTOCOL', 'preparation source has trailing data')
   }
-  await materializeSource(source.files);
-  await requireSupportedLock();
-  await install();
-  await verifySource(source.files);
-  const prepared = await capturePrepared();
-  await sendPrepared(prepared);
-  await outputQueue;
+  await materializeSource(source.files)
+  await requireSupportedLock()
+  await install()
+  await verifySource(source.files)
+  const prepared = await capturePrepared()
+  await sendPrepared(prepared)
+  await outputQueue
 } catch (error) {
-  const failure = error instanceof WorkerFailure
-    ? error
-    : new WorkerFailure("PACKAGE_BUN_PREPARATION_FAILED", "locked Bun dependency preparation failed");
-  await send({ type: "failure", code: failure.code, message: failure.message }).catch(() => undefined);
-  await outputQueue.catch(() => undefined);
-  process.exitCode = 1;
+  const failure =
+    error instanceof WorkerFailure
+      ? error
+      : new WorkerFailure(
+          'PACKAGE_BUN_PREPARATION_FAILED',
+          'locked Bun dependency preparation failed',
+        )
+  await send({ type: 'failure', code: failure.code, message: failure.message }).catch(
+    () => undefined,
+  )
+  await outputQueue.catch(() => undefined)
+  process.exitCode = 1
 }
 
 async function materializeSource(files: readonly SourceFile[]): Promise<void> {
-  await mkdir(PACKAGE_ROOT, { recursive: true, mode: 0o700 });
+  await mkdir(PACKAGE_ROOT, { recursive: true, mode: 0o700 })
   for (const file of files) {
-    const bytes = decodeBase64(file.content, file.path);
-    const destination = join(PACKAGE_ROOT, ...file.path.split("/"));
-    await mkdir(dirname(destination), { recursive: true, mode: 0o700 });
-    await writeFile(destination, bytes, { mode: 0o600, flag: "wx" });
+    const bytes = decodeBase64(file.content, file.path)
+    const destination = join(PACKAGE_ROOT, ...file.path.split('/'))
+    await mkdir(dirname(destination), { recursive: true, mode: 0o700 })
+    await writeFile(destination, bytes, { mode: 0o600, flag: 'wx' })
   }
 }
 
 async function verifySource(files: readonly SourceFile[]): Promise<void> {
   for (const file of files) {
-    const expected = decodeBase64(file.content, file.path);
-    const actual = new Uint8Array(await readFile(join(PACKAGE_ROOT, ...file.path.split("/"))));
+    const expected = decodeBase64(file.content, file.path)
+    const actual = new Uint8Array(await readFile(join(PACKAGE_ROOT, ...file.path.split('/'))))
     if (!Buffer.from(actual).equals(Buffer.from(expected))) {
-      throw new WorkerFailure("PACKAGE_BUN_SOURCE_CHANGED", "Bun preparation changed authored package bytes");
+      throw new WorkerFailure(
+        'PACKAGE_BUN_SOURCE_CHANGED',
+        'Bun preparation changed authored package bytes',
+      )
     }
   }
 }
 
 async function requireSupportedLock(): Promise<void> {
-  const lockCopy = "/work/bun-lock.jsonc";
-  await copyFile(join(PACKAGE_ROOT, "bun.lock"), lockCopy);
-  let value: unknown;
+  const lockCopy = '/work/bun-lock.jsonc'
+  await copyFile(join(PACKAGE_ROOT, 'bun.lock'), lockCopy)
+  let value: unknown
   try {
-    const result = await runChild([
-      "--no-env-file",
-      "--no-install",
-      "--config=/dev/null",
-      "-e",
-      "const value=(await import(process.argv[1])).default;process.stdout.write(JSON.stringify(value));",
-      lockCopy,
-    ], {
-      cwd: "/work",
-      env: { LD_LIBRARY_PATH: "/jig-runtime/lib" },
-    }, 2 * 1024 * 1024, 64 * 1024);
-    if (result.exit !== 0 || result.stderr !== "") throw new Error("lock parser failed");
-    value = JSON.parse(result.stdout);
+    const result = await runChild(
+      [
+        '--no-env-file',
+        '--no-install',
+        '--config=/dev/null',
+        '-e',
+        'const value=(await import(process.argv[1])).default;process.stdout.write(JSON.stringify(value));',
+        lockCopy,
+      ],
+      {
+        cwd: '/work',
+        env: { LD_LIBRARY_PATH: '/jig-runtime/lib' },
+      },
+      2 * 1024 * 1024,
+      64 * 1024,
+    )
+    if (result.exit !== 0 || result.stderr !== '') throw new Error('lock parser failed')
+    value = JSON.parse(result.stdout)
   } catch {
-    throw new WorkerFailure("PACKAGE_BUN_LOCK_INVALID", "bun.lock is not valid for the pinned Bun runtime");
+    throw new WorkerFailure(
+      'PACKAGE_BUN_LOCK_INVALID',
+      'bun.lock is not valid for the pinned Bun runtime',
+    )
   }
-  try { requirePrivateBunLockPolicy(value); } catch { unsupportedSource(); }
+  try {
+    requirePrivateBunLockPolicy(value)
+  } catch {
+    unsupportedSource()
+  }
 }
 
 function unsupportedSource(): never {
   throw new WorkerFailure(
-    "PACKAGE_BUN_SOURCE_UNSUPPORTED",
-    "bun.lock contains a dependency source unsupported by this Jig alpha; only the default npm registry is supported",
-  );
+    'PACKAGE_BUN_SOURCE_UNSUPPORTED',
+    'bun.lock contains a dependency source unsupported by this Jig alpha; only the default npm registry is supported',
+  )
 }
 
 async function install(): Promise<void> {
-  const result = await runChild([
-    "--no-env-file",
-    "--config=/dev/null",
-    "install",
-    "--frozen-lockfile",
-    "--production",
-    "--ignore-scripts",
-    "--backend=copyfile",
-    "--linker=hoisted",
-    `--cache-dir=${CACHE_ROOT}`,
-    "--registry=https://registry.npmjs.org",
-    "--no-progress",
-    "--no-summary",
-  ], {
-    cwd: PACKAGE_ROOT,
-    env: {
-      LD_LIBRARY_PATH: "/jig-runtime/lib",
+  const result = await runChild(
+    [
+      '--no-env-file',
+      '--config=/dev/null',
+      'install',
+      '--frozen-lockfile',
+      '--production',
+      '--ignore-scripts',
+      '--backend=copyfile',
+      '--linker=hoisted',
+      `--cache-dir=${CACHE_ROOT}`,
+      '--registry=https://registry.npmjs.org',
+      '--no-progress',
+      '--no-summary',
+    ],
+    {
+      cwd: PACKAGE_ROOT,
+      env: {
+        LD_LIBRARY_PATH: '/jig-runtime/lib',
+      },
     },
-  }, 64 * 1024, 64 * 1024);
+    64 * 1024,
+    64 * 1024,
+  )
   if (result.exit !== 0) {
-    const output = `${result.stdout}\n${result.stderr}`;
+    const output = `${result.stdout}\n${result.stderr}`
     if (/lockfile|frozen|package\.json/i.test(output)) {
       throw new WorkerFailure(
-        "PACKAGE_BUN_LOCK_STALE",
-        "package.json and bun.lock disagree; regenerate bun.lock with bun install --lockfile-only",
-      );
+        'PACKAGE_BUN_LOCK_STALE',
+        'package.json and bun.lock disagree; regenerate bun.lock with bun install --lockfile-only',
+      )
     }
     throw new WorkerFailure(
-      "PACKAGE_BUN_PREPARATION_FAILED",
-      "the locked production dependencies could not be prepared by the pinned Bun runtime",
-    );
+      'PACKAGE_BUN_PREPARATION_FAILED',
+      'the locked production dependencies could not be prepared by the pinned Bun runtime',
+    )
   }
-  await rm(join(PACKAGE_ROOT, "node_modules", ".bin"), { recursive: true, force: true });
+  await rm(join(PACKAGE_ROOT, 'node_modules', '.bin'), { recursive: true, force: true })
 }
 
 async function capturePrepared(): Promise<readonly SourceFile[]> {
-  const files: SourceFile[] = [];
-  let total = 0;
+  const files: SourceFile[] = []
+  let total = 0
   const visit = async (root: string, prefix: string): Promise<void> => {
-    const directory = await opendir(root);
-    const names: string[] = [];
-    for await (const entry of directory) names.push(entry.name);
-    names.sort((left, right) => Buffer.from(left).compare(Buffer.from(right)));
+    const directory = await opendir(root)
+    const names: string[] = []
+    for await (const entry of directory) names.push(entry.name)
+    names.sort((left, right) => Buffer.from(left).compare(Buffer.from(right)))
     for (const name of names) {
-      const path = prefix === "" ? name : `${prefix}/${name}`;
-      requirePath(path);
-      const physical = join(root, name);
-      const information = await lstat(physical);
+      const path = prefix === '' ? name : `${prefix}/${name}`
+      requirePath(path)
+      const physical = join(root, name)
+      const information = await lstat(physical)
       if (information.isDirectory() && !information.isSymbolicLink()) {
-        await visit(physical, path);
-        continue;
+        await visit(physical, path)
+        continue
       }
       if (!information.isFile() || information.isSymbolicLink() || information.nlink !== 1) {
-        throw new WorkerFailure("PACKAGE_BUN_OUTPUT_UNSUPPORTED", "prepared dependencies contain a link or special file");
+        throw new WorkerFailure(
+          'PACKAGE_BUN_OUTPUT_UNSUPPORTED',
+          'prepared dependencies contain a link or special file',
+        )
       }
       if (files.length >= PRIVATE_BUN_PREPARATION_LIMITS.preparedFiles) {
-        throw new WorkerFailure("PACKAGE_BUN_OUTPUT_LIMIT", "prepared dependency tree has too many files");
+        throw new WorkerFailure(
+          'PACKAGE_BUN_OUTPUT_LIMIT',
+          'prepared dependency tree has too many files',
+        )
       }
-      const bytes = new Uint8Array(await readFile(physical));
-      total += bytes.byteLength;
+      const bytes = new Uint8Array(await readFile(physical))
+      total += bytes.byteLength
       if (total > PRIVATE_BUN_PREPARATION_LIMITS.preparedBytes) {
-        throw new WorkerFailure("PACKAGE_BUN_OUTPUT_LIMIT", "prepared dependency tree is too large");
+        throw new WorkerFailure('PACKAGE_BUN_OUTPUT_LIMIT', 'prepared dependency tree is too large')
       }
-      files.push(Object.freeze({ path, content: Buffer.from(bytes).toString("base64") }));
+      files.push(Object.freeze({ path, content: Buffer.from(bytes).toString('base64') }))
     }
-  };
-  await visit(PACKAGE_ROOT, "");
-  files.sort((left, right) => Buffer.from(left.path).compare(Buffer.from(right.path)));
-  return Object.freeze(files);
+  }
+  await visit(PACKAGE_ROOT, '')
+  files.sort((left, right) => Buffer.from(left.path).compare(Buffer.from(right.path)))
+  return Object.freeze(files)
 }
 
 function requireSource(value: unknown): { readonly files: readonly SourceFile[] } {
-  const root = ordinaryRecord(value);
-  if (root?.type !== "source" || !Array.isArray(root.files) ||
-      root.files.length > PRIVATE_BUN_PREPARATION_LIMITS.sourceFiles) {
-    throw new WorkerFailure("PACKAGE_BUN_PROTOCOL", "preparation source is invalid");
+  const root = ordinaryRecord(value)
+  if (
+    root?.type !== 'source' ||
+    !Array.isArray(root.files) ||
+    root.files.length > PRIVATE_BUN_PREPARATION_LIMITS.sourceFiles
+  ) {
+    throw new WorkerFailure('PACKAGE_BUN_PROTOCOL', 'preparation source is invalid')
   }
-  const files: SourceFile[] = [];
-  let total = 0;
-  let prior: string | undefined;
+  const files: SourceFile[] = []
+  let total = 0
+  let prior: string | undefined
   for (const raw of root.files) {
-    const file = ordinaryRecord(raw);
-    if (file === undefined || typeof file.path !== "string" || typeof file.content !== "string") {
-      throw new WorkerFailure("PACKAGE_BUN_PROTOCOL", "preparation source file is invalid");
+    const file = ordinaryRecord(raw)
+    if (file === undefined || typeof file.path !== 'string' || typeof file.content !== 'string') {
+      throw new WorkerFailure('PACKAGE_BUN_PROTOCOL', 'preparation source file is invalid')
     }
-    requirePath(file.path);
+    requirePath(file.path)
     if (prior !== undefined && Buffer.from(prior).compare(Buffer.from(file.path)) >= 0) {
-      throw new WorkerFailure("PACKAGE_BUN_PROTOCOL", "preparation source paths are not canonical");
+      throw new WorkerFailure('PACKAGE_BUN_PROTOCOL', 'preparation source paths are not canonical')
     }
-    prior = file.path;
-    const bytes = decodeBase64(file.content, file.path);
-    total += bytes.byteLength;
+    prior = file.path
+    const bytes = decodeBase64(file.content, file.path)
+    total += bytes.byteLength
     if (total > PRIVATE_BUN_PREPARATION_LIMITS.sourceBytes) {
-      throw new WorkerFailure("PACKAGE_BUN_INPUT_LIMIT", "locked Bun package is too large to prepare");
+      throw new WorkerFailure(
+        'PACKAGE_BUN_INPUT_LIMIT',
+        'locked Bun package is too large to prepare',
+      )
     }
-    files.push(Object.freeze({ path: file.path, content: file.content }));
+    files.push(Object.freeze({ path: file.path, content: file.content }))
   }
-  if (!files.some(({ path }) => path === "package.json") || !files.some(({ path }) => path === "bun.lock")) {
-    throw new WorkerFailure("PACKAGE_BUN_PROTOCOL", "locked Bun source is incomplete");
+  if (
+    !files.some(({ path }) => path === 'package.json') ||
+    !files.some(({ path }) => path === 'bun.lock')
+  ) {
+    throw new WorkerFailure('PACKAGE_BUN_PROTOCOL', 'locked Bun source is incomplete')
   }
-  return Object.freeze({ files: Object.freeze(files) });
+  return Object.freeze({ files: Object.freeze(files) })
 }
 
 function requirePath(path: string): void {
   if (!PATH.test(path) || Buffer.byteLength(path) > 1_024) {
-    throw new WorkerFailure("PACKAGE_BUN_PROTOCOL", "preparation source path is invalid");
+    throw new WorkerFailure('PACKAGE_BUN_PROTOCOL', 'preparation source path is invalid')
   }
 }
 
 function decodeBase64(value: string, label: string): Uint8Array {
   if (!/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(value)) {
-    throw new WorkerFailure("PACKAGE_BUN_PROTOCOL", `${label} has invalid encoded bytes`);
+    throw new WorkerFailure('PACKAGE_BUN_PROTOCOL', `${label} has invalid encoded bytes`)
   }
-  return new Uint8Array(Buffer.from(value, "base64"));
+  return new Uint8Array(Buffer.from(value, 'base64'))
 }
 
 function ordinaryRecord(value: unknown): Record<string, unknown> | undefined {
-  if (value === null || typeof value !== "object" || Array.isArray(value) ||
-      Object.getPrototypeOf(value) !== Object.prototype) return undefined;
-  return value as Record<string, unknown>;
+  if (
+    value === null ||
+    typeof value !== 'object' ||
+    Array.isArray(value) ||
+    Object.getPrototypeOf(value) !== Object.prototype
+  )
+    return undefined
+  return value as Record<string, unknown>
 }
 
 function send(value: Readonly<Record<string, unknown>>): Promise<void> {
-  return enqueue(encodePrivateBunMessage(value));
+  return enqueue(encodePrivateBunMessage(value))
 }
 
 function enqueue(bytes: Uint8Array): Promise<void> {
   outputQueue = outputQueue.then(async () => {
-    if (!process.stdout.write(bytes)) await new Promise<void>((resolve) => process.stdout.once("drain", resolve));
-  });
-  return outputQueue;
+    if (!process.stdout.write(bytes))
+      await new Promise<void>((resolve) => process.stdout.once('drain', resolve))
+  })
+  return outputQueue
 }
 
 function sendPrepared(files: readonly SourceFile[]): Promise<void> {
-  const bytes = encodePrivateBunMessage({ type: "prepared", files });
+  const bytes = encodePrivateBunMessage({ type: 'prepared', files })
   if (!privateBunMessageFits(bytes.byteLength - 1, PRIVATE_BUN_PREPARED_MESSAGE_BYTES)) {
-    throw new WorkerFailure("PACKAGE_BUN_OUTPUT_LIMIT", "prepared dependency tree is too large");
+    throw new WorkerFailure('PACKAGE_BUN_OUTPUT_LIMIT', 'prepared dependency tree is too large')
   }
-  return enqueue(bytes);
+  return enqueue(bytes)
 }
 
 async function* jsonLines(
   source: AsyncIterable<Uint8Array | string>,
   maximum: number,
 ): AsyncGenerator<unknown> {
-  let pending: Buffer[] = [];
-  let pendingBytes = 0;
+  let pending: Buffer[] = []
+  let pendingBytes = 0
   for await (const chunk of source) {
-    const bytes = Buffer.from(chunk);
-    let start = 0;
+    const bytes = Buffer.from(chunk)
+    let start = 0
     for (;;) {
-      const end = bytes.indexOf(0x0a, start);
-      if (end === -1) break;
-      pending.push(bytes.subarray(start, end));
-      pendingBytes += end - start;
-      if (pendingBytes > maximum) throw new Error("protocol line exceeds bound");
-      const line = pending.length === 1 ? pending[0]! : Buffer.concat(pending, pendingBytes);
-      pending = [];
-      pendingBytes = 0;
-      yield JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(line));
-      start = end + 1;
+      const end = bytes.indexOf(0x0a, start)
+      if (end === -1) break
+      pending.push(bytes.subarray(start, end))
+      pendingBytes += end - start
+      if (pendingBytes > maximum) throw new Error('protocol line exceeds bound')
+      const line = pending.length === 1 ? pending[0]! : Buffer.concat(pending, pendingBytes)
+      pending = []
+      pendingBytes = 0
+      yield JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(line))
+      start = end + 1
     }
     if (start < bytes.byteLength) {
-      pending.push(bytes.subarray(start));
-      pendingBytes += bytes.byteLength - start;
-      if (pendingBytes > maximum) throw new Error("protocol line exceeds bound");
+      pending.push(bytes.subarray(start))
+      pendingBytes += bytes.byteLength - start
+      if (pendingBytes > maximum) throw new Error('protocol line exceeds bound')
     }
   }
-  if (pendingBytes !== 0) throw new Error("protocol ended with a partial line");
+  if (pendingBytes !== 0) throw new Error('protocol ended with a partial line')
 }
 
 async function collect(stream: NodeJS.ReadableStream | null, maximum: number): Promise<string> {
-  if (stream === null) return "";
-  let bytes = Buffer.alloc(0);
+  if (stream === null) return ''
+  let bytes = Buffer.alloc(0)
   for await (const chunk of stream) {
-    bytes = Buffer.concat([bytes, Buffer.from(chunk)]);
-    if (bytes.byteLength > maximum) throw new Error("preparation child diagnostic exceeds bound");
+    bytes = Buffer.concat([bytes, Buffer.from(chunk)])
+    if (bytes.byteLength > maximum) throw new Error('preparation child diagnostic exceeds bound')
   }
-  return bytes.toString("utf8");
+  return bytes.toString('utf8')
 }
 
 async function runChild(
@@ -304,29 +345,29 @@ async function runChild(
 ): Promise<{ readonly stdout: string; readonly stderr: string; readonly exit: number | null }> {
   const child = spawn(process.execPath, [...arguments_], {
     ...options,
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-  const exit = childExit(child);
-  let settled = false;
+    stdio: ['ignore', 'pipe', 'pipe'],
+  })
+  const exit = childExit(child)
+  let settled = false
   try {
     const [stdout, stderr, code] = await Promise.all([
       collect(child.stdout, maximumStdout),
       collect(child.stderr, maximumStderr),
       exit,
-    ]);
-    settled = true;
-    return Object.freeze({ stdout, stderr, exit: code });
+    ])
+    settled = true
+    return Object.freeze({ stdout, stderr, exit: code })
   } finally {
     if (!settled) {
-      child.kill("SIGKILL");
-      await exit.catch(() => undefined);
+      child.kill('SIGKILL')
+      await exit.catch(() => undefined)
     }
   }
 }
 
 function childExit(child: ReturnType<typeof spawn>): Promise<number | null> {
   return new Promise((resolve, reject) => {
-    child.once("error", reject);
-    child.once("close", (code) => resolve(code));
-  });
+    child.once('error', reject)
+    child.once('close', (code) => resolve(code))
+  })
 }

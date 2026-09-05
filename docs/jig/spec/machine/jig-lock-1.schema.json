@@ -21,10 +21,7 @@
       "maxProperties": 4096
     }
   },
-  "required": [
-    "packages",
-    "bindings"
-  ],
+  "required": ["packages", "bindings"],
   "additionalProperties": false,
   "$defs": {
     "digest": {
@@ -51,11 +48,7 @@
           "maxProperties": 1
         }
       },
-      "required": [
-        "digest",
-        "directRun",
-        "uses"
-      ],
+      "required": ["digest", "directRun", "uses"],
       "additionalProperties": false
     },
     "capabilityUse": {
@@ -71,11 +64,7 @@
           "const": "sha256:5a0f06495323419d275eeff92617d9287647ece137dacc9c5c6d50466d65c0f0"
         }
       },
-      "required": [
-        "id",
-        "version",
-        "digest"
-      ],
+      "required": ["id", "version", "digest"],
       "additionalProperties": false
     },
     "binding": {
@@ -101,11 +90,7 @@
           "maxProperties": 256
         }
       },
-      "required": [
-        "packagePath",
-        "settings",
-        "slots"
-      ],
+      "required": ["packagePath", "settings", "slots"],
       "additionalProperties": false
     },
     "targetIdentity": {

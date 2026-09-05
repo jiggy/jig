@@ -23,10 +23,7 @@
             "maxLength": 16000
           }
         },
-        "required": [
-          "id",
-          "description"
-        ],
+        "required": ["id", "description"],
         "additionalProperties": false
       },
       "maxItems": 16,
@@ -53,21 +50,13 @@
             "maxLength": 16000
           }
         },
-        "required": [
-          "id",
-          "url",
-          "text"
-        ],
+        "required": ["id", "url", "text"],
         "additionalProperties": false
       },
       "maxItems": 32,
       "minItems": 1
     }
   },
-  "required": [
-    "objective",
-    "requirements",
-    "evidence"
-  ],
+  "required": ["objective", "requirements", "evidence"],
   "additionalProperties": false
 }
