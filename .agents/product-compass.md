@@ -1,561 +1,506 @@
 # Jig and FLOW product compass
 
 This is durable product memory for a future leader who remembers nothing about
-Jig or FLOW. It owns the *why*: the intent, audience, promises, tradeoffs, end
-state, and judgment needed to keep the project coherent.
+Jig or FLOW. It preserves the intent, audience, promises, tradeoffs, design
+judgment, and proof standards needed to keep the project coherent.
 
-It is not a specification, roadmap, release record, engineering guide, or
-catalogue of possible features. Those documents may change frequently. This
-one should change only when the product thesis itself changes.
+It is deliberately lossy about mechanics. Public specifications and
+conformance evidence own exact behavior; the engineering re-entry guide owns
+the stable implementation model; the roadmap owns outcome order. This file
+should help a leader reach sound decisions again, not memorize every decision
+ever proposed.
 
-## The one-minute memory
+The document has three stability layers:
 
-Jig and FLOW exist to separate **intelligence from authority**.
+1. **Product thesis** — the purpose, enduring promises, and current audience
+   hypothesis. Change these only when product evidence changes the thesis.
+2. **Design compass** — the durable boundaries that currently best protect the
+   thesis. Change these only when product evidence supports a better boundary.
+3. **Proof and leadership memory** — the standards and lessons used to test
+   both. Refine these when experience improves the project's judgment.
 
-Models should be free to interpret, propose, create, criticize, and choose
-among meaningful alternatives. They must not silently decide what software is
-trusted, which powers they receive, what procedures exist, or which
-consequential actions may occur.
+## Part I — Product thesis
 
-The enduring product thesis is:
+### The one-minute memory
+
+Jig and FLOW let people assemble serious agentic applications from reusable
+specialist workflows without surrendering control to a model, framework,
+vendor, or package author.
+
+People increasingly design the Agents, methods, tools, checks, and feedback
+loops that perform useful work. Those systems should be shareable and
+improvable while remaining owned by the people who authorize and depend on
+them.
+
+The deepest architectural insight is the separation of **intelligence from
+authority**. Models may interpret, propose, create, criticize, and choose among
+admitted alternatives. They must not silently decide what software is trusted,
+which powers exist, which exact revision runs, or which consequential action is
+authorized.
 
 > FLOW makes agentic work portable. Jig lets intelligence remain flexible
 > while authority remains exact.
 
-An equally useful shorthand is:
+The ownership mnemonic is:
 
-> FLOW carries meaning. Jig carries authority. Flows carry method.
-> Applications carry purpose.
+> FLOW carries meaning. Jig carries authority and lifecycle. Flows carry
+> method. Runtimes carry internal control. Applications carry purpose.
 
 The aspiration is to make an agentic procedure as easy to share as a Skill, as
-composable as a function, and as governable as an operating-system process.
+natural to compose as a function, with human-readable purpose and inspectable
+package content, and as governable as an operating-system process.
 
-## The problem worth solving
+A physical jig guides tools toward accurate, repeatable work without becoming
+the thing being made. The product should do the same: enable people to build
+and refine systems that work, while keeping their powers constrained by the
+people who own the consequences.
 
-Most agent systems begin by placing everything in one application: prompts,
-workflow meaning, model selection, tools, credentials, control flow,
-permissions, state, and domain policy. That makes impressive demonstrations
-easy. It makes a trustworthy ecosystem difficult.
+### The problem, audience, and opportunity
 
-In such systems:
+Most agent systems place prompts, workflow meaning, model choice, tools,
+credentials, control flow, permissions, state, and domain policy inside one
+application. This makes demonstrations easy and trustworthy ecosystems hard.
 
-- a useful method cannot travel without its framework;
-- changing a provider can change the application;
-- model-selected control can quietly become execution authority;
-- a reusable prompt has no dependable input, result, or lifetime boundary;
-- application code accumulates every orchestration technique as proprietary
-  infrastructure; and
-- operators cannot easily tell what was proposed, what was authorized, what
-  actually ran, or what remains alive.
+In such systems, useful methods cannot travel without their frameworks;
+changing a provider can change the application; model-selected control can
+quietly become execution authority; and operators cannot reliably tell what
+was proposed, admitted, executed, left running, or allowed to have
+consequences.
 
-The project exists to separate those concerns without replacing them with a
-large universal framework.
+Jig and FLOW separate those concerns without replacing them with a universal
+application framework. Three distinctions anchor the separation:
 
-Portable meaning is not portable authority. A procedure may be shared widely;
-each host must decide locally whether it may run, which exact revision is
-accepted, what it may receive, what it may do, and when its authority ends.
-
-Discovery is not admission. Finding a package, installing it, parsing it, or
-ranking it never makes it executable.
-
-Intelligence is not authority. A plausible model answer remains data until
-ordinary policy validates it and an authorized component acts on it.
-
-## Who this is for
+- **Portable meaning is not portable authority.** A Flow may travel widely;
+  every host decides locally whether, where, and with what powers it may run.
+- **Discovery is not admission.** Finding, downloading, parsing, or ranking a
+  package never grants execution.
+- **Intelligence is not authority.** A model result remains data until policy
+  validates it and an authorized component acts on it.
 
 The first serious users are people building repeated AI-assisted processes for
-which one chat or one embedded model call is no longer enough:
+which one chat or embedded model call is no longer enough:
 
-- workflow authors who want to distribute readable, executable specialist
-  procedures;
-- application and Starter authors who want to combine those procedures
-  without inheriting their internal frameworks;
-- operators who need to choose providers, credentials, infrastructure, data
-  posture, limits, and approval policy;
+- Flow authors distributing readable specialist procedures without forcing a
+  framework;
+- application and Starter authors composing those procedures into coherent
+  products;
+- operators choosing Agents, credentials, infrastructure, data posture,
+  limits, and approval boundaries;
 - teams in which the procedure author, data owner, Agent provider, reviewer,
   and consequence owner may be different people or organizations; and
-- builders for whom “the model probably followed the prompt” is not an
-  adequate authority or audit boundary.
+- advanced individuals who want to own and improve the systems performing
+  their work.
 
-The same person may occupy every role in a small project. The architecture
+The same person may occupy every role in a small installation. The architecture
 must remain sound when they do not.
 
-Jig is especially valuable where trust is divided or specialist methods are
-reused. It should say honestly when a script, one Agent, an existing workflow
-engine, or ordinary CI is simpler and sufficient. Ceremony is justified only
-when separation, reuse, governance, or lifecycle improves the outcome.
+No single ingredient is the differentiation. A package format does not govern
+execution; a workflow engine does not separate model judgment from authority;
+an Agent SDK does not make methods portable; a sandbox does not supply meaning
+or admission; and a graph runtime does not own credentials or consequences.
 
-End users should ordinarily meet a coherent application, not a collection of
-kernel concepts. Starters and applications turn the small host into software
-factories, review systems, research pipelines, operational tools, and personal
-campaigns without making any one of those domains part of Jig itself.
-
-## What sets it apart
-
-Most agent products optimize for giving an Agent more power. Jig should
-optimize for making power separable, reviewable, and composable.
-
-No single ingredient is the differentiation:
-
-- a sandbox does not provide portable meaning, composition, or admission;
-- a workflow engine does not separate model judgment from authority;
-- a package format does not govern execution;
-- an Agent SDK does not make methods portable; and
-- a graph runtime does not own credentials, consent, or consequences.
-
-The product is the join among these boundaries:
-
-- ordinary, independently implementable workflow packages;
-- readable purpose with progressively loadable executable detail;
-- separation between portable procedure and host policy;
-- exact local review and admission;
-- deterministic authority around probabilistic judgment;
-- bounded composition across independently maintained procedures;
-- host-selected Agents and capabilities; and
-- human or application ownership of consequential action.
+The product is the join among portable workflow meaning, operator-controlled
+admission, deterministic authority around probabilistic judgment, bounded
+composition, host-selected capabilities, visible user-owned source, explicit
+lifetime, and human or application ownership of consequences.
 
 The market story is not “more orchestration machinery.” It is reusable
-agentic work that an independent operator can understand, authorize, combine,
-and stop.
+agentic work that an independent operator can understand, adapt, authorize,
+combine, observe, and stop.
 
-## The core design idea
+### The finished experience
 
-The original dynamic-routing question remains central: a growing catalogue
-should not require hardcoded keyword gates or a new graph edge every time a
-method appears. The safe answer is not a globally sovereign router.
+A healthy ecosystem should make this ordinary:
 
-There are two different choices:
+```text
+discover useful work
+    -> inspect its meaning
+    -> admit an exact revision
+    -> bind the collaborators and powers it needs
+    -> run it under bounded authority
+    -> receive evidence and an outcome
+    -> edit it as ordinary source
+    -> combine it without adopting its internal framework
+```
 
-1. **Resolve what is eligible.** Deterministic policy finds compatible,
-   available, admitted candidates and establishes the complete authority
-   boundary.
-2. **Choose what best fits now.** Semantic reasoning may rank those candidates
-   or abstain, but it cannot enlarge the set.
+From each role, the system should feel simple:
+
+| Role | Finished experience |
+| --- | --- |
+| **Flow author** | Describe and package one useful method; add exact execution, schemas, Skills, resources, and contracts only when needed; share it without forcing an application framework or Agent provider. |
+| **Application builder** | Compose admitted methods with sane defaults; use Bindings for meaningful configuration and exact composition, and semantic choice only where explicit routing is inadequate. |
+| **Operator** | Choose Agents, credentials, infrastructure, data policy, limits, and approval requirements; evaluate the host's documented containment; understand exactly what is accepted and what remains alive. |
+| **End user** | Receive the application outcome without confronting kernel concepts unless consent or diagnosis requires them. |
+
+Applications and Starters turn the small host into coherent products. No one
+application domain becomes Jig itself, and no registry, runtime, language,
+Agent, or vendor owns the ecosystem.
+
+### Non-negotiable promises
+
+These survive changes in mechanism, provider, platform, and product phase.
+
+1. **FLOW remains independent of Jig.** It stays neutral about hosts,
+   runtimes, providers, containment, persistence, and application structure.
+2. **Models return data, not authority.** They may interpret, propose, rank, or
+   choose only within authority established elsewhere.
+3. **Discovery never grants execution.** Local policy admits one exact meaning;
+   later source changes do not inherit trust silently.
+4. **The host owns powers.** Packages cannot choose credentials, provider
+   identity, infrastructure, containment, or consequence policy.
+5. **Consequential authority remains with its real owner.** Completing a Flow
+   does not itself authorize publication, purchase, deployment, deletion,
+   communication, legal approval, or another irreversible act.
+6. **Runtimes own internal control.** Jig does not become a second scheduler or
+   give one recognized runtime privileged product semantics.
+7. **Every effect and live resource has an owner.** Completion follows bounded
+   revocation, fencing, and cleanup rather than merely receiving a plausible
+   result.
+8. **Failure and uncertainty remain honest.** Missing support fails visibly;
+   possibly dispatched work is not guessed successful or silently repeated.
+9. **User-owned meaning remains inspectable.** Avoid hidden overlays,
+   competing effective sources, and package magic that prevents understanding
+   or adaptation.
+10. **The kernel contains no application or workflow ontology.** Tickets, Git,
+   Kanban, GUIs, Gauntlets, juries, and domain rules remain in Flows,
+   applications, libraries, or Starters.
+11. **Public abstractions are earned.** One implementation does not establish
+    a framework, and claims never exceed independent evidence.
+12. **Simple use remains simple.** Sane defaults handle ordinary cases;
+    Bindings, contracts, and configuration appear only when they express real
+    customization or interoperability.
+13. **Minimalism never excuses weakened safety.** Remove concepts and burden,
+    not invariants required to uphold the promise.
+14. **The open local product remains whole.** Jig remains useful as
+    OSI-approved open-source local software; commercial products must not turn
+    it into a deliberately crippled community edition.
+
+## Part II — Design compass
+
+This part records enduring product boundaries, not a snapshot of current
+classes, protocols, commands, or subsystems. A named mechanism must still be
+earned through specifications and evidence.
+
+### Tradeoffs willingly accepted
+
+The project accepts local review friction for meaningful authority; process
+and protocol overhead for language, framework, and failure isolation; visible
+failure instead of semantic degradation; controlled semantic nondeterminism
+inside deterministic authority; less universal graph introspection for runtime
+neutrality; and slower breadth while independent use earns extension points
+and formal contracts.
+
+Semantic discovery must not degrade explicit composition or enlarge authority.
+A selected remote Agent necessarily receives the bounded data intentionally
+sent to it. And when a simpler tool provides the same meaningful outcome and
+guarantees with less ceremony, the simpler tool should win.
+
+### The ownership covenant
+
+Each layer stays small by owning one kind of truth.
+
+| Layer | Owns |
+| --- | --- |
+| **FLOW** | Portable package meaning, values, finite invocation and outcomes, plus optional exact interoperability contracts |
+| **Jig** | Discovery, capture, review, admission, binding of operator-provided powers, limits, lifecycle, and accountable execution |
+| **Flow package** | Domain method, prompts, selected Skills, validation, and bounded local control |
+| **Runtime** | Live advancement of an internal graph or program without acquiring Jig or FLOW policy |
+| **Application or Starter** | User experience, domain state, triggers, business rules, repository policy, and human gates |
+| **Operator environment** | Agents, endpoints, models, credentials, infrastructure, containment, and data policy |
+
+A concept belongs in Jig only when Jig must enforce it across an authority,
+trust, process, cancellation, lifetime, or durability boundary. Otherwise it
+belongs in a Flow, library, capability provider, application, or Starter.
+
+“Microkernel-inspired” is a discipline for ownership. It is not permission to
+recreate an operating system, service framework, or universal application
+model.
+
+### The composition grammar
+
+- **A Flow performs bounded work.** Most reusable procedures compose through
+  ordinary Flow calls.
+- **A capability exposes a stable interoperable interface or controlled
+  power.** An exact contract is justified at a precise exported seam, not
+  merely because a procedure is complicated.
+- **A Binding customizes and pins a use.** It is not mandatory plumbing for
+  every package.
+- **An Agent is a host-selected intelligent worker.** A Flow may choose the
+  bounded task context and Skills it needs, but not the operator's provider,
+  credential, infrastructure, or containment policy.
+- **A runtime owns internal control.** Graphs and other execution models remain
+  implementation techniques rather than portable FLOW structure.
+- **A Starter is one coherent application copied and owned by its user.** It
+  is not algebra for merging policy fragments, and it does not choose the
+  operator's Agents, credentials, infrastructure, containment, or trust policy.
+
+If reliable outside activation is later earned, keep observed facts separate
+from the application policies that react to them. Facts do not become invisible
+middleware, and required sequencing remains explicit work rather than an
+accidental listener chain. The eventual public mechanism is deliberately
+unselected.
+
+Flows perform work. Capabilities expose stable interfaces or controlled
+effects. Runtimes own control. Jig owns external authority and lifetimes.
+Applications decide why work exists.
+
+### Bounded semantic choice
+
+The original dynamic-routing problem remains central: a growing catalogue
+should not require hardcoded keyword gates or one permanent graph edge for
+every method. The safe answer is not a globally sovereign router.
+
+There are two distinct decisions:
+
+1. **Determine what is eligible.** Exact admission, compatibility,
+   availability, and policy establish a closed authority set.
+2. **Choose what best fits now.** Semantic reasoning may rank that set or
+   abstain. It cannot enlarge it.
 
 The enduring sequence is:
 
 ```text
 open-ended intent
-    -> deterministic compatibility and eligibility
-    -> bounded semantic choice or abstention
+    -> deterministic admitted and eligible set
+    -> optional bounded semantic choice or abstention
     -> validation against the closed set
-    -> exact admitted invocation
-    -> validated result and evidence
+    -> exact invocation
+    -> evidence and validated outcome
 ```
 
-Workflow identities are data. A model's choice is data. Neither becomes new
-authority merely because it appears in a convincing answer.
+Workflow identities and model choices are data. A compelling answer does not
+create a package, provider, permission, or route. Exact composition must remain
+excellent; semantic choice is introduced only when it provides a material
+advantage over an explicit route.
 
-Static composition must remain excellent. Semantic selection is valuable only
-where explicit routing is genuinely inadequate. Dynamic discovery may prepare
-a bounded choice set later; runtime choice must never become installation,
-admission, credential, or permission authority.
+### Ownership across change
 
-## The finished world
+Mutable source proposes; exact accepted meaning executes. This lets users edit
+ordinary visible source without allowing an unnoticed edit to inherit prior
+authority.
 
-A mature ecosystem should feel simple from each role.
+Files should express user ownership, not become a metaphysics for every host
+record. Internal evidence may use the representation required to preserve its
+invariants.
 
-### For a workflow author
+### Deliberately open boundaries
 
-The author creates an ordinary FLOW package with a clear human purpose. Exact
-execution, schemas, skills, resources, and capability contracts are added only
-as needed. The implementation may use plain code, a graph runtime, or a future
-execution model without imposing that choice on FLOW.
+Evidence is still needed about:
 
-The package can travel through ordinary decentralized sources. Its meaning
-does not depend on one registry, one host, one programming language, one Agent,
-or one vendor.
-
-### For an application builder
-
-The builder assembles packages and domain policy into a coherent application
-or Starter. Sensible defaults make simple components work without a Binding or
-configuration file for every relationship. Bindings customize, restrict, and
-pin; they do not exist merely to announce that a component exists.
-
-The builder starts with fixed composition. Separate roles are added only when
-they need meaningfully different evidence, skills, context, failure
-independence, or authority. Semantic choice is introduced only when it beats an
-explicit route.
-
-Domain models, user experience, Git policy, Kanban, professional rules,
-watchers, and human approvals remain application concerns.
-
-### For an operator
-
-The operator chooses the host environment: Agents, models, credentials,
-infrastructure, containment, and data posture. The operator sees a
-comprehensible proposed change, accepts one exact meaning, and can later tell
-which packages, policies, and powers were used.
-
-The system may run an explicit target or eventually react to an approved
-outside fact. Either way, authority is bounded, failure is honest, uncertain
-work is not guessed successful, and completion includes the end of owned
-activity.
-
-### For an end user
-
-The user receives the application outcome: a reviewed patch, an evidence
-packet, a decision held for approval, a repaired artifact, or another useful
-result. Internal identities, scopes, bindings, records, and provider mechanics
-should stay out of the way unless understanding them is necessary for consent
-or diagnosis.
-
-## The ownership covenant
-
-Each layer remains small because it owns one kind of truth.
-
-| Layer | Owns |
-| --- | --- |
-| **FLOW** | Portable package meaning, values, finite invocation, outcomes, and optional exact capability contracts |
-| **Jig** | Discovery, capture, review, admission, binding, host authority, provider choice, limits, lifecycle, and accountable execution |
-| **Flow package** | Domain procedure, prompts, selected skills, validation, and bounded local control logic |
-| **Component runtime** | Live advancement of an internal graph or program, without acquiring Jig or FLOW policy |
-| **Application or Starter** | User experience, domain state, triggers, business rules, repository policy, and human gates |
-| **Operator environment** | Agents, endpoints, models, credentials, infrastructure, containment preference, and data policy |
-
-A concept belongs in Jig only when Jig must enforce it across an authority,
-trust, process, cancellation, or durability boundary. Otherwise it belongs in
-a Flow, library, capability provider, application, or Starter.
-
-“Microkernel-inspired” is a discipline for ownership. It is not permission to
-recreate an operating system or service framework.
-
-## The composition grammar
-
-Several mechanisms that once blurred together have different jobs:
-
-- **A Flow performs bounded work.** Most reusable procedures compose through
-  ordinary Flow calls.
-- **A capability provides a stable interface or controlled power.** Formal
-  contracts are justified at precise exported seams, not because a procedure
-  is complicated.
-- **A Binding customizes and pins a use.** It is not mandatory plumbing for
-  every package.
-- **An event is a fact.** It may cause an application to react, but it is not
-  invisible middleware and does not secretly own control flow.
-- **A graph is an implementation technique.** Runners own internal control;
-  Jig does not mirror or schedule their nodes.
-- **A Starter is one coherent application copied and owned by its user.** It is
-  not algebra for merging policy fragments.
-
-Flows sequence work. Applications decide why that work exists. Capability
-owners control effects. Observers record facts. Keeping these roles separate
-prevents a convenient callback from quietly becoming a scheduler or authority
-system.
-
-## Non-negotiable promises
-
-These survive changes in implementation, provider, platform, and product
-phase.
-
-1. **FLOW remains independent of Jig.** It stays neutral about hosts, graph
-   runtimes, providers, sandboxes, persistence, and application structure.
-2. **Models return bounded data, not authority.** They may propose, rank, or
-   choose only within an authority set created elsewhere.
-3. **Discovery never grants execution.** New meaning becomes usable only
-   through an explicit admission policy.
-4. **Accepted meaning is exact.** Mutable source proposes; an accepted
-   revision executes. Changes do not inherit trust silently.
-5. **Missing support fails honestly.** No weaker isolation or semantically
-   different interpretation is selected behind a successful interface.
-6. **The host owns credentials and powers.** A package cannot choose secrets,
-   provider identity, containment, or infrastructure policy.
-7. **Runners own internal control flow.** Jig never becomes a second scheduler
-   for a graph it does not own.
-8. **Every resource and consequential effect has an owner.** Authority can be
-   bounded and revoked; success does not leave hidden work behind.
-9. **Uncertainty remains uncertainty.** Possibly dispatched work is not
-   silently repeated or described as successful.
-10. **User-owned meaning stays inspectable.** Avoid hidden overlays and
-    competing effective sources.
-11. **The kernel contains no application ontology.** Tickets, tasks, Kanban,
-    Git branches, GUIs, and domain rules do not become Jig primitives.
-12. **One implementation does not create a public framework.** Independent
-    consumers or implementations must expose the same boundary first.
-13. **Consequential authority stays with its real owner.** A model does not
-    merge, release, purchase, publish, delete, communicate, or approve merely
-    because it completed a workflow.
-14. **Claims stay smaller than evidence.** Structured shape is not truth;
-    several Agents are not independence; one successful probe is not a market.
-15. **Minimalism applies to concepts and burden, not to deleting proved safety
-    invariants.** Necessary private machinery may be deeper than the public
-    experience.
-16. **The open local product remains whole.** Jig remains useful as
-    OSI-approved open-source local software; commercial products must not turn
-    it into a deliberately crippled community edition.
-
-## Tradeoffs willingly accepted
-
-The project consciously accepts costs that protect the thesis:
-
-- review and approval friction in exchange for meaningful local authority;
-- process and protocol overhead in exchange for language, framework, and
-  failure isolation;
-- one strong supported host before broad but weaker fallbacks;
-- exact closed composition before open semantic discovery;
-- reduced universal graph introspection in exchange for supporting graphs,
-  imperative programs, and plugin-style components equally;
-- failure when exact execution is unavailable instead of silently changing
-  semantics;
-- host-selected rather than package-selected providers and infrastructure;
-- finite work before arbitrary durable continuation;
-- delayed public extension points until more than one real implementation or
-  consumer reveals their shape;
-- formal contracts only where stable service interoperability earns their
-  cost;
-- slower breadth in exchange for complete, useful vertical outcomes;
-- breaking draft designs in place until an interface is explicitly promoted;
+- ecosystem discovery, publisher identity, reputation, and provenance;
+- comprehensible review and authority as projects and catalogues grow;
+- the smallest reliable seam for outside activation or long-lived services;
   and
-- the fact that a selected remote Agent necessarily receives the bounded data
-  intentionally sent to it.
+- extension boundaries and operator-held authority across genuinely different
+  Agents, runtimes, containment mechanisms, and remote or multi-user hosts.
 
-Semantic selection is accepted controlled nondeterminism. Eligibility,
-authority, validation, budgets, and the eventual invocation remain
-deterministic.
+Do not answer these questions with speculative frameworks. Let complete
+applications, independent consumers, and conformance failures reveal the
+necessary seam.
 
-The project also accepts that Jig may not be useful everywhere. A simple tool
-should win when it offers the same outcome and boundary with less ceremony.
+## Part III — Proof and leadership memory
 
-## The north-star proof
+### The north-star proof
 
 The software factory is the strongest complete demonstration:
 
 ```text
 authorized issue
     -> bounded planning and implementation
-    -> disposable workspace
+    -> disposable workspace authority
     -> exact tests and independent evidence
     -> inspectable patch
     -> human merge and release
 ```
 
-Its importance is not that Jig is a software-development ontology. It visibly
-combines specialist procedures, role-specific context, exact checks, bounded
-choice, external activation, least authority, recovery, and human control.
+Its importance is not that Jig is a software-development framework. It makes
+the complete thesis visible: reusable specialists, role-specific context,
+exact checks, bounded choice, least authority, recovery, and human consequence
+ownership.
 
-The comparison is not a weak agent demo. It is the strongest simple baseline:
+The baseline is deliberately strong:
 
 ```text
 one capable coding Agent + repository access + CI + human review
 ```
 
-Jig earns its ceremony only if it improves accepted-patch quality, escaped
-defects, unauthorized actions, operator effort, reuse, or comprehensibility.
+Jig earns its presence only if it materially justifies its additional ceremony
+through better accepted-result quality, fewer escaped defects or unauthorized
+actions, lower operator burden, more reusable methods, clearer evidence, or
+safer adaptation. It need not outperform the baseline on every dimension; it
+must substantiate the advantage it actually claims.
 
 Other domains reuse the same spine without inheriting issue, Git, or Kanban
-concepts. Examples include controlled AI release, evidence reconstruction,
-privacy-separated work, scientific procedures, procurement review, incident
-triage, and long-running personal campaigns.
+concepts. Controlled AI release, evidence reconstruction, privacy-separated
+work, scientific procedures, procurement review, incident triage, and
+long-running personal campaigns are examples rather than roadmap commitments.
 
-Every product phase needs a useful example that a person would choose for its
-outcome, not an internal engineering milestone dressed as a tutorial:
+### Product proof standards
 
-- before Agents, run reviewed unfamiliar work against operator-owned inputs;
-- with one Agent, add bounded semantic extraction or review without granting
-  consequential authority;
-- with exact composition, build useful fixed workshops, Gauntlets, juries,
-  research/review pipelines, and repair loops;
-- with bounded semantic choice, triage among already approved specialists;
-- with durable external activation and services, support complete applications
-  whose lifetimes extend beyond one invocation.
+The thesis is progressively earned when evidence shows that:
 
-A genuinely strong no-Agent or one-Agent use case is better than artificial
-multi-Agent theater. Add Agents only when separation changes evidence,
-context, authority, or failure independence. Prefer tests, retrieval,
-execution, simulation, independent evidence, and human review over verbal
-self-critique.
+1. **Portability and reuse are real.** Independently maintained procedures can
+   collaborate through public boundaries, and a claimed host, application, or
+   provider substitution works without private integration knowledge.
+2. **Authority survives failure.** Model and package behavior remains within
+   stated host-granted authority under the claimed threat model, and lifecycle
+   promises remain true when work fails, cancels, or becomes uncertain.
+3. **Public usability is real.** An unfamiliar user can obtain the claimed
+   outcome from public artifacts and understand the meaning and authority being
+   approved.
+4. **The ceremony is justified.** A complete vertical demonstrates a material
+   benefit over its strongest credible simpler baseline on the dimensions it
+   claims.
+5. **Claims remain proportional.** A release claims only what its evidence
+   proves; no phase pretends the completed ecosystem already exists.
 
-## Lessons bought through failed designs
+These are product standards, not a feature checklist. Specifications own
+protocol conformance, security owners prove containment, the roadmap orders
+outcomes, and individual applications choose their domain metrics. Every
+delivery phase must culminate in a compelling user-facing example; an internal
+protocol milestone is not a promotable outcome.
 
-These lessons are part of the product judgment, not merely project history.
+### Lessons bought through failed designs
 
-### Sequence is architecture
+#### Sequence is architecture
 
 Many discarded ideas were reasonable in isolation and wrong in sequence. A
-Service model, semantic catalogue, event system, graph compiler, provider SPI,
-or update engine built before its first indispensable outcome becomes a tax on
-everything that follows.
+service model, semantic catalogue, event system, graph compiler, provider
+framework, or update engine built before its first indispensable outcome
+becomes a tax on everything that follows.
 
-Finish one useful vertical. Let its pressure expose the smallest missing seam.
-Stop when the outcome works. Completing a phase does not authorize choosing the
-next one.
+Complete user-facing verticals earn new concepts. Let independent use expose
+the smallest missing seam; implementing one seam does not authorize the next
+subsystem.
 
-### The safety substrate is not the product story
+#### Safety serves the outcome
 
 Admission, containment, cancellation, and cleanup are foundations. Users adopt
-Jig for trustworthy composition of reusable agentic work. Protect the
-boundary, but sell and evaluate the outcome.
+Jig for trustworthy composition of reusable work. Protect the boundary, but
+sell and evaluate the outcome.
 
-### Probes must not invent the platform they consume
+Minimalism applies to concepts and user burden. Deep private machinery is
+justified when it preserves a demonstrated authority, failure, or lifecycle
+invariant; line count is not the product boundary.
 
-The first design-probe cycle failed because the platform authors supplied
-imaginary interfaces and changed the platform until the probes passed. A real
-probe freezes the public surface, gives only that surface to an independent
-builder, forbids platform changes during consumption, and treats failure as
-valuable evidence.
+#### Probes consume; they do not co-design
 
-### Workflow techniques belong to the ecosystem
+A real probe freezes the public surface, gives only that surface to an
+independent builder, forbids platform changes during consumption, and treats
+failure as valuable evidence. A probe changed until it passes is co-design,
+not independent evidence.
 
-Gauntlet, jury, debate, tree search, prompt optimization, research/review
-separation, and future methods should be excellent Flows, libraries, or
-Starters—not Jig primitives. Jig should host methods without owning each one.
+#### Methods belong to the ecosystem
 
-The source of feedback matters more than the number or persona of Agents.
+Gauntlets, juries, debates, tree search, prompt optimization, research/review
+separation, and future techniques should become excellent Flows, libraries, or
+Starters—not Jig primitives.
 
-### Defaults preserve simplicity
+More Agents are not automatically better. Add a role only when it changes the
+evidence, context, authority, expertise, or failure independence. Prefer tests,
+retrieval, execution, simulation, independent evidence, and human review over
+verbal self-critique.
+
+#### Defaults and visible ownership are product features
 
 A Binding or configuration file for nearly every component is a design smell.
-Simple direct use should work through sane discovery and host defaults. Expose
-exact declarations for environments that need tighter control.
+Ordinary use should work through sane discovery and host defaults; explicit
+declarations are for meaningful customization.
 
-### Files express ownership, not metaphysics
+User-owned source and policy remain ordinary, visible, and editable. This does
+not require every internal runtime concern to become a file. If updates are
+introduced, reconcile accepted base, local intent, and upstream source; never
+create a permanent patch overlay beside the effective source.
 
-User-owned source and policy should remain ordinary, visible, and editable.
-That does not require every internal record or runtime concern to become a
-file. If updates are added, reconcile base, local intent, and upstream at
-update time rather than maintaining permanent patch overlays beside the
-effective source.
+#### Precision belongs at authority boundaries
 
-### Precision belongs at authority boundaries
+Use exact identities, contracts, and records where equivocation changes
+authority or interoperability. Keep human-facing declarations loose and
+obvious where precision adds only ceremony.
 
-Use exact identities, digests, contracts, and records where equivocation would
-change authority or interoperability. Keep human-facing declarations loose
-and obvious where precision adds only ceremony.
+Comparisons are not roadmap commitments. Owner suggestions, architecture
+reports, and specialist reviews remain hypotheses; evidence-backed
+disagreement is part of leadership.
 
-### Comparison projects are not roadmap commitments
-
-Other harnesses, plugin systems, and protocols can reveal useful concepts.
-They do not create a requirement to port their ecosystems or reproduce their
-feature sets.
-
-### Criticism is part of leadership
-
-Owner suggestions, architecture reports, and specialist reviews are
-hypotheses. Test them against the product intent and evidence. The project
-improved when opposing arguments were made seriously; agreement is not proof.
-
-## Warning signs
+### Warning signs and anti-goals
 
 Stop and reconsider when a proposal introduces:
 
-- a Jig primitive named after a workflow technique;
+- a Jig primitive named after a workflow technique or application domain;
 - one Binding or configuration file for nearly every component;
-- a provider, model, credential, runtime command, or sandbox policy in FLOW;
+- provider, credential, runtime, or containment policy inside FLOW;
 - a model-selected target outside an admitted eligible set;
-- host control over a Flow's internal graph;
-- a public provider or containment framework inferred from one mechanism;
-- a daemon or durable engine merely to support finite work;
-- a Task, Kanban, Git, GUI, or other domain ontology in the kernel;
-- a silent fallback that changes semantics;
-- automatic execution merely because a file or package appeared;
-- hooks as invisible middleware or events whose listeners can rewrite facts;
-- capability contracts for ordinary bounded work;
-- persistent patch overlays beside directly edited source;
-- a central registry before package reuse and trust signals are proven;
-- a probe that expands the platform merely so the probe can pass;
-- architecture marketed as value without a compelling application outcome;
-  or
-- compatibility machinery for an unpromoted design.
+- silent fallback that changes semantics, or execution merely because a
+  package appeared;
+- contracts for ordinary bounded work or listeners that hide required
+  sequencing;
+- a mandatory central registry before its need is proven;
+- a public framework inferred from one implementation, or compatibility
+  machinery for an unpromoted design; or
+- architecture marketed as value without a compelling application outcome.
 
-## The decision test
+Jig is not trying to become a universal graph language, catalogue of every
+workflow method, all-purpose AI application framework, provider SDK, GUI,
+Kanban or Git framework, general package manager, universal service bus,
+durable engine merely to support finite work, public sandbox framework inferred
+from one mechanism, mandatory registry, or cloud control plane merely because
+remote execution is possible.
 
-Before adding a product concept, answer these questions concretely:
+FLOW is not Jig's configuration format. Jig should be an excellent FLOW host,
+not the reason FLOW packages can exist.
 
-1. What visible user outcome becomes possible?
-2. What is the strongest credible simpler alternative?
-3. Does the proposed feature enforce something only the host can enforce?
-4. Could it live in a Flow, library, capability provider, Starter, or
-   application instead?
-5. Can existing finite calls, exact choices, schemas, and ordinary data already
-   express it?
-6. What new authority, information, or lifetime enters? Who grants, observes,
-   and revokes it?
-7. What happens when a model lies, abstains, returns malformed data, or names an
-   unavailable route?
-8. What happens when work fails or becomes uncertain around an external
-   effect?
-9. Can a new user understand what they are approving?
-10. Is one implementation being mistaken for a portable interface?
-11. Has an independent consumer needed this exact abstraction?
-12. What equal-model, equal-tool, equal-budget comparison would falsify its
-    value?
-13. Does removing the abstraction materially invalidate the product claim?
-14. What is the experiment's stopping rule, and can the failed path be deleted?
-15. After proving this outcome, are we willing to stop rather than
-    automatically begin another subsystem?
+### The decision gate
 
-When these questions lack concrete answers, waiting is usually the correct
-design.
+Before adding a public product concept, answer:
 
-## Questions deliberately left open
+1. What valuable user outcome becomes possible, and what is its strongest
+   credible simpler baseline?
+2. Could a Flow, library, capability provider, application, or Starter own this
+   instead?
+3. What authority, information, or lifetime crosses a boundary; who grants,
+   observes, and revokes it; and can the operator understand the change?
+4. Can existing finite calls, exact choices, schemas, ordinary data, and sane
+   defaults already express the outcome?
+5. Has an independent consumer required this exact abstraction, or are we
+   mistaking one implementation for a portable public interface?
+6. What happens when a model lies, abstains, returns malformed data, or names
+   something outside the admitted set?
+7. How does execution fail, cancel, remain uncertain, and end without
+   overstating success?
+8. What evidence would falsify its value, and what is the stopping and deletion
+   rule?
 
-The product compass protects boundaries; it does not pre-decide every future
-surface.
+When these answers are vague, waiting is usually the correct design.
 
-The ecosystem still needs evidence about:
+### Returning as leader
 
-- how package discovery, publisher identity, reputation, and update provenance
-  should work without making one registry mandatory;
-- how review remains comprehensible when projects and catalogues grow;
-- when durable outside facts and long-lived providers truly require host
-  concepts beyond finite Runs;
-- when a second containment or Agent integration reveals a useful public
-  extension boundary;
-- how local authority principles generalize to multi-user or remote hosts;
-- how directly edited packages reconcile upstream changes while preserving
-  user intent; and
-- which applications prove that independently distributed FLOW packages are
-  better than Skills, libraries, containers, templates, or embedded model
-  calls.
+On returning with no memory:
 
-Do not answer these with speculative frameworks. Let applications and
-independent implementers produce the evidence.
-
-## What not to become
-
-Jig is not trying to become:
-
-- a universal graph language;
-- a catalogue of every orchestration pattern;
-- an all-purpose AI application framework;
-- a model or provider SDK;
-- a package manager or mandatory central registry;
-- a GUI, Kanban, Git, or software-factory framework;
-- a universal service bus;
-- a cloud control plane merely because remote operation is possible;
-- a public sandbox framework inferred from one host; or
-- a museum of superseded prerelease formats.
-
-FLOW is not “Jig's configuration format.” Jig should aim to be an excellent
-FLOW host, not the reason FLOW packages can exist.
-
-## Returning as leader
-
-On returning with no memory, recover judgment in this order:
-
-1. Read this compass for *why* the project exists.
-2. Read the engineering re-entry guide for stable mental models and boundaries.
-3. Read the roadmap for the order in which outcomes may earn new concepts.
-4. Read current public guides and specifications only for the product question
-   at hand.
-5. Inspect live evidence before trusting status reports or remembered claims.
+1. Read Part I for why the product exists.
+2. Read Part II for the boundaries that currently protect that purpose.
+3. Read Part III for how to test new claims and avoid repeating old mistakes.
+4. Read the [engineering re-entry guide](maintainer-reentry.md) for stable
+   mechanics and the [roadmap](ROADMAP.md) for outcome order.
+5. Read current public specifications only for the product question at hand.
+6. Inspect live evidence before trusting reports or remembered status.
 
 Then protect this hierarchy:
 
-1. reusable, trustworthy agentic work;
-2. semantic flexibility inside deterministic authority;
-3. FLOW as the portable boundary;
-4. Jig as the smallest sufficient authority host;
-5. Flows and applications as the owners of method and purpose;
-6. the software factory as a north-star proof, not a kernel ontology; and
-7. enforcement machinery as infrastructure serving those outcomes.
+1. useful, reusable agentic work;
+2. user ownership of the systems performing that work;
+3. semantic flexibility inside deterministic authority;
+4. FLOW as the portable boundary;
+5. Jig as the smallest sufficient authority and lifecycle host;
+6. Flows and applications as owners of method and purpose;
+7. runtimes as owners of internal control; and
+8. enforcement machinery as infrastructure serving those outcomes.
 
-Reversing that hierarchy is how the project becomes overbuilt while remaining
-technically impressive.
+Reversing that hierarchy produces an impressive platform with no compelling
+reason to exist.
 
 The final reminder is:
 
-> Protect the boundary, but sell the outcome. Let workflows remain creative,
-> models remain replaceable, applications remain opinionated, and Jig remain
-> the smallest authority that makes their composition trustworthy.
+> Protect the boundary, but sell the outcome. Let methods remain creative,
+> models remain replaceable, source remain owned, applications remain
+> opinionated, and Jig remain the smallest authority that makes portable
+> agentic work trustworthy.
