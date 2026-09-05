@@ -17,6 +17,7 @@ import {
   type PackageArtifactRef,
 } from "./package-artifact-store.js";
 import type { JsonValue } from "../json.js";
+import { unavailable } from "../diagnostics.js";
 import {
   requirePrivateActivationRequest,
   type PrivateActivationRequest,
@@ -99,6 +100,13 @@ export async function planPrivateBunDirectRun(input: {
     }
   }
   const capabilityUses = Object.values(request.capabilities);
+  if (capabilityUses.length > 0 && input.agentProvider === undefined) {
+    unavailable(
+      "PROJECT_AGENT_UNAVAILABLE",
+      "the target requires a configured host Agent",
+      `${request.packagePath}/FLOW.md`,
+    );
+  }
   const agentProvider = capabilityUses.length === 0
     ? undefined
     : requirePrivateAgentProvider(input.agentProvider);

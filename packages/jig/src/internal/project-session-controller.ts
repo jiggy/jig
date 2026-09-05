@@ -505,23 +505,30 @@ export function projectError(
   return new ProjectAdministrationError("INTERNAL", `${operation} failed`);
 }
 
-/** Package-private projection of one known package-local preparation failure. */
+/** Package-private projection of known package-local preparation failures. */
 export function scopePrivatePackagePlanningError(error: unknown, packagePath: string): unknown {
-  if (!(error instanceof CheckError) || error.kind !== "unavailable" ||
-      error.code !== "PACKAGE_BUN_SOURCE_UNSUPPORTED" || error.path !== "bun.lock") {
+  if (!(error instanceof CheckError) || error.kind !== "unavailable") {
     return error;
   }
+  const relativePath = error.code === "PACKAGE_BUN_SOURCE_UNSUPPORTED" && error.path === "bun.lock"
+    ? "bun.lock"
+    : error.code === "PACKAGE_BUN_PREPARATION_FAILED" && error.path === undefined
+      ? "package.json"
+      : undefined;
+  if (relativePath === undefined) return error;
   return new CheckError(
     error.kind,
     error.code,
     error.message,
-    `${packagePath}/bun.lock`,
+    `${packagePath}/${relativePath}`,
     error.pointer,
   );
 }
 
 function isUnavailableDiagnosticCode(code: string): boolean {
-  return code === "PACKAGE_BUN_SOURCE_UNSUPPORTED";
+  return code === "PACKAGE_BUN_SOURCE_UNSUPPORTED" ||
+    code === "PACKAGE_BUN_PREPARATION_FAILED" ||
+    code === "PROJECT_AGENT_UNAVAILABLE";
 }
 
 function isCandidateDiagnosticCode(code: string): boolean {

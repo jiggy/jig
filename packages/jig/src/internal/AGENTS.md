@@ -31,6 +31,10 @@ child calls, and Agent providers.
   concrete input seam can provide it without adding package-manager machinery.
 - Provider credentials are host configuration and must not enter Flow input,
   project state, artifacts, diagnostics, or unrelated provider processes.
+- Keep known Agent-configuration and dependency-preparation failures actionable
+  through closed diagnostic codes and project-relative locations, never raw
+  provider or worker messages. Missing Agent support affects only targets
+  which require it.
 - Deadlines and cancellation fence descendants, settle each terminal once,
   and complete bounded cleanup. Do not replay uncertain operations.
 - Durable transitions use exact identities and conflict-safe commits;

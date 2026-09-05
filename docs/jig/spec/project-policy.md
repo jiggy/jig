@@ -282,7 +282,13 @@ It does not mutate user source or the visible lock, admit execution authority,
 or run package code.
 
 If any target has no exact supported recipe, this alpha planning operation
-returns `UNAVAILABLE` and publishes no applicable Plan. A successful review
+returns `UNAVAILABLE` and publishes no applicable Plan. Missing or invalid
+host Agent configuration for an Agent-using target includes
+`PROJECT_AGENT_UNAVAILABLE` and its project-relative `FLOW.md` location.
+Failure to prepare locked dependencies includes `PACKAGE_BUN_PREPARATION_FAILED`
+and its project-relative `package.json` location. These diagnostics include
+fixed guidance, not credentials, raw provider errors, or installer output.
+A successful review
 shows the complete added, removed, and changed package, Binding, and target
 identities. Current and proposed package entries include their full Package/1
 content digest, which is the same portable identity written to `jig.lock`.

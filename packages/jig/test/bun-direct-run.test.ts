@@ -50,7 +50,11 @@ describe("private Bun direct Run", () => {
       request,
       installedSupport,
       backend,
-    })).rejects.toThrow("Agent provider was not produced");
+    })).rejects.toMatchObject({
+      kind: "unavailable",
+      code: "PROJECT_AGENT_UNAVAILABLE",
+      path: `${request.packagePath}/FLOW.md`,
+    });
 
     const firstProvider = openPrivateOpenAIAgentProvider(installedSupport, {
       OPENAI_API_KEY: "first-secret",
@@ -135,7 +139,7 @@ describe("private Bun direct Run", () => {
         installedSupport: host.installedBunSupport,
         backend,
         agentProvider: host.agentProvider,
-      })).rejects.toThrow("Agent provider was not produced");
+      })).rejects.toMatchObject({ code: "PROJECT_AGENT_UNAVAILABLE" });
     }
   });
 });

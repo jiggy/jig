@@ -409,8 +409,13 @@ function renderFailure(error: unknown, runtime: CliRuntime): 1 | 2 {
   }
   if (error instanceof ProjectAdministrationError) {
     const projected = projectError(error.code);
+    const hint = error.diagnostic?.code === "PROJECT_AGENT_UNAVAILABLE"
+      ? "configure the host Agent before review; check credentials, model, and selected client"
+      : error.diagnostic?.code === "PACKAGE_BUN_PREPARATION_FAILED"
+        ? "locked dependencies could not be prepared; check registry access and package availability"
+        : undefined;
     runtime.writeError(error.diagnostic !== undefined
-      ? renderProjectDiagnostic(error, projected.message)
+      ? renderProjectDiagnostic(error, hint ?? projected.message)
       : renderDiagnostic(error.code, projected.message));
     return projected.exitCode;
   }

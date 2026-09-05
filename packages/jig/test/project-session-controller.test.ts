@@ -245,7 +245,7 @@ describe("private finite project session", () => {
     });
   });
 
-  test("scopes an unsupported Bun source to its project package", () => {
+  test("scopes known preparation and Agent failures without projecting private protocol details", () => {
     const failure = new CheckError(
       "unavailable",
       "PACKAGE_BUN_SOURCE_UNSUPPORTED",
@@ -258,12 +258,24 @@ describe("private finite project session", () => {
       path: "flows/dependent/bun.lock",
     });
 
-    const unrelated = new CheckError(
+    const preparation = new CheckError(
       "unavailable",
       "PACKAGE_BUN_PREPARATION_FAILED",
       "private worker detail",
     );
-    expect(scopePrivatePackagePlanningError(unrelated, "flows/dependent")).toBe(unrelated);
+    const scoped = scopePrivatePackagePlanningError(preparation, "flows/dependent");
+    expect(projectError(scoped, "plan").diagnostic).toEqual({
+      code: "PACKAGE_BUN_PREPARATION_FAILED",
+      path: "flows/dependent/package.json",
+    });
+    const privateFailure = new CheckError("unavailable", "PACKAGE_BUN_PROTOCOL", "private detail");
+    expect(scopePrivatePackagePlanningError(privateFailure, "flows/dependent")).toBe(privateFailure);
+    expect(projectError(new CheckError(
+      "unavailable", "PROJECT_AGENT_UNAVAILABLE", "private configuration", "flows/drafter/FLOW.md",
+    ), "plan").diagnostic).toEqual({
+      code: "PROJECT_AGENT_UNAVAILABLE",
+      path: "flows/drafter/FLOW.md",
+    });
   });
 });
 

@@ -544,6 +544,20 @@ describe("finite Jig project commands", () => {
     expect(invocation.error).not.toContain("/private/path");
   });
 
+  test.each([
+    ["PROJECT_AGENT_UNAVAILABLE", "flows/drafter/FLOW.md", "configure the host Agent before review; check credentials, model, and selected client"],
+    ["PACKAGE_BUN_PREPARATION_FAILED", "flows/drafter/package.json", "locked dependencies could not be prepared; check registry access and package availability"],
+  ])("renders actionable %s without private error text", async (code, path, guidance) => {
+    const events: string[] = [];
+    const failure = new ProjectAdministrationError("UNAVAILABLE", "secret-token /private/host", { code, path });
+    const invocation = commandInvocation(fakeHost(fakeSession(events, { planFailure: failure }), events));
+    expect(await main(["review"], invocation.options)).toBe(2);
+    expect(invocation.error).toBe(`UNAVAILABLE: ${guidance}; ${code} at "${path}"\n`);
+    expect(invocation.error).not.toContain("secret-token");
+    expect(invocation.error).not.toContain("/private/host");
+    expect(events).toEqual(["acquire:/project", "plan:update", "close"]);
+  });
+
   interface FakeSessionOptions {
     readonly plan?: ProjectPlanResult;
     readonly planFailure?: unknown;
