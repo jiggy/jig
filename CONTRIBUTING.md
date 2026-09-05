@@ -35,21 +35,31 @@ build dependencies, Bubblewrap 0.12, and common development tools. `FLOW_NODE`, 
 conformance tests. The Bun pin follows Jig's exact build requirement, not the
 latest Nix channel.
 
-Direnv also loads the optional, gitignored `.env.local` file and adds
-`packages/jig/bin` to `PATH`, so `jig` uses your checkout's built executable.
+Direnv also loads the optional, gitignored `.env.local` file. Both direnv and
+`nix-shell` put `packages/jig/bin` first on `PATH`, so `jig` uses your checkout's
+built executable.
 Put your operator-selected Agent environment variables in `.env.local`; never
 commit it. After changing `.envrc`, run `direnv allow` again. Plain `nix-shell`
-provides the toolchain only; the local configuration and Jig path are direnv
-conveniences.
+does not load that local environment file.
 
-Shell entry warns if Jig's dependency directory or built launcher/entrypoint
-is missing, with the commands to run. It does not install or build anything,
-or check whether an existing build is up to date. Before using `jig`, run:
+From the repository root, `bun i` installs the root tooling and all TypeScript
+packages under `packages/` as Bun workspaces. The root `bun.lock` is generated
+by Bun and ignored; regenerate it as needed, never maintain it by hand.
+Example Flows, site tooling, and conformance fixtures keep their separate
+dependency installations.
+
+Shell entry warns in bold red when Jig is missing or incompletely built, or
+when its successful-build version differs from `packages/jig/package.json`.
+It prints the command to run, but never installs or builds automatically:
 
 ```sh
-bun install --cwd packages/jig --frozen-lockfile --ignore-scripts
+bun i
 bun run --cwd packages/jig build
 ```
+
+The shell compares `jig --version` (embedded at build time) with the source
+manifest. This is a version check, not source-change detection: rebuild after
+source edits even when the package version has not changed.
 
 The shell supplies Bubblewrap locally and sets `JIG_BWRAP_PATH` to its exact
 Nix-store executable. No system-wide Bubblewrap installation is needed.
@@ -73,8 +83,8 @@ credentials and model choices in your operator environment or ignored
 ## Biome and Codex
 
 The root development dependency pins Biome 2.5.12 to match `biome.json`.
-Install it explicitly with `bun install --frozen-lockfile --ignore-scripts`
-from the repository root. These commands accept file or directory paths:
+The root `bun i` installs it with the package workspaces. These commands accept
+file or directory paths:
 
 ```sh
 bun run check:biome scripts/codex-biome.ts

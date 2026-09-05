@@ -424,6 +424,9 @@ External reviewers are useful adversaries, not project authorities. Verify
 their claims, accept corrections supported by evidence, explain disagreements,
 and never implement a report wholesale.
 
+Use the owner's assigned team identity in external-team correspondence and
+reports, not when addressing the owner directly.
+
 A skipped test, filtered hostile case, timed-out aggregate, or interrupted
 suite is not a pass. State the exact evidence that completed.
 
@@ -447,6 +450,7 @@ outcome order, and current evidence.
 | What does Jig currently promise? | [`docs/jig/`](../docs/jig/) and package READMEs |
 | What is the security boundary? | [`SECURITY.md`](../SECURITY.md) and the nearest implementation `AGENTS.md` |
 | How is a release built and published? | [`RELEASING.md`](../RELEASING.md), manifests, and [`.github/AGENTS.md`](../.github/AGENTS.md) |
+| How do I install development dependencies and use the checkout's CLI? | [`CONTRIBUTING.md`](../CONTRIBUTING.md#development-shell) and `shell.nix`; Bun generates the ignored workspace lock, never hand-maintained |
 | What outcomes come later? | [`ROADMAP.md`](ROADMAP.md) |
 | Where can deleted proof work be recovered? | [`suspended-experiments.md`](suspended-experiments.md) |
 | Where is optional first-person historical context? | [`field-notes/`](field-notes/) |

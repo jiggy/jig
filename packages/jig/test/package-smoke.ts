@@ -109,9 +109,23 @@ try {
     `await Bun.write(${JSON.stringify(ambientMarker)}, "executed");\n`,
   )
   const help = await run([command, '--help'], consumer)
+  const version = await run([command, '--version'], consumer)
+  assert.equal(version.stdout, `${sourceManifest.version}\n`)
+  assert.equal(version.stderr, '')
+  const manifestPath = join(installed, 'package.json')
+  const manifestBytes = await readFile(manifestPath)
+  try {
+    await writeFile(manifestPath, JSON.stringify({ ...installedManifest, version: '0.0.0' }))
+    const retainedVersion = await run([command, '--version'], consumer)
+    assert.equal(retainedVersion.stdout, `${sourceManifest.version}\n`)
+    assert.equal(retainedVersion.stderr, '')
+  } finally {
+    await writeFile(manifestPath, manifestBytes)
+  }
   assert.equal(help.stderr, '')
   assert.match(help.stdout, /^Usage:\n  jig init --bare <directory>$/m)
   assert.match(help.stdout, /^  jig review \[project\] \[--yes\]$/m)
+  assert.match(help.stdout, /^  jig --version$/m)
   assert.match(
     help.stdout,
     /^  jig run <flow:path\|binding:id> \[--input JSON\] \[--timeout DURATION\]$/m,

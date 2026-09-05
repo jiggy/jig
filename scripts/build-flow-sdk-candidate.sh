@@ -131,8 +131,8 @@ package="$temporary/source/packages/flow-sdk"
 release_path=$(dirname -- "$bun_bin")
 PATH="$release_path:${PATH:-/usr/bin:/bin}" \
   "$bun_bin" install \
-    --cwd "$package" \
-    --frozen-lockfile \
+    --cwd "$temporary/source" \
+    --filter @jigging/flow \
     --ignore-scripts \
     --config=/dev/null \
     --cache-dir "$temporary/cache" \

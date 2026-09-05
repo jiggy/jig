@@ -10,8 +10,8 @@ SDK/1 and Run/1.
 - `src/` owns public types and the JSON/1, protocol, session, and transport
   implementation.
 - `test/` owns unit, subprocess, race, and packed-package evidence.
-- `package.json`, `bun.lock`, `README.md`, and `LICENSE` own the release
-  envelope. `dist/` is generated.
+- `package.json`, `README.md`, and `LICENSE` own the release envelope.
+  Bun generates the ignored root workspace lock. `dist/` is generated.
 
 ## Local Contracts
 

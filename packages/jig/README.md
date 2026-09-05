@@ -7,7 +7,11 @@ has one finite command surface:
 jig init --bare <directory>
 jig review [project] [--yes]
 jig run <flow:path|binding:id> [--input JSON] [--timeout DURATION]
+jig --version
 ```
+
+`jig --version` prints the built package version without opening a project or
+acquiring a sandbox.
 
 There is no `jig setup`. `review` and `run` transparently acquire the rootless
 authority they need or fail closed.

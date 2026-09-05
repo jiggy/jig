@@ -34,10 +34,9 @@ jobs:
         with:
           bun-version: 1.3.3
 
-      - name: Install frozen package dependencies
+      - name: Install workspace and fixture dependencies
         run: |
-          bun install --cwd packages/flow-sdk --frozen-lockfile
-          bun install --cwd packages/jig --frozen-lockfile
+          bun install --ignore-scripts
           bun install --cwd conformance/run-1 --frozen-lockfile
           bun install --cwd site --frozen-lockfile --ignore-scripts
           python -m pip install --disable-pip-version-check build==1.3.0
@@ -55,3 +54,6 @@ jobs:
           PYTHON=$(command -v python)
           export FLOW_NODE PYTHON
           scripts/test-release.sh
+
+      - name: Check development shell warnings
+        run: bun test scripts/development-shell.test.ts

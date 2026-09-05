@@ -12,7 +12,11 @@ deliberately exposes one finite product path:
 jig init --bare <directory>
 jig review [project] [--yes]
 jig run <target> [--input JSON] [--timeout DURATION]
+jig --version
 ```
+
+The source candidate's `jig --version` reports the built package version
+without opening a project or acquiring a sandbox.
 
 > **Availability:** this guide includes the source candidate's Agent-using
 > child composition. That extension, including the proposal workshop below,

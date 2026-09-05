@@ -15,6 +15,7 @@ import { join, resolve } from 'node:path'
 import { createBareProject, type BareInitFileSystem } from '../src/bare-init.js'
 import {
   main,
+  privateCliRequiresHost,
   privateCliCommandLifetimeMs,
   type PrivateCliCommandHost,
   type PrivateCliOptions,
@@ -203,7 +204,7 @@ test('concurrent bare initializers have exactly one winner', async () => {
 describe('finite Jig project commands', () => {
   const digest = `sha256:${'a'.repeat(64)}`
 
-  test('help exposes only init, review, and run', async () => {
+  test('help exposes init, review, run, and the version flag', async () => {
     for (const arguments_ of [
       ['--help'],
       ['init', '--help'],
@@ -214,6 +215,7 @@ describe('finite Jig project commands', () => {
       expect(await main(arguments_, invocation.options)).toBe(0)
       expect(invocation.output).toContain('jig init --bare <directory>')
       expect(invocation.output).toContain('jig review [project] [--yes]')
+      expect(invocation.output).toContain('jig --version')
       expect(invocation.output).toContain(
         'jig run <flow:path|binding:id> [--input JSON] [--timeout DURATION]',
       )
@@ -228,6 +230,20 @@ describe('finite Jig project commands', () => {
     const superseded = commandInvocation(unusedHost())
     expect(await main(['check'], superseded.options)).toBe(2)
     expect(superseded.error).toContain('Usage:')
+  })
+
+  test('version reports the package version without host acquisition', async () => {
+    const manifest = await Bun.file(new URL('../package.json', import.meta.url)).json()
+    const invocation = commandInvocation(unusedHost())
+    expect(privateCliRequiresHost(['--version'])).toBe(false)
+    expect(await main(['--version'], invocation.options)).toBe(0)
+    expect(invocation.output).toBe(`${manifest.version}\n`)
+    expect(invocation.error).toBe('')
+
+    const extra = commandInvocation(unusedHost())
+    expect(await main(['--version', 'extra'], extra.options)).toBe(2)
+    expect(extra.output).toBe('')
+    expect(extra.error).toContain('Usage:')
   })
 
   test('review plans a fixed update and closes one unchanged session', async () => {

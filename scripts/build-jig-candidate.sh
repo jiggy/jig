@@ -68,8 +68,8 @@ tar -xf "$temporary/source.tar" -C "$temporary/source"
 package="$temporary/source/packages/jig"
 bun run --cwd "$package" verify:build-bun
 bun install \
-  --cwd "$package" \
-  --frozen-lockfile \
+  --cwd "$temporary/source" \
+  --filter @jigging/jig \
   --ignore-scripts \
   --config=/dev/null \
   --cache-dir "$temporary/cache" \

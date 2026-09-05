@@ -14,6 +14,10 @@ The governing rule is:
 
 ## 1. Project layout
 
+`jig --version` writes the package version embedded at build time followed by
+a newline and exits successfully. It does not acquire a project or sandbox,
+read project configuration, or look up a version in the registry.
+
 `jig init --bare` creates:
 
 ```text

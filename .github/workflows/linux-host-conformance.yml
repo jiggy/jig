@@ -6,6 +6,7 @@ on:
     paths:
       - ".github/workflows/linux-host-conformance.yml"
       - "packages/jig/**"
+      - "package.json"
       - "scripts/ci/provision-github-rootless-host.sh"
       - "scripts/test-installed-hostile-baseline.ts"
       - "scripts/test-operational-baseline.ts"
@@ -45,8 +46,8 @@ jobs:
       - name: Provision and preflight the ephemeral host
         run: scripts/ci/provision-github-rootless-host.sh provision
 
-      - name: Install the exact locked Jig build closure
-        run: bun install --cwd packages/jig --frozen-lockfile --ignore-scripts
+      - name: Install Jig workspace build dependencies
+        run: bun install --ignore-scripts --filter @jigging/jig
 
       - name: Build and pack once
         shell: bash

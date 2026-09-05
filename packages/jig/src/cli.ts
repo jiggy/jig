@@ -3,6 +3,7 @@
 import { randomBytes } from 'node:crypto'
 import { createInterface } from 'node:readline/promises'
 import { setTimeout as delay } from 'node:timers/promises'
+import manifest from '../package.json' with { type: 'json' }
 
 import { ProjectAdministrationError, type ProjectSession } from './administration/project.js'
 import {
@@ -24,7 +25,8 @@ import {
 const HELP = `Usage:
   jig init --bare <directory>
   jig review [project] [--yes]
-  jig run <flow:path|binding:id> [--input JSON] [--timeout DURATION]`
+  jig run <flow:path|binding:id> [--input JSON] [--timeout DURATION]
+  jig --version`
 
 const textEncoder = new TextEncoder()
 const textDecoder = new TextDecoder()
@@ -73,6 +75,10 @@ export async function main(
   options: PrivateCliOptions = {},
 ): Promise<number> {
   const runtime = cliRuntime(options)
+  if (arguments_.length === 1 && arguments_[0] === '--version') {
+    runtime.writeOutput(`${manifest.version}\n`)
+    return 0
+  }
   if (isHelpRequest(arguments_)) {
     runtime.writeOutput(`${HELP}\n`)
     return 0

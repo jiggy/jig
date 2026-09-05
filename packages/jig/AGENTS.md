@@ -12,8 +12,9 @@ admitted FLOW packages.
   administration objects are package-owned implementation.
 - `test/` owns unit, integration, fault-injection, packed-package, and
   proof-host evidence.
-- `scripts/`, `support/`, the manifest, lockfile, README, licenses, and notices
-  own package assembly inputs. `dist/`, `bin/`, and `libexec/` are generated.
+- `scripts/`, `support/`, the manifest, README, licenses, and notices own
+  package assembly inputs. Bun generates the ignored root workspace lock;
+  `dist/`, `bin/`, and `libexec/` are generated.
 
 ## Local Contracts
 

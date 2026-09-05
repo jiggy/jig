@@ -18,7 +18,11 @@ operational baselines, and public-site assembly.
 
 - Accept explicit arguments and environment inputs; validate them before use.
 - Build candidates from clean tracked source into fresh destinations.
-- Preserve frozen dependencies, exact archive bytes, hashes, inventories,
+- Package candidates install their selected workspace from manifests, letting
+  Bun generate the ignored root lock. Never hand-edit or commit that generated
+  workspace lock. Isolated dependencies must support clean builds and external
+  packed consumers without ambient installations.
+- Preserve exact archive bytes, hashes, inventories,
   atomic publication, cleanup, and nonzero failure.
 - State test claims narrowly. `test-release.sh` is not a Linux proof-host or
   publication-readiness claim.
@@ -36,6 +40,8 @@ operational baselines, and public-site assembly.
   least one expected failure path.
 - Validate the Host Conformance authorization script with `shellcheck` and
   success plus fail-closed API fixtures.
+- `bun test scripts/development-shell.test.ts` exercises the actual shell hook's
+  missing-build, mismatched-version, matching-version, and PATH behavior.
 
 ## Child DOX Index
 
