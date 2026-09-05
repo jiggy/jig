@@ -1,7 +1,7 @@
 # FLOW Run SDK/1
 
 > *Status: prerelease SDK projection of [`FLOW Run/1`](run-protocol.md). The
-> TypeScript implementation is `@jigging/flow@0.1.0-alpha.5`; the Python
+> TypeScript implementation is `@jigging/flow@0.1.0-alpha.6`; the Python
 > implementation is not yet published.*
 
 This document fixes the public component-author interface for the Run/1
@@ -327,4 +327,4 @@ A host may impose a lower child-concurrency limit and report
 
 The implementations live under `packages/flow-sdk/` and
 `packages/flowmd-sdk/`. The shared executable seed is
-[`conformance/run-1/`](https://github.com/jigmd/jig/tree/main/conformance/run-1).
+[`conformance/run-1/`](https://github.com/jiggy/jig/tree/main/conformance/run-1).

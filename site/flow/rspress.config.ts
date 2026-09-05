@@ -24,7 +24,7 @@ export default defineConfig({
     nav: [
       { text: "Specifications", link: "/guide/" },
       { text: "Jig", link: "https://jig.md/" },
-      { text: "GitHub", link: "https://github.com/jigmd/jig" },
+      { text: "GitHub", link: "https://github.com/jiggy/jig" },
     ],
     sidebar: {
       "/spec/": [

@@ -51,7 +51,7 @@ export default defineConfig({
       { text: "Quickstart", link: "/guide/" },
       { text: "Use cases", link: "/use-cases" },
       { text: "FLOW", link: "https://flow.jig.md/" },
-      { text: "GitHub", link: "https://github.com/jigmd/jig" },
+      { text: "GitHub", link: "https://github.com/jiggy/jig" },
     ],
     sidebar: {
       "/guide/": guideSidebar,

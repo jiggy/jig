@@ -11,6 +11,6 @@ Jig is a local, secure host for admitted FLOW packages.
 - Project and execution policy: https://jig.md/spec/project-policy
 - Agent Run capability: https://jig.md/spec/agent-run
 - Agent Run descriptor: https://jig.md/contracts/agent-run.capability.json
-- Security boundary: https://github.com/jigmd/jig/blob/main/SECURITY.md
-- Source and installation: https://github.com/jigmd/jig
+- Security boundary: https://github.com/jiggy/jig/blob/main/SECURITY.md
+- Source and installation: https://github.com/jiggy/jig
 - FLOW specifications: https://flow.jig.md/

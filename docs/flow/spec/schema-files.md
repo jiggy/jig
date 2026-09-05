@@ -232,9 +232,9 @@ example-fixture failures, without evaluating package code.
 
 The companion examples are:
 
-- [`input.schema.json`](https://github.com/jigmd/jig/blob/main/docs/flow/spec/examples/schema-files/input.schema.json)
-- [`settings.schema.json`](https://github.com/jigmd/jig/blob/main/docs/flow/spec/examples/schema-files/settings.schema.json)
-- [`result.schema.json`](https://github.com/jigmd/jig/blob/main/docs/flow/spec/examples/schema-files/result.schema.json)
+- [`input.schema.json`](https://github.com/jiggy/jig/blob/main/docs/flow/spec/examples/schema-files/input.schema.json)
+- [`settings.schema.json`](https://github.com/jiggy/jig/blob/main/docs/flow/spec/examples/schema-files/settings.schema.json)
+- [`result.schema.json`](https://github.com/jiggy/jig/blob/main/docs/flow/spec/examples/schema-files/result.schema.json)
 
 They demonstrate shape validation and outcome/output correlation. They are
 examples, not implicit schemas for packages which omit the files.

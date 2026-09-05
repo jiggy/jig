@@ -102,6 +102,6 @@ requires closing Jig and intentionally removing the project's protected
 ## Reporting a vulnerability
 
 Do not open a public issue for a suspected vulnerability. Report it through
-[GitHub's private vulnerability form](https://github.com/jigmd/jig/security/advisories/new).
+[GitHub's private vulnerability form](https://github.com/jiggy/jig/security/advisories/new).
 Include the affected version, supported-host details, reproduction steps, and
 the observed security impact. Never include secrets or third-party data.

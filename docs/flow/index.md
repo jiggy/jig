@@ -13,7 +13,7 @@ hero:
       link: /guide/
     - theme: alt
       text: View the source
-      link: https://github.com/jigmd/jig/tree/main/docs/flow
+      link: https://github.com/jiggy/jig/tree/main/docs/flow
 
 features:
   - title: Ordinary files

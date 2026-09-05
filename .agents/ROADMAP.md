@@ -49,11 +49,13 @@ Agent calls. For each step, use independent consumption to expose gaps, review
 the smallest necessary change, then implement and verify it. Reuse completed
 evidence rather than restarting a foundation.
 
-1. **Close the public delivery loop.** Bring the documented CLI, SDK, and Agent
-   behavior into one coherent installable candidate through the existing
-   release and host-conformance gates. Finish when an unfamiliar consumer can
-   install, author, review, run, modify, and cancel useful work from public
-   instructions. Fix gaps in that path before adding another product surface.
+1. **Keep public delivery current alongside outcome work.** Bring the
+   documented CLI, SDK, and Agent behavior into coherent installable releases
+   through the existing release and host-conformance gates. Carry forward
+   completed adoption evidence; do not restart a separate baseline campaign
+   unless a change or failure invalidates it. Independent consumers exercise
+   the next useful outcome through public artifacts and instructions, and
+   concrete delivery defects are corrected as they appear.
 
 2. **Build one reusable static Agent workflow.** Use a proposal workshop over
    supplied evidence: draft, review in a separate context, check mechanically,

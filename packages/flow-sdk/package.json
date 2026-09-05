@@ -1,16 +1,16 @@
 {
   "name": "@jigging/flow",
-  "version": "0.1.0-alpha.5",
+  "version": "0.1.0-alpha.6",
   "description": "TypeScript SDK for FLOW Run/1",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/jigmd/jig.git",
+    "url": "git+https://github.com/jiggy/jig.git",
     "directory": "packages/flow-sdk"
   },
   "homepage": "https://flow.jig.md/guide/",
   "bugs": {
-    "url": "https://github.com/jigmd/jig/issues"
+    "url": "https://github.com/jiggy/jig/issues"
   },
   "publishConfig": {
     "access": "public"

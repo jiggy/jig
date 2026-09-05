@@ -24,6 +24,6 @@ jobs:
           SOURCE_REVISION: ${{ github.sha }}
         run: >-
           gh workflow run pages.yml
-          --repo jigmd/jig-site
+          --repo jiggy/jig-site
           --ref main
           -f revision="$SOURCE_REVISION"

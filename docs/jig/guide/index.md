@@ -17,7 +17,7 @@ jig run <target> [--input JSON] [--timeout DURATION]
 Install the current alpha directly from npm:
 
 ```console
-npm install --global @jigging/jig@0.1.0-alpha.9
+npm install --global @jigging/jig@0.1.0-alpha.10
 ```
 
 `jig init --bare my-project` creates a new project directory; the destination
@@ -28,7 +28,7 @@ inspect its review and rerun it with `--yes` only when approval is explicit.
 There is no separate apply command: the same finite `review` invocation carries
 the reviewed proposal into admission.
 
-- The [repository quickstart](https://github.com/jigmd/jig#quickstart) provides
+- The [repository quickstart](https://github.com/jiggy/jig#quickstart) provides
   a complete first Flow and the supported-host requirements.
 - The [use-case catalogue](../use-cases.md) records uniformly scoped product
   hypotheses for future probes and tutorials.
@@ -40,7 +40,7 @@ the reviewed proposal into admission.
   Binding authoring values.
 - [Project and execution policy](../spec/project-policy.md) defines capture,
   review, admission, and exact direct-Run behavior.
-- The [security boundary](https://github.com/jigmd/jig/blob/main/SECURITY.md)
+- The [security boundary](https://github.com/jiggy/jig/blob/main/SECURITY.md)
   states the threat model, host requirements, and fixed resource limits.
 
 Optional package schema files use [FLOW Schema/1](https://flow.jig.md/spec/schema-files)

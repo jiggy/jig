@@ -157,6 +157,10 @@ Default section order:
 - Keep the first releases radically simple: no `jig setup`, user-visible
   lifecycle machinery, second lock protocol, or framework added merely to
   make private implementation convenient.
+- Advance the next useful outcome using completed evidence and the existing
+  release gates. Do not restart a separate baseline probe campaign unless a
+  change or failure invalidates that evidence; independent consumers should
+  exercise the next capability being earned.
 - Stop for owner direction before a change materially expands product concepts
   or chooses between genuinely different product directions. It is preferable
   to report a precise blocker early than to overcomplicate the solution.
@@ -184,9 +188,10 @@ Default section order:
   `.agents/field-notes/` when Git and the living guides cannot preserve its
   causality. Field notes are optional, non-normative evidence and must never
   become a competing source of current product truth.
-- Use `@jigging/*` package names for now. Keep FLOW technically and publicly
-  distinct from Jig while retaining the monorepo until separation has concrete
-  value.
+- Use the `jiggy` GitHub organization and keep npm packages under `@jigging/*`
+  until the owner obtains and selects the npm `@jiggy` scope. Keep FLOW
+  technically and publicly distinct from Jig while retaining the monorepo
+  until separation has concrete value.
 - When the user requests a durable behavior change, record it here or in the
   relevant child `AGENTS.md`.
 

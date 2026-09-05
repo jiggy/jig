@@ -15,7 +15,7 @@ authority they need or fail closed.
 ## Install
 
 ```console
-npm install --global @jigging/jig@0.1.0-alpha.9
+npm install --global @jigging/jig@0.1.0-alpha.10
 ```
 
 Installing Jig also installs `@oven/bun-linux-x64-baseline@1.3.3` as an exact
@@ -50,7 +50,7 @@ execution scopes remain fixed at 256 MiB aggregate memory, 48 aggregate PIDs,
 and 50% of one CPU. Project evaluation is fixed at 3 seconds, 256 MiB, 64
 PIDs, and 50% CPU. Locked dependency preparation is fixed at 60 seconds, 512
 MiB, 64 PIDs, and one CPU. See the repository
-[`SECURITY.md`](https://github.com/jigmd/jig/blob/main/SECURITY.md) for the
+[`SECURITY.md`](https://github.com/jiggy/jig/blob/main/SECURITY.md) for the
 threat boundary and private reporting channel.
 
 ## Use
@@ -64,7 +64,7 @@ Place packages under `flows/<name>/`. Each package has exact-case `FLOW.md`
 and, for this alpha, one `flow.ts`. The generated `jig.ts`
 explicitly discovers `./flows` and `./bindings`.
 
-The paired `@jigging/flow@0.1.0-alpha.5` package provides the small Run/1
+The paired `@jigging/flow@0.1.0-alpha.6` package provides the small Run/1
 authoring API. Declare it exactly in the Flow's `package.json`, generate a text
 `bun.lock` with Bun 1.3.3 and `bun install --lockfile-only`, then handle one
 finite Run:
@@ -173,8 +173,8 @@ trusted host configuration, not FLOW or Binding inputs, and Jig exposes no
 provider registry.
 
 The complete runnable example and current specification map are in the
-[repository README](https://github.com/jigmd/jig#readme) and
-[`docs/jig/guide/index.md`](https://github.com/jigmd/jig/blob/main/docs/jig/guide/index.md).
+[repository README](https://github.com/jiggy/jig#readme) and
+[`docs/jig/guide/index.md`](https://github.com/jiggy/jig/blob/main/docs/jig/guide/index.md).
 
 This is a prerelease alpha. It does not expose Services, Hooks, event sources,
 a provider registry or package-selected provider configuration, Agent sessions,
