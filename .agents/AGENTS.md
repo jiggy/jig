@@ -2,14 +2,16 @@
 
 ## Purpose
 
-Owns the durable product compass, mutable internal orientation, recovery,
+Owns the product compass and doctrine, mutable internal orientation, recovery,
 long-term planning, and optional historical field notes that maintainers need,
 plus project-maintained skills for external libraries.
 
 ## Ownership
 
-- `product-compass.md` preserves the enduring product intent, audience,
-  tradeoffs, end state, and decision test.
+- `product-compass.md` summarizes enduring product intent and essential
+  commitments, and routes readers to deeper reasoning.
+- `doctrine/` owns detailed product reasoning, audience, tradeoffs, intended
+  experience, and the decision test.
 - `maintainer-reentry.md` explains the project's stable mental models,
   engineering lessons, and working method.
 - `ROADMAP.md` orders long-term outcome gates without becoming a task tracker.
@@ -25,17 +27,18 @@ plus project-maintained skills for external libraries.
 
 - A skill describes how an agent should use an actual public interface; it
   does not create or extend that interface.
-- Binding work rules belong in the applicable `AGENTS.md`. Explanatory
-  rationale belongs in `maintainer-reentry.md`; recovery landmarks belong in
-  `suspended-experiments.md`.
-- Edit the compass, re-entry guide, roadmap, and recovery index in place. Do
-  not put dated snapshots, current blockers, or release anomalies in them.
+- Binding work rules belong in the applicable `AGENTS.md`. Engineering
+  rationale belongs in `maintainer-reentry.md`, product rationale in the
+  doctrine, and recovery landmarks in `suspended-experiments.md`.
+- Edit the compass, doctrine, re-entry guide, roadmap, and recovery index in
+  place. Do not put dated snapshots, current blockers, or release anomalies
+  in them.
 - Promote a retrospective to `field-notes/` only when it preserves useful
   first-hand causality that Git and the living records cannot. It remains
   non-normative, is never default reading, and must not carry current status.
-- Keep `product-compass.md` about why the product exists. Current behavior,
-  implementation mechanics, roadmap order, and research catalogues retain
-  their existing owners.
+- Keep the compass a concise entrypoint and the doctrine the home of detailed
+  product reasoning. Current behavior, implementation mechanics, roadmap
+  order, and research catalogues retain their existing owners.
 - Before an approved vertical, use one transient `.tmp/` pre-mortem when it
   helps coordination. Promote only stable rules, decisions, and recovery gates
   into tracked documents when the vertical closes.
@@ -48,6 +51,9 @@ plus project-maintained skills for external libraries.
 
 - Prefer updating an existing owner over duplicating the same rule in several
   internal files.
+- Use the compass's distinct aspiration, core ideas, and product promises.
+  Describe Jig's agency for human and software consumers without implying
+  that a consumer can grant itself authority.
 - Keep the re-entry guide efficient to load. Split out a subject only when it
   acquires a distinct durable owner or verification contract.
 
@@ -57,5 +63,7 @@ plus project-maintained skills for external libraries.
 
 ## Child DOX Index
 
+- [doctrine/AGENTS.md](doctrine/AGENTS.md) — Product purpose, FLOW and Jig
+  reasoning, and cross-product judgment; the compass remains the entrypoint.
 - [field-notes/AGENTS.md](field-notes/AGENTS.md) — Optional non-normative
   engineering retrospectives and historical causal evidence.

@@ -4,8 +4,9 @@
 
 Before selecting or expanding product work, read
 [`.agents/product-compass.md`](.agents/product-compass.md) for enduring product
-intent and [`.agents/maintainer-reentry.md`](.agents/maintainer-reentry.md) for
-engineering memory, then inspect Git, package registries, and current
+intent and its reading map into the doctrine, and
+[`.agents/maintainer-reentry.md`](.agents/maintainer-reentry.md) for engineering
+memory, then inspect Git, package registries, and current
 automation for present state. Read [`.agents/ROADMAP.md`](.agents/ROADMAP.md)
 for ordered long-term outcome gates; transient task lists and status reports
 belong in `.tmp/`.
@@ -153,7 +154,7 @@ Default section order:
 
 ## Child DOX Index
 
-- [.agents/AGENTS.md](.agents/AGENTS.md) — Internal product orientation,
+- [.agents/AGENTS.md](.agents/AGENTS.md) — Internal product compass and doctrine,
   recovery, planning, optional field notes, and repository-native agent skills.
 - [.github/AGENTS.md](.github/AGENTS.md) — Continuous integration, release,
   host-conformance, and public-site automation.
