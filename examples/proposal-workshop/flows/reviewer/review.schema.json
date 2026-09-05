@@ -1,0 +1,26 @@
+{
+  "$schema": "https://flow.jig.md/schemas/schema-1.json",
+  "type": "object",
+  "properties": {
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": ["revise", "blocked"]
+          },
+          "reason": { "type": "string" }
+        },
+        "required": ["kind", "reason"],
+        "additionalProperties": false
+      },
+      "maxItems": 16
+    }
+  },
+  "required": [
+    "findings"
+  ],
+  "additionalProperties": false
+}

@@ -14,10 +14,15 @@ jig review [project] [--yes]
 jig run <target> [--input JSON] [--timeout DURATION]
 ```
 
-Install the current alpha directly from npm:
+> **Availability:** this guide includes the source candidate's Agent-using
+> child composition. That extension, including the proposal workshop below,
+> is not yet available in the published npm alpha. Use a Jig build from the
+> same source checkout to exercise it.
+
+Install the latest published alpha directly from npm:
 
 ```console
-npm install --global @jigging/jig@0.1.0-alpha.10
+npm install --global @jigging/jig@alpha
 ```
 
 `jig init --bare my-project` creates a new project directory; the destination
@@ -34,6 +39,8 @@ the reviewed proposal into admission.
   hypotheses for future probes and tutorials.
 - [Choosing a workflow structure](./workflow-design.md) explains where Agent
   judgment, deterministic checks, graph structure, and host authority belong.
+- [A proposal workshop](./proposal-workshop.md) combines separate drafting and
+  review Flows over supplied evidence with one bounded revision.
 - [Candidate orchestration patterns](../orchestration-patterns.md) records the
   reusable methods those use cases may test.
 - [Project Authoring SDK/1](../spec/project-sdk.md) defines inert `jig.ts` and
@@ -70,13 +77,16 @@ The Jig-specific machine files are published under
 portable specifications and machine files remain independently published at
 [flow.jig.md](https://flow.jig.md/).
 
-The alpha's child-call slice is exact and deliberately small. A Binding may
-map at most 256 LocalName `slots` to other selected direct Flow packages;
-omission means `{}`. Those targets come from the same admitted generation,
-while a direct `flow:` Run has no slots. Each Run/1 `flow/call` exchanges only
-JSON/1 input and a complete JSON/1 result with a fresh child context: settings
-and attachments are empty, it has no slots, and its deadline cannot exceed the
-parent's. Run/1 governs operation identity, duplicate joins and conflicts,
+The source candidate's child-call slice is exact and deliberately small. A
+Binding may map at most 256 LocalName `slots` to selected `flow:path` or
+`binding:id` targets; omission means `{}`. Those targets come from the same
+admitted generation. A child Binding supplies its own settings and must have
+no child Flow slots; a direct Flow has empty settings and no slots. Either
+child may use its own admitted Agent capability. Each Run/1 `flow/call`
+exchanges only JSON/1 input and a complete JSON/1 result with a fresh child
+context. Attachments are empty, parent configuration is not inherited, and
+the child's deadline cannot exceed the parent's. Run/1 governs operation
+identity, duplicate joins and conflicts,
 cancellation, and uncertainty; uncertain dispatch is not automatically
 replayed. Jig supplies no separate child history, administration, scheduler,
 catalogue, or resolver.

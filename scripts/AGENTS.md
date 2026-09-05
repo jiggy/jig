@@ -8,6 +8,8 @@ operational baselines, and public-site assembly.
 ## Ownership
 
 - Root scripts own unprivileged source, package, release, and site operations.
+- `test-release.sh` includes the proposal workshop's deterministic application
+  tests; it does not claim live Agent quality or independent consumer proof.
 - `require-linux-host-conformance.sh` owns the bounded, read-only check that an
   exact publication revision passed the complete Linux host workflow.
 - `ci/` owns disposable CI-host provisioning.

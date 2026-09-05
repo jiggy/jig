@@ -1,0 +1,9 @@
+{
+  "$schema": "https://flow.jig.md/schemas/schema-1.json",
+  "type": "object",
+  "properties": {
+    "reviewFocus": { "type": "string", "minLength": 1, "maxLength": 2000 }
+  },
+  "required": ["reviewFocus"],
+  "additionalProperties": false
+}

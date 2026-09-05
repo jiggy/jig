@@ -32,7 +32,7 @@ fi
 
 bun run --cwd packages/flow-sdk build
 bun run --cwd packages/jig build
-bun test packages/flow-sdk packages/jig conformance/run-1
+bun test packages/flow-sdk packages/jig conformance/run-1 examples/proposal-workshop/test
 bun packages/flow-sdk/test/package-smoke.ts
 bun packages/jig/test/package-smoke.ts
 

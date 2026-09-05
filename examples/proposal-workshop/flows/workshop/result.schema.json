@@ -1,0 +1,167 @@
+{
+  "$schema": "https://flow.jig.md/schemas/schema-1.json",
+  "type": "object",
+  "properties": {
+    "outcome": {
+      "enum": [
+        "done",
+        "blocked",
+        "limit"
+      ]
+    },
+    "output": {
+      "type": "object",
+      "properties": {
+        "reason": {
+          "type": "string"
+        },
+        "proposal": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "title": {
+                  "type": "string"
+                },
+                "sections": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "requirementId": {
+                        "type": "string"
+                      },
+                      "claim": {
+                        "type": "string"
+                      },
+                      "citationIds": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        },
+                        "maxItems": 32
+                      }
+                    },
+                    "required": [
+                      "requirementId",
+                      "claim",
+                      "citationIds"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "maxItems": 16
+                },
+                "limitations": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "maxItems": 16
+                }
+              },
+              "required": [
+                "title",
+                "sections",
+                "limitations"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "review": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "verdict": {
+                  "type": "string",
+                  "enum": [
+                    "approve",
+                    "revise",
+                    "blocked"
+                  ]
+                },
+                "issues": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "maxItems": 16
+                }
+              },
+              "required": [
+                "verdict",
+                "issues"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "attempts": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2
+        },
+        "history": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "attempt": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 2
+              },
+              "feedback": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 128
+              },
+              "verdict": {
+                "enum": [
+                  "approve",
+                  "revise",
+                  "blocked",
+                  "limit",
+                  "mechanical-check-failed"
+                ]
+              }
+            },
+            "required": [
+              "attempt",
+              "feedback",
+              "verdict"
+            ],
+            "additionalProperties": false
+          },
+          "maxItems": 2
+        },
+        "markdown": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "reason",
+        "proposal",
+        "review",
+        "attempts",
+        "history",
+        "markdown"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "outcome",
+    "output"
+  ],
+  "additionalProperties": false
+}

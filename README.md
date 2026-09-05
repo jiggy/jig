@@ -15,6 +15,11 @@ jig run <flow:path|binding:id> [--input JSON] [--timeout DURATION]
 
 There is no setup command, daemon, runtime registry, or sandbox selector.
 
+The [proposal workshop](docs/jig/guide/proposal-workshop.md) demonstrates the
+source candidate's reusable Agent specialists: draft from supplied evidence,
+review in a fresh context, and revise at most once. Published npm alphas may
+lag this checkout; the guide states the required host support.
+
 ## Supported host
 
 The alpha has been independently tested on a provisioned Ubuntu 24.04 x86_64
@@ -148,19 +153,23 @@ A Binding is addressed explicitly as `binding:<id>`. Jig never guesses an
 unprefixed target.
 
 A Binding may also define up to 256 child-Flow `slots`, mapping LocalName keys
-to selected direct Flow package paths. The map is exact and Binding-local:
+to explicit `flow:<path>` or `binding:<id>` targets. The map is exact and Binding-local:
 omission means `{}`, targets come from the same admitted generation, and a
 direct `flow:` Run never borrows the Binding's slots. A `flow/call` passes only
 JSON/1 input into a fresh child context and returns the complete JSON/1 result;
-the child has empty settings and attachments and no slots, and its deadline
-cannot exceed the parent's. Run/1 governs operation identity, duplicate joins
+the child receives its selected target's admitted settings and Agent capability,
+with empty attachments and no inherited slots. A selected child Binding must
+have no child slots of its own. Agent specialists select their own package-local
+Skills per call; providers and credentials remain host choices. Child and Agent
+deadlines cannot exceed the parent's. Run/1 governs operation identity, duplicate joins
 and conflicts, cancellation, and uncertainty; uncertain dispatch is not
 automatically replayed. Jig creates no separate child history, administration,
 scheduler, catalogue, or resolver.
 
-The alpha admits one active child operation per parent; excess distinct
-concurrent calls receive `RESOURCE_EXHAUSTED`, while sequential calls remain
-available.
+Each Run context admits one active operation; a child Flow can own one Agent
+operation while its parent awaits it. Excess distinct concurrent calls receive
+`RESOURCE_EXHAUSTED`, while sequential calls remain available. Cancellation and
+cleanup cover both the specialist and its locally owned Agent worker.
 
 One experimental [Agent Run capability](docs/jig/spec/agent-run.md) is
 available through ordinary Run/1 `effect/call`. An Agent-capable Flow carries

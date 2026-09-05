@@ -1,0 +1,53 @@
+{
+  "$schema": "https://flow.jig.md/schemas/capability-contract-1.schema.json",
+  "flowCapabilityContract": 1,
+  "id": "https://jig.md/contracts/agent-run",
+  "version": "1.0.0",
+  "methods": {
+    "run": {
+      "input": { "$ref": "#/$defs/RunInput" },
+      "output": { "$ref": "#/$defs/AgentResult" },
+      "errors": {}
+    }
+  },
+  "$defs": {
+    "RunInput": {
+      "type": "object",
+      "properties": {
+        "instructions": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1048576
+        },
+        "skills": { "$ref": "#/$defs/SkillNames" },
+        "responseSchema": { "type": "object" }
+      },
+      "required": ["instructions"],
+      "additionalProperties": false
+    },
+    "SkillNames": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 64
+      },
+      "maxItems": 64
+    },
+    "AgentResult": {
+      "type": "object",
+      "properties": {
+        "outcome": {
+          "enum": ["completed", "blocked", "limit"]
+        },
+        "text": {
+          "type": "string",
+          "maxLength": 8388608
+        },
+        "structured": true
+      },
+      "required": ["outcome", "text"],
+      "additionalProperties": false
+    }
+  }
+}

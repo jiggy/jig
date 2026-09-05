@@ -1,0 +1,13 @@
+{
+  "objective": "Propose an eight-week pilot of later opening hours for a fictional community library. These are synthetic planning records, not claims about a real library.",
+  "requirements": [
+    { "id": "schedule", "description": "Choose a bounded pilot schedule supported by the demand evidence." },
+    { "id": "staffing", "description": "Explain how the pilot fits available staff hours and state unresolved staffing assumptions." },
+    { "id": "measurement", "description": "Define a measurable continuation decision after eight weeks without inventing baseline results." }
+  ],
+  "evidence": [
+    { "id": "E1", "url": "https://example.org/library-pilot/demand", "text": "Synthetic demand record: 42 of 60 survey respondents requested later opening on Tuesday or Thursday. The survey did not measure likely attendance or select between those evenings." },
+    { "id": "E2", "url": "https://example.org/library-pilot/staffing", "text": "Synthetic staffing record: the library can assign at most eight additional staff-hours per week to a pilot. Two staff members must be present whenever the library is open. Staff consent and exact rosters remain unconfirmed." },
+    { "id": "E3", "url": "https://example.org/library-pilot/approval", "text": "Synthetic planning brief: the pilot may run for eight weeks. Track attendance and additional staff-hours each evening, collect visitor feedback, and present a continuation recommendation at the end. No attendance target has been approved." }
+  ]
+}

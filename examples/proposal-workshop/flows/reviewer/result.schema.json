@@ -1,0 +1,71 @@
+{
+  "$schema": "https://flow.jig.md/schemas/schema-1.json",
+  "oneOf": [
+    {
+      "type": "object",
+      "properties": {
+        "outcome": {
+          "const": "done"
+        },
+        "output": {
+          "type": "object",
+          "properties": {
+            "verdict": {
+              "type": "string",
+              "enum": [
+                "approve",
+                "revise",
+                "blocked"
+              ]
+            },
+            "issues": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 16
+            }
+          },
+          "required": [
+            "verdict",
+            "issues"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "outcome",
+        "output"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "outcome": {
+          "enum": [
+            "blocked",
+            "limit"
+          ]
+        },
+        "output": {
+          "type": "object",
+          "properties": {
+            "reason": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "reason"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "outcome",
+        "output"
+      ],
+      "additionalProperties": false
+    }
+  ]
+}

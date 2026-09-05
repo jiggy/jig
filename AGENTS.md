@@ -205,6 +205,8 @@ Default section order:
   executable evidence for versioned FLOW protocol candidates.
 - [docs/AGENTS.md](docs/AGENTS.md) — Public specifications, current product
   guidance, and research catalogues.
+- [examples/AGENTS.md](examples/AGENTS.md) — Authored applications exercising
+  documented composition, with their own fixtures and checks.
 - [packages/AGENTS.md](packages/AGENTS.md) — Publishable SDK and Jig host
   implementations, with their package-local tests and artifacts.
 - [scripts/AGENTS.md](scripts/AGENTS.md) — Build, verification,

@@ -17,8 +17,9 @@ catalogues for FLOW and Jig.
 
 - Classify a document as specification, current guide, or research.
   Do not mix those levels of authority.
-- Specifications define requirements. Guides explain shipped behavior and
-  defer to specifications. Research records hypotheses and evidence gates,
+- Specifications define requirements. Guides explain implemented behavior,
+  distinguish source candidates from published support, and defer to
+  specifications. Research records hypotheses and evidence gates,
   never availability or roadmap commitments.
 - Link to the canonical owner instead of duplicating rules across documents.
 - Check `LICENSES.md` before moving content between documentation classes;

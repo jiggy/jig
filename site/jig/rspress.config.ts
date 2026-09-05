@@ -22,6 +22,7 @@ const guideSidebar = [
     text: "Guides",
     items: [
       { text: "Direct alpha", link: "/guide/" },
+      { text: "A proposal workshop", link: "/guide/proposal-workshop" },
       {
         text: "Choosing a workflow structure",
         link: "/guide/workflow-design",
