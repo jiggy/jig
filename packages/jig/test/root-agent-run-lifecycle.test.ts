@@ -87,6 +87,160 @@ interface DispatchEvent {
 }
 
 proofDescribe('private contained Agent Run lifecycle', () => {
+  for (const nested of [false, true]) {
+    test(`delivers complete selected Skill bytes to the SDK endpoint from ${nested ? 'a child Binding' : 'a direct Flow'}`, async () => {
+      const root = await mkdtemp(join(tmpdir(), 'jig-skill-delivery-project-'))
+      const releaseRoot = await mkdtemp(join(tmpdir(), 'jig-skill-delivery-release-'))
+      const requests: { url: string | undefined; method: string | undefined; body: any }[] = []
+      // Only transport is redirected. The installed worker, SDK, request encoding,
+      // capture/admission, selected-skill projection, and contained launch stay real.
+      const server = createServer(async (request, response) => {
+        try {
+          requests.push({
+            url: request.url,
+            method: request.method,
+            body: JSON.parse(await new Response(request as any).text()),
+          })
+          response.writeHead(200, { 'content-type': 'application/json' }).end(
+            JSON.stringify({
+              status: 'completed',
+              output: [
+                {
+                  type: 'message',
+                  role: 'assistant',
+                  content: [
+                    {
+                      type: 'output_text',
+                      text: JSON.stringify(EXPECTED_STRUCTURED_AGENT_RESULT),
+                    },
+                  ],
+                },
+              ],
+            }),
+          )
+        } catch {
+          response.writeHead(400).end()
+        }
+      })
+      let session: Awaited<ReturnType<typeof openPrivateProjectSession>> | undefined
+      try {
+        await new Promise<void>((resolve, reject) => {
+          server.once('error', reject)
+          server.listen(0, '127.0.0.1', resolve)
+        })
+        const address = server.address()
+        if (address === null || typeof address === 'string') throw new Error('no recorder port')
+        const location = await writeInstalledFixture(releaseRoot)
+        const worker = await readFile(
+          join(installedBunLocation.releaseRoot, 'libexec/agent/openai-agent-worker.js'),
+          'utf8',
+        )
+        await writeFile(
+          join(releaseRoot, 'libexec/agent/openai-agent-worker.js'),
+          [
+            'const recorderFetch = globalThis.fetch;',
+            'globalThis.fetch = (input, init) => {',
+            '  if (String(input) !== "https://skill-proof.invalid/v1/responses") throw new Error("unexpected test endpoint");',
+            `  return recorderFetch("http://127.0.0.1:${address.port}/v1/responses", init);`,
+            '};',
+            worker,
+          ].join('\n'),
+        )
+        await writeProject(root)
+        if (nested) {
+          await writeSpecialistParent(root)
+          await mkdir(join(root, 'flows/parent/skills/selected'), { recursive: true })
+          await writeFile(
+            join(root, 'flows/parent/skills/selected/SKILL.md'),
+            'PARENT_SKILL_MUST_NOT_LEAK',
+          )
+        }
+        const selected = join(root, 'flows/router/skills/selected')
+        const skill = await readFile(
+          join(
+            import.meta.dir,
+            '../../../examples/proposal-workshop/flows/reviewer/skills/evidence-review/SKILL.md',
+          ),
+          'utf8',
+        )
+        const reference = 'Whole file, not a marker: café → evidence.\nSecond line.\n'
+        await writeFile(join(selected, 'SKILL.md'), skill)
+        await mkdir(join(selected, 'references'))
+        await writeFile(join(selected, 'references/checklist.md'), reference)
+        session = await openPrivateProjectSession({
+          directory: root,
+          host: await openPrivateInstalledBunHost(location, {
+            OPENAI_API: 'responses',
+            OPENAI_BASE_URL: 'https://skill-proof.invalid/v1',
+            OPENAI_MODEL: 'local-recording-fixture',
+            OPENAI_API_KEY: 'synthetic-unused-credential',
+          }),
+        })
+        const plan = await session.plan({ lockMode: 'update' })
+        if (plan.state !== 'applicable') throw new Error('Skill fixture did not produce a Plan')
+        await session.apply({ planDigest: plan.planDigest })
+        await writeFile(join(selected, 'SKILL.md'), 'UNADMITTED_EDIT_MUST_NOT_LEAK')
+        expect(
+          await runToTerminal(
+            session.rootAdministration,
+            'skill-delivery',
+            'success',
+            30_000,
+            nested,
+          ),
+        ).toMatchObject({
+          terminal: {
+            status: 'succeeded',
+            outcome: 'done',
+            output: {
+              status: 'succeeded',
+              parentHasKey: false,
+              agent: { outcome: 'completed', structured: EXPECTED_STRUCTURED_AGENT_RESULT },
+            },
+          },
+        })
+        expect(requests).toHaveLength(1)
+        const recorded = requests[0]!
+        expect(recorded).toMatchObject({
+          url: '/v1/responses',
+          method: 'POST',
+          body: {
+            model: 'local-recording-fixture',
+            store: false,
+            stream: false,
+          },
+        })
+        const projected = JSON.parse(recorded.body.input.split('\n').at(-1))
+        expect(projected.skills).toEqual([
+          {
+            name: 'selected',
+            files: [
+              { path: 'SKILL.md', content: skill },
+              { path: 'references/checklist.md', content: reference },
+            ],
+          },
+        ])
+        for (const excluded of [
+          'HIDDEN_SKILL_MARKER',
+          'PARENT_SKILL_MUST_NOT_LEAK',
+          'UNADMITTED_EDIT_MUST_NOT_LEAK',
+        ]) {
+          expect(JSON.stringify(recorded.body)).not.toContain(excluded)
+        }
+        await expectNoAgentOwner(root)
+        await session.close()
+        session = undefined
+        await waitForCgroups(initialCgroups)
+        await waitForTemporaryState(initialTemporaryState)
+      } finally {
+        await session?.close()
+        await closeServer(server)
+        await rm(root, { recursive: true, force: true })
+        await rm(releaseRoot, { recursive: true, force: true })
+      }
+    }, 90_000)
+  }
+
   nativeCodexTest(
     'executes native Codex through ACP with the existing subscription',
     async () => {
