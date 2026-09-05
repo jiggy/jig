@@ -42,67 +42,68 @@ foundations do not need to be rebuilt.
    application structures into user-owned Starters—ready-to-adapt examples.
    Let their actual needs determine further host and ecosystem capabilities.
 
-## Next development steps
+## Next milestones
 
-Build forward from the existing finite Runs, exact child slots, and bounded
-Agent calls. For each step, use independent consumption to expose gaps, review
-the smallest necessary change, then implement and verify it. Reuse completed
-evidence rather than restarting a foundation.
+The critical path is one issue, a safely produced patch, genuine test evidence,
+independent use, and a small software factory. Build on existing finite Runs,
+exact child calls, and Agent capabilities; successful general-purpose prose
+review is not a prerequisite for coding work.
 
-1. **Keep public delivery current alongside outcome work.** Bring the
-   documented CLI, SDK, and Agent behavior into coherent installable releases
-   through the existing release and host-conformance gates. Carry forward
-   completed adoption evidence; do not restart a separate baseline campaign
-   unless a change or failure invalidates it. Independent consumers exercise
-   the next useful outcome through public artifacts and instructions, and
-   concrete delivery defects are corrected as they appear.
+1. **Verify selected Skill delivery.** A local recording endpoint must receive
+   the complete selected Skill through direct and child invocation, and no
+   unselected Skills. Use no real credentials or remote model calls. Fix any
+   delivery defect with a regression test; if delivery is correct, retain the
+   unsuccessful method evaluation without another tuning cycle. This diagnostic
+   need not delay designing the next capability.
 
-2. **Make the review-to-result experience usable.** Coordinate the CLI UX
-   changes across specifications, implementation, documentation, and tests.
-   Explain configuration and admission failures with a known cause and next
-   safe step; make consent readable without hiding material changes or powers.
-   Present outcomes clearly, distinguishing a completed Run from achieved,
-   blocked, or limited application work, while preserving exact machine-readable
-   meaning. Verify interactive terminals and piped output through existing
-   commands. Finish when a new user can recover from missing configuration,
-   review the intended work, run it, and understand the result without a
-   maintainer translating the output. This is a focused UX repair, not a new
-   command framework or baseline campaign.
+2. **Agree on one issue-to-patch boundary.** Choose a small repository, one
+   reproducible defect, and independently controlled acceptance checks. Finish
+   with a concrete fixture and a short reviewed application contract: exact
+   snapshot, permitted edits and execution, returned patch and evidence, and
+   failure behavior. Consider patch-as-data before broader Agent tools. Only
+   demonstrated authority or lifecycle gaps justify host changes; no uncontained
+   test helper or general workspace framework.
 
-3. **Build one reusable static Agent workflow.** Use a proposal workshop over
-   supplied evidence: draft, review in a separate context, check mechanically,
-   and revise within a fixed limit. Start with the existing calls, then extend
-   exact child composition only enough for an Agent-using specialist to run
-   with its own admitted configuration. Finish when separate Flow packages
-   deliver the useful result while preserving authority, deadlines, and
-   cleanup. Neither parallel scheduling nor a SemanticRouter is a prerequisite.
+3. **Deliver one contained issue-to-tested-patch Run.** Start with one toolchain
+   and one Agent client. A regression check fails on the original snapshot;
+   a real Agent's patch makes the approved checks pass on identified contents.
+   Return the reproducible patch, checked-content identity, exit codes, and
+   bounded logs. The original repository and independent acceptance checks
+   remain unchanged. Invalid patches, failed checks, cancellation, and
+   coordinator loss must produce honest outcomes and complete cleanup.
 
-4. **Prove reuse beyond the first application and host.** Reuse the workshop's
-   evidence-review specialist in a procurement brief. Have an independent
-   implementer run the unchanged Flow outside Jig using public FLOW contracts
-   and locally supplied compatible capabilities. Finish with useful results
-   in both applications and a bounded interoperability demonstration—not a
-   second production host or a universal adapter framework.
+4. **Make the method independently usable.** Give an independent builder only
+   candidate artifacts and public instructions, then a different small
+   repository and issue. Finish when they obtain and inspect a tested patch,
+   understand a deliberately failed check, and cancel work without private
+   instructions or platform edits. Correct concrete authoring, approval,
+   result, and diagnostic friction exposed by that use.
 
-5. **Enable one real issue-to-tested-patch Run.** Define and review the smallest
-   operator-granted boundary for a disposable repository workspace and test
-   execution, then implement it. Start with one coding Agent and exact checks.
-   Finish with an inspectable patch, actual test evidence, and failure and
-   cancellation proofs; the original repository stays untouched. Do not grant
-   broad host access or invent a general workspace framework.
+5. **Demonstrate a small reusable software factory.** Combine proven coding
+   and checking methods around explicitly submitted issues, bounded correction,
+   and a human merge gate. A preselected issue set yields inspectable patches
+   with actual test evidence or honest unsuccessful outcomes; another builder
+   adapts the application through its intended configuration. Demonstrate a
+   material advantage over one coding Agent plus tests and human review on a
+   metric selected beforehand. An unreliable model reviewer is not mandatory
+   approval authority. Polish a proven application into a user-owned Starter.
 
-6. **Assemble the minimal software factory.** Combine proven coding, checking,
-   and independent review methods around explicitly submitted issues and a
-   small application-owned Kanban. Finish when repeated issues produce
-   reviewable patches and honest failure states, retain human merge and release
-   authority, and demonstrate the claimed advantage against the strong
-   baseline above. Polish the proven application into a user-owned Starter,
-   then let another builder test its adaptation.
+## Work alongside the milestones
 
-Automatic ticket intake, broader semantic discovery, long-lived services,
-and additional execution environments remain demand-gated. Introduce them
-only when the working applications expose a concrete need; they do not block
-the first useful factory.
+Keep public releases coherent through existing release and host-conformance
+gates. Correct concrete CLI problems in consent, configuration, diagnostics,
+and outcomes without restarting completed baseline campaigns or confusing a
+completed Run with achieved application work.
+
+Preserve bounded outside-Jig interoperability as an independent FLOW proof:
+an independent consumer runs an unchanged package through public contracts,
+without creating a second production host. This need not wait for successful
+prose review or block the coding capability.
+
+An application-owned Kanban remains a software-factory direction, not a
+prerequisite for its first useful version. Automatic ticket intake, semantic
+discovery, long-lived services, and additional execution environments remain
+demand-gated rather than requirements on this critical path.
 
 ## Advancing
 
