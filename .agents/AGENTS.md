@@ -59,6 +59,9 @@ plus project-maintained skills for external libraries.
 - Teach concepts without assuming project history. Keep the maintainer guide
   efficient to load. Split out a subject only when it
   acquires a distinct durable owner or verification contract.
+- Keep the roadmap a short sequence of user outcomes tied to the doctrine.
+  Do not expand it into a subsystem inventory or put release status and task
+  tracking in it.
 
 ## Verification
 

@@ -1,43 +1,49 @@
-# Engineering roadmap
+# Roadmap — capability compounding under control
 
-This is Jig's long-term sequence of product outcomes. It is not a sprint plan,
-status report, or promise that every later capability will be implemented.
-Current work and blockers belong in `.tmp/`; shipped behavior belongs in the
-public documentation and executable evidence.
+Make useful methods easier to inherit and combine, and give their consumers
+more power under meaningful direction. This roadmap orders outcomes beneath
+the [product compass](product-compass.md), not subsystems or release dates.
 
-The enduring product intent and decision test live in
-[`product-compass.md`](product-compass.md); this file owns only outcome order.
+## Guiding principles
 
-## Ordering rule
+The order serves three commitments throughout development.
 
-Each stage must produce one useful end-to-end result before the next stage may
-add vocabulary or machinery. A later stage may be skipped when the preceding
-product is already useful or when independent evidence favors a simpler path.
+- **Deliver useful work at every step.** Each outcome needs a compelling
+  example that an independent consumer can reproduce from public artifacts.
+- **Keep the promises intact.** FLOW independence, operator-held authority,
+  understandable control, and honest failure apply from the first outcome.
+- **Earn the next increment.** Build on verified work; add only what the next
+  demonstrated need requires. The roadmap does not authorize every mechanism
+  that might support it.
 
-## Outcome gates
+## Outcome order
 
-1. **Direct local Flow.** A new user can install Jig, initialize and review one
-   project, run one exact admitted Flow or Binding, receive a finite result,
-   and leave no execution residue.
-2. **Exact composition.** A Binding can map a small closed set of child slots,
-   and a Flow can call those exact admitted children within one bounded root
-   deadline without acquiring catalogue or scheduler authority.
-3. **Agent-assisted routing.** One contained Agent call can return structured
-   data used to select among a closed admitted set, while Jig—not the model—
-   enforces eligibility and authority. An independent campaign must approve
-   the authoring surface before this becomes a promoted public milestone.
-4. **Useful software factory.** One admitted issue can drive a contained
-   coding Agent over bounded disposable workspace authority, run exact declared
-   checks, and return an inspectable patch and evidence while a human retains
-   merge and release authority.
-5. **External activation, if earned.** When a real outside fact must reliably
-   start admitted work, implement the smallest durable activation seam the
-   software-factory case proves necessary. Do not assume the old Journal or
-   Hook designs are that seam.
-6. **Demand-gated expansion.** Services, broader semantic discovery, project
-   updates and three-way reconciliation, GUI/Cordis campaigns, extra runtimes,
-   and Jig Graph over Sley proceed only when independent applications make
-   their value and boundaries concrete.
+These outcomes grow from individual use toward capability shared across
+applications. Existing evidence determines where work begins; completed
+foundations do not need to be rebuilt.
 
-Repository-wide simplicity, compatibility, probe, and host-boundary rules live
-in the root [`AGENTS.md`](../AGENTS.md); this file owns only outcome ordering.
+1. **Make useful work easy to adopt.** A new user can obtain, understand,
+   authorize, and run a useful Flow, inspect its result, and stop owned work.
+   Authoring and modifying it should be practical without private knowledge.
+
+2. **Combine and reuse capable specialists.** Independent authors demonstrate
+   useful gains through composition and reuse across applications. Prove that
+   a portable Flow works outside Jig through an independent implementation.
+   Keep explicit composition excellent; dynamic choice must earn its place.
+
+3. **Deliver a useful software factory.** An authorized issue becomes an
+   inspectable patch with tests and independent evidence; people retain merge
+   and release authority. Demonstrate a material advantage over one capable
+   coding Agent with repository access, CI, and human review on the dimensions
+   claimed. Keep software-development concepts in the application.
+
+4. **Let others build further capability.** Independent builders adapt and
+   share methods in useful applications beyond the factory. Turn proven
+   application structures into user-owned Starters—ready-to-adapt examples.
+   Let their actual needs determine further host and ecosystem capabilities.
+
+## Advancing
+
+Use the doctrine's [decision test](doctrine/design-judgment.md#the-decision-test)
+before expanding scope. Revisit this order when evidence supports a simpler path.
+Current status, detailed tasks, and blockers belong in `.tmp/`.
