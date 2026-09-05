@@ -10,7 +10,8 @@ SDK/1 and Run/1.
 - `src/` owns public types and the JSON/1, protocol, session, and transport
   implementation.
 - `test/` owns unit, subprocess, race, and packed-package evidence.
-- `package.json`, `README.md`, and `LICENSE` own the release envelope.
+- `justfile` owns build and package tasks; `package.json`, `README.md`, and
+  `LICENSE` own the release envelope.
   Bun generates the ignored root workspace lock. `dist/` is generated.
 
 ## Local Contracts
@@ -35,8 +36,8 @@ SDK/1 and Run/1.
 ## Verification
 
 - `bun test packages/flow-sdk`
-- `bun run --cwd packages/flow-sdk build`
-- `FLOW_NODE="$(command -v node)" bun run --cwd packages/flow-sdk test:package`
+- `just flow::build`
+- `FLOW_NODE="$(command -v node)" just flow::test-package`
 
 ## Child DOX Index
 

@@ -66,7 +66,7 @@ git -C "$repository" archive --format=tar HEAD > "$temporary/source.tar"
 tar -xf "$temporary/source.tar" -C "$temporary/source"
 
 package="$temporary/source/packages/jig"
-bun run --cwd "$package" verify:build-bun
+just --justfile "$package/justfile" verify-build-bun
 bun install \
   --cwd "$temporary/source" \
   --filter @jigging/jig \
@@ -76,7 +76,7 @@ bun install \
   --backend=copyfile \
   --no-progress \
   --no-summary
-bun run --cwd "$package" build
+just --justfile "$package/justfile" build
 bun pm pack --cwd "$package" --ignore-scripts --destination "$temporary/artifacts"
 
 set -- "$temporary"/artifacts/*.tgz

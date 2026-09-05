@@ -1,6 +1,6 @@
 {
   "name": "@jigging/flow",
-  "version": "0.1.0-alpha.6",
+  "version": "0.1.0-alpha.7",
   "description": "TypeScript SDK for FLOW Run/1",
   "license": "Apache-2.0",
   "repository": {
@@ -29,13 +29,6 @@
     "README.md",
     "LICENSE"
   ],
-  "scripts": {
-    "build": "bun run clean && bun node_modules/typescript/bin/tsc -p tsconfig.json",
-    "clean": "bun -e \"import { rm } from 'node:fs/promises'; await rm('dist', { recursive: true, force: true })\"",
-    "prepack": "bun run build",
-    "test": "bun test",
-    "test:package": "bun run build && bun test/package-smoke.ts"
-  },
   "devDependencies": {
     "typescript": "7.0.2"
   }

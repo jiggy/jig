@@ -140,7 +140,7 @@ PATH="$release_path:${PATH:-/usr/bin:/bin}" \
     --no-progress \
     --no-summary
 PATH="$release_path:${PATH:-/usr/bin:/bin}" \
-  "$bun_bin" run --cwd "$package" build
+  just --justfile "$package/justfile" build
 PATH="$release_path:${PATH:-/usr/bin:/bin}" \
   "$bun_bin" pm pack \
     --cwd "$package" \

@@ -8,10 +8,11 @@ docs/flow + site/flow  -> https://flow.jig.md
 docs/jig  + site/jig   -> https://jig.md
 ```
 
-The root `site/package.json` and lock are shared build tooling. Public content,
+The `site/package.json`, lock, and justfile are shared build tooling. Public content,
 navigation, machine files, origins, and deployment artifacts are not shared.
 
-Build either site from the repository root:
+Build either site from the repository root with Bun and Just 1.43.1 or newer
+(both are provided by `nix-shell`):
 
 ```console
 scripts/build-site.sh flow .tmp/flow-site
@@ -23,6 +24,7 @@ Pages site per repository, so Jig uses a small deployment-only repository:
 
 1. Create the public repository `jiggy/jig-site`.
 2. Copy `site/jig/pages-workflow.yml` there as `.github/workflows/pages.yml`.
+   Keep that copy synchronized when its build-tool requirements change.
 3. In that repository, set **Pages → Source** to **GitHub Actions**.
 4. Set its Pages custom domain to `jig.md` and enforce HTTPS after the
    certificate is ready.

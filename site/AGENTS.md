@@ -9,7 +9,8 @@ Jig public sites.
 
 - `docs/flow/` and `docs/jig/` own published prose and specifications.
 - `flow/` and `jig/` own their site-specific navigation and public-root files.
-- `package.json` and `bun.lock` own shared pinned site tooling.
+- `package.json` and `bun.lock` own shared pinned site tooling; `justfile` owns
+  the FLOW and Jig Rspress build recipes.
 
 ## Local Contracts
 

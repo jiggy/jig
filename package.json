@@ -7,16 +7,5 @@
   ],
   "devDependencies": {
     "@biomejs/biome": "2.5.12"
-  },
-  "scripts": {
-    "check:biome": "biome check --files-ignore-unknown=true --no-errors-on-unmatched",
-    "format": "biome format --write --files-ignore-unknown=true --no-errors-on-unmatched",
-    "lint": "biome lint --files-ignore-unknown=true --no-errors-on-unmatched",
-    "test:biome-hook": "bun test scripts/codex-biome.test.ts",
-    "test": "bun test packages/flow-sdk packages/jig conformance/run-1",
-    "test:jig": "bun test packages/jig",
-    "test:jig:baseline": "bun scripts/test-operational-baseline.ts",
-    "test:run-1": "bun test conformance/run-1",
-    "test:release": "sh scripts/test-release.sh"
   }
 }

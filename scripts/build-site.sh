@@ -45,7 +45,7 @@ cleanup() {
 trap cleanup EXIT HUP INT TERM
 
 PUBLIC_SITE_OUTPUT="$staging" \
-  "$bun" run --cwd "$repository/site" "build:$site_name"
+  just --justfile "$repository/site/justfile" "build-$site_name"
 cp -R -- "$repository/site/$site_name/public/." "$staging/"
 mkdir -p -- "$staging/schemas"
 

@@ -7,7 +7,7 @@ Contains the independently built and distributed FLOW SDKs and Jig host.
 ## Ownership
 
 - Package directories own source, tests, manifests, release
-  READMEs, licenses, and notices.
+  READMEs, licenses, notices, and package-local justfiles.
 - The TypeScript packages are Bun workspaces. Bun generates the ignored root
   `bun.lock` during installation; it is disposable, not maintained by hand or
   committed. Python retains its own packaging.
@@ -22,6 +22,10 @@ Contains the independently built and distributed FLOW SDKs and Jig host.
   Keep Bun's isolated workspace layout; clean installs regenerate the lock
   from manifests. Do not restore per-workspace Bun locks. Example Flows remain
   independently installed application packages, outside the workspace.
+- Use the root Just modules (`just flow::build`, `just jig::build`) or run
+  package recipes locally. `pack` builds explicitly; manifests have no build
+  or packing lifecycle scripts. Just is development tooling, not an installed
+  Jig or FLOW dependency.
 - TypeScript and Python FLOW SDKs implement the same Run SDK/1 and Run/1 wire
   semantics. Language ergonomics may differ only where the specifications
   allow it.

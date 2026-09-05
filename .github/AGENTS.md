@@ -8,11 +8,13 @@ Owns CI, host-conformance, package publication, and public-site workflows.
 
 - `workflows/` owns automation triggers, permissions, jobs, and retained
   artifacts.
-- Checked-in scripts own reusable build and test logic.
+- Checked-in justfiles and scripts own reusable build and test logic.
 
 ## Local Contracts
 
 - Pin third-party actions by full commit.
+- Install Just 1.43.1 in jobs that build packages or sites. The protected npm
+  publisher consumes existing archives and requires neither Just nor source.
 - Grant each job only the authority it needs; build jobs must not inherit
   publication or Git-write authority.
 - Build, test, publish, and tag the exact triggering source and retained

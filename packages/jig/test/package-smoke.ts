@@ -82,9 +82,7 @@ try {
   assert.deepEqual(installedManifest.os, ['linux'])
   assert.deepEqual(installedManifest.cpu, ['x64'])
   assert.deepEqual(installedManifest.libc, ['glibc'])
-  const buildScript = requireStringRecord(installedManifest.scripts).build
-  assert.doesNotMatch(buildScript, /--compile/)
-  assert.match(buildScript, /libexec\/installed-cli\.js/)
+  assert.equal(Object.hasOwn(installedManifest, 'scripts'), false)
 
   const executable = join(installed, 'bin', 'jig')
   const piLauncher = join(installed, 'libexec', 'agent', 'pi-agent-launcher.js')
@@ -274,12 +272,6 @@ async function listFiles(root: string, prefix = ''): Promise<string[]> {
     else throw new Error(`installed package contains a non-file member: ${path}`)
   }
   return output.sort()
-}
-
-function requireStringRecord(value: unknown): Record<string, string> {
-  assert(value !== null && typeof value === 'object' && !Array.isArray(value))
-  for (const member of Object.values(value)) assert.equal(typeof member, 'string')
-  return value as Record<string, string>
 }
 
 async function run(

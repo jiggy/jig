@@ -30,8 +30,8 @@ if ! "$python_bin" --version >/dev/null 2>&1; then
   exit 1
 fi
 
-bun run --cwd packages/flow-sdk build
-bun run --cwd packages/jig build
+just flow::build
+just jig::build
 bun test packages/flow-sdk packages/jig conformance/run-1 examples/proposal-workshop/test
 bun packages/flow-sdk/test/package-smoke.ts
 bun packages/jig/test/package-smoke.ts

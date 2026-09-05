@@ -104,6 +104,10 @@ jobs:
           artifact_name="npm-candidate-$RELEASE_PACKAGE-$version-$SOURCE_REVISION"
           printf 'artifact_name=%s\n' "$artifact_name" >> "$GITHUB_OUTPUT"
 
+      - uses: extractions/setup-just@f8a3cce218d9f83db3a2ecd90e41ac3de6cdfd9b # v3
+        with:
+          just-version: '1.43.1'
+
       - name: Install exact build tools
         run: |
           set -eu

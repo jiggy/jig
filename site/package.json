@@ -2,10 +2,6 @@
   "name": "public-site-build",
   "private": true,
   "type": "module",
-  "scripts": {
-    "build:flow": "rspress build -c flow/rspress.config.ts",
-    "build:jig": "rspress build -c jig/rspress.config.ts"
-  },
   "devDependencies": {
     "@rspress/core": "2.0.21"
   }

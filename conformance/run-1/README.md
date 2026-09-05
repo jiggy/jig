@@ -49,7 +49,7 @@ both package tests, Python SDK tests, and the independent Python peer, and fails
 if Python or its `build` module is unavailable:
 
 ```console
-bun run test:release
+just test-release
 ```
 
 Passing this corpus does not create a general certification programme. The

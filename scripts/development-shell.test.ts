@@ -70,7 +70,7 @@ for (const [name, fixture] of [
   test(`shell warns in bold red for ${name}`, async () => {
     const output = await runHook(fixture)
     expect(output).toStartWith('\x1b[1;31mJig is not built')
-    expect(output).toContain('bun i && bun run --cwd packages/jig build')
+    expect(output).toContain('bun i && just jig::build')
     expect(output).toEndWith('\x1b[0m\n')
   })
 }
@@ -83,7 +83,7 @@ test('shell names both versions and the rebuild command in bold red', async () =
   })
   expect(output).toStartWith('\x1b[1;31mJig build version 0.1.0-alpha.1')
   expect(output).toContain('package.json version 0.1.0-alpha.2')
-  expect(output).toContain('bun run --cwd packages/jig build')
+  expect(output).toContain('just jig::build')
   expect(output).toEndWith('\x1b[0m\n')
 })
 
@@ -96,7 +96,7 @@ test('a matching complete build enters the shell without warnings', async () => 
 test('a CLI that cannot report its version warns without failing shell entry', async () => {
   const output = await runHook({ launcher: true, entrypoint: true, versionFailure: true })
   expect(output).toStartWith('\x1b[1;31mJig could not report its built version.')
-  expect(output).toContain('bun i && bun run --cwd packages/jig build')
+  expect(output).toContain('bun i && just jig::build')
   expect(output).toEndWith('\x1b[0m\n')
 })
 

@@ -437,6 +437,12 @@ owner obtains and selects the npm `@jiggy` scope. Keep FLOW technically and
 publicly independent of Jig; retain the monorepo until separation has concrete
 value.
 
+Keep repository tasks in justfiles, not `package.json` scripts. Manifests
+declare metadata and dependencies; Just owns build, test, formatting, and
+explicit packing tasks. Reuse scripts for substantive orchestration rather
+than moving large programs into recipes. Installed products do not require
+the development task runner.
+
 Use the narrowest canonical owner for the selected work. This guide teaches
 the model; the sources below establish the relevant rules, exact behavior,
 outcome order, and current evidence.

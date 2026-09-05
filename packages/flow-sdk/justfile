@@ -1,0 +1,33 @@
+# ---------------------------------------------------------------------------- #
+#                                   COMMANDS                                   #
+# ---------------------------------------------------------------------------- #
+
+@default:
+    just --list
+
+# Build the portable SDK
+@build: clean
+    bun node_modules/typescript/bin/tsc -p tsconfig.json
+
+# Remove generated SDK output
+clean:
+    #!/usr/bin/env bun
+    import { rm } from 'node:fs/promises';
+    await rm('dist', { recursive: true, force: true });
+
+# Build, then pack; pass Bun pack options such as --destination
+[positional-arguments]
+@pack *args: build
+    bun pm pack --ignore-scripts "$@"
+
+# ---------------------------------------------------------------------------- #
+#                                    CHECKS                                    #
+# ---------------------------------------------------------------------------- #
+
+[positional-arguments]
+@test *args:
+    bun test "$@"
+
+# Build and test the external consumer; requires an absolute FLOW_NODE
+@test-package: build
+    bun test/package-smoke.ts

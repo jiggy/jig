@@ -8,6 +8,8 @@ operational baselines, and public-site assembly.
 ## Ownership
 
 - Root scripts own unprivileged source, package, release, and site operations.
+- Justfiles own task composition; scripts retain substantive orchestration.
+  Candidate and site scripts invoke the relevant justfile, not package scripts.
 - `test-release.sh` includes the proposal workshop's deterministic application
   tests; it does not claim live Agent quality or independent consumer proof.
 - `require-linux-host-conformance.sh` owns the bounded, read-only check that an
@@ -42,6 +44,8 @@ operational baselines, and public-site assembly.
   success plus fail-closed API fixtures.
 - `bun test scripts/development-shell.test.ts` exercises the actual shell hook's
   missing-build, mismatched-version, matching-version, and PATH behavior.
+- `just test-tooling` also checks recipe parsing, argument and working-directory
+  handling, explicit packing, and build-tool refusal before cleanup.
 
 ## Child DOX Index
 

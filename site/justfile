@@ -1,0 +1,14 @@
+# ---------------------------------------------------------------------------- #
+#                                   COMMANDS                                   #
+# ---------------------------------------------------------------------------- #
+
+@default:
+    just --list
+
+# Compile FLOW documentation; build-site.sh owns complete publication assembly
+@build-flow:
+    bun node_modules/@rspress/core/bin/rspress.js build -c flow/rspress.config.ts
+
+# Compile Jig documentation; build-site.sh owns complete publication assembly
+@build-jig:
+    bun node_modules/@rspress/core/bin/rspress.js build -c jig/rspress.config.ts

@@ -12,7 +12,7 @@ admitted FLOW packages.
   administration objects are package-owned implementation.
 - `test/` owns unit, integration, fault-injection, packed-package, and
   proof-host evidence.
-- `scripts/`, `support/`, the manifest, README, licenses, and notices own
+- `justfile`, `scripts/`, `support/`, the manifest, README, licenses, and notices own
   package assembly inputs. Bun generates the ignored root workspace lock;
   `dist/`, `bin/`, and `libexec/` are generated.
 
@@ -47,7 +47,7 @@ admitted FLOW packages.
 ## Verification
 
 - `bun test packages/jig`
-- `bun run --cwd packages/jig check`
+- `just jig::check`
 - Use `scripts/test-release.sh` for packed or cross-protocol changes.
 - Trust-boundary changes require the provisioned host-conformance workflow.
 - Test diagnostic usefulness as well as redaction, and human-facing output
