@@ -14,7 +14,8 @@ plus project-maintained skills for external libraries.
   experience, and the decision test.
 - `maintainer-guide.md` introduces the engineering model, its governing
   principles, operational invariants, and working method.
-- `ROADMAP.md` orders long-term outcome gates without becoming a task tracker.
+- `ROADMAP.md` orders outcome gates and the next concrete development steps
+  without becoming a task tracker.
 - `suspended-experiments.md` points to deleted experiments only when their
   evidence may be useful under an explicit reconsideration gate.
 - `field-notes/` preserves selected first-person causal evidence without making
@@ -59,9 +60,10 @@ plus project-maintained skills for external libraries.
 - Teach concepts without assuming project history. Keep the maintainer guide
   efficient to load. Split out a subject only when it
   acquires a distinct durable owner or verification contract.
-- Keep the roadmap a short sequence of user outcomes tied to the doctrine.
-  Do not expand it into a subsystem inventory or put release status and task
-  tracking in it.
+- Keep the roadmap tied to the doctrine, with user outcomes followed by a
+  short development sequence. Each step names the work and its completion
+  condition. Keep release status, detailed tasks, and blockers in `.tmp/`;
+  do not turn the roadmap into a subsystem inventory.
 
 ## Verification
 
