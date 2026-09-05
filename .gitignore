@@ -10,7 +10,11 @@ node_modules/
 __pycache__/
 *.py[cod]
 .bun-cache
+*.lock
+.jig
 
 # Local environment files
+/.direnv/
+/.env.local
 *.env
 .*.env
