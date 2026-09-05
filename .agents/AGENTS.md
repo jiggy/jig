@@ -28,9 +28,10 @@ plus project-maintained skills for external libraries.
 
 - A skill describes how an agent should use an actual public interface; it
   does not create or extend that interface.
-- Binding work rules belong in the applicable `AGENTS.md`. Engineering
-  rationale belongs in `maintainer-guide.md`, product rationale in the
-  doctrine, and recovery landmarks in `suspended-experiments.md`.
+- Scoped work rules belong in the applicable `AGENTS.md`. Repository-wide
+  engineering workflow and rationale belong in `maintainer-guide.md`, required
+  by the root entrypoint; product rationale belongs in the doctrine and recovery
+  landmarks in `suspended-experiments.md`.
 - Edit the compass, doctrine, maintainer guide, roadmap, and recovery index in
   place. Do not put dated snapshots, current blockers, or release anomalies
   in them.

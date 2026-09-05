@@ -10,8 +10,9 @@ through power under control.
 
 This guide explains the engineering principles that protect those promises,
 then the responsibilities, invariants, and working method that follow from
-them. It assumes no project history. The applicable `AGENTS.md` files contain
-binding work rules; public specifications contain exact contracts. This guide
+them. It assumes no project history. The root `AGENTS.md` requires this guide's
+repository-wide engineering workflow; child `AGENTS.md` files refine scoped
+work rules, and public specifications contain exact contracts. This guide
 refines the product doctrine and cannot override it; the root instructions
 govern conflicts. It does not establish release state or replace executable
 evidence. Update it in place when a durable model changes and remove obsolete
@@ -74,7 +75,8 @@ The product should feel like one finite path: initialize a local project,
 review it, run one exact admitted target, receive one terminal result, and
 leave no execution residue. Users should not manage setup phases, plan digests,
 coordinator epochs, runtime recipes, sandbox selection, or another lock
-protocol.
+protocol. Do not add `jig setup` or a framework merely for private
+implementation convenience.
 
 Project authoring values are inert. They describe membership and configuration
 but do not read, install, approve, or execute anything. FLOW metadata remains
@@ -342,12 +344,13 @@ freeze one concrete outcome
     -> test the next candidate independently
 ```
 
-Design probes are disposable clean-room API experiments. Their binding rules
-live in the root [`AGENTS.md`](../AGENTS.md). The durable method is:
+Design probes are disposable clean-room API experiments under
+`.tmp/design-probes-*`. Their working rules are:
 
 - freeze or publish the candidate interface first;
-- give an independent builder only public artifacts, public documentation, the
-  requested outcome, and explicit limits;
+- give an independent builder only published artifacts, public documentation,
+  the requested outcome, and explicit limits—not internal source, roadmaps,
+  or old probes;
 - prohibit changes to the platform while it is being consumed;
 - record exact artifacts, public documents, commands, failed attempts, elapsed
   time, bounded diagnostics, cleanup, and the claims proved or not proved;
@@ -380,7 +383,13 @@ First search for a smaller solution inside the approved outcome. Escalate only
 when the remaining choice materially changes product meaning, authority, cost,
 risk, or external ownership. Difficulty alone is not a blocker. A precise
 missing credential, infrastructure capability, external authority, or product
-choice is.
+choice is. Stop for owner direction before materially expanding product
+concepts or choosing between genuinely different product directions.
+
+When several independent outcomes are authorized, a blocker in one does not
+stop the others. Commit its stable in-scope work, retain unstable evidence on
+a separate experimental branch only when worth keeping, record owner-actionable
+blockers in `.tmp/`, and continue the other authorized work.
 
 Treat legal, commercial, infrastructure, and security questions in proportion
 to specific evidence. Do not create a product subsystem to answer an
@@ -420,6 +429,11 @@ suite is not a pass. State the exact evidence that completed.
 
 ## Find authoritative sources
 
+Use the `jiggy` GitHub organization and npm names under `@jigging/*` until the
+owner obtains and selects the npm `@jiggy` scope. Keep FLOW technically and
+publicly independent of Jig; retain the monorepo until separation has concrete
+value.
+
 Use the narrowest canonical owner for the selected work. This guide teaches
 the model; the sources below establish the relevant rules, exact behavior,
 outcome order, and current evidence.
@@ -427,7 +441,7 @@ outcome order, and current evidence.
 | Question | Canonical source |
 | --- | --- |
 | Why does this product exist? | [`product-compass.md`](product-compass.md) and its doctrine reading map |
-| What rules bind this edit? | Root and nearest applicable `AGENTS.md` files |
+| What rules bind this edit? | Root and nearest applicable `AGENTS.md` files, plus this required engineering guide |
 | What can a user do now? | [`README.md`](../README.md) and public documentation under [`docs/`](../docs/) |
 | What does FLOW mean? | Normative material under [`docs/flow/spec/`](../docs/flow/spec/) |
 | What does Jig currently promise? | [`docs/jig/`](../docs/jig/) and package READMEs |

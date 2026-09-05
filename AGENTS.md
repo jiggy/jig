@@ -27,7 +27,8 @@ for cross-project work), and [design judgment](.agents/doctrine/design-judgment.
 Relate material choices to the principles they serve. Independent probe
 consumers do not make platform decisions and retain their public-only inputs.
 
-Use the [maintainer guide](.agents/maintainer-guide.md) for engineering and the
+Follow the [maintainer guide](.agents/maintainer-guide.md) for repository-wide
+engineering workflow rules and use the
 [roadmap](.agents/ROADMAP.md) for outcome order. Inspect Git, relevant package
 registries, and current automation before asserting present implementation or
 release state. Transient task lists and reports belong in `.tmp/`.
@@ -107,7 +108,12 @@ Update parent docs when parent-level structure, ownership, workflow, or child in
 
 ## Hierarchy
 
-- Root AGENTS.md is the DOX rail: project-wide instructions, global preferences, durable workflow rules, and the top-level Child DOX Index
+- Root AGENTS.md is the DOX rail: repository-wide authority, required entrypoints, document routing, and the top-level Child DOX Index
+- Avoid adding entries to this root file. Record durable preferences and rules
+  in the nearest owning child AGENTS.md or required guide; merge existing
+  guidance before adding more. Add root content only when it governs the whole
+  repository and cannot be owned through an existing entrypoint. Do not restore
+  a general User Preferences section here.
 - Child AGENTS.md files own domain-specific instructions and their own Child DOX Index
 - Each parent explains what its direct children cover and what stays owned by the parent
 - The closer a doc is to the work, the more specific and practical it must be
@@ -151,49 +157,6 @@ Default section order:
 4. Remove stale or contradictory text
 5. Run existing verification when relevant
 6. Report any docs intentionally left unchanged and why
-
-## User Preferences
-
-- Keep the first releases radically simple: no `jig setup`, user-visible
-  lifecycle machinery, second lock protocol, or framework added merely to
-  make private implementation convenient.
-- Advance the next useful outcome using completed evidence and the existing
-  release gates. Do not restart a separate baseline probe campaign unless a
-  change or failure invalidates that evidence; independent consumers should
-  exercise the next capability being earned.
-- Stop for owner direction before a change materially expands product concepts
-  or chooses between genuinely different product directions. It is preferable
-  to report a precise blocker early than to overcomplicate the solution.
-- When the owner authorizes several independent verticals, a blocker in one
-  does not stop the others. Commit its stable in-scope work, retain unstable
-  evidence on a separate experimental branch only when it is worth keeping,
-  record only owner-actionable blockers in `.tmp/`, and continue the other
-  authorized verticals.
-- Never absorb a development sandbox, proof-host package manager, credential,
-  model, or other local limitation into Jig or FLOW architecture. Ask for the
-  exact generic environment capability or report its absence.
-- Agent clients, endpoints, credentials, and models are trusted host choices,
-  never FLOW inputs or development defaults. Keep compatible endpoints named
-  by the wire API they actually implement and keep native clients thin over
-  the shared ACP lifecycle so future clients do not require FLOW changes.
-- Keep design probes disposable under `.tmp/design-probes-*`. Independent
-  probe agents receive published artifacts and public documentation, not
-  internal source, roadmaps, old probes, or permission to modify the platform
-  they are evaluating.
-- Keep public material under `docs/`. Put internal engineering orientation,
-  recovery indexes, and long-term planning under `.agents/`; keep per-vertical
-  pre-mortems and dated reports in `.tmp/` and promote only durable conclusions
-  or exceptional causal evidence to their designated owners.
-- Historically valuable first-person engineering evidence may be promoted to
-  `.agents/field-notes/` when Git and the living guides cannot preserve its
-  causality. Field notes are optional, non-normative evidence and must never
-  become a competing source of current product truth.
-- Use the `jiggy` GitHub organization and keep npm packages under `@jigging/*`
-  until the owner obtains and selects the npm `@jiggy` scope. Keep FLOW
-  technically and publicly distinct from Jig while retaining the monorepo
-  until separation has concrete value.
-- When the user requests a durable behavior change, record it here or in the
-  relevant child `AGENTS.md`.
 
 ## Child DOX Index
 
