@@ -1,11 +1,27 @@
-# FLOW — capability compounding
+# Capability compounding — FLOW
 
-FLOW's core idea is **capability compounding**. Its substance is executable
-know-how: a useful way of doing work that others can apply, evaluate, adapt,
-and share. Portability and composability support this purpose; a portable file
-or a successful invocation alone does not demonstrate it.
+**Capability compounding** is FLOW's core idea: useful ways of doing work
+become a starting point for further capability. Its substance is executable
+know-how that others can apply, evaluate, adapt, combine, and share.
 
-## How a method becomes accumulated capability
+FLOW is an independent standard for packaging and invoking a reusable
+procedure, called a Flow. It serves the shared aspiration to
+[expand human possibility](purpose.md). Portability and composability are
+means to that end; a portable file or successful invocation alone does not
+demonstrate useful compounding.
+
+## Guiding principles
+
+Three principles determine what a FLOW design must preserve.
+
+1. **Accumulate usable capability.** Reuse, combination, and improvement
+   should enable useful work, not merely increase the number of packages.
+2. **Keep methods independently reusable.** A method should travel without
+   requiring its author's host, framework, or provider arrangements.
+3. **Keep methods understandable and adaptable.** Consumers must be able to
+   judge, modify, and build on what they inherit.
+
+## 1. Accumulate usable capability
 
 A method becomes more valuable when later practitioners can build on its
 working procedure instead of starting again. A research method, for example,
@@ -39,7 +55,13 @@ meaning cannot guarantee identical results or transfer an expert's full competen
 FLOW enables this exchange; applications and practitioners establish whether
 what they exchange is worth inheriting.
 
-## Why a procedure deserves its own boundary
+## 2. Keep methods independently reusable
+
+Independence needs a boundary around the procedure while leaving its internal
+method to its author. That boundary must not carry authority from one host
+into another.
+
+### A procedure boundary
 
 Some methods derive their value from execution structure: independent
 contexts, ordering, repeated attempts, external checks, integration, and
@@ -59,7 +81,7 @@ values, finite invocation, outcomes, and optional exact interoperability
 contracts. Exact public mechanics remain in the
 [FLOW specifications](../../docs/flow/spec/).
 
-## Independence is a practical requirement
+### Runtime and host independence
 
 A method that travels only by adopting Jig's authority model or one runtime's
 internal graph is still coupled to that host or framework. FLOW therefore
@@ -79,7 +101,13 @@ exist. A particular host may support only a subset of implementations and must
 state that honestly. Neutrality does not mean every package runs everywhere,
 and missing execution support cannot silently substitute a different method.
 
-## Precision should earn its cost
+## 3. Keep methods understandable and adaptable
+
+Readable meaning and usable interfaces let consumers judge the method and
+make it their own. Formal detail should support that ability where it is
+needed, without turning every procedure into platform machinery.
+
+### Precision should earn its cost
 
 Readable purpose and inspectable package content make a method understandable
 before anyone accepts it. Simple bounded work should not require a formal
@@ -98,7 +126,7 @@ The point is to make methods easy to exchange while remaining exact where
 ambiguity changes interoperability. Semantic resemblance between descriptions
 is not proof that two components can substitute for one another.
 
-## Methods belong to their authors and users
+### Methods belong to their authors and users
 
 Gauntlets, independent juries, debate, research/review separation, tree search,
 and prompt optimization should be expressible as excellent Flows, libraries,

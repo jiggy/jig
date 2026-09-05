@@ -1,97 +1,109 @@
-# Jig and FLOW product compass
+# Expand human possibility
 
-Start here to recover the project's direction. The [doctrine](doctrine/purpose.md)
-preserves the deeper reasoning; this file is its concise summary and reading
-map. Neither is an API specification or a claim about what has shipped.
+**Jig and FLOW product compass.** This is the entrypoint to what the projects
+are for, the principles that govern them, and the decisions those principles
+constrain. No project history or prior discussion is required.
 
-## The one-minute memory
+## Core ideas
 
-The shared aspiration is **Expand human possibility**. The practical ambition
-is to make useful capability accumulate and become available for further work:
-**build the builders**, then let others inherit and improve their methods.
+The shared aspiration is to make useful work achievable for more people.
+Two complementary products pursue it.
 
-| Project | Core idea | Contribution |
+| Project | Core idea | What it enables |
 | --- | --- | --- |
-| **FLOW** | Capability compounding | Executable know-how that others can apply, evaluate, adapt, and share |
+| **FLOW** | Capability compounding | Executable know-how that others can apply, evaluate, adapt, combine, and share |
 | **Jig** | Agency | Power under control: accomplish more through capable methods while retaining meaningful direction |
 
-Portability enables FLOW's purpose; it does not guarantee improvement. Jig's
-agency includes people, applications, and software subsystems. Ownership,
-replaceability, and exact authority support its promise. Automation can act
-within delegated policy without a person deciding at every step or a model
-granting itself additional powers.
+FLOW is an independent standard for reusable procedures, called Flows. Jig is
+a host that runs those methods with powers authorized by their operator.
+Jig's consumers can be people, applications, or software subsystems.
 
-> FLOW carries meaning. Jig carries authority and lifecycle. Flows carry
-> method. Runtimes carry internal control. Applications carry purpose.
+The pyramid widens from these ideas into increasingly specific decisions:
 
-The intended experience is approachable reuse: understand a method, accept it,
-supply local powers, combine it with other work, inspect its outcome, and adapt
-it. End users should meet a coherent application rather than kernel machinery.
-The software factory is our north-star demonstration, not Jig's domain model.
+```text
+                     Expand human possibility
+              FLOW: Capability compounding | Jig: Agency
+                     Guiding product principles
+            Design commitments and responsibility boundaries
+         Specifications, roadmap choices, and operational work rules
+    Implementations, configurations, examples, experiments, individual edits
+```
 
-## Essential commitments
+FLOW and Jig are sibling branches. Lower levels must satisfy every applicable
+higher-level commitment. More detail does not create permission to contradict
+the core ideas, and a core idea is not an excuse to bypass its safeguards.
 
-The doctrine explains why these commitments matter and the tradeoffs they
-require. Together they protect useful work under meaningful direction.
+## Guiding principles
 
-- **FLOW remains independent.** Its packages and invocation meaning do not
-  require Jig's host policy or a privileged runtime.
-- **Intelligence does not grant authority.** Discovery and model selection
-  cannot authorize work. Compatibility and admission precede semantic choice;
-  one exact accepted meaning executes.
-- **Powers have an owner.** Operators supply providers, credentials, limits,
-  and execution policy. Work can act only within authorized consequences.
-- **Control survives failure.** Owned work must be accounted for through
-  completion, cancellation, and cleanup. Missing support and uncertainty stay
-  visible; a plausible answer is not sufficient proof of success.
-- **Ownership is usable.** Source and policy remain inspectable and adaptable,
-  with no hidden competing effective source. Jig stays useful as an
-  OSI-approved open-source local product, not a crippled community edition.
-- **Methods and applications stay outside the kernel.** Runtimes own internal
-  control; Flows and applications own their methods, domain rules, and purpose.
-- **Simple use stays simple.** Defaults handle ordinary use. Configuration,
-  Bindings, contracts, and public abstractions must earn their burden.
-  Minimalism removes unnecessary machinery, not proved safety invariants.
-- **Claims follow evidence.** Independent use must establish the benefits
-  claimed. Completing a phase does not authorize the next subsystem.
+The [shared purpose](doctrine/purpose.md) calls for capability to accumulate,
+remain under its recipient's direction, and produce useful outcomes. Each
+product expresses those principles in its own domain.
 
-## Read the reasoning
-
-Each chapter owns a distinct part of the product judgment. Read the relevant
-one when a decision needs more than the summary.
-
-| Chapter | Question it answers |
+| FLOW — capability compounding | Jig — agency through power under control |
 | --- | --- |
-| [Purpose](doctrine/purpose.md) | Why should capability accumulate, who benefits, and what would a successful ecosystem enable? |
-| [FLOW](doctrine/flow.md) | How can executable know-how compound, and why does an independent method boundary matter? |
-| [Jig](doctrine/jig.md) | How does agency become power under control for human and software consumers? |
-| [Design judgment](doctrine/design-judgment.md) | Which responsibilities, tradeoffs, proof standards, and lessons keep the design coherent? |
+| Accumulate usable capability | Expand useful power |
+| Keep methods independently reusable | Keep direction with the authority owner |
+| Keep methods understandable and adaptable | Make control usable throughout the work |
 
-Chosen values explain what we serve. Product hypotheses describe benefits we
-must demonstrate. Design commitments describe the boundaries we currently
-choose to protect those values. An aspiration cannot prove a hypothesis or
-make a particular mechanism inevitable. Unresolved questions stay unresolved.
+Portability enables compounding without guaranteeing improvement. Agency
+includes delegated software work without granting a model the power to
+authorize itself. Ownership and replaceability make control practical.
+These principles are developed in the [FLOW](doctrine/flow.md) and
+[Jig](doctrine/jig.md) branches.
 
-## Returning as leader
+## Design commitments
 
-Protect the order: useful reusable work and agency first; ownership and exact
-authority make that power governable; FLOW, Jig, runtimes, and applications
-each do their part. Enforcement machinery serves these outcomes.
+The wider [design layer](doctrine/design-judgment.md) develops three duties:
+place responsibilities with their proper owner, preserve the promise with
+the least burden, and let evidence bound the next decision.
 
-Before expanding the product, use the
-[decision test](doctrine/design-judgment.md#warning-signs-and-the-decision-test):
-identify a valuable outcome and its strongest simpler alternative, find the
-smallest responsible owner, expose authority and failure behavior, and name
-the evidence and stopping rule. A complete application must justify its
-ceremony on the advantage it claims, not win every possible comparison.
+### Responsibilities stay distinct
 
-The [engineering re-entry guide](maintainer-reentry.md) owns stable engineering
-memory; the [roadmap](ROADMAP.md) owns outcome order. Public specifications and
-conformance evidence establish exact contracts; Git, current automation,
-published artifacts, and observed behavior establish present state. Historical
-proposals and the doctrine cannot silently change those contracts.
+FLOW remains independent of Jig's host policy and every runtime's internal
+control. Flows own methods; runtimes own their live advancement; applications
+own purpose and domain rules. Operators supply Agents, credentials, limits,
+and execution policy. No package or chooser acquires those powers by naming
+them.
 
-> Protect the boundary, but sell the outcome. Let methods remain creative,
-> models remain replaceable, source remain owned, applications remain
-> opinionated, and Jig remain the smallest authority that makes portable
-> agentic work trustworthy.
+### The promises remain intact
+
+Discovery is not admission: accepting a method authorizes exact reviewed
+meaning, not any later edit. Compatibility and admission precede optional
+semantic choice: model-assisted selection among eligible methods. Completion,
+cancellation, and cleanup must account for owned work; missing support and
+uncertainty remain visible.
+
+Source and policy stay inspectable and adaptable without a competing hidden
+effective source. Jig remains useful as an OSI-approved open-source local
+product, not a crippled community edition. Defaults simplify ordinary use.
+A Binding is a reusable project-local configuration for a Flow; such
+configuration and formal contracts earn their burden through meaningful
+customization or interoperability. Minimalism never removes proved safeguards.
+
+### Evidence limits the next step
+
+An independent consumer must establish the advantage claimed. The software
+factory—a coordinated process producing reviewed code changes—is the demanding
+north-star example, not Jig's application ontology.
+A complete application must justify its added ceremony against a strong
+simpler alternative on the dimensions it claims; it need not win every
+comparison. Completing one outcome does not authorize the next subsystem.
+
+## From commitments to concrete work
+
+Specifications define exact public contracts within this doctrine.
+The [maintainer guide](maintainer-guide.md) teaches the engineering model;
+the [roadmap](ROADMAP.md) orders outcomes; implementation and conformance
+evidence show what works. These lower layers realize the principles above,
+rather than redefining them.
+
+Chosen values, testable product hypotheses, and revisable design commitments
+have different evidence needs. That distinction does not change their order
+of authority. An aspiration cannot prove a benefit or select a mechanism.
+
+The [decision test](doctrine/design-judgment.md#the-decision-test) begins with
+the higher-level commitments a choice must satisfy. If a contract or proposal
+conflicts with them, the affected work needs explicit resolution at the owning
+level. Neither silently changing an API nor following a known contradiction
+is a valid way to resolve it. The binding decision procedure is in the
+[root instructions](../AGENTS.md#product-authority-and-entry-path).

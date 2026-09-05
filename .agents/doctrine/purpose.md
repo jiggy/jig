@@ -1,15 +1,31 @@
-# Purpose — expand human possibility
+# Expand human possibility
 
-Jig and FLOW serve a world in which more people can turn intentions into
-useful outcomes. Their shared aspiration is **Expand human possibility**.
-The practical ambition beneath it is to make useful capability accumulate,
-travel, and become available for further work.
+Jig and FLOW exist to help more people turn intentions into useful outcomes.
+This shared aspiration sits above both products: **FLOW makes capability
+compound; Jig enables agency through power under control.**
 
-This is a chosen purpose. The belief that portable agentic methods can
-meaningfully advance it is a product hypothesis, to be tested through useful
-applications and independent adoption.
+FLOW is an independent standard for reusable methods, called Flows. Jig is a
+host that puts those methods to work under the recipient's direction. This
+combination is a product hypothesis: useful applications and independent use
+must demonstrate that it advances the chosen aspiration.
 
-## From knowing to being able
+## Guiding principles
+
+Three principles connect the aspiration to what the products should enable.
+
+1. **Let useful capability accumulate.** Give each practitioner a better
+   starting point rather than making them reconstruct the method.
+2. **Keep capability under its recipient's direction.** Broader access should
+   increase people's practical ability to choose and act.
+3. **Measure progress through achievable outcomes.** More activity or
+   architecture matters only when it enables useful work.
+
+## 1. Let useful capability accumulate
+
+Accumulation matters because access to information does not by itself supply
+the means to act. These two steps explain the opportunity.
+
+### From knowing to being able
 
 Knowing that a problem can be solved is different from having the means to
 solve it. Information can describe a good investigation, review, or building
@@ -28,7 +44,7 @@ competence could help individuals and small teams attempt work that would
 otherwise require substantially more coordination or institutional support.
 It does not make professional judgment, resources, or responsibility obsolete.
 
-## Build the builders
+### Build the builders
 
 The project bets that a useful unit of reuse is the method that produces and
 improves an outcome. A specialist might develop an excellent evidence-review
@@ -51,7 +67,31 @@ under the recipient's direction. Their distinction matters: an independent
 FLOW ecosystem can serve hosts besides Jig, while Jig must offer useful agency
 before a large ecosystem exists.
 
-## Who should gain from this
+## 2. Keep capability under its recipient's direction
+
+Inherited competence expands possibility when its recipient can choose how to
+use and adapt it. A method author may contribute expertise without acquiring
+the right to choose the recipient's providers, data policy, or consequences.
+
+No mandatory registry, runtime, language, Agent, or vendor should own that
+exchange. Openness creates an opportunity for capability to distribute; it
+does not guarantee access, affordability, quality, or adoption. Those remain
+real product challenges. The supporting ownership promise is developed in
+[Jig](jig.md).
+
+More execution is not necessarily more useful capability. Bad methods can
+spread; automation can amplify errors; additional power can undermine another
+person's agency. The goal is neither maximum autonomous activity nor replacing
+every human judgment. It is making useful work more achievable under meaningful
+direction and responsibility.
+
+## 3. Measure progress through achievable outcomes
+
+The intended beneficiaries and their experience give the aspiration something
+concrete to answer to. They are an audience hypothesis, not a claim that every
+role or application already benefits.
+
+### Who should gain from this
 
 The initial audience hypothesis is builders whose repeated work benefits from
 reusable procedures, explicit coordination, or separated responsibilities.
@@ -72,7 +112,7 @@ when the method author, data owner, provider, reviewer, and consequence owner
 are different people or organizations. The person capable of executing work
 is not automatically entitled to choose its consequences.
 
-## A successful ecosystem
+### A successful ecosystem
 
 The intended experience is ordinary: find useful work, understand it, accept
 an exact revision, supply local collaborators and powers, run it, and receive
@@ -81,12 +121,6 @@ adopting its internal framework. Sharing should feel as approachable as a
 Skill, composition as natural as a function, and execution as governable as a
 process.
 
-No mandatory registry, runtime, language, Agent, or vendor should own that
-exchange. Openness creates an opportunity for capability to distribute; it
-does not guarantee access, affordability, quality, or adoption. Those remain
-real product challenges. The supporting ownership promise is developed in
-[Jig](jig.md).
-
 The software factory is our north-star demonstration because it makes the
 whole proposition visible: reusable specialists work toward a reviewed patch
 with evidence and bounded consequences. It is not the definition of Jig.
@@ -94,13 +128,7 @@ Research, incident analysis, scientific procedures, procurement review, and
 personal campaigns could benefit from the same foundations. These are
 possibilities, not a commitment to build every application or subsystem.
 
-## Why the aspiration needs limits
-
-More execution is not necessarily more useful capability. Bad methods can
-spread; automation can amplify errors; additional power can undermine another
-person's agency. The goal is neither maximum autonomous activity nor replacing
-every human judgment. It is making useful work more achievable under meaningful
-direction and responsibility.
+### Evidence of useful possibility
 
 The distinctive product bet is the combination: reusable methods that travel
 and a host that lets their recipient direct their powers. Packaging,

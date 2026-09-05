@@ -1,11 +1,25 @@
-# Jig — agency through power under control
+# Agency — Jig
 
-Jig's core idea is **agency**: the practical ability to pursue a purpose and
-accomplish useful work. Its product promise is **power under control**. People,
-applications, and software subsystems should be able to put more capable
-methods to work while retaining meaningful direction over their execution.
+**Agency** is Jig's core idea: the practical ability to pursue a purpose and
+accomplish useful work. Its product promise is **power under control**.
 
-## Both halves of the promise
+Jig is a host: it runs reusable Flow packages with powers supplied by their
+operator. People, applications, and software subsystems can use it. It serves
+the shared aspiration to [expand human possibility](purpose.md) without
+requiring a human at every interface.
+
+## Guiding principles
+
+Agency depends on capability and meaningful direction working together.
+
+1. **Expand useful power.** Let consumers accomplish more by delegating to
+   capable methods and combining their work.
+2. **Keep direction with the authority owner.** Intelligence may exercise
+   delegated powers; it cannot grant itself more.
+3. **Make control usable throughout the work.** Consumers must be able to
+   understand, constrain, observe, stop, and adapt the systems they rely on.
+
+## 1. Expand useful power
 
 Power comes from being able to assemble and invoke capable specialists. A
 consumer can delegate investigation, building, checking, or revision without
@@ -22,7 +36,17 @@ being made. Jig similarly helps builders construct and refine their builders.
 Applications retain purpose and domain policy; Jig supplies the authority and
 lifecycle necessary to put their chosen methods to work.
 
-## Agency does not require a person at every call
+An Agent is an intelligent worker used by a method; a Flow can coordinate one
+or several such workers alongside ordinary code and checks. Jig makes this
+work available under a common host boundary while leaving each method's
+internal control and each application's purpose to its author.
+
+## 2. Keep direction with the authority owner
+
+Delegation, local admission, and method selection are different decisions.
+Each must preserve the authority under which the work exists.
+
+### Delegation for human and software consumers
 
 A software subsystem can use Jig to pursue a delegated task within established
 authority. Human possibility is the larger aspiration, not a requirement that
@@ -42,14 +66,16 @@ explicitly delegated.
 This is the separation of intelligence from authority. It preserves flexible
 reasoning without making a model's judgment the source of its own powers.
 
-## Methods travel; authority is supplied locally
+### Methods travel; authority is supplied locally
 
-Jig owns discovery, review, admission, exact resolution, binding of
-operator-provided powers, limits, lifecycle, and accountable execution. Finding,
-downloading, parsing, or ranking a method does not admit it. One exact accepted
-meaning executes; later source changes do not inherit its authority silently.
+Jig discovers and reviews methods before admission: the local decision to
+authorize an exact revision and its configuration for execution. Finding,
+downloading, parsing, or ranking a method does not admit it. Jig resolves the
+accepted work and supplies its configured powers, limits, and lifecycle.
+Later source changes do not inherit that authority silently.
 
-The operator chooses Agents, providers, endpoints, models, credentials,
+The operator is the person or organization responsible for the host's powers.
+They choose Agents, providers, endpoints, models, credentials,
 infrastructure, containment, and data policy. A Flow can supply bounded task
 instructions and the context and Skills appropriate to a particular Agent
 call. That customization does not entitle it to select the operator's provider
@@ -61,11 +87,10 @@ receives the bounded data intentionally sent to it. Its suitability and data
 policy must be considered by the responsible operator. Exact admission proves
 neither an Agent's truthfulness nor a package's safety under every threat.
 
-## Flexible choice within exact boundaries
+### Flexible choice within exact boundaries
 
-The original routing problem still matters: a growing set of useful methods
-should not require a hardcoded keyword gate or a permanent graph edge for
-each possible method. Intelligence can help consumers choose an appropriate
+A growing set of useful methods should not require a hardcoded keyword gate
+or a permanent graph connection for each possible method. Intelligence can help consumers choose an appropriate
 procedure as that set grows. It need not control the set itself.
 
 The governing sequence is:
@@ -88,19 +113,28 @@ only when it offers a material advantage over an explicit route. This
 principle protects dynamic choice; it does not select a general catalogue or
 router implementation. Broader discovery remains an evidence-gated question.
 
-## Control remains meaningful through failure and change
+## 3. Make control usable throughout the work
+
+Control must remain effective after the initial decision to run something.
+Failure, source changes, and everyday configuration all test that promise.
+
+### Completion, cancellation, and uncertainty
 
 Receiving a plausible result is not enough to finish work. Every effect and
 live resource needs an owner. Completion and cancellation must account for
-owned work through bounded revocation, fencing, and cleanup, including when
-the coordinator fails. Missing support fails visibly. Possibly dispatched work
-is not guessed successful or silently repeated to conceal uncertainty.
+owned work through fencing (revoking further authority and stopping locally
+owned execution) and cleanup, including when the coordinator fails. Missing
+support fails visibly. Possibly dispatched work is not guessed successful or
+silently repeated to conceal uncertainty.
 
 These promises have to be proved under a stated threat model. They do not
-imply that cancellation undoes an already completed external consequence or
-that exact execution makes an intelligent method semantically deterministic.
-The [engineering re-entry guide](../maintainer-reentry.md) owns the operational
-model; this doctrine preserves why that model must remain honest.
+imply that cancellation retracts a remote request already accepted by a
+provider or undoes a completed external consequence. Exact execution does not
+make an intelligent method semantically deterministic.
+The [maintainer guide](../maintainer-guide.md) develops these obligations into
+an operational model.
+
+### Source that can be understood and changed
 
 Control also requires understandable change. Visible user-owned source and
 policy remain ordinary and editable. Mutable source proposes; exact accepted
@@ -116,7 +150,7 @@ knowable edits. The effective source must remain visible, without a competing
 runtime patch overlay; preserving intent does not mean every local edit can
 be reconciled automatically.
 
-## Ownership and simplicity make control usable
+### Ownership and simplicity make control usable
 
 Ownership supports agency through practical abilities: inspect, understand,
 adapt, replace, and retain the system doing the work. Source availability alone

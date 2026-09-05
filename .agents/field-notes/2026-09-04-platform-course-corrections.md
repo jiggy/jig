@@ -10,7 +10,7 @@
 
 Current product intent lives in [`../product-compass.md`](../product-compass.md),
 current engineering guidance in
-[`../maintainer-reentry.md`](../maintainer-reentry.md), and exact recovery
+[`../maintainer-guide.md`](../maintainer-guide.md), and exact recovery
 landmarks in [`../suspended-experiments.md`](../suspended-experiments.md).
 
 ## Why this note exists

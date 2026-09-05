@@ -1,15 +1,47 @@
 # Repository instructions
 
-## Maintainer re-entry
+## Product authority and entry path
 
-Before selecting or expanding product work, read
-[`.agents/product-compass.md`](.agents/product-compass.md) for enduring product
-intent and its reading map into the doctrine, and
-[`.agents/maintainer-reentry.md`](.agents/maintainer-reentry.md) for engineering
-memory, then inspect Git, package registries, and current
-automation for present state. Read [`.agents/ROADMAP.md`](.agents/ROADMAP.md)
-for ordered long-term outcome gates; transient task lists and status reports
-belong in `.tmp/`.
+**Expand human possibility** is the shared aspiration. **Capability
+compounding** is FLOW's core idea. **Agency** is Jig's core idea, expressed as
+**power under control**. Every project decision must respect this doctrine.
+
+The product authority pyramid descends from:
+
+1. Shared aspiration and each project's core idea.
+2. Guiding principles that protect those ideas.
+3. Design commitments, responsibility boundaries, and accepted tradeoffs.
+4. Specifications, roadmap choices, and operational work rules.
+5. Implementations, configurations, examples, experiments, and individual edits.
+
+A lower level may refine a higher one but must never contradict it. Constraints
+accumulate down the pyramid: invoking a core idea does not authorize bypassing
+a specific principle or safeguard. FLOW and Jig are sibling branches; a Jig
+decision cannot subordinate FLOW's independence to Jig's convenience.
+
+Before making project decisions, read the
+[product compass](.agents/product-compass.md),
+[shared purpose](.agents/doctrine/purpose.md), the relevant
+[FLOW](.agents/doctrine/flow.md) or [Jig](.agents/doctrine/jig.md) branch (both
+for cross-project work), and [design judgment](.agents/doctrine/design-judgment.md).
+Relate material choices to the principles they serve. Independent probe
+consumers do not make platform decisions and retain their public-only inputs.
+
+Use the [maintainer guide](.agents/maintainer-guide.md) for engineering and the
+[roadmap](.agents/ROADMAP.md) for outcome order. Inspect Git, relevant package
+registries, and current automation before asserting present implementation or
+release state. Transient task lists and reports belong in `.tmp/`.
+
+If a lower-level proposal or existing contract conflicts with a higher-level
+commitment, do not implement the conflict or silently reinterpret either side.
+Choose a conforming alternative; if none is established, pause the affected
+work and ask the owner to resolve the conflict at its owning level. A core
+idea does not itself select an API, prove a hypothesis, or authorize new scope.
+Doctrinal wording does not silently change an exact public contract: resolve
+the conflict through authorized, synchronized revisions to the affected
+guidance, specifications, schemas, implementation, and tests before proceeding.
+Evidence can motivate a revision; it cannot grant permission to contradict an
+unchanged higher-level commitment.
 
 ## No prerelease compatibility
 
@@ -55,7 +87,7 @@ must remain explicitly subordinate and must never load a compatibility path.
 4. Read every AGENTS.md found along each route
 5. If a parent AGENTS.md lists a child AGENTS.md whose scope contains the path, read that child and continue from there
 6. Use the nearest AGENTS.md as the local contract and parent docs for repo-wide rules
-7. If docs conflict, the closer doc controls local work details, but no child doc may weaken DOX
+7. If docs conflict, the closer doc controls only local details consistent with parent contracts; no child may weaken DOX or the product authority pyramid
 
 Do not rely on memory. Re-read the applicable DOX chain in the current session before editing.
 
@@ -79,6 +111,8 @@ Update parent docs when parent-level structure, ownership, workflow, or child in
 - Child AGENTS.md files own domain-specific instructions and their own Child DOX Index
 - Each parent explains what its direct children cover and what stays owned by the parent
 - The closer a doc is to the work, the more specific and practical it must be
+- Filesystem proximity does not raise product authority: local rules and
+  implementation choices remain subject to the higher-level doctrine
 
 ## Child Doc Shape
 
@@ -97,6 +131,10 @@ Default section order:
 ## Style
 
 - Keep docs concise, current, and operational
+- Write living docs as first-time entrypoints with no assumed conversations or
+  prior participation. Lead with the owning core idea or purpose, then a few
+  principles, then wider commitments and details. Explain necessary terms
+  before relying on them; keep historical narratives in their optional owner
 - Document stable contracts, not diary entries
 - Put broad rules in parent docs and concrete details in child docs
 - Prefer direct bullets with explicit names

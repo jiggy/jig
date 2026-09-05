@@ -17,7 +17,7 @@ lost from Git diffs or made misleading if placed in a living guide.
 - Every note is historical and non-normative. The product compass, current
   specifications, applicable `AGENTS.md` files, roadmap, code, and executable
   evidence always outrank it.
-- Field notes are optional research material, never required maintainer re-entry
+- Field notes are optional research material, never required introductory
   reading and never a source of current status, blockers, interfaces, or tasks.
 - Include the date, recorder or session label when known, evidence window,
   scope, and links to current canonical owners. Record an originating session
