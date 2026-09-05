@@ -64,11 +64,11 @@ This also protects console methods cached by that later module graph. It does
 not make raw stdout or inherited child stdout valid protocol output.
 
 Run/1 also defines `run.callFlow()` and `run.callEffect()` as portable
-operations. Jig supplies `callFlow()` only when the invoked Binding maps that
-slot to one exact admitted direct Flow; a direct `flow:` Run has no child
-slots. Jig supplies `callEffect()` only for its exact experimental
-[Agent Run capability](https://jig.md/spec/agent-run); other effect slots are
-unavailable. An unavailable operation rejects with `OperationError` code
+operations. The host determines which slots are available. For Jig's admitted
+child targets and Agent capability, see its
+[project policy](https://jig.md/spec/project-policy) and
+[Agent Run documentation](https://jig.md/spec/agent-run).
+An unavailable operation rejects with `OperationError` code
 `UNAVAILABLE`. A call-specific `AbortSignal` rejects a cancelled call with
 code `CANCELLED` and sends the matching Run/1 cancellation notification if
 the request reached the wire. A cancellation-only catch must rethrow every

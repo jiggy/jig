@@ -31,6 +31,13 @@ method, a separate evidence-review method, and deterministic checks.
 - The reviewer derives its public verdict from Agent findings: any blocking
   finding wins, other findings require revision, and only an empty list
   approves. Blank reasons and unknown finding kinds are invalid.
+- Findings identify a concrete evidence defect or unmet explicit requirement
+  and its consequence, not optional presentation preferences. Disclosed launch
+  prerequisites do not prevent a responsible conditional proposal; approval
+  of a draft never authorizes its execution.
+- A completed reviewer Run returns `done` even when its `output.verdict`
+  requires revision or blocks the proposal. Agent inability to complete is a
+  separate Flow outcome.
 
 ## Work Guidance
 

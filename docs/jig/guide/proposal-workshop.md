@@ -23,6 +23,11 @@ exactly once and cites only supplied evidence IDs. A draft that passes those
 checks goes to the reviewer in a fresh Agent call. Mechanical or review
 feedback can request one revision; a second unapproved draft ends with `limit`.
 
+Review concerns material evidence defects and unmet requirements, not optional
+presentation improvements. A useful conditional proposal can name approvals
+that must be obtained before launch. Approving that draft does not authorize
+launching, purchasing, or spending.
+
 The workshop's Binding fixes its collaborators:
 
 ```ts

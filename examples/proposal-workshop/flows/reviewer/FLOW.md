@@ -18,6 +18,13 @@ ordinary code returns blocked if any finding blocks the proposal, revise if
 other findings remain, and approve only for an empty list. The public result
 contains that verdict and the issues.
 
+A completed review returns `done` with an `output.verdict` of `approve`,
+`revise`, or `blocked`; an Agent that cannot complete its work instead returns
+the Flow outcome `blocked` or `limit`. Review completion is not approval.
+Findings identify material evidence defects or unmet explicit requirements,
+not optional presentation improvements. A responsible conditional proposal
+may disclose prerequisites without claiming they have already been satisfied.
+
 This method owns no child Flow slots and depends on no workshop implementation.
 Another application can supply the same ordinary input and its own admitted
 review focus. Its judgment is advisory; an approval is not authority to act.
