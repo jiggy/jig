@@ -57,7 +57,19 @@ evidence rather than restarting a foundation.
    the next useful outcome through public artifacts and instructions, and
    concrete delivery defects are corrected as they appear.
 
-2. **Build one reusable static Agent workflow.** Use a proposal workshop over
+2. **Make the review-to-result experience usable.** Coordinate the CLI UX
+   changes across specifications, implementation, documentation, and tests.
+   Explain configuration and admission failures with a known cause and next
+   safe step; make consent readable without hiding material changes or powers.
+   Present outcomes clearly, distinguishing a completed Run from achieved,
+   blocked, or limited application work, while preserving exact machine-readable
+   meaning. Verify interactive terminals and piped output through existing
+   commands. Finish when a new user can recover from missing configuration,
+   review the intended work, run it, and understand the result without a
+   maintainer translating the output. This is a focused UX repair, not a new
+   command framework or baseline campaign.
+
+3. **Build one reusable static Agent workflow.** Use a proposal workshop over
    supplied evidence: draft, review in a separate context, check mechanically,
    and revise within a fixed limit. Start with the existing calls, then extend
    exact child composition only enough for an Agent-using specialist to run
@@ -65,21 +77,21 @@ evidence rather than restarting a foundation.
    deliver the useful result while preserving authority, deadlines, and
    cleanup. Neither parallel scheduling nor a SemanticRouter is a prerequisite.
 
-3. **Prove reuse beyond the first application and host.** Reuse the workshop's
+4. **Prove reuse beyond the first application and host.** Reuse the workshop's
    evidence-review specialist in a procurement brief. Have an independent
    implementer run the unchanged Flow outside Jig using public FLOW contracts
    and locally supplied compatible capabilities. Finish with useful results
    in both applications and a bounded interoperability demonstration—not a
    second production host or a universal adapter framework.
 
-4. **Enable one real issue-to-tested-patch Run.** Define and review the smallest
+5. **Enable one real issue-to-tested-patch Run.** Define and review the smallest
    operator-granted boundary for a disposable repository workspace and test
    execution, then implement it. Start with one coding Agent and exact checks.
    Finish with an inspectable patch, actual test evidence, and failure and
    cancellation proofs; the original repository stays untouched. Do not grant
    broad host access or invent a general workspace framework.
 
-5. **Assemble the minimal software factory.** Combine proven coding, checking,
+6. **Assemble the minimal software factory.** Combine proven coding, checking,
    and independent review methods around explicitly submitted issues and a
    small application-owned Kanban. Finish when repeated issues produce
    reviewable patches and honest failure states, retain human merge and release

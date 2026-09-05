@@ -51,6 +51,10 @@ authorize itself. Ownership and replaceability make control practical.
 These principles are developed in the [FLOW](doctrine/flow.md) and
 [Jig](doctrine/jig.md) branches.
 
+For Jig, usable control includes understandable review and results, and
+user-friendly errors that explain the failure and the next safe step.
+Opaque diagnostics undermine agency even when enforcement is correct.
+
 ## Design commitments
 
 The wider [design layer](doctrine/design-judgment.md) develops three duties:

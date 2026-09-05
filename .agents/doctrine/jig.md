@@ -171,3 +171,18 @@ Jig remains useful as OSI-approved open-source local software. Commercial
 products must not turn it into a deliberately crippled community edition.
 This is an ownership commitment supporting power under control, not a claim
 that every deployment is local or every supporting service is free.
+
+### Understandable feedback and actionable errors
+
+Power is not meaningfully under control when using it requires a maintainer
+to translate internal errors. Jig should explain what failed, where it matters
+to the consumer, what is known about the cause, and what to do next. Name a
+missing setting or prerequisite when it is known. If the cause is unknown,
+say so and offer a bounded diagnostic step rather than guessing. Explain
+whether work started and whether retry is safe when those distinctions matter.
+
+Safety requires withholding secrets and private execution details, not hiding
+every useful cause behind “unavailable.” Human explanations and machine-readable
+codes serve different consumers and should accompany rather than replace one
+another. Recovery advice must not weaken safeguards, grant authority implicitly,
+or repeat work whose effects are uncertain.
