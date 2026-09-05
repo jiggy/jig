@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { copyFile, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { copyFile, mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -11,6 +11,15 @@ import {
 import { installedBunLocation } from './fixtures/installed-bun-location.js'
 
 describe('fixed installed Bun support', () => {
+  test('workspace fixtures name the canonical installed runtime', async () => {
+    expect(installedBunLocation.executablePath).toBe(
+      await realpath(installedBunLocation.executablePath),
+    )
+    await expect(openPrivateInstalledBunSupport(installedBunLocation)).resolves.toMatchObject({
+      executablePath: installedBunLocation.executablePath,
+    })
+  })
+
   test('authenticates the fixed adjacent layout and detects drift', async () => {
     const root = await mkdtemp(join(tmpdir(), 'jig-installed-support-'))
     const executable = join(root, 'node_modules', '@oven', 'bun-linux-x64-baseline', 'bin', 'bun')

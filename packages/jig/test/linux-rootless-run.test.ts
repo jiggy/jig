@@ -29,6 +29,18 @@ afterAll(async () => {
   if (portableBunRoot !== undefined) await rm(portableBunRoot, { recursive: true, force: true })
 })
 
+test('constructs the delayed-supervisor fixture from current trusted source', async () => {
+  const fixture = await delayedReadinessSupervisor('/tmp/entry-entered', '/tmp/entry-settled')
+  try {
+    const source = await readFile(fixture.path, 'utf8')
+    expect(() => new Bun.Transpiler({ loader: 'ts' }).transformSync(source)).not.toThrow()
+    expect(source).toContain('await Bun.sleep(20_000)')
+    expect(source).toContain('forced child-close failure')
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true })
+  }
+})
+
 delegatedDescribe('private rootless Linux Run', () => {
   test('preflights and executes one isolated payload', async () => {
     const host = await hostConfiguration()
@@ -332,7 +344,13 @@ hostileDescribe('private rootless Linux hostile envelope', () => {
     const ownerStateParent = await mkdtemp(join(tmpdir(), 'jig-rootless-deadline-owner-'))
     const enteredMarker = join(ownerStateParent, 'entry-entered')
     const settledMarker = join(ownerStateParent, 'entry-settled')
-    const delayedSupervisor = await delayedReadinessSupervisor(enteredMarker, settledMarker)
+    const delayedSupervisor = await delayedReadinessSupervisor(enteredMarker, settledMarker).catch(
+      async (error) => {
+        await rm(fixture, { recursive: true, force: true })
+        await rm(ownerStateParent, { recursive: true, force: true })
+        throw error
+      },
+    )
     const backend = new PrivateLinuxCgroupBackend({
       bunPath: host.bun,
       bunHostLibraryPath: host.bunHostLibraryPath,
@@ -590,47 +608,52 @@ async function delayedReadinessSupervisor(
   readonly path: string
   readonly root: string
 }> {
-  const root = await mkdtemp(join(tmpdir(), 'jig-rootless-delayed-supervisor-'))
-  const path = join(root, 'linux-rootless-supervisor.ts')
   const sourcePath = fileURLToPath(
     new URL('../src/internal/linux-rootless-supervisor.ts', import.meta.url),
   )
   let source = await readFile(sourcePath, 'utf8')
   source = replaceOnce(
     source,
-    'import { closeSync, readFileSync, statSync, writeSync } from "node:fs";',
-    'import { closeSync, readFileSync, statSync, writeFileSync, writeSync } from "node:fs";',
+    "import { closeSync, readFileSync, statSync, writeSync } from 'node:fs'",
+    "import { closeSync, readFileSync, statSync, writeFileSync, writeSync } from 'node:fs'",
   )
   source = replaceOnce(
     source,
-    '  await requireActiveClaim(ownerStateDirectory!, ownerToken!, ownerStateAllocationDigest!);\n' +
-      '  writeSync(3, `${process.pid}\\n`);',
-    '  await requireActiveClaim(ownerStateDirectory!, ownerToken!, ownerStateAllocationDigest!);\n' +
+    '  await requireActiveClaim(ownerStateDirectory!, ownerToken!, ownerStateAllocationDigest!)\n' +
+      '  writeSync(3, `${process.pid}\\n`)',
+    '  await requireActiveClaim(ownerStateDirectory!, ownerToken!, ownerStateAllocationDigest!)\n' +
       `  writeFileSync(${JSON.stringify(enteredMarker)}, "entered\\n");\n` +
       '  await Bun.sleep(20_000);\n' +
       '  writeSync(3, `${process.pid}\\n`);',
   )
   source = replaceOnce(
     source,
-    '    let failure: unknown;',
-    '    let failure: unknown = new Error("forced child-close failure");',
+    '    let failure: unknown\n',
+    '    let failure: unknown = new Error("forced child-close failure");\n',
   )
   source = replaceOnce(
     source,
+    "    child.once('close', (code, signal) => {\n" +
+      '      if (failure === undefined) resolve({ code, signal })\n' +
+      '      else reject(failure)\n' +
+      '    })',
     '    child.once("close", (code, signal) => {\n' +
-      '      if (failure === undefined) resolve({ code, signal });\n' +
-      '      else reject(failure);\n' +
-      '    });',
-    '    child.once("close", (code, signal) => {\n' +
-      '      const timer = setTimeout(() => {\n' +
+      '      setTimeout(() => {\n' +
       `        writeFileSync(${JSON.stringify(settledMarker)}, "settled\\n");\n` +
       '        if (failure === undefined) resolve({ code, signal });\n' +
       '        else reject(failure);\n' +
       '      }, 1_000);\n' +
       '    });',
   )
-  await writeFile(path, source, { mode: 0o600 })
-  return Object.freeze({ path: await realpath(path), root })
+  const root = await mkdtemp(join(tmpdir(), 'jig-rootless-delayed-supervisor-'))
+  const path = join(root, 'linux-rootless-supervisor.ts')
+  try {
+    await writeFile(path, source, { mode: 0o600 })
+    return Object.freeze({ path: await realpath(path), root })
+  } catch (error) {
+    await rm(root, { recursive: true, force: true })
+    throw error
+  }
 }
 
 function replaceOnce(source: string, pattern: string, replacement: string): string {

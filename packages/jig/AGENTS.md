@@ -41,6 +41,9 @@ admitted FLOW packages.
 - Change implementation, normative specification, schema, README, and tests
   together when a public contract changes.
 - Keep fault-injection seams private.
+- Test fixtures use canonical dependency paths, including through Bun workspace
+  symlinks. Source-rewriting hostile fixtures must also construct successfully
+  in ordinary tests, so source formatting cannot silently break the host gate.
 - Consult `src/internal/AGENTS.md` for containment, durability, or Agent host
   work.
 
