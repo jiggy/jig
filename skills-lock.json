@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "skills": {
+    "cli-just": {
+      "source": "PaulRBerg/agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/cli-just/SKILL.md",
+      "computedHash": "01d024392afa712f70e1c3d874bf61d7a6685f0d6a8b8ec7a9438bd0979efe16"
+    }
+  }
+}
