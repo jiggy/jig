@@ -43,16 +43,17 @@ describe("Jig project authoring SDK/1", () => {
     expect(() => defineBinding(binding as never)).toThrow();
   });
 
-  test("captures exact child Flow slots", () => {
-    const slots = { question: "./flows/answer-question", bug: "./flows/handle-bug" };
+  test("captures exact child Flow and Binding selectors", () => {
+    const slots = { question: "flow:./flows/answer-question", bug: "binding:handle-bug" };
     const binding = defineBinding({ package: "./flows/router", slots });
-    slots.bug = "./flows/changed";
+    slots.bug = "binding:changed";
     expect(binding.slots).toEqual({
-      bug: "flows/handle-bug",
-      question: "flows/answer-question",
+      bug: "binding:handle-bug",
+      question: "flow:flows/answer-question",
     });
     expect(Object.keys(binding.slots)).toEqual(["bug", "question"]);
     expect(Object.isFrozen(binding.slots)).toBeTrue();
+    expect(normalizePackageBindingDefinition(binding)).toEqual(binding);
   });
 
   for (const [name, action] of [
@@ -63,15 +64,18 @@ describe("Jig project authoring SDK/1", () => {
     ["escaping package", () => defineBinding({ package: "../flow" })],
     ["unknown Binding field", () => defineBinding({ package: "flows/a", grants: {} } as never)],
     ["unsupported attachments", () => defineBinding({ package: "flows/a", attachments: {} } as never)],
-    ["invalid slot name", () => defineBinding({ package: "flows/a", slots: { Bad: "flows/b" } })],
-    ["invalid slot path", () => defineBinding({ package: "flows/a", slots: { child: "../flow" } })],
+    ["invalid slot name", () => defineBinding({ package: "flows/a", slots: { Bad: "flow:flows/b" } })],
+    ["invalid slot path", () => defineBinding({ package: "flows/a", slots: { child: "flow:../flow" } })],
+    ["plain slot path", () => defineBinding({ package: "flows/a", slots: { child: "flows/b" } })],
+    ["invalid Binding selector", () => defineBinding({ package: "flows/a", slots: { child: "binding:Bad" } })],
+    ["unknown selector", () => defineBinding({ package: "flows/a", slots: { child: "agent:worker" } })],
     ["non-string slot path", () => defineBinding({ package: "flows/a", slots: { child: 1 } as never })],
     ["non-object slots", () => defineBinding({ package: "flows/a", slots: [] as never })],
     ["oversized slots", () => defineBinding({
       package: "flows/a",
       slots: Object.fromEntries(Array.from({ length: 257 }, (_, index) => [
         `slot-${index}`,
-        "flows/b",
+        "flow:flows/b",
       ])),
     })],
     ["non-JSON settings", () => defineBinding({ package: "flows/a", settings: { bad: 1n } as never })],

@@ -85,8 +85,8 @@ describe("private Candidate/5", () => {
   });
 
   test("makes the exact Binding slot map part of request and Candidate identity", () => {
-    const bug = slottedCandidateFixture({ work: "flows/bug" });
-    const question = slottedCandidateFixture({ work: "flows/question" });
+    const bug = slottedCandidateFixture({ work: { kind: "flow", path: "flows/bug" } });
+    const question = slottedCandidateFixture({ work: { kind: "flow", path: "flows/question" } });
     const bugRequest = bug.candidate.targets.find(
       ({ request }) => request.target.kind === "binding",
     )!.request;
@@ -94,7 +94,7 @@ describe("private Candidate/5", () => {
       ({ request }) => request.target.kind === "binding",
     )!.request;
 
-    expect(bugRequest.flowSlots).toEqual({ work: "flows/bug" });
+    expect(bugRequest.flowSlots).toEqual({ work: { kind: "flow", path: "flows/bug" } });
     expect(Object.isFrozen(bugRequest.flowSlots)).toBeTrue();
     expect(questionRequest.digest).not.toBe(bugRequest.digest);
     expect(question.candidate.activationMeaningDigest).not.toBe(
@@ -109,7 +109,7 @@ describe("private Candidate/5", () => {
     const binding = mismatched.targets.find(
       ({ request }: any) => request.target.kind === "binding",
     );
-    binding.request.flowSlots = { work: "flows/question" };
+    binding.request.flowSlots = { work: { kind: "flow", path: "flows/question" } };
     binding.request.digest = requestDigest(binding.request);
     mismatched.activationMeaningDigest = activationMeaningDigest(
       mismatched.observedSemanticDigest,
@@ -125,7 +125,7 @@ describe("private Candidate/5", () => {
     const directTarget = direct.targets.find(
       ({ request }: any) => request.target.kind === "flow" && request.packagePath === "flows/router",
     );
-    directTarget.request.flowSlots = { work: "flows/bug" };
+    directTarget.request.flowSlots = { work: { kind: "flow", path: "flows/bug" } };
     directTarget.request.digest = requestDigest(directTarget.request);
     direct.activationMeaningDigest = activationMeaningDigest(
       direct.observedSemanticDigest,
@@ -326,8 +326,8 @@ describe("private Plan/2", () => {
 
   test("reopens an exact slotted request through Candidate and Plan bytes", () => {
     const candidate = slottedCandidateFixture({
-      question: "flows/question",
-      bug: "flows/bug",
+      question: { kind: "flow", path: "flows/question" },
+      bug: { kind: "flow", path: "flows/bug" },
     });
     const reopenedCandidate = decodePrivateActivationCandidateV5(
       encodePrivateActivationCandidateV5(candidate),
@@ -346,8 +346,8 @@ describe("private Plan/2", () => {
     )!.request;
 
     expect(request.flowSlots).toEqual({
-      bug: "flows/bug",
-      question: "flows/question",
+      bug: { kind: "flow", path: "flows/bug" },
+      question: { kind: "flow", path: "flows/question" },
     });
     expect(Object.isFrozen(request.flowSlots)).toBeTrue();
     expect(reopenedPlan.proposed.lock.bindings.router!.slots).toEqual(request.flowSlots);
@@ -571,7 +571,7 @@ function readyCandidateFixture(executionPackage: string) {
   });
 }
 
-function slottedCandidateFixture(slots: Readonly<Record<string, string>>) {
+function slottedCandidateFixture(slots: Readonly<Record<string, { readonly kind: "flow"; readonly path: string }>>) {
   const packages = {
     "flows/bug": {
       digest: digest("package:flows/bug"),

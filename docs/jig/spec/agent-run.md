@@ -186,16 +186,30 @@ import { defineBinding } from "@jigging/jig";
 export default defineBinding({
   package: "./flows/ticket-router",
   slots: {
-    billing: "./flows/billing",
-    technical: "./flows/technical",
+    billing: "flow:flows/billing",
+    technical: "flow:flows/technical",
   },
 });
 ```
 
 The model returns data, not authority. The response schema limits its answer
 to `billing` or `technical`, and Jig resolves that name only through the
-Binding's exact same-generation slots. The two children must be ordinary
-capability-free direct Flow targets in this one-level alpha.
+Binding's exact same-generation slots. Either child may use Agent Run itself.
+A slot may instead name `binding:<id>` to invoke a specialist with that
+Binding's own admitted settings. Selected child Bindings must have no child
+slots; parent settings, slots, and capabilities are never inherited implicitly.
+
+Each specialist selects Skills from its own admitted package for each Agent
+call. A fresh call does not include the parent's or another specialist's
+conversation unless the application explicitly passes that content as input.
+Provider selection and credentials remain host-owned; no new Skill or provider
+configuration field is added to Bindings.
+
+Each Run context allows one active operation. A parent waiting on a child Flow
+does not consume that child's Agent-operation capacity. Parent cancellation
+and the inherited deadline govern the child and its Agent worker; cleanup
+must settle both before the parent result becomes terminal. As with root Agent
+calls, cancelling local work cannot retract an already accepted remote request.
 
 Exactly one child is a property of this example's completed path, not a new
 host rule. A blocked or limited Agent result reaches no child, and another

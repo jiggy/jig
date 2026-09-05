@@ -16,7 +16,7 @@ const project = defineJig({
 const binding = defineBinding({
   package: "./flows/review",
   settings: { retries: 2 },
-  slots: { child: "./flows/child" },
+  slots: { child: "flow:./flows/child", reviewer: "binding:reviewer" },
 });
 
 function changed(value: unknown, mutate: (copy: Record<string, any>) => void): unknown {
@@ -39,6 +39,8 @@ describe("Project Authoring SDK/1 shape schema", () => {
     ["unsupported Binding attachments", changed(binding, (item) => { item.attachments = {}; })],
     ["missing normalized settings", changed(binding, (item) => { delete item.settings; })],
     ["missing normalized slots", changed(binding, (item) => { delete item.slots; })],
+    ["slot identity object", changed(binding, (item) => { item.slots.child = { kind: "flow", path: "flows/child" }; })],
+    ["oversized target selector", changed(binding, (item) => { item.slots.child = `flow:${"a".repeat(1025)}`; })],
     ["oversized project path", changed(binding, (item) => { item.package = "a".repeat(1025); })],
   ] as const) {
     test(`rejects ${name}`, () => {

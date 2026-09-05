@@ -209,6 +209,206 @@ describe.serial("direct alpha activation store", () => {
     }
   });
 
+  test("scopes one nested Agent to its sealed Flow and retains both owners across coordinator loss", async () => {
+    const fixture = await createFixture("ready");
+    let coordinator: PrivateProjectCoordinator | undefined;
+    try {
+      await admit(fixture);
+      coordinator = await openPrivateProjectCoordinator({ projectRoot: fixture.root });
+      const submitted = await submitReadyRun(fixture, coordinator, "nested-agent-owner");
+      const context = { coordinator, projectRoot: fixture.root, parentRunId: submitted.run.runId };
+      const flow = await allocatePrivateRootChildOwner({
+        ...context,
+        operationId: "shared:1",
+        allocation: { kind: "private-root-child-owner-allocation/1", value: 1 },
+      });
+      const agentInput = {
+        ...context,
+        parentOperationId: "shared:1",
+        operationId: "shared:1",
+        allocation: { kind: "private-root-agent-owner-allocation/1", value: 2 },
+      };
+      await expect(allocatePrivateRootChildOwner(agentInput))
+        .rejects.toMatchObject({ code: "RUN_CHILD_PARENT_INACTIVE" });
+      const flowSandbox = await recordPrivateRootChildSandbox({
+        ...context,
+        operationId: flow.operationId,
+        allocationDigest: flow.allocation.digest,
+        sandbox: { kind: "test-flow-sandbox" },
+      });
+      await expect(allocatePrivateRootChildOwner({
+        ...agentInput, allocation: { kind: "private-root-child-owner-allocation/1" },
+      })).rejects.toMatchObject({ code: "RUN_CHILD_OWNER_CONFLICT" });
+      await expect(allocatePrivateRootChildOwner({
+        ...agentInput, parentOperationId: "unknown-parent",
+      })).rejects.toMatchObject({ code: "RUN_CHILD_PARENT_INACTIVE" });
+      const agent = await allocatePrivateRootChildOwner(agentInput);
+      expect(agent.parentOperationId).toBe(flow.operationId);
+      expect(agent.operationId).toBe(flow.operationId);
+      expect(await allocatePrivateRootChildOwner(agentInput)).toEqual(agent);
+      await expect(allocatePrivateRootChildOwner({
+        ...agentInput, operationId: "agent:2", allocation: { ...agentInput.allocation, value: 3 },
+      })).rejects.toMatchObject({ code: "RUN_CHILD_CAPACITY" });
+      await expect(allocatePrivateRootChildOwner({
+        ...context, operationId: "root:2", allocation: { kind: "test-root-child" },
+      })).rejects.toMatchObject({ code: "RUN_CHILD_CAPACITY" });
+      await expect(recordPrivateRootChildSandbox({
+        ...context,
+        operationId: agent.operationId,
+        allocationDigest: agent.allocation.digest,
+        sandbox: { kind: "test-agent-sandbox" },
+      })).rejects.toMatchObject({ code: "RUN_CHILD_OWNER_CONFLICT" });
+      const agentSandbox = await recordPrivateRootChildSandbox({
+        ...context,
+        parentOperationId: flow.operationId,
+        operationId: agent.operationId,
+        allocationDigest: agent.allocation.digest,
+        sandbox: { kind: "test-agent-sandbox" },
+      });
+      expect(await listPrivateRootChildOwners(context)).toEqual([agentSandbox, flowSandbox]);
+      await coordinator.dispose();
+      coordinator = await openPrivateProjectCoordinator({ projectRoot: fixture.root });
+      const recovery = { ...context, coordinator };
+      expect(await listPrivateRootChildOwners(recovery)).toEqual([agentSandbox, flowSandbox]);
+      await expect(allocatePrivateRootChildOwner({ ...agentInput, coordinator }))
+        .rejects.toMatchObject({ code: "RUN_OWNER_CHANGED" });
+
+      const fencedFlow = await recordPrivateRootChildFence({
+        ...recovery,
+        operationId: flow.operationId,
+        allocationDigest: flow.allocation.digest,
+        sandboxDigest: flowSandbox.sandbox!.digest,
+        fence: { kind: "test-flow-fence" },
+      });
+      const cleanedFlow = await recordPrivateRootChildCleanup({
+        ...recovery,
+        operationId: flow.operationId,
+        allocationDigest: flow.allocation.digest,
+        sandboxDigest: flowSandbox.sandbox!.digest,
+        fenceDigest: fencedFlow.fence!.digest,
+        cleanup: { kind: "test-flow-cleanup" },
+      });
+      const closeFlow = {
+        ...recovery,
+        operationId: flow.operationId,
+        allocationDigest: flow.allocation.digest,
+        sandboxDigest: flowSandbox.sandbox!.digest,
+        fenceDigest: fencedFlow.fence!.digest,
+        cleanupDigest: cleanedFlow.cleanup!.digest,
+      };
+      await expect(closePrivateRootChildOwner(closeFlow))
+        .rejects.toMatchObject({ code: "RUN_EXECUTION_INCOMPLETE" });
+      const nestedRecovery = { ...recovery, parentOperationId: flow.operationId, operationId: agent.operationId };
+      const fencedAgent = await recordPrivateRootChildFence({
+        ...nestedRecovery,
+        allocationDigest: agent.allocation.digest,
+        sandboxDigest: agentSandbox.sandbox!.digest,
+        fence: { kind: "test-agent-fence" },
+      });
+      const cleanedAgent = await recordPrivateRootChildCleanup({
+        ...nestedRecovery,
+        allocationDigest: agent.allocation.digest,
+        sandboxDigest: agentSandbox.sandbox!.digest,
+        fenceDigest: fencedAgent.fence!.digest,
+        cleanup: { kind: "test-agent-cleanup" },
+      });
+      await closePrivateRootChildOwner({
+        ...nestedRecovery,
+        allocationDigest: agent.allocation.digest,
+        sandboxDigest: agentSandbox.sandbox!.digest,
+        fenceDigest: fencedAgent.fence!.digest,
+        cleanupDigest: cleanedAgent.cleanup!.digest,
+      });
+      expect(await listPrivateRootChildOwners(recovery)).toEqual([cleanedFlow]);
+      await closePrivateRootChildOwner(closeFlow);
+      expect(await listPrivateRootChildOwners(recovery)).toEqual([]);
+    } finally {
+      await coordinator?.dispose();
+      await fixture.dispose();
+    }
+  });
+
+  test("rejects new nested work after its Flow is fenced and rejects Agent parents", async () => {
+    const fixture = await createFixture("ready");
+    let coordinator: PrivateProjectCoordinator | undefined;
+    try {
+      await admit(fixture);
+      coordinator = await openPrivateProjectCoordinator({ projectRoot: fixture.root });
+      const submitted = await submitReadyRun(fixture, coordinator, "nested-owner-fencing");
+      const context = { coordinator, projectRoot: fixture.root, parentRunId: submitted.run.runId };
+      const flow = await allocatePrivateRootChildOwner({
+        ...context,
+        operationId: "flow:1",
+        allocation: { kind: "private-root-child-owner-allocation/1" },
+      });
+      const sandbox = await recordPrivateRootChildSandbox({
+        ...context,
+        operationId: flow.operationId,
+        allocationDigest: flow.allocation.digest,
+        sandbox: { kind: "test-flow-sandbox" },
+      });
+      const nested = {
+        ...context,
+        parentOperationId: flow.operationId,
+        operationId: "agent:1",
+        allocation: { kind: "private-root-agent-owner-allocation/1" },
+      };
+      const agent = await allocatePrivateRootChildOwner(nested);
+      await expect(allocatePrivateRootChildOwner({ ...nested, parentOperationId: agent.operationId }))
+        .rejects.toMatchObject({ code: "RUN_CHILD_PARENT_INACTIVE" });
+      await recordPrivateRootChildFence({
+        ...context,
+        operationId: flow.operationId,
+        allocationDigest: flow.allocation.digest,
+        sandboxDigest: sandbox.sandbox!.digest,
+        fence: { kind: "test-flow-fence" },
+      });
+      await expect(recordPrivateRootChildSandbox({
+        ...context,
+        parentOperationId: flow.operationId,
+        operationId: agent.operationId,
+        allocationDigest: agent.allocation.digest,
+        sandbox: { kind: "test-agent-sandbox" },
+      })).rejects.toMatchObject({ code: "RUN_CHILD_PARENT_INACTIVE" });
+      await closePrivateRootChildOwner({
+        ...context,
+        parentOperationId: flow.operationId,
+        operationId: agent.operationId,
+        allocationDigest: agent.allocation.digest,
+        sandboxDigest: null, fenceDigest: null, cleanupDigest: null,
+      });
+      await expect(allocatePrivateRootChildOwner(nested))
+        .rejects.toMatchObject({ code: "RUN_CHILD_PARENT_INACTIVE" });
+      const directRun = await submitReadyRun(fixture, coordinator, "direct-agent-parent");
+      const directContext = { ...context, parentRunId: directRun.run.runId };
+      const directAgent = await allocatePrivateRootChildOwner({
+        ...directContext,
+        operationId: "direct:agent",
+        allocation: { kind: "private-root-agent-owner-allocation/1", direct: true },
+      });
+      await recordPrivateRootChildSandbox({
+        ...directContext,
+        operationId: directAgent.operationId,
+        allocationDigest: directAgent.allocation.digest,
+        sandbox: { kind: "test-direct-agent-sandbox" },
+      });
+      await expect(allocatePrivateRootChildOwner({
+        ...nested, ...directContext, parentOperationId: directAgent.operationId,
+      })).rejects.toMatchObject({ code: "RUN_CHILD_PARENT_INACTIVE" });
+      const fencedRoot = await submitReadyRun(fixture, coordinator, "fenced-root-child");
+      await settleExecution(fixture, coordinator, fencedRoot.run.runId, successTerminal({ ok: true }));
+      await expect(allocatePrivateRootChildOwner({
+        ...context,
+        parentRunId: fencedRoot.run.runId,
+        operationId: "late:child",
+        allocation: { kind: "private-root-child-owner-allocation/1", late: true },
+      })).rejects.toMatchObject({ code: "RUN_CHILD_PARENT_INACTIVE" });
+    } finally {
+      await coordinator?.dispose();
+      await fixture.dispose();
+    }
+  });
+
   test("compare-and-sets every child cleanup fact and exact close", async () => {
     const fixture = await createFixture("ready");
     let coordinator: PrivateProjectCoordinator | undefined;
@@ -759,7 +959,7 @@ describe.serial("direct alpha activation store", () => {
       const request = reopened.candidate.candidate.targets.find(
         ({ request }) => request.target.kind === "binding",
       )!.request;
-      expect(request.flowSlots).toEqual({ child: "flows/child" });
+      expect(request.flowSlots).toEqual({ child: { kind: "flow", path: "flows/child" } });
       expect(Object.isFrozen(request.flowSlots)).toBeTrue();
       expect(reopened.candidate.lock.bindings.router!.slots).toEqual(request.flowSlots);
     } finally {
@@ -1507,7 +1707,7 @@ async function insertSlottedCandidate(
       router: {
         packagePath: "flows/run",
         settings: {},
-        slots: { child: "flows/child" },
+        slots: { child: { kind: "flow", path: "flows/child" } },
       },
     },
   });
@@ -1519,7 +1719,7 @@ async function insertSlottedCandidate(
     request: activationRequest({
       ...parentContent,
       target: { kind: "binding", id: "router" },
-      flowSlots: { child: "flows/child" },
+      flowSlots: { child: { kind: "flow", path: "flows/child" } },
     }),
     disposition: {
       ...parent.disposition,

@@ -54,7 +54,7 @@ export interface PrivateActivationRequest {
   readonly entrypoint: PackageEntrypoint;
   readonly settings: JsonObject;
   readonly capabilities: Readonly<Record<string, LinkedCapabilityUse>>;
-  readonly flowSlots: Readonly<Record<string, string>>;
+  readonly flowSlots: Readonly<Record<string, RunTargetIdentity>>;
   readonly attachments: Readonly<Record<string, {
     readonly source: string;
     readonly access: "read" | "read-write";
@@ -503,10 +503,29 @@ function normalizeRequestFlowSlots(value: unknown): PrivateActivationRequest["fl
   if (Object.keys(input).length > 256) {
     throw new TypeError("activation Flow slots exceed 256 entries");
   }
-  const output: Record<string, string> = Object.create(null) as Record<string, string>;
+  const output: Record<string, RunTargetIdentity> = Object.create(null);
   for (const name of Object.keys(input).sort()) {
     requireLocalName(name, "activation Flow slot");
-    output[name] = normalizeProjectPath(input[name], `activation Flow slot ${name}`);
+    const target = exactRecord(input[name], `activation Flow slot ${name}`);
+    if (target.kind === "flow") {
+      output[name] = Object.freeze({
+        kind: "flow",
+        path: normalizeProjectPath(
+          exactObject(target, ["kind", "path"], `activation Flow slot ${name}`).path,
+          `activation Flow slot ${name}`,
+        ),
+      });
+    } else if (target.kind === "binding") {
+      output[name] = Object.freeze({
+        kind: "binding",
+        id: requireLocalName(
+          exactObject(target, ["kind", "id"], `activation Binding slot ${name}`).id,
+          `activation Binding slot ${name}`,
+        ),
+      });
+    } else {
+      throw new TypeError(`activation Flow slot ${name} must select a Flow or Binding target`);
+    }
   }
   return Object.freeze(output);
 }

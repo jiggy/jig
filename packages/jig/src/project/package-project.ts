@@ -11,6 +11,7 @@ import {
 import {
   defineBinding,
   normalizePackageBindingDefinition,
+  parseRunTargetSelector,
   type BindingDefinition,
   type PackageBindingInput,
 } from "./author.js";
@@ -67,7 +68,7 @@ export interface LinkedPackageBinding {
   readonly declarationPath: string;
   readonly packagePath: string;
   readonly settings: JsonObject;
-  readonly slots: Readonly<Record<string, string>>;
+  readonly slots: Readonly<Record<string, RunTargetIdentity>>;
 }
 
 export interface PackageProjectValue {
@@ -114,9 +115,14 @@ export function linkPackageProject(
       `project contains ${activationTargetCount} activation targets, exceeding the caller bound ${maximumActivationTargets}`,
     );
   }
+  const bindingById = new Map(preparedBindings.map((binding) => [binding.id, binding]));
   const value = Object.freeze({
     flows: Object.freeze(flows.map((flow) => flow.value)),
-    bindings: Object.freeze(preparedBindings.map(linkBinding)),
+    bindings: Object.freeze(preparedBindings.map((binding) => linkBinding(
+      binding,
+      flowByPath,
+      bindingById,
+    ))),
   });
   authenticPackageProjects.add(value);
   return value;
@@ -294,13 +300,6 @@ function prepareBindings(
       );
     }
     validateSettings(definition.settings, flow.inspected, declarationPath);
-    validateFlowSlots(
-      id,
-      definition.package,
-      definition.slots,
-      flowByPath,
-      declarationPath,
-    );
     return Object.freeze({ id, declarationPath, definition, flow });
   });
   bindings.sort((left, right) => compareProjectPaths(left.id, right.id));
@@ -308,7 +307,11 @@ function prepareBindings(
   return Object.freeze(bindings);
 }
 
-function linkBinding(prepared: PreparedBinding): LinkedPackageBinding {
+function linkBinding(
+  prepared: PreparedBinding,
+  flowByPath: ReadonlyMap<string, PreparedFlow>,
+  bindingById: ReadonlyMap<string, PreparedBinding>,
+): LinkedPackageBinding {
   const { id, declarationPath, definition } = prepared;
   return Object.freeze({
     kind: "package" as const,
@@ -316,29 +319,31 @@ function linkBinding(prepared: PreparedBinding): LinkedPackageBinding {
     declarationPath,
     packagePath: definition.package,
     settings: definition.settings,
-    slots: definition.slots,
+    slots: linkFlowSlots(prepared, flowByPath, bindingById),
   });
 }
 
-function validateFlowSlots(
-  bindingId: string,
-  parentPath: string,
-  slots: Readonly<Record<string, string>>,
+function linkFlowSlots(
+  binding: PreparedBinding,
   flowByPath: ReadonlyMap<string, PreparedFlow>,
-  declarationPath: string,
-): void {
-  for (const [name, targetPath] of Object.entries(slots)) {
+  bindingById: ReadonlyMap<string, PreparedBinding>,
+): Readonly<Record<string, RunTargetIdentity>> {
+  const { id: bindingId, declarationPath, definition } = binding;
+  const slots: Record<string, RunTargetIdentity> = Object.create(null);
+  for (const [name, selector] of Object.entries(definition.slots)) {
     const pointer = `/slots/${pointerToken(name)}`;
-    const target = flowByPath.get(targetPath);
+    const identity = parseRunTargetSelector(selector, `slot ${name}`);
+    const childBinding = identity.kind === "binding" ? bindingById.get(identity.id) : undefined;
+    const target = identity.kind === "flow" ? flowByPath.get(identity.path) : childBinding?.flow;
     if (target === undefined) {
       invalid(
         "PROJECT_BINDING_SLOT_MISSING",
-        `Binding ${bindingId} slot ${name} selects unknown Flow member ${targetPath}`,
+        `Binding ${bindingId} slot ${name} selects unknown target ${selector}`,
         declarationPath,
         pointer,
       );
     }
-    if (targetPath === parentPath) {
+    if (target.value.provenance.projectPath === definition.package) {
       invalid(
         "PROJECT_BINDING_SLOT_RECURSIVE",
         `Binding ${bindingId} slot ${name} selects its own Flow package`,
@@ -346,15 +351,25 @@ function validateFlowSlots(
         pointer,
       );
     }
-    if (!target.value.directRun || Object.keys(target.value.uses).length !== 0) {
+    if (identity.kind === "flow" && !target.value.directRun) {
       invalid(
         "PROJECT_BINDING_SLOT_NOT_DIRECT",
-        `Binding ${bindingId} slot ${name} must select a capability-free direct Flow package`,
+        `Binding ${bindingId} slot ${name} must select a direct Flow target or configured Binding`,
         declarationPath,
         pointer,
       );
     }
+    if (childBinding !== undefined && Object.keys(childBinding.definition.slots).length !== 0) {
+      invalid(
+        "PROJECT_BINDING_SLOT_NOT_LEAF",
+        `Binding ${bindingId} slot ${name} selects a Binding with child slots`,
+        declarationPath,
+        pointer,
+      );
+    }
+    slots[name] = identity;
   }
+  return Object.freeze(slots);
 }
 
 function pointerToken(value: string): string {

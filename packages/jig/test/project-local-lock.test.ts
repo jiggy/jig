@@ -71,7 +71,7 @@ describe("private package-project portable lock projection", () => {
       expect(lock.bindings.configured).toEqual({
         packagePath: "flows/configured",
         settings: { maxRetries: 3 },
-        slots: { worker: "flows/worker" },
+        slots: { worker: { kind: "flow", path: "flows/worker" } },
       });
 
       const encoded = encodePrivateProjectLocalLock(lock);
@@ -86,11 +86,11 @@ describe("private package-project portable lock projection", () => {
   test("canonically orders slots and changes identity for add, remove, and retarget", async () => {
     await withFlows(projectTrees(), async (flows) => {
       const base = createPrivateProjectLocalLock(linkedProject(flows, 3, {
-        worker: "flows/worker",
+        worker: "flow:flows/worker",
       }));
       const reordered = createPrivateProjectLocalLock(linkedProject(flows, 3, {
-        worker: "flows/worker",
-        backup: "flows/backup",
+        worker: "flow:flows/worker",
+        backup: "flow:flows/backup",
       }));
       expect(Object.keys(reordered.bindings.configured!.slots)).toEqual(["backup", "worker"]);
 
@@ -98,7 +98,7 @@ describe("private package-project portable lock projection", () => {
         createPrivateProjectLocalLock(linkedProject(flows, 3, {})),
         reordered,
         createPrivateProjectLocalLock(linkedProject(flows, 3, {
-          worker: "flows/backup",
+          worker: "flow:flows/backup",
         })),
       ];
       for (const variant of variants) {
@@ -138,6 +138,33 @@ uses:
       expectInvalid(structuredClone(lock), (value) => {
         value.packages["flows/router"].uses.agent.version = "2.0.0";
       }, "must select the exact Agent Run contract");
+    });
+  });
+
+  test("retains configured Agent child identity and rejects widened slot relations on decode", async () => {
+    await withFlows(projectTrees(), async (flows) => {
+      const lock = createPrivateProjectLocalLock(linkPackageProject({
+        flows,
+        bindings: [
+          binding("bindings/router.ts", { package: "flows/worker", slots: { review: "binding:reviewer" } }),
+          binding("bindings/reviewer.ts", { package: "flows/configured", settings: { maxRetries: 7 } }),
+        ],
+      }));
+      const value = JSON.parse(new TextDecoder().decode(encodePrivateProjectLocalLock(lock)));
+      value.packages["flows/configured"].uses = { agent: {
+        id: AGENT_RUN_CONTRACT_ID, version: AGENT_RUN_CONTRACT_VERSION, digest: AGENT_RUN_CONTRACT_DIGEST,
+      } };
+      const decoded = decodePrivateProjectLocalLock(lockBytes(value));
+      expect(decoded.bindings.router!.slots.review).toEqual({ kind: "binding", id: "reviewer" });
+      expect(Object.isFrozen(decoded.bindings.router!.slots.review)).toBeTrue();
+      expect(decoded.bindings.reviewer!.settings).toEqual({ maxRetries: 7 });
+      const base = value;
+      expectInvalid(base, (item) => { item.bindings.router.slots.review = "flows/configured"; }, "must be an object");
+      expectInvalid(base, (item) => { item.bindings.router.slots.review = { kind: "binding", id: "missing" }; }, "unknown Binding");
+      expectInvalid(base, (item) => { item.bindings.router.slots.review = { kind: "binding", id: "router" }; }, "own package");
+      expectInvalid(base, (item) => { item.bindings.router.slots.review = { kind: "binding", id: "reviewer", path: "flows/configured" }; }, "must contain exactly");
+      expectInvalid(base, (item) => { item.bindings.reviewer.slots = { nested: { kind: "flow", path: "flows/backup" } }; }, "Binding with child slots");
+      expectInvalid(base, (item) => { item.bindings.reviewer.slots = { nested: { kind: "binding", id: "router" } }; }, "Binding with child slots");
     });
   });
 
@@ -212,10 +239,10 @@ uses:
         value.bindings.configured.slots = [];
       }, "slots must be an object");
       expectInvalid(base, (value) => {
-        value.bindings.configured.slots = { Bad: "flows/worker" };
+        value.bindings.configured.slots = { Bad: { kind: "flow", path: "flows/worker" } };
       }, "must be a LocalName");
       expectInvalid(base, (value) => {
-        value.bindings.configured.slots = { worker: "../worker" };
+        value.bindings.configured.slots = { worker: { kind: "flow", path: "../worker" } };
       }, "invalid path segment");
       expectInvalid(base, (value) => {
         value.bindings.configured.slots = Object.fromEntries(
@@ -223,23 +250,14 @@ uses:
         );
       }, "exceed 256 entries");
       expectInvalid(base, (value) => {
-        value.bindings.configured.slots = { worker: "flows/missing" };
+        value.bindings.configured.slots = { worker: { kind: "flow", path: "flows/missing" } };
       }, "selects an unknown package");
       expectInvalid(base, (value) => {
-        value.bindings.configured.slots = { worker: "flows/configured" };
+        value.bindings.configured.slots = { worker: { kind: "flow", path: "flows/configured" } };
       }, "selects its own package");
       expectInvalid(base, (value) => {
         value.packages["flows/worker"].directRun = false;
-      }, "must select a capability-free direct Run package");
-      expectInvalid(base, (value) => {
-        value.packages["flows/worker"].uses = {
-          agent: {
-            id: AGENT_RUN_CONTRACT_ID,
-            version: AGENT_RUN_CONTRACT_VERSION,
-            digest: AGENT_RUN_CONTRACT_DIGEST,
-          },
-        };
-      }, "must select a capability-free direct Run package");
+      }, "must select a direct Run package or configured Binding");
       expectInvalid(base, (value) => {
         value.packages["flows/configured"].unexpected = true;
       }, "must contain exactly");
@@ -299,7 +317,7 @@ description: Configured.`),
 function linkedProject(
   flows: readonly RetainedFlowInput[],
   maxRetries: number,
-  slots: Readonly<Record<string, string>> = { worker: "flows/worker" },
+  slots: Readonly<Record<string, string>> = { worker: "flow:flows/worker" },
 ): PackageProjectValue {
   return linkPackageProject({
     flows,

@@ -9,6 +9,7 @@ import {
   requirePackageProjectValue,
   type LinkedCapabilityUse,
   type PackageProjectValue,
+  type RunTargetIdentity,
 } from "../project/package-project.js";
 import {
   assertNoProjectPathCollisions,
@@ -36,7 +37,7 @@ export interface PrivateLockPackage {
 export interface PrivateLockBinding {
   readonly packagePath: string;
   readonly settings: JsonObject;
-  readonly slots: Readonly<Record<string, string>>;
+  readonly slots: Readonly<Record<string, RunTargetIdentity>>;
 }
 
 export interface PrivateProjectLocalLock {
@@ -198,7 +199,12 @@ function validateReferences(
   for (const [id, binding] of Object.entries(bindings)) {
     const selected = packages[binding.packagePath];
     if (selected === undefined) throw new TypeError(`Binding ${id} selects an unknown package`);
-    for (const [name, path] of Object.entries(binding.slots)) {
+    for (const [name, identity] of Object.entries(binding.slots)) {
+      const childBinding = identity.kind === "binding" ? bindings[identity.id] : undefined;
+      const path = identity.kind === "flow" ? identity.path : childBinding?.packagePath;
+      if (path === undefined) {
+        throw new TypeError(`Binding ${id} slot ${name} selects an unknown Binding`);
+      }
       const target = packages[path];
       if (target === undefined) {
         throw new TypeError(`Binding ${id} slot ${name} selects an unknown package`);
@@ -206,21 +212,43 @@ function validateReferences(
       if (path === binding.packagePath) {
         throw new TypeError(`Binding ${id} slot ${name} selects its own package`);
       }
-      if (!target.directRun || Object.keys(target.uses).length !== 0) {
-        throw new TypeError(`Binding ${id} slot ${name} must select a capability-free direct Run package`);
+      if (identity.kind === "flow" && !target.directRun) {
+        throw new TypeError(`Binding ${id} slot ${name} must select a direct Run package or configured Binding`);
+      }
+      if (childBinding !== undefined && Object.keys(childBinding.slots).length !== 0) {
+        throw new TypeError(`Binding ${id} slot ${name} selects a Binding with child slots`);
       }
     }
   }
 }
 
-function normalizeSlots(value: unknown, label: string): Readonly<Record<string, string>> {
+function normalizeSlots(value: unknown, label: string): Readonly<Record<string, RunTargetIdentity>> {
   const input = object(value, `${label} slots`);
   const names = Object.keys(input);
   if (names.length > 256) throw new TypeError(`${label} slots exceed 256 entries`);
-  const output: Record<string, string> = Object.create(null) as Record<string, string>;
+  const output: Record<string, RunTargetIdentity> = Object.create(null);
   for (const name of names.sort()) {
     localName(name, `${label} slot`);
-    output[name] = projectPath(input[name], `${label} slot ${name}`);
+    const target = object(input[name], `${label} slot ${name}`);
+    if (target.kind === "flow") {
+      output[name] = Object.freeze({
+        kind: "flow",
+        path: projectPath(
+          exactObject(target, ["kind", "path"], `${label} slot ${name}`).path,
+          `${label} slot ${name}`,
+        ),
+      });
+    } else if (target.kind === "binding") {
+      output[name] = Object.freeze({
+        kind: "binding",
+        id: localName(
+          exactObject(target, ["kind", "id"], `${label} slot ${name}`).id,
+          `${label} slot ${name}`,
+        ),
+      });
+    } else {
+      throw new TypeError(`${label} slot ${name} must select a Flow or Binding target`);
+    }
   }
   return Object.freeze(output);
 }

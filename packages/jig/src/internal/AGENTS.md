@@ -35,6 +35,10 @@ child calls, and Agent providers.
   and complete bounded cleanup. Do not replay uncertain operations.
 - Durable transitions use exact identities and conflict-safe commits;
   recovery must not create duplicate owners or official Runs.
+- Exact child slots may select a Flow or a leaf Binding with its own admitted
+  settings and Agent capability. An Agent operation belongs to that child
+  context, not the root's operation namespace; fence and drain it before
+  releasing the child owner. Children cannot acquire another child slot map.
 - Fail closed on unsupported hosts, changed bytes, missing enforcement,
   malformed protocol, cleanup failure, or unverifiable provenance.
 
@@ -66,6 +70,9 @@ child calls, and Agent providers.
   `bun test packages/jig`.
 - Containment, delegation, preparation, process-lifecycle, or Agent authority
   changes require the provisioned hostile-host suite and residue check.
+- Run real-host suites sequentially within one delegated cgroup. Their strict
+  acquisition and residue checks intentionally reject other concurrent Runs;
+  the ordinary suite also includes host tests when delegation is present.
 
 ## Child DOX Index
 

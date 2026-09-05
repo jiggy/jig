@@ -298,7 +298,8 @@ proofDescribe("private contained Agent Run lifecycle", () => {
     }
   }, NATIVE_AGENT_TEST_TIMEOUT_MS);
 
-  test("fences deterministic provider success, invalid output, cancellation, deadline, and loss", async () => {
+  for (const nested of [false, true]) {
+  test(`fences ${nested ? "specialist" : "root"} Agent success, invalid output, cancellation, deadline, and loss`, async () => {
     const root = await mkdtemp(join(tmpdir(), "jig-agent-lifecycle-project-"));
     const releaseRoot = await mkdtemp(join(tmpdir(), "jig-agent-lifecycle-release-"));
     const events: DispatchEvent[] = [];
@@ -306,12 +307,17 @@ proofDescribe("private contained Agent Run lifecycle", () => {
     const priorKey = process.env.OPENAI_API_KEY;
     const priorModel = process.env.OPENAI_MODEL;
     let session: Awaited<ReturnType<typeof openPrivateProjectSession>> | undefined;
+    const request = (id: string, scenario: string) => runRequest(id, scenario, nested);
+    const run = (id: string, scenario: string, timeoutMs = 30_000) =>
+      runToTerminal(session!.rootAdministration, id, scenario, timeoutMs, nested);
+    const waitForSandbox = (runId: string) => waitForAgentSandbox(root, runId, nested ? 2 : 1);
     try {
       const address = server.address();
       if (address === null || typeof address === "string") throw new Error("dispatch server has no port");
       const key = `http://127.0.0.1:${address.port}/dispatch?proof=transient`;
       const location = await writeInstalledFixture(releaseRoot);
       await writeProject(root);
+      if (nested) await writeSpecialistParent(root);
       process.env.OPENAI_API_KEY = key;
       process.env.OPENAI_MODEL = "provider/test-model";
 
@@ -323,7 +329,7 @@ proofDescribe("private contained Agent Run lifecycle", () => {
       if (plan.state !== "applicable") throw new Error("Agent fixture did not produce a Plan");
       await session.apply({ planDigest: plan.planDigest });
 
-      const success = await runToTerminal(session.rootAdministration, "agent-success", "success");
+      const success = await run("agent-success", "success");
       expect(success).toMatchObject({
         state: "terminal",
         terminal: {
@@ -346,10 +352,19 @@ proofDescribe("private contained Agent Run lifecycle", () => {
         hiddenSkill: false,
       }]);
       await expectNoAgentOwner(root);
+      if (nested) {
+        expect(success).toMatchObject({ terminal: { output: { settings: { profile: "specialist" } } } });
+        const direct = await session.rootAdministration.startRun({
+          ...request("direct-specialist", "success"), input: { scenario: "success", direct: true },
+        });
+        expect(await waitForTerminal(session.rootAdministration, direct)).toMatchObject({
+          terminal: { status: "succeeded", output: { status: "succeeded", settings: {} } },
+        });
+        await expectNoAgentOwner(root);
+      }
 
       for (let index = 0; index < 2; index += 1) {
-        expect(await runToTerminal(
-          session.rootAdministration,
+        expect(await run(
           `agent-repeat-${index}`,
           "success",
         )).toMatchObject({
@@ -358,11 +373,10 @@ proofDescribe("private contained Agent Run lifecycle", () => {
         });
         await expectNoAgentOwner(root);
       }
-      expect(events.filter(({ scenario }) => scenario === "success")).toHaveLength(3);
+      expect(events.filter(({ scenario }) => scenario === "success")).toHaveLength(nested ? 4 : 3);
 
       for (const scenario of ["schema-invalid", "malformed"] as const) {
-        expect(await runToTerminal(
-          session.rootAdministration,
+        expect(await run(
           `agent-${scenario}`,
           scenario,
         )).toMatchObject({
@@ -377,8 +391,7 @@ proofDescribe("private contained Agent Run lifecycle", () => {
       }
 
       const dispatchesBeforeInvalidInput = events.length;
-      expect(await runToTerminal(
-        session.rootAdministration,
+      expect(await run(
         "agent-schema-input-invalid",
         "schema-input-invalid",
       )).toMatchObject({
@@ -397,10 +410,9 @@ proofDescribe("private contained Agent Run lifecycle", () => {
       const deadlineHost = await openPrivateInstalledBunHost(location);
       session = await openPrivateProjectSession({
         directory: root,
-        host: Object.freeze({ ...deadlineHost, runTimeoutMs: 1_500 }),
+        host: Object.freeze({ ...deadlineHost, runTimeoutMs: nested ? 4_000 : 1_500 }),
       });
-      expect(await runToTerminal(
-        session.rootAdministration,
+      expect(await run(
         "agent-deadline",
         "slow",
         10_000,
@@ -415,17 +427,17 @@ proofDescribe("private contained Agent Run lifecycle", () => {
         directory: root,
         host: await openPrivateInstalledBunHost(location),
       });
-      const cancellation = await session.rootAdministration.startRun(runRequest(
+      const cancellation = await session.rootAdministration.startRun(request(
         "agent-cancellation",
         "slow",
       ));
-      await waitForAgentSandbox(root, cancellation.runId);
+      await waitForSandbox(cancellation.runId);
       await session.close();
       session = await openPrivateProjectSession({
         directory: root,
         host: await openPrivateInstalledBunHost(location),
       });
-      expect(await session.rootAdministration.startRun(runRequest(
+      expect(await session.rootAdministration.startRun(request(
         "agent-cancellation",
         "slow",
       ))).toEqual(cancellation);
@@ -445,6 +457,7 @@ proofDescribe("private contained Agent Run lifecycle", () => {
         location.releaseRoot,
         location.executablePath,
         "agent-coordinator-loss",
+        nested ? "specialist" : "root",
       ], {
         env: process.env,
         stdout: "pipe",
@@ -452,7 +465,7 @@ proofDescribe("private contained Agent Run lifecycle", () => {
       });
       const diagnostics = new Response(crashed.stderr).text();
       const receipt = JSON.parse(await firstLine(crashed.stdout)) as StartRootRunReceipt;
-      await waitForAgentSandbox(root, receipt.runId).catch(async (error) => {
+      await waitForSandbox(receipt.runId).catch(async (error) => {
         crashed.kill("SIGKILL");
         await crashed.exited;
         throw new Error(`${String(error)}: ${await diagnostics}`);
@@ -467,7 +480,7 @@ proofDescribe("private contained Agent Run lifecycle", () => {
         directory: root,
         host: await openPrivateInstalledBunHost(location),
       });
-      expect(await session.rootAdministration.startRun(runRequest(
+      expect(await session.rootAdministration.startRun(request(
         "agent-coordinator-loss",
         "recovery",
       ))).toEqual(receipt);
@@ -498,7 +511,8 @@ proofDescribe("private contained Agent Run lifecycle", () => {
         rm(releaseRoot, { recursive: true, force: true }),
       ]);
     }
-  }, 180_000);
+  }, nested ? 240_000 : 180_000);
+  }
 });
 
 async function writeInstalledFixture(root: string): Promise<PrivateInstalledBunLocation> {
@@ -619,6 +633,44 @@ async function writeProject(root: string): Promise<void> {
   }
 }
 
+async function writeSpecialistParent(root: string): Promise<void> {
+  const parent = join(root, "flows", "parent");
+  const specialist = join(root, "flows", "router");
+  await mkdir(join(parent, "flow-sdk"), { recursive: true });
+  await mkdir(join(root, "bindings"));
+  await writeFile(join(root, "jig.ts"), [
+    'import { defineJig, discover } from "@jigging/jig";',
+    'export default defineJig({ flows: discover("flows"), bindings: discover("bindings") });',
+  ].join("\n"));
+  await writeFile(join(root, "bindings", "parent.ts"), [
+    'import { defineBinding } from "@jigging/jig";',
+    'export default defineBinding({ package: "flows/parent", settings: { profile: "parent" },',
+    '  slots: { direct: "flow:flows/router", configured: "binding:specialist" } });',
+  ].join("\n"));
+  await writeFile(join(root, "bindings", "specialist.ts"), [
+    'import { defineBinding } from "@jigging/jig";',
+    'export default defineBinding({ package: "flows/router", settings: { profile: "specialist" } });',
+  ].join("\n"));
+  const settingsSchema = JSON.stringify({
+    $schema: "https://flow.jig.md/schemas/schema-1.json",
+    type: "object", properties: { profile: { type: "string" } }, additionalProperties: false,
+  });
+  await writeFile(join(parent, "settings.schema.json"), settingsSchema);
+  await writeFile(join(specialist, "settings.schema.json"), settingsSchema);
+  await writeFile(join(parent, "FLOW.md"), "---\nname: parent\ndescription: Calls an exact Agent specialist.\n---\n");
+  await writeFile(join(parent, "flow.ts"), [
+    'import { handle } from "./flow-sdk/index.ts";',
+    'await handle(async (run) => {',
+    '  const input = run.input as { scenario: string; direct?: boolean };',
+    '  return await run.callFlow({ operationId: `agent:${input.scenario}`,',
+    '    slot: input.direct ? "direct" : "configured", input: { scenario: input.scenario } });',
+    '});',
+  ].join("\n"));
+  for (const name of await readdir(join(specialist, "flow-sdk"))) {
+    await copyFile(join(specialist, "flow-sdk", name), join(parent, "flow-sdk", name));
+  }
+}
+
 function flowProgram(): string {
   return [
     '#!/usr/bin/env bun',
@@ -658,7 +710,7 @@ function flowProgram(): string {
     '            : responseSchema,',
     '        }) },',
     "    });",
-    '    return { outcome: "done", output: { status: "succeeded", agent,',
+    '    return { outcome: "done", output: { status: "succeeded", agent, settings: run.settings,',
     "      parentHasKey: process.env.OPENAI_API_KEY !== undefined ||",
     "        process.env.ANTHROPIC_API_KEY !== undefined ||",
     "        process.env.ANTHROPIC_AUTH_TOKEN !== undefined ||",
@@ -673,10 +725,12 @@ function flowProgram(): string {
   ].join("\n");
 }
 
-function runRequest(submissionId: string, scenario: string) {
+function runRequest(submissionId: string, scenario: string, nested = false) {
   return Object.freeze({
     submissionId,
-    target: { kind: "flow" as const, path: "flows/router" },
+    target: nested
+      ? { kind: "binding" as const, id: "parent" }
+      : { kind: "flow" as const, path: "flows/router" },
     input: { scenario },
   });
 }
@@ -686,8 +740,9 @@ async function runToTerminal(
   submissionId: string,
   scenario: string,
   timeoutMs = 30_000,
+  nested = false,
 ) {
-  const receipt = await administration.startRun(runRequest(submissionId, scenario));
+  const receipt = await administration.startRun(runRequest(submissionId, scenario, nested));
   return await waitForTerminal(administration, receipt, timeoutMs);
 }
 
@@ -721,7 +776,7 @@ async function waitForTerminal(
   throw new Error(`Agent fixture Run did not become terminal: ${JSON.stringify(finalStatus)}`);
 }
 
-async function waitForAgentSandbox(root: string, runId: string): Promise<void> {
+async function waitForAgentSandbox(root: string, runId: string, expectedOwners = 1): Promise<void> {
   const deadline = Date.now() + 20_000;
   while (Date.now() < deadline) {
     try {
@@ -729,7 +784,7 @@ async function waitForAgentSandbox(root: string, runId: string): Promise<void> {
         "SELECT count(*) AS count FROM root_child_owners",
         "WHERE parent_run_id = ?1 AND sandbox_digest IS NOT NULL",
       ].join(" ")).get(runId).count));
-      if (count === 1) return;
+      if (count === expectedOwners) return;
     } catch (error) {
       if ((error as { readonly code?: unknown }).code !== "SQLITE_BUSY") throw error;
     }
@@ -747,7 +802,9 @@ async function expectNoAgentOwner(root: string): Promise<void> {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return [] as string[];
     throw error;
   });
-  expect(values.filter((value) => value.startsWith("a-"))).toEqual([]);
+  expect(values.filter((value) => value.startsWith("a-") || value.startsWith("c-"))).toEqual([]);
+  const materializations = await readdir(join(root, ".jig", "private-root-materializations"));
+  expect(materializations.filter((value) => value.startsWith("child-"))).toEqual([]);
 }
 
 function withStore<Value>(root: string, use: (database: any) => Value): Value {

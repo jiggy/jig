@@ -136,7 +136,7 @@ import { defineBinding } from "@jigging/jig";
 
 export default defineBinding({
   package: "./flows/reviewer",
-  slots: { research: "./flows/research" },
+  slots: { research: "flow:flows/research" },
 });
 ```
 
@@ -145,21 +145,24 @@ jig run binding:reviewer --input '{}'
 ```
 
 `slots` is optional and omission normalizes to `{}`. It maps at most 256
-LocalName keys to other selected, direct-eligible Flow package paths in the
-same admitted generation. Slots belong to the Binding; a direct `flow:` Run
-has none.
+LocalName keys to explicit `flow:<path>` or `binding:<id>` targets in the same
+admitted generation. Slots belong to the Binding; a direct `flow:` Run has none.
+Selected child Bindings must have no child slots of their own.
 
 Each `flow/call` carries JSON/1 input into a fresh child context and returns a
-complete JSON/1 Run result. The child receives empty settings and attachments,
-no inherited slots, and a deadline no later than its parent. Run/1 controls
+complete JSON/1 Run result. The child receives its selected target's admitted
+settings and Agent capability, empty attachments, no inherited slots, and a
+deadline no later than its parent. It selects its own package-local Skills per
+Agent call; providers and credentials remain host choices. Run/1 controls
 operation identity, duplicate joins, conflicting reuse, cancellation, and
 uncertainty; Jig does not replay uncertain dispatch automatically. There is no
 separate child history, administration, scheduler, catalogue, or resolver. Jig
 also never guesses an unprefixed target.
 
-The alpha admits one active child operation per parent; excess distinct
-concurrent calls receive `RESOURCE_EXHAUSTED`, while sequential calls remain
-available.
+Each Run context admits one active operation; a child Flow can own one Agent
+operation while its parent awaits it. Excess distinct concurrent calls receive
+`RESOURCE_EXHAUSTED`, while sequential calls remain available. Cancellation and
+cleanup cover the specialist and its locally owned Agent worker.
 
 One experimental [Agent Run capability](https://jig.md/spec/agent-run) is
 available through ordinary Run/1 `effect/call`. The host may use the official

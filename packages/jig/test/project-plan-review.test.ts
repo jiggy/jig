@@ -230,7 +230,7 @@ describe("private project Plan review", () => {
         package: { digest: parentDigest },
         entrypoint: { path: "flow.ts", suffix: "ts" },
         settings: {},
-        flowSlots: { work: slotPath },
+        flowSlots: { work: { kind: "flow", path: slotPath } },
         attachments: {},
       },
       disposition: { state: "ready" as const },
@@ -265,7 +265,7 @@ describe("private project Plan review", () => {
           router: {
             packagePath: "flows/router",
             settings: {},
-            slots: { work: slotPath },
+            slots: { work: { kind: "flow", path: slotPath } },
           },
         },
       },
@@ -314,7 +314,7 @@ describe("private project Plan review", () => {
     expect(digestReview.proposed.portablePolicy.bindings.router).toEqual({
       packagePath: "flows/router",
       settings: {},
-      slots: { work: "flows/bug" },
+      slots: { work: { kind: "flow", path: "flows/bug" } },
     });
     expect(JSON.stringify(digestReview.proposed.portablePolicy.bindings.router))
       .not.toContain(newChildDigest);
@@ -336,6 +336,46 @@ describe("private project Plan review", () => {
       "binding:router",
       "flow:flows/bug",
     ]);
+  });
+
+  test("marks a parent affected by its selected Binding's settings and availability", () => {
+    const digest = `sha256:${"a".repeat(64)}`;
+    const candidate = (style: string, ready: boolean) => {
+      const bindings = {
+        router: { packagePath: "flows/router", settings: {}, slots: { review: { kind: "binding", id: "reviewer" } } },
+        reviewer: { packagePath: "flows/reviewer", settings: { style }, slots: {} },
+      };
+      return {
+        lock: {
+          packages: {
+            "flows/router": { digest, directRun: true, uses: {} },
+            "flows/reviewer": { digest, directRun: false, uses: {} },
+          },
+          bindings,
+        },
+        candidate: { targets: Object.entries(bindings).map(([id, binding]) => ({
+          request: {
+            target: { kind: "binding", id }, mode: "run", packagePath: binding.packagePath,
+            package: { digest }, entrypoint: { path: "flow.ts", suffix: "ts" },
+            settings: binding.settings, flowSlots: binding.slots, attachments: {},
+          },
+          disposition: id === "reviewer" && !ready
+            ? { state: "unavailable", code: "RUNTIME_UNAVAILABLE" } : { state: "ready" },
+        })) },
+      };
+    };
+    const current = candidate("brief", true);
+    for (const proposed of [candidate("critical", true), candidate("brief", false)]) {
+      const plan = {
+        ...reviewPlan("admission", digest),
+        proposed: { lock: proposed.lock, targets: proposed.candidate.targets },
+      };
+      const review = JSON.parse(renderPrivateProjectPlanReview({
+        plan, baseCandidate: current,
+      } as unknown as PrivateActivationReviewPlan).text.split("\n\n").at(-1)!);
+      expect(review.changes.targets.changed).toEqual(["binding:reviewer", "binding:router"]);
+      expect(review.proposed.portablePolicy.bindings.router.slots.review).toEqual({ kind: "binding", id: "reviewer" });
+    }
   });
 
   test("fails before allocating a review larger than its public envelope", () => {

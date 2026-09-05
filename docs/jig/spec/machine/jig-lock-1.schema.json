@@ -94,11 +94,9 @@
         },
         "slots": {
           "type": "object",
-          "description": "Exact child-Flow package paths keyed by consumer-local slot name.",
+          "description": "Exact Flow or leaf Binding identities keyed by consumer-local slot name.",
           "additionalProperties": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 1024
+            "$ref": "#/$defs/targetIdentity"
           },
           "maxProperties": 256
         }
@@ -109,6 +107,28 @@
         "slots"
       ],
       "additionalProperties": false
+    },
+    "targetIdentity": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "kind": { "const": "flow" },
+            "path": { "type": "string", "minLength": 1, "maxLength": 1024 }
+          },
+          "required": ["kind", "path"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": { "const": "binding" },
+            "id": { "type": "string", "minLength": 1, "maxLength": 64 }
+          },
+          "required": ["kind", "id"],
+          "additionalProperties": false
+        }
+      ]
     }
   }
 }

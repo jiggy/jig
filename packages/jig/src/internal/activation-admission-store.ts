@@ -125,7 +125,7 @@ const CREATE_COORDINATOR_HEAD = "CREATE TABLE coordinator_head (singleton INTEGE
 const CREATE_ROOT_RUNS = "CREATE TABLE root_runs (run_id TEXT PRIMARY KEY, origin_digest TEXT NOT NULL UNIQUE, origin_bytes BLOB NOT NULL CHECK (length(origin_bytes) BETWEEN 1 AND 16777216), admission_digest TEXT NOT NULL REFERENCES admissions(admission_digest), candidate_revision INTEGER NOT NULL REFERENCES candidates(revision), coordinator_epoch INTEGER NOT NULL CHECK (coordinator_epoch BETWEEN 1 AND 9007199254740991), request_bytes BLOB NOT NULL CHECK (length(request_bytes) BETWEEN 1 AND 16777216)) STRICT";
 const CREATE_ROOT_SPAWN_INTENTS = "CREATE TABLE root_spawn_intents (run_id TEXT PRIMARY KEY REFERENCES root_runs(run_id), intent_digest TEXT NOT NULL UNIQUE, intent_bytes BLOB NOT NULL CHECK (length(intent_bytes) BETWEEN 1 AND 16777216)) STRICT";
 const CREATE_ROOT_EXECUTION_LIFECYCLES = "CREATE TABLE root_execution_lifecycles (run_id TEXT PRIMARY KEY REFERENCES root_spawn_intents(run_id), allocation_digest TEXT NOT NULL UNIQUE, allocation_bytes BLOB NOT NULL CHECK (length(allocation_bytes) BETWEEN 1 AND 16777216), plan_digest TEXT UNIQUE, plan_bytes BLOB, backing_digest TEXT UNIQUE, backing_bytes BLOB, sandbox_digest TEXT UNIQUE, sandbox_bytes BLOB, prepared_digest TEXT UNIQUE, prepared_bytes BLOB, provisional_digest TEXT UNIQUE, provisional_bytes BLOB, fence_digest TEXT UNIQUE, fence_bytes BLOB, release_digest TEXT UNIQUE, release_bytes BLOB, admitted_digest TEXT UNIQUE, admitted_bytes BLOB, CHECK ((plan_digest IS NULL) = (plan_bytes IS NULL)), CHECK ((backing_digest IS NULL) = (backing_bytes IS NULL)), CHECK ((sandbox_digest IS NULL) = (sandbox_bytes IS NULL)), CHECK ((prepared_digest IS NULL) = (prepared_bytes IS NULL)), CHECK ((provisional_digest IS NULL) = (provisional_bytes IS NULL)), CHECK ((fence_digest IS NULL) = (fence_bytes IS NULL)), CHECK ((release_digest IS NULL) = (release_bytes IS NULL)), CHECK ((admitted_digest IS NULL) = (admitted_bytes IS NULL)), CHECK (backing_digest IS NULL OR plan_digest IS NOT NULL), CHECK (sandbox_digest IS NULL OR backing_digest IS NOT NULL), CHECK (prepared_digest IS NULL OR sandbox_digest IS NOT NULL), CHECK (fence_digest IS NULL OR sandbox_digest IS NOT NULL), CHECK (admitted_digest IS NULL OR (provisional_digest IS NOT NULL AND release_digest IS NOT NULL))) STRICT";
-const CREATE_ROOT_CHILD_OWNERS = "CREATE TABLE root_child_owners (parent_run_id TEXT NOT NULL REFERENCES root_execution_lifecycles(run_id), operation_id TEXT NOT NULL, allocation_digest TEXT NOT NULL UNIQUE, allocation_bytes BLOB NOT NULL CHECK (length(allocation_bytes) BETWEEN 1 AND 16777216), sandbox_digest TEXT UNIQUE, sandbox_bytes BLOB, fence_digest TEXT UNIQUE, fence_bytes BLOB, cleanup_digest TEXT UNIQUE, cleanup_bytes BLOB, CHECK ((sandbox_digest IS NULL) = (sandbox_bytes IS NULL)), CHECK ((fence_digest IS NULL) = (fence_bytes IS NULL)), CHECK ((cleanup_digest IS NULL) = (cleanup_bytes IS NULL)), CHECK (fence_digest IS NULL OR sandbox_digest IS NOT NULL), CHECK (cleanup_digest IS NULL OR fence_digest IS NOT NULL), PRIMARY KEY (parent_run_id, operation_id)) STRICT";
+const CREATE_ROOT_CHILD_OWNERS = "CREATE TABLE root_child_owners (parent_run_id TEXT NOT NULL REFERENCES root_execution_lifecycles(run_id), scope_operation_id TEXT NOT NULL, operation_id TEXT NOT NULL, allocation_digest TEXT NOT NULL UNIQUE, allocation_bytes BLOB NOT NULL CHECK (length(allocation_bytes) BETWEEN 1 AND 16777216), sandbox_digest TEXT UNIQUE, sandbox_bytes BLOB, fence_digest TEXT UNIQUE, fence_bytes BLOB, cleanup_digest TEXT UNIQUE, cleanup_bytes BLOB, CHECK ((sandbox_digest IS NULL) = (sandbox_bytes IS NULL)), CHECK ((fence_digest IS NULL) = (fence_bytes IS NULL)), CHECK ((cleanup_digest IS NULL) = (cleanup_bytes IS NULL)), CHECK (fence_digest IS NULL OR sandbox_digest IS NOT NULL), CHECK (cleanup_digest IS NULL OR fence_digest IS NOT NULL), PRIMARY KEY (parent_run_id, scope_operation_id, operation_id)) STRICT";
 const CREATE_ROOT_TERMINALS = "CREATE TABLE root_terminals (run_id TEXT PRIMARY KEY REFERENCES root_runs(run_id), terminal_digest TEXT NOT NULL, terminal_bytes BLOB NOT NULL CHECK (length(terminal_bytes) BETWEEN 1 AND 16777216)) STRICT";
 const CREATE_COORDINATOR_LOCK = "CREATE TABLE coordinator_lock (singleton INTEGER PRIMARY KEY CHECK (singleton = 1)) STRICT";
 const EXPECTED_SCHEMA = Object.freeze([
@@ -291,6 +291,7 @@ interface RootExecutionLifecycleRow {
 
 interface RootChildOwnerRow {
   readonly parent_run_id: string;
+  readonly scope_operation_id: string;
   readonly operation_id: string;
   readonly allocation_digest: string;
   readonly allocation_bytes: Uint8Array;
@@ -410,6 +411,8 @@ export interface PrivateRootChildOwnerFact {
 
 export interface PrivateRootChildOwnerLifecycle {
   readonly parentRunId: string;
+  /** Present only for the one Agent owned by a direct child Flow. */
+  readonly parentOperationId?: string;
   readonly operationId: string;
   readonly allocation: PrivateRootChildOwnerFact;
   readonly sandbox?: PrivateRootChildOwnerFact;
@@ -955,6 +958,7 @@ export async function allocatePrivateRootChildOwner(input: {
   readonly coordinator: PrivateProjectCoordinator;
   readonly projectRoot: string;
   readonly parentRunId: string;
+  readonly parentOperationId?: string;
   readonly operationId: string;
   readonly allocation: JsonValue;
 }): Promise<PrivateRootChildOwnerLifecycle> {
@@ -962,6 +966,7 @@ export async function allocatePrivateRootChildOwner(input: {
   await coordinator.verify();
   requireDigest(input.parentRunId, "parent root Run");
   requireWireId(input.operationId, "child operation");
+  if (input.parentOperationId !== undefined) requireWireId(input.parentOperationId, "parent child operation");
   const bytes = canonicalJson(input.allocation);
   requireStoredSize(bytes, "child owner allocation");
   const digest = privateDomainDigest("JIG-Private-Root-Child-Owner-Allocation/1", input.allocation);
@@ -977,7 +982,7 @@ export async function allocatePrivateRootChildOwner(input: {
       if (run.coordinatorEpoch !== coordinator.epoch) {
         invalid("RUN_OWNER_CHANGED", "only the active parent coordinator may allocate child work");
       }
-      const existing = findRootChildOwner(owner.database, input.parentRunId, input.operationId);
+      const existing = findRootChildOwner(owner.database, input.parentRunId, input.operationId, input.parentOperationId);
       if (existing !== null) {
         const loaded = loadRootChildOwner(existing);
         if (loaded.allocation.digest !== digest || !sameBytes(existing.allocation_bytes, bytes)) {
@@ -985,17 +990,24 @@ export async function allocatePrivateRootChildOwner(input: {
         }
         return loaded;
       }
-      if (countRootChildOwners(owner.database, input.parentRunId) !== 0n) {
+      requireActiveChildScope(owner.database, input.parentRunId, input.parentOperationId);
+      if (input.parentOperationId !== undefined && (input.allocation === null ||
+          typeof input.allocation !== "object" || Array.isArray(input.allocation) ||
+          (input.allocation as Record<string, JsonValue>).kind !== "private-root-agent-owner-allocation/1")) {
+        invalid("RUN_CHILD_OWNER_CONFLICT", "a child Flow may own only one Agent operation");
+      }
+      if (countScopedRootChildOwners(owner.database, input.parentRunId, input.parentOperationId) !== 0n) {
         invalid("RUN_CHILD_CAPACITY", "the parent Run already has an active child operation");
       }
       runFinalized(owner.database,
-        "INSERT INTO root_child_owners(parent_run_id, operation_id, allocation_digest, allocation_bytes) VALUES (?1, ?2, ?3, ?4)",
-        [input.parentRunId, input.operationId, digest, bytes],
+        "INSERT INTO root_child_owners(parent_run_id, scope_operation_id, operation_id, allocation_digest, allocation_bytes) VALUES (?1, ?2, ?3, ?4, ?5)",
+        [input.parentRunId, input.parentOperationId ?? "", input.operationId, digest, bytes],
       );
       return loadRootChildOwner(requireRootChildOwner(
         owner.database,
         input.parentRunId,
         input.operationId,
+        input.parentOperationId,
       ));
     });
     await owner.finish();
@@ -1013,6 +1025,7 @@ export async function recordPrivateRootChildSandbox(input: {
   readonly coordinator: PrivateProjectCoordinator;
   readonly projectRoot: string;
   readonly parentRunId: string;
+  readonly parentOperationId?: string;
   readonly operationId: string;
   readonly allocationDigest: string;
   readonly sandbox: JsonValue;
@@ -1021,6 +1034,7 @@ export async function recordPrivateRootChildSandbox(input: {
   await coordinator.verify();
   requireDigest(input.parentRunId, "parent root Run");
   requireWireId(input.operationId, "child operation");
+  if (input.parentOperationId !== undefined) requireWireId(input.parentOperationId, "parent child operation");
   requireDigest(input.allocationDigest, "child allocation");
   const bytes = canonicalJson(input.sandbox);
   requireStoredSize(bytes, "child sandbox owner");
@@ -1031,7 +1045,7 @@ export async function recordPrivateRootChildSandbox(input: {
     requireCoordinatorRoot(coordinator, owner.root);
     const lifecycle = await immediate(owner, async () => {
       await coordinator.verify();
-      const row = requireRootChildOwner(owner.database, input.parentRunId, input.operationId);
+      const row = requireRootChildOwner(owner.database, input.parentRunId, input.operationId, input.parentOperationId);
       if (row.allocation_digest !== input.allocationDigest) {
         invalid("RUN_CHILD_OWNER_CONFLICT", "child sandbox names a different allocation");
       }
@@ -1047,15 +1061,17 @@ export async function recordPrivateRootChildSandbox(input: {
       if (run.coordinatorEpoch !== coordinator.epoch) {
         invalid("RUN_OWNER_CHANGED", "only the active parent coordinator may seal child work");
       }
+      requireActiveChildScope(owner.database, input.parentRunId, input.parentOperationId);
       const changed = runFinalized(owner.database,
-        "UPDATE root_child_owners SET sandbox_digest = ?1, sandbox_bytes = ?2 WHERE parent_run_id = ?3 AND operation_id = ?4 AND sandbox_digest IS NULL",
-        [digest, bytes, input.parentRunId, input.operationId],
+        "UPDATE root_child_owners SET sandbox_digest = ?1, sandbox_bytes = ?2 WHERE parent_run_id = ?3 AND operation_id = ?4 AND scope_operation_id = ?5 AND sandbox_digest IS NULL",
+        [digest, bytes, input.parentRunId, input.operationId, input.parentOperationId ?? ""],
       ).changes;
       if (changed !== 1) corrupt("child sandbox owner compare-and-set failed");
       return loadRootChildOwner(requireRootChildOwner(
         owner.database,
         input.parentRunId,
         input.operationId,
+        input.parentOperationId,
       ));
     });
     await owner.finish();
@@ -1073,6 +1089,7 @@ export async function recordPrivateRootChildFence(input: {
   readonly coordinator: PrivateProjectCoordinator;
   readonly projectRoot: string;
   readonly parentRunId: string;
+  readonly parentOperationId?: string;
   readonly operationId: string;
   readonly allocationDigest: string;
   readonly sandboxDigest: string;
@@ -1082,6 +1099,7 @@ export async function recordPrivateRootChildFence(input: {
   await coordinator.verify();
   requireDigest(input.parentRunId, "parent root Run");
   requireWireId(input.operationId, "child operation");
+  if (input.parentOperationId !== undefined) requireWireId(input.parentOperationId, "parent child operation");
   requireDigest(input.allocationDigest, "child allocation");
   requireDigest(input.sandboxDigest, "child sandbox");
   const bytes = canonicalJson(input.fence);
@@ -1093,7 +1111,7 @@ export async function recordPrivateRootChildFence(input: {
     requireCoordinatorRoot(coordinator, owner.root);
     const lifecycle = await immediate(owner, async () => {
       await coordinator.verify();
-      const row = requireRootChildOwner(owner.database, input.parentRunId, input.operationId);
+      const row = requireRootChildOwner(owner.database, input.parentRunId, input.operationId, input.parentOperationId);
       if (row.allocation_digest !== input.allocationDigest || row.sandbox_digest !== input.sandboxDigest) {
         invalid("RUN_CHILD_OWNER_CONFLICT", "child fence names a different owner");
       }
@@ -1104,14 +1122,15 @@ export async function recordPrivateRootChildFence(input: {
         return loadRootChildOwner(row);
       }
       const changed = runFinalized(owner.database,
-        "UPDATE root_child_owners SET fence_digest = ?1, fence_bytes = ?2 WHERE parent_run_id = ?3 AND operation_id = ?4 AND fence_digest IS NULL",
-        [digest, bytes, input.parentRunId, input.operationId],
+        "UPDATE root_child_owners SET fence_digest = ?1, fence_bytes = ?2 WHERE parent_run_id = ?3 AND operation_id = ?4 AND scope_operation_id = ?5 AND fence_digest IS NULL",
+        [digest, bytes, input.parentRunId, input.operationId, input.parentOperationId ?? ""],
       ).changes;
       if (changed !== 1) corrupt("child fence compare-and-set failed");
       return loadRootChildOwner(requireRootChildOwner(
         owner.database,
         input.parentRunId,
         input.operationId,
+        input.parentOperationId,
       ));
     });
     await owner.finish();
@@ -1129,6 +1148,7 @@ export async function recordPrivateRootChildCleanup(input: {
   readonly coordinator: PrivateProjectCoordinator;
   readonly projectRoot: string;
   readonly parentRunId: string;
+  readonly parentOperationId?: string;
   readonly operationId: string;
   readonly allocationDigest: string;
   readonly sandboxDigest: string;
@@ -1139,6 +1159,7 @@ export async function recordPrivateRootChildCleanup(input: {
   await coordinator.verify();
   requireDigest(input.parentRunId, "parent root Run");
   requireWireId(input.operationId, "child operation");
+  if (input.parentOperationId !== undefined) requireWireId(input.parentOperationId, "parent child operation");
   requireDigest(input.allocationDigest, "child allocation");
   requireDigest(input.sandboxDigest, "child sandbox");
   requireDigest(input.fenceDigest, "child fence");
@@ -1151,7 +1172,7 @@ export async function recordPrivateRootChildCleanup(input: {
     requireCoordinatorRoot(coordinator, owner.root);
     const lifecycle = await immediate(owner, async () => {
       await coordinator.verify();
-      const row = requireRootChildOwner(owner.database, input.parentRunId, input.operationId);
+      const row = requireRootChildOwner(owner.database, input.parentRunId, input.operationId, input.parentOperationId);
       if (row.allocation_digest !== input.allocationDigest || row.sandbox_digest !== input.sandboxDigest ||
           row.fence_digest !== input.fenceDigest) {
         invalid("RUN_CHILD_OWNER_CONFLICT", "child cleanup names different durable evidence");
@@ -1163,14 +1184,15 @@ export async function recordPrivateRootChildCleanup(input: {
         return loadRootChildOwner(row);
       }
       const changed = runFinalized(owner.database,
-        "UPDATE root_child_owners SET cleanup_digest = ?1, cleanup_bytes = ?2 WHERE parent_run_id = ?3 AND operation_id = ?4 AND cleanup_digest IS NULL",
-        [digest, bytes, input.parentRunId, input.operationId],
+        "UPDATE root_child_owners SET cleanup_digest = ?1, cleanup_bytes = ?2 WHERE parent_run_id = ?3 AND operation_id = ?4 AND scope_operation_id = ?5 AND cleanup_digest IS NULL",
+        [digest, bytes, input.parentRunId, input.operationId, input.parentOperationId ?? ""],
       ).changes;
       if (changed !== 1) corrupt("child cleanup compare-and-set failed");
       return loadRootChildOwner(requireRootChildOwner(
         owner.database,
         input.parentRunId,
         input.operationId,
+        input.parentOperationId,
       ));
     });
     await owner.finish();
@@ -1197,8 +1219,8 @@ export async function listPrivateRootChildOwners(input: {
   try {
     requireCoordinatorRoot(coordinator, owner.root);
     const query = statement<RootChildOwnerRow>(owner.database, [
-      "SELECT parent_run_id, operation_id, allocation_digest, allocation_bytes, sandbox_digest, sandbox_bytes, fence_digest, fence_bytes, cleanup_digest, cleanup_bytes",
-      "FROM root_child_owners WHERE parent_run_id = ?1 ORDER BY operation_id",
+      "SELECT parent_run_id, scope_operation_id, operation_id, allocation_digest, allocation_bytes, sandbox_digest, sandbox_bytes, fence_digest, fence_bytes, cleanup_digest, cleanup_bytes",
+      "FROM root_child_owners WHERE parent_run_id = ?1 ORDER BY scope_operation_id DESC, operation_id",
     ].join(" "));
     let rows: readonly RootChildOwnerRow[];
     try { rows = query.all(input.parentRunId).map(copiedRootChildOwnerRow); }
@@ -1219,6 +1241,7 @@ export async function closePrivateRootChildOwner(input: {
   readonly coordinator: PrivateProjectCoordinator;
   readonly projectRoot: string;
   readonly parentRunId: string;
+  readonly parentOperationId?: string;
   readonly operationId: string;
   readonly allocationDigest: string;
   readonly sandboxDigest: string | null;
@@ -1229,6 +1252,7 @@ export async function closePrivateRootChildOwner(input: {
   await coordinator.verify();
   requireDigest(input.parentRunId, "parent root Run");
   requireWireId(input.operationId, "child operation");
+  if (input.parentOperationId !== undefined) requireWireId(input.parentOperationId, "parent child operation");
   requireDigest(input.allocationDigest, "child allocation");
   if (input.sandboxDigest !== null) requireDigest(input.sandboxDigest, "child sandbox");
   if (input.fenceDigest !== null) requireDigest(input.fenceDigest, "child fence");
@@ -1239,7 +1263,11 @@ export async function closePrivateRootChildOwner(input: {
     requireCoordinatorRoot(coordinator, owner.root);
     await immediate(owner, async () => {
       await coordinator.verify();
-      const row = findRootChildOwner(owner.database, input.parentRunId, input.operationId);
+      const row = findRootChildOwner(owner.database, input.parentRunId, input.operationId, input.parentOperationId);
+      if (input.parentOperationId === undefined &&
+          countScopedRootChildOwners(owner.database, input.parentRunId, input.operationId) !== 0n) {
+        invalid("RUN_EXECUTION_INCOMPLETE", "child Flow still has an active Agent owner");
+      }
       if (row === null) return;
       if (row.allocation_digest !== input.allocationDigest || row.sandbox_digest !== input.sandboxDigest ||
           row.fence_digest !== input.fenceDigest || row.cleanup_digest !== input.cleanupDigest ||
@@ -1247,8 +1275,8 @@ export async function closePrivateRootChildOwner(input: {
         invalid("RUN_CHILD_OWNER_CONFLICT", "child owner close differs from durable ownership");
       }
       const changed = runFinalized(owner.database,
-        "DELETE FROM root_child_owners WHERE parent_run_id = ?1 AND operation_id = ?2 AND allocation_digest = ?3",
-        [input.parentRunId, input.operationId, input.allocationDigest],
+        "DELETE FROM root_child_owners WHERE parent_run_id = ?1 AND operation_id = ?2 AND allocation_digest = ?3 AND scope_operation_id = ?4",
+        [input.parentRunId, input.operationId, input.allocationDigest, input.parentOperationId ?? ""],
       ).changes;
       if (changed !== 1) corrupt("child owner close compare-and-delete failed");
     });
@@ -1429,6 +1457,39 @@ function countRootChildOwners(database: SqliteDatabase, parentRunId: string): bi
   );
   try { return query.get(parentRunId)?.count ?? 0n; }
   finally { query.finalize(); }
+}
+
+function countScopedRootChildOwners(
+  database: SqliteDatabase,
+  parentRunId: string,
+  parentOperationId?: string,
+): bigint {
+  const query = statement<{ readonly count: bigint }>(database,
+    "SELECT count(*) AS count FROM root_child_owners WHERE parent_run_id = ?1 AND scope_operation_id = ?2",
+  );
+  try { return query.get(parentRunId, parentOperationId ?? "")?.count ?? 0n; }
+  finally { query.finalize(); }
+}
+
+/** The only nested scope is an active direct child Flow's one Agent. */
+function requireActiveChildScope(
+  database: SqliteDatabase,
+  parentRunId: string,
+  parentOperationId?: string,
+): void {
+  if (requireRootExecutionLifecycle(database, parentRunId).fence_digest !== null) {
+    invalid("RUN_CHILD_PARENT_INACTIVE", "the parent root Run is fenced");
+  }
+  if (parentOperationId === undefined) return;
+  const parent = findRootChildOwner(database, parentRunId, parentOperationId);
+  if (parent === null || parent.sandbox_digest === null || parent.fence_digest !== null) {
+    invalid("RUN_CHILD_PARENT_INACTIVE", "the parent child Flow has no active sandbox");
+  }
+  const allocation = loadRootChildOwner(parent).allocation.value;
+  if (allocation === null || typeof allocation !== "object" || Array.isArray(allocation) ||
+      (allocation as Record<string, JsonValue>).kind !== "private-root-child-owner-allocation/1") {
+    invalid("RUN_CHILD_PARENT_INACTIVE", "only a direct child Flow may own an Agent");
+  }
 }
 
 /** Reopen one durable root Run while proving affinity to a live coordinator. */
@@ -1719,13 +1780,14 @@ function findRootChildOwner(
   database: SqliteDatabase,
   parentRunId: string,
   operationId: string,
+  parentOperationId?: string,
 ): RootChildOwnerRow | null {
   const query = statement<RootChildOwnerRow>(database, [
-    "SELECT parent_run_id, operation_id, allocation_digest, allocation_bytes, sandbox_digest, sandbox_bytes, fence_digest, fence_bytes, cleanup_digest, cleanup_bytes",
-    "FROM root_child_owners WHERE parent_run_id = ?1 AND operation_id = ?2",
+    "SELECT parent_run_id, scope_operation_id, operation_id, allocation_digest, allocation_bytes, sandbox_digest, sandbox_bytes, fence_digest, fence_bytes, cleanup_digest, cleanup_bytes",
+    "FROM root_child_owners WHERE parent_run_id = ?1 AND operation_id = ?2 AND scope_operation_id = ?3",
   ].join(" "));
   try {
-    const row = query.get(parentRunId, operationId);
+    const row = query.get(parentRunId, operationId, parentOperationId ?? "");
     return row === null ? null : copiedRootChildOwnerRow(row);
   } finally { query.finalize(); }
 }
@@ -1734,8 +1796,9 @@ function requireRootChildOwner(
   database: SqliteDatabase,
   parentRunId: string,
   operationId: string,
+  parentOperationId?: string,
 ): RootChildOwnerRow {
-  const row = findRootChildOwner(database, parentRunId, operationId);
+  const row = findRootChildOwner(database, parentRunId, operationId, parentOperationId);
   if (row === null) invalid("RUN_CHILD_OWNER_MISSING", "child operation has no durable cleanup owner");
   return row;
 }
@@ -1743,6 +1806,7 @@ function requireRootChildOwner(
 function copiedRootChildOwnerRow(row: RootChildOwnerRow): RootChildOwnerRow {
   return Object.freeze({
     parent_run_id: row.parent_run_id,
+    scope_operation_id: row.scope_operation_id,
     operation_id: row.operation_id,
     allocation_digest: row.allocation_digest,
     allocation_bytes: copiedBlob(row.allocation_bytes, "stored child owner allocation"),
@@ -1757,6 +1821,7 @@ function copiedRootChildOwnerRow(row: RootChildOwnerRow): RootChildOwnerRow {
 
 function loadRootChildOwner(row: RootChildOwnerRow): PrivateRootChildOwnerLifecycle {
   requireDigest(row.parent_run_id, "stored child parent Run");
+  if (row.scope_operation_id !== "") requireWireId(row.scope_operation_id, "stored child parent operation");
   requireWireId(row.operation_id, "stored child operation");
   requireProtectedDigest(row.allocation_digest, "stored child allocation");
   const allocation = decodeCanonicalChildFact(
@@ -1817,6 +1882,7 @@ function loadRootChildOwner(row: RootChildOwnerRow): PrivateRootChildOwnerLifecy
   }
   return Object.freeze({
     parentRunId: row.parent_run_id,
+    ...(row.scope_operation_id === "" ? {} : { parentOperationId: row.scope_operation_id }),
     operationId: row.operation_id,
     allocation: Object.freeze({ digest: row.allocation_digest, value: allocation }),
     ...(sandbox === undefined ? {} : { sandbox }),

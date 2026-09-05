@@ -151,9 +151,18 @@ function normalizeFlowSlots(value: unknown): Readonly<Record<string, string>> {
   const output: Record<string, string> = Object.create(null) as Record<string, string>;
   for (const name of Object.keys(input).sort(compareUtf8)) {
     validateLocalName(name, "slot name");
-    output[name] = normalizeProjectPath(input[name], `slot ${name}`);
+    const target = parseRunTargetSelector(input[name], `slot ${name}`);
+    output[name] = target.kind === "flow" ? `flow:${target.path}` : `binding:${target.id}`;
   }
   return Object.freeze(output);
+}
+
+/** Internal selector parsing shared by authoring and exact project linking. */
+export function parseRunTargetSelector(value: unknown, label: string): RunTargetRef {
+  if (typeof value !== "string") throw new TypeError(`${label} must be a target selector`);
+  if (value.startsWith("flow:")) return flowRef(normalizeProjectPath(value.slice(5), label));
+  if (value.startsWith("binding:")) return bindingRef(validateLocalName(value.slice(8), label));
+  throw new TypeError(`${label} must select flow:<path> or binding:<id>`);
 }
 
 function normalizeSource(

@@ -172,30 +172,30 @@ description: Review.`),
         flows,
         bindings: [binding("bindings/router.ts", {
           package: "flows/router",
-          slots: { bug: "flows/bug" },
+          slots: { bug: "flow:flows/bug" },
         })],
       });
-      expect(value.bindings[0]!.slots).toEqual({ bug: "flows/bug" });
+      expect(value.bindings[0]!.slots).toEqual({ bug: { kind: "flow", path: "flows/bug" } });
 
       expectCode(() => linkPackageProject({
         flows,
         bindings: [binding("bindings/router.ts", {
           package: "flows/router",
-          slots: { bug: "flows/missing" },
+          slots: { bug: "flow:flows/missing" },
         })],
       }), "PROJECT_BINDING_SLOT_MISSING", "/slots/bug");
       expectCode(() => linkPackageProject({
         flows,
         bindings: [binding("bindings/router.ts", {
           package: "flows/router",
-          slots: { loop: "flows/router" },
+          slots: { loop: "flow:flows/router" },
         })],
       }), "PROJECT_BINDING_SLOT_RECURSIVE", "/slots/loop");
       expectCode(() => linkPackageProject({
         flows,
         bindings: [binding("bindings/router.ts", {
           package: "flows/router",
-          slots: { configured: "flows/configured" },
+          slots: { configured: "flow:flows/configured" },
         })],
       }), "PROJECT_BINDING_SLOT_NOT_DIRECT", "/slots/configured");
     });
@@ -280,7 +280,7 @@ uses:
     });
   });
 
-  test("keeps exact child Flow slots capability-free", async () => {
+  test("links Agent-bearing direct children and configured Binding children", async () => {
     await withFlows({
       "flows/router": run("router"),
       "flows/agent-child": {
@@ -291,15 +291,54 @@ uses:
     contract: ./contracts/agent-run.capability.json`),
         "flow.ts": "export {};\n",
         "contracts/agent-run.capability.json": agentRunContract,
+        "settings.schema.json": schema({ type: "object", properties: { style: { type: "string" } } }),
       },
     }, async (flows) => {
+      const linked = linkPackageProject({
+        flows,
+        bindings: [
+          binding("bindings/router.ts", {
+            package: "flows/router",
+            slots: { agent: "flow:flows/agent-child", configured: "binding:reviewer" },
+          }),
+          binding("bindings/reviewer.ts", {
+            package: "flows/agent-child", settings: { style: "critical" },
+          }),
+        ],
+      });
+      const router = linked.bindings.find(({ id }) => id === "router")!;
+      expect(router.slots).toEqual({
+        agent: { kind: "flow", path: "flows/agent-child" },
+        configured: { kind: "binding", id: "reviewer" },
+      });
+      expect(Object.isFrozen(router.slots.configured)).toBeTrue();
+      expect(linked.bindings.find(({ id }) => id === "reviewer")!.settings).toEqual({ style: "critical" });
+    });
+  });
+
+  test("rejects unknown, self, cyclic, and nonleaf Binding slot targets", async () => {
+    await withFlows({
+      "flows/router": run("router"), "flows/reviewer": run("reviewer"), "flows/leaf": run("leaf"),
+    }, async (flows) => {
+      const router = (target: string) => binding("bindings/router.ts", {
+        package: "flows/router", slots: { child: target },
+      });
+      expectCode(() => linkPackageProject({ flows, bindings: [router("binding:missing")] }),
+        "PROJECT_BINDING_SLOT_MISSING", "/slots/child");
+      expectCode(() => linkPackageProject({ flows, bindings: [router("binding:router")] }),
+        "PROJECT_BINDING_SLOT_RECURSIVE", "/slots/child");
+      for (const target of ["flow:flows/leaf", "binding:router"]) {
+        expectCode(() => linkPackageProject({
+          flows,
+          bindings: [router("binding:reviewer"), binding("bindings/reviewer.ts", {
+            package: "flows/reviewer", slots: { child: target },
+          })],
+        }), "PROJECT_BINDING_SLOT_NOT_LEAF", "/slots/child");
+      }
       expectCode(() => linkPackageProject({
         flows,
-        bindings: [binding("bindings/router.ts", {
-          package: "flows/router",
-          slots: { agent: "flows/agent-child" },
-        })],
-      }), "PROJECT_BINDING_SLOT_NOT_DIRECT", "/slots/agent");
+        bindings: [router("binding:alias"), binding("bindings/alias.ts", { package: "flows/router" })],
+      }), "PROJECT_BINDING_SLOT_RECURSIVE", "/slots/child");
     });
   });
 

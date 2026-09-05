@@ -169,10 +169,10 @@ const project = defineJig({ flows: discover("./flows") });
 const binding = defineBinding({
   package: "./flows/review",
   settings: { profile: "fast" },
-  slots: { worker: "./flows/worker" },
+  slots: { worker: "flow:./flows/worker" },
 });
 if (project.flows.roots[0] !== "flows" || binding.package !== "flows/review" ||
-    binding.settings.profile !== "fast" || binding.slots.worker !== "flows/worker") {
+    binding.settings.profile !== "fast" || binding.slots.worker !== "flow:flows/worker") {
   throw new Error("bad package exports");
 }
 `);
@@ -185,7 +185,7 @@ const project = defineJig(input);
 const bindingInput: PackageBindingInput = {
   package: "./flows/router",
   settings: { profile: "fast" },
-  slots: { worker: "./flows/worker" },
+  slots: { worker: "flow:./flows/worker" },
 };
 const binding = defineBinding(bindingInput);
 void project;

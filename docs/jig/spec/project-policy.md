@@ -218,7 +218,8 @@ export default defineBinding({
     strict: true,
   },
   slots: {
-    research: "./flows/research",
+    research: "flow:./flows/research",
+    critique: "binding:critic",
   },
 });
 ```
@@ -232,15 +233,19 @@ present `settings.schema.json` validates it; without that schema, nonempty
 settings are invalid. Jig does not merge defaults, environment values, or
 per-invocation overrides into settings.
 
-`slots` is an optional map of at most 256 LocalName keys to project-relative
-Flow package paths. Omission normalizes to `{}`. Every path must name another
-selected Flow package which is eligible as a direct Flow target; a slot cannot
-name the Binding's own package, another Binding, an instruction-only package,
-or a Flow requiring settings, attachments, or capabilities. In particular,
-an Agent-capable Flow may be a root target but may not be a child slot in this
-one-level composition boundary. Linking captures
-the exact relations in the candidate, and apply admits them with their targets
-in the same immutable generation.
+`slots` is an optional map of at most 256 LocalName keys to exact
+`flow:<project-relative-path>` or `binding:<LocalName>` selectors. Omission
+normalizes to `{}`. A Flow selector must identify a direct Flow target, using
+empty settings. A Binding selector uses that Binding's own validated settings
+and must select a Binding with no child slots. Either target may use the exact
+Agent Run capability. Slots cannot select the parent's own package, directly
+or through a Binding; unknown targets, cycles, nonleaf Bindings,
+instruction-only packages, and packages requiring attachments reject the
+candidate. Plain package paths are not slot selectors. Linking captures each
+target identity, and apply admits the complete relation and target
+configuration in the same immutable generation.
+In the example, `binding:critic` is a separate declaration selecting a
+different package, such as `flows/critique`, with its own settings and no slots.
 
 Slots are Binding-local. Starting `flow:flows/review` never borrows slots from
 `binding:reviewer`, and no direct `flow:` target has slots. The map is neither
@@ -306,6 +311,10 @@ meaning without admitting it.
 - direct-target eligibility;
 - Binding package choices, settings, and exact child slots.
 
+Lock slot values are closed target identities: `{ "kind": "flow", "path":
+"flows/research" }` or `{ "kind": "binding", "id": "critic" }`. The lock
+retains the selected Binding's configuration in its own Binding entry.
+
 It contains no runtime path, runtime version guess, host closure, sandbox
 detail, process identity, coordinator epoch, or local approval.
 
@@ -370,14 +379,15 @@ published only after the complete process tree is fenced, reaped, and cleaned.
 
 While a Binding Run remains open, its package may use Run/1 `flow/call` with
 one of that Binding's admitted slot names. Jig resolves the name only to the
-exact direct Flow target captured in the same admitted generation. The call
+exact Flow or Binding target captured in the same admitted generation. The call
 carries one JSON/1 input and returns that child's complete JSON/1 Run result;
 there is no argument or response channel for target selection, settings,
 attachments, or host authority.
 
 Each child starts in a fresh Run/1 context with its own scratch directory,
-empty settings and attachments, and no child slots. Parent settings and
-attachments are not inherited. Its effective deadline is the earlier of its
+the selected target's own settings, empty attachments, and no child slots.
+A direct Flow child has empty settings. Parent settings and attachments are
+not inherited. Its effective deadline is the earlier of its
 own direct-Run ceiling and the parent's deadline, so it can never outlive or
 widen the parent deadline.
 
@@ -394,7 +404,7 @@ concurrent operation receives `RESOURCE_EXHAUSTED`; identical waiters join the
 same operation, and sequential child calls are not constrained by this
 Jig-specific active-child bound. Run/1's request-lifetime limit still applies.
 
-An Agent-capable root package may instead use ordinary Run/1 `effect/call`
+An Agent-capable root or child package may use ordinary Run/1 `effect/call`
 through its one exact admitted Agent Run Capability Contract slot. The `run`
 method accepts instructions, an optional exact package-local skill selection,
 and an optional response Schema/1 value. Its wire success is
@@ -406,7 +416,10 @@ Selected skills are immediate `skills/<name>/` subtrees containing exact-case
 `SKILL.md`. Omission selects none. They are copied from the immutable admitted
 package and passed as read-only guidance only to that call; they grant no
 tools, network, filesystem, child target, or other authority. Agent and child
-calls share the parent's one-active-operation limit and absolute deadline.
+calls share the root's absolute deadline. Each Run context admits one active
+operation; a child occupies the parent's operation while its own Agent call
+occupies the child's operation. Child skills come only from the selected
+child's admitted package.
 Possibly dispatched Agent work is fenced and reported as uncertain rather
 than automatically replayed.
 
@@ -524,9 +537,10 @@ The direct-alpha project implementation must prove at least:
     filesystem isolation, deadline enforcement, cancellation, or whole-tree
     cleanup.
 14. Repeated Runs leave no process, cgroup, scratch, or private-device residue.
-15. Binding-local child calls resolve only exact same-generation direct Flow
-    targets, receive fresh empty settings and attachments, cannot exceed the
-    parent deadline, and leave no separately addressable child history.
+15. Binding-local child calls resolve only exact same-generation Flow or leaf
+    Binding targets, receive their own admitted settings and empty attachments,
+    cannot exceed the parent deadline, and leave no separately addressable
+    child history.
 16. One exact Agent Run capability projects only explicitly selected
     package-local skill subtrees, validates structured output, remains inside
     the parent deadline, and gives the Flow neither network nor its provider

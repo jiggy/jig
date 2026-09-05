@@ -73,7 +73,8 @@ export default defineBinding({
   package: "./flows/review",
   settings: { maxRetries: 4 },
   slots: {
-    research: "./flows/research",
+    research: "flow:./flows/research",
+    critique: "binding:critic",
   },
 });
 ```
@@ -82,16 +83,23 @@ export default defineBinding({
 must satisfy the package's `settings.schema.json` when one exists.
 
 `slots` is an optional map with at most 256 entries. Each key is a LocalName
-used by this Binding's package as a Run/1 `flow/call` slot. Each value is the
-project-relative path of another selected Flow package which is eligible as a
-direct Flow target. The Binding cannot select its own package through a slot.
-Omitting `slots` normalizes to `{}`.
+used by this Binding's package as a Run/1 `flow/call` slot. Each value is an
+exact `flow:<project-relative-path>` or `binding:<LocalName>` selector, using
+the same target vocabulary as the CLI. A Flow selector requires a direct
+Flow target; a Binding selector uses that Binding's own validated settings.
+Either child may use the exact Agent Run capability. A selected Binding must
+have no child slots. A Binding cannot select its own package, directly or
+through another Binding. Omitting `slots` normalizes to `{}`.
+The example's `critic` Binding selects a separate package such as
+`flows/critique`, with its own settings and no slots.
 
 Slots are exact project links, not requests for later resolution. Project
-review binds each slot to the named direct Flow target in the same candidate,
+review binds each slot to the named Flow or Binding target in the same candidate,
 and admission retains that complete relation in one immutable generation.
 Slots belong only to the Binding declaration: running the package through its
 `flow:` identity has no slots, even when a Binding for that package does.
+Plain package paths are not slot selectors. A leading `./` after `flow:` is
+normalized away; the `binding:` suffix must be a LocalName.
 
 This alpha has no project attachment mapping. A selected FLOW package may
 declare attachments as portable package metadata, but it cannot then be a

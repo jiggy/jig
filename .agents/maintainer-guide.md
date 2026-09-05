@@ -229,10 +229,16 @@ Backend boundary. One mechanism alone has not earned it.
 ### Composition
 
 A Binding gives one Flow package a reusable project-local configuration.
-Its **child slots** name a closed set of exact targets from the same admitted
-generation. At runtime, a Flow can call only those slots; it cannot search a
-catalogue, invent targets, or acquire scheduler authority. Child and Agent
-scopes inherit the remaining root deadline and cannot extend it.
+Its **child slots** name a closed set of exact `flow:<path>` or `binding:<id>`
+targets from the same admitted generation. A child uses its selected target's
+settings and Agent capability; parent configuration is not inherited. Selected
+child Bindings are leaves with no further Flow slots. At runtime, a Flow can
+call only its slots; it cannot search a catalogue, invent targets, or acquire
+scheduler authority. Child and Agent scopes inherit the remaining root deadline
+and cannot extend it. One active operation per context permits a parent to
+await a specialist while that specialist awaits its Agent. Their operation
+identities and durable ownership remain distinct; cleanup drains the Agent
+before releasing its specialist owner.
 
 Run/1 owns request identity, join, conflict, cancellation, deadline, and
 uncertainty behavior across the process boundary. Internal graphs remain

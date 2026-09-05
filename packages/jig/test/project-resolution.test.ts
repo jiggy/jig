@@ -89,7 +89,7 @@ describe("private package resolution", () => {
       })).toThrow("activation Flow slots exceed 256 entries");
       expect(() => restorePrivateActivationRequest({
         ...structuredClone(requests[0]!),
-        flowSlots: { child: "flows/a" },
+        flowSlots: { child: { kind: "flow", path: "flows/a" } },
       })).toThrow("activation request digest does not match its canonical content");
       expect(requests.map(({ target }) => target)).toEqual([
         { kind: "binding", id: "z" },
@@ -136,14 +136,14 @@ describe("private package resolution", () => {
     await withProject(trees, [
       binding("bindings/router.ts", {
         package: "flows/router",
-        slots: { question: "flows/question", bug: "flows/bug" },
+        slots: { question: "flow:flows/question", bug: "flow:flows/bug" },
       }),
     ], async (project) => {
       const requests = buildPrivateActivationRequests(project);
       const configured = requests.find(({ target }) => target.kind === "binding")!;
       expect(configured.flowSlots).toEqual({
-        bug: "flows/bug",
-        question: "flows/question",
+        bug: { kind: "flow", path: "flows/bug" },
+        question: { kind: "flow", path: "flows/question" },
       });
       expect(Object.keys(configured.flowSlots)).toEqual(["bug", "question"]);
       expect(Object.isFrozen(configured.flowSlots)).toBeTrue();
@@ -162,7 +162,7 @@ describe("private package resolution", () => {
     await withProject(trees, [
       binding("bindings/router.ts", {
         package: "flows/router",
-        slots: { question: "flows/bug", bug: "flows/question" },
+        slots: { question: "flow:flows/bug", bug: "flow:flows/question" },
       }),
     ], async (project) => {
       const requests = buildPrivateActivationRequests(project);
@@ -173,6 +173,36 @@ describe("private package resolution", () => {
         digest("slot-capture"),
         planning(requests, () => "planned"),
       ).semanticDigest).not.toBe(firstSemanticDigest);
+    });
+  });
+
+  test("restores exact Binding child selectors and the child's own Agent settings", async () => {
+    await withProject({
+      "flows/router": run("router"),
+      "flows/reviewer": {
+        "FLOW.md": metadata(`name: reviewer\ndescription: Reviewer.\nuses:\n  agent:\n    contract: ./contracts/agent-run.capability.json`),
+        "flow.ts": "export {};\n",
+        "contracts/agent-run.capability.json": agentRunContract,
+        "settings.schema.json": JSON.stringify({ $schema: "https://flow.jig.md/schemas/schema-1.json", type: "object", required: ["style"], properties: { style: { type: "string" } } }),
+      },
+    }, [
+      binding("bindings/router.ts", { package: "flows/router", slots: { review: "binding:reviewer" } }),
+      binding("bindings/reviewer.ts", { package: "flows/reviewer", settings: { style: "critical" } }),
+    ], async (project) => {
+      const requests = buildPrivateActivationRequests(project);
+      const parent = requests.find(({ target }) => target.kind === "binding" && target.id === "router")!;
+      const child = requests.find(({ target }) => target.kind === "binding" && target.id === "reviewer")!;
+      expect(parent.flowSlots).toEqual({ review: { kind: "binding", id: "reviewer" } });
+      expect(child.settings).toEqual({ style: "critical" });
+      expect(child.capabilities.agent!.digest).toBe(AGENT_RUN_CONTRACT_DIGEST);
+      expect(child.flowSlots).toEqual({});
+      const restored = restorePrivateActivationRequest(structuredClone(parent));
+      expect(restored).toEqual(parent);
+      expect(Object.isFrozen(restored.flowSlots.review)).toBeTrue();
+      for (const target of ["flows/reviewer", { kind: "binding", id: "Bad" },
+        { kind: "binding", id: "reviewer", path: "flows/reviewer" }, { kind: "agent", id: "reviewer" }]) {
+        expect(() => restorePrivateActivationRequest({ ...structuredClone(parent), flowSlots: { review: target } })).toThrow();
+      }
     });
   });
 

@@ -9,6 +9,8 @@ import {
   RunHostSession,
   type RunHostFlowCall,
   type RunHostFlowOperationTerminal,
+  type RunHostOperationDispatcher,
+  type RunHostOperationFailure,
   type RunHostTerminal,
   type WireFailureCode,
 } from "../run/session.js";
@@ -58,6 +60,11 @@ import {
   type PrivatePackageMaterializationLease,
 } from "./package-materialization.js";
 import { admitPrivatePackageResult } from "./package-result-admission.js";
+import type { PrivateAgentProvider } from "./agent-provider.js";
+import {
+  executePrivateRootAgentRun,
+  recoverPrivateRootAgentRunOwners,
+} from "./root-agent-run-controller.js";
 
 const ALLOCATION_KIND = "private-root-child-owner-allocation/1";
 const SANDBOX_KIND = "private-root-child-sandbox/1";
@@ -93,6 +100,7 @@ interface ChildInput {
   readonly coordinator: PrivateProjectCoordinator;
   readonly installedSupport: PrivateDirectRunInstalledSupport;
   readonly backend: PrivateLinuxCgroupBackend;
+  readonly agentProvider?: PrivateAgentProvider | undefined;
 }
 
 /** Execute one exact admitted Flow slot without creating child history. */
@@ -126,6 +134,7 @@ export async function executePrivateRootFlowCall(
       executionPackage: selected.disposition.executionPackage,
       installedSupport: input.installedSupport,
       backend: input.backend,
+      agentProvider: input.agentProvider,
     });
   } catch {
     return failed("UNAVAILABLE", "the admitted child recipe cannot be reproduced");
@@ -136,6 +145,7 @@ export async function executePrivateRootFlowCall(
   }
   const effectiveDeadlineUnixMs = Math.min(
     input.parentDeadlineUnixMs,
+    input.parent.intent.deadlineUnixMs,
     Date.now() + recipe.wallClockCeilingMs,
   );
   if (Date.now() >= effectiveDeadlineUnixMs) {
@@ -146,7 +156,8 @@ export async function executePrivateRootFlowCall(
     coordinator: input.coordinator,
     projectRoot: input.projectRoot,
     parentRunId: input.parent.run.runId,
-  })).find(({ operationId }) => operationId === input.call.operationId);
+  })).find(({ operationId, parentOperationId }) =>
+    parentOperationId === undefined && operationId === input.call.operationId);
   if (existing !== undefined) {
     await recoverOne(input, existing);
     return failed("UNCERTAIN", "a prior child dispatch was fenced without a proved result");
@@ -225,7 +236,9 @@ export async function executePrivateRootFlowCall(
       scratch: recipe.scratch,
       deadlineUnixMs: effectiveDeadlineUnixMs,
       signal: input.signal,
-    }, { cancellationGraceMs: CANCELLATION_GRACE_MS }).run();
+    }, { cancellationGraceMs: CANCELLATION_GRACE_MS }, specialistDispatcher(
+      input, selected, effectiveDeadlineUnixMs,
+    )).run();
     const fence = await component.enforcement;
     await releaseKnownChild(input, lifecycle, lease, fence);
     return await admitOperationResult(input.packageStoreRoot, selected.request.package, provisional);
@@ -267,6 +280,7 @@ export function isPrivateRootFlowCallOwner(
 ): boolean {
   const value = lifecycle.allocation.value;
   return value !== null && typeof value === "object" && !Array.isArray(value) &&
+    lifecycle.parentOperationId === undefined &&
     (value as Record<string, JsonValue>).kind === ALLOCATION_KIND;
 }
 
@@ -275,15 +289,47 @@ function selectChild(parent: PrivateReacquiredRootExecutionWork, slot: string) {
   if (parentTarget === undefined || parentTarget.request.digest !== parent.intent.requestDigest) {
     throw new Error("parent Run differs from its admitted target");
   }
-  const path = parentTarget.request.flowSlots[slot];
-  if (path === undefined) return undefined;
-  const child = findPrivateActivationCandidateTargetV5(parent.candidate, { kind: "flow", path });
-  if (child === undefined || child.request.target.kind !== "flow" ||
-      child.request.packagePath !== path || Object.keys(child.request.flowSlots).length !== 0 ||
-      Object.keys(child.request.capabilities).length !== 0) {
-    throw new Error("admitted Flow slot does not name one direct child target");
+  const target = parentTarget.request.flowSlots[slot];
+  if (target === undefined) return undefined;
+  const child = findPrivateActivationCandidateTargetV5(parent.candidate, target);
+  if (child === undefined || Object.keys(child.request.flowSlots).length !== 0) {
+    throw new Error("admitted Flow slot does not name one leaf child target");
   }
   return child;
+}
+
+function specialistDispatcher(
+  input: ChildInput & { readonly call: RunHostFlowCall },
+  selected: NonNullable<ReturnType<typeof selectChild>>,
+  parentDeadlineUnixMs: number,
+): RunHostOperationDispatcher | undefined {
+  if (Object.keys(selected.request.capabilities).length === 0) return undefined;
+  let active = false;
+  return {
+    async callEffect(call, signal) {
+      if (input.agentProvider === undefined) {
+        return failed("UNAVAILABLE", "the admitted Agent provider is unavailable");
+      }
+      if (active) return failed("RESOURCE_EXHAUSTED", "the specialist already has an active Agent operation");
+      active = true;
+      try {
+        return await executePrivateRootAgentRun({
+          ...input,
+          agentProvider: input.agentProvider,
+          parentFlow: {
+            operationId: input.call.operationId,
+            target: selected.request.target,
+            requestDigest: selected.request.digest,
+          },
+          call,
+          parentDeadlineUnixMs,
+          signal,
+        });
+      } finally {
+        active = false;
+      }
+    },
+  };
 }
 
 async function validateChildInput(
@@ -381,6 +427,7 @@ async function releaseKnownChild(
   fence: PrivateLinuxConfirmedEnforcementReceipt,
 ): Promise<void> {
   let lifecycle = lifecycleValue;
+  const selected = await requireAllocationMatchesParent(input, lifecycle, parseAllocation(lifecycle));
   const sandbox = parseSandbox(lifecycle);
   lifecycle = await recordPrivateRootChildFence({
     coordinator: input.coordinator,
@@ -390,6 +437,14 @@ async function releaseKnownChild(
     allocationDigest: lifecycle.allocation.digest,
     sandboxDigest: lifecycle.sandbox!.digest,
     fence: fence as unknown as JsonValue,
+  });
+  await recoverPrivateRootAgentRunOwners({
+    ...input,
+    parentFlow: {
+      operationId: lifecycle.operationId,
+      target: selected.request.target,
+      requestDigest: selected.request.digest,
+    },
   });
   await disposePrivatePackageMaterializationLease(
     lease.identity.allocation.parent.path,
@@ -421,7 +476,7 @@ async function releaseKnownChild(
 
 async function recoverOne(input: ChildInput, lifecycle: PrivateRootChildOwnerLifecycle): Promise<void> {
   const allocation = parseAllocation(lifecycle);
-  await requireAllocationMatchesParent(input, lifecycle, allocation);
+  const selected = await requireAllocationMatchesParent(input, lifecycle, allocation);
   if (lifecycle.sandbox === undefined) {
     const cancelled = await cancelPrivateLinuxOwnerStateAllocation(allocation.ownerAllocation);
     await releasePrivateLinuxOwnerState(allocation.ownerAllocation, cancelled);
@@ -442,6 +497,14 @@ async function recoverOne(input: ChildInput, lifecycle: PrivateRootChildOwnerLif
     } else {
       fence = parseFence(lifecycle);
     }
+    await recoverPrivateRootAgentRunOwners({
+      ...input,
+      parentFlow: {
+        operationId: lifecycle.operationId,
+        target: selected.request.target,
+        requestDigest: selected.request.digest,
+      },
+    });
     const recovered = await recoverPrivatePackageMaterializationAllocation(
       allocation.packageAllocation.parent.path,
       allocation.packageAllocation,
@@ -491,7 +554,7 @@ async function findLifecycle(
     coordinator: input.coordinator,
     projectRoot: input.projectRoot,
     parentRunId: input.parent.run.runId,
-  })).find((item) => item.operationId === operationId);
+  })).find((item) => item.parentOperationId === undefined && item.operationId === operationId);
 }
 
 function parseAllocation(lifecycle: PrivateRootChildOwnerLifecycle): ChildAllocation {
@@ -499,7 +562,8 @@ function parseAllocation(lifecycle: PrivateRootChildOwnerLifecycle): ChildAlloca
     "kind", "parentRunId", "coordinatorEpoch", "operationId", "requestDigest",
     "effectiveDeadlineUnixMs", "packageAllocation", "ownerAllocation",
   ], "child allocation");
-  if (value.kind !== ALLOCATION_KIND || value.parentRunId !== lifecycle.parentRunId ||
+  if (value.kind !== ALLOCATION_KIND || lifecycle.parentOperationId !== undefined ||
+      value.parentRunId !== lifecycle.parentRunId ||
       value.operationId !== lifecycle.operationId ||
       typeof value.coordinatorEpoch !== "number" || !Number.isSafeInteger(value.coordinatorEpoch) ||
       value.coordinatorEpoch < 1 ||
@@ -570,7 +634,7 @@ async function requireAllocationMatchesParent(
   input: ChildInput,
   lifecycle: PrivateRootChildOwnerLifecycle,
   allocation: ChildAllocation,
-): Promise<void> {
+): Promise<NonNullable<ReturnType<typeof selectChild>>> {
   const parentTarget = findPrivateActivationCandidateTargetV5(input.parent.candidate, input.parent.run.target);
   if (parentTarget === undefined || parentTarget.request.digest !== input.parent.intent.requestDigest ||
       allocation.parentRunId !== input.parent.run.runId ||
@@ -580,12 +644,11 @@ async function requireAllocationMatchesParent(
     throw new Error("durable child allocation differs from its parent Run");
   }
   const selected = Object.values(parentTarget.request.flowSlots)
-    .map((path) => findPrivateActivationCandidateTargetV5(input.parent.candidate, { kind: "flow" as const, path }))
+    .map((target) => findPrivateActivationCandidateTargetV5(input.parent.candidate, target))
     .find((target) => target?.request.digest === allocation.requestDigest);
-  if (selected === undefined || selected.request.target.kind !== "flow" ||
-      selected.disposition.state !== "ready" || Object.keys(selected.request.flowSlots).length !== 0 ||
-      Object.keys(selected.request.capabilities).length !== 0) {
-    throw new Error("durable child allocation is not an admitted direct Flow");
+  if (selected === undefined ||
+      selected.disposition.state !== "ready" || Object.keys(selected.request.flowSlots).length !== 0) {
+    throw new Error("durable child allocation is not an admitted leaf Flow");
   }
   const roots = await protectedWorkRoots(input.projectRoot);
   const identity = childIdentity(lifecycle.parentRunId, lifecycle.operationId);
@@ -597,6 +660,7 @@ async function requireAllocationMatchesParent(
       allocation.ownerAllocation.name !== `c-${identity.slice(0, 47)}`) {
     throw new Error("durable child allocation differs from its admitted resources");
   }
+  return selected;
 }
 
 function exactObject(
@@ -664,7 +728,7 @@ function failed(
   code: WireFailureCode,
   message: string,
   details?: JsonValue,
-): RunHostFlowOperationTerminal {
+): RunHostOperationFailure {
   return Object.freeze({
     status: "failed" as const,
     code,

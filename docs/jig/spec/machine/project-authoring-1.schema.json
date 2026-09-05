@@ -20,6 +20,12 @@
       "minLength": 1,
       "maxLength": 1024
     },
+    "targetSelector": {
+      "type": "string",
+      "description": "An exact flow:<project-relative-path> or binding:<LocalName> selector. Jig additionally validates the prefix and canonical target identity.",
+      "minLength": 6,
+      "maxLength": 1029
+    },
     "discoverSource": {
       "type": "object",
       "properties": {
@@ -99,7 +105,7 @@
         "slots": {
           "type": "object",
           "additionalProperties": {
-            "$ref": "#/$defs/projectPath"
+            "$ref": "#/$defs/targetSelector"
           },
           "maxProperties": 256
         }

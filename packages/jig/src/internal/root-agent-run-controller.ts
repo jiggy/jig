@@ -4,6 +4,8 @@ import { join } from "node:path";
 import { CheckError } from "../diagnostics.js";
 import { canonicalJson, decodeJson1, type JsonObject, type JsonValue } from "../json.js";
 import { inspectCapturedPackage } from "../package/inspect.js";
+import type { RunTargetIdentity } from "../project/package-project.js";
+import { validateProjectPath } from "../project/paths.js";
 import { SchemaDiagnostic } from "../schema/index.js";
 import {
   type RunHostEffectCall,
@@ -107,6 +109,7 @@ interface AgentAllocation {
   readonly coordinatorEpoch: number;
   readonly operationId: string;
   readonly parentRequestDigest: string;
+  readonly parentFlow: PrivateAgentParentFlow | null;
   /** Digest of the transient provider request; its bytes are never retained. */
   readonly requestDigest: string;
   readonly providerDigest: string;
@@ -128,6 +131,7 @@ interface AgentRecoveryInput {
   readonly projectRoot: string;
   readonly packageStoreRoot: string;
   readonly parent: PrivateReacquiredRootExecutionWork;
+  readonly parentFlow?: PrivateAgentParentFlow;
   readonly coordinator: PrivateProjectCoordinator;
   readonly installedSupport: PrivateDirectRunInstalledSupport;
   readonly backend: PrivateLinuxCgroupBackend;
@@ -136,6 +140,13 @@ interface AgentRecoveryInput {
 
 interface AgentInput extends AgentRecoveryInput {
   readonly agentProvider: PrivateAgentProvider;
+}
+
+/** Exact admitted direct child Flow whose invocation owns this Agent call. */
+export interface PrivateAgentParentFlow {
+  readonly operationId: string;
+  readonly target: RunTargetIdentity;
+  readonly requestDigest: string;
 }
 
 interface PreparedCall {
@@ -154,7 +165,7 @@ export async function executePrivateRootAgentRun(
     readonly signal: AbortSignal;
   },
 ): Promise<RunHostEffectOperationTerminal> {
-  const selected = selectAgentCapability(input.parent, input.call);
+  const selected = selectAgentCapability(input, input.call);
   if (selected === undefined) {
     return failed("UNAVAILABLE", "the requested slot has no admitted Agent Run capability");
   }
@@ -196,6 +207,7 @@ export async function executePrivateRootAgentRun(
 
   const effectiveDeadlineUnixMs = Math.min(
     input.parentDeadlineUnixMs,
+    input.parent.intent.deadlineUnixMs,
     Date.now() + recipe.wallClockCeilingMs,
   );
   if (Date.now() >= effectiveDeadlineUnixMs) {
@@ -203,11 +215,14 @@ export async function executePrivateRootAgentRun(
   }
   if (input.signal.aborted) return failed("CANCELLED", "the Agent Run was cancelled");
 
-  const owners = await listPrivateRootChildOwners({
+  if (input.parentFlow !== undefined) {
+    await requireParentFlowOwner(input, input.parentFlow, effectiveDeadlineUnixMs);
+  }
+  const owners = (await listPrivateRootChildOwners({
     coordinator: input.coordinator,
     projectRoot: input.projectRoot,
     parentRunId: input.parent.run.runId,
-  });
+  })).filter((owner) => owner.parentOperationId === input.parentFlow?.operationId);
   const existing = owners.find(({ operationId }) => operationId === input.call.operationId);
   if (existing !== undefined) {
     if (!isPrivateRootAgentRunOwner(existing)) {
@@ -221,7 +236,7 @@ export async function executePrivateRootAgentRun(
   }
 
   const ownerParent = await protectedOwnerRoot(input.projectRoot);
-  const identity = agentIdentity(input.parent.run.runId, input.call.operationId);
+  const identity = agentIdentity(input.parent.run.runId, input.call.operationId, input.parentFlow?.operationId);
   const ownerAllocation = await planPrivateLinuxOwnerStateAllocation({
     parent: ownerParent,
     name: `a-${identity.slice(0, 62)}`,
@@ -231,7 +246,8 @@ export async function executePrivateRootAgentRun(
     parentRunId: input.parent.run.runId,
     coordinatorEpoch: input.parent.run.coordinatorEpoch,
     operationId: input.call.operationId,
-    parentRequestDigest: input.parent.intent.requestDigest,
+    parentRequestDigest: requireParentTarget(input).request.digest,
+    parentFlow: input.parentFlow ?? null,
     requestDigest: prepared.digest,
     providerDigest: provider.digest,
     effectiveDeadlineUnixMs,
@@ -243,6 +259,7 @@ export async function executePrivateRootAgentRun(
       coordinator: input.coordinator,
       projectRoot: input.projectRoot,
       parentRunId: input.parent.run.runId,
+      ...(input.parentFlow === undefined ? {} : { parentOperationId: input.parentFlow.operationId }),
       operationId: input.call.operationId,
       allocation: allocation as unknown as JsonValue,
     });
@@ -274,6 +291,7 @@ export async function executePrivateRootAgentRun(
       coordinator: input.coordinator,
       projectRoot: input.projectRoot,
       parentRunId: input.parent.run.runId,
+      ...(input.parentFlow === undefined ? {} : { parentOperationId: input.parentFlow.operationId }),
       operationId: input.call.operationId,
       allocationDigest: lifecycle.allocation.digest,
       sandbox: sandbox as unknown as JsonValue,
@@ -344,7 +362,8 @@ export async function recoverPrivateRootAgentRunOwners(input: AgentRecoveryInput
     parentRunId: input.parent.run.runId,
   });
   for (const owner of owners) {
-    if (isPrivateRootAgentRunOwner(owner)) {
+    if (isPrivateRootAgentRunOwner(owner) && (input.parentFlow === undefined ||
+        owner.parentOperationId === input.parentFlow.operationId)) {
       await recoverPrivateRootAgentRunOwner(input, owner);
     }
   }
@@ -370,6 +389,7 @@ export async function recoverPrivateRootAgentRunOwner(
         coordinator: input.coordinator,
         projectRoot: input.projectRoot,
         parentRunId: lifecycle.parentRunId,
+        ...(lifecycle.parentOperationId === undefined ? {} : { parentOperationId: lifecycle.parentOperationId }),
         operationId: lifecycle.operationId,
         allocationDigest: lifecycle.allocation.digest,
         sandboxDigest: lifecycle.sandbox!.digest,
@@ -385,6 +405,7 @@ export async function recoverPrivateRootAgentRunOwner(
         coordinator: input.coordinator,
         projectRoot: input.projectRoot,
         parentRunId: lifecycle.parentRunId,
+        ...(lifecycle.parentOperationId === undefined ? {} : { parentOperationId: lifecycle.parentOperationId }),
         operationId: lifecycle.operationId,
         allocationDigest: lifecycle.allocation.digest,
         sandboxDigest: lifecycle.sandbox!.digest,
@@ -399,6 +420,7 @@ export async function recoverPrivateRootAgentRunOwner(
     coordinator: input.coordinator,
     projectRoot: input.projectRoot,
     parentRunId: lifecycle.parentRunId,
+    ...(lifecycle.parentOperationId === undefined ? {} : { parentOperationId: lifecycle.parentOperationId }),
     operationId: lifecycle.operationId,
     allocationDigest: lifecycle.allocation.digest,
     sandboxDigest: lifecycle.sandbox?.digest ?? null,
@@ -462,7 +484,7 @@ async function prepareCall(
   input: AgentInput & { readonly call: RunHostEffectCall },
   provider: PrivateAgentProvider,
 ): Promise<PreparedCall> {
-  const target = requireParentTarget(input.parent);
+  const target = requireParentTarget(input);
   const captured = await captureStoredPackage(input.packageStoreRoot, target.request.package);
   try {
     const inspected = await inspectCapturedPackage(captured);
@@ -503,10 +525,10 @@ async function prepareCall(
 }
 
 function selectAgentCapability(
-  parent: PrivateReacquiredRootExecutionWork,
+  input: AgentRecoveryInput,
   call: RunHostEffectCall,
 ) {
-  const target = requireParentTarget(parent);
+  const target = requireParentTarget(input);
   const selected = target.request.capabilities[call.slot];
   if (selected === undefined) return undefined;
   if (selected.id !== AGENT_RUN_CONTRACT_ID ||
@@ -517,17 +539,26 @@ function selectAgentCapability(
   return selected;
 }
 
-function requireParentTarget(parent: PrivateReacquiredRootExecutionWork) {
-  const target = findPrivateActivationCandidateTargetV5(parent.candidate, parent.run.target);
-  if (target === undefined || target.request.digest !== parent.intent.requestDigest ||
-      target.disposition.state !== "ready") {
+function requireParentTarget(input: AgentRecoveryInput) {
+  const { parent, parentFlow } = input;
+  const root = findPrivateActivationCandidateTargetV5(parent.candidate, parent.run.target);
+  if (root === undefined || root.request.digest !== parent.intent.requestDigest ||
+      root.disposition.state !== "ready") {
     throw new Error("parent Run differs from its admitted target");
+  }
+  if (parentFlow === undefined) return root;
+  const target = findPrivateActivationCandidateTargetV5(parent.candidate, parentFlow.target);
+  if (target === undefined || target.request.digest !== parentFlow.requestDigest ||
+      target.disposition.state !== "ready" || Object.keys(target.request.flowSlots).length !== 0 ||
+      !Object.values(root.request.flowSlots).some((identity) =>
+        findPrivateActivationCandidateTargetV5(parent.candidate, identity)?.request.digest === target.request.digest)) {
+    throw new Error("Agent parent Flow differs from its admitted child target");
   }
   return target;
 }
 
 async function reproduceParentRecipe(input: AgentInput): Promise<PrivateDirectRunRecipe> {
-  const target = requireParentTarget(input.parent);
+  const target = requireParentTarget(input);
   if (target.disposition.state !== "ready") {
     throw new Error("parent Run target is unavailable");
   }
@@ -766,6 +797,7 @@ async function releaseKnownAgent(
     coordinator: input.coordinator,
     projectRoot: input.projectRoot,
     parentRunId: lifecycle.parentRunId,
+    ...(lifecycle.parentOperationId === undefined ? {} : { parentOperationId: lifecycle.parentOperationId }),
     operationId: lifecycle.operationId,
     allocationDigest: lifecycle.allocation.digest,
     sandboxDigest: lifecycle.sandbox!.digest,
@@ -777,6 +809,7 @@ async function releaseKnownAgent(
     coordinator: input.coordinator,
     projectRoot: input.projectRoot,
     parentRunId: lifecycle.parentRunId,
+    ...(lifecycle.parentOperationId === undefined ? {} : { parentOperationId: lifecycle.parentOperationId }),
     operationId: lifecycle.operationId,
     allocationDigest: lifecycle.allocation.digest,
     sandboxDigest: lifecycle.sandbox!.digest,
@@ -787,6 +820,7 @@ async function releaseKnownAgent(
     coordinator: input.coordinator,
     projectRoot: input.projectRoot,
     parentRunId: lifecycle.parentRunId,
+    ...(lifecycle.parentOperationId === undefined ? {} : { parentOperationId: lifecycle.parentOperationId }),
     operationId: lifecycle.operationId,
     allocationDigest: lifecycle.allocation.digest,
     sandboxDigest: lifecycle.sandbox!.digest,
@@ -803,12 +837,13 @@ async function findLifecycle(
     coordinator: input.coordinator,
     projectRoot: input.projectRoot,
     parentRunId: input.parent.run.runId,
-  })).find((item) => item.operationId === operationId);
+  })).find((item) => item.operationId === operationId &&
+    item.parentOperationId === input.parentFlow?.operationId);
 }
 
 function parseAllocation(lifecycle: PrivateRootChildOwnerLifecycle): AgentAllocation {
   const value = exactObject(lifecycle.allocation.value, [
-    "kind", "parentRunId", "coordinatorEpoch", "operationId", "parentRequestDigest",
+    "kind", "parentRunId", "coordinatorEpoch", "operationId", "parentRequestDigest", "parentFlow",
     "requestDigest", "providerDigest", "effectiveDeadlineUnixMs", "ownerAllocation",
   ], "Agent allocation");
   if (value.kind !== ALLOCATION_KIND || value.parentRunId !== lifecycle.parentRunId ||
@@ -826,6 +861,7 @@ function parseAllocation(lifecycle: PrivateRootChildOwnerLifecycle): AgentAlloca
     coordinatorEpoch: value.coordinatorEpoch,
     operationId: value.operationId as string,
     parentRequestDigest: value.parentRequestDigest,
+    parentFlow: normalizeParentFlow(value.parentFlow, lifecycle.parentOperationId),
     requestDigest: value.requestDigest,
     providerDigest: value.providerDigest,
     effectiveDeadlineUnixMs: value.effectiveDeadlineUnixMs,
@@ -874,7 +910,17 @@ async function requireAllocationMatchesParent(
   lifecycle: PrivateRootChildOwnerLifecycle,
   allocation: AgentAllocation,
 ): Promise<void> {
-  const target = requireParentTarget(input.parent);
+  const { parentFlow: requestedParentFlow, ...rootInput } = input;
+  const parentFlow = allocation.parentFlow;
+  if (requestedParentFlow !== undefined && (parentFlow === null ||
+      requestedParentFlow.operationId !== parentFlow.operationId ||
+      requestedParentFlow.requestDigest !== parentFlow.requestDigest)) {
+    throw new Error("durable Agent allocation differs from the requested parent Flow");
+  }
+  const target = requireParentTarget({
+    ...rootInput,
+    ...(parentFlow === null ? {} : { parentFlow }),
+  });
   if (allocation.parentRunId !== input.parent.run.runId ||
       allocation.coordinatorEpoch !== input.parent.run.coordinatorEpoch ||
       allocation.operationId !== lifecycle.operationId ||
@@ -884,12 +930,69 @@ async function requireAllocationMatchesParent(
       Object.values(target.request.capabilities)[0]?.digest !== AGENT_RUN_CONTRACT_DIGEST) {
     throw new Error("durable Agent allocation differs from its admitted parent or provider");
   }
+  if (parentFlow !== null) {
+    await requireParentFlowOwner(input, parentFlow, allocation.effectiveDeadlineUnixMs);
+  }
   const ownerParent = await protectedOwnerRoot(input.projectRoot);
-  const identity = agentIdentity(lifecycle.parentRunId, lifecycle.operationId);
+  const identity = agentIdentity(lifecycle.parentRunId, lifecycle.operationId, lifecycle.parentOperationId);
   if (allocation.ownerAllocation.parent !== ownerParent ||
       allocation.ownerAllocation.name !== `a-${identity.slice(0, 62)}`) {
     throw new Error("durable Agent allocation differs from its admitted owner resource");
   }
+}
+
+async function requireParentFlowOwner(
+  input: AgentRecoveryInput,
+  parentFlow: PrivateAgentParentFlow,
+  deadlineUnixMs: number,
+): Promise<void> {
+  const owners = await listPrivateRootChildOwners({
+    coordinator: input.coordinator,
+    projectRoot: input.projectRoot,
+    parentRunId: input.parent.run.runId,
+  });
+  const parent = owners.find((owner) => owner.parentOperationId === undefined &&
+    owner.operationId === parentFlow.operationId);
+  const allocation = parent?.allocation.value as JsonObject | undefined;
+  if (allocation === null || typeof allocation !== "object" || Array.isArray(allocation) ||
+      allocation.kind !== "private-root-child-owner-allocation/1" ||
+      allocation.parentRunId !== input.parent.run.runId ||
+      allocation.coordinatorEpoch !== input.parent.run.coordinatorEpoch ||
+      allocation.operationId !== parentFlow.operationId ||
+      allocation.requestDigest !== parentFlow.requestDigest ||
+      typeof allocation.effectiveDeadlineUnixMs !== "number" ||
+      !Number.isSafeInteger(allocation.effectiveDeadlineUnixMs) ||
+      allocation.effectiveDeadlineUnixMs > input.parent.intent.deadlineUnixMs ||
+      allocation.effectiveDeadlineUnixMs < deadlineUnixMs || parent?.sandbox === undefined) {
+    throw new Error("Agent parent Flow differs from its durable execution owner");
+  }
+}
+
+function normalizeParentFlow(
+  value: unknown,
+  parentOperationId: string | undefined,
+): PrivateAgentParentFlow | null {
+  if (parentOperationId === undefined) {
+    if (value !== null) throw new TypeError("root Agent allocation has a nested parent");
+    return null;
+  }
+  const parent = exactObject(value, ["operationId", "target", "requestDigest"], "Agent parent Flow");
+  if (parent.operationId !== parentOperationId || !isDigest(parent.requestDigest)) {
+    throw new TypeError("Agent parent Flow identity is invalid");
+  }
+  const target = exactObject(parent.target,
+    parent.target?.kind === "flow" ? ["kind", "path"] : ["kind", "id"], "Agent parent Flow target");
+  let identity: RunTargetIdentity;
+  if (target.kind === "flow" && typeof target.path === "string") {
+    validateProjectPath(target.path, "Agent parent Flow target");
+    identity = Object.freeze({ kind: "flow", path: target.path });
+  } else if (target.kind === "binding" && typeof target.id === "string" &&
+      /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(target.id)) {
+    identity = Object.freeze({ kind: "binding", id: target.id });
+  } else {
+    throw new TypeError("Agent parent Flow target is invalid");
+  }
+  return Object.freeze({ operationId: parentOperationId, target: identity, requestDigest: parent.requestDigest });
 }
 
 function providerFailure(
@@ -959,9 +1062,10 @@ function exactObject(
   return record;
 }
 
-function agentIdentity(parentRunId: string, operationId: string): string {
+function agentIdentity(parentRunId: string, operationId: string, parentOperationId?: string): string {
   return privateDomainDigest("JIG-Private-Root-Agent-Identity/1", {
     parentRunId,
+    parentOperationId: parentOperationId ?? null,
     operationId,
   }).slice("sha256:".length);
 }

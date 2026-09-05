@@ -32,7 +32,7 @@ const lock = {
     configured: {
       packagePath: "flows/configured",
       settings: { retries: 2 },
-      slots: { direct: "flows/direct" },
+      slots: { direct: { kind: "flow", path: "flows/direct" } },
     },
   },
 };
@@ -56,6 +56,12 @@ describe("Jig lock/1 shape schema", () => {
     })],
     ["an unknown Binding field", changed(lock, (item) => {
       item.bindings.configured.grants = {};
+    })],
+    ["a plain slot path", changed(lock, (item) => {
+      item.bindings.configured.slots.direct = "flows/direct";
+    })],
+    ["an ambiguous slot identity", changed(lock, (item) => {
+      item.bindings.configured.slots.direct = { kind: "binding", id: "worker", path: "flows/direct" };
     })],
     ["a different capability contract", changed(lock, (item) => {
       item.packages["flows/direct"].uses.agent.id = "https://example.org/contracts/agent";

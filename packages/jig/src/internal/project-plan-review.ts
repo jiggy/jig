@@ -123,19 +123,23 @@ function changedBindingSlotDependencies(
   proposedTargets: PrivateActivationReviewPlan["candidate"]["candidate"]["targets"],
 ): readonly string[] {
   if (current === null) return [];
-  const currentFlows = new Map(currentTargets.flatMap((target) =>
-    target.request.target.kind === "flow" ? [[target.request.target.path, target] as const] : []));
-  const proposedFlows = new Map(proposedTargets.flatMap((target) =>
-    target.request.target.kind === "flow" ? [[target.request.target.path, target] as const] : []));
+  const currentByTarget = new Map(currentTargets.map((target) =>
+    [targetKey(target.request.target), target] as const));
+  const proposedByTarget = new Map(proposedTargets.map((target) =>
+    [targetKey(target.request.target), target] as const));
   const changed: string[] = [];
   for (const [id, binding] of Object.entries(proposed.portablePolicy.bindings)) {
     const prior = current.portablePolicy.bindings[id];
     if (prior === undefined) continue;
-    const paths = new Set([...Object.values(prior.slots), ...Object.values(binding.slots)]);
-    if ([...paths].some((path) =>
-      current.portablePolicy.packages[path]?.digest !== proposed.portablePolicy.packages[path]?.digest ||
-      JSON.stringify(currentFlows.get(path)) !== JSON.stringify(proposedFlows.get(path))
-    )) changed.push(id);
+    const keys = new Set([...Object.values(prior.slots), ...Object.values(binding.slots)].map(targetKey));
+    if ([...keys].some((key) => {
+      const before = currentByTarget.get(key);
+      const after = proposedByTarget.get(key);
+      return JSON.stringify(before) !== JSON.stringify(after) ||
+        (before !== undefined && after !== undefined &&
+          current.portablePolicy.packages[before.request.packagePath]?.digest !==
+            proposed.portablePolicy.packages[after.request.packagePath]?.digest);
+    })) changed.push(id);
   }
   return changed.sort(compareUtf16);
 }
