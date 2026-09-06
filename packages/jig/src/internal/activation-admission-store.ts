@@ -3413,9 +3413,7 @@ function verifySchema(database: SqliteDatabase, root: PrivateProjectRoot): void 
   readCoordinatorEpoch(database)
 }
 
-function schemaRows(
-  database: SqliteDatabase,
-): readonly {
+function schemaRows(database: SqliteDatabase): readonly {
   readonly type: string
   readonly name: string
   readonly table: string
