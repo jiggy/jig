@@ -47,7 +47,9 @@ operational baselines, and public-site assembly.
 - `bun test scripts/development-shell.test.ts` exercises the actual shell hook's
   missing-build, mismatched-version, matching-version, and PATH behavior.
 - `just test-tooling` also checks recipe parsing, argument and working-directory
-  handling, explicit packing, and build-tool refusal before cleanup.
+  handling, explicit packing, and build-tool refusal before cleanup or site
+  staging. Its no-package-scripts rule covers repository tasks, not imported
+  skill toolchains.
 
 ## Child DOX Index
 

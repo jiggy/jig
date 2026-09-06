@@ -24,6 +24,10 @@ bun=$(command -v bun) || {
   echo "Bun is required to build a site artifact" >&2
   exit 2
 }
+command -v just >/dev/null 2>&1 || {
+  echo "Just 1.43.1 or newer is required to build a site artifact; install it in the build environment" >&2
+  exit 2
+}
 
 repository=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd -P)
 output_argument=$2

@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 
@@ -13,8 +13,11 @@ const justfiles = [
   'site/justfile',
 ]
 
-test('repository package manifests contain no task or lifecycle scripts', async () => {
-  const child = Bun.spawn(['git', 'ls-files', '*package.json'], { cwd: repository, stdout: 'pipe' })
+test('repository task manifests exclude scripts without constraining imported skill tooling', async () => {
+  const child = Bun.spawn(['git', 'ls-files', '*package.json', ':(exclude).agents/skills/**'], {
+    cwd: repository,
+    stdout: 'pipe',
+  })
   const paths = (await new Response(child.stdout).text()).trim().split('\n')
   expect(await child.exited).toBe(0)
   for (const path of paths) {
@@ -75,6 +78,37 @@ test('build-tool refusal stops before removing existing package output', async (
     expect(result.code).toBe(42)
     expect(result.stderr).toContain('verify-build-bun')
     expect(await readFile(retained, 'utf8')).toBe('existing build')
+  })
+})
+
+test('site assembly explains missing Just before creating output or staging', async () => {
+  await withFixture(async (directory) => {
+    const before = await readdir(directory)
+    const child = Bun.spawn(
+      [
+        '/bin/sh',
+        '-c',
+        'PATH=$1; site_script=$2; shift 2; . "$site_script"',
+        'sh',
+        join(directory, 'tools'),
+        join(repository, 'scripts/build-site.sh'),
+        'jig',
+        join(directory, 'pages'),
+      ],
+      {
+        stdout: 'pipe',
+        stderr: 'pipe',
+      },
+    )
+    const [code, stdout, stderr] = await Promise.all([
+      child.exited,
+      new Response(child.stdout).text(),
+      new Response(child.stderr).text(),
+    ])
+    expect(code).toBe(2)
+    expect(stdout).toBe('')
+    expect(stderr).toContain('Just 1.43.1 or newer is required')
+    expect(await readdir(directory)).toEqual(before)
   })
 })
 
