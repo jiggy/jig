@@ -9,9 +9,11 @@ general repository worker or independent consumer proof.
 ## Ownership
 
 - `README.md` introduces the copyable application and points to its public guide.
+- Root `package.json` and `bun.lock` own development-only test dependencies.
+  Install them here so generated `node_modules` stays outside Flow packages.
 - The two Flow-local `bun.lock` files are generated, tracked application inputs;
   they make a copied example reviewable without reconstructing dependency locks.
-  The ignored root workspace lock remains unrelated.
+  The ignored repository workspace lock remains unrelated.
 - `flows/repair/` owns patch policy, at most two Agent calls, immutable acceptance checks,
   the checker process, UTF-8 attachment validation, and evidence-checked file
   deliverables. It handles candidate source only as data.
@@ -58,7 +60,7 @@ general repository worker or independent consumer proof.
 
 ## Verification
 
-- Install `flows/repair`'s declared SDK with `bun install --ignore-scripts`,
+- At this application root, run `bun install --ignore-scripts --frozen-lockfile`,
   then `bun test examples/tested-patch/test` checks deterministic application policy.
 - File tests cover bounded text input and contradictory evidence refusing
   review-ready deliverables. Host capture/publication tests remain owned by Jig.

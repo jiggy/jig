@@ -1,9 +1,9 @@
 import type { JsonValue } from '../json.js'
-import {
-  requirePrivateInstalledBunSupport,
-  type PrivateInstalledBunSupport,
-} from './installed-bun-support.js'
 import { privateDomainDigest } from './identity.js'
+import {
+  type PrivateInstalledBunSupport,
+  requirePrivateInstalledBunSupport,
+} from './installed-bun-support.js'
 import { PRIVATE_OPENAI_APIS, type PrivateOpenAIApi } from './openai-agent-protocol.js'
 import { AGENT_RUN_CONTRACT_DIGEST } from './private-agent-run.js'
 
@@ -35,6 +35,15 @@ export interface PrivateOpenAIAgentProviderConfiguration {
 }
 
 const credentials = new WeakMap<PrivateOpenAIAgentProvider, string>()
+
+export class PrivateAgentConfigurationError extends Error {
+  constructor(
+    readonly field: 'OPENAI_API_KEY' | 'OPENAI_MODEL' | 'OPENAI_BASE_URL' | 'OPENAI_API',
+    message: string,
+  ) {
+    super(message)
+  }
+}
 
 /**
  * Select one OpenAI-SDK API from operator-owned host configuration.
@@ -110,23 +119,35 @@ function requireConfiguration(configuration: PrivateOpenAIAgentProviderConfigura
     apiKey.includes('\0') ||
     encoder.encode(apiKey).byteLength > MAX_API_KEY_BYTES
   ) {
-    throw new Error('the OpenAI Agent provider credential is invalid')
+    throw new PrivateAgentConfigurationError(
+      'OPENAI_API_KEY',
+      'the OpenAI Agent provider credential is invalid',
+    )
   }
   if (!/^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$/.test(model)) {
-    throw new Error('the OpenAI Agent provider model is invalid')
+    throw new PrivateAgentConfigurationError(
+      'OPENAI_MODEL',
+      'the OpenAI Agent provider model is invalid',
+    )
   }
   if (
     typeof baseURL !== 'string' ||
     baseURL.length === 0 ||
     baseURL.length > MAX_BASE_URL_CHARACTERS
   ) {
-    throw new Error('the OpenAI Agent provider endpoint is invalid')
+    throw new PrivateAgentConfigurationError(
+      'OPENAI_BASE_URL',
+      'the OpenAI Agent provider endpoint is invalid',
+    )
   }
   let endpoint: URL
   try {
     endpoint = new URL(baseURL)
   } catch {
-    throw new Error('the OpenAI Agent provider endpoint is invalid')
+    throw new PrivateAgentConfigurationError(
+      'OPENAI_BASE_URL',
+      'the OpenAI Agent provider endpoint is invalid',
+    )
   }
   if (
     endpoint.protocol !== 'https:' ||
@@ -135,13 +156,19 @@ function requireConfiguration(configuration: PrivateOpenAIAgentProviderConfigura
     endpoint.search !== '' ||
     endpoint.hash !== ''
   ) {
-    throw new Error('the OpenAI Agent provider endpoint is invalid')
+    throw new PrivateAgentConfigurationError(
+      'OPENAI_BASE_URL',
+      'the OpenAI Agent provider endpoint is invalid',
+    )
   }
 }
 
 function requireApi(value: string): PrivateOpenAIApi {
   if (!(PRIVATE_OPENAI_APIS as readonly string[]).includes(value)) {
-    throw new Error('the OpenAI Agent provider API is invalid')
+    throw new PrivateAgentConfigurationError(
+      'OPENAI_API',
+      'the OpenAI Agent provider API is invalid',
+    )
   }
   return value as PrivateOpenAIApi
 }

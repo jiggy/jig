@@ -20,7 +20,7 @@ authored examples, not independent consumer evidence or promoted Starters.
   public FLOW SDK. Do not import sibling package source or host internals.
 - Pin published SDK dependencies that supply the interfaces actually used;
   generate their locks with the supported authoring tool, never by guessing
-  integrity values. State which host release or candidate the example needs.
+  integrity values. Link to the current host installation instructions.
 - Agents, models, credentials, and execution policy remain operator choices.
 - Label synthetic evidence and keep it distinct from claims about real users.
 
@@ -40,8 +40,8 @@ authored examples, not independent consumer evidence or promoted Starters.
 - Exercise package boundaries through an admitted Jig Run before claiming
   host execution; unit tests alone establish only application behavior.
 - Run `bun test examples/tested-patch/test` for patch policy and the fixed
-  acceptance-checker process after installing that application's repair Flow
-  dependency as its Child DOX describes. These tests also run in `scripts/test-release.sh`.
+  acceptance-checker process after installing that application's development
+  dependencies as its Child DOX describes. These tests also run in `scripts/test-release.sh`.
 
 ## Child DOX Index
 

@@ -1,0 +1,8 @@
+{
+  "name": "tested-patch-example",
+  "private": true,
+  "type": "module",
+  "devDependencies": {
+    "@jigging/flow": "0.1.0-alpha.3"
+  }
+}

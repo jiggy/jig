@@ -1,10 +1,13 @@
 import { expect, spyOn, test } from 'bun:test'
 import { closeSync } from 'node:fs'
-import { mkdir, mkdtemp, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import {
+  PRIVATE_FILE_COMMAND_STOP_GRACE_MS,
+  privateOwnFileCommand,
+} from '../src/internal/file-command.js'
 import { PrivateFileDeliveryOwner } from '../src/internal/file-delivery.js'
-import { privateOwnFileCommand } from '../src/internal/file-command.js'
 import { privateOpenFileRoot } from '../src/internal/linux-file-input.js'
 
 async function fixture(work: (root: string) => Promise<void>) {
@@ -16,6 +19,98 @@ async function fixture(work: (root: string) => Promise<void>) {
   }
 }
 const record = { status: 'succeeded', outcome: 'blocked', output: { reason: 'synthetic evidence' } }
+
+// Diagnostic acknowledgement for our fixture only; production cleanup uses cgroup fencing.
+async function waitUntilStopped(pid: number): Promise<void> {
+  const deadline = performance.now() + 1500
+  while (performance.now() < deadline) {
+    if (/^State:\s+T/m.test(await readFile(`/proc/${pid}/status`, 'utf8'))) return
+    await Bun.sleep(5)
+  }
+  throw new Error('owned fixture did not stop')
+}
+
+for (const trigger of ['deadline', 'cancel'] as const) {
+  for (const phase of ['before', 'during', 'after'] as const) {
+    test(
+      `settles a stopped coordinator on ${trigger} ${phase} publication`,
+      async () =>
+        fixture(async (root) => {
+          const destination = join(root, 'review'),
+            pidFile = join(root, 'pid'),
+            readyFile = join(root, 'ready')
+          const abort = new AbortController()
+          let pid: number | undefined,
+            rescued = false,
+            settled = false
+          const watchdog = setTimeout(async () => {
+            rescued = true
+            try {
+              process.kill(pid ?? Number(await readFile(pidFile, 'utf8')), 'SIGKILL')
+            } catch {}
+          }, 2500)
+          const started = performance.now()
+          const invocation = privateOwnFileCommand(
+            [
+              process.execPath,
+              '--no-env-file',
+              '--no-install',
+              '--config=/dev/null',
+              join(import.meta.dir, 'fixtures/file-delivery-client.ts'),
+            ],
+            [destination, pidFile, phase, readyFile],
+            abort.signal,
+            700,
+            async () => {
+              if (phase !== 'during') return
+              pid = Number(await readFile(pidFile, 'utf8'))
+              process.kill(pid, 'SIGSTOP')
+              await waitUntilStopped(pid)
+              if (trigger === 'cancel') abort.abort()
+              else await Bun.sleep(800) // Keep staging uncommitted until the deadline fires.
+            },
+          ).finally(() => {
+            settled = true
+          })
+          try {
+            if (trigger === 'cancel' && phase !== 'during') {
+              while (!settled) {
+                try {
+                  await readFile(readyFile)
+                  pid = Number(await readFile(pidFile, 'utf8'))
+                  await waitUntilStopped(pid)
+                  break
+                } catch {
+                  await Bun.sleep(5)
+                }
+              }
+              abort.abort()
+            }
+            expect((await invocation).signal).toBe('SIGKILL')
+            expect(rescued).toBe(false)
+            expect(performance.now() - started).toBeLessThan(
+              700 + PRIVATE_FILE_COMMAND_STOP_GRACE_MS + 1000,
+            )
+            pid ??= Number(await readFile(pidFile, 'utf8'))
+            expect(() => process.kill(pid!, 0)).toThrow()
+            expect(
+              (await readdir(root)).filter((name) => name.startsWith('.jig-delivery-')),
+            ).toEqual([])
+            if (phase === 'after')
+              expect(
+                JSON.parse(await readFile(join(destination, 'result.json'), 'utf8')).outcome,
+              ).toBe('blocked')
+            else await expect(stat(destination)).rejects.toMatchObject({ code: 'ENOENT' })
+          } finally {
+            clearTimeout(watchdog)
+            if (!settled && pid !== undefined) process.kill(pid, 'SIGKILL')
+            await invocation
+          }
+        }),
+      5000,
+    )
+  }
+}
 
 test('publishes record-only outcomes in one private packet with fixed permissions', async () =>
   fixture(async (root) => {

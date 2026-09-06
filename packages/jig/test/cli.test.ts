@@ -3,37 +3,37 @@ import {
   lstat,
   mkdir,
   mkdtemp,
-  readFile,
   readdir,
-  rmdir,
+  readFile,
   rm,
-  unlink,
+  rmdir,
   symlink,
+  unlink,
   writeFile,
 } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
-import { createBareProject, type BareInitFileSystem } from '../src/bare-init.js'
-import {
-  main,
-  privateCliRequiresHost,
-  privateCliCommandLifetimeMs,
-  type PrivateCliCommandHost,
-  type PrivateCliOptions,
-} from '../src/cli.js'
 import {
   ProjectAdministrationError,
   type ProjectPlanResult,
   type ProjectSession,
 } from '../src/administration/project.js'
-import { RootAdministrationError } from '../src/administration/root.js'
-import { canonicalJson, JSON_1_LIMITS } from '../src/json.js'
 import type {
   RootAdministration,
   RootRunStatus,
   RootRunTerminal,
   StartRootRunRequest,
 } from '../src/administration/root.js'
+import { RootAdministrationError } from '../src/administration/root.js'
+import { type BareInitFileSystem, createBareProject } from '../src/bare-init.js'
+import {
+  main,
+  type PrivateCliCommandHost,
+  type PrivateCliOptions,
+  privateCliCommandLifetimeMs,
+  privateCliRequiresHost,
+} from '../src/cli.js'
+import { canonicalJson, JSON_1_LIMITS } from '../src/json.js'
 
 const cli = resolve(import.meta.dir, '../src/cli.ts')
 
@@ -456,6 +456,28 @@ describe('finite Jig project commands', () => {
     }
   })
 
+  test('file capture diagnostics distinguish unsupported storage and size limits without host paths', async () => {
+    const unsupported = commandInvocation(unusedHost())
+    expect(
+      await main(['run', 'flow:flows/work', '--attach', 'source=/proc'], unsupported.options),
+    ).toBe(1)
+    expect(unsupported.error).toContain('ext4, XFS, Btrfs, or tmpfs')
+    expect(unsupported.error).not.toContain('/proc')
+    const root = await mkdtemp(join(tmpdir(), 'jig-cli-file-limit-'))
+    try {
+      await writeFile(join(root, 'large'), Buffer.alloc(8 * 1024 * 1024 + 1))
+      const bounded = commandInvocation(unusedHost())
+      expect(
+        await main(['run', 'flow:flows/work', '--attach', `source=${root}`], bounded.options),
+      ).toBe(1)
+      expect(bounded.error).toContain('remaining 8388608-byte input budget')
+      expect(bounded.error).not.toContain(root)
+      expect(bounded.output).toBe('')
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
   test('missing admitted file mappings have actionable bounded diagnostics, not an internal failure', async () => {
     const events: string[] = []
     const invocation = commandInvocation(
@@ -729,7 +751,12 @@ describe('finite Jig project commands', () => {
     [
       'PROJECT_AGENT_UNAVAILABLE',
       'flows/drafter/FLOW.md',
-      'configure the host Agent before review; check credentials, model, and selected client',
+      'configure the host Agent before review; check exported credentials, model, and selected client',
+    ],
+    [
+      'PACKAGE_BUN_NODE_MODULES',
+      'flows/drafter/node_modules',
+      'move generated node_modules outside the Flow package; jig review prepares its locked production dependencies',
     ],
     [
       'PACKAGE_BUN_PREPARATION_FAILED',
@@ -750,6 +777,21 @@ describe('finite Jig project commands', () => {
     expect(invocation.error).not.toContain('secret-token')
     expect(invocation.error).not.toContain('/private/host')
     expect(events).toEqual(['acquire:/project', 'plan:update', 'close'])
+  })
+
+  test("reports the installed host's closed Agent configuration hint", async () => {
+    const events: string[] = []
+    const failure = new ProjectAdministrationError('UNAVAILABLE', 'private-secret', {
+      code: 'PROJECT_AGENT_UNAVAILABLE',
+      path: 'flows/reviewer/FLOW.md',
+    })
+    const invocation = commandInvocation({
+      ...fakeHost(fakeSession(events, { planFailure: failure }), events),
+      agentUnavailableHint: 'export OPENAI_MODEL before jig review',
+    })
+    expect(await main(['review'], invocation.options)).toBe(2)
+    expect(invocation.error).toContain('export OPENAI_MODEL before jig review')
+    expect(invocation.error).not.toContain('private-secret')
   })
 
   interface FakeSessionOptions {

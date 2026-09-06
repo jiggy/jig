@@ -6,8 +6,8 @@ saves a patch with evidence. Your original files remain unchanged.
 
 ## Try it
 
-Use the Jig source candidate from the same checkout on a
-[supported Linux host](https://jig.md/guide/). Copy this directory, configure
+Follow the [Jig installation instructions](https://jig.md/guide/).
+Copy this directory, configure
 your [Agent](https://jig.md/spec/agent-run#alpha-host-implementations), and inspect
 the issue in `issue.json` and acceptance cases in `flows/repair/checks.json`.
 Then run from your copy:

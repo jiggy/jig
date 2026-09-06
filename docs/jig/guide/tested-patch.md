@@ -9,10 +9,8 @@ checks—not the Agent's claim that its code works. Your original files remain
 unchanged, and nothing is merged or published automatically.
 
 The [example](https://github.com/jiggy/jig/tree/main/examples/tested-patch)
-contains two Flows and one Binding. Use the Jig source candidate from the
-same checkout on a [supported host](https://github.com/jiggy/jig/blob/main/SECURITY.md).
-This example requires the candidate's file-Run support; it does not claim
-availability in an older registry release.
+contains two Flows and one Binding. Start with the
+[Jig installation instructions](./index.md) on a supported host.
 
 ## Try it
 
@@ -125,11 +123,11 @@ authored cases, then review the application again. Cases use
 range. Include negative cases so removing required validation cannot pass.
 Neither the evaluator package nor Jig needs a new API for this adaptation.
 
-For application development, install the repair Flow's declared dependency
-and run its deterministic checks:
+For application development, install test dependencies at the application root
+(outside the Flow packages) and run its deterministic checks:
 
 ```sh
-(cd examples/tested-patch/flows/repair && bun install --ignore-scripts)
+(cd examples/tested-patch && bun install --ignore-scripts --frozen-lockfile)
 bun test examples/tested-patch/test
 ```
 

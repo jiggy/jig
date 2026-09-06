@@ -9,11 +9,8 @@ and a fixed opportunity to revise. The
 [example source](https://github.com/jiggy/jig/tree/main/examples/proposal-workshop)
 contains three Flow packages: a workshop, a drafter, and an evidence reviewer.
 
-> **Availability:** this example requires a Jig build from the source candidate
-> that supports Agent-using child Flows and child Bindings. That host extension
-> is not yet available in the published npm alpha. The example is deliberately
-> authored with the host feature; it is not independent consumer evidence or a
-> claim that multiple Agents outperform one.
+This authored example demonstrates composition, not a claim that multiple
+Agents outperform one.
 
 ## How it works
 
@@ -49,8 +46,7 @@ and [Agent Run contract](../spec/agent-run.md) define those host guarantees.
 
 ## Run the example
 
-Use an installed Jig candidate built from the same checkout on a
-[supported host](https://github.com/jiggy/jig/blob/main/SECURITY.md).
+Follow the [Jig installation instructions](./index.md).
 Configure an Agent in the operator environment using the
 [Agent host instructions](../spec/agent-run.md#alpha-host-implementations).
 Keep that configuration available for both review and execution. The example
@@ -63,7 +59,7 @@ packages and settings, and run the workshop:
 cp -R examples/proposal-workshop ../my-proposal-workshop
 cd ../my-proposal-workshop
 jig review
-jig run binding:workshop --input "$(cat fixtures/library-pilot.json)" --timeout 5m
+jig run binding:workshop --input @fixtures/library-pilot.json --timeout 5m
 ```
 
 Interactive review asks for approval. For noninteractive use, inspect the

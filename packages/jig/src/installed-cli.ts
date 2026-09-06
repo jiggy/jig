@@ -4,19 +4,19 @@ import { fileURLToPath } from 'node:url'
 
 import {
   main,
+  type PrivateCliCommandHost,
   privateCliCommandLifetimeMs,
   privateCliRequiresHost,
-  type PrivateCliCommandHost,
 } from './cli.js'
-import { openPrivateInstalledBunHost } from './internal/installed-bun-host.js'
-import { acquireOrReexecutePrivateRootlessLinux } from './internal/linux-rootless-delegation.js'
-import { PrivateRootlessLinuxAcquisitionError } from './internal/linux-rootless-acquisition.js'
-import { openPrivateProjectSession } from './internal/project-session-controller.js'
 import {
   privateConnectFileOwner,
   privateNeedsFileOwner,
   privateOwnFileCommand,
 } from './internal/file-command.js'
+import { openPrivateInstalledBunHost } from './internal/installed-bun-host.js'
+import { PrivateRootlessLinuxAcquisitionError } from './internal/linux-rootless-acquisition.js'
+import { acquireOrReexecutePrivateRootlessLinux } from './internal/linux-rootless-delegation.js'
+import { openPrivateProjectSession } from './internal/project-session-controller.js'
 
 interface InstalledCliOutcome {
   readonly exitCode: number | null
@@ -69,6 +69,9 @@ async function runPrivateInstalledCli(
       })
       const host: PrivateCliCommandHost = Object.freeze({
         ...(delivery === undefined ? {} : { delivery }),
+        ...(installedHost.agentUnavailableHint === undefined
+          ? {}
+          : { agentUnavailableHint: installedHost.agentUnavailableHint }),
         acquire: (project: string, options?: Parameters<PrivateCliCommandHost['acquire']>[1]) =>
           openPrivateProjectSession({
             directory: project,

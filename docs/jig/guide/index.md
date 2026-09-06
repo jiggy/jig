@@ -19,12 +19,11 @@ jig run <target> [--input JSON|@FILE] [--attach NAME=DIR] [--out DIR] [--timeout
 jig --version
 ```
 
-The source candidate's `jig --version` reports the built package version
+`jig --version` reports the built package version
 without opening a project or acquiring a sandbox.
 
-> **Availability:** examples identify their required candidate. The tested-patch
-> application needs a Jig build from the same source checkout; do not assume
-> the latest published npm alpha includes every source change.
+To use these guides with a source checkout, build and install that checkout
+following the [development instructions](https://github.com/jiggy/jig/blob/main/CONTRIBUTING.md#development-shell).
 
 Install the latest published alpha directly from npm:
 
@@ -88,7 +87,7 @@ The Jig-specific machine files are published under
 portable specifications and machine files remain independently published at
 [flow.jig.md](https://flow.jig.md/).
 
-The source candidate's child-call slice is exact and deliberately small. A
+Child calls are exact and deliberately small. A
 Binding may map at most 256 LocalName `slots` to selected `flow:path` or
 `binding:id` targets; omission means `{}`. Those targets come from the same
 admitted generation. A child Binding supplies its own settings and must have
@@ -117,7 +116,9 @@ Code, or Pi through one private ACP mechanism. Direct configuration uses
 select the HTTPS endpoint and either the `responses` (default) or
 `chat-completions` wire shape. Jig supplies no default model. Client, API,
 endpoint, model, executable path, and credentials are trusted host
-configuration. There is no package-selected provider, provider registry, or
+configuration. Supply them as exported environment variables for both
+`jig review` and `jig run`; Jig does not auto-load project `.env` files.
+There is no package-selected provider, provider registry, or
 semantic router.
 
 Root Runs default to 30 seconds. `--timeout` accepts a positive integer plus

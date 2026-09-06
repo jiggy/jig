@@ -4,6 +4,7 @@ import { link, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
+  PrivateFileInputError,
   privateCaptureAttachments,
   privateOpenFileRoot,
   privatePublishDirectory,
@@ -75,8 +76,24 @@ test('captures trees without retaining empty directories and bounds aggregate in
     await writeFile(join(root, 'large'), Buffer.alloc(8 * 1024 * 1024))
     expect(() =>
       privateCaptureAttachments([{ name: 'source', directory: root, select: [] }]),
-    ).toThrow()
+    ).toThrow('remaining')
   }))
+
+test('does not reserve development-environment directory names', async () =>
+  fixture(async (root) => {
+    await mkdir(join(root, '.agent-sandbox'))
+    await writeFile(join(root, '.agent-sandbox', 'selected'), 'operator-selected data')
+    const capture = privateCaptureAttachments([
+      { name: 'source', directory: root, select: ['.agent-sandbox/selected'] },
+    ])
+    expect(capture.attachments[0]!.files[0]!.path).toBe('.agent-sandbox/selected')
+    capture.close()
+  }))
+
+test('unsupported filesystems have a closed actionable cause', () => {
+  expect(() => privateOpenFileRoot('/proc')).toThrow(PrivateFileInputError)
+  expect(() => privateOpenFileRoot('/proc')).toThrow('ext4, XFS, Btrfs, or tmpfs')
+})
 
 test('publishes a directory atomically without replacing a racing destination', async () =>
   fixture(async (root) => {

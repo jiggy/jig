@@ -116,6 +116,12 @@ in the memory hierarchy until the last holder releases them. Final-tree
 validation accepts at most 16 MiB of logical bytes and 64 files, rejecting
 oversized sparse files, links, special files and excess metadata before copying.
 
+Finite caps bound hostile allocation and trusted capture/export work. The
+8 MiB input and 16 MiB output values are conservative host policy for small
+file jobs, not portable FLOW limits or benchmark-derived optimums. Changing
+them requires reviewing the complete retained-storage budget and runtime
+policy together; removing them is not a usability fallback.
+
 Temporary content may coexist: 8 MiB of sealed input and a bounded capture
 buffer; the retained output mount and up to 16 MiB of copied file buffers;
 and up to 16 MiB of destination file staging plus a bounded JSON/1 host record.
@@ -126,7 +132,10 @@ survives command cleanup; the requested final packet is intentionally retained.
 
 The independent outer command owns output staging and removes it if its
 execution coordinator dies during copying. Flow code sees neither the host
-destination nor the delivery socket. Atomic no-replace publication creates
+destination nor the delivery socket. On cancellation or command expiry, the
+owner gives its exact trusted child 250 ms after SIGTERM before SIGKILL and
+reaping. The independent cgroup owner still fences the complete payload tree;
+the child signal is not a substitute for that boundary. Atomic no-replace publication creates
 private files and directories; it promises complete visibility, not power-loss
 durability. A published packet survives later cancellation or acknowledgement
 loss. Killing the whole host or both trusted owners is outside the coordinator-

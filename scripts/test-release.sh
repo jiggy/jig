@@ -32,7 +32,7 @@ fi
 
 just flow::build
 just jig::build
-(cd examples/tested-patch/flows/repair && bun install --ignore-scripts)
+(cd examples/tested-patch && bun install --ignore-scripts --frozen-lockfile)
 bun test packages/flow-sdk packages/jig conformance/run-1 examples/proposal-workshop/test examples/tested-patch/test
 bun packages/flow-sdk/test/package-smoke.ts
 bun packages/jig/test/package-smoke.ts

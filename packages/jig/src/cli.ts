@@ -9,14 +9,15 @@ import manifest from '../package.json' with { type: 'json' }
 
 import { ProjectAdministrationError, type ProjectSession } from './administration/project.js'
 import {
-  RootAdministrationError,
   type RootAdministration,
+  RootAdministrationError,
   type RootRunStatus,
   type RootRunTerminal,
 } from './administration/root.js'
 import { BareInitError, initializeBareProject } from './bare-init.js'
-import { canonicalJson, decodeJson1, JSON_1_LIMITS, type JsonValue } from './json.js'
+import type { PrivateDeliveryConnection, PrivateDeliveryReceipt } from './internal/file-delivery.js'
 import {
+  PrivateFileInputError,
   privateAttachmentName,
   privateCaptureAttachments,
   privateFilePath,
@@ -25,14 +26,14 @@ import {
   sha256,
 } from './internal/linux-file-input.js'
 import { PrivateRootRunFiles } from './internal/root-run-files.js'
-import type { PrivateDeliveryConnection, PrivateDeliveryReceipt } from './internal/file-delivery.js'
-import { bindingRef, flowRef, type RunTargetRef } from './project/author.js'
 import {
   PRIVATE_DEFAULT_ROOT_RUN_TIMEOUT_MS,
   PRIVATE_MAX_ROOT_RUN_TIMEOUT_MS,
   PRIVATE_ROOTLESS_COMMAND_OVERHEAD_ALLOWANCE_MS,
   privateRootlessCommandLifetime,
 } from './internal/root-run-timeout-policy.js'
+import { canonicalJson, decodeJson1, JSON_1_LIMITS, type JsonValue } from './json.js'
+import { bindingRef, flowRef, type RunTargetRef } from './project/author.js'
 
 const HELP = `Usage:
   jig init --bare <directory>
@@ -51,6 +52,7 @@ export interface PrivateCliCommandHost {
     options?: { readonly runTimeoutMs?: number; readonly files?: PrivateRootRunFiles },
   ): Promise<ProjectSession>
   readonly delivery?: PrivateDeliveryConnection
+  readonly agentUnavailableHint?: string
   pause?(milliseconds: number): Promise<void>
 }
 
@@ -201,10 +203,12 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
         closeSync(parent)
       }
     }
-  } catch {
+  } catch (error) {
     throw new CliDiagnostic(
       'JIG_RUN_INPUT_INVALID',
-      '--input requires bounded JSON/1 in a regular file; check the path, links, size, and contents',
+      error instanceof PrivateFileInputError
+        ? error.message
+        : '--input requires bounded JSON/1 in a regular file; check the path, links, size, and contents',
       1,
     )
   }
@@ -216,10 +220,12 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
         directory: resolve(runtime.currentDirectory, item.directory),
       })),
     )
-  } catch {
+  } catch (error) {
     throw new CliDiagnostic(
       'JIG_RUN_FILES_INVALID',
-      'selected input must be a bounded regular-file tree without links or protected host state; check --attach and --select',
+      error instanceof PrivateFileInputError
+        ? error.message
+        : 'selected input must be a bounded regular-file tree without links or protected host state; check --attach and --select',
       1,
     )
   }
@@ -649,10 +655,13 @@ function renderFailure(error: unknown, runtime: CliRuntime): 1 | 2 {
     const projected = projectError(error.code)
     const hint =
       error.diagnostic?.code === 'PROJECT_AGENT_UNAVAILABLE'
-        ? 'configure the host Agent before review; check credentials, model, and selected client'
-        : error.diagnostic?.code === 'PACKAGE_BUN_PREPARATION_FAILED'
-          ? 'locked dependencies could not be prepared; check registry access and package availability'
-          : undefined
+        ? (runtime.host.agentUnavailableHint ??
+          'configure the host Agent before review; check exported credentials, model, and selected client')
+        : error.diagnostic?.code === 'PACKAGE_BUN_NODE_MODULES'
+          ? 'move generated node_modules outside the Flow package; jig review prepares its locked production dependencies'
+          : error.diagnostic?.code === 'PACKAGE_BUN_PREPARATION_FAILED'
+            ? 'locked dependencies could not be prepared; check registry access and package availability'
+            : undefined
     runtime.writeError(
       error.diagnostic !== undefined
         ? renderProjectDiagnostic(error, hint ?? projected.message)

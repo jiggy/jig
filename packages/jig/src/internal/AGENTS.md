@@ -48,6 +48,8 @@ child calls, and Agent providers.
   writer fencing; publish once without replacement through the independent
   command owner. Coordinator loss must remove unpublished staging. Late failure
   preserves a known terminal or publication and never authorizes replay.
+  Cancellation and expiry escalate against the exact trusted child after a
+  bounded grace period and reap it; independent cgroup fencing still owns payload cleanup.
 - Exact child slots may select a Flow or a leaf Binding with its own admitted
   settings and Agent capability. An Agent operation belongs to that child
   context, not the root's operation namespace; fence and drain it before

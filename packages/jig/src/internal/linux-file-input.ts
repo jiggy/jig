@@ -1,6 +1,7 @@
+import { createHash } from 'node:crypto'
 import {
-  constants,
   closeSync,
+  constants,
   fstatSync,
   opendirSync,
   readFileSync,
@@ -12,7 +13,6 @@ import {
 import { createRequire } from 'node:module'
 import { dirname, posix, resolve } from 'node:path'
 import { getSystemErrorName } from 'node:util'
-import { createHash } from 'node:crypto'
 
 /** Private Linux-x64 file boundary. No application or provider code runs here. */
 export const PRIVATE_FILE_LIMITS = Object.freeze({
@@ -33,7 +33,40 @@ const NO_SYMLINKS = 0x04
 const BENEATH = 0x08
 const NO_XDEV = 0x01
 const filesystemTypes = new Set([0xef53, 0x58465342, 0x9123683e, 0x01021994])
-const protectedParts = new Set(['.jig', '.agent-sandbox'])
+const protectedParts = new Set(['.jig'])
+// biome-ignore lint/suspicious/noControlCharactersInRegex: The file boundary must reject control characters.
+const FILE_CONTROLS = /[\x00-\x1f\x7f]/
+
+/** Only these locally authored messages may cross the CLI diagnostic boundary. */
+export class PrivateFileInputError extends Error {
+  constructor(
+    readonly reason:
+      | 'filesystem'
+      | 'path'
+      | 'protected'
+      | 'linked'
+      | 'changed'
+      | 'bytes'
+      | 'files'
+      | 'entries'
+      | 'deadline',
+    readonly limit?: number,
+  ) {
+    super(
+      {
+        filesystem: 'use a local ext4, XFS, Btrfs, or tmpfs filesystem',
+        path: 'select a relative path without traversal or links, within 16 components and 512 UTF-8 bytes',
+        protected: 'Jig state and host control files cannot be selected as input',
+        linked: 'select only singly linked regular files',
+        changed: 'selected input changed during capture; capture a stable source tree',
+        bytes: `selected file exceeds the remaining ${limit ?? 0}-byte input budget; select less data`,
+        files: 'input exceeds 64 files; narrow the selection with --select',
+        entries: 'input exceeds 256 tree entries; narrow the selection with --select',
+        deadline: 'input capture exceeded its 10-second budget; select a smaller local tree',
+      }[reason],
+    )
+  }
+}
 
 type NativeFunction = (...args: (number | Uint8Array | bigint)[]) => number
 interface Ffi {
@@ -104,13 +137,13 @@ export function privateFilePath(value: string): string {
     Buffer.byteLength(value) > PRIVATE_FILE_LIMITS.pathBytes ||
     Buffer.from(value).toString('utf8') !== value ||
     value.includes('\\') ||
-    /[\x00-\x1f\x7f]/.test(value) ||
+    FILE_CONTROLS.test(value) ||
     value
       .split('/')
       .some((part) => !part || part === '.' || part === '..' || protectedParts.has(part)) ||
     value.split('/').length > PRIVATE_FILE_LIMITS.depth
   )
-    throw new TypeError('invalid selected file path')
+    throw new PrivateFileInputError('path')
   return value
 }
 export function privateAttachmentName(value: string): string {
@@ -125,7 +158,7 @@ export function privateOpenFileRoot(path: string): number {
   const fd = privateOpenAt(-100, absolute, O_PATH | O_DIRECTORY, false)
   try {
     if (!filesystemTypes.has(statfsSync(`/proc/self/fd/${fd}`).type))
-      throw new TypeError('unsupported file filesystem')
+      throw new PrivateFileInputError('filesystem')
     requireUnprotected(absolute)
     // A bind-mounted alias retains its source root in mountinfo. Inspect that
     // root as well as the visible spelling before accepting the descriptor.
@@ -135,10 +168,10 @@ export function privateOpenFileRoot(path: string): number {
       .find((line) => line.split(' ')[0] === mountId)
       ?.split(' ')
     if (mount === undefined) throw new TypeError('file mount identity is unavailable')
-    const unescape = (text: string) =>
+    const decodeMountPath = (text: string) =>
       text.replace(/\\([0-7]{3})/g, (_, octal: string) => String.fromCharCode(parseInt(octal, 8)))
-    const root = unescape(mount[3]!),
-      point = unescape(mount[4]!)
+    const root = decodeMountPath(mount[3]!),
+      point = decodeMountPath(mount[4]!)
     const relative = posix.relative(point, absolute)
     if (relative.startsWith('../') || posix.isAbsolute(relative))
       throw new TypeError('file mount identity changed')
@@ -154,7 +187,7 @@ function requireUnprotected(path: string): void {
     path.split('/').some((part) => protectedParts.has(part)) ||
     ['/proc', '/sys', '/dev', '/run'].some((root) => path === root || path.startsWith(`${root}/`))
   ) {
-    throw new TypeError('protected host state is not file input')
+    throw new PrivateFileInputError('protected')
   }
 }
 
@@ -179,8 +212,8 @@ export function privateReadRegularFile(parent: number, path: string, maxBytes: n
   const fd = privateOpenAt(parent, privateFilePath(path), constants.O_RDONLY | constants.O_NONBLOCK)
   try {
     const before = fstatSync(fd, { bigint: true })
-    if (!before.isFile() || before.nlink !== 1n || before.size > BigInt(maxBytes))
-      throw new TypeError('input requires a bounded, singly linked regular file')
+    if (!before.isFile() || before.nlink !== 1n) throw new PrivateFileInputError('linked')
+    if (before.size > BigInt(maxBytes)) throw new PrivateFileInputError('bytes', maxBytes)
     const bytes = Buffer.alloc(Number(before.size) + 1)
     let offset = 0
     while (offset < bytes.length) {
@@ -196,7 +229,7 @@ export function privateReadRegularFile(parent: number, path: string, maxBytes: n
       after.ctimeNs !== before.ctimeNs ||
       after.nlink !== 1n
     )
-      throw new TypeError('input changed during capture')
+      throw new PrivateFileInputError('changed')
     return bytes.subarray(0, offset)
   } finally {
     closeSync(fd)
@@ -211,7 +244,7 @@ export function privateCaptureAttachments(selections: readonly PrivateFileSelect
   const opened: number[] = []
   const deadline = performance.now() + PRIVATE_FILE_LIMITS.captureMs
   const checkTime = () => {
-    if (performance.now() >= deadline) throw new Error('input capture deadline exceeded')
+    if (performance.now() >= deadline) throw new PrivateFileInputError('deadline')
   }
   let byteCount = 0,
     fileCount = 0,
@@ -235,7 +268,7 @@ export function privateCaptureAttachments(selections: readonly PrivateFileSelect
         checkTime()
         if (files.some((file) => file.path === path))
           throw new TypeError('duplicate captured file path')
-        if (++fileCount > PRIVATE_FILE_LIMITS.files) throw new TypeError('too many captured files')
+        if (++fileCount > PRIVATE_FILE_LIMITS.files) throw new PrivateFileInputError('files')
         const data = privateReadRegularFile(rootFd, path, PRIVATE_FILE_LIMITS.bytes - byteCount)
         byteCount += data.length
         const fd = privateSealedBytes(data)
@@ -254,7 +287,7 @@ export function privateCaptureAttachments(selections: readonly PrivateFileSelect
             const entry = directory.readSync()
             if (entry === null) break
             if (++entryCount > PRIVATE_FILE_LIMITS.entries)
-              throw new TypeError('too many file tree entries')
+              throw new PrivateFileInputError('entries')
             const path = privateFilePath(relative === '' ? entry.name : `${relative}/${entry.name}`)
             if (entry.isDirectory()) walk(path)
             else capture(path)

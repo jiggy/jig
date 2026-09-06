@@ -8,9 +8,6 @@ Give a Flow the files it needs and receive its deliverables without writing
 your own capture or export program. Jig supplies the file boundary; the Flow
 decides what its files mean.
 
-*Requires the current source candidate. Older registry releases may not
-support these options.*
-
 ```sh
 jig run binding:repair --input @issue.json --attach source=./src --out ./review
 ```
@@ -48,6 +45,12 @@ A root Flow may declare one writable attachment. It begins empty and is
 limited to 16 MiB. Jig supplies its contained path and collects files only
 after execution is fenced and the result accepted. A Flow with no writable
 attachment can still use `--out` to save its execution record.
+
+Starting empty keeps your originals outside the Flow's write authority. The
+size, file-count, and path limits bound memory, storage, and capture/export work.
+Their current values are conservative Jig policy for small file jobs—not FLOW
+requirements or demonstrated optimums. The output ceiling is enforced while
+the Flow writes, not just checked afterward.
 
 The output destination must not exist, must have an existing supported parent,
 and must be outside every input root. For example, use a sibling destination

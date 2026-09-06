@@ -12,6 +12,25 @@ const schemaUri = 'https://flow.jig.md/schemas/schema-1.json'
 const linuxTest = process.platform === 'linux' ? test : test.skip
 
 describe('private project Flow source capture', () => {
+  linuxTest('application development dependencies do not enter Flow capture', async () => {
+    await withProject(async (root) => {
+      await packageFiles(root, 'flows/worker', {
+        'FLOW.md': metadata('worker'),
+        'flow.ts': 'export {};\n',
+      })
+      await mkdir(join(root, 'node_modules'))
+      await symlink('/missing/development-only', join(root, 'node_modules', 'unused'))
+      const source = await captureFlowSource(root, discover('flows'))
+      try {
+        expect(source.members.map((member) => member.provenance.projectPath)).toEqual([
+          'flows/worker',
+        ])
+      } finally {
+        await source.dispose()
+      }
+    })
+  })
+
   linuxTest('records a missing discovery root as an empty source', async () => {
     await withProject(async (root) => {
       const source = await captureFlowSource(root, discover('flows'))

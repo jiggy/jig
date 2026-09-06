@@ -462,8 +462,8 @@ Capture preserves binary and empty file bytes, omits empty directories, and
 rejects symlinks, multiply linked files, special files, traversal, malformed
 Unicode paths, and nested mounts. Descriptor-relative acquisition prevents
 pathname substitution from changing the selected root. Protected paths and
-resolved mount-source aliases into `/proc`, `/sys`, `/dev`, `/run`, `.jig`, or
-`.agent-sandbox` are refused. Supported source and destination-parent filesystems
+resolved mount-source aliases into `/proc`, `/sys`, `/dev`, `/run`, or `.jig`
+are refused. Supported source and destination-parent filesystems
 are ext4, XFS, Btrfs, and tmpfs, with Linux `openat2` and no-replace rename support;
 unsupported semantics have no fallback. These checks exclude a malicious host
 administrator or same-user process, as specified in the security boundary.

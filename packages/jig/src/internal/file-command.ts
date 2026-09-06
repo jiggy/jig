@@ -1,15 +1,16 @@
 import { spawn } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
-import { createServer, connect, type Socket } from 'node:net'
+import { connect, createServer, type Socket } from 'node:net'
 import { canonicalJson, decodeJson1, type JsonValue } from '../json.js'
 import {
-  PrivateFileDeliveryOwner,
   type PrivateDeliveryConnection,
   type PrivateDeliveryReceipt,
+  PrivateFileDeliveryOwner,
 } from './file-delivery.js'
 
 const MARKER = 'JIG_PRIVATE_FILE_OWNER'
 const MAX_BYTES = 16 * 1024 * 1024
+export const PRIVATE_FILE_COMMAND_STOP_GRACE_MS = 250
 interface Marker {
   readonly socket: string
   readonly token: string
@@ -107,26 +108,35 @@ export async function privateOwnFileCommand(
     env: { ...process.env, [MARKER]: JSON.stringify(selected) },
     stdio: 'inherit',
   })
+  let escalation: ReturnType<typeof setTimeout> | undefined
+  const completion = new Promise<{ exitCode: number | null; signal: NodeJS.Signals | null }>(
+    (resolve, reject) => {
+      child.once('error', reject)
+      child.once('close', (exitCode, signal) => resolve({ exitCode, signal }))
+    },
+  )
   const stop = () => {
     cancellation.abort()
+    if (escalation !== undefined || child.exitCode !== null || child.signalCode !== null) return
     child.kill('SIGTERM')
+    // This is our exact trusted child, not the payload tree. Payload fencing
+    // remains the independent cgroup owner's responsibility after its loss.
+    escalation = setTimeout(() => {
+      if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL')
+    }, PRIVATE_FILE_COMMAND_STOP_GRACE_MS)
   }
   signal?.addEventListener('abort', stop, { once: true })
   if (signal?.aborted) stop()
   const timer = setTimeout(stop, lifetimeMs)
   let exit: { exitCode: number | null; signal: NodeJS.Signals | null }
   try {
-    exit = await new Promise<{ exitCode: number | null; signal: NodeJS.Signals | null }>(
-      (resolve, reject) => {
-        child.once('error', reject)
-        child.once('close', (exitCode, signal) => resolve({ exitCode, signal }))
-      },
-    )
+    exit = await completion
     cancellation.abort()
     connection?.destroy()
     await task
   } finally {
     clearTimeout(timer)
+    clearTimeout(escalation)
     signal?.removeEventListener('abort', stop)
     connection?.destroy()
     await task

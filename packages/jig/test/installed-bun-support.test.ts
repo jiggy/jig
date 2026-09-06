@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test'
 import { copyFile, mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-
+import { openPrivateInstalledBunHost } from '../src/internal/installed-bun-host.js'
 import {
   openPrivateInstalledBunSupport,
   requirePrivateInstalledBunSupport,
@@ -11,6 +11,45 @@ import {
 import { installedBunLocation } from './fixtures/installed-bun-location.js'
 
 describe('fixed installed Bun support', () => {
+  test.each([
+    [{}, 'export OPENAI_API_KEY and OPENAI_MODEL'],
+    [{ OPENAI_API_KEY: 'not-a-real-credential' }, 'export OPENAI_MODEL'],
+    [
+      {
+        OPENAI_API_KEY: 'not-a-real-credential',
+        OPENAI_MODEL: 'model',
+        OPENAI_API: 'invalid-private-value',
+      },
+      'correct the exported OPENAI_API',
+    ],
+    [
+      { OPENAI_API_KEY: 'not-a-real-credential', OPENAI_MODEL: 'invalid private value' },
+      'correct the exported OPENAI_MODEL',
+    ],
+    [
+      {
+        OPENAI_API_KEY: 'not-a-real-credential',
+        OPENAI_MODEL: 'model',
+        OPENAI_BASE_URL: 'http://private.invalid',
+      },
+      'correct the exported OPENAI_BASE_URL',
+    ],
+    [
+      { JIG_AGENT_CLIENT: 'invalid-private-value' },
+      'JIG_AGENT_CLIENT must be codex, claude, or pi',
+    ],
+  ] as const)(
+    'keeps configuration failures target-scoped and safe to explain: %j',
+    async (environment, hint) => {
+      const host = await openPrivateInstalledBunHost(installedBunLocation, environment)
+      expect(host.agentProvider).toBeUndefined()
+      expect(host.agentUnavailableHint).toContain(hint)
+      expect(host.agentUnavailableHint).not.toContain('not-a-real-credential')
+      expect(host.agentUnavailableHint).not.toContain('private.invalid')
+      expect(host.agentUnavailableHint).not.toContain('invalid-private-value')
+    },
+  )
+
   test('workspace fixtures name the canonical installed runtime', async () => {
     expect(installedBunLocation.executablePath).toBe(
       await realpath(installedBunLocation.executablePath),

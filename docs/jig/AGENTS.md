@@ -9,8 +9,8 @@ use-case and orchestration hypotheses.
 
 - `spec/` owns current Jig host requirements and machine companions.
 - `index.md` and `guide/` teach implemented behavior and recommended practice,
-  identifying any example that requires a source candidate rather than a
-  published artifact.
+  with installation prerequisites centralized in `guide/index.md`. Describe
+  current behavior, not comparisons with superseded alpha releases.
 - `use-cases.md` records outcome-oriented product hypotheses.
 - `orchestration-patterns.md` records candidate reusable methods.
 

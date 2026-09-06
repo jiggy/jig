@@ -1,0 +1,15 @@
+{
+  "lockfileVersion": 1,
+  "configVersion": 1,
+  "workspaces": {
+    "": {
+      "name": "tested-patch-example",
+      "devDependencies": {
+        "@jigging/flow": "0.1.0-alpha.3",
+      },
+    },
+  },
+  "packages": {
+    "@jigging/flow": ["@jigging/flow@0.1.0-alpha.3", "", {}, "sha512-PpAP1miQMaG9RRx39SxzZueuSW1NFh0B5ZHZk2edPhB9KeaHkKskN68IF3kDtV74wp3v2imZ4C1qdMC/xptpAg=="],
+  }
+}
