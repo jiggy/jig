@@ -61,7 +61,8 @@ general repository worker or independent consumer proof.
 ## Verification
 
 - At this application root, run `bun install --ignore-scripts --frozen-lockfile`,
-  then `bun test examples/tested-patch/test` checks deterministic application policy.
+  then `bun test test` checks deterministic application policy. From the
+  repository root, the test path is `examples/tested-patch/test`.
 - File tests cover bounded text input and contradictory evidence refusing
   review-ready deliverables. Host capture/publication tests remain owned by Jig.
 - Contained execution and real-Agent outcomes require separately retained
