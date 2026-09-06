@@ -36,6 +36,13 @@ describe('private Bun direct Run', () => {
     })
 
     expect(recipe.wallClockCeilingMs).toBe(86_400_000)
+    expect(recipe.resourceCeilings).toEqual({
+      memoryBytes: 256 * 1024 * 1024,
+      pids: 64,
+      cpuQuotaMicros: 50_000,
+      cpuPeriodMicros: 100_000,
+      cleanupTimeoutMs: 5_000,
+    })
   })
 
   test('requires an authenticated Agent provider without identifying its credential', async () => {

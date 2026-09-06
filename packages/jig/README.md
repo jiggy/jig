@@ -60,7 +60,7 @@ Flow code. Runtime installation is handled once by npm with the Jig package.
 
 Flow Runs default to 30 seconds. `jig run --timeout DURATION` accepts a
 positive integer followed by `ms`, `s`, `m`, or `h`, up to 24 hours. Flow
-execution scopes remain fixed at 256 MiB aggregate memory, 48 aggregate PIDs,
+execution scopes remain fixed at 256 MiB aggregate memory, 64 aggregate PIDs,
 and 50% of one CPU. Project evaluation is fixed at 3 seconds, 256 MiB, 64
 PIDs, and 50% CPU. Locked dependency preparation is fixed at 60 seconds, 512
 MiB, 64 PIDs, and one CPU. See the repository

@@ -87,6 +87,66 @@ interface DispatchEvent {
 }
 
 proofDescribe('private contained Agent Run lifecycle', () => {
+  test('runs a Bun subprocess and asynchronous I/O from root and child Flow recipes', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'jig-flow-subprocess-'))
+    let session: Awaited<ReturnType<typeof openPrivateProjectSession>> | undefined
+    try {
+      await writeProject(root)
+      await writeSpecialistParent(root)
+      await writeFile(
+        join(root, 'flows/router/FLOW.md'),
+        '---\nname: subprocess\ndescription: Exercises bounded subprocess execution.\n---\n',
+      )
+      await writeFile(
+        join(root, 'flows/router/flow.ts'),
+        `
+        import { handle } from './flow-sdk/index.ts';
+        await handle(async () => {
+          const child = Bun.spawn([process.execPath, '--no-env-file', '--no-install',
+            '--config=/dev/null', '-e', 'await Bun.write("/work/check.txt", "42"); console.log(await Bun.file("/work/check.txt").text())'],
+            {stdin: 'ignore', stdout: 'pipe', stderr: 'pipe'});
+          const [stdout, stderr, exitCode] = await Promise.all([
+            new Response(child.stdout).text(), new Response(child.stderr).text(), child.exited]);
+          return {outcome: 'done', output: {stdout, stderr, exitCode}};
+        });
+      `,
+      )
+      session = await openPrivateProjectSession({
+        directory: root,
+        host: await openPrivateInstalledBunHost(installedBunLocation, {}),
+      })
+      const plan = await session.plan({ lockMode: 'update' })
+      if (plan.state !== 'applicable') throw new Error('Subprocess fixture did not produce a Plan')
+      await session.apply({ planDigest: plan.planDigest })
+      for (const nested of [false, true]) {
+        expect(
+          await runToTerminal(
+            session.rootAdministration,
+            `subprocess-${nested}`,
+            'success',
+            30_000,
+            nested,
+          ),
+        ).toMatchObject({
+          state: 'terminal',
+          terminal: {
+            status: 'succeeded',
+            outcome: 'done',
+            output: { stdout: '42\n', stderr: '', exitCode: 0 },
+          },
+        })
+        await expectNoAgentOwner(root)
+      }
+      await session.close()
+      session = undefined
+      await waitForCgroups(initialCgroups)
+      await waitForTemporaryState(initialTemporaryState)
+    } finally {
+      await session?.close()
+      await rm(root, { recursive: true, force: true })
+    }
+  }, 90_000)
+
   for (const nested of [false, true]) {
     test(`delivers complete selected Skill bytes to the SDK endpoint from ${nested ? 'a child Binding' : 'a direct Flow'}`, async () => {
       const root = await mkdtemp(join(tmpdir(), 'jig-skill-delivery-project-'))

@@ -36,7 +36,7 @@ const authenticRecipes = new WeakSet<object>()
 
 const RESOURCE_CEILINGS = Object.freeze({
   memoryBytes: 256 * 1024 * 1024,
-  pids: 48,
+  pids: 64,
   cpuQuotaMicros: 50_000,
   cpuPeriodMicros: 100_000,
   cleanupTimeoutMs: 5_000,
