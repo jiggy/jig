@@ -140,10 +140,14 @@ fi
 for expected in \
   "  jig init --bare <directory>" \
   "  jig review [project] [--yes]" \
-  "  jig run <flow:path|binding:id> [--input JSON] [--timeout DURATION]"
+  "  jig run <flow:path|binding:id> [--input JSON|@FILE] [--attach NAME=DIR]" \
+  "      [--select NAME=FILE] [--out DIR] [--timeout DURATION]" \
+  "  jig --version"
 do
   if ! grep -F -x "$expected" "$temporary/npm-help" >/dev/null; then
     echo "the npm-installed Jig executable exposed the wrong command surface" >&2
+    printf 'Expected help line:\n%s\nActual help:\n' "$expected" >&2
+    cat "$temporary/npm-help" >&2
     exit 1
   fi
 done
