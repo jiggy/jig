@@ -2,9 +2,9 @@
 
 ## Purpose
 
-Demonstrate useful composition of portable methods under operator-held
-authority. These are deliberately authored applications, not independent
-consumer evidence or promoted Starters.
+Teach recommended practices for composing useful portable methods under
+operator-held authority through reviewed applications. These are deliberately
+authored examples, not independent consumer evidence or promoted Starters.
 
 ## Ownership
 
@@ -26,6 +26,9 @@ consumer evidence or promoted Starters.
 
 ## Work Guidance
 
+- Prefer experienced authors and reviewers with full project context. Examples
+  should show users how to use the public interfaces well; they do not need the
+  fresh-context restrictions that make independent design probes effective.
 - Use a small useful application to expose missing boundaries. Do not add a
   framework, general scheduler, or provider configuration surface here.
 

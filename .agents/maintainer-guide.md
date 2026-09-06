@@ -348,14 +348,32 @@ Design probes are disposable clean-room API experiments under
 `.tmp/design-probes-*`. Their working rules are:
 
 - freeze or publish the candidate interface first;
-- give an independent builder only published artifacts, public documentation,
-  the requested outcome, and explicit limits—not internal source, roadmaps,
-  or old probes;
-- prohibit changes to the platform while it is being consumed;
+- delegate creation to a fresh sub-agent with no inherited project conversation
+  (`fork_turns: "none"` where supported), not a platform contributor or a reused
+  reviewer who has already read the internals;
+- supply only public documentation and ordinary consumer artifacts/examples as
+  project knowledge, plus the requested outcome, acceptance criteria, and safety
+  and resource limits—not internal guides, source, roadmaps, old probes, or a
+  maintainer-designed implementation plan;
+- give the consumer write authority only over its probe. Use a separate
+  workspace containing those public inputs, withholding the platform checkout
+  and privileged host-control access. No Jig/FLOW, specification, or SDK edits
+  are permitted. If the tools cannot enforce that separation, record the
+  limitation; a written prohibition is not technical isolation;
+- keep the coordinator responsible for the brief, frozen artifacts and trusted
+  operations, not authoring or repairing the consumer's implementation. Record
+  assistance and unavoidable injected guidance. Answer interface questions
+  through public documentation; missing explanations are probe findings, not
+  occasions for private implementation hints;
 - record exact artifacts, public documents, commands, failed attempts, elapsed
   time, bounded diagnostics, cleanup, and the claims proved or not proved;
 - include a malformed or failure case; and
 - deliberate separately before changing Jig or FLOW.
+
+Maintainer-authored examples and co-designed comparisons remain useful, but
+are not independent design-probe evidence. A directory name or sub-agent label
+does not establish independence: report the consumer's actual prior context,
+inputs, assistance, and access boundaries.
 
 A good probe shows that published pieces compose and exposes concrete usability
 gaps. It does not establish domain accuracy, privacy suitability, provider
@@ -386,10 +404,18 @@ missing credential, infrastructure capability, external authority, or product
 choice is. Stop for owner direction before materially expanding product
 concepts or choosing between genuinely different product directions.
 
+An owner-actionable blocker must name the unavailable prerequisite or decision,
+the safe alternatives already exhausted, and the specific owner action that
+unlocks the affected work. A fixable harness error, failed experiment, or
+agent-chosen freeze is not such a blocker. Preserve the old evidence, correct
+the agent-owned problem in a separately recorded run within existing authority
+and budgets, and continue. Escalate a real budget increase or missing permission,
+not the ordinary engineering work needed to use what is already authorized.
+
 When several independent outcomes are authorized, a blocker in one does not
 stop the others. Commit its stable in-scope work, retain unstable evidence on
 a separate experimental branch only when worth keeping, record owner-actionable
-blockers in `.tmp/`, and continue the other authorized work.
+blockers in `.tmp/current-blockers`, and continue the other authorized work.
 
 Treat legal, commercial, infrastructure, and security questions in proportion
 to specific evidence. Do not create a product subsystem to answer an
