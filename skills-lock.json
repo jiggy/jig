@@ -12,6 +12,12 @@
       "sourceType": "github",
       "skillPath": "skills/cli-just/SKILL.md",
       "computedHash": "01d024392afa712f70e1c3d874bf61d7a6685f0d6a8b8ec7a9438bd0979efe16"
+    },
+    "sley": {
+      "source": "jiggy/sley",
+      "sourceType": "github",
+      "skillPath": "skills/sley/SKILL.md",
+      "computedHash": "2c544621bb1836acb2d97a14ef2692eabff42744f76aa0afa341710566d6197e"
     }
   }
 }
