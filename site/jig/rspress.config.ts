@@ -9,6 +9,7 @@ const researchSidebar = [
     text: 'Research',
     items: [
       { text: 'Use cases', link: '/use-cases' },
+      { text: 'Time-travel handoff', link: '/time-travel-handoff' },
       {
         text: 'Candidate orchestration patterns',
         link: '/orchestration-patterns',
@@ -59,6 +60,7 @@ export default defineConfig({
     sidebar: {
       '/guide/': guideSidebar,
       '/use-cases': researchSidebar,
+      '/time-travel-handoff': researchSidebar,
       '/orchestration-patterns': researchSidebar,
       '/spec/': [
         {

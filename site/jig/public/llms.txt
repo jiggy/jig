@@ -9,6 +9,7 @@ Jig is a local, secure host for admitted FLOW packages.
 - Tested patch (source candidate): https://jig.md/guide/tested-patch
 - Workflow-design guide: https://jig.md/guide/workflow-design
 - Non-normative use cases: https://jig.md/use-cases
+- Time-travel handoff (research, not implemented): https://jig.md/time-travel-handoff
 - Candidate orchestration patterns: https://jig.md/orchestration-patterns
 - Project Authoring SDK: https://jig.md/spec/project-sdk
 - Project and execution policy: https://jig.md/spec/project-policy

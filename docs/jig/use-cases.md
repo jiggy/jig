@@ -17,6 +17,7 @@ The examples grow with Jig, but no application has to use every capability.
 | Give one Agent a narrow job | [AI response release gate](#ai-response-release-gate) |
 | Connect known steps | [Grant proposal workshop](#grant-proposal-workshop) |
 | Choose among approved routes | [Repair diagnostic](#repair-diagnostic) |
+| Supervise ongoing Agent work | [Time-travel handoff](#time-travel-handoff) |
 | React reliably to outside events | [Cold-chain exception packet](#cold-chain-exception-packet) |
 | Share a protected service | [Privacy-budgeted analysis](#privacy-budgeted-analysis) |
 
@@ -643,6 +644,38 @@ without allowing the model to weaken policy.
 - **What would prove it:** Test known classes, mixed-purpose records, unknown
   requests, and adversarial attempts to select weaker transforms; measure
   unsafe releases, over-redaction, abstention, and review time.
+
+## Supervise ongoing Agent work
+
+### Time-travel handoff
+
+A busy worker writes a handoff, then continues from an earlier conversation
+checkpoint with the current implementation and newly learned lessons. In the
+automatic case, other workers keep progressing during the transition.
+
+*Research idea · Manual practice reported · Automatic supervision unproved*
+
+- **What the user gets:** Earlier decisions stay available without the entire
+  recent execution transcript, plus an opportunity to review current work from
+  a fresh context without manually supervising every worker's handoff.
+- **Why Jig:** A reusable supervision method could act on only its authorized
+  workers while the host enforces lifetime, data access, and cleanup.
+- **Simplest version:** One completed work episode, a handoff, and an earlier
+  conversation fork against the unchanged current files. This does not yet
+  prove automatic intervention while multiple Agents are busy.
+- **What it needs:** Retained conversation checkpoints and demonstrated client
+  control; the automatic case also needs observable progress, safe stopping
+  boundaries, bounded concurrency, and defined handling of competing requests.
+  None implies a selected public session or event API.
+- **Use something else when:** Client-native compaction or a small application
+  controller provides the same context and authority guarantees with less work.
+- **What would prove it:** Preserve decisions and newer instructions without
+  replaying effects; then automatically transition one of two active workers
+  while the other progresses. Evaluate review quality and operator effort
+  separately from lifecycle correctness, under comparable budgets.
+
+The [full use-case brief](./time-travel-handoff.md) preserves the manual prompts,
+automatic scenario, coordination questions, failure boundaries, and falsifiers.
 
 ## React reliably to outside events
 
