@@ -20,6 +20,12 @@ async function fixture(work: (root: string) => Promise<void>) {
 }
 const record = { status: 'succeeded', outcome: 'blocked', output: { reason: 'synthetic evidence' } }
 
+async function fixturePid(path: string): Promise<number> {
+  const pid = Number(await readFile(path, 'utf8'))
+  if (!Number.isSafeInteger(pid) || pid <= 1) throw new Error('invalid owned fixture PID')
+  return pid
+}
+
 // Diagnostic acknowledgement for our fixture only; production cleanup uses cgroup fencing.
 async function waitUntilStopped(pid: number): Promise<void> {
   const deadline = performance.now() + 1500
@@ -46,7 +52,7 @@ for (const trigger of ['deadline', 'cancel'] as const) {
           const watchdog = setTimeout(async () => {
             rescued = true
             try {
-              process.kill(pid ?? Number(await readFile(pidFile, 'utf8')), 'SIGKILL')
+              process.kill(pid ?? (await fixturePid(pidFile)), 'SIGKILL')
             } catch {}
           }, 2500)
           const started = performance.now()
@@ -63,7 +69,7 @@ for (const trigger of ['deadline', 'cancel'] as const) {
             700,
             async () => {
               if (phase !== 'during') return
-              pid = Number(await readFile(pidFile, 'utf8'))
+              pid = await fixturePid(pidFile)
               process.kill(pid, 'SIGSTOP')
               await waitUntilStopped(pid)
               if (trigger === 'cancel') abort.abort()
@@ -77,7 +83,7 @@ for (const trigger of ['deadline', 'cancel'] as const) {
               while (!settled) {
                 try {
                   await readFile(readyFile)
-                  pid = Number(await readFile(pidFile, 'utf8'))
+                  pid = await fixturePid(pidFile)
                   await waitUntilStopped(pid)
                   break
                 } catch {
@@ -91,7 +97,7 @@ for (const trigger of ['deadline', 'cancel'] as const) {
             expect(performance.now() - started).toBeLessThan(
               700 + PRIVATE_FILE_COMMAND_STOP_GRACE_MS + 1000,
             )
-            pid ??= Number(await readFile(pidFile, 'utf8'))
+            pid ??= await fixturePid(pidFile)
             expect(() => process.kill(pid!, 0)).toThrow()
             expect(
               (await readdir(root)).filter((name) => name.startsWith('.jig-delivery-')),
