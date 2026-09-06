@@ -101,6 +101,8 @@ The fixture JSON matches the original files in `fixtures/utf8/`.
 
 Change `flows/repair/checks.json` to specify the exported function and the
 independent argument/expected-observation cases for another small utility.
+Arguments and expected values must follow [FLOW JSON/1](https://flow.jig.md/spec/json-values),
+including its safe-integer range; not every JavaScript value can cross a Flow boundary.
 Expect `{returned: value}` or `{threw: errorName}`; the fixture includes invalid
 budgets so dropping validation cannot pass. Review
 those changes before running: acceptance policy is admitted application
