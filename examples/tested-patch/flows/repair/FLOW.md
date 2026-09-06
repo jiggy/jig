@@ -1,6 +1,9 @@
 ---
 name: tested-patch
 description: Repair one supplied TypeScript module and return a patch with independent acceptance-test evidence.
+attachments:
+  source: read
+  deliverables: read-write
 uses:
   agent:
     contract: ./contracts/agent-run.capability.json
@@ -9,8 +12,9 @@ outcomes:
   limit: The Agent could not complete within its limit.
 ---
 
-Supply an issue, a `snapshot` containing bounded text `files` and their
-`sha256` identity, and one existing `editPath`. The checker and `checks.json`
+Supply an `issue` and one existing `editPath` as JSON, and bounded UTF-8 files
+in the read-only `source` attachment. The method identifies their exact text
+and writes its summary and proposals to `deliverables`. The checker and `checks.json`
 are package-owned acceptance policy; they are not editable input. The snapshot
 contains no dependencies requiring installation. This example supports a
 synchronous exported function with JSON arguments and JSON return values.
@@ -34,3 +38,9 @@ codes are not candidate-process exit codes; child failures propagate as
 operation errors. No result claims correctness beyond the finite case set,
 and no original repository, acceptance file, or external system is changed.
 The recipient decides whether to apply, merge, or release the patch.
+
+`summary.txt` explains the outcome; `proposal-N.patch` files preserve validated
+attempts. `review.patch` is written only after the method verifies original,
+replacement, diff, checker and case identities and consistent passing evidence.
+Operational failure does not deliver partial files; any available terminal
+details remain the evidence of that unsuccessful Run.

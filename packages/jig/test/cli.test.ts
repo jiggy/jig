@@ -8,6 +8,7 @@ import {
   rmdir,
   rm,
   unlink,
+  symlink,
   writeFile,
 } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -25,6 +26,8 @@ import {
   type ProjectPlanResult,
   type ProjectSession,
 } from '../src/administration/project.js'
+import { RootAdministrationError } from '../src/administration/root.js'
+import { canonicalJson, JSON_1_LIMITS } from '../src/json.js'
 import type {
   RootAdministration,
   RootRunStatus,
@@ -217,7 +220,7 @@ describe('finite Jig project commands', () => {
       expect(invocation.output).toContain('jig review [project] [--yes]')
       expect(invocation.output).toContain('jig --version')
       expect(invocation.output).toContain(
-        'jig run <flow:path|binding:id> [--input JSON] [--timeout DURATION]',
+        'jig run <flow:path|binding:id> [--input JSON|@FILE] [--attach NAME=DIR]',
       )
       expect(invocation.output).not.toContain('package check')
       expect(invocation.error).toBe('')
@@ -397,6 +400,139 @@ describe('finite Jig project commands', () => {
         input: { case: input },
       })
       expect(invocation.error).toBe('')
+    }
+  })
+
+  test('file input is acquired once after pure lifetime parsing, while quoted @ stays JSON', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'jig-cli-input-'))
+    try {
+      const file = join(root, 'issue.json')
+      const args = ['run', 'flow:flows/work', '--input', `@${file}`]
+      expect(privateCliCommandLifetimeMs(args)).toBe(330_000)
+      await writeFile(file, '{"captured":true}')
+      let request: StartRootRunRequest | undefined
+      const events: string[] = []
+      const invocation = commandInvocation(
+        fakeHost(
+          fakeSession(events, {
+            captureRequest: (value) => {
+              request = value
+            },
+          }),
+          events,
+        ),
+      )
+      expect(await main(args, invocation.options)).toBe(0)
+      expect(request?.input).toEqual({ captured: true })
+      expect(
+        await main(['run', 'flow:flows/work', '--input', '"@not-a-path"'], invocation.options),
+      ).toBe(0)
+      expect(request?.input).toBe('@not-a-path')
+      await symlink(file, join(root, 'link'))
+      const rejected = commandInvocation(unusedHost())
+      expect(
+        await main(
+          ['run', 'flow:flows/work', '--input', `@${join(root, 'link')}`],
+          rejected.options,
+        ),
+      ).toBe(1)
+      expect(rejected.output).toBe('')
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  test('file option mistakes fail before project acquisition', async () => {
+    for (const options of [
+      ['--select', 'source=file'],
+      ['--attach', 'source=.', '--attach', 'source=.'],
+      ['--attach', 'source=.', '--select', 'source=../escape'],
+      ['--attach', 'source=.', '--select', 'source=a', '--select', 'source=a'],
+      ['--attach', 'bad--name=.'],
+    ]) {
+      const invocation = commandInvocation(unusedHost())
+      expect(await main(['run', 'flow:flows/work', ...options], invocation.options)).toBe(1)
+      expect(invocation.output).toBe('')
+    }
+  })
+
+  test('missing admitted file mappings have actionable bounded diagnostics, not an internal failure', async () => {
+    const events: string[] = []
+    const invocation = commandInvocation(
+      fakeHost(
+        fakeSession(events, {
+          captureRequest: () => {
+            throw new RootAdministrationError('INVALID_REQUEST', 'private message', {
+              code: 'RUN_ATTACHMENTS_INVALID',
+            })
+          },
+        }),
+        events,
+      ),
+    )
+    expect(await main(['run', 'flow:flows/work'], invocation.options)).toBe(1)
+    expect(invocation.output).toBe('')
+    expect(invocation.error).toContain('JIG_RUN_FILES_INVALID: supply exactly')
+    expect(invocation.error).not.toContain('private message')
+  })
+
+  test('a late Session cleanup failure preserves its already known execution terminal', async () => {
+    const events: string[] = []
+    const session = fakeSession(events)
+    const invocation = commandInvocation(
+      fakeHost(
+        {
+          ...session,
+          async close() {
+            throw new Error('private close failure')
+          },
+        },
+        events,
+      ),
+    )
+    expect(await main(['run', 'flow:flows/work'], invocation.options)).toBe(2)
+    expect(JSON.parse(invocation.output)).toMatchObject({
+      status: 'succeeded',
+      outcome: 'done',
+      cleanup: { status: 'failed', code: 'PROJECT_CLOSE_FAILED' },
+    })
+    expect(invocation.error).not.toContain('private close failure')
+  })
+
+  test('file report limits do not discard an already settled large terminal', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'jig-cli-large-result-'))
+    try {
+      for (let i = 0; i < 16; i++) await writeFile(join(root, `file-${i}`), '')
+      const terminal: RootRunTerminal = {
+        status: 'succeeded',
+        outcome: 'done',
+        output: ['x'.repeat(8 * 1024 * 1024), 'y'.repeat(8 * 1024 * 1024 - 1024)],
+        diagnostics: { stderr: '', stderrBytes: 0, stderrTruncated: false },
+      }
+      expect(canonicalJson(terminal).length).toBeLessThan(JSON_1_LIMITS.bytes)
+      const events: string[] = []
+      const invocation = commandInvocation({
+        ...fakeHost(fakeSession(events, { terminal }), events),
+        delivery: {
+          async prepare() {},
+          async publish(record) {
+            canonicalJson(record)
+            throw new Error('expanded record unexpectedly fit')
+          },
+        },
+      })
+      expect(
+        await main(
+          ['run', 'flow:flows/work', '--attach', `source=${root}`, '--out', `${root}-review`],
+          invocation.options,
+        ),
+      ).toBe(2)
+      expect(JSON.parse(invocation.output).output).toEqual(terminal.output)
+      expect(JSON.parse(invocation.output).status).toBe('succeeded')
+      expect(invocation.error).toContain('JIG_REPORT_LIMIT')
+      expect(events.filter((event) => event === 'start')).toHaveLength(1)
+    } finally {
+      await rm(root, { recursive: true, force: true })
     }
   })
 

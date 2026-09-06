@@ -94,6 +94,7 @@ import {
   type PrivateRootRunTerminal,
   type PrivateRootRunRequest,
 } from './root-run-state.js'
+import { requirePrivateRootFileMapping, type PrivateRunFileIdentity } from './root-run-files.js'
 
 export type {
   PrivateRootRunSnapshot,
@@ -833,6 +834,8 @@ export async function submitPrivateRootRun(input: {
   readonly submissionId: string
   readonly target: RunTargetIdentity
   readonly input: JsonValue
+  readonly files?: PrivateRunFileIdentity
+  readonly identifyFiles?: (request: PrivateActivationRequest) => void
   readonly deadlineUnixMs: number
 }): Promise<PrivateRootRunSubmission> {
   const coordinator = requirePrivateProjectCoordinator(input.coordinator)
@@ -867,6 +870,18 @@ export async function submitPrivateRootRun(input: {
     requireCandidateRoot(candidate, owner.root)
     artifacts = await reacquireCandidateArtifacts(input.packageStoreRoot, candidate)
 
+    const fileTarget = findPrivateActivationCandidateTargetV5(candidate, request.target)
+    if (fileTarget !== undefined) {
+      try {
+        requirePrivateRootFileMapping(fileTarget.request, request.files)
+        input.identifyFiles?.(fileTarget.request)
+      } catch {
+        invalid(
+          'RUN_ATTACHMENTS_INVALID',
+          'provide the admitted root read attachments and its required output destination',
+        )
+      }
+    }
     const terminal = rootPreflightTerminal(candidate, request, artifacts)
     const runId = privateRootRunIdentityDigest({
       project: {
@@ -2403,6 +2418,7 @@ function loadRootRunSnapshot(
     coordinatorEpoch,
     target: request.target,
     input: request.input,
+    files: request.files,
     deadlineUnixMs: request.deadlineUnixMs,
     state: terminal === undefined ? ('spawn-intent' as const) : ('terminal' as const),
     ...(terminal === undefined ? {} : { terminal }),
@@ -2419,6 +2435,7 @@ function requireSameExternalSubmission(
   const durableRequest = createPrivateRootRunRequest({
     target: run.target,
     input: run.input,
+    files: run.files,
     deadlineUnixMs: run.deadlineUnixMs,
   })
   if (privateRootSubmissionDigest(durableRequest) !== submissionDigest) {

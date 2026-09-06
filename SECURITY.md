@@ -8,7 +8,7 @@ boundary. There is no privileged or weaker fallback.
 ## What the boundary protects
 
 An admitted Flow receives only its exact execution package, fixed runtime
-support, private scratch space, private process and network namespaces, and
+support, explicitly supplied root attachments, private scratch space, private process and network namespaces, and
 the Run/1 channel. It does not receive the project tree, host environment,
 ambient `PATH`, host process tree, host network, writable cgroup controls,
 general host devices, inherited descriptors, or Jig's control channel.
@@ -98,6 +98,40 @@ remain reusable at the cap, while a review requiring any new artifact fails
 closed. This alpha has no selective reclamation command. Reclaiming space
 requires closing Jig and intentionally removing the project's protected
 `.jig` state, which also discards its local admission and Run history.
+
+## File capture and delivery
+
+Root read attachments contain immutable captured bytes, not live host mounts.
+Capture accepts at most 8 MiB across 64 files; selectors avoid enumerating
+unselected subtrees. Linux descriptor-relative operations reject symlinks,
+multiply linked files, nested mounts and protected host-state aliases. Source
+and destination-parent filesystems must be ext4, XFS, Btrfs or tmpfs. This does
+not detect secrets in explicitly selected files or defeat a malicious host user.
+
+The sole writable attachment uses a 16 MiB anonymous tmpfs under the Run's
+256 MiB aggregate memory ceiling, including filesystem metadata. A trusted
+descriptor retains that bounded mount after all payload writers are fenced.
+Removal of the cgroup does not free these retained pages: they stay charged
+in the memory hierarchy until the last holder releases them. Final-tree
+validation accepts at most 16 MiB of logical bytes and 64 files, rejecting
+oversized sparse files, links, special files and excess metadata before copying.
+
+Temporary content may coexist: 8 MiB of sealed input and a bounded capture
+buffer; the retained output mount and up to 16 MiB of copied file buffers;
+and up to 16 MiB of destination file staging plus a bounded JSON/1 host record.
+The Run memory ceiling includes runtime and tmpfs metadata, not all trusted
+coordinator or delivery-process memory. No per-invocation source tree is added
+to the retained Package/1 store. Only bounded request and terminal evidence
+survives command cleanup; the requested final packet is intentionally retained.
+
+The independent outer command owns output staging and removes it if its
+execution coordinator dies during copying. Flow code sees neither the host
+destination nor the delivery socket. Atomic no-replace publication creates
+private files and directories; it promises complete visibility, not power-loss
+durability. A published packet survives later cancellation or acknowledgement
+loss. Killing the whole host or both trusted owners is outside the coordinator-
+loss cleanup guarantee; no automatic replay or general artifact-recovery service
+is provided. Cleanup failures are surfaced rather than reported as zero residue.
 
 ## Reporting a vulnerability
 

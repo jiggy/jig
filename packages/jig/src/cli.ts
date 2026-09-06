@@ -1,6 +1,8 @@
 #!/usr/bin/env bun
 
 import { randomBytes } from 'node:crypto'
+import { closeSync } from 'node:fs'
+import { basename, dirname, resolve } from 'node:path'
 import { createInterface } from 'node:readline/promises'
 import { setTimeout as delay } from 'node:timers/promises'
 import manifest from '../package.json' with { type: 'json' }
@@ -13,7 +15,17 @@ import {
   type RootRunTerminal,
 } from './administration/root.js'
 import { BareInitError, initializeBareProject } from './bare-init.js'
-import { canonicalJson, decodeJson1, type JsonValue } from './json.js'
+import { canonicalJson, decodeJson1, JSON_1_LIMITS, type JsonValue } from './json.js'
+import {
+  privateAttachmentName,
+  privateCaptureAttachments,
+  privateFilePath,
+  privateOpenFileRoot,
+  privateReadRegularFile,
+  sha256,
+} from './internal/linux-file-input.js'
+import { PrivateRootRunFiles } from './internal/root-run-files.js'
+import type { PrivateDeliveryConnection, PrivateDeliveryReceipt } from './internal/file-delivery.js'
 import { bindingRef, flowRef, type RunTargetRef } from './project/author.js'
 import {
   PRIVATE_DEFAULT_ROOT_RUN_TIMEOUT_MS,
@@ -25,7 +37,8 @@ import {
 const HELP = `Usage:
   jig init --bare <directory>
   jig review [project] [--yes]
-  jig run <flow:path|binding:id> [--input JSON] [--timeout DURATION]
+  jig run <flow:path|binding:id> [--input JSON|@FILE] [--attach NAME=DIR]
+      [--select NAME=FILE] [--out DIR] [--timeout DURATION]
   jig --version`
 
 const textEncoder = new TextEncoder()
@@ -33,7 +46,11 @@ const textDecoder = new TextDecoder()
 
 /** Private injection seam until the installed host owns project acquisition. */
 export interface PrivateCliCommandHost {
-  acquire(project: string, options?: { readonly runTimeoutMs?: number }): Promise<ProjectSession>
+  acquire(
+    project: string,
+    options?: { readonly runTimeoutMs?: number; readonly files?: PrivateRootRunFiles },
+  ): Promise<ProjectSession>
+  readonly delivery?: PrivateDeliveryConnection
   pause?(milliseconds: number): Promise<void>
 }
 
@@ -173,26 +190,161 @@ async function executeReview(arguments_: readonly string[], runtime: CliRuntime)
 
 async function executeRun(arguments_: readonly string[], runtime: CliRuntime): Promise<number> {
   const parsed = parseRun(arguments_)
-  const status = await withProjectSession(
-    runtime.currentDirectory,
-    runtime,
-    async (session) => {
-      const receipt = await session.rootAdministration.startRun({
-        submissionId: runtime.createSubmissionId(),
-        target: parsed.target,
-        input: parsed.input,
-      })
-      return await waitForTerminal(
-        session.rootAdministration,
-        receipt.runId,
-        runtime.host.pause ?? defaultPause,
-        runtime.signal,
-      )
-    },
-    { runTimeoutMs: parsed.timeoutMs },
+  let input = parsed.input
+  try {
+    if (parsed.inputFile !== undefined) {
+      const path = resolve(runtime.currentDirectory, parsed.inputFile)
+      const parent = privateOpenFileRoot(dirname(path))
+      try {
+        input = decodeJson1(privateReadRegularFile(parent, basename(path), JSON_1_LIMITS.bytes))
+      } finally {
+        closeSync(parent)
+      }
+    }
+  } catch {
+    throw new CliDiagnostic(
+      'JIG_RUN_INPUT_INVALID',
+      '--input requires bounded JSON/1 in a regular file; check the path, links, size, and contents',
+      1,
+    )
+  }
+  let capture: ReturnType<typeof privateCaptureAttachments>
+  try {
+    capture = privateCaptureAttachments(
+      parsed.attachments.map((item) => ({
+        ...item,
+        directory: resolve(runtime.currentDirectory, item.directory),
+      })),
+    )
+  } catch {
+    throw new CliDiagnostic(
+      'JIG_RUN_FILES_INVALID',
+      'selected input must be a bounded regular-file tree without links or protected host state; check --attach and --select',
+      1,
+    )
+  }
+  const files = new PrivateRootRunFiles(
+    capture.attachments,
+    parsed.output === undefined ? null : resolve(runtime.currentDirectory, parsed.output),
   )
-  runtime.writeOutput(`${textDecoder.decode(canonicalJson(publicTerminal(status.terminal)))}\n`)
-  return status.terminal.status === 'succeeded' ? 0 : status.terminal.status === 'failed' ? 1 : 2
+  try {
+    if (parsed.output !== undefined) {
+      if (runtime.host.delivery === undefined)
+        throw new CliDiagnostic(
+          'JIG_DELIVERY_UNAVAILABLE',
+          'the installed file-delivery owner is unavailable',
+          2,
+        )
+      try {
+        await runtime.host.delivery.prepare(
+          files.identity.output!,
+          capture.attachments.map((item) => item.rootFd),
+        )
+      } catch {
+        throw new CliDiagnostic(
+          'JIG_OUTPUT_INVALID',
+          '--out requires a new destination outside input roots and protected state, beneath an existing supported directory',
+          1,
+        )
+      }
+    }
+    let cleanupFailed = false
+    const status = await withProjectSession(
+      runtime.currentDirectory,
+      runtime,
+      async (session) => {
+        const receipt = await session.rootAdministration.startRun({
+          submissionId: runtime.createSubmissionId(),
+          target: parsed.target,
+          input,
+        })
+        return await waitForTerminal(
+          session.rootAdministration,
+          receipt.runId,
+          runtime.host.pause ?? defaultPause,
+          runtime.signal,
+        )
+      },
+      {
+        runTimeoutMs: parsed.timeoutMs,
+        ...(parsed.attachments.length === 0 && parsed.output === undefined ? {} : { files }),
+      },
+      () => {
+        cleanupFailed = true
+      },
+    )
+    let record = publicTerminal(status.terminal)
+    if (cleanupFailed)
+      record = {
+        ...(record as Record<string, JsonValue>),
+        cleanup: { status: 'failed', code: 'PROJECT_CLOSE_FAILED' },
+      }
+    let delivery: PrivateDeliveryReceipt | undefined
+    if (parsed.output !== undefined) {
+      record = {
+        ...(record as Record<string, JsonValue>),
+        runId: status.runId,
+        method: files.method ?? null,
+        input: { digest: sha256(canonicalJson(input)), attachments: files.identity.attachments },
+      } as unknown as JsonValue
+      try {
+        delivery = await runtime.host.delivery!.publish(
+          record,
+          !cleanupFailed && status.terminal.status === 'succeeded'
+            ? files.outputDirectory?.fd
+            : undefined,
+          runtime.signal,
+        )
+      } catch {
+        delivery = { status: 'unknown', destination: files.identity.output!, code: 'CHANNEL_LOST' }
+      }
+      record = { ...(record as Record<string, JsonValue>), delivery } as unknown as JsonValue
+    }
+    let encodedRecord: Uint8Array
+    try {
+      encodedRecord = canonicalJson(record)
+    } catch {
+      // File manifests or late observations may exceed JSON/1 even when the
+      // accepted terminal fits. Preserve that terminal; never truncate it or
+      // reinterpret a report failure as permission to repeat the Run.
+      runtime.writeOutput(`${textDecoder.decode(canonicalJson(publicTerminal(status.terminal)))}\n`)
+      runtime.writeError(
+        renderDiagnostic(
+          'JIG_REPORT_LIMIT',
+          `the expanded report exceeds JSON/1 limits; execution terminal preserved; delivery ${delivery?.status ?? 'not requested'}${cleanupFailed ? '; cleanup failed' : ''}; inspect any --out destination before starting new work`,
+        ),
+      )
+      return 2
+    }
+    runtime.writeOutput(`${textDecoder.decode(encodedRecord)}\n`)
+    if (cleanupFailed) {
+      runtime.writeError(
+        renderDiagnostic(
+          'JIG_CLEANUP_FAILED',
+          'the execution terminal is preserved, but Project Session cleanup failed',
+        ),
+      )
+      return 2
+    }
+    if (delivery !== undefined && delivery.status !== 'written') {
+      runtime.writeError(
+        renderDiagnostic(
+          'JIG_DELIVERY_FAILED',
+          delivery.status === 'unknown'
+            ? 'execution is settled; delivery was not acknowledged and the packet may exist; repeating the command starts new work'
+            : 'execution is settled, but delivery failed; repeating the command starts new work',
+        ),
+      )
+      return 2
+    }
+    return status.terminal.status === 'succeeded' ? 0 : status.terminal.status === 'failed' ? 1 : 2
+  } finally {
+    try {
+      await files.close()
+    } finally {
+      capture.close()
+    }
+  }
 }
 
 function parseReview(
@@ -215,11 +367,17 @@ function parseReview(
 function parseRun(arguments_: readonly string[]): {
   readonly target: RunTargetRef
   readonly input: JsonValue
+  readonly inputFile?: string
+  readonly attachments: readonly { name: string; directory: string; select: readonly string[] }[]
+  readonly output?: string
   readonly timeoutMs: number
 } {
   if (arguments_.length < 2) throw new CliDiagnostic('JIG_USAGE', HELP, 2)
   const target = parseTarget(arguments_[1]!)
   let input: JsonValue = {}
+  let inputFile: string | undefined, output: string | undefined
+  const attachments = new Map<string, string>(),
+    selectors = new Map<string, string[]>()
   let timeoutMs = PRIVATE_DEFAULT_ROOT_RUN_TIMEOUT_MS
   let sawInput = false
   let sawTimeout = false
@@ -229,6 +387,12 @@ function parseRun(arguments_: readonly string[]): {
     if (value === undefined) throw new CliDiagnostic('JIG_USAGE', HELP, 2)
     if (option === '--input' && !sawInput) {
       sawInput = true
+      if (value.startsWith('@')) {
+        if (value.length < 2)
+          throw new CliDiagnostic('JIG_RUN_INPUT_INVALID', '@FILE requires a file path', 1)
+        inputFile = value.slice(1)
+        continue
+      }
       try {
         input = decodeJson1(textEncoder.encode(value))
       } catch {
@@ -241,9 +405,55 @@ function parseRun(arguments_: readonly string[]): {
       timeoutMs = parseRunTimeout(value)
       continue
     }
+    if (option === '--out' && output === undefined) {
+      output = value
+      continue
+    }
+    if (option === '--attach' || option === '--select') {
+      const split = value.indexOf('=')
+      try {
+        if (split < 1 || split === value.length - 1) throw new Error('missing mapping')
+        const name = privateAttachmentName(value.slice(0, split)),
+          path = value.slice(split + 1)
+        if (option === '--attach') {
+          if (attachments.has(name)) throw new Error('duplicate mapping')
+          attachments.set(name, path)
+        } else {
+          privateFilePath(path)
+          const selected = selectors.get(name) ?? []
+          if (selected.includes(path)) throw new Error('duplicate selector')
+          selected.push(path)
+          selectors.set(name, selected)
+        }
+      } catch {
+        throw new CliDiagnostic(
+          'JIG_RUN_FILES_INVALID',
+          'use --attach NAME=DIR and optional unique --select NAME=RELATIVE_FILE values',
+          1,
+        )
+      }
+      continue
+    }
     throw new CliDiagnostic('JIG_USAGE', HELP, 2)
   }
-  return { target, input, timeoutMs }
+  if ([...selectors.keys()].some((name) => !attachments.has(name)))
+    throw new CliDiagnostic(
+      'JIG_RUN_FILES_INVALID',
+      '--select requires a matching --attach name',
+      1,
+    )
+  return {
+    target,
+    input,
+    timeoutMs,
+    attachments: [...attachments].map(([name, directory]) => ({
+      name,
+      directory,
+      select: selectors.get(name) ?? [],
+    })),
+    ...(inputFile === undefined ? {} : { inputFile }),
+    ...(output === undefined ? {} : { output }),
+  }
 }
 
 function parseRunTimeout(value: string): number {
@@ -296,7 +506,8 @@ async function withProjectSession<T>(
   project: string,
   runtime: CliRuntime,
   operation: (session: ProjectSession) => Promise<T>,
-  acquisition?: { readonly runTimeoutMs?: number },
+  acquisition?: { readonly runTimeoutMs?: number; readonly files?: PrivateRootRunFiles },
+  onSettledCloseFailure?: () => void,
 ): Promise<T> {
   runtime.signal?.throwIfAborted()
   const session = await runtime.host.acquire(project, acquisition)
@@ -333,7 +544,10 @@ async function withProjectSession<T>(
     throw new AggregateError([failure, closeFailure], 'project command and close both failed')
   }
   if (!completed) throw failure
-  if (closeFailed) throw closeFailure
+  if (closeFailed) {
+    if (onSettledCloseFailure === undefined) throw closeFailure
+    onSettledCloseFailure()
+  }
   return result as T
 }
 
@@ -447,6 +661,20 @@ function renderFailure(error: unknown, runtime: CliRuntime): 1 | 2 {
     return projected.exitCode
   }
   if (error instanceof RootAdministrationError) {
+    if (
+      error.details !== null &&
+      typeof error.details === 'object' &&
+      !Array.isArray(error.details) &&
+      (error.details as Record<string, JsonValue>).code === 'RUN_ATTACHMENTS_INVALID'
+    ) {
+      runtime.writeError(
+        renderDiagnostic(
+          'JIG_RUN_FILES_INVALID',
+          "supply exactly the admitted target's read attachments with --attach and its required writable destination with --out",
+        ),
+      )
+      return 1
+    }
     const projected = rootError(error.code)
     runtime.writeError(renderDiagnostic(error.code, projected.message))
     return projected.exitCode

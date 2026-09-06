@@ -48,15 +48,7 @@ export interface PrivateActivationRequest {
   readonly settings: JsonObject
   readonly capabilities: Readonly<Record<string, LinkedCapabilityUse>>
   readonly flowSlots: Readonly<Record<string, RunTargetIdentity>>
-  readonly attachments: Readonly<
-    Record<
-      string,
-      {
-        readonly source: string
-        readonly access: 'read' | 'read-write'
-      }
-    >
-  >
+  readonly attachments: Readonly<Record<string, 'read' | 'read-write'>>
 }
 
 export type PrivateResolutionUnavailableCode = PrivateActivationUnavailableCode
@@ -115,7 +107,7 @@ export function buildPrivateActivationRequests(
         settings: emptyRecord(),
         capabilities: flow.uses,
         flowSlots: emptyRecord(),
-        attachments: emptyRecord(),
+        attachments: normalizeRequestAttachments(flow.metadata.attachments ?? {}),
       }),
     )
   }
@@ -135,7 +127,7 @@ export function buildPrivateActivationRequests(
         settings: binding.settings,
         capabilities: flow.uses,
         flowSlots: binding.slots,
-        attachments: emptyRecord(),
+        attachments: normalizeRequestAttachments(flow.metadata.attachments ?? {}),
       }),
     )
   }
@@ -479,10 +471,20 @@ function requireLocalName(value: unknown, label: string): string {
 
 function normalizeRequestAttachments(value: unknown): PrivateActivationRequest['attachments'] {
   const input = snapshotJsonObject(value, 'activation attachments')
-  if (Object.keys(input).length !== 0) {
-    throw new TypeError('activation attachments are unsupported by the direct alpha')
+  if (
+    Object.keys(input).length > 8 ||
+    Object.values(input).filter((access) => access === 'read-write').length > 1
+  )
+    throw new TypeError('unsupported root attachment profile')
+  const output: Record<string, 'read' | 'read-write'> = Object.create(null)
+  for (const name of Object.keys(input).sort()) {
+    requireLocalName(name, 'attachment name')
+    const access = input[name]
+    if (access !== 'read' && access !== 'read-write')
+      throw new TypeError('invalid attachment access')
+    output[name] = access
   }
-  return emptyRecord()
+  return Object.freeze(output)
 }
 
 function normalizeRequestCapabilities(value: unknown): PrivateActivationRequest['capabilities'] {

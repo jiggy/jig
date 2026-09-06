@@ -11,7 +11,7 @@ provides three commands:
 ```text
 jig init --bare <directory>
 jig review [project] [--yes]
-jig run <flow:path|binding:id> [--input JSON] [--timeout DURATION]
+jig run <flow:path|binding:id> [--input JSON|@FILE] [--attach NAME=DIR] [--out DIR] [--timeout DURATION]
 ```
 
 There is no setup command, daemon, runtime registry, or sandbox selector.

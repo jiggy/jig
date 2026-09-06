@@ -1,0 +1,4 @@
+{
+  "issue": "Fix UTF-8 byte truncation without splitting a code point. Preserve invalid-budget rejection.",
+  "editPath": "src/truncate-utf8.ts"
+}

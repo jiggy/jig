@@ -88,7 +88,7 @@ describe('private project Plan review', () => {
     expect(rendered.text).not.toContain('private-observation-sentinel')
     expect(rendered.text).not.toContain('recipeDigest')
     expect(rendered.text).not.toContain('observationDigest')
-    expect(rendered.text).not.toContain('attachments')
+    expect(rendered.text).toContain('"attachments": {}')
     expect(rendered.text).toContain(`"digest": "${digest}"`)
     expect(rendered.text).toContain('"id": "https://jig.md/contracts/agent-run"')
     expect(rendered.text).not.toContain('"operation"')

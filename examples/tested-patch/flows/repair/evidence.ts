@@ -6,7 +6,7 @@ import {
   sha256,
   snapshotDigest,
   unifiedPatch,
-} from './flows/repair/policy.ts'
+} from './policy.ts'
 
 export interface Acceptance {
   checkerSha256: string
@@ -59,19 +59,14 @@ function check(value: any, acceptance: Acceptance) {
   return { passed, total: results.length, exitCode: item.exitCode as number }
 }
 
-// Only evidence from the trusted repair method is interpreted here, never candidate code.
-// Any bad identity or incomplete verdict prevents a review-ready patch, while raw evidence survives.
-export function inspect(terminal: unknown, input: RepairInput, acceptance: Acceptance) {
-  const result = record(terminal)
-  const evidence = result.status === 'succeeded' ? result.output : result.details
+// Method-owned evidence checks run before returning a result or writing a reviewable patch.
+export function inspect(methodResult: unknown, input: RepairInput, acceptance: Acceptance) {
+  const result = record(methodResult)
+  const evidence = result.output
   const summary = {
     status: 'unsuccessful' as 'review-ready' | 'unsuccessful' | 'invalid-evidence',
     reason:
-      typeof evidence?.reason === 'string'
-        ? evidence.reason
-        : typeof result.message === 'string'
-          ? result.message
-          : 'No passing patch was returned.',
+      typeof evidence?.reason === 'string' ? evidence.reason : 'No passing patch was returned.',
     baseline: undefined as ReturnType<typeof check> | undefined,
     attempts: [] as { number: number; checks?: ReturnType<typeof check>; failure?: string }[],
     proposals: [] as string[],
@@ -106,7 +101,7 @@ export function inspect(terminal: unknown, input: RepairInput, acceptance: Accep
       })
     }
     const last = summary.attempts.at(-1)
-    if (result.status === 'succeeded' && result.outcome === 'done') {
+    if (result.outcome === 'done') {
       if (
         summary.baseline.exitCode !== 1 ||
         last?.checks?.exitCode !== 0 ||

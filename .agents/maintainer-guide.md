@@ -344,8 +344,8 @@ freeze one concrete outcome
     -> test the next candidate independently
 ```
 
-Design probes are disposable clean-room API experiments under
-`.tmp/design-probes-*`. Their working rules are:
+Design probes are disposable clean-room API experiments under `design-probes/`;
+leave them uncommitted unless the owner explicitly asks otherwise. Their working rules are:
 
 - freeze or publish the candidate interface first;
 - delegate creation to a fresh sub-agent with no inherited project conversation

@@ -12,6 +12,11 @@ import { openPrivateInstalledBunHost } from './internal/installed-bun-host.js'
 import { acquireOrReexecutePrivateRootlessLinux } from './internal/linux-rootless-delegation.js'
 import { PrivateRootlessLinuxAcquisitionError } from './internal/linux-rootless-acquisition.js'
 import { openPrivateProjectSession } from './internal/project-session-controller.js'
+import {
+  privateConnectFileOwner,
+  privateNeedsFileOwner,
+  privateOwnFileCommand,
+} from './internal/file-command.js'
 
 interface InstalledCliOutcome {
   readonly exitCode: number | null
@@ -42,32 +47,56 @@ async function runPrivateInstalledCli(
   }
 
   try {
+    if (privateNeedsFileOwner(arguments_)) {
+      return await privateOwnFileCommand(
+        [executablePath, ...BUN_POLICY, installedCliPath],
+        arguments_,
+        signal,
+        privateCliCommandLifetimeMs(arguments_),
+      )
+    }
     const delegation = await acquireOrReexecutePrivateRootlessLinux({
       commandLifetimeMs: privateCliCommandLifetimeMs(arguments_),
     })
     if (delegation.kind === 'private-rootless-linux-reexecuted/1') return delegation
 
-    const installedHost = await openPrivateInstalledBunHost({
-      releaseRoot: await realpath(releaseRoot),
-      executablePath,
-      installedCliPath,
-    })
-    const host: PrivateCliCommandHost = Object.freeze({
-      acquire: (project: string, options?: { readonly runTimeoutMs?: number }) =>
-        openPrivateProjectSession({
-          directory: project,
-          host:
-            options?.runTimeoutMs === undefined
-              ? installedHost
-              : Object.freeze({ ...installedHost, runTimeoutMs: options.runTimeoutMs }),
+    const delivery = await privateConnectFileOwner()
+    try {
+      const installedHost = await openPrivateInstalledBunHost({
+        releaseRoot: await realpath(releaseRoot),
+        executablePath,
+        installedCliPath,
+      })
+      const host: PrivateCliCommandHost = Object.freeze({
+        ...(delivery === undefined ? {} : { delivery }),
+        acquire: (project: string, options?: Parameters<PrivateCliCommandHost['acquire']>[1]) =>
+          openPrivateProjectSession({
+            directory: project,
+            host: Object.freeze({
+              ...installedHost,
+              ...(options?.runTimeoutMs === undefined
+                ? {}
+                : { runTimeoutMs: options.runTimeoutMs }),
+              ...(options?.files === undefined ? {} : { files: options.files }),
+            }),
+          }),
+      })
+      return exit(
+        await main(arguments_, {
+          host,
+          ...(signal === undefined && delivery === undefined
+            ? {}
+            : {
+                signal: AbortSignal.any([
+                  ...(signal === undefined ? [] : [signal]),
+                  ...(delivery === undefined ? [] : [delivery.signal]),
+                ]),
+              }),
         }),
-    })
-    return exit(
-      await main(arguments_, {
-        host,
-        ...(signal === undefined ? {} : { signal }),
-      }),
-    )
+      )
+    } finally {
+      delivery?.close()
+    }
   } catch (error) {
     if (error instanceof PrivateRootlessLinuxAcquisitionError) {
       process.stderr.write(

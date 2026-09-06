@@ -101,11 +101,10 @@ Slots belong only to the Binding declaration: running the package through its
 Plain package paths are not slot selectors. A leading `./` after `flow:` is
 normalized away; the `binding:` suffix must be a LocalName.
 
-This alpha has no project attachment mapping. A selected FLOW package may
-declare attachments as portable package metadata, but it cannot then be a
-direct target, and a Binding which selects it rejects the complete project
-candidate. Supporting attachment projection later must be an explicit host
-feature rather than an inert authoring placeholder today.
+File paths are invocation inputs, not authoring declarations. Root Flows and
+Bindings can use declared attachments through the
+[root file profile](project-policy.md#root-file-runs). Binding child slots
+cannot select attachment-bearing packages or inherit parent file authority.
 
 Binding identity is the declaration filename's LocalName basename. For
 example, `bindings/review.ts` has ID `review`. There is no duplicate `id`
@@ -113,7 +112,7 @@ field, profile inheritance, overlay, ambient environment fallback, or per-Run
 settings override.
 
 Bindings are optional. A discovered Run package which is valid with empty
-settings, declares no attachment, and uses either no capability or the one
+settings, fits the root attachment profile, and uses either no capability or the one
 exact [Jig Agent Run contract](agent-run.md) is also an exact direct Flow
 target. There is no hidden generated Binding.
 

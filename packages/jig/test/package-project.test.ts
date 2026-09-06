@@ -479,7 +479,7 @@ uses:
     })
   })
 
-  test('requires declared settings and rejects attachment-bearing Binding targets', async () => {
+  test('supports attachment-bearing roots but rejects them as Flow or Binding children', async () => {
     await withFlows(
       {
         'flows/plain': run('plain'),
@@ -506,14 +506,47 @@ attachments:
           'PROJECT_BINDING_SETTINGS_UNDECLARED',
           '/settings',
         )
+        expect(
+          linkPackageProject({
+            flows,
+            bindings: [binding('bindings/configured.ts', { package: 'flows/configured' })],
+          }).bindings,
+        ).toHaveLength(1)
+        for (const selector of ['flow:flows/configured', 'binding:configured']) {
+          expectCode(
+            () =>
+              linkPackageProject({
+                flows,
+                bindings: [
+                  binding('bindings/configured.ts', { package: 'flows/configured' }),
+                  binding('bindings/plain.ts', {
+                    package: 'flows/plain',
+                    slots: { child: selector },
+                  }),
+                ],
+              }),
+            'PROJECT_BINDING_SLOT_ATTACHMENTS_UNSUPPORTED',
+            '/slots/child',
+          )
+        }
+      },
+    )
+  })
+
+  test('rejects more than one writable root attachment during review', async () => {
+    await withFlows(
+      {
+        'flows/files': {
+          'FLOW.md': metadata(
+            'name: files\ndescription: Files.\nattachments:\n  first: read-write\n  second: read-write',
+          ),
+          'flow.ts': 'export {};\n',
+        },
+      },
+      (flows) => {
         expectCode(
-          () =>
-            linkPackageProject({
-              flows,
-              bindings: [binding('bindings/configured.ts', { package: 'flows/configured' })],
-            }),
-          'PROJECT_BINDING_ATTACHMENTS_UNSUPPORTED',
-          '/package',
+          () => linkPackageProject({ flows, bindings: [] }),
+          'PROJECT_ATTACHMENTS_UNSUPPORTED',
         )
       },
     )

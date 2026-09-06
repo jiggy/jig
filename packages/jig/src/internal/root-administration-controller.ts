@@ -20,6 +20,7 @@ import {
 } from './activation-admission-store.js'
 import type { PrivateRootExecutionDisposition } from './root-run-controller.js'
 import { requirePrivateRootRunTimeout } from './root-run-timeout-policy.js'
+import type { PrivateRootRunFiles } from './root-run-files.js'
 
 export interface PrivateRootAdministrationController {
   readonly administration: RootAdministration
@@ -96,6 +97,7 @@ export async function attachPrivateRootAdministrationController(input: {
   readonly packageStoreRoot: string
   readonly runTimeoutMs: number
   readonly execute: PrivateRootLaunchExecutor
+  readonly files?: PrivateRootRunFiles
   readonly onProjectIdentityLoss?: () => void
 }): Promise<PrivateRootAdministrationController> {
   requireRunTimeout(input.runTimeoutMs)
@@ -123,6 +125,7 @@ function createController(input: {
   readonly packageStoreRoot: string
   readonly runTimeoutMs: number
   readonly execute: PrivateRootLaunchExecutor
+  readonly files?: PrivateRootRunFiles
   readonly coordinator: PrivateProjectCoordinator
   readonly onProjectIdentityLoss?: () => void
 }): {
@@ -163,6 +166,12 @@ function createController(input: {
             submissionId: request.submissionId,
             target: request.target,
             input: request.input,
+            ...(input.files === undefined
+              ? {}
+              : {
+                  files: input.files.identity,
+                  identifyFiles: (request) => input.files!.identify(request),
+                }),
             deadlineUnixMs,
           }),
         )
@@ -401,6 +410,10 @@ function administrationError(error: unknown, operation: string): RootAdministrat
   if (error instanceof RootAdministrationError) return error
   if (error instanceof CheckError) {
     switch (error.code) {
+      case 'RUN_ATTACHMENTS_INVALID':
+        return new RootAdministrationError('INVALID_REQUEST', 'root file mappings are invalid', {
+          code: 'RUN_ATTACHMENTS_INVALID',
+        })
       case 'SUBMISSION_CONFLICT':
         return new RootAdministrationError('SUBMISSION_CONFLICT', error.message)
       case 'RUN_MISSING':

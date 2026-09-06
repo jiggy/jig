@@ -10,6 +10,7 @@ import {
   normalizePrivateRootRunOrigin,
   privateRootRunIdentityDigest,
   privateRootRunOriginDigest,
+  privateRootSubmissionDigest,
 } from '../src/internal/root-run-state.js'
 
 const encoder = new TextEncoder()
@@ -75,6 +76,7 @@ describe('private root Run origin state', () => {
     })
     expect(request).toEqual({
       kind: 'private-root-run-request/1',
+      files: { attachments: [], output: null },
       target: { kind: 'binding', id: 'review' },
       input: { ticket: 1 },
       deadlineUnixMs: 12_345,
@@ -107,6 +109,40 @@ describe('private root Run origin state', () => {
         ),
       ),
     ).toThrow('duplicate object member')
+  })
+
+  test('file identity is canonical data while changed content or output intent conflicts', () => {
+    const source = {
+      name: '9-source',
+      files: [
+        { path: 'z', bytes: 1, digest: digest('z') },
+        { path: 'a', bytes: 0, digest: digest('') },
+      ],
+    }
+    const other = { name: 'other', files: [] }
+    const make = (attachments: (typeof source)[], output = '/review') =>
+      createPrivateRootRunRequest({
+        target: { kind: 'flow', path: 'flows/files' },
+        input: {},
+        deadlineUnixMs: 100,
+        files: { attachments, output },
+      })
+    const first = make([other, source])
+    expect(first.files.attachments.map((item) => item.name)).toEqual(['9-source', 'other'])
+    expect(first.files.attachments[0]!.files.map((file) => file.path)).toEqual(['a', 'z'])
+    expect(privateRootSubmissionDigest(first)).toBe(
+      privateRootSubmissionDigest(make([{ ...source, files: [...source.files].reverse() }, other])),
+    )
+    expect(privateRootSubmissionDigest(first)).not.toBe(
+      privateRootSubmissionDigest(make([other, source], '/different')),
+    )
+    expect(privateRootSubmissionDigest(first)).not.toBe(
+      privateRootSubmissionDigest(
+        make([other, { ...source, files: [{ ...source.files[0]!, digest: digest('edited') }] }]),
+      ),
+    )
+    expect(() => make([source, source])).toThrow()
+    expect(() => make([source], '/not/../canonical')).toThrow()
   })
 
   test('rejects malformed Run identity inputs before hashing', () => {

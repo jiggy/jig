@@ -1,10 +1,20 @@
 import { spawn, type ChildProcess } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
-import { closeSync, readFileSync, statSync, writeSync } from 'node:fs'
-import { link, mkdir, open, readFile, rmdir, stat, unlink, writeFile } from 'node:fs/promises'
+import { closeSync, readFileSync, readSync, statSync, writeSync } from 'node:fs'
+import {
+  link,
+  mkdir,
+  open,
+  readFile,
+  rmdir,
+  stat,
+  unlink,
+  writeFile,
+  type FileHandle,
+} from 'node:fs/promises'
 import { connect, type Socket } from 'node:net'
 import { posix } from 'node:path'
-import type { Readable } from 'node:stream'
+import type { Readable, Writable } from 'node:stream'
 
 const POLICY = Object.freeze(['--no-env-file', '--no-install', '--config=/dev/null'] as const)
 const SANDBOX_BUN = '/jig-runtime/bun'
@@ -48,6 +58,9 @@ interface Configuration {
   readonly environment: Readonly<Record<string, string>>
   readonly network: 'isolated' | 'inherited'
   readonly nestedUserNamespaces: boolean
+  readonly output: boolean
+  readonly capturedInputs: readonly { readonly fd: number; readonly destination: string }[]
+  readonly inputDirectories: readonly string[]
   readonly bunPath: string
   readonly bunHostLibraryPath: string
   readonly bubblewrapPath: string
@@ -75,6 +88,7 @@ interface ReadyMessage {
   readonly runCgroup: string
   readonly payloadPid: number
   readonly supervisorPid: number
+  readonly outputFd?: number
 }
 
 interface TerminalMessage {
@@ -128,6 +142,8 @@ async function superviseConnected(control: Socket, startupDeadlineUnixMs: number
   let childExit: ReturnType<typeof childClose> | undefined
   let stopReason: StopReason | undefined
   let admitted = false
+  let continued = false
+  let outputDirectory: FileHandle | undefined
   let resolveAdmission!: () => void
   let rejectAdmission!: (error: Error) => void
   const admission = new Promise<void>((resolve, reject) => {
@@ -154,6 +170,16 @@ async function superviseConnected(control: Socket, startupDeadlineUnixMs: number
       if (type === 'admit' && !admitted) {
         admitted = true
         resolveAdmission()
+      } else if (
+        type === 'continue' &&
+        configuration.output &&
+        outputDirectory !== undefined &&
+        !continued
+      ) {
+        continued = true
+        const gate = child?.stdio[4] as Writable | undefined
+        if (gate === undefined) return stop('setup_failed')
+        gate.end(Buffer.from([1]))
       } else if (type === 'cancel') {
         stop('cancelled')
       } else {
@@ -206,17 +232,33 @@ async function superviseConnected(control: Socket, startupDeadlineUnixMs: number
         env: {
           LD_LIBRARY_PATH: configuration.bunHostLibraryPath,
         },
-        stdio: ['inherit', 'inherit', 'inherit', 'pipe'],
+        stdio: [
+          'inherit',
+          'inherit',
+          'inherit',
+          'pipe',
+          configuration.output ? 'pipe' : 'ignore',
+          configuration.output ? 'pipe' : 'ignore',
+          ...configuration.capturedInputs.map((file) => file.fd),
+        ],
       },
     )
     childExit = childClose(launched)
     child = launched
     const ready = await readReady(launched)
+    if (configuration.output) {
+      const sandboxPid = await readSandboxPid(launched)
+      await outputReady(launched)
+      // The trusted inner launcher blocks before package code can run.
+      // This FD pins the mount, not a replaceable payload pathname.
+      outputDirectory = await open(`/proc/${sandboxPid}/root/jig-output`, 0x10000)
+    }
     safeSend(control, {
       type: 'ready',
       runCgroup,
       payloadPid: ready,
       supervisorPid: process.pid,
+      ...(outputDirectory === undefined ? {} : { outputFd: outputDirectory.fd }),
     } satisfies ReadyMessage)
     const exit = await childExit
     exitCode = exit.code
@@ -227,6 +269,7 @@ async function superviseConnected(control: Socket, startupDeadlineUnixMs: number
     if (stopReason === 'setup_failed') process.stderr.write(`${errorText(error)}\n`)
   } finally {
     clearTimeout(deadline)
+    await outputDirectory?.close()
     let cleanupError: string | undefined
     try {
       child?.kill('SIGKILL')
@@ -291,13 +334,36 @@ async function enterMain(arguments_: readonly string[]): Promise<void> {
   await requireActiveClaim(ownerStateDirectory!, ownerToken!, ownerStateAllocationDigest!)
   writeSync(3, `${process.pid}\n`)
   closeSync(3)
-  const child = spawn(bubblewrap!, bubblewrapArguments_, { cwd: '/', env: {}, stdio: 'inherit' })
+  const output = bubblewrapArguments_.includes('--sync-fd')
+  const inputDescriptors = bubblewrapArguments_.flatMap((arg, index) =>
+    arg === '--ro-bind-data' ? [Number(bubblewrapArguments_[index + 1])] : [],
+  )
+  if (inputDescriptors.some((fd, index) => fd !== 6 + index))
+    throw new Error('invalid captured input descriptor order')
+  const child = spawn(bubblewrap!, bubblewrapArguments_, {
+    cwd: '/',
+    env: {},
+    stdio: [
+      'inherit',
+      'inherit',
+      'inherit',
+      'ignore',
+      output ? 4 : 'ignore',
+      output ? 5 : 'ignore',
+      ...inputDescriptors,
+    ],
+  })
+  for (const fd of inputDescriptors) closeSync(fd)
+  if (output) {
+    closeSync(4)
+    closeSync(5)
+  }
   const exit = await childClose(child)
   if (exit.signal !== null) process.kill(process.pid, exit.signal as NodeJS.Signals)
   process.exitCode = exit.code ?? 1
 }
 
-async function innerMain(command: readonly string[]): Promise<void> {
+async function innerMain(command: readonly string[], output = false): Promise<void> {
   if (command.length === 0 || !absolute(command[0]!))
     throw new Error('invalid rootless inner command')
   const nullDevice = statSync('/dev/null')
@@ -309,6 +375,14 @@ async function innerMain(command: readonly string[]): Promise<void> {
     (entropyDevice.mode & 0o777) !== 0o666
   ) {
     throw new Error('rootless private devices do not satisfy the required projection')
+  }
+  if (output) {
+    writeSync(4, Buffer.from([1]))
+    const gate = Buffer.alloc(1)
+    if (readSync(4, gate, 0, 1, null) !== 1 || gate[0] !== 1) {
+      throw new Error('output ownership was not acquired')
+    }
+    closeSync(4)
   }
   const child = spawn(command[0]!, command.slice(1), {
     cwd: '/work',
@@ -356,6 +430,23 @@ function bubblewrapArguments(configuration: Configuration): string[] {
   ]
   for (const mount of configuration.readOnlyMounts)
     result.push('--ro-bind', mount.source, mount.destination)
+  if (configuration.inputDirectories.length > 0)
+    result.push('--size', '1048576', '--tmpfs', '/jig-input')
+  for (const path of configuration.inputDirectories) result.push('--dir', path)
+  for (const file of configuration.capturedInputs)
+    result.push('--ro-bind-data', String(file.fd), file.destination)
+  if (configuration.inputDirectories.length > 0) result.push('--remount-ro', '/jig-input')
+  if (configuration.output)
+    result.push(
+      '--size',
+      String(16 * 1024 * 1024),
+      '--tmpfs',
+      '/jig-output',
+      '--sync-fd',
+      '4',
+      '--json-status-fd',
+      '5',
+    )
   result.push('--ro-bind', configuration.supervisorPath, MODULE_DESTINATION)
   for (const [name, value] of Object.entries(configuration.environment).sort(([a], [b]) =>
     a.localeCompare(b),
@@ -376,7 +467,7 @@ function bubblewrapArguments(configuration: Configuration): string[] {
     SANDBOX_BUN,
     ...POLICY,
     MODULE_DESTINATION,
-    '--inner',
+    configuration.output ? '--inner-output' : '--inner',
     '--',
     ...configuration.command,
   )
@@ -500,12 +591,15 @@ function requireStart(value: unknown): Configuration {
     'bunHostLibraryPath',
     'bunPath',
     'command',
+    'capturedInputs',
     'delegatedCgroup',
     'environment',
     'limits',
+    'inputDirectories',
     'mechanismDigest',
     'nestedUserNamespaces',
     'network',
+    'output',
     'ownerDigest',
     'ownerStateAllocationDigest',
     'ownerStateDirectory',
@@ -546,6 +640,25 @@ function requireStart(value: unknown): Configuration {
     !OWNER_TOKEN.test(configuration.ownerToken) ||
     (configuration.network !== 'isolated' && configuration.network !== 'inherited') ||
     typeof configuration.nestedUserNamespaces !== 'boolean' ||
+    typeof configuration.output !== 'boolean' ||
+    !Array.isArray(configuration.capturedInputs) ||
+    configuration.capturedInputs.length > 64 ||
+    !Array.isArray(configuration.inputDirectories) ||
+    configuration.inputDirectories.length > 8 ||
+    configuration.inputDirectories.some(
+      (path) =>
+        typeof path !== 'string' ||
+        path.length > 75 ||
+        !/^\/jig-input\/[a-z0-9]+(?:-[a-z0-9]+)*$/.test(path),
+    ) ||
+    configuration.capturedInputs.some(
+      (file, index) =>
+        file === null ||
+        typeof file !== 'object' ||
+        file.fd !== 6 + index ||
+        !absolute(file.destination) ||
+        !configuration.inputDirectories.some((path) => file.destination.startsWith(`${path}/`)),
+    ) ||
     !positiveInteger(configuration.payloadUid) ||
     !positiveInteger(configuration.payloadGid) ||
     !validLimits(configuration.limits) ||
@@ -672,6 +785,36 @@ async function readReady(child: ChildProcess): Promise<number> {
   if (!Number.isSafeInteger(pid) || pid <= 0)
     throw new Error('invalid rootless entry readiness receipt')
   return pid
+}
+
+async function readSandboxPid(child: ChildProcess): Promise<number> {
+  const stream = (child.stdio as readonly unknown[])[5] as Readable | undefined
+  if (stream === undefined) throw new Error('missing Bubblewrap status pipe')
+  let text = ''
+  for await (const chunk of stream.iterator({ destroyOnReturn: false })) {
+    text += String(chunk)
+    if (text.length > 4096) throw new Error('oversized Bubblewrap status')
+    // The parent reports identity before the inner launcher reports readiness.
+    const end = text.indexOf('}')
+    if (end < 0) continue
+    const record = JSON.parse(text.slice(0, end + 1)) as { 'child-pid'?: unknown }
+    if (!positiveInteger(record['child-pid'])) throw new Error('invalid Bubblewrap child identity')
+    stream.resume()
+    return record['child-pid'] as number
+  }
+  throw new Error('Bubblewrap exited before output handoff')
+}
+
+function outputReady(child: ChildProcess): Promise<void> {
+  const stream = child.stdio[4] as Readable
+  return new Promise((resolve, reject) => {
+    stream.once('error', reject)
+    stream.once('end', () => reject(new Error('output launcher ended before handoff')))
+    stream.once('data', (bytes: Buffer) => {
+      if (bytes.length !== 1 || bytes[0] !== 1) reject(new Error('invalid output readiness'))
+      else resolve()
+    })
+  })
 }
 
 async function waitUntilEmpty(cgroup: string, timeoutMs: number): Promise<void> {
@@ -854,9 +997,9 @@ async function main(): Promise<void> {
     return await supervisorMain(arguments_[0]!, arguments_[1]!)
   }
   if (mode === '--enter') return await enterMain(arguments_)
-  if (mode === '--inner') {
+  if (mode === '--inner' || mode === '--inner-output') {
     if (arguments_[0] !== '--') throw new Error('invalid rootless inner separator')
-    return await innerMain(arguments_.slice(1))
+    return await innerMain(arguments_.slice(1), mode === '--inner-output')
   }
   throw new Error('invalid rootless supervisor mode')
 }

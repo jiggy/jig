@@ -1,8 +1,6 @@
 # FLOW Run SDK/1
 
-> *Status: prerelease SDK projection of [`FLOW Run/1`](run-protocol.md). The
-> TypeScript implementation is `@jigging/flow@0.1.0-alpha.6`; the Python
-> implementation is not yet published.*
+> *Status: prerelease SDK projection of [`FLOW Run/1`](run-protocol.md).*
 
 This document fixes the public component-author interface for the Run/1
 slice. It does not add wire behavior. When this document and Run/1 differ,

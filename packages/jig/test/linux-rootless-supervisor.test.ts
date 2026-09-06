@@ -151,6 +151,9 @@ interface Configuration {
     readonly cleanupTimeoutMs: number
   }
   readonly readOnlyMounts: readonly []
+  readonly capturedInputs: readonly []
+  readonly inputDirectories: readonly []
+  readonly output: false
   readonly command: readonly [string, ...string[]]
   readonly environment: Readonly<Record<string, string>>
   readonly network: 'isolated'
@@ -201,6 +204,9 @@ async function fixtureFor(runId: string): Promise<Fixture> {
       cleanupTimeoutMs: 100,
     },
     readOnlyMounts: [],
+    capturedInputs: [],
+    inputDirectories: [],
+    output: false,
     command: [bunPath, ...POLICY, '-e', `await Bun.write(${JSON.stringify(marker)}, "ran")`],
     environment: {},
     network: 'isolated',

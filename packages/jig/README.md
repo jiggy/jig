@@ -7,7 +7,7 @@ The developer alpha has one finite command surface:
 ```text
 jig init --bare <directory>
 jig review [project] [--yes]
-jig run <flow:path|binding:id> [--input JSON] [--timeout DURATION]
+jig run <flow:path|binding:id> [--input JSON|@FILE] [--attach NAME=DIR] [--out DIR] [--timeout DURATION]
 jig --version
 ```
 

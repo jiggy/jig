@@ -4,6 +4,11 @@ import type { RunTargetIdentity } from '../project/package-project.js'
 import { normalizeProjectPath } from '../project/paths.js'
 import type { RunHostTerminal } from '../run/session.js'
 import { privateDomainDigest } from './identity.js'
+import {
+  normalizePrivateRunFileIdentity,
+  PRIVATE_EMPTY_FILE_IDENTITY,
+  type PrivateRunFileIdentity,
+} from './root-run-files.js'
 
 const DIGEST = /^sha256:[0-9a-f]{64}$/
 const LOCAL_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
@@ -29,6 +34,7 @@ export interface PrivateRootRunRequest {
   readonly kind: 'private-root-run-request/1'
   readonly target: RunTargetIdentity
   readonly input: JsonValue
+  readonly files: PrivateRunFileIdentity
   readonly deadlineUnixMs: number
 }
 
@@ -66,6 +72,7 @@ export interface PrivateRootRunSnapshot {
   readonly coordinatorEpoch: number
   readonly target: RunTargetIdentity
   readonly input: JsonValue
+  readonly files: PrivateRunFileIdentity
   readonly deadlineUnixMs: number
   readonly state: 'spawn-intent' | 'terminal'
   readonly terminal?: PrivateRootRunTerminal
@@ -86,6 +93,7 @@ export interface PrivateRootRunSpawnIntent {
 export function createPrivateRootRunRequest(input: {
   readonly target: RunTargetIdentity
   readonly input: JsonValue
+  readonly files?: PrivateRunFileIdentity
   readonly deadlineUnixMs: number
 }): PrivateRootRunRequest {
   if (!Number.isSafeInteger(input.deadlineUnixMs) || input.deadlineUnixMs < 0) {
@@ -98,6 +106,7 @@ export function createPrivateRootRunRequest(input: {
     kind: 'private-root-run-request/1' as const,
     target: normalizeTarget(input.target),
     input: decodeJson1(canonicalJson(input.input)),
+    files: normalizePrivateRunFileIdentity(input.files ?? PRIVATE_EMPTY_FILE_IDENTITY),
     deadlineUnixMs: input.deadlineUnixMs,
   })
 }
@@ -199,7 +208,7 @@ export function requirePrivateRootSubmissionId(value: unknown): asserts value is
 export function decodePrivateRootRunRequest(bytes: Uint8Array): PrivateRootRunRequest {
   const value = exactRecord(
     decodeJson1(bytes),
-    ['kind', 'target', 'input', 'deadlineUnixMs'],
+    ['kind', 'target', 'input', 'files', 'deadlineUnixMs'],
     'root Run request',
   )
   if (value.kind !== 'private-root-run-request/1')
@@ -207,6 +216,7 @@ export function decodePrivateRootRunRequest(bytes: Uint8Array): PrivateRootRunRe
   const request = createPrivateRootRunRequest({
     target: value.target as RunTargetIdentity,
     input: value.input as JsonValue,
+    files: normalizePrivateRunFileIdentity(value.files),
     deadlineUnixMs: value.deadlineUnixMs as number,
   })
   if (!sameBytes(bytes, canonicalJson(request as unknown as JsonValue))) {
@@ -219,6 +229,7 @@ export function privateRootSubmissionDigest(request: PrivateRootRunRequest): str
   return privateDomainDigest('JIG-Private-Root-Submission/1', {
     target: request.target,
     input: request.input,
+    files: request.files,
   } as unknown as JsonValue)
 }
 

@@ -15,7 +15,7 @@ The developer alpha runs [FLOW](https://flow.jig.md/) packages through three com
 ```text
 jig init --bare <directory>
 jig review [project] [--yes]
-jig run <target> [--input JSON] [--timeout DURATION]
+jig run <target> [--input JSON|@FILE] [--attach NAME=DIR] [--out DIR] [--timeout DURATION]
 jig --version
 ```
 
@@ -42,6 +42,8 @@ the reviewed proposal into admission.
 
 - The [repository quickstart](https://github.com/jiggy/jig#quickstart) provides
   a complete first Flow and the supported-host requirements.
+- [Working with files](./files.md) captures selected inputs and publishes one
+  result packet through Jig, without an application launcher.
 - [An issue becomes a tested patch](./tested-patch.md) takes selected local
   source files and returns a reviewable patch or an honest unsuccessful result.
 - The [use-case catalogue](../use-cases.md) records uniformly scoped product

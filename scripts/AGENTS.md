@@ -19,6 +19,9 @@ operational baselines, and public-site assembly.
   tests and installs the tested-patch repair Flow's declared SDK without
   lifecycle scripts; it does not claim live Agent quality or independent
   consumer proof.
+- `test-installed-hostile-baseline.ts` consumes an exact archive, exercising
+  containment and binary-safe file Runs, invalid output, resource limits,
+  failure suppression, publication collisions and execution-residue checks.
 - `require-linux-host-conformance.sh` owns the bounded, read-only check that an
   exact publication revision passed the complete Linux host workflow.
 - `ci/` owns disposable CI-host provisioning.

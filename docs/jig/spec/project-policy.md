@@ -122,7 +122,7 @@ A Flow is a direct Run target only when it:
 - has one code entrypoint;
 - declares no capability use, or one slot using the exact Jig Agent Run
   Capability Contract;
-- declares no attachment; and
+- declares at most eight attachments, at most one writable; and
 - accepts `{}` as settings.
 
 Direct eligibility is structural. Host execution support is planned
@@ -255,12 +255,11 @@ Slots are Binding-local. Starting `flow:flows/review` never borrows slots from
 `binding:reviewer`, and no direct `flow:` target has slots. The map is neither
 a candidate catalogue nor authority to select a different child at runtime.
 
-This alpha has no project attachment mapping. Portable FLOW packages may still
-declare attachments in `FLOW.md`, and Jig retains that declaration with the
-captured package. Such a package is not a direct target. A Binding which
-selects it rejects the complete project candidate with a bounded diagnostic;
-it does not create an attachment projection or an unavailable placeholder
-target.
+Attachment declarations participate in root eligibility and review without
+invocation paths. A direct root or configured Binding receives its declared
+attachments through the [root file profile](#root-file-runs). Child relations
+to attachment-bearing packages reject the candidate; they do not inherit
+parent file access. Unsupported declaration counts reject the project candidate.
 
 Bindings contain no runtime command, environment map, package-manager policy,
 or generic permission bag.
@@ -362,15 +361,16 @@ flow:flows/build
 binding:reviewer
 ```
 
-An unprefixed name is not guessed. A direct Flow receives empty settings and
-no attachments. A Binding receives exactly its admitted settings. Callers
+An unprefixed name is not guessed. A direct Flow receives empty settings.
+A Binding receives exactly its admitted settings. Callers
 cannot override package source, runtime, environment, authority, the host
-deadline ceiling, or containment, and cannot introduce an attachment
-projection. The installed CLI may choose one root execution duration within
+deadline ceiling, or containment. The installed CLI may supply the exact
+declared root attachments and choose one root execution duration within
 the host's fixed policy; it does not change admitted project meaning.
 
 Each submission has one bounded project-local idempotency key and JSON/1 input.
-The first accepted request stores the exact target and canonical input before
+The first accepted request stores the exact target, canonical input, captured
+file manifest, and output intent before
 dispatch. Repeating the key with identical content returns the same Run;
 changed reuse conflicts and never dispatches again.
 
@@ -445,6 +445,92 @@ unknown. Closing the project session rejects new starts, revokes its issued Run
 authority, settles or fences live Runs, waits for cleanup, and preserves
 already durable status records.
 
+### Root file Runs
+
+The installed command accepts `--input JSON|@FILE`, repeated `--attach NAME=DIR`
+and `--select NAME=FILE`, and one `--out DIR`. Parsing performs no file reads;
+acquisition happens once, preserving caller-relative paths through reexecution.
+An ordinary quoted JSON string beginning with `@` is still an inline value.
+
+Every declared read attachment requires exactly one mapping. Selectors name
+exact regular files relative to that root; without selectors Jig enumerates
+its bounded tree. Unknown or duplicate mappings/selectors fail before dispatch.
+Review requires no invocation paths. The declared writable attachment requires
+`--out`; with no writable attachment, `--out` publishes only the host record.
+
+Capture preserves binary and empty file bytes, omits empty directories, and
+rejects symlinks, multiply linked files, special files, traversal, malformed
+Unicode paths, and nested mounts. Descriptor-relative acquisition prevents
+pathname substitution from changing the selected root. Protected paths and
+resolved mount-source aliases into `/proc`, `/sys`, `/dev`, `/run`, `.jig`, or
+`.agent-sandbox` are refused. Supported source and destination-parent filesystems
+are ext4, XFS, Btrfs, and tmpfs, with Linux `openat2` and no-replace rename support;
+unsupported semantics have no fallback. These checks exclude a malicious host
+administrator or same-user process, as specified in the security boundary.
+
+Limits are aggregate across input attachments: eight declared attachments
+including any writable one, 64 regular files, 8 MiB content, 256 enumerated
+entries, 16 path components, and 512 UTF-8 bytes per relative path. `@FILE` is a
+singly linked regular file bounded by JSON/1's byte and value limits. Exact
+selection never enumerates unselected subtrees. A detected file mutation fails
+capture; the captured set is not an atomic repository revision or a secret scan.
+
+Input is projected from immutable sealed bytes, never live host directories.
+Captured bytes live only through command ownership and are not retained as
+Package/1 artifacts. Durable request evidence sorts attachment names and paths
+ordinally and records names, lengths, SHA-256 content digests, and the absolute
+output intent. Equivalent selected bytes have the same data identity regardless
+of source spelling; hashes never authenticate the private file descriptors.
+Same-submission conflict rules include this identity. Repeating the CLI command
+creates a new submission, not a replay or export-resumption request.
+
+The single writable attachment is initially empty, on a 16 MiB anonymous tmpfs
+inside the completed execution envelope. Its runtime metadata and allocation
+are subject to the scope's aggregate memory ceiling. A trusted descriptor
+handoff retains this bounded filesystem beyond complete writer fencing and
+execution cleanup. The host validates its final tree before copying: at most
+64 singly linked regular files, 16 MiB logical bytes, and the same entry, depth,
+and path limits as capture. Sparse excess, links, and special files reject
+delivery without changing a separately accepted execution terminal.
+
+Destination preparation precedes dispatch. The new leaf must be absent beneath
+an existing anchored parent, outside every selected input root and protected
+state. A separate command owner owns destination staging before allocation,
+survives coordinator failure, and removes unpublished staging without another
+invocation. Output storage, its bounded read buffer, and destination copies
+remain accounted for after the Run cgroup is removed; see the security ceilings.
+
+Publication uses one no-replace atomic directory rename. Directories have mode
+`0700`, files `0600`; empty directories and source permissions are not preserved.
+`files/` contains Flow deliverables. `result.json` contains the accepted execution
+record, Run identity, admitted Package/1 and configuration identity when resolved,
+canonical JSON input digest, captured manifest, and delivery manifest. The
+manifest lists only Flow files, never its own host record. Private launch,
+inode, device, provider, and credential evidence is not exported.
+
+`delivery.status` is `written`, `failed`, or `unknown`, independently of execution
+`status`. A valid custom outcome may publish files. Operational execution or
+result-validation failure publishes only the actual host record when available;
+unconfirmed Project Session cleanup also suppresses Flow files and returns a
+nonzero command result while preserving a known terminal.
+
+Before publication, cancellation, validation, copying, or a destination collision
+leaves no packet and removes owned staging. If publication wins cancellation,
+the complete packet remains. Later acknowledgement, stdout, or cleanup failure
+never retracts the packet, rewrites its terminal, or authorizes reexecution.
+Channel loss may leave publication unknown to the caller. The immutable packet
+and ordinary stdout agree; later CLI errors can report additional observations.
+`written` promises atomic visibility, not persistence through machine failure.
+If expanded metadata exceeds the report's JSON/1 limits, the CLI preserves the
+unexpanded execution terminal on stdout, reports known delivery/cleanup status
+with `JIG_REPORT_LIMIT` on stderr, and exits nonzero without replay.
+
+The root `--timeout` covers execution. Attachment capture checks a 10-second budget and
+delivery checks a 20-second budget at bounded operations; the independent
+command lifetime also bounds host overhead. Cleanup retains its existing
+reserve and is not skipped on cancellation or expiry. These private budgets
+do not introduce Flow-controlled policy or a new public timeout API.
+
 ## 9. Execution envelope
 
 The direct alpha has one Linux rootless containment mechanism. Before package
@@ -455,6 +541,7 @@ mount, PID, IPC, UTS, cgroup, and network namespaces.
 Package code receives:
 
 - the admitted package tree, read-only;
+- the root's immutable read attachments and optional bounded empty output;
 - one private writable scratch directory;
 - Run/1 protocol stdio; and
 - only the minimal read-only process and device views required by the pinned
@@ -536,7 +623,7 @@ The direct-alpha project implementation must prove at least:
 3. Only the captured static TypeScript closure is evaluated, under bounded
    authority, and apply never reevaluates it.
 4. Invalid package metadata, schemas, Binding settings or slots,
-   attachment-bearing Binding targets, or dangling package references reject
+   unsupported attachment profiles or child relations, or dangling package references reject
    the complete candidate.
 5. Source changes grant no authority before explicit apply.
 6. A Plan binds the exact candidate, lock, host readiness observation, and

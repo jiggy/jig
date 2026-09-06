@@ -3,6 +3,7 @@ import { createRequire } from 'node:module'
 import { createServer, type Server } from 'node:http'
 import {
   copyFile,
+  cp,
   lstat,
   mkdir,
   mkdtemp,
@@ -13,7 +14,7 @@ import {
   symlink,
   writeFile,
 } from 'node:fs/promises'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 import { tmpdir } from 'node:os'
 
 import type { RootAdministration, StartRootRunReceipt } from '../src/administration/root.js'
@@ -21,9 +22,151 @@ import { openPrivateInstalledBunHost } from '../src/internal/installed-bun-host.
 import { openPrivateProjectSession } from '../src/internal/project-session-controller.js'
 import type { PrivateInstalledBunLocation } from '../src/internal/installed-bun-support.js'
 import { installedBunLocation } from './fixtures/installed-bun-location.js'
+import { main } from '../src/cli.js'
+import { PrivateFileDeliveryOwner } from '../src/internal/file-delivery.js'
 
 const HOSTILE = process.env.JIG_LINUX_ROOTLESS_HOSTILE === '1'
 const proofDescribe = HOSTILE ? describe.serial : describe.skip
+
+proofDescribe('contained repair file application', () => {
+  test('exports an evidence-checked patch through admitted root and evaluator with a recorded local Agent response', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'jig-repair-file-proof-'))
+    const project = join(root, 'project'),
+      release = join(root, 'release'),
+      out = join(root, 'review')
+    const replacement = `export function truncateUtf8(text: string, maxBytes: number): string {
+  if (!Number.isSafeInteger(maxBytes) || maxBytes < 0) throw new RangeError('Invalid byte budget');
+  let result = '', used = 0;
+  for (const point of text) { const bytes = new TextEncoder().encode(point).length; if (used + bytes > maxBytes) break; used += bytes; result += point; }
+  return result;
+}\n`
+    let calls = 0
+    const server = createServer(async (request, response) => {
+      await new Response(request as any).text()
+      calls++
+      response.writeHead(200, { 'content-type': 'application/json' }).end(
+        JSON.stringify({
+          status: 'completed',
+          output: [
+            {
+              type: 'message',
+              role: 'assistant',
+              content: [
+                {
+                  type: 'output_text',
+                  text: JSON.stringify({
+                    replacement,
+                    summary: 'Respect UTF-8 code point boundaries.',
+                  }),
+                },
+              ],
+            },
+          ],
+        }),
+      )
+    })
+    const owner = new PrivateFileDeliveryOwner(new AbortController().signal)
+    try {
+      await cp(join(import.meta.dir, '../../../examples/tested-patch'), project, {
+        recursive: true,
+        filter: (source) => !['node_modules', '.jig'].includes(basename(source)),
+      })
+      await new Promise<void>((resolve, reject) => {
+        server.once('error', reject)
+        server.listen(0, '127.0.0.1', resolve)
+      })
+      const address = server.address()
+      if (!address || typeof address === 'string') throw new Error('no local fixture endpoint')
+      await mkdir(release)
+      const location = await writeInstalledFixture(release)
+      const workerPath = join(release, 'libexec/agent/openai-agent-worker.js')
+      const worker = await readFile(
+        join(installedBunLocation.releaseRoot, 'libexec/agent/openai-agent-worker.js'),
+        'utf8',
+      )
+      await writeFile(
+        workerPath,
+        `const recordedFetch = globalThis.fetch;
+globalThis.fetch = (url, init) => {
+  if (String(url) !== 'https://repair-proof.invalid/v1/responses') throw new Error('unexpected endpoint');
+  return recordedFetch('http://127.0.0.1:${address.port}/v1/responses', init);
+};\n` + worker,
+      )
+      const installed = await openPrivateInstalledBunHost(location, {
+        OPENAI_API: 'responses',
+        OPENAI_BASE_URL: 'https://repair-proof.invalid/v1',
+        OPENAI_MODEL: 'local-fixed-response',
+        OPENAI_API_KEY: 'synthetic-no-remote-credential',
+      })
+      let stdout = '',
+        stderr = ''
+      const options = {
+        currentDirectory: project,
+        interactive: false,
+        writeOutput: (text: string) => {
+          stdout += text
+        },
+        writeError: (text: string) => {
+          stderr += text
+        },
+        host: {
+          acquire: (
+            directory: string,
+            options?: {
+              runTimeoutMs?: number
+              files?: import('../src/internal/root-run-files.js').PrivateRootRunFiles
+            },
+          ) => openPrivateProjectSession({ directory, host: { ...installed, ...options } }),
+          delivery: {
+            prepare: (directory: string, roots: readonly number[]) =>
+              owner.prepare(directory, process.pid, roots),
+            publish: (record: import('../src/json.js').JsonValue, fd: number | undefined) =>
+              owner.publish(record, process.pid, fd),
+          },
+        },
+      }
+      expect(await main(['review', '--yes'], options), stderr).toBe(0)
+      stdout = ''
+      stderr = ''
+      const before = await readFile(join(project, 'fixtures/utf8/src/truncate-utf8.ts'))
+      expect(
+        await main(
+          [
+            'run',
+            'binding:repair',
+            '--input',
+            '@issue.json',
+            '--attach',
+            'source=fixtures/utf8',
+            '--out',
+            out,
+            '--timeout',
+            '60s',
+          ],
+          options,
+        ),
+        stdout + stderr,
+      ).toBe(0)
+      const record = JSON.parse(stdout)
+      expect(record).toMatchObject({
+        status: 'succeeded',
+        outcome: 'done',
+        delivery: { status: 'written' },
+      })
+      expect(await readFile(join(out, 'files/summary.txt'), 'utf8')).toContain('12/12 checks')
+      expect(await readFile(join(out, 'files/review.patch'), 'utf8')).toContain(
+        '+  for (const point of text)',
+      )
+      expect(JSON.parse(await readFile(join(out, 'result.json'), 'utf8'))).toEqual(record)
+      expect(await readFile(join(project, 'fixtures/utf8/src/truncate-utf8.ts'))).toEqual(before)
+      expect(calls).toBe(1)
+    } finally {
+      await owner.close()
+      await new Promise<void>((resolve) => server.close(() => resolve()))
+      await rm(root, { recursive: true, force: true })
+    }
+  }, 120_000)
+})
 const nativeCodexPath = process.env.JIG_CODEX_PROOF_PATH
 const nativeCodexTest =
   HOSTILE && nativeCodexPath !== undefined && process.env.CODEX_HOME !== undefined

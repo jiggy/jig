@@ -150,6 +150,17 @@ function prepareFlows(values: readonly unknown[], budget: WorkBudget): readonly 
       )
     }
     const uses = projectSupportedCapabilityUses(retained.inspected, retained.provenance.projectPath)
+    const attachments = Object.values(retained.inspected.metadata.attachments ?? {})
+    if (
+      attachments.filter((access) => access === 'read-write').length > 1 ||
+      attachments.length > 8
+    ) {
+      invalid(
+        'PROJECT_ATTACHMENTS_UNSUPPORTED',
+        'Jig supports at most eight root attachments and one initially empty writable attachment',
+        retained.provenance.projectPath,
+      )
+    }
     budget.consume(1 + Object.keys(retained.inspected.metadata.attachments ?? {}).length)
     const linked = Object.freeze({
       provenance: retained.provenance,
@@ -283,14 +294,6 @@ function prepareBindings(
         '/package',
       )
     }
-    if (Object.keys(flow.inspected.metadata.attachments ?? {}).length !== 0) {
-      invalid(
-        'PROJECT_BINDING_ATTACHMENTS_UNSUPPORTED',
-        `Binding ${id} selects a package that requires attachments, which the direct alpha does not project`,
-        declarationPath,
-        '/package',
-      )
-    }
     validateSettings(definition.settings, flow.inspected, declarationPath)
     return Object.freeze({ id, declarationPath, definition, flow })
   })
@@ -339,6 +342,14 @@ function linkFlowSlots(
       invalid(
         'PROJECT_BINDING_SLOT_RECURSIVE',
         `Binding ${bindingId} slot ${name} selects its own Flow package`,
+        declarationPath,
+        pointer,
+      )
+    }
+    if (Object.keys(target.inspected.metadata.attachments ?? {}).length !== 0) {
+      invalid(
+        'PROJECT_BINDING_SLOT_ATTACHMENTS_UNSUPPORTED',
+        `Binding ${bindingId} slot ${name} requires root-only file attachments`,
         declarationPath,
         pointer,
       )

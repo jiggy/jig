@@ -47,6 +47,7 @@ import {
   type PrivateRootAdministrationController,
 } from './root-administration-controller.js'
 import { executePrivateRootRunLaunch } from './root-run-controller.js'
+import type { PrivateRootRunFiles } from './root-run-files.js'
 import {
   openPrivateProjectSessionOwner,
   type PrivateProjectSessionOwner,
@@ -65,6 +66,7 @@ export interface PrivateProjectSessionHost {
   readonly installedBunSupport: PrivateInstalledBunSupport
   readonly runTimeoutMs: number
   readonly agentProvider?: PrivateAgentProvider | undefined
+  readonly files?: PrivateRootRunFiles
 }
 
 /** Open one finite project session against already selected trusted machinery. */
@@ -89,6 +91,7 @@ export async function openPrivateProjectSession(input: {
       projectRoot: owner.root.requestedPath,
       packageStoreRoot,
       runTimeoutMs: input.host.runTimeoutMs,
+      ...(input.host.files === undefined ? {} : { files: input.host.files }),
       execute: (runId, coordinator, signal) =>
         executePrivateRootRunLaunch({
           projectRoot: owner!.root.requestedPath,
@@ -98,6 +101,7 @@ export async function openPrivateProjectSession(input: {
           installedSupport: input.host.installedBunSupport,
           backend: input.host.backend,
           agentProvider: input.host.agentProvider,
+          ...(input.host.files === undefined ? {} : { files: input.host.files }),
           signal,
         }),
       onProjectIdentityLoss: () => {

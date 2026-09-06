@@ -14,6 +14,7 @@ import {
   stat,
   statfs,
   unlink,
+  type FileHandle,
 } from 'node:fs/promises'
 import { createServer, type Server, type Socket } from 'node:net'
 import { tmpdir } from 'node:os'
@@ -29,6 +30,7 @@ import {
   type PrivateRootlessLinuxAcquisitionObservation,
 } from './linux-rootless-acquisition.js'
 import { privateDomainDigest, privateFileDigest } from './identity.js'
+import { PRIVATE_FILE_LIMITS, privateVerifySealedFile } from './linux-file-input.js'
 
 const RUN_ID = /^[a-z0-9][a-z0-9-]{0,47}$/
 const OWNER_NAME = /^[a-z0-9][a-z0-9-]{0,63}$/
@@ -45,6 +47,8 @@ const PROC_SUPER_MAGIC = 0x9fa0n
 const SYSFS_SUPER_MAGIC = 0x6265_6572n
 const BUN_POLICY = Object.freeze(['--no-env-file', '--no-install', '--config=/dev/null'] as const)
 const authenticBackends = new WeakSet<object>()
+export const PRIVATE_OUTPUT_PATH = '/jig-output'
+export const PRIVATE_OUTPUT_BYTES = 16 * 1024 * 1024
 
 export interface PrivateLinuxCgroupLimits {
   readonly memoryBytes: number
@@ -59,6 +63,13 @@ export interface PrivateLinuxCgroupLimits {
 export interface PrivateLinuxReadOnlyMount {
   readonly source: string
   readonly destination: string
+}
+
+export interface PrivateLinuxCapturedInput {
+  readonly fd: number
+  readonly destination: string
+  readonly bytes: number
+  readonly digest: string
 }
 
 interface SealedMount extends PrivateLinuxReadOnlyMount {
@@ -76,6 +87,10 @@ export interface PrivateLinuxLaunchPlan {
   readonly network?: 'isolated' | 'inherited'
   /** Permit a trusted nested sandbox to create child user namespaces. */
   readonly nestedUserNamespaces?: boolean
+  /** One bounded anonymous output mount; its retained descriptor is host-only. */
+  readonly output?: boolean
+  readonly capturedInputs?: readonly PrivateLinuxCapturedInput[]
+  readonly inputDirectories?: readonly string[]
 }
 
 interface SealedLaunchPlan
@@ -85,6 +100,9 @@ interface SealedLaunchPlan
   readonly environment: Readonly<Record<string, string>>
   readonly network: 'isolated' | 'inherited'
   readonly nestedUserNamespaces: boolean
+  readonly output: boolean
+  readonly capturedInputs: readonly PrivateLinuxCapturedInput[]
+  readonly inputDirectories: readonly string[]
 }
 
 export interface PrivateLinuxCgroupBackendOptions {
@@ -252,6 +270,7 @@ interface SupervisorReady {
   readonly runCgroup: string
   readonly payloadPid: number
   readonly supervisorPid: number
+  readonly outputFd?: number
 }
 
 interface SupervisorTerminal {
@@ -283,6 +302,8 @@ type SupervisorMessage = SupervisorPrepared | SupervisorReady | SupervisorTermin
 type FinalRecord = SupervisorTerminal | RecoveredFinal
 
 export type PrivateLinuxComponentProcess = ExactComponentProcess & {
+  /** Read only after enforcement settles. Close after collection, including failure. */
+  readonly outputDirectory?: FileHandle
   readonly owner: PrivateLinuxPreparedOwnerIdentity
   readonly cgroup: {
     readonly runCgroup: string
@@ -557,6 +578,8 @@ export class PrivateLinuxCgroupBackend {
     }
     const data = requireSealedOwner(sealedOwner, this, plan)
     await requireSealedMounts(data.sealedPlan.readOnlyMounts)
+    for (const file of data.sealedPlan.capturedInputs)
+      privateVerifySealedFile(file.fd, file.bytes, file.digest)
     const currentMechanism = await this.#observeMechanism()
     requirePrivateLinuxMechanismUnchanged(data.mechanism, currentMechanism)
     await requireOwnerState(data.identity)
@@ -567,6 +590,7 @@ export class PrivateLinuxCgroupBackend {
     let supervisor: ChildProcessWithoutNullStreams | undefined
     let control: Socket | undefined
     let preparedReached = false
+    let outputDirectory: FileHandle | undefined
     try {
       await listen(server, controlPath)
       const accepted = acceptOne(server, this.#options.startupTimeoutMs)
@@ -586,7 +610,15 @@ export class PrivateLinuxCgroupBackend {
               LD_LIBRARY_PATH: data.mechanism.support.trustedCoordinatorLibraryPath,
             },
             detached: true,
-            stdio: ['pipe', 'pipe', 'pipe'],
+            stdio: [
+              'pipe',
+              'pipe',
+              'pipe',
+              'ignore',
+              'ignore',
+              'ignore',
+              ...data.sealedPlan.capturedInputs.map((file) => file.fd),
+            ],
           },
         ),
       )
@@ -632,7 +664,22 @@ export class PrivateLinuxCgroupBackend {
         'ready',
       )
       requireReadyMessage(ready, preparedMessage, data)
+      if (ready.supervisorPid !== supervisor.pid) throw new Error('output owner identity changed')
       await requirePayloadInCgroup(data.identity.runCgroup, ready.payloadPid)
+      if (data.sealedPlan.output) {
+        if (!safePositiveInteger(ready.outputFd)) throw new Error('missing output handoff')
+        outputDirectory = await open(`/proc/${ready.supervisorPid}/fd/${ready.outputFd}`, 0x10000)
+        if (
+          !(await outputDirectory.stat()).isDirectory() ||
+          BigInt((await statfs(`/proc/self/fd/${outputDirectory.fd}`)).type) !== 0x01021994n
+        ) {
+          throw new Error('output handoff is not an anonymous tmpfs directory')
+        }
+        if (signal?.aborted) throw new Error('output handoff cancelled')
+        writeControl(control, { type: 'continue' })
+      } else if (ready.outputFd !== undefined) {
+        throw new Error('unexpected output handoff')
+      }
 
       let inputClosed = false
       let terminationRequested = false
@@ -683,6 +730,7 @@ export class PrivateLinuxCgroupBackend {
           }),
       )
       return Object.freeze({
+        ...(outputDirectory === undefined ? {} : { outputDirectory }),
         owner: data.prepared,
         cgroup: Object.freeze({
           runCgroup: data.identity.runCgroup,
@@ -714,6 +762,7 @@ export class PrivateLinuxCgroupBackend {
         },
       })
     } catch (error) {
+      await outputDirectory?.close()
       writeControlBestEffort(control, { type: 'cancel' })
       supervisor?.stdin.end()
       control?.end()
@@ -1426,6 +1475,12 @@ function supervisorConfiguration(data: SealedOwnerData): object {
     environment: data.sealedPlan.environment,
     network: data.sealedPlan.network,
     nestedUserNamespaces: data.sealedPlan.nestedUserNamespaces,
+    output: data.sealedPlan.output,
+    capturedInputs: data.sealedPlan.capturedInputs.map((file, index) => ({
+      fd: 6 + index,
+      destination: file.destination,
+    })),
+    inputDirectories: data.sealedPlan.inputDirectories,
     bunPath: data.mechanism.support.trustedCoordinatorBunPath,
     bunHostLibraryPath: data.mechanism.support.trustedCoordinatorLibraryPath,
     bubblewrapPath: data.mechanism.support.trustedBubblewrapPath,
@@ -1585,6 +1640,46 @@ function snapshotPlan(value: PrivateLinuxLaunchPlan): SealedLaunchPlan {
   if (typeof nestedUserNamespaces !== 'boolean') {
     throw new TypeError('rootless Linux nested-user-namespace policy is invalid')
   }
+  const output = value.output ?? false
+  if (
+    typeof output !== 'boolean' ||
+    (output &&
+      mounts.some(
+        ({ destination }) =>
+          destination === PRIVATE_OUTPUT_PATH || destination.startsWith(`${PRIVATE_OUTPUT_PATH}/`),
+      ))
+  ) {
+    throw new TypeError('rootless Linux output projection is invalid')
+  }
+  const capturedInputs = [...(value.capturedInputs ?? [])]
+  const inputDirectories = [...(value.inputDirectories ?? [])]
+  if (
+    capturedInputs.length > PRIVATE_FILE_LIMITS.files ||
+    inputDirectories.length > 8 ||
+    capturedInputs.reduce((sum, file) => sum + file.bytes, 0) > PRIVATE_FILE_LIMITS.bytes ||
+    new Set(capturedInputs.map((file) => file.destination)).size !== capturedInputs.length ||
+    new Set(inputDirectories).size !== inputDirectories.length ||
+    inputDirectories.some(
+      (path) => path.length > 75 || !/^\/jig-input\/[a-z0-9]+(?:-[a-z0-9]+)*$/.test(path),
+    )
+  ) {
+    throw new TypeError('invalid captured input projection')
+  }
+  for (const file of capturedInputs) {
+    if (
+      !canonicalAbsolute(file.destination) ||
+      !inputDirectories.some((path) => file.destination.startsWith(`${path}/`)) ||
+      mounts.some(
+        (mount) =>
+          file.destination === mount.destination ||
+          file.destination.startsWith(`${mount.destination}/`) ||
+          mount.destination.startsWith('/jig-input/'),
+      )
+    ) {
+      throw new TypeError('invalid captured input destination')
+    }
+    privateVerifySealedFile(file.fd, file.bytes, file.digest)
+  }
   return Object.freeze({
     runId: value.runId,
     limits: normalizedLimits,
@@ -1593,6 +1688,9 @@ function snapshotPlan(value: PrivateLinuxLaunchPlan): SealedLaunchPlan {
     environment: Object.freeze(environment),
     network,
     nestedUserNamespaces,
+    output,
+    capturedInputs: Object.freeze(capturedInputs.map((file) => Object.freeze({ ...file }))),
+    inputDirectories: Object.freeze(inputDirectories),
   })
 }
 

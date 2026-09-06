@@ -265,6 +265,13 @@ describe('private project Flow source capture', () => {
         expect(deriveDirectRunTargetCandidates(source)).toEqual([
           {
             kind: 'flow',
+            path: 'flows/attachment',
+            packageDigest: source.members.find(
+              (member) => member.provenance.projectPath === 'flows/attachment',
+            )!.captured.digest,
+          },
+          {
+            kind: 'flow',
             path: 'flows/direct',
             packageDigest: source.members.find(
               (member) => member.provenance.projectPath === 'flows/direct',

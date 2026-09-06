@@ -63,6 +63,13 @@ function projectCandidate(
     packagePath: request.packagePath,
     entrypoint: request.entrypoint,
     settings: request.settings,
+    attachments: request.attachments,
+    ...(Object.keys(request.attachments).length === 0
+      ? {}
+      : {
+          filePolicy:
+            'Root-only captured input; one initially empty bounded output; no live host writes.',
+        }),
     availability:
       disposition.state === 'ready'
         ? { state: 'ready' as const }

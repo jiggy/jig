@@ -84,9 +84,6 @@ export async function planPrivateBunDirectRun(input: {
   ) {
     throw new TypeError('private Bun recipe requires one matching flow.ts activation')
   }
-  if (Object.keys(request.attachments).length !== 0) {
-    throw new TypeError('private Bun recipe does not yet project attachments')
-  }
   if (request.target.kind === 'flow') {
     if (Object.keys(request.settings).length !== 0) {
       throw new TypeError('private Bun direct Flow recipe requires zero configuration')
@@ -217,6 +214,12 @@ function logicalLaunchDigest(
     }),
     bunPolicy: BUN_POLICY,
     runtimePredicates: RUNTIME_PREDICATES,
+    fileProfile: {
+      inputBytes: 8 * 1024 * 1024,
+      inputFiles: 64,
+      outputBytes: 16 * 1024 * 1024,
+      rootOnly: true,
+    },
     capabilities: request.capabilities,
     ...(agentProvider === undefined ? {} : { agentProviderDigest: agentProvider.digest }),
   } as unknown as JsonValue)

@@ -14,6 +14,7 @@ import {
   type PrivateLinuxLaunchPlan,
 } from '../src/internal/linux-rootless-backend.js'
 import { RunHostSession } from '../src/run/session.js'
+import { privateCaptureAttachments } from '../src/internal/linux-file-input.js'
 
 const HOSTILE = process.env.JIG_LINUX_ROOTLESS_HOSTILE === '1'
 const hostileDescribe = HOSTILE ? describe.serial : describe.skip
@@ -42,6 +43,77 @@ test('constructs the delayed-supervisor fixture from current trusted source', as
 })
 
 delegatedDescribe('private rootless Linux Run', () => {
+  test('projects immutable binary input without a live host tree or writable input paths', async () => {
+    const host = await hostConfiguration()
+    const fixture = await createFixture(`
+      import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+      let writeDenied = false, createDenied = false;
+      try { writeFileSync('/jig-input/source/data.bin', 'changed'); } catch { writeDenied = true; }
+      try { mkdirSync('/jig-input/source/new'); } catch { createDenied = true; }
+      console.log(JSON.stringify({ bytes: [...readFileSync('/jig-input/source/data.bin')], writeDenied, createDenied }));
+    `)
+    await writeFile(join(fixture, 'data.bin'), new Uint8Array([0, 255, 128]))
+    const capture = privateCaptureAttachments([
+      { name: 'source', directory: fixture, select: ['data.bin'] },
+    ])
+    try {
+      await writeFile(join(fixture, 'data.bin'), 'edited after capture')
+      const component = await host.backend.launch({
+        ...plan(host, fixture, 'captured-input'),
+        inputDirectories: ['/jig-input/source'],
+        capturedInputs: capture.attachments[0]!.files.map((file) => ({
+          ...file,
+          destination: `/jig-input/source/${file.path}`,
+        })),
+      })
+      const [stdout, stderr, receipt] = await Promise.all([
+        collect(component.stdout),
+        collect(component.stderr),
+        component.enforcement,
+      ])
+      expect(stderr).toBe('')
+      expect(receipt).toMatchObject({ exitCode: 0, fenced: true })
+      expect(JSON.parse(stdout)).toEqual({
+        bytes: [0, 255, 128],
+        writeDenied: true,
+        createDenied: true,
+      })
+    } finally {
+      capture.close()
+      await rm(fixture, { recursive: true, force: true })
+    }
+  })
+
+  test('retains bounded binary output after the complete payload tree is fenced', async () => {
+    const host = await hostConfiguration()
+    const fixture = await createFixture(`
+      import { writeFileSync } from 'node:fs';
+      writeFileSync('/jig-output/result.bin', new Uint8Array([0, 255, 128, 10]));
+    `)
+    let component: Awaited<ReturnType<PrivateLinuxCgroupBackend['launch']>> | undefined
+    try {
+      component = await host.backend.launch({
+        ...plan(host, fixture, 'retained-output'),
+        output: true,
+      })
+      const [stdout, stderr, receipt] = await Promise.all([
+        collect(component.stdout),
+        collect(component.stderr),
+        component.enforcement,
+      ])
+      expect({ stdout, stderr }).toEqual({ stdout: '', stderr: '' })
+      expect(receipt).toMatchObject({ exitCode: 0, fenced: true, stopReason: 'payload_exit' })
+      expect(await missing(component.cgroup.runCgroup)).toBe(true)
+      const fd = component.outputDirectory!.fd
+      expect([...(await readFile(`/proc/self/fd/${fd}/result.bin`))]).toEqual([0, 255, 128, 10])
+      await component.outputDirectory!.close()
+      expect(await missing(`/proc/self/fd/${fd}`)).toBe(true)
+    } finally {
+      await component?.outputDirectory?.close()
+      await rm(fixture, { recursive: true, force: true })
+    }
+  })
+
   test('preflights and executes one isolated payload', async () => {
     const host = await hostConfiguration()
     const fixture = await createFixture(`
@@ -614,8 +686,8 @@ async function delayedReadinessSupervisor(
   let source = await readFile(sourcePath, 'utf8')
   source = replaceOnce(
     source,
-    "import { closeSync, readFileSync, statSync, writeSync } from 'node:fs'",
-    "import { closeSync, readFileSync, statSync, writeFileSync, writeSync } from 'node:fs'",
+    "import { closeSync, readFileSync, readSync, statSync, writeSync } from 'node:fs'",
+    "import { closeSync, readFileSync, readSync, statSync, writeFileSync, writeSync } from 'node:fs'",
   )
   source = replaceOnce(
     source,

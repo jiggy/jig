@@ -11,6 +11,8 @@ child calls, and Agent providers.
 - Activation planning, admission storage, project sessions, root controllers,
   and durable lifecycle state.
 - Package artifact retention, materialization, and preparation.
+- Invocation file capture, sealed input projection, bounded anonymous output,
+  and separate command-owned publication after execution fencing.
 - Installed Bun authentication, rootless acquisition, delegation,
   containment, supervision, and execution.
 - Agent clients and launchers, capability enforcement, credential isolation,
@@ -39,6 +41,13 @@ child calls, and Agent providers.
   and complete bounded cleanup. Do not replay uncertain operations.
 - Durable transitions use exact identities and conflict-safe commits;
   recovery must not create duplicate owners or official Runs.
+- Root attachments use invocation-owned descriptors and canonical file identity;
+  hashes alone never grant file access. Captured bytes are not Package/1 inputs.
+  Child and Agent contexts receive no attachment or destination authority.
+- Keep execution settlement separate from delivery. Retain bounded output after
+  writer fencing; publish once without replacement through the independent
+  command owner. Coordinator loss must remove unpublished staging. Late failure
+  preserves a known terminal or publication and never authorizes replay.
 - Exact child slots may select a Flow or a leaf Binding with its own admitted
   settings and Agent capability. An Agent operation belongs to that child
   context, not the root's operation namespace; fence and drain it before

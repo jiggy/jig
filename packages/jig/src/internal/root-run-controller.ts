@@ -65,6 +65,7 @@ import {
   recoverPrivateRootAgentRunOwners,
 } from './root-agent-run-controller.js'
 import type { PrivateAgentProvider } from './agent-provider.js'
+import type { PrivateRootRunFiles } from './root-run-files.js'
 
 const PLAN_KIND = 'private-direct-root-plan/1'
 const BACKING_KIND = 'private-direct-root-backing/1'
@@ -114,6 +115,7 @@ export async function executePrivateRootRunLaunch(input: {
   readonly installedSupport: PrivateDirectRunInstalledSupport
   readonly backend: PrivateLinuxCgroupBackend
   readonly agentProvider?: PrivateAgentProvider | undefined
+  readonly files?: PrivateRootRunFiles
   readonly signal?: AbortSignal
 }): Promise<PrivateRootExecutionDisposition> {
   await input.coordinator.verify()
@@ -232,8 +234,11 @@ async function startOrResumeCurrentExecution(
     if (stop.terminal !== undefined) {
       return await settleBeforeSandbox(input, work, plan, stop.terminal)
     }
+    const fileProjection = input.files?.projection(work.run.runId, recipe.request, work.run.files)
+    if (Object.keys(recipe.request.attachments).length !== 0 && fileProjection === undefined)
+      throw new Error('root attachment authority is unavailable')
     const sealed = await input.backend.seal(
-      backendPlan(recipe, lease.root, work.run.runId, plan),
+      { ...backendPlan(recipe, lease.root, work.run.runId, plan), ...fileProjection?.plan },
       plan.ownerAllocation,
     )
     work = await advanceCheckpoint(input, work, 'sandbox', {
@@ -258,6 +263,7 @@ async function startOrResumeCurrentExecution(
       // delivery and the helper's absolute timer owns the hard fence after
       // grace; aborting the Backend signal here would skip that protocol.
       stop.releaseStartupEnforcement()
+      input.files?.retainOutput(component.outputDirectory)
       const parent = work
       const dispatcher = operationDispatcher(input, parent, plan.effectiveDeadlineUnixMs)
       provisional = await new RunHostSession(
@@ -265,7 +271,7 @@ async function startOrResumeCurrentExecution(
         {
           input: work.run.input,
           settings: recipe.request.settings,
-          attachments: Object.freeze({}),
+          attachments: fileProjection?.attachments ?? Object.freeze({}),
           scratch: recipe.scratch,
           deadlineUnixMs: plan.effectiveDeadlineUnixMs,
           ...(input.signal === undefined ? {} : { signal: input.signal }),

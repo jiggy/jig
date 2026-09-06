@@ -99,9 +99,184 @@ try {
   `,
   )
 
+  await writeHostileFlow(
+    project,
+    'file-work',
+    `
+    const fs = await import('node:fs');
+    const root = request.params.attachments.deliverables.path;
+    const source = request.params.attachments.source.path;
+    const mode = request.params.input.mode;
+    if (['invalid-result', 'protocol', 'undeclared', 'blocked'].includes(mode)) fs.writeFileSync(root + '/proposal.txt', 'unsuccessful work');
+    if (mode === 'copy') {
+      fs.writeFileSync(root + '/bytes.bin', fs.readFileSync(source + '/bytes.bin'));
+      fs.writeFileSync(root + '/empty', '');
+    } else if (mode === 'sparse') {
+      const fd = fs.openSync(root + '/large', 'w'); fs.ftruncateSync(fd, 17 * 1024 * 1024); fs.closeSync(fd);
+    } else if (mode === 'symlink') {
+      fs.symlinkSync('/etc/passwd', root + '/link');
+    } else if (mode === 'hardlink') {
+      fs.writeFileSync(root + '/one', 'one'); fs.linkSync(root + '/one', root + '/two');
+    } else if (mode === 'entries') {
+      for (let i = 0; i < 65; i++) fs.writeFileSync(root + '/' + i, '');
+    } else if (mode === 'exhaust') {
+      let denied = false;
+      try { for (let i = 0; i < 24; i++) fs.appendFileSync(root + '/large', Buffer.alloc(1024 * 1024)); }
+      catch (error) { denied = error.code === 'ENOSPC'; }
+      if (!denied) throw new Error('output allocation escaped its ceiling');
+      fs.unlinkSync(root + '/large');
+      return { denied };
+    } else if (mode === 'failed') {
+      fs.writeFileSync(root + '/partial', 'not a deliverable');
+      process.exitCode = 7;
+    } else if (mode === 'deadline') {
+      fs.writeFileSync(root + '/partial', 'not a deliverable');
+      await Bun.sleep(60_000);
+    }
+    return mode === 'invalid-result' ? 'not an object' : { mode };
+  `,
+    [
+      'attachments:',
+      '  source: read',
+      '  deliverables: read-write',
+      'outcomes:',
+      '  blocked: Useful unsuccessful output.',
+    ],
+  )
+  await writeFile(
+    join(project, 'flows/file-work/result.schema.json'),
+    JSON.stringify({
+      $schema: 'https://flow.jig.md/schemas/schema-1.json',
+      type: 'object',
+      properties: { outcome: { type: 'string' }, output: { type: 'object' } },
+      required: ['outcome', 'output'],
+      additionalProperties: false,
+    }),
+  )
+  await writeHostileFlow(
+    project,
+    'file-read',
+    `
+    return { bytes: [...readFileSync(request.params.attachments.source.path + '/bytes.bin')] };
+  `,
+    ['attachments:', '  source: read'],
+  )
+  const selected = join(consumer, 'selected')
+  await mkdir(selected)
+  const original = Buffer.from([0, 255, 128, 10])
+  await writeFile(join(selected, 'bytes.bin'), original)
+  await writeFile(join(consumer, 'input.json'), '{"mode":"copy"}\n')
+
   const approved = await run([jig, 'review', project, '--yes'], consumer, [0], 120_000)
   assert.match(approved.stdout, /\nproject is ready\n$/)
   assert.equal(approved.stderr, '')
+
+  process.stdout.write('Installed file Runs: capture, publication, exhaustion and failed results\n')
+  for (const mode of [
+    'copy',
+    'sparse',
+    'symlink',
+    'hardlink',
+    'entries',
+    'exhaust',
+    'blocked',
+    'invalid-result',
+    'protocol',
+    'undeclared',
+    'failed',
+    'deadline',
+  ]) {
+    const destination = join(consumer, `files-${mode}`)
+    const args = [
+      jig,
+      'run',
+      'flow:flows/file-work',
+      '--attach',
+      `source=${selected}`,
+      '--out',
+      destination,
+      '--input',
+      mode === 'copy' ? `@${join(consumer, 'input.json')}` : JSON.stringify({ mode }),
+      '--timeout',
+      mode === 'deadline' ? '2s' : '20s',
+    ]
+    const execution = await run(args, project, [0, 1, 2], 60_000)
+    const terminal = requireRecord(JSON.parse(execution.stdout))
+    const invalidTree = ['sparse', 'symlink', 'hardlink', 'entries'].includes(mode)
+    if (invalidTree) {
+      assert.equal(execution.exitCode, 2)
+      assert.equal(terminal.status, 'succeeded')
+      assert.equal(requireRecord(terminal.delivery).status, 'failed')
+      await assert.rejects(stat(destination))
+    } else {
+      assert.equal(
+        execution.exitCode,
+        ['failed', 'deadline', 'protocol', 'undeclared', 'invalid-result'].includes(mode) ? 1 : 0,
+      )
+      assert.equal(requireRecord(terminal.delivery).status, 'written')
+      const packet = JSON.parse(await readFile(join(destination, 'result.json'), 'utf8'))
+      assert.deepEqual(packet, terminal)
+      assert.ok(requireRecord(terminal.method).configurationDigest)
+      if (mode === 'copy') {
+        assert.deepEqual(await readFile(join(destination, 'files/bytes.bin')), original)
+        assert.equal((await stat(join(destination, 'files/empty'))).size, 0)
+      } else if (mode === 'blocked') {
+        assert.equal(terminal.outcome, 'blocked')
+        assert.equal(
+          await readFile(join(destination, 'files/proposal.txt'), 'utf8'),
+          'unsuccessful work',
+        )
+      } else {
+        assert.deepEqual(await readdir(join(destination, 'files')), [])
+      }
+    }
+    assert.deepEqual(await readFile(join(selected, 'bytes.bin')), original)
+    assert.equal(
+      (await readdir(consumer)).some((name) => name.startsWith('.jig-delivery-')),
+      false,
+    )
+    await eventuallyNoJigResidue()
+  }
+  const occupied = await run(
+    [
+      jig,
+      'run',
+      'flow:flows/file-work',
+      '--attach',
+      `source=${selected}`,
+      '--out',
+      join(consumer, 'files-copy'),
+    ],
+    project,
+    [1],
+  )
+  assert.equal(occupied.stdout, '')
+  assert.match(occupied.stderr, /JIG_OUTPUT_INVALID/)
+  const missingMapping = await run(
+    [jig, 'run', 'flow:flows/file-work', '--out', join(consumer, 'missing')],
+    project,
+    [1],
+  )
+  assert.equal(missingMapping.stdout, '')
+  assert.match(missingMapping.stderr, /JIG_RUN_FILES_INVALID/)
+  await assert.rejects(stat(join(consumer, 'missing')))
+  await eventuallyNoJigResidue()
+
+  const readonly = await run(
+    [
+      jig,
+      'run',
+      'flow:flows/file-read',
+      '--attach',
+      `source=${selected}`,
+      '--out',
+      join(consumer, 'readonly'),
+    ],
+    project,
+  )
+  assert.deepEqual(successfulTerminal(readonly).output, { bytes: [...original] })
+  assert.deepEqual(await readdir(join(consumer, 'readonly/files')), [])
+  await eventuallyNoJigResidue()
 
   process.stdout.write('Installed hostile case: isolation and orphan cleanup\n')
   const orphanStartedUnixMs = Date.now()
@@ -164,7 +339,7 @@ if (failure !== undefined) throw failure
 
 process.stdout.write(
   `Installed-archive hostile baseline passed in ${Date.now() - startedUnixMs} ms ` +
-    '(isolation/orphan, memory pressure, fixed deadline)\n',
+    '(file capture/publication, output bounds/failures, isolation/orphan, memory pressure, fixed deadline)\n',
 )
 
 async function requiredPackageArchive(): Promise<string> {
@@ -191,7 +366,12 @@ async function makeDirectoriesWritable(directory: string): Promise<void> {
   }
 }
 
-async function writeHostileFlow(project: string, name: string, attack: string): Promise<void> {
+async function writeHostileFlow(
+  project: string,
+  name: string,
+  attack: string,
+  metadata: readonly string[] = [],
+): Promise<void> {
   const flow = join(project, 'flows', name)
   await mkdir(flow)
   await writeFile(
@@ -200,6 +380,7 @@ async function writeHostileFlow(project: string, name: string, attack: string): 
       '---',
       `name: ${name}`,
       'description: Exercise one bounded installed-host containment invariant.',
+      ...metadata,
       '---',
       '',
     ].join('\n'),
@@ -237,8 +418,9 @@ for await (const line of lines) {
   process.stdout.write(JSON.stringify({
     jsonrpc: "2.0",
     id: request.id,
-    result: { outcome: "done", output },
+    result: { outcome: request.params.input.mode === 'blocked' ? 'blocked' : request.params.input.mode === 'undeclared' ? 'invented' : 'done', output },
   }) + "\\n");
+  if (request.params.input.mode === 'protocol') process.stdout.write('malformed frame\\n');
   lines.close();
   break;
 }

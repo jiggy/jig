@@ -678,7 +678,6 @@ export function isDirectRunEligible(inspected: InspectedPackage): boolean {
     )
       return false
   }
-  if (Object.keys(inspected.metadata.attachments ?? {}).length > 0) return false
   try {
     inspected.schemas.settings?.validate({}, 'DIRECT_SETTINGS_INVALID')
     return true
