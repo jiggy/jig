@@ -8,6 +8,11 @@ operational baselines, and public-site assembly.
 ## Ownership
 
 - Root scripts own unprivileged source, package, release, and site operations.
+- `new-worktree.sh` owns sibling development-checkout creation. It inherits
+  existing ignored `../<same-name>` links from the primary checkout to real
+  workspace entries. Tracked source stays local to each checkout; parent links
+  into the primary checkout stay unchanged. It does not copy environment files,
+  create shared tool state, install dependencies, or choose another workspace.
 - Justfiles own task composition; scripts retain substantive orchestration.
   Candidate and site scripts invoke the relevant justfile, not package scripts.
 - `test-release.sh` includes the authored examples' deterministic application
@@ -37,6 +42,9 @@ operational baselines, and public-site assembly.
 - Prefer POSIX shell for orchestration and TypeScript for non-trivial data or
   protocol logic.
 - Keep destructive cleanup limited to paths created by the current script.
+- Validate worktree arguments and shared-link collisions before creating a
+  checkout. A later link failure leaves the checkout with an explicit diagnostic;
+  never force-remove potentially edited work as failure cleanup.
 
 ## Verification
 
@@ -46,6 +54,9 @@ operational baselines, and public-site assembly.
   success plus fail-closed API fixtures.
 - `bun test scripts/development-shell.test.ts` exercises the actual shell hook's
   missing-build, mismatched-version, matching-version, and PATH behavior.
+- `bun test scripts/new-worktree.test.ts` uses disposable Git repositories to
+  verify link ownership, shared environment updates, separate indexes, and
+  refusals that preserve existing work and workspace state.
 - `just test-tooling` also checks recipe parsing, argument and working-directory
   handling, explicit packing, and build-tool refusal before cleanup or site
   staging. Its no-package-scripts rule covers repository tasks, not imported

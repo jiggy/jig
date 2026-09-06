@@ -1,7 +1,7 @@
 # Local agent and sandbox state
 /.agent-sandbox/
 /agent-sandbox/
-/.codex/
+/.codex
 /original.research.md
 /.tmp/
 

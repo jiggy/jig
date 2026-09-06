@@ -80,6 +80,45 @@ older `packages/jig/bin/jig` is generated output, not the updated source. Keep A
 credentials and model choices in your operator environment or ignored
 `.env.local`, never in the tracked shell configuration.
 
+## Parallel worktrees
+
+Keep the primary checkout in `jig/main` and task checkouts beside it. From the
+workspace directory, create a branch and checkout with:
+
+```sh
+main/scripts/new-worktree.sh work/issue-input issue-input
+cd issue-input
+direnv allow
+bun i
+```
+
+The optional second argument is a single directory name; it defaults to the
+branch name when that name contains no `/`. New branches start at the primary
+checkout's committed `HEAD`; an existing branch keeps its own contents. Invoke
+the primary checkout's script even when working in another directory. Each
+writing agent owns a different branch and worktree; the coordinator integrates
+completed commits into `main`.
+
+The workspace owns shared local state. Existing ignored links such as
+`main/.env.local -> ../.env.local`, `main/.codex -> ../.codex`, and
+`main/.agent-sandbox.env -> ../.agent-sandbox.env` are reproduced in new
+checkouts. Shared targets must already exist as real workspace entries. To
+share another local entry, ignore it and link it from the primary checkout to
+`../<same-name>` first. Environment files are never copied.
+
+Links in the opposite direction—workspace `.agents`, `.envrc`, and `shell.nix`
+pointing into `main`—stay unchanged. Every checkout uses its own tracked copies
+of those files. Dependencies, build output, `.direnv`, `.jig`, and `.tmp` also
+stay local to each checkout. Enter the assigned checkout before loading its
+development shell or running repository commands.
+
+Invalid names, existing destinations, and shared-path conflicts are rejected
+before creation. A later filesystem failure reports the retained checkout for
+inspection. Remove a finished checkout with `git worktree remove` only after
+accounting for its commits and local files, including ignored evidence; do not
+force-remove unfinished work. Worktrees separate source and staging, not host
+resources: coordinate tests that inspect shared cgroups or temporary resources.
+
 ## Development tasks
 
 Repository tasks live in justfiles, not package manifests. Run `just` to list
