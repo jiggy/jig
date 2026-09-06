@@ -1,7 +1,8 @@
 # `@jigging/jig`
 
-Jig is a local, secure host for admitted FLOW packages. The direct-run alpha
-has one finite command surface:
+Jig puts reusable Agent methods to work with powers you approve. Choose your
+Agents, combine specialists, inspect their results, and stop owned work.
+The developer alpha has one finite command surface:
 
 ```text
 jig init --bare <directory>
@@ -19,7 +20,7 @@ authority they need or fail closed.
 ## Install
 
 ```console
-npm install --global @jigging/jig@0.1.0-alpha.10
+npm install --global @jigging/jig@alpha
 ```
 
 Installing Jig also installs `@oven/bun-linux-x64-baseline@1.3.3` as an exact
@@ -27,6 +28,11 @@ external runtime dependency. Bun is not embedded in or bundled with the
 `@jigging/jig` archive. npm verifies the installed package; Jig selects only
 that closed package-local path, authenticates its version, revision, and digest
 before evaluator or Flow bytes execute, and revalidates it before each launch.
+
+For a useful application, try [an issue becoming a tested patch](https://jig.md/guide/tested-patch).
+It selects local source files and returns a patch with executed checks, without
+changing the original repository. Its guide identifies the required source
+candidate; installed alphas may lag the example.
 
 ## Supported host
 
@@ -78,7 +84,7 @@ Place packages under `flows/<name>/`. Each package has exact-case `FLOW.md`
 and, for this alpha, one `flow.ts`. The generated `jig.ts`
 explicitly discovers `./flows` and `./bindings`.
 
-The paired `@jigging/flow@0.1.0-alpha.6` package provides the small Run/1
+The published `@jigging/flow@0.1.0-alpha.7` package provides the small Run/1
 authoring API. Declare it exactly in the Flow's `package.json`, generate a text
 `bun.lock` with Bun 1.3.3 and `bun install --lockfile-only`, then handle one
 finite Run:
