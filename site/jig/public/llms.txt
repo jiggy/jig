@@ -5,6 +5,7 @@ Jig is a local, secure host for admitted FLOW packages.
 - Landing page: https://jig.md/
 - Direct-alpha guide: https://jig.md/guide/
 - Proposal workshop (source candidate): https://jig.md/guide/proposal-workshop
+- Tested patch (source candidate): https://jig.md/guide/tested-patch
 - Workflow-design guide: https://jig.md/guide/workflow-design
 - Non-normative use cases: https://jig.md/use-cases
 - Candidate orchestration patterns: https://jig.md/orchestration-patterns

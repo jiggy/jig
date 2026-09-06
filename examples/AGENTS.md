@@ -36,8 +36,13 @@ consumer evidence or promoted Starters.
   same tests run in `scripts/test-release.sh` and existing CI.
 - Exercise package boundaries through an admitted Jig Run before claiming
   host execution; unit tests alone establish only application behavior.
+- Run `bun test examples/tested-patch/test` for patch policy and the fixed
+  acceptance-checker process after installing that application's repair Flow
+  dependency as its Child DOX describes. These tests also run in `scripts/test-release.sh`.
 
 ## Child DOX Index
 
 - [proposal-workshop/AGENTS.md](proposal-workshop/AGENTS.md) — A bounded
   proposal workshop with separate drafting and evidence-review methods.
+- [tested-patch/AGENTS.md](tested-patch/AGENTS.md) — One isolated source repair
+  with a separately executed acceptance checker and inspectable patch evidence.

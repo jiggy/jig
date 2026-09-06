@@ -1,0 +1,21 @@
+{
+  "exportName": "truncateUtf8",
+  "cases": [
+    { "id": "accent-boundary", "args": ["café", 4], "expected": { "returned": "caf" } },
+    { "id": "accent-full", "args": ["café", 5], "expected": { "returned": "café" } },
+    { "id": "emoji-boundary", "args": ["a😀b", 4], "expected": { "returned": "a" } },
+    { "id": "emoji-full", "args": ["a😀b", 5], "expected": { "returned": "a😀" } },
+    { "id": "combining-boundary", "args": ["é!", 2], "expected": { "returned": "e" } },
+    { "id": "ascii", "args": ["plain", 3], "expected": { "returned": "pla" } },
+    { "id": "zero", "args": ["anything", 0], "expected": { "returned": "" } },
+    { "id": "empty", "args": ["", 7], "expected": { "returned": "" } },
+    { "id": "negative-budget", "args": ["hello", -1], "expected": { "threw": "RangeError" } },
+    { "id": "fractional-budget", "args": ["hello", 1.5], "expected": { "threw": "RangeError" } },
+    { "id": "wrong-budget-type", "args": ["hello", null], "expected": { "threw": "RangeError" } },
+    {
+      "id": "maximum-safe-budget",
+      "args": ["hello", 9007199254740991],
+      "expected": { "returned": "hello" }
+    }
+  ]
+}

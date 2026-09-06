@@ -1,0 +1,17 @@
+{
+  "issue": "truncateUtf8 counts string positions instead of UTF-8 bytes. Return the longest prefix within maxBytes without splitting a Unicode code point. Preserve invalid-budget rejection and the export signature; grapheme preservation is not required.",
+  "snapshot": {
+    "files": [
+      {
+        "path": "README.md",
+        "content": "# UTF-8 prefix utility — synthetic repository\n\n`truncateUtf8(text, maxBytes)` should retain the longest prefix that fits the\nUTF-8 byte budget, without splitting a Unicode code point. It does not promise\nto preserve grapheme clusters. Budgets must be nonnegative safe integers.\n\nThe implementation incorrectly counts UTF-16 positions rather than UTF-8\nbytes. Only `src/truncate-utf8.ts` may change. Preserve its public export and\ninvalid-budget behavior. No dependencies or generated files are needed.\n"
+      },
+      {
+        "path": "src/truncate-utf8.ts",
+        "content": "/** Keep the longest prefix that fits without splitting a Unicode code point. */\nexport function truncateUtf8(text: string, maxBytes: number): string {\n  if (!Number.isSafeInteger(maxBytes) || maxBytes < 0) throw new RangeError('Invalid byte budget')\n  return text.slice(0, maxBytes)\n}\n"
+      }
+    ],
+    "sha256": "410b7b579707680b754fc11cbf5d5eb6d66f23bf2e75ff8494a367e49bc2df72"
+  },
+  "editPath": "src/truncate-utf8.ts"
+}

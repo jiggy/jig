@@ -32,7 +32,8 @@ fi
 
 just flow::build
 just jig::build
-bun test packages/flow-sdk packages/jig conformance/run-1 examples/proposal-workshop/test
+(cd examples/tested-patch/flows/repair && bun install --ignore-scripts)
+bun test packages/flow-sdk packages/jig conformance/run-1 examples/proposal-workshop/test examples/tested-patch/test
 bun packages/flow-sdk/test/package-smoke.ts
 bun packages/jig/test/package-smoke.ts
 
