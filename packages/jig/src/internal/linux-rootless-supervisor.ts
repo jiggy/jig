@@ -150,6 +150,10 @@ async function superviseConnected(control: Socket, startupDeadlineUnixMs: number
     resolveAdmission = resolve
     rejectAdmission = reject
   })
+  // Stop can reject during asynchronous setup, before the await below. Observe
+  // it immediately so an unhandled rejection cannot kill the cleanup owner.
+  // Awaiting the original promise still rejects and never permits a launch.
+  void admission.catch(() => undefined)
   const killRun = async (): Promise<void> => {
     if (!cgroupCreated) return
     await writeFile(`${runCgroup}/cgroup.kill`, '1\n').catch(ignoreMissing)

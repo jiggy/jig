@@ -695,6 +695,7 @@ proofDescribe('private contained Agent Run lifecycle', () => {
         const priorKey = process.env.OPENAI_API_KEY
         const priorModel = process.env.OPENAI_MODEL
         let session: Awaited<ReturnType<typeof openPrivateProjectSession>> | undefined
+        let primaryFailure: unknown
         const request = (id: string, scenario: string) => runRequest(id, scenario, nested)
         const run = (id: string, scenario: string, timeoutMs = 30_000) =>
           runToTerminal(session!.rootAdministration, id, scenario, timeoutMs, nested)
@@ -848,14 +849,16 @@ proofDescribe('private contained Agent Run lifecycle', () => {
             },
           )
           const diagnostics = new Response(crashed.stderr).text()
-          const receipt = JSON.parse(await firstLine(crashed.stdout)) as StartRootRunReceipt
-          await waitForSandbox(receipt.runId).catch(async (error) => {
-            crashed.kill('SIGKILL')
+          let receipt: StartRootRunReceipt
+          try {
+            receipt = JSON.parse(await firstLine(crashed.stdout)) as StartRootRunReceipt
+            await waitForSandbox(receipt.runId)
+            await waitForEvents(events, 'recovery', recoveryBefore + 1)
+          } finally {
+            if (crashed.exitCode === null) crashed.kill('SIGKILL')
             await crashed.exited
-            throw new Error(`${String(error)}: ${await diagnostics}`)
-          })
-          await waitForEvents(events, 'recovery', recoveryBefore + 1)
-          crashed.kill('SIGKILL')
+            await diagnostics
+          }
           expect(await crashed.exited).toBe(137)
           await waitForCgroups(initialCgroups)
 
@@ -885,6 +888,9 @@ proofDescribe('private contained Agent Run lifecycle', () => {
           session = undefined
           await waitForCgroups(initialCgroups)
           await waitForTemporaryState(initialTemporaryState)
+        } catch (error) {
+          primaryFailure = error
+          throw error
         } finally {
           await session?.close().catch(() => undefined)
           if (priorKey === undefined) delete process.env.OPENAI_API_KEY
@@ -895,7 +901,14 @@ proofDescribe('private contained Agent Run lifecycle', () => {
           await Promise.all([
             rm(root, { recursive: true, force: true }),
             rm(releaseRoot, { recursive: true, force: true }),
-          ])
+          ]).catch((cleanupFailure) => {
+            throw primaryFailure === undefined
+              ? cleanupFailure
+              : new AggregateError(
+                  [primaryFailure, cleanupFailure],
+                  'Agent lifecycle assertion and fixture cleanup failed',
+                )
+          })
         }
       },
       nested ? 240_000 : 180_000,

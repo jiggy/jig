@@ -454,6 +454,52 @@ hostileDescribe('private rootless Linux hostile envelope', () => {
     }
   })
 
+  for (const reason of ['deadline', 'cancelled'] as const) {
+    test(`fences ${reason} during cgroup setup before awaiting admission`, async () => {
+      const host = await hostConfiguration()
+      const fixture = await createFixture("throw new Error('package must not execute');")
+      const ownerStateParent = await mkdtemp(join(tmpdir(), 'jig-rootless-deadline-owner-'))
+      const sourcePath = fileURLToPath(
+        new URL('../src/internal/linux-rootless-supervisor.ts', import.meta.url),
+      )
+      const supervisorPath = join(ownerStateParent, 'supervisor.ts')
+      // Interrupt at the first asynchronous setup boundary. The real owner must
+      // still remove its cgroup and persist a fence; no package is admitted.
+      await writeFile(
+        supervisorPath,
+        replaceOnce(
+          await readFile(sourcePath, 'utf8'),
+          '    cgroupCreated = true\n',
+          `    cgroupCreated = true\n    stop(${JSON.stringify(reason)});\n    await Bun.sleep(25);\n`,
+        ),
+      )
+      const backend = new PrivateLinuxCgroupBackend({
+        bunPath: host.bun,
+        bunHostLibraryPath: host.bunHostLibraryPath,
+        supervisorPath,
+      })
+      const owner = await backend.seal(plan(host, fixture, `setup-${reason}`), {
+        parent: ownerStateParent,
+        name: 'setup-owner',
+      })
+      let released = false
+      try {
+        await expect(owner.admit()).rejects.toThrow()
+        const receipt = await waitForFence(backend, owner.identity, 5_000)
+        expect(receipt).toMatchObject({ fenced: true, stopReason: reason, exitCode: null })
+        expect(await missing(owner.identity.runCgroup)).toBe(true)
+        await releasePrivateLinuxOwnerState(owner.identity, receipt)
+        released = true
+        await waitForNoRunCgroups()
+      } finally {
+        if (released) {
+          await rm(fixture, { recursive: true, force: true })
+          await rm(ownerStateParent, { recursive: true, force: true })
+        }
+      }
+    })
+  }
+
   test('cancels during prepared admission without starting package code', async () => {
     const host = await hostConfiguration()
     const marker = join(await mkdtemp(join(tmpdir(), 'jig-rootless-marker-')), 'ran')
