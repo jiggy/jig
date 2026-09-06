@@ -31,8 +31,7 @@ before evaluator or Flow bytes execute, and revalidates it before each launch.
 
 For a useful application, try [an issue becoming a tested patch](https://jig.md/guide/tested-patch).
 It selects local source files and returns a patch with executed checks, without
-changing the original repository. Its guide identifies the required source
-candidate; installed alphas may lag the example.
+changing the original repository.
 
 ## Supported host
 
@@ -58,8 +57,7 @@ On NixOS, enable
 `programs.nix-ld.enable` for the unmodified npm runtime. Jig uses the real glibc
 loader at the system-managed `share/nix-ld/lib/ld.so` link, mounting only that
 loader and its required libraries into Runs. It does not mount nix-ld or the
-whole Nix store. NixOS path support is included in this source candidate;
-independent NixOS host conformance is not yet established.
+whole Nix store. Independent NixOS host conformance is not yet established.
 
 Jig commands do not use `sudo`, download runtimes, or expose host control to
 Flow code. Runtime installation is handled once by npm with the Jig package.
