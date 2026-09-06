@@ -44,56 +44,67 @@ foundations do not need to be rebuilt.
 
 ## Next milestones
 
-The critical path is one issue, a safely produced patch, genuine test evidence,
-independent use, and a small software factory. Build on existing finite Runs,
-exact child calls, and Agent capabilities; successful general-purpose prose
-review is not a prerequisite for coding work.
+Build on finite Runs, exact child calls, Agent capabilities, and root file
+capture and delivery. Before each capability, define its smallest public
+contract and authority boundary against the application consuming it.
 
-1. **Verify selected Skill delivery.** A local recording endpoint must receive
-   the complete selected Skill through direct and child invocation, and no
-   unselected Skills. Use no real credentials or remote model calls. Fix any
-   delivery defect with a regression test; if delivery is correct, retain the
-   unsuccessful method evaluation without another tuning cycle. This diagnostic
-   need not delay designing the next capability.
+1. **Repair a real small Bun project.** Generate multi-file patches as
+   structured data. Add a narrowly authorized project-command capability using
+   installed Bun, immutable candidate contents, reviewed invocation policy,
+   and a trusted collector outside candidate execution. Return an applicable
+   patch, exact candidate identity, bounded command output and termination,
+   and independent acceptance results. Repository tests are additional evidence;
+   acceptance assertions inspect captured behavior without importing candidate
+   code. Keep original files and acceptance policy unchanged. Replace the
+   evaluator Flow with this effect so the reusable repair method is a JSON-input
+   leaf; the root application owns file capture and final output. Finish with
+   useful successful and unsuccessful repairs and independent reuse through
+   existing exact slots.
 
-2. **Agree on one issue-to-patch boundary.** Choose a small repository, one
-   reproducible defect, and independently controlled acceptance checks. Finish
-   with a concrete fixture and a short reviewed application contract: exact
-   snapshot, permitted edits and execution, returned patch and evidence, and
-   failure behavior. Consider patch-as-data before broader Agent tools. Only
-   demonstrated authority or lifecycle gaps justify host changes; no uncontained
-   test helper or general workspace framework.
+2. **Run a bounded team of repair workers.** Two exact siblings work on
+   independent candidates under aggregate root limits. Cancelling one permits
+   its sibling to finish; parent cancellation settles the complete tree. The
+   application returns separately identified patches and evidence, including
+   failures and conflicts. Application code chooses concurrency and aggregation;
+   Jig enforces authority and limits. This is the first small software factory.
 
-3. **Deliver one contained issue-to-tested-patch Run.** Start with one toolchain
-   and one Agent client. A regression check fails on the original snapshot;
-   a real Agent's patch makes the approved checks pass on identified contents.
-   Return the reproducible patch, checked-content identity, exit codes, and
-   bounded logs. The original repository and independent acceptance checks
-   remain unchanged. Invalid patches, failed checks, cancellation, and
-   coordinator loss must produce honest outcomes and complete cleanup.
+3. **Retain completed progress through interruption.** A root application can
+   checkpoint a bounded aggregate of settled patches and evidence. Acknowledged
+   bytes survive later interruption while the independent command owner lives;
+   failed replacement preserves the previous checkpoint. Publish through the
+   existing output destination after confirmed fencing. Prove loss before,
+   during, and after acknowledgement, honest absence, and no automatic replay.
+   Arbitrary scratch salvage and machine-crash recovery are outside this scope.
 
-4. **Make the method independently usable.** Give an independent builder only
-   candidate artifacts and public instructions, then a different small
-   repository and issue. Finish when they obtain and inspect a tested patch,
-   understand a deliberately failed check, and cancel work without private
-   instructions or platform edits. Correct concrete authoring, approval,
-   result, and diagnostic friction exposed by that use.
+4. **Observe and direct a continuing native Agent.** Qualify one client over
+   the existing ACP foundation for observation, interruption, follow-up, and
+   continuation. Preserve simple one-shot calls. Accepted instructions and
+   remaining budgets survive continuation; cancellation revokes it and cleans
+   owned processes. Native workspace tools require a separate authority
+   decision; candidate commands cannot run in a credential-bearing provider
+   scope. This capability may advance alongside retained progress.
 
-5. **Demonstrate a small reusable software factory.** Combine proven coding
-   and checking methods around explicitly submitted issues, bounded correction,
-   and a human merge gate. A preselected issue set yields inspectable patches
-   with actual test evidence or honest unsuccessful outcomes; another builder
-   adapts the application through its intended configuration. Demonstrate a
-   material advantage over one coding Agent plus tests and human review on a
-   metric selected beforehand. An unreliable model reviewer is not mandatory
-   approval authority. Polish a proven application into a user-owned Starter.
+5. **Automate one worker's time-travel handoff.** While another worker
+   progresses, settle task advancement, obtain a handoff using recent context,
+   prepare retained earlier context with current files and later instructions,
+   and commit one successor. Preserve budgets and uncertainty; duplicate
+   triggers, failed preparation, and cancellation cannot create overlapping
+   owners or replay effects. Measure the method's claimed benefit separately
+   from proving its lifecycle.
 
 ## Work alongside the milestones
 
-Keep public releases coherent through existing release and host-conformance
-gates. Correct concrete CLI problems in consent, configuration, diagnostics,
-and outcomes without restarting completed baseline campaigns or confusing a
-completed Run with achieved application work.
+Ship each useful increment through existing release and host-conformance gates;
+project repair need not wait for automatic handoff. Correct concrete CLI
+problems and integrate focused evidence for new capabilities. Experienced
+contributors author recommended examples; independent consumers receive public
+materials without platform-edit authority. Comparative evidence limits product
+claims without making a favorable benchmark a prerequisite for development.
+
+A blocker in one authorized outcome does not stop independent work. Commit
+stable slices and record owner-actionable blockers in `.tmp/current-blockers`.
+Keep general schedulers, public locks, provider frameworks, workspace services,
+and event buses outside these increments.
 
 Preserve bounded outside-Jig interoperability as an independent FLOW proof:
 an independent consumer runs an unchanged package through public contracts,
