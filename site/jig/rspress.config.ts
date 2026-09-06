@@ -35,6 +35,7 @@ const guideSidebar = [
 
 export default defineConfig({
   root: resolve(siteDirectory, '../../docs/jig'),
+  globalStyles: resolve(siteDirectory, 'diagrams.css'),
   route: {
     exclude: ['**/AGENTS.md'],
   },

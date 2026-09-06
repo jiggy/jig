@@ -8,7 +8,9 @@ Jig public sites.
 ## Ownership
 
 - `docs/flow/` and `docs/jig/` own published prose and specifications.
-- `flow/` and `jig/` own their site-specific navigation and public-root files.
+- `flow/` and `jig/` own their site-specific navigation, styles, and public-root
+  files. Each site's `diagrams.css` fits guide SVGs to the reading column;
+  source diagrams remain with their owning guide under `docs/`.
 - `package.json` and `bun.lock` own shared pinned site tooling; `justfile` owns
   the FLOW and Jig Rspress build recipes.
 
@@ -30,6 +32,9 @@ Jig public sites.
 
 - Change the authoritative document first, then only the navigation or static
   publication metadata required here.
+- Keep guide diagrams as static images with the existing image zoom. Preserve
+  ordinary Markdown, theme inheritance, mobile containment, and image aspect
+  ratios; no embedded diagram viewer is needed for the reading path.
 
 ## Verification
 

@@ -39,6 +39,11 @@ inspect its review and rerun it with `--yes` only when approval is explicit.
 There is no separate apply command: the same finite `review` invocation carries
 the reviewed proposal into admission.
 
+![Editable source goes through jig review and approval before jig run executes the accepted revision. Jig validates the result and settles owned work before returning an outcome or failure.](./review-run.svg)
+
+Later source edits need another review before they can run. Declining a proposal
+grants no new authority; it does not remove a previously admitted revision.
+
 - The [repository quickstart](https://github.com/jiggy/jig#quickstart) provides
   a complete first Flow and the supported-host requirements.
 - [Working with files](./files.md) captures selected inputs and publishes one

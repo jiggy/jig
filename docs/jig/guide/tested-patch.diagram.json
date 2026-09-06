@@ -1,0 +1,140 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "A patch backed by observed evidence",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "legend": {
+      "mode": "hidden"
+    },
+    "viewBox": [
+      620,
+      350
+    ]
+  },
+  "components": [
+    {
+      "id": "snapshot",
+      "type": "frontend",
+      "label": "Issue and snapshot",
+      "pos": [
+        20,
+        20
+      ],
+      "size": [
+        140,
+        64
+      ]
+    },
+    {
+      "id": "agent",
+      "type": "backend",
+      "label": "Propose one edit",
+      "pos": [
+        20,
+        135
+      ],
+      "size": [
+        140,
+        64
+      ]
+    },
+    {
+      "id": "evaluator",
+      "type": "backend",
+      "label": "Evaluator Flow",
+      "pos": [
+        240,
+        135
+      ],
+      "size": [
+        140,
+        64
+      ]
+    },
+    {
+      "id": "cases",
+      "type": "security",
+      "label": "Fixed cases",
+      "pos": [
+        460,
+        20
+      ],
+      "size": [
+        140,
+        64
+      ]
+    },
+    {
+      "id": "checker",
+      "type": "security",
+      "label": "Acceptance checker",
+      "pos": [
+        460,
+        135
+      ],
+      "size": [
+        140,
+        64
+      ]
+    },
+    {
+      "id": "evidence",
+      "type": "frontend",
+      "label": "Patch and evidence",
+      "pos": [
+        460,
+        250
+      ],
+      "size": [
+        140,
+        64
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "from": "snapshot",
+      "to": "agent",
+      "label": "Issue + source",
+      "variant": "default",
+      "labelAt": [
+        90,
+        98
+      ]
+    },
+    {
+      "from": "agent",
+      "to": "evaluator",
+      "label": "Replacement",
+      "variant": "default"
+    },
+    {
+      "from": "evaluator",
+      "to": "checker",
+      "label": "Observations",
+      "variant": "default"
+    },
+    {
+      "from": "cases",
+      "to": "checker",
+      "label": "Expected values",
+      "variant": "security",
+      "labelAt": [
+        530,
+        98
+      ]
+    },
+    {
+      "from": "checker",
+      "to": "evidence",
+      "label": "Check records",
+      "variant": "default",
+      "labelAt": [
+        530,
+        213
+      ]
+    }
+  ]
+}

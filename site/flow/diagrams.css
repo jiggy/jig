@@ -1,0 +1,5 @@
+/* Keep guide diagrams readable within the documentation column. */
+.rp-doc img[src$=".svg"] {
+  width: 100%;
+  height: auto;
+}

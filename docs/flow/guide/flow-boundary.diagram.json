@@ -1,0 +1,118 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "FLOW travels. Authority stays local.",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "legend": {
+      "mode": "hidden"
+    },
+    "viewBox": [
+      520,
+      290
+    ]
+  },
+  "components": [
+    {
+      "id": "files",
+      "type": "frontend",
+      "label": "Package files",
+      "pos": [
+        20,
+        50
+      ],
+      "size": [
+        180,
+        64
+      ]
+    },
+    {
+      "id": "method",
+      "type": "backend",
+      "label": "Executable method",
+      "pos": [
+        20,
+        190
+      ],
+      "size": [
+        180,
+        64
+      ]
+    },
+    {
+      "id": "operator",
+      "type": "security",
+      "label": "Operator choices",
+      "pos": [
+        320,
+        50
+      ],
+      "size": [
+        180,
+        64
+      ]
+    },
+    {
+      "id": "host",
+      "type": "backend",
+      "label": "Execution host",
+      "pos": [
+        320,
+        190
+      ],
+      "size": [
+        180,
+        64
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "from": "files",
+      "to": "method",
+      "label": "Describes",
+      "variant": "default",
+      "labelAt": [
+        110,
+        128
+      ]
+    },
+    {
+      "from": "operator",
+      "to": "host",
+      "label": "Configures",
+      "variant": "security",
+      "labelAt": [
+        410,
+        128
+      ]
+    },
+    {
+      "from": "host",
+      "to": "method",
+      "label": "Run/1 invocation",
+      "variant": "emphasis"
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "Flow package",
+      "wraps": [
+        "files",
+        "method"
+      ],
+      "pad": 18
+    },
+    {
+      "kind": "region",
+      "label": "Local execution",
+      "wraps": [
+        "operator",
+        "host"
+      ],
+      "pad": 18
+    }
+  ]
+}

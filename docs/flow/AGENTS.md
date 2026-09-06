@@ -9,6 +9,8 @@ and capability-contract semantics.
 
 - `spec/` owns normative FLOW specifications and machine companions.
 - `index.md` and `guide/` explain and navigate the current portable surface.
+- `guide/*.diagram.json` and matching SVGs own explanatory diagrams alongside
+  their guides; the shared diagram workflow is in `docs/AGENTS.md`.
 - Admission, containment, permissions, persistence, providers, Agent policy,
   and routing belong to a host such as Jig, not FLOW.
 

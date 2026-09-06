@@ -9,6 +9,16 @@ FLOW is a founder-stewarded, openly implementable package and process
 standard. This site publishes its current prerelease specifications directly
 from the source repository.
 
+A **Flow** packages one reusable method. For an executable Flow, Run/1 carries
+the host's invocation and the method's `{ outcome, output }` result. The host
+supplies local authority; the method keeps its own implementation.
+
+![A Flow package contains descriptive files and an executable method. Operator choices configure a host, such as Jig, which invokes the method through Run/1.](./flow-boundary.svg)
+
+Every package has `FLOW.md`; implementation, schemas, and capability contracts
+are optional. The Run SDK helps implement the exchange. FLOW defines these
+portable boundaries, while each host decides which implementations it supports.
+
 - [JSON/1](../spec/json-values.md) defines bounded portable values.
 - [Schema/1](../spec/schema-files.md) defines conventional
   `input.schema.json`, `settings.schema.json`, and `result.schema.json` files.

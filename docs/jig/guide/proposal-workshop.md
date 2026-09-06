@@ -25,6 +25,12 @@ presentation improvements. A useful conditional proposal can name approvals
 that must be obtained before launch. Approving that draft does not authorize
 launching, purchasing, or spending.
 
+![The drafter uses supplied evidence, mechanical checks verify coverage and source IDs, and a separate reviewer checks the claims. Approval produces a proposal. Mechanical or review feedback can return to drafting for one revision.](./proposal-workshop.svg)
+
+The revision loop is bounded: a second unapproved draft ends with `limit`.
+A specialist may also stop with `blocked` or `limit`; execution failures are
+not sent back through the drafting loop.
+
 The workshop's Binding fixes its collaborators:
 
 ```ts

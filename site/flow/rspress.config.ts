@@ -6,6 +6,7 @@ const siteDirectory = import.meta.dirname
 
 export default defineConfig({
   root: resolve(siteDirectory, '../../docs/flow'),
+  globalStyles: resolve(siteDirectory, 'diagrams.css'),
   route: {
     exclude: ['**/AGENTS.md'],
   },

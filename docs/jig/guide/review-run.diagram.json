@@ -1,0 +1,94 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "From source to result",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "legend": {
+      "mode": "hidden"
+    },
+    "viewBox": [
+      520,
+      290
+    ]
+  },
+  "components": [
+    {
+      "id": "source",
+      "type": "frontend",
+      "label": "Edit source",
+      "pos": [
+        20,
+        40
+      ],
+      "size": [
+        180,
+        64
+      ]
+    },
+    {
+      "id": "review",
+      "type": "security",
+      "label": "Review and approve",
+      "pos": [
+        320,
+        40
+      ],
+      "size": [
+        180,
+        64
+      ]
+    },
+    {
+      "id": "run",
+      "type": "backend",
+      "label": "Run accepted work",
+      "pos": [
+        320,
+        190
+      ],
+      "size": [
+        180,
+        64
+      ]
+    },
+    {
+      "id": "result",
+      "type": "frontend",
+      "label": "Read the result",
+      "pos": [
+        20,
+        190
+      ],
+      "size": [
+        180,
+        64
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "from": "source",
+      "to": "review",
+      "label": "jig review",
+      "variant": "default"
+    },
+    {
+      "from": "review",
+      "to": "run",
+      "label": "jig run",
+      "variant": "default",
+      "labelAt": [
+        410,
+        118
+      ]
+    },
+    {
+      "from": "run",
+      "to": "result",
+      "label": "Work settled",
+      "variant": "default"
+    }
+  ]
+}

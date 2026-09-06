@@ -30,11 +30,24 @@ catalogues for FLOW and Jig.
 - Write for the reader's decision or task. Introduce unfamiliar concepts in
   plain language before criteria, fields, or implementation detail.
 - Keep current support visibly separate from future research.
+- Keep diagrams focused on one reader question, with short labels, meaningful
+  alternative text, and adjacent prose that preserves the important limits.
+  Prefer static SVGs in guides; use the site's existing image zoom instead of
+  embedding a separate viewer or adding diagram controls to the reading path.
+- Keep each Archify `*.diagram.json` beside its exported SVG and owning guide.
+  Edit the JSON, validate and deliver with the repository Archify skill, then
+  export SVG through that delivered viewer and preserve the Archify MIT notice
+  in an SVG comment. Keep HTML previews, screenshots,
+  and validation receipts in `.tmp/`. Never hand-edit generated SVG geometry.
+  Diagrams explain their owning prose and do not establish new contracts.
 
 ## Verification
 
 - Build each affected public site into a fresh directory with
   `scripts/build-site.sh`.
+- For diagram changes, follow Archify's artifact and browser checks, inspect
+  both themes, and check the actual guide at desktop and mobile widths. Keep
+  automated browser evidence separate from perceptual visual review.
 
 ## Child DOX Index
 

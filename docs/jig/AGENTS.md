@@ -11,6 +11,8 @@ use-case and orchestration hypotheses.
 - `index.md` and `guide/` teach implemented behavior and recommended practice,
   with installation prerequisites centralized in `guide/index.md`. Describe
   current behavior, not comparisons with superseded alpha releases.
+- `guide/*.diagram.json` and matching SVGs own explanatory diagrams alongside
+  their guides; the shared diagram workflow is in `docs/AGENTS.md`.
 - `use-cases.md` records outcome-oriented product hypotheses.
 - `orchestration-patterns.md` records candidate reusable methods.
 

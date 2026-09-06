@@ -48,6 +48,12 @@ its own expected answers. The candidate cannot edit those checks or borrow
 the parent's Agent. Before writing a review-ready patch, the repair method
 also checks snapshot, patch, checker, and case identities against the evidence.
 
+![An Agent proposes a replacement from the issue and snapshot. The evaluator runs candidate code and sends observations to the repair Flow's acceptance checker. Application-controlled cases supply the expected values; the result retains the patch and available check evidence.](./tested-patch.svg)
+
+This shows one candidate's evidence path. The original snapshot goes through
+the same evaluator and fixed checks first to establish the failing baseline.
+The Agent can propose an edit; it cannot change the acceptance cases.
+
 The supported task is one existing synchronous TypeScript function with JSON
 arguments/results and one editable file. Passing the finite cases is useful
 evidence, not a proof of general correctness.
