@@ -1,8 +1,9 @@
 # Jig and FLOW
 
-Jig is a local host for [FLOW](docs/flow/spec/package-format.md) packages. It
-captures ordinary project files, shows the proposed change for review, admits
-the approved bytes, and runs an exact target in a rootless Linux envelope.
+Put reusable Agent methods to work without giving them control of your system.
+Jig runs [FLOW](docs/flow/spec/package-format.md) packages with the powers you
+approve: choose your Agents, combine specialists, inspect their results, and
+stop their work.
 
 The current release candidate is a deliberately narrow direct-run alpha. It
 provides three commands:
@@ -15,10 +16,16 @@ jig run <flow:path|binding:id> [--input JSON] [--timeout DURATION]
 
 There is no setup command, daemon, runtime registry, or sandbox selector.
 
-The [proposal workshop](docs/jig/guide/proposal-workshop.md) demonstrates the
-source candidate's reusable Agent specialists: draft from supplied evidence,
-review in a fresh context, and revise at most once. Published npm alphas may
-lag this checkout; the guide states the required host support.
+Start with [an issue becoming a tested patch](docs/jig/guide/tested-patch.md):
+select a small TypeScript utility, describe its bug, and receive a patch with
+executed checks. Your original repository stays unchanged; you decide whether
+to apply the result. The copyable application includes its dependency locks
+and a repository-facing command—no hand-built snapshot JSON.
+
+That example needs the current source candidate. Published npm alphas may lag
+this checkout; a passing test set is not a claim of general repair reliability.
+The [proposal workshop](docs/jig/guide/proposal-workshop.md) offers another
+composition example, with drafting and fresh-context review over supplied evidence.
 
 ## Supported host
 
@@ -49,7 +56,7 @@ Systemd delegation and namespace requirements are unchanged. NixOS path
 support is included in this source candidate; independent NixOS host
 conformance has not yet been established.
 
-Installing `@jigging/jig@0.1.0-alpha.10` also installs the exact external
+Installing `@jigging/jig@alpha` also installs the exact external
 runtime dependency `@oven/bun-linux-x64-baseline@1.3.3`. Bun is not embedded in
 or bundled with Jig. npm verifies the installed package; Jig selects only that
 closed package-local path, authenticates its version, revision, and digest
@@ -59,7 +66,7 @@ host-control channel exposed to Flow code.
 
 Flow Runs default to 30 seconds. `jig run --timeout DURATION` accepts a
 positive integer followed by `ms`, `s`, `m`, or `h`, up to 24 hours. The
-execution scopes remain fixed at 256 MiB aggregate memory, 48 aggregate PIDs,
+source candidate's execution scopes are fixed at 256 MiB aggregate memory, 64 aggregate PIDs,
 and 50% of one CPU. Project evaluation is fixed at 3 seconds, 256 MiB, 64
 PIDs, and 50% CPU. Locked dependency preparation is fixed at 60 seconds, 512
 MiB, 64 PIDs, and one CPU. The threat boundary and private reporting channel
@@ -70,7 +77,7 @@ are documented in [SECURITY.md](SECURITY.md).
 Install the alpha with npm:
 
 ```console
-npm install --global @jigging/jig@0.1.0-alpha.10
+npm install --global @jigging/jig@alpha
 ```
 
 Create a project and one Flow package:
@@ -98,7 +105,7 @@ Declare the exact FLOW SDK in `flows/hello/package.json`:
 {
   "private": true,
   "dependencies": {
-    "@jigging/flow": "0.1.0-alpha.6"
+    "@jigging/flow": "0.1.0-alpha.7"
   }
 }
 ```

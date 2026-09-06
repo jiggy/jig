@@ -40,23 +40,61 @@ Configure one Agent using the [operator instructions](../spec/agent-run.md#alpha
 Keep that configuration available during review and execution. The application
 does not choose a provider, model, or credential.
 
-The two packages use the published `@jigging/flow@0.1.0-alpha.3` SDK. Their
-`package.json` files declare that exact dependency. Before the first review,
-copy the example into a new directory and generate each package's ignored
-development lock with Bun 1.3.3, if absent:
+Copy `examples/tested-patch` from that candidate checkout into a new application
+directory. Keep its two included `bun.lock` files: they identify the published
+`@jigging/flow@0.1.0-alpha.3` SDK. No local dependency installation is needed
+to run the application. Bun 1.3.3 runs its small repository-facing command;
+Jig runs the reviewed methods inside containment.
 
 ```sh
 cd my-tested-patch
-(cd flows/repair && bun install --ignore-scripts --lockfile-only)
-(cd flows/evaluate && bun install --ignore-scripts --lockfile-only)
 jig review
-jig run binding:repair --input "$(cat fixtures/utf8.json)" --timeout 5m
+bun --no-env-file --no-install --config=/dev/null repair.ts \
+  --repo fixtures/utf8 --edit src/truncate-utf8.ts --file README.md \
+  --issue 'Fix UTF-8 byte truncation without splitting a code point. Preserve invalid-budget rejection.' \
+  --out ../utf8-repair
 ```
 
 Jig prepares the locked dependency during review, not during execution. No
 Agent-selected package install, command, or dependency is accepted.
 
+The command reads the editable file and only the additional `--file` paths
+you name. It does not scan the repository, load its configuration, or send
+unselected files to the Agent. Selected text **is sent to your operator-selected
+provider**; choose files and a provider appropriate to your data. Source and
+candidate execution remain inside the existing Flow boundary.
+
+`--out` must name a new directory outside the original repository, under an
+existing parent. Nothing is applied automatically. Use `--jig /absolute/path/to/jig`
+if the candidate is not your default executable. Ctrl-C requests cancellation
+and waits for Jig; work is never automatically retried. The Run deadline is
+five minutes, with at most two Agent calls. Provider charges can still apply
+to unsuccessful or interrupted calls.
+
 ## Inspect the evidence
+
+Open `../utf8-repair/summary.txt`. You do not need to extract a diff from JSON.
+
+| File | What it tells you |
+| --- | --- |
+| `review.patch` | A patch backed by a reproduced defect and passing checks; absent otherwise. Still requires your review. |
+| `proposal-N.patch` | Each validated proposal, including unsuccessful ones. Its name does not imply passing checks. |
+| `summary.txt`, `summary.json` | Original and proposal check counts, final classification, and reason. |
+| `input.json`, `acceptance.json` | The captured original text and identities/expectations used to check the returned evidence. |
+| `terminal.json` | The untouched CLI terminal, when complete JSON arrived. |
+| `stdout.txt`, `stderr.txt`, `execution.json` | Captured CLI output and actual command exit/interruption records. Each stream is capped at 1 MiB; excess output requests cancellation. |
+
+The command exits `0` only for a review-ready patch, `1` for an unsuccessful
+method outcome, `2` for input, execution, or evidence errors, and `130` for
+interruption. If startup or terminal delivery fails, the packet can be partial.
+Missing evidence does not prove that no work was dispatched. Keep partial
+packets for diagnosis and use a new output path for any deliberately new Run.
+
+The exporter verifies patch bytes and snapshot/check identities before marking
+anything review-ready. If the checked identities differ from the visible
+application, inspect and review the current application before running again.
+
+### Reading the raw terminal
 
 Read the Flow outcome as well as the command's execution status.
 
@@ -92,9 +130,16 @@ coordinator may prevent an application report from being delivered.
 
 ## Adapt the method
 
-The request contains an `issue`, an `editPath`, and a `snapshot` of ordinary
+Select a different utility with `--repo` and `--edit`; add only the context
+files it needs with repeated `--file`. Paths are relative to that repository,
+and symlinks beneath its root are rejected. Selected files must be regular
+UTF-8 text. A detected edit during capture fails; the captured set is not an
+atomic Git revision. It is the exact bounded text supplied to this Run.
+
+The command builds the existing request: an `issue`, an `editPath`, and a `snapshot` of ordinary
 `{path, content}` text files. Only that existing TypeScript file may change.
-The example accepts up to 16 files and 64 KiB of source; paths cannot escape
+The example accepts up to 16 files and 64 KiB of source; unusually escape-heavy
+input must also fit the command's 120,000-byte JSON limit. Paths cannot escape
 the disposable tree. Snapshot identity is SHA-256 of compact JSON for the
 files sorted by path, with each object containing `path` then `content`.
 The fixture JSON matches the original files in `fixtures/utf8/`.
@@ -108,6 +153,11 @@ budgets so dropping validation cannot pass. Review
 those changes before running: acceptance policy is admitted application
 source, not something the Agent can replace in its answer. The evaluator
 package and its public child-call interface need no change.
+
+This is ordinary application code calling `jig run binding:repair`, not a new
+`jig repair` command. Existing software callers may still supply snapshot JSON
+directly through `jig run`. To change a Flow dependency, regenerate its lock
+with `bun install --ignore-scripts --lockfile-only` and review the change.
 
 Deterministic application tests use substituted candidates and Agent responses:
 

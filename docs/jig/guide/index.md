@@ -1,12 +1,16 @@
 ---
-title: Jig direct alpha
+title: Get started with Jig
 sidebar: false
 ---
 
-# Jig direct alpha
+# Get started with Jig
 
-Jig is a local host for [FLOW](https://flow.jig.md/) packages. Its first alpha
-deliberately exposes one finite product path:
+Jig runs reusable Agent methods with powers you approve. Start with
+[a tested patch](./tested-patch.md): describe a small bug, let your Agent
+propose a repair, and inspect actual checks without changing the original
+repository. Or use the short first-Flow quickstart below to learn the basics.
+
+The developer alpha runs [FLOW](https://flow.jig.md/) packages through three commands:
 
 ```text
 jig init --bare <directory>
@@ -18,10 +22,9 @@ jig --version
 The source candidate's `jig --version` reports the built package version
 without opening a project or acquiring a sandbox.
 
-> **Availability:** this guide includes the source candidate's Agent-using
-> child composition. That extension, including the proposal workshop below,
-> is not yet available in the published npm alpha. Use a Jig build from the
-> same source checkout to exercise it.
+> **Availability:** examples identify their required candidate. The tested-patch
+> application needs a Jig build from the same source checkout; do not assume
+> the latest published npm alpha includes every source change.
 
 Install the latest published alpha directly from npm:
 
@@ -39,6 +42,8 @@ the reviewed proposal into admission.
 
 - The [repository quickstart](https://github.com/jiggy/jig#quickstart) provides
   a complete first Flow and the supported-host requirements.
+- [An issue becomes a tested patch](./tested-patch.md) takes selected local
+  source files and returns a reviewable patch or an honest unsuccessful result.
 - The [use-case catalogue](../use-cases.md) records uniformly scoped product
   hypotheses for future probes and tutorials.
 - [Choosing a workflow structure](./workflow-design.md) explains where Agent

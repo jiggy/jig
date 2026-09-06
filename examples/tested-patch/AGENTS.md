@@ -8,6 +8,12 @@ general repository worker or independent consumer proof.
 
 ## Ownership
 
+- `repair.ts`, `snapshot.ts`, and `packet.ts` own the repository-facing command:
+  explicit text capture, public CLI invocation, and truthful patch/evidence export.
+- `README.md` introduces the copyable application and points to its public guide.
+- The two Flow-local `bun.lock` files are generated, tracked application inputs;
+  they make a copied example reviewable without reconstructing dependency locks.
+  The ignored root workspace lock remains unrelated.
 - `flows/repair/` owns patch policy, at most two Agent calls, immutable acceptance checks,
   and the checker process. It handles candidate source only as data.
 - `flows/evaluate/` evaluates the disposable candidate through one exact child
@@ -17,6 +23,17 @@ general repository worker or independent consumer proof.
 
 ## Local Contracts
 
+- The application command reads only selected regular UTF-8 files; reject
+  traversal and symlinks beneath the selected repository root. Capture is a
+  bounded set of text bytes, not an atomic Git revision. Never evaluate
+  repository configuration or execute candidate code in this outer process.
+- Create a private, exclusive output directory outside the original repository.
+  Preserve bounded raw CLI evidence and every validated proposal. Write
+  `review.patch` only after successful execution and matching original, patch,
+  checker, case-set, and passing-verdict evidence. No automatic application.
+- Invoke only the existing reviewed `binding:repair` through the public CLI.
+  Forward interruption, await Jig settlement, and never retry uncertain work.
+  Missing terminals remain missing evidence, not assertions about dispatch.
 - Only the named existing source file may change; the original is input data,
   never a writable host repository. No merge, push, installation, or deployment.
 - Candidate code executes only in the separate child Flow. The acceptance
@@ -45,6 +62,9 @@ general repository worker or independent consumer proof.
 
 - Install `flows/repair`'s declared SDK with `bun install --ignore-scripts`,
   then `bun test examples/tested-patch/test` checks deterministic application policy.
+- Adapter tests cover explicit filesystem selection, output collisions,
+  cancellation forwarding, bounded logs, and truthful packet classification
+  with synthetic CLI responses; these are not host-containment proofs.
 - Contained execution and real-Agent outcomes require separately retained
   admitted Jig Runs, including unsuccessful attempts and cleanup evidence.
 
