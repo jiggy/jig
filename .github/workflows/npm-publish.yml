@@ -310,7 +310,7 @@ jobs:
           publish_candidate jig @jigging/jig
 
   tag:
-    name: Tag published source
+    name: Tag published source and create package releases
     needs: publish
     runs-on: ubuntu-24.04
     permissions:
@@ -353,3 +353,42 @@ jobs:
 
           converge_tag "flow-v$FLOW_VERSION" "@jigging/flow $FLOW_VERSION" "$FLOW_NEW"
           converge_tag "jig-v$JIG_VERSION" "@jigging/jig $JIG_VERSION" "$JIG_NEW"
+
+      - name: Link published packages from GitHub Releases
+        env:
+          FLOW_VERSION: ${{ needs.publish.outputs.flow_version }}
+          JIG_VERSION: ${{ needs.publish.outputs.jig_version }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
+            --jq '.[].tag_name' > "$RUNNER_TEMP/existing-releases"
+
+          create_release() {
+            kind=$1
+            version=$2
+            description=$3
+            install=$4
+            documentation=$5
+            tag="$kind-v$version"
+            if grep -Fx -- "$tag" "$RUNNER_TEMP/existing-releases" > /dev/null; then
+              return
+            fi
+            notes="$RUNNER_TEMP/$kind-release.md"
+            {
+              printf '%s\n\n' "$description"
+              printf '[View @jigging/%s %s on npm](https://www.npmjs.com/package/@jigging/%s/v/%s).\n\n' \
+                "$kind" "$version" "$kind" "$version"
+              printf 'Install this prerelease:\n\n```sh\n%s\n```\n\n' "$install"
+              printf '[Documentation and prerequisites](%s).\n\n' "$documentation"
+              printf 'Install the published npm package above. GitHub source archives contain the repository source.\n'
+            } > "$notes"
+            gh release create "$tag" --repo "$GITHUB_REPOSITORY" \
+              --verify-tag --prerelease --latest=false \
+              --title "@jigging/$kind $version" --notes-file "$notes"
+          }
+
+          create_release flow "$FLOW_VERSION" 'TypeScript SDK for FLOW Run/1.' \
+            "npm install @jigging/flow@$FLOW_VERSION" 'https://flow.jig.md/guide/'
+          create_release jig "$JIG_VERSION" 'Jig runs admitted FLOW packages under operator control.' \
+            "npm install --global @jigging/jig@$JIG_VERSION" 'https://jig.md/guide/'

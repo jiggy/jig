@@ -56,6 +56,13 @@ After registry convergence, the workflow creates any missing
 the exact candidate commit. An existing tag is never moved; when its package
 was unchanged, it remains on the earlier release commit.
 
+After tags are verified, the same job creates a GitHub prerelease for each
+package version, linking its exact npm version, install command, and public
+guide. These entries make the packages discoverable from the repository
+Releases page. GitHub source archives remain source, not installable packages.
+Existing entries are preserved on retries; missing entries are created even
+when the npm version and source tag already existed.
+
 ## Failure recovery
 
 If candidate construction fails, fix the source in a new reviewed commit. If
