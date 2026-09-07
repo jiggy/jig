@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdir, mkdtemp, readFile, readdir, realpath, rm, stat, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readdir, readFile, realpath, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -168,6 +168,87 @@ try {
     code: 'ENOENT',
   })
 
+  // Exercise the public permission boundary from the installed archive, not
+  // an example-specific installer or a private session option.
+  const resolvingProject = join(consumer, 'resolving-project')
+  await run([jig, 'init', '--bare', resolvingProject], consumer)
+  await writeLockedDependencyFlow(resolvingProject)
+  const resolvingFlow = join(resolvingProject, 'flows', 'locked-dependency')
+  const authoredLock = await readFile(join(resolvingFlow, 'bun.lock'), 'utf8')
+  await rm(join(resolvingFlow, 'bun.lock'))
+  const missingPermission = await run(
+    [jig, 'review', resolvingProject, '--yes'],
+    consumer,
+    [2],
+    120_000,
+  )
+  assert.match(missingPermission.stderr, /PACKAGE_BUN_RESOLUTION_PERMISSION_REQUIRED/)
+  assert.doesNotMatch(missingPermission.stderr, /Resolving dependencies for/)
+  await assert.rejects(stat(join(resolvingProject, 'jig.lock')), { code: 'ENOENT' })
+
+  const unapprovedResolution = await run(
+    [jig, 'review', resolvingProject, '--allow-resolution-network'],
+    consumer,
+    [2],
+    120_000,
+  )
+  assert.match(unapprovedResolution.stderr, /Resolving dependencies for "flows\/locked-dependency"/)
+  assert.match(unapprovedResolution.stderr, /private-network services/)
+  assert.match(unapprovedResolution.stderr, /JIG_APPROVAL_REQUIRED/)
+  await assert.rejects(stat(join(resolvingProject, 'jig.lock')), { code: 'ENOENT' })
+  const grantNotRetained = await run(
+    [jig, 'review', resolvingProject, '--yes'],
+    consumer,
+    [2],
+    120_000,
+  )
+  assert.match(grantNotRetained.stderr, /PACKAGE_BUN_RESOLUTION_PERMISSION_REQUIRED/)
+
+  const resolved = await run(
+    [jig, 'review', resolvingProject, '--allow-resolution-network', '--yes'],
+    consumer,
+    [0],
+    120_000,
+  )
+  assert.match(resolved.stderr, /Resolving dependencies for/)
+  await assert.rejects(stat(join(resolvingFlow, 'bun.lock')), { code: 'ENOENT' })
+  await assert.rejects(stat(join(resolvingFlow, 'node_modules')), { code: 'ENOENT' })
+  await assert.rejects(stat(join(resolvingFlow, 'postinstall-ran')), { code: 'ENOENT' })
+  const admittedLock = await readFile(join(resolvingProject, 'jig.lock'), 'utf8')
+  const reused = await run([jig, 'review', resolvingProject, '--yes'], consumer, [0], 120_000)
+  assert.equal(reused.stderr, '')
+  assert.equal(reused.stdout, 'project is ready\n')
+  const resolvedRun = await run(
+    [jig, 'run', 'flow:flows/locked-dependency', '--input', JSON.stringify('ada')],
+    resolvingProject,
+    [0],
+    45_000,
+  )
+  assert.deepEqual(requireRecord(JSON.parse(resolvedRun.stdout)).output, { capitalized: 'Ada' })
+
+  const entry = join(resolvingFlow, 'flow.ts')
+  await writeFile(entry, `${await readFile(entry, 'utf8')}\n// source changed\n`)
+  const changed = await run([jig, 'review', resolvingProject, '--yes'], consumer, [2], 120_000)
+  assert.match(changed.stderr, /PACKAGE_BUN_RESOLUTION_PERMISSION_REQUIRED/)
+  assert.equal(await readFile(join(resolvingProject, 'jig.lock'), 'utf8'), admittedLock)
+
+  // Permission is not permission to repair an existing stale authored lock.
+  await writeFile(join(resolvingFlow, 'bun.lock'), authoredLock)
+  const manifestPath = join(resolvingFlow, 'package.json')
+  const changedManifest = JSON.parse(await readFile(manifestPath, 'utf8'))
+  changedManifest.dependencies.lodash = '4.17.20'
+  await writeFile(manifestPath, JSON.stringify(changedManifest))
+  const stale = await run(
+    [jig, 'review', resolvingProject, '--allow-resolution-network', '--yes'],
+    consumer,
+    [1],
+    120_000,
+  )
+  assert.match(stale.stderr, /PACKAGE_BUN_LOCK_STALE/)
+  assert.doesNotMatch(stale.stderr, /Resolving dependencies for/)
+  assert.equal(await readFile(join(resolvingFlow, 'bun.lock'), 'utf8'), authoredLock)
+  assert.equal(await readFile(join(resolvingProject, 'jig.lock'), 'utf8'), admittedLock)
+
   const executed = await run(
     [jig, 'run', 'flow:flows/hello', '--input', JSON.stringify({ name: 'Ada' })],
     project,
@@ -258,7 +339,7 @@ async function selectPackageArchive(artifacts: string): Promise<string> {
 
   // Build and pack the release candidate exactly once. Packing is explicitly
   // script-free so it cannot trigger a second build through `prepack`.
-  await run(['bun', 'run', 'build'], packageRoot, [0], 120_000)
+  await run(['just', 'build'], packageRoot, [0], 120_000)
   await run(
     ['bun', 'pm', 'pack', '--ignore-scripts', '--destination', artifacts],
     packageRoot,

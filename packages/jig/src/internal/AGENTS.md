@@ -30,10 +30,13 @@ child calls, project commands, and Agent providers.
   execute. Never execute mutable project source or stale host evidence.
 - Flow code receives no ambient host authority. Minimize environment, mounts,
   executables, network, credentials, and capabilities explicitly.
-- The networked Bun preparation worker currently receives the complete captured
-  package. Preserve the existing executable/configuration prohibitions and do
-  not widen that view; prefer a manifest-and-lock-only projection when a
-  concrete input seam can provide it without adding package-manager machinery.
+- Stage only the captured manifest and supplied lock for Bun installation;
+  materialize other authored files afterward. They must not trigger config
+  loading, preloads, or foreign-lock migration. Supplied locks remain frozen.
+  Missing-lock resolution requires explicit trusted per-review permission,
+  separate from Run approval, before acquisition. Never persist that grant or
+  infer it from project input, `--yes`, or an earlier review. Validate the
+  generated graph before frozen installation; retain its exact bytes privately.
 - Provider credentials are host configuration and must not enter Flow input,
   project state, artifacts, diagnostics, or unrelated provider processes.
 - Native Codex subscription access comes from the current operator's

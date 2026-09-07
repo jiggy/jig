@@ -8,9 +8,9 @@ import { ProjectAdministrationError } from '../src/administration/project.js'
 import { CheckError } from '../src/diagnostics.js'
 import {
   openPrivateProjectSession,
+  type PrivateProjectSessionHost,
   projectError,
   scopePrivatePackagePlanningError,
-  type PrivateProjectSessionHost,
 } from '../src/internal/project-session-controller.js'
 
 const missingPlan = `sha256:${'0'.repeat(64)}`
@@ -282,6 +282,28 @@ describe('private finite project session', () => {
     expect(projectError(scoped, 'plan').diagnostic).toEqual({
       code: 'PACKAGE_BUN_PREPARATION_FAILED',
       path: 'flows/dependent/package.json',
+    })
+    for (const code of [
+      'PACKAGE_BUN_RESOLUTION_PERMISSION_REQUIRED',
+      'PACKAGE_BUN_RESOLUTION_FAILED',
+      'PACKAGE_BUN_RESOLVED_SOURCE_UNSUPPORTED',
+    ]) {
+      const resolution = scopePrivatePackagePlanningError(
+        new CheckError('unavailable', code, 'private resolution detail', 'package.json'),
+        'flows/dependent',
+      )
+      expect(projectError(resolution, 'plan').diagnostic).toEqual({
+        code,
+        path: 'flows/dependent/package.json',
+      })
+    }
+    const stale = scopePrivatePackagePlanningError(
+      new CheckError('invalid', 'PACKAGE_BUN_LOCK_STALE', 'private installer detail', 'bun.lock'),
+      'flows/dependent',
+    )
+    expect(projectError(stale, 'plan').diagnostic).toEqual({
+      code: 'PACKAGE_BUN_LOCK_STALE',
+      path: 'flows/dependent/bun.lock',
     })
     const privateFailure = new CheckError('unavailable', 'PACKAGE_BUN_PROTOCOL', 'private detail')
     expect(scopePrivatePackagePlanningError(privateFailure, 'flows/dependent')).toBe(privateFailure)

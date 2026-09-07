@@ -4,46 +4,49 @@ import { join } from 'node:path'
 import { CheckError } from '../diagnostics.js'
 import type { JsonValue } from '../json.js'
 import {
-  createCapturedPackage,
   type CapturedFile,
   type CapturedPackage,
   type CapturedPackageBacking,
+  createCapturedPackage,
 } from '../package/capture.js'
 import { packageDigest } from '../package/digest.js'
 import { assertNoPathCollisions, comparePathBytes, validateLogicalPath } from '../package/paths.js'
-import { inspectPrivateBunPackageInput } from './bun-package-input.js'
 import {
-  readPrivateBunPreparationOwner,
-  replacePrivateBunPreparationOwner,
   type PrivateBunPreparationOwnerFact,
   type PrivateProjectCoordinator,
+  readPrivateBunPreparationOwner,
+  replacePrivateBunPreparationOwner,
 } from './activation-admission-store.js'
-import { privateDomainDigest } from './identity.js'
 import {
+  encodePrivateBunMessage,
   PRIVATE_BUN_PREPARATION_LIMITS,
   PRIVATE_BUN_PREPARED_MESSAGE_BYTES,
   PRIVATE_BUN_SOURCE_MESSAGE_BYTES,
-  encodePrivateBunMessage,
   privateBunMessageFits,
 } from './bun-native-preparation-protocol.js'
 import {
+  inspectPrivateBunPackageInput,
+  requirePrivateBunResolutionPermission,
+} from './bun-package-input.js'
+import { privateDomainDigest } from './identity.js'
+import {
+  type PrivateInstalledBunSupport,
   requirePrivateInstalledBunSupport,
   revalidatePrivateInstalledBunSupport,
-  type PrivateInstalledBunSupport,
 } from './installed-bun-support.js'
 import {
-  requirePrivateLinuxCgroupBackend,
   cancelPrivateLinuxOwnerStateAllocation,
   normalizePrivateLinuxConfirmedEnforcementReceipt,
   normalizePrivateLinuxOwnerStateAllocationIdentity,
   normalizePrivateLinuxSealedOwnerIdentity,
-  planPrivateLinuxOwnerStateAllocation,
-  releasePrivateLinuxOwnerState,
   type PrivateLinuxCgroupBackend,
   type PrivateLinuxComponentProcess,
   type PrivateLinuxConfirmedEnforcementReceipt,
   type PrivateLinuxOwnerStateAllocationIdentity,
   type PrivateLinuxSealedOwnerIdentity,
+  planPrivateLinuxOwnerStateAllocation,
+  releasePrivateLinuxOwnerState,
+  requirePrivateLinuxCgroupBackend,
 } from './linux-rootless-backend.js'
 
 const PREPARATION_WALL_MS = 60_000
@@ -58,10 +61,12 @@ const WORKER_FAILURE_CODES = new Set([
   'PACKAGE_BUN_PROTOCOL',
   'PACKAGE_BUN_SOURCE_CHANGED',
   'PACKAGE_BUN_SOURCE_UNSUPPORTED',
+  'PACKAGE_BUN_RESOLUTION_FAILED',
+  'PACKAGE_BUN_RESOLVED_SOURCE_UNSUPPORTED',
 ])
 
 /**
- * Prepare one locked Bun package in the same rootless envelope used by Runs.
+ * Prepare one Bun package in the same rootless envelope used by Runs.
  *
  * Only the fixed, script-disabled Bun installer inherits network access.
  * Authored Flow code is never executed and normal Runs remain network-isolated.
@@ -74,11 +79,14 @@ export async function preparePrivateBunPackage(input: {
   readonly coordinator: PrivateProjectCoordinator
   readonly deadlineUnixMs?: number
   readonly signal?: AbortSignal
+  readonly allowResolutionNetwork?: boolean
 }): Promise<CapturedPackage> {
   const classification = await inspectPrivateBunPackageInput(input.captured)
-  if (classification.state !== 'locked') {
-    throw new TypeError('Bun dependency preparation requires package.json and bun.lock')
+  if (classification.state === 'direct') {
+    throw new TypeError('Bun dependency preparation requires runtime dependencies or a lock')
   }
+  requirePrivateBunResolutionPermission(classification, input.allowResolutionNetwork)
+  input.signal?.throwIfAborted()
   const installedSupport = requirePrivateInstalledBunSupport(input.installedSupport)
   await revalidatePrivateInstalledBunSupport(installedSupport)
   const backend = requirePrivateLinuxCgroupBackend(input.backend)
@@ -119,6 +127,7 @@ export async function preparePrivateBunPackage(input: {
       installedSupport.sandboxExecutablePath,
       ...BUN_POLICY,
       installedSupport.sandboxPreparationWorkerPath,
+      ...(classification.state === 'unlocked' ? ['--allow-resolution-network'] : []),
     ],
     network: 'inherited',
   } as const
@@ -214,15 +223,19 @@ async function interact(
         }
         terminal = new CheckError(
           message.code === 'PACKAGE_BUN_SOURCE_UNSUPPORTED' ||
+            message.code === 'PACKAGE_BUN_RESOLVED_SOURCE_UNSUPPORTED' ||
+            message.code === 'PACKAGE_BUN_RESOLUTION_FAILED' ||
             message.code === 'PACKAGE_BUN_PREPARATION_FAILED' ||
             message.code === 'PACKAGE_BUN_OUTPUT_UNSUPPORTED'
             ? 'unavailable'
             : 'invalid',
           message.code,
           boundedMessage(message.message),
-          message.code.includes('LOCK') || message.code.includes('SOURCE_UNSUPPORTED')
-            ? 'bun.lock'
-            : undefined,
+          message.code.startsWith('PACKAGE_BUN_RESOL')
+            ? 'package.json'
+            : message.code.includes('LOCK') || message.code.includes('SOURCE_UNSUPPORTED')
+              ? 'bun.lock'
+              : undefined,
         )
       } else {
         throw protocolFailure()

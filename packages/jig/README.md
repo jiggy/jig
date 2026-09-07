@@ -25,7 +25,7 @@ Jig has three project commands:
 
 ```text
 jig init --bare <directory>
-jig review [project] [--yes]
+jig review [project] [--allow-resolution-network] [--yes]
 jig run <flow:path|binding:id> [options]
 ```
 

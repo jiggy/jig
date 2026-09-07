@@ -2,12 +2,15 @@ import { spawn } from 'node:child_process'
 import { copyFile, lstat, mkdir, opendir, readFile, rm, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 
-import { requirePrivateBunLockPolicy } from './bun-native-lock-policy.js'
 import {
+  requirePrivateBunLockPolicy,
+  requirePrivateBunResolutionManifest,
+} from './bun-native-lock-policy.js'
+import {
+  encodePrivateBunMessage,
   PRIVATE_BUN_PREPARATION_LIMITS,
   PRIVATE_BUN_PREPARED_MESSAGE_BYTES,
   PRIVATE_BUN_SOURCE_MESSAGE_BYTES,
-  encodePrivateBunMessage,
   privateBunMessageFits,
 } from './bun-native-preparation-protocol.js'
 
@@ -30,6 +33,8 @@ class WorkerFailure extends Error {
 }
 
 let outputQueue = Promise.resolve()
+const allowResolutionNetwork =
+  process.argv.length === 3 && process.argv[2] === '--allow-resolution-network'
 
 try {
   const iterator = jsonLines(process.stdin, PRIVATE_BUN_SOURCE_MESSAGE_BYTES)[
@@ -41,9 +46,17 @@ try {
   if (!(await iterator.next()).done) {
     throw new WorkerFailure('PACKAGE_BUN_PROTOCOL', 'preparation source has trailing data')
   }
-  await materializeSource(source.files)
-  await requireSupportedLock()
+  // Bun sees only its intended native inputs, not authored configuration,
+  // foreign locks, preload files, or Flow code. Restore source after installation.
+  const inputs = source.files.filter(({ path }) => path === 'package.json' || path === 'bun.lock')
+  await materializeSource(inputs)
+  const resolving = !inputs.some(({ path }) => path === 'bun.lock')
+  if (resolving) await resolveMissingLock()
+  await requireSupportedLock(resolving)
   await install()
+  await materializeSource(
+    source.files.filter(({ path }) => path !== 'package.json' && path !== 'bun.lock'),
+  )
   await verifySource(source.files)
   const prepared = await capturePrepared()
   await sendPrepared(prepared)
@@ -86,7 +99,7 @@ async function verifySource(files: readonly SourceFile[]): Promise<void> {
   }
 }
 
-async function requireSupportedLock(): Promise<void> {
+async function requireSupportedLock(resolved: boolean): Promise<void> {
   const lockCopy = '/work/bun-lock.jsonc'
   await copyFile(join(PACKAGE_ROOT, 'bun.lock'), lockCopy)
   let value: unknown
@@ -118,8 +131,53 @@ async function requireSupportedLock(): Promise<void> {
   try {
     requirePrivateBunLockPolicy(value)
   } catch {
+    if (resolved) {
+      throw new WorkerFailure(
+        'PACKAGE_BUN_RESOLVED_SOURCE_UNSUPPORTED',
+        'resolved dependencies are unsupported; resolution requests may already have occurred',
+      )
+    }
     unsupportedSource()
   }
+}
+
+async function resolveMissingLock(): Promise<void> {
+  if (!allowResolutionNetwork)
+    throw new WorkerFailure('PACKAGE_BUN_PROTOCOL', 'resolution permission is missing')
+  try {
+    requirePrivateBunResolutionManifest(
+      JSON.parse(await readFile(join(PACKAGE_ROOT, 'package.json'), 'utf8')),
+    )
+  } catch {
+    throw new WorkerFailure(
+      'PACKAGE_BUN_SOURCE_UNSUPPORTED',
+      'package.json contains unsupported resolution inputs',
+    )
+  }
+  const result = await runChild(
+    [
+      '--no-env-file',
+      '--config=/dev/null',
+      'install',
+      '--lockfile-only',
+      '--production',
+      '--ignore-scripts',
+      '--backend=copyfile',
+      '--linker=hoisted',
+      `--cache-dir=${CACHE_ROOT}`,
+      '--registry=https://registry.npmjs.org',
+      '--no-progress',
+      '--no-summary',
+    ],
+    { cwd: PACKAGE_ROOT, env: { LD_LIBRARY_PATH: '/jig-runtime/lib' } },
+    64 * 1024,
+    64 * 1024,
+  )
+  if (result.exit !== 0)
+    throw new WorkerFailure(
+      'PACKAGE_BUN_RESOLUTION_FAILED',
+      'dependency resolution failed; network requests may already have occurred',
+    )
 }
 
 function unsupportedSource(): never {
@@ -246,7 +304,7 @@ function requireSource(value: unknown): { readonly files: readonly SourceFile[] 
   }
   if (
     !files.some(({ path }) => path === 'package.json') ||
-    !files.some(({ path }) => path === 'bun.lock')
+    (!files.some(({ path }) => path === 'bun.lock') && !allowResolutionNetwork)
   ) {
     throw new WorkerFailure('PACKAGE_BUN_PROTOCOL', 'locked Bun source is incomplete')
   }

@@ -123,7 +123,7 @@ try {
   }
   assert.equal(help.stderr, '')
   assert.match(help.stdout, /^Usage:\n  jig init --bare <directory>$/m)
-  assert.match(help.stdout, /^  jig review \[project\] \[--yes\]$/m)
+  assert.match(help.stdout, /^  jig review \[project\] \[--allow-resolution-network\] \[--yes\]$/m)
   assert.match(help.stdout, /^  jig --version$/m)
   assert.match(
     help.stdout,

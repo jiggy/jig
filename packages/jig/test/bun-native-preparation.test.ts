@@ -1,18 +1,17 @@
 import { describe, expect, test } from 'bun:test'
 import { spawn } from 'node:child_process'
-import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-
-import {
-  preparePrivateBunPackage,
-  recoverPrivateBunPreparationOwner,
-} from '../src/internal/bun-native-preparation.js'
 import {
   initializePrivateActivationState,
   openPrivateProjectCoordinator,
   readPrivateBunPreparationOwner,
 } from '../src/internal/activation-admission-store.js'
+import {
+  preparePrivateBunPackage,
+  recoverPrivateBunPreparationOwner,
+} from '../src/internal/bun-native-preparation.js'
 import { openPrivateInstalledBunHost } from '../src/internal/installed-bun-host.js'
 import { PrivateLinuxFenceUnconfirmedError } from '../src/internal/linux-rootless-backend.js'
 import { capturePackageDirectory } from '../src/package/capture.js'
@@ -22,63 +21,100 @@ const HOSTILE = process.env.JIG_LINUX_ROOTLESS_HOSTILE === '1'
 const proofDescribe = HOSTILE ? describe.serial : describe.skip
 
 proofDescribe('private contained Bun dependency preparation', () => {
-  test('prepares one frozen transitive graph without lifecycle scripts or authored Bun config', async () => {
-    const initialTemporary = new Set((await readdir(tmpdir())).filter(rootlessTemporaryEntry))
-    const initialCgroups = new Set(await rootlessCgroups())
-    const root = await fixture()
-    try {
-      const captured = await capturePackageDirectory(root)
+  test.each([false, true])(
+    'prepares a transitive graph without scripts or authored config (resolve=%s)',
+    async (resolve) => {
+      const initialTemporary = new Set((await readdir(tmpdir())).filter(rootlessTemporaryEntry))
+      const initialCgroups = new Set(await rootlessCgroups())
+      const root = await fixture()
       try {
-        await initializePrivateActivationState({ projectRoot: root })
-        const coordinator = await openPrivateProjectCoordinator({ projectRoot: root })
+        if (resolve) {
+          await rm(join(root, 'bun.lock'))
+          for (const path of ['bun.lockb', 'package-lock.json', 'yarn.lock', 'pnpm-lock.yaml']) {
+            await writeFile(join(root, path), 'not a lock; must remain inert')
+          }
+        }
+        const captured = await capturePackageDirectory(root)
         try {
-          const host = await openPrivateInstalledBunHost(installedBunLocation)
-          const first = await preparePrivateBunPackage({
-            captured,
-            installedSupport: host.installedBunSupport,
-            backend: host.backend,
-            projectRoot: root,
-            coordinator,
-          })
+          await initializePrivateActivationState({ projectRoot: root })
+          const coordinator = await openPrivateProjectCoordinator({ projectRoot: root })
           try {
-            expect(
-              first.files.some(({ path }) => path === 'node_modules/is-number/index.js'),
-            ).toBeTrue()
-            expect(
-              first.files.some(({ path }) => path === 'node_modules/is-odd/index.js'),
-            ).toBeTrue()
-            expect(first.files.some(({ path }) => path === 'node_modules/zod/index.js')).toBeTrue()
-            expect(first.files.some(({ path }) => path === 'postinstall-ran')).toBeFalse()
-            expect(first.files.some(({ path }) => path.includes('/.bin/'))).toBeFalse()
-            expect(new TextDecoder().decode(await first.read('flow.ts'))).toContain('from "is-odd"')
-
-            const second = await preparePrivateBunPackage({
+            const host = await openPrivateInstalledBunHost(installedBunLocation)
+            if (resolve)
+              await expect(
+                preparePrivateBunPackage({
+                  captured,
+                  installedSupport: host.installedBunSupport,
+                  backend: host.backend,
+                  projectRoot: root,
+                  coordinator,
+                }),
+              ).rejects.toMatchObject({ code: 'PACKAGE_BUN_RESOLUTION_PERMISSION_REQUIRED' })
+            const first = await preparePrivateBunPackage({
               captured,
               installedSupport: host.installedBunSupport,
               backend: host.backend,
               projectRoot: root,
               coordinator,
+              allowResolutionNetwork: resolve,
             })
             try {
-              expect(second.digest).toBe(first.digest)
+              expect(
+                first.files.some(({ path }) => path === 'node_modules/is-number/index.js'),
+              ).toBeTrue()
+              expect(
+                first.files.some(({ path }) => path === 'node_modules/is-odd/index.js'),
+              ).toBeTrue()
+              expect(
+                first.files.some(({ path }) => path === 'node_modules/zod/index.js'),
+              ).toBeTrue()
+              expect(first.files.some(({ path }) => path === 'postinstall-ran')).toBeFalse()
+              expect(first.files.some(({ path }) => path.includes('/.bin/'))).toBeFalse()
+              expect(new TextDecoder().decode(await first.read('flow.ts'))).toContain(
+                'from "is-odd"',
+              )
+              expect(first.files.some(({ path }) => path === 'bun.lock')).toBeTrue()
+              if (resolve) {
+                await expect(readFile(join(root, 'bun.lock'))).rejects.toMatchObject({
+                  code: 'ENOENT',
+                })
+                expect(new TextDecoder().decode(await first.read('package-lock.json'))).toBe(
+                  'not a lock; must remain inert',
+                )
+              }
+
+              const second = await preparePrivateBunPackage({
+                captured,
+                installedSupport: host.installedBunSupport,
+                backend: host.backend,
+                projectRoot: root,
+                coordinator,
+                allowResolutionNetwork: resolve,
+              })
+              try {
+                // Only an authored lock promises the same dependency selection
+                // across two fresh preparations.
+                if (!resolve) expect(second.digest).toBe(first.digest)
+              } finally {
+                await second.dispose()
+              }
             } finally {
-              await second.dispose()
+              await first.dispose()
             }
           } finally {
-            await first.dispose()
+            await coordinator.dispose()
           }
         } finally {
-          await coordinator.dispose()
+          await captured.dispose()
         }
+        await waitForCgroups(initialCgroups)
+        await waitForTemporary(initialTemporary)
       } finally {
-        await captured.dispose()
+        await rm(root, { recursive: true, force: true })
       }
-      await waitForCgroups(initialCgroups)
-      await waitForTemporary(initialTemporary)
-    } finally {
-      await rm(root, { recursive: true, force: true })
-    }
-  }, 120_000)
+    },
+    120_000,
+  )
 
   test('rejects non-registry lock sources before installer fetch', async () => {
     const root = await fixture()
@@ -124,80 +160,87 @@ proofDescribe('private contained Bun dependency preparation', () => {
     }
   }, 30_000)
 
-  test('recovers an active preparation after its coordinator is killed', async () => {
-    const projectRoot = await mkdtemp(join(tmpdir(), 'jig-bun-preparation-project-'))
-    const packageRoot = await fixture()
-    const initialTemporary = new Set((await readdir(tmpdir())).filter(rootlessTemporaryEntry))
-    const initialCgroups = new Set(await rootlessCgroups())
-    try {
-      await initializePrivateActivationState({ projectRoot })
-      const helper = spawn(
-        process.execPath,
-        [
-          '--no-env-file',
-          '--no-install',
-          '--config=/dev/null',
-          join(import.meta.dir, 'fixtures', 'bun-preparation-coordinator.ts'),
-          projectRoot,
-          packageRoot,
-        ],
-        {
-          cwd: '/',
-          env: process.env,
-          stdio: ['ignore', 'pipe', 'pipe'],
-        },
-      )
-      const closed = childClose(helper)
-      const diagnostics = collectChild(helper.stderr)
-      await Promise.race([
-        waitForActivePreparation(projectRoot),
-        closed.then(async (exit) => {
-          throw new Error(
-            `preparation helper exited before activation (${exit.code ?? exit.signal}): ${await diagnostics}`,
-          )
-        }),
-      ])
-      helper.kill('SIGKILL')
-      const exit = await closed
-      expect(exit.signal).toBe('SIGKILL')
-
-      const host = await openPrivateInstalledBunHost(installedBunLocation)
-      const coordinator = await openPrivateProjectCoordinator({ projectRoot })
+  test.each([false, true])(
+    'recovers preparation after coordinator loss (resolve=%s)',
+    async (resolve) => {
+      const projectRoot = await mkdtemp(join(tmpdir(), 'jig-bun-preparation-project-'))
+      const packageRoot = await fixture()
+      const initialTemporary = new Set((await readdir(tmpdir())).filter(rootlessTemporaryEntry))
+      const initialCgroups = new Set(await rootlessCgroups())
       try {
-        await recoverEventually({
-          projectRoot,
-          coordinator,
-          backend: host.backend,
-        })
-        expect(await readPrivateBunPreparationOwner({ projectRoot, coordinator })).toBeNull()
-        const captured = await capturePackageDirectory(packageRoot)
+        if (resolve) await rm(join(packageRoot, 'bun.lock'))
+        await initializePrivateActivationState({ projectRoot })
+        const helper = spawn(
+          process.execPath,
+          [
+            '--no-env-file',
+            '--no-install',
+            '--config=/dev/null',
+            join(import.meta.dir, 'fixtures', 'bun-preparation-coordinator.ts'),
+            projectRoot,
+            packageRoot,
+            ...(resolve ? ['--allow-resolution-network'] : []),
+          ],
+          {
+            cwd: '/',
+            env: process.env,
+            stdio: ['ignore', 'pipe', 'pipe'],
+          },
+        )
+        const closed = childClose(helper)
+        const diagnostics = collectChild(helper.stderr)
+        await Promise.race([
+          waitForActivePreparation(projectRoot),
+          closed.then(async (exit) => {
+            throw new Error(
+              `preparation helper exited before activation (${exit.code ?? exit.signal}): ${await diagnostics}`,
+            )
+          }),
+        ])
+        helper.kill('SIGKILL')
+        const exit = await closed
+        expect(exit.signal).toBe('SIGKILL')
+
+        const host = await openPrivateInstalledBunHost(installedBunLocation)
+        const coordinator = await openPrivateProjectCoordinator({ projectRoot })
         try {
-          const prepared = await preparePrivateBunPackage({
-            captured,
-            installedSupport: host.installedBunSupport,
-            backend: host.backend,
+          await recoverEventually({
             projectRoot,
             coordinator,
+            backend: host.backend,
           })
-          await prepared.dispose()
+          expect(await readPrivateBunPreparationOwner({ projectRoot, coordinator })).toBeNull()
+          const captured = await capturePackageDirectory(packageRoot)
+          try {
+            const prepared = await preparePrivateBunPackage({
+              captured,
+              installedSupport: host.installedBunSupport,
+              backend: host.backend,
+              projectRoot,
+              coordinator,
+              allowResolutionNetwork: resolve,
+            })
+            await prepared.dispose()
+          } finally {
+            await captured.dispose()
+          }
         } finally {
-          await captured.dispose()
+          await coordinator.dispose()
         }
+        await waitForCgroups(initialCgroups)
+        await waitForTemporary(initialTemporary)
+        expect(
+          await readdir(join(projectRoot, '.jig', 'private-preparation-linux-owners')),
+        ).toEqual([])
       } finally {
-        await coordinator.dispose()
+        await Promise.all([
+          rm(projectRoot, { recursive: true, force: true }),
+          rm(packageRoot, { recursive: true, force: true }),
+        ])
       }
-      await waitForCgroups(initialCgroups)
-      await waitForTemporary(initialTemporary)
-      expect(await readdir(join(projectRoot, '.jig', 'private-preparation-linux-owners'))).toEqual(
-        [],
-      )
-    } finally {
-      await Promise.all([
-        rm(projectRoot, { recursive: true, force: true }),
-        rm(packageRoot, { recursive: true, force: true }),
-      ])
-    }
-  }, 120_000)
+    },
+    120_000,
+  )
 })
 
 async function fixture(): Promise<string> {

@@ -139,7 +139,7 @@ fi
 "$npm_jig" --help > "$temporary/npm-help"
 for expected in \
   "  jig init --bare <directory>" \
-  "  jig review [project] [--yes]" \
+  "  jig review [project] [--allow-resolution-network] [--yes]" \
   "  jig run <flow:path|binding:id> [--input JSON|@FILE] [--attach NAME=DIR]" \
   "      [--select NAME=FILE] [--out DIR] [--timeout DURATION]" \
   "  jig --version"

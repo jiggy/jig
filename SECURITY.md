@@ -19,8 +19,17 @@ rootless owner state before reporting completion.
 
 Project evaluation, the fixed dependency installer, and the fixed Agent
 provider worker use the same containment mechanism in separate scopes. The
-preparation worker inherits networking only during `jig review`; it validates
-the authored lock before the fixed installer's first fetch. The Agent worker
+preparation worker inherits networking only during `jig review`; supplied
+locks are validated before the fixed installer's first fetch. Without an
+authored lock, `--allow-resolution-network` explicitly permits dependency-
+selected requests before graph validation, including private-network and
+loopback destinations reachable from the host. This is not egress filtering.
+Failed or declined review cannot undo requests already made. The permission
+lasts only for that review; `--yes` is separate Run-admission approval. Known
+unsupported root declarations are rejected first; the resolved graph must
+pass the usual source/integrity policy before frozen installation and
+admission. Bun sees only manifest and lock during installation, not other
+authored configuration or foreign lockfiles. The Agent worker
 inherits networking only for an admitted Agent `capability/call`. The host may use
 the official OpenAI JavaScript SDK against an operator-selected HTTPS endpoint
 with either the `responses` or `chat-completions` wire shape, or run native
@@ -75,7 +84,7 @@ same descendant and cleanup boundary.
 | Each Agent provider scope | parent's remaining root deadline | 256 MiB | 128 | 50% of one CPU |
 | Each project-command scope | 10 seconds, within its parent deadline | 256 MiB | 64 | 50% of one CPU |
 | Project evaluation | 3 seconds | 256 MiB | 64 | 50% of one CPU |
-| One locked dependency preparation | 60 seconds | 512 MiB | 64 | one CPU |
+| One dependency resolution and preparation | 60 seconds | 512 MiB | 64 | one CPU |
 
 Root Runs default to 30 seconds. The trusted CLI caller may select a positive
 integer duration with `--timeout`, using `ms`, `s`, `m`, or `h`, up to 24

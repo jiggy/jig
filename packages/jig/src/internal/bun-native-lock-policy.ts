@@ -1,4 +1,16 @@
 /** Closed Bun 1.3.3 lock policy for the direct alpha's one preparer. */
+export function requirePrivateBunResolutionManifest(value: unknown): void {
+  const manifest = ordinaryRecord(value)
+  if (
+    manifest === undefined ||
+    ['workspaces', 'patchedDependencies', 'overrides', 'resolutions'].some(
+      (field) => manifest[field] !== undefined,
+    )
+  )
+    throw new TypeError('unsupported Bun resolution input')
+  requireRegistryDependencyMaps(manifest)
+}
+
 export function requirePrivateBunLockPolicy(value: unknown): void {
   const lock = ordinaryRecord(value)
   const workspaces = ordinaryRecord(lock?.workspaces)

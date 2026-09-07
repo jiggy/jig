@@ -217,7 +217,9 @@ describe('finite Jig project commands', () => {
       const invocation = commandInvocation(unusedHost())
       expect(await main(arguments_, invocation.options)).toBe(0)
       expect(invocation.output).toContain('jig init --bare <directory>')
-      expect(invocation.output).toContain('jig review [project] [--yes]')
+      expect(invocation.output).toContain(
+        'jig review [project] [--allow-resolution-network] [--yes]',
+      )
       expect(invocation.output).toContain('jig --version')
       expect(invocation.output).toContain(
         'jig run <flow:path|binding:id> [--input JSON|@FILE] [--attach NAME=DIR]',
@@ -313,6 +315,65 @@ describe('finite Jig project commands', () => {
     expect(prompt).toBe('Admit this exact project revision? [y/N] ')
     expect(declinedEvents).toEqual(['acquire:/project', 'plan:update', 'close'])
     expect(declined.error).toBe('JIG_CHANGES_DECLINED: project changes were not admitted\n')
+  })
+
+  test.each([false, true])(
+    'resolution permission is separate from execution approval (yes=%s)',
+    async (yes) => {
+      const events: string[] = []
+      const plan: ProjectPlanResult = {
+        state: 'applicable',
+        operation: 'admission',
+        planDigest: digest,
+        review: { mediaType: 'text/plain; charset=utf-8', text: 'review\n' },
+      }
+      let received: Parameters<PrivateCliCommandHost['acquire']>[1]
+      const host: PrivateCliCommandHost = {
+        acquire: async (_path, options) => {
+          received = options
+          options?.onResolution?.('flows/hello\u001b[31m')
+          return fakeSession(events, { plan })
+        },
+      }
+      const invocation = commandInvocation(host)
+      expect(
+        await main(
+          ['review', '--allow-resolution-network', ...(yes ? ['--yes'] : [])],
+          invocation.options,
+        ),
+      ).toBe(yes ? 0 : 2)
+      expect(received?.allowResolutionNetwork).toBeTrue()
+      expect(invocation.error).toContain('private-network services')
+      expect(invocation.error).not.toContain('\u001b')
+      expect(events.some((event) => event.startsWith('apply:'))).toBe(yes)
+    },
+  )
+
+  test('yes alone does not grant resolution and a later invocation does not inherit it', async () => {
+    const received: Parameters<PrivateCliCommandHost['acquire']>[1][] = []
+    const host: PrivateCliCommandHost = {
+      acquire: async (_path, options) => {
+        received.push(options)
+        return fakeSession([], { plan: { state: 'unchanged' } })
+      },
+    }
+    for (const args of [
+      ['review', '--allow-resolution-network', '--yes'],
+      ['review', '--yes'],
+    ]) {
+      expect(await main(args, commandInvocation(host).options)).toBe(0)
+    }
+    expect(received[0]?.allowResolutionNetwork).toBeTrue()
+    expect(received[1]?.allowResolutionNetwork).toBeUndefined()
+  })
+
+  test.each([
+    ['run', 'flow:flows/a', '--allow-resolution-network'],
+    ['review', '--allow-resolution-network', '--allow-resolution-network'],
+  ])('rejects misplaced or duplicate resolution permission: %j', async (args) => {
+    const invocation = commandInvocation(fakeHost(fakeSession([]), []))
+    expect(await main(args, invocation.options)).toBe(2)
+    expect(invocation.error).toContain('Usage:')
   })
 
   test('run uses the current project, explicit Flow target, default input, and no planning', async () => {
@@ -680,7 +741,7 @@ describe('finite Jig project commands', () => {
     expect(input.error).toBe('JIG_RUN_INPUT_INVALID: --input must be FLOW JSON/1\n')
 
     const usage = commandInvocation(unusedHost())
-    expect(await main(['review', '--yes', 'project'], usage.options)).toBe(2)
+    expect(await main(['review', '--yes', 'project', 'extra'], usage.options)).toBe(2)
     expect(usage.error).toContain('Usage:')
   })
 
@@ -760,7 +821,7 @@ describe('finite Jig project commands', () => {
     expect(events).toEqual(['acquire:/project', 'plan:update', 'close'])
     expect(invocation.output).toBe('')
     expect(invocation.error).toBe(
-      'UNAVAILABLE: the project command is unavailable; ' +
+      'UNAVAILABLE: use default npm registry dependencies; missing-lock resolution does not support workspaces, patches, overrides, or resolutions; ' +
         'PACKAGE_BUN_SOURCE_UNSUPPORTED at "flows/dependent/bun.lock"\n',
     )
     expect(invocation.error).not.toContain('private preparation message')

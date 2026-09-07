@@ -94,6 +94,14 @@ async function runPrivateInstalledCli(
                 ? {}
                 : { runTimeoutMs: options.runTimeoutMs }),
               ...(options?.files === undefined ? {} : { files: options.files }),
+              ...(options?.allowResolutionNetwork !== true
+                ? {}
+                : {
+                    allowResolutionNetwork: true,
+                    ...(options.onResolution === undefined
+                      ? {}
+                      : { onResolution: options.onResolution }),
+                  }),
             }),
           }),
       })

@@ -136,24 +136,46 @@ execution interruption under that capability's bounded retention contract.
 
 The first alpha host has one exact recipe: `flow.ts` run by Bun inside the
 rootless execution envelope. A package with production dependencies supplies
-ordinary root `package.json` and text `bun.lock` files and omits generated
-`node_modules`. Package-local source modules imported by relative path need no
-dependency entry. During planning, Jig prepares the frozen production tree
-with the fixed Bun installer through the same containment and ownership
+ordinary root `package.json`, optionally supplies a text `bun.lock`, and omits
+generated `node_modules`. Package-local source modules imported by relative
+path need no dependency entry. During planning, Jig prepares the frozen
+production tree with the fixed Bun installer through the same containment and ownership
 mechanism used by a Run, lifecycle scripts disabled, and only default-registry
 integrity-pinned sources accepted. Unlike a Run, the trusted preparation scope
-has registry network access. Unsupported or unlocked dependency sources fail
-closed before an applicable Plan is published.
+has network access. Unsupported dependency sources fail closed before an
+applicable Plan is published. A supplied lock is always validated and installed
+frozen; missing, stale, and invalid are distinct states, not repair modes.
+
+For a package with runtime dependencies but no authored lock, the operator may
+pass `jig review --allow-resolution-network`. Without it, planning returns
+`PACKAGE_BUN_RESOLUTION_PERMISSION_REQUIRED` at the affected manifest before
+resolving that package. `--yes` grants only final Run admission, not networking.
+The flag is local to the current review, not a project value, portable lock
+field, or retained permission. It grants no Run authority by itself.
+
+Before each new resolution, the CLI displays the escaped package path and
+warns that Bun may contact dependency-selected public, private-network, or
+loopback services reachable from the host before graph validation. Such
+requests cannot be undone by failure or declined approval. The flag is not a
+network destination filter. Jig first rejects known unsupported root sources;
+missing-lock manifests with workspaces, patches, overrides, or resolutions
+are unsupported. It then uses the fixed Bun's lockfile-only resolution,
+validates the generated graph against the same source/integrity policy, and
+only then performs a frozen install. Unsupported transitive sources can
+therefore fail after permitted network activity, not become executable through
+the flag. Resolution and installation share the existing preparation limits.
 
 Preparation ignores ambient configuration: the worker and installer receive
 no ambient variables or env file, only fixed loader support, `/dev/null` as
 Bun configuration, the exact runtime selected by Jig, and an explicit npm
 registry. A package-local root `.npmrc` is rejected because Bun treats it as a
 separate configuration input.
-Other package-manager files have no effect on this fixed Bun invocation; Jig
-does not maintain a growing filename blacklist. Git, GitHub, tarball, file,
-workspace, custom-registry, and non-integrity lock entries are rejected before
-the trusted installer starts a fetch. A default-registry npm alias is accepted
+Only captured `package.json` and any supplied `bun.lock` are staged for Bun;
+other authored files are materialized after installation. Foreign locks,
+preloads, and configuration therefore cannot influence resolution or install.
+Git, GitHub, tarball, file, workspace, custom-registry, and non-integrity entries
+in a supplied lock are rejected before the trusted installer starts a fetch.
+A default-registry npm alias is accepted
 only when the resolved lock tuple names that registry and carries supported
 SRI integrity.
 
@@ -165,13 +187,20 @@ proved inside the captured package remain invalid; fully contained hardlinks
 are captured as independent regular-file records.
 
 The admitted target pins the separately retained prepared Package/1 while the
-portable lock continues to identify the reviewed source Package/1. A Run
+portable lock continues to identify the reviewed source Package/1. Generated
+`bun.lock` bytes live only in the retained execution package, not visible
+source. Without an authored dependency lock, identical source and `jig.lock`
+on different machines may resolve different dependency versions. A Run
 performs no install or fetch and has no network, lifecycle scripts, or ambient
 runtime lookup. A package without runtime dependencies needs no preparation.
 
 Planning may reuse the execution Package from the active admission only when
 the current request reproduces its exact recipe and observation digests under
-the current runtime and containment mechanism. Final publication reacquires
+the current runtime and containment mechanism. Exact reuse performs no
+resolution and requires no new resolution permission. Any source change, including a
+code-only edit, or changed execution support can invalidate reuse and require
+the flag again for unlocked source. Declined preparations do not grant reuse.
+Final publication reacquires
 the retained bytes and compare-and-sets the captured policy heads. Missing or
 corrupt retained execution bytes fail closed; they are not silently fetched
 again under an otherwise unchanged admission.
@@ -287,7 +316,9 @@ One planning attempt:
 6. derives the complete portable lock; and
 7. publishes one retained candidate and human-readable review.
 
-Planning may create protected `.jig/` storage and retain immutable artifacts.
+Planning is Run-admission-neutral, not free of authority or side effects. It
+may create protected `.jig/` storage and retain immutable artifacts, and may
+exercise explicitly granted resolution networking before final approval.
 It does not mutate user source or the visible lock, admit execution authority,
 or run package code.
 
@@ -295,7 +326,7 @@ If any target has no exact supported recipe, this alpha planning operation
 returns `UNAVAILABLE` and publishes no applicable Plan. Missing or invalid
 host Agent configuration for an Agent-using target includes
 `PROJECT_AGENT_UNAVAILABLE` and its project-relative `FLOW.md` location.
-Failure to prepare locked dependencies includes `PACKAGE_BUN_PREPARATION_FAILED`
+Failure to prepare dependencies includes `PACKAGE_BUN_PREPARATION_FAILED`
 and its project-relative `package.json` location. These diagnostics include
 fixed guidance, not credentials, raw provider errors, or installer output.
 A successful review
@@ -335,8 +366,8 @@ It contains no runtime path, runtime version guess, host closure, sandbox
 detail, process identity, coordinator epoch, or local approval.
 
 Local admission lives under `.jig/` and is separate from the portable lock. A
-clone containing source and `jig.lock` therefore carries reproducible choices,
-not execution consent on a new host.
+clone containing source and `jig.lock` therefore carries source and Binding
+choices, not execution consent on a new host.
 
 Applying a reviewed Plan:
 
@@ -615,7 +646,8 @@ Dependency preparation uses the same ownership, cgroup, filesystem, process,
 and cleanup boundary. Only Jig's fixed installer and worker execute there;
 package source is handled as data and lifecycle scripts are disabled. That
 trusted preparation process may inherit host networking long enough to fetch
-the validated lock from the fixed registry. The resulting package is captured
+the validated lock from the fixed registry, or perform explicitly permitted
+missing-lock resolution before graph validation. The resulting package is captured
 before admission. This does not give the later Flow Run network access.
 
 CPU throttling is not a deadline, so the trusted owner also enforces a hard

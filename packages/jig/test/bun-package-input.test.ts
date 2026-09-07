@@ -3,7 +3,10 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { inspectPrivateBunPackageInput } from '../src/internal/bun-package-input.js'
+import {
+  inspectPrivateBunPackageInput,
+  requirePrivateBunResolutionPermission,
+} from '../src/internal/bun-package-input.js'
 import { capturePackageDirectory } from '../src/package/capture.js'
 
 describe('private Bun package input', () => {
@@ -55,11 +58,6 @@ describe('private Bun package input', () => {
 
   test.each([
     {
-      files: { 'package.json': '{"dependencies":{"zod":"4.1.5"}}\n' },
-      code: 'PACKAGE_BUN_LOCK_MISSING',
-      path: 'bun.lock',
-    },
-    {
       files: { 'bun.lock': '{}\n' },
       code: 'PACKAGE_BUN_MANIFEST_MISSING',
       path: 'package.json',
@@ -88,6 +86,54 @@ describe('private Bun package input', () => {
       },
       async (captured) => {
         await expect(inspectPrivateBunPackageInput(captured)).rejects.toMatchObject({ code, path })
+      },
+    )
+  })
+
+  test('classifies missing locks without granting resolution permission', async () => {
+    await withPackage(
+      { 'package.json': '{"dependencies":{"is-number":"7.0.0"}}' },
+      async (captured) => {
+        const input = await inspectPrivateBunPackageInput(captured)
+        expect(input).toEqual({ state: 'unlocked', manifestPath: 'package.json' })
+        for (const allowed of [undefined, false, 'true']) {
+          expect(() => requirePrivateBunResolutionPermission(input, allowed as boolean)).toThrow(
+            'explicitly allow resolution',
+          )
+        }
+        expect(() => requirePrivateBunResolutionPermission(input, true)).not.toThrow()
+        expect(() =>
+          requirePrivateBunResolutionPermission({ state: 'direct' }, false),
+        ).not.toThrow()
+      },
+    )
+  })
+
+  test.each([
+    { dependencies: { x: 'file:../outside' } },
+    { dependencies: { x: 'https://example.invalid/x.tgz' } },
+    { dependencies: { x: '1.0.0' }, overrides: { x: 'https://example.invalid/x.tgz' } },
+    { dependencies: { x: '1.0.0' }, workspaces: ['../outside'] },
+    { dependencies: { x: '1.0.0' }, patchedDependencies: {} },
+  ])('rejects known unsupported missing-lock inputs before resolution: %j', async (manifest) => {
+    await withPackage({ 'package.json': JSON.stringify(manifest) }, async (captured) => {
+      await expect(inspectPrivateBunPackageInput(captured)).rejects.toMatchObject({
+        code: 'PACKAGE_BUN_SOURCE_UNSUPPORTED',
+        path: 'package.json',
+      })
+    })
+  })
+
+  test('rejects .npmrc for missing-lock preparation too', async () => {
+    await withPackage(
+      {
+        'package.json': '{"dependencies":{"x":"1.0.0"}}',
+        '.npmrc': 'registry=https://example.invalid',
+      },
+      async (captured) => {
+        await expect(inspectPrivateBunPackageInput(captured)).rejects.toMatchObject({
+          code: 'PACKAGE_BUN_CONFIG_UNSUPPORTED',
+        })
       },
     )
   })

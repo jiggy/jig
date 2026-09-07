@@ -117,7 +117,7 @@ These laws make the accepted work independent of later edits. The portable
 lock records reproducible project choices; local admission grants consent to
 execute those choices on this host.
 
-- **Planning is authority-neutral, not read-only.** Review may capture,
+- **Planning is Run-admission-neutral, not read-only.** Review may capture,
   evaluate, prepare, and retain evidence. Before confirmation it must not
   modify visible project meaning, grant execution authority, or run package
   code.
@@ -136,7 +136,7 @@ execute those choices on this host.
 
 ### Dependency preparation and local development
 
-Review is the authority-neutral point where exact locked artifacts may be
+Review is the Run-admission-neutral point where exact locked artifacts may be
 fetched and a private execution snapshot materialized after relevant source
 changes. This is not an installation into the project or host. `jig run`
 performs no fetching, dependency materialization, lifecycle script, or ambient
@@ -147,6 +147,14 @@ manager. It accepts exact integrity-bearing packages from the fixed default npm
 registry under script-disabled, contained policy. The detailed source
 rules and limits belong in
 [`project-policy.md`](../docs/jig/spec/project-policy.md).
+
+Missing authored locks require explicit per-review resolution-network
+permission. It permits dependency-selected requests before graph validation,
+including host-reachable private services; final Run approval cannot undo
+them. `--yes` does not grant it. Generated locks stay in retained execution
+bytes, not visible source. Supplied locks are never silently repaired. Exact
+active admission reuse needs no fresh resolution; unlocked source alone does
+not promise the same dependency versions on another host.
 
 Unreleased code is not forced through a public registry. Package-local source
 modules can be imported directly. Shared unreleased code can be materialized as

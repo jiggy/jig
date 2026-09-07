@@ -1,10 +1,10 @@
-import { capturePackageDirectory } from '../../src/package/capture.js'
 import { openPrivateProjectCoordinator } from '../../src/internal/activation-admission-store.js'
 import { preparePrivateBunPackage } from '../../src/internal/bun-native-preparation.js'
 import { openPrivateInstalledBunHost } from '../../src/internal/installed-bun-host.js'
+import { capturePackageDirectory } from '../../src/package/capture.js'
 import { installedBunLocation } from './installed-bun-location.js'
 
-const [projectRoot, packageRoot] = process.argv.slice(2)
+const [projectRoot, packageRoot, resolutionPermission] = process.argv.slice(2)
 if (projectRoot === undefined || packageRoot === undefined) {
   throw new Error('preparation coordinator fixture arguments are missing')
 }
@@ -19,6 +19,7 @@ try {
     backend: host.backend,
     projectRoot,
     coordinator,
+    allowResolutionNetwork: resolutionPermission === '--allow-resolution-network',
   })
   await prepared.dispose()
 } finally {

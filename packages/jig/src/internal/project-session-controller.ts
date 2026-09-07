@@ -37,7 +37,10 @@ import {
   createPrivateBunPreparationBudget,
   type PrivateBunPreparationBudget,
 } from './bun-native-preparation-budget.js'
-import { inspectPrivateBunPackageInput } from './bun-package-input.js'
+import {
+  inspectPrivateBunPackageInput,
+  requirePrivateBunResolutionPermission,
+} from './bun-package-input.js'
 import { type PrivateDirectRunRecipe, planPrivateDirectRun } from './direct-run.js'
 import type { PrivateFileRecovery } from './file-command.js'
 import { privateDomainDigest } from './identity.js'
@@ -70,6 +73,8 @@ export interface PrivateProjectSessionHost {
   readonly runTimeoutMs: number
   readonly agentProvider?: PrivateAgentProvider | undefined
   readonly files?: PrivateRootRunFiles
+  readonly allowResolutionNetwork?: boolean
+  readonly onResolution?: (packagePath: string) => void
 }
 
 /** Recover only the already-bound Run. This entrypoint has no submission or planning surface. */
@@ -267,7 +272,13 @@ function createSession(
                     }
                   }
                   if (executionPackage === undefined) {
+                    requirePrivateBunResolutionPermission(
+                      dependencyInput,
+                      host.allowResolutionNetwork,
+                    )
                     preparationBudget.reserve(request.package.digest, request.packagePath)
+                    if (dependencyInput.state === 'unlocked')
+                      host.onResolution?.(request.packagePath)
                     const prepared = await preparePrivateBunPackage({
                       captured: source,
                       installedSupport: host.installedBunSupport,
@@ -276,6 +287,7 @@ function createSession(
                       coordinator: owner.coordinator,
                       deadlineUnixMs: preparationBudget.deadlineUnixMs,
                       signal: preparationBudget.signal,
+                      allowResolutionNetwork: host.allowResolutionNetwork === true,
                     })
                     try {
                       preparationBudget.retain(prepared.files, request.packagePath)
@@ -611,12 +623,13 @@ export function projectError(
 
 /** Package-private projection of known package-local preparation failures. */
 export function scopePrivatePackagePlanningError(error: unknown, packagePath: string): unknown {
-  if (!(error instanceof CheckError) || error.kind !== 'unavailable') {
+  if (!(error instanceof CheckError)) {
     return error
   }
   const relativePath =
-    error.code === 'PACKAGE_BUN_SOURCE_UNSUPPORTED' && error.path === 'bun.lock'
-      ? 'bun.lock'
+    error.code.startsWith('PACKAGE_BUN_') &&
+    (error.path === 'bun.lock' || error.path === 'package.json')
+      ? error.path
       : error.code === 'PACKAGE_BUN_PREPARATION_FAILED' && error.path === undefined
         ? 'package.json'
         : undefined
@@ -633,6 +646,9 @@ export function scopePrivatePackagePlanningError(error: unknown, packagePath: st
 function isUnavailableDiagnosticCode(code: string): boolean {
   return (
     code === 'PACKAGE_BUN_SOURCE_UNSUPPORTED' ||
+    code === 'PACKAGE_BUN_RESOLUTION_PERMISSION_REQUIRED' ||
+    code === 'PACKAGE_BUN_RESOLUTION_FAILED' ||
+    code === 'PACKAGE_BUN_RESOLVED_SOURCE_UNSUPPORTED' ||
     code === 'PACKAGE_BUN_PREPARATION_FAILED' ||
     code === 'PROJECT_AGENT_UNAVAILABLE' ||
     code === 'PROJECT_COMMAND_UNCONFIGURED'

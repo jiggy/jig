@@ -35,10 +35,19 @@ import { bindingRef, flowRef, type RunTargetRef } from './project/author.js'
 
 const HELP = `Usage:
   jig init --bare <directory>
-  jig review [project] [--yes]
+  jig review [project] [--allow-resolution-network] [--yes]
   jig run <flow:path|binding:id> [--input JSON|@FILE] [--attach NAME=DIR]
       [--select NAME=FILE] [--out DIR] [--timeout DURATION]
-  jig --version`
+  jig --version
+
+--allow-resolution-network permits fresh missing-lock resolution for this review.
+Bun may contact dependency-selected public or private-network services before
+graph validation. Requests cannot be undone if preparation fails or execution
+is declined. Unsupported dependencies may still fail. Runs gain no network
+access. --yes approves execution admission only, not resolution networking.`
+
+const RESOLUTION_WARNING =
+  'Bun may contact dependency-selected public or private-network services before graph validation; requests cannot be undone, and unsupported dependencies may still fail. Applies only to this review; Runs gain no network access.'
 
 const textEncoder = new TextEncoder()
 const textDecoder = new TextDecoder()
@@ -47,7 +56,12 @@ const textDecoder = new TextDecoder()
 export interface PrivateCliCommandHost {
   acquire(
     project: string,
-    options?: { readonly runTimeoutMs?: number; readonly files?: PrivateRootRunFiles },
+    options?: {
+      readonly runTimeoutMs?: number
+      readonly files?: PrivateRootRunFiles
+      readonly allowResolutionNetwork?: boolean
+      readonly onResolution?: (packagePath: string) => void
+    },
   ): Promise<ProjectSession>
   readonly delivery?: PrivateDeliveryConnection
   readonly agentUnavailableHint?: string
@@ -151,41 +165,54 @@ async function executeInit(arguments_: readonly string[], runtime: CliRuntime): 
 
 async function executeReview(arguments_: readonly string[], runtime: CliRuntime): Promise<number> {
   const parsed = parseReview(arguments_, runtime.currentDirectory)
-  return await withProjectSession(parsed.project, runtime, async (session) => {
-    const plan = await session.plan({ lockMode: 'update' })
-    if (plan.state === 'unchanged') {
+  return await withProjectSession(
+    parsed.project,
+    runtime,
+    async (session) => {
+      const plan = await session.plan({ lockMode: 'update' })
+      if (plan.state === 'unchanged') {
+        runtime.writeOutput('project is ready\n')
+        return 0
+      }
+
+      runtime.writeOutput(
+        plan.review.text.endsWith('\n') ? plan.review.text : `${plan.review.text}\n`,
+      )
+      if (!parsed.yes) {
+        if (!runtime.interactive) {
+          throw new CliDiagnostic(
+            'JIG_APPROVAL_REQUIRED',
+            'project changes require confirmation; rerun with --yes',
+            2,
+          )
+        }
+        const accepted = await runtime.confirm(
+          'Admit this exact project revision? [y/N] ',
+          runtime.signal,
+        )
+        if (!accepted) {
+          runtime.writeError(
+            renderDiagnostic('JIG_CHANGES_DECLINED', 'project changes were not admitted'),
+          )
+          return 1
+        }
+      }
+
+      runtime.signal?.throwIfAborted()
+      await session.apply({ planDigest: plan.planDigest })
       runtime.writeOutput('project is ready\n')
       return 0
-    }
-
-    runtime.writeOutput(
-      plan.review.text.endsWith('\n') ? plan.review.text : `${plan.review.text}\n`,
-    )
-    if (!parsed.yes) {
-      if (!runtime.interactive) {
-        throw new CliDiagnostic(
-          'JIG_APPROVAL_REQUIRED',
-          'project changes require confirmation; rerun with --yes',
-          2,
-        )
-      }
-      const accepted = await runtime.confirm(
-        'Admit this exact project revision? [y/N] ',
-        runtime.signal,
-      )
-      if (!accepted) {
-        runtime.writeError(
-          renderDiagnostic('JIG_CHANGES_DECLINED', 'project changes were not admitted'),
-        )
-        return 1
-      }
-    }
-
-    runtime.signal?.throwIfAborted()
-    await session.apply({ planDigest: plan.planDigest })
-    runtime.writeOutput('project is ready\n')
-    return 0
-  })
+    },
+    parsed.allowResolutionNetwork
+      ? {
+          allowResolutionNetwork: true,
+          onResolution: (path) =>
+            runtime.writeError(
+              `Resolving dependencies for ${asciiJsonString(path)}. ${RESOLUTION_WARNING}\n`,
+            ),
+        }
+      : undefined,
+  )
 }
 
 async function executeRun(arguments_: readonly string[], runtime: CliRuntime): Promise<number> {
@@ -360,18 +387,18 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
 function parseReview(
   arguments_: readonly string[],
   currentDirectory: string,
-): { readonly project: string; readonly yes: boolean } {
-  if (arguments_.length === 1) return { project: currentDirectory, yes: false }
-  if (arguments_.length === 2 && arguments_[1] === '--yes') {
-    return { project: currentDirectory, yes: true }
+): { readonly project: string; readonly yes: boolean; readonly allowResolutionNetwork: boolean } {
+  let project: string | undefined
+  let yes = false
+  let allowResolutionNetwork = false
+  for (const argument of arguments_.slice(1)) {
+    if (argument === '--yes' && !yes) yes = true
+    else if (argument === '--allow-resolution-network' && !allowResolutionNetwork)
+      allowResolutionNetwork = true
+    else if (!argument.startsWith('-') && project === undefined) project = argument
+    else throw new CliDiagnostic('JIG_USAGE', HELP, 2)
   }
-  if (arguments_.length === 2 && !arguments_[1]!.startsWith('-')) {
-    return { project: arguments_[1]!, yes: false }
-  }
-  if (arguments_.length === 3 && !arguments_[1]!.startsWith('-') && arguments_[2] === '--yes') {
-    return { project: arguments_[1]!, yes: true }
-  }
-  throw new CliDiagnostic('JIG_USAGE', HELP, 2)
+  return { project: project ?? currentDirectory, yes, allowResolutionNetwork }
 }
 
 function parseRun(arguments_: readonly string[]): {
@@ -516,7 +543,7 @@ async function withProjectSession<T>(
   project: string,
   runtime: CliRuntime,
   operation: (session: ProjectSession) => Promise<T>,
-  acquisition?: { readonly runTimeoutMs?: number; readonly files?: PrivateRootRunFiles },
+  acquisition?: Parameters<PrivateCliCommandHost['acquire']>[1],
   onSettledCloseFailure?: () => void,
 ): Promise<T> {
   runtime.signal?.throwIfAborted()
@@ -657,8 +684,21 @@ function renderFailure(error: unknown, runtime: CliRuntime): 1 | 2 {
   }
   if (error instanceof ProjectAdministrationError) {
     const projected = projectError(error.code)
+    const dependencyHints: Record<string, string> = {
+      PACKAGE_BUN_RESOLUTION_PERMISSION_REQUIRED: `supply bun.lock or rerun jig review with --allow-resolution-network. ${RESOLUTION_WARNING}`,
+      PACKAGE_BUN_RESOLUTION_FAILED:
+        'dependency resolution failed; requests may already have occurred; check package declarations and registry availability',
+      PACKAGE_BUN_RESOLVED_SOURCE_UNSUPPORTED:
+        'resolved dependencies are unsupported; requests may already have occurred; use integrity-pinned default npm registry dependencies',
+      PACKAGE_BUN_SOURCE_UNSUPPORTED:
+        'use default npm registry dependencies; missing-lock resolution does not support workspaces, patches, overrides, or resolutions',
+      PACKAGE_BUN_LOCK_INVALID: 'bun.lock is invalid; correct the supplied lock',
+      PACKAGE_BUN_LOCK_STALE:
+        'package.json and bun.lock disagree; update the supplied lock explicitly',
+    }
     const hint =
-      error.diagnostic?.code === 'PROJECT_AGENT_UNAVAILABLE'
+      dependencyHints[error.diagnostic?.code ?? ''] ??
+      (error.diagnostic?.code === 'PROJECT_AGENT_UNAVAILABLE'
         ? (runtime.host.agentUnavailableHint ??
           'configure the host Agent before review; check exported credentials, model, and selected client')
         : error.diagnostic?.code === 'PROJECT_COMMAND_UNCONFIGURED'
@@ -667,7 +707,7 @@ function renderFailure(error: unknown, runtime: CliRuntime): 1 | 2 {
             ? 'move generated node_modules outside the Flow package; jig review prepares its locked production dependencies'
             : error.diagnostic?.code === 'PACKAGE_BUN_PREPARATION_FAILED'
               ? 'locked dependencies could not be prepared; check registry access and package availability'
-              : undefined
+              : undefined)
     runtime.writeError(
       error.diagnostic !== undefined
         ? renderProjectDiagnostic(error, hint ?? projected.message)

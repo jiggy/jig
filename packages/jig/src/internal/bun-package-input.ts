@@ -1,5 +1,6 @@
 import { CheckError } from '../diagnostics.js'
 import type { CapturedPackage } from '../package/capture.js'
+import { requirePrivateBunResolutionManifest } from './bun-native-lock-policy.js'
 
 const MANIFEST = 'package.json'
 const LOCK = 'bun.lock'
@@ -7,6 +8,7 @@ const MAX_MANIFEST_BYTES = 1024 * 1024
 
 export type PrivateBunPackageInput =
   | { readonly state: 'direct' }
+  | { readonly state: 'unlocked'; readonly manifestPath: typeof MANIFEST }
   | {
       readonly state: 'locked'
       readonly manifestPath: typeof MANIFEST
@@ -51,12 +53,6 @@ export async function inspectPrivateBunPackageInput(
     if (!declaresRuntimeDependencies(manifest)) {
       return Object.freeze({ state: 'direct' as const })
     }
-    throw diagnostic(
-      'invalid',
-      'PACKAGE_BUN_LOCK_MISSING',
-      'package.json declares dependencies but bun.lock is missing; run bun install --lockfile-only',
-      LOCK,
-    )
   }
   if (paths.has('.npmrc')) {
     throw diagnostic(
@@ -66,11 +62,39 @@ export async function inspectPrivateBunPackageInput(
       '.npmrc',
     )
   }
+  if (!hasLock) {
+    try {
+      requirePrivateBunResolutionManifest(manifest)
+    } catch {
+      throw diagnostic(
+        'invalid',
+        'PACKAGE_BUN_SOURCE_UNSUPPORTED',
+        'missing-lock resolution requires registry dependency declarations without workspaces, patches, overrides, or resolutions',
+        MANIFEST,
+      )
+    }
+    return Object.freeze({ state: 'unlocked' as const, manifestPath: MANIFEST })
+  }
   return Object.freeze({
     state: 'locked' as const,
     manifestPath: MANIFEST,
     lockPath: LOCK,
   })
+}
+
+/** Invocation-local host permission, never authored or inferred from admission. */
+export function requirePrivateBunResolutionPermission(
+  input: PrivateBunPackageInput,
+  allowed: boolean | undefined,
+): void {
+  if (input.state === 'unlocked' && allowed !== true) {
+    throw diagnostic(
+      'unavailable',
+      'PACKAGE_BUN_RESOLUTION_PERMISSION_REQUIRED',
+      'supply bun.lock or explicitly allow resolution networking for this review',
+      MANIFEST,
+    )
+  }
 }
 
 async function requireManifestObject(captured: CapturedPackage): Promise<Record<string, unknown>> {
