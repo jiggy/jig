@@ -18,13 +18,14 @@ authored examples, not independent consumer evidence or promoted Starters.
 
 - Keep each Flow self-contained and invoke collaborators only through the
   public FLOW SDK. Do not import sibling package source or host internals.
-- Pin published SDK dependencies that supply the interfaces actually used;
-  generate their locks with the supported authoring tool, never by guessing
-  integrity values. Link to the current host installation instructions.
-- When source requires an SDK candidate not yet published, state that paired
-  requirement and generate example locks only after publication. Release tests
-  may consume the candidate archive in disposable copies; do not claim that an
-  older registry SDK supports the new interface.
+- Examples track the current Jig and FLOW source together. Build and test them
+  against the current SDK without waiting for npm publication; do not preserve
+  superseded APIs, release-order warnings, or compatibility branches.
+- Runnable examples must include their dependency closure. Preparing it is
+  repository build/distribution work, not a quickstart loop in which consumers
+  visit each Flow and generate its lock. Preserve real artifact identities and
+  use supported tooling; never invent registry integrity or imply that a
+  missing dependency has been supplied. Link to the current installation guide.
 - Agents, models, credentials, and execution policy remain operator choices.
 - Label synthetic evidence and keep it distinct from claims about real users.
 

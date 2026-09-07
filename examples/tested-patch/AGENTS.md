@@ -9,9 +9,10 @@ application is not an unrestricted repository worker or independent probe.
 ## Ownership
 
 - `README.md` introduces the application; its public guide owns user instructions.
-- Root `package.json` owns development dependencies. Flow-local manifests pin
-  the required SDK; generate each Flow's lock with Bun after that SDK is
-  published, before review. Never retain a lock for a superseded SDK API.
+- Root `package.json` owns development dependencies. Flow-local manifests
+  follow the current SDK. The repository build/distribution path owns runnable
+  dependency closure, as required by `examples/AGENTS.md`; consumers must not
+  repair that closure package by package.
 - `flows/project/` owns root file capture, fixed CLI cases, one- or two-job
   invocation, evidence checks, applicable patch construction, and deliverables.
 - `flows/repair/` owns the reusable JSON-input leaf, proposal validation,
@@ -66,8 +67,8 @@ application is not an unrestricted repository worker or independent probe.
 - Install development dependencies at this root with
   `bun install --ignore-scripts`, then run `bun test test`.
   From the repository root use `bun test examples/tested-patch/test`.
-- Before the selected SDK is published, `scripts/test-release.sh` tests a
-  disposable application copy with the freshly packed SDK. Source-level host
+- `scripts/test-release.sh` tests a disposable application copy with the
+  freshly packed SDK from this checkout. Source-level host
   fixtures explicitly vendor the built SDK into their disposable Flows;
   neither check claims registry availability or modifies the authored source.
 - Deterministic checks cover bounds, multi-file proposals, honest failures,
