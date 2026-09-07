@@ -14,6 +14,9 @@ use-case and orchestration hypotheses.
 - `index.md` and `guide/` teach implemented behavior and recommended practice,
   with installation prerequisites centralized in `guide/index.md`. Describe
   current behavior, not comparisons with superseded alpha releases.
+- `guide/agents.md` owns operator Agent setup and current adapter limitations;
+  `guide/dependencies.md` owns package dependency preparation guidance.
+  Root and package READMEs introduce the product and link to these owners.
 - `guide/*.diagram.json` and matching SVGs own explanatory diagrams alongside
   their guides; the shared diagram workflow is in `docs/AGENTS.md`.
 - `use-cases.md` records outcome-oriented product hypotheses.

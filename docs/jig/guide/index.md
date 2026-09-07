@@ -1,163 +1,137 @@
 ---
 title: Get started with Jig
-sidebar: false
 ---
 
 # Get started with Jig
 
-Jig runs reusable Agent methods with powers you approve. Start with
-[a tested patch](./tested-patch.md): describe a small bug, let your Agent
-propose a repair, and inspect actual checks without changing the original
-repository. Or use the short first-Flow quickstart below to learn the basics.
+Jig runs reusable Agent methods with powers you approve. This guide creates
+one small Flow and shows the review-and-run loop. For a fuller application,
+try [an issue becoming a tested patch](./tested-patch.md).
 
-The developer alpha runs [FLOW](https://flow.jig.md/) packages through three commands:
+## Install
 
-```text
-jig init --bare <directory>
-jig review [project] [--yes]
-jig run <target> [--input JSON|@FILE] [--attach NAME=DIR] [--out DIR] [--timeout DURATION]
-jig --version
-```
-
-`jig --version` reports the built package version
-without opening a project or acquiring a sandbox.
-
-To use these guides with a source checkout, build and install that checkout
-following the [development instructions](https://github.com/jiggy/jig/blob/main/CONTRIBUTING.md#development-shell).
-
-Install the latest published alpha directly from npm:
+On a [supported Linux host](#supported-host):
 
 ```console
 npm install --global @jigging/jig@alpha
 ```
 
-`jig init --bare my-project` creates a new project directory; the destination
-must not already exist. Add packages beneath `flows/`, review them with
-`jig review`, and run an admitted `flow:<path>` or `binding:<id>` target.
-Interactive `jig review` asks for approval. In a noninteractive environment,
-inspect its review and rerun it with `--yes` only when approval is explicit.
-There is no separate apply command: the same finite `review` invocation carries
-the reviewed proposal into admission.
+npm also installs Jig's exact Bun runtime dependency. Creating dependency locks
+in this tutorial uses Bun 1.3.3 as an authoring tool. To use a source checkout,
+follow the [development instructions](https://github.com/jiggy/jig/blob/main/CONTRIBUTING.md#development-shell).
+
+## Your first Flow
+
+Create a project:
+
+```console
+jig init --bare hello-jig
+cd hello-jig
+mkdir -p flows/hello
+```
+
+Create `flows/hello/FLOW.md`, which explains what the package does:
+
+```markdown
+---
+name: hello
+description: Return a greeting for the supplied name.
+---
+
+# Hello
+```
+
+Create `flows/hello/package.json` to select the FLOW SDK:
+
+```json
+{
+  "private": true,
+  "dependencies": { "@jigging/flow": "0.1.0-alpha.8" }
+}
+```
+
+Create `flows/hello/flow.ts`:
+
+```ts
+import { handle } from "@jigging/flow";
+
+await handle(async (run) => {
+  const name = typeof run.input === "object" && run.input !== null &&
+      !Array.isArray(run.input) && typeof run.input.name === "string"
+    ? run.input.name
+    : "world";
+  return { outcome: "done", output: { message: `Hello, ${name}!` } };
+});
+```
+
+Generate its dependency lock:
+
+```console
+cd flows/hello
+bun install --lockfile-only
+cd ../..
+```
+
+Review the project, approve it, then run the Flow:
+
+```console
+jig review
+jig run flow:flows/hello --input '{"name":"Ada"}'
+```
+
+The result includes `status: "succeeded"`, `outcome: "done"`, and
+`output: { "message": "Hello, Ada!" }`, alongside bounded diagnostics.
+This Flow needs no Agent configuration.
+
+## Review, run, improve
 
 ![Editable source goes through jig review and approval before jig run executes the accepted revision. Jig validates the result and settles owned work before returning an outcome or failure.](./review-run.svg)
 
-Later source edits need another review before they can run. Declining a proposal
-grants no new authority; it does not remove a previously admitted revision.
+`jig review` displays the proposed project changes and package identities.
+Inspect the source with your usual tools, then approve the review. In a
+noninteractive environment, `--yes` records your explicit approval.
 
-- The [repository quickstart](https://github.com/jiggy/jig#quickstart) provides
-  a complete first Flow and the supported-host requirements.
-- [Working with files](./files.md) captures selected inputs and publishes one
-  result packet through Jig, without an application launcher.
-- [An issue becomes a tested patch](./tested-patch.md) takes selected local
-  source files and returns a reviewable patch or an honest unsuccessful result.
-- The [use-case catalogue](../use-cases.md) records uniformly scoped product
-  hypotheses for future probes and tutorials.
-- [Choosing a workflow structure](./workflow-design.md) explains where Agent
-  judgment, deterministic checks, graph structure, and host authority belong.
-- [A proposal workshop](./proposal-workshop.md) combines separate drafting and
-  review Flows over supplied evidence with one bounded revision.
-- [Candidate orchestration patterns](../orchestration-patterns.md) records the
-  reusable methods those use cases may test.
-- [Project Authoring SDK/1](../spec/project-sdk.md) defines inert `jig.ts` and
-  Binding authoring values.
-- [Project and execution policy](../spec/project-policy.md) defines capture,
-  review, admission, and exact direct-Run behavior.
-- The [security boundary](https://github.com/jiggy/jig/blob/main/SECURITY.md)
-  states the threat model, host requirements, and fixed resource limits.
+`jig run` uses the approved revision. Edit the source and review again to run
+your changes. Declining a review leaves the previous admission intact.
 
-Optional package schema files use [FLOW Schema/1](https://flow.jig.md/spec/schema-files)
-and begin with the exact root declaration
-`"$schema": "https://flow.jig.md/schemas/schema-1.json"`. Dependency-free
-packages omit `bun.lock`; an empty or stale lock is not a valid fixture.
-When a `flow.ts` imports `@jigging/flow` or another production dependency,
-first create that package's own `package.json`, then run
-`bun install --lockfile-only` from the package directory with Bun 1.3.3. Keep
-the resulting text `bun.lock`, but do not place `node_modules` in the Flow
-package. Lock generation is author-side and may use the network and Bun's
-author-side cache even though it creates no project-local `node_modules`. On
-the first `jig review` after those inputs change, Jig fetches the exact locked
-artifacts and materializes a private execution snapshot through a contained
-trusted preparation process with default-registry network access and lifecycle
-scripts disabled. A declined review may therefore leave retained inert
-preparation evidence without admitting it.
+Use `flow:<path>` for a package or `binding:<id>` for a configured invocation.
+A Binding supplies application settings and exact dependencies; see
+[project authoring](../spec/project-sdk.md). Omitting `--input` supplies `{}`.
+Use `@FILE` for JSON input from a file and `--timeout 2m` for a longer Run.
+See [execution policy](../spec/project-policy.md) for current limits and
+lifecycle guarantees.
 
-For unreleased code, prefer readable package-local source and relative imports.
-A monorepo may copy or bundle shared code into the finished Flow package before
-`jig review`; Jig does not resolve symlinks, `file:`, `workspace:`, or Git
-dependencies and does not own that author-side step. `jig run` never installs
-or fetches dependencies.
+## Next steps
 
-The Jig-specific machine files are published under
-[`/schemas/`](https://jig.md/schemas/project-authoring-1.schema.json). FLOW's
-portable specifications and machine files remain independently published at
-[flow.jig.md](https://flow.jig.md/).
+- [Choose an Agent](./agents.md) using an API or a supported local client.
+- [Work with files](./files.md) to capture inputs and export one result packet.
+- [Manage dependencies](./dependencies.md) for reusable Flow packages.
+- [Repair a project](./tested-patch.md) or [compose a proposal workshop](./proposal-workshop.md).
+- [Choose a workflow structure](./workflow-design.md) for your application.
 
-Child calls are exact and deliberately small. A
-Binding may map at most 256 LocalName `slots` to selected `flow:path` or
-`binding:id` targets; omission means `{}`. Those targets come from the same
-admitted generation. A child Binding supplies its own settings and must have
-no child Flow slots; a direct Flow has empty settings and no slots. Either
-child may use its own admitted Agent capability. Each Run/1 `flow/run-child`
-exchanges only JSON/1 input and a complete JSON/1 result with a fresh child
-context. Attachments are empty, parent configuration is not inherited, and
-the child's deadline cannot exceed the parent's. Run/1 governs operation
-identity, duplicate joins and conflicts,
-cancellation, and uncertainty; uncertain dispatch is not automatically
-replayed. Jig supplies no separate child history, administration, scheduler,
-catalogue, or resolver.
+## Supported host
 
-The source candidate admits two sibling Flow calls under one aggregate root
-budget, or one exclusive root effect. Each leaf can use one Agent or reviewed
-project command. Excess calls receive `RESOURCE_EXHAUSTED` before dispatch;
-there is no queue. Per-call cancellation can stop one sibling while another
-finishes. The [project repair example](tested-patch.md#two-workers-two-reviewable-patches)
-uses this boundary for a two-project batch.
+The alpha has independent host evidence on provisioned Ubuntu 24.04 x86_64.
+Other matching Linux hosts are not yet independently validated. Jig checks
+required capabilities and reports missing support.
 
-One experimental [Agent Run capability](../spec/agent-run.md) is also
-available through ordinary Run/1 `capability/call`. An Agent-capable Flow carries
-the exact Jig-owned descriptor, may project an explicit package-local skill
-subset, and can use the structured result to select one of its Binding's exact
-child slots. The host may use the official OpenAI JavaScript SDK against an
-operator-selected OpenAI-compatible endpoint, or run native Codex, Claude
-Code, or Pi through one private ACP mechanism. Direct configuration uses
-`OPENAI_API_KEY` and `OPENAI_MODEL`; optional `OPENAI_BASE_URL` and `OPENAI_API`
-select the HTTPS endpoint and either the `responses` (default) or
-`chat-completions` wire shape. Jig supplies no default model. Client, API,
-endpoint, model, executable path, and credentials are trusted host
-configuration. Supply them as exported environment variables for both
-`jig review` and `jig run`; Jig does not auto-load project `.env` files.
-There is no package-selected provider, provider registry, or
-semantic router.
+- Linux x86_64, glibc 2.17 or newer, and an SSE4.2-capable CPU.
+- Bubblewrap 0.12 or newer and GNU `readlink -f`.
+- cgroup v2 with delegated `cpu`, `memory`, and `pids` controllers.
+- A systemd user manager supporting transient scopes with `Delegate=yes`.
+- Unprivileged user, mount, PID, network, IPC, UTS, and cgroup namespaces.
 
-For OpenRouter, export its natural `OPENROUTER_API_KEY` and
-`OPENROUTER_MODEL`; Jig selects its fixed Chat Completions endpoint.
+Jig's host-tool lookup currently uses `/usr/bin`, `/bin`, and
+`/run/current-system/sw/bin`. An absolute `JIG_BWRAP_PATH` selects another
+Bubblewrap installation. The host validates the selected tool; an invalid
+explicit selection fails rather than falling back.
 
-To use Codex through your own ChatGPT plan, install the Codex CLI and
-[sign in with `codex login`](https://developers.openai.com/codex/auth) as the
-same OS user that runs Jig. Jig currently requires Codex's file-backed cache:
-set `cli_auth_credentials_store = "file"` in the applicable Codex
-`config.toml`, then sign in. Export `JIG_AGENT_CLIENT=codex`; Jig checks fixed
-system locations, or an explicit absolute `CODEX_PATH`, and reads
-`$CODEX_HOME/auth.json` (default `~/.codex/auth.json`). It retains no refresh
-credential and projects only a short-lived bearer into the contained Codex
-process. OS-keyring-backed Codex login is not currently supported because Jig
-does not expose the host credential store to Agent execution.
+On NixOS, enable `programs.nix-ld.enable` for npm's runtime binary. Jig resolves
+glibc through `/run/current-system/sw/share/nix-ld/lib/ld.so` and gives Runs
+only the required loader and libraries. Independent NixOS conformance remains
+unverified.
 
-Switching client, endpoint, API, or model changes reviewed execution identity,
-so run `jig review` again and use the same selection for `jig run`. Rotating
-only a credential does not require review.
-
-Root Runs default to 30 seconds. `--timeout` accepts a positive integer plus
-`ms`, `s`, `m`, or `h`, up to 24 hours. Children share the parent's remaining
-absolute deadline; they cannot extend it. Acquisition precedes that execution
-deadline, and mandatory fencing and cleanup may settle afterward.
-
-On success, `jig run` prints one JSON object containing `status`, `outcome`,
-`output`, and bounded `diagnostics`. This is the command result; FLOW's
-`result.schema.json` validates the nested `{ outcome, output }` Run result.
-Omitting `--input` supplies `{}`.
-
-The direct alpha excludes Services, Hooks, Journal providers, a public Agent
-provider SPI, Agent sessions, Semantic Choice, Jig Graph, schedulers,
-catalogues, runtime registries, sandbox registries, and compatibility formats.
-Its public surface grows only after one concrete vertical earns it.
+`review` and `run` acquire their delegated scopes without `sudo`. Jig verifies
+the package-local Bun runtime before execution. See the
+[security boundary](https://github.com/jiggy/jig/blob/main/SECURITY.md) for
+isolation details and the private reporting channel.

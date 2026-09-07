@@ -22,7 +22,9 @@ const guideSidebar = [
   {
     text: 'Guides',
     items: [
-      { text: 'Direct alpha', link: '/guide/' },
+      { text: 'Get started', link: '/guide/' },
+      { text: 'Choose an Agent', link: '/guide/agents' },
+      { text: 'Flow dependencies', link: '/guide/dependencies' },
       { text: 'Working with files', link: '/guide/files' },
       { text: 'A proposal workshop', link: '/guide/proposal-workshop' },
       { text: 'An issue becomes a tested patch', link: '/guide/tested-patch' },
