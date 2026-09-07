@@ -237,7 +237,10 @@ class RuntimeTests(unittest.TestCase):
         self.assertEqual(self.component.remaining_stdout(), b"")
         self.assertEqual(
             self.component.remaining_stderr(),
-            b"handler print\nhandler flush\nhandler stdout write\nafter handle\n",
+            # Ordinary text diagnostics use the platform's native line endings.
+            b"handler print\nhandler flush\nhandler stdout write\nafter handle\n".replace(
+                b"\n", os.linesep.encode("ascii")
+            ),
         )
 
     def test_deadline_is_context_not_a_python_timer(self) -> None:

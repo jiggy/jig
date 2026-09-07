@@ -38,6 +38,8 @@ is independently packaged for PyPI prereleases; Jig hosting is outside its scope
 - Run installed distributions outside the checkout with no source-path injection.
 - Qualify Python 3.11–3.14 and representative Linux/macOS/Windows interpreters;
   CI configuration is not evidence that a particular run passed.
+- Windows checks are portability evidence, not a product support commitment.
+  Limit Windows-specific work to inexpensive fixes; broader support needs owner direction.
 
 ## Verification
 
