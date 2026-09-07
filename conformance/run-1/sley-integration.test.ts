@@ -27,7 +27,7 @@ describe('Sley behind FLOW Run/1', () => {
       expect(call).toEqual({
         jsonrpc: '2.0',
         id: call.id,
-        method: 'flow/call',
+        method: 'flow/run-child',
         params: {
           operationId: 'delegate:1',
           slot: 'delegate',

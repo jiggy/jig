@@ -3,7 +3,7 @@ import { describe, expect, spyOn, test } from 'bun:test'
 import { decodeJson, encodeJson } from '../src/json.ts'
 import { RunSession } from '../src/session.ts'
 import type { Transport } from '../src/transport.ts'
-import { EffectError, OperationError, type JsonObject, type JsonValue } from '../src/types.ts'
+import { CapabilityError, OperationError, type JsonObject, type JsonValue } from '../src/types.ts'
 
 class MemoryTransport implements Transport {
   readonly writes: Uint8Array[] = []
@@ -265,13 +265,13 @@ describe('RunSession', () => {
     const session = new RunSession(transport, async (run) => {
       run.signal.addEventListener('abort', markFatal, { once: true })
       const calls = [
-        run.callEffect({
+        run.callCapability({
           operationId: 'queued:1',
           slot: 'store',
           method: 'write',
           input: 1,
         }),
-        run.callEffect({
+        run.callCapability({
           operationId: 'queued:2',
           slot: 'store',
           method: 'write',
@@ -291,7 +291,7 @@ describe('RunSession', () => {
 
     await expect(completion).rejects.toMatchObject({ code: 'PROTOCOL_ERROR' })
     expect(transport.writes).toHaveLength(2)
-    expect(transport.message(0).method).toBe('effect/call')
+    expect(transport.message(0).method).toBe('capability/call')
     expect(transport.message(1)).toEqual({
       jsonrpc: '2.0',
       id: null,
@@ -306,7 +306,7 @@ describe('RunSession', () => {
       markHandlerDone = resolve
     })
     const session = new RunSession(transport, async (run) => {
-      const output = await run.callEffect({
+      const output = await run.callCapability({
         operationId: 'before-root:1',
         slot: 'store',
         method: 'read',
@@ -334,7 +334,7 @@ describe('RunSession', () => {
 
     await expect(completion).rejects.toMatchObject({ code: 'PROTOCOL_ERROR' })
     expect(transport.writes).toHaveLength(2)
-    expect(transport.message(0).method).toBe('effect/call')
+    expect(transport.message(0).method).toBe('capability/call')
     expect(transport.message(1)).toEqual({
       jsonrpc: '2.0',
       id: null,
@@ -345,13 +345,13 @@ describe('RunSession', () => {
   test('keeps the channel full-duplex while calls settle out of order', async () => {
     const transport = new MemoryTransport()
     const session = new RunSession(transport, async (run) => {
-      const child = run.callFlow({
+      const child = run.runChildFlow({
         operationId: 'child:1',
         slot: 'research',
         intent: 'Research the subject.',
         input: run.input,
       })
-      const effect = run.callEffect({
+      const effect = run.callCapability({
         operationId: 'effect:1',
         slot: 'store',
         method: 'write',
@@ -368,8 +368,8 @@ describe('RunSession', () => {
 
     const first = transport.message(0)
     const second = transport.message(1)
-    expect(first.method).toBe('flow/call')
-    expect(second.method).toBe('effect/call')
+    expect(first.method).toBe('flow/run-child')
+    expect(second.method).toBe('capability/call')
     transport.push({
       jsonrpc: '2.0',
       id: second.id as string,
@@ -395,15 +395,15 @@ describe('RunSession', () => {
     const transport = new MemoryTransport()
     const session = new RunSession(transport, async (run) => {
       try {
-        await run.callEffect({
+        await run.callCapability({
           operationId: 'read:1',
           slot: 'records',
           method: 'read',
           input: null,
         })
-        throw new Error('expected an EffectError')
+        throw new Error('expected an CapabilityError')
       } catch (error) {
-        if (!(error instanceof EffectError)) throw error
+        if (!(error instanceof CapabilityError)) throw error
         return {
           outcome: 'done',
           output: { name: error.errorName, data: error.data },
@@ -455,7 +455,7 @@ describe('RunSession', () => {
   test('cannot report success while an unawaited outbound call is live', async () => {
     const transport = new MemoryTransport()
     const session = new RunSession(transport, async (run) => {
-      void run.callEffect({
+      void run.callCapability({
         operationId: 'detached:1',
         slot: 'store',
         method: 'write',
@@ -494,7 +494,7 @@ describe('RunSession', () => {
     let rejected = false
     const session = new RunSession(transport, async (run) => {
       const controller = new AbortController()
-      const child = run.callFlow(
+      const child = run.runChildFlow(
         {
           operationId: 'cancel-race:1',
           slot: 'worker',
@@ -544,7 +544,7 @@ describe('RunSession', () => {
       controller.abort()
 
       const calls = [
-        run.callFlow(
+        run.runChildFlow(
           {
             operationId: 'cancelled-flow:1',
             slot: 'worker',
@@ -552,7 +552,7 @@ describe('RunSession', () => {
           },
           { signal: controller.signal },
         ),
-        run.callEffect(
+        run.callCapability(
           {
             operationId: 'cancelled-effect:1',
             slot: 'records',
@@ -588,7 +588,7 @@ describe('RunSession', () => {
     const transport = new MemoryTransport()
     const session = new RunSession(transport, async (run) => {
       const pending = Array.from({ length: 64 }, (_, index) =>
-        run.callEffect({
+        run.callCapability({
           operationId: `capacity:${index}`,
           slot: 'records',
           method: 'write',
@@ -600,7 +600,7 @@ describe('RunSession', () => {
       const controller = new AbortController()
       controller.abort()
       await expect(
-        run.callEffect(
+        run.callCapability(
           {
             operationId: 'capacity:cancelled',
             slot: 'records',
@@ -631,7 +631,7 @@ describe('RunSession', () => {
       const controller = new AbortController()
       controller.abort()
       await expect(
-        run.callEffect(
+        run.callCapability(
           {
             operationId: 'lifetime:cancelled',
             slot: 'records',
@@ -659,7 +659,7 @@ describe('RunSession', () => {
     const session = new RunSession(transport, async (run) => {
       const controller = new AbortController()
       try {
-        await run.callEffect(
+        await run.callCapability(
           {
             operationId: 'write:permission-check',
             slot: 'records',
@@ -778,7 +778,7 @@ describe('RunSession', () => {
     const transport = new MemoryTransport()
     const mutable = { value: 'before' }
     const session = new RunSession(transport, async (run) => {
-      const effect = run.callEffect({
+      const effect = run.callCapability({
         operationId: 'snapshot:1',
         slot: 'store',
         method: 'write',
@@ -919,7 +919,7 @@ describe('RunSession', () => {
       const transport = new MemoryTransport()
       const session = new RunSession(transport, async (run) => ({
         outcome: 'done',
-        output: await run.callEffect({
+        output: await run.callCapability({
           operationId: 'invalid-response:1',
           slot: 'store',
           method: 'write',
@@ -947,7 +947,7 @@ describe('RunSession', () => {
     })
     const session = new RunSession(transport, async (run) => {
       try {
-        await run.callEffect({
+        await run.callCapability({
           operationId: 'peer-failure:1',
           slot: 'store',
           method: 'write',

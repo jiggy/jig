@@ -3,7 +3,7 @@
 **Status:** experimental alpha candidate.
 
 Agent Run is one exact FLOW Capability Contract consumed through Run/1
-`effect/call`. It does not add an Agent API to `@jigging/flow`, a provider
+`capability/call`. It does not add an Agent API to `@jigging/flow`, a provider
 configuration field to Bindings, or a semantic router to Jig.
 
 The canonical descriptor is
@@ -57,7 +57,7 @@ Its result is:
 
 On the Run/1 wire, a successful effect response is
 `{ "value": <Agent result> }`. `@jigging/flow` unwraps that envelope, so
-`run.callEffect()` resolves directly to the Agent result. A completed call
+`run.callCapability()` resolves directly to the Agent result. A completed call
 which requested `responseSchema` includes `structured`, and Jig validates that
 value against the supplied FLOW Schema/1 schema before returning it.
 
@@ -146,7 +146,7 @@ const routeSchema = {
 } as const;
 
 await handle(async (run) => {
-  const agent = await run.callEffect({
+  const agent = await run.callCapability({
     operationId: "choose-route",
     slot: "agent",
     method: "run",
@@ -165,7 +165,7 @@ await handle(async (run) => {
     };
   }
 
-  const child = await run.callFlow({
+  const child = await run.runChildFlow({
     operationId: "dispatch-route",
     slot: agent.structured.route,
     input: run.input,

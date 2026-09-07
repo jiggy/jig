@@ -3,16 +3,21 @@
 > *Status: prerelease specification candidate. The machine schema is published
 > as [`capability-contract-1.schema.json`](https://flow.jig.md/schemas/capability-contract-1.schema.json).*
 
-Most Flows need no formal contract. Generic `flow/call` already means “perform
+Most Flows need no formal contract. Generic `flow/run-child` already means “perform
 this bounded piece of work and return one outcome.” A Capability Contract is
 for a stable machine interface which must be called repeatedly or precisely.
 
 The division is:
 
 ```text
-flow/call       open-ended work, selected by intent, no contract required
-effect/call     a bound capability; local opaque or exact public contract
+flow/run-child   bounded work through an admitted child slot; no capability contract required
+capability/call  a named method on a bound capability; local opaque or exact public contract
 ```
+
+Child intent is optional guidance within the existing slot; it does not
+grant discovery or widen authority. Both operations remain owned by their
+invoking Run. The distinction is the interface called, not whether its
+implementation has side effects.
 
 Complexity alone never requires a contract. A one-method contract is valid
 when it is a stable reusable seam, such as the session-store example below,

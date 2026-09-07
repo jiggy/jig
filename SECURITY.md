@@ -21,7 +21,7 @@ Project evaluation, the fixed dependency installer, and the fixed Agent
 provider worker use the same containment mechanism in separate scopes. The
 preparation worker inherits networking only during `jig review`; it validates
 the authored lock before the fixed installer's first fetch. The Agent worker
-inherits networking only for an admitted Agent `effect/call`. The host may use
+inherits networking only for an admitted Agent `capability/call`. The host may use
 the official OpenAI JavaScript SDK against an operator-selected HTTPS endpoint
 with either the `responses` or `chat-completions` wire shape, or run native
 Codex, Claude Code, or Pi through one private ACP mechanism. Client paths,

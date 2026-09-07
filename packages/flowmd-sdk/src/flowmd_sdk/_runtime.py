@@ -21,7 +21,7 @@ from ._json import (
 )
 from ._types import (
     Attachment,
-    EffectError,
+    CapabilityError,
     JsonValue,
     OperationError,
     OperationErrorCode,
@@ -87,7 +87,7 @@ class _RunContextImpl:
     deadline_unix_ms: int
     _client: _Runtime
 
-    async def call_flow(
+    async def run_child_flow(
         self,
         *,
         operation_id: str,
@@ -95,14 +95,14 @@ class _RunContextImpl:
         input: JsonValue,
         intent: str | None = None,
     ) -> RunResult:
-        return await self._client.call_flow(
+        return await self._client.run_child_flow(
             operation_id=operation_id,
             slot=slot,
             input=input,
             intent=intent,
         )
 
-    async def call_effect(
+    async def call_capability(
         self,
         *,
         operation_id: str,
@@ -110,7 +110,7 @@ class _RunContextImpl:
         method: str,
         input: JsonValue,
     ) -> JsonValue:
-        return await self._client.call_effect(
+        return await self._client.call_capability(
             operation_id=operation_id,
             slot=slot,
             method=method,
@@ -561,7 +561,7 @@ class _Runtime:
                 tag, payload = _validate_effect_wire_result(frame["result"])
                 if tag == "error":
                     name, data = payload
-                    result = EffectError(name, data)
+                    result = CapabilityError(name, data)
                     is_error = True
                 else:
                     result = payload
@@ -677,7 +677,7 @@ class _Runtime:
         except Exception:
             pass
 
-    async def call_flow(
+    async def run_child_flow(
         self,
         *,
         operation_id: str,
@@ -699,11 +699,11 @@ class _Runtime:
         normalized = normalize_json1(params)
         assert isinstance(normalized, dict)
         encode_json1(normalized)
-        result = await self._send_request("flow", "flow/call", normalized)
+        result = await self._send_request("flow", "flow/run-child", normalized)
         assert isinstance(result, dict)
         return result
 
-    async def call_effect(
+    async def call_capability(
         self,
         *,
         operation_id: str,
@@ -723,7 +723,7 @@ class _Runtime:
         normalized = normalize_json1(params)
         assert isinstance(normalized, dict)
         encode_json1(normalized)
-        return await self._send_request("effect", "effect/call", normalized)
+        return await self._send_request("effect", "capability/call", normalized)
 
     async def _send_request(self, kind: str, method: str, params: dict[str, Any]) -> Any:
         if not self._accepting_calls or self._root_id is None:

@@ -61,7 +61,10 @@ async function runGoldenConversation(command: readonly string[]) {
     const outbound = [request(first), request(second)]
 
     for (const item of [...outbound].sort(byConcurrentMethod)) {
-      assertSchema(item.method === 'flow/call' ? 'flowCallRequest' : 'effectCallRequest', item)
+      assertSchema(
+        item.method === 'flow/run-child' ? 'childFlowRequest' : 'capabilityCallRequest',
+        item,
+      )
       trace.push({
         direction: 'component->host',
         kind: 'request',
@@ -70,8 +73,8 @@ async function runGoldenConversation(command: readonly string[]) {
       })
     }
 
-    const flowCall = outbound.find((item) => item.method === 'flow/call')
-    const effectCall = outbound.find((item) => item.method === 'effect/call')
+    const flowCall = outbound.find((item) => item.method === 'flow/run-child')
+    const effectCall = outbound.find((item) => item.method === 'capability/call')
     expect(flowCall).toBeDefined()
     expect(effectCall).toBeDefined()
     expect(flowCall!.params).toEqual({
@@ -92,7 +95,7 @@ async function runGoldenConversation(command: readonly string[]) {
       id: effectCall!.id,
       result: { value: { uri: 'artifact://1' } },
     })
-    trace.push({ direction: 'host->component', kind: 'result', for: 'effect/call' })
+    trace.push({ direction: 'host->component', kind: 'result', for: 'capability/call' })
 
     peer.send({
       jsonrpc: '2.0',
@@ -102,11 +105,11 @@ async function runGoldenConversation(command: readonly string[]) {
         output: { answer: 'Fifa 99' },
       },
     })
-    trace.push({ direction: 'host->component', kind: 'result', for: 'flow/call' })
+    trace.push({ direction: 'host->component', kind: 'result', for: 'flow/run-child' })
 
     const missing = request(await peer.receive())
-    expect(missing.method).toBe('effect/call')
-    assertSchema('effectCallRequest', missing)
+    expect(missing.method).toBe('capability/call')
+    assertSchema('capabilityCallRequest', missing)
     expect(missing.params).toEqual({
       operationId: 'missing:1',
       slot: 'artifacts',
@@ -133,7 +136,7 @@ async function runGoldenConversation(command: readonly string[]) {
     trace.push({
       direction: 'host->component',
       kind: 'result',
-      for: 'effect/call',
+      for: 'capability/call',
       declaredError: 'not-found',
     })
 
@@ -165,7 +168,7 @@ async function runGoldenConversation(command: readonly string[]) {
 }
 
 function byConcurrentMethod(left: Request, right: Request): number {
-  const rank = { 'flow/call': 0, 'effect/call': 1 } as const
+  const rank = { 'flow/run-child': 0, 'capability/call': 1 } as const
   return (
     (rank[left.method as keyof typeof rank] ?? 2) - (rank[right.method as keyof typeof rank] ?? 2)
   )

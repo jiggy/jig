@@ -263,7 +263,7 @@ their own unchanged assertions. The exact contract belongs in
 
 A **Capability Contract** describes an exact interface for independently
 maintained consumers and implementations. **Agent Run** is the Jig-owned
-contract for bounded Agent work, consumed through ordinary Run/1 `effect/call`.
+contract for bounded Agent work, consumed through ordinary Run/1 `capability/call`.
 It is not a new FLOW method, model authority, or public provider framework.
 The public value contract belongs in
 [`agent-run.md`](../docs/jig/spec/agent-run.md).

@@ -10,8 +10,10 @@ Your original files stay unchanged; you decide whether to apply the patch.
 
 The [copyable application](https://github.com/jiggy/jig/tree/main/examples/tested-patch)
 uses the Project Command capability in the source candidate. Use an artifact
-built from this candidate until that capability is included in a published
-release. See the [installation guide](./index.md) for supported hosts.
+built from this candidate for development. The copy-and-run instructions
+require the paired `@jigging/jig@0.1.0-alpha.14` and
+`@jigging/flow@0.1.0-alpha.9` releases; use them after publication.
+See the [installation guide](./index.md) for supported hosts.
 
 ## Try it
 
@@ -20,6 +22,9 @@ and inspect `issue.json`, `bindings/specialist.ts`, and
 `flows/project/cases.json`. From your copy:
 
 ```sh
+for flow in flows/project flows/repair; do
+  (cd "$flow" && bun install --lockfile-only --ignore-scripts)
+done
 jig review
 jig run binding:repair --input @issue.json --attach source=fixtures/log-report --out ../repair-result --timeout 5m
 ```
@@ -28,6 +33,9 @@ Open `../repair-result/files/summary.txt`. A `review.patch` appears beside it
 only when the repair passed the checks. The destination must be new and
 outside the selected source. Review prepares the Flow's locked SDK; candidate
 commands do not install dependencies.
+
+Generate these dependency locks with Bun 1.3.3 and retain them with your
+application. The source does not carry a guessed lock for an unpublished SDK.
 
 The supplied project is an HTTP access-log reporter: a CLI, a parser, a
 reporting module, and Bun tests. Its parser admits invalid status codes and

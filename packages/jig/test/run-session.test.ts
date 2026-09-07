@@ -16,6 +16,47 @@ import {
 const encoder = new TextEncoder()
 
 describe('private RunHostSession', () => {
+  test('does not treat component-supplied flow/run as a child request or host authority', async () => {
+    const process = new FakeProcess()
+    let dispatched = false
+    const running = new RunHostSession(
+      process,
+      invocation(),
+      {},
+      {
+        runChildFlow: async () => {
+          dispatched = true
+          return {
+            status: 'succeeded',
+            result: { outcome: 'done', output: null },
+          }
+        },
+      },
+    ).run()
+    const hostRequest = await process.nextHost()
+    process.emit({ ...hostRequest, id: 'component:wrong-direction' })
+    expect(await process.nextHost()).toMatchObject({
+      id: 'component:wrong-direction',
+      error: { code: -32601 },
+    })
+    expect(dispatched).toBe(false)
+    process.emit(
+      request('component:child', 'flow/run-child', {
+        operationId: 'child:1',
+        slot: 'reviewer',
+        input: null,
+      }),
+    )
+    expect(await process.nextHost()).toMatchObject({
+      id: 'component:child',
+      result: { outcome: 'done', output: null },
+    })
+    expect(dispatched).toBe(true)
+    process.emit(result(null))
+    process.finish(0)
+    expect((await running).status).toBe('succeeded')
+  })
+
   test('accepts one structurally valid result only after clean exit', async () => {
     const process = new FakeProcess()
     const running = new RunHostSession(process, invocation()).run()
@@ -37,7 +78,7 @@ describe('private RunHostSession', () => {
     await process.nextHost()
 
     process.emit(
-      request('component:1', 'flow/call', {
+      request('component:1', 'flow/run-child', {
         operationId: 'research:1',
         slot: 'research',
         intent: 'Research this',
@@ -45,7 +86,7 @@ describe('private RunHostSession', () => {
       }),
     )
     process.emit(
-      request('component:2', 'effect/call', {
+      request('component:2', 'capability/call', {
         operationId: 'write:1',
         slot: 'artifacts',
         method: 'write',
@@ -90,7 +131,7 @@ describe('private RunHostSession', () => {
     await process.nextHost()
     process.failNextWrite(new Error('child response write failed'))
     process.emit(
-      request('component:1', 'effect/call', {
+      request('component:1', 'capability/call', {
         operationId: 'write-failure:1',
         slot: 'artifacts',
         method: 'write',
@@ -112,7 +153,7 @@ describe('private RunHostSession', () => {
     fast.releaseWrites()
     await tick()
     fast.emit(
-      request('component:1', 'effect/call', {
+      request('component:1', 'capability/call', {
         operationId: 'too-late:1',
         slot: 'artifacts',
         method: 'write',
@@ -129,7 +170,7 @@ describe('private RunHostSession', () => {
     await process.nextHost()
 
     process.emitTogether(
-      request('component:1', 'effect/call', {
+      request('component:1', 'capability/call', {
         operationId: 'same-batch:1',
         slot: 'artifacts',
         method: 'write',
@@ -147,7 +188,7 @@ describe('private RunHostSession', () => {
     await process.nextHost()
 
     process.emit(
-      request('component:1', 'effect/call', {
+      request('component:1', 'capability/call', {
         operationId: 'fast-response:1',
         slot: 'artifacts',
         method: 'write',
@@ -176,11 +217,11 @@ describe('private RunHostSession', () => {
       method: 'write',
       input: { value: 1 },
     }
-    process.emit(request('component:1', 'effect/call', first))
+    process.emit(request('component:1', 'capability/call', first))
     expect(operationCode(await process.nextHost())).toBe('UNAVAILABLE')
-    process.emit(request('component:2', 'effect/call', first))
+    process.emit(request('component:2', 'capability/call', first))
     expect(operationCode(await process.nextHost())).toBe('UNAVAILABLE')
-    process.emit(request('component:3', 'effect/call', { ...first, input: { value: 2 } }))
+    process.emit(request('component:3', 'capability/call', { ...first, input: { value: 2 } }))
     expect(operationCode(await process.nextHost())).toBe('OPERATION_CONFLICT')
     process.emit(result(null))
     process.finish(0)
@@ -192,7 +233,7 @@ describe('private RunHostSession', () => {
     const decision = deferred<RunHostFlowOperationTerminal>()
     const calls: RunHostFlowCall[] = []
     const dispatcher: RunHostOperationDispatcher = {
-      async callFlow(call) {
+      async runChildFlow(call) {
         calls.push(call)
         return await decision.promise
       },
@@ -205,8 +246,8 @@ describe('private RunHostSession', () => {
       intent: 'Research this',
       input: { subject: 'FLOW' },
     }
-    process.emit(request('component:1', 'flow/call', params))
-    process.emit(request('component:2', 'flow/call', params))
+    process.emit(request('component:1', 'flow/run-child', params))
+    process.emit(request('component:2', 'flow/run-child', params))
     await tick()
     expect(calls).toEqual([params])
 
@@ -229,7 +270,7 @@ describe('private RunHostSession', () => {
       invocation(),
       {},
       {
-        async callFlow() {
+        async runChildFlow() {
           calls += 1
           return { status: 'succeeded', result: { outcome: 'done', output: { answer: 42 } } }
         },
@@ -240,9 +281,9 @@ describe('private RunHostSession', () => {
     const running = session.run()
     await process.nextHost()
     const params = { operationId: 'bounded:1', slot: 'child', input: null }
-    process.emit(request('component:1', 'flow/call', params))
+    process.emit(request('component:1', 'flow/run-child', params))
     expect(operationCode(await process.nextHost())).toBe('RESOURCE_EXHAUSTED')
-    process.emit(request('component:2', 'flow/call', params))
+    process.emit(request('component:2', 'flow/run-child', params))
     expect(operationCode(await process.nextHost())).toBe('RESOURCE_EXHAUSTED')
     expect(calls).toBe(1)
     process.emit(result(null))
@@ -265,7 +306,7 @@ describe('private RunHostSession', () => {
       invocation(),
       {},
       {
-        async callEffect(call) {
+        async callCapability(call) {
           calls.push(call)
           return terminals.shift()!
         },
@@ -274,7 +315,7 @@ describe('private RunHostSession', () => {
     await process.nextHost()
 
     process.emit(
-      request('component:1', 'effect/call', {
+      request('component:1', 'capability/call', {
         operationId: 'put:1',
         slot: 'records',
         method: 'put',
@@ -287,7 +328,7 @@ describe('private RunHostSession', () => {
       result: { value: { recordId: 'record-1' } },
     })
     process.emit(
-      request('component:2', 'effect/call', {
+      request('component:2', 'capability/call', {
         operationId: 'put:2',
         slot: 'records',
         method: 'put',
@@ -325,7 +366,7 @@ describe('private RunHostSession', () => {
       invocation(),
       {},
       {
-        async callEffect() {
+        async callCapability() {
           return {
             status: 'succeeded',
             result: { value: null, extra: true },
@@ -335,7 +376,7 @@ describe('private RunHostSession', () => {
     ).run()
     await invalid.nextHost()
     invalid.emit(
-      request('component:1', 'effect/call', {
+      request('component:1', 'capability/call', {
         operationId: 'put:1',
         slot: 'records',
         method: 'put',
@@ -353,17 +394,17 @@ describe('private RunHostSession', () => {
       invocation(),
       {},
       {
-        async callFlow() {
+        async runChildFlow() {
           return { status: 'succeeded', result: { outcome: 'done', output: null } }
         },
-        async callEffect() {
+        async callCapability() {
           throw new Error('must not dispatch')
         },
       },
     ).run()
     await conflict.nextHost()
     conflict.emit(
-      request('component:1', 'flow/call', {
+      request('component:1', 'flow/run-child', {
         operationId: 'shared:1',
         slot: 'child',
         input: null,
@@ -371,7 +412,7 @@ describe('private RunHostSession', () => {
     )
     expect(await conflict.nextHost()).toMatchObject({ result: { outcome: 'done' } })
     conflict.emit(
-      request('component:2', 'effect/call', {
+      request('component:2', 'capability/call', {
         operationId: 'shared:1',
         slot: 'records',
         method: 'put',
@@ -391,14 +432,14 @@ describe('private RunHostSession', () => {
       invocation(),
       {},
       {
-        async callFlow() {
+        async runChildFlow() {
           throw new Error('private /host/path and coordinator detail')
         },
       },
     ).run()
     await process.nextHost()
     process.emit(
-      request('component:1', 'flow/call', {
+      request('component:1', 'flow/run-child', {
         operationId: 'private:1',
         slot: 'child',
         input: null,
@@ -424,7 +465,7 @@ describe('private RunHostSession', () => {
       invocation(),
       {},
       {
-        async callFlow() {
+        async runChildFlow() {
           calls += 1
           return await decision.promise
         },
@@ -432,14 +473,14 @@ describe('private RunHostSession', () => {
     ).run()
     await process.nextHost()
     process.emit(
-      request('component:1', 'flow/call', {
+      request('component:1', 'flow/run-child', {
         operationId: 'same:1',
         slot: 'research',
         input: { value: 1 },
       }),
     )
     process.emit(
-      request('component:2', 'flow/call', {
+      request('component:2', 'flow/run-child', {
         operationId: 'same:1',
         slot: 'research',
         input: { value: 2 },
@@ -462,7 +503,7 @@ describe('private RunHostSession', () => {
       invocation(),
       {},
       {
-        async callFlow(_call, signal) {
+        async runChildFlow(_call, signal) {
           await new Promise<void>((resolve) => {
             signal.addEventListener(
               'abort',
@@ -479,8 +520,8 @@ describe('private RunHostSession', () => {
     ).run()
     await process.nextHost()
     const params = { operationId: 'shared:1', slot: 'research', input: null }
-    process.emit(request('component:1', 'flow/call', params))
-    process.emit(request('component:2', 'flow/call', params))
+    process.emit(request('component:1', 'flow/run-child', params))
+    process.emit(request('component:2', 'flow/run-child', params))
     process.emit({
       jsonrpc: '2.0',
       method: 'request/cancel',
@@ -510,7 +551,7 @@ describe('private RunHostSession', () => {
     const process = new FakeProcess()
     const running = new RunHostSession(process, invocation()).run()
     await process.nextHost()
-    const call = request('component:1', 'effect/call', {
+    const call = request('component:1', 'capability/call', {
       operationId: 'one:1',
       slot: 'artifacts',
       method: 'write',
@@ -530,13 +571,13 @@ describe('private RunHostSession', () => {
 
     const running = session.run()
     await process.nextHost()
-    process.emit(request('component:65536', 'effect/call', {}))
+    process.emit(request('component:65536', 'capability/call', {}))
     expect(await process.nextHost()).toMatchObject({
       id: 'component:65536',
       error: { code: -32602 },
     })
     process.emit(
-      request('component:65537', 'effect/call', {
+      request('component:65537', 'capability/call', {
         operationId: 'overflow:1',
         slot: 'sink',
         method: 'write',
@@ -556,8 +597,8 @@ describe('private RunHostSession', () => {
       ...Array.from({ length: 63 }, (_, index) =>
         request(`component:${index + 1}`, 'unknown/request', {}),
       ),
-      request('component:64', 'effect/call', {}),
-      request('component:65', 'effect/call', {
+      request('component:64', 'capability/call', {}),
+      request('component:65', 'capability/call', {
         operationId: 'overflow:1',
         slot: 'artifacts',
         method: 'write',

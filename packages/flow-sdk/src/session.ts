@@ -10,19 +10,19 @@ import {
   parseRunResult,
   requestMessage,
   resultMessage,
-  validateEffectCall,
-  validateFlowCall,
+  validateCapabilityCall,
+  validateChildFlowRequest,
   type ParsedMessage,
   type RunParams,
 } from './protocol.js'
 import { FramingViolation, readFrames, type Transport } from './transport.js'
 import {
-  EffectError,
+  CapabilityError,
   OperationError,
   OPERATION_ERROR_CODES,
   type CallOptions,
-  type EffectCall,
-  type FlowCall,
+  type CapabilityCall,
+  type ChildFlowRequest,
   type JsonObject,
   type JsonValue,
   type OperationErrorCode,
@@ -52,7 +52,7 @@ interface Deferred<T> {
 }
 
 interface Outbound {
-  readonly method: 'flow/call' | 'effect/call'
+  readonly method: 'flow/run-child' | 'capability/call'
   readonly params: JsonObject
   readonly kind: 'flow' | 'effect'
   readonly user: Deferred<JsonValue>
@@ -247,7 +247,7 @@ export class RunSession {
           this.settleOutbound(pending, { result: parsed.value })
         } else {
           this.settleOutbound(pending, {
-            error: new EffectError(parsed.name, parsed.data),
+            error: new CapabilityError(parsed.name, parsed.data),
           })
         }
       }
@@ -368,33 +368,33 @@ export class RunSession {
       scratch: root.params.scratch,
       deadlineUnixMs: root.params.deadlineUnixMs,
       signal: root.controller.signal,
-      callFlow(call: FlowCall, options?: CallOptions) {
+      runChildFlow(call: ChildFlowRequest, options?: CallOptions) {
         let params: JsonObject
         try {
-          params = validateFlowCall(call)
+          params = validateChildFlowRequest(call)
           params = decodeJson(encodeJson(params)) as JsonObject
         } catch (error) {
           return Promise.reject(new TypeError(errorMessageText(error)))
         }
         return session
-          .call('flow/call', 'flow', params, options)
+          .call('flow/run-child', 'flow', params, options)
           .then((value) => parseRunResult(value))
       },
-      callEffect(call: EffectCall, options?: CallOptions) {
+      callCapability(call: CapabilityCall, options?: CallOptions) {
         let params: JsonObject
         try {
-          params = validateEffectCall(call)
+          params = validateCapabilityCall(call)
           params = decodeJson(encodeJson(params)) as JsonObject
         } catch (error) {
           return Promise.reject(new TypeError(errorMessageText(error)))
         }
-        return session.call('effect/call', 'effect', params, options)
+        return session.call('capability/call', 'effect', params, options)
       },
     })
   }
 
   private call(
-    method: 'flow/call' | 'effect/call',
+    method: 'flow/run-child' | 'capability/call',
     kind: 'flow' | 'effect',
     params: JsonObject,
     options?: CallOptions,

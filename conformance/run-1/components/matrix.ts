@@ -5,7 +5,7 @@ await handle(async (run) => {
   switch (input.case) {
     case 'fanout-65': {
       const calls = Array.from({ length: 65 }, (_, index) =>
-        run.callEffect({
+        run.callCapability({
           operationId: `fanout:${index + 1}`,
           slot: 'sink',
           method: 'write',
@@ -18,7 +18,7 @@ await handle(async (run) => {
     }
     case 'operation-identity': {
       const call = () =>
-        run.callEffect({
+        run.callCapability({
           operationId: 'shared:1',
           slot: 'sink',
           method: 'write',
@@ -28,7 +28,7 @@ await handle(async (run) => {
       const replay = await call()
       let conflict: string | null = null
       try {
-        await run.callEffect({
+        await run.callCapability({
           operationId: 'shared:1',
           slot: 'sink',
           method: 'write',
@@ -43,7 +43,7 @@ await handle(async (run) => {
     case 'cancel-shared-waiter': {
       const controller = new AbortController()
       const call = (signal?: AbortSignal) =>
-        run.callEffect(
+        run.callCapability(
           {
             operationId: 'shared-cancel:1',
             slot: 'sink',
@@ -54,7 +54,7 @@ await handle(async (run) => {
         )
       const cancelled = call(controller.signal)
       const survivor = call()
-      await run.callEffect({
+      await run.callCapability({
         operationId: 'release-shared-cancel:1',
         slot: 'control',
         method: 'release',
@@ -76,7 +76,7 @@ await handle(async (run) => {
     case 'uncertain-replay': {
       const call = async (operationId: string) => {
         try {
-          return await run.callEffect({
+          return await run.callCapability({
             operationId,
             slot: 'sink',
             method: 'write',
@@ -97,7 +97,7 @@ await handle(async (run) => {
       let rejected: string | null = null
       for (let index = 1; index <= 65_537; index += 1) {
         try {
-          await run.callEffect({
+          await run.callCapability({
             operationId: `lifetime:${index}`,
             slot: 'sink',
             method: 'write',
@@ -112,7 +112,7 @@ await handle(async (run) => {
       return { outcome: 'done', output: { accepted, rejected } }
     }
     case 'one-flow': {
-      const child = await run.callFlow({
+      const child = await run.runChildFlow({
         operationId: 'child:1',
         slot: 'child',
         input: null,
@@ -120,13 +120,13 @@ await handle(async (run) => {
       return { outcome: 'done', output: child }
     }
     case 'two-effects': {
-      const first = await run.callEffect({
+      const first = await run.callCapability({
         operationId: 'first:1',
         slot: 'sink',
         method: 'write',
         input: { sequence: 1 },
       })
-      const second = await run.callEffect({
+      const second = await run.callCapability({
         operationId: 'second:1',
         slot: 'sink',
         method: 'write',
@@ -136,7 +136,7 @@ await handle(async (run) => {
     }
     case 'cancel-one-call': {
       const controller = new AbortController()
-      const child = run.callFlow(
+      const child = run.runChildFlow(
         {
           operationId: 'cancelled-child:1',
           slot: 'child',
@@ -144,7 +144,7 @@ await handle(async (run) => {
         },
         { signal: controller.signal },
       )
-      await run.callEffect({
+      await run.callCapability({
         operationId: 'release-cancel:1',
         slot: 'control',
         method: 'release',
@@ -165,13 +165,13 @@ await handle(async (run) => {
       // Abandon the operation without also creating a language-level
       // unhandled rejection when the SDK closes its owner.
       void run
-        .callFlow({
+        .runChildFlow({
           operationId: 'abandoned-child:1',
           slot: 'child',
           input: null,
         })
         .catch(() => undefined)
-      await run.callEffect({
+      await run.callCapability({
         operationId: 'release-abandon:1',
         slot: 'control',
         method: 'release',

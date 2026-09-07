@@ -68,7 +68,7 @@ for (const component of standardComponents) {
 
     test('enforces request form and direction without poisoning the channel', async () => {
       await withPeer(component.command, async (peer) => {
-        const wrongRequests = ['request/cancel', 'flow/call', 'effect/call']
+        const wrongRequests = ['request/cancel', 'flow/run-child', 'capability/call']
         for (const [index, method] of wrongRequests.entries()) {
           const id = `host:wrong:${index}`
           peer.send({
@@ -80,7 +80,7 @@ for (const component of standardComponents) {
           expectStandardError(await peer.receive(), id, -32601)
         }
 
-        for (const method of ['flow/run', 'flow/call', 'effect/call', 'unknown/event']) {
+        for (const method of ['flow/run', 'flow/run-child', 'capability/call', 'unknown/event']) {
           peer.send({ jsonrpc: '2.0', method, params: {} })
         }
         peer.send(invalidRoot('host:end'))
@@ -158,7 +158,7 @@ for (const component of standardComponents) {
               jsonrpc: '2.0',
               id: request.id,
               result:
-                request.method === 'flow/call'
+                request.method === 'flow/run-child'
                   ? { outcome: 'done', output: null }
                   : { value: null },
             })
@@ -255,7 +255,7 @@ for (const component of matrixComponents) {
           pending.push(asRequest(await peer.receive()))
         }
         expect(new Set(pending.map((request) => request.id)).size).toBe(64)
-        expect(pending.every((request) => request.method === 'effect/call')).toBeTrue()
+        expect(pending.every((request) => request.method === 'capability/call')).toBeTrue()
         await expect(peer.receive(75)).rejects.toThrow('timed out')
 
         for (const request of pending) {
@@ -263,7 +263,7 @@ for (const component of matrixComponents) {
         }
 
         const next = await peer.receive()
-        if (next.method === 'effect/call') {
+        if (next.method === 'capability/call') {
           const queued = asRequest(next)
           peer.send({ jsonrpc: '2.0', id: queued.id, result: { value: null } })
           expect(await peer.receive()).toEqual({
@@ -289,7 +289,7 @@ for (const component of matrixComponents) {
         peer.send(rootRequest('host:lifetime', scratch, { case: 'request-lifetime' }))
         for (let index = 1; index <= 65_536; index += 1) {
           const request = asRequest(await peer.receive())
-          expect(request.method).toBe('effect/call')
+          expect(request.method).toBe('capability/call')
           expect((request.params as Record<string, unknown>).operationId).toBe(`lifetime:${index}`)
           peer.send({ jsonrpc: '2.0', id: request.id, result: { value: null } })
         }
@@ -361,12 +361,12 @@ for (const component of matrixComponents) {
         ]
         const shared = requests.filter(
           (request) =>
-            request.method === 'effect/call' &&
+            request.method === 'capability/call' &&
             (request.params as Record<string, unknown>).operationId === 'shared-cancel:1',
         )
         const release = requests.find(
           (request) =>
-            request.method === 'effect/call' &&
+            request.method === 'capability/call' &&
             (request.params as Record<string, unknown>).operationId === 'release-shared-cancel:1',
         )
         expect(shared).toHaveLength(2)
@@ -455,8 +455,8 @@ for (const component of matrixComponents) {
       await withPeer(component.command, async (peer) => {
         peer.send(rootRequest('host:call-cancel', scratch, { case: 'cancel-one-call' }))
         const calls = [asRequest(await peer.receive()), asRequest(await peer.receive())]
-        const child = calls.find((request) => request.method === 'flow/call')
-        const release = calls.find((request) => request.method === 'effect/call')
+        const child = calls.find((request) => request.method === 'flow/run-child')
+        const release = calls.find((request) => request.method === 'capability/call')
         expect(child).toBeDefined()
         expect(release).toBeDefined()
 
@@ -484,8 +484,8 @@ for (const component of matrixComponents) {
       await withPeer(component.command, async (peer) => {
         peer.send(rootRequest('host:abandoned', scratch, { case: 'abandoned-call' }))
         const calls = [asRequest(await peer.receive()), asRequest(await peer.receive())]
-        const child = calls.find((request) => request.method === 'flow/call')
-        const release = calls.find((request) => request.method === 'effect/call')
+        const child = calls.find((request) => request.method === 'flow/run-child')
+        const release = calls.find((request) => request.method === 'capability/call')
         expect(child).toBeDefined()
         expect(release).toBeDefined()
 
@@ -607,7 +607,7 @@ test('a reference host closes on a malicious 65,537th lifetime request', async (
       for (let index = 1; index <= 65_536; index += 1) {
         const request = asRequest(await peer.receive())
         if (index === 65_536) {
-          expect(request.method).toBe('effect/call')
+          expect(request.method).toBe('capability/call')
           expect(request.params).toEqual({})
           peer.send({
             jsonrpc: '2.0',

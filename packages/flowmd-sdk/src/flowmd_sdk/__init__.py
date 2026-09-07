@@ -2,7 +2,7 @@ from ._runtime import handle
 from ._types import (
     Attachment,
     AttachmentAccess,
-    EffectError,
+    CapabilityError,
     JsonObject,
     JsonScalar,
     JsonValue,
@@ -16,7 +16,7 @@ from ._types import (
 __all__ = [
     "Attachment",
     "AttachmentAccess",
-    "EffectError",
+    "CapabilityError",
     "JsonObject",
     "JsonScalar",
     "JsonValue",

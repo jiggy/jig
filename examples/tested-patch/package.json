@@ -3,6 +3,6 @@
   "private": true,
   "type": "module",
   "devDependencies": {
-    "@jigging/flow": "0.1.0-alpha.3"
+    "@jigging/flow": "0.1.0-alpha.9"
   }
 }

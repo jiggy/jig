@@ -10,15 +10,33 @@ The complete protocol has four methods:
 
 ```text
 host -> component       flow/run
-component -> host       flow/call
-component -> host       effect/call
+component -> host       flow/run-child
+component -> host       capability/call
 either direction        request/cancel
 ```
+
+`flow/run` supplies the complete context to an already selected component.
+`flow/run-child` asks the host to resolve an admitted child slot and construct
+another invocation. They have distinct parameter shapes, not an overloaded
+method selected by direction. The method name grants no authority; the host
+enforces the caller's existing invocation authority before child dispatch.
+
+The end-to-end operation is Flow A running Flow B through the host:
+
+```text
+host   -> Flow A: flow/run        (context for A)
+Flow A -> host:   flow/run-child  (slot, operation identity, input)
+host   -> Flow B: flow/run        (context for B)
+```
+
+A child is an invocation relationship, not a different kind of Flow package.
+Every component receives the same `flow/run` entry request.
 
 ## 1. Process and framing
 
 One component process handles exactly one root `flow/run` request. The channel
-is full-duplex JSON-RPC 2.0 over stdio:
+is full-duplex JSON-RPC 2.0 over stdio. Here "root" means the owner request on
+this component's channel, including when the host launched it as a child:
 
 ```text
 stdin     protocol frames only
@@ -100,7 +118,7 @@ State-dependent request handling is fixed as follows:
 | Notification other than a valid `request/cancel`, including notification-form request methods | Ignore it. |
 | Recognized method with invalid params | Respond `-32602`. An invalid root request then ends the one-Run component process. |
 | Second `flow/run` | Best-effort `-32600`, then fatal `PROTOCOL_ERROR`. |
-| `flow/call` or `effect/call` without a pending root owner | Respond `OWNER_CLOSED`; do not dispatch. |
+| `flow/run-child` or `capability/call` without a pending root owner | Respond `OWNER_CLOSED`; do not dispatch. |
 | 65th simultaneously pending component request | Respond `RESOURCE_EXHAUSTED` to that request; do not dispatch it. |
 | 65,537th request originated by one peer during the channel lifetime | Fatal `PROTOCOL_ERROR`; do not dispatch it or rely on a response. |
 | Component frame after its root terminal response | Fatal `PROTOCOL_ERROR`; any buffered success is invalidated. |
@@ -204,7 +222,7 @@ A successful result is exactly:
 Protocol, execution, cancellation, deadline, provider, or uncertainty failures
 are JSON-RPC failures. They never masquerade as package outcomes.
 
-## 4. `flow/call`
+## 4. `flow/run-child`
 
 While its root request is pending, the component may issue child Flow requests:
 
@@ -212,7 +230,7 @@ While its root request is pending, the component may issue child Flow requests:
 {
   "jsonrpc": "2.0",
   "id": "component:1",
-  "method": "flow/call",
+  "method": "flow/run-child",
   "params": {
     "operationId": "research:1",
     "slot": "research",
@@ -242,17 +260,17 @@ Hosts may impose smaller concurrency or retained-result budgets and report
 `RESOURCE_EXHAUSTED`; the Run/1 identity, replay, cancellation, and lifetime
 rules still apply.
 
-## 5. `effect/call`
+## 5. `capability/call`
 
 While its root request is pending, the component may call one method through a
-bound capability slot. Unlike a `flow/call` slot, this slot is a capability
+bound capability slot. Unlike a `flow/run-child` slot, this slot is a capability
 dependency declared by the package's `FLOW.md` `uses` entry:
 
 ```json
 {
   "jsonrpc": "2.0",
   "id": "component:2",
-  "method": "effect/call",
+  "method": "capability/call",
   "params": {
     "operationId": "artifact-write:1",
     "slot": "artifacts",
@@ -294,7 +312,7 @@ same operationId + different canonical method/params
     OPERATION_CONFLICT before another dispatch
 ```
 
-The canonical comparison includes `flow/call` or `effect/call`, slot, method
+The canonical comparison includes `flow/run-child` or `capability/call`, slot, method
 when present, intent when present, and input. Transport IDs and wait timing are
 not semantic input. The host chooses its persistence strategy; Run/1 does not
 standardize a ledger schema, activation digest, internal lifetime IDs, or
@@ -460,10 +478,10 @@ The TypeScript package `@jigging/flow` and Python distribution/import
 handle(handler)
 RunContext
 RunResult
-callFlow / call_flow
-callEffect / call_effect
+runChildFlow / run_child_flow
+callCapability / call_capability
 OperationError
-EffectError
+CapabilityError
 JSON value types
 ```
 

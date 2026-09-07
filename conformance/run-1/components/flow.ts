@@ -1,14 +1,14 @@
-import { EffectError, handle } from '../../../packages/flow-sdk/src/index'
+import { CapabilityError, handle } from '../../../packages/flow-sdk/src/index'
 
 await handle(async (run) => {
-  const researchPromise = run.callFlow({
+  const researchPromise = run.runChildFlow({
     operationId: 'research:1',
     slot: 'research',
     intent: 'Find a useful comparison target.',
     input: run.input,
   })
 
-  const storedPromise = run.callEffect({
+  const storedPromise = run.callCapability({
     operationId: 'store:1',
     slot: 'artifacts',
     method: 'write',
@@ -19,14 +19,14 @@ await handle(async (run) => {
   let missing: string | null = null
 
   try {
-    await run.callEffect({
+    await run.callCapability({
       operationId: 'missing:1',
       slot: 'artifacts',
       method: 'read',
       input: { uri: 'artifact://missing' },
     })
   } catch (error) {
-    if (!(error instanceof EffectError)) throw error
+    if (!(error instanceof CapabilityError)) throw error
     missing = error.errorName
   }
 

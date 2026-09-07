@@ -2,12 +2,12 @@ import type { JsonValue, RunContext, RunResult } from '@jigging/flow'
 import responseSchema from './review.schema.json'
 
 export async function review(
-  run: Pick<RunContext, 'input' | 'settings' | 'callEffect'>,
+  run: Pick<RunContext, 'input' | 'settings' | 'callCapability'>,
 ): Promise<RunResult> {
   if (typeof run.settings.reviewFocus !== 'string' || run.settings.reviewFocus.trim() === '') {
     throw new TypeError('The reviewer requires an admitted review focus.')
   }
-  const result = await run.callEffect({
+  const result = await run.callCapability({
     operationId: 'review-evidence',
     slot: 'agent',
     method: 'run',

@@ -7,10 +7,10 @@
       "$ref": "#/$defs/flowRunRequest"
     },
     {
-      "$ref": "#/$defs/flowCallRequest"
+      "$ref": "#/$defs/childFlowRequest"
     },
     {
-      "$ref": "#/$defs/effectCallRequest"
+      "$ref": "#/$defs/capabilityCallRequest"
     },
     {
       "$ref": "#/$defs/requestCancelNotification"
@@ -19,7 +19,7 @@
       "$ref": "#/$defs/runSuccessResponse"
     },
     {
-      "$ref": "#/$defs/effectSuccessResponse"
+      "$ref": "#/$defs/capabilitySuccessResponse"
     },
     {
       "$ref": "#/$defs/errorResponse"
@@ -74,7 +74,7 @@
       "required": ["outcome", "output"],
       "additionalProperties": false
     },
-    "effectResult": {
+    "capabilityResult": {
       "oneOf": [
         {
           "type": "object",
@@ -156,7 +156,7 @@
       "required": ["protocol", "input", "settings", "attachments", "scratch", "deadlineUnixMs"],
       "additionalProperties": false
     },
-    "flowCallParams": {
+    "childFlowParams": {
       "type": "object",
       "properties": {
         "operationId": {
@@ -175,7 +175,7 @@
       "required": ["operationId", "slot", "input"],
       "additionalProperties": false
     },
-    "effectCallParams": {
+    "capabilityCallParams": {
       "type": "object",
       "properties": {
         "operationId": {
@@ -221,7 +221,7 @@
       "required": ["jsonrpc", "id", "method", "params"],
       "additionalProperties": false
     },
-    "flowCallRequest": {
+    "childFlowRequest": {
       "type": "object",
       "properties": {
         "jsonrpc": {
@@ -231,16 +231,16 @@
           "$ref": "#/$defs/wireId"
         },
         "method": {
-          "const": "flow/call"
+          "const": "flow/run-child"
         },
         "params": {
-          "$ref": "#/$defs/flowCallParams"
+          "$ref": "#/$defs/childFlowParams"
         }
       },
       "required": ["jsonrpc", "id", "method", "params"],
       "additionalProperties": false
     },
-    "effectCallRequest": {
+    "capabilityCallRequest": {
       "type": "object",
       "properties": {
         "jsonrpc": {
@@ -250,10 +250,10 @@
           "$ref": "#/$defs/wireId"
         },
         "method": {
-          "const": "effect/call"
+          "const": "capability/call"
         },
         "params": {
-          "$ref": "#/$defs/effectCallParams"
+          "$ref": "#/$defs/capabilityCallParams"
         }
       },
       "required": ["jsonrpc", "id", "method", "params"],
@@ -291,7 +291,7 @@
       "required": ["jsonrpc", "id", "result"],
       "additionalProperties": false
     },
-    "effectSuccessResponse": {
+    "capabilitySuccessResponse": {
       "type": "object",
       "properties": {
         "jsonrpc": {
@@ -301,7 +301,7 @@
           "$ref": "#/$defs/wireId"
         },
         "result": {
-          "$ref": "#/$defs/effectResult"
+          "$ref": "#/$defs/capabilityResult"
         }
       },
       "required": ["jsonrpc", "id", "result"],

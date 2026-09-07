@@ -16,14 +16,14 @@ export type RunResult = {
   readonly output: JsonValue
 }
 
-export interface FlowCall {
+export interface ChildFlowRequest {
   readonly operationId: string
   readonly slot: string
   readonly intent?: string
   readonly input: JsonValue
 }
 
-export interface EffectCall {
+export interface CapabilityCall {
   readonly operationId: string
   readonly slot: string
   readonly method: string
@@ -42,8 +42,8 @@ export interface RunContext {
   readonly deadlineUnixMs: number
   readonly signal: AbortSignal
 
-  callFlow(call: FlowCall, options?: CallOptions): Promise<RunResult>
-  callEffect(call: EffectCall, options?: CallOptions): Promise<JsonValue>
+  runChildFlow(call: ChildFlowRequest, options?: CallOptions): Promise<RunResult>
+  callCapability(call: CapabilityCall, options?: CallOptions): Promise<JsonValue>
 }
 
 export type RunHandler = (context: RunContext) => Promise<RunResult>
@@ -78,13 +78,13 @@ export class OperationError extends Error {
   }
 }
 
-export class EffectError extends Error {
+export class CapabilityError extends Error {
   readonly errorName: string
   readonly data: JsonValue
 
   constructor(errorName: string, data: JsonValue) {
-    super(`Effect failed with ${errorName}`)
-    this.name = 'EffectError'
+    super(`Capability failed with ${errorName}`)
+    this.name = 'CapabilityError'
     this.errorName = errorName
     this.data = data
   }

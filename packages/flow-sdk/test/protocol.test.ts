@@ -1,6 +1,11 @@
 import { describe, expect, test } from 'bun:test'
 
-import { parseEnvelope, parseRunResult, resultMessage, validateFlowCall } from '../src/protocol.ts'
+import {
+  parseEnvelope,
+  parseRunResult,
+  resultMessage,
+  validateChildFlowRequest,
+} from '../src/protocol.ts'
 
 describe('JSON-RPC envelope validation', () => {
   test('rejects null and scalar request params', () => {
@@ -50,7 +55,7 @@ describe('JSON-RPC envelope validation', () => {
 describe('public call validation', () => {
   test('counts intent length in Unicode scalars rather than UTF-16 units', () => {
     expect(() =>
-      validateFlowCall({
+      validateChildFlowRequest({
         operationId: 'unicode:1',
         slot: 'worker',
         intent: '😀'.repeat(10_000),
@@ -58,7 +63,7 @@ describe('public call validation', () => {
       }),
     ).not.toThrow()
     expect(() =>
-      validateFlowCall({
+      validateChildFlowRequest({
         operationId: 'unicode:2',
         slot: 'worker',
         intent: 'x'.repeat(16_384),
@@ -66,7 +71,7 @@ describe('public call validation', () => {
       }),
     ).not.toThrow()
     expect(() =>
-      validateFlowCall({
+      validateChildFlowRequest({
         operationId: 'unicode:3',
         slot: 'worker',
         intent: 'x'.repeat(16_385),
@@ -78,7 +83,7 @@ describe('public call validation', () => {
   test('rejects non-string iterable and array-like intents at runtime', () => {
     for (const intent of [42, ['x'], { 0: 'x', length: 1 }]) {
       expect(() =>
-        validateFlowCall({
+        validateChildFlowRequest({
           operationId: 'invalid:1',
           slot: 'worker',
           intent,

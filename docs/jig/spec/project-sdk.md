@@ -83,7 +83,7 @@ export default defineBinding({
 must satisfy the package's `settings.schema.json` when one exists.
 
 `slots` is an optional map with at most 256 entries. Each key is a LocalName
-used by this Binding's package as a Run/1 `flow/call` slot. Each value is an
+used by this Binding's package as a Run/1 `flow/run-child` slot. Each value is an
 exact `flow:<project-relative-path>` or `binding:<LocalName>` selector, using
 the same target vocabulary as the CLI. A Flow selector requires a direct
 Flow target; a Binding selector uses that Binding's own validated settings.

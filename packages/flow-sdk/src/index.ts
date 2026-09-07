@@ -6,8 +6,8 @@ export type {
   Attachment,
   AttachmentAccess,
   CallOptions,
-  EffectCall,
-  FlowCall,
+  CapabilityCall,
+  ChildFlowRequest,
   JsonObject,
   JsonScalar,
   JsonValue,
@@ -17,7 +17,7 @@ export type {
   RunResult,
 } from './types.js'
 export {
-  EffectError,
+  CapabilityError,
   OperationError,
 } from './types.js'
 

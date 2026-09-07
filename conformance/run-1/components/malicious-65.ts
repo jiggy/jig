@@ -14,7 +14,7 @@ for await (const line of lines) {
       write({
         jsonrpc: '2.0',
         id: `malicious:${index}`,
-        method: 'effect/call',
+        method: 'capability/call',
         params: {
           operationId: `malicious:${index}`,
           slot: 'sink',

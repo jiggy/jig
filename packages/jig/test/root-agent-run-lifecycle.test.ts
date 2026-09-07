@@ -102,6 +102,24 @@ proofDescribe('contained repair file application', () => {
         recursive: true,
         filter: (source) => !['node_modules', '.jig'].includes(basename(source)),
       })
+      // This is source-candidate host evidence, not a registry-install proof.
+      // Vendor the built SDK into disposable Flow copies so a new wire API
+      // can be tested before publication, without fabricating an npm lock.
+      for (const name of ['project', 'repair']) {
+        const flow = join(project, 'flows', name)
+        await cp(join(import.meta.dir, '../../flow-sdk/dist'), join(flow, 'sdk'), {
+          recursive: true,
+        })
+        for (const entry of await readdir(flow)) {
+          if (!entry.endsWith('.ts')) continue
+          const path = join(flow, entry)
+          await writeFile(
+            path,
+            (await readFile(path, 'utf8')).replaceAll("'@jigging/flow'", "'./sdk/index.js'"),
+          )
+        }
+        await rm(join(flow, 'package.json'))
+      }
       await new Promise<void>((resolve, reject) => {
         server.once('error', reject)
         server.listen(0, '127.0.0.1', resolve)
@@ -1238,7 +1256,7 @@ async function writeSpecialistParent(root: string): Promise<void> {
       'import { handle } from "./flow-sdk/index.ts";',
       'await handle(async (run) => {',
       '  const input = run.input as { scenario: string; direct?: boolean };',
-      '  return await run.callFlow({ operationId: `agent:${input.scenario}`,',
+      '  return await run.runChildFlow({ operationId: `agent:${input.scenario}`,',
       '    slot: input.direct ? "direct" : "configured", input: { scenario: input.scenario } });',
       '});',
     ].join('\n'),
@@ -1275,7 +1293,7 @@ function flowProgram(): string {
     'await handle(async (run) => {',
     '  const input = run.input as { scenario: string };',
     '  try {',
-    '    const agent = await run.callEffect({',
+    '    const agent = await run.callCapability({',
     '      operationId: `agent:${input.scenario}`, slot: "agent", method: "run",',
     '      input: { instructions: input.scenario === "api-structured"',
     '        ? "Return only JSON matching the response schema. Set route to technical, evidence to one item with keyLocation stdin, selectedSkill present, hiddenSkill absent, sourceLine 1, and amount null; set ambiguity to null."',

@@ -109,8 +109,11 @@ export type RunHostEffectOperationTerminal =
 
 /** Private host seam. Portable components see only Run/1. */
 export interface RunHostOperationDispatcher {
-  callFlow?(call: RunHostFlowCall, signal: AbortSignal): Promise<RunHostFlowOperationTerminal>
-  callEffect?(call: RunHostEffectCall, signal: AbortSignal): Promise<RunHostEffectOperationTerminal>
+  runChildFlow?(call: RunHostFlowCall, signal: AbortSignal): Promise<RunHostFlowOperationTerminal>
+  callCapability?(
+    call: RunHostEffectCall,
+    signal: AbortSignal,
+  ): Promise<RunHostEffectOperationTerminal>
 }
 
 export interface RunHostLimits {
@@ -197,13 +200,13 @@ type ParsedEnvelope = ParsedRequest | ParsedNotification | ParsedSuccess | Parse
 
 type ParsedOperation =
   | {
-      readonly method: 'flow/call'
+      readonly method: 'flow/run-child'
       readonly operationId: string
       readonly signature: string
       readonly call: RunHostFlowCall
     }
   | {
-      readonly method: 'effect/call'
+      readonly method: 'capability/call'
       readonly operationId: string
       readonly signature: string
       readonly call: RunHostEffectCall
@@ -212,12 +215,12 @@ type ParsedOperation =
 type NormalizedOperationTerminal =
   | {
       readonly status: 'succeeded'
-      readonly method: 'flow/call'
+      readonly method: 'flow/run-child'
       readonly result: RunResult
     }
   | {
       readonly status: 'succeeded'
-      readonly method: 'effect/call'
+      readonly method: 'capability/call'
       readonly result: RunHostEffectResult
     }
   | RunHostOperationFailure
@@ -525,7 +528,7 @@ export class RunHostSession {
       return
     }
 
-    if (request.method !== 'flow/call' && request.method !== 'effect/call') {
+    if (request.method !== 'flow/run-child' && request.method !== 'capability/call') {
       this.queueResponse(request.id, errorMessage(request.id, -32601, 'Method not found'))
       return
     }
@@ -560,11 +563,13 @@ export class RunHostSession {
     }
 
     const dispatch =
-      operation.method === 'flow/call' ? this.dispatcher?.callFlow : this.dispatcher?.callEffect
+      operation.method === 'flow/run-child'
+        ? this.dispatcher?.runChildFlow
+        : this.dispatcher?.callCapability
     if (dispatch === undefined) {
       const terminal = failedOperation(
         'UNAVAILABLE',
-        operation.method === 'effect/call'
+        operation.method === 'capability/call'
           ? 'no effect dispatcher is installed'
           : 'no child Flow dispatcher is installed',
       )
@@ -587,12 +592,12 @@ export class RunHostSession {
     this.operations.set(operation.operationId, record)
     this.attachOperationWaiter(request.id, record)
     const task = (
-      operation.method === 'flow/call'
-        ? this.dispatcher!.callFlow!(operation.call, record.controller.signal).then((terminal) =>
-            normalizeFlowOperationTerminal(terminal),
+      operation.method === 'flow/run-child'
+        ? this.dispatcher!.runChildFlow!(operation.call, record.controller.signal).then(
+            (terminal) => normalizeFlowOperationTerminal(terminal),
           )
-        : this.dispatcher!.callEffect!(operation.call, record.controller.signal).then((terminal) =>
-            normalizeEffectOperationTerminal(terminal),
+        : this.dispatcher!.callCapability!(operation.call, record.controller.signal).then(
+            (terminal) => normalizeEffectOperationTerminal(terminal),
           )
     )
       .catch((error) =>
@@ -1154,7 +1159,7 @@ function parseRunResult(value: JsonValue): RunResult {
 
 function parseOperation(request: ParsedRequest): ParsedOperation {
   const params = requireObject(request.params, `${request.method} params`)
-  if (request.method === 'flow/call') {
+  if (request.method === 'flow/run-child') {
     const keys = Object.hasOwn(params, 'intent')
       ? ['operationId', 'slot', 'intent', 'input']
       : ['operationId', 'slot', 'input']
@@ -1178,7 +1183,7 @@ function parseOperation(request: ParsedRequest): ParsedOperation {
       input: params.input!,
     })
     return {
-      method: 'flow/call',
+      method: 'flow/run-child',
       operationId,
       signature: operationSignature(request.method, params),
       call,
@@ -1189,7 +1194,7 @@ function parseOperation(request: ParsedRequest): ParsedOperation {
   const slot = requireLocalName(params.slot)
   const method = requireLocalName(params.method)
   return {
-    method: 'effect/call',
+    method: 'capability/call',
     operationId,
     signature: operationSignature(request.method, params),
     call: Object.freeze({ operationId, slot, method, input: params.input! }),
@@ -1247,7 +1252,11 @@ function normalizeFlowOperationTerminal(
   if (value.status === 'succeeded') {
     try {
       const result = parseRunResult(value.result as unknown as JsonValue)
-      return Object.freeze({ status: 'succeeded' as const, method: 'flow/call' as const, result })
+      return Object.freeze({
+        status: 'succeeded' as const,
+        method: 'flow/run-child' as const,
+        result,
+      })
     } catch (error) {
       throw new InvalidDispatcherResult(`invalid Flow dispatcher result: ${errorText(error)}`)
     }
@@ -1261,7 +1270,11 @@ function normalizeEffectOperationTerminal(
   if (value.status === 'succeeded') {
     try {
       const result = parseEffectResult(value.result as unknown as JsonValue)
-      return Object.freeze({ status: 'succeeded' as const, method: 'effect/call' as const, result })
+      return Object.freeze({
+        status: 'succeeded' as const,
+        method: 'capability/call' as const,
+        result,
+      })
     } catch (error) {
       throw new InvalidDispatcherResult(`invalid effect dispatcher result: ${errorText(error)}`)
     }

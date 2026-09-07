@@ -45,7 +45,7 @@ class OperationError(Exception):
         super().__init__(self.message)
 
 
-class EffectError(Exception):
+class CapabilityError(Exception):
     """A capability returned one of its declared application errors."""
 
     def __init__(self, error_name: str, data: JsonValue):
@@ -80,7 +80,7 @@ class RunContext(Protocol):
     @property
     def deadline_unix_ms(self) -> int: ...
 
-    async def call_flow(
+    async def run_child_flow(
         self,
         *,
         operation_id: str,
@@ -89,7 +89,7 @@ class RunContext(Protocol):
         intent: str | None = None,
     ) -> RunResult: ...
 
-    async def call_effect(
+    async def call_capability(
         self,
         *,
         operation_id: str,

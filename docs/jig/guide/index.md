@@ -97,7 +97,7 @@ Binding may map at most 256 LocalName `slots` to selected `flow:path` or
 `binding:id` targets; omission means `{}`. Those targets come from the same
 admitted generation. A child Binding supplies its own settings and must have
 no child Flow slots; a direct Flow has empty settings and no slots. Either
-child may use its own admitted Agent capability. Each Run/1 `flow/call`
+child may use its own admitted Agent capability. Each Run/1 `flow/run-child`
 exchanges only JSON/1 input and a complete JSON/1 result with a fresh child
 context. Attachments are empty, parent configuration is not inherited, and
 the child's deadline cannot exceed the parent's. Run/1 governs operation
@@ -114,7 +114,7 @@ finishes. The [project repair example](tested-patch.md#two-workers-two-reviewabl
 uses this boundary for a two-project batch.
 
 One experimental [Agent Run capability](../spec/agent-run.md) is also
-available through ordinary Run/1 `effect/call`. An Agent-capable Flow carries
+available through ordinary Run/1 `capability/call`. An Agent-capable Flow carries
 the exact Jig-owned descriptor, may project an explicit package-local skill
 subset, and can use the structured result to select one of its Binding's exact
 child slots. The host may use the official OpenAI JavaScript SDK against an

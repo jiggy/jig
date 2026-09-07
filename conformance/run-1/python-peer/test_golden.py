@@ -268,10 +268,10 @@ class ExpandedComponentMatrixTests(unittest.TestCase):
         ]
         with HostPeer(command) as peer:
             peer.send(flow_run_request("host:malicious-reuse", {}))
-            first = peer.receive_request("effect/call")
+            first = peer.receive_request("capability/call")
             peer.send(success(first["id"], {"value": None}))
             with self.assertRaisesRegex(ProtocolError, "reused .*request ID"):
-                peer.receive_request("effect/call")
+                peer.receive_request("capability/call")
 
     def test_component_frame_boundaries(self) -> None:
         bun = shutil.which("bun")
@@ -354,20 +354,20 @@ def exercise(
         first = peer.receive()
         second = peer.receive()
         calls = {message.get("method"): message for message in (first, second)}
-        if set(calls) != {"flow/call", "effect/call"}:
+        if set(calls) != {"flow/run-child", "capability/call"}:
             raise ProtocolError("component did not issue the expected concurrent calls")
         # Normalize these concurrent siblings by meaning; Run/1 does not make
         # their scheduler-dependent wire order part of conformance.
         flow_call = require_call(
             peer,
-            calls["flow/call"],
-            method="flow/call",
+            calls["flow/run-child"],
+            method="flow/run-child",
             fields={"operationId", "slot", "intent", "input"},
         )
         effect_call = require_call(
             peer,
-            calls["effect/call"],
-            method="effect/call",
+            calls["capability/call"],
+            method="capability/call",
             fields={"operationId", "slot", "method", "input"},
         )
         self_equal(flow_call["params"], {
@@ -386,32 +386,32 @@ def exercise(
             {
                 "direction": "component->host",
                 "kind": "request",
-                "method": "flow/call",
+                "method": "flow/run-child",
                 "operationId": "research:1",
             },
             {
                 "direction": "component->host",
                 "kind": "request",
-                "method": "effect/call",
+                "method": "capability/call",
                 "operationId": "store:1",
             },
         ])
 
         peer.send(success(effect_call["id"], {"value": {"uri": "artifact://1"}}))
-        trace.append({"direction": "host->component", "kind": "result", "for": "effect/call"})
+        trace.append({"direction": "host->component", "kind": "result", "for": "capability/call"})
         peer.send(
             success(
                 flow_call["id"],
                 {"outcome": "done", "output": {"answer": "Fifa 99"}},
             )
         )
-        trace.append({"direction": "host->component", "kind": "result", "for": "flow/call"})
+        trace.append({"direction": "host->component", "kind": "result", "for": "flow/run-child"})
 
         missing = peer.receive()
         missing = require_call(
             peer,
             missing,
-            method="effect/call",
+            method="capability/call",
             fields={"operationId", "slot", "method", "input"},
         )
         self_equal(missing["params"], {
@@ -423,7 +423,7 @@ def exercise(
         trace.append({
             "direction": "component->host",
             "kind": "request",
-            "method": "effect/call",
+            "method": "capability/call",
             "operationId": "missing:1",
         })
         peer.send(
@@ -435,7 +435,7 @@ def exercise(
         trace.append({
             "direction": "host->component",
             "kind": "result",
-            "for": "effect/call",
+            "for": "capability/call",
             "declaredError": "not-found",
         })
 
@@ -464,7 +464,7 @@ def exercise_standard_component_matrix(
     environment: dict[str, str] | None = None,
 ) -> None:
     with HostPeer(command, environment=environment) as peer:
-        wrong_requests = ("request/cancel", "flow/call", "effect/call")
+        wrong_requests = ("request/cancel", "flow/run-child", "capability/call")
         for index, method in enumerate(wrong_requests):
             request_id = f"host:wrong:{index}"
             params = {"requestId": "host:none"} if method == "request/cancel" else {}
@@ -476,7 +476,7 @@ def exercise_standard_component_matrix(
             })
             expect_standard_error(peer.receive(), request_id, -32601)
 
-        for method in ("flow/run", "flow/call", "effect/call", "unknown/event"):
+        for method in ("flow/run", "flow/run-child", "capability/call", "unknown/event"):
             peer.send({"jsonrpc": "2.0", "method": method, "params": {}})
         peer.send({
             "jsonrpc": "2.0",
@@ -535,7 +535,7 @@ def exercise_standard_component_matrix(
         requests = [peer.receive(), peer.receive()]
         for request in requests:
             method = request.get("method")
-            if method not in {"flow/call", "effect/call"}:
+            if method not in {"flow/run-child", "capability/call"}:
                 raise AssertionError(f"unexpected owned request: {request!r}")
             peer.validate_request(request, method)
 
@@ -548,7 +548,7 @@ def exercise_standard_component_matrix(
         for request in requests:
             result = (
                 {"outcome": "done", "output": None}
-                if request["method"] == "flow/call"
+                if request["method"] == "flow/run-child"
                 else {"value": None}
             )
             peer.send(success(request["id"], result))
@@ -705,7 +705,7 @@ def exercise_request_ceiling(
 ) -> None:
     with HostPeer(command, environment=environment) as peer:
         peer.send(flow_run_request("host:fanout", {"case": "fanout-65"}))
-        pending = [peer.receive_request("effect/call") for _ in range(64)]
+        pending = [peer.receive_request("capability/call") for _ in range(64)]
         self_equal(len({request["id"] for request in pending}), 64)
         expect_no_frame(peer)
 
@@ -713,8 +713,8 @@ def exercise_request_ceiling(
             peer.send(success(request["id"], {"value": None}))
 
         next_message = peer.receive()
-        if next_message.get("method") == "effect/call":
-            queued = peer.validate_request(next_message, "effect/call")
+        if next_message.get("method") == "capability/call":
+            queued = peer.validate_request(next_message, "capability/call")
             peer.send(success(queued["id"], {"value": None}))
             root = peer.receive()
         else:
@@ -735,7 +735,7 @@ def exercise_request_lifetime(
     with HostPeer(command, environment=environment, timeout=120.0) as peer:
         peer.send(flow_run_request("host:lifetime", {"case": "request-lifetime"}))
         for index in range(1, 65_537):
-            request = peer.receive_request("effect/call")
+            request = peer.receive_request("capability/call")
             self_equal(request["params"]["operationId"], f"lifetime:{index}")
             peer.send(success(request["id"], {"value": None}))
         self_equal(peer.receive(), {
@@ -757,8 +757,8 @@ def exercise_operation_identity(
     with HostPeer(command, environment=environment) as peer:
         peer.send(flow_run_request("host:identity", {"case": "operation-identity"}))
         operations = ReferenceOperations()
-        first = peer.receive_request("effect/call")
-        second = peer.receive_request("effect/call")
+        first = peer.receive_request("capability/call")
+        second = peer.receive_request("capability/call")
         self_equal(operations.admit(first), {"kind": "dispatch"})
         self_equal(operations.admit(second), {"kind": "join"})
         self_equal(operations.dispatches, 1)
@@ -767,11 +767,11 @@ def exercise_operation_identity(
         for response in operations.settle("shared:1", shared_result):
             peer.send(response)
 
-        replay = peer.receive_request("effect/call")
+        replay = peer.receive_request("capability/call")
         self_equal(operations.admit(replay), {"kind": "replay", "result": shared_result})
         peer.send(success(replay["id"], shared_result))
 
-        conflict = peer.receive_request("effect/call")
+        conflict = peer.receive_request("capability/call")
         self_equal(operations.admit(conflict), {"kind": "conflict"})
         peer.send(operation_error(conflict["id"], "OPERATION_CONFLICT"))
         self_equal(operations.dispatches, 1)
@@ -802,7 +802,7 @@ def exercise_shared_waiter_cancellation(
         peer.send(flow_run_request(
             "host:shared-cancel", {"case": "cancel-shared-waiter"}
         ))
-        requests = [peer.receive_request("effect/call") for _ in range(3)]
+        requests = [peer.receive_request("capability/call") for _ in range(3)]
         shared = [
             request for request in requests
             if request["params"]["operationId"] == "shared-cancel:1"
@@ -852,12 +852,12 @@ def exercise_uncertain_replay(
         peer.send(flow_run_request("host:uncertain", {"case": "uncertain-replay"}))
         operations = ReferenceOperations()
 
-        first = peer.receive_request("effect/call")
+        first = peer.receive_request("capability/call")
         self_equal(operations.admit(first), {"kind": "dispatch"})
         for response in operations.fail("uncertain:1", "UNCERTAIN"):
             peer.send(response)
 
-        replay = peer.receive_request("effect/call")
+        replay = peer.receive_request("capability/call")
         replay_admission = operations.admit(replay)
         if replay_admission.get("kind") != "replay-error":
             raise AssertionError(f"expected uncertain replay, got {replay_admission!r}")
@@ -868,7 +868,7 @@ def exercise_uncertain_replay(
         })
         self_equal(operations.dispatches, 1)
 
-        fresh = peer.receive_request("effect/call")
+        fresh = peer.receive_request("capability/call")
         self_equal(operations.admit(fresh), {"kind": "dispatch"})
         for response in operations.settle(
             "uncertain:2", {"value": {"receipt": "fresh"}}
@@ -904,7 +904,7 @@ def exercise_response_failures(
     for name, fixed_response in cases:
         with HostPeer(command, environment=environment) as peer:
             peer.send(flow_run_request("host:failure", {"case": "one-flow"}))
-            child = peer.receive_request("flow/call")
+            child = peer.receive_request("flow/run-child")
             if fixed_response is not None:
                 response = fixed_response
             elif name == "malformed child":
@@ -925,9 +925,9 @@ def exercise_response_failures(
 
     with HostPeer(command, environment=environment) as peer:
         peer.send(flow_run_request("host:duplicate", {"case": "two-effects"}))
-        first = peer.receive_request("effect/call")
+        first = peer.receive_request("capability/call")
         peer.send(success(first["id"], {"value": "first"}))
-        peer.receive_request("effect/call")
+        peer.receive_request("capability/call")
         peer.send(success(first["id"], {"value": "duplicate"}))
         try:
             peer.receive()
@@ -940,8 +940,8 @@ def exercise_response_failures(
 def exercise_malicious_65(command: list[str]) -> None:
     with HostPeer(command) as peer:
         peer.send(flow_run_request("host:malicious", {}))
-        dispatched = [peer.receive_request("effect/call") for _ in range(64)]
-        rejected = peer.receive_request("effect/call")
+        dispatched = [peer.receive_request("capability/call") for _ in range(64)]
+        rejected = peer.receive_request("capability/call")
         peer.send(operation_error(rejected["id"], "RESOURCE_EXHAUSTED"))
         self_equal(len(dispatched), 64)
         for request in dispatched:
@@ -961,7 +961,7 @@ def exercise_malicious_lifetime(command: list[str]) -> None:
     with HostPeer(command, timeout=120.0) as peer:
         peer.send(flow_run_request("host:malicious-lifetime", {}))
         for index in range(1, 65_537):
-            request = peer.receive_request("effect/call")
+            request = peer.receive_request("capability/call")
             if index == 65_536:
                 self_equal(request["params"], {})
                 peer.send({
@@ -972,7 +972,7 @@ def exercise_malicious_lifetime(command: list[str]) -> None:
             else:
                 peer.send(success(request["id"], {"value": None}))
         try:
-            peer.receive_request("effect/call")
+            peer.receive_request("capability/call")
         except ProtocolError as error:
             if "request-ID lifetime limit" not in str(error):
                 raise
@@ -1077,13 +1077,13 @@ def receive_child_and_release(
     calls: dict[str, dict[str, Any]] = {}
     for message in messages:
         method = message.get("method")
-        if method not in {"flow/call", "effect/call"}:
+        if method not in {"flow/run-child", "capability/call"}:
             raise AssertionError(f"unexpected call: {message!r}")
         calls[method] = peer.validate_request(message, method)
-    if set(calls) != {"flow/call", "effect/call"}:
+    if set(calls) != {"flow/run-child", "capability/call"}:
         raise AssertionError(f"expected child and release calls, received {calls!r}")
-    child = calls["flow/call"]
-    release = calls["effect/call"]
+    child = calls["flow/run-child"]
+    release = calls["capability/call"]
     if child["params"]["slot"] != "child":
         raise AssertionError("cancellation fixture used the wrong child slot")
     if release["params"]["slot"] != "control":
@@ -1203,30 +1203,30 @@ def validate_message_definition(definition: str, value: Any) -> None:
             raise ProtocolError("expected flow/run")
         validate_flow_run_params(message["params"])
         return
-    if definition == "flowCallRequest":
+    if definition == "childFlowRequest":
         require_exact_object(message, {"jsonrpc", "id", "method", "params"})
-        if message["method"] != "flow/call":
-            raise ProtocolError("expected flow/call")
+        if message["method"] != "flow/run-child":
+            raise ProtocolError("expected flow/run-child")
         params = message["params"]
         if not isinstance(params, dict):
-            raise ProtocolError("flow/call params must be an object")
+            raise ProtocolError("flow/run-child params must be an object")
         allowed = {"operationId", "slot", "intent", "input"}
         required = {"operationId", "slot", "input"}
         if not required.issubset(params) or not set(params).issubset(allowed):
-            raise ProtocolError("invalid flow/call members")
+            raise ProtocolError("invalid flow/run-child members")
         require_wire_id(params["operationId"])
         require_local_name(params["slot"])
         intent = params.get("intent")
         if intent is not None and (
             not isinstance(intent, str) or not 1 <= len(intent) <= 16_384
         ):
-            raise ProtocolError("invalid flow/call intent")
+            raise ProtocolError("invalid flow/run-child intent")
         encode_json1(params["input"])
         return
-    if definition == "effectCallRequest":
+    if definition == "capabilityCallRequest":
         require_exact_object(message, {"jsonrpc", "id", "method", "params"})
-        if message["method"] != "effect/call":
-            raise ProtocolError("expected effect/call")
+        if message["method"] != "capability/call":
+            raise ProtocolError("expected capability/call")
         params = require_exact_object(
             message["params"], {"operationId", "slot", "method", "input"}
         )
@@ -1246,7 +1246,7 @@ def validate_message_definition(definition: str, value: Any) -> None:
         require_exact_object(message, {"jsonrpc", "id", "result"})
         validate_run_result(message["result"])
         return
-    if definition == "effectSuccessResponse":
+    if definition == "capabilitySuccessResponse":
         require_exact_object(message, {"jsonrpc", "id", "result"})
         validate_effect_result(message["result"])
         return

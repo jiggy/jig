@@ -16,8 +16,9 @@ operational baselines, and public-site assembly.
 - Justfiles own task composition; scripts retain substantive orchestration.
   Candidate and site scripts invoke the relevant justfile, not package scripts.
 - `test-release.sh` includes the authored examples' deterministic application
-  tests and installs development dependencies at the tested-patch application
-  root without lifecycle scripts or generated state inside Flow packages;
+  tests. It installs the freshly packed SDK as a development dependency of a
+  disposable tested-patch copy, without lifecycle scripts or edits to source
+  manifests. This permits testing an SDK before its version reaches npm;
   it does not claim live Agent quality or independent
   consumer proof.
 - `test-installed-hostile-baseline.ts` consumes an exact archive, exercising

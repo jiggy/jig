@@ -1,8 +1,8 @@
 import type { JsonValue, RunContext, RunResult } from '@jigging/flow'
 import responseSchema from './proposal.schema.json'
 
-export async function draft(run: Pick<RunContext, 'input' | 'callEffect'>): Promise<RunResult> {
-  const result = await run.callEffect({
+export async function draft(run: Pick<RunContext, 'input' | 'callCapability'>): Promise<RunResult> {
+  const result = await run.callCapability({
     operationId: 'draft-proposal',
     slot: 'agent',
     method: 'run',

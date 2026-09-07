@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import sys
 
-from flowmd_sdk import EffectError, OperationError, RunContext, RunResult, handle
+from flowmd_sdk import CapabilityError, OperationError, RunContext, RunResult, handle
 
 
 logged = False
@@ -22,23 +22,23 @@ async def run(context: RunContext) -> RunResult:
         return {"outcome": "done", "output": "logged"}
 
     if mode == "calls":
-        child = await context.call_flow(
+        child = await context.run_child_flow(
             operation_id="child:1",
             slot="child",
             intent="Exercise a child Flow call.",
             input={"value": 1},
         )
         try:
-            await context.call_effect(
+            await context.call_capability(
                 operation_id="effect:1",
                 slot="store",
                 method="read",
                 input={"key": "missing"},
             )
-        except EffectError as error:
+        except CapabilityError as error:
             effect = {"name": error.error_name, "data": error.data}
         else:
-            raise AssertionError("fixture expected a declared EffectError")
+            raise AssertionError("fixture expected a declared CapabilityError")
         # A child result is itself ordinary JSON and may be embedded directly
         # in another result.
         return {"outcome": "done", "output": {"child": child, "effect": effect}}
@@ -52,7 +52,7 @@ async def run(context: RunContext) -> RunResult:
             await asyncio.Event().wait()
         except asyncio.CancelledError:
             try:
-                await context.call_effect(
+                await context.call_capability(
                     operation_id="after-cancel:1",
                     slot="store",
                     method="read",
@@ -71,14 +71,14 @@ async def run(context: RunContext) -> RunResult:
 
     if mode == "parallel":
         child = asyncio.create_task(
-            context.call_flow(
+            context.run_child_flow(
                 operation_id="child:parallel",
                 slot="child",
                 input={"value": 1},
             )
         )
         effect = asyncio.create_task(
-            context.call_effect(
+            context.call_capability(
                 operation_id="effect:parallel",
                 slot="store",
                 method="read",
@@ -93,7 +93,7 @@ async def run(context: RunContext) -> RunResult:
 
     if mode == "cancel-call":
         call = asyncio.create_task(
-            context.call_flow(
+            context.run_child_flow(
                 operation_id="child:cancelled",
                 slot="child",
                 input={},
@@ -108,7 +108,7 @@ async def run(context: RunContext) -> RunResult:
         return {"outcome": "done", "output": "cancelled-locally"}
 
     if mode == "cancel-pending":
-        await context.call_flow(
+        await context.run_child_flow(
             operation_id="child:root-cancelled",
             slot="child",
             input={},
@@ -117,7 +117,7 @@ async def run(context: RunContext) -> RunResult:
 
     if mode == "detached":
         asyncio.create_task(
-            context.call_flow(
+            context.run_child_flow(
                 operation_id="child:detached",
                 slot="child",
                 input={},
@@ -128,7 +128,7 @@ async def run(context: RunContext) -> RunResult:
 
     if mode == "error-with-detached":
         asyncio.create_task(
-            context.call_flow(
+            context.run_child_flow(
                 operation_id="child:error-detached",
                 slot="child",
                 input={},

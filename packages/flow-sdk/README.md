@@ -2,7 +2,7 @@
 
 Minimal, dependency-free TypeScript projection of FLOW Run/1.
 
-This is the prerelease `0.1.0-alpha.8` package. Its authoritative documents
+This is the prerelease `0.1.0-alpha.9` package. Its authoritative documents
 are the [Run SDK/1](https://flow.jig.md/spec/run-sdk) and
 [Run/1](https://flow.jig.md/spec/run-protocol) specifications.
 
@@ -12,7 +12,7 @@ Declare the exact alpha in the FLOW package's `package.json`:
 {
   "private": true,
   "dependencies": {
-    "@jigging/flow": "0.1.0-alpha.8"
+    "@jigging/flow": "0.1.0-alpha.9"
   }
 }
 ```
@@ -63,7 +63,7 @@ await handle(async (run) => {
 This also protects console methods cached by that later module graph. It does
 not make raw stdout or inherited child stdout valid protocol output.
 
-Run/1 also defines `run.callFlow()` and `run.callEffect()` as portable
+Run/1 also defines `run.runChildFlow()` and `run.callCapability()` as portable
 operations. The host determines which slots are available. For Jig's admitted
 child targets and Agent capability, see its
 [project policy](https://jig.md/spec/project-policy) and

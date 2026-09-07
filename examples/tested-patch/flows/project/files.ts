@@ -244,7 +244,7 @@ export async function repairFiles(run: RunContext): Promise<RunResult> {
   if (source?.access !== 'read' || deliverables?.access !== 'read-write')
     throw new TypeError('Supply source and deliverables attachments.')
   const input = await readRepairInput(run.input, source.path)
-  const result = await run.callFlow({ operationId: 'repair', slot: 'repair', input })
+  const result = await run.runChildFlow({ operationId: 'repair', slot: 'repair', input })
   run.signal.throwIfAborted()
   await writeRepairDeliverables(deliverables.path, input, result)
   return result

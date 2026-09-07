@@ -390,7 +390,7 @@ rootless Linux envelope. It validates the returned outcome and the complete
 result against package declarations and `result.schema.json`. A success is
 published only after the complete process tree is fenced, reaped, and cleaned.
 
-While a Binding Run remains open, its package may use Run/1 `flow/call` with
+While a Binding Run remains open, its package may use Run/1 `flow/run-child` with
 one of that Binding's admitted slot names. Jig resolves the name only to the
 exact Flow or Binding target captured in the same admitted generation. The call
 carries one JSON/1 input and returns that child's complete JSON/1 Run result;
@@ -429,7 +429,7 @@ not just each parent's immediate children. Trusted coordinators and supervisors
 are outside this payload budget. It is not fair-share scheduling or combined
 utilization accounting. Every descendant remains within the root deadline.
 
-An Agent-capable root or child package may use ordinary Run/1 `effect/call`
+An Agent-capable root or child package may use ordinary Run/1 `capability/call`
 through its one exact admitted Agent Run Capability Contract slot. The `run`
 method accepts instructions, an optional exact package-local skill selection,
 and an optional response Schema/1 value. Its wire success is

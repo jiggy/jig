@@ -20,7 +20,7 @@ for (let index = 1; index <= requests; index += 1) {
     `${JSON.stringify({
       jsonrpc: '2.0',
       id: reuse ? 'component:1' : `component:${index}`,
-      method: 'effect/call',
+      method: 'capability/call',
       params,
     })}\n`,
   )

@@ -241,10 +241,10 @@ async function fixture(root: string) {
     await writeFile(
       join(flow, 'flow.ts'),
       name === 'command'
-        ? 'import {handle} from "./sdk/index.js"; await handle(async run=>({outcome:"done",output:await run.callEffect({operationId:"command",slot:"command",method:"run",input:run.input})}));'
+        ? 'import {handle} from "./sdk/index.js"; await handle(async run=>({outcome:"done",output:await run.callCapability({operationId:"command",slot:"command",method:"run",input:run.input})}));'
         : name === 'pair'
-          ? 'import {handle} from "./sdk/index.js"; await handle(async run=>({outcome:"done",output:await Promise.all(["a","b"].map(operationId=>run.callFlow({operationId,slot:"worker",input:run.input})))}));'
-          : 'import {handle} from "./sdk/index.js"; await handle(async run=>run.callFlow({operationId:"worker",slot:"worker",input:run.input}));',
+          ? 'import {handle} from "./sdk/index.js"; await handle(async run=>({outcome:"done",output:await Promise.all(["a","b"].map(operationId=>run.runChildFlow({operationId,slot:"worker",input:run.input})))}));'
+          : 'import {handle} from "./sdk/index.js"; await handle(async run=>run.runChildFlow({operationId:"worker",slot:"worker",input:run.input}));',
     )
     if (name === 'command')
       await cp(

@@ -19,15 +19,21 @@ handle
 RunContext
 RunResult
 OperationError
-EffectError
+CapabilityError
 JSON value types
 attachment types
 handler types
 ```
 
-The TypeScript projection additionally names `FlowCall`, `EffectCall`, and
-`CallOptions`; Python expresses the same values as keyword-only method
+The TypeScript projection additionally names `ChildFlowRequest`,
+`CapabilityCall`, and `CallOptions`; Python expresses the same values as keyword-only method
 arguments and uses ordinary task cancellation.
+
+`handle` receives this Flow's invocation. `runChildFlow` / `run_child_flow`
+requests a Flow through an admitted child slot and returns its complete Run
+result. `callCapability` / `call_capability` calls a named capability method.
+These map to distinct `flow/run`, `flow/run-child`, and `capability/call` wire
+requests; authors do not construct the host-supplied invocation context.
 
 `handle` owns protocol stdin and stdout for the process and handles exactly one
 root Run. The TypeScript SDK captures its transport first, then replaces the
@@ -70,14 +76,14 @@ type RunResult = {
   readonly output: JsonValue;
 };
 
-interface FlowCall {
+interface ChildFlowRequest {
   readonly operationId: string;
   readonly slot: string;
   readonly intent?: string;
   readonly input: JsonValue;
 }
 
-interface EffectCall {
+interface CapabilityCall {
   readonly operationId: string;
   readonly slot: string;
   readonly method: string;
@@ -92,10 +98,10 @@ interface RunContext {
   readonly deadlineUnixMs: number;
   readonly signal: AbortSignal;
 
-  callFlow(call: FlowCall, options?: { signal?: AbortSignal }):
+  runChildFlow(call: ChildFlowRequest, options?: { signal?: AbortSignal }):
     Promise<RunResult>;
 
-  callEffect(call: EffectCall, options?: { signal?: AbortSignal }):
+  callCapability(call: CapabilityCall, options?: { signal?: AbortSignal }):
     Promise<JsonValue>;
 }
 
@@ -105,7 +111,7 @@ declare function handle(handler: RunHandler): Promise<void>;
 ```
 
 `run.signal` reports root cancellation. If a call-specific signal is already
-aborted when `callFlow` or `callEffect` is invoked, or becomes aborted while
+aborted when `runChildFlow` or `callCapability` is invoked, or becomes aborted while
 that call is pending, the returned promise rejects with an `OperationError`
 whose `code` is exactly `CANCELLED`. The SDK sends `request/cancel` if the
 request reached the wire. This cancels the local wait promptly; it does not
@@ -116,7 +122,7 @@ failure:
 
 ```ts
 try {
-  await run.callEffect(call, { signal });
+  await run.callCapability(call, { signal });
 } catch (error) {
   if (!(error instanceof OperationError) || error.code !== "CANCELLED") {
     throw error;
@@ -152,7 +158,7 @@ class RunContext(Protocol):
     @property
     def deadline_unix_ms(self) -> int: ...
 
-    async def call_flow(
+    async def run_child_flow(
         self,
         *,
         operation_id: str,
@@ -161,7 +167,7 @@ class RunContext(Protocol):
         intent: str | None = None,
     ) -> RunResult: ...
 
-    async def call_effect(
+    async def call_capability(
         self,
         *,
         operation_id: str,
@@ -179,7 +185,7 @@ def handle(handler: RunHandler) -> None: ...
 `handle` owns and creates the process event loop, so it is a synchronous
 entrypoint and rejects use inside an already-running `asyncio` loop. Root
 cancellation cancels the handler task with ordinary `asyncio.CancelledError`.
-Cancelling a task awaiting `call_flow` or `call_effect` cancels that local wait
+Cancelling a task awaiting `run_child_flow` or `call_capability` cancels that local wait
 and sends `request/cancel` if the request reached the wire.
 
 ## 4. Values and snapshots
@@ -200,11 +206,11 @@ whose retry and deduplication meaning is defined by Run/1.
 
 ## 5. Results and errors
 
-`callFlow` and `call_flow` return the complete child `RunResult`, including its
+`runChildFlow` and `run_child_flow` return the complete child `RunResult`, including its
 outcome. In TypeScript, `RunResult` is itself a `JsonValue` and may be retained
 directly inside another Run result without rebuilding or casting it.
-`callEffect` and `call_effect` unwrap a successful effect `{ value }`.
-A declared capability error raises `EffectError`, carrying `errorName` and
+`callCapability` and `call_capability` unwrap a successful effect `{ value }`.
+A declared capability error raises `CapabilityError`, carrying `errorName` and
 `data` in TypeScript or `error_name` and `data` in Python. Its human exception
 message is not portable; authors branch only on the named fields.
 
@@ -282,7 +288,7 @@ A child-Flow slot may execute the following TypeScript:
 import { handle } from "@jigging/flow";
 
 await handle(async (run) => {
-  const child = await run.callFlow({
+  const child = await run.runChildFlow({
     operationId: "research:1",
     slot: "research",
     input: run.input,
@@ -298,7 +304,7 @@ from flowmd_sdk import RunContext, RunResult, handle
 
 
 async def run(context: RunContext) -> RunResult:
-    child = await context.call_flow(
+    child = await context.run_child_flow(
         operation_id="research:1",
         slot="research",
         input=context.input,

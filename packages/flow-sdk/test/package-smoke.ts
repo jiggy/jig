@@ -68,7 +68,7 @@ try {
     unknown
   >
   assert.equal(Object.hasOwn(manifest, 'private'), false)
-  assert.equal(manifest.version, '0.1.0-alpha.8')
+  assert.equal(manifest.version, '0.1.0-alpha.9')
   assert.equal(Object.hasOwn(manifest, 'scripts'), false)
   assert.equal(manifest.license, 'Apache-2.0')
   assert.deepEqual(manifest.publishConfig, { access: 'public' })
@@ -76,9 +76,9 @@ try {
 
   await writeFile(
     join(consumer, 'smoke.mjs'),
-    `import { EffectError, OperationError, handle } from "@jigging/flow";
+    `import { CapabilityError, OperationError, handle } from "@jigging/flow";
 const operation = new OperationError("UNAVAILABLE");
-const effect = new EffectError("not-found", null);
+const effect = new CapabilityError("not-found", null);
 if (
   operation.code !== "UNAVAILABLE" ||
   effect.errorName !== "not-found" ||
@@ -109,6 +109,9 @@ if (
     join(consumer, 'root-flow.mjs'),
     `import { handle } from "@jigging/flow";
 await handle(async (run) => {
+  if (typeof run.runChildFlow !== "function" || typeof run.callCapability !== "function") {
+    throw new Error("installed RunContext methods are unavailable");
+  }
   console.log("packed handler log");
   return {
     outcome: "done",
@@ -184,16 +187,20 @@ await handle(async (run) => {
 
   await writeFile(
     join(consumer, 'smoke.ts'),
-    `import { OperationError, type JsonValue, type RunHandler, type RunResult } from "@jigging/flow";
-const handler: RunHandler = async (run) => ({
-  outcome: "done",
-  output: await run.callEffect({
+    `import { CapabilityError, OperationError, type ChildFlowRequest, type CapabilityCall, type JsonValue, type RunHandler, type RunResult } from "@jigging/flow";
+const child: ChildFlowRequest = { operationId: "child:1", slot: "reviewer", input: null };
+const capability: CapabilityCall = {
     operationId: "smoke:1",
     slot: "clock",
     method: "now",
     input: null,
-  }),
-});
+};
+const handler: RunHandler = async (run) => {
+  const result = await run.runChildFlow(child);
+  await run.callCapability(capability);
+  return result;
+};
+void new CapabilityError("not-found", null);
 void handler;
 const runResult: RunResult = {
   outcome: "done",

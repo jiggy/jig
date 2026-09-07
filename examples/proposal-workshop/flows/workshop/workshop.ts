@@ -12,7 +12,9 @@ export type Proposal = {
 }
 type Review = { verdict: 'approve' | 'revise' | 'blocked'; issues: string[] }
 
-export async function workshop(run: Pick<RunContext, 'input' | 'callFlow'>): Promise<RunResult> {
+export async function workshop(
+  run: Pick<RunContext, 'input' | 'runChildFlow'>,
+): Promise<RunResult> {
   const request = parseRequest(run.input)
   let proposal: Proposal | null = null
   let review: Review | null = null
@@ -33,7 +35,7 @@ export async function workshop(run: Pick<RunContext, 'input' | 'callFlow'>): Pro
   // One initial draft and at most one revision. Errors are never retried here.
   for (let attempt = 1; attempt <= 2; attempt += 1) {
     review = null
-    const drafted = await run.callFlow({
+    const drafted = await run.runChildFlow({
       operationId: `draft-${attempt}`,
       slot: 'drafter',
       input: { request, previous: proposal, feedback },
@@ -49,7 +51,7 @@ export async function workshop(run: Pick<RunContext, 'input' | 'callFlow'>): Pro
     proposal = parseProposal(drafted.output)
     feedback = checkProposal(proposal, request)
     if (feedback.length === 0) {
-      const reviewed = await run.callFlow({
+      const reviewed = await run.runChildFlow({
         operationId: `review-${attempt}`,
         slot: 'reviewer',
         input: { request, proposal },

@@ -96,7 +96,7 @@ export async function repairBatch(run: RunContext): Promise<RunResult> {
           : setTimeout(() => selected.abort(), job.cancelAfterMs)
       let result: RunResult
       try {
-        result = await run.callFlow(
+        result = await run.runChildFlow(
           { operationId: `repair:${job.id}`, slot: 'repair', input },
           { signal: selected.signal },
         )

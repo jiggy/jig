@@ -56,10 +56,10 @@ def main() -> None:
 from importlib.metadata import metadata
 from importlib.resources import files
 import flowmd_sdk
-from flowmd_sdk import EffectError, OperationError
+from flowmd_sdk import CapabilityError, OperationError
 
 operation = OperationError("UNAVAILABLE")
-effect = EffectError("not-found", None)
+effect = CapabilityError("not-found", None)
 assert operation.code == "UNAVAILABLE"
 assert effect.error_name == "not-found"
 assert files("flowmd_sdk").joinpath("py.typed").is_file()

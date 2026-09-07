@@ -50,7 +50,7 @@ function buildGraph(run: RunContext): Flow<State> {
   })
 
   const child = node<State>(async (context) => {
-    context.state.result = await run.callFlow({
+    context.state.result = await run.runChildFlow({
       operationId: 'delegate:1',
       slot: 'delegate',
       intent: 'Process the supplied value.',

@@ -22,7 +22,11 @@ SDK/1 and Run/1.
   input and output; application diagnostics go to standard error.
 - Preserve strict JSON/1 validation, exact messages, full-duplex calls,
   cancellation, terminal ordering, and bounded request behavior.
-- Preserve the documented distinction between operation and effect errors.
+- `runChildFlow()` requests an owned child through `flow/run-child`;
+  `callCapability()` requests a bound method through `capability/call`.
+  Neither changes the host-supplied `flow/run` entrypoint or grants authority.
+- Preserve the documented distinction between `OperationError` and declared
+  capability application failures represented by `CapabilityError`.
 - Runtime code remains dependency-free and works in the documented Bun and
   Node environments.
 

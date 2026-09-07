@@ -9,6 +9,17 @@ const ajv = new Ajv2020({ allErrors: true, strict: true })
 ajv.addSchema(schema)
 
 describe('Run/1 message schemas', () => {
+  test('keeps invocation context and child requests separate', () => {
+    const invocation = cases.valid.find((fixture) => fixture.definition === 'flowRunRequest')!.value
+    const child = cases.valid.find((fixture) => fixture.definition === 'childFlowRequest')!.value
+    const run = definition('flowRunRequest')
+    const runChild = definition('childFlowRequest')
+    expect(run({ ...invocation, params: child.params })).toBe(false)
+    expect(runChild({ ...child, params: invocation.params })).toBe(false)
+    expect(run(child)).toBe(false)
+    expect(runChild(invocation)).toBe(false)
+  })
+
   for (const fixture of cases.valid) {
     test(`accepts ${fixture.name}`, () => {
       const validate = definition(fixture.definition)

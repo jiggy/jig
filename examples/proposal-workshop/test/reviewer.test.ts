@@ -6,7 +6,7 @@ async function reviewed(structured: JsonValue) {
   return review({
     input: {},
     settings: { reviewFocus: 'Check evidence support and unresolved approvals.' },
-    callEffect: async () => ({ outcome: 'completed', text: 'Review complete.', structured }),
+    callCapability: async () => ({ outcome: 'completed', text: 'Review complete.', structured }),
   })
 }
 

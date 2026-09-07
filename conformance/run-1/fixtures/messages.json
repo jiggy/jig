@@ -21,11 +21,11 @@
     },
     {
       "name": "child-flow-with-intent",
-      "definition": "flowCallRequest",
+      "definition": "childFlowRequest",
       "value": {
         "jsonrpc": "2.0",
         "id": "component:1",
-        "method": "flow/call",
+        "method": "flow/run-child",
         "params": {
           "operationId": "research:1",
           "slot": "research",
@@ -36,11 +36,11 @@
     },
     {
       "name": "effect-call",
-      "definition": "effectCallRequest",
+      "definition": "capabilityCallRequest",
       "value": {
         "jsonrpc": "2.0",
         "id": "component:2",
-        "method": "effect/call",
+        "method": "capability/call",
         "params": {
           "operationId": "artifact-write:1",
           "slot": "artifacts",
@@ -69,7 +69,7 @@
     },
     {
       "name": "effect-value",
-      "definition": "effectSuccessResponse",
+      "definition": "capabilitySuccessResponse",
       "value": {
         "jsonrpc": "2.0",
         "id": "component:2",
@@ -78,7 +78,7 @@
     },
     {
       "name": "declared-effect-error",
-      "definition": "effectSuccessResponse",
+      "definition": "capabilitySuccessResponse",
       "value": {
         "jsonrpc": "2.0",
         "id": "component:2",
@@ -140,7 +140,7 @@
     },
     {
       "name": "effect-result-has-two-arms",
-      "definition": "effectSuccessResponse",
+      "definition": "capabilitySuccessResponse",
       "value": {
         "jsonrpc": "2.0",
         "id": "component:2",
@@ -152,7 +152,7 @@
     },
     {
       "name": "effect-error-missing-data",
-      "definition": "effectSuccessResponse",
+      "definition": "capabilitySuccessResponse",
       "value": {
         "jsonrpc": "2.0",
         "id": "component:2",
@@ -161,11 +161,11 @@
     },
     {
       "name": "intent-is-an-object",
-      "definition": "flowCallRequest",
+      "definition": "childFlowRequest",
       "value": {
         "jsonrpc": "2.0",
         "id": "component:1",
-        "method": "flow/call",
+        "method": "flow/run-child",
         "params": {
           "operationId": "research:1",
           "slot": "research",

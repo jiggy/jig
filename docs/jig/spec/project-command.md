@@ -7,7 +7,7 @@ the Flow a shell or the candidate access to an Agent provider. The command
 returns host-collected output and termination. Application code decides what
 that evidence means.
 
-This is a Jig-owned capability carried by ordinary FLOW Run/1 `effect/call`.
+This is a Jig-owned capability carried by ordinary FLOW Run/1 `capability/call`.
 It adds no FLOW protocol method or requirement on other hosts. Its exact
 [descriptor](https://jig.md/contracts/project-command.capability.json) has ID
 `https://jig.md/contracts/project-command`, version `1.0.0`, and digest
@@ -58,7 +58,7 @@ allowed; [root reservations](project-policy.md) bound their combined resources.
 ## Request
 
 ```ts
-const evidence = await run.callEffect({
+const evidence = await run.callCapability({
   operationId: 'candidate-tests',
   slot: 'command',
   method: 'run',

@@ -21,6 +21,9 @@ remains a private candidate.
   output after entry is redirected to standard error.
 - Python names may be idiomatic, but wire keys, JSON/1 limits, errors,
   cancellation, and terminal behavior remain Run/1-exact.
+- `run_child_flow()` emits `flow/run-child`; `call_capability()` emits
+  `capability/call`. `CapabilityError` represents declared capability errors;
+  `OperationError` retains operational failure semantics.
 - The runtime supports Python 3.11 or newer without third-party runtime
   dependencies.
 

@@ -1,11 +1,11 @@
-from flowmd_sdk import EffectError, handle
+from flowmd_sdk import CapabilityError, handle
 
 
 async def run(context):
     import asyncio
 
     research_task = asyncio.create_task(
-        context.call_flow(
+        context.run_child_flow(
             operation_id="research:1",
             slot="research",
             intent="Find a useful comparison target.",
@@ -13,7 +13,7 @@ async def run(context):
         )
     )
     stored_task = asyncio.create_task(
-        context.call_effect(
+        context.call_capability(
             operation_id="store:1",
             slot="artifacts",
             method="write",
@@ -25,13 +25,13 @@ async def run(context):
     missing = None
 
     try:
-        await context.call_effect(
+        await context.call_capability(
             operation_id="missing:1",
             slot="artifacts",
             method="read",
             input={"uri": "artifact://missing"},
         )
-    except EffectError as error:
+    except CapabilityError as error:
         missing = error.error_name
 
     return {

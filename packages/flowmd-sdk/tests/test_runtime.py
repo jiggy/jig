@@ -217,7 +217,7 @@ class RuntimeTests(unittest.TestCase):
         self.component.send(root_request("calls"))
 
         child = self.component.receive()
-        self.assertEqual(child["method"], "flow/call")
+        self.assertEqual(child["method"], "flow/run-child")
         self.component.send(
             {
                 "jsonrpc": "2.0",
@@ -227,7 +227,7 @@ class RuntimeTests(unittest.TestCase):
         )
 
         effect = self.component.receive()
-        self.assertEqual(effect["method"], "effect/call")
+        self.assertEqual(effect["method"], "capability/call")
         self.component.send(
             {
                 "jsonrpc": "2.0",
@@ -329,13 +329,13 @@ class RuntimeTests(unittest.TestCase):
         first = self.component.receive()
         second = self.component.receive()
         requests = {first["method"]: first, second["method"]: second}
-        self.assertEqual(set(requests), {"flow/call", "effect/call"})
+        self.assertEqual(set(requests), {"flow/run-child", "capability/call"})
 
-        effect = requests["effect/call"]
+        effect = requests["capability/call"]
         self.component.send(
             {"jsonrpc": "2.0", "id": effect["id"], "result": {"value": "stored"}}
         )
-        child = requests["flow/call"]
+        child = requests["flow/run-child"]
         self.component.send(
             {
                 "jsonrpc": "2.0",
@@ -354,7 +354,7 @@ class RuntimeTests(unittest.TestCase):
     def test_native_task_cancellation_emits_protocol_cancellation(self) -> None:
         self.component.send(root_request("cancel-call"))
         child = self.component.receive()
-        self.assertEqual(child["method"], "flow/call")
+        self.assertEqual(child["method"], "flow/run-child")
         cancellation = self.component.receive()
         self.assertEqual(cancellation["method"], "request/cancel")
         self.assertEqual(cancellation["params"], {"requestId": child["id"]})
@@ -669,7 +669,7 @@ class RuntimeOrderingTests(unittest.TestCase):
                         {
                             "jsonrpc": "2.0",
                             "id": "component:1",
-                            "method": "flow/call",
+                            "method": "flow/run-child",
                             "params": {},
                         }
                     )

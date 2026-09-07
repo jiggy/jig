@@ -63,7 +63,7 @@ test('synthetic selected cancellation preserves the other worker and its verifie
         deliverables: { access: 'read-write', path: out },
       },
       signal: new AbortController().signal,
-      callFlow: async (call, options) => {
+      runChildFlow: async (call, options) => {
         active++
         peak = Math.max(peak, active)
         try {
@@ -122,7 +122,7 @@ test('a bad second project prevents every dispatch', async () => {
           deliverables: { access: 'read-write', path: join(root, 'unused') },
         },
         signal: new AbortController().signal,
-        callFlow: async () => {
+        runChildFlow: async () => {
           calls++
           throw new Error('must not dispatch')
         },

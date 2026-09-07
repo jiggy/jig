@@ -84,7 +84,7 @@ export async function syntheticRepair(
   const result = await repair({
     input: input as any,
     signal: new AbortController().signal,
-    callEffect: async (call) => {
+    callCapability: async (call) => {
       if (call.slot === 'agent') {
         agents++
         return {

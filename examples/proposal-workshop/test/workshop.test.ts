@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import type { FlowCall, JsonValue, RunResult } from '@jigging/flow'
+import type { ChildFlowRequest, JsonValue, RunResult } from '@jigging/flow'
 import fixture from '../fixtures/library-pilot.json'
 import { checkProposal, parseRequest, workshop, type Proposal } from '../flows/workshop/workshop.ts'
 import { draft } from '../flows/drafter/draft.ts'
@@ -36,13 +36,13 @@ const done = (output: JsonValue): RunResult => ({ outcome: 'done', output })
 const approved = () => done({ verdict: 'approve', issues: [] })
 
 function scenario(responses: (RunResult | Error)[]) {
-  const calls: FlowCall[] = []
+  const calls: ChildFlowRequest[] = []
   return {
     calls,
     run: () =>
       workshop({
         input: fixture,
-        callFlow: async (call) => {
+        runChildFlow: async (call) => {
           calls.push(call)
           const response = responses.shift()
           if (response === undefined) throw new Error('Unexpected additional child call.')
@@ -186,18 +186,18 @@ describe("proposal workshop's mechanical evidence gate", () => {
 
 test('specialists select their own call Skill and reviewer configuration', async () => {
   const calls: { input: any; slot: string; method: string }[] = []
-  const callEffect = async (call: any) => {
+  const callCapability = async (call: any) => {
     calls.push(call)
     return { outcome: 'blocked', text: 'Deliberate deterministic stop.' }
   }
   expect(
-    await draft({ input: { request, previous: null, feedback: [] }, callEffect }),
+    await draft({ input: { request, previous: null, feedback: [] }, callCapability }),
   ).toMatchObject({ outcome: 'blocked' })
   expect(
     await review({
       input: { request, proposal: proposal() },
       settings: { reviewFocus: 'Check the staffing ceiling.' },
-      callEffect,
+      callCapability,
     }),
   ).toMatchObject({ outcome: 'blocked' })
   expect(calls.map(({ input }) => input.skills)).toEqual([

@@ -1065,7 +1065,7 @@ function operationDispatcher(
   return Object.freeze({
     ...(hasFlows
       ? {
-          callFlow: async (call, signal): Promise<RunHostFlowOperationTerminal> =>
+          runChildFlow: async (call, signal): Promise<RunHostFlowOperationTerminal> =>
             enter(
               'flow',
               () =>
@@ -1081,7 +1081,7 @@ function operationDispatcher(
       : {}),
     ...(hasEffects
       ? {
-          callEffect: async (call, signal): Promise<RunHostEffectOperationTerminal> => {
+          callCapability: async (call, signal): Promise<RunHostEffectOperationTerminal> => {
             if (target.request.capabilities[call.slot]?.digest === PROJECT_COMMAND_CONTRACT_DIGEST)
               return enter(
                 'effect',

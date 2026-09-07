@@ -1,7 +1,7 @@
 import type {
   Attachment,
-  EffectCall,
-  FlowCall,
+  CapabilityCall,
+  ChildFlowRequest,
   JsonObject,
   JsonValue,
   OperationErrorCode,
@@ -173,7 +173,7 @@ export function parseRunParams(value: JsonValue): RunParams {
   }
 }
 
-export function validateFlowCall(call: FlowCall): JsonObject {
+export function validateChildFlowRequest(call: ChildFlowRequest): JsonObject {
   requireWireId(call.operationId)
   requireLocalName(call.slot)
   if (call.intent !== undefined) {
@@ -193,7 +193,7 @@ export function validateFlowCall(call: FlowCall): JsonObject {
   }
 }
 
-export function validateEffectCall(call: EffectCall): JsonObject {
+export function validateCapabilityCall(call: CapabilityCall): JsonObject {
   requireWireId(call.operationId)
   requireLocalName(call.slot)
   requireLocalName(call.method)
@@ -205,12 +205,12 @@ export function validateEffectCall(call: EffectCall): JsonObject {
   }
 }
 
-export function attributedFlowCall(ownerRequestId: string, call: FlowCall): JsonObject {
-  return { ownerRequestId: requireWireId(ownerRequestId), ...validateFlowCall(call) }
+export function attributedFlowCall(ownerRequestId: string, call: ChildFlowRequest): JsonObject {
+  return { ownerRequestId: requireWireId(ownerRequestId), ...validateChildFlowRequest(call) }
 }
 
-export function attributedEffectCall(ownerRequestId: string, call: EffectCall): JsonObject {
-  return { ownerRequestId: requireWireId(ownerRequestId), ...validateEffectCall(call) }
+export function attributedEffectCall(ownerRequestId: string, call: CapabilityCall): JsonObject {
+  return { ownerRequestId: requireWireId(ownerRequestId), ...validateCapabilityCall(call) }
 }
 
 export function emptyResultMessage(id: string): JsonObject {

@@ -167,7 +167,7 @@ LocalName keys to explicit `flow:<path>` or `binding:<id>` targets in the same
 admitted generation. Slots belong to the Binding; a direct `flow:` Run has none.
 Selected child Bindings must have no child slots of their own.
 
-Each `flow/call` carries JSON/1 input into a fresh child context and returns a
+Each `flow/run-child` carries JSON/1 input into a fresh child context and returns a
 complete JSON/1 Run result. The child receives its selected target's admitted
 settings and Agent capability, empty attachments, no inherited slots, and a
 deadline no later than its parent. It selects its own package-local Skills per
@@ -190,7 +190,7 @@ service, network, installation, or host repository. Applications own independent
 acceptance assertions; repository test logs alone are not a trustworthy verdict.
 
 One experimental [Agent Run capability](https://jig.md/spec/agent-run) is
-available through ordinary Run/1 `effect/call`. The host may use the official
+available through ordinary Run/1 `capability/call`. The host may use the official
 OpenAI JavaScript SDK against an operator-selected OpenAI-compatible endpoint,
 or run native Codex, Claude Code, or Pi through one private ACP mechanism.
 Direct API configuration uses `OPENAI_API_KEY` and `OPENAI_MODEL`; optional

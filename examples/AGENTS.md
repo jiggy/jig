@@ -21,6 +21,10 @@ authored examples, not independent consumer evidence or promoted Starters.
 - Pin published SDK dependencies that supply the interfaces actually used;
   generate their locks with the supported authoring tool, never by guessing
   integrity values. Link to the current host installation instructions.
+- When source requires an SDK candidate not yet published, state that paired
+  requirement and generate example locks only after publication. Release tests
+  may consume the candidate archive in disposable copies; do not claim that an
+  older registry SDK supports the new interface.
 - Agents, models, credentials, and execution policy remain operator choices.
 - Label synthetic evidence and keep it distinct from claims about real users.
 

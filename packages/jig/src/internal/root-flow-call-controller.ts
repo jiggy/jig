@@ -325,7 +325,7 @@ function specialistDispatcher(
   if (Object.keys(selected.request.capabilities).length === 0) return undefined
   let active = false
   return {
-    async callEffect(call, signal) {
+    async callCapability(call, signal) {
       if (active)
         return failed('RESOURCE_EXHAUSTED', 'the specialist already has an active operation')
       active = true

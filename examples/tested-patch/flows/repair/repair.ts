@@ -9,7 +9,7 @@ interface Attempt {
   invalidProposal?: string
 }
 export async function repair(
-  run: Pick<RunContext, 'input' | 'signal' | 'callEffect'>,
+  run: Pick<RunContext, 'input' | 'signal' | 'callCapability'>,
 ): Promise<RunResult> {
   const input = parseInput(run.input)
   const attempts: Attempt[] = []
@@ -33,7 +33,7 @@ export async function repair(
     for (const [index, request] of requests.entries()) {
       run.signal.throwIfAborted()
       values.push(
-        await run.callEffect({
+        await run.callCapability({
           operationId: `${id}-${index}`,
           slot: 'command',
           method: 'run',
@@ -55,7 +55,7 @@ export async function repair(
     for (let index = 0; index < 2; index++) {
       run.signal.throwIfAborted()
       const response = object(
-        await run.callEffect({
+        await run.callCapability({
           operationId: `patch-${index + 1}`,
           slot: 'agent',
           method: 'run',

@@ -14,7 +14,7 @@ from flowmd_sdk import RunContext, RunResult, handle
 
 
 async def run(context: RunContext) -> RunResult:
-    child = await context.call_flow(
+    child = await context.run_child_flow(
         operation_id="research:1",
         slot="research",
         intent="Research this request.",
@@ -31,7 +31,7 @@ root Run. Once called, it routes ordinary `print()` and `sys.stdout` output to
 diagnostic stderr, including output after `handle()` returns. Output written
 before `handle()` begins and raw writes to file descriptor 1 remain invalid
 protocol output. Handler cancellation uses ordinary `asyncio.CancelledError`.
-Cancelling a task awaiting `call_flow()` or `call_effect()` sends the matching
+Cancelling a task awaiting `run_child_flow()` or `call_capability()` sends the matching
 Run/1 cancellation notification.
 
 The SDK emits at most 64 outbound requests simultaneously; additional calling
