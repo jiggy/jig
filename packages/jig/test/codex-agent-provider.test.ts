@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from 'bun:test'
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 
@@ -88,6 +88,40 @@ describe('private native Codex Agent provider', () => {
       JIG_AGENT_CLIENT: 'unknown',
     })
     expect(unsupported.agentProvider).toBeUndefined()
+  })
+
+  test('resolves an operator-selected Codex link and exact host Bubblewrap', async () => {
+    const fixture = await files()
+    const codexHome = join(fixture.root, 'linked-home')
+    const codexLink = join(fixture.root, 'codex')
+    await mkdir(codexHome)
+    await symlink(fixture.executablePath, codexLink)
+    await writeFile(
+      join(codexHome, 'auth.json'),
+      JSON.stringify(
+        credentialValue('account-one', 'subscription-secret', {
+          authMode: 'chatgpt',
+          refreshToken: 'canonical-refresh-secret',
+        }),
+      ),
+      { mode: 0o600 },
+    )
+
+    const provider = await openPrivateCodexAgentProvider(installedBunLocation.releaseRoot, {
+      CODEX_HOME: codexHome,
+      CODEX_PATH: codexLink,
+      JIG_BWRAP_PATH: fixture.nativeBubblewrapPath,
+    })
+    const runtime = privateAcpAgentRuntime(provider)
+    expect(provider).toMatchObject({
+      client: 'openai-codex',
+      credentialMode: 'openai-subscription',
+    })
+    expect(runtime.executablePath).toBe(fixture.executablePath)
+    expect(runtime.readOnlyMounts).toContainEqual({
+      source: fixture.nativeBubblewrapPath,
+      destination: '/agent/codex-resources/bwrap',
+    })
   })
 
   test('projects canonical subscription state without its refresh credential', async () => {

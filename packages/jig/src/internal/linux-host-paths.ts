@@ -2,9 +2,14 @@ import { realpath } from 'node:fs/promises'
 
 /** System-owned locations only; project files and ambient PATH never select tools. */
 export function privateLinuxHostToolCandidates(
-  name: 'bwrap' | 'systemd-run' | 'systemctl',
+  name: 'bwrap' | 'codex' | 'systemd-run' | 'systemctl',
 ): readonly string[] {
-  return [`/usr/bin/${name}`, `/bin/${name}`, `/run/current-system/sw/bin/${name}`]
+  return [
+    ...(name === 'codex' ? [`/usr/local/bin/${name}`] : []),
+    `/usr/bin/${name}`,
+    `/bin/${name}`,
+    `/run/current-system/sw/bin/${name}`,
+  ]
 }
 
 /** Resolve names only. Callers still validate files, features, and retained identity. */

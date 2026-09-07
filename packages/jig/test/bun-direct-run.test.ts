@@ -125,7 +125,7 @@ describe('private Bun direct Run', () => {
     })
     const environments = [
       { JIG_AGENT_CLIENT: 'unknown' },
-      { JIG_AGENT_CLIENT: 'codex' },
+      { JIG_AGENT_CLIENT: 'codex', CODEX_PATH: '/missing/codex' },
       { OPENAI_API_KEY: 'test-secret', OPENAI_MODEL: 'invalid model' },
       {
         OPENAI_API_KEY: 'test-secret',

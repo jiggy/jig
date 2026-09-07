@@ -92,6 +92,11 @@ child calls, project commands, and Agent providers.
   are the owner-selected initial Agent breadth. Compatible endpoints remain
   protocol-specific host configuration; an endpoint, credential, provider, or
   model used in development must not become a product default.
+- OpenRouter's natural credential/model pair is a convenience for its fixed
+  compatible endpoint, not a provider registry. Ambiguous provider families
+  fail closed. Explicit native Codex selection may resolve only fixed
+  system-owned locations or an absolute operator override; exact executable
+  and Bubblewrap bytes remain reviewed provider identity.
 - Keep each native client a thin profile over the common ACP lifecycle. A new
   client must not require FLOW changes, and a public provider/customization SPI
   requires independent installed consumers to earn its shape.

@@ -207,6 +207,12 @@ endpoint, model, executable path, and credentials are trusted host
 configuration, not FLOW or Binding inputs, and Jig exposes no provider
 registry.
 
+OpenRouter may instead use its natural `OPENROUTER_API_KEY` and
+`OPENROUTER_MODEL`; Jig fixes its Chat Completions endpoint. Select an existing
+native Codex subscription with `JIG_AGENT_CLIENT=codex`; an optional absolute
+`CODEX_PATH` overrides Jig's fixed system locations. Provider selection remains
+host-owned and must match the reviewed generation.
+
 ## Dependency rule
 
 For supported registry dependencies, the alpha uses an ordinary package-local

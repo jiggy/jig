@@ -223,7 +223,7 @@ select a client, endpoint, model, executable, or credential. Those are trusted
 host configuration used by both `jig review` and `jig run`.
 
 With `JIG_AGENT_CLIENT` unset, Jig uses the official OpenAI JavaScript SDK for
-one direct API call. The operator supplies:
+one direct API call. For any compatible endpoint, the operator may supply:
 
 | Variable | Meaning |
 | --- | --- |
@@ -244,8 +244,14 @@ normalizes only one bounded final response.
 
 An OpenRouter endpoint can be selected with the same variables when it
 implements the selected subset. A direct Mistral endpoint uses those same
-variables with `OPENAI_API=chat-completions`. Neither has a separate Jig
-interface, credential name, provider object, or default model.
+variables with `OPENAI_API=chat-completions`. Compatible endpoints do not create
+a separate provider object or default model.
+
+As a convenience for OpenRouter's fixed endpoint, Jig also accepts the natural
+`OPENROUTER_API_KEY` and `OPENROUTER_MODEL` pair. It selects
+`https://openrouter.ai/api/v1` using Chat Completions. Combining that pair with
+`OPENAI_*` is ambiguous and unavailable. The natural names and the equivalent
+generic endpoint configuration produce the same reviewed provider identity.
 
 Native Agent clients use one private Agent Client Protocol (ACP) mechanism.
 Each client contributes only the configuration needed to launch its own ACP
@@ -253,13 +259,20 @@ adapter:
 
 | Client | Host selection | Subscription configuration | API configuration |
 | --- | --- | --- | --- |
-| Codex | `JIG_AGENT_CLIENT=codex`, `CODEX_PATH` | Existing `CODEX_HOME` (or `~/.codex`) authentication; optional `CODEX_MODEL`, with omission retaining the client default | `OPENAI_API_KEY` and `OPENAI_MODEL`; optional `OPENAI_BASE_URL`; `OPENAI_API` must be omitted or `responses` |
+| Codex | `JIG_AGENT_CLIENT=codex`; optional absolute `CODEX_PATH` | Existing `CODEX_HOME` (or `~/.codex`) authentication; optional `CODEX_MODEL`, with omission retaining the client default | `OPENAI_API_KEY` and `OPENAI_MODEL`; optional `OPENAI_BASE_URL`; `OPENAI_API` must be omitted or `responses` |
 | Claude Code | `JIG_AGENT_CLIENT=claude`, `CLAUDE_PATH` | `CLAUDE_CODE_OAUTH_TOKEN`; optional `CLAUDE_MODEL` | Exactly one of `ANTHROPIC_API_KEY` or `ANTHROPIC_AUTH_TOKEN`, plus `ANTHROPIC_MODEL`; optional `ANTHROPIC_BASE_URL` |
 | Pi | `JIG_AGENT_CLIENT=pi`, `PI_PATH` | `PI_PROVIDER` and `PI_MODEL`; authentication from `PI_CODING_AGENT_DIR/auth.json` or `~/.pi/agent/auth.json` | `PI_PROVIDER`, `PI_MODEL`, and `PI_API_KEY`, using a provider implemented by Pi |
 
 The current Pi profile accepts the official self-contained Linux x64 Pi
 0.84.4 release layout. It does not interpret the multi-file npm installation
 or make Node part of Jig's runtime closure.
+
+When `CODEX_PATH` is omitted, Jig resolves Codex only from fixed system-owned
+locations, never project files or ambient `PATH`. An explicit absolute path may
+be a link; Jig resolves, validates, and identifies its exact executable before
+review. Codex's nested sandbox uses the exact `JIG_BWRAP_PATH` when supplied,
+then an adjacent official client resource, then fixed system-owned Bubblewrap.
+The selected executable and support bytes enter provider identity.
 
 Native Codex's API-key path is Responses-compatible only; selecting
 `chat-completions` fails closed. Claude Code uses its Anthropic-compatible API

@@ -6,6 +6,7 @@ import {
   createPrivateAcpAgentProvider,
   type PrivateAcpAgentProvider,
 } from './acp-agent-provider.js'
+import { privateLinuxHostToolCandidates, resolvePrivateLinuxHostPath } from './linux-host-paths.js'
 
 const CODEX_CLIENT = 'openai-codex'
 const SANDBOX_LAUNCHER_PATH = '/agent/codex-agent-launcher.js'
@@ -81,15 +82,12 @@ export async function openPrivateCodexAgentProvider(
   releaseRoot: string,
   environment: Readonly<Record<string, string | undefined>> = process.env,
 ): Promise<PrivateAcpAgentProvider> {
-  const executablePath = environment.CODEX_PATH
-  if (executablePath === undefined || executablePath.length === 0) {
-    throw new Error('the native Codex executable is unavailable')
-  }
+  const executablePath = await resolveCodexExecutable(environment.CODEX_PATH)
   const support = Object.freeze({
     launcherPath: join(releaseRoot, 'libexec', 'agent', 'codex-agent-launcher.js'),
     adapterPath: join(releaseRoot, 'libexec', 'agent', 'codex-acp.js'),
     executablePath,
-    nativeBubblewrapPath: await nativeBubblewrapFor(executablePath),
+    nativeBubblewrapPath: await nativeBubblewrapFor(executablePath, environment.JIG_BWRAP_PATH),
     certificatesPath: await ordinaryFile(HOST_CERTIFICATES_PATH, 'host certificate bundle'),
     requirementsPath: join(releaseRoot, 'libexec', 'agent', 'codex-requirements.toml'),
   })
@@ -332,12 +330,46 @@ function codexEnvironment(
   })
 }
 
-async function nativeBubblewrapFor(executablePath: string): Promise<string> {
-  const path = await exactFile(
-    join(executablePath, '..', '..', 'codex-resources', 'bwrap'),
-    'Codex native Bubblewrap',
+async function resolveCodexExecutable(selected: string | undefined): Promise<string> {
+  if (selected !== undefined && (!selected.startsWith('/') || selected.includes('\0'))) {
+    throw new Error('CODEX_PATH must be an absolute executable path')
+  }
+  const path = await resolvePrivateLinuxHostPath(
+    selected === undefined ? privateLinuxHostToolCandidates('codex') : [selected],
   )
-  if (((await lstat(path)).mode & 0o111) === 0) {
+  const information = await lstat(path)
+  if (!information.isFile() || information.isSymbolicLink() || (information.mode & 0o111) === 0) {
+    throw new Error('the native Codex executable is invalid')
+  }
+  return path
+}
+
+async function nativeBubblewrapFor(
+  executablePath: string,
+  selected: string | undefined,
+): Promise<string> {
+  if (selected !== undefined && (!selected.startsWith('/') || selected.includes('\0'))) {
+    throw new Error('JIG_BWRAP_PATH must be an absolute executable path')
+  }
+  let path: string
+  if (selected !== undefined) {
+    path = await resolvePrivateLinuxHostPath([selected])
+  } else {
+    const adjacent = join(executablePath, '..', '..', 'codex-resources', 'bwrap')
+    try {
+      path = await exactFile(adjacent, 'Codex native Bubblewrap')
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+      path = await resolvePrivateLinuxHostPath(privateLinuxHostToolCandidates('bwrap'))
+    }
+  }
+  const information = await lstat(path)
+  if (
+    !information.isFile() ||
+    information.isSymbolicLink() ||
+    (information.mode & 0o6000) !== 0 ||
+    (information.mode & 0o111) === 0
+  ) {
     throw new Error('Codex native Bubblewrap is invalid')
   }
   return path

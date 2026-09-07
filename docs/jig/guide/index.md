@@ -129,6 +129,15 @@ configuration. Supply them as exported environment variables for both
 There is no package-selected provider, provider registry, or
 semantic router.
 
+For OpenRouter, export its natural `OPENROUTER_API_KEY` and
+`OPENROUTER_MODEL`; Jig selects its fixed Chat Completions endpoint. To use an
+existing Codex subscription instead, export `JIG_AGENT_CLIENT=codex`; Jig checks
+fixed system locations, or an explicit absolute `CODEX_PATH`, and uses the
+existing `CODEX_HOME` authentication when no `OPENAI_*` API configuration is
+present. Switching client, endpoint, API, or model changes reviewed execution
+identity, so run `jig review` again and use the same selection for `jig run`.
+Rotating only a credential does not require review.
+
 Root Runs default to 30 seconds. `--timeout` accepts a positive integer plus
 `ms`, `s`, `m`, or `h`, up to 24 hours. Children share the parent's remaining
 absolute deadline; they cannot extend it. Acquisition precedes that execution

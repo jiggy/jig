@@ -437,6 +437,23 @@ describe('finite Jig project commands', () => {
         ),
       ).toBe(1)
       expect(rejected.output).toBe('')
+      const missing = commandInvocation(unusedHost())
+      expect(
+        await main(
+          ['run', 'flow:flows/work', '--input', `@${join(root, 'missing.json')}`],
+          missing.options,
+        ),
+      ).toBe(1)
+      expect(missing.error).toContain('the selected --input file does not exist')
+      await writeFile(join(root, 'malformed.json'), '{"missing":}')
+      const malformed = commandInvocation(unusedHost())
+      expect(
+        await main(
+          ['run', 'flow:flows/work', '--input', `@${join(root, 'malformed.json')}`],
+          malformed.options,
+        ),
+      ).toBe(1)
+      expect(malformed.error).toContain('the selected --input file is not FLOW JSON/1')
     } finally {
       await rm(root, { recursive: true, force: true })
     }

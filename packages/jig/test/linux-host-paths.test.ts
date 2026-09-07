@@ -29,6 +29,20 @@ describe('system-owned Linux host paths', () => {
     })
   }
 
+  test('resolves an explicitly selected Codex client without ambient PATH', async () => {
+    const visited: string[] = []
+    const resolved = await resolvePrivateLinuxHostPath(
+      privateLinuxHostToolCandidates('codex'),
+      async (path) => {
+        visited.push(path)
+        if (path === '/bin/codex') return '/nix/store/fixed-codex/bin/codex'
+        throw missing()
+      },
+    )
+    expect(resolved).toBe('/nix/store/fixed-codex/bin/codex')
+    expect(visited).toEqual(['/usr/local/bin/codex', '/usr/bin/codex', '/bin/codex'])
+  })
+
   test('fails rather than guessing a host executable', async () => {
     await expect(
       resolvePrivateLinuxHostPath(privateLinuxHostToolCandidates('bwrap'), async () => {

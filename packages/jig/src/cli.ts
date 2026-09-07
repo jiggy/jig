@@ -32,7 +32,7 @@ import {
   PRIVATE_ROOTLESS_COMMAND_OVERHEAD_ALLOWANCE_MS,
   privateRootlessCommandLifetime,
 } from './internal/root-run-timeout-policy.js'
-import { canonicalJson, decodeJson1, JSON_1_LIMITS, type JsonValue } from './json.js'
+import { canonicalJson, decodeJson1, Json1Error, JSON_1_LIMITS, type JsonValue } from './json.js'
 import { bindingRef, flowRef, type RunTargetRef } from './project/author.js'
 
 const HELP = `Usage:
@@ -204,13 +204,15 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
       }
     }
   } catch (error) {
-    throw new CliDiagnostic(
-      'JIG_RUN_INPUT_INVALID',
+    const message =
       error instanceof PrivateFileInputError
         ? error.message
-        : '--input requires bounded JSON/1 in a regular file; check the path, links, size, and contents',
-      1,
-    )
+        : error instanceof Json1Error
+          ? `the selected --input file is not FLOW JSON/1: ${error.message}`
+          : (error as NodeJS.ErrnoException).code === 'ENOENT'
+            ? 'the selected --input file does not exist'
+            : '--input file capture failed; check that it is a stable, singly linked regular file on a supported local filesystem'
+    throw new CliDiagnostic('JIG_RUN_INPUT_INVALID', message, 1)
   }
   let capture: ReturnType<typeof privateCaptureAttachments>
   try {

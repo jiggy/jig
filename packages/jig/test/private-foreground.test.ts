@@ -45,6 +45,7 @@ proofDescribe('private rootless project session', () => {
       await writeCapabilityFreeProject(root)
       const host = await openPrivateInstalledBunHost(installedBunLocation, {
         JIG_AGENT_CLIENT: 'codex',
+        CODEX_PATH: '/missing/codex',
       })
       expect(host.agentProvider).toBeUndefined()
       session = await openPrivateProjectSession({ directory: root, host })

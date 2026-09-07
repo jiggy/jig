@@ -200,6 +200,11 @@ model. Client, API, endpoint, model, executable path, and credentials are
 trusted host configuration, not FLOW or Binding inputs, and Jig exposes no
 provider registry.
 
+OpenRouter may use `OPENROUTER_API_KEY` and `OPENROUTER_MODEL` directly. Native
+Codex needs only `JIG_AGENT_CLIENT=codex` when installed in a fixed system
+location with existing subscription authentication; `CODEX_PATH` remains an
+optional absolute override.
+
 The complete runnable example and current specification map are in the
 [repository README](https://github.com/jiggy/jig#readme) and
 [`docs/jig/guide/index.md`](https://github.com/jiggy/jig/blob/main/docs/jig/guide/index.md).

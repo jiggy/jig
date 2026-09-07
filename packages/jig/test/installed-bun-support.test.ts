@@ -12,7 +12,7 @@ import { installedBunLocation } from './fixtures/installed-bun-location.js'
 
 describe('fixed installed Bun support', () => {
   test.each([
-    [{}, 'export OPENAI_API_KEY and OPENAI_MODEL'],
+    [{}, 'export OPENROUTER_API_KEY and OPENROUTER_MODEL, or OPENAI_API_KEY and OPENAI_MODEL'],
     [{ OPENAI_API_KEY: 'not-a-real-credential' }, 'export OPENAI_MODEL'],
     [
       {
@@ -38,6 +38,16 @@ describe('fixed installed Bun support', () => {
       { JIG_AGENT_CLIENT: 'invalid-private-value' },
       'JIG_AGENT_CLIENT must be codex, claude, or pi',
     ],
+    [{ OPENROUTER_API_KEY: 'not-a-real-credential' }, 'export OPENROUTER_MODEL'],
+    [
+      {
+        OPENROUTER_API_KEY: 'not-a-real-credential',
+        OPENROUTER_MODEL: 'provider/test-model',
+        OPENAI_API_KEY: 'other-private-credential',
+        OPENAI_MODEL: 'provider/other-model',
+      },
+      'choose either OPENROUTER_API_KEY and OPENROUTER_MODEL',
+    ],
   ] as const)(
     'keeps configuration failures target-scoped and safe to explain: %j',
     async (environment, hint) => {
@@ -49,6 +59,27 @@ describe('fixed installed Bun support', () => {
       expect(host.agentUnavailableHint).not.toContain('invalid-private-value')
     },
   )
+
+  test('accepts natural OpenRouter variables as one fixed compatible endpoint', async () => {
+    const host = await openPrivateInstalledBunHost(installedBunLocation, {
+      OPENROUTER_API_KEY: 'not-a-real-credential',
+      OPENROUTER_MODEL: 'provider/test-model',
+    })
+    const explicit = await openPrivateInstalledBunHost(installedBunLocation, {
+      OPENAI_API: 'chat-completions',
+      OPENAI_API_KEY: 'other-private-credential',
+      OPENAI_BASE_URL: 'https://openrouter.ai/api/v1',
+      OPENAI_MODEL: 'provider/test-model',
+    })
+    expect(host.agentProvider).toMatchObject({
+      kind: 'private-openai-agent-provider/1',
+      api: 'chat-completions',
+      baseURL: 'https://openrouter.ai/api/v1',
+      model: 'provider/test-model',
+    })
+    expect(host.agentProvider?.digest).toBe(explicit.agentProvider?.digest)
+    expect(JSON.stringify(host.agentProvider)).not.toContain('not-a-real-credential')
+  })
 
   test('workspace fixtures name the canonical installed runtime', async () => {
     expect(installedBunLocation.executablePath).toBe(
