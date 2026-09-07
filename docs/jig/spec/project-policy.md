@@ -120,13 +120,15 @@ FLOW Package/1 tree. Package paths and digests enter the project candidate.
 A Flow is a direct Run target only when it:
 
 - has one code entrypoint;
-- declares no capability use, or one slot using the exact Jig Agent Run
-  Capability Contract;
+- declares no capability use, or at most one slot each for the exact Jig
+  Agent Run and Project Command Capability Contracts;
 - declares at most eight attachments, at most one writable; and
 - accepts `{}` as settings.
 
 Direct eligibility is structural. Host execution support is planned
 separately, so an eligible target can still be unavailable on this host.
+Project Command requires a Binding's reviewed `commands`; its direct Flow
+target remains unavailable without that authority.
 
 The first alpha host has one exact recipe: `flow.ts` run by Bun inside the
 rootless execution envelope. A package with production dependencies supplies
@@ -242,7 +244,8 @@ per-invocation overrides into settings.
 normalizes to `{}`. A Flow selector must identify a direct Flow target, using
 empty settings. A Binding selector uses that Binding's own validated settings
 and must select a Binding with no child slots. Either target may use the exact
-Agent Run capability. Slots cannot select the parent's own package, directly
+Agent Run capability, and a configured Binding may also use
+[Project Command](project-command.md). Slots cannot select the parent's own package, directly
 or through a Binding; unknown targets, cycles, nonleaf Bindings,
 instruction-only packages, and packages requiring attachments reject the
 candidate. Plain package paths are not slot selectors. Linking captures each
@@ -432,6 +435,16 @@ occupies the child's operation. Child skills come only from the selected
 child's admitted package.
 Possibly dispatched Agent work is fenced and reported as uncertain rather
 than automatically replayed.
+
+A command-capable Binding may call the exact [Project Command](project-command.md)
+contract with a bounded text candidate and a reviewed command name. Jig uses
+the installed Bun runtime inside a separate keyless envelope and collects
+output and termination outside candidate execution. The root or child has
+only its own admitted command map. Command effects share the context's single
+active-operation limit and its containing deadlines. Independent assertions
+remain application policy; repository test logs cannot establish an
+independent verdict. Commands confer no shell, network, installation,
+credential, or writable host-repository authority.
 
 A Run is `pending` until it has one durable terminal:
 
@@ -653,3 +666,7 @@ The direct-alpha project implementation must prove at least:
     package-local skill subtrees, validates structured output, remains inside
     the parent deadline, and gives the Flow neither network nor its provider
     credential.
+17. Reviewed project commands execute immutable candidate bytes in separate
+    keyless envelopes, retain exact identities and bounded collected evidence,
+    reject authority outside the Binding, and close root and child ownership
+    on cancellation, deadline, and coordinator loss without replay.

@@ -87,7 +87,8 @@ used by this Binding's package as a Run/1 `flow/call` slot. Each value is an
 exact `flow:<project-relative-path>` or `binding:<LocalName>` selector, using
 the same target vocabulary as the CLI. A Flow selector requires a direct
 Flow target; a Binding selector uses that Binding's own validated settings.
-Either child may use the exact Agent Run capability. A selected Binding must
+Either child may use the exact Agent Run capability; a configured Binding may
+also use Project Command. A selected Binding must
 have no child slots. A Binding cannot select its own package, directly or
 through another Binding. Omitting `slots` normalizes to `{}`.
 The example's `critic` Binding selects a separate package such as
@@ -100,6 +101,13 @@ Slots belong only to the Binding declaration: running the package through its
 `flow:` identity has no slots, even when a Binding for that package does.
 Plain package paths are not slot selectors. A leading `./` after `flow:` is
 normalized away; the `binding:` suffix must be a LocalName.
+
+`commands` optionally names reviewed [Project Command](project-command.md)
+invocations, for example `commands: { tests: { test: ['test/project.test.ts'] } }`.
+Only packages declaring that exact capability may receive a nonempty map.
+Command configuration is independent of ordinary Flow settings and travels
+with the selected Binding, never by inheritance from its caller. Review and
+admission include the exact invocation policy.
 
 File paths are invocation inputs, not authoring declarations. Root Flows and
 Bindings can use declared attachments through the

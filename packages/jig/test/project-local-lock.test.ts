@@ -12,6 +12,10 @@ import {
   requirePrivateProjectLocalLock,
 } from '../src/internal/project-local-lock.js'
 import { defineJig } from '../src/project/author.js'
+import {
+  buildPrivateActivationRequests,
+  restorePrivateActivationRequest,
+} from '../src/project/package-resolution.js'
 import { captureFlowSource } from '../src/project/flow-source.js'
 import {
   linkPackageProject,
@@ -141,7 +145,65 @@ uses:
           (value) => {
             value.packages['flows/router'].uses.agent.version = '2.0.0'
           },
-          'must select the exact Agent Run contract',
+          'must select an exact supported contract',
+        )
+      },
+    )
+  })
+
+  test('retains reviewed command authority in lock and activation identity', async () => {
+    const commandContract = await readFile(
+      new URL('../../../docs/jig/spec/contracts/project-command.capability.json', import.meta.url),
+      'utf8',
+    )
+    await withFlows(
+      {
+        'flows/command': {
+          'FLOW.md': metadata(
+            'name: command\ndescription: Command.\nuses:\n  command:\n    contract: ./contracts/project-command.capability.json',
+          ),
+          'flow.ts': 'export {};\n',
+          'contracts/project-command.capability.json': commandContract,
+        },
+      },
+      async (flows) => {
+        const project = (run: string) =>
+          linkPackageProject({
+            flows,
+            bindings: [
+              binding('bindings/command.ts', {
+                package: 'flows/command',
+                commands: { cli: { run } },
+              }),
+            ],
+          })
+        const first = project('src/cli.ts'),
+          second = project('src/other.ts')
+        const lock = createPrivateProjectLocalLock(first)
+        expect(lock.bindings.command!.commands).toEqual({ cli: { run: 'src/cli.ts' } })
+        expect(decodePrivateProjectLocalLock(encodePrivateProjectLocalLock(lock))).toEqual(lock)
+        expect(privateProjectLocalLockDigest(createPrivateProjectLocalLock(second))).not.toBe(
+          privateProjectLocalLockDigest(lock),
+        )
+        const request = buildPrivateActivationRequests(first).find(
+          (r) => r.target.kind === 'binding',
+        )!
+        expect(restorePrivateActivationRequest(structuredClone(request))).toEqual(request)
+        expect(
+          buildPrivateActivationRequests(second).find((r) => r.target.kind === 'binding')!.digest,
+        ).not.toBe(request.digest)
+        expect(() =>
+          restorePrivateActivationRequest({
+            ...request,
+            commands: { cli: { run: 'src/other.ts' } },
+          }),
+        ).toThrow()
+        expectInvalid(
+          lock,
+          (value) => {
+            value.bindings.command.commands.cli = { shell: 'bun test' }
+          },
+          'run or test',
         )
       },
     )

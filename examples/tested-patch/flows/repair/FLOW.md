@@ -1,46 +1,37 @@
 ---
-name: tested-patch
-description: Repair one supplied TypeScript module and return a patch with independent acceptance-test evidence.
-attachments:
-  source: read
-  deliverables: read-write
+name: project-repair
+description: Propose a bounded multi-file repair and check the exact candidate through reviewed Bun commands.
 uses:
   agent:
     contract: ./contracts/agent-run.capability.json
+  command:
+    contract: ./contracts/project-command.capability.json
 outcomes:
-  blocked: The defect was not reproduced or no acceptable patch was produced.
-  limit: The Agent could not complete within its limit.
+  blocked: Independent cases did not reproduce the defect, or neither proposal passed.
+  limit: The Agent stopped at its limit.
 ---
 
-Supply an `issue` and one existing `editPath` as JSON, and bounded UTF-8 files
-in the read-only `source` attachment. The method identifies their exact text
-and writes its summary and proposals to `deliverables`. The checker and `checks.json`
-are package-owned acceptance policy; they are not editable input. The snapshot
-contains no dependencies requiring installation. This example supports a
-synchronous exported function with JSON arguments and JSON return values.
+This reusable leaf takes `issue`, a `files` map of paths to text, selected
+`editPaths`, and independently authored CLI `cases`. Each case supplies an
+`id`, `args`, `stdin`, expected `stdout`, `stderr`, and `exitCode`. It accepts
+16 files totaling 64 KiB, up to eight editable source paths, and eight cases.
+There are no attachments or child Flows.
 
-The method tests the original through its exact `candidate` child slot, asks
-its Agent for a replacement, and tests that replacement. A settled invalid
-candidate result or genuine assertion failure permits exactly one correction
-using the prior patch and observed failure: at most two Agent calls in total.
-Cancellation, uncertainty, deadlines, and infrastructure failures do not retry.
-Candidate source
-never executes in this package. A separate fixed checker consumes the child's
-observed values, records actual test-process termination and bounded logs, and
-decides acceptance. Only a reproduced defect followed by passing patched
-checks returns `done`. A failed patch remains in the output for inspection.
+The operator binds `tests` to reviewed Bun test paths and `cli` to the project
+entrypoint. The method first runs the original tests and CLI cases. A concrete
+acceptance mismatch allows an Agent proposal of replacement text, never shell
+commands. An invalid proposal or failed candidate earns one correction, for a
+maximum of two Agent calls. Every proposal remains relative to the original.
 
-The result identifies the original snapshot and records an ordered `attempts`
-array. Every valid proposal identifies its patched contents and contains a
-unified patch against the original plus a full replacement. Completed checks
-identify their program and case set. Checker exit
-codes are not candidate-process exit codes; child failures propagate as
-operation errors. No result claims correctness beyond the finite case set,
-and no original repository, acceptance file, or external system is changed.
-The recipient decides whether to apply, merge, or release the patch.
+Jig executes immutable candidate contents in a separate, credential-free
+scope and collects output and termination outside that scope. Ordinary tests
+are useful but candidate code can interfere with their runner. This method
+compares captured CLI behavior with its unchanged expected values without
+importing candidate code or reading a candidate-authored pass flag.
 
-`summary.txt` explains the outcome; `proposal-N.patch` files preserve validated
-attempts. `review.patch` is written only after the method verifies original,
-replacement, diff, checker and case identities and consistent passing evidence.
-Operational failure does not deliver partial files; any available terminal
-details remain the evidence of that unsuccessful Run.
+The result retains original and candidate identities, validated replacement
+text, command evidence, and independent acceptance decisions. `done` requires
+both reproduced failure and a passing candidate. Passing finite checks does
+not establish general correctness. Cancellation, deadlines, uncertainty, and
+unavailable support propagate without correction or replay; earlier evidence
+is retained in operation details when a terminal remains deliverable.

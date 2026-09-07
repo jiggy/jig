@@ -22,6 +22,10 @@ import {
 import { PRIVATE_MAX_ROOT_RUN_TIMEOUT_MS } from './root-run-timeout-policy.js'
 import { requirePrivateAgentProvider, type PrivateAgentProvider } from './agent-provider.js'
 import { AGENT_RUN_CONTRACT_DIGEST } from './private-agent-run.js'
+import {
+  PROJECT_COMMAND_CONTRACT_DIGEST,
+  PROJECT_COMMAND_LIMITS,
+} from './private-project-command.js'
 
 const ADAPTER_REVISION = 'private-bun-direct/1'
 const DEFAULT_SELECTOR = 'bun'
@@ -90,22 +94,36 @@ export async function planPrivateBunDirectRun(input: {
     }
   }
   const capabilityUses = Object.values(request.capabilities)
-  if (capabilityUses.length > 0 && input.agentProvider === undefined) {
+  const usesAgent = capabilityUses.some(({ digest }) => digest === AGENT_RUN_CONTRACT_DIGEST)
+  const usesCommand = capabilityUses.some(
+    ({ digest }) => digest === PROJECT_COMMAND_CONTRACT_DIGEST,
+  )
+  if (usesAgent && input.agentProvider === undefined) {
     unavailable(
       'PROJECT_AGENT_UNAVAILABLE',
       'the target requires a configured host Agent',
       `${request.packagePath}/FLOW.md`,
     )
   }
-  const agentProvider =
-    capabilityUses.length === 0 ? undefined : requirePrivateAgentProvider(input.agentProvider)
+  const agentProvider = !usesAgent ? undefined : requirePrivateAgentProvider(input.agentProvider)
   if (
-    capabilityUses.some(({ digest }) => digest !== AGENT_RUN_CONTRACT_DIGEST) ||
-    capabilityUses.length > 1 ||
+    capabilityUses.some(
+      ({ digest }) =>
+        ![AGENT_RUN_CONTRACT_DIGEST, PROJECT_COMMAND_CONTRACT_DIGEST].includes(digest),
+    ) ||
+    capabilityUses.length > 2 ||
     (agentProvider !== undefined && agentProvider.contractDigest !== AGENT_RUN_CONTRACT_DIGEST)
   ) {
-    throw new TypeError('private Bun recipe requires the exact supported Agent capability')
+    throw new TypeError('private Bun recipe requires exact supported capabilities')
   }
+  if (usesCommand && Object.keys(request.commands ?? {}).length === 0)
+    unavailable(
+      'PROJECT_COMMAND_UNCONFIGURED',
+      'configure commands in a Binding for this Project Command Flow',
+      `${request.packagePath}/FLOW.md`,
+    )
+  if (!usesCommand && request.commands !== undefined)
+    throw new TypeError('command policy requires the Project Command capability')
 
   const adapterDigest = privateDomainDigest('JIG-Private-Bun-Direct-Adapter/1', {
     revision: ADAPTER_REVISION,
@@ -127,6 +145,7 @@ export async function planPrivateBunDirectRun(input: {
   const authorityDigest = privateDomainDigest('JIG-Private-Bun-Authority/1', {
     attachments: request.attachments,
     capabilities: request.capabilities,
+    ...(request.commands === undefined ? {} : { commands: request.commands }),
   } as unknown as JsonValue)
   const launchEnvelopeDigest = logicalLaunchDigest(
     request,
@@ -221,6 +240,9 @@ function logicalLaunchDigest(
       rootOnly: true,
     },
     capabilities: request.capabilities,
+    ...(request.commands === undefined
+      ? {}
+      : { commands: request.commands, commandLimits: PROJECT_COMMAND_LIMITS }),
     ...(agentProvider === undefined ? {} : { agentProviderDigest: agentProvider.digest }),
   } as unknown as JsonValue)
 }

@@ -72,6 +72,7 @@ export default defineConfig({
               link: '/spec/project-policy',
             },
             { text: 'Agent Run capability', link: '/spec/agent-run' },
+            { text: 'Project Command capability', link: '/spec/project-command' },
           ],
         },
       ],

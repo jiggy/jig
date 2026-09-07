@@ -4,7 +4,7 @@
 
 Owns Jig's trusted private machinery for admission, retained artifacts,
 project and Run lifecycles, rootless Linux containment, dependency preparation,
-child calls, and Agent providers.
+child calls, project commands, and Agent providers.
 
 ## Ownership
 
@@ -17,6 +17,9 @@ child calls, and Agent providers.
   containment, supervision, and execution.
 - Agent clients and launchers, capability enforcement, credential isolation,
   structured results, and package-local skill projection.
+- Project commands use reviewed Binding policy, sealed candidate bytes,
+  installed Bun, and a collector outside candidate execution. Command owner
+  rows and independent supervision survive coordinator loss without replay.
 
 ## Local Contracts
 
@@ -51,9 +54,14 @@ child calls, and Agent providers.
   Cancellation and expiry escalate against the exact trusted child after a
   bounded grace period and reap it; independent cgroup fencing still owns payload cleanup.
 - Exact child slots may select a Flow or a leaf Binding with its own admitted
-  settings and Agent capability. An Agent operation belongs to that child
+  settings, Agent capability, and reviewed project commands. An effect belongs to that child
   context, not the root's operation namespace; fence and drain it before
   releasing the child owner. Children cannot acquire another child slot map.
+- A project command receives immutable text and runtime mounts only: no Flow
+  package, network, credential, or arbitrary executable. Host observations are
+  process evidence, not an independent test verdict. Candidate bytes are copied
+  from sealed descriptors into named files in a bounded private tmpfs, made
+  read-only before payload execution so Bun can resolve modules safely.
 - Fail closed on unsupported hosts, changed bytes, missing enforcement,
   malformed protocol, cleanup failure, or unverifiable provenance.
 - Resolve host tools from the fixed system locations, or Bubblewrap from the

@@ -164,6 +164,7 @@ test('hostile files remain separate ordered invocations', async () => {
     'JIG_LINUX_ROOTLESS_HOSTILE=1 bun test test/linux-rootless-run.test.ts --timeout 30000',
     'JIG_LINUX_ROOTLESS_HOSTILE=1 bun test test/bun-native-preparation.test.ts --timeout 120000',
     'JIG_LINUX_ROOTLESS_HOSTILE=1 bun test test/private-foreground.test.ts --timeout 30000',
+    'JIG_LINUX_ROOTLESS_HOSTILE=1 bun test test/project-command-lifecycle.test.ts --timeout 180000',
     'JIG_LINUX_ROOTLESS_HOSTILE=1 bun test test/root-agent-run-lifecycle.test.ts --timeout 180000',
   ])
 })

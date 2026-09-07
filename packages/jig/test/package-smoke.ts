@@ -15,6 +15,7 @@ const expectedInstalledFiles = [
   'dist/index.js',
   'dist/json.d.ts',
   'dist/project/author.d.ts',
+  'dist/project/commands.d.ts',
   'libexec/installed-cli.js',
   'libexec/agent/openai.LICENSE',
   'libexec/agent/openai-agent-worker.js',
@@ -194,9 +195,11 @@ const binding = defineBinding({
   package: "./flows/review",
   settings: { profile: "fast" },
   slots: { worker: "flow:./flows/worker" },
+  commands: { cli: { run: "src/cli.ts" } },
 });
 if (project.flows.roots[0] !== "flows" || binding.package !== "flows/review" ||
-    binding.settings.profile !== "fast" || binding.slots.worker !== "flow:flows/worker") {
+    binding.settings.profile !== "fast" || binding.slots.worker !== "flow:flows/worker" ||
+    binding.commands.cli.run !== "src/cli.ts") {
   throw new Error("bad package exports");
 }
 `,
@@ -213,6 +216,7 @@ const bindingInput: PackageBindingInput = {
   package: "./flows/router",
   settings: { profile: "fast" },
   slots: { worker: "flow:./flows/worker" },
+  commands: { tests: { test: ["test/project.test.ts"] } },
 };
 const binding = defineBinding(bindingInput);
 void project;

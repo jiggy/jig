@@ -1,36 +1,43 @@
-# Get a patch you can inspect
+# Get a project patch you can inspect
 
-Give this application a small TypeScript bug and the files it needs. It asks
-your configured Agent for a repair, runs independent acceptance checks, and
-saves a patch with evidence. Your original files remain unchanged.
+Give this application a small Bun project and a bug. Its repair specialist
+proposes changes across selected source files; Jig runs reviewed commands in
+separate containment. Independent assertions check captured behavior.
+You receive a patch and evidence, while the originals remain unchanged.
 
 ## Try it
 
-Follow the [Jig installation instructions](https://jig.md/guide/).
-Copy this directory, configure
-your [Agent](https://jig.md/spec/agent-run#alpha-host-implementations), and inspect
-the issue in `issue.json` and acceptance cases in `flows/repair/checks.json`.
-Then run from your copy:
+Use a Jig artifact containing the Project Command capability (currently a
+source candidate), on a [supported host](https://jig.md/guide/).
+Copy this directory, configure your
+[Agent](https://jig.md/spec/agent-run#alpha-host-implementations), and inspect
+`issue.json`, `bindings/specialist.ts`, and `flows/project/cases.json`.
 
 ```sh
 jig review
-jig run binding:repair --input @issue.json --attach source=fixtures/utf8 --out ../utf8-repair --timeout 5m
+jig run binding:repair --input @issue.json --attach source=fixtures/log-report --out ../repair-result --timeout 5m
 ```
 
-Open `../utf8-repair/files/summary.txt`. A `review.patch` appears beside it
-only after the proposed replacement passed the unchanged checks. Failed
-proposals are named `proposal-N.patch`; `../utf8-repair/result.json` contains
-the execution record and file identities. Review the patch before applying it.
+Open `../repair-result/files/summary.txt`. A successful repair produces
+`review.patch`; unsuccessful proposals remain `proposal-N.patch`.
+`result.json` records candidate identities, actual command output and
+termination, and independent acceptance results. Review before applying.
 
-The destination must be new. Ctrl-C requests cancellation; operational failures
-export no partial Flow files. Provider charges may apply even to unsuccessful
-or interrupted calls. Jig prepares the locked SDK during review, so running
-this example needs no separate Bun launcher or local dependency installation.
+The fixture is an HTTP log-report CLI with defects in parsing and aggregation.
+The root Flow captures files and delivers patches. A JSON-input leaf uses
+Agent and Project Command effects; it has no attachments or child Flows.
+The two Bindings configure that exact relationship and approved Bun commands.
 
-This is a deliberately narrow example: one synchronous TypeScript function,
-JSON arguments/results, one editable file, and at most two Agent calls. Its
-two Flows separate candidate execution from acceptance policy. It is not a
-general coding terminal or a promoted Starter.
+This deliberately narrow application allows 16 UTF-8 files, 64 KiB of text,
+eight editable source paths, and two Agent proposals. It provides no network,
+installation, shell service, writable host repository, or automatic merge.
+Repository tests can be interfered with by candidate code; independent cases
+compare captured CLI behavior outside its execution scope.
 
-The [public guide](https://jig.md/guide/tested-patch) explains the evidence,
-failure outcomes, and adaptation to another utility.
+The output destination must be new. Ctrl-C requests cancellation; operational
+failure exports no partial Flow files. Selected source reaches your configured
+provider, and even unsuccessful calls may incur charges.
+
+The [public guide](https://jig.md/guide/tested-patch) covers evidence, failures,
+and adaptation. This is an authored example, not a promoted Starter or a
+claim of general coding reliability.

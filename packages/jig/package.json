@@ -42,6 +42,7 @@
     "dist/index.js",
     "dist/index.d.ts",
     "dist/project/author.d.ts",
+    "dist/project/commands.d.ts",
     "dist/json.d.ts",
     "libexec/installed-cli.js",
     "libexec/linux-rootless-supervisor.js",

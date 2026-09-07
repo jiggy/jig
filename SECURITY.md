@@ -42,6 +42,14 @@ no public provider SPI or registry.
 Authored package code and lifecycle scripts never execute during preparation,
 and every Flow Run remains offline.
 
+Project Command effects execute supplied immutable text using installed Bun
+and reviewed Binding invocations in their own keyless, offline scopes. Their
+collector stays outside candidate execution. Candidates see no Flow package,
+host repository, credentials, or writable input controls. Collected output
+and termination do not prove that repository tests ran honestly: candidate
+code can interfere with their runner. Independent application assertions
+must inspect captured behavior without importing candidate code.
+
 ## Supported trust boundary
 
 The alpha does not defend against:
@@ -65,6 +73,7 @@ same descendant and cleanup boundary.
 | --- | ---: | ---: | ---: | ---: |
 | Each Flow execution scope | root deadline, at most 24 hours | 256 MiB | 64 | 50% of one CPU |
 | Each Agent provider scope | parent's remaining root deadline | 256 MiB | 128 | 50% of one CPU |
+| Each project-command scope | 10 seconds, within its parent deadline | 256 MiB | 64 | 50% of one CPU |
 | Project evaluation | 3 seconds | 256 MiB | 64 | 50% of one CPU |
 | One locked dependency preparation | 60 seconds | 512 MiB | 64 | one CPU |
 
@@ -75,12 +84,12 @@ Flow-controlled authority. The deadline starts when the root Run is accepted;
 project acquisition happens before it, and mandatory fencing and cleanup may
 finish afterward. The memory, PID, and CPU ceilings in the table are fixed.
 
-A Binding child Flow or Agent provider runs in a second execution scope while
-its parent remains live. Jig admits at most one active child operation per
-parent, so this alpha can have at most the parent and one child scope active
-for one root Run. The table's CPU, memory, and PID ceilings apply to each
-scope, not to their combined total. Every child operation's wall deadline is
-capped by the parent's remaining deadline.
+A Binding child Flow or effect runs in a separate scope while its parent
+remains live. Each context permits one active operation; a leaf can await
+an Agent or command while its root awaits that leaf. There are at most three
+execution scopes per root: root, leaf, and one effect. The table's CPU, memory,
+and PID ceilings apply to each scope, not their combined total. Every child
+operation's wall deadline is capped by its parent's remaining deadline.
 
 After bounded project capture, one `jig review` dependency-planning phase uses
 one 180-second cancellation deadline, performs at most 16 distinct dependency
@@ -123,12 +132,20 @@ them requires reviewing the complete retained-storage budget and runtime
 policy together; removing them is not a usability fallback.
 
 Temporary content may coexist: 8 MiB of sealed input and a bounded capture
-buffer; the retained output mount and up to 16 MiB of copied file buffers;
+buffer; the read-only named input tree in a 16 MiB private tmpfs; the retained
+output mount and up to 16 MiB of copied file buffers;
 and up to 16 MiB of destination file staging plus a bounded JSON/1 host record.
 The Run memory ceiling includes runtime and tmpfs metadata, not all trusted
 coordinator or delivery-process memory. No per-invocation source tree is added
 to the retained Package/1 store. Only bounded request and terminal evidence
 survives command cleanup; the requested final packet is intentionally retained.
+
+A project command accepts at most 256 KiB of text across 64 files, 16 KiB of
+stdin, and 32 arguments. Its collector retains the first 64 KiB of each pipe
+and drains the remainder; decoded invalid UTF-8 can use more bytes than the
+retained raw prefix. The command's named input tree uses the same bounded,
+read-only projection. These invocation bytes do not become installed code
+or retained package artifacts.
 
 The independent outer command owns output staging and removes it if its
 execution coordinator dies during copying. Flow code sees neither the host

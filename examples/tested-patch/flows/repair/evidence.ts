@@ -1,118 +1,85 @@
 import { isDeepStrictEqual } from 'node:util'
-import {
-  parseInput,
-  parseReplacement,
-  type RepairInput,
-  sha256,
-  snapshotDigest,
-  unifiedPatch,
-} from './policy.ts'
+import { digest, sha256, object, type RepairInput } from './policy.ts'
 
-export interface Acceptance {
-  checkerSha256: string
-  casesSha256: string
-  cases: { id: string; expected: unknown }[]
+export interface CommandEvidence {
+  candidateDigest: string
+  command: string
+  invocation: string[]
+  stdinDigest: string
+  stdout: { text: string; truncated: boolean }
+  stderr: { text: string; truncated: boolean }
+  exitCode: number | null
+  signal: string | null
+  stopReason: string
+  cleanup: string
+}
+export interface Evaluation {
+  candidateDigest: string
+  commands: CommandEvidence[]
+  acceptance: { id: string; passed: boolean }[]
+  repositoryTestsPassed: boolean
+  accepted: boolean
 }
 
-function record(value: any) {
-  if (!value || typeof value !== 'object' || Array.isArray(value))
-    throw new Error('Missing evidence record.')
-  return value
-}
-
-function check(value: any, acceptance: Acceptance) {
-  const item = record(value)
-  if (
-    item.checkerSha256 !== acceptance.checkerSha256 ||
-    item.casesSha256 !== acceptance.casesSha256
-  )
-    throw new Error(
-      'Check identities differ from this application. Review its current checks before running.',
-    )
-  if (item.signal !== null || (item.exitCode !== 0 && item.exitCode !== 1))
-    throw new Error('Checker did not finish an acceptance verdict.')
-  for (const log of [item.stdout, item.stderr]) {
+/** Evaluate observations in this admitted method, never in the candidate process. */
+export function evaluate(
+  input: RepairInput,
+  files: Record<string, string>,
+  values: unknown[],
+): Evaluation {
+  if (values.length !== 1 + input.cases.length) throw new TypeError('Missing command observations.')
+  const candidateDigest = digest(files)
+  const commands = values.map((value, index) => {
+    const c = object(value) as CommandEvidence
     if (
-      typeof log?.text !== 'string' ||
-      log.truncated !== false ||
-      log.bytes !== Buffer.byteLength(log.text) ||
-      log.bytes > 16384
+      c.candidateDigest !== candidateDigest ||
+      c.cleanup !== 'complete' ||
+      c.stopReason !== 'exited' ||
+      c.command !== (index === 0 ? 'tests' : 'cli') ||
+      c.stdinDigest !== sha256(index === 0 ? '' : input.cases[index - 1]!.stdin)
     )
-      throw new Error('Checker logs are missing, incomplete, or oversized.')
-  }
-  const results = JSON.parse(item.stdout.text).results
-  if (!Array.isArray(results) || results.length !== acceptance.cases.length)
-    throw new Error('Incomplete case results.')
-  results.forEach((result, index) => {
-    const expected = acceptance.cases[index]
+      throw new TypeError('Command identity or termination does not match this evaluation.')
     if (
-      result.id !== expected.id ||
-      !isDeepStrictEqual(result.expected, expected.expected) ||
-      !Object.hasOwn(result, 'actual') ||
-      result.passed !== isDeepStrictEqual(result.actual, expected.expected)
+      !Array.isArray(c.invocation) ||
+      c.invocation[0] !== 'bun' ||
+      (index === 0
+        ? c.invocation[1] !== 'test'
+        : !isDeepStrictEqual(c.invocation.slice(2), input.cases[index - 1]!.args))
     )
-      throw new Error('Case results do not match the fixed acceptance policy.')
+      throw new TypeError('Command invocation does not match the reviewed method.')
+    for (const stream of [c.stdout, c.stderr])
+      if (typeof stream?.text !== 'string' || typeof stream.truncated !== 'boolean')
+        throw new TypeError('Missing collected command output.')
+    if (
+      (c.exitCode !== null && (!Number.isInteger(c.exitCode) || c.exitCode < 0)) ||
+      (c.signal !== null && typeof c.signal !== 'string')
+    )
+      throw new TypeError('Missing collected termination.')
+    return c
   })
-  const passed = results.filter((result) => result.passed).length
-  if (item.exitCode !== (passed === results.length ? 0 : 1))
-    throw new Error('Checker exit contradicts its results.')
-  return { passed, total: results.length, exitCode: item.exitCode as number }
-}
-
-// Method-owned evidence checks run before returning a result or writing a reviewable patch.
-export function inspect(methodResult: unknown, input: RepairInput, acceptance: Acceptance) {
-  const result = record(methodResult)
-  const evidence = result.output
-  const summary = {
-    status: 'unsuccessful' as 'review-ready' | 'unsuccessful' | 'invalid-evidence',
-    reason:
-      typeof evidence?.reason === 'string' ? evidence.reason : 'No passing patch was returned.',
-    baseline: undefined as ReturnType<typeof check> | undefined,
-    attempts: [] as { number: number; checks?: ReturnType<typeof check>; failure?: string }[],
-    proposals: [] as string[],
-  }
-  if (evidence === undefined) return summary
-  try {
-    if (record(evidence).baseSha256 !== input.snapshot.sha256)
-      throw new Error('Original snapshot identity does not match.')
-    summary.baseline = check(evidence.baseline, acceptance)
-    if (!Array.isArray(evidence.attempts) || evidence.attempts.length > 2)
-      throw new Error('Invalid attempt history.')
-    const before = input.snapshot.files.find((file) => file.path === input.editPath)!.content
-    for (const [index, attempt] of evidence.attempts.entries()) {
-      const patch = record(record(attempt).patch)
-      parseReplacement({ replacement: patch.replacement, summary: patch.summary })
-      const files = input.snapshot.files.map((file) =>
-        file.path === input.editPath ? { ...file, content: patch.replacement } : file,
-      )
-      parseInput({ ...input, snapshot: { files, sha256: attempt.patchedSha256 } })
-      if (
-        patch.path !== input.editPath ||
-        patch.beforeSha256 !== sha256(before) ||
-        attempt.patchedSha256 !== snapshotDigest(files) ||
-        patch.unified !== unifiedPatch(input.editPath, before, patch.replacement)
-      )
-        throw new Error('Patch bytes or identities do not match the captured original.')
-      summary.proposals.push(patch.unified)
-      summary.attempts.push({
-        number: index + 1,
-        ...(attempt.tested === undefined ? {} : { checks: check(attempt.tested, acceptance) }),
-        ...(attempt.failure === undefined ? {} : { failure: String(attempt.failure.code) }),
-      })
+  const acceptance = input.cases.map((c, i) => {
+    const observed = commands[i + 1]!
+    return {
+      id: c.id,
+      passed:
+        observed.signal === null &&
+        observed.exitCode === c.exitCode &&
+        !observed.stdout.truncated &&
+        !observed.stderr.truncated &&
+        observed.stdout.text === c.stdout &&
+        observed.stderr.text === c.stderr,
     }
-    const last = summary.attempts.at(-1)
-    if (result.outcome === 'done') {
-      if (
-        summary.baseline.exitCode !== 1 ||
-        last?.checks?.exitCode !== 0 ||
-        last.failure !== undefined
-      )
-        throw new Error('Completion is not backed by a reproduced defect and passing patch checks.')
-      summary.status = 'review-ready'
-    }
-  } catch (error) {
-    summary.status = 'invalid-evidence'
-    summary.reason = error instanceof Error ? error.message : 'Invalid repair evidence.'
+  })
+  const repositoryTestsPassed =
+    commands[0]!.exitCode === 0 &&
+    commands[0]!.signal === null &&
+    !commands[0]!.stdout.truncated &&
+    !commands[0]!.stderr.truncated
+  return {
+    candidateDigest,
+    commands,
+    acceptance,
+    repositoryTestsPassed,
+    accepted: repositoryTestsPassed && acceptance.every((c) => c.passed),
   }
-  return summary
 }

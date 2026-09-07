@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "tested-patch-evaluate-flow",
+      "name": "tested-patch-project-flow",
       "dependencies": {
         "@jigging/flow": "0.1.0-alpha.3",
       },

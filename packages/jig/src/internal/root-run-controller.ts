@@ -65,6 +65,11 @@ import {
   recoverPrivateRootAgentRunOwners,
 } from './root-agent-run-controller.js'
 import type { PrivateAgentProvider } from './agent-provider.js'
+import {
+  executePrivateProjectCommand,
+  recoverPrivateProjectCommandOwners,
+} from './root-project-command-controller.js'
+import { PROJECT_COMMAND_CONTRACT_DIGEST } from './private-project-command.js'
 import type { PrivateRootRunFiles } from './root-run-files.js'
 
 const PLAN_KIND = 'private-direct-root-plan/1'
@@ -1020,6 +1025,7 @@ async function recoverPrivateRootOperationOwners(
 ): Promise<void> {
   await recoverPrivateRootFlowCallOwners(input)
   await recoverPrivateRootAgentRunOwners(input)
+  await recoverPrivateProjectCommandOwners(input)
 }
 
 function operationDispatcher(
@@ -1030,8 +1036,8 @@ function operationDispatcher(
   const target = findPrivateActivationCandidateTargetV5(parent.candidate, parent.run.target)
   if (target === undefined) return undefined
   const hasFlows = Object.keys(target.request.flowSlots).length !== 0
-  const hasAgent = Object.keys(target.request.capabilities).length !== 0
-  if (!hasFlows && !hasAgent) return undefined
+  const hasEffects = Object.keys(target.request.capabilities).length !== 0
+  if (!hasFlows && !hasEffects) return undefined
   let active = false
   const enter = async <T>(run: () => Promise<T>, unavailable: T): Promise<T> => {
     if (active) return unavailable
@@ -1058,9 +1064,20 @@ function operationDispatcher(
             ),
         }
       : {}),
-    ...(hasAgent
+    ...(hasEffects
       ? {
           callEffect: async (call, signal): Promise<RunHostEffectOperationTerminal> => {
+            if (target.request.capabilities[call.slot]?.digest === PROJECT_COMMAND_CONTRACT_DIGEST)
+              return enter(
+                () =>
+                  executePrivateProjectCommand({
+                    ...operationInput(input, parent),
+                    call,
+                    parentDeadlineUnixMs,
+                    signal,
+                  }),
+                operationBusy(),
+              )
             if (input.agentProvider === undefined) {
               return Object.freeze({
                 status: 'failed' as const,

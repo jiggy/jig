@@ -1,72 +1,67 @@
-# Tested patch
+# Tested project patch
 
 ## Purpose
 
-Turn one supplied defect into a bounded source replacement with independently
-executed acceptance evidence. This is an authored, narrow application, not a
-general repository worker or independent consumer proof.
+Turn a small Bun project and a supplied defect into a bounded multi-file patch
+with collected command evidence and independent acceptance. This authored
+application is not an unrestricted repository worker or independent probe.
 
 ## Ownership
 
-- `README.md` introduces the copyable application and points to its public guide.
-- Root `package.json` and `bun.lock` own development-only test dependencies.
-  Install them here so generated `node_modules` stays outside Flow packages.
-- The two Flow-local `bun.lock` files are generated, tracked application inputs;
-  they make a copied example reviewable without reconstructing dependency locks.
-  The ignored repository workspace lock remains unrelated.
-- `flows/repair/` owns patch policy, at most two Agent calls, immutable acceptance checks,
-  the checker process, UTF-8 attachment validation, and evidence-checked file
-  deliverables. It handles candidate source only as data.
-- `issue.json` supplies the ordinary issue/edit-path input. Jig's public file
-  interface owns capture, containment and packet delivery; there is no outer adapter.
-- `flows/evaluate/` evaluates the disposable candidate through one exact child
-  slot, without Agent or other capability authority.
-- `fixtures/` owns the synthetic UTF-8 utility repository and defect.
-- `test/` owns deterministic application checks; host evidence is separate.
+- `README.md` introduces the application; its public guide owns user instructions.
+- Root `package.json` and generated tracked `bun.lock` own development tests.
+  Flow-local manifests and generated locks own each package's pinned SDK.
+- `flows/project/` owns root file capture, fixed CLI cases, evidence checks,
+  applicable patch construction, and deliverables.
+- `flows/repair/` owns the reusable JSON-input leaf, proposal validation,
+  at most two Agent calls, command effects, and acceptance of observations.
+- `bindings/` owns the exact root-to-leaf slot and reviewed Bun commands.
+- `fixtures/log-report/` owns the intentionally defective CLI and repository
+  tests; never run untrusted variants outside completed containment.
+- `test/` owns deterministic application checks. Host evidence belongs to Jig.
 
 ## Local Contracts
 
-- The repair root declares `source: read` and `deliverables: read-write`.
-  Input contains only `issue` and `editPath`; accept at most 16 regular UTF-8
-  source files totaling 64 KiB. Never execute source in the parent Flow.
-- Write `summary.txt` and validated `proposal-N.patch` files for valid method
-  outcomes. Write `review.patch` only after matching original, replacement,
-  diff, checker, case-set, and passing-verdict evidence. No automatic application.
-- Operational failures propagate; Jig suppresses partial Flow files on failure.
-  Missing terminals remain missing evidence, not assertions about dispatch.
-- Only the named existing source file may change; the original is input data,
-  never a writable host repository. No merge, push, installation, or deployment.
-- Candidate code executes only in the separate child Flow. The acceptance
-  checker consumes bounded JSON observations, never source or commands.
-- Checker exit codes and logs are observed process evidence. Child operation
-  errors are not candidate OS exit records. Neither model prose nor a
-  candidate-supplied pass flag is acceptance evidence.
-- Use the same admitted checks for original and patch. Require an observed
-  baseline mismatch before requesting a patch. Exactly one correction may
-  follow a settled invalid candidate result or genuine assertion mismatch;
-  feed the prior proposal and observed failure without changing the checks.
-- A passed finite check set establishes only tested behavior. Do not claim
-  purity, arbitrary repository support, or universal correctness.
-- Cancellation, uncertain dispatch, deadlines, unavailable support, and other
-  operational failures propagate without correction or replay.
-- Retain every validated proposal against the original snapshot in `attempts`.
-  Failed patched child calls retain the bounded proposals and baseline
-  in existing operation-error details when terminal delivery remains possible.
+- The root alone receives `source: read` and `deliverables: read-write`.
+  Accept 16 regular Unicode text files totaling 64 KiB and at most eight
+  selected existing TypeScript/JavaScript paths below `src/`.
+- The leaf accepts JSON `issue`, `files`, `editPaths`, and `cases`.
+  It has Agent and Project Command capability uses, no attachments or slots.
+- The operator names `tests` and `cli` commands in the specialist Binding.
+  Jig supplies installed Bun and keyless containment; source is immutable.
+- Host output and termination establish process evidence. Repository tests
+  can be interfered with by candidate code. Independent assertions compare
+  collected CLI behavior without importing source or accepting a pass flag.
+- Reproduce an independent baseline mismatch before an Agent call. Use the
+  same unchanged cases for every candidate. One invalid proposal or failed
+  evaluation permits one correction, with every proposal against the original.
+- Cancellation, deadline, uncertainty, unavailable support, and cleanup failure
+  propagate without correction or replay. Available operation details retain
+  prior evidence; missing terminal evidence must not be invented.
+- Root evidence checks validate captured/candidate identities and acceptance.
+  Construct complete-file patches from validated replacements, not model diff
+  text. Write `review.patch` only for a verified passing result; preserve valid
+  failed proposals and invalid-proposal reasons. No automatic application.
+- Operational failures export no partial Flow files. A passed finite case set
+  establishes tested behavior only, not correctness or marketing superiority.
 
 ## Work Guidance
 
-- Keep provider choices with the operator and application policy in these
-  packages. Do not add a workspace capability or host API for this example.
+- Keep project-specific acceptance and patch policy here, not in Jig.
+- Provider choices and credentials remain operator authority. Reuse the
+  documented effects; no sibling source imports or outer command helper.
 
 ## Verification
 
-- At this application root, run `bun install --ignore-scripts --frozen-lockfile`,
-  then `bun test test` checks deterministic application policy. From the
-  repository root, the test path is `examples/tested-patch/test`.
-- File tests cover bounded text input and contradictory evidence refusing
-  review-ready deliverables. Host capture/publication tests remain owned by Jig.
-- Contained execution and real-Agent outcomes require separately retained
-  admitted Jig Runs, including unsuccessful attempts and cleanup evidence.
+- Install development dependencies at this root with
+  `bun install --ignore-scripts --frozen-lockfile`, then run `bun test test`.
+  From the repository root use `bun test examples/tested-patch/test`.
+- Deterministic checks cover bounds, multi-file proposals, honest failures,
+  immutable expectations, evidence contradictions, and output collisions.
+- The provisioned Jig host tests run actual candidate tests and CLI commands
+  through admitted root and leaf Flows. Recorded Agent responses prove the
+  execution path, not live model quality. Real Agent outcomes need a bounded
+  authorized budget and separately retained evidence.
 
 ## Child DOX Index
 

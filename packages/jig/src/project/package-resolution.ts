@@ -32,6 +32,8 @@ import {
   type PrivateRetainedPackageProject,
 } from './retained-project.js'
 import { normalizeProjectPath } from './paths.js'
+import { normalizeProjectCommands, type ProjectCommands } from './commands.js'
+import { isProjectCommandContract } from '../internal/private-project-command.js'
 
 const DIGEST = /^sha256:[0-9a-f]{64}$/
 const authenticRetainedObservations = new WeakSet<object>()
@@ -49,6 +51,7 @@ export interface PrivateActivationRequest {
   readonly capabilities: Readonly<Record<string, LinkedCapabilityUse>>
   readonly flowSlots: Readonly<Record<string, RunTargetIdentity>>
   readonly attachments: Readonly<Record<string, 'read' | 'read-write'>>
+  readonly commands?: ProjectCommands
 }
 
 export type PrivateResolutionUnavailableCode = PrivateActivationUnavailableCode
@@ -127,6 +130,7 @@ export function buildPrivateActivationRequests(
         settings: binding.settings,
         capabilities: flow.uses,
         flowSlots: binding.slots,
+        ...(binding.commands === undefined ? {} : { commands: binding.commands }),
         attachments: normalizeRequestAttachments(flow.metadata.attachments ?? {}),
       }),
     )
@@ -168,6 +172,9 @@ export function restorePrivateActivationRequest(value: unknown): PrivateActivati
       'capabilities',
       'flowSlots',
       'attachments',
+      ...(value !== null && typeof value === 'object' && Object.hasOwn(value, 'commands')
+        ? ['commands']
+        : []),
     ],
     'activation request',
   )
@@ -235,6 +242,13 @@ export function restorePrivateActivationRequest(value: unknown): PrivateActivati
     capabilities: normalizeRequestCapabilities(root.capabilities),
     flowSlots: normalizeRequestFlowSlots(root.flowSlots),
     attachments: normalizeRequestAttachments(root.attachments),
+    ...(root.commands === undefined
+      ? {}
+      : {
+          commands: normalizeProjectCommands(
+            snapshotJsonObject(root.commands, 'activation commands'),
+          ),
+        }),
   })
   if (root.digest !== request.digest) {
     throw new TypeError('activation request digest does not match its canonical content')
@@ -341,6 +355,7 @@ function createRequest(
     capabilities: input.capabilities,
     flowSlots: input.flowSlots,
     attachments: input.attachments,
+    ...(input.commands === undefined ? {} : { commands: input.commands }),
   })
   const request = Object.freeze({
     ...valueWithoutDigest,
@@ -382,6 +397,7 @@ function semanticProject(project: PackageProjectValue): JsonValue {
       packagePath: binding.packagePath,
       settings: binding.settings,
       slots: binding.slots,
+      ...(binding.commands === undefined ? {} : { commands: binding.commands }),
     })),
   } as unknown as JsonValue
 }
@@ -489,8 +505,8 @@ function normalizeRequestAttachments(value: unknown): PrivateActivationRequest['
 
 function normalizeRequestCapabilities(value: unknown): PrivateActivationRequest['capabilities'] {
   const input = snapshotJsonObject(value, 'activation capability uses')
-  if (Object.keys(input).length > 1) {
-    throw new TypeError('activation capability uses exceed 1 entry')
+  if (Object.keys(input).length > 2) {
+    throw new TypeError('activation capability uses exceed 2 entries')
   }
   const output: Record<string, LinkedCapabilityUse> = Object.create(null) as Record<
     string,
@@ -504,20 +520,25 @@ function normalizeRequestCapabilities(value: unknown): PrivateActivationRequest[
       `activation capability slot ${name}`,
     )
     if (
-      item.id !== AGENT_RUN_CONTRACT_ID ||
-      item.version !== AGENT_RUN_CONTRACT_VERSION ||
-      item.digest !== AGENT_RUN_CONTRACT_DIGEST
+      !isProjectCommandContract(item as { id: unknown; version: unknown; digest: unknown }) &&
+      (item.id !== AGENT_RUN_CONTRACT_ID ||
+        item.version !== AGENT_RUN_CONTRACT_VERSION ||
+        item.digest !== AGENT_RUN_CONTRACT_DIGEST)
     ) {
       throw new TypeError(
-        `activation capability slot ${name} must select the exact Agent Run contract`,
+        `activation capability slot ${name} must select an exact supported contract`,
       )
     }
     output[name] = Object.freeze({
-      id: AGENT_RUN_CONTRACT_ID,
-      version: AGENT_RUN_CONTRACT_VERSION,
-      digest: AGENT_RUN_CONTRACT_DIGEST,
+      id: item.id as string,
+      version: item.version as string,
+      digest: item.digest as string,
     })
   }
+  if (
+    new Set(Object.values(output).map(({ digest }) => digest)).size !== Object.keys(output).length
+  )
+    throw new TypeError('activation capability contracts must be distinct')
   return Object.freeze(output)
 }
 

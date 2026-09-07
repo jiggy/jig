@@ -1,4 +1,4 @@
 {
-  "issue": "Fix UTF-8 byte truncation without splitting a code point. Preserve invalid-budget rejection.",
-  "editPath": "src/truncate-utf8.ts"
+  "issue": "Fix HTTP log parsing and reporting: reject fractional or out-of-range status codes (valid integers are 100 through 599), and count only 500–599 as server errors. Preserve the CLI format and empty-input behavior.",
+  "editPaths": ["src/parse.ts", "src/report.ts"]
 }

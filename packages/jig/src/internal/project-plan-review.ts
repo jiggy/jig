@@ -63,6 +63,7 @@ function projectCandidate(
     packagePath: request.packagePath,
     entrypoint: request.entrypoint,
     settings: request.settings,
+    ...(request.commands === undefined ? {} : { commands: request.commands }),
     attachments: request.attachments,
     ...(Object.keys(request.attachments).length === 0
       ? {}

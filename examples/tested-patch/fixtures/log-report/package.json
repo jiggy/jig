@@ -1,0 +1,5 @@
+{
+  "name": "http-log-report",
+  "private": true,
+  "type": "module"
+}

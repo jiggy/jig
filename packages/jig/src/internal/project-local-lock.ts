@@ -18,6 +18,8 @@ import {
 } from '../project/paths.js'
 import { PRIVATE_ACTIVATION_TARGET_LIMIT } from './activation-planning.js'
 import { privateDomainDigest } from './identity.js'
+import { normalizeProjectCommands, type ProjectCommands } from '../project/commands.js'
+import { isProjectCommandContract } from './private-project-command.js'
 import {
   AGENT_RUN_CONTRACT_DIGEST,
   AGENT_RUN_CONTRACT_ID,
@@ -38,6 +40,7 @@ export interface PrivateLockBinding {
   readonly packagePath: string
   readonly settings: JsonObject
   readonly slots: Readonly<Record<string, RunTargetIdentity>>
+  readonly commands?: ProjectCommands
 }
 
 export interface PrivateProjectLocalLock {
@@ -70,6 +73,7 @@ export function createPrivateProjectLocalLock(
       packagePath: binding.packagePath,
       settings: binding.settings,
       slots: binding.slots,
+      ...(binding.commands === undefined ? {} : { commands: binding.commands }),
     })
   }
   const lock = normalizeLock({ packages, bindings })
@@ -146,7 +150,7 @@ function normalizeUses(
 ): Readonly<Record<string, LinkedCapabilityUse>> {
   const input = object(value, `${label} uses`)
   const names = Object.keys(input)
-  if (names.length > 1) throw new TypeError(`${label} uses exceed 1 entry`)
+  if (names.length > 2) throw new TypeError(`${label} uses exceed 2 entries`)
   const output: Record<string, LinkedCapabilityUse> = Object.create(null) as Record<
     string,
     LinkedCapabilityUse
@@ -159,20 +163,23 @@ function normalizeUses(
       `${label} capability slot ${name}`,
     )
     if (
-      item.id !== AGENT_RUN_CONTRACT_ID ||
-      item.version !== AGENT_RUN_CONTRACT_VERSION ||
-      item.digest !== AGENT_RUN_CONTRACT_DIGEST
+      !isProjectCommandContract(item as { id: unknown; version: unknown; digest: unknown }) &&
+      (item.id !== AGENT_RUN_CONTRACT_ID ||
+        item.version !== AGENT_RUN_CONTRACT_VERSION ||
+        item.digest !== AGENT_RUN_CONTRACT_DIGEST)
     ) {
       throw new TypeError(
-        `${label} capability slot ${name} must select the exact Agent Run contract`,
+        `${label} capability slot ${name} must select an exact supported contract`,
       )
     }
     output[name] = Object.freeze({
-      id: AGENT_RUN_CONTRACT_ID,
-      version: AGENT_RUN_CONTRACT_VERSION,
-      digest: AGENT_RUN_CONTRACT_DIGEST,
+      id: item.id as string,
+      version: item.version as string,
+      digest: item.digest as string,
     })
   }
+  if (new Set(Object.values(output).map(({ digest }) => digest)).size !== names.length)
+    throw new TypeError('lock capability contracts must be distinct')
   return Object.freeze(output)
 }
 
@@ -184,13 +191,23 @@ function normalizeBindings(value: unknown): PrivateProjectLocalLock['bindings'] 
   >
   for (const id of Object.keys(input).sort()) {
     localName(id, `Binding ${JSON.stringify(id)}`)
-    const item = exactObject(input[id], ['packagePath', 'settings', 'slots'], `Binding ${id}`)
+    const item = exactObject(
+      input[id],
+      [
+        'packagePath',
+        'settings',
+        'slots',
+        ...(Object.hasOwn(object(input[id], `Binding ${id}`), 'commands') ? ['commands'] : []),
+      ],
+      `Binding ${id}`,
+    )
     const settings = object(item.settings, `Binding ${id} settings`)
     const slots = normalizeSlots(item.slots, `Binding ${id}`)
     output[id] = Object.freeze({
       packagePath: projectPath(item.packagePath, `Binding ${id} packagePath`),
       settings,
       slots,
+      ...(item.commands === undefined ? {} : { commands: normalizeProjectCommands(item.commands) }),
     })
   }
   return Object.freeze(output)

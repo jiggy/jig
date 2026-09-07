@@ -657,11 +657,13 @@ function renderFailure(error: unknown, runtime: CliRuntime): 1 | 2 {
       error.diagnostic?.code === 'PROJECT_AGENT_UNAVAILABLE'
         ? (runtime.host.agentUnavailableHint ??
           'configure the host Agent before review; check exported credentials, model, and selected client')
-        : error.diagnostic?.code === 'PACKAGE_BUN_NODE_MODULES'
-          ? 'move generated node_modules outside the Flow package; jig review prepares its locked production dependencies'
-          : error.diagnostic?.code === 'PACKAGE_BUN_PREPARATION_FAILED'
-            ? 'locked dependencies could not be prepared; check registry access and package availability'
-            : undefined
+        : error.diagnostic?.code === 'PROJECT_COMMAND_UNCONFIGURED'
+          ? 'select a Binding with reviewed commands for this Flow'
+          : error.diagnostic?.code === 'PACKAGE_BUN_NODE_MODULES'
+            ? 'move generated node_modules outside the Flow package; jig review prepares its locked production dependencies'
+            : error.diagnostic?.code === 'PACKAGE_BUN_PREPARATION_FAILED'
+              ? 'locked dependencies could not be prepared; check registry access and package availability'
+              : undefined
     runtime.writeError(
       error.diagnostic !== undefined
         ? renderProjectDiagnostic(error, hint ?? projected.message)

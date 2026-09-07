@@ -177,10 +177,16 @@ uncertainty; Jig does not replay uncertain dispatch automatically. There is no
 separate child history, administration, scheduler, catalogue, or resolver. Jig
 also never guesses an unprefixed target.
 
-Each Run context admits one active operation; a child Flow can own one Agent
+Each Run context admits one active operation; a child Flow can own one Agent or project-command
 operation while its parent awaits it. Excess distinct concurrent calls receive
 `RESOURCE_EXHAUSTED`, while sequential calls remain available. Cancellation and
-cleanup cover the specialist and its locally owned Agent worker.
+cleanup cover the specialist and its locally owned effect worker.
+
+[Project Command](https://jig.md/spec/project-command) executes a Binding's
+reviewed Bun tests or entrypoint against immutable candidate text. It returns
+collected output and termination from a separate keyless scope, without a shell
+service, network, installation, or host repository. Applications own independent
+acceptance assertions; repository test logs alone are not a trustworthy verdict.
 
 One experimental [Agent Run capability](https://jig.md/spec/agent-run) is
 available through ordinary Run/1 `effect/call`. The host may use the official

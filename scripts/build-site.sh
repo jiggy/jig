@@ -88,6 +88,9 @@ docs/jig/spec/machine/project-authoring-1.schema.json|project-authoring-1.schema
     cp -- \
       "$repository/docs/jig/spec/contracts/agent-run.capability.json" \
       "$staging/contracts/agent-run.capability.json"
+    cp -- \
+      "$repository/docs/jig/spec/contracts/project-command.capability.json" \
+      "$staging/contracts/project-command.capability.json"
     ;;
 esac
 

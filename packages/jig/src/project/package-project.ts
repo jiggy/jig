@@ -3,11 +3,11 @@ import type { JsonObject, JsonValue } from '../json.js'
 import type { InspectedPackage } from '../package/inspect.js'
 import { SchemaDiagnostic } from '../schema/index.js'
 import {
-  AGENT_RUN_CONTRACT_DIGEST,
-  AGENT_RUN_CONTRACT_ID,
-  AGENT_RUN_CONTRACT_VERSION,
-  assertAgentRunContract,
-} from '../internal/private-agent-run.js'
+  assertProjectCommandContract,
+  PROJECT_COMMAND_CONTRACT_DIGEST,
+} from '../internal/private-project-command.js'
+import type { ProjectCommands } from './commands.js'
+import { assertAgentRunContract } from '../internal/private-agent-run.js'
 import {
   defineBinding,
   normalizePackageBindingDefinition,
@@ -66,6 +66,7 @@ export interface LinkedPackageBinding {
   readonly packagePath: string
   readonly settings: JsonObject
   readonly slots: Readonly<Record<string, RunTargetIdentity>>
+  readonly commands?: ProjectCommands
 }
 
 export interface PackageProjectValue {
@@ -195,41 +196,49 @@ export function projectSupportedCapabilityUses(
 ): Readonly<Record<string, LinkedCapabilityUse>> {
   const declarations = Object.entries(inspected.metadata.uses ?? {})
   if (declarations.length === 0) return Object.freeze(Object.create(null))
-  if (declarations.length !== 1) {
+  if (declarations.length > 2) {
     invalid(
       'PROJECT_FLOW_CAPABILITY_UNSUPPORTED',
-      'the direct alpha supports at most one Agent Run capability slot per package',
+      'Jig supports one Agent Run and one Project Command capability slot per package',
       packagePath,
     )
   }
-  const [slot, declaration] = declarations[0]!
-  if (declaration.contract === undefined) {
-    invalid(
-      'PROJECT_FLOW_CAPABILITY_UNSUPPORTED',
-      'the direct alpha supports only the exact Agent Run capability contract',
-      packagePath,
-      `/uses/${pointerToken(slot)}`,
-    )
+  const output: Record<string, LinkedCapabilityUse> = Object.create(null)
+  const used = new Set<string>()
+  for (const [slot, declaration] of declarations) {
+    if (declaration.contract === undefined) {
+      invalid(
+        'PROJECT_FLOW_CAPABILITY_UNSUPPORTED',
+        'Jig supports only the exact Agent Run and Project Command contracts',
+        packagePath,
+        `/uses/${pointerToken(slot)}`,
+      )
+    }
+    const reference = inspected.usedContracts.find((candidate) => candidate.slot === slot)
+    if (reference === undefined)
+      throw new Error('inspected capability reference invariant violated')
+    try {
+      if (reference.contract.digest === PROJECT_COMMAND_CONTRACT_DIGEST)
+        assertProjectCommandContract(reference.contract)
+      else assertAgentRunContract(reference.contract)
+      if (used.has(reference.contract.digest))
+        throw new TypeError('a supported capability may be declared only once')
+      used.add(reference.contract.digest)
+    } catch (error) {
+      invalid(
+        'PROJECT_FLOW_CAPABILITY_UNSUPPORTED',
+        errorText(error),
+        packagePath,
+        `/uses/${pointerToken(slot)}`,
+      )
+    }
+    output[slot] = Object.freeze({
+      id: reference.contract.descriptor.id,
+      version: reference.contract.descriptor.version,
+      digest: reference.contract.digest,
+    })
   }
-  const reference = inspected.usedContracts.find((candidate) => candidate.slot === slot)
-  if (reference === undefined) throw new Error('inspected capability reference invariant violated')
-  try {
-    assertAgentRunContract(reference.contract)
-  } catch (error) {
-    invalid(
-      'PROJECT_FLOW_CAPABILITY_UNSUPPORTED',
-      errorText(error),
-      packagePath,
-      `/uses/${pointerToken(slot)}`,
-    )
-  }
-  return Object.freeze({
-    [slot]: Object.freeze({
-      id: AGENT_RUN_CONTRACT_ID,
-      version: AGENT_RUN_CONTRACT_VERSION,
-      digest: AGENT_RUN_CONTRACT_DIGEST,
-    }),
-  })
+  return Object.freeze(output)
 }
 
 function prepareBindings(
@@ -295,6 +304,18 @@ function prepareBindings(
       )
     }
     validateSettings(definition.settings, flow.inspected, declarationPath)
+    if (
+      definition.commands !== undefined &&
+      !Object.values(flow.value.uses).some(
+        ({ digest }) => digest === PROJECT_COMMAND_CONTRACT_DIGEST,
+      )
+    )
+      invalid(
+        'PROJECT_BINDING_COMMANDS_UNDECLARED',
+        'commands require a Project Command capability declaration',
+        declarationPath,
+        '/commands',
+      )
     return Object.freeze({ id, declarationPath, definition, flow })
   })
   bindings.sort((left, right) => compareProjectPaths(left.id, right.id))
@@ -315,6 +336,7 @@ function linkBinding(
     packagePath: definition.package,
     settings: definition.settings,
     slots: linkFlowSlots(prepared, flowByPath, bindingById),
+    ...(definition.commands === undefined ? {} : { commands: definition.commands }),
   })
 }
 

@@ -587,7 +587,8 @@ function isUnavailableDiagnosticCode(code: string): boolean {
   return (
     code === 'PACKAGE_BUN_SOURCE_UNSUPPORTED' ||
     code === 'PACKAGE_BUN_PREPARATION_FAILED' ||
-    code === 'PROJECT_AGENT_UNAVAILABLE'
+    code === 'PROJECT_AGENT_UNAVAILABLE' ||
+    code === 'PROJECT_COMMAND_UNCONFIGURED'
   )
 }
 

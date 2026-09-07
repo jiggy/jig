@@ -62,6 +62,11 @@ import {
 import { admitPrivatePackageResult } from './package-result-admission.js'
 import type { PrivateAgentProvider } from './agent-provider.js'
 import {
+  executePrivateProjectCommand,
+  recoverPrivateProjectCommandOwners,
+} from './root-project-command-controller.js'
+import { PROJECT_COMMAND_CONTRACT_DIGEST } from './private-project-command.js'
+import {
   executePrivateRootAgentRun,
   recoverPrivateRootAgentRunOwners,
 } from './root-agent-run-controller.js'
@@ -321,13 +326,24 @@ function specialistDispatcher(
   let active = false
   return {
     async callEffect(call, signal) {
-      if (input.agentProvider === undefined) {
-        return failed('UNAVAILABLE', 'the admitted Agent provider is unavailable')
-      }
       if (active)
-        return failed('RESOURCE_EXHAUSTED', 'the specialist already has an active Agent operation')
+        return failed('RESOURCE_EXHAUSTED', 'the specialist already has an active operation')
       active = true
       try {
+        if (selected.request.capabilities[call.slot]?.digest === PROJECT_COMMAND_CONTRACT_DIGEST)
+          return await executePrivateProjectCommand({
+            ...input,
+            parentFlow: {
+              operationId: input.call.operationId,
+              target: selected.request.target,
+              requestDigest: selected.request.digest,
+            },
+            call,
+            parentDeadlineUnixMs,
+            signal,
+          })
+        if (input.agentProvider === undefined)
+          return failed('UNAVAILABLE', 'the admitted Agent provider is unavailable')
         return await executePrivateRootAgentRun({
           ...input,
           agentProvider: input.agentProvider,
@@ -468,6 +484,14 @@ async function releaseKnownChild(
       requestDigest: selected.request.digest,
     },
   })
+  await recoverPrivateProjectCommandOwners({
+    ...input,
+    parentFlow: {
+      operationId: lifecycle.operationId,
+      target: selected.request.target,
+      requestDigest: selected.request.digest,
+    },
+  })
   await disposePrivatePackageMaterializationLease(
     lease.identity.allocation.parent.path,
     lease.identity,
@@ -523,6 +547,14 @@ async function recoverOne(
       fence = parseFence(lifecycle)
     }
     await recoverPrivateRootAgentRunOwners({
+      ...input,
+      parentFlow: {
+        operationId: lifecycle.operationId,
+        target: selected.request.target,
+        requestDigest: selected.request.digest,
+      },
+    })
+    await recoverPrivateProjectCommandOwners({
       ...input,
       parentFlow: {
         operationId: lifecycle.operationId,

@@ -1,5 +1,6 @@
 import type { JsonObject, JsonValue } from '../json.js'
 import { JSON_1_LIMITS, validateJson1 } from '../json.js'
+import { normalizeProjectCommands, type ProjectCommands } from './commands.js'
 import {
   assertNoProjectPathCollisions,
   compareProjectPaths,
@@ -49,12 +50,14 @@ export interface PackageBindingDefinition {
   readonly package: string
   readonly settings: JsonObject
   readonly slots: Readonly<Record<string, string>>
+  readonly commands?: ProjectCommands
 }
 
 export interface PackageBindingInput {
   readonly package: string
   readonly settings?: JsonObject
   readonly slots?: Readonly<Record<string, string>>
+  readonly commands?: ProjectCommands
 }
 
 export type BindingDefinition = PackageBindingDefinition
@@ -128,7 +131,9 @@ function normalizeBinding(
   const captured = snapshotJsonObject(input, 'Binding definition')
   assertClosedObject(
     captured,
-    canonical ? ['kind', 'package', 'settings', 'slots'] : ['package', 'settings', 'slots'],
+    canonical
+      ? ['kind', 'package', 'settings', 'slots', 'commands']
+      : ['package', 'settings', 'slots', 'commands'],
     'Binding definition',
   )
   if (canonical && captured.kind !== 'package') {
@@ -142,11 +147,15 @@ function normalizeBinding(
   const slots = Object.hasOwn(captured, 'slots')
     ? normalizeFlowSlots(captured.slots)
     : emptyRecord<string>()
+  const commands = normalizeProjectCommands(
+    Object.hasOwn(captured, 'commands') ? captured.commands : {},
+  )
   return record({
     kind: 'package',
     package: packagePath,
     settings,
     slots,
+    ...(Object.keys(commands).length === 0 ? {} : { commands }),
   }) as unknown as PackageBindingDefinition
 }
 

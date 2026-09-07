@@ -45,27 +45,47 @@
           "additionalProperties": {
             "$ref": "#/$defs/capabilityUse"
           },
-          "maxProperties": 1
+          "maxProperties": 2
         }
       },
       "required": ["digest", "directRun", "uses"],
       "additionalProperties": false
     },
     "capabilityUse": {
-      "type": "object",
-      "properties": {
-        "id": {
-          "const": "https://jig.md/contracts/agent-run"
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "const": "https://jig.md/contracts/agent-run"
+            },
+            "version": {
+              "const": "1.0.0"
+            },
+            "digest": {
+              "const": "sha256:5a0f06495323419d275eeff92617d9287647ece137dacc9c5c6d50466d65c0f0"
+            }
+          },
+          "required": ["id", "version", "digest"],
+          "additionalProperties": false
         },
-        "version": {
-          "const": "1.0.0"
-        },
-        "digest": {
-          "const": "sha256:5a0f06495323419d275eeff92617d9287647ece137dacc9c5c6d50466d65c0f0"
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "const": "https://jig.md/contracts/project-command"
+            },
+            "version": {
+              "const": "1.0.0"
+            },
+            "digest": {
+              "const": "sha256:aed62fe17f01897545f82d7ee91f163a023721431433c8f4f6981b4367c85bcf"
+            }
+          },
+          "required": ["id", "version", "digest"],
+          "additionalProperties": false
         }
-      },
-      "required": ["id", "version", "digest"],
-      "additionalProperties": false
+      ]
     },
     "binding": {
       "type": "object",
@@ -88,6 +108,9 @@
             "$ref": "#/$defs/targetIdentity"
           },
           "maxProperties": 256
+        },
+        "commands": {
+          "$ref": "#/$defs/commands"
         }
       },
       "required": ["packagePath", "settings", "slots"],
@@ -98,8 +121,14 @@
         {
           "type": "object",
           "properties": {
-            "kind": { "const": "flow" },
-            "path": { "type": "string", "minLength": 1, "maxLength": 1024 }
+            "kind": {
+              "const": "flow"
+            },
+            "path": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1024
+            }
           },
           "required": ["kind", "path"],
           "additionalProperties": false
@@ -107,13 +136,56 @@
         {
           "type": "object",
           "properties": {
-            "kind": { "const": "binding" },
-            "id": { "type": "string", "minLength": 1, "maxLength": 64 }
+            "kind": {
+              "const": "binding"
+            },
+            "id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            }
           },
           "required": ["kind", "id"],
           "additionalProperties": false
         }
       ]
+    },
+    "commands": {
+      "type": "object",
+      "maxProperties": 8,
+      "additionalProperties": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "run": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256
+              }
+            },
+            "required": ["run"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "test": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 16,
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256
+                }
+              }
+            },
+            "required": ["test"],
+            "additionalProperties": false
+          }
+        ]
+      }
     }
   }
 }

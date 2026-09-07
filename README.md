@@ -182,10 +182,16 @@ and conflicts, cancellation, and uncertainty; uncertain dispatch is not
 automatically replayed. Jig creates no separate child history, administration,
 scheduler, catalogue, or resolver.
 
-Each Run context admits one active operation; a child Flow can own one Agent
+Each Run context admits one active operation; a child Flow can own one Agent or project-command
 operation while its parent awaits it. Excess distinct concurrent calls receive
 `RESOURCE_EXHAUSTED`, while sequential calls remain available. Cancellation and
-cleanup cover both the specialist and its locally owned Agent worker.
+cleanup cover both the specialist and its locally owned effect worker.
+
+The source candidate also provides [Project Command](docs/jig/spec/project-command.md):
+a Binding names approved Bun tests or a CLI entrypoint, and the Flow supplies
+immutable candidate text. Jig runs it in a separate keyless scope and returns
+collected output and termination. The tested-patch example uses it for multi-file
+repairs with independent acceptance checks, without an Agent terminal or shell service.
 
 One experimental [Agent Run capability](docs/jig/spec/agent-run.md) is
 available through ordinary Run/1 `effect/call`. An Agent-capable Flow carries

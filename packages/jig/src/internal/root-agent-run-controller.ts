@@ -563,7 +563,7 @@ function selectAgentCapability(input: AgentRecoveryInput, call: RunHostEffectCal
   return selected
 }
 
-function requireParentTarget(input: AgentRecoveryInput) {
+export function requireParentTarget(input: AgentRecoveryInput) {
   const { parent, parentFlow } = input
   const root = findPrivateActivationCandidateTargetV5(parent.candidate, parent.run.target)
   if (
@@ -1013,8 +1013,9 @@ async function requireAllocationMatchesParent(
     allocation.operationId !== lifecycle.operationId ||
     allocation.parentRequestDigest !== target.request.digest ||
     allocation.effectiveDeadlineUnixMs > input.parent.intent.deadlineUnixMs ||
-    Object.values(target.request.capabilities).length !== 1 ||
-    Object.values(target.request.capabilities)[0]?.digest !== AGENT_RUN_CONTRACT_DIGEST
+    !Object.values(target.request.capabilities).some(
+      ({ digest }) => digest === AGENT_RUN_CONTRACT_DIGEST,
+    )
   ) {
     throw new Error('durable Agent allocation differs from its admitted parent or provider')
   }
@@ -1035,7 +1036,7 @@ async function requireAllocationMatchesParent(
   }
 }
 
-async function requireParentFlowOwner(
+export async function requireParentFlowOwner(
   input: AgentRecoveryInput,
   parentFlow: PrivateAgentParentFlow,
   deadlineUnixMs: number,
@@ -1069,7 +1070,7 @@ async function requireParentFlowOwner(
   }
 }
 
-function normalizeParentFlow(
+export function normalizeParentFlow(
   value: unknown,
   parentOperationId: string | undefined,
 ): PrivateAgentParentFlow | null {
@@ -1183,7 +1184,7 @@ function agentIdentity(
   }).slice('sha256:'.length)
 }
 
-async function protectedOwnerRoot(projectRoot: string): Promise<string> {
+export async function protectedOwnerRoot(projectRoot: string): Promise<string> {
   const state = await realpath(join(projectRoot, '.jig'))
   const owners = join(state, 'private-root-linux-owners')
   await mkdir(owners, { mode: 0o700 }).catch((error) => {

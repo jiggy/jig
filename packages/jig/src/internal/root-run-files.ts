@@ -184,6 +184,7 @@ export class PrivateRootRunFiles {
             settings: request.settings,
             capabilities: request.capabilities,
             flowSlots: request.flowSlots,
+            ...(request.commands === undefined ? {} : { commands: request.commands }),
             attachments: request.attachments,
           } as unknown as JsonValue),
         ),

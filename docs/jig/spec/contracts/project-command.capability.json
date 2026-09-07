@@ -1,0 +1,126 @@
+{
+  "$schema": "https://flow.jig.md/schemas/capability-contract-1.schema.json",
+  "flowCapabilityContract": 1,
+  "id": "https://jig.md/contracts/project-command",
+  "version": "1.0.0",
+  "methods": {
+    "run": {
+      "input": {
+        "$ref": "#/$defs/Input"
+      },
+      "output": {
+        "$ref": "#/$defs/Result"
+      },
+      "errors": {}
+    }
+  },
+  "$defs": {
+    "Input": {
+      "type": "object",
+      "properties": {
+        "command": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "files": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string",
+            "maxLength": 262144
+          },
+          "maxProperties": 64
+        },
+        "args": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 1024
+          },
+          "maxItems": 32
+        },
+        "stdin": {
+          "type": "string",
+          "maxLength": 16384
+        }
+      },
+      "required": ["command", "files"],
+      "additionalProperties": false
+    },
+    "Result": {
+      "type": "object",
+      "properties": {
+        "candidateDigest": {
+          "type": "string",
+          "maxLength": 71
+        },
+        "command": {
+          "type": "string"
+        },
+        "invocation": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "stdinDigest": {
+          "type": "string",
+          "maxLength": 71
+        },
+        "stdout": {
+          "type": "object",
+          "properties": {
+            "text": {
+              "type": "string",
+              "maxLength": 65536
+            },
+            "truncated": {
+              "type": "boolean"
+            }
+          },
+          "required": ["text", "truncated"],
+          "additionalProperties": false
+        },
+        "stderr": {
+          "type": "object",
+          "properties": {
+            "text": {
+              "type": "string",
+              "maxLength": 65536
+            },
+            "truncated": {
+              "type": "boolean"
+            }
+          },
+          "required": ["text", "truncated"],
+          "additionalProperties": false
+        },
+        "exitCode": {
+          "type": ["integer", "null"]
+        },
+        "signal": {
+          "type": ["string", "null"]
+        },
+        "stopReason": {
+          "enum": ["exited", "deadline", "cancelled"]
+        },
+        "cleanup": {
+          "const": "complete"
+        }
+      },
+      "required": [
+        "candidateDigest",
+        "command",
+        "invocation",
+        "stdinDigest",
+        "stdout",
+        "stderr",
+        "exitCode",
+        "signal",
+        "stopReason",
+        "cleanup"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

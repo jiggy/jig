@@ -29,18 +29,29 @@ const HOSTILE = process.env.JIG_LINUX_ROOTLESS_HOSTILE === '1'
 const proofDescribe = HOSTILE ? describe.serial : describe.skip
 
 proofDescribe('contained repair file application', () => {
-  test('exports an evidence-checked patch through admitted root and evaluator with a recorded local Agent response', async () => {
+  test('exports a multi-file patch through a JSON leaf and real contained project commands with a recorded Agent response', async () => {
     const root = await mkdtemp(join(tmpdir(), 'jig-repair-file-proof-'))
     const project = join(root, 'project'),
       release = join(root, 'release'),
       out = join(root, 'review')
-    const replacement = `export function truncateUtf8(text: string, maxBytes: number): string {
-  if (!Number.isSafeInteger(maxBytes) || maxBytes < 0) throw new RangeError('Invalid byte budget');
-  let result = '', used = 0;
-  for (const point of text) { const bytes = new TextEncoder().encode(point).length; if (used + bytes > maxBytes) break; used += bytes; result += point; }
-  return result;
-}\n`
+    const fixture = join(import.meta.dir, '../../../examples/tested-patch/fixtures/log-report')
+    const originalParse = await readFile(join(fixture, 'src/parse.ts'), 'utf8')
+    const originalReport = await readFile(join(fixture, 'src/report.ts'), 'utf8')
+    const replacements = [
+      {
+        path: 'src/parse.ts',
+        content: originalParse.replace(
+          "typeof value.status !== 'number'",
+          '!Number.isInteger(value.status) || value.status < 100 || value.status > 599',
+        ),
+      },
+      {
+        path: 'src/report.ts',
+        content: originalReport.replace('r.status >= 400).length', 'r.status >= 500).length'),
+      },
+    ]
     let calls = 0
+    let repairPasses = true
     const server = createServer(async (request, response) => {
       await new Response(request as any).text()
       calls++
@@ -55,8 +66,8 @@ proofDescribe('contained repair file application', () => {
                 {
                   type: 'output_text',
                   text: JSON.stringify({
-                    replacement,
-                    summary: 'Respect UTF-8 code point boundaries.',
+                    replacements: repairPasses ? replacements : [replacements[1]],
+                    summary: 'Validate status codes and separate client/server errors.',
                   }),
                 },
               ],
@@ -65,7 +76,7 @@ proofDescribe('contained repair file application', () => {
         }),
       )
     })
-    const owner = new PrivateFileDeliveryOwner(new AbortController().signal)
+    let owner = new PrivateFileDeliveryOwner(new AbortController().signal)
     try {
       await cp(join(import.meta.dir, '../../../examples/tested-patch'), project, {
         recursive: true,
@@ -128,7 +139,7 @@ globalThis.fetch = (url, init) => {
       expect(await main(['review', '--yes'], options), stderr).toBe(0)
       stdout = ''
       stderr = ''
-      const before = await readFile(join(project, 'fixtures/utf8/src/truncate-utf8.ts'))
+      const before = await readFile(join(project, 'fixtures/log-report/src/parse.ts'))
       expect(
         await main(
           [
@@ -137,11 +148,11 @@ globalThis.fetch = (url, init) => {
             '--input',
             '@issue.json',
             '--attach',
-            'source=fixtures/utf8',
+            'source=fixtures/log-report',
             '--out',
             out,
             '--timeout',
-            '60s',
+            '120s',
           ],
           options,
         ),
@@ -153,19 +164,69 @@ globalThis.fetch = (url, init) => {
         outcome: 'done',
         delivery: { status: 'written' },
       })
-      expect(await readFile(join(out, 'files/summary.txt'), 'utf8')).toContain('12/12 checks')
+      expect(await readFile(join(out, 'files/summary.txt'), 'utf8')).toContain('review-ready')
       expect(await readFile(join(out, 'files/review.patch'), 'utf8')).toContain(
-        '+  for (const point of text)',
+        '--- a/src/parse.ts',
       )
+      expect(await readFile(join(out, 'files/review.patch'), 'utf8')).toContain(
+        '--- a/src/report.ts',
+      )
+      expect(record.output.baseline.acceptance.filter((c: any) => !c.passed)).toHaveLength(3)
+      expect(record.output.attempts[0].evaluation.acceptance.every((c: any) => c.passed)).toBe(true)
+      expect(record.output.attempts[0].evaluation.commands[0].exitCode).toBe(0)
       expect(JSON.parse(await readFile(join(out, 'result.json'), 'utf8'))).toEqual(record)
-      expect(await readFile(join(project, 'fixtures/utf8/src/truncate-utf8.ts'))).toEqual(before)
+      expect(await readFile(join(project, 'fixtures/log-report/src/parse.ts'))).toEqual(before)
+      expect(await readFile(join(project, 'fixtures/log-report/src/report.ts'), 'utf8')).toEqual(
+        originalReport,
+      )
       expect(calls).toBe(1)
+      await owner.close()
+      owner = new PrivateFileDeliveryOwner(new AbortController().signal)
+      repairPasses = false
+      stdout = ''
+      stderr = ''
+      const failedOut = join(root, 'unsuccessful')
+      expect(
+        await main(
+          [
+            'run',
+            'binding:repair',
+            '--input',
+            '@issue.json',
+            '--attach',
+            'source=fixtures/log-report',
+            '--out',
+            failedOut,
+            '--timeout',
+            '120s',
+          ],
+          options,
+        ),
+        stdout + stderr,
+      ).toBe(0)
+      const unsuccessful = JSON.parse(stdout)
+      expect(unsuccessful).toMatchObject({
+        status: 'succeeded',
+        outcome: 'blocked',
+        delivery: { status: 'written' },
+      })
+      expect(unsuccessful.output.attempts).toHaveLength(2)
+      expect(unsuccessful.output.attempts.every((a: any) => a.evaluation.accepted === false)).toBe(
+        true,
+      )
+      expect((await readdir(join(failedOut, 'files'))).sort()).toEqual([
+        'proposal-1.patch',
+        'proposal-2.patch',
+        'summary.txt',
+      ])
+      expect(await readFile(join(project, 'fixtures/log-report/src/parse.ts'))).toEqual(before)
+      expect(calls).toBe(3)
     } finally {
       await owner.close()
       await new Promise<void>((resolve) => server.close(() => resolve()))
       await rm(root, { recursive: true, force: true })
     }
-  }, 120_000)
+  }, 300_000)
 })
 const nativeCodexPath = process.env.JIG_CODEX_PROOF_PATH
 const nativeCodexTest =

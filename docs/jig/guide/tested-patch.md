@@ -4,138 +4,114 @@ title: An issue becomes a tested patch
 
 # An issue becomes a tested patch
 
-Ask an Agent to repair a small bug, then inspect a patch backed by executed
-checks—not the Agent's claim that its code works. Your original files remain
-unchanged, and nothing is merged or published automatically.
+Give Jig a small Bun project and a bug. Get back a multi-file patch, the
+commands actually run against it, and independent checks of its behavior.
+Your original files stay unchanged; you decide whether to apply the patch.
 
-The [example](https://github.com/jiggy/jig/tree/main/examples/tested-patch)
-contains two Flows and one Binding. Start with the
-[Jig installation instructions](./index.md) on a supported host.
+The [copyable application](https://github.com/jiggy/jig/tree/main/examples/tested-patch)
+uses the Project Command capability in the source candidate. Use an artifact
+built from this candidate until that capability is included in a published
+release. See the [installation guide](./index.md) for supported hosts.
 
 ## Try it
 
-Copy `examples/tested-patch` into your own application directory and
-[configure an Agent](../spec/agent-run.md#alpha-host-implementations).
-Inspect `issue.json` and `flows/repair/checks.json`, then run:
+Copy `examples/tested-patch`, [configure an Agent](../spec/agent-run.md#alpha-host-implementations),
+and inspect `issue.json`, `bindings/specialist.ts`, and
+`flows/project/cases.json`. From your copy:
 
 ```sh
 jig review
-jig run binding:repair --input @issue.json --attach source=fixtures/utf8 --out ../utf8-repair --timeout 5m
+jig run binding:repair --input @issue.json --attach source=fixtures/log-report --out ../repair-result --timeout 5m
 ```
 
-Jig reads the issue, captures the selected source, runs the admitted method,
-and saves one result packet. The destination must be new and outside the
-source directory. Review prepares the locked SDK; execution does not install
-dependencies. No application launcher or separate Bun command is needed.
+Open `../repair-result/files/summary.txt`. A `review.patch` appears beside it
+only when the repair passed the checks. The destination must be new and
+outside the selected source. Review prepares the Flow's locked SDK; candidate
+commands do not install dependencies.
 
-Selected text is sent to your operator-selected provider. Choose files and a
-provider appropriate to your data. Ctrl-C requests cancellation and waits for
-owned work to settle; it cannot retract a remote request already received.
-Unsuccessful and interrupted calls may still incur provider charges.
+The supplied project is an HTTP access-log reporter: a CLI, a parser, a
+reporting module, and Bun tests. Its parser admits invalid status codes and
+its reporter confuses client errors with server errors. Fixing the issue
+requires changes in two source files.
 
-## What the method does
+Selected text reaches your configured Agent provider. Choose source and a
+provider suitable for your data. Ctrl-C cancels owned work; it cannot retract
+a remote request already received, and unsuccessful calls may incur charges.
 
-The supplied utility truncates UTF-8 incorrectly: a four-byte budget retains
-all of `café`, which occupies five bytes. The repair Flow reproduces the bug,
-asks for one file replacement, and tests it against the same acceptance cases.
-A failed check or invalid candidate observation permits one correction with
-the observed failure. There are at most two Agent calls; checks never change
-to make a patch pass.
+## What makes a patch review-ready?
 
-Candidate code runs in a separate, capability-free evaluator Flow. The repair
-Flow's fixed checker receives only JSON observations and compares them with
-its own expected answers. The candidate cannot edit those checks or borrow
-the parent's Agent. Before writing a review-ready patch, the repair method
-also checks snapshot, patch, checker, and case identities against the evidence.
+The root application captures source and owns delivery. Its reusable repair
+specialist receives JSON, asks the Agent for replacement text, and requests
+reviewed Bun commands in separate containment. It never needs a writable
+host repository or an unrestricted Agent terminal.
 
-![An Agent proposes a replacement from the issue and snapshot. The evaluator runs candidate code and sends observations to the repair Flow's acceptance checker. Application-controlled cases supply the expected values; the result retains the patch and available check evidence.](./tested-patch.svg)
+The original goes through the same checks first. An independent failure
+permits a proposal; an invalid proposal or unsuccessful candidate permits
+one correction. There are at most two Agent calls. Tests and acceptance
+expectations never change to make the repair pass.
 
-This shows one candidate's evidence path. The original snapshot goes through
-the same evaluator and fixed checks first to establish the failing baseline.
-The Agent can propose an edit; it cannot change the acceptance cases.
+Three different kinds of evidence appear in the result:
 
-The supported task is one existing synchronous TypeScript function with JSON
-arguments/results and one editable file. Passing the finite cases is useful
-evidence, not a proof of general correctness.
+| Evidence | What it establishes |
+| --- | --- |
+| Host-collected output, exit, signal, and candidate identity | What the exact command emitted and how it ended. |
+| Ordinary repository tests | Useful project checks, but candidate code can interfere with their runner. |
+| Independent application assertions | Whether captured CLI output and exit match unchanged expected behavior, without importing candidate code or trusting its pass flag. |
+
+The root checks the evidence against its captured files and acceptance cases,
+then constructs an applicable patch from the validated replacement text.
+Passing a finite case set is not proof of general correctness.
 
 ## Read the result
 
-Start with `../utf8-repair/files/summary.txt`.
-
 | File | Meaning |
 | --- | --- |
-| `files/review.patch` | A replacement that passed the unchanged checks after reproducing the defect. Still needs your review. |
+| `files/review.patch` | A patch backed by reproduced failure and passing candidate checks. Still requires human review. |
 | `files/proposal-N.patch` | Each validated proposal, including unsuccessful attempts. |
-| `files/summary.txt` | Check counts, final classification, and reason. |
-| `result.json` | Jig's execution outcome, admitted method and input identities, and published file manifest. |
+| `files/summary.txt` | Review-ready or unsuccessful, with the method's reason. |
+| `result.json` | Host outcome, input identities, original and candidate evidence, and published file manifest. |
 
-Read the Flow's `outcome`, not just the command exit code:
+Read the Flow's outcome, not just the CLI exit code: `done` means a passing
+patch; `blocked` means no reproduced defect or no acceptable proposal;
+`limit` means the Agent stopped at its limit. A valid `blocked` result can
+have CLI exit code zero without a review-ready patch.
 
-- `done`: the original failed an assertion and the replacement passed.
-- `blocked`: no reproducible defect, no proposed patch, or unsuccessful checks.
-- `limit`: the Agent stopped at its limit.
+`output.baseline` records the original. Each `output.attempts` entry retains
+a validated proposal and its candidate identity or an invalid-proposal reason.
+A completed evaluation includes `commands`, `acceptance`,
+`repositoryTestsPassed`, and `accepted`. Treat the Agent's summary as a claim,
+not execution evidence.
 
-These are valid method outcomes. Jig can exit `0` after delivering a `blocked`
-result; that does not mean a patch passed. `review.patch` is written only for
-validated review-ready evidence.
+Cancellation, deadlines, uncertain execution, and unavailable support never
+trigger a correction or automatic replay. Operational failure exports no
+partial Flow files; earlier evidence may survive in terminal `details`.
+Coordinator loss can prevent a report from arriving. File delivery is separate
+from execution: inspect an existing destination after a lost acknowledgement
+instead of blindly starting another Run. See [working with files](./files.md).
 
-Operational failures—such as invalid protocol, a failed process, cancellation,
-or an invalid result—export no Flow files. When Jig can deliver a settled
-failure record, it writes only the host packet. Earlier validated proposals
-may remain in `details.attempts`; they are not passing patches. Coordinator
-loss can prevent even that record from arriving.
+## Use your own small project
 
-Execution and file delivery are separate. A settled Run can have a failed
-delivery, and a complete packet can exist even if its acknowledgement was
-lost. Check an existing destination before deciding to start new work:
-repeating `jig run` is a new invocation, not an export retry. See
-[working with files](./files.md) for the general rules.
-
-### Inspecting detailed evidence
-
-`output.baseline` and the ordered `output.attempts` retain original and proposed
-check results. Each proposal includes the permitted path, original identity,
-replacement, unified diff, and Agent-written summary. Treat that summary as a
-claim. A completed `tested` record contains actual checker exit, signal, and
-bounded logs; an invalid candidate observation is not a completed checker run.
-The child interface does not expose the candidate process's raw exit or stderr.
-
-## Use your own utility
-
-Change `issue.json` to contain just your issue and one existing edit path:
+Change `issue.json` to name the permitted existing source paths:
 
 ```json
-{"issue":"Describe the defect and required behavior.","editPath":"src/utility.ts"}
+{"issue":"Describe the defect and required behavior.","editPaths":["src/parse.ts","src/report.ts"]}
 ```
 
-Choose another source directory with `--attach source=../my-project`.
-For a larger repository, select only the needed files:
+Select your source with `--attach source=../my-project`. For a larger tree,
+add exact `--select source=src/file.ts` selectors for only the needed files.
+The application accepts 16 UTF-8 files totaling 64 KiB and up to eight editable
+`src/*.ts` or `src/*.js` files. It does not execute repository configuration
+during capture, take an atomic Git snapshot, or filter secrets for you.
 
-```sh
-jig run binding:repair --input @issue.json \
-  --attach source=../my-project --select source=src/utility.ts \
-  --select source=README.md --out ../utility-review --timeout 5m
-```
+In `bindings/specialist.ts`, name your existing Bun test files under
+`commands.tests.test` and CLI entrypoint under `commands.cli.run`.
+Write independent cases in `flows/project/cases.json`: each has an ID,
+arguments, stdin, expected stdout/stderr, and exit code. Review again after
+changing either. Candidate dependencies must be source-local or supported
+Bun/Node built-ins; network and installation are unavailable.
 
-Selectors are exact paths, not globs. The method accepts up to 16 regular
-UTF-8 files totaling 64 KiB. Jig captures their bytes without executing
-repository configuration. This is not an atomic Git snapshot or an automatic
-secret filter.
-
-Edit `flows/repair/checks.json` to name the exported function and independently
-authored cases, then review the application again. Cases use
-`{returned: value}` or `{threw: errorName}` and must follow
-[FLOW JSON/1](https://flow.jig.md/spec/json-values), including its safe-integer
-range. Include negative cases so removing required validation cannot pass.
-Neither the evaluator package nor Jig needs a new API for this adaptation.
-
-For application development, install test dependencies at the application root
-(outside the Flow packages) and run its deterministic checks:
-
-```sh
-(cd examples/tested-patch && bun install --ignore-scripts --frozen-lockfile)
-bun test examples/tested-patch/test
-```
-
-Those tests verify application policy and checker evidence. They do not prove
-model reliability or superiority over a capable coding Agent with ordinary tests.
+The repair leaf itself needs no attachment or child Flow. Another root can
+reuse it through an exact Binding with its own command policy and JSON cases.
+For application development, install development dependencies at the example
+root and run `bun test test`. Those deterministic checks establish application
+policy, not model quality or a market advantage.

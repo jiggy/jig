@@ -338,9 +338,12 @@ async function enterMain(arguments_: readonly string[]): Promise<void> {
   await requireActiveClaim(ownerStateDirectory!, ownerToken!, ownerStateAllocationDigest!)
   writeSync(3, `${process.pid}\n`)
   closeSync(3)
-  const output = bubblewrapArguments_.includes('--sync-fd')
-  const inputDescriptors = bubblewrapArguments_.flatMap((arg, index) =>
-    arg === '--ro-bind-data' ? [Number(bubblewrapArguments_[index + 1])] : [],
+  const separator = bubblewrapArguments_.indexOf('--')
+  if (separator < 0) throw new Error('missing rootless command boundary')
+  const envelopeArguments = bubblewrapArguments_.slice(0, separator)
+  const output = envelopeArguments.includes('--sync-fd')
+  const inputDescriptors = envelopeArguments.flatMap((arg, index) =>
+    arg === '--file' ? [Number(envelopeArguments[index + 1])] : [],
   )
   if (inputDescriptors.some((fd, index) => fd !== 6 + index))
     throw new Error('invalid captured input descriptor order')
@@ -435,10 +438,12 @@ function bubblewrapArguments(configuration: Configuration): string[] {
   for (const mount of configuration.readOnlyMounts)
     result.push('--ro-bind', mount.source, mount.destination)
   if (configuration.inputDirectories.length > 0)
-    result.push('--size', '1048576', '--tmpfs', '/jig-input')
+    result.push('--size', String(16 * 1024 * 1024), '--tmpfs', '/jig-input')
   for (const path of configuration.inputDirectories) result.push('--dir', path)
+  // Copy sealed bytes into named inodes, then freeze the whole private tree.
+  // Unlinked bind-data inodes break Bun's module realpath resolution.
   for (const file of configuration.capturedInputs)
-    result.push('--ro-bind-data', String(file.fd), file.destination)
+    result.push('--perms', '0444', '--file', String(file.fd), file.destination)
   if (configuration.inputDirectories.length > 0) result.push('--remount-ro', '/jig-input')
   if (configuration.output)
     result.push(

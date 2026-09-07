@@ -467,7 +467,7 @@ export interface PrivateRootChildOwnerFact {
 
 export interface PrivateRootChildOwnerLifecycle {
   readonly parentRunId: string
-  /** Present only for the one Agent owned by a direct child Flow. */
+  /** Present for the one Agent or project command owned by a direct child Flow. */
   readonly parentOperationId?: string
   readonly operationId: string
   readonly allocation: PrivateRootChildOwnerFact
@@ -1117,10 +1117,14 @@ export async function allocatePrivateRootChildOwner(input: {
         (input.allocation === null ||
           typeof input.allocation !== 'object' ||
           Array.isArray(input.allocation) ||
-          (input.allocation as Record<string, JsonValue>).kind !==
-            'private-root-agent-owner-allocation/1')
+          !['private-root-agent-owner-allocation/1', 'private-project-command-owner/1'].includes(
+            String((input.allocation as Record<string, JsonValue>).kind),
+          ))
       ) {
-        invalid('RUN_CHILD_OWNER_CONFLICT', 'a child Flow may own only one Agent operation')
+        invalid(
+          'RUN_CHILD_OWNER_CONFLICT',
+          'a child Flow may own only an Agent or project-command operation',
+        )
       }
       if (
         countScopedRootChildOwners(owner.database, input.parentRunId, input.parentOperationId) !==
@@ -1446,7 +1450,7 @@ export async function closePrivateRootChildOwner(input: {
         input.parentOperationId === undefined &&
         countScopedRootChildOwners(owner.database, input.parentRunId, input.operationId) !== 0n
       ) {
-        invalid('RUN_EXECUTION_INCOMPLETE', 'child Flow still has an active Agent owner')
+        invalid('RUN_EXECUTION_INCOMPLETE', 'child Flow still has an active operation owner')
       }
       if (row === null) return
       if (
@@ -1691,7 +1695,7 @@ function countScopedRootChildOwners(
   }
 }
 
-/** The only nested scope is an active direct child Flow's one Agent. */
+/** An active direct child Flow may own one Agent or project command. */
 function requireActiveChildScope(
   database: SqliteDatabase,
   parentRunId: string,
@@ -1712,7 +1716,7 @@ function requireActiveChildScope(
     Array.isArray(allocation) ||
     (allocation as Record<string, JsonValue>).kind !== 'private-root-child-owner-allocation/1'
   ) {
-    invalid('RUN_CHILD_PARENT_INACTIVE', 'only a direct child Flow may own an Agent')
+    invalid('RUN_CHILD_PARENT_INACTIVE', 'only a direct child Flow may own a nested operation')
   }
 }
 
