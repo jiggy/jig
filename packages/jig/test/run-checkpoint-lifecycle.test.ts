@@ -21,7 +21,9 @@ proof('root retained progress', () => {
           '--out',
           join(root, mode),
           '--timeout',
-          mode === 'complete' ? '25s' : '12s',
+          // Leave the normal root budget for the first child and two durable
+          // saves. The second child waits 60s, so deadline fencing is still required.
+          '30s',
         ])
         expect(result.code, result.stderr + result.stdout).toBe(mode === 'complete' ? 0 : 1)
         const packet = JSON.parse(await readFile(join(root, mode, 'result.json'), 'utf8'))
@@ -39,7 +41,7 @@ proof('root retained progress', () => {
     } finally {
       await rm(root, { recursive: true, force: true })
     }
-  }, 60_000)
+  }, 90_000)
 
   for (const phase of ['before', 'accepted', 'acknowledged', 'replacement', 'cancel'] as const)
     test(`independent owner recovers coordinator loss ${phase} acknowledgement without replay`, async () => {

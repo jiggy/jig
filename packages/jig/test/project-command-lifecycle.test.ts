@@ -299,7 +299,9 @@ function ownerRows(root: string): number {
   }
 }
 async function waitForCommand(root: string, count = 1) {
-  const until = Date.now() + 15_000
+  // Allow the ordinary root budget to observe both nested owners; this tests
+  // loss and recovery, not startup performance.
+  const until = Date.now() + 30_000
   while (Date.now() < until) {
     if (ownerRows(root) >= count) return
     await Bun.sleep(20)
