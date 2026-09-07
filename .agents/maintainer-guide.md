@@ -238,8 +238,10 @@ child Bindings are leaves with no further Flow slots. At runtime, a Flow can
 call only its slots; it cannot search a catalogue, invent targets, or acquire
 scheduler authority. Child and Agent scopes inherit the remaining root deadline
 and cannot extend it. A root may await two sibling specialists; each leaf may
-await one Agent or project command. Root effects remain exclusive. Durable
-whole-branch reservations bound aggregate resources before dispatch and stay
+await one Agent or project command. Root worker effects remain exclusive.
+Root-owned [checkpoints](../docs/jig/spec/run-checkpoint.md) use separate bounded
+control capacity to retain completed evidence while workers remain active.
+Durable whole-branch reservations bound aggregate resources before dispatch and stay
 held through fencing and cleanup. Application promises own concurrency; Jig
 supplies no queue or scheduler. Their operation
 identities and durable ownership remain distinct; cleanup drains the effect

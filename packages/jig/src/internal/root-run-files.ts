@@ -2,14 +2,20 @@ import type { FileHandle } from 'node:fs/promises'
 import { posix } from 'node:path'
 import { canonicalJson, decodeJson1, type JsonValue } from '../json.js'
 import type { PrivateActivationRequest } from '../project/package-resolution.js'
+import type { PrivateDeliveryConnection } from './file-delivery.js'
 import { privateDomainDigest } from './identity.js'
 import {
   PRIVATE_FILE_LIMITS,
+  type PrivateCapturedAttachment,
   privateAttachmentName,
   privateFilePath,
-  type PrivateCapturedAttachment,
+  sha256,
 } from './linux-file-input.js'
 import { PRIVATE_OUTPUT_PATH, type PrivateLinuxLaunchPlan } from './linux-rootless-backend.js'
+import {
+  parseRunCheckpointInput,
+  RUN_CHECKPOINT_CONTRACT_DIGEST,
+} from './private-run-checkpoint.js'
 
 export interface PrivateRunFileIdentity {
   readonly attachments: readonly {
@@ -113,6 +119,7 @@ export class PrivateRootRunFiles {
   readonly identity: PrivateRunFileIdentity
   #runId: string | undefined
   #output: FileHandle | undefined
+  #checkpointBound = false
   #method:
     | {
         readonly package: PrivateActivationRequest['package']
@@ -123,6 +130,7 @@ export class PrivateRootRunFiles {
   constructor(
     readonly captured: readonly PrivateCapturedAttachment[],
     output: string | null,
+    readonly delivery?: PrivateDeliveryConnection,
   ) {
     this.identity = normalizePrivateRunFileIdentity({
       attachments: captured.map((item) => ({
@@ -200,6 +208,44 @@ export class PrivateRootRunFiles {
   }
   get method() {
     return this.#method
+  }
+  async bindCheckpoint(
+    runId: string,
+    request: PrivateActivationRequest,
+    input: JsonValue,
+    project: string,
+    epoch: number,
+  ): Promise<void> {
+    if (
+      !Object.values(request.capabilities).some((c) => c.digest === RUN_CHECKPOINT_CONTRACT_DIGEST)
+    )
+      return
+    if (this.#checkpointBound) {
+      if (this.#runId !== runId) throw new Error('checkpoint belongs to another Run')
+      return
+    }
+    if (this.identity.output === null || this.delivery?.bindCheckpoint === undefined)
+      throw new Error('Run Checkpoint requires the installed output owner')
+    this.identify(request)
+    await this.delivery.bindCheckpoint(
+      {
+        runId,
+        method: this.#method as unknown as JsonValue,
+        input: {
+          digest: sha256(canonicalJson(input)),
+          attachments: this.identity.attachments,
+        } as unknown as JsonValue,
+      },
+      project,
+      epoch,
+    )
+    this.#runId = runId
+    this.#checkpointBound = true
+  }
+  async saveCheckpoint(value: unknown) {
+    if (!this.#checkpointBound || this.delivery?.saveCheckpoint === undefined)
+      throw new Error('checkpoint owner unavailable')
+    return await this.delivery.saveCheckpoint(parseRunCheckpointInput(value))
   }
   async close(): Promise<void> {
     await this.#output?.close()

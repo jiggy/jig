@@ -2,12 +2,12 @@ import { types as utilTypes } from 'node:util'
 
 import {
   PRIVATE_ACTIVATION_TARGET_LIMIT,
-  privateActivationTargetKey,
-  requirePrivateActivationPlanningObservation,
   type PrivateActivationPlanningDisposition,
   type PrivateActivationPlanningObservation,
   type PrivateActivationRecipeObservation,
   type PrivateActivationUnavailableCode,
+  privateActivationTargetKey,
+  requirePrivateActivationPlanningObservation,
 } from '../internal/activation-planning.js'
 import { privateDomainDigest } from '../internal/identity.js'
 import {
@@ -19,21 +19,22 @@ import {
   AGENT_RUN_CONTRACT_ID,
   AGENT_RUN_CONTRACT_VERSION,
 } from '../internal/private-agent-run.js'
+import { isProjectCommandContract } from '../internal/private-project-command.js'
+import { isRunCheckpointContract } from '../internal/private-run-checkpoint.js'
 import { canonicalJson, decodeJson1, type JsonObject, type JsonValue } from '../json.js'
 import type { PackageEntrypoint } from '../package/inspect.js'
-import {
-  requirePackageProjectValue,
-  type PackageProjectValue,
-  type LinkedCapabilityUse,
-  type RunTargetIdentity,
-} from './package-project.js'
-import {
-  requirePrivateRetainedPackageProject,
-  type PrivateRetainedPackageProject,
-} from './retained-project.js'
-import { normalizeProjectPath } from './paths.js'
 import { normalizeProjectCommands, type ProjectCommands } from './commands.js'
-import { isProjectCommandContract } from '../internal/private-project-command.js'
+import {
+  type LinkedCapabilityUse,
+  type PackageProjectValue,
+  type RunTargetIdentity,
+  requirePackageProjectValue,
+} from './package-project.js'
+import { normalizeProjectPath } from './paths.js'
+import {
+  type PrivateRetainedPackageProject,
+  requirePrivateRetainedPackageProject,
+} from './retained-project.js'
 
 const DIGEST = /^sha256:[0-9a-f]{64}$/
 const authenticRetainedObservations = new WeakSet<object>()
@@ -505,8 +506,8 @@ function normalizeRequestAttachments(value: unknown): PrivateActivationRequest['
 
 function normalizeRequestCapabilities(value: unknown): PrivateActivationRequest['capabilities'] {
   const input = snapshotJsonObject(value, 'activation capability uses')
-  if (Object.keys(input).length > 2) {
-    throw new TypeError('activation capability uses exceed 2 entries')
+  if (Object.keys(input).length > 3) {
+    throw new TypeError('activation capability uses exceed 3 entries')
   }
   const output: Record<string, LinkedCapabilityUse> = Object.create(null) as Record<
     string,
@@ -521,6 +522,7 @@ function normalizeRequestCapabilities(value: unknown): PrivateActivationRequest[
     )
     if (
       !isProjectCommandContract(item as { id: unknown; version: unknown; digest: unknown }) &&
+      !isRunCheckpointContract(item as { id: unknown; version: unknown; digest: unknown }) &&
       (item.id !== AGENT_RUN_CONTRACT_ID ||
         item.version !== AGENT_RUN_CONTRACT_VERSION ||
         item.digest !== AGENT_RUN_CONTRACT_DIGEST)

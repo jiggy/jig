@@ -1,7 +1,7 @@
+import { randomBytes } from 'node:crypto'
 import { closeSync, fstatSync, lstatSync, mkdirSync, opendirSync } from 'node:fs'
 import { mkdir, open, rm, statfs } from 'node:fs/promises'
 import { basename, dirname, resolve } from 'node:path'
-import { randomBytes } from 'node:crypto'
 import type { JsonValue } from '../json.js'
 import { canonicalJson } from '../json.js'
 import {
@@ -13,10 +13,17 @@ import {
   privateReadRegularFile,
   sha256,
 } from './linux-file-input.js'
+import type {
+  RetainedRunCheckpoint,
+  RunCheckpointIdentity,
+  RunCheckpointInput,
+  RunCheckpointReceipt,
+} from './private-run-checkpoint.js'
 
 export interface PrivateDeliveryReceipt {
   readonly status: 'written' | 'failed' | 'unknown'
   readonly destination: string
+  readonly source?: 'final' | 'checkpoint' | 'none'
   readonly files?: readonly {
     readonly path: string
     readonly bytes: number
@@ -32,7 +39,10 @@ export interface PrivateDeliveryReceipt {
     | 'DEADLINE_EXCEEDED'
 }
 export interface PrivateDeliveryConnection {
+  readonly checkpoint?: RetainedRunCheckpoint | null | undefined
   prepare(directory: string, roots: readonly number[]): Promise<void>
+  bindCheckpoint?(identity: RunCheckpointIdentity, project: string, epoch: number): Promise<void>
+  saveCheckpoint?(input: RunCheckpointInput): Promise<RunCheckpointReceipt>
   publish(
     record: JsonValue,
     outputFd: number | undefined,
@@ -102,6 +112,8 @@ export class PrivateFileDeliveryOwner {
     record: JsonValue,
     sourcePid: number,
     outputFd: number | undefined,
+    checkpoint?: RetainedRunCheckpoint,
+    recovered = false,
   ): Promise<PrivateDeliveryReceipt> {
     if (
       this.#parent === undefined ||
@@ -114,7 +126,8 @@ export class PrivateFileDeliveryOwner {
     const deadline = performance.now() + PRIVATE_FILE_LIMITS.deliveryMs
     let timedOut = false
     const checkTime = () => {
-      this.signal.throwIfAborted()
+      // Accepted progress is published after fencing even when execution was cancelled.
+      if (checkpoint === undefined && !recovered) this.signal.throwIfAborted()
       if (performance.now() >= deadline) {
         timedOut = true
         throw new Error('file delivery deadline exceeded')
@@ -187,6 +200,14 @@ export class PrivateFileDeliveryOwner {
         await output.close()
         output = undefined
       }
+      if (checkpoint !== undefined && outputFd === undefined) {
+        if (rootRecord.runId !== checkpoint.identity.runId || Object.hasOwn(rootRecord, 'cleanup'))
+          throw new TypeError('checkpoint publication requires its settled Run')
+        for (const [path, text] of Object.entries(checkpoint.files)) {
+          const contents = Buffer.from(text)
+          files.push({ path, contents, bytes: contents.length, digest: sha256(contents) })
+        }
+      }
       checkTime()
       failure = 'DESTINATION_CHANGED'
       this.#verifyParent()
@@ -216,6 +237,7 @@ export class PrivateFileDeliveryOwner {
       const delivery: PrivateDeliveryReceipt = Object.freeze({
         status: 'written',
         destination: this.#destination,
+        source: outputFd !== undefined ? 'final' : checkpoint !== undefined ? 'checkpoint' : 'none',
         files: Object.freeze(files.map(({ path, bytes, digest }) => ({ path, bytes, digest }))),
       })
       const packet = canonicalJson({ ...rootRecord, delivery } as unknown as JsonValue)
@@ -234,11 +256,12 @@ export class PrivateFileDeliveryOwner {
       this.#stage = undefined
       return delivery
     } catch {
-      let code: PrivateDeliveryReceipt['code'] = this.signal.aborted
-        ? 'CANCELLED'
-        : timedOut
-          ? 'DEADLINE_EXCEEDED'
-          : failure
+      let code: PrivateDeliveryReceipt['code'] =
+        this.signal.aborted && checkpoint === undefined && !recovered
+          ? 'CANCELLED'
+          : timedOut
+            ? 'DEADLINE_EXCEEDED'
+            : failure
       try {
         await this.#cleanupStage()
       } catch {

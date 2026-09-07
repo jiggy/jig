@@ -9,6 +9,7 @@ import {
 } from '../src/internal/file-command.js'
 import { PrivateFileDeliveryOwner } from '../src/internal/file-delivery.js'
 import { privateOpenFileRoot } from '../src/internal/linux-file-input.js'
+import { PrivateRunCheckpoints } from '../src/internal/private-run-checkpoint.js'
 
 async function fixture(work: (root: string) => Promise<void>) {
   const root = await mkdtemp(join(tmpdir(), 'jig-file-delivery-'))
@@ -19,6 +20,74 @@ async function fixture(work: (root: string) => Promise<void>) {
   }
 }
 const record = { status: 'succeeded', outcome: 'blocked', output: { reason: 'synthetic evidence' } }
+
+test('retained bytes survive execution cancellation but never an unconfirmed cleanup or output collision', async () =>
+  fixture(async (root) => {
+    for (const mode of ['cancelled', 'cleanup', 'collision', 'absent', 'late-success']) {
+      const abort = new AbortController()
+      const owner = new PrivateFileDeliveryOwner(abort.signal)
+      const checkpoints = new PrivateRunCheckpoints({
+        runId: `sha256:${'a'.repeat(64)}`,
+        method: null,
+        input: null,
+      })
+      checkpoints.accept({
+        sequence: 1,
+        evidence: { passed: false },
+        files: { 'saved.txt': 'accepted bytes' },
+      })
+      const retained = checkpoints.latest!
+      const destination = join(root, mode)
+      try {
+        await owner.prepare(destination, process.pid, [])
+        abort.abort()
+        if (mode === 'collision') {
+          await mkdir(destination)
+          await writeFile(join(destination, 'keep'), 'unrelated')
+        }
+        const record = {
+          status: mode === 'late-success' ? 'succeeded' : 'lost',
+          ...(mode === 'late-success'
+            ? { outcome: 'done', output: null }
+            : { code: 'COORDINATOR_LOST' }),
+          runId: retained.identity.runId,
+          ...(mode === 'cleanup' ? { cleanup: { status: 'failed' } } : {}),
+          checkpoint: mode === 'absent' ? null : retained,
+        }
+        const receipt = await owner.publish(
+          record as any,
+          process.pid,
+          undefined,
+          mode === 'absent' ? undefined : retained,
+          true,
+        )
+        if (mode === 'cancelled' || mode === 'late-success') {
+          expect(receipt).toMatchObject({ status: 'written', source: 'checkpoint' })
+          expect(await readFile(join(destination, 'files/saved.txt'), 'utf8')).toBe(
+            'accepted bytes',
+          )
+          expect(JSON.parse(await readFile(join(destination, 'result.json'), 'utf8')).status).toBe(
+            mode === 'late-success' ? 'succeeded' : 'lost',
+          )
+        } else if (mode === 'absent') {
+          expect(receipt).toMatchObject({ status: 'written', source: 'none' })
+          expect(await readdir(join(destination, 'files'))).toEqual([])
+        } else {
+          expect(receipt).toMatchObject({
+            status: 'failed',
+            code: mode === 'cleanup' ? 'INVALID_FILES' : 'DESTINATION_CHANGED',
+          })
+          if (mode === 'collision')
+            expect(await readFile(join(destination, 'keep'), 'utf8')).toBe('unrelated')
+          else await expect(stat(destination)).rejects.toMatchObject({ code: 'ENOENT' })
+        }
+        expect(checkpoints.latest?.digest).toBe(retained.digest)
+      } finally {
+        await owner.close()
+        checkpoints.close()
+      }
+    }
+  }))
 
 async function fixturePid(path: string): Promise<number> {
   const pid = Number(await readFile(path, 'utf8'))

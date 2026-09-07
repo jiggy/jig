@@ -165,6 +165,25 @@ loss. Killing the whole host or both trusted owners is outside the coordinator-
 loss cleanup guarantee; no automatic replay or general artifact-recovery service
 is provided. Cleanup failures are surfaced rather than reported as zero residue.
 
+Run Checkpoint is an optional, reviewed root-only effect with a writable output
+mapping. Its independent command owner retains one accepted aggregate (up to
+2 MiB canonical JSON, including 64 UTF-8 files totaling 1 MiB) plus a bounded
+replacement. Protocol decoding, immutable snapshots, serialized replies, file
+buffers, and final staging can coexist; these trusted-owner allocations are
+separate from the Run's cgroup memory ceiling and remain bounded by the request
+and publication limits. At most 16 saves and one in-flight save are accepted;
+worker reservations are unchanged. No control socket, project descriptor or
+host output path enters package code. A retained record's identity is supplied
+by the host; application evidence is not certified by retention.
+
+On coordinator loss, that owner opens one recovery-only coordinator for the
+bound project inode, epoch and Run. It must fence and release the complete tree
+before publishing saved bytes. Recovery never submits work, extends execution
+budgets or retries effects. Unconfirmed recovery delivers no saved files.
+Previously accepted bytes survive cancellation, not death of both owners or
+machine failure. Normal completion and interrupted progress remain distinct
+in the output packet.
+
 ## Reporting a vulnerability
 
 Do not open a public issue for a suspected vulnerability. Report it through

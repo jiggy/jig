@@ -1,62 +1,65 @@
-import { constants, type BigIntStats } from 'node:fs'
+import { type BigIntStats, constants } from 'node:fs'
 import { lstat, mkdir, open } from 'node:fs/promises'
 
 import {
-  ProjectAdministrationError,
   normalizeProjectApplyRequest,
   normalizeProjectPlanRequest,
+  ProjectAdministrationError,
   type ProjectApplyReceipt,
   type ProjectApplyRequest,
   type ProjectPlanRequest,
   type ProjectPlanResult,
   type ProjectSession,
 } from '../administration/project.js'
+import type { RootRunTerminal } from '../administration/root.js'
 import { CheckError } from '../diagnostics.js'
+import { validateJson1 } from '../json.js'
+import {
+  buildPrivateActivationRequests,
+  resolveRetainedPackageProjectObservation,
+} from '../project/package-resolution.js'
+import { retainOpenedPackageProject } from '../project/retained-project.js'
+import { createPrivateActivationCandidateV5 } from './activation-admission.js'
 import {
   applyPrivateActivationReviewPlan,
   capturePrivateActivationPlanningBase,
+  loadPrivateRootRunForCoordinator,
   publishPrivateActivationReviewPlan,
   readPrivateAdmittedExecutionReuse,
 } from './activation-admission-store.js'
-import { createPrivateActivationCandidateV5 } from './activation-admission.js'
 import { createPrivateActivationPlanningObservation } from './activation-planning.js'
-import type { PrivateInstalledBunSupport } from './installed-bun-support.js'
-import { inspectPrivateBunPackageInput } from './bun-package-input.js'
-import {
-  createPrivateBunPreparationBudget,
-  type PrivateBunPreparationBudget,
-} from './bun-native-preparation-budget.js'
+import type { PrivateAgentProvider } from './agent-provider.js'
 import {
   preparePrivateBunPackage,
   recoverPrivateBunPreparationOwner,
 } from './bun-native-preparation.js'
 import {
-  captureStoredPackage,
-  publishCapturedPackage,
-  type PackageArtifactRef,
-} from './package-artifact-store.js'
-import { planPrivateDirectRun, type PrivateDirectRunRecipe } from './direct-run.js'
+  createPrivateBunPreparationBudget,
+  type PrivateBunPreparationBudget,
+} from './bun-native-preparation-budget.js'
+import { inspectPrivateBunPackageInput } from './bun-package-input.js'
+import { type PrivateDirectRunRecipe, planPrivateDirectRun } from './direct-run.js'
+import type { PrivateFileRecovery } from './file-command.js'
 import { privateDomainDigest } from './identity.js'
-import { validateJson1 } from '../json.js'
+import type { PrivateInstalledBunSupport } from './installed-bun-support.js'
 import type { PrivateLinuxCgroupBackend } from './linux-rootless-backend.js'
-import type { PrivateAgentProvider } from './agent-provider.js'
-import { renderPrivateProjectPlanReview } from './project-plan-review.js'
+import {
+  captureStoredPackage,
+  type PackageArtifactRef,
+  publishCapturedPackage,
+} from './package-artifact-store.js'
 import type { PrivateProjectPlanReview } from './project-plan-review.js'
+import { renderPrivateProjectPlanReview } from './project-plan-review.js'
+import {
+  openPrivateProjectSessionOwner,
+  type PrivateProjectSessionOwner,
+} from './project-session-owner.js'
 import {
   attachPrivateRootAdministrationController,
   type PrivateRootAdministrationController,
 } from './root-administration-controller.js'
 import { executePrivateRootRunLaunch } from './root-run-controller.js'
 import type { PrivateRootRunFiles } from './root-run-files.js'
-import {
-  openPrivateProjectSessionOwner,
-  type PrivateProjectSessionOwner,
-} from './project-session-owner.js'
-import {
-  buildPrivateActivationRequests,
-  resolveRetainedPackageProjectObservation,
-} from '../project/package-resolution.js'
-import { retainOpenedPackageProject } from '../project/retained-project.js'
 
 const STORE_DIRECTORY = 'private-package-store'
 
@@ -67,6 +70,50 @@ export interface PrivateProjectSessionHost {
   readonly runTimeoutMs: number
   readonly agentProvider?: PrivateAgentProvider | undefined
   readonly files?: PrivateRootRunFiles
+}
+
+/** Recover only the already-bound Run. This entrypoint has no submission or planning surface. */
+export async function recoverPrivateCheckpointRun(
+  selected: PrivateFileRecovery,
+  host: PrivateProjectSessionHost,
+): Promise<RootRunTerminal> {
+  const owner = await openPrivateProjectSessionOwner(selected.project)
+  try {
+    if (
+      String(owner.root.information.dev) !== selected.device ||
+      String(owner.root.information.ino) !== selected.inode
+    )
+      throw new Error('recovery project changed')
+    const run = await loadPrivateRootRunForCoordinator({
+      projectRoot: selected.project,
+      coordinator: owner.coordinator,
+      runId: selected.runId,
+    })
+    if (run.coordinatorEpoch !== selected.epoch || run.coordinatorEpoch >= owner.coordinator.epoch)
+      throw new Error('recovery cannot execute a current or substituted Run')
+    const settled = await executePrivateRootRunLaunch({
+      projectRoot: selected.project,
+      packageStoreRoot: await preparePackageStore(owner),
+      runId: selected.runId,
+      coordinator: owner.coordinator,
+      installedSupport: host.installedBunSupport,
+      backend: host.backend,
+    })
+    if (settled.state !== 'terminal' || settled.run.terminal === undefined)
+      throw new Error('recovery fence remains unconfirmed')
+    await owner.verify()
+    const terminal = settled.run.terminal
+    return terminal.status === 'succeeded'
+      ? {
+          status: 'succeeded',
+          outcome: terminal.result.outcome,
+          output: terminal.result.output,
+          diagnostics: terminal.diagnostics,
+        }
+      : terminal
+  } finally {
+    await owner.dispose()
+  }
 }
 
 /** Open one finite project session against already selected trusted machinery. */

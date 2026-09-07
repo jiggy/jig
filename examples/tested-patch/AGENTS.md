@@ -47,12 +47,16 @@ application is not an unrestricted repository worker or independent probe.
   Construct complete-file patches from validated replacements, not model diff
   text. Write `review.patch` only for a verified passing result; preserve valid
   failed proposals and invalid-proposal reasons. No automatic application.
-- Operational failures export no partial Flow files. A passed finite case set
+- The root declares Run Checkpoint and saves complete validated aggregates;
+  only accepted checkpoint files survive interruption after confirmed cleanup.
+  Saving does not certify the application verdict. A passed finite case set
   establishes tested behavior only, not correctness or marketing superiority.
 - Validate all batch jobs before dispatch. Use distinct operation identities
   through the same exact slot, with at most two siblings. Optional per-job
-  cancellation preserves settled sibling results; root failure has no partial
-  delivery guarantee. Retain separate base/candidate and acceptance identities.
+  cancellation preserves settled sibling results. Checkpoint after each settled
+  job, serialize saves, identify pending jobs, and retain separate base/candidate
+  and acceptance identities. Root failure preserves only acknowledged/accepted
+  progress while the independent command owner lives, never arbitrary scratch.
 - Report overlapping patch paths, never merge automatically or claim that
   separately checked candidates were tested together. `done` requires all jobs
   review-ready without conflicting edits; otherwise return honest `blocked`.

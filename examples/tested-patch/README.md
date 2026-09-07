@@ -33,8 +33,9 @@ installation, shell service, writable host repository, or automatic merge.
 Repository tests can be interfered with by candidate code; independent cases
 compare captured CLI behavior outside its execution scope.
 
-The output destination must be new. Ctrl-C requests cancellation; operational
-failure exports no partial Flow files. Selected source reaches your configured
+The output destination must be new. Ctrl-C requests cancellation. Settled jobs
+are checkpointed: interruption preserves only the latest accepted aggregate,
+after cleanup, and never becomes a successful Run. Selected source reaches your configured
 provider, and even unsuccessful calls may incur charges.
 
 ## Repair two projects together

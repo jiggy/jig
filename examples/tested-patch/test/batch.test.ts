@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { cp, mkdir, mkdtemp, readFile, readdir, rm } from 'node:fs/promises'
+import { cp, mkdir, mkdtemp, readdir, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { OperationError, type RunContext } from '@jigging/flow'
@@ -51,6 +51,7 @@ test('synthetic selected cancellation preserves the other worker and its verifie
     const { result } = await syntheticRepair()
     let active = 0,
       peak = 0
+    const saves: any[] = []
     const actual = await repairBatch({
       input: {
         jobs: [
@@ -63,6 +64,10 @@ test('synthetic selected cancellation preserves the other worker and its verifie
         deliverables: { access: 'read-write', path: out },
       },
       signal: new AbortController().signal,
+      callCapability: async (call) => {
+        saves.push(structuredClone(call.input))
+        return { sequence: saves.length, digest: 'synthetic' }
+      },
       runChildFlow: async (call, options) => {
         active++
         peak = Math.max(peak, active)
@@ -83,6 +88,10 @@ test('synthetic selected cancellation preserves the other worker and its verifie
       },
     } as unknown as RunContext)
     expect(peak).toBe(2)
+    expect(saves.map((s) => s.sequence)).toEqual([1, 2])
+    expect(saves[0].evidence.pending).toEqual(['first'])
+    expect(saves[0].files['second/review.patch']).toContain('--- a/src/report.ts')
+    expect(saves[1].evidence.pending).toEqual([])
     expect(actual.outcome).toBe('blocked')
     expect((actual.output as any).jobs).toMatchObject([
       {
@@ -129,6 +138,50 @@ test('a bad second project prevents every dispatch', async () => {
       } as unknown as RunContext),
     ).rejects.toThrow('Select existing')
     expect(calls).toBe(0)
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('root interruption preserves the saved first patch without claiming the unfinished job passed', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'jig-progress-unit-'))
+  const abort = new AbortController()
+  const saves: any[] = []
+  try {
+    await cp(join(import.meta.dir, '../fixtures/log-report'), join(root, 'first'), {
+      recursive: true,
+    })
+    await mkdir(join(root, 'out'))
+    const { result } = await syntheticRepair()
+    await expect(
+      repairBatch({
+        input: { jobs: [job, { ...job, id: 'unfinished' }] },
+        signal: abort.signal,
+        attachments: {
+          source: { access: 'read', path: root },
+          deliverables: { access: 'read-write', path: join(root, 'out') },
+        },
+        runChildFlow: async (call) => {
+          if (call.operationId === 'repair:first') return result
+          await new Promise((_, reject) =>
+            abort.signal.addEventListener('abort', () => reject(abort.signal.reason), {
+              once: true,
+            }),
+          )
+          throw new Error('unfinished worker must not complete')
+        },
+        callCapability: async (call) => {
+          saves.push(structuredClone(call.input))
+          abort.abort(new Error('operator interruption'))
+          return { sequence: 1, digest: 'synthetic' }
+        },
+      } as unknown as RunContext),
+    ).rejects.toThrow('operator interruption')
+    expect(saves).toHaveLength(1)
+    expect(saves[0].evidence.pending).toEqual(['unfinished'])
+    expect(saves[0].evidence.jobs).toHaveLength(1)
+    expect(saves[0].files['first/review.patch']).toContain('--- a/src/report.ts')
+    expect(Object.keys(saves[0].files).some((p) => p.startsWith('unfinished/'))).toBe(false)
   } finally {
     await rm(root, { recursive: true, force: true })
   }

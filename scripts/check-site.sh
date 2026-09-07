@@ -25,7 +25,8 @@ docs/flow/spec/machine/schema-1.json|schemas/schema-1.json'
     json_map='docs/jig/spec/machine/jig-lock-1.schema.json|schemas/jig-lock-1.schema.json
 docs/jig/spec/machine/project-authoring-1.schema.json|schemas/project-authoring-1.schema.json
 docs/jig/spec/contracts/agent-run.capability.json|contracts/agent-run.capability.json
-docs/jig/spec/contracts/project-command.capability.json|contracts/project-command.capability.json'
+docs/jig/spec/contracts/project-command.capability.json|contracts/project-command.capability.json
+docs/jig/spec/contracts/run-checkpoint.capability.json|contracts/run-checkpoint.capability.json'
     ;;
   *)
     echo "the site must be flow or jig" >&2
@@ -61,10 +62,11 @@ grep -Fq "$home_title" "$temporary/index.html"
 grep -Fq "$guide_title" "$temporary/guide.html"
 
 if [ "$site_name" = jig ]; then
-  for contract in agent-run project-command; do
+  for contract in agent-run project-command run-checkpoint; do
     case $contract in
       agent-run) title='<title>Agent Run contract - Jig</title>' ;;
       project-command) title='<title>Project Command contract - Jig</title>' ;;
+      run-checkpoint) title='<title>Run Checkpoint contract - Jig</title>' ;;
     esac
     curl --fail --location --silent --show-error \
       "$base/contracts/$contract" > "$temporary/contract.html"

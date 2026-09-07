@@ -114,6 +114,13 @@ jobs:
           "$JIG_CI_BUN" test packages/jig/test/project-command-lifecycle.test.ts
           --timeout 180000
 
+      - name: Prove retained progress and coordinator-loss delivery
+        run: >-
+          scripts/ci/provision-github-rootless-host.sh run-delegated
+          env JIG_LINUX_ROOTLESS_HOSTILE=1
+          "$JIG_CI_BUN" test packages/jig/test/run-checkpoint-lifecycle.test.ts
+          --timeout 90000
+
       - name: Prove the deterministic Agent lifecycle
         run: >-
           scripts/ci/provision-github-rootless-host.sh run-delegated

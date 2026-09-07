@@ -1,35 +1,36 @@
+import { unavailable } from '../diagnostics.js'
+import type { JsonValue } from '../json.js'
+import {
+  type PrivateActivationRequest,
+  requirePrivateActivationRequest,
+} from '../project/package-resolution.js'
 import {
   createPrivateActivationRecipeObservation,
   type PrivateActivationRecipeObservation,
 } from './activation-planning.js'
-import {
-  requirePrivateInstalledBunSupport,
-  type PrivateInstalledBunSupport,
-} from './installed-bun-support.js'
+import { type PrivateAgentProvider, requirePrivateAgentProvider } from './agent-provider.js'
 import { privateDomainDigest } from './identity.js'
 import {
-  requirePrivateLinuxCgroupBackend,
+  type PrivateInstalledBunSupport,
+  requirePrivateInstalledBunSupport,
+} from './installed-bun-support.js'
+import {
   type PrivateLinuxBackendMechanismSupport,
   type PrivateLinuxCgroupBackend,
+  requirePrivateLinuxCgroupBackend,
 } from './linux-rootless-backend.js'
 import { normalizePackageArtifactRef, type PackageArtifactRef } from './package-artifact-store.js'
-import type { JsonValue } from '../json.js'
-import { unavailable } from '../diagnostics.js'
-import {
-  requirePrivateActivationRequest,
-  type PrivateActivationRequest,
-} from '../project/package-resolution.js'
-import { PRIVATE_MAX_ROOT_RUN_TIMEOUT_MS } from './root-run-timeout-policy.js'
-import { requirePrivateAgentProvider, type PrivateAgentProvider } from './agent-provider.js'
 import { AGENT_RUN_CONTRACT_DIGEST } from './private-agent-run.js'
-import {
-  PRIVATE_FLOW_RESOURCE_CEILINGS as RESOURCE_CEILINGS,
-  PRIVATE_ROOT_RESOURCE_POLICY,
-} from './root-operation-limits.js'
 import {
   PROJECT_COMMAND_CONTRACT_DIGEST,
   PROJECT_COMMAND_LIMITS,
 } from './private-project-command.js'
+import { RUN_CHECKPOINT_CONTRACT_DIGEST, RUN_CHECKPOINT_LIMITS } from './private-run-checkpoint.js'
+import {
+  PRIVATE_ROOT_RESOURCE_POLICY,
+  PRIVATE_FLOW_RESOURCE_CEILINGS as RESOURCE_CEILINGS,
+} from './root-operation-limits.js'
+import { PRIVATE_MAX_ROOT_RUN_TIMEOUT_MS } from './root-run-timeout-policy.js'
 
 const ADAPTER_REVISION = 'private-bun-direct/1'
 const DEFAULT_SELECTOR = 'bun'
@@ -90,6 +91,11 @@ export async function planPrivateBunDirectRun(input: {
     }
   }
   const capabilityUses = Object.values(request.capabilities)
+  if (
+    capabilityUses.some(({ digest }) => digest === RUN_CHECKPOINT_CONTRACT_DIGEST) &&
+    !Object.values(request.attachments).includes('read-write')
+  )
+    throw new TypeError('Run Checkpoint requires a root writable attachment')
   const usesAgent = capabilityUses.some(({ digest }) => digest === AGENT_RUN_CONTRACT_DIGEST)
   const usesCommand = capabilityUses.some(
     ({ digest }) => digest === PROJECT_COMMAND_CONTRACT_DIGEST,
@@ -105,9 +111,13 @@ export async function planPrivateBunDirectRun(input: {
   if (
     capabilityUses.some(
       ({ digest }) =>
-        ![AGENT_RUN_CONTRACT_DIGEST, PROJECT_COMMAND_CONTRACT_DIGEST].includes(digest),
+        ![
+          AGENT_RUN_CONTRACT_DIGEST,
+          PROJECT_COMMAND_CONTRACT_DIGEST,
+          RUN_CHECKPOINT_CONTRACT_DIGEST,
+        ].includes(digest),
     ) ||
-    capabilityUses.length > 2 ||
+    capabilityUses.length > 3 ||
     (agentProvider !== undefined && agentProvider.contractDigest !== AGENT_RUN_CONTRACT_DIGEST)
   ) {
     throw new TypeError('private Bun recipe requires exact supported capabilities')
@@ -240,6 +250,9 @@ function logicalLaunchDigest(
     ...(request.commands === undefined
       ? {}
       : { commands: request.commands, commandLimits: PROJECT_COMMAND_LIMITS }),
+    ...(Object.values(request.capabilities).some((c) => c.digest === RUN_CHECKPOINT_CONTRACT_DIGEST)
+      ? { checkpointLimits: RUN_CHECKPOINT_LIMITS }
+      : {}),
     ...(agentProvider === undefined ? {} : { agentProviderDigest: agentProvider.digest }),
   } as unknown as JsonValue)
 }

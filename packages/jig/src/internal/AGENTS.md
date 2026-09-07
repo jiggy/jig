@@ -66,6 +66,14 @@ child calls, project commands, and Agent providers.
   reservation until confirmed fencing and cleanup. Kernel envelope limits and
   the recipe-bound reservation policy must agree. Leaves admit one effect;
   there is no queue, borrowing, recursive budget, or public scheduler.
+- Run Checkpoint uses one separate bounded control operation, not a worker
+  reservation. Only the root's independent output owner accepts immutable
+  aggregate bytes before acknowledgement. Bind exact Run, admitted method,
+  captured input, project identity and coordinator epoch before dispatch.
+  Interrupted publication uses accepted bytes only after complete fencing;
+  recovery may settle that exact older Run but never submit or replay work.
+  Keep rejected replacement, lost acknowledgement, owner lifetime, output
+  collision and cleanup failure distinct. The owner retains no history.
 - A project command receives immutable text and runtime mounts only: no Flow
   package, network, credential, or arbitrary executable. Host observations are
   process evidence, not an independent test verdict. Candidate bytes are copied

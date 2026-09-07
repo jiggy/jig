@@ -2,8 +2,11 @@ import { describe, expect, test } from 'bun:test'
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
-
-import { canonicalJson, JSON_1_LIMITS, type JsonValue } from '../src/json.js'
+import {
+  AGENT_RUN_CONTRACT_DIGEST,
+  AGENT_RUN_CONTRACT_ID,
+  AGENT_RUN_CONTRACT_VERSION,
+} from '../src/internal/private-agent-run.js'
 import {
   createPrivateProjectLocalLock,
   decodePrivateProjectLocalLock,
@@ -11,23 +14,19 @@ import {
   privateProjectLocalLockDigest,
   requirePrivateProjectLocalLock,
 } from '../src/internal/project-local-lock.js'
+import { canonicalJson, JSON_1_LIMITS, type JsonValue } from '../src/json.js'
 import { defineJig } from '../src/project/author.js'
+import { captureFlowSource } from '../src/project/flow-source.js'
+import {
+  type InjectedBindingDeclaration,
+  linkPackageProject,
+  type PackageProjectValue,
+} from '../src/project/package-project.js'
 import {
   buildPrivateActivationRequests,
   restorePrivateActivationRequest,
 } from '../src/project/package-resolution.js'
-import { captureFlowSource } from '../src/project/flow-source.js'
-import {
-  linkPackageProject,
-  type InjectedBindingDeclaration,
-  type PackageProjectValue,
-} from '../src/project/package-project.js'
-import { retainFlowSourcePackages, type RetainedFlowInput } from '../src/project/retained-flow.js'
-import {
-  AGENT_RUN_CONTRACT_DIGEST,
-  AGENT_RUN_CONTRACT_ID,
-  AGENT_RUN_CONTRACT_VERSION,
-} from '../src/internal/private-agent-run.js'
+import { type RetainedFlowInput, retainFlowSourcePackages } from '../src/project/retained-flow.js'
 
 const encoder = new TextEncoder()
 const schemaUri = 'https://flow.jig.md/schemas/schema-1.json'
@@ -37,6 +36,53 @@ const agentRunContract = await readFile(
 )
 
 describe('private package-project portable lock projection', () => {
+  test('checkpoint authority is exact, root-only, and retained in lock identity', async () => {
+    const descriptor = await readFile(
+      new URL('../../../docs/jig/spec/contracts/run-checkpoint.capability.json', import.meta.url),
+      'utf8',
+    )
+    for (const attachments of ['attachments:\n  out: read-write\n', '']) {
+      await withFlows(
+        {
+          'flows/checkpoint': {
+            'FLOW.md': metadata(
+              `name: checkpoint\ndescription: Save progress.\n${attachments}uses:\n  progress:\n    contract: ./contracts/run-checkpoint.capability.json`,
+            ),
+            'flow.ts': 'export {};\n',
+            'contracts/run-checkpoint.capability.json': descriptor,
+          },
+          'flows/parent': {
+            'FLOW.md': metadata('name: parent\ndescription: Parent.'),
+            'flow.ts': 'export {};\n',
+          },
+        },
+        async (flows) => {
+          if (!attachments) {
+            expect(() => linkPackageProject({ flows, bindings: [] })).toThrow('writable attachment')
+            return
+          }
+          const project = linkPackageProject({ flows, bindings: [] })
+          const lock = createPrivateProjectLocalLock(project)
+          expect(lock.packages['flows/checkpoint']!.directRun).toBe(true)
+          expect(lock.packages['flows/checkpoint']!.uses.progress!.id).toBe(
+            'https://jig.md/contracts/run-checkpoint',
+          )
+          expect(decodePrivateProjectLocalLock(encodePrivateProjectLocalLock(lock))).toEqual(lock)
+          expect(() =>
+            linkPackageProject({
+              flows,
+              bindings: [
+                binding('bindings/parent.ts', {
+                  package: 'flows/parent',
+                  slots: { child: 'flow:flows/checkpoint' },
+                }),
+              ],
+            }),
+          ).toThrow()
+        },
+      )
+    }
+  })
   test('has one empty canonical byte vector and authenticated identity', () => {
     const bytes = encoder.encode('{"bindings":{},"packages":{}}\n')
     const value = decodePrivateProjectLocalLock(bytes)

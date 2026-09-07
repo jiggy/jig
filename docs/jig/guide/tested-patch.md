@@ -82,9 +82,13 @@ A completed evaluation includes `commands`, `acceptance`,
 not execution evidence.
 
 Cancellation, deadlines, uncertain execution, and unavailable support never
-trigger a correction or automatic replay. Operational failure exports no
-partial Flow files; earlier evidence may survive in terminal `details`.
-Coordinator loss can prevent a report from arriving. File delivery is separate
+trigger a correction or automatic replay. Each settled job saves an aggregate
+of verified patches, unsuccessful outcomes, and pending job IDs. On later
+interruption, `result.json.checkpoint` identifies the latest saved aggregate;
+only its files are exported, after cleanup. An interrupted Run stays failed
+or lost even when it preserves a review-ready sibling patch. Unsaved work is
+not salvaged. Retention requires the independent command owner to remain alive;
+see [Run Checkpoint](../spec/run-checkpoint.md). File delivery is separate
 from execution: inspect an existing destination after a lost acknowledgement
 instead of blindly starting another Run. See [working with files](./files.md).
 

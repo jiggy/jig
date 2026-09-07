@@ -7,16 +7,22 @@ import {
   type PrivateCliCommandHost,
   privateCliCommandLifetimeMs,
   privateCliRequiresHost,
+  publicTerminal,
 } from './cli.js'
 import {
   privateConnectFileOwner,
+  privateFileRecovery,
   privateNeedsFileOwner,
   privateOwnFileCommand,
 } from './internal/file-command.js'
 import { openPrivateInstalledBunHost } from './internal/installed-bun-host.js'
 import { PrivateRootlessLinuxAcquisitionError } from './internal/linux-rootless-acquisition.js'
 import { acquireOrReexecutePrivateRootlessLinux } from './internal/linux-rootless-delegation.js'
-import { openPrivateProjectSession } from './internal/project-session-controller.js'
+import {
+  openPrivateProjectSession,
+  recoverPrivateCheckpointRun,
+} from './internal/project-session-controller.js'
+import { canonicalJson } from './json.js'
 
 interface InstalledCliOutcome {
   readonly exitCode: number | null
@@ -47,7 +53,8 @@ async function runPrivateInstalledCli(
   }
 
   try {
-    if (privateNeedsFileOwner(arguments_)) {
+    const recovery = privateFileRecovery()
+    if (recovery === undefined && privateNeedsFileOwner(arguments_)) {
       return await privateOwnFileCommand(
         [executablePath, ...BUN_POLICY, installedCliPath],
         arguments_,
@@ -67,6 +74,12 @@ async function runPrivateInstalledCli(
         executablePath,
         installedCliPath,
       })
+      if (recovery !== undefined) {
+        delete process.env.JIG_PRIVATE_FILE_RECOVERY
+        const terminal = await recoverPrivateCheckpointRun(recovery, installedHost)
+        process.stdout.write(`${Buffer.from(canonicalJson(publicTerminal(terminal))).toString()}\n`)
+        return exit(0)
+      }
       const host: PrivateCliCommandHost = Object.freeze({
         ...(delivery === undefined ? {} : { delivery }),
         ...(installedHost.agentUnavailableHint === undefined

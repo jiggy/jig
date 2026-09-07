@@ -120,8 +120,9 @@ field, profile inheritance, overlay, ambient environment fallback, or per-Run
 settings override.
 
 Bindings are optional. A discovered Run package which is valid with empty
-settings, fits the root attachment profile, and uses either no capability or the one
-exact [Jig Agent Run contract](agent-run.md) is also an exact direct Flow
+settings, fits the root attachment profile, and uses only the supported
+[Agent Run](agent-run.md) and/or [Run Checkpoint](run-checkpoint.md) contracts
+(or no capabilities) is also an exact direct Flow
 target. There is no hidden generated Binding.
 
 ## Value rules

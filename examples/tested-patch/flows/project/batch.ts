@@ -1,8 +1,14 @@
 import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { JsonValue, RunContext, RunResult } from '@jigging/flow'
-import { identity, inspect, readRepairInput, writeRepairDeliverables } from './files.ts'
 import logs from './cases.json'
+import {
+  identity,
+  inspect,
+  readRepairInput,
+  repairDeliverables,
+  writeRepairDeliverables,
+} from './files.ts'
 import timesheet from './timesheet-cases.json'
 
 const checks = { logs, timesheet }
@@ -81,71 +87,118 @@ export async function repairBatch(run: RunContext): Promise<RunResult> {
       ),
     })
   const changes: { job: string; path: string; content: string }[] = []
+  const retained: Record<string, JsonValue> = Object.create(null)
+  const retainedFiles: Record<string, string> = Object.create(null)
+  let sequence = 0
+  let saves = Promise.resolve()
   const results = await Promise.all(
-    prepared.map(async ({ job, input }) => {
-      const captured = {
-        id: job.id,
-        directory: job.directory,
-        baseDigest: identity(input.files),
-        acceptanceDigest: identity(input.cases),
-      }
-      const selected = new AbortController()
-      const timer =
-        job.cancelAfterMs === undefined
-          ? undefined
-          : setTimeout(() => selected.abort(), job.cancelAfterMs)
-      let result: RunResult
-      try {
-        result = await run.runChildFlow(
-          { operationId: `repair:${job.id}`, slot: 'repair', input },
-          { signal: selected.signal },
-        )
-      } catch (error) {
+    prepared
+      .map(async ({ job, input }) => {
+        const captured = {
+          id: job.id,
+          directory: job.directory,
+          baseDigest: identity(input.files),
+          acceptanceDigest: identity(input.cases),
+        }
+        const selected = new AbortController()
+        const timer =
+          job.cancelAfterMs === undefined
+            ? undefined
+            : setTimeout(() => selected.abort(), job.cancelAfterMs)
+        let result: RunResult
+        try {
+          result = await run.runChildFlow(
+            { operationId: `repair:${job.id}`, slot: 'repair', input },
+            { signal: selected.signal },
+          )
+        } catch (error) {
+          run.signal.throwIfAborted()
+          // Preserve settled failure, not an invented candidate or verdict.
+          const value = error as { code?: string; message?: string; details?: JsonValue }
+          return {
+            ...captured,
+            status: 'failed',
+            code: value.code ?? 'EXECUTION_FAILED',
+            message: value.message ?? 'Worker failed.',
+            ...(value.details === undefined ? {} : { details: value.details }),
+          }
+        } finally {
+          clearTimeout(timer)
+        }
         run.signal.throwIfAborted()
-        // Preserve settled failure, not an invented candidate or verdict.
-        const value = error as { code?: string; message?: string; details?: JsonValue }
+        let checked: ReturnType<typeof inspect>
+        try {
+          checked = inspect(input, result)
+        } catch (error) {
+          return {
+            ...captured,
+            status: 'failed',
+            code: 'INVALID_RESULT',
+            message: error instanceof Error ? error.message : 'Invalid worker evidence.',
+            rejectedResult: result,
+          }
+        }
+        const output = join(deliverables.path, job.id)
+        await mkdir(output)
+        await writeRepairDeliverables(output, input, result)
+        for (const [path, text] of Object.entries(repairDeliverables(input, result)))
+          retainedFiles[`${job.id}/${path}`] = text
+        if (checked.ready) {
+          const attempt = (result.output as any).attempts.at(-1)
+          for (const file of attempt.proposal.replacements)
+            changes.push({
+              job: job.id,
+              path: `${job.directory}/${file.path}`,
+              content: file.content,
+            })
+        }
         return {
           ...captured,
-          status: 'failed',
-          code: value.code ?? 'EXECUTION_FAILED',
-          message: value.message ?? 'Worker failed.',
-          ...(value.details === undefined ? {} : { details: value.details }),
+          status: 'settled',
+          ready: checked.ready,
+          result,
         }
-      } finally {
-        clearTimeout(timer)
-      }
-      run.signal.throwIfAborted()
-      let checked: ReturnType<typeof inspect>
-      try {
-        checked = inspect(input, result)
-      } catch (error) {
-        return {
-          ...captured,
-          status: 'failed',
-          code: 'INVALID_RESULT',
-          message: error instanceof Error ? error.message : 'Invalid worker evidence.',
-          rejectedResult: result,
-        }
-      }
-      const output = join(deliverables.path, job.id)
-      await mkdir(output)
-      await writeRepairDeliverables(output, input, result)
-      if (checked.ready) {
-        const attempt = (result.output as any).attempts.at(-1)
-        for (const file of attempt.proposal.replacements)
-          changes.push({
-            job: job.id,
-            path: `${job.directory}/${file.path}`,
-            content: file.content,
+      })
+      .map((worker) =>
+        worker.then(async (result) => {
+          // Serialize complete aggregates; Jig does not choose application ordering.
+          const saving = saves.then(async () => {
+            run.signal.throwIfAborted()
+            retained[result.id] = result as unknown as JsonValue
+            const settled = jobs.filter((j) => Object.hasOwn(retained, j.id))
+            const pending = jobs.filter((j) => !Object.hasOwn(retained, j.id)).map((j) => j.id)
+            const files: Record<string, string> = Object.create(null)
+            for (const job of settled)
+              for (const [path, text] of Object.entries(retainedFiles))
+                if (path.startsWith(`${job.id}/`)) files[path] = text
+            files['summary.txt'] =
+              settled
+                .map((j) => {
+                  const value = retained[j.id] as { ready?: boolean }
+                  return `${j.id}: ${value.ready ? 'review-ready' : 'unsuccessful'}`
+                })
+                .join('\n') +
+              `\nPending: ${pending.join(', ') || 'none'}\nPatches were checked separately. Review before applying.\n`
+            await run.callCapability({
+              operationId: `progress:${++sequence}`,
+              slot: 'progress',
+              method: 'save',
+              input: {
+                sequence,
+                evidence: {
+                  jobs: settled.map((j) => retained[j.id]!),
+                  pending,
+                  overlaps: patchConflicts(changes.filter((c) => Object.hasOwn(retained, c.job))),
+                },
+                files,
+              },
+            })
           })
-      }
-      return {
-        ...captured,
-        status: 'settled',
-        ready: checked.ready,
-        result,
-      }
-    }),
+          saves = saving
+          await saving
+          return result
+        }),
+      ),
   )
   run.signal.throwIfAborted()
   const overlaps = patchConflicts(changes)

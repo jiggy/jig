@@ -227,17 +227,19 @@ export function inspect(input: Input, result: RunResult) {
     throw new TypeError('Completion lacks a reproduced defect and independently accepted patch.')
   return { ready, proposals, reason: evidence.reason as string }
 }
-export async function writeRepairDeliverables(path: string, input: Input, result: RunResult) {
+export function repairDeliverables(input: Input, result: RunResult): Record<string, string> {
   const summary = inspect(input, result)
-  await writeFile(
-    join(path, 'summary.txt'),
-    `${summary.ready ? 'review-ready' : 'unsuccessful'}\n${summary.reason}\n${summary.proposals.length} validated proposal(s). See result.json for command output, termination, and individual assertions.\n`,
-    { flag: 'wx' },
-  )
+  const files: Record<string, string> = {
+    'summary.txt': `${summary.ready ? 'review-ready' : 'unsuccessful'}\n${summary.reason}\n${summary.proposals.length} validated proposal(s). See result.json for command output, termination, and individual assertions.\n`,
+  }
   for (const proposal of summary.proposals)
-    await writeFile(join(path, `proposal-${proposal.number}.patch`), proposal.patch, { flag: 'wx' })
-  if (summary.ready)
-    await writeFile(join(path, 'review.patch'), summary.proposals.at(-1)!.patch, { flag: 'wx' })
+    files[`proposal-${proposal.number}.patch`] = proposal.patch
+  if (summary.ready) files['review.patch'] = summary.proposals.at(-1)!.patch
+  return files
+}
+export async function writeRepairDeliverables(path: string, input: Input, result: RunResult) {
+  for (const [name, text] of Object.entries(repairDeliverables(input, result)))
+    await writeFile(join(path, name), text, { flag: 'wx' })
 }
 export async function repairFiles(run: RunContext): Promise<RunResult> {
   const { source, deliverables } = run.attachments
@@ -247,5 +249,11 @@ export async function repairFiles(run: RunContext): Promise<RunResult> {
   const result = await run.runChildFlow({ operationId: 'repair', slot: 'repair', input })
   run.signal.throwIfAborted()
   await writeRepairDeliverables(deliverables.path, input, result)
+  await run.callCapability({
+    operationId: 'progress:1',
+    slot: 'progress',
+    method: 'save',
+    input: { sequence: 1, evidence: result, files: repairDeliverables(input, result) },
+  })
   return result
 }

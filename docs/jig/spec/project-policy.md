@@ -121,14 +121,18 @@ A Flow is a direct Run target only when it:
 
 - has one code entrypoint;
 - declares no capability use, or at most one slot each for the exact Jig
-  Agent Run and Project Command Capability Contracts;
+  Agent Run and Run Checkpoint Capability Contracts;
 - declares at most eight attachments, at most one writable; and
 - accepts `{}` as settings.
 
 Direct eligibility is structural. Host execution support is planned
 separately, so an eligible target can still be unavailable on this host.
-Project Command requires a Binding's reviewed `commands`; its direct Flow
-target remains unavailable without that authority.
+Project Command requires a Binding's reviewed `commands`; command-capable
+packages are therefore invoked through configured Bindings, not direct targets.
+
+[Run Checkpoint](run-checkpoint.md) requires a root writable attachment and
+the installed command's `--out` owner. Its accepted aggregate survives later
+execution interruption under that capability's bounded retention contract.
 
 The first alpha host has one exact recipe: `flow.ts` run by Bun inside the
 rootless execution envelope. A package with production dependencies supplies
@@ -540,12 +544,19 @@ manifest lists only Flow files, never its own host record. Private launch,
 inode, device, provider, and credential evidence is not exported.
 
 `delivery.status` is `written`, `failed`, or `unknown`, independently of execution
-`status`. A valid custom outcome may publish files. Operational execution or
-result-validation failure publishes only the actual host record when available;
+`status`. A written receipt's `source` is `final`, `checkpoint`, or `none`.
+A known successful terminal is not downgraded when coordinator loss leaves only
+earlier checkpoint files for delivery; the source identifies those bytes.
+A valid custom outcome may publish files. Operational execution or
+result-validation failure publishes only the actual host record when available,
+unless the root declared [Run Checkpoint](run-checkpoint.md). That capability
+delivers its latest accepted aggregate after confirmed cleanup and adds an
+explicit checkpoint record or `null`; it never exports unfinished scratch.
 unconfirmed Project Session cleanup also suppresses Flow files and returns a
 nonzero command result while preserving a known terminal.
 
-Before publication, cancellation, validation, copying, or a destination collision
+Without an accepted checkpoint, cancellation before ordinary publication leaves
+no packet. Validation, copying, or a destination collision
 leaves no packet and removes owned staging. If publication wins cancellation,
 the complete packet remains. Later acknowledgement, stdout, or cleanup failure
 never retracts the packet, rewrites its terminal, or authorizes reexecution.

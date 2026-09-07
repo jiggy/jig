@@ -21,6 +21,9 @@ Jig is a local, secure host for admitted FLOW packages.
 - Project Command capability: https://jig.md/spec/project-command
 - Project Command contract ID explained: https://jig.md/contracts/project-command
 - Project Command descriptor: https://jig.md/contracts/project-command.capability.json
+- Run Checkpoint capability: https://jig.md/spec/run-checkpoint
+- Run Checkpoint contract: https://jig.md/contracts/run-checkpoint
+- Run Checkpoint descriptor: https://jig.md/contracts/run-checkpoint.capability.json
 - Security boundary: https://github.com/jiggy/jig/blob/main/SECURITY.md
 - Source and installation: https://github.com/jiggy/jig
 - FLOW specifications: https://flow.jig.md/

@@ -1,28 +1,32 @@
 import { CheckError, invalid } from '../diagnostics.js'
-import type { JsonObject, JsonValue } from '../json.js'
-import type { InspectedPackage } from '../package/inspect.js'
-import { SchemaDiagnostic } from '../schema/index.js'
+import { assertAgentRunContract } from '../internal/private-agent-run.js'
 import {
   assertProjectCommandContract,
   PROJECT_COMMAND_CONTRACT_DIGEST,
 } from '../internal/private-project-command.js'
-import type { ProjectCommands } from './commands.js'
-import { assertAgentRunContract } from '../internal/private-agent-run.js'
 import {
+  assertRunCheckpointContract,
+  RUN_CHECKPOINT_CONTRACT_DIGEST,
+} from '../internal/private-run-checkpoint.js'
+import type { JsonObject, JsonValue } from '../json.js'
+import type { InspectedPackage } from '../package/inspect.js'
+import { SchemaDiagnostic } from '../schema/index.js'
+import {
+  type BindingDefinition,
   defineBinding,
   normalizePackageBindingDefinition,
-  parseRunTargetSelector,
-  type BindingDefinition,
   type PackageBindingInput,
+  parseRunTargetSelector,
 } from './author.js'
+import type { ProjectCommands } from './commands.js'
 import { isDirectRunEligible } from './flow-source.js'
-import { requireRetainedFlowInput, type RetainedFlowInput } from './retained-flow.js'
 import {
   assertNoProjectPathCollisions,
   compareProjectPaths,
   isProtectedProjectPath,
   normalizeProjectPath,
 } from './paths.js'
+import { type RetainedFlowInput, requireRetainedFlowInput } from './retained-flow.js'
 
 const LOCAL_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
 const MAX_MEMBERS = 65_536
@@ -196,10 +200,10 @@ export function projectSupportedCapabilityUses(
 ): Readonly<Record<string, LinkedCapabilityUse>> {
   const declarations = Object.entries(inspected.metadata.uses ?? {})
   if (declarations.length === 0) return Object.freeze(Object.create(null))
-  if (declarations.length > 2) {
+  if (declarations.length > 3) {
     invalid(
       'PROJECT_FLOW_CAPABILITY_UNSUPPORTED',
-      'Jig supports one Agent Run and one Project Command capability slot per package',
+      'Jig supports one slot for each supported capability',
       packagePath,
     )
   }
@@ -209,7 +213,7 @@ export function projectSupportedCapabilityUses(
     if (declaration.contract === undefined) {
       invalid(
         'PROJECT_FLOW_CAPABILITY_UNSUPPORTED',
-        'Jig supports only the exact Agent Run and Project Command contracts',
+        'Jig requires an exact supported capability contract',
         packagePath,
         `/uses/${pointerToken(slot)}`,
       )
@@ -218,7 +222,11 @@ export function projectSupportedCapabilityUses(
     if (reference === undefined)
       throw new Error('inspected capability reference invariant violated')
     try {
-      if (reference.contract.digest === PROJECT_COMMAND_CONTRACT_DIGEST)
+      if (reference.contract.digest === RUN_CHECKPOINT_CONTRACT_DIGEST) {
+        assertRunCheckpointContract(reference.contract)
+        if (!Object.values(inspected.metadata.attachments ?? {}).includes('read-write'))
+          throw new TypeError('Run Checkpoint requires a root writable attachment')
+      } else if (reference.contract.digest === PROJECT_COMMAND_CONTRACT_DIGEST)
         assertProjectCommandContract(reference.contract)
       else assertAgentRunContract(reference.contract)
       if (used.has(reference.contract.digest))

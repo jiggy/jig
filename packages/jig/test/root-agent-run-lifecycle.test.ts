@@ -1,29 +1,33 @@
 import { describe, expect, test } from 'bun:test'
-import { createRequire } from 'node:module'
-import { createServer, type Server } from 'node:http'
 import {
   copyFile,
   cp,
   lstat,
   mkdir,
   mkdtemp,
-  readFile,
   readdir,
+  readFile,
   realpath,
   rm,
   symlink,
   writeFile,
 } from 'node:fs/promises'
-import { basename, join } from 'node:path'
+import { createServer, type Server } from 'node:http'
+import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
-
+import { basename, join } from 'node:path'
 import type { RootAdministration, StartRootRunReceipt } from '../src/administration/root.js'
-import { openPrivateInstalledBunHost } from '../src/internal/installed-bun-host.js'
-import { openPrivateProjectSession } from '../src/internal/project-session-controller.js'
-import type { PrivateInstalledBunLocation } from '../src/internal/installed-bun-support.js'
-import { installedBunLocation } from './fixtures/installed-bun-location.js'
 import { main } from '../src/cli.js'
 import { PrivateFileDeliveryOwner } from '../src/internal/file-delivery.js'
+import { openPrivateInstalledBunHost } from '../src/internal/installed-bun-host.js'
+import type { PrivateInstalledBunLocation } from '../src/internal/installed-bun-support.js'
+import {
+  PrivateRunCheckpoints,
+  type RunCheckpointIdentity,
+  type RunCheckpointInput,
+} from '../src/internal/private-run-checkpoint.js'
+import { openPrivateProjectSession } from '../src/internal/project-session-controller.js'
+import { installedBunLocation } from './fixtures/installed-bun-location.js'
 
 const HOSTILE = process.env.JIG_LINUX_ROOTLESS_HOSTILE === '1'
 const proofDescribe = HOSTILE ? describe.serial : describe.skip
@@ -97,6 +101,7 @@ proofDescribe('contained repair file application', () => {
       )
     })
     let owner = new PrivateFileDeliveryOwner(new AbortController().signal)
+    let checkpoints: PrivateRunCheckpoints | undefined
     try {
       await cp(join(import.meta.dir, '../../../examples/tested-patch'), project, {
         recursive: true,
@@ -119,6 +124,7 @@ proofDescribe('contained repair file application', () => {
           )
         }
         await rm(join(flow, 'package.json'))
+        await rm(join(flow, 'bun.lock'))
       }
       await new Promise<void>((resolve, reject) => {
         server.once('error', reject)
@@ -167,10 +173,23 @@ globalThis.fetch = (url, init) => {
             },
           ) => openPrivateProjectSession({ directory, host: { ...installed, ...options } }),
           delivery: {
+            get checkpoint() {
+              return checkpoints?.latest ?? null
+            },
+            bindCheckpoint: async (identity: RunCheckpointIdentity) => {
+              checkpoints = new PrivateRunCheckpoints(identity)
+            },
+            saveCheckpoint: async (input: RunCheckpointInput) => checkpoints!.accept(input),
             prepare: (directory: string, roots: readonly number[]) =>
               owner.prepare(directory, process.pid, roots),
             publish: (record: import('../src/json.js').JsonValue, fd: number | undefined) =>
-              owner.publish(record, process.pid, fd),
+              owner.publish(
+                { ...(record as any), checkpoint: checkpoints?.latest ?? null },
+                process.pid,
+                fd,
+                checkpoints?.latest,
+                true,
+              ),
           },
         },
       }
@@ -843,8 +862,15 @@ proofDescribe('private contained Agent Run lifecycle', () => {
         const releaseRoot = await mkdtemp(join(tmpdir(), 'jig-agent-lifecycle-release-'))
         const events: DispatchEvent[] = []
         const server = await dispatchServer(events)
-        const priorKey = process.env.OPENAI_API_KEY
-        const priorModel = process.env.OPENAI_MODEL
+        const environment = { ...process.env }
+        for (const name of Object.keys(environment)) {
+          if (
+            name.startsWith('OPENAI_') ||
+            name.startsWith('OPENROUTER_') ||
+            name === 'JIG_AGENT_CLIENT'
+          )
+            delete environment[name]
+        }
         let session: Awaited<ReturnType<typeof openPrivateProjectSession>> | undefined
         let primaryFailure: unknown
         const request = (id: string, scenario: string) => runRequest(id, scenario, nested)
@@ -859,12 +885,12 @@ proofDescribe('private contained Agent Run lifecycle', () => {
           const location = await writeInstalledFixture(releaseRoot)
           await writeProject(root)
           if (nested) await writeSpecialistParent(root)
-          process.env.OPENAI_API_KEY = key
-          process.env.OPENAI_MODEL = 'provider/test-model'
+          environment.OPENAI_API_KEY = key
+          environment.OPENAI_MODEL = 'provider/test-model'
 
           session = await openPrivateProjectSession({
             directory: root,
-            host: await openPrivateInstalledBunHost(location),
+            host: await openPrivateInstalledBunHost(location, environment),
           })
           const plan = await session.plan({ lockMode: 'update' })
           if (plan.state !== 'applicable') throw new Error('Agent fixture did not produce a Plan')
@@ -946,7 +972,7 @@ proofDescribe('private contained Agent Run lifecycle', () => {
 
           await session.close()
           session = undefined
-          const deadlineHost = await openPrivateInstalledBunHost(location)
+          const deadlineHost = await openPrivateInstalledBunHost(location, environment)
           session = await openPrivateProjectSession({
             directory: root,
             host: Object.freeze({ ...deadlineHost, runTimeoutMs: nested ? 4_000 : 1_500 }),
@@ -960,7 +986,7 @@ proofDescribe('private contained Agent Run lifecycle', () => {
           await session.close()
           session = await openPrivateProjectSession({
             directory: root,
-            host: await openPrivateInstalledBunHost(location),
+            host: await openPrivateInstalledBunHost(location, environment),
           })
           const cancellation = await session.rootAdministration.startRun(
             request('agent-cancellation', 'slow'),
@@ -969,7 +995,7 @@ proofDescribe('private contained Agent Run lifecycle', () => {
           await session.close()
           session = await openPrivateProjectSession({
             directory: root,
-            host: await openPrivateInstalledBunHost(location),
+            host: await openPrivateInstalledBunHost(location, environment),
           })
           expect(
             await session.rootAdministration.startRun(request('agent-cancellation', 'slow')),
@@ -994,7 +1020,7 @@ proofDescribe('private contained Agent Run lifecycle', () => {
               nested ? 'specialist' : 'root',
             ],
             {
-              env: process.env,
+              env: environment,
               stdout: 'pipe',
               stderr: 'pipe',
             },
@@ -1013,10 +1039,10 @@ proofDescribe('private contained Agent Run lifecycle', () => {
           expect(await crashed.exited).toBe(137)
           await waitForCgroups(initialCgroups)
 
-          delete process.env.OPENAI_API_KEY
+          delete environment.OPENAI_API_KEY
           session = await openPrivateProjectSession({
             directory: root,
-            host: await openPrivateInstalledBunHost(location),
+            host: await openPrivateInstalledBunHost(location, environment),
           })
           expect(
             await session.rootAdministration.startRun(
@@ -1044,10 +1070,6 @@ proofDescribe('private contained Agent Run lifecycle', () => {
           throw error
         } finally {
           await session?.close().catch(() => undefined)
-          if (priorKey === undefined) delete process.env.OPENAI_API_KEY
-          else process.env.OPENAI_API_KEY = priorKey
-          if (priorModel === undefined) delete process.env.OPENAI_MODEL
-          else process.env.OPENAI_MODEL = priorModel
           await closeServer(server)
           await Promise.all([
             rm(root, { recursive: true, force: true }),

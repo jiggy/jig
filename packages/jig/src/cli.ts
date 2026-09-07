@@ -30,7 +30,7 @@ import {
   PRIVATE_ROOTLESS_COMMAND_OVERHEAD_ALLOWANCE_MS,
   privateRootlessCommandLifetime,
 } from './internal/root-run-timeout-policy.js'
-import { canonicalJson, decodeJson1, Json1Error, JSON_1_LIMITS, type JsonValue } from './json.js'
+import { canonicalJson, decodeJson1, JSON_1_LIMITS, Json1Error, type JsonValue } from './json.js'
 import { bindingRef, flowRef, type RunTargetRef } from './project/author.js'
 
 const HELP = `Usage:
@@ -229,6 +229,7 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
   const files = new PrivateRootRunFiles(
     capture.attachments,
     parsed.output === undefined ? null : resolve(runtime.currentDirectory, parsed.output),
+    runtime.host.delivery,
   )
   try {
     if (parsed.output !== undefined) {
@@ -301,7 +302,13 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
       } catch {
         delivery = { status: 'unknown', destination: files.identity.output!, code: 'CHANNEL_LOST' }
       }
-      record = { ...(record as Record<string, JsonValue>), delivery } as unknown as JsonValue
+      record = {
+        ...(record as Record<string, JsonValue>),
+        delivery,
+        ...(runtime.host.delivery!.checkpoint === undefined
+          ? {}
+          : { checkpoint: runtime.host.delivery!.checkpoint }),
+      } as unknown as JsonValue
     }
     let encodedRecord: Uint8Array
     try {
@@ -568,7 +575,7 @@ async function waitForTerminal(
   }
 }
 
-function publicTerminal(terminal: RootRunTerminal): JsonValue {
+export function publicTerminal(terminal: RootRunTerminal): JsonValue {
   if (terminal.status === 'succeeded') {
     return {
       status: terminal.status,

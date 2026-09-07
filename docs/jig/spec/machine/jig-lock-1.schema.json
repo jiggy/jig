@@ -45,7 +45,7 @@
           "additionalProperties": {
             "$ref": "#/$defs/capabilityUse"
           },
-          "maxProperties": 2
+          "maxProperties": 3
         }
       },
       "required": ["digest", "directRun", "uses"],
@@ -53,6 +53,18 @@
     },
     "capabilityUse": {
       "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "id": { "const": "https://jig.md/contracts/run-checkpoint" },
+            "version": { "const": "1.0.0" },
+            "digest": {
+              "const": "sha256:e7961d96842dc07bf2932f2979b2145301e4071093435e0e4e842a057896c201"
+            }
+          },
+          "required": ["id", "version", "digest"],
+          "additionalProperties": false
+        },
         {
           "type": "object",
           "properties": {

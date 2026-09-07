@@ -2,76 +2,81 @@ import { lstat, mkdir, realpath } from 'node:fs/promises'
 import { join } from 'node:path'
 
 import { CheckError } from '../diagnostics.js'
-import { PRIVATE_ROOT_RESOURCE_POLICY } from './root-operation-limits.js'
 import { type JsonValue } from '../json.js'
 import { inspectCapturedPackage } from '../package/inspect.js'
-import { findPrivateActivationCandidateTargetV5 } from './activation-admission.js'
 import {
-  RunHostSession,
   type RunHostEffectOperationTerminal,
   type RunHostFlowOperationTerminal,
   type RunHostOperationDispatcher,
+  RunHostSession,
   type RunHostTerminal,
 } from '../run/session.js'
+import { findPrivateActivationCandidateTargetV5 } from './activation-admission.js'
 import {
   closePrivateRootExecution,
-  reacquirePrivateRootExecutionWork,
-  recordPrivateRootExecutionCheckpoint,
   type PrivateProjectCoordinator,
   type PrivateReacquiredRootExecutionWork,
   type PrivateRootExecutionCheckpointName,
   type PrivateRootExecutionLifecycle,
   type PrivateRootRunSnapshot,
   type PrivateRootRunTerminal,
+  reacquirePrivateRootExecutionWork,
+  recordPrivateRootExecutionCheckpoint,
 } from './activation-admission-store.js'
+import type { PrivateAgentProvider } from './agent-provider.js'
 import {
-  planPrivateDirectRun,
-  type PrivateDirectRunRecipe,
   type PrivateDirectRunInstalledSupport,
+  type PrivateDirectRunRecipe,
+  planPrivateDirectRun,
 } from './direct-run.js'
 import { revalidatePrivateInstalledBunSupport } from './installed-bun-support.js'
 import {
-  PrivateLinuxFenceUnconfirmedError,
   cancelPrivateLinuxOwnerStateAllocation,
   normalizePrivateLinuxOwnerStateAllocationIdentity,
   normalizePrivateLinuxSealedOwnerIdentity,
-  planPrivateLinuxOwnerStateAllocation,
-  releasePrivateLinuxOwnerState,
   type PrivateLinuxCgroupBackend,
   type PrivateLinuxConfirmedEnforcementReceipt,
+  PrivateLinuxFenceUnconfirmedError,
   type PrivateLinuxLaunchPlan,
   type PrivateLinuxOwnerStateAllocationIdentity,
   type PrivateLinuxOwnerStateReleaseReceipt,
   type PrivateLinuxSealedOwnerIdentity,
+  planPrivateLinuxOwnerStateAllocation,
+  releasePrivateLinuxOwnerState,
 } from './linux-rootless-backend.js'
 import { captureStoredPackage } from './package-artifact-store.js'
 import {
   allocatePrivatePackageMaterialization,
   disposePrivatePackageMaterializationLease,
-  reacquirePrivatePackageMaterializationLease,
-  recoverPrivatePackageMaterializationAllocation,
   materializePrivatePackageLease,
   type PrivatePackageMaterializationAllocationIdentity,
   type PrivatePackageMaterializationLease,
   type PrivatePackageMaterializationLeaseIdentity,
+  reacquirePrivatePackageMaterializationLease,
+  recoverPrivatePackageMaterializationAllocation,
 } from './package-materialization.js'
 import { admitPrivatePackageResult } from './package-result-admission.js'
-import { failedPrivateRootTerminal, normalizePrivateRootTerminal } from './root-run-state.js'
+import { PROJECT_COMMAND_CONTRACT_DIGEST } from './private-project-command.js'
 import {
-  executePrivateRootFlowCall,
-  recoverPrivateRootFlowCallOwners,
-} from './root-flow-call-controller.js'
+  PrivateCheckpointRejected,
+  parseRunCheckpointInput,
+  RUN_CHECKPOINT_CONTRACT_DIGEST,
+} from './private-run-checkpoint.js'
 import {
   executePrivateRootAgentRun,
   recoverPrivateRootAgentRunOwners,
 } from './root-agent-run-controller.js'
-import type { PrivateAgentProvider } from './agent-provider.js'
+import {
+  executePrivateRootFlowCall,
+  recoverPrivateRootFlowCallOwners,
+} from './root-flow-call-controller.js'
+import { PRIVATE_ROOT_RESOURCE_POLICY } from './root-operation-limits.js'
 import {
   executePrivateProjectCommand,
   recoverPrivateProjectCommandOwners,
 } from './root-project-command-controller.js'
-import { PROJECT_COMMAND_CONTRACT_DIGEST } from './private-project-command.js'
 import type { PrivateRootRunFiles } from './root-run-files.js'
+import { failedPrivateRootTerminal, normalizePrivateRootTerminal } from './root-run-state.js'
 
 const PLAN_KIND = 'private-direct-root-plan/1'
 const BACKING_KIND = 'private-direct-root-backing/1'
@@ -143,6 +148,15 @@ export async function executePrivateRootRunLaunch(input: {
   if (work.lifecycle.sandbox !== undefined || work.lifecycle.provisional !== undefined) {
     return await recoverCurrentExecution(input, work)
   }
+  const target = findPrivateActivationCandidateTargetV5(work.candidate, work.run.target)
+  if (target !== undefined)
+    await input.files?.bindCheckpoint(
+      input.runId,
+      target.request,
+      work.run.input,
+      input.projectRoot,
+      work.run.coordinatorEpoch,
+    )
   return await startOrResumeCurrentExecution(input, work)
 }
 
@@ -1041,6 +1055,7 @@ function operationDispatcher(
   if (!hasFlows && !hasEffects) return undefined
   let activeFlows = 0
   let activeEffect = false
+  let activeCheckpoint = false
   const enter = async <T>(
     kind: 'flow' | 'effect',
     run: () => Promise<T>,
@@ -1082,6 +1097,48 @@ function operationDispatcher(
     ...(hasEffects
       ? {
           callCapability: async (call, signal): Promise<RunHostEffectOperationTerminal> => {
+            if (target.request.capabilities[call.slot]?.digest === RUN_CHECKPOINT_CONTRACT_DIGEST) {
+              if (activeCheckpoint) return operationBusy()
+              if (call.method !== 'save')
+                return {
+                  status: 'failed',
+                  code: 'UNAVAILABLE',
+                  message: 'unknown checkpoint method',
+                }
+              let checkpoint: ReturnType<typeof parseRunCheckpointInput>
+              try {
+                checkpoint = parseRunCheckpointInput(call.input)
+              } catch {
+                return {
+                  status: 'failed',
+                  code: 'INVALID_INPUT',
+                  message: 'checkpoint exceeds its declared shape or limits',
+                }
+              }
+              if (signal.aborted)
+                return {
+                  status: 'failed',
+                  code: 'CANCELLED',
+                  message: 'checkpoint request cancelled',
+                }
+              activeCheckpoint = true
+              try {
+                if (input.files === undefined) throw new Error('checkpoint owner unavailable')
+                const receipt = await input.files.saveCheckpoint(checkpoint)
+                return { status: 'succeeded', result: { value: receipt as unknown as JsonValue } }
+              } catch (error) {
+                return {
+                  status: 'failed',
+                  code: error instanceof PrivateCheckpointRejected ? 'INVALID_INPUT' : 'UNCERTAIN',
+                  message:
+                    error instanceof PrivateCheckpointRejected
+                      ? 'checkpoint replacement rejected; earlier progress is unchanged'
+                      : 'checkpoint acknowledgement unavailable; inspect the final retained checkpoint',
+                }
+              } finally {
+                activeCheckpoint = false
+              }
+            }
             if (target.request.capabilities[call.slot]?.digest === PROJECT_COMMAND_CONTRACT_DIGEST)
               return enter(
                 'effect',

@@ -73,15 +73,23 @@ Exported directories are private (`0700`) and files are owner-readable/writable
 
 ## Understand failures
 
-`status` describes execution; `delivery` describes publication. A valid custom
-outcome such as `blocked` may include useful files. A failed process, invalid
-result, or cancelled execution exports no partial Flow files. An invalid output
+`status` describes execution; `delivery` describes publication.
+`delivery.source` distinguishes `final` files, retained `checkpoint` files, and
+`none`. A known successful terminal can survive coordinator loss even when only
+an earlier checkpoint's files remain available.
+
+An application outcome such as `blocked` may include useful files. A failed
+process, invalid result, or cancelled execution exports no partial scratch files. A Flow using
+[Run Checkpoint](../spec/run-checkpoint.md) can instead save explicit progress:
+its latest accepted files are delivered after cleanup, with the failed/lost
+execution status intact. `result.json` identifies that checkpoint separately,
+or records `checkpoint: null` if none was accepted. An invalid output
 tree fails delivery without changing an already accepted execution outcome.
 
 Publication exposes one complete packet without replacing an existing path.
 This is atomic visibility, not a promise of persistence through power loss.
-Cancellation before publication removes unfinished staging; cancellation after
-publication does not retract the packet. The ordinary stdout record matches
+Without retained progress, cancellation before publication removes unfinished
+staging; cancellation after publication does not retract the packet. The ordinary stdout record matches
 the packet, but a later cleanup or acknowledgement failure can add a CLI error.
 After connection loss, delivery may be unknown even though a packet exists.
 If file metadata makes the report exceed JSON/1 limits, `JIG_REPORT_LIMIT`
@@ -89,8 +97,11 @@ preserves the execution terminal on stdout and reports delivery separately on
 stderr; inspect the destination before starting new work.
 
 Invalid input, missing attachment mappings, and a destination already occupied
-at preparation time fail before package dispatch. Coordinator loss may leave
-no terminal record; Jig's separate delivery owner removes unfinished staging.
+at preparation time fail before package dispatch. For a checkpoint-enabled Run,
+the separate delivery owner recovers that exact Run's cleanup after coordinator
+loss, then publishes accepted progress or explicit absence. If cleanup cannot
+be confirmed, it reports failure instead. For other Runs, coordinator loss may
+leave no terminal record; the owner removes unpublished staging.
 Repeating the command always starts new work, never resumes an export.
 
 Use Ctrl-C (SIGINT) to interrupt the command. `JIG_COMMAND_INTERRUPTED` may

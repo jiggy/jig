@@ -85,7 +85,7 @@ docs/flow/spec/machine/schema-1.json|schema-1.json|https://flow.jig.md/schemas/s
 docs/jig/spec/machine/project-authoring-1.schema.json|project-authoring-1.schema.json|-'
     forbidden_page='spec/package-format.html'
     mkdir -p -- "$staging/contracts"
-    for contract in agent-run project-command; do
+    for contract in agent-run project-command run-checkpoint; do
       if [ ! -s "$staging/contracts/$contract.html" ]; then
         echo "the $contract identity landing page is missing" >&2
         exit 1

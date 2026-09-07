@@ -1,4 +1,4 @@
-import { constants, type BigIntStats } from 'node:fs'
+import { type BigIntStats, constants } from 'node:fs'
 import { type FileHandle, lstat, open, opendir } from 'node:fs/promises'
 
 import { CheckError, invalid, unavailable } from '../diagnostics.js'
@@ -7,8 +7,9 @@ import {
   AGENT_RUN_CONTRACT_ID,
   AGENT_RUN_CONTRACT_VERSION,
 } from '../internal/private-agent-run.js'
-import { captureOpenedPackageDirectory, type CapturedPackage } from '../package/capture.js'
-import { inspectCapturedPackage, type InspectedPackage } from '../package/inspect.js'
+import { isRunCheckpointContract } from '../internal/private-run-checkpoint.js'
+import { type CapturedPackage, captureOpenedPackageDirectory } from '../package/capture.js'
+import { type InspectedPackage, inspectCapturedPackage } from '../package/inspect.js'
 import { SchemaDiagnostic } from '../schema/index.js'
 import type { ProjectSource } from './author.js'
 import {
@@ -19,8 +20,8 @@ import {
 } from './paths.js'
 import {
   openPrivateProjectRoot,
-  requirePrivateProjectRoot,
   type PrivateProjectRoot,
+  requirePrivateProjectRoot,
 } from './root.js'
 
 const CAPTURE_ATTEMPTS = 3
@@ -665,18 +666,27 @@ function assertProjectPathCollisions(paths: readonly string[]): void {
 export function isDirectRunEligible(inspected: InspectedPackage): boolean {
   if (inspected.mode !== 'run' || inspected.entrypoint === undefined) return false
   const uses = Object.entries(inspected.metadata.uses ?? {})
-  if (uses.length > 1) return false
-  if (uses.length === 1) {
-    const [slot, declaration] = uses[0]!
+  if (uses.length > 2) return false
+  const seen = new Set<string>()
+  for (const [slot, declaration] of uses) {
     if (declaration.contract === undefined) return false
     const reference = inspected.usedContracts.find((candidate) => candidate.slot === slot)
     if (
       reference === undefined ||
-      reference.contract.descriptor.id !== AGENT_RUN_CONTRACT_ID ||
-      reference.contract.descriptor.version !== AGENT_RUN_CONTRACT_VERSION ||
-      reference.contract.digest !== AGENT_RUN_CONTRACT_DIGEST
+      seen.has(reference.contract.digest) ||
+      !(
+        (isRunCheckpointContract({
+          ...reference.contract.descriptor,
+          digest: reference.contract.digest,
+        }) &&
+          Object.values(inspected.metadata.attachments ?? {}).includes('read-write')) ||
+        (reference.contract.descriptor.id === AGENT_RUN_CONTRACT_ID &&
+          reference.contract.descriptor.version === AGENT_RUN_CONTRACT_VERSION &&
+          reference.contract.digest === AGENT_RUN_CONTRACT_DIGEST)
+      )
     )
       return false
+    seen.add(reference.contract.digest)
   }
   try {
     inspected.schemas.settings?.validate({}, 'DIRECT_SETTINGS_INVALID')

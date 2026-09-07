@@ -4,6 +4,9 @@ description: Turn a small Bun project and an issue into a reviewable multi-file 
 attachments:
   source: read
   deliverables: read-write
+uses:
+  progress:
+    contract: ./contracts/run-checkpoint.capability.json
 outcomes:
   blocked: The defect was not reproduced or no acceptable patch was produced.
   limit: The Agent stopped at its limit.
@@ -24,5 +27,7 @@ Each validated proposal becomes an applicable patch against the original.
 Only consistent command identities, an observed original defect, and passing
 independent assertions earn `review.patch`. Repository test output is useful
 additional evidence, not an independent verdict. Failed proposals remain
-inspectable. Operational failure exports no partial Flow files; available
-terminal details may retain earlier attempts. Nothing applies or merges a patch.
+inspectable. Each settled job checkpoints a complete aggregate. On interruption,
+the latest accepted aggregate survives while the independent command owner lives;
+only those saved files are delivered after cleanup, with the unsuccessful Run
+outcome preserved. Nothing applies or merges a patch.

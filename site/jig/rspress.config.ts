@@ -70,6 +70,7 @@ export default defineConfig({
           items: [
             { text: 'Agent Run', link: '/contracts/agent-run' },
             { text: 'Project Command', link: '/contracts/project-command' },
+            { text: 'Run Checkpoint', link: '/contracts/run-checkpoint' },
           ],
         },
       ],
@@ -84,6 +85,7 @@ export default defineConfig({
             },
             { text: 'Agent Run capability', link: '/spec/agent-run' },
             { text: 'Project Command capability', link: '/spec/project-command' },
+            { text: 'Run Checkpoint capability', link: '/spec/run-checkpoint' },
           ],
         },
       ],
