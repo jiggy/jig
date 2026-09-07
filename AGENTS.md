@@ -44,6 +44,28 @@ guidance, specifications, schemas, implementation, and tests before proceeding.
 Evidence can motivate a revision; it cannot grant permission to contradict an
 unchanged higher-level commitment.
 
+## Improve the product, not the local artifact
+
+Optimize for people building their own projects with Jig and FLOW, not for
+making this repository's examples, probes, builds, or demonstrations succeed.
+When an artifact exposes friction, identify the consumer's task and its root
+cause before choosing a fix. Existing implementation restrictions are
+revisable design choices, not reasons to move avoidable burden onto users.
+
+Do not conceal a product gap with example-only wrappers, injected dependencies,
+preprocessed copies, private helpers, or extra setup instructions that ordinary
+consumers would have to reinvent. Prefer standard ecosystem mechanisms and the
+smallest reusable correction at the responsible layer. Examples must exercise
+the ordinary public experience, not receive a privileged implementation path.
+Verify a product correction in an ordinary consumer project, without relying
+on this repository's layout or private tooling.
+
+This is not permission to absorb application logic into Jig or runtime policy
+into FLOW: establish whether the defect belongs to the product, its public
+guidance, or the application. Keep legitimate artifact fixes local. A question
+or design discussion authorizes analysis, not implementation; a proposed fix
+needs authorization unless it is already within explicitly approved work.
+
 ## No prerelease compatibility
 
 Jig and FLOW are prerelease projects. Do not retain deprecated, superseded,
