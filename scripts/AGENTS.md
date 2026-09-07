@@ -26,6 +26,10 @@ operational baselines, and public-site assembly.
 - `require-linux-host-conformance.sh` owns the bounded, read-only check that an
   exact publication revision passed the complete Linux host workflow.
 - `ci/` owns disposable CI-host provisioning.
+- Site assembly requires Jig's contract identity pages and exact descriptor
+  downloads together. The deployed-site check verifies their page titles,
+  JSON content types, and canonical bytes; neither operation is runtime
+  capability resolution.
 
 ## Local Contracts
 

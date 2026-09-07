@@ -13,17 +13,19 @@ case $site_name in
     default_base=https://flow.jig.md
     home_title='<title>FLOW</title>'
     guide_title='<title>FLOW specifications - FLOW</title>'
-    schema_map='docs/flow/spec/machine/capability-contract-1.schema.json|capability-contract-1.schema.json
-docs/flow/spec/machine/run-1-errors.json|run-1-errors.json
-docs/flow/spec/machine/run-1.schema.json|run-1.json
-docs/flow/spec/machine/schema-1.json|schema-1.json'
+    json_map='docs/flow/spec/machine/capability-contract-1.schema.json|schemas/capability-contract-1.schema.json
+docs/flow/spec/machine/run-1-errors.json|schemas/run-1-errors.json
+docs/flow/spec/machine/run-1.schema.json|schemas/run-1.json
+docs/flow/spec/machine/schema-1.json|schemas/schema-1.json'
     ;;
   jig)
     default_base=https://jig.md
     home_title='<title>Jig</title>'
-    guide_title='<title>Jig direct alpha - Jig</title>'
-    schema_map='docs/jig/spec/machine/jig-lock-1.schema.json|jig-lock-1.schema.json
-docs/jig/spec/machine/project-authoring-1.schema.json|project-authoring-1.schema.json'
+    guide_title='<title>Get started with Jig - Jig</title>'
+    json_map='docs/jig/spec/machine/jig-lock-1.schema.json|schemas/jig-lock-1.schema.json
+docs/jig/spec/machine/project-authoring-1.schema.json|schemas/project-authoring-1.schema.json
+docs/jig/spec/contracts/agent-run.capability.json|contracts/agent-run.capability.json
+docs/jig/spec/contracts/project-command.capability.json|contracts/project-command.capability.json'
     ;;
   *)
     echo "the site must be flow or jig" >&2
@@ -58,18 +60,30 @@ curl --fail --location --silent --show-error "$base/guide/" > "$temporary/guide.
 grep -Fq "$home_title" "$temporary/index.html"
 grep -Fq "$guide_title" "$temporary/guide.html"
 
-printf '%s\n' "$schema_map" |
+if [ "$site_name" = jig ]; then
+  for contract in agent-run project-command; do
+    case $contract in
+      agent-run) title='<title>Agent Run contract - Jig</title>' ;;
+      project-command) title='<title>Project Command contract - Jig</title>' ;;
+    esac
+    curl --fail --location --silent --show-error \
+      "$base/contracts/$contract" > "$temporary/contract.html"
+    grep -Fq "$title" "$temporary/contract.html"
+  done
+fi
+
+printf '%s\n' "$json_map" |
 while IFS='|' read -r source route
 do
   curl --fail --location --silent --show-error \
     --dump-header "$temporary/headers" \
-    "$base/schemas/$route" > "$temporary/$route"
+    "$base/$route" > "$temporary/document.json"
   if ! grep -Eiq '^content-type:[[:space:]]*application/json([;[:space:]]|$)' \
     "$temporary/headers"; then
-    echo "$base/schemas/$route was not served as application/json" >&2
+    echo "$base/$route was not served as application/json" >&2
     exit 1
   fi
-  "$javascript" - "$repository/$source" "$temporary/$route" <<'NODE'
+  "$javascript" - "$repository/$source" "$temporary/document.json" <<'NODE'
 const { readFileSync } = require("node:fs");
 const [source, downloaded] = process.argv.slice(2);
 if (!readFileSync(source).equals(readFileSync(downloaded))) {
@@ -78,4 +92,4 @@ if (!readFileSync(source).equals(readFileSync(downloaded))) {
 NODE
 done
 
-echo "$site_name site and canonical schema checks passed"
+echo "$site_name site and canonical JSON checks passed"

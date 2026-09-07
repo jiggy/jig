@@ -8,6 +8,9 @@ use-case and orchestration hypotheses.
 ## Ownership
 
 - `spec/` owns current Jig host requirements and machine companions.
+- `contracts/` owns explanatory pages served at capability identity URLs.
+  They route readers to specifications, canonical JSON downloads, and usage;
+  they do not define interfaces or act as provider endpoints.
 - `index.md` and `guide/` teach implemented behavior and recommended practice,
   with installation prerequisites centralized in `guide/index.md`. Describe
   current behavior, not comparisons with superseded alpha releases.
@@ -21,6 +24,9 @@ use-case and orchestration hypotheses.
 - Feature claims in guides describe only implemented behavior and defer to
   Jig specifications. General design advice must not imply that a future host
   surface is currently available.
+- Contract landing pages explain offline identity/version/digest matching and
+  keep downloadable descriptors separate from human guidance. Do not turn an
+  identity URL into runtime fetching or change descriptor bytes to edit a page.
 - Use cases and patterns are research, not commands, APIs, primitives, product
   availability, or roadmap promises.
 - Jig should be able to host workflow methods without having to own each one.

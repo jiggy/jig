@@ -62,6 +62,15 @@ export default defineConfig({
       '/use-cases': researchSidebar,
       '/time-travel-handoff': researchSidebar,
       '/orchestration-patterns': researchSidebar,
+      '/contracts/': [
+        {
+          text: 'Capability contracts',
+          items: [
+            { text: 'Agent Run', link: '/contracts/agent-run' },
+            { text: 'Project Command', link: '/contracts/project-command' },
+          ],
+        },
+      ],
       '/spec/': [
         {
           text: 'Jig direct alpha',

@@ -24,6 +24,17 @@ catalogues for FLOW and Jig.
 - Link to the canonical owner instead of duplicating rules across documents.
 - Check `LICENSES.md` before moving content between documentation classes;
   their licenses differ.
+- Every project-controlled public HTTP(S) URI that names a Jig or FLOW concept
+  without specifying a machine-fetched resource must serve a human-friendly
+  explanatory page. Explain what the identifier means, why the reader might
+  encounter it, and where to find the canonical specification, usage guidance,
+  and any downloadable machine artifact. An unrelated homepage is not enough.
+- Software comparing an identity URI is not the same as fetching that URI.
+  These pages do not participate in matching or grant authority; never add
+  runtime fetching to make an identifier browsable. URLs designated for schemas,
+  descriptors, or other machine resources keep their exact format and bytes,
+  with human guidance at a separate address. This is our publication rule, not
+  a new requirement on independent FLOW implementers or third-party identifiers.
 
 ## Work Guidance
 
@@ -45,6 +56,9 @@ catalogues for FLOW and Jig.
 
 - Build each affected public site into a fresh directory with
   `scripts/build-site.sh`.
+- When adding or changing a project-owned identity URL, include its explanatory
+  route and links in site verification; check deployed availability separately
+  from local build success.
 - For diagram changes, follow Archify's artifact and browser checks, inspect
   both themes, and check the actual guide at desktop and mobile widths. Keep
   automated browser evidence separate from perceptual visual review.

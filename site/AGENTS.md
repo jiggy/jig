@@ -21,6 +21,11 @@ Jig public sites.
   routes.
 - Keep origins, navigation, public roots, schemas, contracts, and deployment
   artifacts separate between FLOW and Jig.
+- Apply `docs/AGENTS.md`'s human-facing identity-URL rule to both sites without
+  replacing machine-resource responses with HTML. Jig contract routes serve
+  Markdown from `docs/jig/contracts/`; adjacent `.capability.json` downloads
+  preserve exact descriptor bytes. Check both the human pages and machine
+  downloads.
 - `scripts/build-site.sh` owns fresh staging, exact artifact copying,
   inventory enforcement, and cross-site exclusion.
 - Reconcile navigation, `llms.txt`, workflow path filters, and build mappings
