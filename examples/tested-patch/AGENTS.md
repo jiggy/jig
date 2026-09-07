@@ -10,9 +10,10 @@ application is not an unrestricted repository worker or independent probe.
 
 - `README.md` introduces the application; its public guide owns user instructions.
 - Root `package.json` owns development dependencies. Flow-local manifests
-  follow the current SDK. The repository build/distribution path owns runnable
-  dependency closure, as required by `examples/AGENTS.md`; consumers must not
-  repair that closure package by package.
+  follow the current SDK. Retain Bun-generated Flow-local locks as runnable
+  inputs; regenerate them with the pinned Bun when dependencies change. The
+  repository build/distribution path owns dependency closure as required by
+  `examples/AGENTS.md`.
 - `flows/project/` owns root file capture, fixed CLI cases, one- or two-job
   invocation, evidence checks, applicable patch construction, and deliverables.
 - `flows/repair/` owns the reusable JSON-input leaf, proposal validation,

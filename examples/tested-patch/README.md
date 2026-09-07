@@ -7,18 +7,12 @@ You receive a patch and evidence, while the originals remain unchanged.
 
 ## Try it
 
-Use the paired `@jigging/jig@0.1.0-alpha.14` and
-`@jigging/flow@0.1.0-alpha.9` releases, after publication, on a
-[supported host](https://jig.md/guide/). These sources use their new Run method
-names; an older SDK is not interchangeable.
+Install Jig on a [supported host](https://jig.md/guide/).
 Copy this directory, configure your
-[Agent](https://jig.md/spec/agent-run#alpha-host-implementations), and inspect
+[Agent](https://jig.md/guide/agents), and inspect
 `issue.json`, `bindings/specialist.ts`, and `flows/project/cases.json`.
 
 ```sh
-for flow in flows/project flows/repair; do
-  (cd "$flow" && bun install --lockfile-only --ignore-scripts)
-done
 jig review
 jig run binding:repair --input @issue.json --attach source=fixtures/log-report --out ../repair-result --timeout 5m
 ```
@@ -27,8 +21,6 @@ Open `../repair-result/files/summary.txt`. A successful repair produces
 `review.patch`; unsuccessful proposals remain `proposal-N.patch`.
 `result.json` records candidate identities, actual command output and
 termination, and independent acceptance results. Review before applying.
-
-Use Bun 1.3.3 to generate the locks above and retain them with your copy.
 
 The fixture is an HTTP log-report CLI with defects in parsing and aggregation.
 The root Flow captures files and delivers patches. A JSON-input leaf uses
