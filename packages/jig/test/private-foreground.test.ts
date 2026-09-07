@@ -200,13 +200,30 @@ proofDescribe('private rootless project session', () => {
         },
       })
       const concurrentCalls = (concurrent.status as any).terminal.output.concurrent as any[]
-      expect(concurrentCalls).toHaveLength(2)
-      expect(concurrentCalls.filter(({ status }) => status === 'succeeded')).toHaveLength(1)
+      expect(concurrentCalls).toHaveLength(3)
+      const completed = concurrentCalls.filter(({ status }) => status === 'succeeded')
+      expect(completed).toHaveLength(2)
+      expect(Math.max(...completed.map((c) => c.result.output.started))).toBeLessThan(
+        Math.min(...completed.map((c) => c.result.output.finished)),
+      )
       expect(
         concurrentCalls.filter(
           ({ status, code }) => status === 'failed' && code === 'RESOURCE_EXHAUSTED',
         ),
       ).toHaveLength(1)
+      await expectNoChildResidue(root)
+
+      const selected = firstRun(
+        await invokeRun(root, {
+          submissionId: 'selected-worker-stop',
+          target: { kind: 'binding', id: 'ticket-router' },
+          input: { scenario: 'selected-cancel', kind: 'bug', ticket: 'stop only one' },
+        }),
+      )
+      expect((selected.status as any).terminal.output.children).toMatchObject([
+        { status: 'failed', code: 'CANCELLED' },
+        { status: 'succeeded', result: { outcome: 'done' } },
+      ])
       await expectNoChildResidue(root)
 
       for (const [scenario, code] of [
@@ -382,7 +399,7 @@ proofDescribe('private rootless project session', () => {
       await expiring.close()
       await expectNoChildResidue(root)
 
-      expect(inspectPlanningState(root).rootRuns).toBe(12)
+      expect(inspectPlanningState(root).rootRuns).toBe(13)
       await waitForRootlessCgroups(initialRootlessCgroups)
       await waitForRootlessTemporaryState(initialRootlessTemporaryState)
     } finally {
@@ -984,6 +1001,7 @@ function ticketSchema(kind?: 'bug' | 'question'): string {
           'single',
           'sequential',
           'concurrent',
+          'selected-cancel',
           'invalid-input',
           'invalid-result',
           'execution-failure',
@@ -1008,9 +1026,9 @@ function routerProgram(): string {
     'await handle(async (context) => {',
     '  const input = context.input as { scenario: string; kind: "bug" | "question"; ticket: string };',
     '  await Bun.write(`${context.scratch}/parent-marker`, "parent");',
-    '  const call = async (operationId: string, slot: string, childInput: unknown) => {',
+    '  const call = async (operationId: string, slot: string, childInput: unknown, signal?: AbortSignal) => {',
     '    try {',
-    '      const result = await context.callFlow({ operationId, slot, input: childInput as any });',
+    '      const result = await context.callFlow({ operationId, slot, input: childInput as any }, { signal });',
     '      return { status: "succeeded", result };',
     '    } catch (error) {',
     '      const code = typeof error === "object" && error !== null && "code" in error',
@@ -1028,11 +1046,23 @@ function routerProgram(): string {
     '  }',
     '  if (input.scenario === "concurrent") {',
     '    const concurrent = await Promise.all([',
-    '      call("concurrent:a", "bug", { kind: "bug", ticket: input.ticket, delayMs: 750 }),',
-    '      call("concurrent:b", "bug", { kind: "bug", ticket: input.ticket, delayMs: 750 }),',
+    '      call("concurrent:a", "bug", { kind: "bug", ticket: input.ticket, delayMs: 3000 }),',
+    '      call("concurrent:b", "bug", { kind: "bug", ticket: input.ticket, delayMs: 3000 }),',
+    '      call("concurrent:c", "bug", { kind: "bug", ticket: input.ticket, delayMs: 3000 }),',
     '    ]);',
     '    const after = await context.callFlow({ operationId: "concurrent:after", slot: "question", input: { kind: "question", ticket: input.ticket } });',
     '    return { outcome: "done", output: { scenario: input.scenario, concurrent, after } };',
+    '  }',
+    '  if (input.scenario === "selected-cancel") {',
+    '    const selected = new AbortController();',
+    '    const timer = setTimeout(() => selected.abort(), 7000);',
+    '    try {',
+    '      const children = await Promise.all([',
+    '        call("stop:first", "bug", { kind: "bug", ticket: input.ticket, delayMs: 20000 }, selected.signal),',
+    '        call("keep:second", "bug", { kind: "bug", ticket: input.ticket, delayMs: 8000 }),',
+    '      ]);',
+    '      return { outcome: "done", output: { children } };',
+    '    } finally { clearTimeout(timer); }',
     '  }',
     '  if (input.scenario === "invalid-input") {',
     '    const observed = await call("errors:input", "invalid-input", { allowed: false });',
@@ -1077,6 +1107,7 @@ function childProgram(kind: 'bug' | 'question'): string {
     '#!/usr/bin/env bun',
     'import { handle } from "./flow-sdk/index.ts";',
     'await handle(async (context) => {',
+    '  const started = Date.now();',
     '  const input = context.input as { kind: string; ticket: string; delayMs?: number };',
     '  const marker = `${context.scratch}/parent-marker`;',
     '  const parentMarkerVisible = await Bun.file(marker).exists();',
@@ -1087,6 +1118,7 @@ function childProgram(kind: 'bug' | 'question'): string {
     '    settings: Object.keys(context.settings).sort(),',
     '    attachments: Object.keys(context.attachments).sort(),',
     '    parentMarkerVisible,',
+    '    started, finished: Date.now(),',
     '  } };',
     '});',
     '',

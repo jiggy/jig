@@ -23,6 +23,10 @@ import { PRIVATE_MAX_ROOT_RUN_TIMEOUT_MS } from './root-run-timeout-policy.js'
 import { requirePrivateAgentProvider, type PrivateAgentProvider } from './agent-provider.js'
 import { AGENT_RUN_CONTRACT_DIGEST } from './private-agent-run.js'
 import {
+  PRIVATE_FLOW_RESOURCE_CEILINGS as RESOURCE_CEILINGS,
+  PRIVATE_ROOT_RESOURCE_POLICY,
+} from './root-operation-limits.js'
+import {
   PROJECT_COMMAND_CONTRACT_DIGEST,
   PROJECT_COMMAND_LIMITS,
 } from './private-project-command.js'
@@ -37,14 +41,6 @@ const RUNTIME_PREDICATES = Object.freeze([
   'private-runtime-devices/1',
 ] as const)
 const authenticRecipes = new WeakSet<object>()
-
-const RESOURCE_CEILINGS = Object.freeze({
-  memoryBytes: 256 * 1024 * 1024,
-  pids: 64,
-  cpuQuotaMicros: 50_000,
-  cpuPeriodMicros: 100_000,
-  cleanupTimeoutMs: 5_000,
-})
 
 export interface PrivateBunDirectRecipe {
   readonly kind: 'private-bun-direct-recipe/1'
@@ -228,6 +224,7 @@ function logicalLaunchDigest(
     scratch: SCRATCH,
     resourceCeilings: RESOURCE_CEILINGS,
     wallClockCeilingMs: PRIVATE_MAX_ROOT_RUN_TIMEOUT_MS,
+    rootResourcePolicy: PRIVATE_ROOT_RESOURCE_POLICY,
     environment: Object.freeze({
       LD_LIBRARY_PATH: '/jig-runtime/lib',
     }),

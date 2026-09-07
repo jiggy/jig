@@ -2,6 +2,7 @@ import { lstat, mkdir, realpath } from 'node:fs/promises'
 import { join } from 'node:path'
 
 import { CheckError } from '../diagnostics.js'
+import { PRIVATE_ROOT_RESOURCE_POLICY } from './root-operation-limits.js'
 import { type JsonValue } from '../json.js'
 import { inspectCapturedPackage } from '../package/inspect.js'
 import { findPrivateActivationCandidateTargetV5 } from './activation-admission.js'
@@ -1038,14 +1039,27 @@ function operationDispatcher(
   const hasFlows = Object.keys(target.request.flowSlots).length !== 0
   const hasEffects = Object.keys(target.request.capabilities).length !== 0
   if (!hasFlows && !hasEffects) return undefined
-  let active = false
-  const enter = async <T>(run: () => Promise<T>, unavailable: T): Promise<T> => {
-    if (active) return unavailable
-    active = true
+  let activeFlows = 0
+  let activeEffect = false
+  const enter = async <T>(
+    kind: 'flow' | 'effect',
+    run: () => Promise<T>,
+    unavailable: T,
+  ): Promise<T> => {
+    if (
+      activeEffect ||
+      (kind === 'effect'
+        ? activeFlows !== 0
+        : activeFlows >= PRIVATE_ROOT_RESOURCE_POLICY.siblingFlows)
+    )
+      return unavailable
+    if (kind === 'flow') activeFlows++
+    else activeEffect = true
     try {
       return await run()
     } finally {
-      active = false
+      if (kind === 'flow') activeFlows--
+      else activeEffect = false
     }
   }
   return Object.freeze({
@@ -1053,6 +1067,7 @@ function operationDispatcher(
       ? {
           callFlow: async (call, signal): Promise<RunHostFlowOperationTerminal> =>
             enter(
+              'flow',
               () =>
                 executePrivateRootFlowCall({
                   ...operationInput(input, parent),
@@ -1069,6 +1084,7 @@ function operationDispatcher(
           callEffect: async (call, signal): Promise<RunHostEffectOperationTerminal> => {
             if (target.request.capabilities[call.slot]?.digest === PROJECT_COMMAND_CONTRACT_DIGEST)
               return enter(
+                'effect',
                 () =>
                   executePrivateProjectCommand({
                     ...operationInput(input, parent),
@@ -1086,6 +1102,7 @@ function operationDispatcher(
               })
             }
             return enter(
+              'effect',
               () =>
                 executePrivateRootAgentRun({
                   ...operationInput(input, parent),
@@ -1110,7 +1127,8 @@ function operationBusy(): {
   return Object.freeze({
     status: 'failed' as const,
     code: 'RESOURCE_EXHAUSTED' as const,
-    message: 'the parent Run already has an active child operation',
+    message:
+      'the root permits two sibling Flows or one exclusive effect; wait for owned work to settle',
   })
 }
 

@@ -18,6 +18,7 @@ import {
 import { isDirectRunEligible } from '../project/flow-source.js'
 import { privateActivationTargetKey } from './activation-planning.js'
 import { privateDomainDigest } from './identity.js'
+import { canReservePrivateRootOperation } from './root-operation-limits.js'
 import {
   openPrivateProjectRoot,
   requirePrivateProjectRoot,
@@ -116,6 +117,7 @@ const MAX_STORED_BYTES = 16_777_216
 const MAX_SAFE_REVISION = BigInt(Number.MAX_SAFE_INTEGER)
 const DIGEST = /^sha256:[0-9a-f]{64}$/
 const WIRE_ID = /^[A-Za-z0-9][A-Za-z0-9._:/-]*$/
+const stateTurns = new Map<string, Promise<void>>()
 
 const CREATE_CANDIDATES =
   'CREATE TABLE candidates (revision INTEGER PRIMARY KEY CHECK (revision BETWEEN 1 AND 9007199254740991), candidate_digest TEXT NOT NULL, candidate_bytes BLOB NOT NULL CHECK (length(candidate_bytes) BETWEEN 1 AND 16777216), lock_bytes BLOB NOT NULL CHECK (length(lock_bytes) BETWEEN 1 AND 16777216)) STRICT'
@@ -731,6 +733,9 @@ export async function openPrivateProjectCoordinator(input: {
         inode: owner.root.information.ino,
       }),
     )
+    // The coordinator retains the separate lease DB and identity handles,
+    // not an ordinary state-I/O turn throughout the execution lifetime.
+    await owner.finish()
     await coordinator.verify()
     return coordinator
   } catch (error) {
@@ -1126,11 +1131,28 @@ export async function allocatePrivateRootChildOwner(input: {
           'a child Flow may own only an Agent or project-command operation',
         )
       }
-      if (
+      if (input.parentOperationId === undefined) {
+        const query = statement<{ readonly allocation_bytes: Uint8Array }>(
+          owner.database,
+          'SELECT allocation_bytes FROM root_child_owners WHERE parent_run_id = ?1 AND scope_operation_id = ?2',
+        )
+        try {
+          const allocations = query
+            .all(input.parentRunId, '')
+            .map((row) => decodeJson1(row.allocation_bytes))
+          if (!canReservePrivateRootOperation(allocations, input.allocation))
+            invalid(
+              'RUN_CHILD_CAPACITY',
+              'the root operation or aggregate resource budget is occupied',
+            )
+        } finally {
+          query.finalize()
+        }
+      } else if (
         countScopedRootChildOwners(owner.database, input.parentRunId, input.parentOperationId) !==
         0n
       ) {
-        invalid('RUN_CHILD_CAPACITY', 'the parent Run already has an active child operation')
+        invalid('RUN_CHILD_CAPACITY', 'the child Flow already has an active effect')
       }
       runFinalized(
         owner.database,
@@ -3046,6 +3068,7 @@ async function openStateOwner(
     ? await openPrivateProjectRoot(projectRoot)
     : requirePrivateProjectRoot(projectRoot)
   if (!ownsRoot) await root.verify()
+  const releaseTurn = await acquireStateTurn(root)
   let directory: FileHandle | undefined
   let database: SqliteDatabase | undefined
   try {
@@ -3138,6 +3161,7 @@ async function openStateOwner(
         database!.close(true)
         databaseClosed = true
         await owner.verify()
+        releaseTurn()
       },
       async dispose(): Promise<void> {
         if (disposed) return
@@ -3163,6 +3187,7 @@ async function openStateOwner(
             failures.push(error)
           }
         }
+        releaseTurn()
         if (failures.length > 0)
           throw new AggregateError(failures, 'admission state cleanup did not complete')
       },
@@ -3176,8 +3201,31 @@ async function openStateOwner(
     }
     await directory?.close().catch(() => undefined)
     if (ownsRoot) await root.dispose().catch(() => undefined)
+    releaseTurn()
     if (isSqliteBusy(error)) busy()
     throw error
+  }
+}
+
+/** Serialize only local protected-state I/O, never a worker or effect lifetime.
+ * SQLite still arbitrates other processes. Waiting asynchronously here avoids
+ * its synchronous busy wait starving our own transaction's filesystem awaits.
+ */
+async function acquireStateTurn(root: PrivateProjectRoot): Promise<() => void> {
+  const key = `${root.information.dev}:${root.information.ino}`
+  const previous = stateTurns.get(key)
+  let resolve!: () => void
+  const current = new Promise<void>((done) => {
+    resolve = done
+  })
+  stateTurns.set(key, current)
+  await previous
+  let released = false
+  return () => {
+    if (released) return
+    released = true
+    if (stateTurns.get(key) === current) stateTurns.delete(key)
+    resolve()
   }
 }
 

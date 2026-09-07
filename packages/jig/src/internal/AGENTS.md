@@ -57,6 +57,11 @@ child calls, project commands, and Agent providers.
   settings, Agent capability, and reviewed project commands. An effect belongs to that child
   context, not the root's operation namespace; fence and drain it before
   releasing the child owner. Children cannot acquire another child slot map.
+- Roots admit two Flow branches or one exclusive effect. Reserve each whole
+  branch against the fixed aggregate root budget before dispatch; retain its
+  reservation until confirmed fencing and cleanup. Kernel envelope limits and
+  the recipe-bound reservation policy must agree. Leaves admit one effect;
+  there is no queue, borrowing, recursive budget, or public scheduler.
 - A project command receives immutable text and runtime mounts only: no Flow
   package, network, credential, or arbitrary executable. Host observations are
   process evidence, not an independent test verdict. Candidate bytes are copied
@@ -64,6 +69,8 @@ child calls, project commands, and Agent providers.
   read-only before payload execution so Bun can resolve modules safely.
 - Fail closed on unsupported hosts, changed bytes, missing enforcement,
   malformed protocol, cleanup failure, or unverifiable provenance.
+  Drain buffered supervisor control after process exit within a fixed bound;
+  exit alone neither disproves a pending receipt nor establishes fencing.
 - Resolve host tools from the fixed system locations, or Bubblewrap from the
   operator's absolute `JIG_BWRAP_PATH`, never ambient `PATH`. An explicit
   selection receives the same validation and cannot fall back on failure.

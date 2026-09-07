@@ -115,3 +115,35 @@ reuse it through an exact Binding with its own command policy and JSON cases.
 For application development, install development dependencies at the example
 root and run `bun test test`. Those deterministic checks establish application
 policy, not model quality or a market advantage.
+
+## Two workers, two reviewable patches
+
+The included `batch.json` repairs the log reporter and a timesheet CLI in
+parallel. The timesheet has separate defects in time validation and overnight
+totals. Both jobs reuse the unchanged JSON repair specialist:
+
+```sh
+jig run binding:repair --input @batch.json --attach source=fixtures --out ../batch-result --timeout 5m
+```
+
+Each job names its relative project `directory`, an `issue`, permitted
+`editPaths`, and one application-owned check set (`logs` or `timesheet`).
+Those fixed cases live in the root Flow and require review when changed.
+Each project retains the same size and two-proposal limits; a batch can make
+up to four Agent calls. All jobs are captured and validated before work starts.
+
+Open `files/summary.txt`, then each job's folder and its entry under
+`output.jobs` in the packet's `result.json`. A successful sibling keeps its patch even if another
+worker fails. `done` requires every job to be review-ready without conflicting
+edits; otherwise the application returns `blocked`. A job failure retains its
+captured identity and available failure evidence, not an invented test verdict.
+
+For a per-job time bound, set optional `cancelAfterMs` (1–300,000). Its expiry
+requests cancellation of that worker alone; Ctrl-C cancels the complete Run.
+If the root itself fails, final Flow files are not exported. This is not yet
+checkpoint retention through interruption.
+
+Jig admits at most two sibling calls and reserves each branch's whole resource
+ceiling before dispatch. There is no waiting queue. The application reports
+overlapping paths but does not combine patches. Their checks establish each
+candidate separately; review and test a combined change before applying it.

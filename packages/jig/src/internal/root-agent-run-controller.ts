@@ -56,6 +56,7 @@ import {
   type PrivateAcpTurnResult,
 } from './acp-agent-client.js'
 import { requirePrivateAgentProvider, type PrivateAgentProvider } from './agent-provider.js'
+import { PRIVATE_AGENT_PROVIDER_PIDS } from './root-operation-limits.js'
 import {
   privateOpenAIAgentCredential,
   type PrivateOpenAIAgentProvider,
@@ -91,7 +92,6 @@ const SANDBOX_KIND = 'private-root-agent-sandbox/1'
 const CLEANUP_KIND = 'private-root-agent-cleanup/1'
 const CANCELLATION_GRACE_MS = 1_000
 const PROVIDER_STDERR_BYTES = 64 * 1024
-const AGENT_PROVIDER_MINIMUM_PIDS = 128
 const PROVIDER_INSTRUCTION_BYTES = 1_048_576
 const DIGEST = /^sha256:[0-9a-f]{64}$/
 const decoder = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true })
@@ -646,7 +646,7 @@ function backendPlan(
     runId: `agent-${identity.slice(0, 42)}`,
     limits: Object.freeze({
       ...recipe.resourceCeilings,
-      pids: Math.max(recipe.resourceCeilings.pids, AGENT_PROVIDER_MINIMUM_PIDS),
+      pids: PRIVATE_AGENT_PROVIDER_PIDS,
       deadlineUnixMs,
       cancellationGraceMs: CANCELLATION_GRACE_MS,
     }),

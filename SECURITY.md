@@ -85,11 +85,17 @@ project acquisition happens before it, and mandatory fencing and cleanup may
 finish afterward. The memory, PID, and CPU ceilings in the table are fixed.
 
 A Binding child Flow or effect runs in a separate scope while its parent
-remains live. Each context permits one active operation; a leaf can await
-an Agent or command while its root awaits that leaf. There are at most three
-execution scopes per root: root, leaf, and one effect. The table's CPU, memory,
-and PID ceilings apply to each scope, not their combined total. Every child
-operation's wall deadline is capped by its parent's remaining deadline.
+remains live. The root permits two sibling Flows or one exclusive effect;
+each leaf permits one effect. Before dispatch, durable root ownership reserves
+each entire branch, including its largest possible effect. Reservations last
+through confirmed fencing and cleanup, even after execution fails.
+
+At most five payload/provider envelopes fit the fixed root aggregate ceiling:
+1,280 MiB memory, 448 tasks, and 2.5 CPU cores (100 ms quota period). The table's
+individual kernel ceilings stay unchanged and their reserved sum cannot exceed
+that budget. Unused reservations are not borrowed. Trusted coordinators and
+supervisors are outside this budget; this is not combined utilization accounting
+or fair-share scheduling. Every child's deadline is capped by the root deadline.
 
 After bounded project capture, one `jig review` dependency-planning phase uses
 one 180-second cancellation deadline, performs at most 16 distinct dependency

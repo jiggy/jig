@@ -14,6 +14,12 @@ at most 16 UTF-8 files and 64 KiB. The root calls its exact `repair` specialist
 with text and the package-owned CLI acceptance cases. It does not execute
 candidate code or give the specialist attachments.
 
+Alternatively supply `jobs`, at most two independently captured projects, each
+with an `id`, relative `directory`, named fixed `checks`, `issue`, `editPaths`,
+and optional `cancelAfterMs`. Both use the same exact specialist; failed workers
+do not erase settled siblings. Results and patches remain separately identified.
+Overlapping paths are reported, not merged or tested as a combined candidate.
+
 Each validated proposal becomes an applicable patch against the original.
 Only consistent command identities, an observed original defect, and passing
 independent assertions earn `review.patch`. Repository test output is useful

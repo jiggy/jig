@@ -1,0 +1,34 @@
+[
+  {
+    "id": "day-and-night",
+    "args": [],
+    "stdin": "09:00-10:30\n23:30-00:15\n",
+    "stdout": "{\"minutes\":135}\n",
+    "stderr": "",
+    "exitCode": 0
+  },
+  {
+    "id": "empty",
+    "args": [],
+    "stdin": "",
+    "stdout": "{\"minutes\":0}\n",
+    "stderr": "",
+    "exitCode": 0
+  },
+  {
+    "id": "bad-minute",
+    "args": [],
+    "stdin": "09:99-11:00\n",
+    "stdout": "",
+    "stderr": "Invalid time\n",
+    "exitCode": 2
+  },
+  {
+    "id": "bad-hour",
+    "args": [],
+    "stdin": "25:00-02:00\n",
+    "stdout": "",
+    "stderr": "Invalid time\n",
+    "exitCode": 2
+  }
+]

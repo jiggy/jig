@@ -205,15 +205,16 @@ conversation unless the application explicitly passes that content as input.
 Provider selection and credentials remain host-owned; no new Skill or provider
 configuration field is added to Bindings.
 
-Each Run context allows one active operation. A parent waiting on a child Flow
-does not consume that child's Agent-operation capacity. Parent cancellation
+The root allows two sibling Flow calls or one exclusive effect; a leaf allows
+one Agent or command effect. The root reserves each branch's resources before
+dispatch, including its effect capacity. Parent cancellation
 and the inherited deadline govern the child and its Agent worker; cleanup
 must settle both before the parent result becomes terminal. As with root Agent
 calls, cancelling local work cannot retract an already accepted remote request.
 
 Exactly one child is a property of this example's completed path, not a new
 host rule. A blocked or limited Agent result reaches no child, and another
-Flow may make additional sequential calls within its admitted slots.
+Flow may make sequential calls or two parallel sibling calls within its admitted slots.
 
 ## Alpha host implementations
 

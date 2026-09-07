@@ -412,10 +412,22 @@ addressable Run. Its terminal exists only as the parent-owned Run/1 operation
 result; Jig creates no child Run history and exposes no child administration,
 scheduler, catalogue, or resolver.
 
-The direct alpha admits one active child operation per parent. A distinct
-concurrent operation receives `RESOURCE_EXHAUSTED`; identical waiters join the
-same operation, and sequential child calls are not constrained by this
-Jig-specific active-child bound. Run/1's request-lifetime limit still applies.
+The root permits two active sibling Flow calls, or one exclusive Agent or
+command effect. Each leaf permits one effect and no child Flow calls. A third
+sibling or conflicting effect receives `RESOURCE_EXHAUSTED` before dispatch;
+there is no host queue or automatic retry. Identical waiters join the same
+operation. Applications use ordinary promises to schedule and aggregate work,
+and per-call cancellation to stop a selected sibling without stopping another.
+Run/1's request-lifetime limit still applies.
+
+Before dispatch, Jig reserves a Flow branch plus its largest possible effect
+against a fixed root payload budget: 1,280 MiB memory, 448 tasks, and 2.5 CPU
+cores with a 100 ms quota period. Each actual envelope is kernel-limited below
+its reservation. Unused reservations are not borrowed; reservations remain
+until confirmed fencing and cleanup. This bounds the complete root call tree,
+not just each parent's immediate children. Trusted coordinators and supervisors
+are outside this payload budget. It is not fair-share scheduling or combined
+utilization accounting. Every descendant remains within the root deadline.
 
 An Agent-capable root or child package may use ordinary Run/1 `effect/call`
 through its one exact admitted Agent Run Capability Contract slot. The `run`
@@ -429,9 +441,9 @@ Selected skills are immediate `skills/<name>/` subtrees containing exact-case
 `SKILL.md`. Omission selects none. They are copied from the immutable admitted
 package and passed as read-only guidance only to that call; they grant no
 tools, network, filesystem, child target, or other authority. Agent and child
-calls share the root's absolute deadline. Each Run context admits one active
-operation; a child occupies the parent's operation while its own Agent call
-occupies the child's operation. Child skills come only from the selected
+calls share the root's absolute deadline. Each child occupies one root branch;
+its own Agent call uses the effect capacity already reserved for that branch.
+Child skills come only from the selected
 child's admitted package.
 Possibly dispatched Agent work is fenced and reported as uncertain rather
 than automatically replayed.

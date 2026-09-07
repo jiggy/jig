@@ -9,6 +9,7 @@ import { installedBunLocation } from './fixtures/installed-bun-location.js'
 import type { RootAdministration, StartRootRunReceipt } from '../src/administration/root.js'
 import type { JsonValue } from '../src/json.js'
 import { projectCommandCandidateDigest } from '../src/internal/private-project-command.js'
+import { PRIVATE_ROOT_RESOURCE_POLICY } from '../src/internal/root-operation-limits.js'
 
 const proof = process.env.JIG_LINUX_ROOTLESS_HOSTILE === '1' ? describe.serial : describe.skip
 
@@ -142,10 +143,11 @@ proof('contained Project Command effect', () => {
       await noOwners(root)
       const stopped = await session.rootAdministration.startRun({
         submissionId: 'command-cancel',
-        target: { kind: 'binding', id: 'parent' },
+        target: { kind: 'binding', id: 'pair' },
         input: { command: 'cli', files: { 'src/cli.ts': 'await Bun.sleep(60000)' } },
       })
-      await waitForCommand(root)
+      await waitForCommand(root, 2)
+      await checkAggregateEnvelopes()
       await session.close()
       session = await openPrivateProjectSession({ directory: root, host })
       expect(await terminal(session.rootAdministration, stopped)).toMatchObject({
@@ -165,7 +167,7 @@ proof('contained Project Command effect', () => {
     }
   }, 180_000)
 
-  test('coordinator loss fences a leaf command and recovers its ownership without replay', async () => {
+  test('coordinator loss fences two leaf commands and recovers both branches without replay', async () => {
     const root = await mkdtemp(join(tmpdir(), 'jig-command-loss-'))
     const host = await openPrivateInstalledBunHost(installedBunLocation, {})
     let session: Awaited<ReturnType<typeof openPrivateProjectSession>> | undefined
@@ -185,7 +187,7 @@ proof('contained Project Command effect', () => {
         const session = await openPrivateProjectSession({ directory: ${JSON.stringify(root)},
           host: await openPrivateInstalledBunHost(${JSON.stringify(installedBunLocation)}, {}) });
         const receipt = await session.rootAdministration.startRun({ submissionId: 'lost-command',
-          target: {kind:'binding',id:'parent'}, input:{command:'cli',files:{'src/cli.ts':'await Bun.sleep(60000)'}} });
+          target: {kind:'binding',id:'pair'}, input:{command:'cli',files:{'src/cli.ts':'await Bun.sleep(60000)'}} });
         await writeFile(${JSON.stringify(join(root, 'receipt.json'))}, JSON.stringify(receipt));
         await Bun.sleep(60000);
       `
@@ -205,7 +207,8 @@ proof('contained Project Command effect', () => {
         },
       )
       recoveryRequired = true
-      await waitForCommand(root)
+      await waitForCommand(root, 2)
+      await checkAggregateEnvelopes()
       const receipt = JSON.parse(await readFile(join(root, 'receipt.json'), 'utf8'))
       coordinator.kill('SIGKILL')
       await coordinator.exited
@@ -227,7 +230,7 @@ proof('contained Project Command effect', () => {
 
 async function fixture(root: string) {
   await mkdir(join(root, 'bindings'), { recursive: true })
-  for (const name of ['command', 'parent']) {
+  for (const name of ['command', 'parent', 'pair']) {
     const flow = join(root, 'flows', name)
     await mkdir(join(flow, 'contracts'), { recursive: true })
     await cp(join(import.meta.dir, '../../flow-sdk/dist'), join(flow, 'sdk'), { recursive: true })
@@ -239,7 +242,9 @@ async function fixture(root: string) {
       join(flow, 'flow.ts'),
       name === 'command'
         ? 'import {handle} from "./sdk/index.js"; await handle(async run=>({outcome:"done",output:await run.callEffect({operationId:"command",slot:"command",method:"run",input:run.input})}));'
-        : 'import {handle} from "./sdk/index.js"; await handle(async run=>run.callFlow({operationId:"worker",slot:"worker",input:run.input}));',
+        : name === 'pair'
+          ? 'import {handle} from "./sdk/index.js"; await handle(async run=>({outcome:"done",output:await Promise.all(["a","b"].map(operationId=>run.callFlow({operationId,slot:"worker",input:run.input})))}));'
+          : 'import {handle} from "./sdk/index.js"; await handle(async run=>run.callFlow({operationId:"worker",slot:"worker",input:run.input}));',
     )
     if (name === 'command')
       await cp(
@@ -258,6 +263,10 @@ async function fixture(root: string) {
   await writeFile(
     join(root, 'bindings/parent.ts'),
     'import {defineBinding} from "@jigging/jig"; export default defineBinding({package:"flows/parent",slots:{worker:"binding:command"}});',
+  )
+  await writeFile(
+    join(root, 'bindings/pair.ts'),
+    'import {defineBinding} from "@jigging/jig"; export default defineBinding({package:"flows/pair",slots:{worker:"binding:command"}});',
   )
 }
 
@@ -289,13 +298,48 @@ function ownerRows(root: string): number {
     database.close()
   }
 }
-async function waitForCommand(root: string) {
+async function waitForCommand(root: string, count = 1) {
   const until = Date.now() + 15_000
   while (Date.now() < until) {
-    if (ownerRows(root) > 0) return
+    if (ownerRows(root) >= count) return
     await Bun.sleep(20)
   }
   throw new Error('command owner did not start')
+}
+async function checkAggregateEnvelopes() {
+  const delegated = process.env.AGENT_DELEGATED_CGROUP
+  if (!delegated?.startsWith('/sys/fs/cgroup/')) throw new Error('missing proof delegation')
+  const until = Date.now() + 5_000
+  while (Date.now() < until) {
+    const groups = (await readdir(delegated)).filter((n) => n.startsWith('jig-run-'))
+    if (groups.length === 5) {
+      const limits = await Promise.all(
+        groups.map(async (name) => ({
+          memory: Number(await readFile(join(delegated, name, 'memory.max'), 'utf8')),
+          pids: Number(await readFile(join(delegated, name, 'pids.max'), 'utf8')),
+          cpu: (await readFile(join(delegated, name, 'cpu.max'), 'utf8'))
+            .trim()
+            .split(' ')
+            .map(Number),
+        })),
+      )
+      if (limits.every((l) => Number.isFinite(l.memory + l.pids + l.cpu[0]!))) {
+        expect(limits.reduce((n, l) => n + l.memory, 0)).toBeLessThanOrEqual(
+          PRIVATE_ROOT_RESOURCE_POLICY.memoryBytes,
+        )
+        expect(limits.reduce((n, l) => n + l.pids, 0)).toBeLessThanOrEqual(
+          PRIVATE_ROOT_RESOURCE_POLICY.pids,
+        )
+        expect(limits.reduce((n, l) => n + l.cpu[0]! / l.cpu[1]!, 0)).toBeLessThanOrEqual(
+          PRIVATE_ROOT_RESOURCE_POLICY.cpuQuotaMicros /
+            PRIVATE_ROOT_RESOURCE_POLICY.cpuPeriodMicros,
+        )
+        return
+      }
+    }
+    await Bun.sleep(20)
+  }
+  throw new Error('five independently configured envelopes did not overlap')
 }
 async function noOwners(root: string) {
   expect(ownerRows(root)).toBe(0)

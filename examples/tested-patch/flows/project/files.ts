@@ -28,7 +28,7 @@ function validText(value: unknown, limit: number): value is string {
     !value.includes('\0')
   )
 }
-export async function readRepairInput(value: unknown, source: string) {
+export async function readRepairInput(value: unknown, source: string, selectedCases = cases) {
   const request = value as { issue: string; editPaths: string[] }
   if (
     !request ||
@@ -99,7 +99,7 @@ export async function readRepairInput(value: unknown, source: string) {
     )
   )
     throw new TypeError('Select existing TypeScript or JavaScript source files below src/.')
-  return { ...request, files, cases }
+  return { ...request, files, cases: selectedCases }
 }
 
 /** Build applicable complete-file hunks from captured originals, never from model diff text. */

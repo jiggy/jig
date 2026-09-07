@@ -50,10 +50,29 @@ proofDescribe('contained repair file application', () => {
         content: originalReport.replace('r.status >= 400).length', 'r.status >= 500).length'),
       },
     ]
+    const timesheetFixture = join(fixture, '../timesheet')
+    const originalTime = await readFile(join(timesheetFixture, 'src/parse.ts'), 'utf8')
+    const originalTotal = await readFile(join(timesheetFixture, 'src/total.ts'), 'utf8')
+    const timesheetReplacements = [
+      {
+        path: 'src/parse.ts',
+        content: originalTime.replace('hour > 23', 'hour > 23 || minute > 59'),
+      },
+      {
+        path: 'src/total.ts',
+        content: originalTotal.replace(
+          'Math.max(0, shift.end - shift.start)',
+          '(shift.end - shift.start + 1440) % 1440',
+        ),
+      },
+    ]
     let calls = 0
     let repairPasses = true
     const server = createServer(async (request, response) => {
-      await new Response(request as any).text()
+      const requestText = await new Response(request as any).text()
+      const selectedReplacements = requestText.includes('src/total.ts')
+        ? timesheetReplacements
+        : replacements
       calls++
       response.writeHead(200, { 'content-type': 'application/json' }).end(
         JSON.stringify({
@@ -66,8 +85,9 @@ proofDescribe('contained repair file application', () => {
                 {
                   type: 'output_text',
                   text: JSON.stringify({
-                    replacements: repairPasses ? replacements : [replacements[1]],
-                    summary: 'Validate status codes and separate client/server errors.',
+                    replacements: repairPasses ? selectedReplacements : [selectedReplacements[1]],
+                    summary:
+                      'Apply the two source corrections and keep all acceptance checks unchanged.',
                   }),
                 },
               ],
@@ -221,6 +241,58 @@ globalThis.fetch = (url, init) => {
       ])
       expect(await readFile(join(project, 'fixtures/log-report/src/parse.ts'))).toEqual(before)
       expect(calls).toBe(3)
+      await owner.close()
+      owner = new PrivateFileDeliveryOwner(new AbortController().signal)
+      repairPasses = true
+      stdout = ''
+      stderr = ''
+      const batchOut = join(root, 'batch')
+      expect(
+        await main(
+          [
+            'run',
+            'binding:repair',
+            '--input',
+            '@batch.json',
+            '--attach',
+            'source=fixtures',
+            '--out',
+            batchOut,
+            '--timeout',
+            '180s',
+          ],
+          options,
+        ),
+        stdout + stderr,
+      ).toBe(0)
+      const batch = JSON.parse(stdout)
+      expect(batch).toMatchObject({
+        status: 'succeeded',
+        outcome: 'done',
+        delivery: { status: 'written' },
+      })
+      expect(batch.output.overlaps).toEqual([])
+      expect(batch.output.jobs).toHaveLength(2)
+      expect(new Set(batch.output.jobs.map((job: any) => job.baseDigest)).size).toBe(2)
+      for (const job of batch.output.jobs) {
+        expect(job).toMatchObject({ status: 'settled', ready: true })
+        expect(job.result.output.baseline.acceptance.some((c: any) => !c.passed)).toBe(true)
+        expect(
+          job.result.output.attempts[0].evaluation.acceptance.every((c: any) => c.passed),
+        ).toBe(true)
+        expect(job.result.output.attempts[0].evaluation.commands[0].exitCode).toBe(0)
+        const patch = await readFile(join(batchOut, 'files', job.id, 'review.patch'), 'utf8')
+        expect(patch).toContain('--- a/src/parse.ts')
+        expect(patch).toContain(job.id === 'logs' ? '--- a/src/report.ts' : '--- a/src/total.ts')
+      }
+      expect(await readFile(join(project, 'fixtures/log-report/src/parse.ts'))).toEqual(before)
+      expect(await readFile(join(project, 'fixtures/timesheet/src/parse.ts'), 'utf8')).toBe(
+        originalTime,
+      )
+      expect(await readFile(join(project, 'fixtures/timesheet/src/total.ts'), 'utf8')).toBe(
+        originalTotal,
+      )
+      expect(calls).toBe(5)
     } finally {
       await owner.close()
       await new Promise<void>((resolve) => server.close(() => resolve()))

@@ -51,8 +51,9 @@ command target is unavailable; unrelated targets remain usable.
 
 A root or exact leaf Binding can use its own command policy. Direct `flow:`
 targets have no command policy. A child receives neither parent commands nor
-attachments. A context may use at most one active operation, whether Agent,
-command, or permitted child Flow. Sequential commands are allowed.
+attachments. A command is exclusive in its context. The root may instead run
+two sibling Flows, each with its own effect capacity. Sequential commands are
+allowed; [root reservations](project-policy.md) bound their combined resources.
 
 ## Request
 
@@ -127,7 +128,8 @@ is a new request with its own identity, not mutation of a running workspace.
 The private trusted collector remains outside the candidate envelope. The
 command has at most ten seconds, additionally bounded by the containing child
 and root deadlines, with the current 256 MiB, 64-task, and half-core envelope
-ceilings. These are per-envelope limits, not a claim of run-wide scheduling.
+ceilings. Fixed root reservations bound the combined envelopes without a
+run-wide scheduler or borrowing unused capacity.
 
 Jig records ownership before dispatch. Cancellation, parent settlement, and
 coordinator loss fence all owned descendants before release. Independent

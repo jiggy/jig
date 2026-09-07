@@ -106,9 +106,12 @@ cancellation, and uncertainty; uncertain dispatch is not automatically
 replayed. Jig supplies no separate child history, administration, scheduler,
 catalogue, or resolver.
 
-The alpha admits one active child operation per parent; excess distinct
-concurrent calls receive `RESOURCE_EXHAUSTED`, while sequential calls remain
-available.
+The source candidate admits two sibling Flow calls under one aggregate root
+budget, or one exclusive root effect. Each leaf can use one Agent or reviewed
+project command. Excess calls receive `RESOURCE_EXHAUSTED` before dispatch;
+there is no queue. Per-call cancellation can stop one sibling while another
+finishes. The [project repair example](tested-patch.md#two-workers-two-reviewable-patches)
+uses this boundary for a two-project batch.
 
 One experimental [Agent Run capability](../spec/agent-run.md) is also
 available through ordinary Run/1 `effect/call`. An Agent-capable Flow carries

@@ -643,7 +643,7 @@ export class PrivateLinuxCgroupBackend {
       signal?.addEventListener('abort', cancel, { once: true })
       const preparedMessage = requireSupervisorMessage(
         await withTimeout(
-          nextMessage(messages, closed),
+          readPrivateSupervisorMessage(messages, closed),
           this.#options.startupTimeoutMs,
           'rootless preparation',
         ),
@@ -657,7 +657,7 @@ export class PrivateLinuxCgroupBackend {
       writeControl(control, { type: 'admit' })
       const ready = requireSupervisorMessage(
         await withTimeout(
-          nextMessage(messages, closed),
+          readPrivateSupervisorMessage(messages, closed),
           this.#options.startupTimeoutMs,
           'rootless readiness',
         ),
@@ -2448,18 +2448,21 @@ function requireSupervisorMessage<T extends SupervisorMessage['type']>(
   return message as Extract<SupervisorMessage, { readonly type: T }>
 }
 
-async function nextMessage(
+export async function readPrivateSupervisorMessage(
   iterator: AsyncIterator<unknown>,
   closed: Promise<{ readonly code: number | null; readonly signal: string | null }>,
 ): Promise<unknown> {
+  const pending = iterator.next().then((next) => {
+    if (next.done) throw new Error('rootless supervisor control closed')
+    return next.value
+  })
+  // Process exit and control-channel consumption are independently scheduled.
+  // Drain an already-buffered receipt before calling the result uncertain.
+  // A missing/stuck channel still fails within a fixed bound; callers validate
+  // the message against the durable receipt and require successful owner exit.
   return await Promise.race([
-    iterator.next().then((next) => {
-      if (next.done) throw new Error('rootless supervisor control closed')
-      return next.value
-    }),
-    closed.then((exit) => {
-      throw new Error(`rootless supervisor exited before completing (${exit.code ?? exit.signal})`)
-    }),
+    pending,
+    closed.then(() => withTimeout(pending, 1000, 'rootless supervisor final channel drain')),
   ])
 }
 
@@ -2468,7 +2471,7 @@ async function waitForTerminal(
   closed: Promise<{ readonly code: number | null; readonly signal: string | null }>,
 ): Promise<SupervisorTerminal> {
   for (;;) {
-    const value = await nextMessage(iterator, closed)
+    const value = await readPrivateSupervisorMessage(iterator, closed)
     if (dataType(value) === 'terminal') return normalizeFinal(value) as SupervisorTerminal
   }
 }

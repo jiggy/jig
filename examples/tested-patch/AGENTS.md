@@ -11,19 +11,21 @@ application is not an unrestricted repository worker or independent probe.
 - `README.md` introduces the application; its public guide owns user instructions.
 - Root `package.json` and generated tracked `bun.lock` own development tests.
   Flow-local manifests and generated locks own each package's pinned SDK.
-- `flows/project/` owns root file capture, fixed CLI cases, evidence checks,
-  applicable patch construction, and deliverables.
+- `flows/project/` owns root file capture, fixed CLI cases, one- or two-job
+  invocation, evidence checks, applicable patch construction, and deliverables.
 - `flows/repair/` owns the reusable JSON-input leaf, proposal validation,
   at most two Agent calls, command effects, and acceptance of observations.
 - `bindings/` owns the exact root-to-leaf slot and reviewed Bun commands.
-- `fixtures/log-report/` owns the intentionally defective CLI and repository
-  tests; never run untrusted variants outside completed containment.
+- `fixtures/log-report/` and `fixtures/timesheet/` own intentionally defective
+  CLIs and repository tests; never run variants outside completed containment.
+- `issue.json` selects one project issue; `batch.json` selects two independent
+  jobs with their source directories, permitted edits, and fixed check sets.
 - `test/` owns deterministic application checks. Host evidence belongs to Jig.
 
 ## Local Contracts
 
 - The root alone receives `source: read` and `deliverables: read-write`.
-  Accept 16 regular Unicode text files totaling 64 KiB and at most eight
+  Per project, accept 16 regular Unicode text files totaling 64 KiB and at most eight
   selected existing TypeScript/JavaScript paths below `src/`.
 - The leaf accepts JSON `issue`, `files`, `editPaths`, and `cases`.
   It has Agent and Project Command capability uses, no attachments or slots.
@@ -44,6 +46,13 @@ application is not an unrestricted repository worker or independent probe.
   failed proposals and invalid-proposal reasons. No automatic application.
 - Operational failures export no partial Flow files. A passed finite case set
   establishes tested behavior only, not correctness or marketing superiority.
+- Validate all batch jobs before dispatch. Use distinct operation identities
+  through the same exact slot, with at most two siblings. Optional per-job
+  cancellation preserves settled sibling results; root failure has no partial
+  delivery guarantee. Retain separate base/candidate and acceptance identities.
+- Report overlapping patch paths, never merge automatically or claim that
+  separately checked candidates were tested together. `done` requires all jobs
+  review-ready without conflicting edits; otherwise return honest `blocked`.
 
 ## Work Guidance
 
@@ -57,7 +66,8 @@ application is not an unrestricted repository worker or independent probe.
   `bun install --ignore-scripts --frozen-lockfile`, then run `bun test test`.
   From the repository root use `bun test examples/tested-patch/test`.
 - Deterministic checks cover bounds, multi-file proposals, honest failures,
-  immutable expectations, evidence contradictions, and output collisions.
+  immutable expectations, evidence contradictions, output collisions, batch
+  validation, selected cancellation, and patch conflicts.
 - The provisioned Jig host tests run actual candidate tests and CLI commands
   through admitted root and leaf Flows. Recorded Agent responses prove the
   execution path, not live model quality. Real Agent outcomes need a bounded

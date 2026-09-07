@@ -68,6 +68,79 @@ const TABLES = [
 setDefaultTimeout(30_000)
 
 describe.serial('direct alpha activation store', () => {
+  test('reserves two branches atomically and retains capacity through fencing until cleanup', async () => {
+    const fixture = await createFixture('ready')
+    let coordinator: PrivateProjectCoordinator | undefined
+    try {
+      await admit(fixture)
+      coordinator = await openPrivateProjectCoordinator({ projectRoot: fixture.root })
+      const submitted = await submitReadyRun(fixture, coordinator, 'two-branches')
+      const context = { coordinator, projectRoot: fixture.root, parentRunId: submitted.run.runId }
+      const allocate = (operationId: string) =>
+        allocatePrivateRootChildOwner({
+          ...context,
+          operationId,
+          allocation: { kind: 'private-root-child-owner-allocation/1', operationId },
+        })
+      const raced = await Promise.allSettled([
+        allocate('worker:a'),
+        allocate('worker:b'),
+        allocate('worker:c'),
+      ])
+      expect(
+        raced
+          .map((r) => (r.status === 'fulfilled' ? 'reserved' : String(r.reason?.code ?? r.reason)))
+          .sort(),
+      ).toEqual(['RUN_CHILD_CAPACITY', 'reserved', 'reserved'].sort())
+      expect(raced.filter((r) => r.status === 'rejected').map((r) => r.reason.code)).toEqual([
+        'RUN_CHILD_CAPACITY',
+      ])
+      const rows = await listPrivateRootChildOwners(context)
+      const first = rows[0]!
+      const key = {
+        ...context,
+        operationId: first.operationId,
+        allocationDigest: first.allocation.digest,
+      }
+      const sealed = await recordPrivateRootChildSandbox({
+        ...key,
+        sandbox: { kind: 'test-sandbox' },
+      })
+      const fenced = await recordPrivateRootChildFence({
+        ...key,
+        sandboxDigest: sealed.sandbox!.digest,
+        fence: { kind: 'test-fence' },
+      })
+      await expect(allocate('worker:late')).rejects.toMatchObject({ code: 'RUN_CHILD_CAPACITY' })
+      const cleaned = await recordPrivateRootChildCleanup({
+        ...key,
+        sandboxDigest: sealed.sandbox!.digest,
+        fenceDigest: fenced.fence!.digest,
+        cleanup: { kind: 'test-cleanup' },
+      })
+      await expect(allocate('worker:late')).rejects.toMatchObject({ code: 'RUN_CHILD_CAPACITY' })
+      await closePrivateRootChildOwner({
+        ...key,
+        sandboxDigest: sealed.sandbox!.digest,
+        fenceDigest: fenced.fence!.digest,
+        cleanupDigest: cleaned.cleanup!.digest,
+      })
+      await expect(allocate('worker:late')).resolves.toMatchObject({ operationId: 'worker:late' })
+      for (const row of await listPrivateRootChildOwners(context))
+        await closePrivateRootChildOwner({
+          ...context,
+          operationId: row.operationId,
+          allocationDigest: row.allocation.digest,
+          sandboxDigest: null,
+          fenceDigest: null,
+          cleanupDigest: null,
+        })
+    } finally {
+      await coordinator?.dispose()
+      await fixture.dispose()
+    }
+  })
+
   test('creates only the current eleven-table schema', async () => {
     const fixture = await createEmptyFixture()
     try {

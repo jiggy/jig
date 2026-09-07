@@ -38,6 +38,22 @@ The output destination must be new. Ctrl-C requests cancellation; operational
 failure exports no partial Flow files. Selected source reaches your configured
 provider, and even unsuccessful calls may incur charges.
 
+## Repair two projects together
+
+`batch.json` pairs the log reporter with a timesheet CLI that mishandles
+overnight shifts and invalid minutes. The same unchanged specialist works on
+both projects, with separate source and acceptance cases:
+
+```sh
+jig run binding:repair --input @batch.json --attach source=fixtures --out ../batch-result --timeout 5m
+```
+
+Each job gets its own folder under `files/`, with a patch and checks. A failed
+worker does not discard its successful sibling. Optional `cancelAfterMs` on a
+job stops that worker; Ctrl-C cancels the whole Run. At most two workers run,
+each with two Agent proposals. Overlapping edits are reported, never merged.
+The patches were tested separately, not as a combined change.
+
 The [public guide](https://jig.md/guide/tested-patch) covers evidence, failures,
 and adaptation. This is an authored example, not a promoted Starter or a
 claim of general coding reliability.

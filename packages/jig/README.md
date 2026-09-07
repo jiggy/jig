@@ -177,10 +177,11 @@ uncertainty; Jig does not replay uncertain dispatch automatically. There is no
 separate child history, administration, scheduler, catalogue, or resolver. Jig
 also never guesses an unprefixed target.
 
-Each Run context admits one active operation; a child Flow can own one Agent or project-command
-operation while its parent awaits it. Excess distinct concurrent calls receive
-`RESOURCE_EXHAUSTED`, while sequential calls remain available. Cancellation and
-cleanup cover the specialist and its locally owned effect worker.
+The source candidate admits two sibling Flows or one exclusive root effect.
+Each leaf can own one Agent or project command. Whole-branch reservations bound
+the aggregate root resources before dispatch; excess calls receive
+`RESOURCE_EXHAUSTED` without a queue. Cancelling one sibling preserves the
+other; parent cancellation and cleanup cover the complete tree.
 
 [Project Command](https://jig.md/spec/project-command) executes a Binding's
 reviewed Bun tests or entrypoint against immutable candidate text. It returns
