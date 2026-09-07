@@ -4,7 +4,7 @@ import asyncio
 import json
 import os
 from pathlib import Path
-import selectors
+import queue
 import subprocess
 import sys
 import threading
@@ -28,7 +28,8 @@ class Component:
     def __init__(self) -> None:
         env = os.environ.copy()
         source = str(PACKAGE / "src")
-        env["PYTHONPATH"] = source + os.pathsep + env.get("PYTHONPATH", "")
+        if not env.get("FLOW_SDK_INSTALLED"):
+            env["PYTHONPATH"] = source + os.pathsep + env.get("PYTHONPATH", "")
         self.process = subprocess.Popen(
             [sys.executable, str(FIXTURE)],
             stdin=subprocess.PIPE,
@@ -36,6 +37,17 @@ class Component:
             stderr=subprocess.PIPE,
             env=env,
         )
+        self.lines: queue.Queue[bytes] = queue.Queue()
+        self.reader = threading.Thread(target=self._read_stdout, daemon=True)
+        self.reader.start()
+
+    # Windows selectors cannot watch anonymous pipes. A reader thread also
+    # bounds waits for a complete frame, including partially written lines.
+    def _read_stdout(self) -> None:
+        assert self.process.stdout is not None
+        for line in self.process.stdout:
+            self.lines.put(line)
+        self.lines.put(b"")
 
     def send(self, value: object) -> None:
         assert self.process.stdin is not None
@@ -48,31 +60,28 @@ class Component:
         self.process.stdin.flush()
 
     def receive(self, timeout: float = 5) -> dict[str, object]:
-        assert self.process.stdout is not None
-        selector = selectors.DefaultSelector()
-        selector.register(self.process.stdout, selectors.EVENT_READ)
         try:
-            if not selector.select(timeout):
-                self.fail_with_diagnostics("timed out waiting for a protocol frame")
-            line = self.process.stdout.readline()
-        finally:
-            selector.close()
+            line = self.lines.get(timeout=timeout)
+        except queue.Empty:
+            self.fail_with_diagnostics("timed out waiting for a protocol frame")
         if not line:
             self.fail_with_diagnostics("component closed stdout before a protocol frame")
         return json.loads(line)
 
     def has_output(self, timeout: float = 0.15) -> bool:
-        assert self.process.stdout is not None
-        selector = selectors.DefaultSelector()
-        selector.register(self.process.stdout, selectors.EVENT_READ)
-        try:
-            return bool(selector.select(timeout))
-        finally:
-            selector.close()
+        # Leave observed bytes queued for the next receive/remaining_stdout.
+        with self.lines.not_empty:
+            if not self.lines.queue:
+                self.lines.not_empty.wait(timeout)
+            return bool(self.lines.queue)
 
     def remaining_stdout(self) -> bytes:
-        assert self.process.stdout is not None
-        return self.process.stdout.read()
+        self.reader.join(timeout=5)
+        assert not self.reader.is_alive(), "stdout reader did not settle"
+        result = bytearray()
+        while not self.lines.empty():
+            result.extend(self.lines.get_nowait())
+        return bytes(result)
 
     def remaining_stderr(self) -> bytes:
         assert self.process.stderr is not None
@@ -103,6 +112,7 @@ class Component:
         if self.process.poll() is None:
             self.process.kill()
             self.process.wait()
+        self.reader.join(timeout=5)
         for stream in (self.process.stdin, self.process.stdout, self.process.stderr):
             if stream is not None:
                 stream.close()
@@ -178,6 +188,33 @@ class RuntimeTests(unittest.TestCase):
         with self.assertRaises(TypeError):
             RunContext()  # type: ignore[abstract]
         self.assertNotIn("_client", getattr(RunContext, "__annotations__", {}))
+
+    def test_context_preserves_host_values(self) -> None:
+        request = root_request("context")
+        request["params"].update(settings={"locale": "en"}, attachments={
+            "source": {"path": "/source", "access": "read"},
+        })
+        self.component.send(request)
+        output = self.component.receive()["result"]["output"]
+        for key in ["settings", "attachments", "scratch"]:
+            self.assertEqual(output[key], request["params"][key])
+        self.assertEqual(output["deadline"], request["params"]["deadlineUnixMs"])
+        self.component.wait()
+
+    def test_invalid_handler_output_is_invalid_result(self) -> None:
+        self.component.send(root_request("invalid-result"))
+        self.assertEqual(self.component.receive()["error"]["data"]["code"], "INVALID_RESULT")
+        self.component.wait()
+
+    def test_admitted_outbound_input_is_a_snapshot(self) -> None:
+        self.component.send(root_request("snapshot"))
+        call = self.component.receive()
+        self.assertEqual(call["params"]["input"], {"nested": ["before"]})
+        self.component.send({"jsonrpc": "2.0", "id": call["id"], "result": {
+            "outcome": "done", "output": call["params"]["input"],
+        }})
+        self.assertEqual(self.component.receive()["result"]["output"]["output"], {"nested": ["before"]})
+        self.component.wait()
 
     def test_returns_one_root_result(self) -> None:
         self.component.send(root_request("echo"))

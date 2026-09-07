@@ -23,6 +23,7 @@ export default defineConfig({
   themeConfig: {
     nav: [
       { text: 'Specifications', link: '/guide/' },
+      { text: 'Python SDK', link: '/guide/python' },
       { text: 'Jig', link: 'https://jig.md/' },
       { text: 'GitHub', link: 'https://github.com/jiggy/jig' },
     ],

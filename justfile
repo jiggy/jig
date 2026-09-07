@@ -3,6 +3,7 @@
 # ---------------------------------------------------------------------------- #
 
 mod flow "packages/flow-sdk/justfile"
+mod python "packages/flowmd-sdk/justfile"
 mod jig "packages/jig/justfile"
 mod site "site/justfile"
 

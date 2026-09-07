@@ -3,14 +3,16 @@
 ## Purpose
 
 Implements the dependency-free Python projection of Run SDK/1 and Run/1. It
-remains a private candidate.
+is independently packaged for PyPI prereleases; Jig hosting is outside its scope.
 
 ## Ownership
 
 - `src/flowmd_sdk/` owns the typed public module and runtime implementation.
 - `tests/` owns JSON/1, subprocess, concurrency, cancellation, and artifact
   evidence.
-- `pyproject.toml`, `README.md`, and `LICENSE` own the distribution envelope.
+- `justfile` owns Python build and test commands; `scripts/build-python-sdk.py`
+  assembles and qualifies retained wheel/sdist candidates.
+- `pyproject.toml`, `MANIFEST.in`, `README.md`, and `LICENSE` own the distribution envelope.
 
 ## Local Contracts
 
@@ -33,10 +35,16 @@ remains a private candidate.
 - Test thread/event-loop coordination and terminal-write races through
   subprocess behavior.
 - Keep typing, validation, examples, and package metadata aligned.
+- Run installed distributions outside the checkout with no source-path injection.
+- Qualify Python 3.11–3.14 and representative Linux/macOS/Windows interpreters;
+  CI configuration is not evidence that a particular run passed.
 
 ## Verification
 
 - `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=packages/flowmd-sdk/src python3 -m unittest discover -s packages/flowmd-sdk/tests -p 'test_*.py' -v`
+
+- `PYTHON=/absolute/python just python::pack /fresh/output` builds both formats
+  and runs strict metadata, installed runtime and typed-consumer checks.
 
 ## Child DOX Index
 

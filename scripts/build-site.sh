@@ -74,6 +74,10 @@ fi
 
 case $site_name in
   flow)
+    if [ ! -s "$staging/guide/python.html" ]; then
+      echo "the Python SDK guide is missing" >&2
+      exit 1
+    fi
     schema_map='docs/flow/spec/machine/capability-contract-1.schema.json|capability-contract-1.schema.json|https://flow.jig.md/schemas/capability-contract-1.schema.json
 docs/flow/spec/machine/run-1-errors.json|run-1-errors.json|-
 docs/flow/spec/machine/run-1.schema.json|run-1.json|https://flow.jig.md/schemas/run-1.json

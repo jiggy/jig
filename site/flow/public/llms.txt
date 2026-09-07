@@ -6,6 +6,7 @@ FLOW defines portable workflow packages and finite process contracts.
 - Specification map: https://flow.jig.md/guide/
 - Package/1: https://flow.jig.md/spec/package-format
 - Run/1: https://flow.jig.md/spec/run-protocol
+- Python SDK guide: https://flow.jig.md/guide/python
 - Run SDK/1: https://flow.jig.md/spec/run-sdk
 - Schema/1: https://flow.jig.md/spec/schema-files
 - Machine schemas: https://flow.jig.md/schemas/schema-1.json

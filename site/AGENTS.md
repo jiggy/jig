@@ -11,6 +11,8 @@ Jig public sites.
 - `flow/` and `jig/` own their site-specific navigation, styles, and public-root
   files. Each site's `diagrams.css` fits guide SVGs to the reading column;
   source diagrams remain with their owning guide under `docs/`.
+- FLOW publishes the Python SDK guide at `/guide/python`; navigation and
+  `llms.txt` link it, and site assembly checks the route.
 - `package.json` and `bun.lock` own shared pinned site tooling; `justfile` owns
   the FLOW and Jig Rspress build recipes.
 

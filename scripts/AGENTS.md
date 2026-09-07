@@ -14,7 +14,9 @@ operational baselines, and public-site assembly.
   into the primary checkout stay unchanged. It does not copy environment files,
   create shared tool state, install dependencies, or choose another workspace.
 - Justfiles own task composition; scripts retain substantive orchestration.
-  Candidate and site scripts invoke the relevant justfile, not package scripts.
+  TypeScript candidate and site scripts invoke the relevant justfile, not
+  package scripts. Python Just tasks expose the packaging orchestrator, which
+  calls the standard Python build frontend directly.
 - `test-release.sh` includes the authored examples' deterministic application
   tests. It installs the freshly packed SDK as a development dependency of a
   disposable tested-patch copy, without lifecycle scripts or edits to source
@@ -26,6 +28,10 @@ operational baselines, and public-site assembly.
   failure suppression, publication collisions and execution-residue checks.
 - `require-linux-host-conformance.sh` owns the bounded, read-only check that an
   exact publication revision passed the complete Linux host workflow.
+- `build-python-sdk.py` builds and qualifies wheel/sdist pairs; candidate mode
+  requires clean Git source and records exact revision and artifact hashes.
+- `pypi-release.py` performs read-only registry reconciliation, staging missing
+  distributions and refusing conflicting bytes; it never uploads or rebuilds.
 - `ci/` owns disposable CI-host provisioning.
 - Site assembly requires Jig's contract identity pages and exact descriptor
   downloads together. The deployed-site check verifies their page titles,
@@ -59,6 +65,8 @@ operational baselines, and public-site assembly.
 
 - Run the changed script against a fresh temporary destination and exercise at
   least one expected failure path.
+- `python3 -m unittest discover -s scripts -p test_pypi_release.py` verifies
+  partial retries, registry failures, and immutable candidate/registry bytes.
 - Validate the Host Conformance authorization script with `shellcheck` and
   success plus fail-closed API fixtures.
 - `bun test scripts/development-shell.test.ts` exercises the actual shell hook's

@@ -18,6 +18,8 @@ protocol candidates.
 - Keep the Python peer independent of the FLOW SDK and Bun peer harness.
 - Development skips remain explicit. Release gates never count a skip as a
   pass.
+- The SDK parity table maps both projections to executable evidence; SDK-only
+  checks and language ergonomics remain distinct from portable wire claims.
 - `MATRIX.md` records executable coverage and limitations; it must not imply a
   general certification programme.
 

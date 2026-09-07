@@ -1,0 +1,221 @@
+name: Publish Python prereleases
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+
+env:
+  SOURCE_REVISION: ${{ github.event.workflow_run.head_sha }}
+  PYTHONDONTWRITEBYTECODE: '1'
+
+concurrency:
+  group: pypi-prerelease-publish
+  cancel-in-progress: false
+
+jobs:
+  authorize:
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ env.SOURCE_REVISION }}
+          persist-credentials: false
+      - name: Require same-revision Linux Host Conformance
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: scripts/require-linux-host-conformance.sh "$GITHUB_REPOSITORY" "$SOURCE_REVISION"
+
+  build:
+    needs: authorize
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ env.SOURCE_REVISION }}
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: '3.13'
+      - run: python -m pip install build==1.3.0 twine==6.2.0 mypy==1.18.2
+      - uses: extractions/setup-just@f8a3cce218d9f83db3a2ecd90e41ac3de6cdfd9b
+        with:
+          just-version: '1.43.1'
+      - run: PYTHON=$(command -v python) just python::candidate "$RUNNER_TEMP/candidate"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: python-candidate-${{ env.SOURCE_REVISION }}
+          path: ${{ runner.temp }}/candidate
+          retention-days: 7
+          if-no-files-found: error
+
+  qualify:
+    name: Python ${{ matrix.python }} on ${{ matrix.os }}
+    needs: build
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      actions: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {os: ubuntu-24.04, python: '3.11'}
+          - {os: ubuntu-24.04, python: '3.12'}
+          - {os: ubuntu-24.04, python: '3.13'}
+          - {os: ubuntu-24.04, python: '3.14'}
+          - {os: macos-14, python: '3.14'}
+          - {os: windows-2022, python: '3.13'}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ env.SOURCE_REVISION }}
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: ${{ matrix.python }}
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: python-candidate-${{ env.SOURCE_REVISION }}
+          path: python-dist
+      - run: python -m pip install mypy==1.18.2
+      - name: Test installed wheel and sdist
+        shell: bash
+        run: python packages/flowmd-sdk/tests/package_smoke.py python-dist/*.whl python-dist/*.tar.gz
+
+  prepare:
+    needs: qualify
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      pending: ${{ steps.registry.outputs.pending }}
+      version: ${{ steps.registry.outputs.version }}
+      new_version: ${{ steps.registry.outputs.new_version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ env.SOURCE_REVISION }}
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: python-candidate-${{ env.SOURCE_REVISION }}
+          path: ${{ runner.temp }}/candidate
+      - id: registry
+        run: >-
+          python3 scripts/pypi-release.py prepare "$RUNNER_TEMP/candidate"
+          "$SOURCE_REVISION" --output "$RUNNER_TEMP/pending"
+          --github-output "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: steps.registry.outputs.pending == 'true'
+        with:
+          name: python-pending-${{ env.SOURCE_REVISION }}
+          path: ${{ runner.temp }}/pending
+          retention-days: 7
+          if-no-files-found: error
+
+  publish:
+    needs: prepare
+    if: needs.prepare.outputs.pending == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: pypi
+    permissions:
+      actions: read
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: python-pending-${{ env.SOURCE_REVISION }}
+          path: dist
+      - name: Publish retained distributions with PyPI trusted publishing
+        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33
+        with:
+          # A rerun may see files uploaded by the previous attempt. The verify
+          # job must still download and compare BOTH archives byte-for-byte.
+          skip-existing: true
+
+  verify:
+    needs: [prepare, publish]
+    if: >-
+      always() && needs.prepare.result == 'success' &&
+      (needs.publish.result == 'success' || needs.publish.result == 'skipped')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ env.SOURCE_REVISION }}
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: python-candidate-${{ env.SOURCE_REVISION }}
+          path: ${{ runner.temp }}/candidate
+      - run: python3 scripts/pypi-release.py verify "$RUNNER_TEMP/candidate" "$SOURCE_REVISION"
+
+  release:
+    needs: [prepare, verify]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Create immutable source tag and package release
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+          NEW_VERSION: ${{ needs.prepare.outputs.new_version }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          tag="flowmd-sdk-v$VERSION"
+          gh api --paginate "repos/$GITHUB_REPOSITORY/git/matching-refs/tags/flowmd-sdk-v" \
+            --jq '.[].ref' > "$RUNNER_TEMP/tags"
+          if ! grep -Fx "refs/tags/$tag" "$RUNNER_TEMP/tags" > /dev/null; then
+            object=$(gh api --method POST "repos/$GITHUB_REPOSITORY/git/tags" \
+              -f tag="$tag" -f message="flowmd-sdk $VERSION" \
+              -f object="$SOURCE_REVISION" -f type=commit --jq .sha)
+            gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" \
+              -f ref="refs/tags/$tag" -f sha="$object" > /dev/null
+          fi
+          if [ "$NEW_VERSION" = true ]; then
+            type=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$tag" --jq .object.type)
+            target=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$tag" --jq .object.sha)
+            if [ "$type" = tag ]; then
+              target=$(gh api "repos/$GITHUB_REPOSITORY/git/tags/$target" --jq .object.sha)
+            fi
+            if [ "$target" != "$SOURCE_REVISION" ]; then
+              echo "$tag already names a different source revision" >&2
+              exit 1
+            fi
+          fi
+          gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
+            --jq '.[].tag_name' > "$RUNNER_TEMP/releases"
+          if ! grep -Fx "$tag" "$RUNNER_TEMP/releases" > /dev/null; then
+            {
+              printf 'Python SDK for FLOW Run/1.\n\n'
+              printf '[View flowmd-sdk %s on PyPI](https://pypi.org/project/flowmd-sdk/%s/).\n\n' "$VERSION" "$VERSION"
+              printf '```sh\npython -m pip install flowmd-sdk==%s\n```\n\n' "$VERSION"
+              printf '[Python guide](https://flow.jig.md/guide/python). Python 3.11 or newer.\n\n'
+              printf 'Install from PyPI; GitHub source archives contain the repository source.\n'
+            } > "$RUNNER_TEMP/notes.md"
+            gh release create "$tag" --repo "$GITHUB_REPOSITORY" --verify-tag \
+              --prerelease --latest=false --title "flowmd-sdk $VERSION" \
+              --notes-file "$RUNNER_TEMP/notes.md"
+          fi

@@ -67,24 +67,6 @@ PYTHONDONTWRITEBYTECODE=1 \
   "$python_bin" -m unittest discover \
     -s conformance/run-1/python-peer -p 'test_*.py' -v
 
-cp -R packages/flowmd-sdk "$release_tmp/source"
-
-if ! "$python_bin" -m build --help >/dev/null 2>&1; then
-  echo "Python package smoke requires the 'build' module in the release environment." >&2
-  exit 1
-fi
-
-"$python_bin" -m build --outdir "$release_tmp/dist" "$release_tmp/source"
-set -- "$release_tmp"/dist/*.whl
-if [ "$#" -ne 1 ] || [ ! -f "$1" ]; then
-  echo "Python build did not produce exactly one wheel." >&2
-  exit 1
-fi
-wheel=$1
-set -- "$release_tmp"/dist/*.tar.gz
-if [ "$#" -ne 1 ] || [ ! -f "$1" ]; then
-  echo "Python build did not produce exactly one source distribution." >&2
-  exit 1
-fi
-sdist=$1
-"$python_bin" packages/flowmd-sdk/tests/package_smoke.py "$wheel" "$sdist"
+# Both installed Python distributions run the SDK suite and typed consumer.
+"$python_bin" scripts/build-python-sdk.py "$release_tmp/python-dist"
+"$python_bin" -m unittest discover -s scripts -p 'test_pypi_release.py' -v

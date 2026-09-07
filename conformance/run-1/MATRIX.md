@@ -62,6 +62,27 @@ The exact 16 MiB frame boundary is a protocol gate. Peak RSS or memory
 amplification at that boundary is implementation hardening evidence, not a
 portable Run/1 pass/fail rule.
 
-Package build and clean-install checks prove artifact shape and importability.
+Python wheel and sdist clean-install checks run JSON/1 and runtime subprocess
+cases plus a typed public consumer outside the checkout. CI covers Python
+3.11–3.14 on Linux and representative macOS/Windows interpreters; configured
+coverage is not a claim that a particular workflow run succeeded.
 The Python source-distribution smoke permits ordinary PEP 517 build-dependency
 resolution; it is not claimed to be an offline or hermetic build proof.
+
+## SDK parity ownership
+
+| Shared concern | Executable evidence for both languages |
+| --- | --- |
+| Invocation, settings, attachments, scratch, deadline and result | `components.test.ts`, Python peer golden conversation; both SDK runtime suites |
+| Child Flow and capability calls, application versus operational errors | Golden conversation, component matrix, installed Python runtime tests |
+| Strict JSON/1, frames, invalid results and error envelopes | Shared fixtures, both peer matrices and both SDK JSON/runtime suites |
+| Cancellation, pending calls, channel loss and terminal ordering | Both peer matrices plus language-specific runtime race tests |
+| Outstanding/lifetime ceilings and correlation | Both peer matrices |
+| Snapshots and public typing | SDK-specific tests and installed consumers; these are projection checks, not wire certification |
+| Protocol-safe ordinary logging | TypeScript stdio tests and Python installed runtime suite |
+
+TypeScript's request objects/AbortSignal and Python's keyword arguments/asyncio
+cancellation are intentional Run SDK/1 projections. Python queues beyond the
+wire concurrency ceiling while TypeScript refuses additional live calls, as
+allowed above. A shared protocol change must update both peers, both SDKs and
+this evidence inventory; successful npm publication alone is not Python parity.

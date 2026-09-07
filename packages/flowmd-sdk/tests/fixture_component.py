@@ -13,6 +13,25 @@ async def run(context: RunContext) -> RunResult:
     global logged
     mode = context.input.get("mode") if isinstance(context.input, dict) else None
 
+    if mode == "context":
+        return {"outcome": "done", "output": {
+            "settings": context.settings, "attachments": context.attachments,
+            "scratch": context.scratch, "deadline": context.deadline_unix_ms,
+        }}
+
+    if mode == "invalid-result":
+        return {"outcome": "done", "output": float("nan")}
+
+    if mode == "snapshot":
+        value = {"nested": ["before"]}
+        task = asyncio.create_task(context.run_child_flow(
+            operation_id="snapshot-1", slot="child", input=value,
+        ))
+        await asyncio.sleep(0)  # Admit and snapshot the call before mutation.
+        value["nested"][0] = "after"
+        result = await task
+        return {"outcome": "done", "output": result}
+
     if mode == "logging":
         print("handler print")
         print("handler flush", flush=True)

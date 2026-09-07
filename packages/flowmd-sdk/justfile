@@ -1,0 +1,27 @@
+# Python FLOW SDK tasks; PYTHON selects an interpreter with build installed.
+python := env('PYTHON', 'python3')
+
+@default:
+    just --list
+
+# Build wheel and sdist into a fresh destination.
+[positional-arguments]
+@build output:
+    "{{python}}" ../../scripts/build-python-sdk.py "$1"
+
+# Qualify and pack both Python distribution formats.
+@pack output: (build output)
+
+# Freeze a clean source revision for release.
+[positional-arguments]
+@candidate output:
+    "{{python}}" ../../scripts/build-python-sdk.py "$1" --candidate
+
+# Run JSON and subprocess SDK tests.
+@test:
+    PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src "{{python}}" -m unittest discover -s tests -p 'test_*.py' -v
+
+# Test both installed artifacts, including public typing (requires mypy).
+[positional-arguments]
+@test-package wheel sdist:
+    "{{python}}" tests/package_smoke.py "$1" "$2"

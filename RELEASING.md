@@ -72,3 +72,48 @@ rerun, and the publish job converges against its retained seven-day artifacts.
 If Host Conformance failed because of a transient host fault, rerun that exact
 workflow before rerunning the failed authorization and publication jobs. A
 later push is a new candidate, not an uncertainty retry.
+
+## Python SDK prereleases
+
+`flowmd-sdk` is independently versioned using Python prerelease syntax, starting
+with `0.1.0a1`. Python execution support in Jig is not required. Its
+`pypi-publish.yml` workflow currently preserves the repository's same-revision CI
+and Linux Host Conformance authorization gates; that host gate does not claim
+Python hosting support. CI additionally qualifies installed Python artifacts.
+
+`PYTHON=/absolute/path/to/python just python::pack /fresh/output` builds a wheel
+and sdist and runs metadata, installed runtime and typing checks. The selected
+interpreter needs `build==1.3.0`, `twine==6.2.0` and `mypy==1.18.2` as development
+tools. Candidate construction uses `scripts/build-python-sdk.py --candidate`
+from a clean exact source revision and records both SHA-256 hashes. Wheel and
+sdist timestamps use the latest package-source commit, with normalized sdist
+archive metadata, so wall-clock time alone does not change release bytes.
+Build dependencies are pinned; retained bytes remain the publication authority.
+The same
+candidate bytes are then tested on the Python-version/OS matrix before release.
+
+PyPI setup for the first publication:
+
+- Project: `flowmd-sdk` (confirm availability and account ownership).
+- Trusted publisher repository: `jiggy/jig`.
+- Workflow filename: `pypi-publish.yml`.
+- GitHub environment: `pypi`; create and protect that environment consistently
+  with the repository's release policy.
+- Register a pending trusted publisher on PyPI for a new project, or register
+  the publisher with the existing project's owner. No long-lived PyPI token.
+
+The read-only preparation job verifies already published filenames and registry
+bytes, and stages only missing distributions. The OIDC publisher has no checkout
+or repository-code execution. On a failed-job retry it may encounter a file
+uploaded by its previous attempt, so duplicate uploads may be skipped; this is
+not verification. The following read-only job downloads both registry artifacts
+and compares their hashes against retained candidate evidence before allowing
+`flowmd-sdk-v<version>` tags and GitHub prereleases with exact PyPI links.
+Changed bytes under an existing version fail and require a version bump.
+
+Use **Re-run failed jobs** for a partial/uncertain publication while seven-day
+candidate artifacts remain available. Do not rebuild as an uncertainty retry.
+A new source revision is a new candidate. Never move an existing source tag or
+replace existing release notes automatically. After live publication, verify
+an ordinary clean PyPI install; local qualification is not proof of registry
+availability or account configuration.

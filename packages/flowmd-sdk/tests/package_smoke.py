@@ -3,6 +3,8 @@ from __future__ import annotations
 import os
 from pathlib import Path
 import subprocess
+import shutil
+import tarfile
 import sys
 from tempfile import TemporaryDirectory
 
@@ -22,9 +24,22 @@ def main() -> None:
             "PIP_CACHE_DIR": str(Path(temporary, "pip-cache")),
             "XDG_CACHE_HOME": str(Path(temporary, "cache")),
         }
+        consumer = Path(temporary, "consumer")
+        shutil.copytree(Path(__file__).parent, consumer)
+        install_environment.pop("PYTHONPATH", None)
+        install_environment.pop("PYTHONHOME", None)
+        install_environment["FLOW_SDK_INSTALLED"] = "1"
+        install_environment["PYTHONDONTWRITEBYTECODE"] = "1"
         for index, artifact in enumerate(artifacts):
             if not artifact.is_file():
                 raise SystemExit(f"artifact does not exist: {artifact}")
+            if artifact.name.endswith(".tar.gz"):
+                with tarfile.open(artifact) as source_archive:
+                    names = source_archive.getnames()
+                    for required in ("pyproject.toml", "LICENSE", "README.md",
+                                     "tests/fixture_component.py", "tests/typing_consumer.py",
+                                     "tests/package_smoke.py", "src/flowmd_sdk/py.typed"):
+                        assert any(name.endswith("/" + required) for name in names), required
             environment = Path(temporary, f"venv-{index}")
             subprocess.run(
                 [sys.executable, "-m", "venv", environment],
@@ -63,12 +78,29 @@ effect = CapabilityError("not-found", None)
 assert operation.code == "UNAVAILABLE"
 assert effect.error_name == "not-found"
 assert files("flowmd_sdk").joinpath("py.typed").is_file()
-assert "../../docs/" not in metadata("flowmd-sdk").get_payload()
+distribution = metadata("flowmd-sdk")
+assert distribution["Version"] == "0.1.0a1"
+assert distribution["License-Expression"] == "Apache-2.0"
+assert not distribution.get_all("Requires-Dist")
+assert "../../docs/" not in distribution.get_payload()
+assert callable(flowmd_sdk.handle)
+assert "run_child_flow" in flowmd_sdk.RunContext.__dict__
+assert "call_capability" in flowmd_sdk.RunContext.__dict__
 """,
                 ],
                 check=True,
                 env=install_environment,
                 timeout=30,
+            )
+
+            subprocess.run(
+                [python, "-I", "-m", "unittest", "discover", "-s", str(consumer), "-p", "test_*.py", "-v"],
+                check=True, cwd=consumer, env=install_environment, timeout=120,
+            )
+            subprocess.run(
+                [sys.executable, "-m", "mypy", "--strict", "--follow-imports=silent",
+                 "--python-executable", str(python), str(consumer / "typing_consumer.py")],
+                check=True, cwd=consumer, env=install_environment, timeout=120,
             )
 
 

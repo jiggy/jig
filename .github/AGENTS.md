@@ -22,10 +22,14 @@ Owns CI, host-conformance, package publication, and public-site workflows.
 - Publish only after CI and the complete Linux Host Conformance workflow have
   both succeeded for the exact triggering source revision.
 - Keep path filters synchronized with every real workflow input.
-- After npm convergence and source tagging, create missing package-specific
-  GitHub prereleases with exact npm version links, install commands, and docs.
+- Python publication qualifies the exact retained wheel/sdist on its supported
+  interpreter/OS matrix. Read-only jobs prepare and verify registry bytes; the
+  isolated OIDC publisher executes no repository code. Duplicate-upload skipping
+  never substitutes for digest verification.
+- After npm or PyPI convergence and source tagging, create missing package-specific
+  GitHub prereleases with exact registry version links, install commands, and docs.
   Preserve existing release notes on retries; never present source archives as
-  the installable npm package.
+  the installable package.
 - Keep FLOW and Jig site publication independent.
 
 ## Work Guidance
