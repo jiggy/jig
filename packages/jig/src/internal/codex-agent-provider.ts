@@ -23,6 +23,10 @@ const MAX_CREDENTIAL_BYTES = 64 * 1024 - 4
 const MAX_SECRET_BYTES = 16 * 1024
 const MAX_BASE_URL_CHARACTERS = 4_096
 const encoder = new TextEncoder()
+
+export class PrivateCodexLoginUnavailableError extends Error {}
+export class PrivateCodexExecutableUnavailableError extends Error {}
+export class PrivateCodexSandboxUnavailableError extends Error {}
 const decoder = new TextDecoder('utf-8', { fatal: true })
 const OPENAI_API_KEY = 'OPENAI_API_KEY'
 const OPENAI_MODEL = 'OPENAI_MODEL'
@@ -115,7 +119,12 @@ export async function openPrivateCodexAgentProvider(
     })
   }
   const sourceHome = environment.CODEX_HOME ?? join(homedir(), '.codex')
-  const credential = await projectPrivateCodexSubscriptionCredential(join(sourceHome, 'auth.json'))
+  let credential: Uint8Array
+  try {
+    credential = await projectPrivateCodexSubscriptionCredential(join(sourceHome, 'auth.json'))
+  } catch {
+    throw new PrivateCodexLoginUnavailableError('Codex file-backed login is unavailable')
+  }
   return await createPrivateCodexSubscriptionAgentProvider({
     ...support,
     credential,
@@ -332,16 +341,23 @@ function codexEnvironment(
 
 async function resolveCodexExecutable(selected: string | undefined): Promise<string> {
   if (selected !== undefined && (!selected.startsWith('/') || selected.includes('\0'))) {
-    throw new Error('CODEX_PATH must be an absolute executable path')
+    throw new PrivateCodexExecutableUnavailableError(
+      'CODEX_PATH must be an absolute executable path',
+    )
   }
-  const path = await resolvePrivateLinuxHostPath(
-    selected === undefined ? privateLinuxHostToolCandidates('codex') : [selected],
-  )
-  const information = await lstat(path)
-  if (!information.isFile() || information.isSymbolicLink() || (information.mode & 0o111) === 0) {
-    throw new Error('the native Codex executable is invalid')
+  try {
+    const path = await resolvePrivateLinuxHostPath(
+      selected === undefined ? privateLinuxHostToolCandidates('codex') : [selected],
+    )
+    const information = await lstat(path)
+    if (!information.isFile() || information.isSymbolicLink() || (information.mode & 0o111) === 0) {
+      throw new PrivateCodexExecutableUnavailableError('the native Codex executable is invalid')
+    }
+    return path
+  } catch (error) {
+    if (error instanceof PrivateCodexExecutableUnavailableError) throw error
+    throw new PrivateCodexExecutableUnavailableError('the native Codex executable is unavailable')
   }
-  return path
 }
 
 async function nativeBubblewrapFor(
@@ -349,30 +365,37 @@ async function nativeBubblewrapFor(
   selected: string | undefined,
 ): Promise<string> {
   if (selected !== undefined && (!selected.startsWith('/') || selected.includes('\0'))) {
-    throw new Error('JIG_BWRAP_PATH must be an absolute executable path')
+    throw new PrivateCodexSandboxUnavailableError(
+      'JIG_BWRAP_PATH must be an absolute executable path',
+    )
   }
-  let path: string
-  if (selected !== undefined) {
-    path = await resolvePrivateLinuxHostPath([selected])
-  } else {
-    const adjacent = join(executablePath, '..', '..', 'codex-resources', 'bwrap')
-    try {
-      path = await exactFile(adjacent, 'Codex native Bubblewrap')
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
-      path = await resolvePrivateLinuxHostPath(privateLinuxHostToolCandidates('bwrap'))
+  try {
+    let path: string
+    if (selected !== undefined) {
+      path = await resolvePrivateLinuxHostPath([selected])
+    } else {
+      const adjacent = join(executablePath, '..', '..', 'codex-resources', 'bwrap')
+      try {
+        path = await exactFile(adjacent, 'Codex native Bubblewrap')
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+        path = await resolvePrivateLinuxHostPath(privateLinuxHostToolCandidates('bwrap'))
+      }
     }
+    const information = await lstat(path)
+    if (
+      !information.isFile() ||
+      information.isSymbolicLink() ||
+      (information.mode & 0o6000) !== 0 ||
+      (information.mode & 0o111) === 0
+    ) {
+      throw new PrivateCodexSandboxUnavailableError('Codex native Bubblewrap is invalid')
+    }
+    return path
+  } catch (error) {
+    if (error instanceof PrivateCodexSandboxUnavailableError) throw error
+    throw new PrivateCodexSandboxUnavailableError('Codex native Bubblewrap is unavailable')
   }
-  const information = await lstat(path)
-  if (
-    !information.isFile() ||
-    information.isSymbolicLink() ||
-    (information.mode & 0o6000) !== 0 ||
-    (information.mode & 0o111) === 0
-  ) {
-    throw new Error('Codex native Bubblewrap is invalid')
-  }
-  return path
 }
 
 async function ordinaryFile(path: string, label: string): Promise<string> {

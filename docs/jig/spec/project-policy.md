@@ -495,10 +495,16 @@ administrator or same-user process, as specified in the security boundary.
 
 Limits are aggregate across input attachments: eight declared attachments
 including any writable one, 64 regular files, 8 MiB content, 256 enumerated
-entries, 16 path components, and 512 UTF-8 bytes per relative path. `@FILE` is a
-singly linked regular file bounded by JSON/1's byte and value limits. Exact
+entries, 16 path components, and 512 UTF-8 bytes per relative path. Exact
 selection never enumerates unselected subtrees. A detected file mutation fails
 capture; the captured set is not an atomic repository revision or a secret scan.
+
+`@FILE` is operator-selected data, not an execution attachment. Jig opens its
+non-symbolic-link regular-file leaf once, bounds and snapshots its bytes, checks
+that the opened file remained stable, and parses it as JSON/1 before project
+acquisition. Parent-directory aliases and filesystems do not need attachment
+mount semantics because neither the path nor its descriptor enters Flow code.
+JSON/1's byte and value limits still apply.
 
 Input is projected from immutable sealed bytes, never live host directories.
 Captured bytes live only through command ownership and are not retained as

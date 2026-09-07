@@ -407,7 +407,9 @@ describe('finite Jig project commands', () => {
     const root = await mkdtemp(join(tmpdir(), 'jig-cli-input-'))
     try {
       const file = join(root, 'issue.json')
-      const args = ['run', 'flow:flows/work', '--input', `@${file}`]
+      const alias = join(root, 'alias')
+      await symlink(root, alias)
+      const args = ['run', 'flow:flows/work', '--input', `@${join(alias, 'issue.json')}`]
       expect(privateCliCommandLifetimeMs(args)).toBe(330_000)
       await writeFile(file, '{"captured":true}')
       let request: StartRootRunRequest | undefined
@@ -437,6 +439,7 @@ describe('finite Jig project commands', () => {
         ),
       ).toBe(1)
       expect(rejected.output).toBe('')
+      expect(rejected.error).toContain('--input file cannot be a symbolic link')
       const missing = commandInvocation(unusedHost())
       expect(
         await main(

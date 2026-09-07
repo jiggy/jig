@@ -202,8 +202,8 @@ provider registry.
 
 OpenRouter may use `OPENROUTER_API_KEY` and `OPENROUTER_MODEL` directly. Native
 Codex needs only `JIG_AGENT_CLIENT=codex` when installed in a fixed system
-location with existing subscription authentication; `CODEX_PATH` remains an
-optional absolute override.
+location with an operator-owned file-backed Codex login; `CODEX_PATH` remains
+an optional absolute override. Jig never contains a maintainer credential.
 
 The complete runnable example and current specification map are in the
 [repository README](https://github.com/jiggy/jig#readme) and

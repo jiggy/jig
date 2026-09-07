@@ -1,5 +1,10 @@
 import { openPrivateClaudeAgentProvider } from './claude-agent-provider.js'
-import { openPrivateCodexAgentProvider } from './codex-agent-provider.js'
+import {
+  openPrivateCodexAgentProvider,
+  PrivateCodexExecutableUnavailableError,
+  PrivateCodexLoginUnavailableError,
+  PrivateCodexSandboxUnavailableError,
+} from './codex-agent-provider.js'
 import {
   openPrivateInstalledBunSupport,
   type PrivateInstalledBunLocation,
@@ -105,19 +110,25 @@ async function tryOpenAgentProvider(
     // Provider support is target-scoped; Agent-bearing recipe planning rejects its absence.
     return {
       agentUnavailableHint:
-        error instanceof PrivateAgentConfigurationError
-          ? `correct the exported ${
-              openRouter
-                ? error.field === 'OPENAI_API_KEY'
-                  ? 'OPENROUTER_API_KEY'
-                  : error.field === 'OPENAI_MODEL'
-                    ? 'OPENROUTER_MODEL'
-                    : error.field
-                : error.field
-            } value before jig review`
-          : client === undefined
-            ? 'the API Agent could not be opened; check the installed support assets and exported configuration'
-            : `the selected ${client} client could not be opened; check its executable and exported host configuration`,
+        error instanceof PrivateCodexExecutableUnavailableError
+          ? "export CODEX_PATH with the absolute path of this operator's installed codex executable, then retry jig review"
+          : error instanceof PrivateCodexSandboxUnavailableError
+            ? 'install Bubblewrap in a fixed system location or export its absolute JIG_BWRAP_PATH, then retry jig review'
+            : error instanceof PrivateCodexLoginUnavailableError
+              ? 'configure Codex with cli_auth_credentials_store="file", run codex login as this OS user, and retry jig review; Jig reads CODEX_HOME/auth.json or ~/.codex/auth.json'
+              : error instanceof PrivateAgentConfigurationError
+                ? `correct the exported ${
+                    openRouter
+                      ? error.field === 'OPENAI_API_KEY'
+                        ? 'OPENROUTER_API_KEY'
+                        : error.field === 'OPENAI_MODEL'
+                          ? 'OPENROUTER_MODEL'
+                          : error.field
+                      : error.field
+                  } value before jig review`
+                : client === undefined
+                  ? 'the API Agent could not be opened; check the installed support assets and exported configuration'
+                  : `the selected ${client} client could not be opened; check its executable and exported host configuration`,
     }
   }
 }

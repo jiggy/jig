@@ -578,7 +578,7 @@ proofDescribe('private contained Agent Run lifecycle', () => {
   }
 
   nativeCodexTest(
-    'executes native Codex through ACP with the existing subscription',
+    'executes native Codex through ACP with an operator-provided file-backed subscription',
     async () => {
       const root = await mkdtemp(join(tmpdir(), 'jig-native-codex-project-'))
       let session: Awaited<ReturnType<typeof openPrivateProjectSession>> | undefined

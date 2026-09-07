@@ -1,8 +1,7 @@
 #!/usr/bin/env bun
 
 import { randomBytes } from 'node:crypto'
-import { closeSync } from 'node:fs'
-import { basename, dirname, resolve } from 'node:path'
+import { resolve } from 'node:path'
 import { createInterface } from 'node:readline/promises'
 import { setTimeout as delay } from 'node:timers/promises'
 import manifest from '../package.json' with { type: 'json' }
@@ -21,8 +20,7 @@ import {
   privateAttachmentName,
   privateCaptureAttachments,
   privateFilePath,
-  privateOpenFileRoot,
-  privateReadRegularFile,
+  privateReadOperatorFile,
   sha256,
 } from './internal/linux-file-input.js'
 import { PrivateRootRunFiles } from './internal/root-run-files.js'
@@ -196,12 +194,7 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
   try {
     if (parsed.inputFile !== undefined) {
       const path = resolve(runtime.currentDirectory, parsed.inputFile)
-      const parent = privateOpenFileRoot(dirname(path))
-      try {
-        input = decodeJson1(privateReadRegularFile(parent, basename(path), JSON_1_LIMITS.bytes))
-      } finally {
-        closeSync(parent)
-      }
+      input = decodeJson1(privateReadOperatorFile(path, JSON_1_LIMITS.bytes))
     }
   } catch (error) {
     const message =
@@ -211,7 +204,9 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
           ? `the selected --input file is not FLOW JSON/1: ${error.message}`
           : (error as NodeJS.ErrnoException).code === 'ENOENT'
             ? 'the selected --input file does not exist'
-            : '--input file capture failed; check that it is a stable, singly linked regular file on a supported local filesystem'
+            : (error as NodeJS.ErrnoException).code === 'EACCES'
+              ? 'the selected --input file is not readable by the current operator'
+              : '--input file capture failed; check that it is a stable, readable regular file'
     throw new CliDiagnostic('JIG_RUN_INPUT_INVALID', message, 1)
   }
   let capture: ReturnType<typeof privateCaptureAttachments>

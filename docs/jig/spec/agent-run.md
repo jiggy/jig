@@ -259,7 +259,7 @@ adapter:
 
 | Client | Host selection | Subscription configuration | API configuration |
 | --- | --- | --- | --- |
-| Codex | `JIG_AGENT_CLIENT=codex`; optional absolute `CODEX_PATH` | Existing `CODEX_HOME` (or `~/.codex`) authentication; optional `CODEX_MODEL`, with omission retaining the client default | `OPENAI_API_KEY` and `OPENAI_MODEL`; optional `OPENAI_BASE_URL`; `OPENAI_API` must be omitted or `responses` |
+| Codex | `JIG_AGENT_CLIENT=codex`; optional absolute `CODEX_PATH` | Operator-owned, file-backed `$CODEX_HOME/auth.json` (default `~/.codex/auth.json`), created by `codex login`; optional `CODEX_MODEL`, with omission retaining the client default | `OPENAI_API_KEY` and `OPENAI_MODEL`; optional `OPENAI_BASE_URL`; `OPENAI_API` must be omitted or `responses` |
 | Claude Code | `JIG_AGENT_CLIENT=claude`, `CLAUDE_PATH` | `CLAUDE_CODE_OAUTH_TOKEN`; optional `CLAUDE_MODEL` | Exactly one of `ANTHROPIC_API_KEY` or `ANTHROPIC_AUTH_TOKEN`, plus `ANTHROPIC_MODEL`; optional `ANTHROPIC_BASE_URL` |
 | Pi | `JIG_AGENT_CLIENT=pi`, `PI_PATH` | `PI_PROVIDER` and `PI_MODEL`; authentication from `PI_CODING_AGENT_DIR/auth.json` or `~/.pi/agent/auth.json` | `PI_PROVIDER`, `PI_MODEL`, and `PI_API_KEY`, using a provider implemented by Pi |
 
@@ -273,6 +273,13 @@ be a link; Jig resolves, validates, and identifies its exact executable before
 review. Codex's nested sandbox uses the exact `JIG_BWRAP_PATH` when supplied,
 then an adjacent official client resource, then fixed system-owned Bubblewrap.
 The selected executable and support bytes enter provider identity.
+
+Subscription mode requires Codex's `cli_auth_credentials_store = "file"`
+setting. Jig reads the current operator's file during review and Run, validates
+it, discards its refresh token, and gives the contained client only a
+short-lived non-refreshable bearer. It never embeds a development credential
+or mounts the operator's `CODEX_HOME`. A keyring-backed login is unavailable
+because the Agent process receives no host credential-store authority.
 
 Native Codex's API-key path is Responses-compatible only; selecting
 `chat-completions` fails closed. Claude Code uses its Anthropic-compatible API

@@ -12,8 +12,11 @@ decides what its files mean.
 jig run binding:repair --input @issue.json --attach source=./src --out ./review
 ```
 
-`--input @issue.json` reads bounded JSON from a regular file. Inline JSON
-continues to work. `--attach source=./src` supplies the directory to the
+`--input @issue.json` snapshots bounded JSON from an operator-selected regular
+file, then parses it before project execution. Inline JSON continues to work.
+This data file is not an execution attachment, so its parent may use ordinary
+filesystem or path aliases; the selected file itself cannot be a symbolic
+link. `--attach source=./src` supplies the directory to the
 admitted Flow's declared `source` read attachment. `--out ./review` saves a
 new result packet. Relative paths are relative to your command directory.
 

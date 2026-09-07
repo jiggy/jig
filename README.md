@@ -209,9 +209,11 @@ registry.
 
 OpenRouter may instead use its natural `OPENROUTER_API_KEY` and
 `OPENROUTER_MODEL`; Jig fixes its Chat Completions endpoint. Select an existing
-native Codex subscription with `JIG_AGENT_CLIENT=codex`; an optional absolute
-`CODEX_PATH` overrides Jig's fixed system locations. Provider selection remains
-host-owned and must match the reviewed generation.
+operator-owned Codex login with `JIG_AGENT_CLIENT=codex`; Codex must use its
+file-backed credential cache, and an optional absolute `CODEX_PATH` overrides
+Jig's fixed system locations. See the [Agent setup guide](docs/jig/guide/index.md)
+for the user-owned login steps. Provider selection remains host-owned and must
+match the reviewed generation.
 
 ## Dependency rule
 

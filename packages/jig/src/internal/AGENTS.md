@@ -36,6 +36,10 @@ child calls, project commands, and Agent providers.
   concrete input seam can provide it without adding package-manager machinery.
 - Provider credentials are host configuration and must not enter Flow input,
   project state, artifacts, diagnostics, or unrelated provider processes.
+- Native Codex subscription access comes from the current operator's
+  file-backed Codex login. Project only its short-lived bearer; never embed a
+  development login, retain its refresh token, mount `CODEX_HOME`, or expose a
+  host keyring to Agent execution.
 - Keep known Agent-configuration and dependency-preparation failures actionable
   through closed diagnostic codes and project-relative locations, never raw
   provider or worker messages. Missing Agent support affects only targets

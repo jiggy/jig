@@ -4,6 +4,7 @@ import {
   constants,
   fstatSync,
   opendirSync,
+  openSync,
   readFileSync,
   readSync,
   realpathSync,
@@ -45,7 +46,10 @@ export class PrivateFileInputError extends Error {
       | 'path'
       | 'protected'
       | 'linked'
+      | 'input-link'
+      | 'regular'
       | 'changed'
+      | 'input-changed'
       | 'bytes'
       | 'files'
       | 'entries'
@@ -58,7 +62,11 @@ export class PrivateFileInputError extends Error {
         path: 'select a relative path without traversal or links, within 16 components and 512 UTF-8 bytes',
         protected: 'Jig state and host control files cannot be selected as input',
         linked: 'select only singly linked regular files',
+        'input-link': 'the selected --input file cannot be a symbolic link',
+        regular: 'select a regular input file, not a directory or special file',
         changed: 'selected input changed during capture; capture a stable source tree',
+        'input-changed':
+          'the selected --input file changed during capture; retry with a stable file',
         bytes: `selected file exceeds the remaining ${limit ?? 0}-byte input budget; select less data`,
         files: 'input exceeds 64 files; narrow the selection with --select',
         entries: 'input exceeds 256 tree entries; narrow the selection with --select',
@@ -230,6 +238,50 @@ export function privateReadRegularFile(parent: number, path: string, maxBytes: n
       after.nlink !== 1n
     )
       throw new PrivateFileInputError('changed')
+    return bytes.subarray(0, offset)
+  } finally {
+    closeSync(fd)
+  }
+}
+
+/**
+ * Snapshot one operator-selected data file before project acquisition. Unlike
+ * an attachment root, this descriptor never enters package execution, so it
+ * does not require mount identity or a local-filesystem allowlist.
+ */
+export function privateReadOperatorFile(path: string, maxBytes: number): Buffer {
+  let fd: number
+  try {
+    fd = openSync(
+      path,
+      constants.O_RDONLY | constants.O_NONBLOCK | O_CLOEXEC | constants.O_NOFOLLOW,
+    )
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ELOOP') {
+      throw new PrivateFileInputError('input-link')
+    }
+    throw error
+  }
+  try {
+    const before = fstatSync(fd, { bigint: true })
+    if (!before.isFile()) throw new PrivateFileInputError('regular')
+    if (before.size > BigInt(maxBytes)) throw new PrivateFileInputError('bytes', maxBytes)
+    const bytes = Buffer.alloc(Number(before.size) + 1)
+    let offset = 0
+    while (offset < bytes.length) {
+      const count = readSync(fd, bytes, offset, bytes.length - offset, null)
+      if (count === 0) break
+      offset += count
+    }
+    const after = fstatSync(fd, { bigint: true })
+    if (
+      offset !== Number(before.size) ||
+      after.size !== before.size ||
+      after.mtimeNs !== before.mtimeNs ||
+      after.ctimeNs !== before.ctimeNs
+    ) {
+      throw new PrivateFileInputError('input-changed')
+    }
     return bytes.subarray(0, offset)
   } finally {
     closeSync(fd)

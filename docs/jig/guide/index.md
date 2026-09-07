@@ -130,13 +130,22 @@ There is no package-selected provider, provider registry, or
 semantic router.
 
 For OpenRouter, export its natural `OPENROUTER_API_KEY` and
-`OPENROUTER_MODEL`; Jig selects its fixed Chat Completions endpoint. To use an
-existing Codex subscription instead, export `JIG_AGENT_CLIENT=codex`; Jig checks
-fixed system locations, or an explicit absolute `CODEX_PATH`, and uses the
-existing `CODEX_HOME` authentication when no `OPENAI_*` API configuration is
-present. Switching client, endpoint, API, or model changes reviewed execution
-identity, so run `jig review` again and use the same selection for `jig run`.
-Rotating only a credential does not require review.
+`OPENROUTER_MODEL`; Jig selects its fixed Chat Completions endpoint.
+
+To use Codex through your own ChatGPT plan, install the Codex CLI and
+[sign in with `codex login`](https://developers.openai.com/codex/auth) as the
+same OS user that runs Jig. Jig currently requires Codex's file-backed cache:
+set `cli_auth_credentials_store = "file"` in the applicable Codex
+`config.toml`, then sign in. Export `JIG_AGENT_CLIENT=codex`; Jig checks fixed
+system locations, or an explicit absolute `CODEX_PATH`, and reads
+`$CODEX_HOME/auth.json` (default `~/.codex/auth.json`). It retains no refresh
+credential and projects only a short-lived bearer into the contained Codex
+process. OS-keyring-backed Codex login is not currently supported because Jig
+does not expose the host credential store to Agent execution.
+
+Switching client, endpoint, API, or model changes reviewed execution identity,
+so run `jig review` again and use the same selection for `jig run`. Rotating
+only a credential does not require review.
 
 Root Runs default to 30 seconds. `--timeout` accepts a positive integer plus
 `ms`, `s`, `m`, or `h`, up to 24 hours. Children share the parent's remaining

@@ -8,6 +8,9 @@ import {
   createPrivateCodexOpenAIApiAgentProvider,
   createPrivateCodexSubscriptionAgentProvider,
   openPrivateCodexAgentProvider,
+  PrivateCodexExecutableUnavailableError,
+  PrivateCodexLoginUnavailableError,
+  PrivateCodexSandboxUnavailableError,
   projectPrivateCodexSubscriptionCredential,
   PRIVATE_CODEX_DEFAULT_OPENAI_BASE_URL,
   PRIVATE_CODEX_REQUIREMENTS,
@@ -84,6 +87,45 @@ describe('private native Codex Agent provider', () => {
         OPENAI_MODEL: 'provider/test-model',
       }),
     ).rejects.toThrow('requires the OpenAI Responses API')
+    await expect(
+      openPrivateCodexAgentProvider(installedBunLocation.releaseRoot, {
+        CODEX_HOME: join(fixture.root, 'missing-home'),
+        CODEX_PATH: fixture.executablePath,
+      }),
+    ).rejects.toBeInstanceOf(PrivateCodexLoginUnavailableError)
+    const unavailable = await openPrivateInstalledBunHost(installedBunLocation, {
+      CODEX_HOME: join(fixture.root, 'missing-home'),
+      CODEX_PATH: fixture.executablePath,
+      JIG_AGENT_CLIENT: 'codex',
+    })
+    expect(unavailable.agentProvider).toBeUndefined()
+    expect(unavailable.agentUnavailableHint).toContain(
+      'cli_auth_credentials_store="file", run codex login as this OS user',
+    )
+    await expect(
+      openPrivateCodexAgentProvider(installedBunLocation.releaseRoot, {
+        CODEX_PATH: join(fixture.root, 'missing-codex'),
+      }),
+    ).rejects.toBeInstanceOf(PrivateCodexExecutableUnavailableError)
+    const missingExecutable = await openPrivateInstalledBunHost(installedBunLocation, {
+      CODEX_PATH: join(fixture.root, 'missing-codex'),
+      JIG_AGENT_CLIENT: 'codex',
+    })
+    expect(missingExecutable.agentUnavailableHint).toContain('export CODEX_PATH')
+    await expect(
+      openPrivateCodexAgentProvider(installedBunLocation.releaseRoot, {
+        CODEX_HOME: codexHome,
+        CODEX_PATH: fixture.executablePath,
+        JIG_BWRAP_PATH: join(fixture.root, 'missing-bwrap'),
+      }),
+    ).rejects.toBeInstanceOf(PrivateCodexSandboxUnavailableError)
+    const missingSandbox = await openPrivateInstalledBunHost(installedBunLocation, {
+      CODEX_HOME: codexHome,
+      CODEX_PATH: fixture.executablePath,
+      JIG_AGENT_CLIENT: 'codex',
+      JIG_BWRAP_PATH: join(fixture.root, 'missing-bwrap'),
+    })
+    expect(missingSandbox.agentUnavailableHint).toContain('export its absolute JIG_BWRAP_PATH')
     const unsupported = await openPrivateInstalledBunHost(installedBunLocation, {
       JIG_AGENT_CLIENT: 'unknown',
     })
