@@ -95,6 +95,64 @@ test('unsupported filesystems have a closed actionable cause', () => {
   expect(() => privateOpenFileRoot('/proc')).toThrow('ext4, XFS, Btrfs, or tmpfs')
 })
 
+test('file capture uses NixOS glibc when the FHS loader is a shim', async () =>
+  fixture(async (root) => {
+    await writeFile(join(root, 'issue.json'), '{"issue":"capture this file"}')
+    // A fresh process isolates the fs mock and FFI cache from other tests.
+    // The shim has no adjacent libc; actual capture must use the system glibc.
+    const program = `
+      import { mock } from 'bun:test';
+      import * as fs from 'node:fs';
+      const resolve = fs.realpathSync;
+      const { resolvePrivateLinuxHostLoaderSync } = await import(${JSON.stringify(join(import.meta.dir, '../src/internal/linux-host-paths.ts'))});
+      const loader = resolvePrivateLinuxHostLoaderSync();
+      mock.module('node:fs', () => ({ ...fs, realpathSync(path, ...args) {
+        if (path === '/run/current-system/sw/share/nix-ld/lib/ld.so') return loader;
+        if (path === '/lib64/ld-linux-x86-64.so.2') return '/unavailable-nix-ld/lib/ld-linux-x86-64.so.2';
+        return resolve(path, ...args);
+      }}));
+      const { privateCaptureAttachments, privateVerifySealedFile } = await import(${JSON.stringify(join(import.meta.dir, '../src/internal/linux-file-input.ts'))});
+      const capture = privateCaptureAttachments([{name:'source', directory:${JSON.stringify(root)}, select:[]}]);
+      try {
+        const file = capture.attachments[0].files[0];
+        privateVerifySealedFile(file.fd, file.bytes, file.digest);
+        console.log(file.path);
+      } finally { capture.close(); }
+    `
+    const child = Bun.spawn(
+      [process.execPath, '--no-env-file', '--no-install', '--config=/dev/null', '-e', program],
+      {
+        stdout: 'pipe',
+        stderr: 'pipe',
+      },
+    )
+    const [code, stdout, stderr] = await Promise.all([
+      child.exited,
+      new Response(child.stdout).text(),
+      new Response(child.stderr).text(),
+    ])
+    expect({ code, stdout, stderr }).toEqual({ code: 0, stdout: 'issue.json\n', stderr: '' })
+  }))
+
+test('attachment diagnostics distinguish missing files and links without exposing paths', async () =>
+  fixture(async (root) => {
+    await symlink('/private/operator/path', join(root, 'link'))
+    for (const [path, reason] of [
+      ['missing', 'missing'],
+      ['link', 'symlink'],
+    ] as const) {
+      try {
+        privateCaptureAttachments([{ name: 'source', directory: root, select: [path] }])
+        throw new Error('capture unexpectedly succeeded')
+      } catch (error) {
+        expect(error).toBeInstanceOf(PrivateFileInputError)
+        expect((error as PrivateFileInputError).reason).toBe(reason)
+        expect((error as Error).message).not.toContain(root)
+        expect((error as Error).message).not.toContain('/private/operator/path')
+      }
+    }
+  }))
+
 test('publishes a directory atomically without replacing a racing destination', async () =>
   fixture(async (root) => {
     const parent = privateOpenFileRoot(root)

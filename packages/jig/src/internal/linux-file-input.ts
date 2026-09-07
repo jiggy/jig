@@ -7,13 +7,13 @@ import {
   openSync,
   readFileSync,
   readSync,
-  realpathSync,
   statfsSync,
   writeSync,
 } from 'node:fs'
 import { createRequire } from 'node:module'
 import { dirname, posix, resolve } from 'node:path'
 import { getSystemErrorName } from 'node:util'
+import { resolvePrivateLinuxHostLoaderSync } from './linux-host-paths.js'
 
 /** Private Linux-x64 file boundary. No application or provider code runs here. */
 export const PRIVATE_FILE_LIMITS = Object.freeze({
@@ -43,6 +43,13 @@ export class PrivateFileInputError extends Error {
   constructor(
     readonly reason:
       | 'filesystem'
+      | 'native'
+      | 'mount'
+      | 'symlink'
+      | 'missing'
+      | 'access'
+      | 'cross-mount'
+      | 'kernel'
       | 'path'
       | 'protected'
       | 'linked'
@@ -59,6 +66,20 @@ export class PrivateFileInputError extends Error {
     super(
       {
         filesystem: 'use a local ext4, XFS, Btrfs, or tmpfs filesystem',
+        native:
+          'Jig could not load its Linux file controls; check the supported glibc loader and libc installation',
+        mount:
+          'the selected attachment mount could not be identified; check that it is visible in the process mount namespace',
+        symlink:
+          'the selected attachment contains a symbolic link; select a directory and files without links',
+        missing:
+          'the selected attachment directory or file does not exist; check --attach and --select',
+        access:
+          'the selected attachment cannot be read by the current operator; check its file and directory permissions',
+        'cross-mount':
+          'the selected attachment crosses a mount boundary; select each mounted directory separately',
+        kernel:
+          'the kernel does not provide the required Linux file controls; check the supported-host requirements',
         path: 'select a relative path without traversal or links, within 16 components and 512 UTF-8 bytes',
         protected: 'Jig state and host control files cannot be selected as input',
         linked: 'select only singly linked regular files',
@@ -91,21 +112,34 @@ function calls() {
   if (process.platform !== 'linux' || process.arch !== 'x64')
     throw new Error('Linux x64 file controls are unavailable')
   const ffi = createRequire(import.meta.url)('bun:ffi') as Ffi
-  const libc = posix.join(dirname(realpathSync('/lib64/ld-linux-x86-64.so.2')), 'libc.so.6')
-  const { symbols } = ffi.dlopen(libc, {
-    syscall: { args: ['i64', 'i32', 'ptr', 'ptr', 'u64'], returns: 'i32' },
-    memfd_create: { args: ['ptr', 'u32'], returns: 'i32' },
-    fcntl: { args: ['i32', 'i32', 'i32'], returns: 'i32' },
-    renameat2: { args: ['i32', 'ptr', 'i32', 'ptr', 'u32'], returns: 'i32' },
-    __errno_location: { args: [], returns: 'ptr' },
-  })
-  native = { ffi, symbols }
-  return native
+  try {
+    const libc = posix.join(dirname(resolvePrivateLinuxHostLoaderSync()), 'libc.so.6')
+    const { symbols } = ffi.dlopen(libc, {
+      syscall: { args: ['i64', 'i32', 'ptr', 'ptr', 'u64'], returns: 'i32' },
+      memfd_create: { args: ['ptr', 'u32'], returns: 'i32' },
+      fcntl: { args: ['i32', 'i32', 'i32'], returns: 'i32' },
+      renameat2: { args: ['i32', 'ptr', 'i32', 'ptr', 'u32'], returns: 'i32' },
+      __errno_location: { args: [], returns: 'ptr' },
+    })
+    native = { ffi, symbols }
+    return native
+  } catch {
+    throw new PrivateFileInputError('native')
+  }
 }
 function result(value: number): number {
   if (value >= 0) return value
   const { ffi, symbols } = calls()
   const code = getSystemErrorName(-ffi.read.i32(symbols.__errno_location!()))
+  const reason = {
+    ELOOP: 'symlink',
+    ENOENT: 'missing',
+    EACCES: 'access',
+    EXDEV: 'cross-mount',
+    ENOSYS: 'kernel',
+  } as const
+  if (Object.hasOwn(reason, code))
+    throw new PrivateFileInputError(reason[code as keyof typeof reason])
   throw Object.assign(new Error(`file boundary operation failed (${code})`), { code })
 }
 function cString(value: string): Buffer {
@@ -175,14 +209,14 @@ export function privateOpenFileRoot(path: string): number {
       .split('\n')
       .find((line) => line.split(' ')[0] === mountId)
       ?.split(' ')
-    if (mount === undefined) throw new TypeError('file mount identity is unavailable')
+    if (mount === undefined) throw new PrivateFileInputError('mount')
     const decodeMountPath = (text: string) =>
       text.replace(/\\([0-7]{3})/g, (_, octal: string) => String.fromCharCode(parseInt(octal, 8)))
     const root = decodeMountPath(mount[3]!),
       point = decodeMountPath(mount[4]!)
     const relative = posix.relative(point, absolute)
     if (relative.startsWith('../') || posix.isAbsolute(relative))
-      throw new TypeError('file mount identity changed')
+      throw new PrivateFileInputError('mount')
     requireUnprotected(posix.join(root, relative))
     return fd
   } catch (error) {

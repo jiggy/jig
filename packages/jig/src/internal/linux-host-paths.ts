@@ -1,4 +1,10 @@
+import { realpathSync } from 'node:fs'
 import { realpath } from 'node:fs/promises'
+
+const LOADER_PATHS = [
+  '/run/current-system/sw/share/nix-ld/lib/ld.so',
+  '/lib64/ld-linux-x86-64.so.2',
+] as const
 
 /** System-owned locations only; project files and ambient PATH never select tools. */
 export function privateLinuxHostToolCandidates(
@@ -32,8 +38,19 @@ export function resolvePrivateLinuxHostLoader(
 ): Promise<string> {
   // nix-ld's system-managed link points to glibc itself. Never mount the
   // /lib64 nix-ld shim, which would require its host configuration in a Run.
-  return resolvePrivateLinuxHostPath(
-    ['/run/current-system/sw/share/nix-ld/lib/ld.so', '/lib64/ld-linux-x86-64.so.2'],
-    resolve,
-  )
+  return resolvePrivateLinuxHostPath(LOADER_PATHS, resolve)
+}
+
+/** File capture needs the same glibc selection before asynchronous host acquisition. */
+export function resolvePrivateLinuxHostLoaderSync(
+  resolve: (path: string) => string = realpathSync,
+): string {
+  for (const path of LOADER_PATHS) {
+    try {
+      return resolve(path)
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+    }
+  }
+  throw new Error('the required system-owned glibc loader is unavailable')
 }

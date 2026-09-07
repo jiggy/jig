@@ -68,6 +68,7 @@ check: build test
 
 # Run sequentially, only inside an already provisioned delegated proof host
 @test-linux-rootless-proof-host: build
+    just --justfile ../flow-sdk/justfile build
     JIG_LINUX_ROOTLESS_HOSTILE=1 bun test test/linux-rootless-delegation-hostile.test.ts --timeout 30000
     JIG_LINUX_ROOTLESS_HOSTILE=1 bun test test/linux-rootless-run.test.ts --timeout 30000
     JIG_LINUX_ROOTLESS_HOSTILE=1 bun test test/bun-native-preparation.test.ts --timeout 120000

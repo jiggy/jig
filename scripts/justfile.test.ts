@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 
@@ -156,6 +156,9 @@ test('hostile files remain separate ordered invocations', async () => {
     'jig::test-linux-rootless-proof-host',
   ])
   expect(result.code).toBe(0)
+  const sdkBuild = result.stderr.indexOf('just --justfile ../flow-sdk/justfile build')
+  expect(sdkBuild).toBeGreaterThanOrEqual(0)
+  expect(sdkBuild).toBeLessThan(result.stderr.indexOf('JIG_LINUX_ROOTLESS_HOSTILE=1'))
   const lines = result.stderr
     .split('\n')
     .filter((line) => line.startsWith('JIG_LINUX_ROOTLESS_HOSTILE=1'))

@@ -15,6 +15,8 @@ import {
 } from '../src/internal/linux-rootless-backend.js'
 import { RunHostSession } from '../src/run/session.js'
 import { privateCaptureAttachments } from '../src/internal/linux-file-input.js'
+import { resolvePrivateLinuxHostLoader } from '../src/internal/linux-host-paths.js'
+import { installedBunLocation } from './fixtures/installed-bun-location.js'
 
 const HOSTILE = process.env.JIG_LINUX_ROOTLESS_HOSTILE === '1'
 const hostileDescribe = HOSTILE ? describe.serial : describe.skip
@@ -23,13 +25,6 @@ const delegatedDescribe = delegatedCgroup === undefined ? describe.skip : descri
 const initialRootlessTemporaryState = new Set(
   (await readdir(tmpdir())).filter(rootlessTemporaryEntry),
 )
-let portableBunRoot: string | undefined
-let portableBunPromise: Promise<string> | undefined
-
-afterAll(async () => {
-  if (portableBunRoot !== undefined) await rm(portableBunRoot, { recursive: true, force: true })
-})
-
 test('constructs the delayed-supervisor fixture from current trusted source', async () => {
   const fixture = await delayedReadinessSupervisor('/tmp/entry-entered', '/tmp/entry-settled')
   try {
@@ -627,8 +622,8 @@ interface HostConfiguration {
 async function hostConfiguration(): Promise<HostConfiguration> {
   if (delegatedCgroup === undefined)
     throw new Error('rootless proof host did not expose its delegated cgroup')
-  const bun = await portableBun()
-  const loader = await realpath('/lib64/ld-linux-x86-64.so.2')
+  const bun = installedBunLocation.executablePath
+  const loader = await resolvePrivateLinuxHostLoader()
   const bunHostLibraryPath = dirname(loader)
   const mounts = await runtimeMounts(bun, loader, bunHostLibraryPath)
   return {
@@ -637,30 +632,6 @@ async function hostConfiguration(): Promise<HostConfiguration> {
     mounts,
     backend: new PrivateLinuxCgroupBackend({ bunPath: bun, bunHostLibraryPath }),
   }
-}
-
-async function portableBun(): Promise<string> {
-  portableBunPromise ??= (async () => {
-    portableBunRoot = await mkdtemp(join(tmpdir(), 'jig-portable-bun-'))
-    const directory = join(portableBunRoot, 'bin')
-    await mkdir(directory)
-    const destination = join(directory, 'jig')
-    const source = await realpath(process.execPath)
-    const bytes = Buffer.from(await readFile(source))
-    const fixedInterpreter = Buffer.from('/lib64/ld-linux-x86-64.so.2\0')
-    if (bytes.indexOf(fixedInterpreter) === -1) {
-      const hostInterpreter = Buffer.from(`${await realpath('/lib64/ld-linux-x86-64.so.2')}\0`)
-      const offset = bytes.indexOf(hostInterpreter)
-      if (offset === -1 || fixedInterpreter.length > hostInterpreter.length) {
-        throw new Error('proof Bun does not expose a replaceable ELF interpreter')
-      }
-      bytes.fill(0, offset, offset + hostInterpreter.length)
-      fixedInterpreter.copy(bytes, offset)
-    }
-    await writeFile(destination, bytes, { mode: 0o755 })
-    return await realpath(destination)
-  })()
-  return await portableBunPromise
 }
 
 function plan(

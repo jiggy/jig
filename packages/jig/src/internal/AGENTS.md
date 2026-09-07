@@ -79,6 +79,7 @@ child calls, project commands, and Agent providers.
   operator's absolute `JIG_BWRAP_PATH`, never ambient `PATH`. An explicit
   selection receives the same validation and cannot fall back on failure.
   NixOS loader support mounts the real glibc files, not a shim or whole store.
+  File-capture FFI and executable runtime support use the same loader selection.
 
 ## Work Guidance
 

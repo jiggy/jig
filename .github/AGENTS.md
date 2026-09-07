@@ -28,6 +28,8 @@ Owns CI, host-conformance, package publication, and public-site workflows.
 
 - Put substantial shell or TypeScript logic in `scripts/` and call it here.
 - Preserve zero-residue checks around provisioned Jig host tests.
+- Build the current FLOW SDK before host fixtures that exercise SDK-authored
+  Flows; a Jig-only installation does not produce the SDK's generated output.
 
 ## Verification
 
