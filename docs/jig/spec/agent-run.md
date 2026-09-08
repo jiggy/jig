@@ -278,9 +278,11 @@ or make Node part of Jig's runtime closure.
 When `CODEX_PATH` is omitted, Jig resolves Codex only from fixed system-owned
 locations, never project files or ambient `PATH`. An explicit absolute path may
 be a link; Jig resolves, validates, and identifies its exact executable before
-review. Codex's nested sandbox uses the exact `JIG_BWRAP_PATH` when supplied,
-then an adjacent official client resource, then fixed system-owned Bubblewrap.
-The selected executable and support bytes enter provider identity.
+review. Codex's nested sandbox requires its matching bundled
+`codex-resources/bwrap`, beside the executable directory or its parent in the
+client installation. Jig preserves the client's bundled-helper integrity check;
+`JIG_BWRAP_PATH` selects only Jig's outer containment tool. The selected native
+executable and bundled support bytes enter provider identity.
 
 Subscription mode requires Codex's `cli_auth_credentials_store = "file"`
 setting. Jig reads the current operator's file during review and Run, validates

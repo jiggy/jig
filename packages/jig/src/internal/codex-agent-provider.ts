@@ -1,6 +1,6 @@
 import { lstat, readFile, realpath } from 'node:fs/promises'
 import { homedir } from 'node:os'
-import { join } from 'node:path'
+import { basename, dirname, join } from 'node:path'
 
 import {
   createPrivateAcpAgentProvider,
@@ -91,7 +91,7 @@ export async function openPrivateCodexAgentProvider(
     launcherPath: join(releaseRoot, 'libexec', 'agent', 'codex-agent-launcher.js'),
     adapterPath: join(releaseRoot, 'libexec', 'agent', 'codex-acp.js'),
     executablePath,
-    nativeBubblewrapPath: await nativeBubblewrapFor(executablePath, environment.JIG_BWRAP_PATH),
+    nativeBubblewrapPath: await nativeBubblewrapFor(executablePath),
     certificatesPath: await ordinaryFile(HOST_CERTIFICATES_PATH, 'host certificate bundle'),
     requirementsPath: join(releaseRoot, 'libexec', 'agent', 'codex-requirements.toml'),
   })
@@ -360,41 +360,35 @@ async function resolveCodexExecutable(selected: string | undefined): Promise<str
   }
 }
 
-async function nativeBubblewrapFor(
-  executablePath: string,
-  selected: string | undefined,
-): Promise<string> {
-  if (selected !== undefined && (!selected.startsWith('/') || selected.includes('\0'))) {
-    throw new PrivateCodexSandboxUnavailableError(
-      'JIG_BWRAP_PATH must be an absolute executable path',
-    )
-  }
+async function nativeBubblewrapFor(executablePath: string): Promise<string> {
+  // Codex verifies its bundled helper against its own compiled digest. The
+  // outer host's JIG_BWRAP_PATH must never replace that vendor-bound artifact.
+  const executableDirectory = dirname(executablePath)
+  const adjacent = join(executableDirectory, 'codex-resources', 'bwrap')
+  const packageResource = join(executableDirectory, '..', 'codex-resources', 'bwrap')
+  const candidates =
+    basename(executableDirectory) === 'bin'
+      ? [packageResource, adjacent]
+      : [adjacent, packageResource]
   try {
-    let path: string
-    if (selected !== undefined) {
-      path = await resolvePrivateLinuxHostPath([selected])
-    } else {
-      const adjacent = join(executablePath, '..', '..', 'codex-resources', 'bwrap')
+    for (const candidate of candidates) {
+      let path: string
       try {
-        path = await exactFile(adjacent, 'Codex native Bubblewrap')
+        path = await exactFile(candidate, 'Codex bundled Bubblewrap')
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
-        path = await resolvePrivateLinuxHostPath(privateLinuxHostToolCandidates('bwrap'))
+        continue
       }
+      const information = await lstat(path)
+      if ((information.mode & 0o6000) !== 0 || (information.mode & 0o111) === 0) {
+        throw new PrivateCodexSandboxUnavailableError('Codex bundled Bubblewrap is invalid')
+      }
+      return path
     }
-    const information = await lstat(path)
-    if (
-      !information.isFile() ||
-      information.isSymbolicLink() ||
-      (information.mode & 0o6000) !== 0 ||
-      (information.mode & 0o111) === 0
-    ) {
-      throw new PrivateCodexSandboxUnavailableError('Codex native Bubblewrap is invalid')
-    }
-    return path
+    throw new PrivateCodexSandboxUnavailableError('Codex bundled Bubblewrap is unavailable')
   } catch (error) {
     if (error instanceof PrivateCodexSandboxUnavailableError) throw error
-    throw new PrivateCodexSandboxUnavailableError('Codex native Bubblewrap is unavailable')
+    throw new PrivateCodexSandboxUnavailableError('Codex bundled Bubblewrap is unavailable')
   }
 }
 

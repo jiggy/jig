@@ -44,6 +44,9 @@ Client-specific requirements are listed in the
 
 Install Codex and sign in as the OS user running Jig, using
 [Codex's login instructions](https://developers.openai.com/codex/auth/).
+Jig uses Codex's matching installed `codex-resources/bwrap`; Codex checks that
+helper's integrity. `JIG_BWRAP_PATH` configures Jig's outer containment, not
+Codex's bundled helper.
 
 Jig's current Codex adapter has two installation limitations:
 

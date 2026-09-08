@@ -113,7 +113,7 @@ async function tryOpenAgentProvider(
         error instanceof PrivateCodexExecutableUnavailableError
           ? "export CODEX_PATH with the absolute path of this operator's installed codex executable, then retry jig review"
           : error instanceof PrivateCodexSandboxUnavailableError
-            ? 'install Bubblewrap in a fixed system location or export its absolute JIG_BWRAP_PATH, then retry jig review'
+            ? 'restore the complete Codex installation with its matching codex-resources/bwrap, then retry jig review'
             : error instanceof PrivateCodexLoginUnavailableError
               ? 'configure Codex with cli_auth_credentials_store="file", run codex login as this OS user, and retry jig review; Jig reads CODEX_HOME/auth.json or ~/.codex/auth.json'
               : error instanceof PrivateAgentConfigurationError

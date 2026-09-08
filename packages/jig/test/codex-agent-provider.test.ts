@@ -1,9 +1,12 @@
 import { afterEach, describe, expect, test } from 'bun:test'
-import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, rename, rm, symlink, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 
-import { privateAcpAgentRuntime } from '../src/internal/acp-agent-provider.js'
+import {
+  privateAcpAgentRuntime,
+  revalidatePrivateAcpAgentProvider,
+} from '../src/internal/acp-agent-provider.js'
 import {
   createPrivateCodexOpenAIApiAgentProvider,
   createPrivateCodexSubscriptionAgentProvider,
@@ -112,27 +115,23 @@ describe('private native Codex Agent provider', () => {
       JIG_AGENT_CLIENT: 'codex',
     })
     expect(missingExecutable.agentUnavailableHint).toContain('export CODEX_PATH')
-    await expect(
-      openPrivateCodexAgentProvider(installedBunLocation.releaseRoot, {
-        CODEX_HOME: codexHome,
-        CODEX_PATH: fixture.executablePath,
-        JIG_BWRAP_PATH: join(fixture.root, 'missing-bwrap'),
-      }),
-    ).rejects.toBeInstanceOf(PrivateCodexSandboxUnavailableError)
+    await rename(fixture.nativeBubblewrapPath, join(fixture.root, 'outer-bwrap'))
     const missingSandbox = await openPrivateInstalledBunHost(installedBunLocation, {
       CODEX_HOME: codexHome,
       CODEX_PATH: fixture.executablePath,
       JIG_AGENT_CLIENT: 'codex',
-      JIG_BWRAP_PATH: join(fixture.root, 'missing-bwrap'),
+      JIG_BWRAP_PATH: join(fixture.root, 'outer-bwrap'),
     })
-    expect(missingSandbox.agentUnavailableHint).toContain('export its absolute JIG_BWRAP_PATH')
+    expect(missingSandbox.agentUnavailableHint).toContain(
+      'restore the complete Codex installation with its matching codex-resources/bwrap',
+    )
     const unsupported = await openPrivateInstalledBunHost(installedBunLocation, {
       JIG_AGENT_CLIENT: 'unknown',
     })
     expect(unsupported.agentProvider).toBeUndefined()
   })
 
-  test('resolves an operator-selected Codex link and exact host Bubblewrap', async () => {
+  test('resolves a Codex link and preserves its bundled helper despite outer overrides', async () => {
     const fixture = await files()
     const codexHome = join(fixture.root, 'linked-home')
     const codexLink = join(fixture.root, 'codex')
@@ -149,11 +148,28 @@ describe('private native Codex Agent provider', () => {
       { mode: 0o600 },
     )
 
-    const provider = await openPrivateCodexAgentProvider(installedBunLocation.releaseRoot, {
+    const environment = {
       CODEX_HOME: codexHome,
       CODEX_PATH: codexLink,
-      JIG_BWRAP_PATH: fixture.nativeBubblewrapPath,
+    }
+    const provider = await openPrivateCodexAgentProvider(
+      installedBunLocation.releaseRoot,
+      environment,
+    )
+    const outerBubblewrap = join(fixture.root, 'outer-bwrap')
+    await writeFile(outerBubblewrap, 'unrelated outer helper\n', { mode: 0o700 })
+    const misleadingResources = join(fixture.root, 'native', 'bin', 'codex-resources')
+    await mkdir(misleadingResources)
+    await writeFile(join(misleadingResources, 'bwrap'), 'not the package helper\n', {
+      mode: 0o700,
     })
+    for (const override of [outerBubblewrap, join(fixture.root, 'missing-bwrap'), 'relative']) {
+      const selected = await openPrivateCodexAgentProvider(installedBunLocation.releaseRoot, {
+        ...environment,
+        JIG_BWRAP_PATH: override,
+      })
+      expect(selected.digest).toBe(provider.digest)
+    }
     const runtime = privateAcpAgentRuntime(provider)
     expect(provider).toMatchObject({
       client: 'openai-codex',
@@ -164,6 +180,69 @@ describe('private native Codex Agent provider', () => {
       source: fixture.nativeBubblewrapPath,
       destination: '/agent/codex-resources/bwrap',
     })
+    await revalidatePrivateAcpAgentProvider(provider)
+    await writeFile(fixture.nativeBubblewrapPath, 'changed bundled helper\n')
+    await expect(revalidatePrivateAcpAgentProvider(provider)).rejects.toThrow(
+      'ACP Agent support changed after selection',
+    )
+    const changed = await openPrivateCodexAgentProvider(
+      installedBunLocation.releaseRoot,
+      environment,
+    )
+    expect(changed.digest).not.toBe(provider.digest)
+  })
+
+  test('supports the bundled resource beside a standalone Codex executable', async () => {
+    const fixture = await files()
+    const executablePath = join(fixture.root, 'native', 'codex')
+    await rename(fixture.executablePath, executablePath)
+    const provider = await openPrivateCodexAgentProvider(installedBunLocation.releaseRoot, {
+      CODEX_PATH: executablePath,
+      OPENAI_API_KEY: 'test-key',
+      OPENAI_MODEL: 'test-model',
+    })
+    expect(privateAcpAgentRuntime(provider).readOnlyMounts).toContainEqual({
+      source: fixture.nativeBubblewrapPath,
+      destination: '/agent/codex-resources/bwrap',
+    })
+  })
+
+  test.each(['missing', 'symlink', 'directory', 'non-executable'])(
+    'rejects a %s bundled helper without using the outer Bubblewrap override',
+    async (kind) => {
+      const fixture = await files()
+      const outerBubblewrap = join(fixture.root, 'outer-bwrap')
+      await rename(fixture.nativeBubblewrapPath, outerBubblewrap)
+      if (kind === 'symlink') await symlink(outerBubblewrap, fixture.nativeBubblewrapPath)
+      else if (kind === 'directory') await mkdir(fixture.nativeBubblewrapPath)
+      else if (kind !== 'missing') {
+        await writeFile(fixture.nativeBubblewrapPath, 'bundled helper\n')
+        await chmod(fixture.nativeBubblewrapPath, 0o600)
+      }
+      await expect(
+        openPrivateCodexAgentProvider(installedBunLocation.releaseRoot, {
+          CODEX_PATH: fixture.executablePath,
+          JIG_BWRAP_PATH: outerBubblewrap,
+          OPENAI_API_KEY: 'test-key',
+          OPENAI_MODEL: 'test-model',
+        }),
+      ).rejects.toBeInstanceOf(PrivateCodexSandboxUnavailableError)
+    },
+  )
+
+  test('does not fall back when the preferred bundled resource is malformed', async () => {
+    const fixture = await files()
+    await chmod(fixture.nativeBubblewrapPath, 0o600)
+    const alternative = join(fixture.root, 'native', 'bin', 'codex-resources')
+    await mkdir(alternative)
+    await writeFile(join(alternative, 'bwrap'), 'alternate helper\n', { mode: 0o700 })
+    await expect(
+      openPrivateCodexAgentProvider(installedBunLocation.releaseRoot, {
+        CODEX_PATH: fixture.executablePath,
+        OPENAI_API_KEY: 'test-key',
+        OPENAI_MODEL: 'test-model',
+      }),
+    ).rejects.toBeInstanceOf(PrivateCodexSandboxUnavailableError)
   })
 
   test('projects canonical subscription state without its refresh credential', async () => {

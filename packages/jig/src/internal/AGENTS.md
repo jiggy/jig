@@ -47,6 +47,9 @@ child calls, project commands, and Agent providers.
   file-backed Codex login. Project only its short-lived bearer; never embed a
   development login, retain its refresh token, mount `CODEX_HOME`, or expose a
   host keyring to Agent execution.
+- Codex's nested sandbox uses its installation's exact bundled Bubblewrap,
+  retained as provider support. The outer host's `JIG_BWRAP_PATH` does not
+  select or replace that vendor-integrity-bound asset.
 - Keep known Agent-configuration and dependency-preparation failures actionable
   through closed diagnostic codes and project-relative locations, never raw
   provider or worker messages. Missing Agent support affects only targets
