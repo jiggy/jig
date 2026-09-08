@@ -89,8 +89,11 @@ child calls, project commands, and Agent providers.
 - Resolve host tools from the fixed system locations, or Bubblewrap from the
   operator's absolute `JIG_BWRAP_PATH`, never ambient `PATH`. An explicit
   selection receives the same validation and cannot fall back on failure.
-  NixOS loader support mounts the real glibc files, not a shim or whole store.
+  Run loader support mounts the real glibc files, not a shim or whole Nix store.
   File-capture FFI and executable runtime support use the same loader selection.
+  The fixed trusted Bubblewrap feature probe uses only read-only system runtime
+  roots, never the host root or sysfs tree; its bootstrap mounts are not payload
+  authority or proof of a Run's filesystem isolation.
 
 ## Work Guidance
 

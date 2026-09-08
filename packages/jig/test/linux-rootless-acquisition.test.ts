@@ -106,6 +106,47 @@ describe('private rootless Linux acquisition', () => {
     })
   })
 
+  test('limits the trusted feature probe to fixed runtime roots and preserves required checks', async () => {
+    const fixture = validFixture()
+    await acquirePrivateRootlessLinux(fixture.dependencies)
+    const arguments_ = fixture.executions[1]!.arguments
+    const mounts = arguments_.flatMap((argument, index) =>
+      ['--bind', '--dev-bind', '--ro-bind', '--ro-bind-try'].includes(argument)
+        ? [arguments_.slice(index, index + 3)]
+        : [],
+    )
+    expect(mounts).toEqual([
+      ...['/usr', '/lib', '/lib64', '/nix/store', '/etc/ld.so.cache'].map((path) => [
+        '--ro-bind-try',
+        path,
+        path,
+      ]),
+      ['--ro-bind', BWRAP, BWRAP],
+    ])
+    expect(arguments_).not.toContain('/')
+    expect(arguments_).not.toContain('/sys')
+    expect(arguments_).not.toContain('/home')
+    for (const feature of [
+      '--unshare-all',
+      '--share-net',
+      '--unshare-user',
+      '--disable-userns',
+      '--assert-userns-disabled',
+      '--as-pid-1',
+      '--die-with-parent',
+      '--new-session',
+      '--clearenv',
+      '--ro-bind',
+      '--remount-ro',
+      '--cap-drop',
+    ])
+      expect(arguments_).toContain(feature)
+    expect(
+      arguments_.slice(arguments_.indexOf('--remount-ro'), arguments_.indexOf('--remount-ro') + 2),
+    ).toEqual(['--remount-ro', '/proc'])
+    expect(arguments_.slice(-5)).toEqual(['--cap-drop', 'ALL', '--', BWRAP, '--version'])
+  })
+
   for (const [label, mutate] of [
     [
       'non-cgroup-v2 filesystem',

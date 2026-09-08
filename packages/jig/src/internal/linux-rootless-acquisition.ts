@@ -328,13 +328,17 @@ function bubblewrapFeatureProbe(path: string): readonly string[] {
     '--die-with-parent',
     '--new-session',
     '--clearenv',
-    // This fixed trusted probe needs the host root only to execute Bubblewrap
-    // and its loader. Keep that bootstrap mount separate from the small
-    // read-only bind used to exercise --ro-bind: recursively remounting the
-    // host root read-only tests unrelated host submounts which no Run sees.
-    '--bind',
-    '/',
-    '/',
+    // Only the already-validated Bubblewrap executable runs here. Supply its
+    // common system loader locations without recursively importing unrelated
+    // host mounts (even --bind / / reapplies flags to every sysfs submount).
+    // These fixed read-only bootstrap roots are not a Run filesystem policy;
+    // Runs retain their exact individual runtime-file mounts. Missing optional
+    // layout paths are harmless, but an unresolved loader still fails closed.
+    ...['/usr', '/lib', '/lib64', '/nix/store', '/etc/ld.so.cache'].flatMap((location) => [
+      '--ro-bind-try',
+      location,
+      location,
+    ]),
     '--ro-bind',
     path,
     path,
