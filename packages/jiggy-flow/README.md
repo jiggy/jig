@@ -49,28 +49,44 @@ without confusing progress completion with the Agent's result:
 
 ```python
 import asyncio
-from jiggy.flow import OperationError, RunContext, RunResult
+from jiggy.flow import JsonValue, OperationError, RunContext, RunResult
 
 async def run(context: RunContext) -> RunResult:
     updates = await context.channel(contract="./contracts/public-updates.json")
-    work = asyncio.create_task(context.call_capability(
-        operation_id="answer", slot="agent", method="run", input=context.input,
-        channels={"events": updates.send},
-    ))
-    try:
-        async with updates.receive:
-            async for value in updates.receive:
-                print(value, flush=True)  # Interpret and filter the selected contract here.
-    except OperationError as error:
-        if error.code not in {"LAGGED", "DISCONNECTED"}:
-            await asyncio.gather(work, return_exceptions=True)
+
+    async def invoke() -> JsonValue:
+        try:
+            return await context.call_capability(
+                operation_id="answer", slot="agent", method="run", input=context.input,
+                channels={"events": updates.send},
+            )
+        except (Exception, asyncio.CancelledError):
+            try:
+                await updates.receive.aclose()
+            except (Exception, asyncio.CancelledError):
+                pass  # Preserve the execution failure, including rejected admission.
             raise
-        print("Progress delivery was incomplete.", flush=True)
-    return {"outcome": "done", "output": await work}
+
+    async def observe() -> None:
+        try:
+            async with updates.receive:
+                async for value in updates.receive:
+                    print(value, flush=True)  # Interpret and filter this contract's values.
+        except OperationError as error:
+            if error.code not in {"LAGGED", "DISCONNECTED"}:
+                raise
+            print("Progress delivery was incomplete.", flush=True)
+
+    execution, observed = await asyncio.gather(invoke(), observe(), return_exceptions=True)
+    if isinstance(execution, BaseException):
+        raise execution
+    if isinstance(observed, BaseException):
+        raise observed
+    return {"outcome": "done", "output": execution}
 ```
 
 The package-local contract describes message meaning; the host must support that exact contract before
-dispatch. `asyncio.create_task` starts the Agent coroutine before reading updates.
+dispatch. `asyncio.gather` starts execution and observation together and settles both.
 The application must still interpret the returned Agent outcome.
 
 `context.channels` contains declared, host-granted endpoints. An unused endpoint

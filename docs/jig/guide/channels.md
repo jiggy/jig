@@ -23,27 +23,51 @@ or replace the Agent session.
 Inside the Flow, the connection is ordinary application code:
 
 ```ts
+import { OperationError } from '@jigging/flow'
+
+const input = run.input
+if (!input || typeof input !== 'object' || Array.isArray(input) ||
+    !('instructions' in input) || typeof input.instructions !== 'string')
+  throw new TypeError('Supply instructions')
 const updates = await run.channel({
   contract: './contracts/acp-public-updates.json',
 })
 const answer = run.callCapability({
   operationId: 'answer', slot: 'agent', method: 'run',
-  input: { instructions: run.input.instructions },
+  input: { instructions: input.instructions },
   channels: { events: updates.send },
+}).catch(async (error) => {
+  // Rejected admission can leave no producer to end the stream.
+  await updates.receive.close().catch(() => undefined)
+  throw error
 })
-try {
-  for await (const update of updates.receive) {
-    if (update.sessionUpdate === 'agent_message_chunk')
-      console.log(update.content.text)
+const observation = (async () => {
+  try {
+    for await (const update of updates.receive) {
+      if (!update || typeof update !== 'object' || Array.isArray(update) ||
+          !('content' in update) || !('sessionUpdate' in update)) continue
+      const content = update.content
+      if (update.sessionUpdate === 'agent_message_chunk' &&
+          content && typeof content === 'object' && !Array.isArray(content) &&
+          'type' in content && content.type === 'text' &&
+          'text' in content && typeof content.text === 'string')
+        console.log(content.text)
+    }
+  } catch (error) {
+    if (!(error instanceof OperationError) ||
+        !['LAGGED', 'DISCONNECTED'].includes(error.code)) throw error
+    console.error('Progress delivery was incomplete.')
   }
-} finally {
-  await updates.receive.close()
-}
-const result = await answer
+})()
+const [execution, observed] = await Promise.allSettled([answer, observation])
+if (execution.status === 'rejected') throw execution.reason
+if (observed.status === 'rejected') throw observed.reason
+const result = execution.value
 ```
 
-The example includes bounded input validation and recovery for incomplete
-progress. Ordinary `catch` is sufficient. Closing the receiver joins disposal
+The [complete application](https://github.com/jiggy/jig/blob/main/examples/live-agent/flows/chat/chat.ts)
+adds bounded input validation, output selection and Agent-outcome interpretation.
+Ordinary `catch` is sufficient. Closing the receiver joins disposal
 and may reveal a racing failure not previously exposed. It stops observation,
 not the Agent; await the Agent result separately. A caught display failure can
 coexist with successful work, while root cancellation and unresolved owned work

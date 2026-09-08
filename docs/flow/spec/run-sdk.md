@@ -436,24 +436,42 @@ Sender acceptance, receiver end and the separate execution result retain their
 different meanings under [Run/1](run-protocol.md#51-direct-channels).
 
 An application must start producer work before awaiting its first message.
-In Python, assigning a coroutine alone does not start it:
+In Python, assigning a coroutine alone does not start it. `gather` starts both
+coroutines below and retains both outcomes:
 
 ```python
 updates = await run.channel(contract="./contracts/public-updates.json")
-work = asyncio.create_task(run.call_capability(
-    operation_id="answer", slot="agent", method="run", input=run.input,
-    channels={"events": updates.send},
-))
-try:
-    async with updates.receive:
-        async for value in updates.receive:
-            print(value, flush=True)
-except OperationError as error:
-    if error.code not in {"LAGGED", "DISCONNECTED"}:
-        await asyncio.gather(work, return_exceptions=True)
+
+async def invoke():
+    try:
+        return await run.call_capability(
+            operation_id="answer", slot="agent", method="run", input=run.input,
+            channels={"events": updates.send},
+        )
+    except (Exception, asyncio.CancelledError):
+        # Rejected admission may leave no producer to end the stream.
+        try:
+            await updates.receive.aclose()
+        except (Exception, asyncio.CancelledError):
+            pass  # Preserve the execution failure.
         raise
-    print("Progress delivery was incomplete.", flush=True)
-answer = await work
+
+async def observe():
+    try:
+        async with updates.receive:
+            async for value in updates.receive:
+                print(value, flush=True)
+    except OperationError as error:
+        if error.code not in {"LAGGED", "DISCONNECTED"}:
+            raise
+        print("Progress delivery was incomplete.", flush=True)
+
+execution, observed = await asyncio.gather(invoke(), observe(), return_exceptions=True)
+if isinstance(execution, BaseException):
+    raise execution
+if isinstance(observed, BaseException):
+    raise observed
+answer = execution
 ```
 
 This excerpt assumes an admitted Agent-like capability and matching package-local

@@ -61,8 +61,8 @@ proof that an implementation obeys it.
 ## 3. Matching and interpretation
 
 A source becomes named only at creation. A later writer, reader or message
-cannot silently rename it. A transferred writer must declare the source's
-exact named contract. Named readers require the same exact source identity.
+cannot silently rename it. For a named source, a transferred writer's port must
+declare that exact contract. Named readers require the same exact source identity.
 An unnamed source cannot satisfy a named reader even when schemas match.
 
 Named sources may supply generic or schema-only readers. Two nontrivial item
