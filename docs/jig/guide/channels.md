@@ -4,8 +4,12 @@ A Flow can read selected Agent updates, filter them and choose their presentatio
 No logging capability or hook configuration is required.
 
 The [live-agent example](https://github.com/jiggy/jig/tree/main/examples/live-agent)
-shows one native Agent call. After configuring a
-[native client](agents.md), review the application and run it:
+targets the channel-enabled development candidate. Prepare its current FLOW
+SDK as package-local source or a bundled Flow through the
+[local authoring route](dependencies.md#local-or-unreleased-code); installing
+its declared registry dependency alone does not supply the candidate APIs.
+With the matching Jig candidate and a configured [native client](agents.md),
+review the prepared application and run it:
 
 ```sh
 jig review

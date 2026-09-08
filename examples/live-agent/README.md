@@ -4,8 +4,15 @@ Run one Agent and display its public text as it arrives. The Flow owns the
 filter: it ignores plan records, can suppress progress, and keeps the final
 Agent result separate from progress delivery.
 
-With Jig installed on a [supported host](https://jig.md/guide/) and a configured
-[native Agent](https://jig.md/guide/agents) supporting public updates:
+This source example targets the channel-enabled development candidate. Prepare
+the current FLOW SDK inside the finished Flow using the
+[local or unreleased code](https://jig.md/guide/dependencies#local-or-unreleased-code)
+authoring route; its registry dependency declaration alone does not supply these
+candidate APIs.
+
+With the matching Jig candidate on a [supported host](https://jig.md/guide/)
+and a configured [native Agent](https://jig.md/guide/agents) supporting public
+updates, run the prepared application:
 
 ```sh
 jig review

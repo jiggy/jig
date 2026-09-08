@@ -26,12 +26,14 @@ filtering and a separate execution result.
 ## Work Guidance
 
 - Use the ordinary public FLOW SDK; no example launcher or private helpers.
-- Keep provider configuration with the operator and dependency preparation
-  with the repository's ordinary example-distribution path.
+- Keep provider configuration with the operator. Prepare local SDK source in
+  the finished Flow through the public
+  [dependency authoring guidance](../../docs/jig/guide/dependencies.md#local-or-unreleased-code).
+  Source declarations alone are not a prepared runnable distribution.
 
 ## Verification
 
-- After preparing its declared SDK dependency, `bun test examples/live-agent/test`
+- After preparing the current SDK dependency, `bun test examples/live-agent/test`
   checks filtering and independent results. Release checks install the current
   packed SDK into a disposable application copy.
 - Installed native-client qualification belongs to Jig's host evidence.
