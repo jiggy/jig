@@ -371,6 +371,10 @@ async function validateChildInput(
   const captured = await captureStoredPackage(store, reference)
   try {
     const inspected = await inspectCapturedPackage(captured)
+    if (
+      Object.values(inspected.metadata.channels ?? {}).some((channel) => channel.required !== false)
+    )
+      return failed('UNAVAILABLE', 'required child channel wiring is not supported by this host')
     try {
       inspected.schemas.input?.validate(value, 'INVALID_INPUT')
     } catch (error) {

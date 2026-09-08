@@ -7,7 +7,15 @@
     "run": {
       "input": { "$ref": "#/$defs/RunInput" },
       "output": { "$ref": "#/$defs/AgentResult" },
-      "errors": {}
+      "errors": {},
+      "channels": {
+        "events": {
+          "direction": "send",
+          "required": false,
+          "delivery": "direct",
+          "contract": "./contracts/acp-public-updates.json"
+        }
+      }
     }
   },
   "$defs": {

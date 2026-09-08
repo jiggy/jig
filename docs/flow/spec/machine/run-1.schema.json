@@ -23,6 +23,24 @@
     },
     {
       "$ref": "#/$defs/errorResponse"
+    },
+    {
+      "$ref": "#/$defs/channelCreateRequest"
+    },
+    {
+      "$ref": "#/$defs/channelSendRequest"
+    },
+    {
+      "$ref": "#/$defs/channelNextRequest"
+    },
+    {
+      "$ref": "#/$defs/channelCloseRequest"
+    },
+    {
+      "$ref": "#/$defs/channelReleaseRequest"
+    },
+    {
+      "$ref": "#/$defs/channelSuccessResponse"
     }
   ],
   "$defs": {
@@ -116,7 +134,9 @@
         "INVALID_INPUT",
         "INVALID_RESULT",
         "UNCERTAIN",
-        "EXECUTION_FAILED"
+        "EXECUTION_FAILED",
+        "LAGGED",
+        "DISCONNECTED"
       ]
     },
     "flowErrorData": {
@@ -151,6 +171,9 @@
           "type": "integer",
           "minimum": 0,
           "maximum": 9007199254740991
+        },
+        "channels": {
+          "$ref": "#/$defs/channelGrants"
         }
       },
       "required": ["protocol", "input", "settings", "attachments", "scratch", "deadlineUnixMs"],
@@ -170,7 +193,10 @@
           "minLength": 1,
           "maxLength": 16384
         },
-        "input": true
+        "input": true,
+        "channels": {
+          "$ref": "#/$defs/channelReferences"
+        }
       },
       "required": ["operationId", "slot", "input"],
       "additionalProperties": false
@@ -187,7 +213,10 @@
         "method": {
           "$ref": "#/$defs/localName"
         },
-        "input": true
+        "input": true,
+        "channels": {
+          "$ref": "#/$defs/channelReferences"
+        }
       },
       "required": ["operationId", "slot", "method", "input"],
       "additionalProperties": false
@@ -453,6 +482,366 @@
           "$ref": "#/$defs/standardErrorResponse"
         }
       ]
+    },
+    "channelContractIdentity": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^https://(?!(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9]?[0-9])\\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9]?[0-9])(?:/|$))[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+/(?!\\.{1,2}(?:/|$))[a-z0-9._~-]+(?:/(?!\\.{1,2}(?:/|$))[a-z0-9._~-]+)*$"
+        },
+        "version": {
+          "type": "string",
+          "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$"
+        },
+        "digest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        }
+      },
+      "required": ["id", "version", "digest"],
+      "additionalProperties": false
+    },
+    "channelGrant": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/channelSenderGrant"
+        },
+        {
+          "$ref": "#/$defs/channelReceiverGrant"
+        }
+      ]
+    },
+    "channelGrants": {
+      "type": "object",
+      "propertyNames": {
+        "$ref": "#/$defs/localName"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/channelGrant"
+      },
+      "maxProperties": 256
+    },
+    "channelReferences": {
+      "type": "object",
+      "propertyNames": {
+        "$ref": "#/$defs/localName"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/wireId"
+      },
+      "maxProperties": 256
+    },
+    "channelCreateParams": {
+      "type": "object",
+      "properties": {
+        "delivery": {
+          "const": "direct"
+        },
+        "schema": {
+          "oneOf": [{ "type": "object" }, { "type": "boolean" }]
+        },
+        "contract": {
+          "type": "string",
+          "pattern": "^\\./[^\\\\]+$",
+          "maxLength": 4096
+        }
+      },
+      "required": [],
+      "additionalProperties": false,
+      "not": {
+        "type": "object",
+        "properties": {
+          "schema": true,
+          "contract": true
+        },
+        "required": ["schema", "contract"]
+      }
+    },
+    "channelEndpointParams": {
+      "type": "object",
+      "properties": {
+        "endpoint": {
+          "$ref": "#/$defs/wireId"
+        }
+      },
+      "required": ["endpoint"],
+      "additionalProperties": false
+    },
+    "channelSendParams": {
+      "type": "object",
+      "properties": {
+        "endpoint": {
+          "$ref": "#/$defs/wireId"
+        },
+        "value": true
+      },
+      "required": ["endpoint", "value"],
+      "additionalProperties": false
+    },
+    "channelPair": {
+      "type": "object",
+      "properties": {
+        "send": {
+          "$ref": "#/$defs/channelSenderGrant"
+        },
+        "receive": {
+          "$ref": "#/$defs/channelReceiverGrant"
+        }
+      },
+      "required": ["send", "receive"],
+      "additionalProperties": false
+    },
+    "channelReadResult": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "item": {
+              "type": "object",
+              "properties": {
+                "sequence": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 9007199254740991
+                },
+                "value": true
+              },
+              "required": ["sequence", "value"],
+              "additionalProperties": false
+            }
+          },
+          "required": ["item"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "end": {
+              "type": "object",
+              "properties": {
+                "lastSequence": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                }
+              },
+              "required": ["lastSequence"],
+              "additionalProperties": false
+            }
+          },
+          "required": ["end"],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "channelReleaseResult": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "status": {
+              "const": "released"
+            }
+          },
+          "required": ["status"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "status": {
+              "const": "ended"
+            },
+            "lastSequence": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            }
+          },
+          "required": ["status", "lastSequence"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "status": {
+              "const": "failed"
+            },
+            "code": {
+              "$ref": "#/$defs/flowErrorCode"
+            },
+            "details": true
+          },
+          "required": ["status", "code"],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "channelCreateRequest": {
+      "type": "object",
+      "properties": {
+        "jsonrpc": {
+          "const": "2.0"
+        },
+        "id": {
+          "$ref": "#/$defs/wireId"
+        },
+        "method": {
+          "const": "channel/create"
+        },
+        "params": {
+          "$ref": "#/$defs/channelCreateParams"
+        }
+      },
+      "required": ["jsonrpc", "id", "method", "params"],
+      "additionalProperties": false
+    },
+    "channelSendRequest": {
+      "type": "object",
+      "properties": {
+        "jsonrpc": {
+          "const": "2.0"
+        },
+        "id": {
+          "$ref": "#/$defs/wireId"
+        },
+        "method": {
+          "const": "channel/send"
+        },
+        "params": {
+          "$ref": "#/$defs/channelSendParams"
+        }
+      },
+      "required": ["jsonrpc", "id", "method", "params"],
+      "additionalProperties": false
+    },
+    "channelNextRequest": {
+      "type": "object",
+      "properties": {
+        "jsonrpc": {
+          "const": "2.0"
+        },
+        "id": {
+          "$ref": "#/$defs/wireId"
+        },
+        "method": {
+          "const": "channel/next"
+        },
+        "params": {
+          "$ref": "#/$defs/channelEndpointParams"
+        }
+      },
+      "required": ["jsonrpc", "id", "method", "params"],
+      "additionalProperties": false
+    },
+    "channelCloseRequest": {
+      "type": "object",
+      "properties": {
+        "jsonrpc": {
+          "const": "2.0"
+        },
+        "id": {
+          "$ref": "#/$defs/wireId"
+        },
+        "method": {
+          "const": "channel/close"
+        },
+        "params": {
+          "$ref": "#/$defs/channelEndpointParams"
+        }
+      },
+      "required": ["jsonrpc", "id", "method", "params"],
+      "additionalProperties": false
+    },
+    "channelReleaseRequest": {
+      "type": "object",
+      "properties": {
+        "jsonrpc": {
+          "const": "2.0"
+        },
+        "id": {
+          "$ref": "#/$defs/wireId"
+        },
+        "method": {
+          "const": "channel/release"
+        },
+        "params": {
+          "$ref": "#/$defs/channelEndpointParams"
+        }
+      },
+      "required": ["jsonrpc", "id", "method", "params"],
+      "additionalProperties": false
+    },
+    "channelSuccessResponse": {
+      "type": "object",
+      "properties": {
+        "jsonrpc": {
+          "const": "2.0"
+        },
+        "id": {
+          "$ref": "#/$defs/wireId"
+        },
+        "result": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/channelPair"
+            },
+            {
+              "$ref": "#/$defs/channelReadResult"
+            },
+            {
+              "$ref": "#/$defs/channelReleaseResult"
+            }
+          ]
+        }
+      },
+      "required": ["jsonrpc", "id", "result"],
+      "additionalProperties": false
+    },
+    "channelSenderGrant": {
+      "type": "object",
+      "properties": {
+        "endpoint": {
+          "$ref": "#/$defs/wireId"
+        },
+        "delivery": {
+          "const": "direct"
+        },
+        "contract": {
+          "$ref": "#/$defs/channelContractIdentity"
+        },
+        "direction": {
+          "const": "send"
+        }
+      },
+      "required": ["endpoint", "direction", "delivery"],
+      "additionalProperties": false
+    },
+    "channelReceiverGrant": {
+      "type": "object",
+      "properties": {
+        "endpoint": {
+          "$ref": "#/$defs/wireId"
+        },
+        "delivery": {
+          "const": "direct"
+        },
+        "contract": {
+          "$ref": "#/$defs/channelContractIdentity"
+        },
+        "direction": {
+          "const": "receive"
+        },
+        "startSequence": {
+          "const": 1
+        }
+      },
+      "required": ["endpoint", "direction", "delivery", "startSequence"],
+      "additionalProperties": false
     }
   }
 }

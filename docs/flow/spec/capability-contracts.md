@@ -49,6 +49,7 @@ exact SemVer interface version
 closed named methods
 input and output Schema/1 values
 closed named application errors and their Schema/1 data
+optional per-method directional channel requirements
 local definitions
 ```
 
@@ -59,7 +60,7 @@ strict schema is an interface change and therefore needs a new exact version
 and digest.
 
 There is no loose/strict mode, second IDL, OpenRPC layer, external `$ref`,
-inheritance, ranges, subtyping, callback, endpoint, provider, graph, GUI, or
+inheritance, ranges, subtyping, callback, provider, graph, GUI, or
 selection declaration.
 
 The root is a JSON object with exactly these members:
@@ -76,11 +77,16 @@ $defs                    optional local schema-definition map
 `$schema` is exactly
 `https://flow.jig.md/schemas/capability-contract-1.schema.json`. `methods` has
 1–256 `LocalName` keys, where `LocalName` is a 1–64 character lower-ASCII slug
-matching `[a-z0-9]+(?:-[a-z0-9]+)*`. Each method object has exactly `input`, `output`, and
-`errors`; the first two are Schema/1 schemas and `errors` is a 0–128 member map
+matching `[a-z0-9]+(?:-[a-z0-9]+)*`. Each method object requires `input`, `output`, and
+`errors`, with optional `channels`; the first two are Schema/1 schemas and `errors` is a 0–128 member map
 from `LocalName` to Schema/1 error-data schema. `$defs`, when present, has at
 most 1,024 keys matching `[A-Za-z][A-Za-z0-9]{0,63}`, each containing one
 Schema/1 schema. Definitions are referenced only as `#/$defs/<name>`.
+
+`channels` uses [Channel Contract/1 declarations](channel-contracts.md#1-declarations).
+These requirements do not grant endpoint access or introduce a new capability
+result wrapper. Calls explicitly map unused held endpoints; selected provider
+support and every mapping must validate before dispatch.
 
 The UTF-8 descriptor is at most 262,144 bytes and the complete embedded schema
 graph must satisfy Schema/1's depth, node, reference, and keyword limits.

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import sys
 import unittest
@@ -1193,6 +1194,111 @@ def padded_frame(message: dict[str, Any], payload_bytes: int) -> bytes:
     return payload + b" " * (payload_bytes - len(payload)) + b"\n"
 
 
+def validate_channel_map(value: Any, *, grants: bool) -> None:
+    if not isinstance(value, dict) or len(value) > 256:
+        raise ProtocolError("invalid channel map")
+    seen = set()
+    for name, item in value.items():
+        require_local_name(name)
+        endpoint = validate_channel_grant(item) if grants else require_wire_id(item)
+        if endpoint in seen:
+            raise ProtocolError("duplicate channel right")
+        seen.add(endpoint)
+
+
+def validate_channel_grant(value: Any) -> str:
+    if not isinstance(value, dict):
+        raise ProtocolError("invalid channel grant")
+    required = {"endpoint", "direction", "delivery"}
+    if value.get("direction") == "receive":
+        required.add("startSequence")
+        if type(value.get("startSequence")) is not int or value["startSequence"] != 1:
+            raise ProtocolError("direct channel must begin at one")
+    elif value.get("direction") != "send":
+        raise ProtocolError("invalid channel direction")
+    require_exact_object(value, required | ({"contract"} if "contract" in value else set()))
+    if value["delivery"] != "direct":
+        raise ProtocolError("unsupported channel delivery")
+    if "contract" in value:
+        identity = require_exact_object(value["contract"], {"id", "version", "digest"})
+        if (not isinstance(identity["id"], str)
+            or re.fullmatch(
+                r"https://(?!(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9]?[0-9])\.){3}"
+                r"(?:25[0-5]|2[0-4][0-9]|[01]?[0-9]?[0-9])(?:/|$))"
+                r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?"
+                r"(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+/"
+                r"(?!\.{1,2}(?:/|$))[a-z0-9._~-]+"
+                r"(?:/(?!\.{1,2}(?:/|$))[a-z0-9._~-]+)*", identity["id"]
+            ) is None
+            or not isinstance(identity["version"], str)
+            or re.fullmatch(r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)", identity["version"]) is None
+            or not isinstance(identity["digest"], str)
+            or re.fullmatch(r"sha256:[0-9a-f]{64}", identity["digest"]) is None):
+            raise ProtocolError("invalid channel contract identity")
+    return require_wire_id(value["endpoint"])
+
+
+def validate_channel_message(definition: str, message: Any) -> None:
+    methods = {
+        "channelCreateRequest": "channel/create", "channelSendRequest": "channel/send",
+        "channelNextRequest": "channel/next", "channelCloseRequest": "channel/close",
+        "channelReleaseRequest": "channel/release",
+    }
+    if definition in methods:
+        require_exact_object(message, {"jsonrpc", "id", "method", "params"})
+        if message["method"] != methods[definition] or not isinstance(message["params"], dict):
+            raise ProtocolError("invalid channel request")
+        params = message["params"]
+        if definition == "channelCreateRequest":
+            if set(params) - {"delivery", "schema", "contract"} or {"schema", "contract"} <= params.keys():
+                raise ProtocolError("invalid channel creation")
+            if params.get("delivery", "direct") != "direct":
+                raise ProtocolError("unsupported channel profile")
+            if "schema" in params and not isinstance(params["schema"], (dict, bool)):
+                raise ProtocolError("invalid channel schema")
+            if "contract" in params and (not isinstance(params["contract"], str)
+                                         or not params["contract"].startswith("./")):
+                raise ProtocolError("invalid local contract reference")
+        else:
+            require_exact_object(params, {"endpoint", "value"} if definition == "channelSendRequest" else {"endpoint"})
+            require_wire_id(params["endpoint"])
+        return
+    if definition != "channelSuccessResponse":
+        raise ProtocolError("unknown channel definition")
+    require_exact_object(message, {"jsonrpc", "id", "result"})
+    value = message["result"]
+    if value is None:
+        return
+    if not isinstance(value, dict):
+        raise ProtocolError("invalid channel result")
+    sequence = None
+    if set(value) == {"send", "receive"}:
+        validate_channel_grant(value["send"])
+        validate_channel_grant(value["receive"])
+        if value["send"]["direction"] != "send" or value["receive"]["direction"] != "receive":
+            raise ProtocolError("invalid pair directions")
+    elif set(value) == {"item"}:
+        item = require_exact_object(value["item"], {"sequence", "value"})
+        sequence = item["sequence"]
+        if type(sequence) is not int or sequence < 1:
+            raise ProtocolError("invalid item sequence")
+    elif set(value) == {"end"}:
+        sequence = require_exact_object(value["end"], {"lastSequence"})["lastSequence"]
+    elif value.get("status") == "released":
+        require_exact_object(value, {"status"})
+    elif value.get("status") == "ended":
+        sequence = require_exact_object(value, {"status", "lastSequence"})["lastSequence"]
+    elif value.get("status") == "failed":
+        require_exact_object(value, {"status", "code"} | ({"details"} if "details" in value else set()))
+        validate_envelope({"jsonrpc": "2.0", "id": "check:1", "error": {
+            "code": -32000, "message": "delivery failed", "data": {"code": value["code"]},
+        }})
+    else:
+        raise ProtocolError("invalid channel result arm")
+    if sequence is not None and (type(sequence) is not int or not 0 <= sequence <= 9007199254740991):
+        raise ProtocolError("invalid channel sequence")
+
+
 def validate_message_definition(definition: str, value: Any) -> None:
     """Independent, stdlib-only projection of the shared Run/1 message schema."""
 
@@ -1210,7 +1316,7 @@ def validate_message_definition(definition: str, value: Any) -> None:
         params = message["params"]
         if not isinstance(params, dict):
             raise ProtocolError("flow/run-child params must be an object")
-        allowed = {"operationId", "slot", "intent", "input"}
+        allowed = {"operationId", "slot", "intent", "input", "channels"}
         required = {"operationId", "slot", "input"}
         if not required.issubset(params) or not set(params).issubset(allowed):
             raise ProtocolError("invalid flow/run-child members")
@@ -1222,6 +1328,7 @@ def validate_message_definition(definition: str, value: Any) -> None:
         ):
             raise ProtocolError("invalid flow/run-child intent")
         encode_json1(params["input"])
+        validate_channel_map(params.get("channels", {}), grants=False)
         return
     if definition == "capabilityCallRequest":
         require_exact_object(message, {"jsonrpc", "id", "method", "params"})
@@ -1229,11 +1336,16 @@ def validate_message_definition(definition: str, value: Any) -> None:
             raise ProtocolError("expected capability/call")
         params = require_exact_object(
             message["params"], {"operationId", "slot", "method", "input"}
+            | ({"channels"} if "channels" in message["params"] else set())
         )
         require_wire_id(params["operationId"])
         require_local_name(params["slot"])
         require_local_name(params["method"])
         encode_json1(params["input"])
+        validate_channel_map(params.get("channels", {}), grants=False)
+        return
+    if definition.startswith("channel"):
+        validate_channel_message(definition, message)
         return
     if definition == "requestCancelNotification":
         require_exact_object(message, {"jsonrpc", "method", "params"})
@@ -1265,8 +1377,10 @@ def validate_message_definition(definition: str, value: Any) -> None:
 def validate_flow_run_params(value: Any) -> None:
     params = require_exact_object(
         value,
-        {"protocol", "input", "settings", "attachments", "scratch", "deadlineUnixMs"},
+        {"protocol", "input", "settings", "attachments", "scratch", "deadlineUnixMs"}
+        | ({"channels"} if isinstance(value, dict) and "channels" in value else set()),
     )
+    validate_channel_map(params.get("channels", {}), grants=True)
     if params["protocol"] != "run/1" or not isinstance(params["settings"], dict):
         raise ProtocolError("invalid root protocol or settings")
     attachments = params["attachments"]

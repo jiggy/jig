@@ -54,3 +54,5 @@ authored examples, not independent consumer evidence or promoted Starters.
   proposal workshop with separate drafting and evidence-review methods.
 - [tested-patch/AGENTS.md](tested-patch/AGENTS.md) — A multi-file Bun project
   repair with contained commands and independently checked patch evidence.
+- [live-agent/AGENTS.md](live-agent/AGENTS.md) — One Agent call with application-owned
+  live progress filtering and an independently interpreted final result.

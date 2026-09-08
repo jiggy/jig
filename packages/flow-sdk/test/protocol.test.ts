@@ -2,6 +2,8 @@ import { describe, expect, test } from 'bun:test'
 
 import {
   parseEnvelope,
+  parseChannelGrant,
+  parseChannelGrants,
   parseRunResult,
   resultMessage,
   validateChildFlowRequest,
@@ -49,6 +51,77 @@ describe('JSON-RPC envelope validation', () => {
         params: ['working'],
       }).value.params,
     ).toEqual(['working'])
+  })
+})
+
+describe('channel grants', () => {
+  test('accepts immutable direct source metadata and exact named identity', () => {
+    const contract = {
+      id: 'https://example.test/events/public',
+      version: '1.0.0',
+      digest: `sha256:${'a'.repeat(64)}`,
+    }
+    expect(
+      parseChannelGrant({
+        endpoint: 'source:send',
+        direction: 'send',
+        delivery: 'direct',
+        contract,
+      }),
+    ).toEqual({
+      endpoint: 'source:send',
+      direction: 'send',
+      delivery: 'direct',
+      contract,
+    })
+  })
+
+  test('rejects wrong direction fields, duplicates, unsupported delivery and false start', () => {
+    for (const value of [
+      { endpoint: 'source:send', direction: 'send', delivery: 'direct', startSequence: 1 },
+      { endpoint: 'source:read', direction: 'receive', delivery: 'direct' },
+      { endpoint: 'source:read', direction: 'receive', delivery: 'direct', startSequence: 2 },
+      { endpoint: 'source:read', direction: 'receive', delivery: 'broadcast', startSequence: 1 },
+    ])
+      expect(() => parseChannelGrant(value as never)).toThrow()
+    const value = {
+      endpoint: 'source:read',
+      direction: 'receive',
+      delivery: 'direct',
+      startSequence: 1,
+    }
+    expect(() => parseChannelGrants({ one: value, two: value })).toThrow()
+  })
+
+  test('rejects noncanonical named identities instead of guessing compatibility', () => {
+    for (const id of [
+      'https://Example.test/a',
+      'https://example.test/a#b',
+      'https://example.test/../a',
+      'https://example.test/a//b',
+      'https://127.0.0.1/events',
+    ]) {
+      expect(() =>
+        parseChannelGrant({
+          endpoint: 's:1',
+          direction: 'send',
+          delivery: 'direct',
+          contract: { id, version: '1.0.0', digest: `sha256:${'a'.repeat(64)}` },
+        }),
+      ).toThrow()
+    }
+  })
+
+  test('does not invent a grant-only contract identity length limit', () => {
+    const id = `https://example.test/${'long-identity'.repeat(180)}`
+    expect(
+      parseChannelGrant({
+        endpoint: 's:1',
+        direction: 'send',
+        delivery: 'direct',
+        contract: { id, version: '1.0.0', digest: `sha256:${'a'.repeat(64)}` },
+      }).contract!.id,
+    ).toBe(id)
   })
 })
 

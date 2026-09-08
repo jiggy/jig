@@ -26,6 +26,7 @@ const guideSidebar = [
       { text: 'Choose an Agent', link: '/guide/agents' },
       { text: 'Flow dependencies', link: '/guide/dependencies' },
       { text: 'Working with files', link: '/guide/files' },
+      { text: 'Live progress', link: '/guide/channels' },
       { text: 'A proposal workshop', link: '/guide/proposal-workshop' },
       { text: 'An issue becomes a tested patch', link: '/guide/tested-patch' },
       {
@@ -69,6 +70,7 @@ export default defineConfig({
           text: 'Capability contracts',
           items: [
             { text: 'Agent Run', link: '/contracts/agent-run' },
+            { text: 'ACP public updates', link: '/contracts/acp-public-updates' },
             { text: 'Project Command', link: '/contracts/project-command' },
             { text: 'Run Checkpoint', link: '/contracts/run-checkpoint' },
           ],
@@ -84,6 +86,7 @@ export default defineConfig({
               link: '/spec/project-policy',
             },
             { text: 'Agent Run capability', link: '/spec/agent-run' },
+            { text: 'Channels and live output', link: '/spec/channels' },
             { text: 'Project Command capability', link: '/spec/project-command' },
             { text: 'Run Checkpoint capability', link: '/spec/run-checkpoint' },
           ],

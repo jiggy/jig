@@ -21,6 +21,10 @@ import {
 } from '../src/internal/private-agent-run.js'
 
 const schemaUri = 'https://flow.jig.md/schemas/schema-1.json'
+const acpPublicUpdates = await readFile(
+  new URL('../../../docs/jig/spec/contracts/acp-public-updates.json', import.meta.url),
+  'utf8',
+)
 const agentRunContract = await readFile(
   new URL('../../../docs/jig/spec/contracts/agent-run.capability.json', import.meta.url),
   'utf8',
@@ -290,6 +294,7 @@ uses:
     contract: ./contracts/agent-run.capability.json`),
           'flow.ts': 'export {};\n',
           'contracts/agent-run.capability.json': agentRunContract,
+          'contracts/acp-public-updates.json': acpPublicUpdates,
         },
       },
       async ([flow]) => {
@@ -329,6 +334,7 @@ uses:
     contract: ./contracts/agent-run.capability.json`),
           'flow.ts': 'export {};\n',
           'contracts/agent-run.capability.json': agentRunContract,
+          'contracts/acp-public-updates.json': acpPublicUpdates,
         },
       },
       async ([local, multiple]) => {
@@ -357,6 +363,7 @@ uses:
     contract: ./contracts/agent-run.capability.json`),
           'flow.ts': 'export {};\n',
           'contracts/agent-run.capability.json': agentRunContract,
+          'contracts/acp-public-updates.json': acpPublicUpdates,
           'settings.schema.json': schema({
             type: 'object',
             properties: { style: { type: 'string' } },

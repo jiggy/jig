@@ -62,6 +62,7 @@ actual=$(
     LC_ALL=C sort
 )
 expected='docs/flow/spec/machine/capability-contract-1.schema.json
+docs/flow/spec/machine/channel-contract-1.schema.json
 docs/flow/spec/machine/run-1-errors.json
 docs/flow/spec/machine/run-1.schema.json
 docs/flow/spec/machine/schema-1.json
@@ -79,6 +80,7 @@ case $site_name in
       exit 1
     fi
     schema_map='docs/flow/spec/machine/capability-contract-1.schema.json|capability-contract-1.schema.json|https://flow.jig.md/schemas/capability-contract-1.schema.json
+docs/flow/spec/machine/channel-contract-1.schema.json|channel-contract-1.schema.json|https://flow.jig.md/schemas/channel-contract-1.schema.json
 docs/flow/spec/machine/run-1-errors.json|run-1-errors.json|-
 docs/flow/spec/machine/run-1.schema.json|run-1.json|https://flow.jig.md/schemas/run-1.json
 docs/flow/spec/machine/schema-1.json|schema-1.json|https://flow.jig.md/schemas/schema-1.json'
@@ -99,6 +101,9 @@ docs/jig/spec/machine/project-authoring-1.schema.json|project-authoring-1.schema
       cp -- "$source" "$destination"
       cmp -- "$source" "$destination"
     done
+    test -s "$staging/contracts/acp-public-updates.html"
+    cp -- "$repository/docs/jig/spec/contracts/acp-public-updates.json" "$staging/contracts/acp-public-updates.json"
+    cmp -- "$repository/docs/jig/spec/contracts/acp-public-updates.json" "$staging/contracts/acp-public-updates.json"
     ;;
 esac
 

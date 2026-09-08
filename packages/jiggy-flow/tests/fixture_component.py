@@ -13,6 +13,85 @@ async def run(context: RunContext) -> RunResult:
     global logged
     mode = context.input.get("mode") if isinstance(context.input, dict) else None
 
+    if mode == "channels":
+        pair = await context.channel(contract="./contracts/public-updates.json")
+        work = asyncio.create_task(context.call_capability(
+            operation_id="agent:1", slot="agent", method="run", input={},
+            channels={"events": pair.send},
+        ))
+        complete = True
+        try:
+            async with pair.receive:
+                async for value in pair.receive:
+                    if isinstance(value, dict) and value.get("public"):
+                        print(value["text"], flush=True)
+        except OperationError as error:
+            if error.code != "LAGGED":
+                raise
+            complete = False
+        return {"outcome": "done", "output": {"complete": complete, "agent": await work}}
+
+    if mode in ("channel-cancel-read", "channel-cancel-close"):
+        pair = await context.channel()
+        read = asyncio.create_task(anext(pair.receive))
+        await asyncio.sleep(0.05)
+        read.cancel()
+        try:
+            await read
+        except asyncio.CancelledError:
+            pass
+        if mode == "channel-cancel-close":
+            closing = asyncio.create_task(pair.receive.aclose())
+            await asyncio.sleep(0.05)
+            closing.cancel()
+            try:
+                await closing
+            except asyncio.CancelledError:
+                pass
+        try:
+            await pair.receive.aclose()
+        except OperationError as error:
+            await pair.receive.aclose()
+            return {"outcome": "done", "output": error.code}
+        return {"outcome": "done", "output": "disposed"}
+
+    if mode == "channel-cancel-create":
+        creating = asyncio.create_task(context.channel())
+        await asyncio.sleep(0.05)
+        creating.cancel()
+        try:
+            await creating
+        except asyncio.CancelledError:
+            pass
+        return {"outcome": "done", "output": "cancelled"}
+
+    if mode in ("channel-unused", "channel-abandoned", "channel-bad-result"):
+        pair = await context.channel()
+        if mode == "channel-abandoned":
+            aiter(pair.receive)
+        if mode == "channel-bad-result":
+            await pair.send.send("before invalid result")
+            return {"outcome": "done", "output": float("nan")}
+        return {"outcome": "done", "output": "finished"}
+
+    if mode == "channel-inherited":
+        values = []
+        async for value in context.channels["input"]:
+            values.append(value)
+        return {"outcome": "done", "output": values}
+
+    if mode == "channel-unsupported":
+        try:
+            await context.channel(delivery="broadcast")  # type: ignore[arg-type]
+        except OperationError as error:
+            return {"outcome": "done", "output": error.code}
+
+    if mode == "channel-caught-child":
+        try:
+            await context.run_child_flow(operation_id="child:1", slot="child", input={})
+        except OperationError:
+            return {"outcome": "done", "output": "recovered"}
+
     if mode == "context":
         return {"outcome": "done", "output": {
             "settings": context.settings, "attachments": context.attachments,

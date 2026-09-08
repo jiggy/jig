@@ -12,12 +12,14 @@ The canonical descriptor is
 ```text
 id       https://jig.md/contracts/agent-run
 version  1.0.0
-digest   sha256:5a0f06495323419d275eeff92617d9287647ece137dacc9c5c6d50466d65c0f0
+digest   sha256:b43fba88de62ef189f54004318e9639df58661bb04b3bf76ecfac70e3a5d098b
 method   run
 ```
 
 An Agent-using Flow includes an exact package-local copy of those descriptor
-bytes and refers to it from `FLOW.md`:
+bytes and the referenced `contracts/acp-public-updates.json` descriptor. The
+latter defines the method's optional named output channel. Refer to Agent Run
+from `FLOW.md`:
 
 ```yaml
 ---
@@ -34,6 +36,12 @@ capability use per package, and it must be this exact descriptor. Jig resolves
 and admits its identity offline; the contract URI is not fetched at runtime.
 
 ## Calling the Agent
+
+The optional `events` send channel carries the exact
+[ACP public updates](../contracts/acp-public-updates.md) profile through supported
+native clients. It adds no session control and does not replace the final
+result. API clients remain one-shot; requested unsupported channels reject before
+dispatch. See [channels](channels.md) for ownership, buffering and installed output.
 
 The contract has one method, `run`. Its input is:
 

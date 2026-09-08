@@ -47,6 +47,8 @@ try {
     'package.json',
   ])
   assert.deepEqual((await readdir(join(installed, 'dist'))).sort(), [
+    'channels.d.ts',
+    'channels.js',
     'index.d.ts',
     'index.js',
     'json.d.ts',
@@ -109,7 +111,8 @@ if (
     join(consumer, 'root-flow.mjs'),
     `import { handle } from "@jigging/flow";
 await handle(async (run) => {
-  if (typeof run.runChildFlow !== "function" || typeof run.callCapability !== "function") {
+  if (typeof run.runChildFlow !== "function" || typeof run.callCapability !== "function" ||
+      typeof run.channel !== "function" || Object.keys(run.channels).length !== 0) {
     throw new Error("installed RunContext methods are unavailable");
   }
   console.log("packed handler log");
@@ -187,7 +190,7 @@ await handle(async (run) => {
 
   await writeFile(
     join(consumer, 'smoke.ts'),
-    `import { CapabilityError, OperationError, type ChildFlowRequest, type CapabilityCall, type JsonValue, type RunHandler, type RunResult } from "@jigging/flow";
+    `import { CapabilityError, OperationError, type CallOptions, type ChildFlowRequest, type CapabilityCall, type ChannelContractIdentity, type ChannelEndpoint, type ChannelOptions, type ChannelPair, type ChannelReceiver, type ChannelSender, type JsonValue, type RunContext, type RunHandler, type RunResult } from "@jigging/flow";
 const child: ChildFlowRequest = { operationId: "child:1", slot: "reviewer", input: null };
 const capability: CapabilityCall = {
     operationId: "smoke:1",
@@ -211,6 +214,32 @@ const nestedJson: JsonValue = { result: runResult };
 void directJson;
 void nestedJson;
 void new OperationError("UNAVAILABLE");
+void new OperationError("LAGGED");
+void new OperationError("DISCONNECTED");
+
+async function channelTypes(run: RunContext, options: CallOptions): Promise<RunResult> {
+  const source: ChannelOptions = { schema: { type: "string" }, delivery: "direct" };
+  const pair: ChannelPair = await run.channel(source, options);
+  const sender: ChannelSender = pair.send;
+  const receiver: ChannelReceiver = pair.receive;
+  const identity: ChannelContractIdentity | undefined = receiver.contract;
+  const endpoints: Readonly<Record<string, ChannelEndpoint>> = { events: sender };
+  const work = run.callCapability({ ...capability, channels: endpoints }, options);
+  for await (const value of receiver) console.log(value);
+  await receiver.close(options);
+  const result = await work;
+  const output = run.channels.output;
+  if (output?.direction === "send") {
+    await output.send(result, options);
+    await output.close(options);
+  }
+  const item: IteratorResult<JsonValue> = await receiver.next(options);
+  const childResult = await run.runChildFlow({ ...child, channels: {} }, options);
+  void identity;
+  void item;
+  return childResult;
+}
+void channelTypes;
 `,
   )
   await writeFile(

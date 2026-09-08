@@ -1,6 +1,7 @@
 import * as acp from '@agentclientprotocol/sdk'
 
 import type { ExactComponentProcess } from '../run/session.js'
+import type { JsonValue } from '../json.js'
 
 const ACP_PROTOCOL_BYTES = 32 * 1024 * 1024
 const ACP_UPDATE_COUNT = 4_096
@@ -11,6 +12,8 @@ const encoder = new TextEncoder()
 export interface PrivateAcpTurnRequest {
   readonly cwd: string
   readonly instructions: string
+  /** Trusted bounded enqueue only: never await subscriber pressure in the ACP reader. */
+  readonly onPublicUpdate?: (value: JsonValue) => void
   readonly signal?: AbortSignal
   readonly sessionMeta?: Readonly<Record<string, unknown>>
   readonly configuration?: readonly PrivateAcpSessionConfiguration[]
@@ -151,6 +154,25 @@ export async function runPrivateAcpTurn(
             throw new PrivateAcpProtocolError('the ACP agent exceeded its update limit')
           }
           const update = message.update
+          if (update.sessionUpdate === 'plan') {
+            request.onPublicUpdate?.({
+              sessionUpdate: 'plan',
+              entries: update.entries.map(({ content, priority, status }) => ({
+                content,
+                priority,
+                status,
+              })),
+            })
+          }
+          if (update.sessionUpdate === 'agent_message_chunk' && update.content.type === 'text') {
+            request.onPublicUpdate?.({
+              sessionUpdate: 'agent_message_chunk',
+              content: { type: 'text', text: update.content.text },
+              ...('messageId' in update && typeof update.messageId === 'string'
+                ? { messageId: update.messageId }
+                : {}),
+            })
+          }
           if (update.sessionUpdate !== 'agent_message_chunk' || update.content.type !== 'text')
             continue
           const bytes = encoder.encode(update.content.text).byteLength

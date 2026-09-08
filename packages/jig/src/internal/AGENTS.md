@@ -17,6 +17,10 @@ child calls, project commands, and Agent providers.
   containment, supervision, and execution.
 - Agent clients and launchers, capability enforcement, credential isolation,
   structured results, and package-local skill projection.
+- Direct channel integration resolves admitted package contracts and binds root
+  output or native Agent endpoints. ACP ingress is separately bounded and never
+  blocks its protocol reader; failed progress does not manufacture failed work.
+  The installed writer bounds live stdout/stderr and cancels on delivery loss.
 - Project commands use reviewed Binding policy, sealed candidate bytes,
   installed Bun, and a collector outside candidate execution. Command owner
   rows and independent supervision survive coordinator loss without replay.
@@ -69,6 +73,10 @@ child calls, project commands, and Agent providers.
   reservation until confirmed fencing and cleanup. Kernel envelope limits and
   the recipe-bound reservation policy must agree. Leaves admit one effect;
   there is no queue, borrowing, recursive budget, or public scheduler.
+- Channel operations have separate finite transport capacity, not worker slots.
+  Unsupported child or capability wiring rejects before dispatch. Observation
+  grants no session control; FLOW endpoint rights and source-owner lifetime
+  remain authoritative. Keep channel state command-local, not durable replay state.
 - Run Checkpoint uses one separate bounded control operation, not a worker
   reservation. Only the root's independent output owner accepts immutable
   aggregate bytes before acknowledgement. Bind exact Run, admitted method,

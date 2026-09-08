@@ -2,6 +2,12 @@ import { lstat, mkdir, realpath } from 'node:fs/promises'
 import { join } from 'node:path'
 
 import { CheckError } from '../diagnostics.js'
+import {
+  ChannelOperationError,
+  type ChannelParticipant,
+  type DirectChannelBroker,
+} from '../run/channels.js'
+import { ACP_PUBLIC_UPDATES, PrivateAgentUpdateChannel } from './agent-update-channel.js'
 import { canonicalJson, decodeJson1, type JsonObject, type JsonValue } from '../json.js'
 import { inspectCapturedPackage } from '../package/inspect.js'
 import type { RunTargetIdentity } from '../project/package-project.js'
@@ -152,12 +158,57 @@ interface PreparedCall {
 }
 
 /** Execute one exact admitted Agent Run effect in its own contained process. */
+type AgentCallInput = AgentInput & {
+  readonly call: RunHostEffectCall
+  readonly parentDeadlineUnixMs: number
+  readonly signal: AbortSignal
+  readonly channels?: { readonly caller: ChannelParticipant; readonly broker: DirectChannelBroker }
+}
+
 export async function executePrivateRootAgentRun(
-  input: AgentInput & {
-    readonly call: RunHostEffectCall
-    readonly parentDeadlineUnixMs: number
-    readonly signal: AbortSignal
-  },
+  input: AgentCallInput,
+): Promise<RunHostEffectOperationTerminal> {
+  let participant: ChannelParticipant | undefined
+  let updates: PrivateAgentUpdateChannel | undefined
+  try {
+    const terminal = await executeAgentRun(input, () => {
+      if (Object.keys(input.call.channels ?? {}).length === 0) return undefined
+      if (
+        input.channels === undefined ||
+        input.agentProvider.kind !== 'private-acp-agent-provider/1'
+      )
+        throw new ChannelOperationError(
+          'UNAVAILABLE',
+          'the selected Agent does not support public update channels',
+        )
+      participant = input.channels.broker.participant(`agent:${input.call.operationId}`)
+      const grants = input.channels.caller.transfer(participant, input.call.channels!, {
+        events: {
+          direction: 'send',
+          required: false,
+          delivery: 'direct',
+          contract: ACP_PUBLIC_UPDATES,
+        },
+      })
+      if (grants.events !== undefined)
+        updates = new PrivateAgentUpdateChannel(participant, grants.events.endpoint, input.signal)
+      return updates
+    })
+    participant?.finalize(terminal.status === 'succeeded')
+    return terminal
+  } catch (error) {
+    participant?.abort('DISCONNECTED')
+    if (error instanceof ChannelOperationError) return failed(error.code, error.message)
+    throw error
+  } finally {
+    updates?.abort()
+    await updates?.finish()
+  }
+}
+
+async function executeAgentRun(
+  input: AgentCallInput,
+  admitChannels: () => PrivateAgentUpdateChannel | undefined,
 ): Promise<RunHostEffectOperationTerminal> {
   const selected = selectAgentCapability(input, input.call)
   if (selected === undefined) {
@@ -239,6 +290,9 @@ export async function executePrivateRootAgentRun(
     return failed('RESOURCE_EXHAUSTED', 'the parent Run already has an active child operation')
   }
 
+  // Commit endpoint rights only after exact provider/input/capacity admission.
+  const updates = admitChannels()
+
   const ownerParent = await protectedOwnerRoot(input.projectRoot)
   const identity = agentIdentity(
     input.parent.run.runId,
@@ -311,7 +365,7 @@ export async function executePrivateRootAgentRun(
 
     attemptedDispatch = true
     const component = await sealed.admit(input.signal)
-    execution = await interactWithProvider(component, provider, prepared, input.signal)
+    execution = await interactWithProvider(component, provider, prepared, input.signal, updates)
     await releaseKnownAgent(input, lifecycle, execution.fence)
   } catch (error) {
     try {
@@ -693,9 +747,10 @@ async function interactWithProvider(
   provider: PrivateAgentProvider,
   prepared: PreparedCall,
   signal: AbortSignal,
+  updates?: PrivateAgentUpdateChannel,
 ): Promise<ProviderExecution> {
   if (provider.kind === 'private-acp-agent-provider/1') {
-    return await interactWithAcpProvider(component, provider, prepared, signal)
+    return await interactWithAcpProvider(component, provider, prepared, signal, updates)
   }
   return await interactWithOpenAIProvider(component, provider, prepared)
 }
@@ -752,6 +807,7 @@ async function interactWithAcpProvider(
   provider: Extract<PrivateAgentProvider, { readonly kind: 'private-acp-agent-provider/1' }>,
   prepared: PreparedCall,
   signal: AbortSignal,
+  updates?: PrivateAgentUpdateChannel,
 ): Promise<ProviderExecution> {
   const runtime = privateAcpAgentRuntime(provider)
   const stderr = discardBounded(component.stderr, PROVIDER_STDERR_BYTES)
@@ -763,6 +819,9 @@ async function interactWithAcpProvider(
       cwd: '/work',
       instructions: prepared.instructions,
       signal,
+      ...(updates === undefined
+        ? {}
+        : { onPublicUpdate: (value: JsonValue) => updates.offer(value) }),
       configuration: runtime.configuration,
       ...(runtime.modeId === undefined ? {} : { modeId: runtime.modeId }),
       ...(runtime.sessionMeta === undefined ? {} : { sessionMeta: runtime.sessionMeta }),
@@ -780,6 +839,7 @@ async function interactWithAcpProvider(
           }),
     })
     await component.closeInput()
+    await updates?.finish()
     const [fence] = await Promise.all([component.enforcement, stderr])
     if (turn.stopReason === 'cancelled') {
       return Object.freeze({ fence, cancelled: true })

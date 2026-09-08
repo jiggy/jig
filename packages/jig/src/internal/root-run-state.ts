@@ -28,6 +28,8 @@ const RUN_HOST_FAILURE_CODES = new Set([
   'EXECUTION_FAILED',
   'PROTOCOL_ERROR',
   'CHANNEL_LOST',
+  'LAGGED',
+  'DISCONNECTED',
 ])
 
 export interface PrivateRootRunRequest {

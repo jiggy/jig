@@ -1,0 +1,10 @@
+{
+  "$schema": "https://flow.jig.md/schemas/schema-1.json",
+  "type": "object",
+  "properties": {
+    "instructions": { "type": "string", "minLength": 1, "maxLength": 16384 },
+    "suppress": { "type": "boolean" }
+  },
+  "required": ["instructions"],
+  "additionalProperties": false
+}

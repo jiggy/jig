@@ -1,14 +1,15 @@
 import { createHash } from 'node:crypto'
 
 import {
-  JSON_1_LIMITS,
-  Json1Error,
   canonicalJson,
   decodeJson1,
-  validateJson1,
+  JSON_1_LIMITS,
+  Json1Error,
   type JsonObject,
   type JsonValue,
+  validateJson1,
 } from '../json.js'
+import { type ChannelGrant, ChannelOperationError, type ChannelParticipant } from './channels.js'
 
 const ROOT_ID = 'host:1'
 const MAX_PENDING_COMPONENT_REQUESTS = 64
@@ -32,6 +33,8 @@ const WIRE_FAILURE_CODES = new Set<WireFailureCode>([
   'INVALID_RESULT',
   'UNCERTAIN',
   'EXECUTION_FAILED',
+  'LAGGED',
+  'DISCONNECTED',
 ])
 
 export type WireFailureCode =
@@ -46,6 +49,8 @@ export type WireFailureCode =
   | 'INVALID_RESULT'
   | 'UNCERTAIN'
   | 'EXECUTION_FAILED'
+  | 'LAGGED'
+  | 'DISCONNECTED'
 
 export type RunHostFailureCode = WireFailureCode | 'PROTOCOL_ERROR' | 'CHANNEL_LOST'
 
@@ -66,6 +71,7 @@ export interface RunHostInvocation {
   readonly scratch: string
   readonly deadlineUnixMs: number
   readonly signal?: AbortSignal
+  readonly channels?: Readonly<Record<string, ChannelGrant>>
 }
 
 export interface RunHostFlowCall {
@@ -73,6 +79,7 @@ export interface RunHostFlowCall {
   readonly slot: string
   readonly intent?: string
   readonly input: JsonValue
+  readonly channels?: Readonly<Record<string, string>>
 }
 
 export interface RunHostEffectCall {
@@ -80,6 +87,7 @@ export interface RunHostEffectCall {
   readonly slot: string
   readonly method: string
   readonly input: JsonValue
+  readonly channels?: Readonly<Record<string, string>>
 }
 
 export type RunHostOperationFailure = {
@@ -109,6 +117,13 @@ export type RunHostEffectOperationTerminal =
 
 /** Private host seam. Portable components see only Run/1. */
 export interface RunHostOperationDispatcher {
+  readonly channels?: ChannelParticipant
+  /** Private nonblocking consumer of bounded Flow diagnostics, never provider-private output. */
+  onDiagnostic?(bytes: Uint8Array): void
+  /** Root owner may revoke its whole channel scope; child-local failure is not root cancellation. */
+  onCancellation?(code: 'CANCELLED' | 'DEADLINE_EXCEEDED'): void
+  /** Validate admitted package outcomes/schema before any implicit source seal. */
+  validateResult?(result: RunResult): void
   runChildFlow?(call: RunHostFlowCall, signal: AbortSignal): Promise<RunHostFlowOperationTerminal>
   callCapability?(
     call: RunHostEffectCall,
@@ -267,6 +282,7 @@ export class RunHostSession {
   private readonly componentIds = new Set<string>()
   private readonly operations = new Map<string, OperationRecord>()
   private readonly operationWaiters = new Map<string, OperationRecord>()
+  private readonly channelRequests = new Map<string, AbortController>()
   private readonly stderrChunks: Uint8Array[] = []
   private readonly ownedTasks = new Set<Promise<void>>()
   private writeTail: Promise<void> = Promise.resolve()
@@ -438,7 +454,9 @@ export class RunHostSession {
   private async readStderr(): Promise<void> {
     try {
       for await (const chunk of this.process.stderr) {
+        const liveRemaining = this.limits.stderrBytes - this.stderrLength
         this.stderrLength += chunk.byteLength
+        if (liveRemaining > 0) this.dispatcher?.onDiagnostic?.(chunk.slice(0, liveRemaining))
         const remaining = this.limits.capturedStderrBytes - this.stderrKept
         if (remaining > 0) {
           const kept = chunk.slice(0, remaining)
@@ -510,14 +528,49 @@ export class RunHostSession {
       this.failProtocol(`component reused request ID ${request.id}`)
       return
     }
+    const settlement = request.method === 'channel/close' || request.method === 'channel/release'
+    const channelReserve = this.dispatcher?.channels === undefined ? 0 : 32
     if (this.componentIds.size >= MAX_COMPONENT_REQUEST_IDS) {
       this.failProtocol('component exceeded the Run/1 request-ID lifetime limit')
+      return
+    }
+    if (!settlement && this.componentIds.size >= MAX_COMPONENT_REQUEST_IDS - channelReserve) {
+      this.componentIds.add(request.id)
+      this.queueResponse(
+        request.id,
+        operationError(
+          request.id,
+          'RESOURCE_EXHAUSTED',
+          'ordinary request capacity is reserved for channel settlement',
+        ),
+      )
       return
     }
     this.componentIds.add(request.id)
 
     if (this.responseOverflowed) return
-    if (this.pendingResponses + this.operationWaiters.size >= MAX_PENDING_COMPONENT_REQUESTS) {
+    const active = this.pendingResponses + this.operationWaiters.size + this.channelRequests.size
+    if (this.dispatcher?.channels !== undefined && active >= MAX_PENDING_COMPONENT_REQUESTS) {
+      this.recordResourceFailure('component exceeded the Run/1 simultaneous request limit')
+      this.startTermination()
+      return
+    }
+    if (
+      !settlement &&
+      this.dispatcher?.channels !== undefined &&
+      active >= MAX_PENDING_COMPONENT_REQUESTS - 1
+    ) {
+      this.queueResponse(
+        request.id,
+        operationError(
+          request.id,
+          'RESOURCE_EXHAUSTED',
+          'ordinary request capacity is reserved for channel settlement',
+        ),
+      )
+      return
+    }
+    if (active >= MAX_PENDING_COMPONENT_REQUESTS) {
       this.responseOverflowed = true
       this.recordResourceFailure('too many pending component response writes')
       this.queueResponse(
@@ -525,6 +578,19 @@ export class RunHostSession {
         operationError(request.id, 'RESOURCE_EXHAUSTED', 'too many pending component requests'),
       )
       this.graceTimer ??= setTimeout(() => this.startTermination(), this.limits.cancellationGraceMs)
+      return
+    }
+
+    if (
+      [
+        'channel/create',
+        'channel/send',
+        'channel/next',
+        'channel/close',
+        'channel/release',
+      ].includes(request.method)
+    ) {
+      this.receiveChannelRequest(request, settlement)
       return
     }
 
@@ -618,6 +684,13 @@ export class RunHostSession {
       const params = requireObject(notification.params, 'request/cancel params')
       requireExactKeys(params, ['requestId'])
       const requestId = requireWireId(params.requestId)
+      const channel = this.channelRequests.get(requestId)
+      if (channel !== undefined) {
+        // The broker decides cancellation versus acceptance/terminal state;
+        // never replace a committed channel response with a synthetic one.
+        channel.abort()
+        return
+      }
       const operation = this.operationWaiters.get(requestId)
       if (operation === undefined) return
       operation.waiters.delete(requestId)
@@ -639,7 +712,11 @@ export class RunHostSession {
       this.failProtocol(`unknown response ID ${response.id}`)
       return
     }
-    if (this.pendingResponses !== 0 || this.operationWaiters.size !== 0) {
+    if (
+      this.pendingResponses !== 0 ||
+      this.operationWaiters.size !== 0 ||
+      this.channelRequests.size !== 0
+    ) {
       this.failProtocol('component returned its root result before owned requests settled')
       return
     }
@@ -651,7 +728,23 @@ export class RunHostSession {
       return
     }
     this.rootOpen = false
-    this.rootResponse = { kind: 'success', result }
+    try {
+      this.dispatcher?.validateResult?.(result)
+      this.dispatcher?.channels?.finalize(
+        this.localTerminal === undefined &&
+          this.protocolFailure === undefined &&
+          this.channelFailure === undefined,
+      )
+      this.rootResponse = { kind: 'success', result }
+    } catch (error) {
+      this.dispatcher?.channels?.finalize(false)
+      this.rootResponse = {
+        kind: 'failure',
+        code: error instanceof ChannelOperationError ? error.code : 'INVALID_RESULT',
+        message:
+          error instanceof ChannelOperationError ? error.message : 'channel completion failed',
+      }
+    }
     this.closeProtocolInput()
   }
 
@@ -660,7 +753,11 @@ export class RunHostSession {
       this.failProtocol(`unknown response ID ${String(response.id)}`)
       return
     }
-    if (this.pendingResponses !== 0 || this.operationWaiters.size !== 0) {
+    if (
+      this.pendingResponses !== 0 ||
+      this.operationWaiters.size !== 0 ||
+      this.channelRequests.size !== 0
+    ) {
       this.failProtocol('component returned its root error before owned requests settled')
       return
     }
@@ -672,6 +769,7 @@ export class RunHostSession {
       return
     }
     this.rootOpen = false
+    this.dispatcher?.channels?.finalize(false)
     this.rootResponse = failure
     this.closeProtocolInput()
   }
@@ -699,6 +797,40 @@ export class RunHostSession {
         },
       ),
     )
+  }
+
+  private receiveChannelRequest(request: ParsedRequest, settlement: boolean): void {
+    const channels = this.dispatcher?.channels
+    if (channels === undefined) {
+      this.queueResponse(
+        request.id,
+        operationError(request.id, 'UNAVAILABLE', 'channel support is unavailable'),
+      )
+      return
+    }
+    if (!settlement && (!this.rootOpen || this.localTerminal !== undefined)) {
+      this.queueResponse(
+        request.id,
+        operationError(request.id, 'OWNER_CLOSED', 'root Run is not accepting channel work'),
+      )
+      return
+    }
+    const controller = new AbortController()
+    this.channelRequests.set(request.id, controller)
+    const task = channels
+      .request(request.method, request.params, controller.signal)
+      .then(
+        (result) => ({ jsonrpc: '2.0', id: request.id, result }) as JsonObject,
+        (error) =>
+          error instanceof ChannelOperationError
+            ? operationError(request.id, error.code, error.message, error.details)
+            : errorMessage(request.id, -32602, 'Invalid params'),
+      )
+      .then((response) => {
+        this.channelRequests.delete(request.id)
+        this.queueResponse(request.id, response)
+      })
+    this.own(task)
   }
 
   private attachOperationWaiter(id: string, operation: OperationRecord): void {
@@ -746,6 +878,8 @@ export class RunHostSession {
   }
 
   private abortOwnedOperations(): void {
+    for (const controller of this.channelRequests.values()) controller.abort()
+    this.dispatcher?.channels?.abort(this.localTerminal?.code ?? 'OWNER_CLOSED')
     for (const operation of this.operations.values()) {
       if (operation.terminal === undefined && !operation.controller.signal.aborted) {
         operation.controller.abort()
@@ -836,6 +970,7 @@ export class RunHostSession {
     }
     if (this.channelFailure === undefined) this.localTerminal ??= { code, message }
     this.rootOpen = false
+    this.dispatcher?.onCancellation?.(code)
     this.abortOwnedOperations()
     if (this.rootWritten && this.rootResponse === undefined) this.sendRootCancellation()
     if (!this.rootWritten) {
@@ -938,7 +1073,11 @@ export class RunHostSession {
       }
       return failure('CHANNEL_LOST', 'component exited before a root response')
     }
-    if (this.pendingResponses !== 0 || this.operationWaiters.size !== 0) {
+    if (
+      this.pendingResponses !== 0 ||
+      this.operationWaiters.size !== 0 ||
+      this.channelRequests.size !== 0
+    ) {
       return failure('EXECUTION_FAILED', 'component exited with pending owned protocol work')
     }
     if (this.rootResponse.kind === 'failure') {
@@ -1002,6 +1141,9 @@ function rootRequest(invocation: RunHostInvocation): JsonObject {
       input: invocation.input,
       settings: invocation.settings,
       attachments: invocation.attachments as unknown as JsonObject,
+      ...(invocation.channels === undefined
+        ? {}
+        : { channels: invocation.channels as unknown as JsonObject }),
       scratch: invocation.scratch,
       deadlineUnixMs: invocation.deadlineUnixMs,
     },
@@ -1163,6 +1305,7 @@ function parseOperation(request: ParsedRequest): ParsedOperation {
     const keys = Object.hasOwn(params, 'intent')
       ? ['operationId', 'slot', 'intent', 'input']
       : ['operationId', 'slot', 'input']
+    if (Object.hasOwn(params, 'channels')) keys.push('channels')
     requireExactKeys(params, keys)
     const operationId = requireWireId(params.operationId)
     const slot = requireLocalName(params.slot)
@@ -1181,6 +1324,9 @@ function parseOperation(request: ParsedRequest): ParsedOperation {
       slot,
       ...(intent === undefined ? {} : { intent }),
       input: params.input!,
+      ...(Object.hasOwn(params, 'channels')
+        ? { channels: parseChannelReferences(params.channels) }
+        : {}),
     })
     return {
       method: 'flow/run-child',
@@ -1189,7 +1335,12 @@ function parseOperation(request: ParsedRequest): ParsedOperation {
       call,
     }
   }
-  requireExactKeys(params, ['operationId', 'slot', 'method', 'input'])
+  requireExactKeys(
+    params,
+    Object.hasOwn(params, 'channels')
+      ? ['operationId', 'slot', 'method', 'input', 'channels']
+      : ['operationId', 'slot', 'method', 'input'],
+  )
   const operationId = requireWireId(params.operationId)
   const slot = requireLocalName(params.slot)
   const method = requireLocalName(params.method)
@@ -1197,8 +1348,29 @@ function parseOperation(request: ParsedRequest): ParsedOperation {
     method: 'capability/call',
     operationId,
     signature: operationSignature(request.method, params),
-    call: Object.freeze({ operationId, slot, method, input: params.input! }),
+    call: Object.freeze({
+      operationId,
+      slot,
+      method,
+      input: params.input!,
+      ...(Object.hasOwn(params, 'channels')
+        ? { channels: parseChannelReferences(params.channels) }
+        : {}),
+    }),
   }
+}
+
+function parseChannelReferences(value: JsonValue | undefined): Readonly<Record<string, string>> {
+  const object = requireObject(value, 'channel references')
+  if (Object.keys(object).length > 32) throw new TypeError('too many channel references')
+  const references: Record<string, string> = Object.create(null)
+  for (const [name, reference] of Object.entries(object)) {
+    requireLocalName(name)
+    if (typeof reference !== 'string' || reference.length < 1 || reference.length > 256)
+      throw new TypeError('invalid channel reference')
+    references[name] = reference
+  }
+  return Object.freeze(references)
 }
 
 function operationSignature(method: string, params: JsonObject): string {

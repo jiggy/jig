@@ -32,6 +32,8 @@ export type RootRunFailureCode =
   | 'EXECUTION_FAILED'
   | 'PROTOCOL_ERROR'
   | 'CHANNEL_LOST'
+  | 'LAGGED'
+  | 'DISCONNECTED'
 
 export interface RootRunDiagnostics {
   readonly stderr: string

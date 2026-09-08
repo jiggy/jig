@@ -36,6 +36,10 @@ import {
 } from '../src/project/package-resolution.js'
 import { retainFlowSourcePackages } from '../src/project/retained-flow.js'
 
+const acpPublicUpdates = await readFile(
+  new URL('../../../docs/jig/spec/contracts/acp-public-updates.json', import.meta.url),
+  'utf8',
+)
 const agentRunContract = await readFile(
   new URL('../../../docs/jig/spec/contracts/agent-run.capability.json', import.meta.url),
   'utf8',
@@ -219,6 +223,7 @@ describe('private package resolution', () => {
           ),
           'flow.ts': 'export {};\n',
           'contracts/agent-run.capability.json': agentRunContract,
+          'contracts/acp-public-updates.json': acpPublicUpdates,
           'settings.schema.json': JSON.stringify({
             $schema: 'https://flow.jig.md/schemas/schema-1.json',
             type: 'object',
@@ -280,6 +285,7 @@ uses:
     contract: ./contracts/agent-run.capability.json`),
           'flow.ts': 'export {};\n',
           'contracts/agent-run.capability.json': agentRunContract,
+          'contracts/acp-public-updates.json': acpPublicUpdates,
         },
       },
       [binding('bindings/router.ts', { package: 'flows/router' })],

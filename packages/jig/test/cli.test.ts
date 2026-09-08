@@ -405,7 +405,7 @@ describe('finite Jig project commands', () => {
     const invocation = commandInvocation(host, { createSubmissionId: () => 'private-submission' })
 
     expect(await main(['run', 'flow:./flows/work'], invocation.options)).toBe(0)
-    expect(acquisition).toEqual({ runTimeoutMs: 30_000 })
+    expect(acquisition).toMatchObject({ runTimeoutMs: 30_000, channelOutput: { receive: [] } })
     expect(request).toEqual({
       submissionId: 'private-submission',
       target: { kind: 'flow', path: 'flows/work' },
@@ -417,6 +417,151 @@ describe('finite Jig project commands', () => {
     expect(invocation.output).not.toContain(digest)
     expect(invocation.output).not.toContain('private-submission')
     expect(invocation.error).toBe('')
+  })
+
+  test.each(['closed', 'failed'] as const)(
+    'selected channels use distinct records and preserve the actual result after %s observation',
+    async (endStatus) => {
+      const events: string[] = []
+      const session = fakeSession(events)
+      const progress = [
+        { type: 'begin', channel: 'updates', startSequence: 1 },
+        {
+          type: 'data',
+          channel: 'updates',
+          sequence: 1,
+          value: { type: 'terminal', result: { status: 'succeeded' } },
+        },
+        endStatus === 'closed'
+          ? { type: 'end', channel: 'updates', status: 'closed', lastSequence: 1 }
+          : { type: 'end', channel: 'updates', status: 'failed', code: 'LAGGED' },
+      ]
+      const host: PrivateCliCommandHost = {
+        async acquire(_path, options) {
+          const output = options?.channelOutput
+          if (output === undefined) throw new Error('missing channel output')
+          expect(output.receive).toEqual(['updates'])
+          return {
+            ...session,
+            rootAdministration: {
+              ...session.rootAdministration,
+              async runStatus(request) {
+                for (const record of progress) await output.record(record)
+                return session.rootAdministration.runStatus(request)
+              },
+            },
+          }
+        },
+      }
+      const invocation = commandInvocation(host)
+      expect(await main(['run', 'binding:work', '--receive', 'updates'], invocation.options)).toBe(
+        0,
+      )
+      const records = invocation.output
+        .trimEnd()
+        .split('\n')
+        .map((line) => JSON.parse(line))
+      expect(records.slice(0, 3)).toEqual(progress)
+      expect(records[3]).toEqual({
+        type: 'terminal',
+        result: {
+          status: 'succeeded',
+          outcome: 'done',
+          output: null,
+          diagnostics: { stderr: '', stderrBytes: 0, stderrTruncated: false },
+        },
+      })
+      expect(records.filter((record) => record.type === 'terminal')).toHaveLength(1)
+      expect(events.at(-1)).toBe('close')
+      expect(invocation.error).toBe('')
+    },
+  )
+
+  test('live Flow diagnostics stay on stderr, escape controls, and retain fragmented UTF-8', async () => {
+    const invocation = commandInvocation({
+      async acquire(_path, options) {
+        const output = options?.channelOutput
+        if (output === undefined) throw new Error('missing diagnostic output')
+        const euro = new TextEncoder().encode('€')
+        output.diagnostic(euro.subarray(0, 1))
+        output.diagnostic(euro.subarray(1))
+        output.diagnostic(new Uint8Array([27, 91, 51, 49, 109, 13, 0, 9, 10]))
+        return fakeSession([])
+      },
+    })
+    expect(await main(['run', 'binding:work', '--receive', 'updates'], invocation.options)).toBe(0)
+    expect(invocation.error).toBe('€\\u001b[31m\\u000d\\u0000\t\n')
+    expect(JSON.parse(invocation.output)).toMatchObject({
+      type: 'terminal',
+      result: { status: 'succeeded' },
+    })
+    expect(invocation.output).not.toContain('€')
+    expect(invocation.output).not.toContain('[31m')
+  })
+
+  test.each(
+    [
+      ['--receive'],
+      ['--receive', 'updates', '--receive', 'updates'],
+      ['--receive', '../updates'],
+      ['--receive', 'Updates'],
+      ['--receive', 'x'.repeat(65)],
+      Array.from({ length: 17 }, (_, index) => ['--receive', `updates-${index}`]).flat(),
+    ].map((selection) => [selection]),
+  )('invalid channel selections fail before acquiring the project: %j', async (selection) => {
+    let acquired = false
+    const invocation = commandInvocation({
+      async acquire() {
+        acquired = true
+        return fakeSession([])
+      },
+    })
+    expect(await main(['run', 'binding:work', ...selection], invocation.options)).toBe(2)
+    expect(acquired).toBeFalse()
+    expect(invocation.output).toBe('')
+    expect(invocation.error).toContain('--receive')
+  })
+
+  test('a rejected live record closes owned work and never fabricates a terminal record', async () => {
+    const events: string[] = []
+    const accepted: unknown[] = []
+    const session = fakeSession(events)
+    const invocation = commandInvocation(
+      {
+        async acquire(_path, options) {
+          const output = options?.channelOutput
+          if (output === undefined) throw new Error('missing channel output')
+          return {
+            ...session,
+            rootAdministration: {
+              ...session.rootAdministration,
+              async runStatus(request) {
+                await output.record({ type: 'begin', channel: 'updates', startSequence: 1 })
+                await output.record({
+                  type: 'data',
+                  channel: 'updates',
+                  sequence: 1,
+                  value: 'work',
+                })
+                return session.rootAdministration.runStatus(request)
+              },
+            },
+          }
+        },
+      },
+      {
+        async writeRecord(text) {
+          const record = JSON.parse(text)
+          if (record.type === 'data') throw new Error('private writer failure')
+          accepted.push(record)
+        },
+      },
+    )
+    expect(await main(['run', 'binding:work', '--receive', 'updates'], invocation.options)).toBe(2)
+    expect(accepted).toEqual([{ type: 'begin', channel: 'updates', startSequence: 1 }])
+    expect(events).toEqual(['start', 'close'])
+    expect(invocation.output).toBe('')
+    expect(invocation.error).not.toContain('private writer failure')
   })
 
   test('run accepts timeout units and input in either option order', async () => {
@@ -454,7 +599,7 @@ describe('finite Jig project commands', () => {
       )
 
       expect(await main(['run', 'binding:review', ...options], invocation.options)).toBe(0)
-      expect(acquisition).toEqual({ runTimeoutMs: timeoutMs })
+      expect(acquisition).toMatchObject({ runTimeoutMs: timeoutMs, channelOutput: { receive: [] } })
       expect(request).toEqual({
         submissionId: 'timeout-submission',
         target: { kind: 'binding', id: 'review' },

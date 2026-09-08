@@ -1,4 +1,5 @@
 import { decodeJson, encodeJson, JsonViolation } from './json.js'
+import { Channels, type ChannelMethod, type RequestHooks, type Settlement } from './channels.js'
 import {
   cancelMessage,
   errorMessage,
@@ -23,6 +24,7 @@ import {
   type CallOptions,
   type CapabilityCall,
   type ChildFlowRequest,
+  type ChannelOptions,
   type JsonObject,
   type JsonValue,
   type OperationErrorCode,
@@ -52,9 +54,10 @@ interface Deferred<T> {
 }
 
 interface Outbound {
-  readonly method: 'flow/run-child' | 'capability/call'
+  readonly method: 'flow/run-child' | 'capability/call' | ChannelMethod
   readonly params: JsonObject
-  readonly kind: 'flow' | 'effect'
+  readonly kind: 'flow' | 'effect' | 'channel'
+  readonly hooks: RequestHooks
   readonly user: Deferred<JsonValue>
   readonly wire: Deferred<void>
   readonly signals: readonly AbortSignal[]
@@ -85,6 +88,9 @@ export class RunSession {
   private accepting = true
   private channel: 'open' | 'root-publishing' | 'fatal' | 'complete' | 'failed' = 'open'
   private writeTail: Promise<void> = Promise.resolve()
+  private readonly channels = new Channels((method, params, options, hooks) =>
+    this.call(method, 'channel', params, options, hooks),
+  )
 
   constructor(
     private readonly transport: Transport,
@@ -225,7 +231,7 @@ export class RunSession {
       return
     }
     const root = this.root
-    if (root === undefined || params.requestId !== root.id || root.phase !== 'open') return
+    if (root === undefined || params.requestId !== root.id || root.phase === 'terminal') return
     this.accepting = false
     root.controller.abort(new OperationError('CANCELLED', 'root Run was cancelled'))
     this.cancelAllOutbound(new OperationError('CANCELLED', 'root Run was cancelled'))
@@ -241,7 +247,7 @@ export class RunSession {
       if (pending.kind === 'flow') {
         const parsed = parseRunResult(result)
         this.settleOutbound(pending, { result: parsed })
-      } else {
+      } else if (pending.kind === 'effect') {
         const parsed = parseEffectResult(result)
         if (parsed.kind === 'value') {
           this.settleOutbound(pending, { result: parsed.value })
@@ -250,6 +256,8 @@ export class RunSession {
             error: new CapabilityError(parsed.name, parsed.data),
           })
         }
+      } else {
+        this.settleOutbound(pending, { result })
       }
     } catch (error) {
       this.failChannel('PROTOCOL_ERROR', errorMessageText(error))
@@ -318,8 +326,27 @@ export class RunSession {
     root.phase = 'completing'
     this.accepting = false
 
+    // Validate the result and capture abandonment before cleanup or an implicit
+    // source seal can make an unsuccessful handler appear clean.
+    if (failure === undefined) {
+      try {
+        result = parseRunResult(result as unknown as JsonValue)
+        encodeJson(result)
+      } catch (error) {
+        failure = 'INVALID_RESULT'
+        this.diagnose(error)
+      }
+    }
+    const abandoned = this.channels.abandoned()
+    if (abandoned !== undefined) {
+      failure ??= 'EXECUTION_FAILED'
+      failureMessage ??= `Run handler abandoned channel receiver ${abandoned}`
+    }
+
     if (this.outbound.size !== 0) {
-      const hasDetachedCall = [...this.outbound].some((pending) => !pending.userSettled)
+      const hasDetachedCall = [...this.outbound].some(
+        (pending) => !pending.userSettled && !pending.hooks.control,
+      )
       if (hasDetachedCall) failure ??= 'EXECUTION_FAILED'
       this.cancelAllOutbound(
         new OperationError('OWNER_CLOSED', 'Run handler returned with pending calls'),
@@ -328,16 +355,17 @@ export class RunSession {
     }
     if (this.channel !== 'open') return
 
-    if (failure === undefined) {
-      try {
-        result = parseRunResult(result as unknown as JsonValue)
-        // Validate the complete application value before selecting success.
-        encodeJson(result)
-      } catch (error) {
-        failure = 'INVALID_RESULT'
-        this.diagnose(error)
-      }
+    await this.channels.settle()
+    if (this.channel !== 'open') return
+    if (root.controller.signal.aborted) failure = 'CANCELLED'
+    try {
+      await this.channels.finish()
+    } catch (error) {
+      failure ??= 'EXECUTION_FAILED'
+      this.diagnose(error)
     }
+    if (this.channel !== 'open') return
+    if (root.controller.signal.aborted) failure = 'CANCELLED'
 
     try {
       if (failure === undefined && result !== undefined) {
@@ -365,6 +393,7 @@ export class RunSession {
       input: root.params.input,
       settings: root.params.settings,
       attachments: root.params.attachments,
+      channels: session.channels.incoming(root.params.channels),
       scratch: root.params.scratch,
       deadlineUnixMs: root.params.deadlineUnixMs,
       signal: root.controller.signal,
@@ -373,6 +402,8 @@ export class RunSession {
         try {
           params = validateChildFlowRequest(call)
           params = decodeJson(encodeJson(params)) as JsonObject
+          const channels = session.channels.mappings(call.channels)
+          if (channels !== undefined) params = { ...params, channels }
         } catch (error) {
           return Promise.reject(new TypeError(errorMessageText(error)))
         }
@@ -385,40 +416,63 @@ export class RunSession {
         try {
           params = validateCapabilityCall(call)
           params = decodeJson(encodeJson(params)) as JsonObject
+          const channels = session.channels.mappings(call.channels)
+          if (channels !== undefined) params = { ...params, channels }
         } catch (error) {
           return Promise.reject(new TypeError(errorMessageText(error)))
         }
         return session.call('capability/call', 'effect', params, options)
       },
+      channel(options?: ChannelOptions, callOptions?: CallOptions) {
+        return session.channels.create(options, callOptions)
+      },
     })
   }
 
   private call(
-    method: 'flow/run-child' | 'capability/call',
-    kind: 'flow' | 'effect',
+    method: 'flow/run-child' | 'capability/call' | ChannelMethod,
+    kind: 'flow' | 'effect' | 'channel',
     params: JsonObject,
     options?: CallOptions,
+    hooks: RequestHooks = {},
   ): Promise<JsonValue> {
     const root = this.root
-    if (!this.accepting || root === undefined || root.phase !== 'open') {
-      return Promise.reject(new OperationError('OWNER_CLOSED', 'Run is not accepting calls'))
+    const reject = (error: unknown): Promise<JsonValue> => {
+      hooks.settled?.({ error }, true, false)
+      return Promise.reject(error)
     }
-    const signals = options?.signal
-      ? [root.controller.signal, options.signal]
-      : [root.controller.signal]
+    if (
+      root === undefined ||
+      this.channel !== 'open' ||
+      (!hooks.control && (!this.accepting || root.phase !== 'open'))
+    ) {
+      return reject(new OperationError('OWNER_CLOSED', 'Run is not accepting calls'))
+    }
+    const signals = hooks.control
+      ? []
+      : options?.signal
+        ? [root.controller.signal, options.signal]
+        : [root.controller.signal]
     const alreadyAborted = signals.find((signal) => signal.aborted)
-    if (alreadyAborted !== undefined) return Promise.reject(cancellationError())
+    if (alreadyAborted !== undefined) return reject(cancellationError())
 
-    if (this.outbound.size >= MAX_OUTBOUND_REQUESTS) {
-      return Promise.reject(
+    const reserve = this.channels.size > 0 || method === 'channel/create' ? 1 : 0
+    if (!hooks.control && this.outbound.size >= MAX_OUTBOUND_REQUESTS - reserve) {
+      return reject(
         new OperationError(
           'RESOURCE_EXHAUSTED',
           `at most ${MAX_OUTBOUND_REQUESTS} outbound calls may be live`,
         ),
       )
     }
-    if (this.usedComponentIds.size >= MAX_REQUEST_IDS) {
-      return Promise.reject(
+    const pendingAllocations = [...this.outbound].filter(
+      (pending) => pending.method === 'channel/create',
+    ).length
+    const reservedIds = hooks.control
+      ? 0
+      : this.channels.size + pendingAllocations * 2 + (method === 'channel/create' ? 2 : 0)
+    if (this.usedComponentIds.size + this.queue.length >= MAX_REQUEST_IDS - reservedIds) {
+      return reject(
         new OperationError(
           'RESOURCE_EXHAUSTED',
           `at most ${MAX_REQUEST_IDS} requests may be emitted during one Run`,
@@ -430,6 +484,7 @@ export class RunSession {
       method,
       params,
       kind,
+      hooks,
       user: deferred<JsonValue>(),
       wire: deferred<void>(),
       signals,
@@ -448,13 +503,14 @@ export class RunSession {
       pending.abortListeners.push([signal, listener])
     }
     this.outbound.add(pending)
-    this.queue.push(pending)
+    if (hooks.control) this.queue.unshift(pending)
+    else this.queue.push(pending)
     this.drainQueue()
     return pending.user.promise
   }
 
   private drainQueue(): void {
-    if (!this.accepting || this.channel !== 'open') return
+    if (this.channel !== 'open') return
     while (this.sentCount < MAX_OUTBOUND_REQUESTS) {
       const pending = this.queue.shift()
       if (pending === undefined) return
@@ -478,7 +534,9 @@ export class RunSession {
   }
 
   private cancelAllOutbound(reason: OperationError): void {
-    for (const pending of [...this.outbound]) this.cancelOutbound(pending, reason)
+    for (const pending of [...this.outbound]) {
+      if (!pending.hooks.control) this.cancelOutbound(pending, reason)
+    }
   }
 
   private cancelOutbound(pending: Outbound, reason: unknown): void {
@@ -486,11 +544,13 @@ export class RunSession {
     if (!pending.userSettled) {
       pending.userSettled = true
       pending.user.reject(reason)
+      pending.hooks.cancelled?.()
     }
     if (pending.state === 'queued') {
       pending.state = 'settled'
       this.outbound.delete(pending)
       this.removeAbortListeners(pending)
+      pending.hooks.settled?.({ error: reason }, false, false)
       pending.wire.resolve()
       return
     }
@@ -502,11 +562,9 @@ export class RunSession {
     }
   }
 
-  private settleOutbound(
-    pending: Outbound,
-    settlement: { readonly result: JsonValue } | { readonly error: unknown },
-  ): void {
+  private settleOutbound(pending: Outbound, settlement: Settlement): void {
     if (pending.state !== 'sent' || pending.id === undefined) return
+    pending.hooks.settled?.(settlement, !pending.userSettled, true)
     pending.state = 'settled'
     this.pendingById.delete(pending.id)
     this.outbound.delete(pending)
@@ -627,6 +685,7 @@ export class RunSession {
       pending.state = 'settled'
       this.outbound.delete(pending)
       this.removeAbortListeners(pending)
+      pending.hooks.settled?.({ error: failure }, !pending.userSettled, true)
       if (!pending.userSettled) {
         pending.userSettled = true
         pending.user.reject(failure)

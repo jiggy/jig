@@ -3,7 +3,13 @@ import { describe, expect, spyOn, test } from 'bun:test'
 import { decodeJson, encodeJson } from '../src/json.ts'
 import { RunSession } from '../src/session.ts'
 import type { Transport } from '../src/transport.ts'
-import { CapabilityError, OperationError, type JsonObject, type JsonValue } from '../src/types.ts'
+import {
+  CapabilityError,
+  OperationError,
+  type ChannelReceiver,
+  type JsonObject,
+  type JsonValue,
+} from '../src/types.ts'
 
 class MemoryTransport implements Transport {
   readonly writes: Uint8Array[] = []
@@ -133,6 +139,371 @@ function rootRequest(id = 'host:1'): JsonObject {
     },
   }
 }
+
+function channelRoot(channels: JsonObject): JsonObject {
+  const request = rootRequest()
+  return { ...request, params: { ...(request.params as JsonObject), channels } }
+}
+
+function grant(endpoint: string, direction: 'send' | 'receive'): JsonObject {
+  return {
+    endpoint,
+    direction,
+    delivery: 'direct',
+    ...(direction === 'receive' ? { startSequence: 1 } : {}),
+  }
+}
+
+function respond(transport: MemoryTransport, index: number, result: JsonValue): void {
+  transport.push({ jsonrpc: '2.0', id: transport.message(index).id!, result })
+}
+
+function rejectOperation(transport: MemoryTransport, index: number, code: string): void {
+  transport.push({
+    jsonrpc: '2.0',
+    id: transport.message(index).id!,
+    error: { code: -32000, message: code, data: { code } },
+  })
+}
+
+describe('direct channels', () => {
+  test('a local read-capacity rejection leaves the receiver usable', async () => {
+    const transport = new MemoryTransport()
+    const completion = new RunSession(transport, async (run) => {
+      const calls = Array.from({ length: 63 }, (_, index) =>
+        run.callCapability({
+          operationId: `work:${index}`,
+          slot: 'agent',
+          method: 'run',
+          input: null,
+        }),
+      )
+      const receiver = run.channels.progress as ChannelReceiver
+      await expect(receiver.next()).rejects.toMatchObject({ code: 'RESOURCE_EXHAUSTED' })
+      await calls[0]
+      expect(await receiver.next()).toEqual({ done: true, value: undefined })
+      await Promise.all(calls)
+      return { outcome: 'done', output: null }
+    }).run()
+    transport.push(channelRoot({ progress: grant('r:1', 'receive') }))
+    await transport.waitForWrites(63)
+    respond(transport, 0, { value: null })
+    await transport.waitForWrites(64)
+    expect(transport.message(63).method).toBe('channel/next')
+    respond(transport, 63, { end: { lastSequence: 0 } })
+    for (let index = 1; index < 63; index += 1) respond(transport, index, { value: null })
+    await completion
+    expect(transport.message(64).result).toEqual({ outcome: 'done', output: null })
+  })
+
+  test('reserves disposal capacity while ordinary work saturates admission', async () => {
+    const transport = new MemoryTransport()
+    const completion = new RunSession(transport, async (run) => {
+      const calls = Array.from({ length: 63 }, (_, index) =>
+        run.callCapability({
+          operationId: `work:${index}`,
+          slot: 'agent',
+          method: 'run',
+          input: null,
+        }),
+      )
+      await expect(
+        run.callCapability({ operationId: 'overflow', slot: 'agent', method: 'run', input: null }),
+      ).rejects.toMatchObject({ code: 'RESOURCE_EXHAUSTED' })
+      await (run.channels.progress as ChannelReceiver).close()
+      await Promise.all(calls)
+      return { outcome: 'done', output: null }
+    }).run()
+    transport.push(channelRoot({ progress: grant('r:1', 'receive') }))
+    await transport.waitForWrites(64)
+    expect(transport.message(63).method).toBe('channel/release')
+    respond(transport, 63, { status: 'released' })
+    for (let index = 0; index < 63; index += 1) respond(transport, index, { value: null })
+    await completion
+    expect(transport.message(64).result).toEqual({ outcome: 'done', output: null })
+  })
+
+  test('breaking iteration releases observation without cancelling execution', async () => {
+    const transport = new MemoryTransport()
+    const completion = new RunSession(transport, async (run) => {
+      const work = run.callCapability({
+        operationId: 'work',
+        slot: 'agent',
+        method: 'run',
+        input: null,
+      })
+      for await (const _ of run.channels.progress as ChannelReceiver) break
+      return { outcome: 'done', output: await work }
+    }).run()
+    transport.push(channelRoot({ progress: grant('r:1', 'receive') }))
+    await transport.waitForWrites(2)
+    respond(transport, 1, { item: { sequence: 1, value: 'enough' } })
+    await transport.waitForWrites(3)
+    expect(transport.message(2).method).toBe('channel/release')
+    respond(transport, 2, { status: 'released' })
+    respond(transport, 0, { value: 'answer' })
+    await completion
+    expect(transport.message(3).result).toEqual({ outcome: 'done', output: 'answer' })
+  })
+
+  test('pre-cancelled read does not dispose or consume its receiver', async () => {
+    const transport = new MemoryTransport()
+    const abort = new AbortController()
+    abort.abort()
+    const completion = new RunSession(transport, async (run) => {
+      const receiver = run.channels.progress as ChannelReceiver
+      await expect(receiver.next({ signal: abort.signal })).rejects.toMatchObject({
+        code: 'CANCELLED',
+      })
+      expect(await receiver.next()).toEqual({ done: true, value: undefined })
+      return { outcome: 'done', output: null }
+    }).run()
+    transport.push(channelRoot({ progress: grant('r:1', 'receive') }))
+    await transport.waitForWrites(1)
+    expect(transport.message(0).method).toBe('channel/next')
+    respond(transport, 0, { end: { lastSequence: 0 } })
+    await completion
+    expect(transport.writes.length).toBe(2)
+  })
+
+  test('reads filtered updates while an ordinary capability result remains separate', async () => {
+    const transport = new MemoryTransport()
+    const completion = new RunSession(transport, async (run) => {
+      const pair = await run.channel()
+      const work = run.callCapability({
+        operationId: 'agent:1',
+        slot: 'agent',
+        method: 'run',
+        input: null,
+        channels: { events: pair.send },
+      })
+      const selected: JsonValue[] = []
+      for await (const value of pair.receive) if (value !== 'private') selected.push(value)
+      return { outcome: 'done', output: { selected, result: await work } }
+    }).run()
+    transport.push(rootRequest())
+    await transport.waitForWrites(1)
+    expect(transport.message(0).method).toBe('channel/create')
+    respond(transport, 0, {
+      send: grant('channel:send', 'send'),
+      receive: grant('channel:receive', 'receive'),
+    })
+    await transport.waitForWrites(3)
+    expect(transport.message(1).params).toMatchObject({ channels: { events: 'channel:send' } })
+    expect(transport.message(2).method).toBe('channel/next')
+    respond(transport, 2, { item: { sequence: 1, value: 'private' } })
+    await transport.waitForWrites(4)
+    respond(transport, 3, { item: { sequence: 2, value: 'public' } })
+    await transport.waitForWrites(5)
+    respond(transport, 4, { end: { lastSequence: 2 } })
+    await Promise.resolve()
+    expect(transport.writes.length).toBe(5)
+    respond(transport, 1, { value: { outcome: 'completed' } })
+    await completion
+    expect(transport.message(5).result).toEqual({
+      outcome: 'done',
+      output: { selected: ['public'], result: { outcome: 'completed' } },
+    })
+  })
+
+  test('caught observer failure does not replace a successful execution result', async () => {
+    const transport = new MemoryTransport()
+    const completion = new RunSession(transport, async (run) => {
+      const work = run.callCapability({
+        operationId: 'work',
+        slot: 'agent',
+        method: 'run',
+        input: null,
+      })
+      let incomplete = false
+      try {
+        for await (const _ of run.channels.progress as ChannelReceiver) {
+        }
+      } catch (error) {
+        if (!(error instanceof OperationError) || error.code !== 'LAGGED') throw error
+        incomplete = true
+      }
+      return { outcome: 'done', output: { incomplete, result: await work } }
+    }).run()
+    transport.push(channelRoot({ progress: grant('r:1', 'receive') }))
+    await transport.waitForWrites(2)
+    rejectOperation(transport, 1, 'LAGGED')
+    respond(transport, 0, { value: 'answer' })
+    await completion
+    expect(transport.message(2).result).toEqual({
+      outcome: 'done',
+      output: { incomplete: true, result: 'answer' },
+    })
+  })
+
+  test('close joins cancelled read settlement and exposes a late failure once', async () => {
+    const transport = new MemoryTransport()
+    const abort = new AbortController()
+    let closed = false
+    const completion = new RunSession(transport, async (run) => {
+      const receiver = run.channels.progress as ChannelReceiver
+      await expect(receiver.next({ signal: abort.signal })).rejects.toMatchObject({
+        code: 'CANCELLED',
+      })
+      await expect(receiver.close()).rejects.toMatchObject({ code: 'LAGGED' })
+      closed = true
+      await receiver.close()
+      return { outcome: 'done', output: 'incomplete' }
+    }).run()
+    transport.push(channelRoot({ progress: grant('r:1', 'receive') }))
+    await transport.waitForWrites(1)
+    abort.abort()
+    await transport.waitForWrites(3)
+    const release = [1, 2].find((index) => transport.message(index).method === 'channel/release')!
+    respond(transport, release, { status: 'failed', code: 'LAGGED' })
+    await Promise.resolve()
+    expect(closed).toBe(false)
+    rejectOperation(transport, 0, 'LAGGED')
+    await completion
+    expect(closed).toBe(true)
+    expect(transport.message(3).result).toEqual({ outcome: 'done', output: 'incomplete' })
+  })
+
+  test('a racing release cannot contradict an observed channel end', async () => {
+    for (const releaseFirst of [false, true]) {
+      const transport = new MemoryTransport()
+      const abort = new AbortController()
+      const completion = new RunSession(transport, async (run) => {
+        const receiver = run.channels.progress as ChannelReceiver
+        await expect(receiver.next({ signal: abort.signal })).rejects.toMatchObject({
+          code: 'CANCELLED',
+        })
+        try {
+          await receiver.close()
+        } catch {
+          // A contradictory transport response remains fatal even if caught.
+        }
+        return { outcome: 'done', output: null }
+      }).run()
+      transport.push(channelRoot({ progress: grant('r:1', 'receive') }))
+      await transport.waitForWrites(1)
+      abort.abort()
+      await transport.waitForWrites(3)
+      const release = [1, 2].find((index) => transport.message(index).method === 'channel/release')!
+      if (releaseFirst) {
+        respond(transport, release, { status: 'ended', lastSequence: 1 })
+        respond(transport, 0, { end: { lastSequence: 0 } })
+      } else {
+        respond(transport, 0, { end: { lastSequence: 0 } })
+        respond(transport, release, { status: 'ended', lastSequence: 1 })
+      }
+      const failure = await completion.then(
+        () => null,
+        (error) => error,
+      )
+      expect(failure).toMatchObject({ code: 'PROTOCOL_ERROR' })
+      expect(
+        transport.writes.some((_, index) => Object.hasOwn(transport.message(index), 'result')),
+      ).toBe(false)
+    }
+  })
+
+  test('aborting a close waiter preserves settlement and later failure exposure', async () => {
+    const transport = new MemoryTransport()
+    const abort = new AbortController()
+    const completion = new RunSession(transport, async (run) => {
+      const receiver = run.channels.progress as ChannelReceiver
+      await expect(receiver.close({ signal: abort.signal })).rejects.toMatchObject({
+        code: 'CANCELLED',
+      })
+      await expect(receiver.close()).rejects.toMatchObject({ code: 'DISCONNECTED' })
+      await receiver.close()
+      return { outcome: 'done', output: null }
+    }).run()
+    transport.push(channelRoot({ progress: grant('r:1', 'receive') }))
+    await transport.waitForWrites(1)
+    abort.abort()
+    respond(transport, 0, { status: 'failed', code: 'DISCONNECTED' })
+    await completion
+    expect(transport.writes.length).toBe(2)
+  })
+
+  test('cancelled allocation retains and disposes a late grant before terminal', async () => {
+    const transport = new MemoryTransport()
+    const abort = new AbortController()
+    const completion = new RunSession(transport, async (run) => {
+      await expect(run.channel({}, { signal: abort.signal })).rejects.toMatchObject({
+        code: 'CANCELLED',
+      })
+      return { outcome: 'done', output: null }
+    }).run()
+    transport.push(rootRequest())
+    await transport.waitForWrites(1)
+    abort.abort()
+    await transport.waitForWrites(2)
+    respond(transport, 0, { send: grant('s:1', 'send'), receive: grant('r:1', 'receive') })
+    await transport.waitForWrites(3)
+    expect(transport.message(2).method).toBe('channel/release')
+    respond(transport, 2, { status: 'released' })
+    await completion
+    expect(transport.message(3).result).toEqual({ outcome: 'done', output: null })
+  })
+
+  test('abandoning a connected receiver refuses success even after disposal', async () => {
+    const transport = new MemoryTransport()
+    const completion = new RunSession(transport, async () => ({
+      outcome: 'done',
+      output: null,
+    })).run()
+    transport.push(channelRoot({ progress: grant('r:1', 'receive'), output: grant('s:1', 'send') }))
+    await transport.waitForWrites(1)
+    expect(transport.message(0).method).toBe('channel/release')
+    respond(transport, 0, { status: 'released' })
+    await completion
+    expect(transport.message(1).error).toMatchObject({ data: { code: 'EXECUTION_FAILED' } })
+    expect(
+      transport.writes.some((_, index) => transport.message(index).method === 'channel/close'),
+    ).toBe(false)
+  })
+
+  test('handler failure never explicitly seals its inherited writer', async () => {
+    const transport = new MemoryTransport()
+    const completion = new RunSession(transport, async () => {
+      throw new OperationError('INVALID_INPUT', 'bad input')
+    }).run()
+    transport.push(channelRoot({ output: grant('s:1', 'send') }))
+    await completion
+    expect(transport.writes.length).toBe(1)
+    expect(transport.message(0).error).toMatchObject({ data: { code: 'INVALID_INPUT' } })
+  })
+
+  test('unused inherited endpoint can be forwarded without claiming local consumption', async () => {
+    const transport = new MemoryTransport()
+    const completion = new RunSession(transport, async (run) =>
+      run.runChildFlow({
+        operationId: 'monitor',
+        slot: 'monitor',
+        input: null,
+        channels: { events: run.channels.progress! },
+      }),
+    ).run()
+    transport.push(channelRoot({ progress: grant('r:1', 'receive') }))
+    await transport.waitForWrites(1)
+    expect(transport.message(0).params).toMatchObject({ channels: { events: 'r:1' } })
+    respond(transport, 0, { outcome: 'done', output: null })
+    await completion
+    expect(transport.writes.length).toBe(2)
+  })
+
+  test('rejects malformed channel sequence as current transport failure', async () => {
+    const transport = new MemoryTransport()
+    const completion = new RunSession(transport, async (run) => {
+      try {
+        await (run.channels.progress as ChannelReceiver).next()
+      } catch {}
+      return { outcome: 'done', output: null }
+    }).run()
+    transport.push(channelRoot({ progress: grant('r:1', 'receive') }))
+    await transport.waitForWrites(1)
+    respond(transport, 0, { item: { sequence: 2, value: 'gap' } })
+    await expect(completion).rejects.toMatchObject({ code: 'PROTOCOL_ERROR' })
+  })
+})
 
 describe('RunSession', () => {
   test('handles one ordinary root Run', async () => {

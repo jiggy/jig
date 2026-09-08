@@ -23,6 +23,7 @@ import {
   recoverPrivateCheckpointRun,
 } from './internal/project-session-controller.js'
 import { canonicalJson } from './json.js'
+import { PrivateCliOutput } from './internal/cli-output.js'
 
 interface InstalledCliOutcome {
   readonly exitCode: number | null
@@ -94,6 +95,9 @@ async function runPrivateInstalledCli(
                 ? {}
                 : { runTimeoutMs: options.runTimeoutMs }),
               ...(options?.files === undefined ? {} : { files: options.files }),
+              ...(options?.channelOutput === undefined
+                ? {}
+                : { channelOutput: options.channelOutput }),
               ...(options?.allowResolutionNetwork !== true
                 ? {}
                 : {
@@ -105,19 +109,30 @@ async function runPrivateInstalledCli(
             }),
           }),
       })
-      return exit(
-        await main(arguments_, {
-          host,
-          ...(signal === undefined && delivery === undefined
-            ? {}
-            : {
-                signal: AbortSignal.any([
-                  ...(signal === undefined ? [] : [signal]),
-                  ...(delivery === undefined ? [] : [delivery.signal]),
-                ]),
-              }),
-        }),
-      )
+      const outputStop = new AbortController()
+      const stdout = new PrivateCliOutput(process.stdout, outputStop)
+      const stderr = new PrivateCliOutput(process.stderr, outputStop)
+      try {
+        return exit(
+          await main(arguments_, {
+            host,
+            writeOutput: (text) => {
+              void stdout.write(text).catch(() => undefined)
+            },
+            writeRecord: (text) => stdout.write(text),
+            writeError: (text) => {
+              void stderr.write(text).catch(() => undefined)
+            },
+            signal: AbortSignal.any([
+              outputStop.signal,
+              ...(signal === undefined ? [] : [signal]),
+              ...(delivery === undefined ? [] : [delivery.signal]),
+            ]),
+          }),
+        )
+      } finally {
+        await Promise.all([stdout.flush(), stderr.flush()])
+      }
     } finally {
       delivery?.close()
     }

@@ -4,6 +4,11 @@ import {
   type ParsedCapabilityContract,
 } from '../capability/index.js'
 import {
+  CHANNEL_CONTRACT_BYTES,
+  parseChannelContract,
+  type ChannelDeclaration,
+} from '../channel-contract.js'
+import {
   compileSchemaFile,
   SCHEMA_1_LIMITS,
   SchemaDiagnostic,
@@ -80,6 +85,13 @@ export async function inspectCapturedPackage(captured: CapturedPackage): Promise
     )
   }
   rejectContractEquivocation(usedContracts)
+  const declarations = [
+    metadata.channels,
+    ...usedContracts.flatMap(({ contract }) =>
+      Object.values(contract.descriptor.methods).map((method) => method.channels),
+    ),
+  ]
+  await inspectChannelReferences(captured, declarations)
 
   return Object.freeze({
     digest: captured.digest,
@@ -91,6 +103,32 @@ export async function inspectCapturedPackage(captured: CapturedPackage): Promise
     fileCount: captured.files.length,
     contentBytes: captured.files.reduce((total, file) => total + file.size, 0),
   })
+}
+
+async function inspectChannelReferences(
+  captured: CapturedPackage,
+  declarations: readonly (Readonly<Record<string, ChannelDeclaration>> | undefined)[],
+): Promise<void> {
+  const paths = new Set(
+    declarations.flatMap((map) =>
+      Object.values(map ?? {}).flatMap((declaration) =>
+        declaration.contract === undefined ? [] : [declaration.contract.slice(2)],
+      ),
+    ),
+  )
+  const identities = new Map<string, string>()
+  for (const path of paths) {
+    const contract = parseChannelContract(await captured.read(path, CHANNEL_CONTRACT_BYTES), path)
+    const key = `${contract.descriptor.id}\0${contract.descriptor.version}`
+    const previous = identities.get(key)
+    if (previous !== undefined && previous !== contract.digest)
+      invalid(
+        'CHANNEL_EQUIVOCATION',
+        'package carries conflicting channel meanings for one identity',
+        path,
+      )
+    identities.set(key, contract.digest)
+  }
 }
 
 function rejectContractEquivocation(contracts: readonly CheckedContractReference[]): void {

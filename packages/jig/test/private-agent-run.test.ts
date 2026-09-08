@@ -1,6 +1,7 @@
 import { beforeAll, describe, expect, test } from 'bun:test'
 
 import { parseCapabilityContract, type ParsedCapabilityContract } from '../src/capability/index.js'
+import { parseChannelContract } from '../src/channel-contract.js'
 import {
   AGENT_RUN_CONTRACT_DIGEST,
   AGENT_RUN_CONTRACT_ID,
@@ -35,6 +36,45 @@ describe('private Agent Run contract', () => {
     expect(contract.digest).toBe(AGENT_RUN_CONTRACT_DIGEST)
     expect(Object.keys(contract.descriptor.methods)).toEqual(['run'])
     expect(() => assertAgentRunContract(contract)).not.toThrow()
+    expect(contract.descriptor.methods.run?.channels).toEqual({
+      events: {
+        direction: 'send',
+        required: false,
+        delivery: 'direct',
+        contract: './contracts/acp-public-updates.json',
+      },
+    })
+  })
+
+  test('authored Agent consumers retain the complete exact optional channel contract', async () => {
+    const profileBytes = await Bun.file(
+      new URL('../../../docs/jig/spec/contracts/acp-public-updates.json', import.meta.url),
+    ).bytes()
+    const profile = parseChannelContract(profileBytes)
+    expect(profile.descriptor.id).toBe('https://jig.md/contracts/acp-public-updates')
+    profile.itemSchema.validate({
+      sessionUpdate: 'agent_message_chunk',
+      content: { type: 'text', text: 'working' },
+    })
+    expect(() =>
+      profile.itemSchema.validate({
+        sessionUpdate: 'agent_thought_chunk',
+        content: { type: 'text', text: 'private' },
+      }),
+    ).toThrow()
+    for (const flow of [
+      'proposal-workshop/flows/drafter',
+      'proposal-workshop/flows/reviewer',
+      'tested-patch/flows/repair',
+      'live-agent/flows/chat',
+    ]) {
+      const base = new URL(`../../../examples/${flow}/contracts/`, import.meta.url)
+      const consumerContract = parseCapabilityContract(
+        await Bun.file(new URL('agent-run.capability.json', base)).bytes(),
+      )
+      expect(consumerContract.digest).toBe(contract.digest)
+      expect(await Bun.file(new URL('acp-public-updates.json', base)).bytes()).toEqual(profileBytes)
+    }
   })
 
   test('snapshots one valid input and treats omitted skills as none', () => {

@@ -63,6 +63,7 @@ import {
 } from './root-administration-controller.js'
 import { executePrivateRootRunLaunch } from './root-run-controller.js'
 import type { PrivateRootRunFiles } from './root-run-files.js'
+import type { PrivateRunChannelOutput } from './run-channels.js'
 
 const STORE_DIRECTORY = 'private-package-store'
 
@@ -73,6 +74,7 @@ export interface PrivateProjectSessionHost {
   readonly runTimeoutMs: number
   readonly agentProvider?: PrivateAgentProvider | undefined
   readonly files?: PrivateRootRunFiles
+  readonly channelOutput?: PrivateRunChannelOutput
   readonly allowResolutionNetwork?: boolean
   readonly onResolution?: (packagePath: string) => void
 }
@@ -154,6 +156,9 @@ export async function openPrivateProjectSession(input: {
           backend: input.host.backend,
           agentProvider: input.host.agentProvider,
           ...(input.host.files === undefined ? {} : { files: input.host.files }),
+          ...(input.host.channelOutput === undefined
+            ? {}
+            : { channelOutput: input.host.channelOutput }),
           signal,
         }),
       onProjectIdentityLoss: () => {

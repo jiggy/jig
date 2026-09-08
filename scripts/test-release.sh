@@ -36,25 +36,34 @@ just jig::build
 release_tmp=$(mktemp -d "${TMPDIR:-/tmp}/jig-release.XXXXXX")
 trap 'rm -rf -- "$release_tmp"' EXIT HUP INT TERM
 
-# Test the authored application against this SDK candidate, including before
+# Test authored applications against this SDK candidate, including before
 # its new immutable version is in the registry. Only the disposable copy's
 # development dependency changes; Flow source and repository manifests do not.
-mkdir -p "$release_tmp/artifacts" "$release_tmp/tested-patch"
+mkdir -p "$release_tmp/artifacts"
 bun pm pack --cwd packages/flow-sdk --ignore-scripts --destination "$release_tmp/artifacts"
 set -- "$release_tmp"/artifacts/*.tgz
 test "$#" -eq 1 && test -f "$1"
 sdk_archive=$1
-cp -R examples/tested-patch/flows examples/tested-patch/test \
-  examples/tested-patch/fixtures examples/tested-patch/issue.json \
-  examples/tested-patch/package.json "$release_tmp/tested-patch/"
-bun -e '
-  const path = Bun.argv[1];
-  const manifest = await Bun.file(path).json();
-  manifest.devDependencies["@jigging/flow"] = `file:${Bun.argv[2]}`;
-  await Bun.write(path, JSON.stringify(manifest));
-' "$release_tmp/tested-patch/package.json" "$sdk_archive"
-(cd "$release_tmp/tested-patch" && bun install --ignore-scripts)
-bun test packages/flow-sdk packages/jig conformance/run-1 examples/proposal-workshop/test "$release_tmp/tested-patch/test"
+set --
+for application in tested-patch live-agent; do
+  application_copy="$release_tmp/$application"
+  mkdir -p "$application_copy"
+  cp "examples/$application/package.json" "$application_copy/"
+  for member in flows test fixtures issue.json input.json batch.json; do
+    if [ -e "examples/$application/$member" ]; then
+      cp -R "examples/$application/$member" "$application_copy/"
+    fi
+  done
+  bun -e '
+    const path = Bun.argv[1];
+    const manifest = await Bun.file(path).json();
+    manifest.devDependencies["@jigging/flow"] = `file:${Bun.argv[2]}`;
+    await Bun.write(path, JSON.stringify(manifest));
+  ' "$application_copy/package.json" "$sdk_archive"
+  (cd "$application_copy" && bun --no-env-file install --ignore-scripts --config=/dev/null)
+  set -- "$@" "$application_copy/test"
+done
+bun test packages/flow-sdk packages/jig conformance/run-1 examples/proposal-workshop/test "$@"
 bun packages/flow-sdk/test/package-smoke.ts
 bun packages/jig/test/package-smoke.ts
 

@@ -10,6 +10,9 @@ admitted FLOW packages.
 - `src/index.ts` and `src/project/author.ts` own the public authoring surface.
 - The CLI, package/project capture, schemas, capability parsing, Run host, and
   administration objects are package-owned implementation.
+- `src/run/channels.ts` owns finite participant-scoped endpoint rights, atomic
+  transfer, bounded direct delivery and source lifetime. It is not an event bus
+  or execution scheduler; package validation precedes implicit writer sealing.
 - `test/` owns unit, integration, fault-injection, packed-package, and
   proof-host evidence.
 - `justfile`, `scripts/`, `support/`, the manifest, README, licenses, and notices own

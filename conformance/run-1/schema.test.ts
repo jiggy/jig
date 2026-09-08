@@ -4,11 +4,80 @@ import Ajv2020 from 'ajv/dist/2020.js'
 import cases from './fixtures/messages.json'
 import errorRegistry from '../../docs/flow/spec/machine/run-1-errors.json'
 import schema from '../../docs/flow/spec/machine/run-1.schema.json'
+import channelContractSchema from '../../docs/flow/spec/machine/channel-contract-1.schema.json'
+import capabilityContractSchema from '../../docs/flow/spec/machine/capability-contract-1.schema.json'
 
 const ajv = new Ajv2020({ allErrors: true, strict: true })
 ajv.addSchema(schema)
 
 describe('Run/1 message schemas', () => {
+  test('uses canonical named identity syntax on endpoint grants', () => {
+    const validate = definition('channelContractIdentity')
+    const identity = { version: '1.0.0', digest: `sha256:${'a'.repeat(64)}` }
+    for (const id of [
+      'https://example.org/channels/readings',
+      'https://123.456/channel',
+      `https://example.org/${'a'.repeat(2049)}`,
+    ])
+      expect(validate({ ...identity, id })).toBe(true)
+    for (const id of [
+      'https://127.0.0.1/channel',
+      'https://example.org/../channel',
+      'https://example.org/channel/',
+      'https://EXAMPLE.org/channel',
+      'https://example/channel',
+    ])
+      expect(validate({ ...identity, id })).toBe(false)
+  })
+  test('accepts named channel meaning and capability channel requirements', () => {
+    const descriptors = new Ajv2020({ allErrors: true, strict: true, allowUnionTypes: true })
+    const channel = descriptors.compile(channelContractSchema)
+    const value = {
+      $schema: channelContractSchema.$id,
+      id: 'https://example.org/channels/readings',
+      version: '1.0.0',
+      semantics: 'Each item reports one Celsius reading for the named sample.',
+      item: {
+        type: 'object',
+        properties: { sample: { type: 'string' }, celsius: { type: 'number' } },
+        required: ['sample', 'celsius'],
+        additionalProperties: false,
+      },
+    }
+    expect(channel(value), JSON.stringify(channel.errors)).toBe(true)
+    expect(channel({ ...value, transport: 'websocket' })).toBe(false)
+    expect(channel({ ...value, version: '01.0.0' })).toBe(false)
+    const capability = descriptors.compile(capabilityContractSchema)
+    const method = {
+      input: true,
+      output: true,
+      errors: {},
+      channels: {
+        readings: { direction: 'send', contract: './contracts/readings.json', required: false },
+      },
+    }
+    const contract = {
+      $schema: capabilityContractSchema.$id,
+      flowCapabilityContract: 1,
+      id: 'https://example.org/contracts/reader',
+      version: '1.0.0',
+      methods: { run: method },
+    }
+    expect(capability(contract), JSON.stringify(capability.errors)).toBe(true)
+    expect(
+      capability({
+        ...contract,
+        methods: {
+          run: {
+            ...method,
+            channels: {
+              readings: { direction: 'send', schema: true, contract: './contract.json' },
+            },
+          },
+        },
+      }),
+    ).toBe(false)
+  })
   test('keeps invocation context and child requests separate', () => {
     const invocation = cases.valid.find((fixture) => fixture.definition === 'flowRunRequest')!.value
     const child = cases.valid.find((fixture) => fixture.definition === 'childFlowRequest')!.value

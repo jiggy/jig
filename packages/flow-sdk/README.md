@@ -74,7 +74,55 @@ code `CANCELLED` and sends the matching Run/1 cancellation notification if
 the request reached the wire. A cancellation-only catch must rethrow every
 other error. Cancellation does not claim that remote work was undone.
 
-The SDK permits at most 64 live outbound requests; another call made while all
-64 are live fails locally with `OperationError` code `RESOURCE_EXHAUSTED`. It
-emits at most 65,536 outbound requests over the complete Run lifetime; a later
-call fails with the same code rather than emitting another frame.
+The SDK permits at most 64 live wire requests and 65,536 request frames over
+one Run. When channels are present, it reserves capacity inside those limits
+for endpoint disposal. Saturated ordinary admission fails with
+`OperationError` code `RESOURCE_EXHAUSTED`.
+
+## Direct channels
+
+Channels exchange bounded JSON values while ordinary calls execute. A direct
+pair has one sender and one receiver. The host checks declared channel
+requirements when an unused endpoint is passed through a call's `channels` map.
+Incoming endpoints are available by local name in `run.channels`.
+
+For a capability whose `run` method declares an `events` sender matching the
+package-local channel contract:
+
+```ts
+const events = await run.channel({ contract: "./contracts/updates.json" });
+const work = run.callCapability({
+  operationId: "worker", slot: "worker", method: "run", input: run.input,
+  channels: { events: events.send },
+});
+
+try {
+  for await (const value of events.receive) {
+    console.log(value); // Application-owned filtering and presentation.
+  }
+} catch (error) {
+  if (!(error instanceof OperationError) || error.code !== "LAGGED") throw error;
+  console.error("Progress delivery was incomplete.");
+}
+
+const result = await work; // Channel completion is not execution success.
+```
+
+`run.channel()` accepts generic JSON values; `schema` optionally constrains
+their shape, or `contract` selects exact named meaning. This SDK implements
+direct delivery. The sender's `send(value, options?)` acknowledges host
+acceptance, and `close(options?)` seals the source. Neither promises processing
+by the consumer. Closing with unaccepted sends rejects.
+
+A receiver supports one async iterator and one outstanding `next(options?)`.
+Breaking a TypeScript `for await` loop disposes it; explicit
+`await receiver.close(options?)` also stops observation without cancelling the
+producer. Cancelling a started read disposes its receiver and retains the late
+wire response. A later uncancelled `close()` waits for that settlement and
+exposes any terminal failure not previously exposed. Repeated close does not
+repeat the same terminal error.
+
+Ordinary `try/catch` remains sufficient for recoverable failures. An ignored,
+already-settled rejection is not a completion guarantee. Returning with live
+work or an unfinished connected receiver refuses success; root cancellation
+and loss of the current control transport cannot be recovered into success.

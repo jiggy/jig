@@ -10,6 +10,7 @@ import {
 } from 'yaml'
 
 import { invalid } from '../diagnostics.js'
+import { parseChannelDeclarations, type ChannelDeclaration } from '../channel-contract.js'
 import { Json1Error, validateJson1, type JsonObject, type JsonValue } from '../json.js'
 import { isNfc15_1 } from './paths.js'
 
@@ -30,6 +31,7 @@ export interface FlowMetadata {
   readonly uses?: Readonly<Record<string, CapabilityUse>>
   readonly outcomes?: Readonly<Record<string, string>>
   readonly attachments?: Readonly<Record<string, 'read' | 'read-write'>>
+  readonly channels?: Readonly<Record<string, ChannelDeclaration>>
   readonly extensions: JsonObject
 }
 
@@ -211,7 +213,7 @@ function convertScalar(node: Scalar): JsonValue {
 }
 
 function validateMetadata(root: JsonObject): FlowMetadata {
-  const known = new Set(['name', 'description', 'uses', 'outcomes', 'attachments'])
+  const known = new Set(['name', 'description', 'uses', 'outcomes', 'attachments', 'channels'])
   const extensions: Record<string, JsonValue> = Object.create(null) as Record<string, JsonValue>
   for (const [key, value] of Object.entries(root)) {
     if (known.has(key)) continue
@@ -238,6 +240,9 @@ function validateMetadata(root: JsonObject): FlowMetadata {
     ...(uses === undefined ? {} : { uses }),
     ...(outcomes === undefined ? {} : { outcomes }),
     ...(attachments === undefined ? {} : { attachments }),
+    ...(root.channels === undefined
+      ? {}
+      : { channels: parseChannelDeclarations(root.channels, 'FLOW.md') }),
     extensions,
   }
   deepFreezeJson(metadata as unknown as JsonValue)

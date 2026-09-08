@@ -23,10 +23,12 @@ CapabilityError
 JSON value types
 attachment types
 handler types
+ChannelSender / ChannelReceiver / ChannelEndpoint / ChannelPair
+ChannelContractIdentity
 ```
 
 The TypeScript projection additionally names `ChildFlowRequest`,
-`CapabilityCall`, and `CallOptions`; Python expresses the same values as keyword-only method
+`CapabilityCall`, `CallOptions`, and `ChannelOptions`; Python expresses the same values as keyword-only method
 arguments and uses ordinary task cancellation.
 
 `handle` receives this Flow's invocation. `runChildFlow` / `run_child_flow`
@@ -81,6 +83,7 @@ interface ChildFlowRequest {
   readonly slot: string;
   readonly intent?: string;
   readonly input: JsonValue;
+  readonly channels?: Readonly<Record<string, ChannelEndpoint>>;
 }
 
 interface CapabilityCall {
@@ -88,12 +91,14 @@ interface CapabilityCall {
   readonly slot: string;
   readonly method: string;
   readonly input: JsonValue;
+  readonly channels?: Readonly<Record<string, ChannelEndpoint>>;
 }
 
 interface RunContext {
   readonly input: JsonValue;
   readonly settings: Readonly<Record<string, JsonValue>>;
   readonly attachments: Readonly<Record<string, Attachment>>;
+  readonly channels: Readonly<Record<string, ChannelEndpoint>>;
   readonly scratch: string;
   readonly deadlineUnixMs: number;
   readonly signal: AbortSignal;
@@ -103,6 +108,9 @@ interface RunContext {
 
   callCapability(call: CapabilityCall, options?: { signal?: AbortSignal }):
     Promise<JsonValue>;
+
+  channel(options?: ChannelOptions, callOptions?: { signal?: AbortSignal }):
+    Promise<ChannelPair>;
 }
 
 type RunHandler = (context: RunContext) => Promise<RunResult>;
@@ -153,6 +161,9 @@ class RunContext(Protocol):
     def attachments(self) -> Mapping[str, Attachment]: ...
 
     @property
+    def channels(self) -> Mapping[str, ChannelEndpoint]: ...
+
+    @property
     def scratch(self) -> str: ...
 
     @property
@@ -165,6 +176,7 @@ class RunContext(Protocol):
         slot: str,
         input: JsonValue,
         intent: str | None = None,
+        channels: Mapping[str, ChannelEndpoint] | None = None,
     ) -> RunResult: ...
 
     async def call_capability(
@@ -174,7 +186,16 @@ class RunContext(Protocol):
         slot: str,
         method: str,
         input: JsonValue,
+        channels: Mapping[str, ChannelEndpoint] | None = None,
     ) -> JsonValue: ...
+
+    async def channel(
+        self,
+        *,
+        delivery: Literal["direct"] = "direct",
+        schema: JsonValue = ...,
+        contract: str | None = None,
+    ) -> ChannelPair: ...
 
 
 RunHandler = Callable[[RunContext], Awaitable[RunResult]]
@@ -223,7 +244,7 @@ OperationError(code, message?, details?)
 Authors inspect `code`, `message`, and `details`; they do not branch on the
 human message. In Python, omitted details are represented by `None`.
 
-The eleven Run/1 operational codes may cross the wire. `PROTOCOL_ERROR` and
+The thirteen Run/1 operational codes may cross the wire. `PROTOCOL_ERROR` and
 `CHANNEL_LOST` are local-only classifications and are never serialized as
 operational errors. An unhandled valid wire-visible `OperationError` from the
 root handler is preserved. An ordinary exception, a local-only code, or
@@ -241,6 +262,10 @@ component-originated requests are live on the wire. It emits at most 65,536
 requests during the channel lifetime; a later call fails locally with
 `OperationError` code `RESOURCE_EXHAUSTED` and emits no request.
 
+With channels, ordinary admission reserves at least one live slot and enough
+remaining lifetime request IDs for every allocated or pending-allocation
+endpoint's settlement. Settlement stays inside the same total wire ceilings.
+
 Handler return closes admission. The SDK does not detach calls: it requests
 cancellation for remaining owned work, waits for each wire request to settle,
 and refuses root success when the handler abandoned a live call. A cancelled
@@ -249,6 +274,21 @@ termination so a late response is not misclassified as an unknown ID. An
 explicitly cancelled and observed local wait is not abandonment: the handler
 may return a result, but the SDK sends that root result only after the cancelled
 wire request settles.
+
+Normal `try/catch`, `try/except`, `allSettled` and `gather` remain sufficient
+for settled recoverable failures. There is no acknowledgement operation or
+global settled-failure ledger. An ignored already-settled failure can escape
+detection; that does not waive live ownership, root cancellation, fatal
+transport loss, uncertain dispatch or failed cleanup. A conclusively cleaned
+child failure can remain recoverable in its healthy parent.
+
+Handler settlement and invalid result checks precede implicit writer sealing.
+An activated unfinished receiver is abandonment unless it reached terminal
+failure or explicit disposal. Previously explicitly sealed intervals are not
+retracted by later producer failure. The host alone knows actual transfer and
+source state and performs eligible implicit sealing; SDKs never infer moved
+rights from final call outcomes. Retained read/disposal settlements finish
+before submitting the invocation terminal.
 
 The deadline is exposed as context, not implemented as an SDK timer. The host
 is responsible for enforcing it and terminating an uncooperative process.
@@ -315,8 +355,9 @@ async def run(context: RunContext) -> RunResult:
 handle(run)
 ```
 
-When a host binds `research`, only the JSON/1 `input` crosses through this SDK
-operation and only the complete JSON/1 `RunResult` returns. Child context,
+When a host binds `research`, JSON/1 `input` and any explicitly mapped channel
+rights cross through this SDK operation; the complete JSON/1 `RunResult`
+returns separately. Child context,
 authorization, and resource policy belong to the host; the SDK creates no
 implicit inheritance.
 
@@ -332,3 +373,89 @@ A host may impose a lower child-concurrency limit and report
 The implementations live under `packages/flow-sdk/` and
 `packages/jiggy-flow/`. The shared executable seed is
 [`conformance/run-1/`](https://github.com/jiggy/jig/tree/main/conformance/run-1).
+
+## 9. Direct-channel projection
+
+TypeScript names the following interfaces; Python exposes corresponding
+protocols, with `start_sequence`, `aclose()`, `__anext__()` and async context
+management on receivers. Python channel options are keyword-only arguments.
+
+```ts
+interface ChannelContractIdentity {
+  readonly id: string;
+  readonly version: string;
+  readonly digest: string;
+}
+interface ChannelOptions {
+  readonly delivery?: 'direct';
+  readonly schema?: JsonValue;
+  readonly contract?: string;
+}
+interface ChannelSender {
+  readonly direction: 'send';
+  readonly delivery: 'direct';
+  readonly contract?: ChannelContractIdentity;
+  send(value: JsonValue, options?: CallOptions): Promise<void>;
+  close(options?: CallOptions): Promise<void>;
+}
+interface ChannelReceiver extends AsyncIterableIterator<JsonValue> {
+  readonly direction: 'receive';
+  readonly delivery: 'direct';
+  readonly contract?: ChannelContractIdentity;
+  readonly startSequence: number;
+  next(options?: CallOptions): Promise<IteratorResult<JsonValue>>;
+  close(options?: CallOptions): Promise<void>;
+}
+type ChannelEndpoint = ChannelSender | ChannelReceiver;
+interface ChannelPair {
+  readonly send: ChannelSender;
+  readonly receive: ChannelReceiver;
+}
+```
+
+Python absent contract identity is `None`. `schema` and `contract` are mutually
+exclusive, including explicit `schema: true`. Endpoint references remain
+private SDK/host machinery, never ordinary input data.
+
+There is one iterator and one pending read per receiver, without prefetch.
+TypeScript iterator `return()` disposes on early loop exit. Python early exit
+requires `async with receiver` or explicit `aclose()` in `finally`; a bare
+`async for` break is insufficient. Fully exhausting either iterator is enough.
+
+Cancelling an active read starts retained receiver disposal. An uncancelled
+close joins that disposal and every prior read/tombstone, exposing the first
+previously unexposed terminal cause. A cause received internally after its
+public read was cancelled has not yet been exposed. Repeated close suppresses
+that same cause only after a public operation raised/rejected with it. Cancelling
+a close waiter does not cancel settlement or lose its later cause. Ordinary
+language recovery applies; no acknowledgement or query operation is needed.
+
+Local failure to start a read is an operation failure, not proof that its
+endpoint ended. A fatal current-connection error remains fatal even when caught.
+Sender acceptance, receiver end and the separate execution result retain their
+different meanings under [Run/1](run-protocol.md#51-direct-channels).
+
+An application must start producer work before awaiting its first message.
+In Python, assigning a coroutine alone does not start it:
+
+```python
+updates = await run.channel(contract="./contracts/public-updates.json")
+work = asyncio.create_task(run.call_capability(
+    operation_id="answer", slot="agent", method="run", input=run.input,
+    channels={"events": updates.send},
+))
+try:
+    async with updates.receive:
+        async for value in updates.receive:
+            print(value, flush=True)
+except OperationError as error:
+    if error.code not in {"LAGGED", "DISCONNECTED"}:
+        await asyncio.gather(work, return_exceptions=True)
+        raise
+    print("Progress delivery was incomplete.", flush=True)
+answer = await work
+```
+
+This excerpt assumes an admitted Agent-like capability and matching package-local
+channel contract. Application code interprets/filter values and the actual final
+answer. Neither that capability's meaning nor a logging sink is part of FLOW.

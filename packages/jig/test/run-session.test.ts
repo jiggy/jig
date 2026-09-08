@@ -2,20 +2,258 @@ import { describe, expect, test } from 'bun:test'
 
 import { canonicalJson, decodeJson1, type JsonObject, type JsonValue } from '../src/json.js'
 import {
-  RunHostSession,
+  type ChannelGrant,
+  ChannelOperationError,
+  DirectChannelBroker,
+} from '../src/run/channels.js'
+import {
   type ExactComponentExit,
   type ExactComponentProcess,
   type RunHostEffectCall,
   type RunHostEffectOperationTerminal,
   type RunHostFlowCall,
+  type RunHostFlowOperationTerminal,
   type RunHostInvocation,
   type RunHostOperationDispatcher,
-  type RunHostFlowOperationTerminal,
+  RunHostSession,
 } from '../src/run/session.js'
 
 const encoder = new TextEncoder()
 
 describe('private RunHostSession', () => {
+  test('admitted package result validation happens before implicit writer sealing', async () => {
+    const process = new FakeProcess()
+    const broker = new DirectChannelBroker()
+    const command = broker.participant('command')
+    const root = broker.participant('root')
+    const pair = await command.create()
+    const grants = command.transfer(
+      root,
+      { output: pair.send.endpoint },
+      { output: { direction: 'send' } },
+    )
+    const running = new RunHostSession(
+      process,
+      { ...invocation(), channels: grants },
+      {},
+      {
+        channels: root,
+        validateResult: () => {
+          throw new ChannelOperationError(
+            'INVALID_RESULT',
+            'declared result schema rejected output',
+          )
+        },
+      },
+    ).run()
+    await process.nextHost()
+    process.emit(result('wrong type'))
+    process.finish(0)
+    expect(await running).toMatchObject({ status: 'failed', code: 'INVALID_RESULT' })
+    await expect(command.next(pair.receive.endpoint)).rejects.toMatchObject({
+      code: 'OWNER_CLOSED',
+    })
+  })
+
+  test('root cancellation revokes sealed command-owned outputs before receiver EOF commitment', async () => {
+    const process = new FakeProcess()
+    const broker = new DirectChannelBroker()
+    const command = broker.participant('command')
+    const root = broker.participant('root')
+    const pair = await command.create()
+    const grants = command.transfer(
+      root,
+      { output: pair.send.endpoint },
+      { output: { direction: 'send' } },
+    )
+    const controller = new AbortController()
+    const running = new RunHostSession(
+      process,
+      { ...invocation(), channels: grants, signal: controller.signal },
+      { cancellationGraceMs: 1 },
+      {
+        channels: root,
+        onCancellation: (code) => broker.abort(code),
+      },
+    ).run()
+    await process.nextHost()
+    root.close(pair.send.endpoint)
+    controller.abort()
+    await expect(command.next(pair.receive.endpoint)).rejects.toMatchObject({ code: 'CANCELLED' })
+    expect(await running).toMatchObject({ status: 'failed', code: 'CANCELLED' })
+  })
+
+  test('serves direct channel requests while an Agent operation remains active and joins without moving twice', async () => {
+    const process = new FakeProcess()
+    const broker = new DirectChannelBroker()
+    const root = broker.participant('root')
+    const provider = broker.participant('agent')
+    const finishAgent = deferred<void>()
+    let dispatches = 0
+    const running = new RunHostSession(
+      process,
+      invocation(),
+      {},
+      {
+        channels: root,
+        callCapability: async (call) => {
+          dispatches++
+          const grants = root.transfer(provider, call.channels!, { events: { direction: 'send' } })
+          await provider.send(grants.events!.endpoint, { text: 'live' })
+          await finishAgent.promise
+          provider.finalize(true)
+          return { status: 'succeeded', result: { value: 'actual result' } }
+        },
+      },
+    ).run()
+    await process.nextHost()
+    process.emit(request('component:create', 'channel/create', {}))
+    const created = ((await process.nextHost()) as JsonObject).result as unknown as {
+      send: ChannelGrant
+      receive: ChannelGrant
+    }
+    const call = {
+      operationId: 'agent:1',
+      slot: 'agent',
+      method: 'run',
+      input: {},
+      channels: { events: created.send.endpoint },
+    }
+    process.emit(request('component:agent', 'capability/call', call))
+    process.emit(request('component:join', 'capability/call', call))
+    process.emit(request('component:next', 'channel/next', { endpoint: created.receive.endpoint }))
+    expect(await process.nextHost()).toMatchObject({
+      id: 'component:next',
+      result: { item: { sequence: 1, value: { text: 'live' } } },
+    })
+    expect(dispatches).toBe(1)
+    finishAgent.resolve()
+    const terminals = [await process.nextHost(), await process.nextHost()]
+    expect(terminals).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: 'component:agent', result: { value: 'actual result' } }),
+        expect.objectContaining({ id: 'component:join', result: { value: 'actual result' } }),
+      ]),
+    )
+    process.emit(request('component:end', 'channel/next', { endpoint: created.receive.endpoint }))
+    expect(await process.nextHost()).toMatchObject({ result: { end: { lastSequence: 1 } } })
+    process.emit(result(null))
+    process.finish(0)
+    expect(await running).toMatchObject({ status: 'succeeded' })
+  })
+
+  test('receiver cancellation settles disposal without cancelling a simultaneous Agent call', async () => {
+    const process = new FakeProcess()
+    const broker = new DirectChannelBroker()
+    const root = broker.participant('root')
+    const pair = await root.create()
+    const finishAgent = deferred<void>()
+    let agentCancelled = false
+    const running = new RunHostSession(
+      process,
+      invocation(),
+      {},
+      {
+        channels: root,
+        callCapability: async (_call, signal) => {
+          signal.addEventListener('abort', () => {
+            agentCancelled = true
+          })
+          await finishAgent.promise
+          return { status: 'succeeded', result: { value: null } }
+        },
+      },
+    ).run()
+    await process.nextHost()
+    process.emit(
+      request('component:agent', 'capability/call', {
+        operationId: 'agent',
+        slot: 'agent',
+        method: 'run',
+        input: null,
+      }),
+    )
+    process.emit(request('component:read', 'channel/next', { endpoint: pair.receive.endpoint }))
+    process.emit({
+      jsonrpc: '2.0',
+      method: 'request/cancel',
+      params: { requestId: 'component:read' },
+    })
+    expect(await process.nextHost()).toMatchObject({
+      id: 'component:read',
+      error: { data: { code: 'CANCELLED' } },
+    })
+    process.emit(
+      request('component:release', 'channel/release', { endpoint: pair.receive.endpoint }),
+    )
+    expect(await process.nextHost()).toMatchObject({ result: { status: 'released' } })
+    expect(agentCancelled).toBe(false)
+    finishAgent.resolve()
+    await process.nextHost()
+    process.emit(result(null))
+    process.finish(0)
+    expect(await running).toMatchObject({ status: 'succeeded' })
+  })
+
+  test('host finalization rejects a retained active receiver before implicitly sealing an output', async () => {
+    const process = new FakeProcess()
+    const broker = new DirectChannelBroker()
+    const root = broker.participant('root')
+    const external = broker.participant('external')
+    const output = await root.create()
+    const abandoned = await root.create()
+    root.transfer(
+      external,
+      { output: output.receive.endpoint },
+      { output: { direction: 'receive' } },
+    )
+    await root.send(abandoned.send.endpoint, 'unread')
+    const running = new RunHostSession(
+      process,
+      { ...invocation(), channels: { output: output.send } },
+      {},
+      { channels: root },
+    ).run()
+    expect(await process.nextHost()).toMatchObject({
+      params: { channels: { output: output.send } },
+    })
+    process.emit(result(null))
+    process.finish(0)
+    expect(await running).toMatchObject({
+      status: 'failed',
+      code: 'EXECUTION_FAILED',
+      message: expect.stringContaining('unfinished channel receiver'),
+    })
+    await expect(external.next(output.receive.endpoint)).rejects.toMatchObject({
+      code: 'OWNER_CLOSED',
+    })
+  })
+
+  test('live Flow diagnostics retain their normal bounded capture and stay off protocol stdout', async () => {
+    const process = new FakeProcess()
+    const diagnostics: Uint8Array[] = []
+    const running = new RunHostSession(
+      process,
+      invocation(),
+      { capturedStderrBytes: 4 },
+      {
+        onDiagnostic: (bytes) => {
+          diagnostics.push(bytes)
+        },
+      },
+    ).run()
+    await process.nextHost()
+    process.diagnose(encoder.encode('visible progress'))
+    await tick()
+    expect(new TextDecoder().decode(diagnostics[0])).toBe('visible progress')
+    process.emit(result(null))
+    process.finish(0)
+    expect(await running).toMatchObject({
+      status: 'succeeded',
+      diagnostics: { stderr: 'visi', stderrTruncated: true },
+    })
+  })
+
   test('does not treat component-supplied flow/run as a child request or host authority', async () => {
     const process = new FakeProcess()
     let dispatched = false

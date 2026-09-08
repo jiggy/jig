@@ -2,6 +2,7 @@ import type {
   Attachment,
   CapabilityCall,
   ChildFlowRequest,
+  ChannelContractIdentity,
   JsonObject,
   JsonValue,
   OperationErrorCode,
@@ -21,6 +22,87 @@ export interface RunParams {
   readonly attachments: Readonly<Record<string, Attachment>>
   readonly scratch: string
   readonly deadlineUnixMs: number
+  readonly channels: Readonly<Record<string, ChannelGrant>>
+}
+
+export interface ChannelGrant {
+  readonly endpoint: string
+  readonly direction: 'send' | 'receive'
+  readonly delivery: 'direct'
+  readonly contract?: ChannelContractIdentity
+  readonly startSequence?: number
+}
+
+export function parseChannelGrant(value: JsonValue): ChannelGrant {
+  const grant = requireObject(value, 'channel grant')
+  const receiver = grant.direction === 'receive'
+  requireExactKeys(grant, [
+    'endpoint',
+    'direction',
+    'delivery',
+    ...(receiver ? ['startSequence'] : []),
+    ...(Object.hasOwn(grant, 'contract') ? ['contract'] : []),
+  ])
+  const endpoint = requireWireId(grant.endpoint as JsonValue)
+  if (grant.direction !== 'send' && !receiver) throw new Error('invalid channel direction')
+  if (grant.delivery !== 'direct') throw new Error('unsupported channel delivery')
+  if (receiver && grant.startSequence !== 1) throw new Error('direct channel must start at 1')
+  let contract: ChannelContractIdentity | undefined
+  if (Object.hasOwn(grant, 'contract')) {
+    const identity = requireObject(grant.contract as JsonValue, 'channel contract identity')
+    requireExactKeys(identity, ['id', 'version', 'digest'])
+    if (
+      typeof identity.id !== 'string' ||
+      !validContractId(identity.id) ||
+      typeof identity.version !== 'string' ||
+      !/^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/.test(identity.version) ||
+      typeof identity.digest !== 'string' ||
+      !/^sha256:[0-9a-f]{64}$/.test(identity.digest)
+    ) {
+      throw new Error('invalid channel contract identity')
+    }
+    contract = Object.freeze({
+      id: identity.id,
+      version: identity.version,
+      digest: identity.digest,
+    })
+  }
+  return {
+    endpoint,
+    direction: receiver ? 'receive' : 'send',
+    delivery: 'direct',
+    ...(receiver ? { startSequence: 1 } : {}),
+    ...(contract ? { contract } : {}),
+  }
+}
+
+export function parseChannelGrants(value: JsonValue): Readonly<Record<string, ChannelGrant>> {
+  const raw = requireObject(value, 'channel grants')
+  if (Object.keys(raw).length > 256) throw new Error('too many channel grants')
+  const result: Record<string, ChannelGrant> = Object.create(null)
+  const references = new Set<string>()
+  for (const [name, item] of Object.entries(raw)) {
+    requireLocalName(name)
+    const grant = parseChannelGrant(item)
+    if (references.has(grant.endpoint)) throw new Error('duplicate channel endpoint')
+    references.add(grant.endpoint)
+    result[name] = grant
+  }
+  return Object.freeze(result)
+}
+
+function validContractId(value: string): boolean {
+  const match = /^https:\/\/([^/]+)\/(.+)$/.exec(value)
+  if (!match) return false
+  const labels = match[1]!.split('.')
+  return (
+    labels.length >= 2 &&
+    labels.every((label) => /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(label)) &&
+    !labels.every((label) => /^\d+$/.test(label)) &&
+    match[2]!
+      .split('/')
+      .every((part) => /^[a-z0-9._~-]+$/.test(part) && part !== '.' && part !== '..')
+  )
 }
 
 export interface RequestMessage {
@@ -135,6 +217,7 @@ export function parseRunParams(value: JsonValue): RunParams {
     'attachments',
     'scratch',
     'deadlineUnixMs',
+    ...(Object.hasOwn(object, 'channels') ? ['channels'] : []),
   ])
   if (object.protocol !== 'run/1') throw new Error('unsupported Run protocol')
   const settings = requireObject(object.settings as JsonValue, 'settings')
@@ -170,6 +253,7 @@ export function parseRunParams(value: JsonValue): RunParams {
     attachments,
     scratch: object.scratch,
     deadlineUnixMs: object.deadlineUnixMs,
+    channels: parseChannelGrants(object.channels ?? {}),
   }
 }
 
@@ -342,14 +426,17 @@ function parseErrorPayload(value: JsonValue): ErrorPayload {
   }
 }
 
-function requireObject(value: JsonValue, description: string): Record<string, JsonValue> {
+export function requireObject(value: JsonValue, description: string): Record<string, JsonValue> {
   if (value === null || Array.isArray(value) || typeof value !== 'object') {
     throw new Error(`${description} must be an object`)
   }
   return value as Record<string, JsonValue>
 }
 
-function requireExactKeys(object: Record<string, JsonValue>, expected: readonly string[]): void {
+export function requireExactKeys(
+  object: Record<string, JsonValue>,
+  expected: readonly string[],
+): void {
   const keys = Object.keys(object).sort()
   const wanted = [...expected].sort()
   if (keys.length !== wanted.length || keys.some((key, index) => key !== wanted[index])) {

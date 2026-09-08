@@ -638,6 +638,25 @@ class RuntimeOrderingTests(unittest.TestCase):
     async def _handler(_: RunContext) -> dict[str, object]:
         return {"outcome": "done", "output": None}
 
+    def test_cancellation_recorded_before_publication_refuses_success(self) -> None:
+        async def exercise() -> None:
+            runtime = _Runtime(self._handler)
+            output = _CapturedBuffer()
+            runtime._termination_code = "CANCELLED"
+            with patch.object(sys, "stdout", _TestStdout(output)):
+                with self.assertRaises(OperationError) as raised:
+                    await runtime._write(
+                        {"jsonrpc": "2.0", "id": "host:1",
+                         "result": {"outcome": "done", "output": None}},
+                        publishes_root=True,
+                    )
+            self.assertEqual(raised.exception.code, "CANCELLED")
+            self.assertEqual(output.payloads, [])
+            self.assertEqual(runtime._terminal_phase, "open")
+            self.assertFalse(runtime._fatal)
+
+        asyncio.run(exercise())
+
     def test_root_publication_claim_beats_later_fatal_and_eof(self) -> None:
         async def exercise() -> None:
             runtime = _Runtime(self._handler)

@@ -37,6 +37,7 @@ export default defineConfig({
             { text: 'Package/1', link: '/spec/package-format' },
             { text: 'Run/1', link: '/spec/run-protocol' },
             { text: 'Run SDK/1', link: '/spec/run-sdk' },
+            { text: 'Channel Contract/1', link: '/spec/channel-contracts' },
             {
               text: 'Capability Contract/1',
               link: '/spec/capability-contracts',

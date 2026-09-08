@@ -2,8 +2,9 @@ import { lstat, mkdir, realpath } from 'node:fs/promises'
 import { join } from 'node:path'
 
 import { CheckError } from '../diagnostics.js'
+import { ChannelOperationError } from '../run/channels.js'
 import { type JsonValue } from '../json.js'
-import { inspectCapturedPackage } from '../package/inspect.js'
+import { inspectCapturedPackage, type InspectedPackage } from '../package/inspect.js'
 import {
   type RunHostEffectOperationTerminal,
   type RunHostFlowOperationTerminal,
@@ -76,6 +77,7 @@ import {
   recoverPrivateProjectCommandOwners,
 } from './root-project-command-controller.js'
 import type { PrivateRootRunFiles } from './root-run-files.js'
+import { PrivateRunChannels, type PrivateRunChannelOutput } from './run-channels.js'
 import { failedPrivateRootTerminal, normalizePrivateRootTerminal } from './root-run-state.js'
 
 const PLAN_KIND = 'private-direct-root-plan/1'
@@ -127,6 +129,7 @@ export async function executePrivateRootRunLaunch(input: {
   readonly backend: PrivateLinuxCgroupBackend
   readonly agentProvider?: PrivateAgentProvider | undefined
   readonly files?: PrivateRootRunFiles
+  readonly channelOutput?: PrivateRunChannelOutput
   readonly signal?: AbortSignal
 }): Promise<PrivateRootExecutionDisposition> {
   await input.coordinator.verify()
@@ -167,6 +170,10 @@ async function startOrResumeCurrentExecution(
   const stop = new FirstStop(input.signal, initial.intent.deadlineUnixMs)
   let work = initial
   let observedTerminal: RunHostTerminal | undefined
+  let channels: PrivateRunChannels | undefined
+  let channelPackage: Awaited<ReturnType<typeof captureStoredPackage>> | undefined
+  let stopChannels: (() => void) | undefined
+  let channelDeadline: ReturnType<typeof setTimeout> | undefined
   try {
     let recipe: PrivateDirectRunRecipe
     let plan: PrivateDirectRootPlanRecord
@@ -269,6 +276,16 @@ async function startOrResumeCurrentExecution(
       return await settleSealedWithoutAdmission(input, work, sealed.identity, stop.terminal)
     }
 
+    channelPackage = await captureStoredPackage(input.packageStoreRoot, recipe.request.package)
+    const channelInspected = await inspectCapturedPackage(channelPackage)
+    channels = await PrivateRunChannels.open(channelPackage, channelInspected, input.channelOutput)
+    stopChannels = () => channels!.broker.abort('CANCELLED')
+    input.signal?.addEventListener('abort', stopChannels, { once: true })
+    if (input.signal?.aborted) stopChannels()
+    channelDeadline = setTimeout(
+      () => channels!.broker.abort('DEADLINE_EXCEEDED'),
+      Math.max(0, plan.effectiveDeadlineUnixMs - Date.now()),
+    )
     let provisional: RunHostTerminal
     let fence: PrivateLinuxConfirmedEnforcementReceipt
     try {
@@ -285,13 +302,20 @@ async function startOrResumeCurrentExecution(
       stop.releaseStartupEnforcement()
       input.files?.retainOutput(component.outputDirectory)
       const parent = work
-      const dispatcher = operationDispatcher(input, parent, plan.effectiveDeadlineUnixMs)
+      const dispatcher = operationDispatcher(
+        input,
+        parent,
+        plan.effectiveDeadlineUnixMs,
+        channels,
+        channelInspected,
+      )
       provisional = await new RunHostSession(
         component,
         {
           input: work.run.input,
           settings: recipe.request.settings,
           attachments: fileProjection?.attachments ?? Object.freeze({}),
+          channels: channels.grants,
           scratch: recipe.scratch,
           deadlineUnixMs: plan.effectiveDeadlineUnixMs,
           ...(input.signal === undefined ? {} : { signal: input.signal }),
@@ -418,7 +442,17 @@ async function startOrResumeCurrentExecution(
     }
     return terminal(await settleWithoutPlan(input, work, stop.terminal ?? executionFailed(error)))
   } finally {
-    stop.dispose()
+    try {
+      await channels?.settle()
+    } finally {
+      try {
+        await channelPackage?.dispose()
+      } finally {
+        if (channelDeadline !== undefined) clearTimeout(channelDeadline)
+        if (stopChannels !== undefined) input.signal?.removeEventListener('abort', stopChannels)
+        stop.dispose()
+      }
+    }
   }
 }
 
@@ -1047,12 +1081,13 @@ function operationDispatcher(
   input: RootExecutionInput,
   parent: PrivateReacquiredRootExecutionWork,
   parentDeadlineUnixMs: number,
+  channels: PrivateRunChannels,
+  inspected: InspectedPackage,
 ): RunHostOperationDispatcher | undefined {
   const target = findPrivateActivationCandidateTargetV5(parent.candidate, parent.run.target)
   if (target === undefined) return undefined
   const hasFlows = Object.keys(target.request.flowSlots).length !== 0
   const hasEffects = Object.keys(target.request.capabilities).length !== 0
-  if (!hasFlows && !hasEffects) return undefined
   let activeFlows = 0
   let activeEffect = false
   let activeCheckpoint = false
@@ -1078,25 +1113,56 @@ function operationDispatcher(
     }
   }
   return Object.freeze({
+    channels: channels.root,
+    onCancellation: (code) => channels.broker.abort(code),
+    validateResult: (result) => {
+      const admitted = admitPrivatePackageResult(inspected, {
+        status: 'succeeded',
+        result,
+        diagnostics: { stderr: '', stderrBytes: 0, stderrTruncated: false },
+      })
+      if (admitted.status === 'failed')
+        throw new ChannelOperationError('INVALID_RESULT', admitted.message, admitted.details)
+    },
+    ...(input.channelOutput === undefined
+      ? {}
+      : { onDiagnostic: (bytes: Uint8Array) => input.channelOutput!.diagnostic(bytes) }),
     ...(hasFlows
       ? {
           runChildFlow: async (call, signal): Promise<RunHostFlowOperationTerminal> =>
-            enter(
-              'flow',
-              () =>
-                executePrivateRootFlowCall({
-                  ...operationInput(input, parent),
-                  call,
-                  parentDeadlineUnixMs,
-                  signal,
-                }),
-              operationBusy(),
-            ),
+            Object.keys(call.channels ?? {}).length !== 0
+              ? {
+                  status: 'failed',
+                  code: 'UNAVAILABLE',
+                  message: 'child channel transfer is not supported by this host',
+                }
+              : enter(
+                  'flow',
+                  () =>
+                    executePrivateRootFlowCall({
+                      ...operationInput(input, parent),
+                      call,
+                      parentDeadlineUnixMs,
+                      signal,
+                    }),
+                  operationBusy(),
+                ),
         }
       : {}),
     ...(hasEffects
       ? {
           callCapability: async (call, signal): Promise<RunHostEffectOperationTerminal> => {
+            if (
+              Object.keys(call.channels ?? {}).length !== 0 &&
+              [RUN_CHECKPOINT_CONTRACT_DIGEST, PROJECT_COMMAND_CONTRACT_DIGEST].includes(
+                target.request.capabilities[call.slot]?.digest ?? '',
+              )
+            )
+              return {
+                status: 'failed',
+                code: 'UNAVAILABLE',
+                message: 'this capability has no supported channels',
+              }
             if (target.request.capabilities[call.slot]?.digest === RUN_CHECKPOINT_CONTRACT_DIGEST) {
               if (activeCheckpoint) return operationBusy()
               if (call.method !== 'save')
@@ -1164,6 +1230,7 @@ function operationDispatcher(
                 executePrivateRootAgentRun({
                   ...operationInput(input, parent),
                   agentProvider: input.agentProvider!,
+                  channels: { caller: channels.root, broker: channels.broker },
                   call,
                   parentDeadlineUnixMs,
                   signal,
@@ -1194,6 +1261,8 @@ function terminal(run: PrivateRootRunSnapshot): PrivateRootExecutionDisposition 
 }
 
 function executionFailed(_error: unknown): RunHostTerminal {
+  if (_error instanceof ChannelOperationError)
+    return failedPrivateRootTerminal(_error.code, _error.message)
   return failedPrivateRootTerminal('EXECUTION_FAILED', 'root Run execution failed')
 }
 

@@ -41,7 +41,53 @@ protocol output. Handler cancellation uses ordinary `asyncio.CancelledError`.
 Cancelling a task awaiting `run_child_flow()` or `call_capability()` sends the matching
 Run/1 cancellation notification.
 
-The SDK emits at most 64 outbound requests simultaneously; additional calling
-tasks wait for wire admission. It emits at most 65,536 outbound requests over
-the complete Run lifetime; a later call fails locally with `OperationError`
-code `RESOURCE_EXHAUSTED` rather than emitting another frame.
+## Direct channels
+
+Channels exchange bounded JSON values while ordinary calls execute. On a host
+supporting the selected update contract, an application can filter Agent updates
+without confusing progress completion with the Agent's result:
+
+```python
+import asyncio
+from jiggy.flow import OperationError, RunContext, RunResult
+
+async def run(context: RunContext) -> RunResult:
+    updates = await context.channel(contract="./contracts/public-updates.json")
+    work = asyncio.create_task(context.call_capability(
+        operation_id="answer", slot="agent", method="run", input=context.input,
+        channels={"events": updates.send},
+    ))
+    try:
+        async with updates.receive:
+            async for value in updates.receive:
+                print(value, flush=True)  # Interpret and filter the selected contract here.
+    except OperationError as error:
+        if error.code not in {"LAGGED", "DISCONNECTED"}:
+            await asyncio.gather(work, return_exceptions=True)
+            raise
+        print("Progress delivery was incomplete.", flush=True)
+    return {"outcome": "done", "output": await work}
+```
+
+The package-local contract describes message meaning; the host must support that exact contract before
+dispatch. `asyncio.create_task` starts the Agent coroutine before reading updates.
+The application must still interpret the returned Agent outcome.
+
+`context.channels` contains declared, host-granted endpoints. An unused endpoint
+can be passed through `channels=` on an ordinary child or capability call.
+`await sender.send(value)` acknowledges host acceptance, not processing;
+`await sender.close()` seals the writer. Receivers provide one async iterator,
+`start_sequence`, and `aclose()`. Use `async with` or `finally: await receiver.aclose()`
+when iteration may stop early. Disposal settles prior reads and exposes a racing
+failure once; cancelling observation does not cancel the work.
+
+Normal `try/except` remains sufficient for recoverable errors. Returning with
+unfinished owned work or an active unfinished receiver refuses success. Host
+ownership and cleanup—not channel EOF—determine execution completion.
+
+This SDK implements direct JSON channels, not broadcast, binary transport,
+WebSockets or continuing Agent control. The wire ceilings remain 64 simultaneous
+requests and 65,536 request frames over the Run lifetime. Ordinary admission
+reserves one concurrent slot and endpoint-bounded request IDs for settlement;
+exhausted ordinary capacity waits or fails with `RESOURCE_EXHAUSTED` before
+consuming those reserves.

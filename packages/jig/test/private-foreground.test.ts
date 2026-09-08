@@ -1,20 +1,19 @@
 import { describe, expect, test } from 'bun:test'
+import { cp, lstat, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
-import { lstat, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-
-import { openPrivateProjectSession } from '../src/internal/project-session-controller.js'
+import { join } from 'node:path'
+import type { RootAdministration, StartRootRunReceipt } from '../src/administration/root.js'
 import { openPrivateInstalledBunHost } from '../src/internal/installed-bun-host.js'
 import {
   PrivateLinuxCgroupBackend,
-  PrivateLinuxFenceUnconfirmedError,
   type PrivateLinuxCgroupBackendOptions,
   type PrivateLinuxConfirmedEnforcementReceipt,
+  PrivateLinuxFenceUnconfirmedError,
   type PrivateLinuxSealedOwner,
   type PrivateLinuxSealedOwnerIdentity,
 } from '../src/internal/linux-rootless-backend.js'
-import type { RootAdministration, StartRootRunReceipt } from '../src/administration/root.js'
+import { openPrivateProjectSession } from '../src/internal/project-session-controller.js'
 import { installedBunLocation } from './fixtures/installed-bun-location.js'
 
 const HOSTILE = process.env.JIG_LINUX_ROOTLESS_HOSTILE === '1'
@@ -38,6 +37,122 @@ describe('private foreground command boundary', () => {
 })
 
 proofDescribe('private rootless project session', () => {
+  test('installed direct channels stream, recover optional observation, and clean root cancellation', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'jig-private-channel-cli-'))
+    try {
+      await writeChannelProject(root)
+      const reviewed = await invokeChannelCli(root, ['review', '--yes'])
+      expect(reviewed.code, reviewed.stderr + reviewed.stdout).toBe(0)
+
+      let consoleWasLive = false
+      const consoleRun = await invokeChannelCli(root, ['run', 'flow:flows/worker'], {
+        diagnostic(text, running) {
+          if (text.includes('live:console')) consoleWasLive = running
+        },
+      })
+      expect(consoleRun.code, consoleRun.stderr + consoleRun.stdout).toBe(0)
+      expect(consoleWasLive).toBeTrue()
+      expect(consoleRun.stderr).toBe('live:console\n')
+      expect(JSON.parse(consoleRun.stdout)).toMatchObject({
+        status: 'succeeded',
+        output: { mode: 'console' },
+      })
+
+      for (const mode of ['stream', 'recover']) {
+        let dataWasLive = false
+        const result = await invokeChannelCli(
+          root,
+          [
+            'run',
+            'flow:flows/worker',
+            '--input',
+            JSON.stringify({ mode }),
+            '--receive',
+            'progress',
+          ],
+          {
+            record(value, running) {
+              if (value.type === 'data') dataWasLive = running
+            },
+          },
+        )
+        expect(result.code, result.stderr + result.stdout).toBe(0)
+        expect(dataWasLive).toBeTrue()
+        expect(result.stderr).toBe(`live:${mode}\n`)
+        const records = result.stdout
+          .trimEnd()
+          .split('\n')
+          .map((line) => JSON.parse(line))
+        expect(records.map((record) => record.type)).toEqual(['begin', 'data', 'end', 'terminal'])
+        expect(records[0]).toEqual({ type: 'begin', channel: 'progress', startSequence: 1 })
+        expect(records[1]).toMatchObject({ type: 'data', channel: 'progress', sequence: 1 })
+        expect(records[2]).toEqual({
+          type: 'end',
+          channel: 'progress',
+          status: 'closed',
+          lastSequence: 1,
+        })
+        expect(records[3]).toMatchObject({
+          type: 'terminal',
+          result: { status: 'succeeded', output: { mode } },
+        })
+        if (mode === 'recover') {
+          expect(records[3].result.output.recovered).toBe('CANCELLED')
+          expect(records[3].result.output.sendAfterDisposal).toBe('DISCONNECTED')
+        }
+        await expectNoChildResidue(root)
+      }
+
+      const rejected = await invokeChannelCli(root, [
+        'run',
+        'flow:flows/worker',
+        '--receive',
+        'missing',
+      ])
+      expect(rejected.code, rejected.stderr + rejected.stdout).toBe(1)
+      const rejectedRecords = rejected.stdout
+        .trimEnd()
+        .split('\n')
+        .map((line) => JSON.parse(line))
+      expect(rejectedRecords).toHaveLength(1)
+      expect(rejectedRecords[0]).toMatchObject({
+        type: 'terminal',
+        result: { status: 'failed', code: 'UNAVAILABLE' },
+      })
+      expect(rejected.stderr).toBe('')
+
+      let cancelledOnData = false
+      const interrupted = await invokeChannelCli(
+        root,
+        ['run', 'flow:flows/worker', '--input', '{"mode":"cancel"}', '--receive', 'progress'],
+        {
+          record(value, running, cancel) {
+            if (value.type === 'data' && running) {
+              cancelledOnData = true
+              cancel()
+            }
+          },
+        },
+      )
+      expect(cancelledOnData).toBeTrue()
+      expect(interrupted.code).not.toBe(0)
+      // Interruption need not deliver a terminal, but it cannot manufacture success.
+      const terminals = interrupted.stdout
+        .trimEnd()
+        .split('\n')
+        .filter(Boolean)
+        .map((line) => JSON.parse(line))
+        .filter((record) => record.type === 'terminal')
+      expect(terminals.every((record) => record.result.status !== 'succeeded')).toBeTrue()
+      await expectNoChildResidue(root)
+      expect(await directoryEntries(join(root, '.jig/private-root-linux-owners'))).toEqual([])
+      await waitForRootlessCgroups(initialRootlessCgroups)
+      await waitForRootlessTemporaryState(initialRootlessTemporaryState)
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  }, 180_000)
+
   test('keeps unavailable Agent configuration out of capability-free review and Run', async () => {
     const root = await mkdtemp(join(tmpdir(), 'jig-private-agent-isolation-'))
     let session: Awaited<ReturnType<typeof openPrivateProjectSession>> | undefined
@@ -709,6 +824,7 @@ async function writeProject(root: string): Promise<void> {
   await mkdir(sdk)
   for (const name of [
     'index.ts',
+    'channels.ts',
     'json.ts',
     'protocol.ts',
     'session.ts',
@@ -890,6 +1006,12 @@ async function writeAgentRouterProject(root: string): Promise<void> {
     ),
   )
   await mkdir(join(router, 'skills', 'ticket-routing'), { recursive: true })
+  await writeFile(
+    join(router, 'contracts', 'acp-public-updates.json'),
+    await readFile(
+      new URL('../../../docs/jig/spec/contracts/acp-public-updates.json', import.meta.url),
+    ),
+  )
   await writeFile(
     join(router, 'skills', 'ticket-routing', 'SKILL.md'),
     "# Ticket routing\n\nCopy the ticket's explicit `route` field exactly.\n",
@@ -1162,6 +1284,7 @@ async function copyFlowSdk(directory: string): Promise<void> {
   await mkdir(target)
   for (const name of [
     'index.ts',
+    'channels.ts',
     'json.ts',
     'protocol.ts',
     'session.ts',
@@ -1172,6 +1295,121 @@ async function copyFlowSdk(directory: string): Promise<void> {
       join(target, name),
       await readFile(join(import.meta.dir, '..', '..', 'flow-sdk', 'src', name)),
     )
+  }
+}
+
+async function writeChannelProject(root: string): Promise<void> {
+  const flow = join(root, 'flows/worker')
+  await mkdir(flow, { recursive: true })
+  await cp(join(import.meta.dir, '../../flow-sdk/dist'), join(flow, 'sdk'), { recursive: true })
+  await writeFile(
+    join(root, 'jig.ts'),
+    [
+      'import { defineJig, discover } from "@jigging/jig";',
+      'export default defineJig({ flows: discover("flows") });',
+    ].join('\n'),
+  )
+  await writeFile(
+    join(flow, 'FLOW.md'),
+    [
+      '---',
+      'name: channel-worker',
+      'description: Publish direct progress and retain the separate execution result.',
+      'channels:',
+      '  progress:',
+      '    direction: send',
+      '    required: false',
+      '    schema:',
+      '      type: string',
+      '---',
+      '',
+    ].join('\n'),
+  )
+  await writeFile(
+    join(flow, 'flow.ts'),
+    `
+    import { handle } from './sdk/index.js';
+    await handle(async run => {
+      const mode = run.input.mode ?? 'console';
+      console.log('live:' + mode);
+      let recovered = null, sendAfterDisposal = null;
+      if (mode === 'recover') {
+        const pair = await run.channel({schema:{type:'string'}});
+        const stop = new AbortController();
+        const reading = pair.receive.next({signal:stop.signal}).catch(error => error.code);
+        await Bun.sleep(50);
+        stop.abort();
+        recovered = await reading;
+        await pair.receive.close();
+        try { await pair.send.send('late'); } catch (error) { sendAfterDisposal = error.code; }
+      }
+      if (run.channels.progress) await run.channels.progress.send('working:' + mode);
+      if (mode === 'cancel') await Bun.sleep(60_000);
+      if (run.channels.progress) await run.channels.progress.close();
+      await Bun.sleep(300);
+      return {outcome:'done',output:{mode,recovered,sendAfterDisposal}};
+    });
+  `,
+  )
+}
+
+async function invokeChannelCli(
+  root: string,
+  args: readonly string[],
+  observe: {
+    record?(value: { readonly type?: string }, running: boolean, cancel: () => void): void
+    diagnostic?(text: string, running: boolean): void
+  } = {},
+): Promise<{ code: number; stdout: string; stderr: string }> {
+  const child = Bun.spawn([join(import.meta.dir, '../bin/jig'), ...args], {
+    cwd: root,
+    stdout: 'pipe',
+    stderr: 'pipe',
+  })
+  const cancel = () => child.kill('SIGINT')
+  const timeout = setTimeout(cancel, 45_000)
+  let buffered = ''
+  const stdout = consume(child.stdout, (text) => {
+    if (!observe.record) return
+    buffered += text
+    for (;;) {
+      const newline = buffered.indexOf('\n')
+      if (newline === -1) return
+      const line = buffered.slice(0, newline)
+      buffered = buffered.slice(newline + 1)
+      observe.record(JSON.parse(line), child.exitCode === null, cancel)
+    }
+  })
+  const stderr = consume(child.stderr, (text) =>
+    observe.diagnostic?.(text, child.exitCode === null),
+  )
+  try {
+    const [code, out, error] = await Promise.all([child.exited, stdout, stderr])
+    return { code, stdout: out, stderr: error }
+  } finally {
+    clearTimeout(timeout)
+    if (child.exitCode === null) cancel()
+    await child.exited
+    await Promise.allSettled([stdout, stderr])
+  }
+
+  async function consume(stream: ReadableStream<Uint8Array>, chunk: (text: string) => void) {
+    const reader = stream.getReader()
+    const decoder = new TextDecoder()
+    let text = ''
+    try {
+      for (;;) {
+        const result = await reader.read()
+        if (result.done) return text + decoder.decode()
+        const next = decoder.decode(result.value, { stream: true })
+        text += next
+        if (text.length > 4 * 1024 * 1024)
+          throw new Error('channel CLI fixture output exceeded its bound')
+        chunk(next)
+      }
+    } finally {
+      reader.releaseLock()
+    }
   }
 }
 

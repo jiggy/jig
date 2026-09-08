@@ -21,6 +21,7 @@ export interface ChildFlowRequest {
   readonly slot: string
   readonly intent?: string
   readonly input: JsonValue
+  readonly channels?: Readonly<Record<string, ChannelEndpoint>>
 }
 
 export interface CapabilityCall {
@@ -28,22 +29,61 @@ export interface CapabilityCall {
   readonly slot: string
   readonly method: string
   readonly input: JsonValue
+  readonly channels?: Readonly<Record<string, ChannelEndpoint>>
 }
 
 export interface CallOptions {
   readonly signal?: AbortSignal
 }
 
+export interface ChannelContractIdentity {
+  readonly id: string
+  readonly version: string
+  readonly digest: string
+}
+
+export interface ChannelOptions {
+  readonly delivery?: 'direct'
+  readonly schema?: JsonValue
+  readonly contract?: string
+}
+
+export interface ChannelSender {
+  readonly direction: 'send'
+  readonly delivery: 'direct'
+  readonly contract?: ChannelContractIdentity
+  send(value: JsonValue, options?: CallOptions): Promise<void>
+  close(options?: CallOptions): Promise<void>
+}
+
+export interface ChannelReceiver extends AsyncIterableIterator<JsonValue> {
+  readonly direction: 'receive'
+  readonly delivery: 'direct'
+  readonly contract?: ChannelContractIdentity
+  readonly startSequence: number
+  next(options?: CallOptions): Promise<IteratorResult<JsonValue>>
+  close(options?: CallOptions): Promise<void>
+}
+
+export type ChannelEndpoint = ChannelSender | ChannelReceiver
+
+export interface ChannelPair {
+  readonly send: ChannelSender
+  readonly receive: ChannelReceiver
+}
+
 export interface RunContext {
   readonly input: JsonValue
   readonly settings: JsonObject
   readonly attachments: Readonly<Record<string, Attachment>>
+  readonly channels: Readonly<Record<string, ChannelEndpoint>>
   readonly scratch: string
   readonly deadlineUnixMs: number
   readonly signal: AbortSignal
 
   runChildFlow(call: ChildFlowRequest, options?: CallOptions): Promise<RunResult>
   callCapability(call: CapabilityCall, options?: CallOptions): Promise<JsonValue>
+  channel(options?: ChannelOptions, callOptions?: CallOptions): Promise<ChannelPair>
 }
 
 export type RunHandler = (context: RunContext) => Promise<RunResult>
@@ -60,6 +100,8 @@ export const OPERATION_ERROR_CODES = [
   'INVALID_RESULT',
   'UNCERTAIN',
   'EXECUTION_FAILED',
+  'LAGGED',
+  'DISCONNECTED',
   'PROTOCOL_ERROR',
   'CHANNEL_LOST',
 ] as const

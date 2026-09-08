@@ -6,7 +6,7 @@ Run/1 is the finite executable boundary for a FLOW package. It deliberately
 does not expose a host's durable records, resolver, authority evidence, graph
 model, provider identities, or application ontology.
 
-The complete protocol has four methods:
+Invocation and cancellation use:
 
 ```text
 host -> component       flow/run
@@ -14,6 +14,11 @@ component -> host       flow/run-child
 component -> host       capability/call
 either direction        request/cancel
 ```
+
+The direct-channel extension adds component-to-host `channel/create`,
+`channel/send`, `channel/next`, `channel/close`, and `channel/release`.
+Channels carry bounded JSON values during work; they do not start work,
+authorize control operations, or replace invocation results.
 
 `flow/run` supplies the complete context to an already selected component.
 `flow/run-child` asks the host to resolve an admitted child slot and construct
@@ -78,6 +83,12 @@ rejects an attempted 65,537th outbound request locally with
 receiver which observes a 65,537th request records a fatal `PROTOCOL_ERROR` and
 closes without relying on another response. This fixed lifetime bound is
 separate from the limit of 64 unresolved component requests on the wire.
+
+Channel implementations reserve at least one simultaneous request slot and
+enough remaining request IDs to close/release already allocated endpoints and
+pending allocations. Ordinary admission stops before consuming these reserves.
+Repeated failed settlement attempts cannot consume unlimited reserved capacity.
+Cancellation, host revocation and fencing never depend on a free ordinary slot.
 
 Whenever a request or notification includes `params`, that member must be a
 JSON object or array. `null` and scalar `params` make the complete JSON-RPC
@@ -180,7 +191,7 @@ The host's only request is:
 }
 ```
 
-`params` has exactly these required fields:
+`params` has these required fields and optional `channels`:
 
 | Field | Meaning |
 |---|---|
@@ -190,6 +201,9 @@ The host's only request is:
 | `attachments` | Map from `LocalName` to one sandbox-local root and access mode. |
 | `scratch` | Nonempty sandbox-local private read-write root path. |
 | `deadlineUnixMs` | Finite host-enforced root deadline. |
+
+`channels`, when present, maps at most 256 `LocalName` entries to distinct
+host-granted endpoints defined below. Absence means an empty map.
 
 Each attachment has exactly:
 
@@ -206,7 +220,7 @@ an SDK path helper, enforces the view. One Run has at most 256 named
 attachments.
 
 There is no Run ID, parent ID, trigger field, correlation field, provider
-identity, slot inventory, grant, enforcement receipt, or negotiated limit
+identity, slot inventory, enforcement receipt, or negotiated limit
 object in Run/1. A triggering fact belongs in `input`; lifecycle and authority
 evidence remain host-side.
 
@@ -244,16 +258,17 @@ While its root request is pending, the component may issue child Flow requests:
 consumer-local name of one child-Flow resolution slot admitted by the host. It
 is not a capability slot and is not declared in `FLOW.md` `uses`; child-Flow
 targets and candidate sets are host configuration outside Package/1.
-`intent` is the only optional member and is a 1–16,384 scalar string. It
+`intent` is an optional 1–16,384 scalar string. It
 describes the requested work for that already admitted slot; it does not name
 candidates, configure a resolver, grant catalogue access, or widen authority.
 Exact host binding still wins, and an absent intent never means
 catalogue-wide discovery. It is not delivered to the child unless component
-code also includes that information in `input`.
+code also includes that information in `input`. Optional `channels` maps the
+callee's declared channel names to held endpoint reference strings.
 
 Success returns the same complete `{ outcome, output }` value as `flow/run`.
-Run/1 carries only the bounded JSON/1 `input` into the requested operation and
-returns only that complete JSON/1 Run result. It does not define how a host
+Run/1 carries bounded JSON/1 `input` and explicitly mapped channel rights into
+the requested operation and returns its complete JSON/1 Run result. It does not define how a host
 selects or configures the admitted child. Nested execution is a host operation,
 not graph merging or implicit settings, attachment, or authority inheritance.
 Hosts may impose smaller concurrency or retained-result budgets and report
@@ -280,7 +295,8 @@ dependency declared by the package's `FLOW.md` `uses` entry:
 }
 ```
 
-The params have exactly the four shown fields. A successful capability method
+The params have the four shown fields and optional `channels`, using the same
+endpoint-reference mapping as child calls. A successful capability method
 returns exactly one of:
 
 ```json
@@ -300,6 +316,89 @@ The second form is an application error declared by the exact capability
 contract, not a JSON-RPC error. Both `value` and `error`, neither member, an
 unknown member, or missing error `data` is invalid.
 
+## 5.1 Direct channels
+
+This extension supports finite, single-writer, single-reader JSON/1 sequences.
+Broadcast, subscriptions, arbitrary byte transports, persistent streams and
+continuing Agent control are not part of this implemented subset.
+
+An endpoint grant is a closed object:
+
+| Field | Meaning |
+| --- | --- |
+| `endpoint` | Opaque reference using the request-ID token grammar, bound to the receiving invocation |
+| `direction` | `send` or `receive` |
+| `delivery` | Exactly `direct` |
+| `contract` | Optional exact `{id, version, digest}` [Channel Contract/1](channel-contracts.md) source identity |
+| `startSequence` | Required integer `1` for receivers; absent for senders |
+
+Endpoint possession grants only the indicated communication right. It is not
+portable JSON authority: a string copied into ordinary input grants nothing.
+The creating Run owns the source's lifetime. An unused endpoint may transfer
+through an exact child or capability call; its cleanup owner does not change.
+First local use claims a right. Inspecting metadata does not claim it.
+
+Before dispatch, the host atomically validates all mapped rights, declaration
+requirements, contracts, provider support, delivery, queued-prefix constraints
+and capacity, then moves the rights and constructs the callee's grants.
+Rejected admission changes no rights. Exact operation joins precede moved-right
+rejection; changed mappings conflict. An SDK offer or failed final result does
+not establish whether rights moved. The host retains authoritative ownership.
+No cross-root connection, ambient lookup or late injection into an ungranted
+running participant is implied.
+
+| Request | Closed parameters | Successful result |
+| --- | --- | --- |
+| `channel/create` | Optional `delivery: "direct"`; optional `schema` or package-local `contract`, mutually exclusive | `{send: grant, receive: grant}` |
+| `channel/send` | `{endpoint, value}` | `null`: validated, snapshotted host acceptance, not processing or durability |
+| `channel/next` | `{endpoint}` | `{item: {sequence, value}}` or `{end: {lastSequence}}` |
+| `channel/close` | `{endpoint}` | `null`: writer sealed |
+| `channel/release` | `{endpoint}` | `{status: "released"}`, `{status: "ended", lastSequence}`, or `{status: "failed", code, details?}` |
+
+Creation defaults to direct delivery and generic JSON/1. Schemas use Schema/1;
+named references resolve only against the invoking package. Unsupported valid
+requests fail operationally before allocation or dispatch. Invalid RPC shapes
+retain the ordinary incompatibility rules.
+
+The host assigns accepted sequences starting at one. Receivers validate a
+contiguous prefix and a clean end equal to the last delivered sequence (zero
+for an empty interval). There is one outstanding read and no SDK prefetch.
+Full queues exert bounded sender pressure; receiver disposal rejects pending
+and future sends with `DISCONNECTED`. Source-invalid or oversized values fail
+the source before acceptance. The host bounds queues, retained/in-flight
+payload, pending sends, parser/writer buffers and lifetime allocations.
+
+Writer close rejects while sends remain unaccepted; otherwise it seals without
+waiting for the receiver or execution result. Accepted data can drain while
+the source owner lives. Failure before sealing aborts the source. Previously
+explicitly sealed intervals remain sealed despite subsequent producer failure;
+neither sealing nor receiver EOF establishes execution success.
+
+Failure discards only uncommitted queued values. A committed read response may
+still arrive; the next read or release reports the sticky cause. Revocation and
+clean-end commitment are atomically ordered by the host. Local read cancellation
+may win before SDK end exposure. Root cancellation independently prevents
+execution success.
+
+Cancelling an active read disposes its receiver. The SDK retains and drains
+the original read response and disposal response; it cannot restart iteration
+after silently skipping a committed item. Cancelling a send retracts only an
+unaccepted pending value, never an accepted value or permission to replay it.
+Cancelling a close/release wait retains its settlement action.
+
+Uncancelled receiver disposal waits for its response and all prior reads. It
+exposes a previously unexposed terminal failure even if a read waiter was
+cancelled before that failure arrived. An internally known cause is not exposed
+until a public operation rejects/raises with it. Repeated disposal joins the
+same action and does not rethrow an already exposed cause. Disposal that wins
+before an earlier source failure means deliberate incomplete delivery, not a
+new failure. Observation cancellation does not cancel producer execution.
+
+Independent readers/writers must remain serviced while operations are pending.
+A blocked transport cannot prevent other participants' progress or host fencing.
+Control has priority only between complete frames; no delivery is promised over
+a broken or persistently blocked pipe.
+
 ## 6. Operation identity
 
 `operationId` is scoped to the one root Run. For observable Run/1 behavior:
@@ -313,7 +412,7 @@ same operationId + different canonical method/params
 ```
 
 The canonical comparison includes `flow/run-child` or `capability/call`, slot, method
-when present, intent when present, and input. Transport IDs and wait timing are
+when present, intent and channel mappings when present, and input. Transport IDs and wait timing are
 not semantic input. The host chooses its persistence strategy; Run/1 does not
 standardize a ledger schema, activation digest, internal lifetime IDs, or
 recovery database.
@@ -360,6 +459,8 @@ text. The closed wire-visible code set is:
 | `INVALID_RESULT` | A component, child Flow, or capability produced an invalid declared result. |
 | `UNCERTAIN` | Dispatch may have occurred, but a trustworthy terminal result cannot be proved. |
 | `EXECUTION_FAILED` | Admitted application work failed and no narrower code above applies. |
+| `LAGGED` | Channel delivery failed because its bounded observation capacity was exceeded. |
+| `DISCONNECTED` | The connected receiver was disposed or its communication right ended. |
 
 JSON-RPC `-32602` means the Run/1 method params themselves are invalid;
 `INVALID_INPUT` is downstream application validation. JSON-RPC `-32603` means
@@ -421,6 +522,24 @@ settle every outbound request before returning the root result or error. Calls
 cannot be detached, reparented, or transferred. A normal root response with
 outstanding owned work cannot become success.
 
+Recoverable settled failures use ordinary language recovery; there is no error
+acknowledgement or global settled-failure ledger. An ignored, already-settled
+recoverable failure may escape detection. Fatal loss of this invocation's
+transport, root cancellation, unresolved ownership or failed cleanup still
+prevent success. A child that is conclusively fenced and cleaned may instead
+return a recoverable parent-local operational error; fatality follows the
+affected owner, not a word in an error message.
+
+Before implicit writer sealing, account for handler error or invalid result,
+fatal/cancellation state, abandoned live work and active unfinished receivers.
+Capture abandonment at handler settlement; cleanup does not erase it. Resolve
+retained cancellation/disposal accounting and recheck eligibility. The host,
+which knows actual endpoint transfers and source state, seals only healthy
+held writers after eligibility; a known disqualifier aborts unsealed sources.
+A wholly unused unconnected pair can be released automatically. An activated
+receiver must reach end, terminal failure or explicit disposal. Recheck fatal
+and cancellation state before accepting the execution terminal.
+
 The host must keep the component's stdin open while the root request is
 pending. After receiving and validating the complete root terminal response,
 it may close that sending half immediately. The component must tolerate this
@@ -480,6 +599,7 @@ RunContext
 RunResult
 runChildFlow / run_child_flow
 callCapability / call_capability
+channel / channels and directional endpoint types
 OperationError
 CapabilityError
 JSON value types

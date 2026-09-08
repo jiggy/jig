@@ -66,6 +66,7 @@ description   required non-empty string
 uses          optional map of capability slots
 outcomes      optional map of custom outcome descriptions
 attachments   optional map of attachment access modes
+channels      optional map of directional channel requirements
 ```
 
 Unknown unnamespaced fields reject. An extension key is exactly `x-` followed
@@ -117,6 +118,14 @@ Each `attachments` key is a `LocalName`. Its value is exactly `read` or
 `read-write`. Metadata declares required attachment names and maximum access;
 attachment-source mapping is host policy outside Package/1. A host may expose
 that mapping through an explicit configuration mechanism.
+
+### Channels
+
+Each `channels` key is a `LocalName` and declares a directional communication
+port, not permission to run another participant. Its fields and exact named
+agreement are defined by [Channel Contract/1](channel-contracts.md). Host
+invocation grants supply the actual endpoints. Optional unwired ports are
+absent; ordinary one-shot packages need no channel declaration.
 
 ### Format evolution
 

@@ -73,6 +73,9 @@
             "$ref": "#/$defs/flowSchema"
           },
           "maxProperties": 128
+        },
+        "channels": {
+          "$ref": "#/$defs/channelDeclarations"
         }
       },
       "required": ["input", "output", "errors"],
@@ -249,6 +252,72 @@
         }
       },
       "additionalProperties": false
+    },
+    "channelDeclaration": {
+      "type": "object",
+      "properties": {
+        "direction": {
+          "enum": ["send", "receive"]
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "schema": {
+          "$ref": "#/$defs/flowSchema"
+        },
+        "contract": {
+          "type": "string",
+          "pattern": "^\\./[^\\\\]+$",
+          "maxLength": 4096
+        },
+        "delivery": {
+          "const": "direct"
+        },
+        "start": {
+          "enum": ["beginning", "suffix"]
+        }
+      },
+      "required": ["direction"],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "not": {
+            "type": "object",
+            "properties": {
+              "schema": true,
+              "contract": true
+            },
+            "required": ["schema", "contract"]
+          }
+        },
+        {
+          "if": {
+            "type": "object",
+            "properties": {
+              "start": true
+            },
+            "required": ["start"]
+          },
+          "then": {
+            "type": "object",
+            "properties": {
+              "direction": {
+                "const": "receive"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "channelDeclarations": {
+      "type": "object",
+      "propertyNames": {
+        "$ref": "#/$defs/localName"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/channelDeclaration"
+      },
+      "maxProperties": 256
     }
   }
 }

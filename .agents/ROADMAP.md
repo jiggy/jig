@@ -76,9 +76,14 @@ contract and authority boundary against the application consuming it.
    during, and after acknowledgement, honest absence, and no automatic replay.
    Arbitrary scratch salvage and machine-crash recovery are outside this scope.
 
-4. **Observe and direct a continuing native Agent.** Qualify one client over
-   the existing ACP foundation for observation, interruption, follow-up, and
-   continuation. Preserve simple one-shot calls. Accepted instructions and
+4. **Observe and direct a continuing native Agent.** First expose live public
+   updates through direct channels: application code filters and presents data,
+   and installed consumers receive progress separately from the execution
+   result. Preserve ordinary error recovery and simple one-shot calls. Extend
+   the demonstrated connection with isolated broadcast and structured
+   bidirectional interoperability before adding control. Qualify one client over
+   the existing ACP foundation for acknowledged interruption, follow-up, and
+   continuation. Accepted instructions and
    remaining budgets survive continuation; cancellation revokes it and cleans
    owned processes. Native workspace tools require a separate authority
    decision; candidate commands cannot run in a credential-bearing provider

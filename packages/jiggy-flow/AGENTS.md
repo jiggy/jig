@@ -28,6 +28,16 @@ is independently packaged for PyPI prereleases; Jig hosting is outside its scope
 - `run_child_flow()` emits `flow/run-child`; `call_capability()` emits
   `capability/call`. `CapabilityError` represents declared capability errors;
   `OperationError` retains operational failure semantics.
+- Direct channels exchange JSON/1 values through `run.channel()`, declared
+  `run.channels`, and ordinary call `channels=` maps. `_channels.py` owns typed
+  endpoint behavior; `_runtime.py` owns correlated wire requests and retained
+  cancellation settlement. The host alone decides actual endpoint transfer
+  and implicit writer sealing. No broadcast or binary support is claimed.
+- Receivers use one async iterator and explicit `aclose()`/async context
+  management for early exit. Disposal exposes previously unexposed terminal
+  errors after prior reads settle. Ordinary `try/except` requires no extra
+  acknowledgement; active resource abandonment and fatal owner state still
+  prevent success. Reserve settlement inside existing wire ceilings.
 - The runtime supports Python 3.11 or newer without third-party runtime
   dependencies.
 

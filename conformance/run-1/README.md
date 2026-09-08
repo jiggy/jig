@@ -5,12 +5,14 @@ candidate in
 [`docs/flow/spec/run-protocol.md`](../../docs/flow/spec/run-protocol.md).
 It is deliberately separate from the SDK implementations.
 
-The current corpus has five layers:
+The current corpus covers:
 
 - `fixtures/messages.json` checks the context-free message schemas;
 - `fixtures/framing.json` records raw JSON/1 and framing boundaries;
 - `components.test.ts` drives one golden full-duplex conversation through the
   TypeScript and Python SDK components;
+- `channels.test.ts` and the independent Python peer exchange structured direct
+  messages with both SDKs, including failed observation with successful work;
 - `component-matrix.test.ts` exercises black-box state, root and call-specific
   cancellation, abandoned-call quiescence, framing, request bounds, response
   correlation, operation identity, and process-exit behavior against both SDK

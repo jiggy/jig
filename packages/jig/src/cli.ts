@@ -24,6 +24,7 @@ import {
   sha256,
 } from './internal/linux-file-input.js'
 import { PrivateRootRunFiles } from './internal/root-run-files.js'
+import type { PrivateRunChannelOutput } from './internal/run-channels.js'
 import {
   PRIVATE_DEFAULT_ROOT_RUN_TIMEOUT_MS,
   PRIVATE_MAX_ROOT_RUN_TIMEOUT_MS,
@@ -37,7 +38,7 @@ const HELP = `Usage:
   jig init --bare <directory>
   jig review [project] [--allow-resolution-network] [--yes]
   jig run <flow:path|binding:id> [--input JSON|@FILE] [--attach NAME=DIR]
-      [--select NAME=FILE] [--out DIR] [--timeout DURATION]
+      [--select NAME=FILE] [--out DIR] [--receive CHANNEL] [--timeout DURATION]
   jig --version
 
 --allow-resolution-network permits fresh missing-lock resolution for this review.
@@ -59,6 +60,7 @@ export interface PrivateCliCommandHost {
     options?: {
       readonly runTimeoutMs?: number
       readonly files?: PrivateRootRunFiles
+      readonly channelOutput?: PrivateRunChannelOutput
       readonly allowResolutionNetwork?: boolean
       readonly onResolution?: (packagePath: string) => void
     },
@@ -75,6 +77,7 @@ export interface PrivateCliOptions {
   readonly interactive?: boolean
   readonly confirm?: (prompt: string, signal?: AbortSignal) => Promise<boolean>
   readonly writeOutput?: (text: string) => void
+  readonly writeRecord?: (text: string) => Promise<void>
   readonly writeError?: (text: string) => void
   readonly createSubmissionId?: () => string
 }
@@ -86,6 +89,7 @@ interface CliRuntime {
   readonly interactive: boolean
   readonly confirm: (prompt: string, signal?: AbortSignal) => Promise<boolean>
   readonly writeOutput: (text: string) => void
+  readonly writeRecord: (text: string) => Promise<void>
   readonly writeError: (text: string) => void
   readonly createSubmissionId: () => string
 }
@@ -217,6 +221,52 @@ async function executeReview(arguments_: readonly string[], runtime: CliRuntime)
 
 async function executeRun(arguments_: readonly string[], runtime: CliRuntime): Promise<number> {
   const parsed = parseRun(arguments_)
+  const outputStop = new AbortController()
+  runtime = {
+    ...runtime,
+    signal: AbortSignal.any([
+      outputStop.signal,
+      ...(runtime.signal === undefined ? [] : [runtime.signal]),
+    ]),
+  }
+  const diagnostics = new TextDecoder('utf-8')
+  const writeLive = (text: string, diagnostic = false): void => {
+    try {
+      if (diagnostic) runtime.writeError(text)
+      else runtime.writeOutput(text)
+    } catch (error) {
+      outputStop.abort()
+      throw error
+    }
+  }
+  const channelOutput: PrivateRunChannelOutput = {
+    receive: parsed.receive,
+    async record(value) {
+      try {
+        await runtime.writeRecord(`${textDecoder.decode(canonicalJson(value))}\n`)
+      } catch (error) {
+        outputStop.abort()
+        throw error
+      }
+    },
+    diagnostic(bytes) {
+      // Diagnostics are untrusted text, not terminal-control instructions.
+      writeLive(
+        diagnostics
+          .decode(bytes, { stream: true })
+          .replace(
+            /[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/g,
+            (value) => `\\u${value.charCodeAt(0).toString(16).padStart(4, '0')}`,
+          ),
+        true,
+      )
+    },
+  }
+  const emitTerminal = async (record: JsonValue): Promise<void> => {
+    await runtime.writeRecord(
+      `${textDecoder.decode(canonicalJson(parsed.receive.length === 0 ? record : { type: 'terminal', result: record }))}\n`,
+    )
+  }
   let input = parsed.input
   try {
     if (parsed.inputFile !== undefined) {
@@ -298,6 +348,7 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
       },
       {
         runTimeoutMs: parsed.timeoutMs,
+        channelOutput,
         ...(parsed.attachments.length === 0 && parsed.output === undefined ? {} : { files }),
       },
       () => {
@@ -344,7 +395,7 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
       // File manifests or late observations may exceed JSON/1 even when the
       // accepted terminal fits. Preserve that terminal; never truncate it or
       // reinterpret a report failure as permission to repeat the Run.
-      runtime.writeOutput(`${textDecoder.decode(canonicalJson(publicTerminal(status.terminal)))}\n`)
+      await emitTerminal(publicTerminal(status.terminal))
       runtime.writeError(
         renderDiagnostic(
           'JIG_REPORT_LIMIT',
@@ -353,7 +404,7 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
       )
       return 2
     }
-    runtime.writeOutput(`${textDecoder.decode(encodedRecord)}\n`)
+    await emitTerminal(decodeJson1(encodedRecord))
     if (cleanupFailed) {
       runtime.writeError(
         renderDiagnostic(
@@ -408,6 +459,7 @@ function parseRun(arguments_: readonly string[]): {
   readonly attachments: readonly { name: string; directory: string; select: readonly string[] }[]
   readonly output?: string
   readonly timeoutMs: number
+  readonly receive: readonly string[]
 } {
   if (arguments_.length < 2) throw new CliDiagnostic('JIG_USAGE', HELP, 2)
   const target = parseTarget(arguments_[1]!)
@@ -418,10 +470,26 @@ function parseRun(arguments_: readonly string[]): {
   let timeoutMs = PRIVATE_DEFAULT_ROOT_RUN_TIMEOUT_MS
   let sawInput = false
   let sawTimeout = false
+  const receive: string[] = []
   for (let index = 2; index < arguments_.length; index += 2) {
     const option = arguments_[index]
     const value = arguments_[index + 1]
     if (value === undefined) throw new CliDiagnostic('JIG_USAGE', HELP, 2)
+    if (option === '--receive') {
+      if (
+        !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value) ||
+        value.length > 64 ||
+        receive.includes(value) ||
+        receive.length >= 16
+      )
+        throw new CliDiagnostic(
+          'JIG_USAGE',
+          '--receive requires unique channel names, at most 16',
+          2,
+        )
+      receive.push(value)
+      continue
+    }
     if (option === '--input' && !sawInput) {
       sawInput = true
       if (value.startsWith('@')) {
@@ -483,6 +551,7 @@ function parseRun(arguments_: readonly string[]): {
     target,
     input,
     timeoutMs,
+    receive,
     attachments: [...attachments].map(([name, directory]) => ({
       name,
       directory,
@@ -635,6 +704,12 @@ function cliRuntime(options: PrivateCliOptions): CliRuntime {
     interactive:
       options.interactive ?? (process.stdin.isTTY === true && process.stdout.isTTY === true),
     confirm: options.confirm ?? terminalConfirmation,
+    writeRecord:
+      options.writeRecord ??
+      (async (text) => {
+        if (options.writeOutput) options.writeOutput(text)
+        else process.stdout.write(text)
+      }),
     writeOutput:
       options.writeOutput ??
       ((text) => {

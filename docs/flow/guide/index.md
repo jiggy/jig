@@ -40,6 +40,8 @@ A host's language support is separate from FLOW's SDK availability.
 - [Run SDK/1](../spec/run-sdk.md) defines TypeScript and Python SDK behavior.
 - [Capability Contract/1](../spec/capability-contracts.md) defines optional
   machine-verifiable capability descriptors.
+- [Channel Contract/1](../spec/channel-contracts.md) defines optional direct
+  communication ports and named message meaning.
 
 The exact machine-readable FLOW files are published under
 [`/schemas/`](https://flow.jig.md/schemas/schema-1.json). The Run/1 conformance

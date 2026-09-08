@@ -16,6 +16,8 @@ use-case and orchestration hypotheses.
   current behavior, not comparisons with superseded alpha releases.
 - `guide/agents.md` owns operator Agent setup and current adapter limitations;
   `guide/dependencies.md` owns package dependency preparation guidance.
+- `guide/channels.md` teaches application-owned live progress and subprocess
+  consumption; `contracts/` also explains named channel agreements.
   Root and package READMEs introduce the product and link to these owners.
 - `guide/*.diagram.json` and matching SVGs own explanatory diagrams alongside
   their guides; the shared diagram workflow is in `docs/AGENTS.md`.

@@ -9,10 +9,15 @@
         "method": "flow/run",
         "params": {
           "protocol": "run/1",
-          "input": { "subject": "football" },
+          "input": {
+            "subject": "football"
+          },
           "settings": {},
           "attachments": {
-            "source": { "path": "/workspace/source", "access": "read" }
+            "source": {
+              "path": "/workspace/source",
+              "access": "read"
+            }
           },
           "scratch": "/workspace/scratch",
           "deadlineUnixMs": 1787558400000
@@ -30,7 +35,9 @@
           "operationId": "research:1",
           "slot": "research",
           "intent": "Find a useful comparison target.",
-          "input": { "subject": "football" }
+          "input": {
+            "subject": "football"
+          }
         }
       }
     },
@@ -45,7 +52,9 @@
           "operationId": "artifact-write:1",
           "slot": "artifacts",
           "method": "write",
-          "input": { "text": "result" }
+          "input": {
+            "text": "result"
+          }
         }
       }
     },
@@ -55,7 +64,9 @@
       "value": {
         "jsonrpc": "2.0",
         "method": "request/cancel",
-        "params": { "requestId": "component:2" }
+        "params": {
+          "requestId": "component:2"
+        }
       }
     },
     {
@@ -64,7 +75,10 @@
       "value": {
         "jsonrpc": "2.0",
         "id": "host:1",
-        "result": { "outcome": "done", "output": null }
+        "result": {
+          "outcome": "done",
+          "output": null
+        }
       }
     },
     {
@@ -73,7 +87,9 @@
       "value": {
         "jsonrpc": "2.0",
         "id": "component:2",
-        "result": { "value": null }
+        "result": {
+          "value": null
+        }
       }
     },
     {
@@ -82,7 +98,12 @@
       "value": {
         "jsonrpc": "2.0",
         "id": "component:2",
-        "result": { "error": { "name": "not-found", "data": {} } }
+        "result": {
+          "error": {
+            "name": "not-found",
+            "data": {}
+          }
+        }
       }
     },
     {
@@ -94,7 +115,172 @@
         "error": {
           "code": -32000,
           "message": "not available",
-          "data": { "code": "UNAVAILABLE" }
+          "data": {
+            "code": "UNAVAILABLE"
+          }
+        }
+      }
+    },
+    {
+      "name": "channel-create-generic",
+      "definition": "channelCreateRequest",
+      "value": {
+        "jsonrpc": "2.0",
+        "id": "component:channel",
+        "method": "channel/create",
+        "params": {}
+      }
+    },
+    {
+      "name": "channel-create-named",
+      "definition": "channelCreateRequest",
+      "value": {
+        "jsonrpc": "2.0",
+        "id": "component:channel",
+        "method": "channel/create",
+        "params": {
+          "contract": "./contracts/updates.json"
+        }
+      }
+    },
+    {
+      "name": "channel-send-data",
+      "definition": "channelSendRequest",
+      "value": {
+        "jsonrpc": "2.0",
+        "id": "component:channel",
+        "method": "channel/send",
+        "params": {
+          "endpoint": "source:write",
+          "value": {
+            "text": "hello"
+          }
+        }
+      }
+    },
+    {
+      "name": "channel-next",
+      "definition": "channelNextRequest",
+      "value": {
+        "jsonrpc": "2.0",
+        "id": "component:channel",
+        "method": "channel/next",
+        "params": {
+          "endpoint": "source:read"
+        }
+      }
+    },
+    {
+      "name": "channel-close",
+      "definition": "channelCloseRequest",
+      "value": {
+        "jsonrpc": "2.0",
+        "id": "component:channel",
+        "method": "channel/close",
+        "params": {
+          "endpoint": "source:write"
+        }
+      }
+    },
+    {
+      "name": "channel-release",
+      "definition": "channelReleaseRequest",
+      "value": {
+        "jsonrpc": "2.0",
+        "id": "component:channel",
+        "method": "channel/release",
+        "params": {
+          "endpoint": "source:read"
+        }
+      }
+    },
+    {
+      "name": "channel-created-pair",
+      "definition": "channelSuccessResponse",
+      "value": {
+        "jsonrpc": "2.0",
+        "id": "component:channel",
+        "result": {
+          "send": {
+            "endpoint": "source:write",
+            "direction": "send",
+            "delivery": "direct"
+          },
+          "receive": {
+            "endpoint": "source:read",
+            "direction": "receive",
+            "delivery": "direct",
+            "startSequence": 1
+          }
+        }
+      }
+    },
+    {
+      "name": "channel-accepted",
+      "definition": "channelSuccessResponse",
+      "value": {
+        "jsonrpc": "2.0",
+        "id": "component:channel",
+        "result": null
+      }
+    },
+    {
+      "name": "channel-item",
+      "definition": "channelSuccessResponse",
+      "value": {
+        "jsonrpc": "2.0",
+        "id": "component:channel",
+        "result": {
+          "item": {
+            "sequence": 1,
+            "value": {
+              "sample": "room",
+              "celsius": 21
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "channel-empty-end",
+      "definition": "channelSuccessResponse",
+      "value": {
+        "jsonrpc": "2.0",
+        "id": "component:channel",
+        "result": {
+          "end": {
+            "lastSequence": 0
+          }
+        }
+      }
+    },
+    {
+      "name": "channel-released-failed",
+      "definition": "channelSuccessResponse",
+      "value": {
+        "jsonrpc": "2.0",
+        "id": "component:channel",
+        "result": {
+          "status": "failed",
+          "code": "LAGGED"
+        }
+      }
+    },
+    {
+      "name": "channel-reference-call",
+      "definition": "capabilityCallRequest",
+      "value": {
+        "jsonrpc": "2.0",
+        "id": "component:channel",
+        "method": "capability/call",
+        "params": {
+          "operationId": "answer",
+          "slot": "agent",
+          "method": "run",
+          "input": {},
+          "channels": {
+            "events": "source:write"
+          }
         }
       }
     }
@@ -135,7 +321,9 @@
         "jsonrpc": "2.0",
         "id": "component:3",
         "method": "request/cancel",
-        "params": { "requestId": "component:2" }
+        "params": {
+          "requestId": "component:2"
+        }
       }
     },
     {
@@ -146,7 +334,10 @@
         "id": "component:2",
         "result": {
           "value": null,
-          "error": { "name": "not-found", "data": null }
+          "error": {
+            "name": "not-found",
+            "data": null
+          }
         }
       }
     },
@@ -156,7 +347,11 @@
       "value": {
         "jsonrpc": "2.0",
         "id": "component:2",
-        "result": { "error": { "name": "not-found" } }
+        "result": {
+          "error": {
+            "name": "not-found"
+          }
+        }
       }
     },
     {
@@ -169,8 +364,115 @@
         "params": {
           "operationId": "research:1",
           "slot": "research",
-          "intent": { "query": "forbidden selector" },
+          "intent": {
+            "query": "forbidden selector"
+          },
           "input": null
+        }
+      }
+    },
+    {
+      "name": "channel-create-exclusive-contract",
+      "definition": "channelCreateRequest",
+      "value": {
+        "jsonrpc": "2.0",
+        "id": "component:channel",
+        "method": "channel/create",
+        "params": {
+          "schema": true,
+          "contract": "./contracts/updates.json"
+        }
+      }
+    },
+    {
+      "name": "channel-broadcast-is-not-direct-support",
+      "definition": "channelCreateRequest",
+      "value": {
+        "jsonrpc": "2.0",
+        "id": "component:channel",
+        "method": "channel/create",
+        "params": {
+          "delivery": "broadcast"
+        }
+      }
+    },
+    {
+      "name": "channel-send-rejects-missing-value",
+      "definition": "channelSendRequest",
+      "value": {
+        "jsonrpc": "2.0",
+        "id": "component:channel",
+        "method": "channel/send",
+        "params": {
+          "endpoint": "source:write"
+        }
+      }
+    },
+    {
+      "name": "channel-negative-sequence",
+      "definition": "channelSuccessResponse",
+      "value": {
+        "jsonrpc": "2.0",
+        "id": "component:channel",
+        "result": {
+          "item": {
+            "sequence": 0,
+            "value": null
+          }
+        }
+      }
+    },
+    {
+      "name": "channel-result-no-wrapper",
+      "definition": "channelSuccessResponse",
+      "value": {
+        "jsonrpc": "2.0",
+        "id": "component:channel",
+        "result": {
+          "value": null
+        }
+      }
+    },
+    {
+      "name": "channel-reader-needs-start",
+      "definition": "channelSuccessResponse",
+      "value": {
+        "jsonrpc": "2.0",
+        "id": "component:channel",
+        "result": {
+          "send": {
+            "endpoint": "source:write",
+            "direction": "send",
+            "delivery": "direct"
+          },
+          "receive": {
+            "endpoint": "source:read",
+            "direction": "receive",
+            "delivery": "direct"
+          }
+        }
+      }
+    },
+    {
+      "name": "channel-call-requires-reference",
+      "definition": "capabilityCallRequest",
+      "value": {
+        "jsonrpc": "2.0",
+        "id": "component:channel",
+        "method": "capability/call",
+        "params": {
+          "operationId": "answer",
+          "slot": "agent",
+          "method": "run",
+          "input": {},
+          "channels": {
+            "events": {
+              "endpoint": "source:read",
+              "direction": "receive",
+              "delivery": "direct",
+              "startSequence": 1
+            }
+          }
         }
       }
     }

@@ -1193,6 +1193,12 @@ async function writeProject(root: string): Promise<void> {
     ),
   )
   await writeFile(join(flow, 'skills', 'selected', 'SKILL.md'), 'SELECTED_SKILL_MARKER\n')
+  await writeFile(
+    join(flow, 'contracts', 'acp-public-updates.json'),
+    await readFile(
+      new URL('../../../docs/jig/spec/contracts/acp-public-updates.json', import.meta.url),
+    ),
+  )
   await writeFile(join(flow, 'skills', 'hidden', 'SKILL.md'), 'HIDDEN_SKILL_MARKER\n')
   await writeFile(
     join(flow, 'input.schema.json'),

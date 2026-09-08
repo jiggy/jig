@@ -18,6 +18,10 @@ Jig is a local, secure host for admitted FLOW packages.
 - Agent Run capability: https://jig.md/spec/agent-run
 - Agent Run contract ID explained: https://jig.md/contracts/agent-run
 - Agent Run descriptor: https://jig.md/contracts/agent-run.capability.json
+- Live progress: https://jig.md/guide/channels
+- Channels and output contract: https://jig.md/spec/channels
+- ACP public update meaning: https://jig.md/contracts/acp-public-updates
+- ACP public update descriptor: https://jig.md/contracts/acp-public-updates.json
 - Project Command capability: https://jig.md/spec/project-command
 - Project Command contract ID explained: https://jig.md/contracts/project-command
 - Project Command descriptor: https://jig.md/contracts/project-command.capability.json

@@ -1,7 +1,8 @@
 # Run/1 evidence matrix
 
-**Status:** Phase 1 release-candidate evidence complete; this is not a general
-certification programme or a published conformance label.
+**Status:** Executable coverage inventory, not a general certification programme
+or a published conformance label. Historical invocation evidence and the new
+direct-channel subset have separate coverage below.
 
 The Bun and independent Python host peers execute the same black-box component
 behaviours through separate framing, validation, and process harnesses. The
@@ -37,6 +38,9 @@ each behaviour.
 | Malformed child result and standard child JSON-RPC error | Yes | Yes |
 | Trailing output and nonzero exit | Yes | Yes |
 | Legal stderr diagnostics | Yes | Yes |
+| Direct create, capability endpoint mapping, structured items and clean end | `channels.test.ts`, both SDK components | `test_channels.py`, both SDK components |
+| Failed observation with a separately successful capability result | `channels.test.ts`, both SDK components | `test_channels.py`, both SDK components |
+| Direct-channel positive and hostile message shapes | Shared `messages.json` | Same shared fixtures, independent validator |
 
 The operation rows exercise small reference-peer ledgers implementing the
 frozen Run/1 rules. They are not evidence that a durable production operation
@@ -80,6 +84,13 @@ resolution; it is not claimed to be an offline or hermetic build proof.
 | Outstanding/lifetime ceilings and correlation | Both peer matrices |
 | Snapshots and public typing | SDK-specific tests and installed consumers; these are projection checks, not wire certification |
 | Protocol-safe ordinary logging | TypeScript stdio tests and Python installed runtime suite |
+| Direct endpoint disposal, late cancellation failure, abandoned receiver, retained allocation, and settlement reserves | Both SDK channel suites; host allocation/containment remains separate evidence |
+
+The direct-channel traces exercise scripted bounded JSON values, not native
+Agent/ACP support, broadcast isolation, binary transfer or session control.
+They establish cross-language protocol behavior through actual subprocesses,
+not an independent consumer usability study. The SDK race tests and private
+host tests retain their own claim boundaries.
 
 TypeScript's request objects/AbortSignal and Python's keyword arguments/asyncio
 cancellation are intentional Run SDK/1 projections. Python queues beyond the

@@ -127,7 +127,7 @@ try {
   assert.match(help.stdout, /^  jig --version$/m)
   assert.match(
     help.stdout,
-    /^  jig run <flow:path\|binding:id> \[--input JSON\|@FILE\] \[--attach NAME=DIR\]\n      \[--select NAME=FILE\] \[--out DIR\] \[--timeout DURATION\]$/m,
+    /^  jig run <flow:path\|binding:id> \[--input JSON\|@FILE\] \[--attach NAME=DIR\]\n      \[--select NAME=FILE\] \[--out DIR\] \[--receive CHANNEL\] \[--timeout DURATION\]$/m,
   )
   assert.doesNotMatch(help.stdout, /setup|package check|planDigest/)
   const runHelp = await run([command, 'run', '--help'], consumer)

@@ -18,8 +18,8 @@ operational baselines, and public-site assembly.
   package scripts. Python Just tasks expose the packaging orchestrator, which
   calls the standard Python build frontend directly.
 - `test-release.sh` includes the authored examples' deterministic application
-  tests. It installs the freshly packed SDK as a development dependency of a
-  disposable tested-patch copy, without lifecycle scripts or edits to source
+  tests. It installs the freshly packed SDK as a development dependency of
+  disposable tested-patch and live-agent copies, without lifecycle scripts or edits to source
   manifests. This permits testing an SDK before its version reaches npm;
   it does not claim live Agent quality or independent
   consumer proof.

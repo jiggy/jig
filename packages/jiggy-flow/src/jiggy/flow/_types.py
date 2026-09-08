@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import Awaitable, Callable, Literal, Protocol, TypeAlias, TypedDict
+from typing import AsyncIterator, Awaitable, Callable, Literal, Protocol, TypeAlias, TypedDict
 
 
 JsonScalar: TypeAlias = None | bool | int | float | str
@@ -27,6 +27,8 @@ OperationErrorCode: TypeAlias = Literal[
     "EXECUTION_FAILED",
     "PROTOCOL_ERROR",
     "CHANNEL_LOST",
+    "LAGGED",
+    "DISCONNECTED",
 ]
 
 
@@ -64,6 +66,62 @@ class RunResult(TypedDict):
     output: JsonValue
 
 
+class ChannelContractIdentity(TypedDict):
+    id: str
+    version: str
+    digest: str
+
+
+class ChannelSender(Protocol):
+    @property
+    def direction(self) -> Literal["send"]: ...
+
+    @property
+    def delivery(self) -> Literal["direct"]: ...
+
+    @property
+    def contract(self) -> ChannelContractIdentity | None: ...
+
+    async def send(self, value: JsonValue) -> None: ...
+
+    async def close(self) -> None: ...
+
+
+class ChannelReceiver(Protocol):
+    @property
+    def direction(self) -> Literal["receive"]: ...
+
+    @property
+    def delivery(self) -> Literal["direct"]: ...
+
+    @property
+    def contract(self) -> ChannelContractIdentity | None: ...
+
+    @property
+    def start_sequence(self) -> int: ...
+
+    def __aiter__(self) -> AsyncIterator[JsonValue]: ...
+
+    async def __anext__(self) -> JsonValue: ...
+
+    async def aclose(self) -> None: ...
+
+    async def __aenter__(self) -> ChannelReceiver: ...
+
+    async def __aexit__(self, exc_type: object, exc: object, tb: object) -> None: ...
+
+
+ChannelEndpoint: TypeAlias = ChannelSender | ChannelReceiver
+
+
+class ChannelPair(Protocol):
+    @property
+    def send(self) -> ChannelSender: ...
+
+    @property
+    def receive(self) -> ChannelReceiver: ...
+
+
 class RunContext(Protocol):
     @property
     def input(self) -> JsonValue: ...
@@ -80,6 +138,17 @@ class RunContext(Protocol):
     @property
     def deadline_unix_ms(self) -> int: ...
 
+    @property
+    def channels(self) -> Mapping[str, ChannelEndpoint]: ...
+
+    async def channel(
+        self,
+        *,
+        delivery: Literal["direct"] = "direct",
+        schema: JsonValue = ...,
+        contract: str | None = None,
+    ) -> ChannelPair: ...
+
     async def run_child_flow(
         self,
         *,
@@ -87,6 +156,7 @@ class RunContext(Protocol):
         slot: str,
         input: JsonValue,
         intent: str | None = None,
+        channels: Mapping[str, ChannelEndpoint] | None = None,
     ) -> RunResult: ...
 
     async def call_capability(
@@ -96,6 +166,7 @@ class RunContext(Protocol):
         slot: str,
         method: str,
         input: JsonValue,
+        channels: Mapping[str, ChannelEndpoint] | None = None,
     ) -> JsonValue: ...
 
 

@@ -1,4 +1,6 @@
 import { createHash } from 'node:crypto'
+import { parseChannelDeclarations, type ChannelDeclaration } from '../channel-contract.js'
+import { isContractId, isContractVersion } from '../contract-identity.js'
 
 import { invalid } from '../diagnostics.js'
 import { canonicalJson, decodeJson1, Json1Error, type JsonObject, type JsonValue } from '../json.js'
@@ -21,9 +23,6 @@ export const CAPABILITY_CONTRACT_LIMITS = Object.freeze({
 const DOMAIN = Buffer.from('FLOW-Capability-Contract/1\0', 'ascii')
 const LOCAL_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
 const DEFINITION_NAME = /^[A-Za-z][A-Za-z0-9]{0,63}$/
-const DNS_LABEL = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/
-const PATH_SEGMENT = /^[a-z0-9._~-]+$/
-const VERSION = /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/
 
 export type CapabilitySchema = boolean | JsonObject
 
@@ -31,6 +30,7 @@ export interface CapabilityMethodDescriptor {
   readonly input: CapabilitySchema
   readonly output: CapabilitySchema
   readonly errors: Readonly<Record<string, CapabilitySchema>>
+  readonly channels?: Readonly<Record<string, ChannelDeclaration>>
 }
 
 export interface CapabilityContractDescriptor {
@@ -135,7 +135,7 @@ export function parseCapabilityContract(
     const method = requireObject(methodValue, `descriptor.methods.${name}`, path)
     assertExactFields(
       method,
-      new Set(['input', 'output', 'errors']),
+      new Set(['input', 'output', 'errors', 'channels']),
       `descriptor.methods.${name}`,
       path,
     )
@@ -178,7 +178,14 @@ export function parseCapabilityContract(
         schema: errorSchema,
       })
     }
-    methods[name] = { input, output, errors }
+    methods[name] = {
+      input,
+      output,
+      errors,
+      ...(method.channels === undefined
+        ? {}
+        : { channels: parseChannelDeclarations(method.channels, path) }),
+    }
     schemaSources.push(
       { pointer: `/methods/${name}/input`, schema: input },
       { pointer: `/methods/${name}/output`, schema: output },
@@ -216,27 +223,12 @@ export function capabilityContractDigest(descriptor: CapabilityContractDescripto
 
 /** Shared syntax check for already-parsed Capability Contract identities. */
 export function isCapabilityContractId(value: string): boolean {
-  if (!value.startsWith('https://')) return false
-  const remainder = value.slice('https://'.length)
-  const separator = remainder.indexOf('/')
-  if (separator <= 0 || separator === remainder.length - 1) return false
-  const authority = remainder.slice(0, separator)
-  const labels = authority.split('.')
-  if (labels.length < 2 || labels.some((label) => !DNS_LABEL.test(label))) return false
-  if (
-    labels.length === 4 &&
-    labels.every((label) => /^[0-9]{1,3}$/.test(label) && Number(label) <= 255)
-  )
-    return false
-  const segments = remainder.slice(separator + 1).split('/')
-  return segments.every(
-    (segment) => segment !== '.' && segment !== '..' && PATH_SEGMENT.test(segment),
-  )
+  return isContractId(value)
 }
 
 /** Capability Contract/1 uses stable SemVer core without ranges or labels. */
 export function isCapabilityContractVersion(value: string): boolean {
-  return VERSION.test(value)
+  return isContractVersion(value)
 }
 
 function requireLocalName(value: string, field: string, path: string): void {
