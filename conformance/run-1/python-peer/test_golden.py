@@ -240,7 +240,7 @@ class GoldenConversationTests(unittest.TestCase):
         self.assertEqual(trace, expected_trace())
 
     def test_python_sdk_component(self) -> None:
-        python_path = str(ROOT / "packages" / "flowmd-sdk" / "src")
+        python_path = str(ROOT / "packages" / "jiggy-flow" / "src")
         environment = {
             "PYTHONPATH": os.pathsep.join(
                 part
@@ -314,7 +314,7 @@ class ExpandedComponentMatrixTests(unittest.TestCase):
         ])
 
     def test_python_component_matrix(self) -> None:
-        python_path = str(ROOT / "packages" / "flowmd-sdk" / "src")
+        python_path = str(ROOT / "packages" / "jiggy-flow" / "src")
         environment = {
             "PYTHONPATH": os.pathsep.join(
                 part

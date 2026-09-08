@@ -26,7 +26,7 @@ Both SDKs implement the same portable Run SDK/1 contract:
 | Language | Package | Start here |
 | --- | --- | --- |
 | TypeScript | `@jigging/flow` | [SDK quickstart](https://github.com/jiggy/jig/tree/main/packages/flow-sdk) |
-| Python | `flowmd-sdk` | [Python guide](./python.md) |
+| Python | `jiggy-flow` | [Python guide](./python.md) |
 
 A host's language support is separate from FLOW's SDK availability.
 

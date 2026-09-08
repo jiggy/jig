@@ -1,11 +1,11 @@
-# flowmd-sdk
+# jiggy-flow
 
 Minimal, dependency-free Python projection of FLOW Run/1.
 
 This is the `0.1.0a1` prerelease candidate. Publication is tracked on
-[PyPI](https://pypi.org/project/flowmd-sdk/0.1.0a1/); it does not establish a stable
+[PyPI](https://pypi.org/project/jiggy-flow/0.1.0a1/); it does not establish a stable
 compatibility promise. Python 3.11 or newer is required. Once published, install
-with `python -m pip install flowmd-sdk==0.1.0a1`, or install the candidate wheel
+with `python -m pip install jiggy-flow==0.1.0a1`, or install the candidate wheel
 before publication. The SDK has no third-party runtime dependencies.
 
 The [Python guide](https://flow.jig.md/guide/python) walks through a complete
@@ -17,7 +17,7 @@ a minimal quickstart.
 Finite work uses `handle()`:
 
 ```python
-from flowmd_sdk import RunContext, RunResult, handle
+from jiggy.flow import RunContext, RunResult, handle
 
 
 async def run(context: RunContext) -> RunResult:

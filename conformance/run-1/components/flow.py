@@ -1,4 +1,4 @@
-from flowmd_sdk import CapabilityError, handle
+from jiggy.flow import CapabilityError, handle
 
 
 async def run(context):

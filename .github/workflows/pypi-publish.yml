@@ -93,7 +93,7 @@ jobs:
       - run: python -m pip install mypy==1.18.2
       - name: Test installed wheel and sdist
         shell: bash
-        run: python packages/flowmd-sdk/tests/package_smoke.py python-dist/*.whl python-dist/*.tar.gz
+        run: python packages/jiggy-flow/tests/package_smoke.py python-dist/*.whl python-dist/*.tar.gz
 
   prepare:
     needs: qualify
@@ -184,12 +184,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -eu
-          tag="flowmd-sdk-v$VERSION"
-          gh api --paginate "repos/$GITHUB_REPOSITORY/git/matching-refs/tags/flowmd-sdk-v" \
+          tag="jiggy-flow-v$VERSION"
+          gh api --paginate "repos/$GITHUB_REPOSITORY/git/matching-refs/tags/jiggy-flow-v" \
             --jq '.[].ref' > "$RUNNER_TEMP/tags"
           if ! grep -Fx "refs/tags/$tag" "$RUNNER_TEMP/tags" > /dev/null; then
             object=$(gh api --method POST "repos/$GITHUB_REPOSITORY/git/tags" \
-              -f tag="$tag" -f message="flowmd-sdk $VERSION" \
+              -f tag="$tag" -f message="jiggy-flow $VERSION" \
               -f object="$SOURCE_REVISION" -f type=commit --jq .sha)
             gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" \
               -f ref="refs/tags/$tag" -f sha="$object" > /dev/null
@@ -210,12 +210,12 @@ jobs:
           if ! grep -Fx "$tag" "$RUNNER_TEMP/releases" > /dev/null; then
             {
               printf 'Python SDK for FLOW Run/1.\n\n'
-              printf '[View flowmd-sdk %s on PyPI](https://pypi.org/project/flowmd-sdk/%s/).\n\n' "$VERSION" "$VERSION"
-              printf '```sh\npython -m pip install flowmd-sdk==%s\n```\n\n' "$VERSION"
+              printf '[View jiggy-flow %s on PyPI](https://pypi.org/project/jiggy-flow/%s/).\n\n' "$VERSION" "$VERSION"
+              printf '```sh\npython -m pip install jiggy-flow==%s\n```\n\n' "$VERSION"
               printf '[Python guide](https://flow.jig.md/guide/python). Python 3.11 or newer.\n\n'
               printf 'Install from PyPI; GitHub source archives contain the repository source.\n'
             } > "$RUNNER_TEMP/notes.md"
             gh release create "$tag" --repo "$GITHUB_REPOSITORY" --verify-tag \
-              --prerelease --latest=false --title "flowmd-sdk $VERSION" \
+              --prerelease --latest=false --title "jiggy-flow $VERSION" \
               --notes-file "$RUNNER_TEMP/notes.md"
           fi

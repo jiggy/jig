@@ -1,7 +1,7 @@
 """Type-check only against the installed public API."""
 import asyncio
 from typing import assert_type
-from flowmd_sdk import (
+from jiggy.flow import (
     Attachment, CapabilityError, JsonValue, OperationError,
     RunContext, RunHandler, RunResult, handle,
 )

@@ -3,7 +3,7 @@ from __future__ import annotations
 import math
 import unittest
 
-from flowmd_sdk._json import Json1Error, encode_json1, parse_json1
+from jiggy.flow._json import Json1Error, encode_json1, parse_json1
 
 
 class Json1Tests(unittest.TestCase):

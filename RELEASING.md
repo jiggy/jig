@@ -75,7 +75,7 @@ later push is a new candidate, not an uncertainty retry.
 
 ## Python SDK prereleases
 
-`flowmd-sdk` is independently versioned using Python prerelease syntax, starting
+`jiggy-flow` is independently versioned using Python prerelease syntax, starting
 with `0.1.0a1`. Python execution support in Jig is not required. Its
 `pypi-publish.yml` workflow currently preserves the repository's same-revision CI
 and Linux Host Conformance authorization gates; that host gate does not claim
@@ -94,7 +94,7 @@ candidate bytes are then tested on the Python-version/OS matrix before release.
 
 PyPI setup for the first publication:
 
-- Project: `flowmd-sdk` (confirm availability and account ownership).
+- Project: `jiggy-flow` (confirm availability and account ownership).
 - Trusted publisher repository: `jiggy/jig`.
 - Workflow filename: `pypi-publish.yml`.
 - GitHub environment: `pypi`; create and protect that environment consistently
@@ -108,7 +108,7 @@ or repository-code execution. On a failed-job retry it may encounter a file
 uploaded by its previous attempt, so duplicate uploads may be skipped; this is
 not verification. The following read-only job downloads both registry artifacts
 and compares their hashes against retained candidate evidence before allowing
-`flowmd-sdk-v<version>` tags and GitHub prereleases with exact PyPI links.
+`jiggy-flow-v<version>` tags and GitHub prereleases with exact PyPI links.
 Changed bytes under an existing version fail and require a version bump.
 
 Use **Re-run failed jobs** for a partial/uncertain publication while seven-day

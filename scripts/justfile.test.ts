@@ -9,7 +9,7 @@ if (!just) throw new Error('Install Just 1.43.1 or newer to test repository task
 const justfiles = [
   'justfile',
   'packages/flow-sdk/justfile',
-  'packages/flowmd-sdk/justfile',
+  'packages/jiggy-flow/justfile',
   'packages/jig/justfile',
   'site/justfile',
 ]

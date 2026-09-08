@@ -7,7 +7,7 @@ is independently packaged for PyPI prereleases; Jig hosting is outside its scope
 
 ## Ownership
 
-- `src/flowmd_sdk/` owns the typed public module and runtime implementation.
+- `src/jiggy/flow/` owns the typed public module and runtime implementation.
 - `tests/` owns JSON/1, subprocess, concurrency, cancellation, and artifact
   evidence.
 - `justfile` owns Python build and test commands; `scripts/build-python-sdk.py`
@@ -16,8 +16,10 @@ is independently packaged for PyPI prereleases; Jig hosting is outside its scope
 
 ## Local Contracts
 
-- `flowmd_sdk.__init__` and `py.typed` define the public surface; underscore
+- `jiggy.flow.__init__` and `py.typed` define the public surface; underscore
   modules are private.
+- `jiggy` is a native namespace package: no `jiggy/__init__.py`.
+  The distribution is `jiggy-flow`; its public import is `jiggy.flow`.
 - Importing the package performs no protocol I/O or global mutation.
 - `handle()` owns exactly one root Run and protocol standard I/O; application
   output after entry is redirected to standard error.
@@ -43,7 +45,7 @@ is independently packaged for PyPI prereleases; Jig hosting is outside its scope
 
 ## Verification
 
-- `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=packages/flowmd-sdk/src python3 -m unittest discover -s packages/flowmd-sdk/tests -p 'test_*.py' -v`
+- `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=packages/jiggy-flow/src python3 -m unittest discover -s packages/jiggy-flow/tests -p 'test_*.py' -v`
 
 - `PYTHON=/absolute/python just python::pack /fresh/output` builds both formats
   and runs strict metadata, installed runtime and typed-consumer checks.

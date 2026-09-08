@@ -31,7 +31,7 @@ describe('Run/1 SDK parity', () => {
 async function runGoldenConversation(command: readonly string[]) {
   const scratch = await mkdtemp(join(tmpdir(), 'flow-run-1-'))
   const peer = new ComponentPeer(command, {
-    PYTHONPATH: resolve(root, 'packages/flowmd-sdk/src'),
+    PYTHONPATH: resolve(root, 'packages/jiggy-flow/src'),
   })
   const trace: Array<Record<string, unknown>> = []
 

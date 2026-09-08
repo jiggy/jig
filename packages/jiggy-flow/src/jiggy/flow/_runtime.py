@@ -285,9 +285,9 @@ class _Runtime:
 
     async def run(self) -> None:
         self._loop = asyncio.get_running_loop()
-        reader = threading.Thread(target=self._reader, name="flowmd-run-reader", daemon=True)
+        reader = threading.Thread(target=self._reader, name="jiggy-flow-run-reader", daemon=True)
         reader.start()
-        dispatch = asyncio.create_task(self._dispatch(), name="flowmd-run-dispatch")
+        dispatch = asyncio.create_task(self._dispatch(), name="jiggy-flow-run-dispatch")
         try:
             await self._done.wait()
         finally:
@@ -505,7 +505,7 @@ class _Runtime:
             deadline_unix_ms=deadline,
             _client=self,
         )
-        self._root_task = asyncio.create_task(self._run_handler(context), name="flowmd-run-handler")
+        self._root_task = asyncio.create_task(self._run_handler(context), name="jiggy-flow-run-handler")
 
     async def _handle_notification(self, frame: dict[str, Any]) -> None:
         if not set(frame).issubset({"jsonrpc", "method", "params"}):

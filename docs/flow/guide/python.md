@@ -4,7 +4,7 @@ title: Write a Flow in Python
 
 # Write a Flow in Python
 
-`flowmd-sdk` lets a Python method receive one FLOW Run/1 invocation, call
+`jiggy-flow` lets a Python method receive one FLOW Run/1 invocation, call
 host-supplied child Flows and capabilities, and return an outcome with data.
 It has no runtime dependencies and requires Python 3.11 or newer.
 FLOW is independent of Jig; choose a host that supports Python execution.
@@ -12,7 +12,7 @@ FLOW is independent of Jig; choose a host that supports Python execution.
 ## Install
 
 The first public prerelease candidate is `0.1.0a1`. Check its
-[PyPI version page](https://pypi.org/project/flowmd-sdk/0.1.0a1/) for publication.
+[PyPI version page](https://pypi.org/project/jiggy-flow/0.1.0a1/) for publication.
 Once available, install it into your application's virtual environment:
 
 ```sh
@@ -23,11 +23,11 @@ Activate with `source .venv/bin/activate` on Linux/macOS or
 `.venv\Scripts\Activate.ps1` in Windows PowerShell, then:
 
 ```sh
-python -m pip install flowmd-sdk==0.1.0a1
+python -m pip install jiggy-flow==0.1.0a1
 ```
 
 Before publication, install the candidate wheel from its release build with
-`python -m pip install /path/to/flowmd_sdk-0.1.0a1-py3-none-any.whl`.
+`python -m pip install /path/to/jiggy_flow-0.1.0a1-py3-none-any.whl`.
 An installed package needs neither this repository nor a development task runner.
 
 ## Write a method
@@ -35,7 +35,7 @@ An installed package needs neither this repository nor a development task runner
 Save this as `flow.py`:
 
 ```python
-from flowmd_sdk import RunContext, RunResult, handle
+from jiggy.flow import RunContext, RunResult, handle
 
 
 async def run(context: RunContext) -> RunResult:

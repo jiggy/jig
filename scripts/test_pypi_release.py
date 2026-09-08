@@ -13,14 +13,14 @@ spec.loader.exec_module(module)
 
 class ReleaseTests(unittest.TestCase):
     def setUp(self):
-        self.files = {"flowmd_sdk-0.1.0a1-py3-none-any.whl": b"wheel", "flowmd_sdk-0.1.0a1.tar.gz": b"source"}
-        self.receipt = dict(package="flowmd-sdk", version="0.1.0a1", commit="abc", candidate=True,
+        self.files = {"jiggy_flow-0.1.0a1-py3-none-any.whl": b"wheel", "jiggy_flow-0.1.0a1.tar.gz": b"source"}
+        self.receipt = dict(package="jiggy-flow", version="0.1.0a1", commit="abc", candidate=True,
                             files={name: hashlib.sha256(data).hexdigest() for name, data in self.files.items()})
 
     def download(self, names):
         def get(url):
             if url.endswith('/json'):
-                return json.dumps(dict(info=dict(name="flowmd-sdk", version="0.1.0a1"), urls=[
+                return json.dumps(dict(info=dict(name="jiggy-flow", version="0.1.0a1"), urls=[
                     dict(filename=n, digests=dict(sha256=self.receipt['files'][n]),
                          url='https://files.pythonhosted.org/'+n) for n in names])).encode()
             return self.files[url.rsplit('/',1)[1]]
@@ -35,7 +35,7 @@ class ReleaseTests(unittest.TestCase):
 
     def test_partial_retry_uploads_only_missing_and_complete_retry_uploads_nothing(self):
         wheel=next(iter(self.files))
-        self.assertEqual(module.missing(self.receipt,self.download([wheel])),["flowmd_sdk-0.1.0a1.tar.gz"])
+        self.assertEqual(module.missing(self.receipt,self.download([wheel])),["jiggy_flow-0.1.0a1.tar.gz"])
         self.assertEqual(module.missing(self.receipt,self.download(self.files)),[])
 
     def test_changed_registry_bytes_fail_even_with_matching_metadata(self):
@@ -66,7 +66,7 @@ class ReleaseTests(unittest.TestCase):
             root=Path(tmp);directory=root/'candidate';directory.mkdir()
             for name,data in self.files.items(): (directory/name).write_bytes(data)
             (directory/'SUCCESS.json').write_text(json.dumps(self.receipt))
-            missing_name='flowmd_sdk-0.1.0a1.tar.gz'
+            missing_name='jiggy_flow-0.1.0a1.tar.gz'
             args=['release','prepare',str(directory),'abc','--output',str(root/'pending'),'--github-output',str(root/'outputs')]
             with patch('sys.argv',args), patch.object(module,'missing',return_value=[missing_name]): module.main()
             self.assertEqual([p.name for p in (root/'pending').iterdir()],[missing_name])

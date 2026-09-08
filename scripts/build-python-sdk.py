@@ -30,18 +30,18 @@ def main() -> None:
         ["git", "status", "--porcelain"], cwd=ROOT, text=True
     ).strip():
         parser.error("candidate construction requires a clean checkout")
-    with tempfile.TemporaryDirectory(prefix="flowmd-build-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="jiggy-flow-build-") as tmp:
         temporary = Path(tmp)
         source = temporary / "source"
         if args.candidate:
             archive = temporary / "source.tar"
             with archive.open("wb") as stream:
-                subprocess.run(["git", "archive", revision, "packages/flowmd-sdk"], cwd=ROOT, stdout=stream, check=True)
+                subprocess.run(["git", "archive", revision, "packages/jiggy-flow"], cwd=ROOT, stdout=stream, check=True)
             with tarfile.open(archive) as packed:
                 packed.extractall(temporary / "checkout", filter="data")
-            shutil.copytree(temporary / "checkout/packages/flowmd-sdk", source)
+            shutil.copytree(temporary / "checkout/packages/jiggy-flow", source)
         else:
-            shutil.copytree(ROOT / "packages/flowmd-sdk", source,
+            shutil.copytree(ROOT / "packages/jiggy-flow", source,
                             ignore=shutil.ignore_patterns("__pycache__", "dist", "build", "*.egg-info"))
         version = tomllib.loads((source / "pyproject.toml").read_text())["project"]["version"]
         dist = temporary / "dist"
@@ -49,7 +49,7 @@ def main() -> None:
         # on later repository commits without replacing immutable registry bytes.
         epoch = int(subprocess.check_output(
             ["git", "log", "-1", "--format=%ct", revision, "--",
-             *[f"packages/flowmd-sdk/{name}" for name in
+             *[f"packages/jiggy-flow/{name}" for name in
                ("pyproject.toml", "MANIFEST.in", "README.md", "LICENSE", "src", "tests")]],
             cwd=ROOT, text=True).strip())
         build_env = dict(os.environ, SOURCE_DATE_EPOCH=str(epoch))
@@ -73,7 +73,7 @@ def main() -> None:
             raise RuntimeError("expected exactly one wheel and one sdist")
         subprocess.run([sys.executable, "-m", "twine", "check", "--strict", *map(str, files)], check=True)
         subprocess.run([sys.executable, str(source / "tests/package_smoke.py"), *map(str, files)], check=True)
-        receipt = {"package": "flowmd-sdk", "version": version, "commit": revision,
+        receipt = {"package": "jiggy-flow", "version": version, "commit": revision,
                    "candidate": args.candidate,
                    "files": {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in files}}
         (dist / "SUCCESS.json").write_text(json.dumps(receipt, indent=2) + "\n")

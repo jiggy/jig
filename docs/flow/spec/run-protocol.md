@@ -472,7 +472,7 @@ correlation remain protocol state and cannot be proven by a context-free JSON
 Schema document. Framing and JSON/1 validation happen before schema validation.
 
 The TypeScript package `@jigging/flow` and Python distribution/import
-`flowmd-sdk`/`flowmd_sdk` expose the same semantic surface:
+`jiggy-flow`/`jiggy.flow` expose the same semantic surface:
 
 ```text
 handle(handler)

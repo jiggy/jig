@@ -18,7 +18,7 @@ def main() -> None:
     if not any(path.name.endswith(".tar.gz") for path in artifacts):
         raise SystemExit("an sdist is required")
 
-    with TemporaryDirectory(prefix="flowmd-sdk-package-") as temporary:
+    with TemporaryDirectory(prefix="jiggy-flow-package-") as temporary:
         install_environment = {
             **os.environ,
             "PIP_CACHE_DIR": str(Path(temporary, "pip-cache")),
@@ -38,7 +38,7 @@ def main() -> None:
                     names = source_archive.getnames()
                     for required in ("pyproject.toml", "LICENSE", "README.md",
                                      "tests/fixture_component.py", "tests/typing_consumer.py",
-                                     "tests/package_smoke.py", "src/flowmd_sdk/py.typed"):
+                                     "tests/package_smoke.py", "src/jiggy/flow/py.typed"):
                         assert any(name.endswith("/" + required) for name in names), required
             environment = Path(temporary, f"venv-{index}")
             subprocess.run(
@@ -70,22 +70,25 @@ def main() -> None:
                     """
 from importlib.metadata import metadata
 from importlib.resources import files
-import flowmd_sdk
-from flowmd_sdk import CapabilityError, OperationError
+import jiggy
+import jiggy.flow
+from jiggy.flow import CapabilityError, OperationError
 
 operation = OperationError("UNAVAILABLE")
 effect = CapabilityError("not-found", None)
 assert operation.code == "UNAVAILABLE"
 assert effect.error_name == "not-found"
-assert files("flowmd_sdk").joinpath("py.typed").is_file()
-distribution = metadata("flowmd-sdk")
+assert files("jiggy.flow").joinpath("py.typed").is_file()
+distribution = metadata("jiggy-flow")
 assert distribution["Version"] == "0.1.0a1"
 assert distribution["License-Expression"] == "Apache-2.0"
 assert not distribution.get_all("Requires-Dist")
 assert "../../docs/" not in distribution.get_payload()
-assert callable(flowmd_sdk.handle)
-assert "run_child_flow" in flowmd_sdk.RunContext.__dict__
-assert "call_capability" in flowmd_sdk.RunContext.__dict__
+assert jiggy.__spec__.origin is None
+assert not files("jiggy").joinpath("__init__.py").is_file()
+assert callable(jiggy.flow.handle)
+assert "run_child_flow" in jiggy.flow.RunContext.__dict__
+assert "call_capability" in jiggy.flow.RunContext.__dict__
 """,
                 ],
                 check=True,

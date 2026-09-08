@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import sys
 
-from flowmd_sdk import CapabilityError, OperationError, RunContext, RunResult, handle
+from jiggy.flow import CapabilityError, OperationError, RunContext, RunResult, handle
 
 
 logged = False

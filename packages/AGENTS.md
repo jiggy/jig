@@ -51,6 +51,6 @@ Contains the independently built and distributed FLOW SDKs and Jig host.
 
 - [flow-sdk/AGENTS.md](flow-sdk/AGENTS.md) — Public TypeScript Run SDK/1
   package.
-- [flowmd-sdk/AGENTS.md](flowmd-sdk/AGENTS.md) — Independently released Python Run SDK/1 package.
+- [jiggy-flow/AGENTS.md](jiggy-flow/AGENTS.md) — Independently released Python Run SDK/1 package.
 - [jig/AGENTS.md](jig/AGENTS.md) — Public Jig authoring package and installed
   secure host.

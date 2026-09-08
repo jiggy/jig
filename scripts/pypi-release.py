@@ -29,12 +29,12 @@ def fetch(url: str) -> bytes:
 
 def candidate(directory: Path, revision: str) -> dict:
     receipt = json.loads((directory / "SUCCESS.json").read_text())
-    if receipt.get("package") != "flowmd-sdk" or receipt.get("commit") != revision or receipt.get("candidate") is not True:
+    if receipt.get("package") != "jiggy-flow" or receipt.get("commit") != revision or receipt.get("candidate") is not True:
         raise ValueError("candidate source/evidence mismatch")
     version = receipt.get("version", "")
     if not re.fullmatch(r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)(?:a|b|rc)(?:0|[1-9][0-9]*)", version):
         raise ValueError("expected one exact Python prerelease version")
-    expected = {f"flowmd_sdk-{version}-py3-none-any.whl", f"flowmd_sdk-{version}.tar.gz"}
+    expected = {f"jiggy_flow-{version}-py3-none-any.whl", f"jiggy_flow-{version}.tar.gz"}
     if set(receipt.get("files", {})) != expected:
         raise ValueError("candidate must contain the exact wheel and sdist")
     if {p.name for p in directory.iterdir()} != expected | {"SUCCESS.json"}:
@@ -48,12 +48,12 @@ def candidate(directory: Path, revision: str) -> dict:
 
 def missing(receipt: dict, download=fetch) -> list[str]:
     try:
-        remote = json.loads(download(f'https://pypi.org/pypi/flowmd-sdk/{receipt["version"]}/json'))
+        remote = json.loads(download(f'https://pypi.org/pypi/jiggy-flow/{receipt["version"]}/json'))
     except urllib.error.HTTPError as error:
         if error.code == 404:
             return sorted(receipt["files"])
         raise
-    if remote["info"]["name"] != "flowmd-sdk" or remote["info"]["version"] != receipt["version"]:
+    if remote["info"]["name"] != "jiggy-flow" or remote["info"]["version"] != receipt["version"]:
         raise ValueError("registry package identity mismatch")
     found = set()
     for file in remote["urls"]:

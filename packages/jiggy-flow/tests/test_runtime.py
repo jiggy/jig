@@ -12,8 +12,8 @@ import time
 import unittest
 from unittest.mock import patch
 
-from flowmd_sdk import OperationError, RunContext
-from flowmd_sdk._runtime import _EndOfFile, _Runtime
+from jiggy.flow import OperationError, RunContext
+from jiggy.flow._runtime import _EndOfFile, _Runtime
 
 
 PACKAGE = Path(__file__).resolve().parents[1]

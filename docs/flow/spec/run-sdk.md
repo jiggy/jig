@@ -9,7 +9,7 @@ Run/1 owns the protocol and this projection must be corrected.
 ## 1. Surface and ownership
 
 The TypeScript package root is `@jigging/flow`. The Python distribution is
-`flowmd-sdk`, imported as `flowmd_sdk`. These root modules expose Run SDK/1
+`jiggy-flow`, imported as `jiggy.flow`. These root modules expose Run SDK/1
 only.
 
 Both expose only:
@@ -266,7 +266,7 @@ await handle(async (run) => ({ outcome: "done", output: run.input }));
 Python:
 
 ```python
-from flowmd_sdk import RunContext, RunResult, handle
+from jiggy.flow import RunContext, RunResult, handle
 
 
 async def run(context: RunContext) -> RunResult:
@@ -300,7 +300,7 @@ await handle(async (run) => {
 The equivalent Python is:
 
 ```python
-from flowmd_sdk import RunContext, RunResult, handle
+from jiggy.flow import RunContext, RunResult, handle
 
 
 async def run(context: RunContext) -> RunResult:
@@ -330,5 +330,5 @@ A host may impose a lower child-concurrency limit and report
 `RESOURCE_EXHAUSTED`. The Run/1 request-lifetime limit still applies.
 
 The implementations live under `packages/flow-sdk/` and
-`packages/flowmd-sdk/`. The shared executable seed is
+`packages/jiggy-flow/`. The shared executable seed is
 [`conformance/run-1/`](https://github.com/jiggy/jig/tree/main/conformance/run-1).

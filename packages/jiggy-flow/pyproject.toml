@@ -3,7 +3,7 @@ requires = ["setuptools==80.9.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "flowmd-sdk"
+name = "jiggy-flow"
 version = "0.1.0a1"
 description = "Python SDK for FLOW Run/1"
 readme = "README.md"
@@ -23,7 +23,7 @@ classifiers = [
 
 [project.urls]
 Documentation = "https://flow.jig.md/guide/python"
-Source = "https://github.com/jiggy/jig/tree/main/packages/flowmd-sdk"
+Source = "https://github.com/jiggy/jig/tree/main/packages/jiggy-flow"
 Issues = "https://github.com/jiggy/jig/issues"
 
 [tool.setuptools]
@@ -31,6 +31,8 @@ package-dir = {"" = "src"}
 
 [tool.setuptools.packages.find]
 where = ["src"]
+include = ["jiggy.flow*"]
+namespaces = true
 
 [tool.setuptools.package-data]
-flowmd_sdk = ["py.typed"]
+"jiggy.flow" = ["py.typed"]

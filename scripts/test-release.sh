@@ -59,9 +59,9 @@ bun packages/flow-sdk/test/package-smoke.ts
 bun packages/jig/test/package-smoke.ts
 
 PYTHONDONTWRITEBYTECODE=1 \
-PYTHONPATH=packages/flowmd-sdk/src \
+PYTHONPATH=packages/jiggy-flow/src \
   "$python_bin" -m unittest discover \
-    -s packages/flowmd-sdk/tests -p 'test_*.py' -v
+    -s packages/jiggy-flow/tests -p 'test_*.py' -v
 
 PYTHONDONTWRITEBYTECODE=1 \
   "$python_bin" -m unittest discover \

@@ -727,7 +727,7 @@ async function withPeer(
   action: (peer: ComponentPeer) => Promise<void>,
 ): Promise<void> {
   const peer = new ComponentPeer(command, {
-    PYTHONPATH: resolve(root, 'packages/flowmd-sdk/src'),
+    PYTHONPATH: resolve(root, 'packages/jiggy-flow/src'),
   })
   try {
     await action(peer)
