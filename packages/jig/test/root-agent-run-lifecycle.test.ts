@@ -32,6 +32,26 @@ import { installedBunLocation } from './fixtures/installed-bun-location.js'
 const HOSTILE = process.env.JIG_LINUX_ROOTLESS_HOSTILE === '1'
 const proofDescribe = HOSTILE ? describe.serial : describe.skip
 
+test('constructs the Agent fixture with the complete current SDK', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'jig-agent-fixture-'))
+  try {
+    await writeProject(root)
+    const child = Bun.spawn(
+      [
+        process.execPath,
+        '--no-env-file',
+        '-e',
+        'import { handle } from "./flows/router/flow-sdk/index.ts"; if (typeof handle !== "function") throw new Error("missing handle");',
+      ],
+      { cwd: root, stdout: 'pipe', stderr: 'pipe' },
+    )
+    const [exitCode, stderr] = await Promise.all([child.exited, new Response(child.stderr).text()])
+    expect(exitCode, stderr).toBe(0)
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
 proofDescribe('contained repair file application', () => {
   test('exports a multi-file patch through a JSON leaf and real contained project commands with a recorded Agent response', async () => {
     const root = await mkdtemp(join(tmpdir(), 'jig-repair-file-proof-'))
@@ -105,7 +125,7 @@ proofDescribe('contained repair file application', () => {
     try {
       await cp(join(import.meta.dir, '../../../examples/tested-patch'), project, {
         recursive: true,
-        filter: (source) => !['node_modules', '.jig'].includes(basename(source)),
+        filter: (source) => !['node_modules', '.jig', 'jig.lock'].includes(basename(source)),
       })
       // This is source-candidate host evidence, not a registry-install proof.
       // Vendor the built SDK into disposable Flow copies so a new wire API
@@ -1224,19 +1244,7 @@ async function writeProject(root: string): Promise<void> {
     }),
   )
   await writeFile(join(flow, 'flow.ts'), flowProgram())
-  for (const name of [
-    'index.ts',
-    'json.ts',
-    'protocol.ts',
-    'session.ts',
-    'transport.ts',
-    'types.ts',
-  ]) {
-    await copyFile(
-      join(import.meta.dir, '..', '..', 'flow-sdk', 'src', name),
-      join(flow, 'flow-sdk', name),
-    )
-  }
+  await cp(join(import.meta.dir, '../../flow-sdk/src'), join(flow, 'flow-sdk'), { recursive: true })
 }
 
 async function writeSpecialistParent(root: string): Promise<void> {
