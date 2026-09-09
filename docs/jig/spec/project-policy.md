@@ -20,7 +20,8 @@ read project configuration, or look up a version in the registry.
 
 `jig init <directory>` creates an ordinary editable greeting package under
 `flows/hello`, a short project README, and the project skeleton below. Its
-package-local manifest selects the published `@jigging/flow` alpha tag. It uses
+package-local manifest names the exact `@jigging/flow` revision tested with the
+Jig build, rather than a moving registry tag. It uses
 the same explicit missing-lock resolution permission and review as any other
 package; initialization performs no installation, network requests, approval,
 or execution. A destination must not exist. Initialization never replaces files.

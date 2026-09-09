@@ -37,7 +37,8 @@ Bindings directory. It installs nothing, makes no network requests, and
 approves nothing. Use `jig init --bare <directory>` when you want an empty
 project instead.
 
-The greeting imports the published FLOW SDK alpha. Review resolves and retains
+The greeting names the exact FLOW SDK revision tested with its Jig build,
+not a moving registry tag. Review resolves and retains
 its dependencies privately, so no per-Flow `bun install` is needed.
 `--allow-resolution-network` permits dependency-selected network requests
 before approval; declining cannot undo those requests. It does not give Runs

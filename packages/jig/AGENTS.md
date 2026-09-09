@@ -28,7 +28,9 @@ admitted FLOW packages.
   is not a provider, runtime, or containment SPI.
 - Default `init` writes an ordinary greeting Flow; `--bare` writes only the
   skeleton. Neither installs, networks, approves, or executes. Generated
-  packages use the same dependency review as consumer-authored packages.
+  packages use the same dependency review as consumer-authored packages. The
+  greeting names the exact tested SDK version; its regression checks the SDK
+  manifest so a moving npm tag cannot silently select a different wire contract.
 - Command help and syntax errors do not acquire execution authority. Review
   leads with complete changed policy; `--details` includes unchanged policy.
   Run stdout stays JSON/NDJSON. Plain elapsed status uses terminal stderr only;

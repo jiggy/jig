@@ -16,6 +16,9 @@ const DEFAULT_FILE_SYSTEM: ProjectInitFileSystem = {
   writeFile,
 }
 
+// Pair the generated source with its tested SDK, not a moving registry tag.
+const GREETING_SDK_VERSION = '0.1.0-alpha.10'
+
 export type ProjectInitErrorCode =
   | 'JIG_INIT_CLEANUP_FAILED'
   | 'JIG_INIT_DESTINATION_EXISTS'
@@ -131,7 +134,7 @@ function greetingFiles(): readonly (readonly [string, string])[] {
     ],
     [
       'flows/hello/package.json',
-      `${JSON.stringify({ private: true, dependencies: { '@jigging/flow': 'alpha' } }, null, 2)}\n`,
+      `${JSON.stringify({ private: true, dependencies: { '@jigging/flow': GREETING_SDK_VERSION } }, null, 2)}\n`,
     ],
     [
       'flows/hello/flow.ts',
@@ -168,8 +171,9 @@ function greetingFiles(): readonly (readonly [string, string])[] {
         'Edit `flows/hello/flow.ts`, repeat `jig review --allow-resolution-network`,',
         'then run the accepted revision. Code edits can require fresh dependency',
         'resolution until you add an authored lock; unchanged reviews reuse admitted bytes.',
-        'This ordinary package uses the published SDK alpha tag. Resolution retains exact',
-        'versions privately; add an authored Bun lock when sharing reproducible dependencies.',
+        'This ordinary package names the exact SDK revision tested with this Jig build.',
+        'Resolution retains exact versions privately; add an authored Bun lock when',
+        'sharing reproducible dependencies.',
         'You do not need a separate Bun install to run this project.',
         '',
         'Help: `jig review --help`, `jig run --help`, https://jig.md/guide/',
