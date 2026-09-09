@@ -7,20 +7,18 @@ You receive a patch and evidence, while the originals remain unchanged.
 
 ## Try it
 
-Install Jig on a [supported host](https://jig.md/guide/). Choose
-`tested-patch.tar.gz` from a [matching Jig release](https://github.com/jiggy/jig/releases)
-and extract it. Release archives contain prepared applications; the
-[repository directory](https://github.com/jiggy/jig/tree/main/examples/tested-patch)
-contains their original authoring modules.
+Install Jig on a [supported host](https://jig.md/guide/).
 
 Configure your [Agent](https://jig.md/guide/agents), then inspect
 `issue.json`, `bindings/specialist.ts`, and `flows/project/cases.json`.
-From the extracted application:
+From this directory:
 
 ```sh
-jig review
+jig review --allow-resolution-network
 jig run binding:repair --input @issue.json --attach source=fixtures/log-report --out repair-result --timeout 5m
 ```
+
+Review resolves the declared dependencies and retains their exact bytes.
 
 Open `repair-result/files/summary.txt`. A successful repair produces
 `review.patch`; unsuccessful proposals remain `proposal-N.patch`.

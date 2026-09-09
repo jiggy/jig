@@ -10,10 +10,8 @@ application is not an unrestricted repository worker or independent probe.
 
 - `README.md` introduces the application; its public guide owns user instructions.
 - Root `package.json` owns development dependencies; Flow-local manifests
-  declare authoring dependencies on the current SDK. The repository
-  build/distribution path assembles `tested-patch.tar.gz` with self-contained
-  Flows from the matching packed SDK. This directory is authoring source;
-  the release archive owns the prepared runnable dependency closure.
+  declare runtime dependencies prepared by Jig during review. This directory
+  is the editable application; no custom distribution build is required.
 - `flows/project/` owns root file capture, fixed CLI cases, one- or two-job
   invocation, single-job broadcast wiring/presentation and bounded recording, evidence checks,
   applicable patch construction, and deliverables.

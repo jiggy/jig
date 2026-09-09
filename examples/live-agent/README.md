@@ -4,20 +4,16 @@ Run one Agent and display its public text as it arrives. The Flow owns the
 filter: it ignores plan records, can suppress progress, and keeps the final
 Agent result separate from progress delivery.
 
-Choose `live-agent.tar.gz` from a
-[matching Jig release](https://github.com/jiggy/jig/releases) and extract it.
-Release archives contain prepared applications; the
-[repository directory](https://github.com/jiggy/jig/tree/main/examples/live-agent)
-contains their original authoring modules.
-
 With Jig on a [supported host](https://jig.md/guide/) and a configured
 [native Agent](https://jig.md/guide/agents) supporting public updates, run from
-the extracted application:
+this directory:
 
 ```sh
-jig review
+jig review --allow-resolution-network
 jig run flow:flows/chat --input @input.json
 ```
+
+Review resolves the declared dependencies and retains their exact bytes.
 
 Text appears live on diagnostic stderr. The final result records the Agent's
 outcome and whether progress delivery completed. Ctrl-C requests cancellation.

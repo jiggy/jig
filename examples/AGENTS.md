@@ -21,11 +21,10 @@ authored examples, not independent consumer evidence or promoted Starters.
 - Examples track the current Jig and FLOW source together. Build and test them
   against the current SDK without waiting for npm publication; do not preserve
   superseded APIs, release-order warnings, or compatibility branches.
-- Runnable examples must include their dependency closure. Preparing it is
-  repository build/distribution work, not a quickstart loop in which consumers
-  visit each Flow and generate its lock. Preserve real artifact identities and
-  use supported tooling; never invent registry integrity or imply that a
-  missing dependency has been supplied. Link to the current installation guide.
+- Examples remain ordinary editable source projects with declared dependencies.
+  Use the same dependency preparation as other consumers, not specially bundled
+  application archives or per-Flow setup loops. Test unpublished SDK candidates
+  separately from claims about registry availability.
 - Agents, models, credentials, and execution policy remain operator choices.
 - Label synthetic evidence and keep it distinct from claims about real users.
 

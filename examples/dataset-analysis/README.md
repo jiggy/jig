@@ -4,12 +4,10 @@ Find the first temperature at or above a threshold without giving the analysis
 Flow all the readings. It requests a sample, uses the reply to choose its next
 sample, and returns a finding supported by the observations it received.
 
-Extract `dataset-analysis.tar.gz` from a
-[matching Jig release](https://github.com/jiggy/jig/releases). With Jig on a
-[supported host](https://jig.md/guide/), run in the prepared application:
+With Jig on a [supported host](https://jig.md/guide/), run from this directory:
 
 ```sh
-jig review
+jig review --allow-resolution-network
 jig run binding:analysis --input @input.json
 ```
 
@@ -30,5 +28,4 @@ implementation participate without changing the analysis method.
 
 This deliberately small example teaches a finite structured conversation,
 not general statistical analysis, guaranteed delivery, or a database service.
-Repository source is built into prepared release archives through the ordinary
-example build; consumers do not prepare individual Flow dependencies.
+Review resolves the declared dependencies and retains their exact bytes.

@@ -39,6 +39,6 @@ a separately replaceable dataset reader, while the application verifies its find
 - `bun test examples/dataset-analysis/test` exercises application policy and
   synthetic channel conversations after ordinary development dependency preparation.
 - Pure application pipes do not establish transport, containment, or host cleanup;
-  qualify the prepared application through the installed Jig interface separately.
+  qualify the application through the installed Jig interface separately.
 
 ## Child DOX Index

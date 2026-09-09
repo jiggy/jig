@@ -192,11 +192,6 @@ if [ "$verified_hash_line" != "$hash_line" ]; then
   exit 1
 fi
 
-# Applications consume these tested SDK bytes through ordinary author-side
-# bundling. Publication retains the resulting archives; it never rebuilds them.
-PATH="$release_path:${PATH:-/usr/bin:/bin}" \
-  just --justfile "$temporary/source/justfile" build-examples "$archive" "$staging/examples"
-
 commit=$(git -C "$repository" rev-parse HEAD)
 {
   printf '{\n'
@@ -205,7 +200,7 @@ commit=$(git -C "$repository" rev-parse HEAD)
   printf '  "bunRevision": "%s",\n' "$bun_revision"
   printf '  "bunVersion": "%s",\n' "$bun_version"
   printf '  "commit": "%s",\n' "$commit"
-  printf '  "gates": ["package-smoke", "npm-install-import", "prepared-examples"],\n'
+  printf '  "gates": ["package-smoke", "npm-install-import"],\n'
   printf '  "nodeExecutable": "%s",\n' "$FLOW_NODE"
   printf '  "nodeVersion": "%s",\n' "$node_version"
   printf '  "npmExecutable": "%s",\n' "$FLOW_NPM"

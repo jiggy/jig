@@ -30,10 +30,6 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   GitHub prereleases with exact registry version links, install commands, and docs.
   Preserve existing release notes on retries; never present source archives as
   the installable package.
-- The FLOW candidate retains prepared application archives built against its
-  exact SDK bytes. Attach them to the same-source Jig release only after
-  publication gates pass. Reuse retained bytes and compare existing assets on
-  retries; never rebuild or overwrite them during release.
 - Keep FLOW and Jig site publication independent.
 
 ## Work Guidance

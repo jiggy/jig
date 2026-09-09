@@ -5,11 +5,12 @@ Flow the entire dataset. It requests one sample, uses the answer to choose the
 next, and returns the crossing. Two named channels connect it to a dataset Flow;
 ordinary child calls still start the work and return each result.
 
-With [Jig installed](index.md), extract `dataset-analysis.tar.gz` from a
-[matching release](https://github.com/jiggy/jig/releases). From that application:
+With [Jig installed](index.md), use the
+[dataset-analysis source example](https://github.com/jiggy/jig/tree/main/examples/dataset-analysis).
+From that directory:
 
 ```sh
-jig review
+jig review --allow-resolution-network
 jig run binding:analysis --input @input.json
 ```
 

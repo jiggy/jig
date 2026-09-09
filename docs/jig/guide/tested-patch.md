@@ -8,20 +8,17 @@ Give Jig a small Bun project and a bug. Get back a multi-file patch, the
 commands actually run against it, and independent checks of its behavior.
 Your original files stay unchanged; you decide whether to apply the patch.
 
-Choose `tested-patch.tar.gz` from a
-[matching Jig release](https://github.com/jiggy/jig/releases). It contains the
-prepared application, including its Flow dependency closure. The
-[repository directory](https://github.com/jiggy/jig/tree/main/examples/tested-patch)
-is authoring source. See the [installation guide](./index.md) for supported hosts.
+Use the [tested-patch source example](https://github.com/jiggy/jig/tree/main/examples/tested-patch).
+See the [installation guide](./index.md) for supported hosts.
 
 ## Try it
 
-Extract the application, [configure an Agent](./agents.md), and inspect
+[Configure an Agent](./agents.md) and inspect
 `issue.json`, `bindings/specialist.ts`, and `flows/project/cases.json`.
-From the extracted directory:
+From the example directory:
 
 ```sh
-jig review
+jig review --allow-resolution-network
 jig run binding:repair --input @issue.json --attach source=fixtures/log-report --out repair-result --timeout 5m
 ```
 

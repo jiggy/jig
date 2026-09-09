@@ -44,7 +44,6 @@ bun pm pack --cwd packages/flow-sdk --ignore-scripts --destination "$release_tmp
 set -- "$release_tmp"/artifacts/*.tgz
 test "$#" -eq 1 && test -f "$1"
 sdk_archive=$1
-just build-examples "$sdk_archive" "$release_tmp/prepared-examples"
 set --
 for application in tested-patch live-agent dataset-analysis; do
   application_copy="$release_tmp/$application"
@@ -64,7 +63,7 @@ for application in tested-patch live-agent dataset-analysis; do
   (cd "$application_copy" && bun --no-env-file install --ignore-scripts --config=/dev/null)
   set -- "$@" "$application_copy/test"
 done
-FLOW_SDK_PACKAGE_ARCHIVE="$sdk_archive" bun test packages/flow-sdk packages/jig conformance/run-1 examples/proposal-workshop/test scripts/build-examples.test.ts scripts/release-example-assets.test.ts "$@"
+FLOW_SDK_PACKAGE_ARCHIVE="$sdk_archive" bun test packages/flow-sdk packages/jig conformance/run-1 examples/proposal-workshop/test "$@"
 bun packages/flow-sdk/test/package-smoke.ts
 bun packages/jig/test/package-smoke.ts
 

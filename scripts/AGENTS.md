@@ -17,11 +17,6 @@ operational baselines, and public-site assembly.
   TypeScript candidate and site scripts invoke the relevant justfile, not
   package scripts. Python Just tasks expose the packaging orchestrator, which
   calls the standard Python build frontend directly.
-- `build-examples.ts` prepares the tested-patch, live-agent, and dataset-analysis
-  distribution archives from their source and one exact packed SDK. It bundles Flow
-  entrypoints during authoring, records source and artifact identities, and
-  excludes local state. `just build-examples` is its public build entrypoint;
-  SDK candidate construction retains these same archives for release.
 - `test-release.sh` includes the authored examples' deterministic application
   tests. It installs the freshly packed SDK as a development dependency of
   disposable application copies, without lifecycle scripts or edits to source
@@ -70,13 +65,6 @@ operational baselines, and public-site assembly.
 
 - Run the changed script against a fresh temporary destination and exercise at
   least one expected failure path.
-- `bun test scripts/build-examples.test.ts` checks prepared application closure,
-  archive contents, and fail-closed preparation. Set `FLOW_SDK_PACKAGE_ARCHIVE`
-  to the exact packed SDK for artifact cases. The release gate supplies it and
-  builds all maintained distribution applications against those bytes.
-- `bun test scripts/release-example-assets.test.ts` exercises the workflow's
-  actual asset step with a local recording CLI: exact retries, conflicting
-  bytes, uncertain upload, and independent SDK releases.
 - `python3 -m unittest discover -s scripts -p test_pypi_release.py` verifies
   partial retries, registry failures, and immutable candidate/registry bytes.
 - Validate the Host Conformance authorization script with `shellcheck` and

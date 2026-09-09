@@ -3,14 +3,11 @@
 A Flow can read selected Agent updates, filter them and choose their presentation.
 No logging capability or hook configuration is required.
 
-Choose `live-agent.tar.gz` from a
-[matching Jig release](https://github.com/jiggy/jig/releases) and extract the
-prepared application. Its [repository directory](https://github.com/jiggy/jig/tree/main/examples/live-agent)
-is authoring source. With Jig and a configured [native client](agents.md),
-run from the extracted application:
+Use the [live-agent source example](https://github.com/jiggy/jig/tree/main/examples/live-agent).
+With Jig and a configured [native client](agents.md), run from that directory:
 
 ```sh
-jig review
+jig review --allow-resolution-network
 jig run flow:flows/chat --input '{"instructions":"Explain why the sky is blue."}'
 ```
 
@@ -18,7 +15,11 @@ Selected text appears live on stderr. The final JSON on stdout contains the
 actual Agent result. This is observation, not permission to interrupt, continue
 or replace the Agent session.
 
-Inside the Flow, the connection is ordinary application code:
+The chat Flow creates the channel and passes its writer to the Agent
+capability. The capability supplies public Agent updates; the chat Flow keeps
+the receiver and chooses what to display. Both the call and the reading loop
+below belong to that one Flow. This is a handler excerpt: `run` is the
+`RunContext` supplied by `handle()`.
 
 ```ts
 import { OperationError } from '@jigging/flow'
@@ -30,6 +31,7 @@ if (!input || typeof input !== 'object' || Array.isArray(input) ||
 const updates = await run.channel({
   contract: './contracts/acp-public-updates.json',
 })
+// Give the Agent capability the writer; it produces the updates.
 const answer = run.callCapability({
   operationId: 'answer', slot: 'agent', method: 'run',
   input: { instructions: input.instructions },
@@ -39,6 +41,7 @@ const answer = run.callCapability({
   await updates.receive.close().catch(() => undefined)
   throw error
 })
+// The chat Flow consumes those updates while the Agent call is pending.
 const observation = (async () => {
   try {
     for await (const update of updates.receive) {
@@ -110,6 +113,35 @@ each child reads its declared endpoints from `run.channels`. No hook or Log
 capability is involved. Replacing the exact `monitor` slot changes presentation
 without editing the repair specialist. A monitor receives no source files,
 Agent powers, commands or patch-approval authority.
+
+These excerpts run in separate child Flows, each with its own `run` context.
+They show endpoint use; the linked handlers also validate values and settings,
+handle optional delivery failures, and settle their channel ownership.
+
+The [repair Flow](https://github.com/jiggy/jig/blob/main/examples/tested-patch/flows/repair/repair.ts)
+gets its writer from `run.channels.progress`. Inside its `publish(phase, attempt)`
+helper, it sends a record when progress is connected and still available:
+
+```ts
+run.signal.throwIfAborted()
+if (!progress || !progressAvailable) return
+await progress.send({ phase, attempt })
+```
+
+The [monitor Flow](https://github.com/jiggy/jig/blob/main/examples/tested-patch/flows/monitor/monitor.ts)
+gets `source` from `run.channels.phases` and `destination` from
+`run.channels.display`. Its reading loop uses its own validated presentation
+settings and `formatProgress` helper:
+
+```ts
+for await (const value of source) {
+  run.signal.throwIfAborted()
+  const record = formatProgress(value, style)
+  if (!selected.includes(record.phase)) continue
+  await destination.send(record.text)
+  displayed++
+}
+```
 
 The [complete parent](https://github.com/jiggy/jig/blob/main/examples/tested-patch/flows/project/monitoring.ts)
 handles rejected connections, observation loss and cancellation. It always

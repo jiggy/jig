@@ -282,7 +282,7 @@ or make Node part of Jig's runtime closure.
 When `CODEX_PATH` is omitted, Jig resolves Codex only from fixed system-owned
 locations, never project files or ambient `PATH`. An explicit absolute path may
 be a link; Jig resolves, validates, and identifies its exact executable before
-review. Codex's nested sandbox requires its matching bundled
+review. Jig's current Codex adapter uses the installation's matching bundled
 `codex-resources/bwrap`, beside the executable directory or its parent in the
 client installation. Jig preserves the client's bundled-helper integrity check;
 `JIG_BWRAP_PATH` selects only Jig's outer containment tool. The selected native
