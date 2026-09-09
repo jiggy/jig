@@ -251,7 +251,9 @@ try {
     [1],
   )
   assert.equal(occupied.stdout, '')
-  assert.match(occupied.stderr, /JIG_OUTPUT_INVALID/)
+  assert.match(occupied.stderr, /JIG_OUTPUT_EXISTS/)
+  assert.match(occupied.stderr, /Choose a new --out directory/)
+  assert.match(occupied.stderr, /No Flow was started/)
   const missingMapping = await run(
     [jig, 'run', 'flow:flows/file-work', '--out', join(consumer, 'missing')],
     project,

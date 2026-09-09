@@ -138,7 +138,12 @@ try {
     [1],
     120_000,
   )
-  assert.equal(schemaInvalid.stderr, '')
+  assert.equal(
+    schemaInvalid.stderr,
+    'JIG_RUN_INPUT_INVALID: input does not match the target input schema.\n' +
+      'Value: "/name"\n' +
+      'Check --input against the Flow input.schema.json; see the JSON result for validation details.\n',
+  )
   const rejectedTerminal = requireRecord(JSON.parse(schemaInvalid.stdout))
   assert.equal(rejectedTerminal.status, 'failed')
   assert.equal(rejectedTerminal.code, 'INVALID_INPUT')
