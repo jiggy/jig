@@ -9,9 +9,11 @@ import threading
 import traceback
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any, Callable, Coroutine, Literal
+from typing import Any, Callable, Coroutine, Literal, TypeGuard, cast, overload
 
-from ._channels import _Endpoint, _Pair, _Receiver, _Sender, validate_channel_result, validate_grant
+from ._channels import (
+    _Broadcast, _Endpoint, _Pair, _Receiver, _Sender, validate_channel_result, validate_grant,
+)
 
 from ._json import (
     MAX_DOCUMENT_BYTES,
@@ -24,6 +26,7 @@ from ._json import (
 from ._types import (
     Attachment,
     CapabilityError,
+    ChannelBroadcast,
     ChannelEndpoint,
     ChannelPair,
     JsonValue,
@@ -84,6 +87,7 @@ class _Pending:
     cancel_sent: bool = False
     user_cancelled: bool = False
     settlement: bool = False
+    allocation_credit: int = 0
     on_settle: Callable[[Any, bool], None] | None = None
 
 
@@ -131,14 +135,26 @@ class _RunContextImpl:
             channels=channels,
         )
 
+    @overload
     async def channel(
         self, *, delivery: Literal["direct"] = "direct", schema: Any = _SCHEMA_UNSET,
         contract: str | None = None,
-    ) -> ChannelPair:
+    ) -> ChannelPair: ...
+
+    @overload
+    async def channel(
+        self, *, delivery: Literal["broadcast"], schema: Any = _SCHEMA_UNSET,
+        contract: str | None = None,
+    ) -> ChannelBroadcast: ...
+
+    async def channel(
+        self, *, delivery: Literal["direct", "broadcast"] = "direct", schema: Any = _SCHEMA_UNSET,
+        contract: str | None = None,
+    ) -> ChannelPair | ChannelBroadcast:
         return await self._client.channel(delivery=delivery, schema=schema, contract=contract)
 
 
-def _is_wire_id(value: Any) -> bool:
+def _is_wire_id(value: Any) -> TypeGuard[str]:
     if not isinstance(value, str):
         return False
     try:
@@ -279,7 +295,7 @@ def _flow_error_from_wire(value: Any) -> OperationError:
         if not isinstance(operation_code, str) or operation_code not in _FLOW_ERROR_CODES:
             raise _InvalidParams("unknown Run/1 operation error code")
         details = normalize_json1(data.get("details"))
-        return OperationError(operation_code, message=message, details=details)
+        return OperationError(cast(OperationErrorCode, operation_code), message=message, details=details)
 
     if code not in _STANDARD_ERROR_CODES:
         raise _InvalidParams("unknown JSON-RPC error code")
@@ -322,6 +338,8 @@ class _Runtime:
         self._accepting_calls = False
         self._endpoints: dict[str, _Endpoint] = {}
         self._pairs: list[_Pair] = []
+        self._sources: dict[str, _Broadcast] = {}
+        self._cancelled_sources: set[str] = set()
         self._settlements: set[asyncio.Task[Any]] = set()
         self._settlement_keys: set[tuple[str, str]] = set()
 
@@ -766,7 +784,7 @@ class _Runtime:
         encode_json1(normalized)
         result = await self._send_request("flow", "flow/run-child", normalized)
         assert isinstance(result, dict)
-        return result
+        return cast(RunResult, result)
 
     async def call_capability(
         self,
@@ -776,7 +794,7 @@ class _Runtime:
         method: str,
         input: Any,
         channels: Mapping[str, ChannelEndpoint] | None = None,
-    ) -> Any:
+    ) -> JsonValue:
         _require_wire_id(operation_id, "operation_id")
         _require_local_name(slot, "slot")
         _require_local_name(method, "method")
@@ -790,7 +808,7 @@ class _Runtime:
         normalized = normalize_json1(params)
         assert isinstance(normalized, dict)
         encode_json1(normalized)
-        return await self._send_request("effect", "capability/call", normalized)
+        return cast(JsonValue, await self._send_request("effect", "capability/call", normalized))
 
     def _map_channels(self, params: dict[str, Any], channels: Mapping[str, ChannelEndpoint] | None) -> None:
         if channels is None:
@@ -810,10 +828,10 @@ class _Runtime:
             selected.append(endpoint)
         params["channels"] = references
         encode_json1(params)
-        for endpoint in selected:
-            endpoint._offered = True
+        for selected_endpoint in selected:
+            selected_endpoint._offered = True
 
-    def _register_endpoint(self, grant: dict[str, Any]) -> _Endpoint:
+    def _register_endpoint(self, grant: dict[str, Any]) -> _Sender | _Receiver:
         self._channel_mode = True
         if grant["endpoint"] in self._endpoints or len(self._endpoints) >= 512:
             raise ValueError("Duplicate or excessive channel endpoint allocation")
@@ -832,9 +850,9 @@ class _Runtime:
         task.add_done_callback(settled)
         return task
 
-    async def channel(self, *, delivery: str, schema: Any, contract: str | None) -> _Pair:
-        if delivery != "direct":
-            raise OperationError("UNAVAILABLE", "Only direct channels are supported")
+    async def channel(self, *, delivery: str, schema: Any, contract: str | None) -> _Pair | _Broadcast:
+        if delivery not in ("direct", "broadcast"):
+            raise OperationError("UNAVAILABLE", "Unsupported channel delivery")
         if contract is not None and schema is not _SCHEMA_UNSET:
             raise ValueError("Channel schema and contract are mutually exclusive")
         params: dict[str, Any] = {"delivery": delivery}
@@ -846,31 +864,77 @@ class _Runtime:
             if not isinstance(schema, (dict, bool)):
                 raise ValueError("Channel schema must be a boolean or schema object")
             params["schema"] = normalize_json1(schema)
-        pair: _Pair | None = None
+        created: _Pair | _Broadcast | None = None
         cancelled = False
         def allocated(result: Any, is_error: bool) -> None:
-            nonlocal pair
+            nonlocal created
             if is_error:
                 return
+            if result["send"]["delivery"] != delivery:
+                raise ValueError("Channel creation changed its requested delivery")
             send = self._register_endpoint(result["send"])
-            receive = self._register_endpoint(result["receive"])
-            assert isinstance(send, _Sender) and isinstance(receive, _Receiver)
-            pair = _Pair(send, receive)
-            self._pairs.append(pair)
+            assert isinstance(send, _Sender)
+            if delivery == "broadcast":
+                reference = result["source"]
+                if reference in self._sources or len(self._sources) >= 512:
+                    raise ValueError("Duplicate or excessive broadcast source allocation")
+                created = _Broadcast(send, self, reference)
+                self._sources[reference] = created
+            else:
+                receive = self._register_endpoint(result["receive"])
+                assert isinstance(receive, _Receiver)
+                created = _Pair(send, receive)
+                self._pairs.append(created)
             if cancelled:
-                self._dispose_pair(pair)
+                self._dispose_allocation(created)
         try:
-            await self._send_request("channel/create", "channel/create", params, on_settle=allocated)
+            await self._send_request("channel/create", "channel/create", params, on_settle=allocated,
+                                     allocation_credit=2 if delivery == "direct" else 1)
         except asyncio.CancelledError:
             cancelled = True
-            if pair is not None:
-                self._dispose_pair(pair)
+            if created is not None:
+                self._dispose_allocation(created)
             raise
-        assert pair is not None
-        return pair
+        assert created is not None
+        return created
 
-    def _dispose_pair(self, pair: _Pair) -> None:
-        self._track_settlement(pair.receive.aclose())
+    def _dispose_allocation(self, created: _Pair | _Broadcast) -> None:
+        if isinstance(created, _Pair):
+            self._track_settlement(created.receive.aclose())
+        else:
+            self._cancelled_sources.add(created._reference)
+            # This never-exposed writer is definitely local. Closing it is
+            # allocation cleanup, not an implicit seal of possibly moved work.
+            self._track_settlement(created.send.close())
+
+    async def _subscribe(self, source: _Broadcast) -> _Receiver:
+        if (source._runtime is not self or self._sources.get(source._reference) is not source
+            or source._reference in self._cancelled_sources):
+            raise OperationError("PERMISSION_DENIED", "Broadcast source is not held by this Run")
+        receiver: _Receiver | None = None
+        cancelled = False
+        def allocated(result: Any, is_error: bool) -> None:
+            nonlocal receiver
+            if is_error:
+                return
+            if result.get("contract") != source.send._contract:
+                raise ValueError("Subscription changed its source contract")
+            endpoint = self._register_endpoint(result)
+            assert isinstance(endpoint, _Receiver)
+            receiver = endpoint
+            if cancelled:
+                self._track_settlement(receiver.aclose())
+        try:
+            await self._send_request("channel/subscribe", "channel/subscribe",
+                                     {"source": source._reference}, on_settle=allocated,
+                                     allocation_credit=1)
+        except asyncio.CancelledError:
+            cancelled = True
+            if receiver is not None:
+                self._track_settlement(receiver.aclose())
+            raise
+        assert receiver is not None
+        return receiver
 
     def _abandoned_receivers(self) -> bool:
         unused = {id(pair.receive) for pair in self._pairs
@@ -891,6 +955,8 @@ class _Runtime:
                and not (endpoint._ended or endpoint._cause is not None)
                for endpoint in self._endpoints.values()):
             raise OperationError("UNCERTAIN", "Channel receiver disposal did not settle")
+        if any(not self._sources[reference].send._sealed for reference in self._cancelled_sources):
+            raise OperationError("UNCERTAIN", "Cancelled channel allocation cleanup did not settle")
         # The host owns exact transfer and source-terminal state. It seals
         # healthy retained writers only after receiving an eligible terminal;
         # offered rights are never inferred moved from an operation result.
@@ -903,6 +969,7 @@ class _Runtime:
         self, kind: str, method: str, params: dict[str, Any], *, settlement: bool = False,
         on_settle: Callable[[Any, bool], None] | None = None,
         on_admission_failure: Callable[[], None] | None = None,
+        allocation_credit: int = 0,
     ) -> Any:
         if kind.startswith("channel/"):
             self._channel_mode = True
@@ -932,9 +999,9 @@ class _Runtime:
             wire_acquired = True
             if (not self._accepting_calls and not settlement) or self._fatal:
                 raise OperationError("OWNER_CLOSED")
-            pending_allocations = sum(pending.kind == "channel/create" for pending in self._pending.values())
+            pending_allocations = sum(pending.allocation_credit for pending in self._pending.values())
             reserve = (0 if settlement else len(self._endpoints)
-                       + 2 * (pending_allocations + (kind == "channel/create")))
+                       + pending_allocations + allocation_credit)
             if len(self._component_ids) >= _REQUEST_ID_LIMIT - reserve:
                 raise OperationError("RESOURCE_EXHAUSTED")
             request_id = f"component:{self._next_request_id}"
@@ -951,7 +1018,8 @@ class _Runtime:
                 else settled.exception()
             )
             self._pending[request_id] = _Pending(kind=kind, future=future,
-                                                settlement=settlement, on_settle=on_settle)
+                                                settlement=settlement, on_settle=on_settle,
+                                                allocation_credit=allocation_credit)
             self._pending_empty.clear()
             try:
                 await self._write(

@@ -190,7 +190,7 @@ await handle(async (run) => {
 
   await writeFile(
     join(consumer, 'smoke.ts'),
-    `import { CapabilityError, OperationError, type CallOptions, type ChildFlowRequest, type CapabilityCall, type ChannelContractIdentity, type ChannelEndpoint, type ChannelOptions, type ChannelPair, type ChannelReceiver, type ChannelSender, type JsonValue, type RunContext, type RunHandler, type RunResult } from "@jigging/flow";
+    `import { CapabilityError, OperationError, type CallOptions, type ChildFlowRequest, type CapabilityCall, type ChannelBroadcast, type ChannelContractIdentity, type ChannelEndpoint, type ChannelOptions, type ChannelPair, type ChannelReceiver, type ChannelSender, type JsonValue, type RunContext, type RunHandler, type RunResult } from "@jigging/flow";
 const child: ChildFlowRequest = { operationId: "child:1", slot: "reviewer", input: null };
 const capability: CapabilityCall = {
     operationId: "smoke:1",
@@ -235,6 +235,18 @@ async function channelTypes(run: RunContext, options: CallOptions): Promise<RunR
   }
   const item: IteratorResult<JsonValue> = await receiver.next(options);
   const childResult = await run.runChildFlow({ ...child, channels: {} }, options);
+  const direct: ChannelPair = await run.channel();
+  const broadcast: ChannelBroadcast = await run.channel({ delivery: "broadcast" }, options);
+  const subscribed: ChannelReceiver = await broadcast.subscribe(options);
+  const delivery: "direct" | "broadcast" = subscribed.delivery;
+  const selectedOptions: ChannelOptions = Math.random() > 0.5 ? { delivery: "broadcast" } : {};
+  const selected: ChannelPair | ChannelBroadcast = await run.channel(selectedOptions, options);
+  // @ts-expect-error Subscription authority is not an endpoint.
+  const notAnEndpoint: ChannelEndpoint = broadcast;
+  void direct;
+  void delivery;
+  void selected;
+  void notAnEndpoint;
   void identity;
   void item;
   return childResult;

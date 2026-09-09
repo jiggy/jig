@@ -166,6 +166,347 @@ function rejectOperation(transport: MemoryTransport, index: number, code: string
   })
 }
 
+function broadcastGrant(
+  endpoint: string,
+  direction: 'send' | 'receive',
+  startSequence = 1,
+): JsonObject {
+  return {
+    endpoint,
+    direction,
+    delivery: 'broadcast',
+    ...(direction === 'receive' ? { startSequence } : {}),
+  }
+}
+
+describe('broadcast channels', () => {
+  for (const confirmed of [false, true]) {
+    test(`caught receiver disposal ${confirmed ? 'confirmed stream failure permits success' : 'RPC failure prevents success'}`, async () => {
+      const transport = new MemoryTransport()
+      const completion = new RunSession(transport, async (run) => {
+        await (run.channels.progress as ChannelReceiver).close().catch(() => undefined)
+        return { outcome: 'done', output: null }
+      }).run()
+      transport.push(channelRoot({ progress: broadcastGrant('r:1', 'receive') }))
+      await transport.waitForWrites(1)
+      if (confirmed) respond(transport, 0, { status: 'failed', code: 'LAGGED' })
+      else rejectOperation(transport, 0, 'EXECUTION_FAILED')
+      await completion
+      if (confirmed) expect(transport.message(1).result).toEqual({ outcome: 'done', output: null })
+      else expect(transport.message(1).error).toMatchObject({ data: { code: 'UNCERTAIN' } })
+    })
+  }
+
+  test('a racing release cannot end before a committed read item', async () => {
+    for (const releaseFirst of [false, true]) {
+      const transport = new MemoryTransport()
+      const controller = new AbortController()
+      const completion = new RunSession(transport, async (run) => {
+        const receiver = run.channels.progress as ChannelReceiver
+        await receiver.next({ signal: controller.signal }).catch(() => undefined)
+        await receiver.close().catch(() => undefined)
+        return { outcome: 'done', output: null }
+      })
+        .run()
+        .then(
+          () => 'unexpected',
+          (error) => (error as OperationError).code,
+        )
+      transport.push(channelRoot({ progress: broadcastGrant('r:1', 'receive', 3) }))
+      await transport.waitForWrites(1)
+      controller.abort()
+      await transport.waitForWrites(3)
+      const release = [1, 2].find((index) => transport.message(index).method === 'channel/release')!
+      if (releaseFirst) respond(transport, release, { status: 'ended', lastSequence: 2 })
+      respond(transport, 0, { item: { sequence: 3, value: 'committed' } })
+      if (!releaseFirst) respond(transport, release, { status: 'ended', lastSequence: 2 })
+      expect(await completion).toBe('PROTOCOL_ERROR')
+    }
+  })
+
+  test('a release cannot end before the allocated subscription interval', async () => {
+    const transport = new MemoryTransport()
+    const completion = new RunSession(transport, async (run) => {
+      await (run.channels.progress as ChannelReceiver).close().catch(() => undefined)
+      return { outcome: 'done', output: null }
+    })
+      .run()
+      .then(
+        () => 'unexpected',
+        (error) => (error as OperationError).code,
+      )
+    transport.push(channelRoot({ progress: broadcastGrant('r:1', 'receive', 5) }))
+    await transport.waitForWrites(1)
+    respond(transport, 0, { status: 'ended', lastSequence: 3 })
+    expect(await completion).toBe('PROTOCOL_ERROR')
+  })
+
+  test('pre-cancelled subscription does not dispatch or allocate a receiver', async () => {
+    const transport = new MemoryTransport()
+    const controller = new AbortController()
+    controller.abort()
+    const completion = new RunSession(transport, async (run) => {
+      const source = await run.channel({ delivery: 'broadcast' })
+      await expect(source.subscribe({ signal: controller.signal })).rejects.toMatchObject({
+        code: 'CANCELLED',
+      })
+      return { outcome: 'done', output: null }
+    }).run()
+    transport.push(rootRequest())
+    await transport.waitForWrites(1)
+    respond(transport, 0, { send: broadcastGrant('s:1', 'send'), source: 'source:1' })
+    await completion
+    expect(transport.writes.length).toBe(2)
+    expect(transport.message(1).result).toEqual({ outcome: 'done', output: null })
+  })
+
+  for (const malformed of [
+    { send: grant('s:1', 'send'), source: 'source:1' },
+    { send: broadcastGrant('s:1', 'send'), receive: broadcastGrant('r:1', 'receive') },
+    { send: broadcastGrant('s:1', 'send'), source: {} },
+    { send: broadcastGrant('s:1', 'send'), source: 'x'.repeat(129) },
+  ]) {
+    test(`malformed broadcast creation fails the current transport: ${JSON.stringify(malformed)}`, async () => {
+      const transport = new MemoryTransport()
+      const completion = new RunSession(transport, async (run) => {
+        await run.channel({ delivery: 'broadcast' }).catch(() => undefined)
+        return { outcome: 'done', output: null }
+      })
+        .run()
+        .then(
+          () => 'unexpected',
+          (error) => (error as OperationError).code,
+        )
+      transport.push(rootRequest())
+      await transport.waitForWrites(1)
+      respond(transport, 0, malformed)
+      expect(await completion).toBe('PROTOCOL_ERROR')
+    })
+  }
+
+  test('subscriptions remain creator-owned after the writer is offered and start at their granted suffix', async () => {
+    const transport = new MemoryTransport()
+    const completion = new RunSession(transport, async (run) => {
+      const source = await run.channel({ delivery: 'broadcast' })
+      expect(Object.keys(source)).toEqual(['send', 'subscribe'])
+      expect(Object.isFrozen(source)).toBe(true)
+      const work = run.callCapability({
+        operationId: 'work',
+        slot: 'worker',
+        method: 'run',
+        input: null,
+        channels: { events: source.send },
+      })
+      const receive = await source.subscribe()
+      expect(receive.startSequence).toBe(5)
+      expect(Object.isFrozen(receive)).toBe(true)
+      expect(await receive.next()).toEqual({ done: false, value: 'later' })
+      expect(await receive.next()).toEqual({ done: true, value: undefined })
+      return { outcome: 'done', output: await work }
+    }).run()
+    transport.push(rootRequest())
+    await transport.waitForWrites(1)
+    expect(transport.message(0).params).toEqual({ delivery: 'broadcast' })
+    respond(transport, 0, { send: broadcastGrant('s:1', 'send'), source: 'source:1' })
+    await transport.waitForWrites(3)
+    expect(transport.message(1).params).toMatchObject({ channels: { events: 's:1' } })
+    expect(transport.message(2).params).toEqual({ source: 'source:1' })
+    respond(transport, 2, broadcastGrant('r:1', 'receive', 5))
+    await transport.waitForWrites(4)
+    respond(transport, 3, { item: { sequence: 5, value: 'later' } })
+    await transport.waitForWrites(5)
+    respond(transport, 4, { end: { lastSequence: 5 } })
+    respond(transport, 1, { value: 'completed' })
+    await completion
+    expect(transport.message(5).result).toEqual({ outcome: 'done', output: 'completed' })
+  })
+
+  test('failed subscription creation is ordinary recoverable work', async () => {
+    const transport = new MemoryTransport()
+    const completion = new RunSession(transport, async (run) => {
+      const source = await run.channel({ delivery: 'broadcast' })
+      await expect(source.subscribe()).rejects.toMatchObject({ code: 'RESOURCE_EXHAUSTED' })
+      const receive = await source.subscribe()
+      await receive.close()
+      return { outcome: 'done', output: null }
+    }).run()
+    transport.push(rootRequest())
+    await transport.waitForWrites(1)
+    respond(transport, 0, { send: broadcastGrant('s:1', 'send'), source: 'source:1' })
+    await transport.waitForWrites(2)
+    rejectOperation(transport, 1, 'RESOURCE_EXHAUSTED')
+    await transport.waitForWrites(3)
+    respond(transport, 2, broadcastGrant('r:1', 'receive'))
+    await transport.waitForWrites(4)
+    expect(transport.message(3).method).toBe('channel/release')
+    respond(transport, 3, { status: 'released' })
+    await completion
+    expect(transport.message(4).result).toEqual({ outcome: 'done', output: null })
+  })
+
+  test('fresh subscriptions are active obligations even before their first read', async () => {
+    const transport = new MemoryTransport()
+    const completion = new RunSession(transport, async (run) => {
+      const source = await run.channel({ delivery: 'broadcast' })
+      await source.subscribe()
+      return { outcome: 'done', output: null }
+    }).run()
+    transport.push(rootRequest())
+    await transport.waitForWrites(1)
+    respond(transport, 0, { send: broadcastGrant('s:1', 'send'), source: 'source:1' })
+    await transport.waitForWrites(2)
+    respond(transport, 1, broadcastGrant('r:1', 'receive'))
+    await transport.waitForWrites(3)
+    respond(transport, 2, { status: 'released' })
+    await completion
+    expect(transport.message(3).error).toMatchObject({ data: { code: 'EXECUTION_FAILED' } })
+    expect(
+      transport.writes.some((_, index) => transport.message(index).method === 'channel/close'),
+    ).toBe(false)
+  })
+
+  for (const allocation of ['source', 'subscription'] as const) {
+    for (const failedCleanup of [false, true]) {
+      test(`cancelled ${allocation} allocation joins late cleanup${failedCleanup ? ' failure' : ''}`, async () => {
+        const transport = new MemoryTransport()
+        const controller = new AbortController()
+        const completion = new RunSession(transport, async (run) => {
+          const pending =
+            allocation === 'source'
+              ? run.channel({ delivery: 'broadcast' }, { signal: controller.signal })
+              : (await run.channel({ delivery: 'broadcast' })).subscribe({
+                  signal: controller.signal,
+                })
+          const outcome = pending.then(
+            () => 'unexpected',
+            (error) => (error as OperationError).code,
+          )
+          expect(await outcome).toBe('CANCELLED')
+          return { outcome: 'done', output: null }
+        }).run()
+        transport.push(rootRequest())
+        await transport.waitForWrites(1)
+        const index = allocation === 'source' ? 0 : 1
+        if (allocation === 'subscription') {
+          respond(transport, 0, { send: broadcastGrant('s:1', 'send'), source: 'source:1' })
+          await transport.waitForWrites(2)
+        }
+        controller.abort()
+        await transport.waitForWrites(index + 2)
+        expect(transport.message(index + 1).method).toBe('request/cancel')
+        respond(
+          transport,
+          index,
+          allocation === 'source'
+            ? { send: broadcastGrant('s:1', 'send'), source: 'source:1' }
+            : broadcastGrant('r:1', 'receive', 4),
+        )
+        await transport.waitForWrites(index + 3)
+        expect(transport.message(index + 2).method).toBe(
+          allocation === 'source' ? 'channel/close' : 'channel/release',
+        )
+        if (failedCleanup) rejectOperation(transport, index + 2, 'EXECUTION_FAILED')
+        else respond(transport, index + 2, allocation === 'source' ? null : { status: 'released' })
+        await completion
+        const terminal = transport.message(index + 3)
+        if (failedCleanup) expect(terminal.error).toMatchObject({ data: { code: 'UNCERTAIN' } })
+        else expect(terminal.result).toEqual({ outcome: 'done', output: null })
+      })
+    }
+  }
+
+  test('source subscription authority is not transferable or serializable data', async () => {
+    const transport = new MemoryTransport()
+    const completion = new RunSession(transport, async (run) => {
+      const source = await run.channel({ delivery: 'broadcast' })
+      await expect(
+        run.runChildFlow({
+          operationId: 'child',
+          slot: 'worker',
+          input: null,
+          channels: { source: source as never },
+        }),
+      ).rejects.toThrow(TypeError)
+      await expect(
+        run.callCapability({
+          operationId: 'data',
+          slot: 'worker',
+          method: 'run',
+          input: source as never,
+        }),
+      ).rejects.toThrow(TypeError)
+      return { outcome: 'done', output: null }
+    }).run()
+    transport.push(rootRequest())
+    await transport.waitForWrites(1)
+    respond(transport, 0, { send: broadcastGrant('s:1', 'send'), source: 'source:1' })
+    await completion
+    expect(transport.writes.length).toBe(2)
+    expect(transport.message(1).result).toEqual({ outcome: 'done', output: null })
+  })
+
+  test('a cancelled late subscription may settle with failed observation but confirmed disposal', async () => {
+    const transport = new MemoryTransport()
+    const controller = new AbortController()
+    const completion = new RunSession(transport, async (run) => {
+      const source = await run.channel({ delivery: 'broadcast' })
+      const pending = source.subscribe({ signal: controller.signal }).then(
+        () => 'unexpected',
+        (error) => (error as OperationError).code,
+      )
+      expect(await pending).toBe('CANCELLED')
+      return { outcome: 'done', output: null }
+    }).run()
+    transport.push(rootRequest())
+    await transport.waitForWrites(1)
+    respond(transport, 0, { send: broadcastGrant('s:1', 'send'), source: 'source:1' })
+    await transport.waitForWrites(2)
+    controller.abort()
+    await transport.waitForWrites(3)
+    respond(transport, 1, broadcastGrant('r:1', 'receive'))
+    await transport.waitForWrites(4)
+    expect(transport.message(3).method).toBe('channel/release')
+    respond(transport, 3, { status: 'failed', code: 'LAGGED' })
+    await completion
+    expect(transport.message(4).result).toEqual({ outcome: 'done', output: null })
+  })
+
+  for (const malformed of [
+    grant('r:1', 'receive'),
+    broadcastGrant('s:2', 'send'),
+    { ...broadcastGrant('r:1', 'receive'), startSequence: 0 },
+    { receive: broadcastGrant('r:1', 'receive') },
+    {
+      ...broadcastGrant('r:1', 'receive'),
+      contract: {
+        id: 'https://example.test/events',
+        version: '1.0.0',
+        digest: `sha256:${'a'.repeat(64)}`,
+      },
+    },
+  ]) {
+    test(`malformed subscription grants fail the current transport: ${JSON.stringify(malformed)}`, async () => {
+      const transport = new MemoryTransport()
+      const completion = new RunSession(transport, async (run) => {
+        const source = await run.channel({ delivery: 'broadcast' })
+        await source.subscribe().catch(() => undefined)
+        return { outcome: 'done', output: null }
+      })
+        .run()
+        .then(
+          () => 'unexpected',
+          (error) => (error as OperationError).code,
+        )
+      transport.push(rootRequest())
+      await transport.waitForWrites(1)
+      respond(transport, 0, { send: broadcastGrant('s:1', 'send'), source: 'source:1' })
+      await transport.waitForWrites(2)
+      respond(transport, 1, malformed)
+      expect(await completion).toBe('PROTOCOL_ERROR')
+    })
+  }
+})
+
 describe('direct channels', () => {
   test('a local read-capacity rejection leaves the receiver usable', async () => {
     const transport = new MemoryTransport()

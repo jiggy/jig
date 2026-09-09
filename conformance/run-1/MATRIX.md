@@ -1,8 +1,8 @@
 # Run/1 evidence matrix
 
 **Status:** Executable coverage inventory, not a general certification programme
-or a published conformance label. Historical invocation evidence and the new
-direct-channel subset have separate coverage below.
+or a published conformance label. Invocation, direct-channel, and broadcast
+exchanges have separate coverage below.
 
 The Bun and independent Python host peers execute the same black-box component
 behaviours through separate framing, validation, and process harnesses. The
@@ -44,6 +44,8 @@ each behaviour.
 | Parent/worker/opposite-language monitor exchange with optional output forwarding | `channel-wiring.test.ts`, three real SDK processes | Individual role exchanges in `test_channel_wiring.py`; not a three-process bridge |
 | Monitor filtering, deliberate receiver disposal, and incomplete observation without lost work results | `channel-wiring.test.ts` | `test_channel_wiring.py` |
 | Direct-channel positive and hostile message shapes | Shared `messages.json` | Same shared fixtures, independent validator |
+| Broadcast creation, subscriptions, immutable suffix identity and independent clean intervals | `broadcast.test.ts`, both SDK components | `test_broadcast.py`, both SDK components |
+| Caught subscriber failure with an independently completed sibling interval | `broadcast.test.ts`, both SDK components | `test_broadcast.py`, both SDK components |
 
 The operation rows exercise small reference-peer ledgers implementing the
 frozen Run/1 rules. They are not evidence that a durable production operation
@@ -88,9 +90,13 @@ resolution; it is not claimed to be an offline or hermetic build proof.
 | Snapshots and public typing | SDK-specific tests and installed consumers; these are projection checks, not wire certification |
 | Protocol-safe ordinary logging | TypeScript stdio tests and Python installed runtime suite |
 | Direct endpoint disposal, late cancellation failure, abandoned receiver, retained allocation, and settlement reserves | Both SDK channel suites; host allocation/containment remains separate evidence |
+| Broadcast source/subscription allocation cancellation, late-grant cleanup and fresh-subscription abandonment | Both SDK broadcast suites; malformed grants and ordinary recovery are projection checks |
 
-The direct-channel traces exercise scripted bounded JSON values, not native
-Agent/ACP support, broadcast isolation, binary transfer or session control.
+The channel traces exercise scripted bounded JSON values, not native
+Agent/ACP support, binary transfer or session control. Broadcast peers prove
+suffix interpretation and recovery through real subprocesses; only broker
+tests establish actual queue isolation, publication sequencing and capacity
+enforcement. Scripted `LAGGED` responses do not prove those host properties.
 The wiring peers supply invocation-bound grants and script rejected admission;
 they prove forwarding and ordinary recovery, not production named-contract
 resolution or atomic host transfer enforcement.

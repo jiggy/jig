@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import AsyncIterator, Awaitable, Callable, Literal, Protocol, TypeAlias, TypedDict
+from typing import AsyncIterator, Awaitable, Callable, Literal, Protocol, TypeAlias, TypedDict, overload
 
 
 JsonScalar: TypeAlias = None | bool | int | float | str
@@ -77,7 +77,7 @@ class ChannelSender(Protocol):
     def direction(self) -> Literal["send"]: ...
 
     @property
-    def delivery(self) -> Literal["direct"]: ...
+    def delivery(self) -> Literal["direct", "broadcast"]: ...
 
     @property
     def contract(self) -> ChannelContractIdentity | None: ...
@@ -92,7 +92,7 @@ class ChannelReceiver(Protocol):
     def direction(self) -> Literal["receive"]: ...
 
     @property
-    def delivery(self) -> Literal["direct"]: ...
+    def delivery(self) -> Literal["direct", "broadcast"]: ...
 
     @property
     def contract(self) -> ChannelContractIdentity | None: ...
@@ -122,6 +122,13 @@ class ChannelPair(Protocol):
     def receive(self) -> ChannelReceiver: ...
 
 
+class ChannelBroadcast(Protocol):
+    @property
+    def send(self) -> ChannelSender: ...
+
+    async def subscribe(self) -> ChannelReceiver: ...
+
+
 class RunContext(Protocol):
     @property
     def input(self) -> JsonValue: ...
@@ -141,6 +148,7 @@ class RunContext(Protocol):
     @property
     def channels(self) -> Mapping[str, ChannelEndpoint]: ...
 
+    @overload
     async def channel(
         self,
         *,
@@ -148,6 +156,15 @@ class RunContext(Protocol):
         schema: JsonValue = ...,
         contract: str | None = None,
     ) -> ChannelPair: ...
+
+    @overload
+    async def channel(
+        self,
+        *,
+        delivery: Literal["broadcast"],
+        schema: JsonValue = ...,
+        contract: str | None = None,
+    ) -> ChannelBroadcast: ...
 
     async def run_child_flow(
         self,

@@ -4,12 +4,14 @@ import {
   requireExactKeys,
   requireLocalName,
   requireObject,
+  requireWireId,
   type ChannelGrant,
 } from './protocol.js'
 import {
   OperationError,
   OPERATION_ERROR_CODES,
   type CallOptions,
+  type ChannelBroadcast,
   type ChannelEndpoint,
   type ChannelOptions,
   type ChannelPair,
@@ -21,6 +23,7 @@ import {
 
 export type ChannelMethod =
   | 'channel/create'
+  | 'channel/subscribe'
   | 'channel/send'
   | 'channel/next'
   | 'channel/close'
@@ -61,8 +64,10 @@ interface EndpointState {
 /** Process-local endpoint bookkeeping; the host alone commits transfer rights. */
 export class Channels {
   private readonly states = new Map<string, EndpointState>()
+  private readonly sources = new Set<string>()
   private readonly brands = new WeakMap<ChannelEndpoint, EndpointState>()
   private readonly background = new Set<Promise<unknown>>()
+  private allocationCleanupFailed = false
 
   constructor(private readonly request: Request) {}
 
@@ -105,14 +110,33 @@ export class Channels {
     return result
   }
 
-  async create(options: ChannelOptions = {}, callOptions?: CallOptions): Promise<ChannelPair> {
+  create(
+    options: ChannelOptions & { readonly delivery: 'broadcast' },
+    callOptions?: CallOptions,
+  ): Promise<ChannelBroadcast>
+  create(
+    options?: ChannelOptions & { readonly delivery?: 'direct' },
+    callOptions?: CallOptions,
+  ): Promise<ChannelPair>
+  create(
+    options: ChannelOptions,
+    callOptions?: CallOptions,
+  ): Promise<ChannelPair | ChannelBroadcast>
+  async create(
+    options: ChannelOptions = {},
+    callOptions?: CallOptions,
+  ): Promise<ChannelPair | ChannelBroadcast> {
     if (options === null || typeof options !== 'object' || Array.isArray(options))
       throw new TypeError('channel options must be an object')
     const params = decodeJson(encodeJson(options as unknown as JsonValue)) as JsonObject
     if (Object.keys(params).some((key) => !['delivery', 'schema', 'contract'].includes(key)))
       throw new TypeError('unknown channel option')
-    if (params.delivery !== undefined && params.delivery !== 'direct')
-      throw new TypeError('only direct channels are supported')
+    if (
+      params.delivery !== undefined &&
+      params.delivery !== 'direct' &&
+      params.delivery !== 'broadcast'
+    )
+      throw new TypeError('unsupported channel delivery')
     if (Object.hasOwn(params, 'schema') && Object.hasOwn(params, 'contract'))
       throw new TypeError('schema and contract are exclusive')
     if (
@@ -120,17 +144,37 @@ export class Channels {
       (typeof params.contract !== 'string' || !params.contract.startsWith('./'))
     )
       throw new TypeError('contract must be package-local')
-    let pair: ChannelPair | undefined
+    let channel: ChannelPair | ChannelBroadcast | undefined
     await this.request('channel/create', params, callOptions, {
       settled: (settlement, exposed) => {
         if ('error' in settlement) return
         const raw = requireObject(settlement.result, 'channel/create result')
+        if (params.delivery === 'broadcast') {
+          requireExactKeys(raw, ['send', 'source'])
+          const sendGrant = parseChannelGrant(raw.send as JsonValue)
+          const source = requireWireId(raw.source as JsonValue)
+          if (sendGrant.direction !== 'send' || sendGrant.delivery !== 'broadcast')
+            throw new Error('invalid broadcast writer')
+          if (this.sources.has(source)) throw new Error('host reused channel source')
+          this.sources.add(source)
+          const sender = this.register(sendGrant)
+          channel = Object.freeze({
+            send: sender.endpoint as ChannelSender,
+            subscribe: (options?: CallOptions) => this.subscribe(source, sendGrant, options),
+          })
+          // This writer was never exposed or offered: explicit allocation
+          // cleanup is safe, unlike guessing who holds an offered endpoint.
+          if (!exposed) this.cleanupAllocation(this.seal(sender))
+          return
+        }
         requireExactKeys(raw, ['send', 'receive'])
         const sendGrant = parseChannelGrant(raw.send as JsonValue)
         const receiveGrant = parseChannelGrant(raw.receive as JsonValue)
         if (
           sendGrant.direction !== 'send' ||
           receiveGrant.direction !== 'receive' ||
+          sendGrant.delivery !== 'direct' ||
+          receiveGrant.delivery !== 'direct' ||
           sendGrant.endpoint === receiveGrant.endpoint
         )
           throw new Error('invalid channel pair')
@@ -140,15 +184,40 @@ export class Channels {
         const receiver = this.register(receiveGrant)
         sender.pair = receiver
         receiver.pair = sender
-        pair = Object.freeze({
+        channel = Object.freeze({
           send: sender.endpoint as ChannelSender,
           receive: receiver.endpoint as ChannelReceiver,
         })
-        if (!exposed) this.track(this.dispose(receiver))
+        if (!exposed) this.cleanupAllocation(this.dispose(receiver))
       },
     })
-    if (!pair) throw new Error('channel allocation did not return endpoints')
-    return pair
+    if (!channel) throw new Error('channel allocation did not return endpoints')
+    return channel
+  }
+
+  private async subscribe(
+    source: string,
+    writer: ChannelGrant,
+    options?: CallOptions,
+  ): Promise<ChannelReceiver> {
+    let receiver: ChannelReceiver | undefined
+    await this.request('channel/subscribe', { source }, options, {
+      settled: (settlement, exposed) => {
+        if ('error' in settlement) return
+        const grant = parseChannelGrant(settlement.result)
+        if (grant.direction !== 'receive' || grant.delivery !== 'broadcast')
+          throw new Error('invalid broadcast subscription')
+        if (JSON.stringify(grant.contract) !== JSON.stringify(writer.contract))
+          throw new Error('broadcast subscription contract mismatch')
+        const state = this.register(grant)
+        // Allocation commits a live subscription even before its first read.
+        state.connected = true
+        receiver = state.endpoint as ChannelReceiver
+        if (!exposed) this.cleanupAllocation(this.dispose(state))
+      },
+    })
+    if (!receiver) throw new Error('subscription allocation did not return a receiver')
+    return receiver
   }
 
   abandoned(): string | undefined {
@@ -177,6 +246,12 @@ export class Channels {
       if (state.grant.direction === 'receive' && !state.closed) this.track(this.dispose(state))
     }
     await this.settle()
+    for (const state of this.states.values()) {
+      if (state.grant.direction === 'receive' && !state.offered && state.disposal && !state.closed)
+        throw new OperationError('UNCERTAIN', 'channel receiver disposal did not settle')
+    }
+    if (this.allocationCleanupFailed)
+      throw new OperationError('UNCERTAIN', 'cancelled channel allocation cleanup failed')
     // Implicit writer completion belongs to the host's authoritative terminal
     // decision. A caught send error does not reveal whether the source failed.
     // Only an explicit author close issues channel/close from this SDK.
@@ -325,6 +400,11 @@ export class Channels {
             requireExactKeys(data, ['sequence', 'value'])
             if (data.sequence !== state.lastSequence + 1)
               throw new Error('non-contiguous channel sequence')
+            if (
+              state.releasedEndSequence !== undefined &&
+              data.sequence > state.releasedEndSequence
+            )
+              throw new Error('channel item exceeds the released end sequence')
             state.lastSequence += 1
             item = { done: false, value: data.value as JsonValue }
           } else {
@@ -370,7 +450,7 @@ export class Channels {
             if (
               typeof result.lastSequence !== 'number' ||
               !Number.isSafeInteger(result.lastSequence) ||
-              result.lastSequence < 0
+              result.lastSequence < state.lastSequence
             )
               throw new Error('invalid released end sequence')
             if (state.endSequence !== undefined && result.lastSequence !== state.endSequence)
@@ -447,5 +527,13 @@ export class Channels {
   private checkSignal(options?: CallOptions): void {
     if (options?.signal?.aborted)
       throw new OperationError('CANCELLED', 'operation wait was cancelled')
+  }
+
+  private cleanupAllocation(promise: Promise<void>): void {
+    this.track(
+      promise.catch(() => {
+        this.allocationCleanupFailed = true
+      }),
+    )
   }
 }

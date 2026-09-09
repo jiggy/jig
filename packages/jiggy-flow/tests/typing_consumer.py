@@ -2,7 +2,7 @@
 import asyncio
 from typing import assert_type
 from jiggy.flow import (
-    Attachment, CapabilityError, ChannelPair, ChannelReceiver, ChannelSender, JsonValue, OperationError,
+    Attachment, CapabilityError, ChannelBroadcast, ChannelPair, ChannelReceiver, ChannelSender, JsonValue, OperationError,
     RunContext, RunHandler, RunResult, handle,
 )
 
@@ -16,6 +16,13 @@ async def work(context: RunContext) -> RunResult:
     assert_type(pair.receive, ChannelReceiver)
     assert_type(pair.receive.start_sequence, int)
     await pair.receive.aclose()
+    source = await context.channel(delivery="broadcast")
+    assert_type(source, ChannelBroadcast)
+    assert_type(source.send, ChannelSender)
+    feed = await source.subscribe()
+    assert_type(feed, ChannelReceiver)
+    assert_type(feed.start_sequence, int)
+    await feed.aclose()
     try:
         child = await context.run_child_flow(operation_id="child-1", slot="child", input=context.input)
         assert_type(child, RunResult)

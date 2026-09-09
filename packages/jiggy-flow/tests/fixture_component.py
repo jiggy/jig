@@ -13,6 +13,22 @@ async def run(context: RunContext) -> RunResult:
     global logged
     mode = context.input.get("mode") if isinstance(context.input, dict) else None
 
+    if mode == "broadcast-abandoned":
+        source = await context.channel(delivery="broadcast")
+        await source.subscribe()
+        return {"outcome": "done", "output": "not allowed"}
+
+    if mode in ("broadcast-cancel-create", "broadcast-cancel-subscribe"):
+        if mode == "broadcast-cancel-create":
+            allocating = asyncio.create_task(context.channel(delivery="broadcast"))
+        else:
+            source = await context.channel(delivery="broadcast")
+            allocating = asyncio.create_task(source.subscribe())
+        await asyncio.sleep(0.05)
+        allocating.cancel()
+        await asyncio.gather(allocating, return_exceptions=True)
+        return {"outcome": "done", "output": "cancelled"}
+
     if mode == "channels":
         pair = await context.channel(contract="./contracts/public-updates.json")
         work = asyncio.create_task(context.call_capability(
@@ -82,7 +98,7 @@ async def run(context: RunContext) -> RunResult:
 
     if mode == "channel-unsupported":
         try:
-            await context.channel(delivery="broadcast")  # type: ignore[arg-type]
+            await context.channel(delivery="websocket")  # type: ignore[call-overload]
         except OperationError as error:
             return {"outcome": "done", "output": error.code}
 

@@ -28,6 +28,9 @@
       "$ref": "#/$defs/channelCreateRequest"
     },
     {
+      "$ref": "#/$defs/channelSubscribeRequest"
+    },
+    {
       "$ref": "#/$defs/channelSendRequest"
     },
     {
@@ -536,7 +539,7 @@
       "type": "object",
       "properties": {
         "delivery": {
-          "const": "direct"
+          "enum": ["direct", "broadcast"]
         },
         "schema": {
           "oneOf": [{ "type": "object" }, { "type": "boolean" }]
@@ -568,6 +571,12 @@
       "required": ["endpoint"],
       "additionalProperties": false
     },
+    "channelSubscribeParams": {
+      "type": "object",
+      "properties": { "source": { "$ref": "#/$defs/wireId" } },
+      "required": ["source"],
+      "additionalProperties": false
+    },
     "channelSendParams": {
       "type": "object",
       "properties": {
@@ -583,14 +592,40 @@
       "type": "object",
       "properties": {
         "send": {
-          "$ref": "#/$defs/channelSenderGrant"
+          "allOf": [
+            { "$ref": "#/$defs/channelSenderGrant" },
+            { "type": "object", "properties": { "delivery": { "const": "direct" } } }
+          ]
         },
         "receive": {
-          "$ref": "#/$defs/channelReceiverGrant"
+          "allOf": [
+            { "$ref": "#/$defs/channelReceiverGrant" },
+            { "type": "object", "properties": { "delivery": { "const": "direct" } } }
+          ]
         }
       },
       "required": ["send", "receive"],
       "additionalProperties": false
+    },
+    "channelBroadcast": {
+      "type": "object",
+      "properties": {
+        "send": {
+          "allOf": [
+            { "$ref": "#/$defs/channelSenderGrant" },
+            { "type": "object", "properties": { "delivery": { "const": "broadcast" } } }
+          ]
+        },
+        "source": { "$ref": "#/$defs/wireId" }
+      },
+      "required": ["send", "source"],
+      "additionalProperties": false
+    },
+    "channelSubscription": {
+      "allOf": [
+        { "$ref": "#/$defs/channelReceiverGrant" },
+        { "type": "object", "properties": { "delivery": { "const": "broadcast" } } }
+      ]
     },
     "channelReadResult": {
       "oneOf": [
@@ -716,6 +751,17 @@
       "required": ["jsonrpc", "id", "method", "params"],
       "additionalProperties": false
     },
+    "channelSubscribeRequest": {
+      "type": "object",
+      "properties": {
+        "jsonrpc": { "const": "2.0" },
+        "id": { "$ref": "#/$defs/wireId" },
+        "method": { "const": "channel/subscribe" },
+        "params": { "$ref": "#/$defs/channelSubscribeParams" }
+      },
+      "required": ["jsonrpc", "id", "method", "params"],
+      "additionalProperties": false
+    },
     "channelNextRequest": {
       "type": "object",
       "properties": {
@@ -791,6 +837,12 @@
               "$ref": "#/$defs/channelPair"
             },
             {
+              "$ref": "#/$defs/channelBroadcast"
+            },
+            {
+              "$ref": "#/$defs/channelSubscription"
+            },
+            {
               "$ref": "#/$defs/channelReadResult"
             },
             {
@@ -809,7 +861,7 @@
           "$ref": "#/$defs/wireId"
         },
         "delivery": {
-          "const": "direct"
+          "enum": ["direct", "broadcast"]
         },
         "contract": {
           "$ref": "#/$defs/channelContractIdentity"
@@ -828,7 +880,7 @@
           "$ref": "#/$defs/wireId"
         },
         "delivery": {
-          "const": "direct"
+          "enum": ["direct", "broadcast"]
         },
         "contract": {
           "$ref": "#/$defs/channelContractIdentity"
@@ -837,10 +889,16 @@
           "const": "receive"
         },
         "startSequence": {
-          "const": 1
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
         }
       },
       "required": ["endpoint", "direction", "delivery", "startSequence"],
+      "anyOf": [
+        { "properties": { "delivery": { "const": "direct" }, "startSequence": { "const": 1 } } },
+        { "properties": { "delivery": { "const": "broadcast" } } }
+      ],
       "additionalProperties": false
     }
   }

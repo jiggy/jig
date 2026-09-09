@@ -24,7 +24,6 @@ import {
   type CallOptions,
   type CapabilityCall,
   type ChildFlowRequest,
-  type ChannelOptions,
   type JsonObject,
   type JsonValue,
   type OperationErrorCode,
@@ -361,7 +360,10 @@ export class RunSession {
     try {
       await this.channels.finish()
     } catch (error) {
-      failure ??= 'EXECUTION_FAILED'
+      failure ??=
+        error instanceof OperationError && error.code === 'UNCERTAIN'
+          ? 'UNCERTAIN'
+          : 'EXECUTION_FAILED'
       this.diagnose(error)
     }
     if (this.channel !== 'open') return
@@ -423,9 +425,7 @@ export class RunSession {
         }
         return session.call('capability/call', 'effect', params, options)
       },
-      channel(options?: ChannelOptions, callOptions?: CallOptions) {
-        return session.channels.create(options, callOptions)
-      },
+      channel: session.channels.create.bind(session.channels),
     })
   }
 
@@ -456,7 +456,15 @@ export class RunSession {
     const alreadyAborted = signals.find((signal) => signal.aborted)
     if (alreadyAborted !== undefined) return reject(cancellationError())
 
-    const reserve = this.channels.size > 0 || method === 'channel/create' ? 1 : 0
+    const allocation =
+      method === 'channel/create'
+        ? params.delivery === 'broadcast'
+          ? 1
+          : 2
+        : method === 'channel/subscribe'
+          ? 1
+          : 0
+    const reserve = this.channels.size > 0 || allocation > 0 ? 1 : 0
     if (!hooks.control && this.outbound.size >= MAX_OUTBOUND_REQUESTS - reserve) {
       return reject(
         new OperationError(
@@ -465,12 +473,19 @@ export class RunSession {
         ),
       )
     }
-    const pendingAllocations = [...this.outbound].filter(
-      (pending) => pending.method === 'channel/create',
-    ).length
-    const reservedIds = hooks.control
-      ? 0
-      : this.channels.size + pendingAllocations * 2 + (method === 'channel/create' ? 2 : 0)
+    const pendingAllocations = [...this.outbound].reduce(
+      (count, pending) =>
+        count +
+        (pending.method === 'channel/create'
+          ? pending.params.delivery === 'broadcast'
+            ? 1
+            : 2
+          : pending.method === 'channel/subscribe'
+            ? 1
+            : 0),
+      0,
+    )
+    const reservedIds = hooks.control ? 0 : this.channels.size + pendingAllocations + allocation
     if (this.usedComponentIds.size + this.queue.length >= MAX_REQUEST_IDS - reservedIds) {
       return reject(
         new OperationError(

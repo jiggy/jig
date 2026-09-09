@@ -109,8 +109,12 @@ interface RunContext {
   callCapability(call: CapabilityCall, options?: { signal?: AbortSignal }):
     Promise<JsonValue>;
 
-  channel(options?: ChannelOptions, callOptions?: { signal?: AbortSignal }):
+  channel(options: ChannelOptions & { delivery: 'broadcast' }, callOptions?: CallOptions):
+    Promise<ChannelBroadcast>;
+  channel(options?: ChannelOptions & { delivery?: 'direct' }, callOptions?: CallOptions):
     Promise<ChannelPair>;
+  channel(options: ChannelOptions, callOptions?: CallOptions):
+    Promise<ChannelPair | ChannelBroadcast>;
 }
 
 type RunHandler = (context: RunContext) => Promise<RunResult>;
@@ -192,10 +196,10 @@ class RunContext(Protocol):
     async def channel(
         self,
         *,
-        delivery: Literal["direct"] = "direct",
+        delivery: Literal["direct", "broadcast"] = "direct",
         schema: JsonValue = ...,
         contract: str | None = None,
-    ) -> ChannelPair: ...
+    ) -> ChannelPair | ChannelBroadcast: ...
 
 
 RunHandler = Callable[[RunContext], Awaitable[RunResult]]
@@ -374,7 +378,7 @@ The implementations live under `packages/flow-sdk/` and
 `packages/jiggy-flow/`. The shared executable seed is
 [`conformance/run-1/`](https://github.com/jiggy/jig/tree/main/conformance/run-1).
 
-## 9. Direct-channel projection
+## 9. Channel projection
 
 TypeScript names the following interfaces; Python exposes corresponding
 protocols, with `start_sequence`, `aclose()`, `__anext__()` and async context
@@ -386,21 +390,20 @@ interface ChannelContractIdentity {
   readonly version: string;
   readonly digest: string;
 }
-interface ChannelOptions {
-  readonly delivery?: 'direct';
+type ChannelOptions = {
   readonly schema?: JsonValue;
   readonly contract?: string;
-}
+} & ({ readonly delivery?: 'direct' } | { readonly delivery: 'broadcast' });
 interface ChannelSender {
   readonly direction: 'send';
-  readonly delivery: 'direct';
+  readonly delivery: 'direct' | 'broadcast';
   readonly contract?: ChannelContractIdentity;
   send(value: JsonValue, options?: CallOptions): Promise<void>;
   close(options?: CallOptions): Promise<void>;
 }
 interface ChannelReceiver extends AsyncIterableIterator<JsonValue> {
   readonly direction: 'receive';
-  readonly delivery: 'direct';
+  readonly delivery: 'direct' | 'broadcast';
   readonly contract?: ChannelContractIdentity;
   readonly startSequence: number;
   next(options?: CallOptions): Promise<IteratorResult<JsonValue>>;
@@ -411,11 +414,31 @@ interface ChannelPair {
   readonly send: ChannelSender;
   readonly receive: ChannelReceiver;
 }
+interface ChannelBroadcast {
+  readonly send: ChannelSender;
+  subscribe(options?: CallOptions): Promise<ChannelReceiver>;
+}
 ```
 
 Python absent contract identity is `None`. `schema` and `contract` are mutually
 exclusive, including explicit `schema: true`. Endpoint references remain
-private SDK/host machinery, never ordinary input data.
+private SDK/host machinery, never ordinary input data. Literal direct creation
+returns `ChannelPair`; literal broadcast returns `ChannelBroadcast` in both
+SDKs. Python supplies matching typing overloads and `await source.subscribe()`.
+
+Only the creator retains `subscribe`; transferring `source.send` leaves that
+authority with its creator. Each subscription gets a separate reader with an
+immutable starting sequence. Subscribe before producer dispatch when a consumer
+requires the beginning. Late readers receive only a suffix, not retained history.
+An allocated subscription is active work even before its first read and must
+finish or be disposed. Cancelling creation or subscription retains settlement
+and disposes late grants; failed cleanup cannot be recovered as success.
+
+Broadcast sends do not wait for readers. A slow reader fails locally with
+`LAGGED`; a receiver-schema failure is likewise local. Both are distinct from
+a source/writer error, which aborts unsealed output for all readers. The caller
+still awaits execution independently and handles recoverable channel errors
+with ordinary language constructs.
 
 There is one iterator and one pending read per receiver, without prefetch.
 TypeScript iterator `return()` disposes on early loop exit. Python early exit
@@ -433,7 +456,7 @@ language recovery applies; no acknowledgement or query operation is needed.
 Local failure to start a read is an operation failure, not proof that its
 endpoint ended. A fatal current-connection error remains fatal even when caught.
 Sender acceptance, receiver end and the separate execution result retain their
-different meanings under [Run/1](run-protocol.md#51-direct-channels).
+different meanings under [Run/1](run-protocol.md#51-channels).
 
 An application must start producer work before awaiting its first message.
 In Python, assigning a coroutine alone does not start it. `gather` starts both

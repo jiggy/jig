@@ -121,8 +121,8 @@ const result = execution.value; // Channel completion is not execution success.
 ```
 
 `run.channel()` accepts generic JSON values; `schema` optionally constrains
-their shape, or `contract` selects exact named meaning. This SDK implements
-direct delivery. The sender's `send(value, options?)` acknowledges host
+their shape, or `contract` selects exact named meaning. The sender's
+`send(value, options?)` acknowledges host
 acceptance, and `close(options?)` seals the source. Neither promises processing
 by the consumer. Closing with unaccepted sends rejects.
 
@@ -138,3 +138,37 @@ Ordinary `try/catch` remains sufficient for recoverable failures. An ignored,
 already-settled rejection is not a completion guarantee. Returning with live
 work or an unfinished connected receiver refuses success; root cancellation
 and loss of the current control transport cannot be recovered into success.
+
+## Broadcast channels
+
+`run.channel({ delivery: "broadcast" })` returns a `ChannelBroadcast` with
+`send` and `subscribe(options?)`. Only its creating Run can allocate subscriptions;
+the subscription authority is not an endpoint and cannot be passed through a
+call. The creator may transfer the unused writer and still subscribe afterward.
+
+```ts
+const source = await run.channel({ delivery: "broadcast" });
+const first = await source.subscribe();
+await source.send.send("first");
+const later = await source.subscribe(); // startSequence is now 2.
+await source.send.send("second");
+await source.send.close();
+
+await Promise.all([first, later].map(async (receiver) => {
+  for await (const value of receiver) console.log(receiver.startSequence, value);
+}));
+```
+
+Each subscription receives only its own interval, beginning at its immutable
+`startSequence`. There is no replay: publishing without subscribers retains no
+values. A slow receiver fails with `LAGGED` independently of healthy receivers
+and the writer. Closing one receiver does not close the source; sealing the
+writer allows existing receivers to drain but rejects new subscriptions.
+Each unused receiver may be passed through an ordinary call's `channels` map.
+
+Subscription allocation itself creates an active receiver. Consume it to an
+end or terminal failure, or explicitly close it. Cancellation of allocation
+retains the wire response and disposes any late allocated right before Run
+completion; failed allocation cleanup prevents success. Broadcast carries
+JSON values, not native sockets, binary streams, replay storage, or execution
+control.

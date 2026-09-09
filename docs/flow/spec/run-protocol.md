@@ -15,8 +15,8 @@ component -> host       capability/call
 either direction        request/cancel
 ```
 
-The direct-channel extension adds component-to-host `channel/create`,
-`channel/send`, `channel/next`, `channel/close`, and `channel/release`.
+The channel extension adds component-to-host `channel/create`,
+`channel/subscribe`, `channel/send`, `channel/next`, `channel/close`, and `channel/release`.
 Channels carry bounded JSON values during work; they do not start work,
 authorize control operations, or replace invocation results.
 
@@ -316,11 +316,12 @@ The second form is an application error declared by the exact capability
 contract, not a JSON-RPC error. Both `value` and `error`, neither member, an
 unknown member, or missing error `data` is invalid.
 
-## 5.1 Direct channels
+## 5.1 Channels
 
-This extension supports finite, single-writer, single-reader JSON/1 sequences.
-Broadcast, subscriptions, arbitrary byte transports, persistent streams and
-continuing Agent control are not part of this implemented subset.
+This extension supports finite, single-writer JSON/1 sequences. A direct source
+has one receiver; a broadcast source has independently bounded subscriptions.
+Arbitrary byte transports, persistent streams and continuing Agent control are
+not part of this extension.
 
 An endpoint grant is a closed object:
 
@@ -328,15 +329,24 @@ An endpoint grant is a closed object:
 | --- | --- |
 | `endpoint` | Opaque reference using the request-ID token grammar, bound to the receiving invocation |
 | `direction` | `send` or `receive` |
-| `delivery` | Exactly `direct` |
+| `delivery` | `direct` or `broadcast` |
 | `contract` | Optional exact `{id, version, digest}` [Channel Contract/1](channel-contracts.md) source identity |
-| `startSequence` | Required integer `1` for receivers; absent for senders |
+| `startSequence` | Required positive JSON/1 integer for receivers; `1` for direct delivery; absent for senders |
 
 Endpoint possession grants only the indicated communication right. It is not
 portable JSON authority: a string copied into ordinary input grants nothing.
 The creating Run owns the source's lifetime. An unused endpoint may transfer
 through an exact child or capability call; its cleanup owner does not change.
 First local use claims a right. Inspecting metadata does not claim it.
+
+Broadcast creation also grants subscription authority to the creating invocation
+only. Its opaque source reference uses the endpoint token grammar but is not an
+endpoint and cannot be transferred in a call map. Moving a writer does not move
+subscription authority. Each successful subscription allocates a distinct reader
+starting at the next accepted sequence. Late subscriptions receive no history;
+preallocated readers may lag even before their first read. Source sealing or
+failure prevents new subscriptions. All allocations count over the owner's
+lifetime; releasing one does not replenish that allowance.
 
 Before dispatch, the host atomically validates all mapped rights, declaration
 requirements, contracts, provider support, delivery, queued-prefix constraints
@@ -350,14 +360,17 @@ running participant is implied.
 Disposing a receiver does not revoke its peer's unused send right. While the
 source owner remains live and the source is neither failed nor sealed, that
 sender remains transferable under the same checks, even after receiver
-disposal. Its sends and close still fail `DISCONNECTED`; transfer cannot revive
-delivery. A disposed receiver is not transferable. Required ports require a
+disposal. For direct delivery, its sends and close still fail `DISCONNECTED`;
+transfer cannot revive delivery. Broadcast delivery continues for other readers
+and permits later subscriptions while the source remains open. A disposed receiver
+is not transferable. Required ports require a
 grant, not a guarantee that the peer remains available. This keeps observation
 disposal independent of whether producer admission wins or loses that race.
 
 | Request | Closed parameters | Successful result |
 | --- | --- | --- |
-| `channel/create` | Optional `delivery: "direct"`; optional `schema` or package-local `contract`, mutually exclusive | `{send: grant, receive: grant}` |
+| `channel/create` | Optional `delivery: "direct"` or `"broadcast"`; optional `schema` or package-local `contract`, mutually exclusive | Direct: `{send: grant, receive: grant}`; broadcast: `{send: grant, source: opaqueReference}` |
+| `channel/subscribe` | `{source: opaqueReference}` | One broadcast receive grant owned by the creating invocation |
 | `channel/send` | `{endpoint, value}` | `null`: validated, snapshotted host acceptance, not processing or durability |
 | `channel/next` | `{endpoint}` | `{item: {sequence, value}}` or `{end: {lastSequence}}` |
 | `channel/close` | `{endpoint}` | `null`: writer sealed |
@@ -369,12 +382,25 @@ requests fail operationally before allocation or dispatch. Invalid RPC shapes
 retain the ordinary incompatibility rules.
 
 The host assigns accepted sequences starting at one. Receivers validate a
-contiguous prefix and a clean end equal to the last delivered sequence (zero
-for an empty interval). There is one outstanding read and no SDK prefetch.
-Full queues exert bounded sender pressure; receiver disposal rejects pending
-and future sends with `DISCONNECTED`. Source-invalid or oversized values fail
-the source before acceptance. The host bounds queues, retained/in-flight
-payload, pending sends, parser/writer buffers and lifetime allocations.
+contiguous interval from their immutable `startSequence`; a clean end equals
+the last delivered sequence (`startSequence - 1` for an empty interval).
+There is one outstanding read and no SDK prefetch. Direct full queues exert
+bounded sender pressure; receiver disposal rejects pending and future sends
+with `DISCONNECTED`.
+
+Broadcast acceptance does not wait for readers. A reader exceeding its capacity
+fails with sticky `LAGGED`, independently of the writer and other readers. A
+reader-schema failure likewise affects only that subscription. With no readers,
+accepted values advance sequence and source byte budget but are not retained.
+Source-invalid or oversized values instead fail the entire source before
+acceptance. Source/writer constraints apply before per-reader validation;
+adding a reader never adds its validator to a broadcast source. Connection
+admission still rejects known conflicting nontrivial writer/reader schemas in
+either binding order, including all staged mappings and existing live subscribers.
+The host bounds queues,
+retained/in-flight payload, pending sends, parser/writer buffers and lifetime
+allocations. A committed but unread response consumes receiver capacity until
+the next read releases its credit.
 
 Writer close rejects while sends remain unaccepted; otherwise it seals without
 waiting for the receiver or execution result. Accepted data can drain while
@@ -393,6 +419,12 @@ the original read response and disposal response; it cannot restart iteration
 after silently skipping a committed item. Cancelling a send retracts only an
 unaccepted pending value, never an accepted value or permission to replay it.
 Cancelling a close/release wait retains its settlement action.
+
+Cancelling a creation or subscription wait does not prove that no allocation
+occurred. The SDK retains the wire response and disposes any late grants before
+completion; it cannot lose or replay an uncertain allocation. A newly allocated
+broadcast receiver is active owned work even if never read. Its holder must
+finish or dispose it; finalization cannot silently turn abandonment into success.
 
 Uncancelled receiver disposal waits for its response and all prior reads. It
 exposes a previously unexposed terminal failure even if a read waiter was

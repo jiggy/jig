@@ -385,14 +385,14 @@
       }
     },
     {
-      "name": "channel-broadcast-is-not-direct-support",
+      "name": "channel-unsupported-delivery",
       "definition": "channelCreateRequest",
       "value": {
         "jsonrpc": "2.0",
         "id": "component:channel",
         "method": "channel/create",
         "params": {
-          "delivery": "broadcast"
+          "delivery": "replay"
         }
       }
     },

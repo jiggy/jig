@@ -101,7 +101,31 @@ Normal `try/except` remains sufficient for recoverable errors. Returning with
 unfinished owned work or an active unfinished receiver refuses success. Host
 ownership and cleanup—not channel EOF—determine execution completion.
 
-This SDK implements direct JSON channels, not broadcast, binary transport,
+## Broadcast channels
+
+Use `await context.channel(delivery="broadcast")` for one writer and independent
+receivers. The returned `ChannelBroadcast` has `send` and `async subscribe()`:
+
+```python
+updates = await context.channel(delivery="broadcast")
+display = await updates.subscribe()
+recorder = await updates.subscribe()
+```
+
+Pass the writer and each unused receiver through the same ordinary `channels=`
+call maps, then settle those calls. Each subscription is active immediately:
+consume it to its end or terminal failure, transfer it, or explicitly dispose it.
+The creator retains subscription authority when the writer moves; the source
+itself cannot move or enter JSON input. A later subscription receives only
+future values, with its actual `start_sequence`; there is no history replay.
+
+A full subscriber fails with `LAGGED` without blocking the writer or another
+subscriber. Catch that error normally if incomplete observation is acceptable.
+No subscribers means no retained payload, not a queued history. Source closure
+rejects new subscriptions while existing subscribers drain their accepted
+prefixes. Channel completion still does not establish execution success.
+
+The SDK supports direct and broadcast JSON channels, not binary transport,
 WebSockets or continuing Agent control. The wire ceilings remain 64 simultaneous
 requests and 65,536 request frames over the Run lifetime. Ordinary admission
 reserves one concurrent slot and endpoint-bounded request IDs for settlement;

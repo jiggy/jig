@@ -28,7 +28,7 @@ export interface RunParams {
 export interface ChannelGrant {
   readonly endpoint: string
   readonly direction: 'send' | 'receive'
-  readonly delivery: 'direct'
+  readonly delivery: 'direct' | 'broadcast'
   readonly contract?: ChannelContractIdentity
   readonly startSequence?: number
 }
@@ -45,8 +45,16 @@ export function parseChannelGrant(value: JsonValue): ChannelGrant {
   ])
   const endpoint = requireWireId(grant.endpoint as JsonValue)
   if (grant.direction !== 'send' && !receiver) throw new Error('invalid channel direction')
-  if (grant.delivery !== 'direct') throw new Error('unsupported channel delivery')
-  if (receiver && grant.startSequence !== 1) throw new Error('direct channel must start at 1')
+  if (grant.delivery !== 'direct' && grant.delivery !== 'broadcast')
+    throw new Error('unsupported channel delivery')
+  if (
+    receiver &&
+    (typeof grant.startSequence !== 'number' ||
+      !Number.isSafeInteger(grant.startSequence) ||
+      grant.startSequence < 1 ||
+      (grant.delivery === 'direct' && grant.startSequence !== 1))
+  )
+    throw new Error('invalid channel start sequence')
   let contract: ChannelContractIdentity | undefined
   if (Object.hasOwn(grant, 'contract')) {
     const identity = requireObject(grant.contract as JsonValue, 'channel contract identity')
@@ -70,8 +78,8 @@ export function parseChannelGrant(value: JsonValue): ChannelGrant {
   return {
     endpoint,
     direction: receiver ? 'receive' : 'send',
-    delivery: 'direct',
-    ...(receiver ? { startSequence: 1 } : {}),
+    delivery: grant.delivery,
+    ...(receiver ? { startSequence: grant.startSequence as number } : {}),
     ...(contract ? { contract } : {}),
   }
 }
@@ -98,7 +106,10 @@ function validContractId(value: string): boolean {
   return (
     labels.length >= 2 &&
     labels.every((label) => /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(label)) &&
-    !labels.every((label) => /^\d+$/.test(label)) &&
+    !(
+      labels.length === 4 &&
+      labels.every((label) => /^[0-9]{1,3}$/.test(label) && Number(label) <= 255)
+    ) &&
     match[2]!
       .split('/')
       .every((part) => /^[a-z0-9._~-]+$/.test(part) && part !== '.' && part !== '..')

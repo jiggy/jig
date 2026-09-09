@@ -7,7 +7,7 @@ SDK/1 and Run/1.
 
 ## Ownership
 
-- `src/` owns public types and the JSON/1, protocol, session, direct-channel, and transport
+- `src/` owns public types and the JSON/1, protocol, session, channel, and transport
   implementation.
 - `test/` owns unit, subprocess, race, and packed-package evidence.
 - `justfile` owns build and package tasks; `package.json`, `README.md`, and
@@ -27,12 +27,17 @@ SDK/1 and Run/1.
   Neither changes the host-supplied `flow/run` entrypoint or grants authority.
 - Preserve the documented distinction between `OperationError` and declared
   capability application failures represented by `CapabilityError`.
-- Direct channel endpoints carry only host-granted information rights.
+- Direct and broadcast channel endpoints carry only host-granted information rights.
   Preserve normal catch-based recovery, retained cancellation responses,
   first-exposure disposal errors, and active-receiver completion checks.
   The host commits endpoint transfers and implicit writer sealing; never infer
   transfer from a call's final outcome or seal before completion eligibility.
   Reserve settlement capacity inside the existing wire limits.
+- Broadcast subscription authority stays at the creating Run; it is not an
+  endpoint or transferable data. Register subscription grants before exposing
+  them, preserve suffix start identities, and dispose late cancelled allocations.
+  Allocation itself activates a subscription's completion obligation; failed
+  allocation cleanup cannot become success.
 - Runtime code remains dependency-free and works in the documented Bun and
   Node environments.
 

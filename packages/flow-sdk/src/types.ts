@@ -42,15 +42,14 @@ export interface ChannelContractIdentity {
   readonly digest: string
 }
 
-export interface ChannelOptions {
-  readonly delivery?: 'direct'
+export type ChannelOptions = {
   readonly schema?: JsonValue
   readonly contract?: string
-}
+} & ({ readonly delivery?: 'direct' } | { readonly delivery: 'broadcast' })
 
 export interface ChannelSender {
   readonly direction: 'send'
-  readonly delivery: 'direct'
+  readonly delivery: 'direct' | 'broadcast'
   readonly contract?: ChannelContractIdentity
   send(value: JsonValue, options?: CallOptions): Promise<void>
   close(options?: CallOptions): Promise<void>
@@ -58,7 +57,7 @@ export interface ChannelSender {
 
 export interface ChannelReceiver extends AsyncIterableIterator<JsonValue> {
   readonly direction: 'receive'
-  readonly delivery: 'direct'
+  readonly delivery: 'direct' | 'broadcast'
   readonly contract?: ChannelContractIdentity
   readonly startSequence: number
   next(options?: CallOptions): Promise<IteratorResult<JsonValue>>
@@ -72,6 +71,11 @@ export interface ChannelPair {
   readonly receive: ChannelReceiver
 }
 
+export interface ChannelBroadcast {
+  readonly send: ChannelSender
+  subscribe(options?: CallOptions): Promise<ChannelReceiver>
+}
+
 export interface RunContext {
   readonly input: JsonValue
   readonly settings: JsonObject
@@ -83,7 +87,18 @@ export interface RunContext {
 
   runChildFlow(call: ChildFlowRequest, options?: CallOptions): Promise<RunResult>
   callCapability(call: CapabilityCall, options?: CallOptions): Promise<JsonValue>
-  channel(options?: ChannelOptions, callOptions?: CallOptions): Promise<ChannelPair>
+  channel(
+    options: ChannelOptions & { readonly delivery: 'broadcast' },
+    callOptions?: CallOptions,
+  ): Promise<ChannelBroadcast>
+  channel(
+    options?: ChannelOptions & { readonly delivery?: 'direct' },
+    callOptions?: CallOptions,
+  ): Promise<ChannelPair>
+  channel(
+    options: ChannelOptions,
+    callOptions?: CallOptions,
+  ): Promise<ChannelPair | ChannelBroadcast>
 }
 
 export type RunHandler = (context: RunContext) => Promise<RunResult>

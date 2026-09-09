@@ -1,6 +1,6 @@
 # FLOW Channel Contract/1
 
-> *Status: prerelease specification candidate for direct JSON channels.*
+> *Status: prerelease specification candidate for JSON channels.*
 
 A named channel contract lets independently authored participants agree on
 message meaning, not merely shape. Two `{text: string}` messages might mean
@@ -18,11 +18,13 @@ map. Each key is a `LocalName`; each value is a closed object:
 | `required` | Boolean, default `true`; optional unwired ports are absent |
 | `schema` | Optional inline Schema/1 item schema; omission means generic JSON/1 |
 | `contract` | Optional package-local `./` descriptor reference, exclusive with `schema` |
-| `delivery` | Optional `direct`; omission accepts the supported delivery profile |
+| `delivery` | Optional `direct` or `broadcast`; omission accepts either supported profile |
 | `start` | Receive-only `beginning` or `suffix`, default `beginning` |
 
-Direct receivers start at sequence one. `suffix` does not enable subscriptions
-or replay. Declarations describe requirements, not grants. A required port must
+Direct receivers start at sequence one. A broadcast subscription starts at the
+next accepted source sequence; a `beginning` receiver requires that sequence to
+be one. `suffix` accepts a later start but grants neither subscription authority
+nor replay. Declarations describe requirements, not grants. A required port must
 be connected before invocation; this does not guarantee its peer will succeed.
 Channel names are local slots, not globally discoverable addresses.
 
@@ -69,8 +71,14 @@ Named sources may supply generic or schema-only readers. Two nontrivial item
 schemas must have equal canonical content; omitted/`true` is generic. Hosts
 do not infer subtyping or execute semantic prose as a validator. Direct late
 binding validates the queued prefix before adding a reader constraint, and
-later values satisfy the combined constraints. Invalid mapping rejects before
-any right moves or new participant dispatches.
+later values satisfy the combined constraints. Broadcast readers instead add
+per-subscription constraints: a queued prefix is checked before transfer, and
+a later invalid value fails only that subscription. A new writer declaration
+must be shape-compatible with live bound subscribers, just as a new reader
+must match the admitted writer. This is an admission check, not source-wide
+receiver validation; disposed, ended or failed subscribers do not veto a later
+writer. Writer/source constraints remain source-wide. Invalid mapping rejects
+before any right moves or new participant dispatches.
 
 Forwarding an unused receive endpoint preserves its actual source identity.
 Reading values and copying them into a new generic source does not. A converter
@@ -82,6 +90,6 @@ versus snapshots and domain completeness. Sequence one identifies this source's
 origin, not complete upstream history. A clean channel end cannot establish a
 successful Agent result, accepted application outcome or durable processing.
 
-The exchange and lifecycle rules are in [Run/1](run-protocol.md#51-direct-channels).
+The exchange and lifecycle rules are in [Run/1](run-protocol.md#51-channels).
 This contract does not grant network access, session mutation or arbitrary
-transports. Binary payloads and broadcast require separately specified support.
+transports. Binary payloads require separately specified support.

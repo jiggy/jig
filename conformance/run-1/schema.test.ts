@@ -11,6 +11,37 @@ const ajv = new Ajv2020({ allErrors: true, strict: true })
 ajv.addSchema(schema)
 
 describe('Run/1 message schemas', () => {
+  test('separates broadcast subscription authority from endpoint grants', () => {
+    const send = { endpoint: 'send:1', direction: 'send', delivery: 'broadcast' }
+    const receive = {
+      endpoint: 'receive:1',
+      direction: 'receive',
+      delivery: 'broadcast',
+      startSequence: 7,
+    }
+    expect(definition('channelCreateParams')({ delivery: 'broadcast' })).toBe(true)
+    expect(definition('channelBroadcast')({ send, source: 'source:1' })).toBe(true)
+    expect(definition('channelBroadcast')({ send, source: 'source:1', receive })).toBe(false)
+    expect(definition('channelPair')({ send, receive })).toBe(false)
+    expect(definition('channelSubscription')(receive)).toBe(true)
+    expect(definition('channelSubscription')({ receive })).toBe(false)
+    expect(definition('channelGrant')({ source: 'source:1' })).toBe(false)
+    expect(definition('channelReceiverGrant')({ ...receive, delivery: 'direct' })).toBe(false)
+    expect(definition('channelReceiverGrant')({ ...receive, startSequence: 0 })).toBe(false)
+    const subscribe = {
+      jsonrpc: '2.0',
+      id: 'sdk:1',
+      method: 'channel/subscribe',
+      params: { source: 'source:1' },
+    }
+    expect(definition('channelSubscribeRequest')(subscribe)).toBe(true)
+    expect(
+      definition('channelSubscribeRequest')({ ...subscribe, params: { endpoint: 'source:1' } }),
+    ).toBe(false)
+    expect(
+      definition('channelSuccessResponse')({ jsonrpc: '2.0', id: 'sdk:1', result: receive }),
+    ).toBe(true)
+  })
   test('uses canonical named identity syntax on endpoint grants', () => {
     const validate = definition('channelContractIdentity')
     const identity = { version: '1.0.0', digest: `sha256:${'a'.repeat(64)}` }

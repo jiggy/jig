@@ -12,9 +12,10 @@ companions.
   by their companion specification.
 - SDKs and `conformance/` implement and test these contracts; they do not
   redefine them.
-- `channel-contracts.md` owns direct JSON channel declarations and named
+- `channel-contracts.md` owns JSON channel declarations and named
   meaning; Run/1 owns their transfer, transport and lifecycle. The current
-  machine/SDK subset does not include broadcast, binary or session control.
+  machine/SDK subset includes direct and isolated broadcast delivery, not
+  binary transport or session control.
 
 ## Local Contracts
 

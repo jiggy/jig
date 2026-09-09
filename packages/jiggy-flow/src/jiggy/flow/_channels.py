@@ -1,11 +1,11 @@
-"""Private direct-channel endpoints; authority remains with the Run/1 host."""
+"""Private channel endpoints; authority remains with the Run/1 host."""
 
 from __future__ import annotations
 
 import asyncio
 import re
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 from ._json import MAX_SAFE_INTEGER, normalize_json1
 from ._types import ChannelContractIdentity, JsonValue, OperationError
@@ -29,14 +29,13 @@ def _sequence(value: Any, minimum: int = 0) -> int:
 def validate_grant(value: Any) -> dict[str, Any]:
     grant = _object(value, {"endpoint", "direction", "delivery", "contract", "startSequence"},
                     {"endpoint", "direction", "delivery"})
-    endpoint = grant["endpoint"]
-    if (not isinstance(endpoint, str) or not 1 <= len(endpoint) <= 128
-        or re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:/-]*", endpoint) is None):
-        raise ValueError("Invalid channel endpoint reference")
-    if grant["direction"] not in ("send", "receive") or grant["delivery"] != "direct":
+    validate_reference(grant["endpoint"])
+    if (grant["direction"] not in ("send", "receive")
+        or grant["delivery"] not in ("direct", "broadcast")):
         raise ValueError("Unsupported channel grant")
     if grant["direction"] == "receive":
-        if _sequence(grant.get("startSequence"), 1) != 1:
+        start = _sequence(grant.get("startSequence"), 1)
+        if grant["delivery"] == "direct" and start != 1:
             raise ValueError("Direct channel must start at sequence one")
     elif "startSequence" in grant:
         raise ValueError("Sender grant contains receive sequence")
@@ -54,6 +53,13 @@ def validate_grant(value: Any) -> dict[str, Any]:
         ) is None:
             raise ValueError("Invalid channel contract digest")
     return grant
+
+
+def validate_reference(value: Any) -> str:
+    if (not isinstance(value, str) or not 1 <= len(value) <= 128
+        or re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:/-]*", value) is None):
+        raise ValueError("Invalid channel reference")
+    return value
 
 
 def _contract_id(value: str) -> bool:
@@ -75,12 +81,24 @@ def validate_channel_result(kind: str, value: Any) -> Any:
         if value is not None:
             raise ValueError("Channel send/close must return null")
     elif kind == "channel/create":
-        pair = _object(value, {"send", "receive"}, {"send", "receive"})
-        send, receive = validate_grant(pair["send"]), validate_grant(pair["receive"])
-        if (send["direction"] != "send" or receive["direction"] != "receive"
-            or send["endpoint"] == receive["endpoint"]
-            or send.get("contract") != receive.get("contract")):
-            raise ValueError("Invalid direct-channel pair")
+        created = _object(value, {"send", "receive", "source"}, {"send"})
+        send = validate_grant(created["send"])
+        if send["direction"] != "send":
+            raise ValueError("Channel creation needs a writer")
+        if send["delivery"] == "broadcast":
+            _object(created, {"send", "source"}, {"send", "source"})
+            validate_reference(created["source"])
+        else:
+            _object(created, {"send", "receive"}, {"send", "receive"})
+            receive = validate_grant(created["receive"])
+            if (receive["direction"] != "receive" or receive["delivery"] != "direct"
+                or send["endpoint"] == receive["endpoint"]
+                or send.get("contract") != receive.get("contract")):
+                raise ValueError("Invalid direct-channel pair")
+    elif kind == "channel/subscribe":
+        receive = validate_grant(value)
+        if receive["direction"] != "receive" or receive["delivery"] != "broadcast":
+            raise ValueError("Subscription needs a broadcast receiver")
     elif kind == "channel/next":
         record = _object(value, {"item", "end"}, set())
         if len(record) != 1:
@@ -119,14 +137,15 @@ class _Endpoint:
         self._runtime = runtime
         self._reference: str = grant["endpoint"]
         self._contract: ChannelContractIdentity | None = grant.get("contract")
+        self._delivery: Literal["direct", "broadcast"] = grant["delivery"]
         self._used = False
         # An offer is not proof of transfer. The host retains authoritative
         # rights through rejected admission, joins and failed callees.
         self._offered = False
 
     @property
-    def delivery(self) -> Literal["direct"]:
-        return "direct"
+    def delivery(self) -> Literal["direct", "broadcast"]:
+        return self._delivery
 
     @property
     def contract(self) -> ChannelContractIdentity | None:
@@ -242,7 +261,7 @@ class _Receiver(_Endpoint):
             )
             if "end" in result:
                 raise StopAsyncIteration
-            return result["item"]["value"]
+            return cast(JsonValue, result["item"]["value"])
         except asyncio.CancelledError:
             self._begin_release()
             raise
@@ -265,14 +284,21 @@ class _Receiver(_Endpoint):
                     "channel/release", "channel/release", {"endpoint": self._reference},
                     settlement=True,
                 )
+                if (result["status"] == "ended"
+                    and result["lastSequence"] < self._start_sequence - 1):
+                    await self._runtime._fatal_close("PROTOCOL_ERROR")
+                    raise OperationError("PROTOCOL_ERROR", "Channel release precedes its subscription")
                 self._released = True
                 if result["status"] == "failed":
                     self._record_cause(OperationError(result["code"], details=result.get("details")))
                 await self._read_settled.wait()
-                if result["status"] == "ended" and result["lastSequence"] != self._last_sequence:
+                if result["status"] == "ended":
                     # Release need not deliver queued data; authoritative end
                     # may follow a prefix deliberately discarded by disposal.
-                    if self._ended:
+                    # It cannot precede any already committed read, including
+                    # a read whose response raced with this release response.
+                    if (result["lastSequence"] < self._last_sequence
+                        or (self._ended and result["lastSequence"] != self._last_sequence)):
                         await self._runtime._fatal_close("PROTOCOL_ERROR")
                         raise OperationError("PROTOCOL_ERROR", "Inconsistent channel release end")
 
@@ -302,3 +328,13 @@ class _Receiver(_Endpoint):
 class _Pair:
     send: _Sender
     receive: _Receiver
+
+
+@dataclass(frozen=True, slots=True)
+class _Broadcast:
+    send: _Sender
+    _runtime: _Runtime
+    _reference: str
+
+    async def subscribe(self) -> _Receiver:
+        return await self._runtime._subscribe(self)

@@ -81,7 +81,13 @@ describe('channel grants', () => {
       { endpoint: 'source:send', direction: 'send', delivery: 'direct', startSequence: 1 },
       { endpoint: 'source:read', direction: 'receive', delivery: 'direct' },
       { endpoint: 'source:read', direction: 'receive', delivery: 'direct', startSequence: 2 },
-      { endpoint: 'source:read', direction: 'receive', delivery: 'broadcast', startSequence: 1 },
+      { endpoint: 'source:read', direction: 'receive', delivery: 'socket', startSequence: 1 },
+      ...[0, -1, 1.5, Number.MAX_SAFE_INTEGER + 1].map((startSequence) => ({
+        endpoint: 'source:read',
+        direction: 'receive',
+        delivery: 'broadcast',
+        startSequence,
+      })),
     ])
       expect(() => parseChannelGrant(value as never)).toThrow()
     const value = {
@@ -112,6 +118,23 @@ describe('channel grants', () => {
     }
   })
 
+  test('accepts broadcast source metadata and positive safe suffix starts', () => {
+    for (const startSequence of [1, 7, Number.MAX_SAFE_INTEGER])
+      expect(
+        parseChannelGrant({
+          endpoint: 'source:read',
+          direction: 'receive',
+          delivery: 'broadcast',
+          startSequence,
+        }),
+      ).toEqual({
+        endpoint: 'source:read',
+        direction: 'receive',
+        delivery: 'broadcast',
+        startSequence,
+      })
+  })
+
   test('does not invent a grant-only contract identity length limit', () => {
     const id = `https://example.test/${'long-identity'.repeat(180)}`
     expect(
@@ -122,6 +145,18 @@ describe('channel grants', () => {
         contract: { id, version: '1.0.0', digest: `sha256:${'a'.repeat(64)}` },
       }).contract!.id,
     ).toBe(id)
+  })
+
+  test('accepts numeric DNS labels that are not IPv4 addresses', () => {
+    for (const id of ['https://1.2/events', 'https://999.2.3.4/events'])
+      expect(
+        parseChannelGrant({
+          endpoint: 's:1',
+          direction: 'send',
+          delivery: 'broadcast',
+          contract: { id, version: '1.0.0', digest: `sha256:${'a'.repeat(64)}` },
+        }).contract!.id,
+      ).toBe(id)
   })
 })
 

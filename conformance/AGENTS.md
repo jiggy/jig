@@ -10,9 +10,11 @@ protocol candidates.
 - `run-1/` owns Run/1 fixtures, black-box harnesses, TypeScript and Python
   peers, integration witnesses, and the evidence matrix.
 - `docs/flow/spec/` owns normative behavior.
-- Direct-channel fixtures and `channels` components exercise real exchanges
+- Channel fixtures and `channels`/`broadcast` components exercise real exchanges
   against both host peers. SDK disposal-race evidence remains package-owned;
-  scripted channel values are not native Agent or containment qualification.
+  scripted channel values are not host-broker isolation, native Agent, or
+  containment qualification. Broadcast peers check suffix identity and ordinary
+  recovery when one subscribed stream fails.
 - `channel-wiring` witnesses cover incoming grants, exact-call forwarding and
   sibling-monitor composition. Scripted admission rejection verifies SDK
   recovery, not host contract matching or transfer enforcement.

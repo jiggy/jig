@@ -271,7 +271,7 @@
           "maxLength": 4096
         },
         "delivery": {
-          "const": "direct"
+          "enum": ["direct", "broadcast"]
         },
         "start": {
           "enum": ["beginning", "suffix"]
