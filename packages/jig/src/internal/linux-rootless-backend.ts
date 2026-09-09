@@ -675,11 +675,11 @@ export class PrivateLinuxCgroupBackend {
         ) {
           throw new Error('output handoff is not an anonymous tmpfs directory')
         }
-        if (signal?.aborted) throw new Error('output handoff cancelled')
-        writeControl(control, { type: 'continue' })
       } else if (ready.outputFd !== undefined) {
         throw new Error('unexpected output handoff')
       }
+      if (signal?.aborted) throw new Error('rootless Linux Run was cancelled before continuation')
+      writeControl(control, { type: 'continue' })
 
       let inputClosed = false
       let terminationRequested = false

@@ -103,6 +103,9 @@ child calls, project commands, and Agent providers.
   read-only before payload execution so Bun can resolve modules safely.
 - Fail closed on unsupported hosts, changed bytes, missing enforcement,
   malformed protocol, cleanup failure, or unverifiable provenance.
+  Hold the trusted entry until the coordinator validates cgroup membership and
+  any output handoff; short-lived commands must not race that check. Close the
+  private continuation gate before candidate execution.
   Drain buffered supervisor control after process exit within a fixed bound;
   exit alone neither disproves a pending receipt nor establishes fencing.
 - Resolve host tools from the fixed system locations, or Bubblewrap from the

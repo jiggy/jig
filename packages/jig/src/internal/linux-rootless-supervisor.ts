@@ -143,6 +143,7 @@ async function superviseConnected(control: Socket, startupDeadlineUnixMs: number
   let stopReason: StopReason | undefined
   let admitted = false
   let continued = false
+  let readyToContinue = false
   let outputDirectory: FileHandle | undefined
   let resolveAdmission!: () => void
   let rejectAdmission!: (error: Error) => void
@@ -174,12 +175,7 @@ async function superviseConnected(control: Socket, startupDeadlineUnixMs: number
       if (type === 'admit' && !admitted) {
         admitted = true
         resolveAdmission()
-      } else if (
-        type === 'continue' &&
-        configuration.output &&
-        outputDirectory !== undefined &&
-        !continued
-      ) {
+      } else if (type === 'continue' && readyToContinue && stopReason === undefined && !continued) {
         continued = true
         const gate = child?.stdio[4] as Writable | undefined
         if (gate === undefined) return stop('setup_failed')
@@ -241,7 +237,7 @@ async function superviseConnected(control: Socket, startupDeadlineUnixMs: number
           'inherit',
           'inherit',
           'pipe',
-          configuration.output ? 'pipe' : 'ignore',
+          'pipe',
           configuration.output ? 'pipe' : 'ignore',
           ...configuration.capturedInputs.map((file) => file.fd),
         ],
@@ -249,6 +245,9 @@ async function superviseConnected(control: Socket, startupDeadlineUnixMs: number
     )
     childExit = childClose(launched)
     child = launched
+    // Cancellation can close the gate while the coordinator is acknowledging
+    // readiness. A failed write must settle through the same cleanup owner.
+    ;(launched.stdio[4] as Writable).on('error', () => stop('setup_failed'))
     const ready = await readReady(launched)
     if (configuration.output) {
       const sandboxPid = await readSandboxPid(launched)
@@ -257,6 +256,7 @@ async function superviseConnected(control: Socket, startupDeadlineUnixMs: number
       // This FD pins the mount, not a replaceable payload pathname.
       outputDirectory = await open(`/proc/${sandboxPid}/root/jig-output`, 0x10000)
     }
+    readyToContinue = true
     safeSend(control, {
       type: 'ready',
       runCgroup,
@@ -342,6 +342,15 @@ async function enterMain(arguments_: readonly string[]): Promise<void> {
   if (separator < 0) throw new Error('missing rootless command boundary')
   const envelopeArguments = bubblewrapArguments_.slice(0, separator)
   const output = envelopeArguments.includes('--sync-fd')
+  if (!output) {
+    // Keep the checked entry PID alive until the coordinator has validated
+    // membership. No candidate code starts or receives this private gate.
+    const gate = Buffer.alloc(1)
+    if (readSync(4, gate, 0, 1, null) !== 1 || gate[0] !== 1) {
+      throw new Error('execution ownership was not acknowledged')
+    }
+    closeSync(4)
+  }
   const inputDescriptors = envelopeArguments.flatMap((arg, index) =>
     arg === '--file' ? [Number(envelopeArguments[index + 1])] : [],
   )
