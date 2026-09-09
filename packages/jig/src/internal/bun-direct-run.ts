@@ -10,9 +10,9 @@ import {
 } from './activation-planning.js'
 import { type PrivateAgentProvider, requirePrivateAgentProvider } from './agent-provider.js'
 import {
-  EMPTY_PRIVATE_BUN_EXECUTION_LAYOUT,
-  normalizePrivateBunExecutionLayout,
-  type PrivateBunExecutionLayout,
+  normalizePrivateBunExecutionArtifact,
+  type PrivateBunExecutionArtifact,
+  privateBunExecutionArtifact,
 } from './bun-execution-layout.js'
 import { privateDomainDigest } from './identity.js'
 import {
@@ -24,7 +24,6 @@ import {
   type PrivateLinuxCgroupBackend,
   requirePrivateLinuxCgroupBackend,
 } from './linux-rootless-backend.js'
-import { normalizePackageArtifactRef, type PackageArtifactRef } from './package-artifact-store.js'
 import { AGENT_RUN_CONTRACT_DIGEST } from './private-agent-run.js'
 import {
   PROJECT_COMMAND_CONTRACT_DIGEST,
@@ -52,8 +51,8 @@ export interface PrivateBunDirectRecipe {
   readonly kind: 'private-bun-direct-recipe/1'
   readonly digest: string
   readonly request: PrivateActivationRequest
-  readonly executionPackage: PackageArtifactRef
-  readonly executionLayout: PrivateBunExecutionLayout
+  readonly execution: PrivateBunExecutionArtifact
+  readonly command: readonly [string, ...string[]]
   readonly installedSupport: PrivateInstalledBunSupport
   readonly backend: PrivateLinuxCgroupBackend
   readonly mechanismDigest: string
@@ -74,17 +73,15 @@ export async function planPrivateBunDirectRun(input: {
   readonly request: PrivateActivationRequest
   readonly installedSupport: PrivateInstalledBunSupport
   readonly backend: PrivateLinuxCgroupBackend
-  readonly executionPackage?: PackageArtifactRef
-  readonly executionLayout?: PrivateBunExecutionLayout
+  readonly execution?: PrivateBunExecutionArtifact
   readonly selector?: string
   readonly agentProvider?: PrivateAgentProvider | undefined
 }): Promise<PrivateBunDirectRecipe> {
   const request = requirePrivateActivationRequest(input.request)
   const installedSupport = requirePrivateInstalledBunSupport(input.installedSupport)
   const backend = requirePrivateLinuxCgroupBackend(input.backend)
-  const executionPackage = normalizePackageArtifactRef(input.executionPackage ?? request.package)
-  const executionLayout = normalizePrivateBunExecutionLayout(
-    input.executionLayout ?? EMPTY_PRIVATE_BUN_EXECUTION_LAYOUT,
+  const execution = normalizePrivateBunExecutionArtifact(
+    input.execution ?? privateBunExecutionArtifact(request.package),
   )
   const selector = input.selector ?? DEFAULT_SELECTOR
   if (
@@ -154,8 +151,7 @@ export async function planPrivateBunDirectRun(input: {
   })
   const inspectionDigest = privateDomainDigest('JIG-Private-Bun-Inspection/1', {
     package: request.package,
-    executionPackage,
-    executionLayout,
+    execution,
     entrypoint: request.entrypoint,
     selector,
   } as unknown as JsonValue)
@@ -166,8 +162,7 @@ export async function planPrivateBunDirectRun(input: {
   } as unknown as JsonValue)
   const launchEnvelopeDigest = logicalLaunchDigest(
     request,
-    executionPackage,
-    executionLayout,
+    execution,
     installedSupport,
     support,
     agentProvider,
@@ -201,14 +196,18 @@ export async function planPrivateBunDirectRun(input: {
       identity as unknown as JsonValue,
     ),
     request,
-    executionPackage,
-    executionLayout,
+    execution,
     installedSupport,
     backend,
     mechanismDigest: support.digest,
     observation,
     sandboxExecutablePath: installedSupport.sandboxExecutablePath,
     packageDestination: PACKAGE_DESTINATION,
+    command: Object.freeze([
+      installedSupport.sandboxExecutablePath,
+      ...BUN_POLICY,
+      `${PACKAGE_DESTINATION}/${execution.layout.flowRoot ? `${execution.layout.flowRoot}/` : ''}${request.entrypoint.path}`,
+    ]) as readonly [string, ...string[]],
     scratch: SCRATCH,
     wallClockCeilingMs: PRIVATE_MAX_ROOT_RUN_TIMEOUT_MS,
     resourceCeilings: RESOURCE_CEILINGS,
@@ -230,8 +229,7 @@ export function requirePrivateBunDirectRecipe(value: unknown): PrivateBunDirectR
 
 function logicalLaunchDigest(
   request: PrivateActivationRequest,
-  executionPackage: PackageArtifactRef,
-  executionLayout: PrivateBunExecutionLayout,
+  execution: PrivateBunExecutionArtifact,
   installedSupport: PrivateInstalledBunSupport,
   mechanism: PrivateLinuxBackendMechanismSupport,
   agentProvider: PrivateAgentProvider | undefined,
@@ -239,8 +237,7 @@ function logicalLaunchDigest(
   return privateDomainDigest('JIG-Private-Bun-Logical-Launch/1', {
     requestDigest: request.digest,
     package: request.package,
-    executionPackage,
-    executionLayout,
+    execution,
     entrypoint: request.entrypoint,
     installedSupportDigest: installedSupport.digest,
     executableDigest: installedSupport.executableDigest,

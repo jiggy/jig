@@ -1,10 +1,9 @@
 import { lstat, mkdir, realpath } from 'node:fs/promises'
 import { join } from 'node:path'
-
 import { CheckError } from '../diagnostics.js'
+import type { JsonValue } from '../json.js'
+import { type InspectedPackage, inspectCapturedPackage } from '../package/inspect.js'
 import { ChannelOperationError } from '../run/channels.js'
-import { canonicalJson, type JsonValue } from '../json.js'
-import { inspectCapturedPackage, type InspectedPackage } from '../package/inspect.js'
 import {
   type RunHostEffectOperationTerminal,
   type RunHostFlowOperationTerminal,
@@ -25,6 +24,7 @@ import {
   recordPrivateRootExecutionCheckpoint,
 } from './activation-admission-store.js'
 import type { PrivateAgentProvider } from './agent-provider.js'
+import { privateBunExecutionMaterialization } from './bun-execution-layout.js'
 import {
   type PrivateDirectRunInstalledSupport,
   type PrivateDirectRunRecipe,
@@ -53,6 +53,7 @@ import {
   type PrivatePackageMaterializationAllocationIdentity,
   type PrivatePackageMaterializationLease,
   type PrivatePackageMaterializationLeaseIdentity,
+  privatePackageMaterializationMatches,
   reacquirePrivatePackageMaterializationLease,
   recoverPrivatePackageMaterializationAllocation,
 } from './package-materialization.js'
@@ -77,8 +78,8 @@ import {
   recoverPrivateProjectCommandOwners,
 } from './root-project-command-controller.js'
 import type { PrivateRootRunFiles } from './root-run-files.js'
-import { PrivateRunChannels, type PrivateRunChannelOutput } from './run-channels.js'
 import { failedPrivateRootTerminal, normalizePrivateRootTerminal } from './root-run-state.js'
+import { type PrivateRunChannelOutput, PrivateRunChannels } from './run-channels.js'
 
 const PLAN_KIND = 'private-direct-root-plan/1'
 const BACKING_KIND = 'private-direct-root-backing/1'
@@ -133,7 +134,7 @@ export async function executePrivateRootRunLaunch(input: {
   readonly signal?: AbortSignal
 }): Promise<PrivateRootExecutionDisposition> {
   await input.coordinator.verify()
-  let work = await reacquire(input)
+  const work = await reacquire(input)
   try {
     await recoverPrivateRootOperationOwners(operationInput(input, work))
   } catch (error) {
@@ -195,8 +196,7 @@ async function startOrResumeCurrentExecution(
         allocatePrivatePackageMaterialization({
           protectedParent: roots.materializations,
           name: `root-${hexadecimal}`,
-          packageDigest: recipe.executionPackage.digest,
-          executionLayout: recipe.executionLayout,
+          ...privateBunExecutionMaterialization(recipe.execution),
           ownerToken: work.lifecycle.allocation.digest,
         }),
         planPrivateLinuxOwnerStateAllocation({
@@ -220,13 +220,7 @@ async function startOrResumeCurrentExecution(
       plan = parsePlan(work.lifecycle.plan.value)
       recipe = await reproduceRecipe(input, work)
       stop.narrow(plan.effectiveDeadlineUnixMs)
-      await requirePlanMatches(
-        input.projectRoot,
-        plan,
-        work,
-        recipe,
-        recipe.executionPackage.digest,
-      )
+      await requirePlanMatches(input.projectRoot, plan, work, recipe)
     }
 
     if (stop.terminal !== undefined) {
@@ -692,7 +686,7 @@ async function materializeRootBacking(
   recipe: PrivateDirectRunRecipe,
   allocation: PrivatePackageMaterializationAllocationIdentity,
 ): Promise<PrivatePackageMaterializationLease> {
-  const captured = await captureStoredPackage(input.packageStoreRoot, recipe.executionPackage)
+  const captured = await captureStoredPackage(input.packageStoreRoot, recipe.execution.package)
   try {
     return await materializePrivatePackageLease(captured, allocation)
   } finally {
@@ -712,8 +706,7 @@ async function reproduceRecipe(
   }
   const recipe = await planPrivateDirectRun({
     request,
-    executionPackage: target.disposition.executionPackage,
-    executionLayout: target.disposition.executionLayout,
+    execution: target.disposition.execution,
     installedSupport: input.installedSupport,
     backend: input.backend,
     agentProvider: input.agentProvider,
@@ -756,11 +749,7 @@ function backendPlan(
     runId: backendRunLabel(runId),
     limits,
     readOnlyMounts,
-    command: [
-      recipe.sandboxExecutablePath,
-      ...recipe.bunPolicy,
-      `${recipe.packageDestination}/${recipe.executionLayout.flowRoot ? `${recipe.executionLayout.flowRoot}/` : ''}${recipe.request.entrypoint.path}`,
-    ] as readonly [string, ...string[]],
+    command: recipe.command,
   })
 }
 
@@ -934,7 +923,6 @@ async function requirePlanMatches(
   plan: PrivateDirectRootPlanRecord,
   work: PrivateReacquiredRootExecutionWork,
   recipe: PrivateDirectRunRecipe,
-  expectedMaterializationDigest: string,
 ): Promise<void> {
   const roots = await protectedWorkRoots(projectRoot)
   const hexadecimal = runHex(work.run.runId)
@@ -947,10 +935,10 @@ async function requirePlanMatches(
     plan.cancellationGraceMs !== CANCELLATION_GRACE_MS ||
     plan.packageAllocation.parent.path !== roots.materializations ||
     plan.packageAllocation.name !== `root-${hexadecimal}` ||
-    plan.packageAllocation.packageDigest !== expectedMaterializationDigest ||
-    !Buffer.from(
-      canonicalJson(plan.packageAllocation.executionLayout as unknown as JsonValue),
-    ).equals(canonicalJson(recipe.executionLayout as unknown as JsonValue)) ||
+    !privatePackageMaterializationMatches(
+      plan.packageAllocation,
+      privateBunExecutionMaterialization(recipe.execution),
+    ) ||
     plan.packageAllocation.ownerToken !== work.lifecycle.allocation.digest ||
     plan.ownerAllocation.parent !== roots.owners ||
     plan.ownerAllocation.name !== `r-${hexadecimal.slice(0, 62)}` ||

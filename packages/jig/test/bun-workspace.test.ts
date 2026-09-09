@@ -2,15 +2,13 @@ import { expect, test } from 'bun:test'
 import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
-import { capturePrivateBunWorkspace } from '../src/internal/bun-workspace-capture.js'
+import { normalizePrivateBunExecutionLayout } from '../src/internal/bun-execution-layout.js'
 import { requirePrivateBunLockPolicy } from '../src/internal/bun-native-lock-policy.js'
+import { capturePrivateBunWorkspace } from '../src/internal/bun-workspace-capture.js'
+import { privatePackageAliasText } from '../src/internal/package-aliases.js'
 import { capturePackageDirectory } from '../src/package/capture.js'
-import { openPrivateProjectRoot } from '../src/project/root.js'
 import { captureFlowSource } from '../src/project/flow-source.js'
-import {
-  privateBunAliasText,
-  normalizePrivateBunExecutionLayout,
-} from '../src/internal/bun-execution-layout.js'
+import { openPrivateProjectRoot } from '../src/project/root.js'
 
 const target = 'apps/demo/flows/work'
 
@@ -360,7 +358,7 @@ test.each(['unlocked', 'locked', 'stale', 'topology', 'versions', 'large'] as co
         ).toBe(2 * 1024 * 1024)
       for (const alias of layout.aliases) {
         await mkdir(dirname(join(prepared, alias.path)), { recursive: true })
-        await symlink(privateBunAliasText(alias), join(prepared, alias.path))
+        await symlink(privatePackageAliasText(alias), join(prepared, alias.path))
       }
       await value.put('libs/leaf/index.js', 'throw new Error("live source must not run")')
       const run = Bun.spawn(

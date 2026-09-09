@@ -4,9 +4,9 @@ import {
   lstat,
   mkdir,
   mkdtemp,
+  readdir,
   readFile,
   readlink,
-  readdir,
   rm,
   stat,
   symlink,
@@ -15,7 +15,8 @@ import {
 } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
-
+import { normalizePrivateBunExecutionLayout } from '../src/internal/bun-execution-layout.js'
+import { privatePackageAliasText } from '../src/internal/package-aliases.js'
 import {
   allocatePrivatePackageMaterialization,
   disposePrivatePackageMaterializationLease,
@@ -23,15 +24,11 @@ import {
   materializePrivatePackageLease,
   normalizePrivatePackageMaterializationAllocationIdentity,
   normalizePrivatePackageMaterializationLeaseIdentity,
+  type PrivatePackageMaterializationLease,
   reacquirePrivatePackageMaterializationLease,
   recoverPrivatePackageMaterializationAllocation,
-  type PrivatePackageMaterializationLease,
 } from '../src/internal/package-materialization.js'
 import { capturePackageDirectory } from '../src/package/capture.js'
-import {
-  normalizePrivateBunExecutionLayout,
-  privateBunAliasText,
-} from '../src/internal/bun-execution-layout.js'
 
 const crashFixture = join(import.meta.dir, 'fixtures/package-materialization-crash.ts')
 
@@ -442,9 +439,9 @@ describe('private workspace layout materialization', () => {
     const fixture = await workspaceFixture()
     try {
       const lease = await materializePrivatePackageLease(fixture.captured, fixture.allocation)
-      expect(lease.identity.allocation.executionLayout).toEqual(fixture.layout)
+      expect(lease.identity.allocation.aliases).toEqual(fixture.layout.aliases)
       for (const alias of fixture.layout.aliases) {
-        expect(await readlink(join(lease.root, alias.path))).toBe(privateBunAliasText(alias))
+        expect(await readlink(join(lease.root, alias.path))).toBe(privatePackageAliasText(alias))
         expect(await readFile(join(lease.root, alias.path, 'value.txt'), 'utf8')).toBe(
           'shared bytes\n',
         )
@@ -618,10 +615,10 @@ describe('private workspace layout materialization', () => {
           name: 'run-conflict',
           packageDigest: captured.digest,
           ownerToken: 'workspace:conflict:owner',
-          executionLayout: conflictingLayout,
+          aliases: conflictingLayout.aliases,
         })
         await expect(materializePrivatePackageLease(captured, allocation)).rejects.toThrow(
-          'execution layout',
+          'package aliases',
         )
         expect(await readdir(fixture.protectedParent)).toEqual([])
       } finally {
@@ -636,7 +633,7 @@ describe('private workspace layout materialization', () => {
     const fixture = await workspaceFixture()
     try {
       let calls = 0
-      const proxy = new Proxy(fixture.layout, {
+      const proxy = new Proxy(fixture.layout.aliases, {
         getPrototypeOf() {
           calls++
           throw new Error('trap')
@@ -645,11 +642,11 @@ describe('private workspace layout materialization', () => {
       expect(() =>
         normalizePrivatePackageMaterializationAllocationIdentity({
           ...fixture.allocation,
-          executionLayout: proxy,
+          aliases: proxy,
         }),
       ).toThrow()
       expect(calls).toBe(0)
-      const accessor = Object.defineProperty({ ...fixture.layout }, 'aliases', {
+      const accessor = Object.defineProperty([...fixture.layout.aliases], '0', {
         enumerable: true,
         get() {
           calls++
@@ -659,7 +656,7 @@ describe('private workspace layout materialization', () => {
       expect(() =>
         normalizePrivatePackageMaterializationAllocationIdentity({
           ...fixture.allocation,
-          executionLayout: accessor,
+          aliases: accessor,
         }),
       ).toThrow()
       expect(calls).toBe(0)
@@ -693,7 +690,7 @@ async function workspaceFixture() {
     name: 'run-workspace',
     packageDigest: captured.digest,
     ownerToken: 'workspace:materialization:owner',
-    executionLayout: layout,
+    aliases: layout.aliases,
   })
   return {
     source,

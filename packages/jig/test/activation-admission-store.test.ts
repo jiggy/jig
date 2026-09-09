@@ -4,7 +4,15 @@ import { chmod, mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/pr
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-
+import {
+  createPrivateActivationPlanV2,
+  decodePrivateActivationCandidateV5,
+  encodePrivateActivationCandidateV5,
+  encodePrivateActivationPlanV2,
+  type PrivateActivationCandidateArtifactV5,
+  privateActivationCandidateDigestV5,
+  privateActivationPlanDigestV2,
+} from '../src/internal/activation-admission.js'
 import {
   allocatePrivateRootChildOwner,
   applyPrivateActivationReviewPlan,
@@ -16,38 +24,29 @@ import {
   listPrivateRootExecutionWork,
   loadPrivateRootRunForCoordinator,
   openPrivateProjectCoordinator,
-  readPrivateBunPreparationOwner,
-  readPrivateAdmittedExecutionReuse,
+  type PrivateProjectCoordinator,
+  type PrivateRootRunTerminal,
   reacquirePrivateRootExecutionWork,
+  readPrivateAdmittedExecutionReuse,
+  readPrivateBunPreparationOwner,
   recordPrivateRootChildCleanup,
   recordPrivateRootChildFence,
   recordPrivateRootChildSandbox,
   recordPrivateRootExecutionCheckpoint,
   replacePrivateBunPreparationOwner,
   submitPrivateRootRun,
-  type PrivateProjectCoordinator,
-  type PrivateRootRunTerminal,
 } from '../src/internal/activation-admission-store.js'
-import {
-  createPrivateActivationPlanV2,
-  decodePrivateActivationCandidateV5,
-  encodePrivateActivationCandidateV5,
-  encodePrivateActivationPlanV2,
-  privateActivationCandidateDigestV5,
-  privateActivationPlanDigestV2,
-  type PrivateActivationCandidateArtifactV5,
-} from '../src/internal/activation-admission.js'
 import { privateDomainDigest } from '../src/internal/identity.js'
+import {
+  normalizePackageArtifactRef,
+  type PackageArtifactRef,
+  publishCapturedPackage,
+} from '../src/internal/package-artifact-store.js'
 import {
   decodePrivateProjectLocalLock,
   encodePrivateProjectLocalLock,
   privateProjectLocalLockDigest,
 } from '../src/internal/project-local-lock.js'
-import {
-  normalizePackageArtifactRef,
-  publishCapturedPackage,
-  type PackageArtifactRef,
-} from '../src/internal/package-artifact-store.js'
 import { canonicalJson, type JsonValue } from '../src/json.js'
 import { capturePackageDirectory } from '../src/package/capture.js'
 
@@ -1076,7 +1075,7 @@ describe.serial('direct alpha activation store', () => {
       expect(candidate.candidate.targets[0]!.request.package).toEqual(fixture.flow)
       expect(candidate.candidate.targets[0]!.disposition).toMatchObject({
         state: 'ready',
-        executionPackage,
+        execution: { package: executionPackage },
       })
       expect(executionPackage).not.toEqual(fixture.flow)
       expect(
@@ -1101,8 +1100,7 @@ describe.serial('direct alpha activation store', () => {
       expect(readPrivateAdmittedExecutionReuse({ planningBase: after, request })).toEqual({
         recipeDigest: digest('direct-recipe'),
         observationDigest: digest('direct-observation'),
-        executionPackage: fixture.flow,
-        executionLayout: { flowRoot: '', members: [], aliases: [] },
+        execution: { package: fixture.flow, layout: { flowRoot: '', members: [], aliases: [] } },
       })
     } finally {
       await fixture.dispose()
@@ -1822,8 +1820,7 @@ async function createFixture(
                 state: 'ready',
                 recipeDigest: digest('direct-recipe'),
                 observationDigest: digest('direct-observation'),
-                executionPackage: flow,
-                executionLayout: { flowRoot: '', members: [], aliases: [] },
+                execution: { package: flow, layout: { flowRoot: '', members: [], aliases: [] } },
               }
             : {
                 state: 'unavailable',
@@ -1920,7 +1917,7 @@ function insertExecutionCandidate(
         ...target.disposition,
         recipeDigest: digest(`direct-recipe:${label}`),
         observationDigest: digest(`direct-observation:${label}`),
-        executionPackage,
+        execution: { ...target.disposition.execution, package: executionPackage },
       },
     },
   ]
@@ -1995,8 +1992,7 @@ async function insertSlottedCandidate(
         state: 'ready',
         recipeDigest: digest('slotted-child-recipe'),
         observationDigest: digest('slotted-child-observation'),
-        executionPackage: child,
-        executionLayout: { flowRoot: '', members: [], aliases: [] },
+        execution: { package: child, layout: { flowRoot: '', members: [], aliases: [] } },
       },
     },
     parent,

@@ -54,10 +54,11 @@ child calls, project commands, and Agent providers.
   source, never installed links. Recheck metadata, retain exact regular files,
   and recapture on review even when the Flow is unchanged. Preserve the pinned
   hoisted install's workspace-relative paths and dependency scopes. Retain only
-  exact installer aliases to selected member roots in typed private layout
-  metadata, bound through preparation, admission, launch and durable allocation.
-  Materialization creates those aliases after regular bytes; verification and
-  cleanup handle only recorded aliases without following them. Package/1 stays
+  exact installer aliases to selected member roots. Bun preparation owns member
+  and dependency semantics; admission carries bytes and layout as one execution
+  artifact. Recipes derive the launch command. Materialization receives only
+  regular bytes and exact runtime-independent aliases; verification and cleanup
+  handle recorded aliases without following them. Package/1 stays
   regular-file-only. Runs receive no live workspace authority. Bun owns
   installation, not a parallel Jig resolver.
 - Provider credentials are host configuration and must not enter Flow input,

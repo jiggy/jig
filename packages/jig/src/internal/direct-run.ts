@@ -1,20 +1,19 @@
 import {
-  planPrivateBunDirectRun,
-  requirePrivateBunDirectRecipe,
-  type PrivateBunDirectRecipe,
-} from './bun-direct-run.js'
-import type { PrivateBunExecutionLayout } from './bun-execution-layout.js'
-import {
-  requirePrivateInstalledBunSupport,
-  type PrivateInstalledBunSupport,
-} from './installed-bun-support.js'
-import type { PrivateLinuxCgroupBackend } from './linux-rootless-backend.js'
-import type { PackageArtifactRef } from './package-artifact-store.js'
-import {
-  requirePrivateActivationRequest,
   type PrivateActivationRequest,
+  requirePrivateActivationRequest,
 } from '../project/package-resolution.js'
 import type { PrivateAgentProvider } from './agent-provider.js'
+import {
+  type PrivateBunDirectRecipe,
+  planPrivateBunDirectRun,
+  requirePrivateBunDirectRecipe,
+} from './bun-direct-run.js'
+import type { PrivateBunExecutionArtifact } from './bun-execution-layout.js'
+import {
+  type PrivateInstalledBunSupport,
+  requirePrivateInstalledBunSupport,
+} from './installed-bun-support.js'
+import type { PrivateLinuxCgroupBackend } from './linux-rootless-backend.js'
 
 export type PrivateDirectRunRecipe = PrivateBunDirectRecipe
 export type PrivateDirectRunInstalledSupport = PrivateInstalledBunSupport
@@ -24,8 +23,7 @@ export async function planPrivateDirectRun(input: {
   readonly request: PrivateActivationRequest
   readonly installedSupport: PrivateDirectRunInstalledSupport
   readonly backend: PrivateLinuxCgroupBackend
-  readonly executionPackage?: PackageArtifactRef
-  readonly executionLayout?: PrivateBunExecutionLayout
+  readonly execution?: PrivateBunExecutionArtifact
   readonly agentProvider?: PrivateAgentProvider | undefined
 }): Promise<PrivateDirectRunRecipe> {
   const request = requirePrivateActivationRequest(input.request)

@@ -2,71 +2,66 @@ import { lstat, mkdir, realpath } from 'node:fs/promises'
 import { join } from 'node:path'
 
 import { CheckError } from '../diagnostics.js'
-import {
-  ChannelOperationError,
-  type ChannelParticipant,
-  type ChannelBroker,
-} from '../run/channels.js'
-import { PRIVATE_AGENT_UPDATE_CHANNELS, PrivateAgentUpdateChannel } from './agent-update-channel.js'
 import { canonicalJson, decodeJson1, type JsonObject, type JsonValue } from '../json.js'
 import { inspectCapturedPackage } from '../package/inspect.js'
 import type { RunTargetIdentity } from '../project/package-project.js'
 import { validateProjectPath } from '../project/paths.js'
+import {
+  type ChannelBroker,
+  ChannelOperationError,
+  type ChannelParticipant,
+} from '../run/channels.js'
+import type {
+  RunHostEffectCall,
+  RunHostEffectOperationTerminal,
+  WireFailureCode,
+} from '../run/session.js'
 import { SchemaDiagnostic } from '../schema/index.js'
 import {
-  type RunHostEffectCall,
-  type RunHostEffectOperationTerminal,
-  type WireFailureCode,
-} from '../run/session.js'
+  PrivateAcpProtocolError,
+  type PrivateAcpTurnResult,
+  privateAcpComponentStream,
+  runPrivateAcpTurn,
+} from './acp-agent-client.js'
+import { privateAcpAgentRuntime, revalidatePrivateAcpAgentProvider } from './acp-agent-provider.js'
+import { findPrivateActivationCandidateTargetV5 } from './activation-admission.js'
 import {
   allocatePrivateRootChildOwner,
   closePrivateRootChildOwner,
   listPrivateRootChildOwners,
-  recordPrivateRootChildCleanup,
-  recordPrivateRootChildFence,
-  recordPrivateRootChildSandbox,
   type PrivateProjectCoordinator,
   type PrivateReacquiredRootExecutionWork,
   type PrivateRootChildOwnerLifecycle,
+  recordPrivateRootChildCleanup,
+  recordPrivateRootChildFence,
+  recordPrivateRootChildSandbox,
 } from './activation-admission-store.js'
-import { findPrivateActivationCandidateTargetV5 } from './activation-admission.js'
+import { type PrivateAgentProvider, requirePrivateAgentProvider } from './agent-provider.js'
+import { PRIVATE_AGENT_UPDATE_CHANNELS, PrivateAgentUpdateChannel } from './agent-update-channel.js'
 import {
-  planPrivateDirectRun,
   type PrivateDirectRunInstalledSupport,
   type PrivateDirectRunRecipe,
+  planPrivateDirectRun,
 } from './direct-run.js'
 import { privateDomainDigest } from './identity.js'
 import { revalidatePrivateInstalledBunSupport } from './installed-bun-support.js'
 import {
-  PrivateLinuxFenceUnconfirmedError,
   cancelPrivateLinuxOwnerStateAllocation,
   normalizePrivateLinuxConfirmedEnforcementReceipt,
   normalizePrivateLinuxOwnerStateAllocationIdentity,
   normalizePrivateLinuxOwnerStateReleaseReceipt,
   normalizePrivateLinuxSealedOwnerIdentity,
-  planPrivateLinuxOwnerStateAllocation,
-  releasePrivateLinuxOwnerState,
   type PrivateLinuxCgroupBackend,
   type PrivateLinuxComponentProcess,
   type PrivateLinuxConfirmedEnforcementReceipt,
+  PrivateLinuxFenceUnconfirmedError,
   type PrivateLinuxLaunchPlan,
   type PrivateLinuxOwnerStateAllocationIdentity,
   type PrivateLinuxOwnerStateReleaseReceipt,
   type PrivateLinuxSealedOwnerIdentity,
+  planPrivateLinuxOwnerStateAllocation,
+  releasePrivateLinuxOwnerState,
 } from './linux-rootless-backend.js'
-import { privateAcpAgentRuntime, revalidatePrivateAcpAgentProvider } from './acp-agent-provider.js'
-import {
-  PrivateAcpProtocolError,
-  privateAcpComponentStream,
-  runPrivateAcpTurn,
-  type PrivateAcpTurnResult,
-} from './acp-agent-client.js'
-import { requirePrivateAgentProvider, type PrivateAgentProvider } from './agent-provider.js'
-import { PRIVATE_AGENT_PROVIDER_PIDS } from './root-operation-limits.js'
-import {
-  privateOpenAIAgentCredential,
-  type PrivateOpenAIAgentProvider,
-} from './openai-agent-provider.js'
 import {
   assertPrivateAgentResponseSchema,
   projectPrivateAgentResponseSchema,
@@ -79,19 +74,24 @@ import {
   type PrivateOpenAIAgentErrorCode,
   type PrivateOpenAIAgentWorkerResponse,
 } from './openai-agent-protocol.js'
+import {
+  type PrivateOpenAIAgentProvider,
+  privateOpenAIAgentCredential,
+} from './openai-agent-provider.js'
 import { captureStoredPackage } from './package-artifact-store.js'
 import {
   AGENT_RUN_CONTRACT_DIGEST,
   AGENT_RUN_CONTRACT_ID,
   AGENT_RUN_CONTRACT_VERSION,
+  type AgentRunSkillManifest,
   AgentRunValidationError,
   assertAgentRunContract,
+  type PreparedAgentRunInput,
   parseAgentRunInput,
   parseAgentRunResult,
   projectAgentRunSkills,
-  type AgentRunSkillManifest,
-  type PreparedAgentRunInput,
 } from './private-agent-run.js'
+import { PRIVATE_AGENT_PROVIDER_PIDS } from './root-operation-limits.js'
 
 const ALLOCATION_KIND = 'private-root-agent-owner-allocation/1'
 const SANDBOX_KIND = 'private-root-agent-sandbox/1'
@@ -658,8 +658,7 @@ async function reproduceParentRecipe(input: AgentInput): Promise<PrivateDirectRu
   }
   const recipe = await planPrivateDirectRun({
     request: target.request,
-    executionPackage: target.disposition.executionPackage,
-    executionLayout: target.disposition.executionLayout,
+    execution: target.disposition.execution,
     installedSupport: input.installedSupport,
     backend: input.backend,
     agentProvider: input.agentProvider,

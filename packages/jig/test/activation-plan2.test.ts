@@ -1,12 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import { createHash } from 'node:crypto'
 import {
-  EMPTY_PRIVATE_BUN_EXECUTION_LAYOUT,
-  type PrivateBunExecutionLayout,
-} from '../src/internal/bun-execution-layout.js'
-
-import { canonicalJson, type JsonValue } from '../src/json.js'
-import {
   createPrivateActivationPlanV2,
   decodePrivateActivationCandidateV5,
   decodePrivateActivationPlanV2,
@@ -15,11 +9,17 @@ import {
   privateActivationCandidateDigestV5,
   privateActivationPlanDigestV2,
 } from '../src/internal/activation-admission.js'
+import {
+  EMPTY_PRIVATE_BUN_EXECUTION_LAYOUT,
+  type PrivateBunExecutionLayout,
+  privateBunExecutionArtifact,
+} from '../src/internal/bun-execution-layout.js'
 import { privateDomainDigest } from '../src/internal/identity.js'
 import {
   decodePrivateProjectLocalLock,
   privateProjectLocalLockDigest,
 } from '../src/internal/project-local-lock.js'
+import { canonicalJson, type JsonValue } from '../src/json.js'
 
 const encoder = new TextEncoder()
 
@@ -52,11 +52,10 @@ describe('private Candidate/5', () => {
       state: 'ready',
       recipeDigest: digest('ready-recipe'),
       observationDigest: digest('ready-observation'),
-      executionLayout: EMPTY_PRIVATE_BUN_EXECUTION_LAYOUT,
-      executionPackage: {
+      execution: privateBunExecutionArtifact({
         kind: 'flow-package/1',
         digest: digest('prepared:first'),
-      },
+      }),
     })
     expect(privateActivationCandidateDigestV5(decoded)).toBe(
       privateActivationCandidateDigestV5(first),
@@ -70,7 +69,7 @@ describe('private Candidate/5', () => {
     )
 
     const missing = json(encoded.candidate)
-    delete missing.targets[0].disposition.executionPackage
+    delete missing.targets[0].disposition.execution
     missing.activationMeaningDigest = activationMeaningDigest(
       missing.observedSemanticDigest,
       missing.targets,
@@ -78,7 +77,7 @@ describe('private Candidate/5', () => {
     expectInvalidCandidate(encoded, missing, 'must contain exactly')
 
     const malformed = json(encoded.candidate)
-    malformed.targets[0].disposition.executionPackage.digest = 'not-a-digest'
+    malformed.targets[0].disposition.execution.package.digest = 'not-a-digest'
     malformed.activationMeaningDigest = activationMeaningDigest(
       malformed.observedSemanticDigest,
       malformed.targets,
@@ -98,18 +97,18 @@ describe('private Candidate/5', () => {
       aliases: [{ path: 'flows/work/node_modules/shared', target: 'libs/shared' }],
     })
     const reopened = decodePrivateActivationCandidateV5(encodePrivateActivationCandidateV5(first))
-    expect(reopened.candidate.targets[0]!.disposition).toMatchObject({ executionLayout: layout })
+    expect(reopened.candidate.targets[0]!.disposition).toMatchObject({ execution: { layout } })
     expect(first.candidate.activationMeaningDigest).not.toBe(
       second.candidate.activationMeaningDigest,
     )
     const encoded = encodePrivateActivationCandidateV5(first)
     const missing = json(encoded.candidate)
-    delete missing.targets[0].disposition.executionLayout
+    delete missing.targets[0].disposition.execution.layout
     missing.activationMeaningDigest = activationMeaningDigest(
       missing.observedSemanticDigest,
       missing.targets,
     )
-    expectInvalidCandidate(encoded, missing, 'must contain exactly')
+    expectInvalidCandidate(encoded, missing, 'private Bun execution layout')
   })
 
   test('makes the exact Binding slot map part of request and Candidate identity', () => {
@@ -205,8 +204,7 @@ describe('private Candidate/5', () => {
               state: 'ready',
               recipeDigest: digest('new-recipe'),
               observationDigest: digest('planning-observation'),
-              executionLayout: EMPTY_PRIVATE_BUN_EXECUTION_LAYOUT,
-              executionPackage: candidate.targets[0].request.package,
+              execution: privateBunExecutionArtifact(candidate.targets[0].request.package),
             },
           },
         ],
@@ -664,11 +662,10 @@ function readyCandidateFixture(
     state: 'ready',
     recipeDigest: digest('ready-recipe'),
     observationDigest: digest('ready-observation'),
-    executionLayout,
-    executionPackage: {
-      kind: 'flow-package/1',
-      digest: digest(executionPackage),
-    },
+    execution: privateBunExecutionArtifact(
+      { kind: 'flow-package/1', digest: digest(executionPackage) },
+      executionLayout,
+    ),
   }
   candidate.activationMeaningDigest = activationMeaningDigest(
     candidate.observedSemanticDigest,

@@ -1,24 +1,26 @@
 import { describe, expect, test } from 'bun:test'
-
-import type { JsonValue } from '../src/json.js'
 import { planPrivateBunDirectRun } from '../src/internal/bun-direct-run.js'
-import { EMPTY_PRIVATE_BUN_EXECUTION_LAYOUT } from '../src/internal/bun-execution-layout.js'
+import {
+  EMPTY_PRIVATE_BUN_EXECUTION_LAYOUT,
+  privateBunExecutionArtifact,
+} from '../src/internal/bun-execution-layout.js'
 import { privateDomainDigest } from '../src/internal/identity.js'
 import { openPrivateInstalledBunHost } from '../src/internal/installed-bun-host.js'
 import { openPrivateInstalledBunSupport } from '../src/internal/installed-bun-support.js'
+import {
+  type PrivateLinuxBackendMechanismObservation,
+  PrivateLinuxCgroupBackend,
+} from '../src/internal/linux-rootless-backend.js'
 import { openPrivateOpenAIAgentProvider } from '../src/internal/openai-agent-provider.js'
 import {
   AGENT_RUN_CONTRACT_DIGEST,
   AGENT_RUN_CONTRACT_ID,
   AGENT_RUN_CONTRACT_VERSION,
 } from '../src/internal/private-agent-run.js'
+import type { JsonValue } from '../src/json.js'
 import {
-  PrivateLinuxCgroupBackend,
-  type PrivateLinuxBackendMechanismObservation,
-} from '../src/internal/linux-rootless-backend.js'
-import {
-  restorePrivateActivationRequest,
   type PrivateActivationRequest,
+  restorePrivateActivationRequest,
 } from '../src/project/package-resolution.js'
 import { installedBunLocation } from './fixtures/installed-bun-location.js'
 
@@ -37,7 +39,7 @@ describe('private Bun direct Run', () => {
     })
 
     expect(recipe.wallClockCeilingMs).toBe(86_400_000)
-    expect(recipe.executionLayout).toEqual(EMPTY_PRIVATE_BUN_EXECUTION_LAYOUT)
+    expect(recipe.execution.layout).toEqual(EMPTY_PRIVATE_BUN_EXECUTION_LAYOUT)
     expect(recipe.resourceCeilings).toEqual({
       memoryBytes: 256 * 1024 * 1024,
       pids: 64,
@@ -63,8 +65,7 @@ describe('private Bun direct Run', () => {
     const plan = (layout: typeof executionLayout) =>
       planPrivateBunDirectRun({
         request,
-        executionPackage,
-        executionLayout: layout,
+        execution: privateBunExecutionArtifact(executionPackage, layout),
         installedSupport,
         backend,
       })
@@ -80,13 +81,19 @@ describe('private Bun direct Run', () => {
     expect(repeated.observation.digest).toBe(original.observation.digest)
     for (const changed of [differentRoot, differentAlias]) {
       expect(changed.request).toEqual(original.request)
-      expect(changed.executionPackage).toEqual(original.executionPackage)
+      expect(changed.execution.package).toEqual(original.execution.package)
       expect(changed.digest).not.toBe(original.digest)
       expect(changed.observation.digest).not.toBe(original.observation.digest)
     }
-    expect(original.executionLayout).toEqual(executionLayout)
+    expect(original.execution.layout).toEqual(executionLayout)
+    expect(original.command).toEqual([
+      original.sandboxExecutablePath,
+      ...original.bunPolicy,
+      '/package/flows/first/flow.ts',
+    ])
+    expect(differentRoot.command.at(-1)).toBe('/package/flows/second/flow.ts')
     executionLayout.aliases[0]!.target = 'libs/second'
-    expect(original.executionLayout.aliases[0]!.target).toBe('libs/first')
+    expect(original.execution.layout.aliases[0]!.target).toBe('libs/first')
   })
 
   test('keeps the ordinary layout equivalent whether explicit or omitted', async () => {
@@ -99,7 +106,7 @@ describe('private Bun direct Run', () => {
     const implicit = await planPrivateBunDirectRun(input)
     const explicit = await planPrivateBunDirectRun({
       ...input,
-      executionLayout: EMPTY_PRIVATE_BUN_EXECUTION_LAYOUT,
+      execution: privateBunExecutionArtifact(input.request.package),
     })
     expect(explicit.digest).toBe(implicit.digest)
     expect(explicit.observation.digest).toBe(implicit.observation.digest)
@@ -125,7 +132,7 @@ describe('private Bun direct Run', () => {
           request: activationRequest(),
           installedSupport,
           backend,
-          executionLayout,
+          execution: { package: activationRequest().package, layout: executionLayout },
         }),
       ).rejects.toThrow()
     }

@@ -1,33 +1,32 @@
 import { types as utilTypes } from 'node:util'
+import { canonicalJson, decodeJson1, JSON_1_LIMITS, type JsonValue } from '../json.js'
+import type { RunTargetIdentity } from '../project/package-project.js'
 import {
-  normalizePrivateBunExecutionLayout,
-  type PrivateBunExecutionLayout,
-} from './bun-execution-layout.js'
-
+  type PrivateActivationRequest,
+  type PrivateResolutionUnavailableCode,
+  requirePrivateRetainedResolutionObservation,
+  restorePrivateActivationRequest,
+} from '../project/package-resolution.js'
+import { isProtectedProjectPath, normalizeProjectPath } from '../project/paths.js'
+import {
+  type PrivateRetainedPackageProject,
+  requirePrivateRetainedPackageProject,
+} from '../project/retained-project.js'
 import { privateActivationTargetKey } from './activation-planning.js'
+import {
+  normalizePrivateBunExecutionArtifact,
+  type PrivateBunExecutionArtifact,
+} from './bun-execution-layout.js'
+import { type PrivateDirectRunRecipe, requirePrivateDirectRunRecipe } from './direct-run.js'
 import { privateDomainDigest } from './identity.js'
 import { normalizePackageArtifactRef, type PackageArtifactRef } from './package-artifact-store.js'
 import {
   createPrivateProjectLocalLock,
   decodePrivateProjectLocalLock,
   encodePrivateProjectLocalLock,
-  privateProjectLocalLockDigest,
   type PrivateProjectLocalLock,
+  privateProjectLocalLockDigest,
 } from './project-local-lock.js'
-import { requirePrivateDirectRunRecipe, type PrivateDirectRunRecipe } from './direct-run.js'
-import { canonicalJson, decodeJson1, JSON_1_LIMITS, type JsonValue } from '../json.js'
-import type { RunTargetIdentity } from '../project/package-project.js'
-import {
-  restorePrivateActivationRequest,
-  type PrivateActivationRequest,
-  requirePrivateRetainedResolutionObservation,
-  type PrivateResolutionUnavailableCode,
-} from '../project/package-resolution.js'
-import { isProtectedProjectPath, normalizeProjectPath } from '../project/paths.js'
-import {
-  requirePrivateRetainedPackageProject,
-  type PrivateRetainedPackageProject,
-} from '../project/retained-project.js'
 
 const KIND_V5 = 'private-activation-candidate/5'
 const PLAN_V2_KIND = 'private-activation-plan/2'
@@ -50,8 +49,7 @@ export interface PrivateActivationCandidateTarget {
         readonly state: 'ready'
         readonly recipeDigest: string
         readonly observationDigest: string
-        readonly executionPackage: PackageArtifactRef
-        readonly executionLayout: PrivateBunExecutionLayout
+        readonly execution: PrivateBunExecutionArtifact
       }
     | {
         readonly state: 'unavailable'
@@ -170,8 +168,7 @@ export function createPrivateActivationCandidateV5(
         state: 'ready' as const,
         recipeDigest: recipe.digest,
         observationDigest: recipe.observation.digest,
-        executionPackage: recipe.executionPackage,
-        executionLayout: recipe.executionLayout,
+        execution: recipe.execution,
       })
     } else {
       disposition = target.disposition
@@ -748,7 +745,7 @@ function normalizeTarget(input: unknown): PrivateActivationCandidateTarget {
   if (state === 'ready') {
     const ready = exactObject(
       value.disposition,
-      ['state', 'recipeDigest', 'observationDigest', 'executionPackage', 'executionLayout'],
+      ['state', 'recipeDigest', 'observationDigest', 'execution'],
       'target disposition',
     )
     return Object.freeze({
@@ -757,8 +754,7 @@ function normalizeTarget(input: unknown): PrivateActivationCandidateTarget {
         state: 'ready' as const,
         recipeDigest: requireDigest(ready.recipeDigest, 'target recipe'),
         observationDigest: requireDigest(ready.observationDigest, 'target observation'),
-        executionPackage: normalizePackageArtifactRef(ready.executionPackage),
-        executionLayout: normalizePrivateBunExecutionLayout(ready.executionLayout),
+        execution: normalizePrivateBunExecutionArtifact(ready.execution),
       }),
     })
   }

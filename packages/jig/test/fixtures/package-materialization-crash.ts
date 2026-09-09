@@ -1,15 +1,15 @@
 import { chmod, mkdir, readFile, rename, rmdir, symlink, unlink, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
+import {
+  normalizePrivatePackageAliases,
+  privatePackageAliasText,
+} from '../../src/internal/package-aliases.js'
 
 import {
   materializePrivatePackageLease,
   reacquirePrivatePackageMaterializationLease,
 } from '../../src/internal/package-materialization.js'
 import { capturePackageDirectory } from '../../src/package/capture.js'
-import {
-  normalizePrivateBunExecutionLayout,
-  privateBunAliasText,
-} from '../../src/internal/bun-execution-layout.js'
 
 const mode = required('JIG_TEST_MODE')
 
@@ -29,8 +29,8 @@ if (mode === 'complete-without-identity') {
 }
 
 if (mode === 'partial-workspace-aliases') {
-  const allocation = parsed('JIG_TEST_ALLOCATION') as { path: string; executionLayout: unknown }
-  const layout = normalizePrivateBunExecutionLayout(allocation.executionLayout)
+  const allocation = parsed('JIG_TEST_ALLOCATION') as { path: string; aliases: unknown }
+  const layout = normalizePrivatePackageAliases(allocation.aliases)
   const captured = await capturePackageDirectory(required('JIG_TEST_SOURCE'))
   const root = join(allocation.path, 'package')
   await mkdir(root, { recursive: true, mode: 0o700 })
@@ -39,22 +39,22 @@ if (mode === 'partial-workspace-aliases') {
     await mkdir(dirname(path), { recursive: true, mode: 0o700 })
     await writeFile(path, await captured.read(file.path), { mode: 0o444 })
   }
-  const alias = layout.aliases[0]!
+  const alias = layout[0]!
   await mkdir(dirname(join(root, alias.path)), { recursive: true, mode: 0o700 })
-  await symlink(privateBunAliasText(alias), join(root, alias.path))
+  await symlink(privatePackageAliasText(alias), join(root, alias.path))
   process.exit(74)
 }
 
 if (mode === 'interrupt-alias-disposal') {
   const identity = parsed('JIG_TEST_IDENTITY') as {
-    allocation: { path: string; executionLayout: unknown }
+    allocation: { path: string; aliases: unknown }
     package: { path: string }
   }
-  const layout = normalizePrivateBunExecutionLayout(identity.allocation.executionLayout)
+  const layout = normalizePrivatePackageAliases(identity.allocation.aliases)
   const disposing = join(identity.allocation.path, 'package.disposing')
   await chmod(identity.allocation.path, 0o700)
   await rename(identity.package.path, disposing)
-  const alias = join(disposing, layout.aliases[0]!.path)
+  const alias = join(disposing, layout[0]!.path)
   await chmod(dirname(alias), 0o700)
   await unlink(alias)
   process.exit(75)

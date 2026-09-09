@@ -4,11 +4,11 @@ import {
   assertPrivateBunExecutionLayoutFiles,
   EMPTY_PRIVATE_BUN_EXECUTION_LAYOUT,
   normalizePrivateBunExecutionLayout,
-  privateBunAliasPackageName,
-  type PrivateBunExecutionAlias,
   type PrivateBunExecutionLayout,
+  privateBunAliasPackageName,
 } from './bun-execution-layout.js'
 import { PRIVATE_BUN_PREPARATION_LIMITS } from './bun-native-preparation-protocol.js'
+import type { PrivatePackageAlias } from './package-aliases.js'
 
 const PATH = /^(?!\/)(?!.*(?:^|\/)\.\.?(?:\/|$))(?!.*\/\/)[^\0]+$/
 
@@ -38,7 +38,7 @@ export async function capturePrivateBunPreparedTree(
   workspace?: Workspace,
 ): Promise<{ readonly files: readonly SourceFile[]; readonly layout: PrivateBunExecutionLayout }> {
   const files: SourceFile[] = []
-  const aliases: PrivateBunExecutionAlias[] = []
+  const aliases: PrivatePackageAlias[] = []
   let total = 0
   const memberNames = new Map<string, string>()
   for (const member of workspace?.members ?? []) {

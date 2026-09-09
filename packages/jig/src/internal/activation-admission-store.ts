@@ -1,42 +1,46 @@
-import { constants, type BigIntStats } from 'node:fs'
-import { lstat, mkdir, open, rename, unlink, type FileHandle } from 'node:fs/promises'
+import { type BigIntStats, constants } from 'node:fs'
+import { type FileHandle, lstat, mkdir, open, rename, unlink } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { join } from 'node:path'
-import type { PrivateBunExecutionLayout } from './bun-execution-layout.js'
-
 import { CheckError, invalid, unavailable } from '../diagnostics.js'
-import { canonicalJson, decodeJson1, Json1Error, JSON_1_LIMITS, type JsonValue } from '../json.js'
-import { inspectCapturedPackage, type InspectedPackage } from '../package/inspect.js'
-import { SchemaDiagnostic } from '../schema/index.js'
+import { canonicalJson, decodeJson1, JSON_1_LIMITS, Json1Error, type JsonValue } from '../json.js'
+import { type InspectedPackage, inspectCapturedPackage } from '../package/inspect.js'
+import { isDirectRunEligible } from '../project/flow-source.js'
 import {
   projectSupportedCapabilityUses,
   type RunTargetIdentity,
 } from '../project/package-project.js'
 import {
-  requirePrivateActivationRequest,
   type PrivateActivationRequest,
+  requirePrivateActivationRequest,
 } from '../project/package-resolution.js'
-import { isDirectRunEligible } from '../project/flow-source.js'
-import { privateActivationTargetKey } from './activation-planning.js'
-import { privateDomainDigest } from './identity.js'
-import { canReservePrivateRootOperation } from './root-operation-limits.js'
 import {
   openPrivateProjectRoot,
-  requirePrivateProjectRoot,
   type PrivateProjectRoot,
+  requirePrivateProjectRoot,
 } from '../project/root.js'
+import { SchemaDiagnostic } from '../schema/index.js'
 import {
-  captureStoredPackage,
-  normalizePackageArtifactRef,
-  type PackageArtifactRef,
-} from './package-artifact-store.js'
-import {
-  decodePrivateProjectLocalLock,
-  encodePrivateProjectLocalLock,
-  privateProjectLocalLockDigest,
-  type PrivateLockPackage,
-  type PrivateProjectLocalLock,
-} from './project-local-lock.js'
+  createPrivateActivationAdmission,
+  createPrivateActivationPlanV2,
+  decodePrivateActivationAdmission,
+  decodePrivateActivationCandidateV5,
+  decodePrivateActivationPlanV2,
+  encodePrivateActivationAdmission,
+  encodePrivateActivationCandidateV5,
+  encodePrivateActivationPlanV2,
+  findPrivateActivationCandidateTargetV5,
+  type PrivateActivationAdmission,
+  type PrivateActivationCandidateArtifactV5,
+  type PrivateActivationPlanV2,
+  privateActivationAdmissionDigest,
+  privateActivationCandidateDigestV5,
+  privateActivationPlanDigestV2,
+  requirePrivateCreatedActivationCandidateV5,
+} from './activation-admission.js'
+import { privateActivationTargetKey } from './activation-planning.js'
+import type { PrivateBunExecutionArtifact } from './bun-execution-layout.js'
+import { privateDomainDigest } from './identity.js'
 import {
   normalizePrivateLinuxConfirmedEnforcementReceipt,
   normalizePrivateLinuxOwnerStateAllocationIdentity,
@@ -52,29 +56,25 @@ import {
   type PrivateLinuxSealedOwnerIdentity,
 } from './linux-rootless-backend.js'
 import {
+  captureStoredPackage,
+  normalizePackageArtifactRef,
+  type PackageArtifactRef,
+} from './package-artifact-store.js'
+import {
   normalizePrivatePackageMaterializationAllocationIdentity,
   normalizePrivatePackageMaterializationLeaseIdentity,
   type PrivatePackageMaterializationAllocationIdentity,
   type PrivatePackageMaterializationLeaseIdentity,
 } from './package-materialization.js'
 import {
-  createPrivateActivationAdmission,
-  createPrivateActivationPlanV2,
-  decodePrivateActivationAdmission,
-  decodePrivateActivationCandidateV5,
-  decodePrivateActivationPlanV2,
-  encodePrivateActivationAdmission,
-  encodePrivateActivationCandidateV5,
-  encodePrivateActivationPlanV2,
-  findPrivateActivationCandidateTargetV5,
-  privateActivationAdmissionDigest,
-  privateActivationCandidateDigestV5,
-  privateActivationPlanDigestV2,
-  requirePrivateCreatedActivationCandidateV5,
-  type PrivateActivationAdmission,
-  type PrivateActivationCandidateArtifactV5,
-  type PrivateActivationPlanV2,
-} from './activation-admission.js'
+  decodePrivateProjectLocalLock,
+  encodePrivateProjectLocalLock,
+  type PrivateLockPackage,
+  type PrivateProjectLocalLock,
+  privateProjectLocalLockDigest,
+} from './project-local-lock.js'
+import { canReservePrivateRootOperation } from './root-operation-limits.js'
+import { type PrivateRunFileIdentity, requirePrivateRootFileMapping } from './root-run-files.js'
 import {
   createPrivateExternalSubmissionOrigin,
   createPrivateRootRunRequest,
@@ -84,19 +84,18 @@ import {
   failedPrivateRootTerminal,
   normalizePrivateRootSpawnIntent,
   normalizePrivateRootTerminal,
-  privateRootRunIdentityDigest,
-  privateRootRunOriginDigest,
-  privateRootSpawnIntentDigest,
-  privateRootRequestDigest,
-  privateRootSubmissionDigest,
-  privateRootTerminalBytes,
   type PrivateRootRunOrigin,
+  type PrivateRootRunRequest,
   type PrivateRootRunSnapshot,
   type PrivateRootRunSpawnIntent,
   type PrivateRootRunTerminal,
-  type PrivateRootRunRequest,
+  privateRootRequestDigest,
+  privateRootRunIdentityDigest,
+  privateRootRunOriginDigest,
+  privateRootSpawnIntentDigest,
+  privateRootSubmissionDigest,
+  privateRootTerminalBytes,
 } from './root-run-state.js'
-import { requirePrivateRootFileMapping, type PrivateRunFileIdentity } from './root-run-files.js'
 
 export type {
   PrivateRootRunSnapshot,
@@ -392,8 +391,7 @@ interface PrivateActivationPlanningSnapshot {
 export interface PrivateAdmittedExecutionReuse {
   readonly recipeDigest: string
   readonly observationDigest: string
-  readonly executionPackage: PackageArtifactRef
-  readonly executionLayout: PrivateBunExecutionLayout
+  readonly execution: PrivateBunExecutionArtifact
 }
 
 export interface PrivateActivationReviewPlan {
@@ -584,8 +582,7 @@ export function readPrivateAdmittedExecutionReuse(input: {
   return Object.freeze({
     recipeDigest: target.disposition.recipeDigest,
     observationDigest: target.disposition.observationDigest,
-    executionPackage: target.disposition.executionPackage,
-    executionLayout: target.disposition.executionLayout,
+    execution: target.disposition.execution,
   })
 }
 
@@ -4500,7 +4497,7 @@ async function reacquireCandidateArtifacts(
       candidate.candidate.declarationArtifact.package.digest,
       ...Object.values(candidate.lock.packages).map((entry) => entry.digest),
       ...candidate.candidate.targets.flatMap((target) =>
-        target.disposition.state === 'ready' ? [target.disposition.executionPackage.digest] : [],
+        target.disposition.state === 'ready' ? [target.disposition.execution.package.digest] : [],
       ),
     ])
     for (const digest of [...digests].sort()) {

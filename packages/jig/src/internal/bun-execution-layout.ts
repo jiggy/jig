@@ -1,22 +1,22 @@
-import { posix } from 'node:path'
 import { types as utilTypes } from 'node:util'
 import { comparePathBytes, validateLogicalPath } from '../package/paths.js'
-
-export interface PrivateBunExecutionAlias {
-  readonly path: string
-  /** Canonical artifact-root-relative directory, never raw symlink text. */
-  readonly target: string
-}
+import {
+  assertPrivatePackageAliasFiles,
+  normalizePrivatePackageAliases,
+  PRIVATE_PACKAGE_ALIAS_LIMITS,
+  type PrivatePackageAlias,
+} from './package-aliases.js'
+import { normalizePackageArtifactRef, type PackageArtifactRef } from './package-artifact-store.js'
 
 export interface PrivateBunExecutionLayout {
   readonly flowRoot: string
   readonly members: readonly string[]
-  readonly aliases: readonly PrivateBunExecutionAlias[]
+  readonly aliases: readonly PrivatePackageAlias[]
 }
 
 export const PRIVATE_BUN_EXECUTION_LAYOUT_LIMITS = Object.freeze({
   members: 256,
-  aliases: 4_096,
+  aliases: PRIVATE_PACKAGE_ALIAS_LIMITS.records,
   bytes: 1024 * 1024,
 })
 
@@ -29,7 +29,7 @@ export const EMPTY_PRIVATE_BUN_EXECUTION_LAYOUT: PrivateBunExecutionLayout = Obj
 export function normalizePrivateBunExecutionLayout(value: unknown): PrivateBunExecutionLayout {
   const record = exact(value, ['flowRoot', 'members', 'aliases'])
   const memberValues = array(record.members, PRIVATE_BUN_EXECUTION_LAYOUT_LIMITS.members)
-  const aliasValues = array(record.aliases, PRIVATE_BUN_EXECUTION_LAYOUT_LIMITS.aliases)
+  const aliases = normalizePrivatePackageAliases(record.aliases)
   if (typeof record.flowRoot !== 'string') invalid()
   const flowRoot = record.flowRoot as string
   if (flowRoot !== '') validateLogicalPath(flowRoot)
@@ -45,21 +45,9 @@ export function normalizePrivateBunExecutionLayout(value: unknown): PrivateBunEx
       invalid()
     members.push(member as string)
   }
-  const aliases: PrivateBunExecutionAlias[] = []
-  for (const raw of aliasValues) {
-    const alias = exact(raw, ['path', 'target'])
-    if (typeof alias.path !== 'string' || typeof alias.target !== 'string') invalid()
-    const path = alias.path as string,
-      target = alias.target as string
-    validateLogicalPath(path)
-    validateLogicalPath(target)
-    if (
-      !members.includes(target) ||
-      privateBunAliasPackageName(path) === undefined ||
-      (aliases.length > 0 && comparePathBytes(aliases.at(-1)!.path, path) >= 0)
-    )
+  for (const alias of aliases) {
+    if (!members.includes(alias.target) || privateBunAliasPackageName(alias.path) === undefined)
       invalid()
-    aliases.push(Object.freeze({ path, target }))
   }
   if (flowRoot === '') {
     if (members.length !== 0 || aliases.length !== 0) invalid()
@@ -71,15 +59,6 @@ export function normalizePrivateBunExecutionLayout(value: unknown): PrivateBunEx
   })
   if (Buffer.byteLength(JSON.stringify(layout)) > PRIVATE_BUN_EXECUTION_LAYOUT_LIMITS.bytes)
     invalid()
-  const aliasPaths = new Set(aliases.map(({ path }) => path))
-  for (const alias of aliases) {
-    const parts = alias.path.split('/')
-    while (parts.length > 1) {
-      parts.pop()
-      if (aliasPaths.has(parts.join('/'))) invalid()
-    }
-  }
-  // Canonical member targets exclude node_modules, so cannot traverse an alias.
   return layout
 }
 
@@ -88,29 +67,38 @@ export function assertPrivateBunExecutionLayoutFiles(
   layout: PrivateBunExecutionLayout,
   files: readonly { readonly path: string; readonly size?: number }[],
 ): void {
-  const paths = new Set(files.map((file) => file.path))
-  const directories = new Set<string>([''])
-  for (const path of paths) {
-    const parts = path.split('/')
-    while (parts.length > 1) {
-      parts.pop()
-      directories.add(parts.join('/'))
-    }
-  }
-  for (const member of layout.members) if (!paths.has(`${member}/package.json`)) invalid()
-  for (const alias of layout.aliases) {
-    if (!directories.has(alias.target) || paths.has(alias.path) || directories.has(alias.path))
-      invalid()
-    const parts = alias.path.split('/')
-    while (parts.length > 1) {
-      parts.pop()
-      if (paths.has(parts.join('/'))) invalid()
-    }
-  }
+  for (const member of layout.members)
+    if (!files.some(({ path }) => path === `${member}/package.json`)) invalid()
+  assertPrivatePackageAliasFiles(layout.aliases, files)
 }
 
-export function privateBunAliasText(alias: PrivateBunExecutionAlias): string {
-  return posix.relative(posix.dirname(alias.path), alias.target)
+/** One retained execution value; callers cannot independently substitute its layout. */
+export interface PrivateBunExecutionArtifact {
+  readonly package: PackageArtifactRef
+  readonly layout: PrivateBunExecutionLayout
+}
+
+export function normalizePrivateBunExecutionArtifact(value: unknown): PrivateBunExecutionArtifact {
+  const record = exact(value, ['package', 'layout'])
+  return Object.freeze({
+    package: normalizePackageArtifactRef(exact(record.package, ['kind', 'digest'])),
+    layout: normalizePrivateBunExecutionLayout(record.layout),
+  })
+}
+
+export function privateBunExecutionArtifact(
+  artifact: PackageArtifactRef,
+  layout: PrivateBunExecutionLayout = EMPTY_PRIVATE_BUN_EXECUTION_LAYOUT,
+): PrivateBunExecutionArtifact {
+  return normalizePrivateBunExecutionArtifact({ package: artifact, layout })
+}
+
+/** Project runtime meaning into the materializer's runtime-independent file contract. */
+export function privateBunExecutionMaterialization(execution: PrivateBunExecutionArtifact) {
+  return Object.freeze({
+    packageDigest: execution.package.digest,
+    aliases: execution.layout.aliases,
+  })
 }
 
 export function privateBunAliasPackageName(path: string): string | undefined {

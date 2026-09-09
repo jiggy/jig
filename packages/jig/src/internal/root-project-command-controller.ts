@@ -10,12 +10,12 @@ import {
   allocatePrivateRootChildOwner,
   closePrivateRootChildOwner,
   listPrivateRootChildOwners,
+  type PrivateRootChildOwnerLifecycle,
   recordPrivateRootChildCleanup,
   recordPrivateRootChildFence,
   recordPrivateRootChildSandbox,
-  type PrivateRootChildOwnerLifecycle,
 } from './activation-admission-store.js'
-import { planPrivateDirectRun, type PrivateDirectRunRecipe } from './direct-run.js'
+import { type PrivateDirectRunRecipe, planPrivateDirectRun } from './direct-run.js'
 import { privateDomainDigest } from './identity.js'
 import { revalidatePrivateInstalledBunSupport } from './installed-bun-support.js'
 import { privateSealedBytes, sha256 } from './linux-file-input.js'
@@ -24,25 +24,25 @@ import {
   normalizePrivateLinuxConfirmedEnforcementReceipt,
   normalizePrivateLinuxOwnerStateAllocationIdentity,
   normalizePrivateLinuxOwnerStateReleaseReceipt,
-  normalizePrivateLinuxSealedOwnerIdentity,
   normalizePrivateLinuxPreparedOwnerIdentity,
-  planPrivateLinuxOwnerStateAllocation,
-  releasePrivateLinuxOwnerState,
-  PrivateLinuxFenceUnconfirmedError,
+  normalizePrivateLinuxSealedOwnerIdentity,
   type PrivateLinuxCapturedInput,
   type PrivateLinuxComponentProcess,
   type PrivateLinuxConfirmedEnforcementReceipt,
+  PrivateLinuxFenceUnconfirmedError,
   type PrivateLinuxLaunchPlan,
   type PrivateLinuxOwnerStateAllocationIdentity,
+  planPrivateLinuxOwnerStateAllocation,
+  releasePrivateLinuxOwnerState,
 } from './linux-rootless-backend.js'
+import { snapshotPrivateOrdinaryJson } from './private-ordinary-json.js'
 import {
   isProjectCommandContract,
-  parseProjectCommandInput,
   PROJECT_COMMAND_LIMITS,
   type PreparedProjectCommand,
   type ProjectCommandResult,
+  parseProjectCommandInput,
 } from './private-project-command.js'
-import { snapshotPrivateOrdinaryJson } from './private-ordinary-json.js'
 import {
   normalizeParentFlow,
   protectedOwnerRoot,
@@ -98,8 +98,7 @@ export async function executePrivateProjectCommand(
     recipe = await planPrivateDirectRun({
       ...input,
       request: target.request,
-      executionPackage: target.disposition.executionPackage,
-      executionLayout: target.disposition.executionLayout,
+      execution: target.disposition.execution,
     })
     if (
       recipe.digest !== target.disposition.recipeDigest ||

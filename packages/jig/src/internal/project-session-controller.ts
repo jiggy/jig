@@ -30,8 +30,8 @@ import {
 import { createPrivateActivationPlanningObservation } from './activation-planning.js'
 import type { PrivateAgentProvider } from './agent-provider.js'
 import {
-  EMPTY_PRIVATE_BUN_EXECUTION_LAYOUT,
-  type PrivateBunExecutionLayout,
+  type PrivateBunExecutionArtifact,
+  privateBunExecutionArtifact,
 } from './bun-execution-layout.js'
 import {
   preparePrivateBunPackage,
@@ -45,8 +45,8 @@ import {
   inspectPrivateBunPackageInput,
   requirePrivateBunResolutionPermission,
 } from './bun-package-input.js'
-import { type PrivateDirectRunRecipe, planPrivateDirectRun } from './direct-run.js'
 import { capturePrivateBunWorkspace } from './bun-workspace-capture.js'
+import { type PrivateDirectRunRecipe, planPrivateDirectRun } from './direct-run.js'
 import type { PrivateFileRecovery } from './file-command.js'
 import { privateDomainDigest } from './identity.js'
 import type { PrivateInstalledBunSupport } from './installed-bun-support.js'
@@ -247,10 +247,7 @@ function createSession(
         }
         preparationBudget = createPrivateBunPreparationBudget(planningCancellation.signal)
         const recipes: PrivateDirectRunRecipe[] = []
-        const executionPackages = new Map<
-          string,
-          { artifact: PackageArtifactRef; layout: PrivateBunExecutionLayout }
-        >()
+        const executions = new Map<string, PrivateBunExecutionArtifact>()
         for (const request of requests) {
           preparationBudget.signal.throwIfAborted()
           if (request.mode !== 'run') {
@@ -261,10 +258,8 @@ function createSession(
           }
           try {
             const executionKey = `${request.packagePath}:${request.package.digest}`
-            const cached = executionPackages.get(executionKey)
-            let executionPackage = cached?.artifact
-            let executionLayout = cached?.layout ?? EMPTY_PRIVATE_BUN_EXECUTION_LAYOUT
-            if (executionPackage === undefined) {
+            let execution = executions.get(executionKey)
+            if (execution === undefined) {
               const source = await captureStoredPackage(packageStoreRoot, request.package)
               try {
                 const workspace = await capturePrivateBunWorkspace({
@@ -303,11 +298,10 @@ function createSession(
                         request.packagePath,
                         Buffer.byteLength(JSON.stringify(prepared.layout)),
                       )
-                      executionPackage = await publishCapturedPackage(
-                        packageStoreRoot,
-                        prepared.captured,
+                      execution = privateBunExecutionArtifact(
+                        await publishCapturedPackage(packageStoreRoot, prepared.captured),
+                        prepared.layout,
                       )
-                      executionLayout = prepared.layout
                     } finally {
                       await prepared.captured.dispose()
                     }
@@ -317,14 +311,13 @@ function createSession(
                 } else {
                   const dependencyInput = await inspectPrivateBunPackageInput(source)
                   if (dependencyInput.state === 'direct') {
-                    executionPackage = request.package
+                    execution = privateBunExecutionArtifact(request.package)
                   } else {
                     const admitted = readPrivateAdmittedExecutionReuse({ planningBase, request })
                     if (admitted !== undefined) {
                       const current = await planPrivateDirectRun({
                         request,
-                        executionPackage: admitted.executionPackage,
-                        executionLayout: admitted.executionLayout,
+                        execution: admitted.execution,
                         installedSupport: host.installedBunSupport,
                         backend: host.backend,
                         agentProvider: host.agentProvider,
@@ -333,11 +326,10 @@ function createSession(
                         current.digest === admitted.recipeDigest &&
                         current.observation.digest === admitted.observationDigest
                       ) {
-                        executionPackage = admitted.executionPackage
-                        executionLayout = admitted.executionLayout
+                        execution = admitted.execution
                       }
                     }
-                    if (executionPackage === undefined) {
+                    if (execution === undefined) {
                       requirePrivateBunResolutionPermission(
                         dependencyInput,
                         host.allowResolutionNetwork,
@@ -361,11 +353,10 @@ function createSession(
                           request.packagePath,
                           Buffer.byteLength(JSON.stringify(prepared.layout)),
                         )
-                        executionPackage = await publishCapturedPackage(
-                          packageStoreRoot,
-                          prepared.captured,
+                        execution = privateBunExecutionArtifact(
+                          await publishCapturedPackage(packageStoreRoot, prepared.captured),
+                          prepared.layout,
                         )
-                        executionLayout = prepared.layout
                       } finally {
                         await prepared.captured.dispose()
                       }
@@ -375,16 +366,12 @@ function createSession(
               } finally {
                 await source.dispose()
               }
-              executionPackages.set(executionKey, {
-                artifact: executionPackage,
-                layout: executionLayout,
-              })
+              executions.set(executionKey, execution)
             }
             recipes.push(
               await planPrivateDirectRun({
                 request,
-                executionPackage,
-                executionLayout,
+                execution,
                 installedSupport: host.installedBunSupport,
                 backend: host.backend,
                 agentProvider: host.agentProvider,

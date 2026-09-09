@@ -5,8 +5,8 @@ import {
   normalizePrivateBunExecutionLayout,
   PRIVATE_BUN_EXECUTION_LAYOUT_LIMITS,
   privateBunAliasPackageName,
-  privateBunAliasText,
 } from '../src/internal/bun-execution-layout.js'
+import { privatePackageAliasText } from '../src/internal/package-aliases.js'
 
 function workspace() {
   return {
@@ -40,7 +40,7 @@ describe('private Bun execution layout', () => {
     expect(layout.members[0]).toBe('flows/main')
     expect(layout.aliases[0]!.target).toBe('libraries/shared')
     expect(() => assertPrivateBunExecutionLayoutFiles(layout, regularFiles)).not.toThrow()
-    expect(privateBunAliasText(layout.aliases[0]!)).toBe('../../libraries/shared')
+    expect(privatePackageAliasText(layout.aliases[0]!)).toBe('../../libraries/shared')
   })
 
   test('accepts dependency cycles while every link targets a canonical real member', () => {
@@ -59,8 +59,8 @@ describe('private Bun execution layout', () => {
         { path: 'packages/b/package.json' },
       ]),
     ).not.toThrow()
-    expect(privateBunAliasText(layout.aliases[1]!)).toBe('../../b')
-    expect(privateBunAliasText(layout.aliases[2]!)).toBe('../../a')
+    expect(privatePackageAliasText(layout.aliases[1]!)).toBe('../../b')
+    expect(privatePackageAliasText(layout.aliases[2]!)).toBe('../../a')
   })
 
   test.each([

@@ -2,9 +2,9 @@ import { expect, test } from 'bun:test'
 import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join, relative } from 'node:path'
-import { capturePrivateBunPreparedTree } from '../src/internal/bun-prepared-capture.js'
-import { privateBunAliasText } from '../src/internal/bun-execution-layout.js'
 import { PRIVATE_BUN_PREPARATION_LIMITS } from '../src/internal/bun-native-preparation-protocol.js'
+import { capturePrivateBunPreparedTree } from '../src/internal/bun-prepared-capture.js'
+import { privatePackageAliasText } from '../src/internal/package-aliases.js'
 
 async function fixture() {
   const root = await mkdtemp(join(tmpdir(), 'jig-prepared-capture-'))
@@ -47,7 +47,7 @@ async function restore(
   }
   for (const alias of prepared.layout.aliases) {
     await mkdir(dirname(join(root, alias.path)), { recursive: true })
-    await symlink(privateBunAliasText(alias), join(root, alias.path))
+    await symlink(privatePackageAliasText(alias), join(root, alias.path))
   }
 }
 

@@ -1,6 +1,7 @@
-import { constants, type BigIntStats } from 'node:fs'
+import { type BigIntStats, constants } from 'node:fs'
 import {
   chmod,
+  type FileHandle,
   lstat,
   mkdir,
   mkdtemp,
@@ -12,25 +13,24 @@ import {
   rmdir,
   symlink,
   unlink,
-  type FileHandle,
 } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
 import { types as utilTypes } from 'node:util'
 
 import {
-  captureOpenedPackageDirectory,
   type CapturedFile,
   type CapturedPackage,
+  captureOpenedPackageDirectory,
 } from '../package/capture.js'
-import { validateLogicalPath } from '../package/paths.js'
 import { PACKAGE_1_LIMITS } from '../package/digest.js'
+import { validateLogicalPath } from '../package/paths.js'
 import {
-  assertPrivateBunExecutionLayoutFiles,
-  normalizePrivateBunExecutionLayout,
-  privateBunAliasText,
-  type PrivateBunExecutionLayout,
-} from './bun-execution-layout.js'
+  assertPrivatePackageAliasFiles,
+  normalizePrivatePackageAliases,
+  type PrivatePackageAlias,
+  privatePackageAliasText,
+} from './package-aliases.js'
 
 const TEMPORARY_PREFIX = 'jig-package-'
 const ALLOCATION_KIND = 'private-package-materialization-allocation/1'
@@ -55,7 +55,7 @@ export interface PrivatePackageMaterializationAllocationOptions {
   readonly name: string
   readonly packageDigest: string
   readonly ownerToken: string
-  readonly executionLayout?: PrivateBunExecutionLayout
+  readonly aliases?: readonly PrivatePackageAlias[]
 }
 
 /** Persist this no-effect identity before allowing its exact leaf to be made. */
@@ -67,7 +67,7 @@ export interface PrivatePackageMaterializationAllocationIdentity {
   readonly packageDigest: string
   /** Caller correlation evidence, not standalone filesystem authority. */
   readonly ownerToken: string
-  readonly executionLayout?: PrivateBunExecutionLayout
+  readonly aliases?: readonly PrivatePackageAlias[]
 }
 
 export interface PrivatePackageMaterializationLeaseIdentity {
@@ -173,9 +173,7 @@ export async function allocatePrivatePackageMaterialization(
       path: join(parent.path, options.name),
       packageDigest: options.packageDigest,
       ownerToken: options.ownerToken,
-      ...(options.executionLayout === undefined
-        ? {}
-        : { executionLayout: options.executionLayout }),
+      ...(options.aliases === undefined ? {} : { aliases: options.aliases }),
     })
   } finally {
     await parent.handle.close()
@@ -191,8 +189,8 @@ export async function materializePrivatePackageLease(
   if (captured.digest !== allocation.packageDigest) {
     throw new Error('captured package does not match its materialization allocation digest')
   }
-  if (allocation.executionLayout !== undefined)
-    assertPrivateBunExecutionLayoutFiles(allocation.executionLayout, captured.files)
+  if (allocation.aliases !== undefined)
+    assertPrivatePackageAliasFiles(allocation.aliases, captured.files)
   const parent = await openProtectedParent(allocation.parent.path, allocation.parent)
   let transaction: FileHandle | undefined
   let packageDirectory: FileHandle | undefined
@@ -245,7 +243,7 @@ export async function materializePrivatePackageLease(
         await directory.close()
       }
     }
-    for (const alias of allocation.executionLayout?.aliases ?? []) {
+    for (const alias of allocation.aliases ?? []) {
       rememberLogicalDirectories(directories, alias.path)
       const segments = alias.path.split('/')
       const directory = await openPackageDirectory(
@@ -256,7 +254,7 @@ export async function materializePrivatePackageLease(
         0o700n,
       )
       try {
-        await symlink(privateBunAliasText(alias), childPath(directory, segments.at(-1)!))
+        await symlink(privatePackageAliasText(alias), childPath(directory, segments.at(-1)!))
         await directory.sync()
       } finally {
         await directory.close()
@@ -290,7 +288,7 @@ export async function materializePrivatePackageLease(
         packageInformation,
         allocation.packageDigest,
         parent.information,
-        allocation.executionLayout,
+        allocation.aliases,
       ))
     )
       throw new Error('new materialized package failed its digest verification')
@@ -324,7 +322,7 @@ export async function materializePrivatePackageLease(
           transaction,
           allocation.name,
           transactionInformation!,
-          allocation.executionLayout,
+          allocation.aliases,
         )
         transaction = undefined
       } catch (cleanupError) {
@@ -380,7 +378,7 @@ export async function recoverPrivatePackageMaterializationAllocation(
           openedPackage.information,
           allocation.packageDigest,
           parent.information,
-          allocation.executionLayout,
+          allocation.aliases,
         ))
       ) {
         await transaction.chmod(0o711)
@@ -408,7 +406,7 @@ export async function recoverPrivatePackageMaterializationAllocation(
       transaction,
       allocation.name,
       openedTransaction.information,
-      allocation.executionLayout,
+      allocation.aliases,
     )
     transaction = undefined
     return Object.freeze({ state: 'incomplete-removed' as const })
@@ -435,7 +433,7 @@ export async function reacquirePrivatePackageMaterializationLease(
         opened.packageInformation,
         identity.allocation.packageDigest,
         opened.parentInformation,
-        identity.allocation.executionLayout,
+        identity.allocation.aliases,
       ))
     )
       throw new Error('materialized package no longer matches its lease digest')
@@ -488,7 +486,7 @@ export async function disposePrivatePackageMaterializationLease(
           openedPackage.information,
           allocation.packageDigest,
           parent.information,
-          allocation.executionLayout,
+          allocation.aliases,
         ))
       )
         throw new Error('refusing to dispose a package with a changed digest')
@@ -520,7 +518,7 @@ export async function disposePrivatePackageMaterializationLease(
         transaction,
         allocation.name,
         openedTransaction.information,
-        allocation.executionLayout,
+        allocation.aliases,
       )
       transaction = undefined
       return
@@ -528,7 +526,7 @@ export async function disposePrivatePackageMaterializationLease(
       throw new Error('materialization transaction has an unexpected disposal state')
     }
 
-    await removeTree(packageDirectory, parent.information, aliasTexts(allocation.executionLayout))
+    await removeTree(packageDirectory, parent.information, aliasTexts(allocation.aliases))
     const packageAfter = await packageDirectory.stat({ bigint: true })
     requireStoredIdentity(packageAfter, identity.package, 'disposing package')
     await requireChildIdentity(transaction, DISPOSING_NAME, packageAfter)
@@ -544,7 +542,7 @@ export async function disposePrivatePackageMaterializationLease(
       transaction,
       allocation.name,
       openedTransaction.information,
-      allocation.executionLayout,
+      allocation.aliases,
     )
     transaction = undefined
   } finally {
@@ -816,30 +814,29 @@ async function packageMatches(
   packageInformation: BigIntStats,
   expectedDigest: string,
   filesystem: BigIntStats,
-  executionLayout?: PrivateBunExecutionLayout,
+  aliases?: readonly PrivatePackageAlias[],
 ): Promise<boolean> {
   if (fileMode(packageInformation) !== 0o555n) return false
   requireOwnedDirectory(packageInformation, filesystem, [0o555n], 'package')
-  if (!(await aliasesMatch(packageDirectory, filesystem, executionLayout))) return false
-  const aliases = aliasTexts(executionLayout)
+  if (!(await aliasesMatch(packageDirectory, filesystem, aliases))) return false
+  const links = aliasTexts(aliases)
   const captured = await captureOpenedPackageDirectory(
     'durable package materialization',
     packageDirectory,
-    executionLayout === undefined
+    aliases === undefined
       ? undefined
       : {
-          includes: (path) => !aliases.has(path),
+          includes: (path) => !links.has(path),
           maximumFiles: PACKAGE_1_LIMITS.files,
           maximumBytes: PACKAGE_1_LIMITS.totalBytes,
         },
   )
   try {
     if (captured.digest !== expectedDigest) return false
-    if (executionLayout !== undefined)
-      assertPrivateBunExecutionLayoutFiles(executionLayout, captured.files)
-    if (!(await packageModesMatch(packageDirectory, captured.files, filesystem, executionLayout)))
+    if (aliases !== undefined) assertPrivatePackageAliasFiles(aliases, captured.files)
+    if (!(await packageModesMatch(packageDirectory, captured.files, filesystem, aliases)))
       return false
-    if (!(await aliasesMatch(packageDirectory, filesystem, executionLayout))) return false
+    if (!(await aliasesMatch(packageDirectory, filesystem, aliases))) return false
     return sameIdentity(await packageDirectory.stat({ bigint: true }), packageInformation)
   } finally {
     await captured.dispose()
@@ -850,12 +847,11 @@ async function packageModesMatch(
   packageDirectory: FileHandle,
   files: readonly CapturedFile[],
   filesystem: BigIntStats,
-  executionLayout?: PrivateBunExecutionLayout,
+  aliases?: readonly PrivatePackageAlias[],
 ): Promise<boolean> {
   const directories = new Set<string>([''])
   for (const file of files) rememberLogicalDirectories(directories, file.path)
-  for (const alias of executionLayout?.aliases ?? [])
-    rememberLogicalDirectories(directories, alias.path)
+  for (const alias of aliases ?? []) rememberLogicalDirectories(directories, alias.path)
   for (const path of directories) {
     try {
       const directory = await openPackageDirectory(
@@ -917,9 +913,9 @@ async function packageModesMatch(
 async function aliasesMatch(
   root: FileHandle,
   filesystem: BigIntStats,
-  layout: PrivateBunExecutionLayout | undefined,
+  layout: readonly PrivatePackageAlias[] | undefined,
 ): Promise<boolean> {
-  for (const alias of layout?.aliases ?? []) {
+  for (const alias of layout ?? []) {
     let parent: FileHandle | undefined
     let target: FileHandle | undefined
     try {
@@ -936,7 +932,10 @@ async function aliasesMatch(
       )
       const path = childPath(parent, parts.at(-1)!)
       const observed = await lstat(path, { bigint: true })
-      if (!safeAlias(observed, filesystem) || (await readlink(path)) !== privateBunAliasText(alias))
+      if (
+        !safeAlias(observed, filesystem) ||
+        (await readlink(path)) !== privatePackageAliasText(alias)
+      )
         return false
       await requireChildIdentity(parent, parts.at(-1)!, observed)
     } catch (error) {
@@ -950,13 +949,13 @@ async function aliasesMatch(
 }
 
 function aliasTexts(
-  layout: PrivateBunExecutionLayout | undefined,
+  layout: readonly PrivatePackageAlias[] | undefined,
   prefix = '',
 ): ReadonlyMap<string, string> {
   return new Map(
-    (layout?.aliases ?? []).map((alias) => [
+    (layout ?? []).map((alias) => [
       prefix === '' ? alias.path : `${prefix}/${alias.path}`,
-      privateBunAliasText(alias),
+      privatePackageAliasText(alias),
     ]),
   )
 }
@@ -975,17 +974,14 @@ async function removeTransaction(
   transaction: FileHandle,
   name: string,
   expected: BigIntStats,
-  executionLayout?: PrivateBunExecutionLayout,
+  aliases?: readonly PrivatePackageAlias[],
 ): Promise<void> {
   await verifyVisibleParent(parent)
   await requireChildIdentity(parent.handle, name, expected)
   await removeTree(
     transaction,
     parent.information,
-    new Map([
-      ...aliasTexts(executionLayout, PACKAGE_NAME),
-      ...aliasTexts(executionLayout, DISPOSING_NAME),
-    ]),
+    new Map([...aliasTexts(aliases, PACKAGE_NAME), ...aliasTexts(aliases, DISPOSING_NAME)]),
   )
   await requireChildIdentity(parent.handle, name, expected)
   await transaction.close()
@@ -1135,15 +1131,15 @@ function parseAllocationOptions(
     value,
     ['protectedParent', 'name', 'packageDigest', 'ownerToken'],
     'materialization allocation options',
-    ['executionLayout'],
+    ['aliases'],
   )
   return Object.freeze({
     protectedParent: normalizeParent(record.protectedParent),
     name: normalizeLeaf(record.name),
     packageDigest: parseDigest(record.packageDigest),
     ownerToken: normalizeOwnerToken(record.ownerToken),
-    ...(Object.prototype.hasOwnProperty.call(record, 'executionLayout')
-      ? { executionLayout: normalizePrivateBunExecutionLayout(record.executionLayout) }
+    ...(Object.hasOwn(record, 'aliases')
+      ? { aliases: normalizePrivatePackageAliases(record.aliases) }
       : {}),
   })
 }
@@ -1153,7 +1149,7 @@ function parseAllocation(value: unknown): PrivatePackageMaterializationAllocatio
     value,
     ['kind', 'parent', 'name', 'path', 'packageDigest', 'ownerToken'],
     'materialization allocation',
-    ['executionLayout'],
+    ['aliases'],
   )
   if (root.kind !== ALLOCATION_KIND) {
     throw new TypeError(`materialization allocation kind must be ${ALLOCATION_KIND}`)
@@ -1173,8 +1169,8 @@ function parseAllocation(value: unknown): PrivatePackageMaterializationAllocatio
     path,
     packageDigest,
     ownerToken,
-    ...(Object.prototype.hasOwnProperty.call(root, 'executionLayout')
-      ? { executionLayout: normalizePrivateBunExecutionLayout(root.executionLayout) }
+    ...(Object.hasOwn(root, 'aliases')
+      ? { aliases: normalizePrivatePackageAliases(root.aliases) }
       : {}),
   })
 }
@@ -1237,10 +1233,10 @@ function freezeAllocation(
     path: value.path,
     packageDigest: value.packageDigest,
     ownerToken: value.ownerToken,
-    ...(value.executionLayout === undefined
+    ...(value.aliases === undefined
       ? {}
       : {
-          executionLayout: normalizePrivateBunExecutionLayout(value.executionLayout),
+          aliases: normalizePrivatePackageAliases(value.aliases),
         }),
   })
 }
@@ -1283,7 +1279,7 @@ function exactRecord(
   const actual = Object.keys(descriptors).sort()
   const expected = [
     ...keys,
-    ...optionalKeys.filter((key) => Object.prototype.hasOwnProperty.call(descriptors, key)),
+    ...optionalKeys.filter((key) => Object.hasOwn(descriptors, key)),
   ].sort()
   if (
     actual.length !== expected.length ||
@@ -1473,4 +1469,21 @@ function deeperLogicalPathFirst(left: string, right: string): number {
   const leftDepth = left.length === 0 ? 0 : left.split('/').length
   const rightDepth = right.length === 0 ? 0 : right.split('/').length
   return rightDepth - leftDepth || left.localeCompare(right)
+}
+
+/** Both root and child recovery compare the exact materialized contents here. */
+export function privatePackageMaterializationMatches(
+  allocation: PrivatePackageMaterializationAllocationIdentity,
+  expected: { readonly packageDigest: string; readonly aliases: readonly PrivatePackageAlias[] },
+): boolean {
+  const aliases = allocation.aliases ?? []
+  return (
+    allocation.packageDigest === expected.packageDigest &&
+    aliases.length === expected.aliases.length &&
+    aliases.every(
+      (alias, index) =>
+        alias.path === expected.aliases[index]!.path &&
+        alias.target === expected.aliases[index]!.target,
+    )
+  )
 }

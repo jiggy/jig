@@ -1,59 +1,60 @@
 import { lstat, mkdir, realpath } from 'node:fs/promises'
 import { join } from 'node:path'
-
-import { canonicalJson, type JsonValue } from '../json.js'
 import { CheckError } from '../diagnostics.js'
-import { inspectCapturedPackage, type InspectedPackage } from '../package/inspect.js'
-import { SchemaDiagnostic } from '../schema/index.js'
+import type { JsonValue } from '../json.js'
+import { type InspectedPackage, inspectCapturedPackage } from '../package/inspect.js'
 import {
-  ChannelOperationError,
-  type ChannelDeclaration,
-  type ChannelParticipant,
   type ChannelBroker,
+  type ChannelDeclaration,
+  ChannelOperationError,
+  type ChannelParticipant,
 } from '../run/channels.js'
 import {
-  RunHostSession,
   type RunHostFlowCall,
   type RunHostFlowOperationTerminal,
   type RunHostOperationDispatcher,
   type RunHostOperationFailure,
+  RunHostSession,
   type RunHostTerminal,
   type WireFailureCode,
 } from '../run/session.js'
+import { SchemaDiagnostic } from '../schema/index.js'
+import { findPrivateActivationCandidateTargetV5 } from './activation-admission.js'
 import {
   allocatePrivateRootChildOwner,
   closePrivateRootChildOwner,
   listPrivateRootChildOwners,
-  recordPrivateRootChildCleanup,
-  recordPrivateRootChildFence,
-  recordPrivateRootChildSandbox,
   type PrivateProjectCoordinator,
   type PrivateReacquiredRootExecutionWork,
   type PrivateRootChildOwnerLifecycle,
+  recordPrivateRootChildCleanup,
+  recordPrivateRootChildFence,
+  recordPrivateRootChildSandbox,
 } from './activation-admission-store.js'
-import { findPrivateActivationCandidateTargetV5 } from './activation-admission.js'
+import type { PrivateAgentProvider } from './agent-provider.js'
+import { privateBunExecutionMaterialization } from './bun-execution-layout.js'
 import {
-  planPrivateDirectRun,
   type PrivateDirectRunInstalledSupport,
   type PrivateDirectRunRecipe,
+  planPrivateDirectRun,
 } from './direct-run.js'
 import { privateDomainDigest } from './identity.js'
 import { revalidatePrivateInstalledBunSupport } from './installed-bun-support.js'
 import {
-  PrivateLinuxFenceUnconfirmedError,
   cancelPrivateLinuxOwnerStateAllocation,
+  normalizePrivateLinuxConfirmedEnforcementReceipt,
   normalizePrivateLinuxOwnerStateAllocationIdentity,
   normalizePrivateLinuxOwnerStateReleaseReceipt,
-  normalizePrivateLinuxConfirmedEnforcementReceipt,
   normalizePrivateLinuxSealedOwnerIdentity,
-  planPrivateLinuxOwnerStateAllocation,
-  releasePrivateLinuxOwnerState,
   type PrivateLinuxCgroupBackend,
   type PrivateLinuxConfirmedEnforcementReceipt,
+  PrivateLinuxFenceUnconfirmedError,
   type PrivateLinuxLaunchPlan,
   type PrivateLinuxOwnerStateAllocationIdentity,
   type PrivateLinuxOwnerStateReleaseReceipt,
   type PrivateLinuxSealedOwnerIdentity,
+  planPrivateLinuxOwnerStateAllocation,
+  releasePrivateLinuxOwnerState,
 } from './linux-rootless-backend.js'
 import { captureStoredPackage } from './package-artifact-store.js'
 import {
@@ -61,25 +62,25 @@ import {
   disposePrivatePackageMaterializationLease,
   materializePrivatePackageLease,
   normalizePrivatePackageMaterializationAllocationIdentity,
-  recoverPrivatePackageMaterializationAllocation,
   type PrivatePackageMaterializationAllocationIdentity,
   type PrivatePackageMaterializationLease,
+  privatePackageMaterializationMatches,
+  recoverPrivatePackageMaterializationAllocation,
 } from './package-materialization.js'
 import { admitPrivatePackageResult } from './package-result-admission.js'
-import type { PrivateAgentProvider } from './agent-provider.js'
-import {
-  executePrivateProjectCommand,
-  recoverPrivateProjectCommandOwners,
-} from './root-project-command-controller.js'
 import { PROJECT_COMMAND_CONTRACT_DIGEST } from './private-project-command.js'
 import {
   executePrivateRootAgentRun,
   recoverPrivateRootAgentRunOwners,
 } from './root-agent-run-controller.js'
 import {
+  executePrivateProjectCommand,
+  recoverPrivateProjectCommandOwners,
+} from './root-project-command-controller.js'
+import {
   channelContractResolver,
-  resolveChannelDeclarations,
   type PrivateChannelContractCache,
+  resolveChannelDeclarations,
 } from './run-channels.js'
 
 const ALLOCATION_KIND = 'private-root-child-owner-allocation/1'
@@ -194,8 +195,7 @@ async function executePreparedChild(
   try {
     recipe = await planPrivateDirectRun({
       request: selected.request,
-      executionPackage: selected.disposition.executionPackage,
-      executionLayout: selected.disposition.executionLayout,
+      execution: selected.disposition.execution,
       installedSupport: input.installedSupport,
       backend: input.backend,
       agentProvider: input.agentProvider,
@@ -239,8 +239,7 @@ async function executePreparedChild(
     allocatePrivatePackageMaterialization({
       protectedParent: roots.materializations,
       name: `child-${identity.slice(0, 48)}`,
-      packageDigest: recipe.executionPackage.digest,
-      executionLayout: recipe.executionLayout,
+      ...privateBunExecutionMaterialization(recipe.execution),
       ownerToken: `sha256:${identity}`,
     }),
     planPrivateLinuxOwnerStateAllocation({
@@ -485,7 +484,7 @@ async function materializeChild(
   recipe: PrivateDirectRunRecipe,
   allocation: PrivatePackageMaterializationAllocationIdentity,
 ): Promise<PrivatePackageMaterializationLease> {
-  const captured = await captureStoredPackage(store, recipe.executionPackage)
+  const captured = await captureStoredPackage(store, recipe.execution.package)
   try {
     return await materializePrivatePackageLease(captured, allocation)
   } finally {
@@ -520,11 +519,7 @@ function backendPlan(
       ...recipe.installedSupport.runtimeMounts,
       { source: packageRoot, destination: recipe.packageDestination },
     ]),
-    command: Object.freeze([
-      recipe.sandboxExecutablePath,
-      ...recipe.bunPolicy,
-      `${recipe.packageDestination}/${recipe.executionLayout.flowRoot ? `${recipe.executionLayout.flowRoot}/` : ''}${recipe.request.entrypoint.path}`,
-    ]) as readonly [string, ...string[]],
+    command: recipe.command,
   })
 }
 
@@ -816,10 +811,10 @@ async function requireAllocationMatchesParent(
   if (
     allocation.packageAllocation.parent.path !== roots.materializations ||
     allocation.packageAllocation.name !== `child-${identity.slice(0, 48)}` ||
-    allocation.packageAllocation.packageDigest !== selected.disposition.executionPackage.digest ||
-    !Buffer.from(
-      canonicalJson(allocation.packageAllocation.executionLayout as unknown as JsonValue),
-    ).equals(canonicalJson(selected.disposition.executionLayout as unknown as JsonValue)) ||
+    !privatePackageMaterializationMatches(
+      allocation.packageAllocation,
+      privateBunExecutionMaterialization(selected.disposition.execution),
+    ) ||
     allocation.packageAllocation.ownerToken !== `sha256:${identity}` ||
     allocation.ownerAllocation.parent !== roots.owners ||
     allocation.ownerAllocation.name !== `c-${identity.slice(0, 47)}`
