@@ -10,7 +10,13 @@ try [an issue becoming a tested patch](./tested-patch.md).
 
 ## Install
 
-On a [supported Linux host](#supported-host):
+Use a [supported Linux host](#supported-host). The qualified environment is
+Ubuntu 24.04 x86_64 with the isolation prerequisites listed below; a stock
+Linux installation may need host configuration. If you do not administer the
+host, ask its administrator to check that list before installing. Jig reports
+missing execution support rather than weakening isolation.
+
+Install the CLI:
 
 ```console
 npm install --global @jigging/jig@alpha
@@ -30,6 +36,17 @@ cd hello-jig
 jig review --allow-resolution-network
 jig run flow:flows/hello --input '{"name":"Ada"}'
 ```
+
+During `jig review`, inspect the generated source with your editor and read
+the displayed changes and policy. The summary does not replace source review.
+The terminal then asks:
+
+```text
+Approve this exact revision for execution? [y/N]
+```
+
+Enter `y` to authorize that revision, or decline to leave it unapproved. Only
+run the next command after approval.
 
 `init` writes ordinary editable files: `jig.ts`, `flows/hello/FLOW.md`,
 `flows/hello/package.json`, and `flows/hello/flow.ts`, plus a README and empty
@@ -63,6 +80,24 @@ The result includes `status: "succeeded"`, `outcome: "done"`, and
 `output: { "message": "Hello, Ada!" }`, alongside bounded diagnostics.
 This Flow needs no Agent configuration.
 
+## Make one change
+
+In `flows/hello/flow.ts`, change `Hello,` to `Welcome,`. Review and run again:
+
+```console
+jig review --allow-resolution-network
+jig run flow:flows/hello --input '{"name":"Ada"}'
+```
+
+Approve the source change only after reviewing it. The new output contains
+`{"message":"Welcome, Ada!"}`. Until you approve, runs continue using the
+previously accepted version. The network flag has the same dependency-resolution
+meaning described above; it does not authorize the Flow to access the network.
+
+You have now created, run, and adapted a method. To put an Agent to work,
+continue with [a tested patch](./tested-patch.md). To understand the few parts
+behind that loop, read [how Jig works](./understand.md).
+
 ## Review, run, improve
 
 ![Editable source goes through jig review and approval before jig run executes the accepted revision. Jig validates the result and settles owned work before returning an outcome or failure.](./review-run.svg)
@@ -77,7 +112,7 @@ noninteractive environment, `--yes` records your explicit approval; it does not
 grant resolution-network permission.
 
 `jig run` uses the approved revision. Edit the source and review again to run
-your changes. Declining a review leaves the previous admission intact.
+your changes. Declining a review leaves the previously approved revision intact.
 For the unlocked greeting, repeat `jig review --allow-resolution-network` after
 editing; code-only edits can require fresh resolution too. An unchanged review
 reuses the admitted bytes. An authored lock avoids fresh dependency selection.
@@ -89,40 +124,18 @@ Use `@FILE` for JSON input from a file and `--timeout 2m` for a longer Run.
 See [execution policy](../spec/project-policy.md) for current limits and
 lifecycle guarantees.
 
-### Read the result and recover from errors
+## Read the result
 
-`jig <command> --help` explains that command's options and examples. Invalid
-syntax is diagnosed even when the host cannot execute Runs. Errors identify a
-relevant project-relative location where available and suggest a safe next step.
-A missing target lists targets from the approved revision; Jig never picks one
-for you.
+The greeting returns execution status, the method's outcome, and its output.
+Other methods can complete execution successfully while returning an application
+outcome such as `blocked`. Inspect the outcome as well as the CLI exit status.
 
-Stdout contains the JSON result, or NDJSON when `--receive` is selected. Stderr
-carries diagnostics and, on a terminal, elapsed status and cancellation updates.
-Piped stdout remains machine-readable. No spinner or terminal control codes are
-required. Ctrl-C requests cancellation; wait for cleanup before starting new
-work. An interruption or uncertain result is not permission to blindly retry.
-An interrupted command may exit without a JSON result; scripts must check the
-exit status and handle an absent terminal value.
+Stdout carries the machine-readable result; stderr carries diagnostics. Ctrl-C
+requests cancellation. Wait for cleanup before starting new work, and do not
+blindly retry an interrupted or uncertain operation.
 
-A protocol error means the Flow did not complete Run/1 correctly. Check its
-SDK revision and stdout use, then inspect the result and any effects before
-running again. After changing source or dependencies, review the changes first.
-
-Execution completion is different from task success: a method can execute
-correctly and return an application outcome such as `blocked`. Inspect the
-outcome, output, and exit status. With `--out`, also inspect the separate
-delivery status. Existing output directories are never replaced; choose a new
-destination for another Run.
-
-### If retained state cannot be opened
-
-`PROJECT_STATE_INVALID` means `.jig` is incompatible with the current build or
-damaged. Reinstalling dependencies does not change that state. Preserve `.jig`
-and `jig.lock` for recovery; once prior work is confirmed stopped and cleaned up,
-move them outside the project and run `jig review` for fresh approval. Keep the
-source and dependency locks. If cleanup is uncertain, recover the owned work
-before replacing its state.
+See [results and recovery](./results.md) for output delivery, scripting,
+protocol failures, and retained-state recovery.
 
 ## Next steps
 

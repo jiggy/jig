@@ -26,6 +26,10 @@ use-case and orchestration hypotheses.
 - `use-cases.md` records outcome-oriented product hypotheses.
 - `orchestration-patterns.md` records candidate reusable methods.
 
+- `guide/results.md` owns result interpretation, scripting failures, and
+  retained-state recovery; the quickstart links to it after the first outcome.
+- `guide/understand.md` explains the product purpose and responsibility boundaries.
+
 ## Local Contracts
 
 - Feature claims in guides describe only implemented behavior and defer to

@@ -5,7 +5,7 @@ giving AI agents narrower jobs, coordinating specialist workflows, and
 keeping people in control.
 
 These are ideas we plan to test, not a promise that all of them work in Jig
-today. The [getting-started guide](./guide/) shows what people can use now.
+today. The [getting-started guide](./guide/index.md) shows what people can use now.
 
 ## Find an example
 

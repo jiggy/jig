@@ -13,6 +13,8 @@ Jig public sites.
   source diagrams remain with their owning guide under `docs/`.
 - FLOW publishes the Python SDK guide at `/guide/python`; navigation and
   `llms.txt` link it, and site assembly checks the route.
+- `theme/` owns the shared default-theme extension; `landing.css` owns shared
+  homepage presentation. Both deployment triggers include these inputs.
 - `package.json` and `bun.lock` own shared pinned site tooling; `justfile` owns
   the FLOW and Jig Rspress build recipes.
 
@@ -51,4 +53,4 @@ Jig public sites.
 
 ## Child DOX Index
 
-- None.
+- [theme/AGENTS.md](theme/AGENTS.md) — Shared layout extension without product prose.

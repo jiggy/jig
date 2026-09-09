@@ -1,5 +1,7 @@
 import { resolve } from 'node:path'
 
+import { accessibleMarkdown } from '../theme/accessible-markdown'
+
 import { defineConfig } from '@rspress/core'
 
 const siteDirectory = import.meta.dirname
@@ -19,27 +21,33 @@ const researchSidebar = [
 ]
 
 const guideSidebar = [
-  {
-    text: 'Guides',
-    items: [
-      { text: 'Get started', link: '/guide/' },
-      { text: 'Choose an Agent', link: '/guide/agents' },
-      { text: 'Flow dependencies', link: '/guide/dependencies' },
-      { text: 'Working with files', link: '/guide/files' },
-      { text: 'Live progress', link: '/guide/channels' },
-      { text: 'Two-way data exchange', link: '/guide/dataset-analysis' },
-      { text: 'A proposal workshop', link: '/guide/proposal-workshop' },
-      { text: 'An issue becomes a tested patch', link: '/guide/tested-patch' },
-      {
-        text: 'Choosing a workflow structure',
-        link: '/guide/workflow-design',
-      },
-    ],
-  },
+  { text: 'Start', items: [
+    { text: 'Your first Flow', link: '/guide/' },
+    { text: 'Try a tested patch', link: '/guide/tested-patch' },
+  ] },
+  { text: 'Build', items: [
+    { text: 'Choose an Agent', link: '/guide/agents' },
+    { text: 'Flow dependencies', link: '/guide/dependencies' },
+    { text: 'Working with files', link: '/guide/files' },
+    { text: 'Live progress', link: '/guide/channels' },
+    { text: 'Two-way data exchange', link: '/guide/dataset-analysis' },
+    { text: 'A proposal workshop', link: '/guide/proposal-workshop' },
+  ] },
+  { text: 'Understand', items: [
+    { text: 'How Jig works', link: '/guide/understand' },
+    { text: 'Choosing a workflow structure', link: '/guide/workflow-design' },
+  ] },
+  { text: 'Reference', items: [
+    { text: 'Project authoring', link: '/spec/project-sdk' },
+    { text: 'Execution policy', link: '/spec/project-policy' },
+    { text: 'Results and recovery', link: '/guide/results' },
+  ] },
 ]
 
 export default defineConfig({
   root: resolve(siteDirectory, '../../docs/jig'),
+  markdown: { rehypePlugins: [accessibleMarkdown] },
+  themeDir: resolve(siteDirectory, '../theme'),
   globalStyles: resolve(siteDirectory, 'diagrams.css'),
   route: {
     exclude: ['**/AGENTS.md'],
@@ -47,7 +55,7 @@ export default defineConfig({
   outDir: process.env.PUBLIC_SITE_OUTPUT ?? resolve(siteDirectory, 'doc_build'),
   siteOrigin: 'https://jig.md',
   title: 'Jig',
-  description: 'A local, secure host for admitted FLOW packages.',
+  description: 'Accomplish more. Keep the controls. Reusable methods with powers you approve.',
   logoText: 'Jig',
   builderConfig: {
     output: {
@@ -57,7 +65,8 @@ export default defineConfig({
   themeConfig: {
     nav: [
       { text: 'Quickstart', link: '/guide/' },
-      { text: 'Use cases', link: '/use-cases' },
+      { text: 'How it works', link: '/guide/understand' },
+      { text: 'Reference', link: '/spec/project-sdk' },
       { text: 'FLOW', link: 'https://flow.jig.md/' },
       { text: 'GitHub', link: 'https://github.com/jiggy/jig' },
     ],

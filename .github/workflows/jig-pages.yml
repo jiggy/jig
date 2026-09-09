@@ -8,6 +8,8 @@ on:
       - 'site/bun.lock'
       - 'site/package.json'
       - 'site/justfile'
+      - 'site/theme/**'
+      - 'site/landing.css'
       - 'site/jig/**'
       - 'docs/jig/**'
       - 'scripts/build-site.sh'

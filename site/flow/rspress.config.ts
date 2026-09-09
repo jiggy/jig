@@ -1,11 +1,15 @@
 import { resolve } from 'node:path'
 
+import { accessibleMarkdown } from '../theme/accessible-markdown'
+
 import { defineConfig } from '@rspress/core'
 
 const siteDirectory = import.meta.dirname
 
 export default defineConfig({
   root: resolve(siteDirectory, '../../docs/flow'),
+  markdown: { rehypePlugins: [accessibleMarkdown] },
+  themeDir: resolve(siteDirectory, '../theme'),
   globalStyles: resolve(siteDirectory, 'diagrams.css'),
   route: {
     exclude: ['**/AGENTS.md'],
@@ -13,7 +17,7 @@ export default defineConfig({
   outDir: process.env.PUBLIC_SITE_OUTPUT ?? resolve(siteDirectory, 'doc_build'),
   siteOrigin: 'https://flow.jig.md',
   title: 'FLOW',
-  description: 'Portable workflow packages and process contracts.',
+  description: 'An independent standard for sharing executable know-how.',
   logoText: 'FLOW',
   builderConfig: {
     output: {
@@ -22,12 +26,20 @@ export default defineConfig({
   },
   themeConfig: {
     nav: [
+      { text: 'Start building', link: '/guide/start' },
+      { text: 'Why FLOW', link: '/guide/understand' },
       { text: 'Specifications', link: '/guide/' },
       { text: 'Python SDK', link: '/guide/python' },
       { text: 'Jig', link: 'https://jig.md/' },
       { text: 'GitHub', link: 'https://github.com/jiggy/jig' },
     ],
     sidebar: {
+      '/guide/': [
+        { text: 'Start', items: [{ text: 'Start building', link: '/guide/start' }] },
+        { text: 'Build', items: [{ text: 'Python SDK', link: '/guide/python' }] },
+        { text: 'Understand', items: [{ text: 'Why FLOW exists', link: '/guide/understand' }] },
+        { text: 'Reference', items: [{ text: 'Specification map', link: '/guide/' }] },
+      ],
       '/spec/': [
         {
           text: 'FLOW foundation',

@@ -1,0 +1,73 @@
+---
+title: Start building a Flow
+---
+
+# Start building a Flow
+
+A Flow packages one reusable method so another consumer can understand and
+invoke it. Start with a small procedure whose input and useful result you can
+explain. An Agent is optional.
+
+## Choose a concrete result
+
+For a first method, use an echo or greeting to verify the exchange. Then replace
+its body with a useful operation, such as validating a supplied record or
+summarizing supplied text. Keep the operation's own checks in ordinary code.
+
+The package contains `FLOW.md` and, for executable work, its implementation.
+Add resources and schemas when the method needs them. See
+[Package/1](../spec/package-format.md) for the exact metadata and layout.
+
+A description-only package can share readable guidance and resources. Without
+an implementation, it cannot itself execute a Run/1 invocation.
+
+## Pick your authoring path
+
+| Your environment | Follow this path |
+| --- | --- |
+| TypeScript, running under Jig | [Create your first Flow](https://jig.md/guide/). Jig initializes the package and pins the SDK revision paired with its build. |
+| TypeScript, another compatible host | [TypeScript SDK instructions](https://github.com/jiggy/jig/tree/main/packages/flow-sdk). Check that the documented candidate version is published before installing it. |
+| Python | [Python SDK tutorial](./python.md), including a local protocol exercise and expected output. |
+
+SDK availability and host language support are separate. A Python SDK does
+not establish that Jig can execute Python packages. The specifications and
+SDKs are prerelease; use the exact revision qualified by your chosen host.
+
+## Recognize the exchange
+
+A TypeScript handler receives the invocation and returns an outcome with data:
+
+```ts
+import { handle } from "@jigging/flow";
+
+await handle(async (run) => {
+  return { outcome: "done", output: { received: run.input } };
+});
+```
+
+With input `{"name":"Ada"}`, the method's result is
+`{"outcome":"done","output":{"received":{"name":"Ada"}}}`.
+The host may wrap that result with its own execution status and diagnostics.
+
+This snippet is the handler, not a standalone shell invocation. `handle`
+expects a Run/1 host exchange on stdin and stdout. Use the complete setup in
+your selected tutorial. Keep raw writes off protocol stdout; the SDK routes
+ordinary console diagnostics to stderr after `handle` starts.
+
+## Make it yours
+
+After the echo works, change the output to include a fixed greeting alongside
+`received`. Run it again and check both values. With Jig, review the source
+change before running the new revision.
+
+Then choose the smallest useful method you want someone else to inherit.
+Document its purpose, inputs, outcomes, and limits in the package. Validate
+inputs before domain work and return a result whose meaning a consumer can
+check. A malformed input should have a deliberate, documented response.
+
+## Build further
+
+- [Understand the design](./understand.md) before choosing a host boundary.
+- [Add schemas](../spec/schema-files.md) when consumers need exact value validation.
+- [Use the Run SDK](../spec/run-sdk.md) for host-supplied children and capabilities.
+- [Explore the specifications](./index.md) when implementing a host or SDK.

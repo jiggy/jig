@@ -1,9 +1,11 @@
 # Jig
 
-Jig is a local, secure host for admitted FLOW packages.
+Jig puts reusable expertise to work with powers its operator approves.
 
 - Landing page: https://jig.md/
+- How Jig works: https://jig.md/guide/understand
 - Direct-alpha guide: https://jig.md/guide/
+- Results and recovery: https://jig.md/guide/results
 - Agent setup and adapter limitations: https://jig.md/guide/agents
 - Flow dependencies: https://jig.md/guide/dependencies
 - Working with files (source candidate): https://jig.md/guide/files

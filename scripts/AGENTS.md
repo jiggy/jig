@@ -34,6 +34,8 @@ operational baselines, and public-site assembly.
 - `pypi-release.py` performs read-only registry reconciliation, staging missing
   distributions and refusing conflicting bytes; it never uploads or rebuilds.
 - `ci/` owns disposable CI-host provisioning.
+- Site assembly requires both products’ home, guide, and understanding routes,
+  plus FLOW’s authoring entrypoint.
 - Site assembly requires Jig's contract identity pages and exact descriptor
   downloads together. The deployed-site check verifies their page titles,
   JSON content types, and canonical bytes; neither operation is runtime

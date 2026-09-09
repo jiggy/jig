@@ -73,6 +73,17 @@ if [ "$actual" != "$expected" ]; then
   exit 1
 fi
 
+for route in index.html guide/index.html guide/understand.html; do
+  if [ ! -s "$staging/$route" ]; then
+    echo "the $site_name public entry route is missing: $route" >&2
+    exit 1
+  fi
+done
+if [ "$site_name" = flow ] && [ ! -s "$staging/guide/start.html" ]; then
+  echo "the FLOW authoring entrypoint is missing" >&2
+  exit 1
+fi
+
 case $site_name in
   flow)
     if [ ! -s "$staging/guide/python.html" ]; then

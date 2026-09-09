@@ -38,6 +38,12 @@ catalogues for FLOW and Jig.
 
 ## Work Guidance
 
+- Lead public entrypoints with useful outcomes and the owning core idea. Show
+  architectural minimalism through responsibility boundaries and concrete examples.
+  Keep ambition distinct from demonstrated support; never imply that conceptual
+  simplicity removes execution prerequisites or safeguards.
+- Organize navigation around starting, building, understanding, and reference.
+  Tutorials should include an expected result and one useful modification.
 - Write for the reader's decision or task. Introduce unfamiliar concepts in
   plain language before criteria, fields, or implementation detail.
 - Keep current support visibly separate from future research.

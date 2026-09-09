@@ -1,6 +1,5 @@
 ---
 title: FLOW specifications
-sidebar: false
 ---
 
 # FLOW specifications
@@ -18,6 +17,9 @@ supplies local authority; the method keeps its own implementation.
 Every package has `FLOW.md`; implementation, schemas, and capability contracts
 are optional. The Run SDK helps implement the exchange. FLOW defines these
 portable boundaries, while each host decides which implementations it supports.
+
+New to FLOW? [Start building a method](./start.md) or read
+[why this boundary exists](./understand.md) before exploring the exact contracts.
 
 ## Author a Flow
 

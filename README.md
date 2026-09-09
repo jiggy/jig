@@ -1,8 +1,20 @@
 # Jig and FLOW
 
-Put reusable Agent methods to work with powers you approve. Jig lets you choose
-your Agents, combine specialists, inspect their results, and stop their work.
-[FLOW](https://flow.jig.md/) is the independent standard for sharing those methods.
+**Accomplish more. Keep the controls.**
+
+Jig puts reusable expertise to work with Agents you choose. Combine capable
+methods, inspect their results, and decide what powers they can use.
+[FLOW](https://flow.jig.md/) is the independent standard for sharing those
+methods: executable know-how others can run, adapt, and build on.
+
+The shared aspiration is to **expand human possibility**. FLOW pursues
+**capability compounding**; Jig pursues **agency through power under control**.
+Methods own their procedures, applications own their purpose, and the small
+Jig host owns authorized execution. You do not need a dedicated host feature
+for every workflow method.
+
+[How Jig works](docs/jig/guide/understand.md) ·
+[Why FLOW exists](docs/flow/guide/understand.md)
 
 Start with [an issue becoming a tested patch](docs/jig/guide/tested-patch.md):
 describe a bug in a small TypeScript project and receive a reviewable patch

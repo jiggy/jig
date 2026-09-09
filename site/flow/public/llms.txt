@@ -1,8 +1,10 @@
 # FLOW
 
-FLOW defines portable workflow packages and finite process contracts.
+FLOW is an independent standard for sharing executable know-how.
 
 - Landing page: https://flow.jig.md/
+- Start building: https://flow.jig.md/guide/start
+- Why FLOW exists: https://flow.jig.md/guide/understand
 - Specification map: https://flow.jig.md/guide/
 - Package/1: https://flow.jig.md/spec/package-format
 - Run/1: https://flow.jig.md/spec/run-protocol

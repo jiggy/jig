@@ -16,6 +16,10 @@ and capability-contract semantics.
 - Admission, containment, permissions, persistence, providers, Agent policy,
   and routing belong to a host such as Jig, not FLOW.
 
+- `guide/understand.md` explains the product purpose and responsibility boundaries.
+- `guide/start.md` routes authors to complete SDK or host tutorials without
+  treating a source candidate as a published install.
+
 ## Local Contracts
 
 - Keep FLOW host-neutral. A host example cannot turn a Jig implementation
