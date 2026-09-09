@@ -1778,7 +1778,11 @@ async function writeChildChannelProject(root: string): Promise<void> {
         try { await run.channels.progress.send(phase); }
         catch(error) { observationLost = error.code; }
         if(run.input.mode === 'root-cancel') await Bun.sleep(60_000);
-        if(phase === 'first') { await run.channels.gate.next(); await run.channels.gate.close(); }
+        if(phase === 'first') {
+          // Wait for the sender's clean close, not just its release message.
+          // Disposing after one value could race and disconnect that close.
+          for await(const _ of run.channels.gate) {}
+        }
         await Bun.sleep(500);
       }
       return {outcome:'done',output:{completed:run.input.mode !== 'invalid-result',observationLost}};
