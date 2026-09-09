@@ -18,6 +18,10 @@ protocol candidates.
 - `channel-wiring` witnesses cover incoming grants, exact-call forwarding and
   sibling-monitor composition. Scripted admission rejection verifies SDK
   recovery, not host contract matching or transfer enforcement.
+- `conversation` components and peers forward real structured requests and
+  replies between opposite-language SDK processes. The finite adaptive-search
+  witness owns its two named fixture descriptors, domain checks, close ordering
+  and cancellation traces; scripted admission is not production host proof.
 
 ## Local Contracts
 

@@ -46,6 +46,9 @@ each behaviour.
 | Direct-channel positive and hostile message shapes | Shared `messages.json` | Same shared fixtures, independent validator |
 | Broadcast creation, subscriptions, immutable suffix identity and independent clean intervals | `broadcast.test.ts`, both SDK components | `test_broadcast.py`, both SDK components |
 | Caught subscriber failure with an independently completed sibling interval | `broadcast.test.ts`, both SDK components | `test_broadcast.py`, both SDK components |
+| Adaptive structured request/reply exchange over two named direct channels | `conversation.test.ts`, TS analysis/Python dataset and inverse | `test_conversation.py`, same actual process pairings |
+| Exact conversation descriptors match the public Channel Contract/1 and Schema/1 companion | `conversation.test.ts`, including unsupported-keyword rejection | Not independently repeated; the peer derives identities from those fixture descriptors |
+| Duplicate/unexpected reply rejection, outstanding-request EOF, close ordering and cancellation settlement | `conversation.test.ts`, both pairings | `test_conversation.py`, both pairings |
 
 The operation rows exercise small reference-peer ledgers implementing the
 frozen Run/1 rules. They are not evidence that a durable production operation
@@ -100,6 +103,13 @@ enforcement. Scripted `LAGGED` responses do not prove those host properties.
 The wiring peers supply invocation-bound grants and script rejected admission;
 they prove forwarding and ordinary recovery, not production named-contract
 resolution or atomic host transfer enforcement.
+The structured conversation peers forward values emitted by the actual dataset
+and analysis processes. Changing one dataset reading changes the subsequent
+query sequence and lower-bound result. These finite witnesses use at most 128
+ordered samples, eight sequential queries and 96 wire frames; neither peer is
+a general channel broker. Two exact named identities and beginning-only grants
+are supplied by the witness. Production descriptor resolution and rejection
+remain host-owned evidence; the Python process is not a claimed Jig runtime.
 They establish cross-language protocol behavior through actual subprocesses,
 not an independent consumer usability study. The SDK race tests and private
 host tests retain their own claim boundaries.

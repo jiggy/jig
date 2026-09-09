@@ -1,0 +1,43 @@
+{
+  "threshold": 30,
+  "samples": [17, 19, 23, 26, 31, 37, 44, 52],
+  "contracts": {
+    "requests": {
+      "$schema": "https://flow.jig.md/schemas/channel-contract-1.schema.json",
+      "id": "https://example.org/dataset-analysis/sample-request",
+      "version": "1.0.0",
+      "semantics": "Request the Celsius reading for one sample identifier in the dataset supplied to this invocation. At most eight unique requests are allowed. Only one request may be unanswered at a time. Requests end when the analysis needs no more readings; request EOF asks the dataset to close its reply stream. Identifiers refer to this dataset, not paths or execution targets.",
+      "item": {
+        "type": "object",
+        "properties": {
+          "sample": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 32
+          }
+        },
+        "required": ["sample"],
+        "additionalProperties": false
+      }
+    },
+    "replies": {
+      "$schema": "https://flow.jig.md/schemas/channel-contract-1.schema.json",
+      "id": "https://example.org/dataset-analysis/sample-celsius",
+      "version": "1.0.0",
+      "semantics": "One Celsius reading for the outstanding sample request, in request order. Each requested identifier receives exactly one reply, copied from the dataset supplied to this invocation. Unsolicited, repeated, or mismatched replies are invalid. Request EOF ends replies after the final answer. Stream EOF does not establish the dataset invocation's success. No replay, other temperature unit, or conversion is implied.",
+      "item": {
+        "type": "object",
+        "properties": {
+          "sample": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 32
+          },
+          "celsius": { "type": "number" }
+        },
+        "required": ["sample", "celsius"],
+        "additionalProperties": false
+      }
+    }
+  }
+}
