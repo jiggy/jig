@@ -534,6 +534,13 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
     }
     await emitTerminal(decodeJson1(encodedRecord))
     const terminal = status.terminal
+    if (terminal.status === 'failed' && terminal.code === 'PROTOCOL_ERROR') {
+      runtime.writeError(
+        'JIG_RUN_PROTOCOL_ERROR: the Flow did not complete the FLOW Run/1 exchange.\n' +
+          'Check its SDK version against this Jig release and keep stdout reserved for protocol messages.\n' +
+          'Inspect the result and any effects before another Run; review source changes first. See https://flow.jig.md/spec/run-sdk.\n',
+      )
+    }
     if (
       terminal.status === 'failed' &&
       terminal.details !== undefined &&
@@ -990,7 +997,9 @@ function renderFailure(error: unknown, runtime: CliRuntime): 1 | 2 {
       PROJECT_MEMBER_COLLISION:
         'project members have colliding paths or names; give each selected member a distinct identity',
       PROJECT_EVALUATION_FAILED:
-        'the project definition could not be evaluated; check jig.ts and its imports for syntax or runtime errors',
+        'the project definition could not be evaluated; check the indicated module for unknown fields, invalid values, syntax or import errors. defineJig accepts only flows and bindings',
+      PROJECT_EVALUATION_LIMIT:
+        'project evaluation exceeded its resource or time limit; keep authoring modules small and inert. If they already are, check host load before retrying review. No Flow was started',
       PROJECT_DECLARATION_INVALID:
         'export a valid defineJig or defineBinding declaration from the indicated module',
       CHANNEL_FIELD: 'check channel declarations and descriptors against FLOW Channel Contract/1',

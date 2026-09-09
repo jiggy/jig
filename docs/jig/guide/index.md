@@ -102,6 +102,12 @@ carries diagnostics and, on a terminal, elapsed status and cancellation updates.
 Piped stdout remains machine-readable. No spinner or terminal control codes are
 required. Ctrl-C requests cancellation; wait for cleanup before starting new
 work. An interruption or uncertain result is not permission to blindly retry.
+An interrupted command may exit without a JSON result; scripts must check the
+exit status and handle an absent terminal value.
+
+A protocol error means the Flow did not complete Run/1 correctly. Check its
+SDK revision and stdout use, then inspect the result and any effects before
+running again. After changing source or dependencies, review the changes first.
 
 Execution completion is different from task success: a method can execute
 correctly and return an application outcome such as `blocked`. Inspect the

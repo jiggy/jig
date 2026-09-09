@@ -350,6 +350,24 @@ describe('finite Jig project commands', () => {
     expect(invocation.error).not.toContain('Success')
   })
 
+  test('protocol failures have safe recovery guidance without changing the JSON result', async () => {
+    const terminal: RootRunTerminal = {
+      status: 'failed',
+      code: 'PROTOCOL_ERROR',
+      message: 'invalid root error: standard JSON-RPC errors cannot settle flow/run',
+      diagnostics: { stderr: '', stderrBytes: 0, stderrTruncated: false },
+    }
+    const events: string[] = []
+    const invocation = commandInvocation(fakeHost(fakeSession(events, { terminal }), events))
+    expect(await main(['run', 'flow:flows/work'], invocation.options)).toBe(1)
+    expect(JSON.parse(invocation.output)).toEqual(terminal)
+    expect(invocation.error).toContain('JIG_RUN_PROTOCOL_ERROR:')
+    expect(invocation.error).toContain('Check its SDK version')
+    expect(invocation.error).toContain('stdout reserved for protocol messages')
+    expect(invocation.error).toContain('Inspect the result and any effects')
+    expect(invocation.error).not.toContain('No Flow was started')
+  })
+
   test('cancellation status distinguishes the request from completed cleanup', async () => {
     const events: string[] = [],
       controller = new AbortController()
@@ -1151,6 +1169,44 @@ describe('finite Jig project commands', () => {
       'INVALID_CANDIDATE: check channel declarations and descriptors against FLOW Channel Contract/1; CHANNEL_FIELD at "flows/worker/FLOW.md"\n',
     )
     expect(invocation.error).not.toContain('private parser detail')
+  })
+
+  test('author evaluation guidance includes the allowed project fields without echoing an exception', async () => {
+    const events: string[] = []
+    const failure = new ProjectAdministrationError('INVALID_CANDIDATE', 'secret /private/file', {
+      code: 'PROJECT_EVALUATION_FAILED',
+      path: 'jig.ts',
+    })
+    const invocation = commandInvocation(
+      fakeHost(fakeSession(events, { planFailure: failure }), events),
+    )
+    expect(await main(['review', '--yes'], invocation.options)).toBe(1)
+    expect(invocation.error).toContain('unknown fields, invalid values')
+    expect(invocation.error).toContain('defineJig accepts only flows and bindings')
+    expect(invocation.error).toContain('PROJECT_EVALUATION_FAILED at "jig.ts"')
+    expect(invocation.error).not.toContain('secret')
+    expect(invocation.error).not.toContain('/private/file')
+  })
+
+  test('evaluation limits explain bounded authoring and host pressure without relaxing execution', async () => {
+    const events: string[] = []
+    const failure = new ProjectAdministrationError(
+      'INVALID_CANDIDATE',
+      'private evaluator detail',
+      {
+        code: 'PROJECT_EVALUATION_LIMIT',
+        path: 'jig.ts',
+      },
+    )
+    const invocation = commandInvocation(
+      fakeHost(fakeSession(events, { planFailure: failure }), events),
+    )
+    expect(await main(['review', '--yes'], invocation.options)).toBe(1)
+    expect(invocation.error).toContain('exceeded its resource or time limit')
+    expect(invocation.error).toContain('check host load before retrying review')
+    expect(invocation.error).toContain('No Flow was started')
+    expect(invocation.error).not.toContain('private evaluator detail')
+    expect(events).toEqual(['acquire:/project', 'plan:update', 'close'])
   })
 
   test('renders a bounded package unavailability without exposing its private message', async () => {
