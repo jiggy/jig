@@ -526,7 +526,11 @@ async function exerciseWorkspace(jig: string, consumer: string): Promise<void> {
     'Local, Ada!',
   )
   const revised = await run([jig, 'review', '--yes'], project, [0], 120_000)
-  assert.match(revised.stdout, /"changed": \[\s*"flow:flows\/hello"/)
+  assert.match(
+    revised.stdout,
+    /Run targets \(execution and file authority\): 0 added, 1 changed, 0 removed/,
+  )
+  assert.match(revised.stdout, /Changed: "flow:flows\/hello"/)
   const after = requireRecord(JSON.parse(await readFile(join(project, 'jig.lock'), 'utf8')))
   assert.deepEqual(
     before.packages,
