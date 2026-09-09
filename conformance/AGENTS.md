@@ -13,6 +13,9 @@ protocol candidates.
 - Direct-channel fixtures and `channels` components exercise real exchanges
   against both host peers. SDK disposal-race evidence remains package-owned;
   scripted channel values are not native Agent or containment qualification.
+- `channel-wiring` witnesses cover incoming grants, exact-call forwarding and
+  sibling-monitor composition. Scripted admission rejection verifies SDK
+  recovery, not host contract matching or transfer enforcement.
 
 ## Local Contracts
 

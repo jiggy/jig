@@ -40,6 +40,9 @@ each behaviour.
 | Legal stderr diagnostics | Yes | Yes |
 | Direct create, capability endpoint mapping, structured items and clean end | `channels.test.ts`, both SDK components | `test_channels.py`, both SDK components |
 | Failed observation with a separately successful capability result | `channels.test.ts`, both SDK components | `test_channels.py`, both SDK components |
+| Incoming named grants, child mapping, onward capability forwarding, and caught pre-transfer rejection | `channel-wiring.test.ts`, both SDKs | `test_channel_wiring.py`, both SDKs |
+| Parent/worker/opposite-language monitor exchange with optional output forwarding | `channel-wiring.test.ts`, three real SDK processes | Individual role exchanges in `test_channel_wiring.py`; not a three-process bridge |
+| Monitor filtering, deliberate receiver disposal, and incomplete observation without lost work results | `channel-wiring.test.ts` | `test_channel_wiring.py` |
 | Direct-channel positive and hostile message shapes | Shared `messages.json` | Same shared fixtures, independent validator |
 
 The operation rows exercise small reference-peer ledgers implementing the
@@ -88,6 +91,9 @@ resolution; it is not claimed to be an offline or hermetic build proof.
 
 The direct-channel traces exercise scripted bounded JSON values, not native
 Agent/ACP support, broadcast isolation, binary transfer or session control.
+The wiring peers supply invocation-bound grants and script rejected admission;
+they prove forwarding and ordinary recovery, not production named-contract
+resolution or atomic host transfer enforcement.
 They establish cross-language protocol behavior through actual subprocesses,
 not an independent consumer usability study. The SDK race tests and private
 host tests retain their own claim boundaries.
