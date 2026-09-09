@@ -1,65 +1,68 @@
 import { resolve } from 'node:path'
-
-import { accessibleMarkdown } from '../theme/accessible-markdown'
-
 import { defineConfig } from '@rspress/core'
+import { documentationIndex } from '../theme/llms'
+import { accessibleMarkdown } from '../theme/accessible-markdown'
 
 const siteDirectory = import.meta.dirname
 
+const sidebar = [
+  {
+    text: "Start",
+    items: [
+      { text: "Documentation home", link: "/guide/overview" },
+      { text: "Build your first Flow", link: "/guide/start" },
+      { text: "Why FLOW exists", link: "/guide/understand" },
+    ],
+  },
+  {
+    text: "Build",
+    items: [
+      { text: "Python SDK", link: "/guide/python" },
+      { text: "For agents", link: "/guide/for-agents" },
+      { text: "Concepts and questions", link: "/guide/concepts" },
+    ],
+  },
+  {
+    text: "Specifications",
+    items: [
+      { text: "Specification map", link: "/guide/" },
+      { text: "Package format", link: "/spec/package-format" },
+      { text: "Run protocol", link: "/spec/run-protocol" },
+      { text: "Run SDK", link: "/spec/run-sdk" },
+      { text: "JSON values", link: "/spec/json-values" },
+      { text: "Schema files", link: "/spec/schema-files" },
+      { text: "Capability contracts", link: "/spec/capability-contracts" },
+      { text: "Channel contracts", link: "/spec/channel-contracts" },
+    ],
+  },
+]
+
 export default defineConfig({
   root: resolve(siteDirectory, '../../docs/flow'),
-  markdown: { rehypePlugins: [accessibleMarkdown] },
   themeDir: resolve(siteDirectory, '../theme'),
   globalStyles: resolve(siteDirectory, 'diagrams.css'),
-  route: {
-    exclude: ['**/AGENTS.md'],
-  },
+  markdown: { rehypePlugins: [accessibleMarkdown], shiki: { themes: { light: 'github-light-high-contrast', dark: 'github-dark-high-contrast' } } },
+  llms: { llmsTxt: documentationIndex(sidebar) },
+  route: { exclude: ['**/AGENTS.md'] },
   outDir: process.env.PUBLIC_SITE_OUTPUT ?? resolve(siteDirectory, 'doc_build'),
   siteOrigin: 'https://flow.jig.md',
   title: 'FLOW',
   description: 'An independent standard for sharing executable know-how.',
+  icon: new URL('./public/favicon.svg', import.meta.url).href,
   logoText: 'FLOW',
-  builderConfig: {
-    output: {
-      cleanDistPath: false,
-    },
-  },
+  builderConfig: { output: { cleanDistPath: false } },
   themeConfig: {
+    llmsUI: { placement: 'title', viewOptions: ['markdownLink'] },
+    editLink: { docRepoBaseUrl: 'https://github.com/jiggy/jig/tree/main/docs/flow' },
+    enableScrollToTop: true,
     nav: [
-      { text: 'Start building', link: '/guide/start' },
-      { text: 'Why FLOW', link: '/guide/understand' },
-      { text: 'Specifications', link: '/guide/' },
-      { text: 'Python SDK', link: '/guide/python' },
-      { text: 'Jig', link: 'https://jig.md/' },
-      { text: 'GitHub', link: 'https://github.com/jiggy/jig' },
+      {"text": "Documentation", "link": "/guide/overview"},
+      {"text": "Specifications", "link": "/guide/"},
+      {"text": "For agents", "link": "/guide/for-agents"},
+      {"text": "Jig", "link": "https://jig.md/"},
+      {"text": "GitHub", "link": "https://github.com/jiggy/jig"},
     ],
-    sidebar: {
-      '/guide/': [
-        { text: 'Start', items: [{ text: 'Start building', link: '/guide/start' }] },
-        { text: 'Build', items: [{ text: 'Python SDK', link: '/guide/python' }] },
-        { text: 'Understand', items: [{ text: 'Why FLOW exists', link: '/guide/understand' }] },
-        { text: 'Reference', items: [{ text: 'Specification map', link: '/guide/' }] },
-      ],
-      '/spec/': [
-        {
-          text: 'FLOW foundation',
-          items: [
-            { text: 'JSON/1', link: '/spec/json-values' },
-            { text: 'Schema/1', link: '/spec/schema-files' },
-            { text: 'Package/1', link: '/spec/package-format' },
-            { text: 'Run/1', link: '/spec/run-protocol' },
-            { text: 'Run SDK/1', link: '/spec/run-sdk' },
-            { text: 'Channel Contract/1', link: '/spec/channel-contracts' },
-            {
-              text: 'Capability Contract/1',
-              link: '/spec/capability-contracts',
-            },
-          ],
-        },
-      ],
-    },
-    footer: {
-      message: 'FLOW is openly implementable and founder-stewarded.',
-    },
+    sidebar: { '/': sidebar },
+    footer: { message: 'Capability compounding. FLOW is openly implementable and prerelease.' },
   },
 })

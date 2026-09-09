@@ -17,8 +17,13 @@ and capability-contract semantics.
   and routing belong to a host such as Jig, not FLOW.
 
 - `guide/understand.md` explains the product purpose and responsibility boundaries.
-- `guide/start.md` routes authors to complete SDK or host tutorials without
-  treating a source candidate as a published install.
+- `guide/start.mdx` routes authors to complete SDK or host tutorials without
+  treating a source candidate as a published install. Its native language tabs
+  preserve both examples in the generated `/guide/start.md` resource.
+
+- `guide/overview.md` owns task-based discovery; `guide/for-agents.md` owns
+  machine-readable entry paths; `guide/concepts.md` owns introductory vocabulary
+  and common questions. These guides defer to the linked exact contracts.
 
 ## Local Contracts
 

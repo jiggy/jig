@@ -18,7 +18,7 @@ Every package has `FLOW.md`; implementation, schemas, and capability contracts
 are optional. The Run SDK helps implement the exchange. FLOW defines these
 portable boundaries, while each host decides which implementations it supports.
 
-New to FLOW? [Start building a method](./start.md) or read
+New to FLOW? [Start building a method](./start.mdx) or read
 [why this boundary exists](./understand.md) before exploring the exact contracts.
 
 ## Author a Flow

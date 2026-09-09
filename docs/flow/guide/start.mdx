@@ -2,6 +2,8 @@
 title: Start building a Flow
 ---
 
+import { Tabs, Tab } from '@rspress/core/theme'
+
 # Start building a Flow
 
 A Flow packages one reusable method so another consumer can understand and
@@ -35,9 +37,13 @@ SDKs are prerelease; use the exact revision qualified by your chosen host.
 
 ## Recognize the exchange
 
-A TypeScript handler receives the invocation and returns an outcome with data:
+A handler receives the invocation and returns an outcome with data. Choose
+your language to see the same method:
 
-```ts
+<Tabs groupId="flow-language">
+<Tab label="TypeScript">
+
+```ts title="flow.ts"
 import { handle } from "@jigging/flow";
 
 await handle(async (run) => {
@@ -45,11 +51,28 @@ await handle(async (run) => {
 });
 ```
 
+</Tab>
+<Tab label="Python">
+
+```python title="flow.py"
+from jiggy.flow import RunContext, RunResult, handle
+
+
+async def run(context: RunContext) -> RunResult:
+    return {"outcome": "done", "output": {"received": context.input}}
+
+
+handle(run)
+```
+
+</Tab>
+</Tabs>
+
 With input `{"name":"Ada"}`, the method's result is
 `{"outcome":"done","output":{"received":{"name":"Ada"}}}`.
 The host may wrap that result with its own execution status and diagnostics.
 
-This snippet is the handler, not a standalone shell invocation. `handle`
+These snippets define handlers; they are not standalone shell invocations. `handle`
 expects a Run/1 host exchange on stdin and stdout. Use the complete setup in
 your selected tutorial. Keep raw writes off protocol stdout; the SDK routes
 ordinary console diagnostics to stderr after `handle` starts.

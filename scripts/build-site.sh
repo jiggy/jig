@@ -52,6 +52,36 @@ PUBLIC_SITE_OUTPUT="$staging" \
   just --justfile "$repository/site/justfile" "build-$site_name"
 cp -R -- "$repository/site/$site_name/public/." "$staging/"
 mkdir -p -- "$staging/schemas"
+mkdir -p -- "$staging/font-licenses"
+cp -- "$repository/site/theme/fonts/"*-LICENSE.txt "$staging/font-licenses/"
+
+# Human pages and agent resources are one publication, checked before promotion.
+"$javascript" - "$staging" "$site_name" <<'NODE'
+const { readFileSync, readdirSync, statSync } = require('node:fs');
+const { join, relative } = require('node:path');
+const [root, site] = process.argv.slice(2);
+const origin = site === 'jig' ? 'https://jig.md' : 'https://flow.jig.md';
+const index = readFileSync(join(root, 'llms.txt'), 'utf8');
+const bundle = readFileSync(join(root, 'llms-full.txt'), 'utf8');
+if (!index.trim() || !bundle.trim()) throw new Error('Empty agent documentation');
+let count = 0;
+function inspect(directory) {
+  for (const entry of readdirSync(directory)) {
+    const path = join(directory, entry);
+    if (statSync(path).isDirectory()) { inspect(path); continue; }
+    if (/^AGENTS\.(html|md)$/.test(entry)) throw new Error(`Private work contract published: ${path}`);
+    if (!entry.endsWith('.html') || entry === '404.html') continue;
+    const markdown = relative(root, path).replace(/\.html$/, '.md');
+    const content = readFileSync(join(root, markdown), 'utf8');
+    if (!content.trim() || !index.includes(`${origin}/${markdown}`) || !bundle.includes(`${origin}/${markdown}`)) {
+      throw new Error(`Incomplete agent publication for ${markdown}`);
+    }
+    count++;
+  }
+}
+inspect(root);
+console.log(`Verified ${count} human pages with indexed Markdown and full-text coverage.`);
+NODE
 
 actual=$(
   find \

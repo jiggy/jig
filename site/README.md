@@ -19,6 +19,28 @@ scripts/build-site.sh flow .tmp/flow-site
 scripts/build-site.sh jig .tmp/jig-site
 ```
 
+Rspress supplies local search, grouped sidebars, page outlines, code copying,
+language tabs, edit links, and page navigation. The shared theme adds the
+product presentation and accessible interaction details without copying the
+whole default theme. Product-specific walkthrough content lives in homepage
+frontmatter under `docs/`.
+
+Both builds generate a Markdown companion for every public page, `/llms.txt`
+in sidebar order, and `/llms-full.txt`. Readers can copy the current page or
+open its Markdown directly. Assembly checks coverage before promoting the
+artifact and preserves each product's separate schemas and descriptors.
+
+Fonts are self-hosted: Manrope and JetBrains Mono, from the respective
+Fontsource variable packages at 5.3.0. Their SIL Open Font License notices are
+published under `/font-licenses/`; no third-party font request is needed.
+
+Verify visual changes in both themes, with keyboard navigation and reduced
+motion, at desktop, tablet, and narrow mobile widths. Include the search
+empty state, first-run path, language and walkthrough tabs, and actual Markdown
+copy payload. Keep screenshots and browser reports in `.tmp/`. Target AAA text
+contrast, while reporting automated accessibility evidence separately from
+full conformance and perceptual review.
+
 The main repository's `pages.yml` deploys only FLOW. GitHub Pages allows one
 Pages site per repository, so Jig uses a small deployment-only repository:
 

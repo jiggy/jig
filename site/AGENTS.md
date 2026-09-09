@@ -14,7 +14,7 @@ Jig public sites.
 - FLOW publishes the Python SDK guide at `/guide/python`; navigation and
   `llms.txt` link it, and site assembly checks the route.
 - `theme/` owns the shared default-theme extension; `landing.css` owns shared
-  homepage presentation. Both deployment triggers include these inputs.
+  landing and reading presentation. Both deployment triggers include these inputs.
 - `package.json` and `bun.lock` own shared pinned site tooling; `justfile` owns
   the FLOW and Jig Rspress build recipes.
 
@@ -32,7 +32,9 @@ Jig public sites.
   downloads.
 - `scripts/build-site.sh` owns fresh staging, exact artifact copying,
   inventory enforcement, and cross-site exclusion.
-- Reconcile navigation, `llms.txt`, workflow path filters, and build mappings
+- Rspress generates `.md` companions, `llms.txt`, and `llms-full.txt` from the
+  public pages. Do not maintain separate copies of agent-facing prose.
+- Reconcile navigation, generated indexes, workflow path filters, and build mappings
   whenever public routes or artifacts change.
 - Generated dependency trees, site builds, and deployment artifacts are not
   source.
@@ -41,6 +43,11 @@ Jig public sites.
 
 - Change the authoritative document first, then only the navigation or static
   publication metadata required here.
+- Make entrypoints inspiring and task-oriented for developers, agents, and
+  teams. Use Rspress's navigation, search, code rendering, and Markdown export
+  with focused extensions. Judge presentation against excellent product sites,
+  documentation coverage against supported tasks, and simplicity by real paths
+  to useful results; avoid unsupported competitive claims.
 - Keep guide diagrams as static images with the existing image zoom. Preserve
   ordinary Markdown, theme inheritance, mobile containment, and image aspect
   ratios; no embedded diagram viewer is needed for the reading path.

@@ -30,6 +30,12 @@ use-case and orchestration hypotheses.
   retained-state recovery; the quickstart links to it after the first outcome.
 - `guide/understand.md` explains the product purpose and responsibility boundaries.
 
+- `guide/overview.md` owns task-based discovery; `guide/for-agents.md` owns
+  machine-readable entry paths; `guide/concepts.md` owns introductory vocabulary
+  and common questions. These guides defer to the linked exact contracts.
+- `guide/teams.md` explains collaboration through shared methods and explicit
+  responsibility, without implying a hosted team product.
+
 ## Local Contracts
 
 - Feature claims in guides describe only implemented behavior and defer to

@@ -61,4 +61,4 @@ must account for changing models, data, assumptions, and operating conditions.
 FLOW enables the exchange. Practitioners establish which methods are worth
 inheriting and which revisions improve them.
 
-[Start building a Flow →](./start.md)
+[Start building a Flow →](./start.mdx)

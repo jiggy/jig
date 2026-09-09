@@ -46,6 +46,9 @@ catalogues for FLOW and Jig.
   Tutorials should include an expected result and one useful modification.
 - Write for the reader's decision or task. Introduce unfamiliar concepts in
   plain language before criteria, fields, or implementation detail.
+- Keep human and agent paths equally useful. Every public page must retain
+  its meaning in generated Markdown, including inactive interactive examples.
+  Agent guidance routes to exact contracts and respects existing authorization.
 - Keep current support visibly separate from future research.
 - Keep diagrams focused on one reader question, with short labels, meaningful
   alternative text, and adjacent prose that preserves the important limits.
