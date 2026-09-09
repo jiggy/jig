@@ -57,6 +57,7 @@ const WORKER_FAILURE_CODES = new Set([
   'PACKAGE_BUN_LOCK_STALE',
   'PACKAGE_BUN_OUTPUT_LIMIT',
   'PACKAGE_BUN_OUTPUT_UNSUPPORTED',
+  'PACKAGE_BUN_WORKSPACE_LAYOUT_UNSUPPORTED',
   'PACKAGE_BUN_PREPARATION_FAILED',
   'PACKAGE_BUN_PROTOCOL',
   'PACKAGE_BUN_SOURCE_CHANGED',
@@ -253,7 +254,8 @@ async function interact(
             message.code === 'PACKAGE_BUN_RESOLUTION_FAILED' ||
             message.code === 'PACKAGE_BUN_RESOLUTION_VERSION_UNAVAILABLE' ||
             message.code === 'PACKAGE_BUN_PREPARATION_FAILED' ||
-            message.code === 'PACKAGE_BUN_OUTPUT_UNSUPPORTED'
+            message.code === 'PACKAGE_BUN_OUTPUT_UNSUPPORTED' ||
+            message.code === 'PACKAGE_BUN_WORKSPACE_LAYOUT_UNSUPPORTED'
             ? 'unavailable'
             : 'invalid',
           message.code,

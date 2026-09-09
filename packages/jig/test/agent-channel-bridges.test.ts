@@ -7,6 +7,7 @@ import descriptor from '../../../docs/jig/spec/contracts/acp-public-updates.json
 import { runPrivateAcpTurn } from '../src/internal/acp-agent-client.js'
 import {
   ACP_PUBLIC_UPDATES,
+  PRIVATE_AGENT_UPDATE_CHANNELS,
   PrivateAgentUpdateChannel,
 } from '../src/internal/agent-update-channel.js'
 import {
@@ -22,6 +23,49 @@ import type { InspectedPackage } from '../src/package/inspect.js'
 import { ChannelBroker } from '../src/run/channels.js'
 
 describe('private Agent and command channel bridges', () => {
+  test('native Agent broadcast isolates a lagged subscriber without an application relay', async () => {
+    const broker = new ChannelBroker()
+    const root = broker.participant('root', { resolveContract: () => ACP_PUBLIC_UPDATES })
+    const provider = broker.participant('provider')
+    const source = await root.create({ delivery: 'broadcast', contract: './events.json' })
+    const slow = root.subscribe(source.source)
+    const healthy = root.subscribe(source.source)
+    // Exercise the declarations used by actual Agent admission, not a test-only
+    // permissive replacement for the provider's port.
+    root.transfer(provider, { events: source.send.endpoint }, PRIVATE_AGENT_UPDATE_CHANNELS)
+    const updates = new PrivateAgentUpdateChannel(
+      provider,
+      source.send.endpoint,
+      new AbortController().signal,
+    )
+    const observed: JsonValue[] = []
+    const reading = (async () => {
+      for (;;) {
+        const next = (await root.next(healthy.endpoint)) as {
+          item?: { value: JsonValue }
+          end?: unknown
+        }
+        if (next.end !== undefined) return
+        observed.push(next.item!.value)
+      }
+    })()
+    const result = await runPrivateAcpTurn(
+      deterministicAgent(async (client, sessionId) => {
+        for (let index = 0; index < 40; index++) await message(client, sessionId, String(index))
+        return 'end_turn'
+      }),
+      { cwd: '/work', instructions: 'answer', onPublicUpdate: (value) => updates.offer(value) },
+    )
+    await updates.finish()
+    await reading
+    expect(result.stopReason).toBe('end_turn')
+    expect(result.text).toBe(Array.from({ length: 40 }, (_, i) => String(i)).join(''))
+    expect(observed).toEqual(Array.from({ length: 40 }, (_, i) => update(String(i))))
+    await expect(root.next(slow.endpoint)).rejects.toMatchObject({ code: 'LAGGED' })
+    provider.finalize(true)
+    root.finalize(true)
+  })
+
   test('forwards an unused named writer through a child to its own Agent scope', async () => {
     const broker = new ChannelBroker()
     const root = broker.participant('root', { resolveContract: () => ACP_PUBLIC_UPDATES })

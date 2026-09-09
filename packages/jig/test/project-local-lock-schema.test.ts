@@ -23,7 +23,7 @@ const lock = {
         agent: {
           id: 'https://jig.md/contracts/agent-run',
           version: '1.0.0',
-          digest: 'sha256:b43fba88de62ef189f54004318e9639df58661bb04b3bf76ecfac70e3a5d098b',
+          digest: 'sha256:5e7df4408fd1f6aebf7e1269573a10ff87c7374248a51dacb63cd1c9c97e2b56',
         },
       },
     },

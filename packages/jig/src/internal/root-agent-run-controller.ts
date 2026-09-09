@@ -7,7 +7,7 @@ import {
   type ChannelParticipant,
   type ChannelBroker,
 } from '../run/channels.js'
-import { ACP_PUBLIC_UPDATES, PrivateAgentUpdateChannel } from './agent-update-channel.js'
+import { PRIVATE_AGENT_UPDATE_CHANNELS, PrivateAgentUpdateChannel } from './agent-update-channel.js'
 import { canonicalJson, decodeJson1, type JsonObject, type JsonValue } from '../json.js'
 import { inspectCapturedPackage } from '../package/inspect.js'
 import type { RunTargetIdentity } from '../project/package-project.js'
@@ -181,25 +181,21 @@ export async function executePrivateRootAgentRun(
   try {
     const terminal = await executeAgentRun(input, () => {
       if (Object.keys(input.call.channels ?? {}).length === 0) return undefined
-      if (
-        input.channels === undefined ||
-        input.agentProvider.kind !== 'private-acp-agent-provider/1'
-      )
+      if (input.channels === undefined)
+        throw new ChannelOperationError('UNAVAILABLE', 'this invocation has no channel support')
+      if (input.agentProvider.kind !== 'private-acp-agent-provider/1')
         throw new ChannelOperationError(
           'UNAVAILABLE',
-          'the selected Agent does not support public update channels',
+          'Agent channel "events" requires the ACP public-updates profile, which the selected API client does not implement. Use an operator-configured native ACP client for this Flow, or a Flow that needs only the final Agent result.',
         )
       participant = input.channels.broker.participant(
         privateAgentChannelOwnerId(input.parentFlow?.operationId, input.call.operationId),
       )
-      const grants = input.channels.caller.transfer(participant, input.call.channels!, {
-        events: {
-          direction: 'send',
-          required: false,
-          delivery: 'direct',
-          contract: ACP_PUBLIC_UPDATES,
-        },
-      })
+      const grants = input.channels.caller.transfer(
+        participant,
+        input.call.channels!,
+        PRIVATE_AGENT_UPDATE_CHANNELS,
+      )
       if (grants.events !== undefined)
         updates = new PrivateAgentUpdateChannel(participant, grants.events.endpoint, input.signal)
       return updates

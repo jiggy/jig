@@ -1,14 +1,12 @@
-import { spawn } from 'node:child_process'
 import {
-  copyFile,
-  lstat,
-  mkdir,
-  opendir,
-  readFile,
-  realpath,
-  rm,
-  writeFile,
-} from 'node:fs/promises'
+  capturePrivateBunPreparedTree,
+  requirePath,
+  WorkerFailure,
+  type SourceFile,
+  type Workspace,
+} from './bun-prepared-capture.js'
+import { spawn } from 'node:child_process'
+import { copyFile, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 
 import {
@@ -25,28 +23,8 @@ import {
 
 const PACKAGE_ROOT = '/work/package'
 const CACHE_ROOT = '/work/cache'
-const PATH = /^(?!\/)(?!.*(?:^|\/)\.\.?(?:\/|$))(?!.*\/\/)[^\0]+$/
 
-interface SourceFile {
-  readonly path: string
-  readonly content: string
-}
-
-interface Workspace {
-  readonly target: string
-  readonly members: readonly string[]
-  readonly selected: readonly string[]
-}
 let workspace: Workspace | undefined
-
-class WorkerFailure extends Error {
-  constructor(
-    readonly code: string,
-    message: string,
-  ) {
-    super(message)
-  }
-}
 
 let outputQueue = Promise.resolve()
 const allowResolutionNetwork =
@@ -78,7 +56,7 @@ try {
   await install()
   await materializeSource(source.files.filter(({ path }) => !inputPaths.has(path)))
   await verifySource(source.files)
-  const prepared = await capturePrepared()
+  const prepared = await capturePrivateBunPreparedTree(PACKAGE_ROOT, workspace)
   await sendPrepared(prepared)
   await outputQueue
 } catch (error) {
@@ -297,108 +275,6 @@ async function install(): Promise<void> {
   await rm(join(PACKAGE_ROOT, 'node_modules', '.bin'), { recursive: true, force: true })
 }
 
-async function capturePrepared(): Promise<readonly SourceFile[]> {
-  const files: SourceFile[] = []
-  let total = 0
-  const active = new Set<string>()
-  const overrides = new Set<string>()
-  const visit = async (root: string, prefix: string, shared = false): Promise<void> => {
-    if (active.has(root))
-      throw new WorkerFailure(
-        'PACKAGE_BUN_OUTPUT_UNSUPPORTED',
-        'workspace dependency links form a recursive tree',
-      )
-    active.add(root)
-    const directory = await opendir(root)
-    const names: string[] = []
-    for await (const entry of directory) names.push(entry.name)
-    names.sort((left, right) => Buffer.from(left).compare(Buffer.from(right)))
-    for (const name of names) {
-      const path = prefix === '' ? name : `${prefix}/${name}`
-      if (
-        path
-          .split('/')
-          .some((part, index, parts) => part === '.bin' && parts[index - 1] === 'node_modules')
-      )
-        continue
-      if (shared && overrides.has(path)) continue
-      requirePath(path)
-      let physical = join(root, name)
-      let information = await lstat(physical)
-      if (information.isSymbolicLink() && workspace !== undefined) {
-        const resolved = await realpath(physical)
-        const member = workspace.members.find((member) => join(PACKAGE_ROOT, member) === resolved)
-        if (member === undefined)
-          throw new WorkerFailure(
-            'PACKAGE_BUN_OUTPUT_UNSUPPORTED',
-            'prepared dependencies contain an unauthorized link',
-          )
-        if (!workspace.selected.includes(member)) continue
-        physical = resolved
-        information = await lstat(physical)
-      }
-      if (information.isDirectory() && !information.isSymbolicLink()) {
-        if (
-          !shared &&
-          /^node_modules\/(?:@[^/]+\/)?[^/]+$/.test(path) &&
-          !/^node_modules\/@[^/]+$/.test(path)
-        )
-          overrides.add(path)
-        await visit(physical, path, shared)
-        continue
-      }
-      if (!information.isFile() || information.isSymbolicLink() || information.nlink !== 1) {
-        throw new WorkerFailure(
-          'PACKAGE_BUN_OUTPUT_UNSUPPORTED',
-          'prepared dependencies contain a link or special file',
-        )
-      }
-      if (files.length >= PRIVATE_BUN_PREPARATION_LIMITS.preparedFiles) {
-        throw new WorkerFailure(
-          'PACKAGE_BUN_OUTPUT_LIMIT',
-          'prepared dependency tree has too many files',
-        )
-      }
-      if (information.size > PRIVATE_BUN_PREPARATION_LIMITS.preparedBytes - total)
-        throw new WorkerFailure('PACKAGE_BUN_OUTPUT_LIMIT', 'prepared dependency tree is too large')
-      const bytes = new Uint8Array(await readFile(physical))
-      total += bytes.byteLength
-      if (total > PRIVATE_BUN_PREPARATION_LIMITS.preparedBytes) {
-        throw new WorkerFailure('PACKAGE_BUN_OUTPUT_LIMIT', 'prepared dependency tree is too large')
-      }
-      files.push(Object.freeze({ path, content: Buffer.from(bytes).toString('base64') }))
-    }
-    active.delete(root)
-  }
-  await visit(workspace === undefined ? PACKAGE_ROOT : join(PACKAGE_ROOT, workspace.target), '')
-  if (workspace !== undefined) {
-    const modules = join(PACKAGE_ROOT, 'node_modules')
-    if (
-      await lstat(modules).then(
-        () => true,
-        (error) => {
-          if (error.code === 'ENOENT') return false
-          throw error
-        },
-      )
-    )
-      await visit(modules, 'node_modules', true)
-    const lock = await readFile(join(PACKAGE_ROOT, 'bun.lock'))
-    total += lock.byteLength
-    if (
-      total > PRIVATE_BUN_PREPARATION_LIMITS.preparedBytes ||
-      files.length >= PRIVATE_BUN_PREPARATION_LIMITS.preparedFiles
-    )
-      throw new WorkerFailure(
-        'PACKAGE_BUN_OUTPUT_LIMIT',
-        'prepared workspace exceeds its output budget',
-      )
-    files.push({ path: 'bun.lock', content: lock.toString('base64') })
-  }
-  files.sort((left, right) => Buffer.from(left.path).compare(Buffer.from(right.path)))
-  return Object.freeze(files)
-}
-
 function requireSource(value: unknown): {
   readonly files: readonly SourceFile[]
   readonly workspace?: Workspace
@@ -485,12 +361,6 @@ function requireSource(value: unknown): {
 
 function workspaceFilter(): string[] {
   return workspace === undefined ? [] : ['--filter', `./${workspace.target}`]
-}
-
-function requirePath(path: string): void {
-  if (!PATH.test(path) || Buffer.byteLength(path) > 1_024) {
-    throw new WorkerFailure('PACKAGE_BUN_PROTOCOL', 'preparation source path is invalid')
-  }
 }
 
 function decodeBase64(value: string, label: string): Uint8Array {

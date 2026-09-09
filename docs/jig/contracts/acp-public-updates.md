@@ -14,6 +14,10 @@ named channel, then pass its send endpoint to Agent Run's optional `events`
 channel. A generic text stream cannot impersonate this named agreement merely
 because its values look similar.
 
+Use direct delivery for one reader or broadcast for independent readers of the
+same updates. Allocate subscriptions before starting the Agent to receive the
+whole interval; a lagging subscriber fails without stopping the others.
+
 See [live Agent progress](../guide/channels.md) for ordinary usage and
 [Jig channels](../spec/channels.md) for limits and failure behavior. Updates and
 EOF do not replace the Agent's final result.

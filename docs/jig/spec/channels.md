@@ -9,11 +9,14 @@ publish and how to display it.
 
 ## Supported connections
 
-A Flow can create direct or broadcast channels. Direct send endpoints can connect to the
-optional `events` channel of an [Agent Run](agent-run.md). The native ACP adapters
+A Flow can create direct or broadcast channels. Either delivery can connect a
+send endpoint to the optional `events` channel of an [Agent Run](agent-run.md).
+The native ACP adapters
 implement the exact [ACP public updates](../contracts/acp-public-updates.md)
 profile. API clients retain ordinary one-shot support; requesting this profile
 from an unsupported client fails before provider dispatch.
+An Agent can publish once to independently bounded subscribers; applications
+need no relay merely to fan out the same named updates.
 
 Existing exact child calls also accept channel maps. A root may hand a sender
 to one child and its receiver to another, or keep one end itself. Each child

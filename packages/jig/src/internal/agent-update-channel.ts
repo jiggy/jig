@@ -5,6 +5,7 @@ import { parseChannelContract } from '../channel-contract.js'
 import { canonicalJson, decodeJson1, type JsonValue } from '../json.js'
 import {
   ChannelOperationError,
+  type ChannelDeclaration,
   type ChannelParticipant,
   type ResolvedChannelContract,
 } from '../run/channels.js'
@@ -21,6 +22,15 @@ export const ACP_PUBLIC_UPDATES: ResolvedChannelContract = Object.freeze({
     parsed.itemSchema.validate(value, 'INVALID_INPUT')
   },
 })
+
+export const PRIVATE_AGENT_UPDATE_CHANNELS: Readonly<Record<string, ChannelDeclaration>> =
+  Object.freeze({
+    events: Object.freeze({
+      direction: 'send',
+      required: false,
+      contract: ACP_PUBLIC_UPDATES,
+    }),
+  })
 
 /** Nonblocking ACP ingress; a failed projection never stalls the ACP reader. */
 export class PrivateAgentUpdateChannel {

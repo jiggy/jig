@@ -40,7 +40,6 @@ describe('private Agent Run contract', () => {
       events: {
         direction: 'send',
         required: false,
-        delivery: 'direct',
         contract: './contracts/acp-public-updates.json',
       },
     })

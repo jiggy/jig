@@ -99,6 +99,10 @@ Workspace members must have unique names and safe relative paths. Local member
 locks, filesystem links, dependency overrides, patches, and catalogs are not
 supported. Missing members or build outputs fail explicitly, without falling
 back to npm. This is review-time capture, not live workspace access during a Run.
+Dependency directories between the workspace root and a selected member, or
+conflicting Flow-local and hoisted packages, currently fail preparation explicitly:
+Jig cannot yet retain those layouts without changing module resolution.
+Regenerating an otherwise valid lock does not fix this limit.
 
 The repository examples use this workspace path. Follow the checkout's
 [development setup](https://github.com/jiggy/jig/blob/main/CONTRIBUTING.md#development-shell)

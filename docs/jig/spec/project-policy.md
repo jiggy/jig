@@ -206,6 +206,10 @@ Only selected members' code is staged, after installation. The collector resolve
 installer-created workspace links only to captured selected members and retains
 regular files in the target's self-contained dependency tree. Unselected member
 links are omitted; unknown links and recursive output trees fail closed.
+The current self-contained layout cannot preserve intermediate `node_modules`
+scopes or collisions between Flow-local and root-hoisted packages. Those layouts
+fail preparation with `PACKAGE_BUN_WORKSPACE_LAYOUT_UNSUPPORTED`; flattening must
+never silently change which dependency an import resolves to.
 Registry dependencies retain the same integrity and source policy.
 
 Workspace members use the root lock; member locks, dependency patches, overrides,

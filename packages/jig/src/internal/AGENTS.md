@@ -26,7 +26,8 @@ child calls, project commands, and Agent providers.
   contracts share one bounded cache.
   Broadcast subscription authority remains with the source creator; subscribers
   have isolated buffers and failures under unchanged aggregate lifetime bounds.
-  ACP ingress is separately bounded and never
+  Agent updates accept direct or broadcast writers through the same admitted
+  named contract. ACP ingress is separately bounded and never
   blocks its protocol reader; failed progress does not manufacture failed work.
   The installed writer bounds live stdout/stderr and cancels on delivery loss.
 - Project commands use reviewed Binding policy, sealed candidate bytes,
@@ -53,7 +54,9 @@ child calls, project commands, and Agent providers.
   source, never installed links. Recheck metadata, retain exact regular files,
   and recapture on review even when the Flow is unchanged. Resolve only known
   installer-created workspace links during collection; Runs receive no live
-  workspace authority. Bun owns installation, not a parallel Jig resolver.
+  workspace authority. Reject flattening that drops ancestor dependency scopes
+  or substitutes a Flow-local package for a hoisted one. Bun owns installation,
+  not a parallel Jig resolver.
 - Provider credentials are host configuration and must not enter Flow input,
   project state, artifacts, diagnostics, or unrelated provider processes.
 - Native Codex subscription access comes from the current operator's

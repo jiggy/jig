@@ -10,7 +10,7 @@ import { snapshotPrivateOrdinaryJson } from './private-ordinary-json.js'
 export const AGENT_RUN_CONTRACT_ID = 'https://jig.md/contracts/agent-run'
 export const AGENT_RUN_CONTRACT_VERSION = '1.0.0'
 export const AGENT_RUN_CONTRACT_DIGEST =
-  'sha256:b43fba88de62ef189f54004318e9639df58661bb04b3bf76ecfac70e3a5d098b'
+  'sha256:5e7df4408fd1f6aebf7e1269573a10ff87c7374248a51dacb63cd1c9c97e2b56'
 
 const LOCAL_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
 const MAX_SELECTED_SKILLS = 64

@@ -12,7 +12,7 @@ The canonical descriptor is
 ```text
 id       https://jig.md/contracts/agent-run
 version  1.0.0
-digest   sha256:b43fba88de62ef189f54004318e9639df58661bb04b3bf76ecfac70e3a5d098b
+digest   sha256:5e7df4408fd1f6aebf7e1269573a10ff87c7374248a51dacb63cd1c9c97e2b56
 method   run
 ```
 
@@ -43,9 +43,10 @@ at runtime. Declarations do not grant additional concurrent worker capacity.
 
 The optional `events` send channel carries the exact
 [ACP public updates](../contracts/acp-public-updates.md) profile through supported
-native clients. It adds no session control and does not replace the final
-result. API clients remain one-shot; requested unsupported channels reject before
-dispatch. See [channels](channels.md) for ownership, buffering and installed output.
+native clients, with direct or isolated-broadcast delivery. It adds no session
+control and does not replace the final result. API clients remain one-shot;
+requested unsupported channels reject before dispatch. See [channels](channels.md)
+for ownership, buffering and installed output.
 
 The contract has one method, `run`. Its input is:
 
