@@ -653,6 +653,19 @@ export function projectError(
     }
     if (
       operation === 'acquire' &&
+      [
+        'ADMISSION_STATE_CORRUPT',
+        'ADMISSION_SCHEMA_VERSION',
+        'COORDINATOR_SCHEMA_VERSION',
+      ].includes(error.code)
+    ) {
+      return new ProjectAdministrationError(
+        'PROJECT_STATE_INVALID',
+        'retained project state is incompatible with this Jig build or damaged',
+      )
+    }
+    if (
+      operation === 'acquire' &&
       (error.code.startsWith('PROJECT_ROOT') ||
         error.code.startsWith('ADMISSION_STATE') ||
         error.code.startsWith('COORDINATOR_SCHEMA'))

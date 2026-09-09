@@ -47,6 +47,11 @@ first approved project change creates `jig.lock`.
 files. `.jig/` contains local admission and lifecycle state. It is not project
 source, is not portable, and is never exposed to package code.
 
+`PROJECT_STATE_INVALID` reports retained state whose format or contents cannot
+be validated by this build. It is distinct from unsafe filesystem ownership or
+permissions (`PROJECT_UNSAFE`). Failed acquisition preserves the retained state;
+it does not reset admission, migrate records, or bypass pending cleanup.
+
 ## 2. Project sources
 
 `defineJig()` accepts only `flows` and `bindings`. Either may be omitted;

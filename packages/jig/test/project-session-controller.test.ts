@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test'
+import { Database } from 'bun:sqlite'
 import { randomUUID } from 'node:crypto'
-import { mkdir, mkdtemp, rename, rm } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rename, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -110,6 +111,56 @@ describe('private finite project session', () => {
       message: 'project directory is unavailable',
     })
     expect(JSON.stringify(failure)).not.toContain(root)
+  })
+
+  test('unreadable retained candidates fail distinctly without resetting state', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'jig-project-state-'))
+    try {
+      const session = await openPrivateProjectSession({ directory: root, host: inertHost() })
+      await session.close()
+      const path = join(root, '.jig', 'jig.sqlite3')
+      const database = new Database(path)
+      try {
+        database
+          .query(
+            'INSERT INTO candidates(revision, candidate_digest, candidate_bytes, lock_bytes) VALUES (1, ?1, ?2, ?3)',
+          )
+          .run(missingPlan, Buffer.from('{}'), Buffer.from('{}'))
+        database.exec('UPDATE candidate_head SET revision = 1 WHERE singleton = 1')
+      } finally {
+        database.close()
+      }
+      const retained = await readFile(path)
+      await expect(
+        openPrivateProjectSession({ directory: root, host: inertHost() }),
+      ).rejects.toMatchObject({
+        code: 'PROJECT_STATE_INVALID',
+        message: 'retained project state is incompatible with this Jig build or damaged',
+      })
+      expect(await readFile(path)).toEqual(retained)
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  test('separates unreadable state from unsafe filesystem ownership', () => {
+    for (const code of [
+      'ADMISSION_STATE_CORRUPT',
+      'ADMISSION_SCHEMA_VERSION',
+      'COORDINATOR_SCHEMA_VERSION',
+    ]) {
+      const failure = projectError(
+        new CheckError('invalid', code, '/private/state detail'),
+        'acquire',
+      )
+      expect(failure.code).toBe('PROJECT_STATE_INVALID')
+      expect(JSON.stringify(failure)).not.toContain('/private')
+    }
+    for (const code of ['ADMISSION_STATE_PERMISSIONS', 'ADMISSION_STATE_CHANGED', 'PROJECT_ROOT']) {
+      expect(projectError(new CheckError('invalid', code, 'private detail'), 'acquire').code).toBe(
+        'PROJECT_UNSAFE',
+      )
+    }
   })
 
   test('accepts only bounded project-relative invalid-candidate diagnostics', () => {

@@ -73,6 +73,9 @@ child calls, project commands, and Agent providers.
   through closed diagnostic codes and project-relative locations, never raw
   provider or worker messages. Missing Agent support affects only targets
   which require it.
+  Unreadable retained state has a distinct closed diagnostic from unsafe
+  filesystem ownership. Preserve it on failed acquisition; never infer permission
+  to reset admission or bypass cleanup from a decoding failure.
 - Deadlines and cancellation fence descendants, settle each terminal once,
   and complete bounded cleanup. Do not replay uncertain operations.
 - Durable transitions use exact identities and conflict-safe commits;

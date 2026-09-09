@@ -934,6 +934,26 @@ describe('finite Jig project commands', () => {
     expect(invocation.error).toBe('JIG_COMMAND_INTERRUPTED: the command was interrupted\n')
   })
 
+  test.each([{ args: ['review'] }, { args: ['review', '--allow-resolution-network'] }])(
+    'unreadable state explains recovery without exposing stored data: %j',
+    async ({ args }) => {
+      const invocation = commandInvocation({
+        async acquire() {
+          throw new ProjectAdministrationError(
+            'PROJECT_STATE_INVALID',
+            'private stored candidate detail',
+          )
+        },
+      })
+      expect(await main(args, invocation.options)).toBe(1)
+      expect(invocation.output).toBe('')
+      expect(invocation.error).toBe(
+        'PROJECT_STATE_INVALID: the retained .jig state is incompatible with this Jig build or damaged; preserve .jig and jig.lock for recovery. Once prior work is confirmed stopped and cleaned up, move them outside the project and run jig review again\n',
+      )
+      expect(invocation.error).not.toContain('private stored candidate')
+    },
+  )
+
   test('unexpected failures are closed without leaking their messages', async () => {
     const invocation = commandInvocation({
       async acquire() {

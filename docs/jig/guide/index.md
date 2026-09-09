@@ -101,6 +101,15 @@ Use `@FILE` for JSON input from a file and `--timeout 2m` for a longer Run.
 See [execution policy](../spec/project-policy.md) for current limits and
 lifecycle guarantees.
 
+### If retained state cannot be opened
+
+`PROJECT_STATE_INVALID` means `.jig` is incompatible with the current build or
+damaged. Reinstalling dependencies does not change that state. Preserve `.jig`
+and `jig.lock` for recovery; once prior work is confirmed stopped and cleaned up,
+move them outside the project and run `jig review` for fresh approval. Keep the
+source and dependency locks. If cleanup is uncertain, recover the owned work
+before replacing its state.
+
 ## Next steps
 
 - [Choose an Agent](./agents.md) using an API or a supported local client.

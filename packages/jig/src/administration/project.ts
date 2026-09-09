@@ -13,6 +13,7 @@ export type ProjectAdministrationErrorCode =
   | 'INVALID_REQUEST'
   | 'PROJECT_NOT_FOUND'
   | 'PROJECT_UNSAFE'
+  | 'PROJECT_STATE_INVALID'
   | 'INVALID_CANDIDATE'
   | 'LOCK_MISMATCH'
   | 'PLAN_NOT_FOUND'
@@ -161,6 +162,7 @@ function requireErrorCode(value: unknown): asserts value is ProjectAdministratio
     value !== 'INVALID_REQUEST' &&
     value !== 'PROJECT_NOT_FOUND' &&
     value !== 'PROJECT_UNSAFE' &&
+    value !== 'PROJECT_STATE_INVALID' &&
     value !== 'INVALID_CANDIDATE' &&
     value !== 'LOCK_MISMATCH' &&
     value !== 'PLAN_NOT_FOUND' &&

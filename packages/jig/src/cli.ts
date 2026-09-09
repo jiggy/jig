@@ -855,6 +855,7 @@ function projectError(code: ProjectAdministrationError['code']): {
     code === 'INVALID_REQUEST' ||
     code === 'PROJECT_NOT_FOUND' ||
     code === 'PROJECT_UNSAFE' ||
+    code === 'PROJECT_STATE_INVALID' ||
     code === 'INVALID_CANDIDATE' ||
     code === 'LOCK_MISMATCH' ||
     code === 'PLAN_NOT_FOUND' ||
@@ -863,6 +864,8 @@ function projectError(code: ProjectAdministrationError['code']): {
     INVALID_REQUEST: 'the project request is invalid',
     PROJECT_NOT_FOUND: 'the project was not found',
     PROJECT_UNSAFE: 'the project cannot be opened safely',
+    PROJECT_STATE_INVALID:
+      'the retained .jig state is incompatible with this Jig build or damaged; preserve .jig and jig.lock for recovery. Once prior work is confirmed stopped and cleaned up, move them outside the project and run jig review again',
     INVALID_CANDIDATE: 'the project definition is invalid',
     LOCK_MISMATCH: 'the project lock does not match the reviewed state',
     PLAN_NOT_FOUND: 'the reviewed project changes are no longer available',
