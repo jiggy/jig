@@ -21,7 +21,12 @@ for (const scenario of ['new', 'retry', 'different', 'lost-upload', 'older-light
       await mkdir(tools)
       await mkdir(candidates, { recursive: true })
       await mkdir(remote)
-      const names = ['tested-patch.tar.gz', 'live-agent.tar.gz', 'examples.json'] as const
+      const names = [
+        'tested-patch.tar.gz',
+        'live-agent.tar.gz',
+        'dataset-analysis.tar.gz',
+        'examples.json',
+      ] as const
       for (const name of names) {
         await writeFile(join(candidates, name), `retained bytes: ${name}`)
         if (scenario === 'retry' || scenario === 'different')
@@ -82,7 +87,7 @@ if (args[0] === 'api') {
         expect(uploads).toHaveLength(scenario === 'different' ? 0 : 1)
       } else {
         expect(code, stderr).toBe(0)
-        expect(uploads).toHaveLength(scenario === 'new' ? 3 : 0)
+        expect(uploads).toHaveLength(scenario === 'new' ? names.length : 0)
       }
       if (scenario === 'older-lightweight') {
         expect(stdout).toContain('No Jig release from this revision')

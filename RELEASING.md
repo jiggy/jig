@@ -63,8 +63,8 @@ Releases page. GitHub source archives remain source, not installable packages.
 Existing entries are preserved on retries; missing entries are created even
 when the npm version and source tag already existed.
 
-The SDK candidate also prepares `tested-patch.tar.gz` and `live-agent.tar.gz`
-against its exact packed SDK. These application archives include readable,
+The SDK candidate also prepares `tested-patch.tar.gz`, `live-agent.tar.gz`,
+and `dataset-analysis.tar.gz` against its exact packed SDK. These application archives include readable,
 unminified Flow entrypoints and their data; they need no per-Flow dependency
 preparation. Original authoring modules remain in the repository, not as
 inactive duplicates beside the executable bundle.

@@ -1,0 +1,21 @@
+{
+  "$schema": "https://flow.jig.md/schemas/channel-contract-1.schema.json",
+  "id": "https://example.org/dataset-analysis/sample-celsius",
+  "version": "1.0.0",
+  "semantics": "One Celsius reading for the outstanding sample request, in request order. Each requested identifier receives exactly one reply, copied from the dataset supplied to this invocation. Unsolicited, repeated, or mismatched replies are invalid. Request EOF ends replies after the final answer. Stream EOF does not establish the dataset invocation's success. No replay, other temperature unit, or conversion is implied.",
+  "item": {
+    "type": "object",
+    "properties": {
+      "sample": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 32
+      },
+      "celsius": {
+        "type": "number"
+      }
+    },
+    "required": ["sample", "celsius"],
+    "additionalProperties": false
+  }
+}

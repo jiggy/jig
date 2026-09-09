@@ -27,6 +27,7 @@ const guideSidebar = [
       { text: 'Flow dependencies', link: '/guide/dependencies' },
       { text: 'Working with files', link: '/guide/files' },
       { text: 'Live progress', link: '/guide/channels' },
+      { text: 'Two-way data exchange', link: '/guide/dataset-analysis' },
       { text: 'A proposal workshop', link: '/guide/proposal-workshop' },
       { text: 'An issue becomes a tested patch', link: '/guide/tested-patch' },
       {

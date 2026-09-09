@@ -1,0 +1,13 @@
+{
+  "threshold": 30,
+  "samples": [
+    { "sample": "s0", "celsius": 17 },
+    { "sample": "s1", "celsius": 19 },
+    { "sample": "s2", "celsius": 23 },
+    { "sample": "s3", "celsius": 26 },
+    { "sample": "s4", "celsius": 31 },
+    { "sample": "s5", "celsius": 37 },
+    { "sample": "s6", "celsius": 44 },
+    { "sample": "s7", "celsius": 52 }
+  ]
+}

@@ -419,7 +419,7 @@ jobs:
           gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' \
             > "$RUNNER_TEMP/existing-example-assets"
           mkdir "$RUNNER_TEMP/existing-example-bytes"
-          for asset in tested-patch.tar.gz live-agent.tar.gz examples.json; do
+          for asset in tested-patch.tar.gz live-agent.tar.gz dataset-analysis.tar.gz examples.json; do
             candidate="$RUNNER_TEMP/flow-candidate/examples/$asset"
             test -f "$candidate"
             if grep -Fx -- "$asset" "$RUNNER_TEMP/existing-example-assets" > /dev/null; then

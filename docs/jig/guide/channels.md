@@ -145,3 +145,12 @@ The example saves its at-most-six-record trace as `files/progress.json`, with
 its own completeness flag. Filtering the monitor does not filter this independent
 trace. Neither is acceptance evidence, and a checkpoint retained before the
 observers settle may contain the patch without the trace.
+
+## Exchange structured requests and replies
+
+Channels also connect two running Flows in both directions. The
+[dataset analysis application](dataset-analysis.md) uses a request channel and
+a Celsius-reading channel to choose samples adaptively. Each side owns one
+writer; named contracts establish meaning, while application code checks
+correlation and an eight-request bound. The parent still awaits and validates
+both execution results separately.

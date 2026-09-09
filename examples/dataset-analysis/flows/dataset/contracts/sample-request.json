@@ -1,0 +1,18 @@
+{
+  "$schema": "https://flow.jig.md/schemas/channel-contract-1.schema.json",
+  "id": "https://example.org/dataset-analysis/sample-request",
+  "version": "1.0.0",
+  "semantics": "Request the Celsius reading for one sample identifier in the dataset supplied to this invocation. At most eight unique requests are allowed. Only one request may be unanswered at a time. Requests end when the analysis needs no more readings; request EOF asks the dataset to close its reply stream. Identifiers refer to this dataset, not paths or execution targets.",
+  "item": {
+    "type": "object",
+    "properties": {
+      "sample": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 32
+      }
+    },
+    "required": ["sample"],
+    "additionalProperties": false
+  }
+}

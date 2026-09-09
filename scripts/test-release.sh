@@ -46,7 +46,7 @@ test "$#" -eq 1 && test -f "$1"
 sdk_archive=$1
 just build-examples "$sdk_archive" "$release_tmp/prepared-examples"
 set --
-for application in tested-patch live-agent; do
+for application in tested-patch live-agent dataset-analysis; do
   application_copy="$release_tmp/$application"
   mkdir -p "$application_copy"
   cp "examples/$application/package.json" "$application_copy/"

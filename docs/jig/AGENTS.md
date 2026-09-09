@@ -18,6 +18,8 @@ use-case and orchestration hypotheses.
   `guide/dependencies.md` owns package dependency preparation guidance.
 - `guide/channels.md` teaches application-owned live progress and subprocess
   consumption; `contracts/` also explains named channel agreements.
+  `guide/dataset-analysis.md` teaches bounded two-way data exchange between
+  exact child Flows, with independent result validation.
   Root and package READMEs introduce the product and link to these owners.
 - `guide/*.diagram.json` and matching SVGs own explanatory diagrams alongside
   their guides; the shared diagram workflow is in `docs/AGENTS.md`.

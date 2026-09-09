@@ -47,6 +47,9 @@ authored examples, not independent consumer evidence or promoted Starters.
 - Run `bun test examples/tested-patch/test` for multi-file patch policy and
   independent acceptance of command observations after installing that application's development
   dependencies as its Child DOX describes. These tests also run in `scripts/test-release.sh`.
+- Run `bun test examples/dataset-analysis/test` for bounded adaptive requests,
+  reply validation, and independent crossing verification after preparing its
+  development dependency. These tests also run in `scripts/test-release.sh`.
 
 ## Child DOX Index
 
@@ -56,3 +59,5 @@ authored examples, not independent consumer evidence or promoted Starters.
   repair with contained commands and independently checked patch evidence.
 - [live-agent/AGENTS.md](live-agent/AGENTS.md) — One Agent call with application-owned
   live progress filtering and an independently interpreted final result.
+- [dataset-analysis/AGENTS.md](dataset-analysis/AGENTS.md) — Adaptive threshold
+  search through two named channels and separately checked child results.

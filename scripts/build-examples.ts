@@ -4,7 +4,7 @@ import { lstat, mkdir, mkdtemp, open, readdir, rm, writeFile } from 'node:fs/pro
 import { tmpdir } from 'node:os'
 import { basename, dirname, join, relative, resolve } from 'node:path'
 
-const applications = ['tested-patch', 'live-agent'] as const
+const applications = ['tested-patch', 'live-agent', 'dataset-analysis'] as const
 const rootFiles = ['jig.ts', 'README.md', 'issue.json', 'input.json', 'batch.json']
 const generatedDirectories = new Set([
   'results',
@@ -109,7 +109,7 @@ async function sourceFiles(directory: string): Promise<string[]> {
   return files.sort()
 }
 
-/** Build only the two maintained applications; not a runtime preparation API. */
+/** Build the maintained distribution applications; not a runtime preparation API. */
 export async function buildExamples(
   sdkArgument: string,
   outputArgument: string,

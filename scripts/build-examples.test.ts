@@ -30,7 +30,7 @@ async function sourceCopy(name: string) {
   const source = join(temporary, name)
   await mkdir(source)
   await cp(resolve(import.meta.dir, '../LICENSE'), join(source, 'LICENSE'))
-  for (const application of ['tested-patch', 'live-agent']) {
+  for (const application of ['tested-patch', 'live-agent', 'dataset-analysis']) {
     await cp(
       resolve(import.meta.dir, '../examples', application),
       join(source, 'examples', application),
@@ -86,6 +86,11 @@ withArchive(
       await readFile(await buildExamples(archive, output, source), 'utf8'),
     )
     expect(manifest.sdk.name).toBe('@jigging/flow')
+    expect(manifest.examples.map((application: { name: string }) => application.name)).toEqual([
+      'tested-patch',
+      'live-agent',
+      'dataset-analysis',
+    ])
     expect(manifest.sdk.digest).toBe(hash(await readFile(archive)))
     expect(await readFile(join(app, 'flows/chat/flow.ts'))).toEqual(original)
     const extracted = join(temporary, 'extracted')

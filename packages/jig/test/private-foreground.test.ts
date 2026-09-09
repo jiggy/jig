@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test'
 import { cp, lstat, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 import type { RootAdministration, StartRootRunReceipt } from '../src/administration/root.js'
 import { openPrivateInstalledBunHost } from '../src/internal/installed-bun-host.js'
 import {
@@ -37,6 +37,111 @@ describe('private foreground command boundary', () => {
 })
 
 proofDescribe('private rootless project session', () => {
+  test('installed dataset conversation preserves named meaning, correlated results, and cancellation', async () => {
+    for (const peer of [
+      'normal',
+      'fahrenheit',
+      'duplicate',
+      'unexpected',
+      'eof',
+      'held',
+    ] as const) {
+      const root = await mkdtemp(join(tmpdir(), `jig-private-dataset-${peer}-`))
+      try {
+        await writeDatasetAnalysisProject(root, peer)
+        const reviewed = await invokeChannelCli(root, ['review', '--yes'])
+        expect(reviewed.code, peer + ':' + reviewed.stderr + reviewed.stdout).toBe(0)
+        let interrupted = false
+        let diagnostics = ''
+        const run = await invokeChannelCli(
+          root,
+          ['run', 'binding:analysis', '--input', '@input.json', '--timeout', '1m'],
+          {
+            diagnostic(text, running, cancel) {
+              diagnostics += text
+              if (peer === 'held' && running && diagnostics.includes('dataset-outstanding')) {
+                interrupted = true
+                cancel()
+              }
+            },
+          },
+        )
+        if (peer === 'held') {
+          expect(interrupted, run.stderr + run.stdout).toBeTrue()
+          expect(run.code).not.toBe(0)
+          // Cancellation may prevent terminal delivery; absence is not success.
+          if (run.stdout.trim()) expect(JSON.parse(run.stdout).status).not.toBe('succeeded')
+        } else {
+          expect(run.code, peer + ':' + run.stderr + run.stdout).toBe(0)
+          const terminal = JSON.parse(run.stdout)
+          expect(terminal.status).toBe('succeeded')
+          const output = terminal.output
+          if (peer === 'normal') {
+            const observations = [
+              { sample: 's4', celsius: 31 },
+              { sample: 's2', celsius: 23 },
+              { sample: 's3', celsius: 26 },
+            ]
+            expect(terminal.outcome).toBe('done')
+            expect(output.verification.accepted).toBeTrue()
+            expect(output.crossing).toEqual({ sample: 's4', index: 4, celsius: 31 })
+            expect(output.observations).toEqual(observations)
+            expect(output.children.analysis).toMatchObject({
+              outcome: 'done',
+              output: { threshold: 30, observations },
+            })
+            expect(output.children.dataset).toEqual({
+              outcome: 'done',
+              output: { served: ['s4', 's2', 's3'] },
+            })
+            expect(new Set(output.children.dataset.output.served).size).toBe(3)
+            expect(output.observations.length).toBeLessThanOrEqual(8)
+          } else {
+            expect(terminal.outcome).toBe('blocked')
+            expect(output.verification.accepted).toBeFalse()
+            if (peer === 'fahrenheit') {
+              expect(output.failures.dataset).toBe('INVALID_INPUT')
+              expect(output.children.dataset).toBeNull()
+              expect(run.stderr).not.toContain('dataset-dispatched')
+            } else {
+              expect(run.stderr).toContain('dataset-dispatched')
+              expect(output.children.analysis.outcome).toBe('blocked')
+              const problem = output.children.analysis.output.problem
+              expect(
+                peer === 'eof'
+                  ? problem === 'missing-reply'
+                  : peer === 'unexpected'
+                    ? problem === 'unexpected-reply'
+                    : ['unexpected-reply', 'extra-reply'].includes(problem),
+              ).toBeTrue()
+              if (peer === 'duplicate')
+                expect(output.observations).toEqual([{ sample: 's4', celsius: 31 }])
+              if (peer === 'eof') {
+                // A cleanly ended peer is not a completed analysis when it
+                // never answers the controller's outstanding request. The
+                // analysis's blocked result may cancel the peer before its
+                // independent result settles.
+                if (output.children.dataset === null)
+                  expect(output.failures.dataset).toBe('CANCELLED')
+                else
+                  expect(output.children.dataset).toEqual({
+                    outcome: 'done',
+                    output: { served: [] },
+                  })
+              }
+            }
+          }
+        }
+        await expectNoChildResidue(root)
+        expect(await directoryEntries(join(root, '.jig/private-root-linux-owners'))).toEqual([])
+        await waitForRootlessCgroups(initialRootlessCgroups)
+        await waitForRootlessTemporaryState(initialRootlessTemporaryState)
+      } finally {
+        await rm(root, { recursive: true, force: true })
+      }
+    }
+  }, 240_000)
+
   test('installed broadcast isolates a slow monitor while its worker and root recorder complete', async () => {
     const root = await mkdtemp(join(tmpdir(), 'jig-private-broadcast-cli-'))
     try {
@@ -1813,12 +1918,97 @@ async function writeBroadcastChannelProject(root: string): Promise<void> {
   )
 }
 
+type DatasetPeer = 'normal' | 'fahrenheit' | 'duplicate' | 'unexpected' | 'eof' | 'held'
+
+async function writeDatasetAnalysisProject(root: string, peer: DatasetPeer): Promise<void> {
+  await cp(join(import.meta.dir, '../../../examples/dataset-analysis'), root, {
+    recursive: true,
+    filter: (source) => !['node_modules', '.jig', 'jig.lock'].includes(basename(source)),
+  })
+  // Source-candidate host evidence uses the current SDK in disposable copies;
+  // prepared archive qualification separately checks the distribution closure.
+  for (const name of ['investigate', 'analysis', 'dataset']) {
+    const flow = join(root, 'flows', name)
+    await cp(join(import.meta.dir, '../../flow-sdk/dist'), join(flow, 'sdk'), { recursive: true })
+    for (const file of await readdir(flow)) {
+      if (!file.endsWith('.ts')) continue
+      const path = join(flow, file)
+      await writeFile(
+        path,
+        (await readFile(path, 'utf8')).replaceAll("'@jigging/flow'", "'./sdk/index.js'"),
+      )
+    }
+    await rm(join(flow, 'package.json'))
+    await rm(join(flow, 'bun.lock'), { force: true })
+  }
+  if (peer === 'normal') return
+
+  if (peer === 'fahrenheit') {
+    const path = join(root, 'flows/dataset/contracts/sample-celsius.json')
+    const contract = JSON.parse(await readFile(path, 'utf8'))
+    contract.id = 'https://example.org/dataset-analysis/sample-fahrenheit'
+    contract.semantics =
+      'Each celsius field reports degrees Fahrenheit, despite the unchanged field name.'
+    await writeFile(path, JSON.stringify(contract))
+    const requested = JSON.parse(
+      await readFile(join(root, 'flows/investigate/contracts/sample-celsius.json'), 'utf8'),
+    )
+    expect(contract.item).toEqual(requested.item)
+    expect(contract.id).not.toBe(requested.id)
+  }
+  // Deliberate peers belong to this test, never to the maintained application's
+  // public input. Their messages remain shape-valid to exercise domain checks.
+  await writeFile(
+    join(root, 'flows/dataset/flow.ts'),
+    `
+    import {handle} from './sdk/index.js';
+    await handle(async run => {
+      console.log('dataset-dispatched');
+      const served = [];
+      const requests = run.channels.requests[Symbol.asyncIterator]();
+      try {
+        for (;;) {
+          const next = await requests.next();
+          if(next.done) break;
+          const request = next.value;
+          if(${JSON.stringify(peer)} === 'held') {
+            console.log('dataset-outstanding');
+            await Bun.sleep(60_000);
+          }
+          if(${JSON.stringify(peer)} === 'eof') {
+            await run.channels.replies.close();
+            while(!(await requests.next()).done) {}
+            return {outcome:'done',output:{served}};
+          }
+          const sample = run.input.samples.find(value => value.sample === request.sample);
+          const reply = {sample:${JSON.stringify(peer)} === 'unexpected' ? 'unrequested' : request.sample,
+            celsius:sample.celsius};
+          await run.channels.replies.send(reply);
+          served.push(request.sample);
+          if(${JSON.stringify(peer)} === 'duplicate') await run.channels.replies.send(reply);
+        }
+        await run.channels.replies.close();
+        return {outcome:'done',output:{served}};
+      } catch(error) {
+        if(error.code !== 'DISCONNECTED') throw error;
+        await run.channels.requests.close();
+        try { await run.channels.replies.close(); }
+        catch(error) { if(error.code !== 'DISCONNECTED') throw error; }
+        // This faulty peer has finished emitting; its done flag does not
+        // establish protocol correctness or satisfy the root acceptance check.
+        return {outcome:'done',output:{served}};
+      }
+    });
+  `,
+  )
+}
+
 async function invokeChannelCli(
   root: string,
   args: readonly string[],
   observe: {
     record?(value: { readonly type?: string }, running: boolean, cancel: () => void): void
-    diagnostic?(text: string, running: boolean): void
+    diagnostic?(text: string, running: boolean, cancel: () => void): void
   } = {},
 ): Promise<{ code: number; stdout: string; stderr: string }> {
   const child = Bun.spawn([join(import.meta.dir, '../bin/jig'), ...args], {
@@ -1841,7 +2031,7 @@ async function invokeChannelCli(
     }
   })
   const stderr = consume(child.stderr, (text) =>
-    observe.diagnostic?.(text, child.exitCode === null),
+    observe.diagnostic?.(text, child.exitCode === null, cancel),
   )
   try {
     const [code, out, error] = await Promise.all([child.exited, stdout, stderr])

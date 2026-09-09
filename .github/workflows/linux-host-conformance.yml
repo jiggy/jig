@@ -9,6 +9,7 @@ on:
       - "packages/flow-sdk/**"
       - "docs/jig/spec/**"
       - "examples/tested-patch/**"
+      - "examples/dataset-analysis/**"
       - "package.json"
       - "scripts/ci/provision-github-rootless-host.sh"
       - "scripts/test-installed-hostile-baseline.ts"
