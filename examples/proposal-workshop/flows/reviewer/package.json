@@ -3,6 +3,6 @@
   "private": true,
   "type": "module",
   "dependencies": {
-    "@jigging/flow": "0.1.0-alpha.9"
+    "@jigging/flow": "workspace:*"
   }
 }

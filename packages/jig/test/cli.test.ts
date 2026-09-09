@@ -724,6 +724,28 @@ describe('finite Jig project commands', () => {
     expect(invocation.error).not.toContain('private message')
   })
 
+  test.each(['ADMISSION_MISSING', 'STALE_PLAN'])(
+    'run explains %s without private error text',
+    async (code) => {
+      const events: string[] = []
+      const invocation = commandInvocation(
+        fakeHost(
+          fakeSession(events, {
+            captureRequest: () => {
+              throw new RootAdministrationError('UNAVAILABLE', 'secret /private/path', { code })
+            },
+          }),
+          events,
+        ),
+      )
+      expect(await main(['run', 'flow:flows/work'], invocation.options)).toBe(2)
+      expect(invocation.output).toBe('')
+      expect(invocation.error).toBe(
+        `${code}: the project has no usable reviewed revision; complete jig review before running\n`,
+      )
+    },
+  )
+
   test('a late Session cleanup failure preserves its already known execution terminal', async () => {
     const events: string[] = []
     const session = fakeSession(events)
@@ -982,7 +1004,7 @@ describe('finite Jig project commands', () => {
     expect(events).toEqual(['acquire:/project', 'plan:update', 'close'])
     expect(invocation.output).toBe('')
     expect(invocation.error).toBe(
-      'UNAVAILABLE: use default npm registry dependencies; missing-lock resolution does not support workspaces, patches, overrides, or resolutions; ' +
+      'UNAVAILABLE: use default npm registry dependencies or declared workspace members; patches, overrides, and other dependency sources are unsupported; ' +
         'PACKAGE_BUN_SOURCE_UNSUPPORTED at "flows/dependent/bun.lock"\n',
     )
     expect(invocation.error).not.toContain('private preparation message')
@@ -1004,6 +1026,11 @@ describe('finite Jig project commands', () => {
       'PACKAGE_BUN_PREPARATION_FAILED',
       'flows/drafter/package.json',
       'locked dependencies could not be prepared; check registry access and package availability',
+    ],
+    [
+      'PACKAGE_BUN_RESOLUTION_VERSION_UNAVAILABLE',
+      'flows/chat/package.json',
+      'a requested dependency version or tag is unavailable in the registry; check package.json against published versions or use a declared local workspace dependency',
     ],
   ])('renders actionable %s without private error text', async (code, path, guidance) => {
     const events: string[] = []

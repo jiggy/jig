@@ -88,8 +88,8 @@ application is not an unrestricted repository worker or independent probe.
 
 ## Verification
 
-- Install development dependencies at this root with
-  `bun install --ignore-scripts`, then run `bun test test`.
+- Install the repository workspace and build the SDK, then run `bun test test`
+  from this application.
   From the repository root use `bun test examples/tested-patch/test`.
 - `scripts/test-release.sh` tests a disposable application copy with the
   freshly packed SDK from this checkout. Source-level host

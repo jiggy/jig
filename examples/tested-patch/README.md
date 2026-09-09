@@ -14,11 +14,13 @@ Configure your [Agent](https://jig.md/guide/agents), then inspect
 From this directory:
 
 ```sh
-jig review --allow-resolution-network
+jig review
 jig run binding:repair --input @issue.json --attach source=fixtures/log-report --out repair-result --timeout 5m
 ```
 
-Review resolves the declared dependencies and retains their exact bytes.
+The example uses the checkout's SDK workspace. Complete the
+[workspace setup](https://jig.md/guide/dependencies#local-workspace-packages)
+once; review captures the local dependency bytes.
 
 Open `repair-result/files/summary.txt`. A successful repair produces
 `review.patch`; unsuccessful proposals remain `proposal-N.patch`.

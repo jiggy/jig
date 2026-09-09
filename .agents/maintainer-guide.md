@@ -157,16 +157,13 @@ active admission reuse needs no fresh resolution; unlocked source alone does
 not promise the same dependency versions on another host.
 
 Unreleased code is not forced through a public registry. Package-local source
-modules can be imported directly. Shared unreleased code can be materialized as
-ordinary files within the finished Flow package by the author's development
-process. Workspace, file, Git, or symlink dependencies are not execution-time
-escape hatches, and Jig does not turn that author-side materialization into a
-universal build protocol.
-
-If normal independent development cannot remain practical without workspace or
-additional source semantics, gather evidence from clean-room authors before
-changing the preparation boundary. Do not grow one narrow preparation into a
-package-manager abstraction one exception at a time.
+modules can be imported directly; `workspace:` dependencies use ordinary Bun
+workspace declarations. Review captures local dependencies and prepares their
+root-locked graph with Bun, retaining regular files rather than runtime links.
+It recaptures workspace dependencies on each review; unchanged Flow source does
+not authorize reuse of an older local library. Builds remain the author's
+toolchain responsibility. File, Git, or symlink dependencies are not runtime
+escape hatches. Jig owns capture and admission, not a new package manager.
 
 ### Ordinary invocation and private implementation
 

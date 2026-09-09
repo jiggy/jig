@@ -58,19 +58,10 @@ Configure an Agent in the operator environment using the
 Keep that configuration available for both review and execution. The example
 does not select a model or supply credentials.
 
-This source example requires the paired `@jigging/jig@0.1.0-alpha.14` and
-`@jigging/flow@0.1.0-alpha.9` naming interfaces. Use it after those versions
-are published; older SDKs do not implement these method names.
-
-From the repository root, copy the example to a new directory, generate its
-locked dependencies with Bun 1.3.3, review its packages and settings, and run:
+After [workspace setup](dependencies.md#local-workspace-packages), run from
+`examples/proposal-workshop`:
 
 ```sh
-cp -R examples/proposal-workshop ../my-proposal-workshop
-cd ../my-proposal-workshop
-for flow in flows/drafter flows/reviewer flows/workshop; do
-  (cd "$flow" && bun install --lockfile-only --ignore-scripts)
-done
 jig review
 jig run binding:workshop --input @fixtures/library-pilot.json --timeout 5m
 ```
@@ -78,11 +69,8 @@ jig run binding:workshop --input @fixtures/library-pilot.json --timeout 5m
 Interactive review asks for approval. For noninteractive use, inspect the
 review first and use `jig review --yes` only with explicit approval.
 
-Each Flow's `package.json` pins the required SDK. The commands above generate
-its text `bun.lock` using the registry's actual integrity value; retain those
-locks with your copy. Jig prepares those exact dependencies during review; keep
-`node_modules` out of the Flow trees. See the
-[dependency guidance](./index.md) if you change the packages.
+Each Flow uses the local SDK through `workspace:*`. Review captures it and
+prepares the root-locked dependency tree without requiring SDK publication.
 
 The fixture asks for an eight-week pilot of later library hours. Its demand,
 staffing, and planning records are explicitly synthetic. Their source URLs

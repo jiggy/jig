@@ -136,8 +136,10 @@ execution interruption under that capability's bounded retention contract.
 
 The first alpha host has one exact recipe: `flow.ts` run by Bun inside the
 rootless execution envelope. A package with production dependencies supplies
-ordinary root `package.json`, optionally supplies a text `bun.lock`, and omits
-generated `node_modules`. Package-local source modules imported by relative
+ordinary root `package.json` and optionally supplies a text `bun.lock`.
+Project Flow capture excludes generated `node_modules` paths, without following
+their links; dependency preparation never trusts a development installation.
+Package-local source modules imported by relative
 path need no dependency entry. During planning, Jig prepares the frozen
 production tree with the fixed Bun installer through the same containment and ownership
 mechanism used by a Run, lifecycle scripts disabled, and only default-registry
@@ -158,7 +160,7 @@ warns that Bun may contact dependency-selected public, private-network, or
 loopback services reachable from the host before graph validation. Such
 requests cannot be undone by failure or declined approval. The flag is not a
 network destination filter. Jig first rejects known unsupported root sources;
-missing-lock manifests with workspaces, patches, overrides, or resolutions
+standalone missing-lock manifests with workspaces, patches, overrides, or resolutions
 are unsupported. It then uses the fixed Bun's lockfile-only resolution,
 validates the generated graph against the same source/integrity policy, and
 only then performs a frozen install. Unsupported transitive sources can
@@ -170,21 +172,54 @@ no ambient variables or env file, only fixed loader support, `/dev/null` as
 Bun configuration, the exact runtime selected by Jig, and an explicit npm
 registry. A package-local root `.npmrc` is rejected because Bun treats it as a
 separate configuration input.
-Only captured `package.json` and any supplied `bun.lock` are staged for Bun;
+Only captured manifests and any supplied root `bun.lock` are staged for Bun;
 other authored files are materialized after installation. Foreign locks,
 preloads, and configuration therefore cannot influence resolution or install.
-Git, GitHub, tarball, file, workspace, custom-registry, and non-integrity entries
+Git, GitHub, tarball, file, undeclared workspace, custom-registry, and non-integrity entries
 in a supplied lock are rejected before the trusted installer starts a fetch.
 A default-registry npm alias is accepted
 only when the resolved lock tuple names that registry and carries supported
 SRI integrity.
 
-Unreleased or monorepo-owned code must therefore be materialized as regular
-files inside the captured Flow package and imported relatively. Copying or
-bundling those files is an author-toolchain concern, not a Jig workspace or
-build protocol. Symlinks and hardlinks whose complete link set cannot be
-proved inside the captured package remain invalid; fully contained hardlinks
-are captured as independent regular-file records.
+### Workspace dependency capture
+
+A Flow may declare `workspace:` dependencies when both it and its libraries
+are members of an ancestor Bun workspace. Jig captures the root manifest and
+text lock, declared member manifests, and the transitive local runtime dependency
+sources. Workspace names must be unique; paths and workspace patterns must stay
+relative to that root, without symlink traversal. The workspace root may be above
+the Jig application; this grants capture of declared dependencies, not arbitrary
+ancestor contents. Explicit workspace requirements never fall back to a registry.
+
+Library `files` paths and glob patterns select source when present, including
+`package.json`, README and license files. Otherwise ordinary package files are
+selected. `.git` and `node_modules` are excluded. Literal exported files must be
+present; Jig runs no author build. Workspace metadata is rechecked after source
+capture. Discovery is bounded to 256 members, 32,768 entries, and 32 levels;
+metadata is bounded to 1 MiB per manifest and 2 MiB for the root lock. Existing
+aggregate preparation limits apply to the captured workspace.
+
+Bun installs the captured target with `--filter`, script execution disabled,
+and the supplied root lock frozen, or with explicitly permitted lock resolution.
+Workspace lock entries must name captured members and agree with their manifests.
+Only selected members' code is staged, after installation. The collector resolves
+installer-created workspace links only to captured selected members and retains
+regular files in the target's self-contained dependency tree. Unselected member
+links are omitted; unknown links and recursive output trees fail closed.
+Registry dependencies retain the same integrity and source policy.
+
+Workspace members use the root lock; member locks, dependency patches, overrides,
+catalogs, and alternate sources are unsupported. A new review recaptures and
+prepares the workspace, rather than reusing dependencies merely because the Flow
+source has not changed. The prepared identity participates in target-change review
+and admission. Runs neither reopen the workspace nor follow development links.
+
+Package-local imports remain available without workspaces. Symlinks and
+hardlinks whose complete link set cannot be proved inside the captured package
+remain invalid; fully contained hardlinks are captured as independent
+regular-file records.
+
+### Prepared execution and limits
 
 The admitted target pins the separately retained prepared Package/1 while the
 portable lock continues to identify the reviewed source Package/1. Generated
@@ -194,9 +229,10 @@ on different machines may resolve different dependency versions. A Run
 performs no install or fetch and has no network, lifecycle scripts, or ambient
 runtime lookup. A package without runtime dependencies needs no preparation.
 
-Planning may reuse the execution Package from the active admission only when
-the current request reproduces its exact recipe and observation digests under
-the current runtime and containment mechanism. Exact reuse performs no
+For standalone registry preparation, planning may reuse the execution Package
+from the active admission only when the current request reproduces its exact
+recipe and observation digests under the current runtime and containment
+mechanism. Exact reuse performs no
 resolution and requires no new resolution permission. Any source change, including a
 code-only edit, or changed execution support can invalidate reuse and require
 the flag again for unlocked source. Declined preparations do not grant reuse.

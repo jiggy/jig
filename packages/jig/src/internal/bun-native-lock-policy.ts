@@ -1,17 +1,30 @@
 /** Closed Bun 1.3.3 lock policy for the direct alpha's one preparer. */
-export function requirePrivateBunResolutionManifest(value: unknown): void {
+export function requirePrivateBunResolutionManifest(
+  value: unknown,
+  workspace?: 'root' | 'member',
+): void {
   const manifest = ordinaryRecord(value)
   if (
     manifest === undefined ||
-    ['workspaces', 'patchedDependencies', 'overrides', 'resolutions'].some(
-      (field) => manifest[field] !== undefined,
-    )
+    [
+      ...(workspace === 'root' ? [] : ['workspaces']),
+      'patchedDependencies',
+      'overrides',
+      'resolutions',
+      'catalog',
+      'catalogs',
+    ].some((field) => manifest[field] !== undefined)
   )
     throw new TypeError('unsupported Bun resolution input')
-  requireRegistryDependencyMaps(manifest)
+  if (
+    workspace === 'member' &&
+    (typeof manifest.name !== 'string' || !isPackageName(manifest.name))
+  )
+    throw new TypeError('workspace members require valid package names')
+  requireRegistryDependencyMaps(manifest, workspace !== undefined)
 }
 
-export function requirePrivateBunLockPolicy(value: unknown): void {
+export function requirePrivateBunLockPolicy(value: unknown, members?: ReadonlySet<string>): void {
   const lock = ordinaryRecord(value)
   const workspaces = ordinaryRecord(lock?.workspaces)
   const rootWorkspace = ordinaryRecord(workspaces?.[''])
@@ -21,13 +34,37 @@ export function requirePrivateBunLockPolicy(value: unknown): void {
     workspaces === undefined ||
     rootWorkspace === undefined ||
     packages === undefined ||
-    Object.keys(workspaces).length !== 1 ||
+    (members === undefined
+      ? Object.keys(workspaces).length !== 1
+      : Object.keys(workspaces).some((path) => path !== '' && !members.has(path))) ||
     lock.patchedDependencies !== undefined
   ) {
     throw new TypeError('unsupported Bun lock source')
   }
-  requireRegistryDependencyMaps(rootWorkspace)
+  for (const workspace of Object.values(workspaces)) {
+    const record = ordinaryRecord(workspace)
+    if (record === undefined) throw new TypeError('unsupported Bun workspace lock')
+    requireRegistryDependencyMaps(record, members !== undefined)
+  }
   for (const resolution of Object.values(packages)) {
+    if (
+      members !== undefined &&
+      Array.isArray(resolution) &&
+      resolution.length === 1 &&
+      typeof resolution[0] === 'string'
+    ) {
+      const separator = resolution[0].indexOf('@workspace:')
+      const name = resolution[0].slice(0, separator)
+      const path = resolution[0].slice(separator + '@workspace:'.length)
+      if (
+        separator > 0 &&
+        isPackageName(name) &&
+        members.has(path) &&
+        ordinaryRecord(workspaces[path])?.name === name
+      )
+        continue
+      throw new TypeError('unsupported Bun workspace resolution')
+    }
     const metadata = Array.isArray(resolution) ? ordinaryRecord(resolution[2]) : undefined
     if (
       !Array.isArray(resolution) ||
@@ -53,13 +90,25 @@ const DEPENDENCY_MAPS = Object.freeze([
   'peerDependencies',
 ] as const)
 
-function requireRegistryDependencyMaps(container: Record<string, unknown>): void {
+function requireRegistryDependencyMaps(
+  container: Record<string, unknown>,
+  workspace = false,
+): void {
   for (const field of DEPENDENCY_MAPS) {
     if (container[field] === undefined) continue
     const dependencies = ordinaryRecord(container[field])
     if (dependencies === undefined) throw new TypeError('unsupported Bun lock source')
     for (const [name, request] of Object.entries(dependencies)) {
-      if (!isPackageName(name) || !isRegistryRequest(request)) {
+      if (
+        !isPackageName(name) ||
+        !(
+          isRegistryRequest(request) ||
+          (workspace &&
+            typeof request === 'string' &&
+            request.startsWith('workspace:') &&
+            isRegistrySelector(request.slice('workspace:'.length)))
+        )
+      ) {
         throw new TypeError('unsupported Bun lock source')
       }
     }

@@ -63,6 +63,13 @@ interface OpenRoot {
   readonly information: BigIntStats
 }
 
+/** Private host selection; the default Package/1 capture still includes every file. */
+export interface PackageCaptureSelection {
+  readonly includes: (path: string) => boolean
+  readonly maximumFiles: number
+  readonly maximumBytes: number
+}
+
 /** Capture one mutable Linux directory into one unnamed read-only snapshot. */
 export async function capturePackageDirectory(source: string): Promise<CapturedPackage> {
   if (process.platform !== 'linux') {
@@ -105,6 +112,7 @@ export async function capturePackageDirectory(source: string): Promise<CapturedP
 export async function captureOpenedPackageDirectory(
   sourceRoot: string,
   directory: FileHandle,
+  selection?: PackageCaptureSelection,
 ): Promise<CapturedPackage> {
   if (process.platform !== 'linux') {
     unavailable(
@@ -117,7 +125,7 @@ export async function captureOpenedPackageDirectory(
   try {
     for (let attempt = 1; attempt <= CAPTURE_ATTEMPTS; attempt += 1) {
       try {
-        return await captureOpenedRootAttempt(root, false)
+        return await captureOpenedRootAttempt(root, false, selection)
       } catch (error) {
         if (isResourceError(error)) {
           resourceExhausted(error, 'cannot capture opened package source', sourceRoot)
@@ -142,14 +150,15 @@ export async function captureOpenedPackageDirectory(
 async function captureOpenedRootAttempt(
   root: OpenRoot,
   verifyPath: boolean,
+  selection?: PackageCaptureSelection,
 ): Promise<CapturedPackage> {
   let backing: FileHandle | undefined
   try {
     backing = await openAnonymousBacking()
-    const { records, fingerprints } = await captureAttempt(root, backing)
+    const { records, fingerprints } = await captureAttempt(root, backing, selection)
     let verification: SourceFingerprint[]
     try {
-      verification = await fingerprintTree(root)
+      verification = await fingerprintTree(root, selection)
     } catch (error) {
       if (isVerificationMutation(error)) {
         sourceChanged('package source changed before verification completed', root.requestedPath)
@@ -374,6 +383,7 @@ async function rejectKnownOversizeFile(
 async function captureAttempt(
   root: OpenRoot,
   backing: FileHandle,
+  selection?: PackageCaptureSelection,
 ): Promise<{ records: CapturedRecord[]; fingerprints: SourceFingerprint[] }> {
   const records: CapturedRecord[] = []
   const fingerprints: SourceFingerprint[] = []
@@ -391,6 +401,7 @@ async function captureAttempt(
       const logicalPath = validateLogicalPath(
         logicalDirectory.length === 0 ? name : `${logicalDirectory}/${name}`,
       )
+      if (selection !== undefined && !selection.includes(logicalPath)) continue
       const entry = await openDirectoryEntry(directory, name, logicalPath)
       try {
         if (entry.information.isDirectory()) {
@@ -403,10 +414,33 @@ async function captureAttempt(
 
         if (records.length >= MAX_FILES)
           invalid('PACKAGE_LIMIT', `package exceeds ${MAX_FILES} files`, logicalPath)
+        if (
+          selection !== undefined &&
+          (records.length >= selection.maximumFiles ||
+            BigInt(totalBytes) + entry.information.size > BigInt(selection.maximumBytes))
+        )
+          invalid(
+            'PACKAGE_LIMIT',
+            'selected dependency source exceeds its capture budget',
+            logicalPath,
+          )
         await rejectKnownOversizeFile(entry.handle, entry.information, logicalPath)
         const offset = totalBytes
-        const size = await copyToBacking(entry.handle, backing, offset, totalBytes, logicalPath)
+        const size = await copyToBacking(
+          entry.handle,
+          backing,
+          offset,
+          totalBytes,
+          logicalPath,
+          selection?.maximumBytes,
+        )
         totalBytes += size
+        if (selection !== undefined && totalBytes > selection.maximumBytes)
+          invalid(
+            'PACKAGE_LIMIT',
+            'selected dependency source exceeds its capture budget',
+            logicalPath,
+          )
         const after = await entry.handle.stat({ bigint: true })
         if (!sameStat(entry.information, after))
           sourceChanged('source file changed during capture', logicalPath)
@@ -439,6 +473,7 @@ async function copyToBacking(
   backingOffset: number,
   priorTotal: number,
   logicalPath: string,
+  maximumBytes = MAX_TOTAL_BYTES,
 ): Promise<number> {
   let sourceOffset = 0
   while (true) {
@@ -453,8 +488,8 @@ async function copyToBacking(
     if (sourceOffset + bytesRead > MAX_FILE_BYTES) {
       invalid('PACKAGE_LIMIT', `file exceeds ${MAX_FILE_BYTES} bytes`, logicalPath)
     }
-    if (priorTotal + sourceOffset + bytesRead > MAX_TOTAL_BYTES) {
-      invalid('PACKAGE_LIMIT', `package exceeds ${MAX_TOTAL_BYTES} bytes`, logicalPath)
+    if (priorTotal + sourceOffset + bytesRead > maximumBytes) {
+      invalid('PACKAGE_LIMIT', `package exceeds ${maximumBytes} bytes`, logicalPath)
     }
     let written = 0
     while (written < bytesRead) {
@@ -477,7 +512,10 @@ async function copyToBacking(
   }
 }
 
-async function fingerprintTree(root: OpenRoot): Promise<SourceFingerprint[]> {
+async function fingerprintTree(
+  root: OpenRoot,
+  selection?: PackageCaptureSelection,
+): Promise<SourceFingerprint[]> {
   const result: SourceFingerprint[] = []
   const directories = new Set<string>([identityKey(root.information)])
   let directoryCount = 0
@@ -490,6 +528,7 @@ async function fingerprintTree(root: OpenRoot): Promise<SourceFingerprint[]> {
       const logicalPath = validateLogicalPath(
         logicalDirectory.length === 0 ? name : `${logicalDirectory}/${name}`,
       )
+      if (selection !== undefined && !selection.includes(logicalPath)) continue
       const entry = await openDirectoryEntry(directory, name, logicalPath)
       try {
         if (entry.information.isDirectory()) {

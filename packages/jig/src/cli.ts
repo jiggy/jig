@@ -766,10 +766,22 @@ function renderFailure(error: unknown, runtime: CliRuntime): 1 | 2 {
       PACKAGE_BUN_RESOLUTION_PERMISSION_REQUIRED: `supply bun.lock or rerun jig review with --allow-resolution-network. ${RESOLUTION_WARNING}`,
       PACKAGE_BUN_RESOLUTION_FAILED:
         'dependency resolution failed; requests may already have occurred; check package declarations and registry availability',
+      PACKAGE_BUN_RESOLUTION_VERSION_UNAVAILABLE:
+        'a requested dependency version or tag is unavailable in the registry; check package.json against published versions or use a declared local workspace dependency',
       PACKAGE_BUN_RESOLVED_SOURCE_UNSUPPORTED:
         'resolved dependencies are unsupported; requests may already have occurred; use integrity-pinned default npm registry dependencies',
       PACKAGE_BUN_SOURCE_UNSUPPORTED:
-        'use default npm registry dependencies; missing-lock resolution does not support workspaces, patches, overrides, or resolutions',
+        'use default npm registry dependencies or declared workspace members; patches, overrides, and other dependency sources are unsupported',
+      PACKAGE_BUN_WORKSPACE_MISSING:
+        'declare the Flow and each workspace dependency in an ancestor package.json workspaces list; workspace dependencies never fall back to npm',
+      PACKAGE_BUN_WORKSPACE_INVALID:
+        'check workspace membership, unique package names, safe relative paths, and the root lock; links, local member locks, and dependency overrides are unsupported',
+      PACKAGE_BUN_WORKSPACE_VERSION:
+        'a workspace package version does not satisfy its workspace: declaration; correct the declaration or local package version',
+      PACKAGE_BUN_WORKSPACE_BUILD_REQUIRED:
+        'a declared workspace export is missing; build the local dependency before jig review',
+      PACKAGE_BUN_WORKSPACE_CHANGED:
+        'workspace inputs changed during capture; retry review after the edits settle',
       PACKAGE_BUN_LOCK_INVALID: 'bun.lock is invalid; correct the supplied lock',
       PACKAGE_BUN_LOCK_STALE:
         'package.json and bun.lock disagree; update the supplied lock explicitly',
@@ -794,6 +806,23 @@ function renderFailure(error: unknown, runtime: CliRuntime): 1 | 2 {
     return projected.exitCode
   }
   if (error instanceof RootAdministrationError) {
+    if (
+      error.code === 'UNAVAILABLE' &&
+      error.details !== null &&
+      typeof error.details === 'object' &&
+      !Array.isArray(error.details) &&
+      ['ADMISSION_MISSING', 'STALE_PLAN'].includes(
+        String((error.details as Record<string, JsonValue>).code),
+      )
+    ) {
+      runtime.writeError(
+        renderDiagnostic(
+          String((error.details as Record<string, JsonValue>).code),
+          'the project has no usable reviewed revision; complete jig review before running',
+        ),
+      )
+      return 2
+    }
     if (
       error.details !== null &&
       typeof error.details === 'object' &&

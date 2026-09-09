@@ -20,7 +20,8 @@ operational baselines, and public-site assembly.
 - `test-release.sh` includes the authored examples' deterministic application
   tests. It installs the freshly packed SDK as a development dependency of
   disposable application copies, without lifecycle scripts or edits to source
-  manifests. This permits testing an SDK before its version reaches npm;
+  manifests. Generated workspace `node_modules` links are excluded from those
+  copies. This permits testing an SDK before its version reaches npm;
   it does not claim live Agent quality or independent
   consumer proof.
 - `test-installed-hostile-baseline.ts` consumes an exact archive, exercising

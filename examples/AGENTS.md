@@ -22,6 +22,9 @@ authored examples, not independent consumer evidence or promoted Starters.
   against the current SDK without waiting for npm publication; do not preserve
   superseded APIs, release-order warnings, or compatibility branches.
 - Examples remain ordinary editable source projects with declared dependencies.
+  Applications and their Flows are Bun workspace members using the checkout SDK
+  through `workspace:*`. Root installation and ordinary SDK builds prepare
+  development; Jig captures runtime dependencies during review.
   Use the same dependency preparation as other consumers, not specially bundled
   application archives or per-Flow setup loops. Test unpublished SDK candidates
   separately from claims about registry availability.

@@ -9,11 +9,13 @@ With Jig on a [supported host](https://jig.md/guide/) and a configured
 this directory:
 
 ```sh
-jig review --allow-resolution-network
+jig review
 jig run flow:flows/chat --input @input.json
 ```
 
-Review resolves the declared dependencies and retains their exact bytes.
+The example uses the checkout's SDK workspace. Complete the
+[workspace setup](https://jig.md/guide/dependencies#local-workspace-packages)
+once; review captures the local dependency bytes.
 
 Text appears live on diagnostic stderr. The final result records the Agent's
 outcome and whether progress delivery completed. Ctrl-C requests cancellation.

@@ -62,6 +62,7 @@ const WORKER_FAILURE_CODES = new Set([
   'PACKAGE_BUN_SOURCE_CHANGED',
   'PACKAGE_BUN_SOURCE_UNSUPPORTED',
   'PACKAGE_BUN_RESOLUTION_FAILED',
+  'PACKAGE_BUN_RESOLUTION_VERSION_UNAVAILABLE',
   'PACKAGE_BUN_RESOLVED_SOURCE_UNSUPPORTED',
 ])
 
@@ -80,8 +81,22 @@ export async function preparePrivateBunPackage(input: {
   readonly deadlineUnixMs?: number
   readonly signal?: AbortSignal
   readonly allowResolutionNetwork?: boolean
+  readonly workspace?: {
+    readonly target: string
+    readonly members: readonly string[]
+    readonly selected: readonly string[]
+  }
 }): Promise<CapturedPackage> {
-  const classification = await inspectPrivateBunPackageInput(input.captured)
+  const classification =
+    input.workspace === undefined
+      ? await inspectPrivateBunPackageInput(input.captured)
+      : input.captured.files.some(({ path }) => path === 'bun.lock')
+        ? {
+            state: 'locked' as const,
+            manifestPath: 'package.json' as const,
+            lockPath: 'bun.lock' as const,
+          }
+        : { state: 'unlocked' as const, manifestPath: 'package.json' as const }
   if (classification.state === 'direct') {
     throw new TypeError('Bun dependency preparation requires runtime dependencies or a lock')
   }
@@ -90,7 +105,18 @@ export async function preparePrivateBunPackage(input: {
   const installedSupport = requirePrivateInstalledBunSupport(input.installedSupport)
   await revalidatePrivateInstalledBunSupport(installedSupport)
   const backend = requirePrivateLinuxCgroupBackend(input.backend)
-  const source = await sourceMessage(input.captured)
+  const source = {
+    ...(await sourceMessage(input.captured)),
+    ...(input.workspace === undefined
+      ? {}
+      : {
+          workspace: {
+            target: input.workspace.target,
+            members: input.workspace.members,
+            selected: input.workspace.selected,
+          },
+        }),
+  }
   const sourceBytes = encodePrivateBunMessage(source)
   if (!privateBunMessageFits(sourceBytes.byteLength - 1, PRIVATE_BUN_SOURCE_MESSAGE_BYTES)) {
     throw new CheckError(
@@ -225,6 +251,7 @@ async function interact(
           message.code === 'PACKAGE_BUN_SOURCE_UNSUPPORTED' ||
             message.code === 'PACKAGE_BUN_RESOLVED_SOURCE_UNSUPPORTED' ||
             message.code === 'PACKAGE_BUN_RESOLUTION_FAILED' ||
+            message.code === 'PACKAGE_BUN_RESOLUTION_VERSION_UNAVAILABLE' ||
             message.code === 'PACKAGE_BUN_PREPARATION_FAILED' ||
             message.code === 'PACKAGE_BUN_OUTPUT_UNSUPPORTED'
             ? 'unavailable'

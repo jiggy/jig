@@ -20,8 +20,8 @@ Contains the independently built and distributed FLOW SDKs and Jig host.
   or generated output.
 - Run `bun install` at the repository root to install all package workspaces.
   Keep Bun's isolated workspace layout; clean installs regenerate the lock
-  from manifests. Do not restore per-workspace Bun locks. Example Flows remain
-  independently installed application packages, outside the workspace.
+  from manifests. Do not restore per-workspace Bun locks. Example applications
+  and their Flows are workspace members and use `workspace:*` for the local SDK.
 - Use the root Just modules (`just flow::build`, `just jig::build`) or run
   package recipes locally. `pack` builds explicitly; manifests have no build
   or packing lifecycle scripts. Just is development tooling, not an installed

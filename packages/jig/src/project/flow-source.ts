@@ -293,10 +293,13 @@ async function captureMember(
   handle: FileHandle,
   provenance: FlowMemberProvenance,
 ): Promise<CapturedFlowMember> {
-  await rejectGeneratedNodeModules(handle, provenance.projectPath)
   let captured: CapturedPackage | undefined
   try {
-    captured = await captureOpenedPackageDirectory(provenance.projectPath, handle)
+    captured = await captureOpenedPackageDirectory(provenance.projectPath, handle, {
+      includes: (path) => !path.split('/').includes('node_modules'),
+      maximumFiles: 65_536,
+      maximumBytes: 4_294_967_296,
+    })
     const inspected = await inspectCapturedPackage(captured)
     return Object.freeze({ provenance: Object.freeze(provenance), captured, inspected })
   } catch (error) {
@@ -324,20 +327,6 @@ function scopePackageDiagnostic(error: unknown, projectPath: string): unknown {
     error.message,
     error.path === undefined ? projectPath : `${projectPath}/${error.path}`,
     error.pointer,
-  )
-}
-
-async function rejectGeneratedNodeModules(handle: FileHandle, projectPath: string): Promise<void> {
-  try {
-    await lstat(`/proc/self/fd/${handle.fd}/node_modules`)
-  } catch (error) {
-    if (isMissing(error)) return
-    throw error
-  }
-  invalid(
-    'PACKAGE_BUN_NODE_MODULES',
-    'node_modules is generated state; remove it and let jig review prepare the locked dependencies',
-    `${projectPath}/node_modules`,
   )
 }
 

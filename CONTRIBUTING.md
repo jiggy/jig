@@ -43,10 +43,13 @@ commit it. After changing `.envrc`, run `direnv allow` again. Plain `nix-shell`
 does not load that local environment file.
 
 From the repository root, `bun i` installs the root tooling and all TypeScript
-packages under `packages/` as Bun workspaces. The root `bun.lock` is generated
+packages under `packages/`, example applications, and their Flows as Bun workspaces.
+Examples use the local SDK through `workspace:*`. The root `bun.lock` is generated
 by Bun and ignored; regenerate it as needed, never maintain it by hand.
-Example Flows, site tooling, and conformance fixtures keep their separate
-dependency installations.
+Site tooling and conformance fixtures keep their separate dependency installations.
+Build the SDK with `just flow::build` before reviewing examples; `just build`
+builds both SDK and Jig. Review captures the workspace, so no SDK publication
+or per-Flow dependency setup is needed.
 
 Shell entry warns in bold red when Jig is missing or incompletely built, or
 when its successful-build version differs from `packages/jig/package.json`.

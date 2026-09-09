@@ -3,7 +3,9 @@
   "private": true,
   "type": "module",
   "workspaces": [
-    "packages/*"
+    "packages/*",
+    "examples/*",
+    "examples/*/flows/*"
   ],
   "devDependencies": {
     "@biomejs/biome": "2.5.12"

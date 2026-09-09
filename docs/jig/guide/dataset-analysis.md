@@ -7,10 +7,10 @@ ordinary child calls still start the work and return each result.
 
 With [Jig installed](index.md), use the
 [dataset-analysis source example](https://github.com/jiggy/jig/tree/main/examples/dataset-analysis).
-From that directory:
+After [workspace setup](dependencies.md#local-workspace-packages), run from that directory:
 
 ```sh
-jig review --allow-resolution-network
+jig review
 jig run binding:analysis --input @input.json
 ```
 

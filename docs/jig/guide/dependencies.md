@@ -33,7 +33,7 @@ The extra permission is significant: Bun can contact dependency-selected
 destinations, including private-network or loopback services reachable from
 your host, before Jig can validate the resolved graph. Requests cannot be
 undone if resolution fails or you decline execution. The flag is not a
-destination filter and does not enable Git, file, workspace, tarball, or
+destination filter and does not enable Git, file, tarball, or
 custom-registry dependencies. Known unsupported root declarations are rejected
 before resolution; unsupported transitive dependencies may fail after requests.
 Jig names each Flow before starting its resolution.
@@ -64,15 +64,49 @@ reuse. Missing or corrupt admitted bytes fail closed instead of being silently
 resolved again. Separate machines resolving unlocked source may select different
 versions: `jig.lock` identifies source, not a generated dependency lock.
 
-## Local or unreleased code
+## Local workspace packages
 
-Keep reusable source inside the Flow package and import it relatively. If a
-monorepo owns it elsewhere, your authoring tools can copy or bundle it into
-the finished package before review.
+Use Bun workspaces to share a library before publishing it. Include the Flow
+and library in the ancestor `package.json` workspace list:
 
-Jig does not resolve symlinks or `file:`, `workspace:`, and Git dependency
-sources. A package without external dependencies needs neither a dependency
-manifest nor a lock for execution.
+```json
+{ "private": true, "workspaces": ["apps/*/flows/*", "packages/*"] }
+```
+
+The Flow's dependency is ordinary Bun configuration:
+
+```json
+{ "dependencies": { "my-library": "workspace:*" } }
+```
+
+Run `bun install` at the workspace root and build libraries whose exports
+point to generated files. Then run `jig review` from the Jig application.
+No publication, copied library, or per-Flow installation is needed.
+
+Review captures the root manifest and lock, member manifests, and the selected
+local dependency sources. A library's `files` list limits its captured source;
+without one, its ordinary files are captured except `.git` and `node_modules`.
+Generated installation links are never followed. Bun prepares the captured
+graph with scripts disabled; Jig retains a self-contained tree of regular files.
+Registry dependencies still use the locked default-registry policy above.
+
+Workspace dependencies are recaptured and prepared on each review. Editing a
+library changes the proposed execution revision, even if its Flow is unchanged.
+Existing admissions continue using their original bytes. A missing root lock
+requires the same explicit resolution permission; stale locks require updating.
+
+Workspace members must have unique names and safe relative paths. Local member
+locks, filesystem links, dependency overrides, patches, and catalogs are not
+supported. Missing members or build outputs fail explicitly, without falling
+back to npm. This is review-time capture, not live workspace access during a Run.
+
+The repository examples use this workspace path. Follow the checkout's
+[development setup](https://github.com/jiggy/jig/blob/main/CONTRIBUTING.md#development-shell)
+once, then review and run an example from its own directory. For a standalone
+distributed Flow, use published dependency versions or distribute its workspace.
+
+Package-local source may also be imported relatively. A package without external
+dependencies needs neither a dependency manifest nor a lock for execution.
 
 Optional input, settings, and result schemas follow
 [FLOW Schema/1](https://flow.jig.md/spec/schema-files), including its required

@@ -42,6 +42,7 @@ import {
   requirePrivateBunResolutionPermission,
 } from './bun-package-input.js'
 import { type PrivateDirectRunRecipe, planPrivateDirectRun } from './direct-run.js'
+import { capturePrivateBunWorkspace } from './bun-workspace-capture.js'
 import type { PrivateFileRecovery } from './file-command.js'
 import { privateDomainDigest } from './identity.js'
 import type { PrivateInstalledBunSupport } from './installed-bun-support.js'
@@ -252,40 +253,33 @@ function createSession(
             )
           }
           try {
-            let executionPackage = executionPackages.get(request.package.digest)
+            const executionKey = `${request.packagePath}:${request.package.digest}`
+            let executionPackage = executionPackages.get(executionKey)
             if (executionPackage === undefined) {
               const source = await captureStoredPackage(packageStoreRoot, request.package)
               try {
-                const dependencyInput = await inspectPrivateBunPackageInput(source)
-                if (dependencyInput.state === 'direct') {
-                  executionPackage = request.package
-                } else {
-                  const admitted = readPrivateAdmittedExecutionReuse({ planningBase, request })
-                  if (admitted !== undefined) {
-                    const current = await planPrivateDirectRun({
-                      request,
-                      executionPackage: admitted.executionPackage,
-                      installedSupport: host.installedBunSupport,
-                      backend: host.backend,
-                      agentProvider: host.agentProvider,
-                    })
-                    if (
-                      current.digest === admitted.recipeDigest &&
-                      current.observation.digest === admitted.observationDigest
-                    ) {
-                      executionPackage = admitted.executionPackage
-                    }
-                  }
-                  if (executionPackage === undefined) {
+                const workspace = await capturePrivateBunWorkspace({
+                  projectRoot: owner.root,
+                  packagePath: request.packagePath,
+                  captured: source,
+                  signal: preparationBudget.signal,
+                })
+                if (workspace !== undefined) {
+                  try {
+                    preparationBudget.reserve(workspace.captured.digest, request.packagePath)
+                    const unlocked = !workspace.captured.files.some(
+                      ({ path }) => path === 'bun.lock',
+                    )
                     requirePrivateBunResolutionPermission(
-                      dependencyInput,
+                      unlocked
+                        ? { state: 'unlocked', manifestPath: 'package.json' }
+                        : { state: 'locked', manifestPath: 'package.json', lockPath: 'bun.lock' },
                       host.allowResolutionNetwork,
                     )
-                    preparationBudget.reserve(request.package.digest, request.packagePath)
-                    if (dependencyInput.state === 'unlocked')
-                      host.onResolution?.(request.packagePath)
+                    if (unlocked) host.onResolution?.(request.packagePath)
                     const prepared = await preparePrivateBunPackage({
-                      captured: source,
+                      captured: workspace.captured,
+                      workspace,
                       installedSupport: host.installedBunSupport,
                       backend: host.backend,
                       projectRoot: owner.root.requestedPath,
@@ -300,12 +294,61 @@ function createSession(
                     } finally {
                       await prepared.dispose()
                     }
+                  } finally {
+                    await workspace.captured.dispose()
+                  }
+                } else {
+                  const dependencyInput = await inspectPrivateBunPackageInput(source)
+                  if (dependencyInput.state === 'direct') {
+                    executionPackage = request.package
+                  } else {
+                    const admitted = readPrivateAdmittedExecutionReuse({ planningBase, request })
+                    if (admitted !== undefined) {
+                      const current = await planPrivateDirectRun({
+                        request,
+                        executionPackage: admitted.executionPackage,
+                        installedSupport: host.installedBunSupport,
+                        backend: host.backend,
+                        agentProvider: host.agentProvider,
+                      })
+                      if (
+                        current.digest === admitted.recipeDigest &&
+                        current.observation.digest === admitted.observationDigest
+                      ) {
+                        executionPackage = admitted.executionPackage
+                      }
+                    }
+                    if (executionPackage === undefined) {
+                      requirePrivateBunResolutionPermission(
+                        dependencyInput,
+                        host.allowResolutionNetwork,
+                      )
+                      preparationBudget.reserve(request.package.digest, request.packagePath)
+                      if (dependencyInput.state === 'unlocked')
+                        host.onResolution?.(request.packagePath)
+                      const prepared = await preparePrivateBunPackage({
+                        captured: source,
+                        installedSupport: host.installedBunSupport,
+                        backend: host.backend,
+                        projectRoot: owner.root.requestedPath,
+                        coordinator: owner.coordinator,
+                        deadlineUnixMs: preparationBudget.deadlineUnixMs,
+                        signal: preparationBudget.signal,
+                        allowResolutionNetwork: host.allowResolutionNetwork === true,
+                      })
+                      try {
+                        preparationBudget.retain(prepared.files, request.packagePath)
+                        executionPackage = await publishCapturedPackage(packageStoreRoot, prepared)
+                      } finally {
+                        await prepared.dispose()
+                      }
+                    }
                   }
                 }
               } finally {
                 await source.dispose()
               }
-              executionPackages.set(request.package.digest, executionPackage)
+              executionPackages.set(executionKey, executionPackage)
             }
             recipes.push(
               await planPrivateDirectRun({
@@ -653,6 +696,7 @@ function isUnavailableDiagnosticCode(code: string): boolean {
     code === 'PACKAGE_BUN_SOURCE_UNSUPPORTED' ||
     code === 'PACKAGE_BUN_RESOLUTION_PERMISSION_REQUIRED' ||
     code === 'PACKAGE_BUN_RESOLUTION_FAILED' ||
+    code === 'PACKAGE_BUN_RESOLUTION_VERSION_UNAVAILABLE' ||
     code === 'PACKAGE_BUN_RESOLVED_SOURCE_UNSUPPORTED' ||
     code === 'PACKAGE_BUN_PREPARATION_FAILED' ||
     code === 'PROJECT_AGENT_UNAVAILABLE' ||

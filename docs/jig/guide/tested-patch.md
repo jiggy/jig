@@ -15,10 +15,10 @@ See the [installation guide](./index.md) for supported hosts.
 
 [Configure an Agent](./agents.md) and inspect
 `issue.json`, `bindings/specialist.ts`, and `flows/project/cases.json`.
-From the example directory:
+After [workspace setup](dependencies.md#local-workspace-packages), run from the example directory:
 
 ```sh
-jig review --allow-resolution-network
+jig review
 jig run binding:repair --input @issue.json --attach source=fixtures/log-report --out repair-result --timeout 5m
 ```
 
@@ -143,7 +143,7 @@ Bun/Node built-ins; network and installation are unavailable.
 The repair leaf itself needs no attachment or child Flow. Another root can
 reuse it through an exact Binding with its own command policy and JSON cases.
 For application development, work in the repository's authoring directory:
-install its development dependencies and run `bun test test` there. Those checks establish application
+use the root workspace installation and run `bun test test` there. Those checks establish application
 policy, not model quality or a market advantage.
 
 ## Two workers, two reviewable patches

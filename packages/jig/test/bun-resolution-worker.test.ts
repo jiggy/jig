@@ -6,7 +6,13 @@ import { join } from 'node:path'
 // Exercise the real worker and pinned Bun against synthetic loopback metadata.
 // Only fixture paths and the registry constant change. This is an acquisition
 // policy regression, not evidence about the production containment envelope.
-test.each(['denied', 'unsupported-root', 'unsupported-graph', 'transitive-fetch'] as const)(
+test.each([
+  'denied',
+  'unsupported-root',
+  'unsupported-graph',
+  'transitive-fetch',
+  'missing-version',
+] as const)(
   'resolution worker preserves the acquisition boundary: %s',
   async (mode) => {
     const root = await mkdtemp(join(tmpdir(), 'jig-resolution-worker-'))
@@ -83,7 +89,11 @@ test.each(['denied', 'unsupported-root', 'unsupported-graph', 'transitive-fetch'
         name: 'fixture',
         dependencies: {
           'fixture-root':
-            mode === 'unsupported-root' ? `http://127.0.0.1:${target.port}/root.tgz` : '1.0.0',
+            mode === 'unsupported-root'
+              ? `http://127.0.0.1:${target.port}/root.tgz`
+              : mode === 'missing-version'
+                ? '9.0.0'
+                : '1.0.0',
         },
       })
       const child = Bun.spawn(
@@ -118,6 +128,7 @@ test.each(['denied', 'unsupported-root', 'unsupported-graph', 'transitive-fetch'
         'unsupported-root': 'PACKAGE_BUN_SOURCE_UNSUPPORTED',
         'unsupported-graph': 'PACKAGE_BUN_RESOLVED_SOURCE_UNSUPPORTED',
         'transitive-fetch': 'PACKAGE_BUN_RESOLUTION_FAILED',
+        'missing-version': 'PACKAGE_BUN_RESOLUTION_VERSION_UNAVAILABLE',
       }
       expect(failure.code).toBe(expected[mode])
       if (mode === 'denied' || mode === 'unsupported-root') {

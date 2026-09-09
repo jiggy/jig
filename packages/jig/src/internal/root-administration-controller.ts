@@ -427,7 +427,13 @@ function administrationError(error: unknown, operation: string): RootAdministrat
         return new RootAdministrationError('PROJECT_CLOSED', 'project authority is closed')
       case 'ADMISSION_MISSING':
       case 'STALE_PLAN':
-        return new RootAdministrationError('UNAVAILABLE', 'project has no usable active admission')
+        return new RootAdministrationError(
+          'UNAVAILABLE',
+          'project has no usable active admission',
+          {
+            code: error.code,
+          },
+        )
       default:
         if (error.kind === 'unavailable') {
           return new RootAdministrationError('UNAVAILABLE', `${operation} is unavailable`)

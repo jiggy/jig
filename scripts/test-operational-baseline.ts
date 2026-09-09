@@ -175,6 +175,8 @@ try {
     code: 'ENOENT',
   })
 
+  await exerciseWorkspace(jig, consumer)
+
   // Exercise the public permission boundary from the installed archive, not
   // an example-specific installer or a private session option.
   const resolvingProject = join(consumer, 'resolving-project')
@@ -446,6 +448,93 @@ async function writeHelloFlow(project: string): Promise<void> {
       '',
     ].join('\n'),
   )
+}
+
+async function exerciseWorkspace(jig: string, consumer: string): Promise<void> {
+  const workspace = join(consumer, 'local-workspace')
+  const project = join(workspace, 'app')
+  await mkdir(workspace)
+  await run([jig, 'init', '--bare', project], consumer)
+  await writeHelloFlow(project)
+  await mkdir(join(workspace, 'libraries', 'greeting'), { recursive: true })
+  await writeFile(
+    join(workspace, 'package.json'),
+    JSON.stringify({ private: true, workspaces: ['app/flows/*', 'libraries/*'] }),
+  )
+  await writeFile(
+    join(workspace, 'libraries/greeting/package.json'),
+    JSON.stringify({
+      name: 'local-greeting',
+      version: '0.1.0',
+      type: 'module',
+      exports: './index.js',
+      dependencies: { 'is-number': '7.0.0' },
+    }),
+  )
+  const library = join(workspace, 'libraries/greeting/index.js')
+  await writeFile(
+    library,
+    'import isNumber from "is-number"; export const prefix = isNumber(3) ? "Local" : "Incorrect";\n',
+  )
+  await writeFile(
+    join(project, 'flows/hello/package.json'),
+    JSON.stringify({
+      name: 'workspace-hello',
+      type: 'module',
+      dependencies: { 'local-greeting': 'workspace:*' },
+    }),
+  )
+  const method = join(project, 'flows/hello/flow.ts')
+  const source = await readFile(method, 'utf8')
+  await writeFile(
+    method,
+    'import { prefix as localPrefix } from "local-greeting";\n' +
+      source.replace('?? "Hello"', '?? localPrefix'),
+  )
+  const missing = await run(
+    [jig, 'run', 'flow:flows/hello', '--input', '{"name":"Ada"}'],
+    project,
+    [2],
+    120_000,
+  )
+  assert.match(missing.stderr, /ADMISSION_MISSING:.*complete jig review/)
+  await run(
+    ['bun', '--no-env-file', '--config=/dev/null', 'install', '--ignore-scripts'],
+    workspace,
+  )
+  const approved = await run([jig, 'review', '--yes'], project, [0], 120_000)
+  assert.match(approved.stdout, /project is ready/)
+  const before = requireRecord(JSON.parse(await readFile(join(project, 'jig.lock'), 'utf8')))
+  await writeFile(library, 'export const prefix = "Updated";\n')
+  const original = await run(
+    [jig, 'run', 'flow:flows/hello', '--input', '{"name":"Ada"}'],
+    project,
+    [0],
+    120_000,
+  )
+  assert.equal(
+    requireRecord(requireRecord(JSON.parse(original.stdout)).output).greeting,
+    'Local, Ada!',
+  )
+  const revised = await run([jig, 'review', '--yes'], project, [0], 120_000)
+  assert.match(revised.stdout, /"changed": \[\s*"flow:flows\/hello"/)
+  const after = requireRecord(JSON.parse(await readFile(join(project, 'jig.lock'), 'utf8')))
+  assert.deepEqual(
+    before.packages,
+    after.packages,
+    'local dependency updates do not change the authored Flow digest',
+  )
+  const updated = await run(
+    [jig, 'run', 'flow:flows/hello', '--input', '{"name":"Ada"}'],
+    project,
+    [0],
+    120_000,
+  )
+  assert.equal(
+    requireRecord(requireRecord(JSON.parse(updated.stdout)).output).greeting,
+    'Updated, Ada!',
+  )
+  await run([jig, 'review', '--yes'], project, [0], 120_000)
 }
 
 async function writeMalformedFlow(project: string): Promise<void> {

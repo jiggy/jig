@@ -7,7 +7,7 @@ sample, and returns a finding supported by the observations it received.
 With Jig on a [supported host](https://jig.md/guide/), run from this directory:
 
 ```sh
-jig review --allow-resolution-network
+jig review
 jig run binding:analysis --input @input.json
 ```
 
@@ -28,4 +28,6 @@ implementation participate without changing the analysis method.
 
 This deliberately small example teaches a finite structured conversation,
 not general statistical analysis, guaranteed delivery, or a database service.
-Review resolves the declared dependencies and retains their exact bytes.
+The example uses the checkout's SDK workspace. Complete the
+[workspace setup](https://jig.md/guide/dependencies#local-workspace-packages)
+once; review captures the local dependency bytes.

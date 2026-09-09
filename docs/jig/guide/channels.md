@@ -4,10 +4,11 @@ A Flow can read selected Agent updates, filter them and choose their presentatio
 No logging capability or hook configuration is required.
 
 Use the [live-agent source example](https://github.com/jiggy/jig/tree/main/examples/live-agent).
-With Jig and a configured [native client](agents.md), run from that directory:
+After [workspace setup](dependencies.md#local-workspace-packages), with Jig and
+a configured [native client](agents.md), run from that directory:
 
 ```sh
-jig review --allow-resolution-network
+jig review
 jig run flow:flows/chat --input '{"instructions":"Explain why the sky is blue."}'
 ```
 

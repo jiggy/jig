@@ -1,5 +1,14 @@
 import { spawn } from 'node:child_process'
-import { copyFile, lstat, mkdir, opendir, readFile, rm, writeFile } from 'node:fs/promises'
+import {
+  copyFile,
+  lstat,
+  mkdir,
+  opendir,
+  readFile,
+  realpath,
+  rm,
+  writeFile,
+} from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 
 import {
@@ -23,6 +32,13 @@ interface SourceFile {
   readonly content: string
 }
 
+interface Workspace {
+  readonly target: string
+  readonly members: readonly string[]
+  readonly selected: readonly string[]
+}
+let workspace: Workspace | undefined
+
 class WorkerFailure extends Error {
   constructor(
     readonly code: string,
@@ -43,20 +59,24 @@ try {
   const first = await iterator.next()
   if (first.done) throw new WorkerFailure('PACKAGE_BUN_PROTOCOL', 'preparation source is missing')
   const source = requireSource(first.value)
+  workspace = source.workspace
   if (!(await iterator.next()).done) {
     throw new WorkerFailure('PACKAGE_BUN_PROTOCOL', 'preparation source has trailing data')
   }
   // Bun sees only its intended native inputs, not authored configuration,
   // foreign locks, preload files, or Flow code. Restore source after installation.
-  const inputs = source.files.filter(({ path }) => path === 'package.json' || path === 'bun.lock')
+  const inputPaths = new Set([
+    'package.json',
+    'bun.lock',
+    ...(workspace?.members.map((path) => `${path}/package.json`) ?? []),
+  ])
+  const inputs = source.files.filter(({ path }) => inputPaths.has(path))
   await materializeSource(inputs)
   const resolving = !inputs.some(({ path }) => path === 'bun.lock')
   if (resolving) await resolveMissingLock()
   await requireSupportedLock(resolving)
   await install()
-  await materializeSource(
-    source.files.filter(({ path }) => path !== 'package.json' && path !== 'bun.lock'),
-  )
+  await materializeSource(source.files.filter(({ path }) => !inputPaths.has(path)))
   await verifySource(source.files)
   const prepared = await capturePrepared()
   await sendPrepared(prepared)
@@ -129,7 +149,10 @@ async function requireSupportedLock(resolved: boolean): Promise<void> {
     )
   }
   try {
-    requirePrivateBunLockPolicy(value)
+    requirePrivateBunLockPolicy(
+      value,
+      workspace === undefined ? undefined : new Set(workspace.members),
+    )
   } catch {
     if (resolved) {
       throw new WorkerFailure(
@@ -139,6 +162,36 @@ async function requireSupportedLock(resolved: boolean): Promise<void> {
     }
     unsupportedSource()
   }
+  if (workspace !== undefined) {
+    const locked = (value as { workspaces: Record<string, Record<string, unknown>> }).workspaces
+    for (const path of ['', ...workspace.members]) {
+      const manifest = JSON.parse(await readFile(join(PACKAGE_ROOT, path, 'package.json'), 'utf8'))
+      const entry = locked[path]
+      const dependencyFields = [
+        'dependencies',
+        'devDependencies',
+        'optionalDependencies',
+        'peerDependencies',
+      ]
+      if (
+        entry === undefined ||
+        ['name', 'version'].some((field) => manifest[field] !== entry[field]) ||
+        dependencyFields.some(
+          (field) => canonical(manifest[field] ?? {}) !== canonical(entry[field] ?? {}),
+        )
+      )
+        throw new WorkerFailure(
+          'PACKAGE_BUN_LOCK_STALE',
+          'workspace manifests and bun.lock disagree; update the workspace lock explicitly',
+        )
+    }
+  }
+}
+
+function canonical(value: unknown): string {
+  if (value !== null && typeof value === 'object' && !Array.isArray(value))
+    return JSON.stringify(Object.entries(value).sort(([a], [b]) => a.localeCompare(b)))
+  return JSON.stringify(value) ?? ''
 }
 
 async function resolveMissingLock(): Promise<void> {
@@ -147,7 +200,13 @@ async function resolveMissingLock(): Promise<void> {
   try {
     requirePrivateBunResolutionManifest(
       JSON.parse(await readFile(join(PACKAGE_ROOT, 'package.json'), 'utf8')),
+      workspace === undefined ? undefined : 'root',
     )
+    for (const member of workspace?.members ?? [])
+      requirePrivateBunResolutionManifest(
+        JSON.parse(await readFile(join(PACKAGE_ROOT, member, 'package.json'), 'utf8')),
+        'member',
+      )
   } catch {
     throw new WorkerFailure(
       'PACKAGE_BUN_SOURCE_UNSUPPORTED',
@@ -168,16 +227,25 @@ async function resolveMissingLock(): Promise<void> {
       '--registry=https://registry.npmjs.org',
       '--no-progress',
       '--no-summary',
+      ...workspaceFilter(),
     ],
     { cwd: PACKAGE_ROOT, env: { LD_LIBRARY_PATH: '/jig-runtime/lib' } },
     64 * 1024,
     64 * 1024,
   )
-  if (result.exit !== 0)
+  if (result.exit !== 0) {
+    // Emit only a closed reason, never registry text, URLs, or credentials.
+    if (/No version matching|No matching version|No matching tag/i.test(result.stderr)) {
+      throw new WorkerFailure(
+        'PACKAGE_BUN_RESOLUTION_VERSION_UNAVAILABLE',
+        'a dependency version or tag is unavailable; resolution requests may already have occurred',
+      )
+    }
     throw new WorkerFailure(
       'PACKAGE_BUN_RESOLUTION_FAILED',
       'dependency resolution failed; network requests may already have occurred',
     )
+  }
 }
 
 function unsupportedSource(): never {
@@ -202,6 +270,7 @@ async function install(): Promise<void> {
       '--registry=https://registry.npmjs.org',
       '--no-progress',
       '--no-summary',
+      ...workspaceFilter(),
     ],
     {
       cwd: PACKAGE_ROOT,
@@ -231,18 +300,51 @@ async function install(): Promise<void> {
 async function capturePrepared(): Promise<readonly SourceFile[]> {
   const files: SourceFile[] = []
   let total = 0
-  const visit = async (root: string, prefix: string): Promise<void> => {
+  const active = new Set<string>()
+  const overrides = new Set<string>()
+  const visit = async (root: string, prefix: string, shared = false): Promise<void> => {
+    if (active.has(root))
+      throw new WorkerFailure(
+        'PACKAGE_BUN_OUTPUT_UNSUPPORTED',
+        'workspace dependency links form a recursive tree',
+      )
+    active.add(root)
     const directory = await opendir(root)
     const names: string[] = []
     for await (const entry of directory) names.push(entry.name)
     names.sort((left, right) => Buffer.from(left).compare(Buffer.from(right)))
     for (const name of names) {
       const path = prefix === '' ? name : `${prefix}/${name}`
+      if (
+        path
+          .split('/')
+          .some((part, index, parts) => part === '.bin' && parts[index - 1] === 'node_modules')
+      )
+        continue
+      if (shared && overrides.has(path)) continue
       requirePath(path)
-      const physical = join(root, name)
-      const information = await lstat(physical)
+      let physical = join(root, name)
+      let information = await lstat(physical)
+      if (information.isSymbolicLink() && workspace !== undefined) {
+        const resolved = await realpath(physical)
+        const member = workspace.members.find((member) => join(PACKAGE_ROOT, member) === resolved)
+        if (member === undefined)
+          throw new WorkerFailure(
+            'PACKAGE_BUN_OUTPUT_UNSUPPORTED',
+            'prepared dependencies contain an unauthorized link',
+          )
+        if (!workspace.selected.includes(member)) continue
+        physical = resolved
+        information = await lstat(physical)
+      }
       if (information.isDirectory() && !information.isSymbolicLink()) {
-        await visit(physical, path)
+        if (
+          !shared &&
+          /^node_modules\/(?:@[^/]+\/)?[^/]+$/.test(path) &&
+          !/^node_modules\/@[^/]+$/.test(path)
+        )
+          overrides.add(path)
+        await visit(physical, path, shared)
         continue
       }
       if (!information.isFile() || information.isSymbolicLink() || information.nlink !== 1) {
@@ -257,6 +359,8 @@ async function capturePrepared(): Promise<readonly SourceFile[]> {
           'prepared dependency tree has too many files',
         )
       }
+      if (information.size > PRIVATE_BUN_PREPARATION_LIMITS.preparedBytes - total)
+        throw new WorkerFailure('PACKAGE_BUN_OUTPUT_LIMIT', 'prepared dependency tree is too large')
       const bytes = new Uint8Array(await readFile(physical))
       total += bytes.byteLength
       if (total > PRIVATE_BUN_PREPARATION_LIMITS.preparedBytes) {
@@ -264,13 +368,41 @@ async function capturePrepared(): Promise<readonly SourceFile[]> {
       }
       files.push(Object.freeze({ path, content: Buffer.from(bytes).toString('base64') }))
     }
+    active.delete(root)
   }
-  await visit(PACKAGE_ROOT, '')
+  await visit(workspace === undefined ? PACKAGE_ROOT : join(PACKAGE_ROOT, workspace.target), '')
+  if (workspace !== undefined) {
+    const modules = join(PACKAGE_ROOT, 'node_modules')
+    if (
+      await lstat(modules).then(
+        () => true,
+        (error) => {
+          if (error.code === 'ENOENT') return false
+          throw error
+        },
+      )
+    )
+      await visit(modules, 'node_modules', true)
+    const lock = await readFile(join(PACKAGE_ROOT, 'bun.lock'))
+    total += lock.byteLength
+    if (
+      total > PRIVATE_BUN_PREPARATION_LIMITS.preparedBytes ||
+      files.length >= PRIVATE_BUN_PREPARATION_LIMITS.preparedFiles
+    )
+      throw new WorkerFailure(
+        'PACKAGE_BUN_OUTPUT_LIMIT',
+        'prepared workspace exceeds its output budget',
+      )
+    files.push({ path: 'bun.lock', content: lock.toString('base64') })
+  }
   files.sort((left, right) => Buffer.from(left.path).compare(Buffer.from(right.path)))
   return Object.freeze(files)
 }
 
-function requireSource(value: unknown): { readonly files: readonly SourceFile[] } {
+function requireSource(value: unknown): {
+  readonly files: readonly SourceFile[]
+  readonly workspace?: Workspace
+} {
   const root = ordinaryRecord(value)
   if (
     root?.type !== 'source' ||
@@ -308,7 +440,51 @@ function requireSource(value: unknown): { readonly files: readonly SourceFile[] 
   ) {
     throw new WorkerFailure('PACKAGE_BUN_PROTOCOL', 'locked Bun source is incomplete')
   }
-  return Object.freeze({ files: Object.freeze(files) })
+  let selectedWorkspace: Workspace | undefined
+  if (root.workspace !== undefined) {
+    const record = ordinaryRecord(root.workspace)
+    if (
+      record === undefined ||
+      typeof record.target !== 'string' ||
+      !Array.isArray(record.members) ||
+      !Array.isArray(record.selected) ||
+      record.members.length === 0 ||
+      record.members.length > 256 ||
+      record.selected.length > record.members.length ||
+      !record.members.includes(record.target) ||
+      !record.selected.includes(record.target)
+    )
+      throw new WorkerFailure('PACKAGE_BUN_PROTOCOL', 'workspace preparation metadata is invalid')
+    for (const member of record.members) {
+      if (typeof member !== 'string')
+        throw new WorkerFailure('PACKAGE_BUN_PROTOCOL', 'workspace path is invalid')
+      requirePath(member)
+      if (
+        member.split('/').includes('node_modules') ||
+        !files.some(({ path }) => path === `${member}/package.json`)
+      )
+        throw new WorkerFailure('PACKAGE_BUN_PROTOCOL', 'workspace manifest is missing')
+    }
+    if (
+      new Set(record.members).size !== record.members.length ||
+      new Set(record.selected).size !== record.selected.length ||
+      record.selected.some((path) => !(record.members as unknown[]).includes(path))
+    )
+      throw new WorkerFailure('PACKAGE_BUN_PROTOCOL', 'workspace membership is invalid')
+    selectedWorkspace = {
+      target: record.target,
+      members: record.members as string[],
+      selected: record.selected as string[],
+    }
+  }
+  return Object.freeze({
+    files: Object.freeze(files),
+    ...(selectedWorkspace === undefined ? {} : { workspace: selectedWorkspace }),
+  })
+}
+
+function workspaceFilter(): string[] {
+  return workspace === undefined ? [] : ['--filter', `./${workspace.target}`]
 }
 
 function requirePath(path: string): void {

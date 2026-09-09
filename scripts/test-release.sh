@@ -51,7 +51,13 @@ for application in tested-patch live-agent dataset-analysis; do
   cp "examples/$application/package.json" "$application_copy/"
   for member in flows test fixtures issue.json input.json batch.json; do
     if [ -e "examples/$application/$member" ]; then
-      cp -R "examples/$application/$member" "$application_copy/"
+      bun --no-env-file -e '
+        import { cp } from "node:fs/promises";
+        import { basename } from "node:path";
+        await cp(Bun.argv[1], Bun.argv[2], {
+          recursive: true, filter: path => basename(path) !== "node_modules",
+        });
+      ' "examples/$application/$member" "$application_copy/$member"
     fi
   done
   bun -e '
