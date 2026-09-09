@@ -26,6 +26,13 @@ admitted FLOW packages.
   are private composition or test seams.
 - Expose only the documented CLI and authoring surface; private host machinery
   is not a provider, runtime, or containment SPI.
+- Default `init` writes an ordinary greeting Flow; `--bare` writes only the
+  skeleton. Neither installs, networks, approves, or executes. Generated
+  packages use the same dependency review as consumer-authored packages.
+- Command help and syntax errors do not acquire execution authority. Review
+  leads with complete changed policy; `--details` includes unchanged policy.
+  Run stdout stays JSON/NDJSON. Plain elapsed status uses terminal stderr only;
+  cancellation requested and cleanup confirmed are separate facts.
 - FLOW and Jig specifications and machine schemas are authoritative. Accept
   only bounded, canonical current formats.
 - Capture mutable project source before evaluation, admission, preparation, or

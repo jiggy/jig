@@ -77,6 +77,11 @@ child calls, project commands, and Agent providers.
   Unreadable retained state has a distinct closed diagnostic from unsafe
   filesystem ownership. Preserve it on failed acquisition; never infer permission
   to reset admission or bypass cleanup from a decoding failure.
+- Review projects only explicit public policy and allowlisted non-secret Agent
+  selections. A change-first display must retain every changed record; full
+  policy remains available without revealing private recipes or consent tokens.
+  Missing-target suggestions come from the retained admitted revision, never a
+  live filesystem scan, and cannot grant authority or select a replacement.
 - Deadlines and cancellation fence descendants, settle each terminal once,
   and complete bounded cleanup. Do not replay uncertain operations.
 - Durable transitions use exact identities and conflict-safe commits;

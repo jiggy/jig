@@ -419,7 +419,7 @@ function createSession(
           candidate,
           lockMode: request.lockMode,
           beforePersistApplicable(applicable): void {
-            review = renderPrivateProjectPlanReview(applicable)
+            review = renderPrivateProjectPlanReview(applicable, undefined, host.agentProvider)
           },
         })
         preparationBudget.signal.throwIfAborted()

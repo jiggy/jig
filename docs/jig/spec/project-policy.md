@@ -18,7 +18,14 @@ The governing rule is:
 a newline and exits successfully. It does not acquire a project or sandbox,
 read project configuration, or look up a version in the registry.
 
-`jig init --bare` creates:
+`jig init <directory>` creates an ordinary editable greeting package under
+`flows/hello`, a short project README, and the project skeleton below. Its
+package-local manifest selects the published `@jigging/flow` alpha tag. It uses
+the same explicit missing-lock resolution permission and review as any other
+package; initialization performs no installation, network requests, approval,
+or execution. A destination must not exist. Initialization never replaces files.
+
+`jig init --bare <directory>` creates only:
 
 ```text
 project/
@@ -386,6 +393,15 @@ A successful review
 shows the complete added, removed, and changed package, Binding, and target
 identities. Current and proposed package entries include their full Package/1
 content digest, which is the same portable identity written to `jig.lock`.
+The default CLI view leads with additions, changes, removals, and the resulting
+target list. It shows every changed portable record in full and omits unchanged
+records. `jig review --details` shows complete current and proposed policy.
+When Agent capabilities are present, both views identify the proposed host
+client, configured model, and API endpoint or native authentication mode through
+a non-secret field allowlist. They never expose credentials or private paths.
+Approval behavior is identical in both views; `--details` is display policy,
+not another admission operation.
+
 The review is not a source-file diff; authors inspect editable source with
 their editor or version-control tools before approval. Its text is bounded and
 escapes project-controlled Unicode so terminal control characters cannot
@@ -552,6 +568,13 @@ A Run is `pending` until it has one durable terminal:
 - failure with a closed failure code and bounded diagnostics; or
 - `COORDINATOR_LOST` when earlier dispatch may have occurred but no result can
   be proved.
+
+The installed CLI preserves JSON stdout, or NDJSON for selected channels.
+Plain elapsed status and cancellation updates are terminal-only stderr;
+diagnostics remain available with redirected streams. A cancellation request
+is not a cleanup acknowledgement. Execution completion, application outcome,
+delivery, and late cleanup failure remain distinct observations. Status output
+does not turn `blocked` into task success or unknown delivery into a retry hint.
 
 Possibly dispatched work is never replayed merely because its result is
 unknown. Closing the project session rejects new starts, revokes its issued Run

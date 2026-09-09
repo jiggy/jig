@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 
 import { randomBytes } from 'node:crypto'
+import { lstat } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { createInterface } from 'node:readline/promises'
 import { setTimeout as delay } from 'node:timers/promises'
@@ -13,7 +14,7 @@ import {
   type RootRunStatus,
   type RootRunTerminal,
 } from './administration/root.js'
-import { BareInitError, initializeBareProject } from './bare-init.js'
+import { PrivateCliProgress } from './cli-progress.js'
 import type { PrivateDeliveryConnection, PrivateDeliveryReceipt } from './internal/file-delivery.js'
 import {
   PrivateFileInputError,
@@ -24,28 +25,89 @@ import {
   sha256,
 } from './internal/linux-file-input.js'
 import { PrivateRootRunFiles } from './internal/root-run-files.js'
-import type { PrivateRunChannelOutput } from './internal/run-channels.js'
 import {
   PRIVATE_DEFAULT_ROOT_RUN_TIMEOUT_MS,
   PRIVATE_MAX_ROOT_RUN_TIMEOUT_MS,
   PRIVATE_ROOTLESS_COMMAND_OVERHEAD_ALLOWANCE_MS,
   privateRootlessCommandLifetime,
 } from './internal/root-run-timeout-policy.js'
+import type { PrivateRunChannelOutput } from './internal/run-channels.js'
 import { canonicalJson, decodeJson1, JSON_1_LIMITS, Json1Error, type JsonValue } from './json.js'
 import { bindingRef, flowRef, type RunTargetRef } from './project/author.js'
+import { createProject, ProjectInitError } from './project-init.js'
 
-const HELP = `Usage:
-  jig init --bare <directory>
-  jig review [project] [--allow-resolution-network] [--yes]
-  jig run <flow:path|binding:id> [--input JSON|@FILE] [--attach NAME=DIR]
-      [--select NAME=FILE] [--out DIR] [--receive CHANNEL] [--timeout DURATION]
-  jig --version
+const HELP = `Jig runs reusable methods with powers you approve.
 
---allow-resolution-network permits fresh missing-lock resolution for this review.
-Bun may contact dependency-selected public or private-network services before
-graph validation. Requests cannot be undone if preparation fails or execution
-is declined. Unsupported dependencies may still fail. Runs gain no network
-access. --yes approves execution admission only, not resolution networking.`
+Usage:
+  jig init <directory>       Create a project with a small greeting Flow
+  jig review [project]       Review changes and approve an exact revision
+  jig run <target>           Run a reviewed Flow or Binding
+  jig --version             Print the installed version
+
+Start here:
+  jig init hello-jig
+  cd hello-jig
+  jig review --allow-resolution-network
+  jig run flow:flows/hello --input '{"name":"Ada"}'
+
+Use jig <command> --help for options and examples.
+Guide: https://jig.md/guide/`
+
+const COMMAND_HELP = {
+  init: `Usage: jig init [--bare] <directory>
+
+Create a new editable project and greeting Flow. No installation, network
+requests, approval, or execution happens during initialization.
+
+  --bare     Create only jig.ts and empty flows/ and bindings/ directories
+
+Example: jig init hello-jig
+The destination must not exist; existing files are never replaced.`,
+  review: `Usage: jig review [project] [--allow-resolution-network] [--yes] [--details]
+
+Capture source, prepare dependencies, show changes, then ask for approval.
+The project defaults to the current directory. This command has side effects:
+it retains private snapshots and, after approval, updates jig.lock.
+
+  --allow-resolution-network  Permit fresh resolution for missing dependency locks
+  --yes                      Approve the displayed revision without a prompt
+  --details                  Show complete policy when proposing a change
+
+Examples:
+  jig review
+  jig review --allow-resolution-network
+  jig review ./my-project --yes
+
+Resolution can contact dependency-selected public or private-network services
+before graph validation. Requests cannot be undone by declining approval.
+--yes does not grant resolution networking. Runs gain no network access.
+Supplied locks stay frozen; stale locks must be updated explicitly.`,
+  run: `Usage: jig run <flow:path|binding:id> [options]
+
+Run an exact reviewed target in the current project. No dependencies are
+installed and source changes are not approved automatically.
+
+  --input JSON|@FILE  Supply JSON inline or from a file (default: {})
+  --attach NAME=DIR   Capture a declared read attachment; repeat for each name
+  --select NAME=FILE  Select a relative file within an attachment; repeat as needed
+  --out DIR          Save a result packet to a new directory outside input roots
+  --receive CHANNEL  Stream a declared output channel; repeat for distinct names
+  --timeout DURATION Set the execution deadline (default: 30s; maximum: 24h)
+                     Units: ms, s, m, h. Cleanup still runs after the deadline.
+
+Examples:
+  jig run flow:flows/hello --input '{"name":"Ada"}'
+  jig run binding:repair --input @issue.json --attach source=./src --out ./review
+  jig run binding:worker --receive progress --timeout 2m
+
+Ctrl-C cancels owned work and waits for cleanup. Repeating a run starts new work.
+Stdout is JSON, or NDJSON with --receive. Diagnostics and terminal status use
+stderr; scripts should check the result and exit status.`,
+} as const
+
+function usage(command: keyof typeof COMMAND_HELP, message: string): never {
+  throw new CliDiagnostic('JIG_USAGE', `${message}\n\n${COMMAND_HELP[command]}`, 2)
+}
 
 const RESOLUTION_WARNING =
   'Bun may contact dependency-selected public or private-network services before graph validation; requests cannot be undone, and unsupported dependencies may still fail. Applies only to this review; Runs gain no network access.'
@@ -75,6 +137,7 @@ export interface PrivateCliOptions {
   readonly currentDirectory?: string
   readonly signal?: AbortSignal
   readonly interactive?: boolean
+  readonly terminalOutput?: boolean
   readonly confirm?: (prompt: string, signal?: AbortSignal) => Promise<boolean>
   readonly writeOutput?: (text: string) => void
   readonly writeRecord?: (text: string) => Promise<void>
@@ -83,6 +146,7 @@ export interface PrivateCliOptions {
 }
 
 interface CliRuntime {
+  readonly progress: PrivateCliProgress
   readonly host: PrivateCliCommandHost
   readonly currentDirectory: string
   readonly signal?: AbortSignal
@@ -115,6 +179,12 @@ export async function main(
     return 0
   }
   if (isHelpRequest(arguments_)) {
+    runtime.writeOutput(
+      `${arguments_.length === 1 ? HELP : COMMAND_HELP[arguments_[0] as keyof typeof COMMAND_HELP]}\n`,
+    )
+    return 0
+  }
+  if (arguments_.length === 0) {
     runtime.writeOutput(`${HELP}\n`)
     return 0
   }
@@ -123,7 +193,7 @@ export async function main(
     if (arguments_[0] === 'init') return await executeInit(arguments_, runtime)
     if (arguments_[0] === 'review') return await executeReview(arguments_, runtime)
     if (arguments_[0] === 'run') return await executeRun(arguments_, runtime)
-    runtime.writeError(`${HELP}\n`)
+    runtime.writeError(`Unknown command. Use jig --help to see available commands.\n\n${HELP}\n`)
     return 2
   } catch (error) {
     if (runtime.signal?.aborted) {
@@ -131,12 +201,27 @@ export async function main(
       return 2
     }
     return renderFailure(error, runtime)
+  } finally {
+    runtime.progress.close()
   }
 }
 
 /** Whether the installed command needs to acquire the private execution host. */
 export function privateCliRequiresHost(arguments_: readonly string[]): boolean {
-  return !isHelpRequest(arguments_) && (arguments_[0] === 'review' || arguments_[0] === 'run')
+  if (isHelpRequest(arguments_)) return false
+  try {
+    if (arguments_[0] === 'review') {
+      parseReview(arguments_, '.')
+      return true
+    }
+    if (arguments_[0] === 'run') {
+      parseRun(arguments_)
+      return true
+    }
+  } catch {
+    // Invalid syntax must be explained even on an unsupported host.
+  }
+  return false
 }
 
 function isHelpRequest(arguments_: readonly string[]): boolean {
@@ -150,21 +235,34 @@ function isHelpRequest(arguments_: readonly string[]): boolean {
 }
 
 async function executeInit(arguments_: readonly string[], runtime: CliRuntime): Promise<number> {
-  if (arguments_.length !== 3 || arguments_[1] !== '--bare') {
-    runtime.writeError(`${HELP}\n`)
-    return 2
-  }
+  const bare = arguments_[1] === '--bare'
+  const destination = arguments_[bare ? 2 : 1]
+  if (
+    arguments_.length !== (bare ? 3 : 2) ||
+    destination === undefined ||
+    destination.startsWith('-')
+  )
+    usage('init', 'Specify a new project directory.')
   try {
-    await initializeBareProject(arguments_[2]!)
-    runtime.writeOutput('created bare Jig project\n')
+    await createProject(resolve(runtime.currentDirectory, destination), undefined, bare)
+    runtime.writeOutput(
+      bare
+        ? 'created bare Jig project\n'
+        : `Created Jig project ${asciiJsonString(destination)}.\n\nNext:\n${/^[\x20-\x7e]+$/.test(destination) ? `  cd ${shellWord(destination)}\n` : '  Open the created directory in your terminal, then:\n'}  jig review --allow-resolution-network\n  jig run flow:flows/hello --input '{"name":"Ada"}'\n\nNo dependencies installed or execution approved. See jig review --help.\n`,
+    )
     return 0
   } catch (error) {
-    if (error instanceof BareInitError) {
+    if (error instanceof ProjectInitError) {
       runtime.writeError(renderDiagnostic(error.code, error.message))
       return error.kind === 'invalid' ? 1 : 2
     }
     throw error
   }
+}
+
+function shellWord(value: string): string {
+  // Do not turn an untrusted path into pasteable shell operators or new lines.
+  return `'${value.replaceAll("'", "'\\''")}'`
 }
 
 async function executeReview(arguments_: readonly string[], runtime: CliRuntime): Promise<number> {
@@ -173,6 +271,7 @@ async function executeReview(arguments_: readonly string[], runtime: CliRuntime)
     parsed.project,
     runtime,
     async (session) => {
+      runtime.progress.stage('Capturing source and preparing dependencies for review')
       const plan = await session.plan({ lockMode: 'update' })
       if (plan.state === 'unchanged') {
         runtime.writeOutput('project is ready\n')
@@ -180,7 +279,7 @@ async function executeReview(arguments_: readonly string[], runtime: CliRuntime)
       }
 
       runtime.writeOutput(
-        plan.review.text.endsWith('\n') ? plan.review.text : `${plan.review.text}\n`,
+        `${(parsed.details ? plan.review.details : plan.review.text).trimEnd()}\n`,
       )
       if (!parsed.yes) {
         if (!runtime.interactive) {
@@ -190,8 +289,9 @@ async function executeReview(arguments_: readonly string[], runtime: CliRuntime)
             2,
           )
         }
+        runtime.progress.stage('Waiting for your approval; no Flow has been started')
         const accepted = await runtime.confirm(
-          'Admit this exact project revision? [y/N] ',
+          'Approve this exact revision for execution? [y/N] ',
           runtime.signal,
         )
         if (!accepted) {
@@ -203,6 +303,7 @@ async function executeReview(arguments_: readonly string[], runtime: CliRuntime)
       }
 
       runtime.signal?.throwIfAborted()
+      runtime.progress.stage('Recording approval for the reviewed revision')
       await session.apply({ planDigest: plan.planDigest })
       runtime.writeOutput('project is ready\n')
       return 0
@@ -221,6 +322,7 @@ async function executeReview(arguments_: readonly string[], runtime: CliRuntime)
 
 async function executeRun(arguments_: readonly string[], runtime: CliRuntime): Promise<number> {
   const parsed = parseRun(arguments_)
+  runtime.progress.stage('Reading selected inputs')
   const outputStop = new AbortController()
   runtime = {
     ...runtime,
@@ -284,7 +386,11 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
             : (error as NodeJS.ErrnoException).code === 'EACCES'
               ? 'the selected --input file is not readable by the current operator'
               : '--input file capture failed; check that it is a stable, readable regular file'
-    throw new CliDiagnostic('JIG_RUN_INPUT_INVALID', message, 1)
+    throw new CliDiagnostic(
+      'JIG_RUN_INPUT_INVALID',
+      `${message}\nFile: ${asciiJsonString(parsed.inputFile!.slice(0, 512))}\nCheck --input and the file contents. No Flow was started.`,
+      1,
+    )
   }
   let capture: ReturnType<typeof privateCaptureAttachments>
   try {
@@ -310,6 +416,25 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
   )
   try {
     if (parsed.output !== undefined) {
+      // An explanatory check only: the delivery owner still revalidates and
+      // publishes without replacement. This grants no filesystem authority.
+      const occupied = await lstat(files.identity.output!).then(
+        () => true,
+        (error) => {
+          if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false
+          throw new CliDiagnostic(
+            'JIG_OUTPUT_INVALID',
+            'cannot inspect --out; check its path and directory permissions. No Flow was started.',
+            1,
+          )
+        },
+      )
+      if (occupied)
+        throw new CliDiagnostic(
+          'JIG_OUTPUT_EXISTS',
+          `output destination ${asciiJsonString(parsed.output.slice(0, 512))} already exists.\nChoose a new --out directory. Existing files are never replaced. No Flow was started.`,
+          1,
+        )
       if (runtime.host.delivery === undefined)
         throw new CliDiagnostic(
           'JIG_DELIVERY_UNAVAILABLE',
@@ -334,11 +459,13 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
       runtime.currentDirectory,
       runtime,
       async (session) => {
+        runtime.progress.stage('Submitting the reviewed target')
         const receipt = await session.rootAdministration.startRun({
           submissionId: runtime.createSubmissionId(),
           target: parsed.target,
           input,
         })
+        runtime.progress.stage('Waiting for the Run result (Ctrl-C to cancel)')
         return await waitForTerminal(
           session.rootAdministration,
           receipt.runId,
@@ -370,6 +497,7 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
         input: { digest: sha256(canonicalJson(input)), attachments: files.identity.attachments },
       } as unknown as JsonValue
       try {
+        runtime.progress.stage('Publishing the result packet')
         delivery = await runtime.host.delivery!.publish(
           record,
           !cleanupFailed && status.terminal.status === 'succeeded'
@@ -405,6 +533,52 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
       return 2
     }
     await emitTerminal(decodeJson1(encodedRecord))
+    const terminal = status.terminal
+    if (
+      terminal.status === 'failed' &&
+      terminal.details !== undefined &&
+      terminal.details !== null &&
+      typeof terminal.details === 'object' &&
+      !Array.isArray(terminal.details)
+    ) {
+      const details = terminal.details as Readonly<Record<string, JsonValue>>
+      if (details.code === 'RUN_TARGET_NOT_FOUND') {
+        runtime.writeError(
+          'JIG_RUN_TARGET_NOT_FOUND: that target is not in the reviewed revision. No Flow was started.\n',
+        )
+        const targets = details.availableTargets
+        if (Array.isArray(targets)) {
+          runtime.writeError('Reviewed targets:\n')
+          for (const target of targets.slice(0, 16))
+            if (typeof target === 'string')
+              runtime.writeError(`  ${asciiJsonString(target.slice(0, 512))}\n`)
+          if (targets.length === 0) runtime.writeError('  None. Add a Flow under flows/ first.\n')
+        }
+        runtime.writeError(
+          'Choose an exact target above, or run jig review after changing jig.ts. No target is selected automatically.\n',
+        )
+      } else if (terminal.code === 'INVALID_INPUT') {
+        runtime.writeError('JIG_RUN_INPUT_INVALID: input does not match the target input schema.\n')
+        if (typeof details.instancePointer === 'string')
+          runtime.writeError(`Value: ${asciiJsonString(details.instancePointer.slice(0, 512))}\n`)
+        runtime.writeError(
+          'Check --input against the Flow input.schema.json; see the JSON result for validation details.\n',
+        )
+      }
+    }
+    runtime.progress.note(
+      terminal.status === 'succeeded'
+        ? `Execution completed. Application outcome: ${asciiJsonString(terminal.outcome)}. See output in the JSON result.`
+        : `Execution ${terminal.status}. Code: ${asciiJsonString(terminal.code)}. ${terminal.status === 'lost' ? 'Effects may be uncertain; do not blindly repeat the Run.' : 'Inspect the result and diagnostics before starting new work.'}`,
+    )
+    if (delivery !== undefined)
+      runtime.progress.note(
+        `Delivery: ${delivery.status}. Destination: ${asciiJsonString(parsed.output!)}.${delivery.status === 'written' ? ' Inspect result.json and files/.' : ' Check the destination before starting new work.'}`,
+      )
+    if (runtime.host.delivery?.checkpoint != null)
+      runtime.progress.note(
+        'Retained checkpoint information is in result.json; it is not proof of successful execution.',
+      )
     if (cleanupFailed) {
       runtime.writeError(
         renderDiagnostic(
@@ -438,18 +612,31 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
 function parseReview(
   arguments_: readonly string[],
   currentDirectory: string,
-): { readonly project: string; readonly yes: boolean; readonly allowResolutionNetwork: boolean } {
+): {
+  readonly project: string
+  readonly yes: boolean
+  readonly details: boolean
+  readonly allowResolutionNetwork: boolean
+} {
   let project: string | undefined
   let yes = false
   let allowResolutionNetwork = false
+  let details = false
   for (const argument of arguments_.slice(1)) {
     if (argument === '--yes' && !yes) yes = true
+    else if (argument === '--details' && !details) details = true
     else if (argument === '--allow-resolution-network' && !allowResolutionNetwork)
       allowResolutionNetwork = true
     else if (!argument.startsWith('-') && project === undefined) project = argument
-    else throw new CliDiagnostic('JIG_USAGE', HELP, 2)
+    else
+      usage(
+        'review',
+        argument.startsWith('-')
+          ? `Unknown or repeated review option ${asciiJsonString(argument.slice(0, 128))}.`
+          : 'Specify only one project directory.',
+      )
   }
-  return { project: project ?? currentDirectory, yes, allowResolutionNetwork }
+  return { project: project ?? currentDirectory, yes, details, allowResolutionNetwork }
 }
 
 function parseRun(arguments_: readonly string[]): {
@@ -461,7 +648,8 @@ function parseRun(arguments_: readonly string[]): {
   readonly timeoutMs: number
   readonly receive: readonly string[]
 } {
-  if (arguments_.length < 2) throw new CliDiagnostic('JIG_USAGE', HELP, 2)
+  if (arguments_.length < 2)
+    usage('run', 'Choose a target, for example flow:flows/hello or binding:repair.')
   const target = parseTarget(arguments_[1]!)
   let input: JsonValue = {}
   let inputFile: string | undefined, output: string | undefined
@@ -474,7 +662,9 @@ function parseRun(arguments_: readonly string[]): {
   for (let index = 2; index < arguments_.length; index += 2) {
     const option = arguments_[index]
     const value = arguments_[index + 1]
-    if (value === undefined) throw new CliDiagnostic('JIG_USAGE', HELP, 2)
+    if (!['--input', '--attach', '--select', '--out', '--receive', '--timeout'].includes(option!))
+      usage('run', `Unknown run option ${asciiJsonString(option!.slice(0, 128))}.`)
+    if (value === undefined || value.startsWith('--')) usage('run', `${option} needs a value.`)
     if (option === '--receive') {
       if (
         !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value) ||
@@ -501,7 +691,11 @@ function parseRun(arguments_: readonly string[]): {
       try {
         input = decodeJson1(textEncoder.encode(value))
       } catch {
-        throw new CliDiagnostic('JIG_RUN_INPUT_INVALID', '--input must be FLOW JSON/1', 1)
+        throw new CliDiagnostic(
+          'JIG_RUN_INPUT_INVALID',
+          '--input must be valid JSON; quote inline JSON or use --input @file.json. No Flow was started.',
+          1,
+        )
       }
       continue
     }
@@ -539,7 +733,7 @@ function parseRun(arguments_: readonly string[]): {
       }
       continue
     }
-    throw new CliDiagnostic('JIG_USAGE', HELP, 2)
+    usage('run', `${option} may only be supplied once.`)
   }
   if ([...selectors.keys()].some((name) => !attachments.has(name)))
     throw new CliDiagnostic(
@@ -603,7 +797,7 @@ function parseTarget(value: string): RunTargetRef {
   }
   throw new CliDiagnostic(
     'JIG_RUN_TARGET_INVALID',
-    'the target must be flow:<path> or binding:<id>',
+    'use flow:<path> or binding:<id>, for example flow:flows/hello. Run jig review after adding a target.',
     1,
   )
 }
@@ -616,6 +810,7 @@ async function withProjectSession<T>(
   onSettledCloseFailure?: () => void,
 ): Promise<T> {
   runtime.signal?.throwIfAborted()
+  runtime.progress.stage('Opening the project and checking reviewed support')
   const session = await runtime.host.acquire(project, acquisition)
   let closePromise: Promise<void> | undefined
   const close = () => (closePromise ??= session.close())
@@ -638,7 +833,10 @@ async function withProjectSession<T>(
   let closeFailed = false
   let closeFailure: unknown
   try {
+    runtime.progress.stage('Settling owned execution and cleaning up')
     await close()
+    if (runtime.signal?.aborted)
+      runtime.progress.note('Owned execution cleanup completed. The command remains interrupted.')
   } catch (error) {
     closeFailed = true
     closeFailure = error
@@ -697,7 +895,17 @@ export function publicTerminal(terminal: RootRunTerminal): JsonValue {
 }
 
 function cliRuntime(options: PrivateCliOptions): CliRuntime {
+  const writeError =
+    options.writeError ??
+    ((text: string) => {
+      process.stderr.write(text)
+    })
   return {
+    progress: new PrivateCliProgress(
+      options.terminalOutput ?? process.stderr.isTTY === true,
+      writeError,
+      options.signal,
+    ),
     host: options.host ?? unavailableHost,
     currentDirectory: options.currentDirectory ?? process.cwd(),
     ...(options.signal === undefined ? {} : { signal: options.signal }),
@@ -715,11 +923,7 @@ function cliRuntime(options: PrivateCliOptions): CliRuntime {
       ((text) => {
         process.stdout.write(text)
       }),
-    writeError:
-      options.writeError ??
-      ((text) => {
-        process.stderr.write(text)
-      }),
+    writeError,
     createSubmissionId:
       options.createSubmissionId ?? (() => `jig-cli-${randomBytes(16).toString('hex')}`),
   }
@@ -760,6 +964,35 @@ function renderFailure(error: unknown, runtime: CliRuntime): 1 | 2 {
   if (error instanceof ProjectAdministrationError) {
     const projected = projectError(error.code)
     const candidateHints: Record<string, string> = {
+      METADATA_DELIMITER:
+        'FLOW.md needs YAML metadata between two exact --- lines at the start of the file',
+      METADATA_INVALID_YAML:
+        'FLOW.md metadata is not valid YAML; check indentation, quotes and key/value syntax',
+      METADATA_DUPLICATE_KEY: 'FLOW.md repeats a metadata key; keep one value for each key',
+      METADATA_DESCRIPTION: 'provide a nonempty text description in FLOW.md',
+      METADATA_FIELD:
+        'a FLOW.md field has an unsupported name or shape; check the indicated field against https://flow.jig.md/spec/package-format',
+      METADATA_YAML_FEATURE:
+        'use ordinary YAML values without anchors, aliases, tags or merge keys in FLOW.md',
+      METADATA_USES: 'each uses slot must declare a package-local contract or local: true',
+      METADATA_REFERENCE: 'use a canonical package-local ./ reference in FLOW.md',
+      PACKAGE_FLOW_MISSING: 'the selected package needs an exact-case FLOW.md file',
+      PACKAGE_ENTRYPOINT_AMBIGUOUS:
+        'keep only one root flow.<suffix> implementation in the package',
+      PROJECT_BINDING_SETTINGS_INVALID:
+        'Binding settings do not match the Flow settings schema; correct the indicated value',
+      PROJECT_BINDING_PACKAGE_MISSING:
+        'the Binding references a Flow not selected by jig.ts; correct the path or project membership',
+      PROJECT_BINDING_SLOT_MISSING:
+        'a child slot references a target not selected by jig.ts; correct the slot or project membership',
+      PROJECT_MEMBER_MISSING:
+        'a selected project member is missing; restore it or update the membership in jig.ts',
+      PROJECT_MEMBER_COLLISION:
+        'project members have colliding paths or names; give each selected member a distinct identity',
+      PROJECT_EVALUATION_FAILED:
+        'the project definition could not be evaluated; check jig.ts and its imports for syntax or runtime errors',
+      PROJECT_DECLARATION_INVALID:
+        'export a valid defineJig or defineBinding declaration from the indicated module',
       CHANNEL_FIELD: 'check channel declarations and descriptors against FLOW Channel Contract/1',
       CHANNEL_LIMIT: 'check channel declaration counts and descriptor bounds',
       CHANNEL_REFERENCE: 'use a canonical package-local ./ channel contract path',
@@ -862,7 +1095,8 @@ function projectError(code: ProjectAdministrationError['code']): {
     code === 'STALE_PLAN'
   const messages: Record<ProjectAdministrationError['code'], string> = {
     INVALID_REQUEST: 'the project request is invalid',
-    PROJECT_NOT_FOUND: 'the project was not found',
+    PROJECT_NOT_FOUND:
+      'the project was not found; change into a Jig project or pass its directory to jig review',
     PROJECT_UNSAFE: 'the project cannot be opened safely',
     PROJECT_STATE_INVALID:
       'the retained .jig state is incompatible with this Jig build or damaged; preserve .jig and jig.lock for recovery. Once prior work is confirmed stopped and cleaned up, move them outside the project and run jig review again',
@@ -870,7 +1104,8 @@ function projectError(code: ProjectAdministrationError['code']): {
     LOCK_MISMATCH: 'the project lock does not match the reviewed state',
     PLAN_NOT_FOUND: 'the reviewed project changes are no longer available',
     STALE_PLAN: 'the project changed before its review could be applied',
-    PROJECT_BUSY: 'the project is already in use',
+    PROJECT_BUSY:
+      'the project is already in use; wait for its current command to finish or cancel that command; do not delete .jig to bypass ownership',
     PROJECT_CLOSED: 'the project session is closed',
     UNAVAILABLE: 'the project command is unavailable',
     INTERNAL: 'the project command failed',

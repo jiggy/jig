@@ -1,9 +1,91 @@
 import { describe, expect, test } from 'bun:test'
 
 import type { PrivateActivationReviewPlan } from '../src/internal/activation-admission-store.js'
+import type { PrivateAgentProvider } from '../src/internal/agent-provider.js'
+import { AGENT_RUN_CONTRACT_DIGEST } from '../src/internal/private-agent-run.js'
 import { renderPrivateProjectPlanReview } from '../src/internal/project-plan-review.js'
 
 describe('private project Plan review', () => {
+  test('change-first review omits unchanged policy but details retains it', () => {
+    const plan = reviewPlan('admission', `sha256:${'b'.repeat(64)}`)
+    const lock = {
+      packages: {},
+      bindings: {
+        unused: {
+          packagePath: 'flows/example',
+          settings: { note: 'unchanged sentinel' },
+          slots: {},
+        },
+      },
+    }
+    const rendered = renderPrivateProjectPlanReview({
+      plan: { ...plan, proposed: { ...plan.proposed, lock } },
+      baseCandidate: { lock, candidate: { targets: [] } },
+    } as unknown as PrivateActivationReviewPlan)
+    expect(rendered.text).toStartWith('Review changes before approval\n')
+    expect(rendered.text).toContain('0 added, 0 changed, 0 removed')
+    expect(rendered.text).not.toContain('unchanged sentinel')
+    expect(rendered.details).toContain('unchanged sentinel')
+    expect(rendered.text).toContain('jig review --details')
+  })
+
+  test('review names selected Agent behavior without credentials or private support', () => {
+    const plan = reviewPlan('admission', `sha256:${'b'.repeat(64)}`)
+    const review = {
+      plan: {
+        ...plan,
+        proposed: {
+          ...plan.proposed,
+          targets: [
+            {
+              request: {
+                target: { kind: 'flow', path: 'flows/agent' },
+                mode: 'run',
+                packagePath: 'flows/agent',
+                entrypoint: { path: 'flow.ts', suffix: 'ts' },
+                settings: {},
+                attachments: {},
+                capabilities: { agent: { digest: AGENT_RUN_CONTRACT_DIGEST } },
+              },
+              disposition: { state: 'ready' },
+            },
+          ],
+        },
+      },
+      baseCandidate: null,
+    } as unknown as PrivateActivationReviewPlan
+    for (const provider of [
+      {
+        kind: 'private-openai-agent-provider/1',
+        api: 'responses',
+        baseURL: 'https://api.example.test/v1',
+        model: 'selected-test-model',
+        credential: 'secret-sentinel',
+        executable: '/private/host/path',
+      },
+      {
+        kind: 'private-acp-agent-provider/1',
+        client: 'codex',
+        model: 'selected-test-model',
+        credentialMode: 'subscription',
+        credential: 'secret-sentinel',
+        executable: '/private/host/path',
+      },
+    ]) {
+      const rendered = renderPrivateProjectPlanReview(
+        review,
+        undefined,
+        provider as unknown as PrivateAgentProvider,
+      )
+      for (const value of [rendered.text, rendered.details]) {
+        expect(value).toContain('selected-test-model')
+        expect(value).not.toContain('secret-sentinel')
+        expect(value).not.toContain('/private/host/path')
+      }
+      expect(rendered.text).toContain('Instructions and selected data go to this Agent')
+    }
+  })
+
   test('renders complete portable policy while omitting private host identities', () => {
     const digest = `sha256:${'a'.repeat(64)}`
     const plan = {
@@ -168,7 +250,7 @@ describe('private project Plan review', () => {
     const text = renderPrivateProjectPlanReview({
       plan: proposed,
       baseCandidate: current,
-    } as unknown as PrivateActivationReviewPlan).text
+    } as unknown as PrivateActivationReviewPlan).details
 
     expect(text).toContain('"current": {')
     expect(text).toContain('"proposed": {')
@@ -220,7 +302,7 @@ describe('private project Plan review', () => {
     const text = renderPrivateProjectPlanReview({
       plan: proposed,
       baseCandidate: current,
-    } as unknown as PrivateActivationReviewPlan).text
+    } as unknown as PrivateActivationReviewPlan).details
     const value = JSON.parse(text.slice(text.indexOf('{')))
 
     expect(value.current.portablePolicy.packages['flows/review'].digest).toBe(oldDigest)
@@ -309,7 +391,7 @@ describe('private project Plan review', () => {
         plan: slotChangePlan,
         baseCandidate: current,
       } as unknown as PrivateActivationReviewPlan)
-        .text.split('\n\n')
+        .details.split('\n\n')
         .at(-1)!,
     )
     expect(slotReview.changes.bindings.changed).toEqual(['router'])
@@ -328,7 +410,7 @@ describe('private project Plan review', () => {
         plan: digestChangePlan,
         baseCandidate: current,
       } as unknown as PrivateActivationReviewPlan)
-        .text.split('\n\n')
+        .details.split('\n\n')
         .at(-1)!,
     )
     expect(digestReview.changes.packages.changed).toEqual(['flows/bug'])
@@ -357,7 +439,7 @@ describe('private project Plan review', () => {
         plan: availabilityPlan,
         baseCandidate: current,
       } as unknown as PrivateActivationReviewPlan)
-        .text.split('\n\n')
+        .details.split('\n\n')
         .at(-1)!,
     )
     expect(availabilityReview.changes.targets.changed).toEqual(['binding:router', 'flow:flows/bug'])
@@ -413,7 +495,7 @@ describe('private project Plan review', () => {
           plan,
           baseCandidate: current,
         } as unknown as PrivateActivationReviewPlan)
-          .text.split('\n\n')
+          .details.split('\n\n')
           .at(-1)!,
       )
       expect(review.changes.targets.changed).toEqual(['binding:reviewer', 'binding:router'])

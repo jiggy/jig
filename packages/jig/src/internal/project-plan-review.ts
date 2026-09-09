@@ -1,6 +1,8 @@
-import type { PrivateActivationReviewPlan } from './activation-admission-store.js'
 import { ProjectAdministrationError } from '../administration/project.js'
 import type { RunTargetIdentity } from '../project/package-project.js'
+import type { PrivateActivationReviewPlan } from './activation-admission-store.js'
+import type { PrivateAgentProvider } from './agent-provider.js'
+import { AGENT_RUN_CONTRACT_DIGEST } from './private-agent-run.js'
 
 // Four MiB leaves a conservative JSON/1 envelope after every ASCII backslash
 // and quote in the review string is escaped by the outer value encoding.
@@ -10,6 +12,7 @@ const BUFFER_BYTES = 8 * 1024
 export interface PrivateProjectPlanReview {
   readonly mediaType: 'text/plain; charset=utf-8'
   readonly text: string
+  readonly details: string
 }
 
 /**
@@ -20,6 +23,7 @@ export interface PrivateProjectPlanReview {
 export function renderPrivateProjectPlanReview(
   review: PrivateActivationReviewPlan,
   maximumBytes = MAX_REVIEW_BYTES,
+  agentProvider?: PrivateAgentProvider,
 ): PrivateProjectPlanReview {
   if (!Number.isSafeInteger(maximumBytes) || maximumBytes < 1 || maximumBytes > MAX_REVIEW_BYTES) {
     throw new TypeError('project plan review byte limit is invalid')
@@ -36,21 +40,128 @@ export function renderPrivateProjectPlanReview(
     review.baseCandidate?.candidate.targets ?? [],
     plan.proposed.targets,
   )
+  const agent =
+    agentProvider !== undefined &&
+    plan.proposed.targets.some((target) =>
+      Object.values(target.request.capabilities ?? {}).some(
+        (use) => use.digest === AGENT_RUN_CONTRACT_DIGEST,
+      ),
+    )
+      ? agentProvider.kind === 'private-openai-agent-provider/1'
+        ? {
+            client: 'OpenAI-compatible API',
+            api: agentProvider.api,
+            endpoint: agentProvider.baseURL,
+            model: agentProvider.model,
+          }
+        : {
+            client: agentProvider.client,
+            model: agentProvider.model,
+            authentication: agentProvider.credentialMode,
+          }
+      : undefined
   const proposal = {
     changes,
     current,
     proposed,
+    ...(agent === undefined ? {} : { proposedHostAgent: agent }),
   }
   const writer = new BoundedAsciiWriter(maximumBytes)
   writer.write('Jig project plan review\n\n')
   writer.write('Review the project changes below before applying them.\n\n')
   writeAsciiJson(writer, proposal, 0)
   writer.write('\n')
-  const text = writer.finish()
+  const details = writer.finish()
+  const summary = new BoundedAsciiWriter(maximumBytes)
+  summary.write('Review changes before approval\n\n')
+  summary.write('Approval permits these exact methods, settings and capabilities to run.\n')
+  summary.write('It does not execute a Flow. Declining keeps your previous approval.\n\n')
+  if (agent !== undefined) {
+    summary.write('Host Agent selected for methods requiring it:\n')
+    writeAsciiJson(summary, agent, 0)
+    summary.write(
+      '\nInstructions and selected data go to this Agent. Credentials are never part of the review.\n\n',
+    )
+  }
+  writeChanges(
+    summary,
+    'Packages (source / dependency identity and capabilities)',
+    changes.packages,
+    current?.portablePolicy.packages ?? {},
+    proposed.portablePolicy.packages,
+  )
+  writeChanges(
+    summary,
+    'Bindings (settings, child slots and command policy)',
+    changes.bindings,
+    current?.portablePolicy.bindings ?? {},
+    proposed.portablePolicy.bindings,
+  )
+  writeChanges(
+    summary,
+    'Run targets (execution and file authority)',
+    changes.targets,
+    Object.fromEntries(
+      (current?.targets ?? []).map((target) => [targetKey(target.target), target]),
+    ),
+    Object.fromEntries(proposed.targets.map((target) => [targetKey(target.target), target])),
+  )
+  summary.write('Targets after approval:\n')
+  if (proposed.targets.length === 0)
+    summary.write('  None. Add a Flow under flows/ and review again.\n')
+  for (const target of proposed.targets) {
+    summary.write('  ')
+    writeAsciiJson(summary, targetKey(target.target), 0)
+    summary.write(` - ${target.availability.state}\n`)
+  }
+  summary.write(
+    '\nUnchanged policy is omitted above. Use jig review --details for complete policy.\n',
+  )
+  const text = summary.finish()
+  if (text.length + details.length > maximumBytes)
+    throw new ProjectAdministrationError(
+      'UNAVAILABLE',
+      'project review exceeds the supported display size',
+    )
   return Object.freeze({
     mediaType: 'text/plain; charset=utf-8' as const,
     text,
+    details,
   })
+}
+
+function writeChanges(
+  writer: BoundedAsciiWriter,
+  title: string,
+  changes: { added: readonly string[]; changed: readonly string[]; removed: readonly string[] },
+  current: Readonly<Record<string, unknown>>,
+  proposed: Readonly<Record<string, unknown>>,
+): void {
+  writer.write(
+    `${title}: ${changes.added.length} added, ${changes.changed.length} changed, ${changes.removed.length} removed\n`,
+  )
+  for (const [label, keys] of [
+    ['Added', changes.added],
+    ['Changed', changes.changed],
+    ['Removed', changes.removed],
+  ] as const) {
+    for (const key of keys) {
+      writer.write(`\n${label}: `)
+      writeAsciiJson(writer, key, 0)
+      writer.write('\n')
+      // Show every changed public field exactly, not a lossy digest-only summary.
+      for (const [name, value] of [
+        ['Previously', current[key]],
+        ['Proposed', proposed[key]],
+      ] as const) {
+        if (value === undefined) continue
+        writer.write(`${name}:\n`)
+        writeAsciiJson(writer, value, 0)
+        writer.write('\n')
+      }
+    }
+  }
+  writer.write('\n')
 }
 
 function projectCandidate(

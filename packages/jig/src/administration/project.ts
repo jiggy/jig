@@ -48,6 +48,7 @@ export type ProjectPlanResult =
       readonly review: {
         readonly mediaType: 'text/plain; charset=utf-8'
         readonly text: string
+        readonly details: string
       }
     }
 

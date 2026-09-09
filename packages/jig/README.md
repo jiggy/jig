@@ -16,7 +16,21 @@ npm installs Jig's exact Bun runtime dependency alongside the package.
 
 ## Get started
 
-[Create your first Flow](https://jig.md/guide/#your-first-flow), or try
+Create an editable first Flow:
+
+```console
+jig init hello-jig
+cd hello-jig
+jig review --allow-resolution-network
+jig run flow:flows/hello --input '{"name":"Ada"}'
+```
+
+Initialization installs nothing and approves nothing. Review prepares the SDK
+privately and asks for approval. The resolution flag allows dependency-selected
+network requests before approval; declining cannot undo those requests. Runs
+gain no network access. No separate Bun install is needed.
+
+Read the [first Flow guide](https://jig.md/guide/#your-first-flow), or try
 [an issue becoming a tested patch](https://jig.md/guide/tested-patch): selected
 local source becomes a reviewable patch with executed checks, while the original
 repository stays unchanged.
@@ -24,14 +38,21 @@ repository stays unchanged.
 Jig has three project commands:
 
 ```text
-jig init --bare <directory>
-jig review [project] [--allow-resolution-network] [--yes]
+jig init [--bare] <directory>
+jig review [project] [--allow-resolution-network] [--yes] [--details]
 jig run <flow:path|binding:id> [options]
 ```
 
-`review` asks you to approve the proposed project changes. `run` executes the
-admitted revision and returns JSON after settling owned work. Use
-`jig --version` to inspect the installed version.
+`review` shows changed policy; `--details` includes complete current and proposed
+policy. `--yes` approves without a prompt but does not grant resolution network
+permission. `--bare` creates only an empty project skeleton.
+
+`run` executes the approved revision and returns JSON after settling owned work
+(NDJSON with `--receive`). Terminal-only elapsed status, cancellation updates,
+and diagnostics use stderr, never protocol stdout. An application outcome such
+as `blocked` is not task success even when execution completed correctly.
+Use `jig <command> --help` for focused help and `jig --version` for the installed
+version.
 
 ## Guides
 

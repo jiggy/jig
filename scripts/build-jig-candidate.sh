@@ -138,11 +138,10 @@ if [ "$runtime_version" != "1.3.3" ] ||
 fi
 "$npm_jig" --help > "$temporary/npm-help"
 for expected in \
-  "  jig init --bare <directory>" \
-  "  jig review [project] [--allow-resolution-network] [--yes]" \
-  "  jig run <flow:path|binding:id> [--input JSON|@FILE] [--attach NAME=DIR]" \
-  "      [--select NAME=FILE] [--out DIR] [--timeout DURATION]" \
-  "  jig --version"
+  "  jig init <directory>       Create a project with a small greeting Flow" \
+  "  jig review [project]       Review changes and approve an exact revision" \
+  "  jig run <target>           Run a reviewed Flow or Binding" \
+  "  jig --version             Print the installed version"
 do
   if ! grep -F -x "$expected" "$temporary/npm-help" >/dev/null; then
     echo "the npm-installed Jig executable exposed the wrong command surface" >&2

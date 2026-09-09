@@ -9,6 +9,7 @@ import {
   privateCliRequiresHost,
   publicTerminal,
 } from './cli.js'
+import { PrivateCliOutput } from './internal/cli-output.js'
 import {
   privateConnectFileOwner,
   privateFileRecovery,
@@ -23,7 +24,6 @@ import {
   recoverPrivateCheckpointRun,
 } from './internal/project-session-controller.js'
 import { canonicalJson } from './json.js'
-import { PrivateCliOutput } from './internal/cli-output.js'
 
 interface InstalledCliOutcome {
   readonly exitCode: number | null
@@ -139,7 +139,7 @@ async function runPrivateInstalledCli(
   } catch (error) {
     if (error instanceof PrivateRootlessLinuxAcquisitionError) {
       process.stderr.write(
-        'SANDBOX_UNAVAILABLE: the required rootless Linux sandbox is unavailable\n',
+        'SANDBOX_UNAVAILABLE: the required rootless Linux sandbox is unavailable\nCheck the supported-host requirements: systemd user service, delegated cgroups, namespaces and Bubblewrap >= 0.12.\nSee https://jig.md/guide/#supported-host. No weaker fallback is used.\n',
       )
     } else {
       process.stderr.write('JIG_COMMAND_UNAVAILABLE: the command could not be completed\n')

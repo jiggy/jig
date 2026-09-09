@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
-import { mkdtemp, mkdir, readFile, readdir, realpath, rm, stat, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readdir, readFile, realpath, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { isAbsolute, join, resolve } from 'node:path'
 
@@ -122,17 +122,27 @@ try {
     await writeFile(manifestPath, manifestBytes)
   }
   assert.equal(help.stderr, '')
-  assert.match(help.stdout, /^Usage:\n  jig init --bare <directory>$/m)
-  assert.match(help.stdout, /^  jig review \[project\] \[--allow-resolution-network\] \[--yes\]$/m)
-  assert.match(help.stdout, /^  jig --version$/m)
-  assert.match(
-    help.stdout,
-    /^  jig run <flow:path\|binding:id> \[--input JSON\|@FILE\] \[--attach NAME=DIR\]\n      \[--select NAME=FILE\] \[--out DIR\] \[--receive CHANNEL\] \[--timeout DURATION\]$/m,
-  )
+  assert.match(help.stdout, /^  jig init <directory> +Create/m)
+  assert.match(help.stdout, /^  jig review \[project\] +Review/m)
+  assert.match(help.stdout, /^  jig --version +Print/m)
+  assert.match(help.stdout, /^  jig run <target> +Run/m)
   assert.doesNotMatch(help.stdout, /setup|package check|planDigest/)
   const runHelp = await run([command, 'run', '--help'], consumer)
   assert.equal(runHelp.stderr, '')
-  assert.equal(runHelp.stdout, help.stdout)
+  assert.match(runHelp.stdout, /^Usage: jig run <flow:path\|binding:id> \[options\]/)
+  assert.match(runHelp.stdout, /--input JSON\|@FILE/)
+  assert.match(runHelp.stdout, /--receive CHANNEL/)
+  assert.match(runHelp.stdout, /Ctrl-C cancels/)
+  assert.doesNotMatch(runHelp.stdout, /jig init|--allow-resolution-network/)
+  const reviewHelp = await run([command, 'review', '--help'], consumer)
+  assert.match(reviewHelp.stdout, /--details/)
+  assert.match(reviewHelp.stdout, /--yes does not grant resolution networking/)
+  const greeting = join(consumer, 'greeting')
+  const initializedGreeting = await run([command, 'init', greeting], consumer)
+  assert.match(initializedGreeting.stdout, /jig review --allow-resolution-network/)
+  assert.match(await readFile(join(greeting, 'flows/hello/flow.ts'), 'utf8'), /@jigging\/flow/)
+  await assert.rejects(stat(join(greeting, '.jig')), { code: 'ENOENT' })
+  await assert.rejects(stat(join(greeting, 'flows/hello/node_modules')), { code: 'ENOENT' })
   await assert.rejects(stat(ambientMarker), { code: 'ENOENT' })
 
   await Promise.all([

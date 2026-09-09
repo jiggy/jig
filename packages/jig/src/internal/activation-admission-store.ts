@@ -1963,7 +1963,18 @@ function rootPreflightTerminal(
   if (target === undefined) {
     return failedPrivateRootTerminal(
       'UNAVAILABLE',
-      'the active generation does not contain the requested root target',
+      'the reviewed revision does not contain the requested target; choose a reviewed target or run jig review after editing project membership',
+      {
+        code: 'RUN_TARGET_NOT_FOUND',
+        availableTargets: candidate.candidate.targets
+          .slice(0, 16)
+          .map(({ request }) =>
+            request.target.kind === 'flow'
+              ? `flow:${request.target.path}`
+              : `binding:${request.target.id}`,
+          ),
+        remainingTargets: Math.max(0, candidate.candidate.targets.length - 16),
+      },
     )
   }
   if (target.disposition.state === 'unavailable') {

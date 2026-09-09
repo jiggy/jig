@@ -58,7 +58,7 @@ try {
   assert.equal(malformed.stdout, '')
   assert.equal(
     malformed.stderr,
-    'INVALID_CANDIDATE: the project definition is invalid; ' +
+    'INVALID_CANDIDATE: a FLOW.md field has an unsupported name or shape; check the indicated field against https://flow.jig.md/spec/package-format; ' +
       'METADATA_FIELD at "flows/malformed/FLOW.md" pointer "/format"\n',
   )
   assert.doesNotMatch(malformed.stderr, /\.jig|coordinator|sqlite|\/tmp\//i)
@@ -71,7 +71,7 @@ try {
   await writeMissingDependencyFlow(project)
 
   const approved = await run([jig, 'review', project, '--yes'], consumer, [0], 120_000)
-  assert.match(approved.stdout, /^Jig project plan review\n/)
+  assert.match(approved.stdout, /^Review changes before approval\n/)
   assert.match(approved.stdout, /\nproject is ready\n$/)
   assert.equal(approved.stderr, '')
   assert.doesNotMatch(
@@ -116,7 +116,7 @@ try {
   assert.equal(invalidTarget.stdout, '')
   assert.equal(
     invalidTarget.stderr,
-    'JIG_RUN_TARGET_INVALID: the target must be flow:<path> or binding:<id>\n',
+    'JIG_RUN_TARGET_INVALID: use flow:<path> or binding:<id>, for example flow:flows/hello. Run jig review after adding a target.\n',
   )
 
   const malformedInput = await run(
@@ -126,7 +126,10 @@ try {
     60_000,
   )
   assert.equal(malformedInput.stdout, '')
-  assert.equal(malformedInput.stderr, 'JIG_RUN_INPUT_INVALID: --input must be FLOW JSON/1\n')
+  assert.equal(
+    malformedInput.stderr,
+    'JIG_RUN_INPUT_INVALID: --input must be valid JSON; quote inline JSON or use --input @file.json. No Flow was started.\n',
+  )
 
   const schemaInvalid = await run(
     [jig, 'run', 'flow:flows/hello', '--input', JSON.stringify({ name: 42 })],

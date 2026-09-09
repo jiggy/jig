@@ -1388,6 +1388,48 @@ describe.serial('direct alpha activation store', () => {
     }
   })
 
+  test('missing root targets suggest only admitted targets without dispatch', async () => {
+    const fixture = await createFixture('ready')
+    let coordinator: PrivateProjectCoordinator | undefined
+    try {
+      await admit(fixture)
+      await mkdir(join(fixture.root, 'flows', 'unreviewed'), { recursive: true })
+      await writeFile(join(fixture.root, 'flows', 'unreviewed', 'FLOW.md'), 'unreviewed source')
+      coordinator = await openPrivateProjectCoordinator({ projectRoot: fixture.root })
+      const missing = await submitPrivateRootRun({
+        coordinator,
+        projectRoot: fixture.root,
+        packageStoreRoot: fixture.store,
+        submissionId: 'unknown-target',
+        target: { kind: 'flow', path: 'flows/unreviewed' },
+        input: {},
+        deadlineUnixMs: Date.now() + 60_000,
+      })
+      expect(missing.run).toMatchObject({
+        state: 'terminal',
+        terminal: {
+          status: 'failed',
+          code: 'UNAVAILABLE',
+          details: {
+            code: 'RUN_TARGET_NOT_FOUND',
+            availableTargets: ['flow:flows/run'],
+            remainingTargets: 0,
+          },
+        },
+      })
+      expect(
+        await listPrivateRootExecutionWork({
+          coordinator,
+          projectRoot: fixture.root,
+          epoch: 'current',
+        }),
+      ).toEqual([])
+    } finally {
+      await coordinator?.dispose()
+      await fixture.dispose()
+    }
+  })
+
   test('enforces ordered write-once root lifecycle facts and one matching terminal', async () => {
     const fixture = await createFixture('ready')
     let coordinator: PrivateProjectCoordinator | undefined

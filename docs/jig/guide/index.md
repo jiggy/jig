@@ -16,41 +16,35 @@ On a [supported Linux host](#supported-host):
 npm install --global @jigging/jig@alpha
 ```
 
-npm also installs Jig's exact Bun runtime dependency. Creating dependency locks
-in this tutorial uses Bun 1.3.3 as an authoring tool. To use a source checkout,
+npm also installs Jig's exact Bun runtime dependency. You do not need a separate
+Bun installation for this tutorial. To use a source checkout,
 follow the [development instructions](https://github.com/jiggy/jig/blob/main/CONTRIBUTING.md#development-shell).
 
 ## Your first Flow
 
-Create a project:
+Create a project, review its changes, approve it, then run its greeting Flow:
 
 ```console
-jig init --bare hello-jig
+jig init hello-jig
 cd hello-jig
-mkdir -p flows/hello
+jig review --allow-resolution-network
+jig run flow:flows/hello --input '{"name":"Ada"}'
 ```
 
-Create `flows/hello/FLOW.md`, which explains what the package does:
+`init` writes ordinary editable files: `jig.ts`, `flows/hello/FLOW.md`,
+`flows/hello/package.json`, and `flows/hello/flow.ts`, plus a README and empty
+Bindings directory. It installs nothing, makes no network requests, and
+approves nothing. Use `jig init --bare <directory>` when you want an empty
+project instead.
 
-```markdown
----
-name: hello
-description: Return a greeting for the supplied name.
----
+The greeting imports the published FLOW SDK alpha. Review resolves and retains
+its dependencies privately, so no per-Flow `bun install` is needed.
+`--allow-resolution-network` permits dependency-selected network requests
+before approval; declining cannot undo those requests. It does not give Runs
+network access. Supplied dependency locks remain frozen. See
+[dependency review](./dependencies.md) for reusable locked packages.
 
-# Hello
-```
-
-Create `flows/hello/package.json` to select the FLOW SDK:
-
-```json
-{
-  "private": true,
-  "dependencies": { "@jigging/flow": "0.1.0-alpha.8" }
-}
-```
-
-Create `flows/hello/flow.ts`:
+The generated `flow.ts` is ordinary SDK code you can edit:
 
 ```ts
 import { handle } from "@jigging/flow";
@@ -64,21 +58,6 @@ await handle(async (run) => {
 });
 ```
 
-Generate its dependency lock:
-
-```console
-cd flows/hello
-bun install --lockfile-only
-cd ../..
-```
-
-Review the project, approve it, then run the Flow:
-
-```console
-jig review
-jig run flow:flows/hello --input '{"name":"Ada"}'
-```
-
 The result includes `status: "succeeded"`, `outcome: "done"`, and
 `output: { "message": "Hello, Ada!" }`, alongside bounded diagnostics.
 This Flow needs no Agent configuration.
@@ -87,12 +66,20 @@ This Flow needs no Agent configuration.
 
 ![Editable source goes through jig review and approval before jig run executes the accepted revision. Jig validates the result and settles owned work before returning an outcome or failure.](./review-run.svg)
 
-`jig review` displays the proposed project changes and package identities.
+`jig review` leads with added, changed, and removed packages, Bindings, and
+execution policy, then lists the targets you can run. Changed policy is shown
+in full; unchanged policy is omitted. When proposing a change, use
+`jig review --details` to inspect complete current and proposed policy. If Agent capabilities are used, the
+review also names the selected non-secret host Agent configuration.
 Inspect the source with your usual tools, then approve the review. In a
-noninteractive environment, `--yes` records your explicit approval.
+noninteractive environment, `--yes` records your explicit approval; it does not
+grant resolution-network permission.
 
 `jig run` uses the approved revision. Edit the source and review again to run
 your changes. Declining a review leaves the previous admission intact.
+For the unlocked greeting, repeat `jig review --allow-resolution-network` after
+editing; code-only edits can require fresh resolution too. An unchanged review
+reuses the admitted bytes. An authored lock avoids fresh dependency selection.
 
 Use `flow:<path>` for a package or `binding:<id>` for a configured invocation.
 A Binding supplies application settings and exact dependencies; see
@@ -100,6 +87,26 @@ A Binding supplies application settings and exact dependencies; see
 Use `@FILE` for JSON input from a file and `--timeout 2m` for a longer Run.
 See [execution policy](../spec/project-policy.md) for current limits and
 lifecycle guarantees.
+
+### Read the result and recover from errors
+
+`jig <command> --help` explains that command's options and examples. Invalid
+syntax is diagnosed even when the host cannot execute Runs. Errors identify a
+relevant project-relative location where available and suggest a safe next step.
+A missing target lists targets from the approved revision; Jig never picks one
+for you.
+
+Stdout contains the JSON result, or NDJSON when `--receive` is selected. Stderr
+carries diagnostics and, on a terminal, elapsed status and cancellation updates.
+Piped stdout remains machine-readable. No spinner or terminal control codes are
+required. Ctrl-C requests cancellation; wait for cleanup before starting new
+work. An interruption or uncertain result is not permission to blindly retry.
+
+Execution completion is different from task success: a method can execute
+correctly and return an application outcome such as `blocked`. Inspect the
+outcome, output, and exit status. With `--out`, also inspect the separate
+delivery status. Existing output directories are never replaced; choose a new
+destination for another Run.
 
 ### If retained state cannot be opened
 
