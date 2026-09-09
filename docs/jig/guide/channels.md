@@ -95,12 +95,13 @@ later execution interruption.
 ## Give progress to another Flow
 
 The [tested-patch application](tested-patch.md) separates repair from its
-presentation. For a single issue, its parent creates two direct channels and
-connects two exact child slots:
+presentation. For a single issue, its parent creates a broadcast phase source
+and a direct display channel, then connects two exact child slots:
 
 | Connection | Data | Responsibility |
 | --- | --- | --- |
 | Repair's `progress` → monitor's `phases` | Bounded phase and attempt records | Repair reports its work without choosing a display. |
+| Repair's `progress` → root recorder | The same phase records, independently received | Root saves a bounded trace without another child. |
 | Monitor's `display` → parent | Selected text | Monitor filters and formats; parent prints or forwards it. |
 | Repair's call result → parent | Patch and check evidence | Parent validates, checkpoints and delivers the actual result. |
 
@@ -113,6 +114,34 @@ Agent powers, commands or patch-approval authority.
 The [complete parent](https://github.com/jiggy/jig/blob/main/examples/tested-patch/flows/project/monitoring.ts)
 handles rejected connections, observation loss and cancellation. It always
 settles the repair call independently: a finished stream is not a passing patch,
-and a failed monitor need not discard successful work. Both channels stay owned
+and a failed monitor need not discard successful work. Both sources stay owned
 by the parent until its work settles. The existing two-child limit applies;
 the example's batch mode uses both positions for repair workers instead.
+
+## Give each consumer its own subscription
+
+Broadcast adds one choice at creation and one allocation per consumer:
+
+```ts
+const phases = await run.channel({ delivery: 'broadcast', schema: phaseSchema })
+const monitorFeed = await phases.subscribe()
+const recorderFeed = await phases.subscribe()
+```
+
+The parent passes `phases.send` to repair, `monitorFeed` to the monitor, and
+reads `recorderFeed` itself. Subscribe before starting repair to receive its
+beginning. Each feed has independent capacity: a slow subscriber gets `LAGGED`
+instead of slowing the others. Catch its failure, dispose it, and still await
+the worker's actual result. A source error or root cancellation remains different
+from a single subscriber failure.
+
+Only the source creator can subscribe. A later subscription starts at the next
+accepted sequence, with no replay; a receiving port must accept `start: suffix`
+when that sequence is greater than one. Every allocated feed must be exhausted
+or closed, even if never read. The [SDK contract](https://flow.jig.md/spec/run-sdk#9-channel-projection)
+defines disposal and language-specific early-exit behavior.
+
+The example saves its at-most-six-record trace as `files/progress.json`, with
+its own completeness flag. Filtering the monitor does not filter this independent
+trace. Neither is acceptance evidence, and a checkpoint retained before the
+observers settle may contain the patch without the trace.

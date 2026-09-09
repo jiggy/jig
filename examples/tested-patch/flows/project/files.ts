@@ -247,7 +247,7 @@ export async function repairFiles(run: RunContext): Promise<RunResult> {
   if (source?.access !== 'read' || deliverables?.access !== 'read-write')
     throw new TypeError('Supply source and deliverables attachments.')
   const input = await readRepairInput(run.input, source.path)
-  return monitoredRepair(run, input, async (result) => {
+  const result = await monitoredRepair(run, input, async (result) => {
     run.signal.throwIfAborted()
     await writeRepairDeliverables(deliverables.path, input, result)
     await run.callCapability({
@@ -257,4 +257,11 @@ export async function repairFiles(run: RunContext): Promise<RunResult> {
       input: { sequence: 1, evidence: result, files: repairDeliverables(input, result) },
     })
   })
+  run.signal.throwIfAborted()
+  await writeFile(
+    join(deliverables.path, 'progress.json'),
+    JSON.stringify((result.output as Record<string, unknown>).recording, null, 2) + '\n',
+    { flag: 'wx' },
+  )
+  return result
 }

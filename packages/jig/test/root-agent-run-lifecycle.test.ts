@@ -252,6 +252,11 @@ globalThis.fetch = (url, init) => {
       expect(record.output.baseline.acceptance.filter((c: any) => !c.passed)).toHaveLength(3)
       expect(record.output.attempts[0].evaluation.acceptance.every((c: any) => c.passed)).toBe(true)
       expect(record.output.attempts[0].evaluation.commands[0].exitCode).toBe(0)
+      expect(record.output.recording).toMatchObject({ complete: true, startSequence: 1 })
+      expect(record.output.recording.records).toHaveLength(4)
+      expect(JSON.parse(await readFile(join(out, 'files/progress.json'), 'utf8'))).toEqual(
+        record.output.recording,
+      )
       expect(JSON.parse(await readFile(join(out, 'result.json'), 'utf8'))).toEqual(record)
       expect(await readFile(join(project, 'fixtures/log-report/src/parse.ts'))).toEqual(before)
       expect(await readFile(join(project, 'fixtures/log-report/src/report.ts'), 'utf8')).toEqual(
@@ -293,6 +298,7 @@ globalThis.fetch = (url, init) => {
         true,
       )
       expect((await readdir(join(failedOut, 'files'))).sort()).toEqual([
+        'progress.json',
         'proposal-1.patch',
         'proposal-2.patch',
         'summary.txt',

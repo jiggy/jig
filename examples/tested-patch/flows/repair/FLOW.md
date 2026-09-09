@@ -10,7 +10,6 @@ channels:
   progress:
     direction: send
     required: false
-    delivery: direct
     schema:
       type: object
       properties:
@@ -34,7 +33,7 @@ This reusable leaf takes `issue`, a `files` map of paths to text, selected
 16 files totaling 64 KiB, up to eight editable source paths, and eight cases.
 There are no attachments or child Flows.
 
-An optional `progress` sender publishes at most six phase records. `baseline`
+An optional direct or broadcast `progress` sender publishes at most six phase records. `baseline`
 precedes original checks (`attempt: 0`), `proposal` precedes an Agent request,
 and `check` precedes candidate checks (attempt one or two). `finished` reports
 method completion and the number of recorded attempts, not patch success.

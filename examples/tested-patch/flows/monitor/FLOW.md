@@ -4,7 +4,6 @@ description: Filter and format selected repair phases without receiving source, 
 channels:
   phases:
     direction: receive
-    delivery: direct
     schema:
       type: object
       properties:
@@ -27,7 +26,7 @@ outcomes:
   blocked: Progress was incomplete; the repair result remains independent.
 ---
 
-The `phases` input carries bounded application records: `baseline` precedes
+The direct or broadcast `phases` input carries bounded application records: `baseline` precedes
 the original checks, `proposal` precedes an Agent request, `check` precedes
 candidate checks, and `finished` means the method is returning a result, not
 that its patch passed. `attempt` is zero for baseline and one or two for

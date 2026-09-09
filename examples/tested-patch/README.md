@@ -31,7 +31,8 @@ The fixture is an HTTP log-report CLI with defects in parsing and aggregation.
 The root Flow captures files and delivers patches. A JSON-input leaf uses
 Agent and Project Command effects; it has no attachments or child Flows.
 For one issue, a separate monitor formats the leaf's selected phase records
-as live diagnostics. The two Bindings configure these exact child slots and
+as live diagnostics; an independent root subscriber records the same phases.
+The two Bindings configure these exact child slots and
 approved Bun commands.
 
 ## Choose the progress presentation
@@ -49,11 +50,14 @@ for shorter, filtered output. The repair method stays unchanged.
 
 Add `--receive progress` to a single-issue run for structured subprocess
 records instead of duplicate console diagnostics. A completed single-issue
-run's `result.json` contains the repair result and a separate `output.monitoring`
-completeness record.
+run's `result.json` contains separate `output.monitoring` and `output.recording`
+completeness records. `files/progress.json` holds the at-most-six-record trace;
+monitor filtering does not change it. A slow or failed subscriber cannot stall
+the other subscriber or the repair writer.
 A failed monitor may leave a review-ready patch; its messages never establish
 that a patch passed. The root validates and checkpoints repair evidence as
 soon as the specialist settles, independently of the monitor's final result.
+An interruption may retain that patch checkpoint without the final trace.
 
 This deliberately narrow application allows 16 UTF-8 files, 64 KiB of text,
 eight editable source paths, and two Agent proposals. It provides no network,

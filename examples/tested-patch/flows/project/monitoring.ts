@@ -38,6 +38,47 @@ function optionalFailure(error: unknown): boolean {
   )
 }
 
+/** A bounded application trace, not command evidence or durable channel storage. */
+export async function recordPhases(receiver: ChannelReceiver, signal: AbortSignal) {
+  const trace = {
+    complete: true,
+    startSequence: receiver.startSequence,
+    records: [] as JsonValue[],
+  }
+  const recover = (error: unknown) => {
+    signal.throwIfAborted()
+    if (!optionalFailure(error)) throw error
+    trace.complete = false
+  }
+  try {
+    for await (const value of receiver) {
+      signal.throwIfAborted()
+      const record = value as { phase?: unknown; attempt?: unknown } | null
+      if (
+        trace.records.length === 6 ||
+        !record ||
+        Object.keys(record).sort().join(',') !== 'attempt,phase' ||
+        typeof record.phase !== 'string' ||
+        !['baseline', 'proposal', 'check', 'finished'].includes(record.phase) ||
+        !Number.isInteger(record.attempt) ||
+        (record.attempt as number) < 0 ||
+        (record.attempt as number) > 2
+      )
+        throw new OperationError('INVALID_RESULT', 'The repair phase trace exceeded its contract.')
+      trace.records.push({ phase: record.phase, attempt: record.attempt as number })
+    }
+  } catch (error) {
+    recover(error)
+  } finally {
+    try {
+      await receiver.close()
+    } catch (error) {
+      recover(error)
+    }
+  }
+  return trace
+}
+
 export async function monitoredRepair(
   run: Pick<RunContext, 'signal' | 'channels' | 'channel' | 'runChildFlow'>,
   input: JsonValue,
@@ -54,7 +95,9 @@ export async function monitoredRepair(
   run.signal.throwIfAborted()
   run.signal.addEventListener('abort', stop, { once: true })
   const progress = { complete: true, displayed: 0 }
-  let phases: ChannelPair | undefined, display: ChannelPair | undefined
+  let monitorFeed: ChannelReceiver | undefined,
+    recordingFeed: ChannelReceiver | undefined,
+    display: ChannelPair | undefined
   let tasks: Promise<unknown>[] = []
   const dispose = async (receiver: ChannelReceiver, offered = false) => {
     try {
@@ -72,14 +115,22 @@ export async function monitoredRepair(
       return await action()
     } catch (error) {
       stop()
+      // A rejected repair may never have received its writer. Child cancellation
+      // cannot end the root's independently owned subscription in that case.
+      if (recordingFeed) await dispose(recordingFeed)
       throw error
     }
   }
   try {
-    phases = await run.channel({ schema: phaseSchema })
+    const phases = await run.channel({ delivery: 'broadcast', schema: phaseSchema })
+    // Subscribe before dispatch: each consumer receives the complete interval,
+    // with independent capacity and disposal, within the existing two-child limit.
+    monitorFeed = await phases.subscribe()
+    recordingFeed = await phases.subscribe()
     display = await run.channel({ schema: displaySchema })
-    const phasePair = phases,
+    const phaseReceiver = monitorFeed,
       displayPair = display
+    const recording = guarded(() => recordPhases(recordingFeed!, run.signal))
     const monitoring = guarded(async () => {
       try {
         const result = await run.runChildFlow(
@@ -87,7 +138,7 @@ export async function monitoredRepair(
             operationId: 'monitor',
             slot: 'monitor',
             input: {},
-            channels: { phases: phasePair.receive, display: displayPair.send },
+            channels: { phases: phaseReceiver, display: displayPair.send },
           },
           { signal: monitorStop.signal },
         )
@@ -100,7 +151,7 @@ export async function monitoredRepair(
       } finally {
         // If admission failed, no producer can finish this reader. After a
         // successful call, keep draining its sealed interval instead.
-        await dispose(phasePair.receive, true)
+        await dispose(phaseReceiver, true)
       }
     })
     const execution = guarded(async () => {
@@ -109,7 +160,7 @@ export async function monitoredRepair(
           operationId: 'repair',
           slot: 'repair',
           input,
-          channels: { progress: phasePair.send },
+          channels: { progress: phases.send },
         },
         { signal: repairStop.signal },
       )
@@ -154,20 +205,35 @@ export async function monitoredRepair(
         await dispose(displayPair.receive)
       }
     })
-    tasks = [execution, monitoring, presentation]
+    tasks = [execution, monitoring, presentation, recording]
     const results = await Promise.allSettled(tasks)
     run.signal.throwIfAborted()
     for (const result of results) if (result.status === 'rejected') throw result.reason
     const result = (results[0] as PromiseFulfilledResult<RunResult>).value
+    const trace = (results[3] as PromiseFulfilledResult<Awaited<ReturnType<typeof recordPhases>>>)
+      .value
+    const reported = (result.output as Record<string, JsonValue>).progress
+    if (
+      reported &&
+      typeof reported === 'object' &&
+      !Array.isArray(reported) &&
+      reported.complete === false
+    )
+      trace.complete = false
     return {
       ...result,
-      output: { ...(result.output as Record<string, JsonValue>), monitoring: progress },
+      output: {
+        ...(result.output as Record<string, JsonValue>),
+        monitoring: progress,
+        recording: trace,
+      },
     }
   } finally {
     stop()
     await Promise.allSettled(tasks)
     run.signal.removeEventListener('abort', stop)
-    if (phases) await dispose(phases.receive, true)
+    if (monitorFeed) await dispose(monitorFeed, true)
+    if (recordingFeed) await dispose(recordingFeed)
     if (display) await dispose(display.receive)
   }
 }

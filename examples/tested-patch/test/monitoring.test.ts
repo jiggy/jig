@@ -1,5 +1,6 @@
 import { expect, spyOn, test } from 'bun:test'
 import {
+  type ChannelBroadcast,
   type ChannelEndpoint,
   type ChannelPair,
   type ChannelReceiver,
@@ -10,12 +11,13 @@ import {
   type RunResult,
 } from '@jigging/flow'
 import { formatProgress, monitor } from '../flows/monitor/monitor.ts'
-import { monitoredRepair } from '../flows/project/monitoring.ts'
+import { monitoredRepair, recordPhases } from '../flows/project/monitoring.ts'
 import { input, syntheticRepair } from './fixture.ts'
 
 // Application-only pipes simulate transfer, EOF, and disposal. They do not
 // establish host fencing, wire bounds, or native-client behavior.
-function pipe(): ChannelPair & {
+function pipe(delivery: 'direct' | 'broadcast' = 'direct'): ChannelPair & {
+  owns(endpoint: ChannelEndpoint): boolean
   transfer(endpoint: ChannelEndpoint): ChannelEndpoint
   readonly disconnectedTransfers: number
 } {
@@ -34,7 +36,7 @@ function pipe(): ChannelPair & {
       direction === 'send'
         ? {
             direction,
-            delivery: 'direct' as const,
+            delivery,
             async send(value: JsonValue) {
               check()
               if (ended || released) throw new OperationError('DISCONNECTED', 'Reader stopped.')
@@ -55,7 +57,7 @@ function pipe(): ChannelPair & {
           }
         : {
             direction,
-            delivery: 'direct' as const,
+            delivery,
             startSequence: 1,
             async next(): Promise<IteratorResult<JsonValue>> {
               check()
@@ -86,6 +88,7 @@ function pipe(): ChannelPair & {
     return handle
   }
   return {
+    owns: (value) => handles.has(value),
     send: endpoint('send') as ChannelSender,
     receive: endpoint('receive') as ChannelReceiver,
     get disconnectedTransfers() {
@@ -101,6 +104,63 @@ function pipe(): ChannelPair & {
   }
 }
 
+// Fan-out here checks application wiring only. Broker tests establish actual
+// capacity isolation, sequence accounting, and per-subscriber schema failures.
+function broadcast(): ChannelBroadcast & {
+  owns(endpoint: ChannelEndpoint): boolean
+  transfer(endpoint: ChannelEndpoint): ChannelEndpoint
+} {
+  const readers: ReturnType<typeof pipe>[] = []
+  const writers = new Map<ChannelEndpoint, { held: boolean }>()
+  let ended = false
+  const writer = (): ChannelSender => {
+    const state = { held: true }
+    const check = () => {
+      if (!state.held) throw new OperationError('PERMISSION_DENIED', 'Moved endpoint.')
+    }
+    const send: ChannelSender = {
+      direction: 'send',
+      delivery: 'broadcast',
+      async send(value) {
+        check()
+        if (ended) throw new OperationError('DISCONNECTED', 'Source sealed.')
+        for (const reader of readers) {
+          try {
+            await reader.send.send(value)
+          } catch (error) {
+            if (!(error instanceof OperationError) || error.code !== 'DISCONNECTED') throw error
+          }
+        }
+      },
+      async close() {
+        check()
+        ended = true
+        for (const reader of readers) await reader.send.close()
+      },
+    }
+    writers.set(send, state)
+    return send
+  }
+  return {
+    send: writer(),
+    async subscribe() {
+      if (ended) throw new OperationError('DISCONNECTED', 'Source sealed.')
+      const reader = pipe('broadcast')
+      readers.push(reader)
+      return reader.receive
+    },
+    owns: (value) => writers.has(value) || readers.some((reader) => reader.owns(value)),
+    transfer(value) {
+      if (value.direction === 'receive')
+        return readers.find((reader) => reader.owns(value))!.transfer(value)
+      const state = writers.get(value)!
+      if (!state.held) throw new Error('Synthetic duplicate transfer.')
+      state.held = false
+      return writer()
+    },
+  }
+}
+
 function deferred<T>() {
   let resolve!: (value: T) => void
   const promise = new Promise<T>((done) => {
@@ -112,6 +172,7 @@ function deferred<T>() {
 function application(
   options: {
     rejectMonitor?: boolean
+    rejectRepair?: boolean
     delayWorkerAdmission?: boolean
     worker?: (channels: RunContext['channels'], signal: AbortSignal) => Promise<RunResult>
     afterMonitor?: () => Promise<void>
@@ -119,7 +180,7 @@ function application(
     output?: ChannelSender
   } = {},
 ) {
-  const pairs: ReturnType<typeof pipe>[] = []
+  const pairs: (ReturnType<typeof pipe> | ReturnType<typeof broadcast>)[] = []
   const calls: string[] = [],
     texts: string[] = []
   const stop = new AbortController()
@@ -137,22 +198,24 @@ function application(
         },
       },
     },
-    channel: async () => {
-      const pair = pipe()
+    channel: (async (options) => {
+      const pair = options?.delivery === 'broadcast' ? broadcast() : pipe()
       pairs.push(pair)
       return pair
-    },
+    }) as RunContext['channel'],
     runChildFlow: async (call, request) => {
       calls.push(call.slot)
       if (call.slot === 'monitor' && options.rejectMonitor)
         throw new OperationError('UNAVAILABLE', 'Synthetic monitor admission rejection.')
+      if (call.slot === 'repair' && options.rejectRepair)
+        throw new OperationError('UNAVAILABLE', 'Synthetic repair admission rejection.')
       if (call.slot === 'repair' && options.delayWorkerAdmission) await Bun.sleep(1)
       expect(call.slot === 'monitor' ? call.input : undefined).toEqual(
         call.slot === 'monitor' ? {} : undefined,
       )
       const channels: Record<string, ChannelEndpoint> = {}
       for (const [name, handle] of Object.entries(call.channels ?? {})) {
-        const owner = pairs.find((pair) => pair.send === handle || pair.receive === handle)!
+        const owner = pairs.find((pair) => pair.owns(handle))!
         channels[name] = owner.transfer(handle)
       }
       active++
@@ -209,6 +272,16 @@ test('single repair wires two children, forwards selected text and preserves ind
     expect(result.output).toMatchObject({
       ...(retained!.output as object),
       monitoring: { complete: true, displayed: 4 },
+      recording: {
+        complete: true,
+        startSequence: 1,
+        records: [
+          { phase: 'baseline', attempt: 0 },
+          { phase: 'proposal', attempt: 1 },
+          { phase: 'check', attempt: 1 },
+          { phase: 'finished', attempt: 1 },
+        ],
+      },
     })
     expect(app.texts).toEqual([
       'Reproducing the defect with the fixed checks.',
@@ -227,6 +300,7 @@ test('the unchanged repair works with a compact, filtered monitor presentation',
   const result = await monitoredRepair(app.root, input as any, async () => {})
   expect(result.outcome).toBe('done')
   expect(app.texts).toEqual(['proposal 1', 'check 1'])
+  expect((result.output as any).recording.records).toHaveLength(4)
 })
 
 test('ordinary diagnostics need no output port or Log capability', async () => {
@@ -250,7 +324,8 @@ test('rejected monitor admission cannot strand a reader or discard a passed patc
   expect(result.outcome).toBe('done')
   expect(result.output).toMatchObject({ monitoring: { complete: false, displayed: 0 } })
   expect(retained).toBe(1)
-  expect(app.pairs[0]!.disconnectedTransfers).toBe(1)
+  expect(result.output).toMatchObject({ recording: { complete: true } })
+  expect((result.output as any).recording.records).toHaveLength(4)
   expect(app.active).toBe(0)
 })
 
@@ -265,6 +340,16 @@ test('checkpoint retention does not wait for the monitor terminal result', async
   expect(app.active).toBe(1)
   releaseMonitor.resolve()
   expect((await work).outcome).toBe('done')
+})
+
+test('rejected repair admission disposes the independent recorder and settles the monitor', async () => {
+  const app = application({ rejectRepair: true })
+  await expect(
+    monitoredRepair(app.root, input as any, async () => {
+      throw new Error('must not retain')
+    }),
+  ).rejects.toThrow('Synthetic repair admission rejection.')
+  expect(app.active).toBe(0)
 })
 
 test('failed repair and failed checkpoint abort and join the optional monitor', async () => {
@@ -334,6 +419,7 @@ test('optional output loss marks presentation incomplete without repeating Agent
   expect(result.output).toMatchObject({ monitoring: { complete: false, displayed: 0 } })
   expect(sends).toBe(1)
   expect((result.output as any).attempts).toHaveLength(1)
+  expect(result.output).toMatchObject({ recording: { complete: true } })
 })
 
 test('phase-only progress is bounded, omits source and does not change failed repair evidence', async () => {
@@ -368,6 +454,35 @@ test('monitor enforces phase meaning as well as shape', () => {
     { phase: 'check', attempt: 1, source: 'private text' },
   ])
     expect(() => formatProgress(value, 'compact')).toThrow('Invalid repair phase')
+})
+
+test('recorder keeps bounded phase data and reports a late disposal failure honestly', async () => {
+  const source = pipe()
+  await source.send.send({ phase: 'baseline', attempt: 0 })
+  await source.send.close()
+  source.receive.close = async () => {
+    throw new OperationError('LAGGED', 'Synthetic recorder disposal loss.')
+  }
+  expect(await recordPhases(source.receive, new AbortController().signal)).toEqual({
+    complete: false,
+    startSequence: 1,
+    records: [{ phase: 'baseline', attempt: 0 }],
+  })
+})
+
+test('recorder bounds retention and never copies unrelated data into its trace', async () => {
+  for (const values of [
+    Array.from({ length: 7 }, () => ({ phase: 'check', attempt: 1 })),
+    [{ phase: 'check', attempt: 1, source: 'not progress' }],
+  ]) {
+    const source = pipe()
+    for (const value of values) await source.send.send(value)
+    await source.send.close()
+    const result = await recordPhases(source.receive, new AbortController().signal)
+    expect(result.complete).toBe(false)
+    expect(result.records.length).toBeLessThanOrEqual(6)
+    expect(JSON.stringify(result)).not.toContain('not progress')
+  }
 })
 
 test('late receiver disposal failure reports incomplete monitoring, not repair failure', async () => {

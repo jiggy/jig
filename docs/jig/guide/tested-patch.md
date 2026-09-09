@@ -53,10 +53,19 @@ or `descriptive`, and `settings.phases` selects which phases to show (an empty
 list suppresses them). Review changed configuration as usual. The repair
 specialist remains unchanged and the monitor receives no source or Agent access.
 
-`output.monitoring` reports whether observation completed and how many messages
-the parent displayed. Failed optional progress can coexist with a review-ready
+The specialist broadcasts once to two independent subscribers: the monitor
+and a root-owned recorder. `output.monitoring` reports whether presentation
+completed and how many messages the parent displayed. `output.recording` and
+`files/progress.json` retain at most six phase records with a separate completeness
+flag. Filtering or losing the display does not discard the recorder's feed.
+Failed optional progress can coexist with a review-ready
 patch. Cancellation, uncertain execution and failed cleanup remain separate
 failures; progress does not override them.
+
+Patch evidence is checkpointed as soon as repair settles, without waiting for
+the subscribers. An interrupted Run may therefore retain a patch without the
+final trace. The trace is application output, not durable channel delivery or
+proof that a patch passed.
 
 ## What makes a patch review-ready?
 
