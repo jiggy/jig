@@ -15,12 +15,20 @@ implement the exact [ACP public updates](../contracts/acp-public-updates.md)
 profile. API clients retain ordinary one-shot support; requesting this profile
 from an unsupported client fails before provider dispatch.
 
+Existing exact child calls also accept channel maps. A root may hand a sender
+to one child and its receiver to another, or keep one end itself. Each child
+receives only its declared, admitted endpoints in `run.channels`; an unused
+incoming endpoint can be forwarded to a compatible capability method. No new
+call method, attachment authority or target-discovery right is introduced.
+The existing two-sibling limit remains: a worker and a monitor occupy both
+branches. A child cannot invoke further child Flows.
+
 `jig run TARGET --receive NAME` connects a declared root send channel to the
 command's output. Repeat the flag for distinct outputs, up to 16. Required root
 channels must be connected before execution; optional unwired channels are
 absent. Unknown, receive-direction or unsupported selections reject before the
-Flow process starts. Root receive channels, child channel transfer, broadcast,
-subscriptions and cross-Run connections are not supported in this slice.
+Flow process starts. Root receive channels, broadcast, subscriptions and
+connections between independent root Runs are not supported.
 
 Local channel creation needs no capability declaration. Endpoint operations use
 separate bounded protocol capacity, not an Agent/command worker reservation.
@@ -32,14 +40,29 @@ Contracts resolve only from the admitted package, including references in
 capability-method declarations. No URL fetch, inferred compatibility or adapter
 conversion occurs. Jig checks local names, direction, exact named meaning,
 schema agreement, delivery and start position before atomically moving rights.
-Failed admission moves nothing. A used or already moved endpoint cannot be
-transferred again. Possession is scoped to the exact participant, not merely
-knowledge of a token.
+Failed admission moves nothing. The sender of a call loses its offered rights
+only when the host commits transfer; merely offering them does not connect a
+producer. A rejected call may therefore leave a receiver waiting with no
+producer, and the caller must dispose it when abandoning that observation.
+An endpoint used locally cannot move; an unused received endpoint can move
+onward, but its former holder cannot use or transfer it. Possession is scoped
+to the exact participant, not merely knowledge of a token.
+
+Receiver disposal alone does not invalidate an unused sender's ownership. That
+sender can still move while its source owner lives and the source is neither
+failed nor sealed; all mapping checks still apply. Its subsequent send or close
+fails `DISCONNECTED`. This neither reconnects the receiver nor promises delivery:
+an early-exiting monitor must not prevent an otherwise admitted worker merely
+by winning the connection race. Disposed receivers cannot move.
 
 A successful send means source acceptance, not processing or durable delivery.
 Receiver disposal stops observation, not the Agent. Direct sends backpressure
 against finite capacity. EOF closes one data interval; the caller must separately
 await the execution result. Normal caught failures need no acknowledgement API.
+Stopping or failing a monitor does not cancel its worker. A failed child whose
+owned work is conclusively fenced and cleaned returns a recoverable call error;
+it does not automatically fail healthy siblings. Root cancellation and failed
+cleanup still prevent success.
 
 Completion checks owned unfinished work before implicit writer sealing. A
 failed producer aborts unsealed output. Explicitly sealed output may drain after

@@ -37,6 +37,124 @@ describe('private foreground command boundary', () => {
 })
 
 proofDescribe('private rootless project session', () => {
+  test('installed sibling channels preserve exact admission, leaf results, and independent cleanup', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'jig-private-child-channel-cli-'))
+    try {
+      await writeChildChannelProject(root)
+      const reviewed = await invokeChannelCli(root, ['review', '--yes'])
+      expect(reviewed.code, reviewed.stderr + reviewed.stdout).toBe(0)
+      for (const mode of [
+        'success',
+        'mismatch',
+        'monitor-fail',
+        'monitor-cancel',
+        'early-monitor-fail',
+        'invalid-result',
+      ]) {
+        let sawLiveData = false
+        const result = await invokeChannelCli(
+          root,
+          [
+            'run',
+            'binding:composition',
+            '--input',
+            JSON.stringify({ mode }),
+            '--receive',
+            'progress',
+          ],
+          {
+            record(record, running) {
+              if (record.type === 'data') sawLiveData ||= running
+            },
+          },
+        )
+        expect(result.code, mode + ':' + result.stderr + result.stdout).toBe(0)
+        const records = result.stdout
+          .trimEnd()
+          .split('\n')
+          .map((line) => JSON.parse(line))
+        expect(records[0]).toEqual({ type: 'begin', channel: 'progress', startSequence: 1 })
+        expect(records.at(-2)).toMatchObject({ type: 'end', channel: 'progress', status: 'closed' })
+        const terminal = records.at(-1)
+        expect(terminal).toMatchObject({ type: 'terminal', result: { status: 'succeeded' } })
+        const output = terminal.result.output
+        if (mode === 'invalid-result') {
+          expect(output.worker).toEqual({ error: 'INVALID_RESULT' })
+          expect(output.monitor.output.incomplete).toBe('OWNER_CLOSED')
+        } else {
+          expect(output.worker).toMatchObject({ outcome: 'done', output: { completed: true } })
+        }
+        if (mode === 'mismatch') {
+          expect(output.monitor).toEqual({ error: 'INVALID_INPUT' })
+          expect(output.retained).toBeTrue()
+          expect(sawLiveData).toBeFalse()
+          expect(result.stderr).not.toContain('monitor-started')
+        } else if (mode === 'early-monitor-fail') {
+          expect(sawLiveData).toBeFalse()
+          expect(result.stderr).toContain('monitor-started')
+          expect(output.monitor).toEqual({ error: 'EXECUTION_FAILED' })
+          expect(output.worker.output.observationLost).toBe('DISCONNECTED')
+          expect(output.displayIncomplete).not.toBeNull()
+        } else {
+          expect(sawLiveData).toBeTrue()
+          expect(result.stderr).toContain('monitor-started')
+        }
+        if (mode === 'monitor-fail' || mode === 'monitor-cancel') {
+          expect(output.monitor.error).toBe(
+            mode === 'monitor-fail' ? 'EXECUTION_FAILED' : 'CANCELLED',
+          )
+          expect(output.worker.output.observationLost).toBe('DISCONNECTED')
+          expect(output.displayIncomplete).not.toBeNull()
+        }
+        if (mode === 'success') {
+          expect(output.monitor).toMatchObject({
+            outcome: 'done',
+            output: { count: 2, incomplete: null },
+          })
+          expect(output.displayIncomplete).toBeNull()
+        }
+        await expectNoChildResidue(root)
+      }
+      let cancelled = false
+      const stopped = await invokeChannelCli(
+        root,
+        [
+          'run',
+          'binding:composition',
+          '--input',
+          '{"mode":"root-cancel"}',
+          '--receive',
+          'progress',
+        ],
+        {
+          record(record, running, cancel) {
+            if (record.type === 'data' && running) {
+              cancelled = true
+              cancel()
+            }
+          },
+        },
+      )
+      expect(cancelled).toBeTrue()
+      expect(stopped.code).not.toBe(0)
+      expect(
+        stopped.stdout
+          .trimEnd()
+          .split('\n')
+          .filter(Boolean)
+          .map((line) => JSON.parse(line))
+          .filter((record) => record.type === 'terminal')
+          .every((record) => record.result.status !== 'succeeded'),
+      ).toBeTrue()
+      await expectNoChildResidue(root)
+      expect(await directoryEntries(join(root, '.jig/private-root-linux-owners'))).toEqual([])
+      await waitForRootlessCgroups(initialRootlessCgroups)
+      await waitForRootlessTemporaryState(initialRootlessTemporaryState)
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  }, 240_000)
+
   test('installed direct channels stream, recover optional observation, and clean root cancellation', async () => {
     const root = await mkdtemp(join(tmpdir(), 'jig-private-channel-cli-'))
     try {
@@ -1351,6 +1469,154 @@ async function writeChannelProject(root: string): Promise<void> {
     });
   `,
   )
+}
+
+async function writeChildChannelProject(root: string): Promise<void> {
+  await mkdir(join(root, 'bindings'), { recursive: true })
+  await writeFile(
+    join(root, 'jig.ts'),
+    `
+    import { defineJig, discover } from '@jigging/jig';
+    export default defineJig({flows:discover('flows'),bindings:discover('bindings')});
+  `,
+  )
+  await writeFile(
+    join(root, 'bindings/composition.ts'),
+    `
+    import { defineBinding } from '@jigging/jig';
+    export default defineBinding({package:'./flows/root',slots:{
+      worker:'flow:flows/worker',monitor:'flow:flows/monitor',mismatch:'flow:flows/mismatch'
+    }});
+  `,
+  )
+  for (const name of ['root', 'worker', 'monitor', 'mismatch']) {
+    const directory = join(root, 'flows', name)
+    await mkdir(directory, { recursive: true })
+    await cp(join(import.meta.dir, '../../flow-sdk/dist'), join(directory, 'sdk'), {
+      recursive: true,
+    })
+    const channels =
+      name === 'root'
+        ? { progress: { direction: 'send', required: false, schema: { type: 'string' } } }
+        : name === 'worker'
+          ? {
+              progress: { direction: 'send', schema: { type: 'string' } },
+              gate: { direction: 'receive', schema: { type: 'null' } },
+            }
+          : {
+              progress: {
+                direction: 'receive',
+                schema: { type: name === 'mismatch' ? 'number' : 'string' },
+              },
+              display: { direction: 'send', schema: { type: 'string' } },
+            }
+    await writeFile(
+      join(directory, 'FLOW.md'),
+      `---\nname: child-channel-${name}\ndescription: Exercise exact child communication.\nchannels: ${JSON.stringify(channels)}\n---\n`,
+    )
+  }
+  await writeFile(
+    join(root, 'flows/worker/result.schema.json'),
+    JSON.stringify({
+      $schema: 'https://flow.jig.md/schemas/schema-1.json',
+      type: 'object',
+      properties: {
+        outcome: { const: 'done' },
+        output: {
+          type: 'object',
+          properties: {
+            completed: { const: true },
+            observationLost: { type: ['string', 'null'] },
+          },
+          required: ['completed', 'observationLost'],
+          additionalProperties: false,
+        },
+      },
+      required: ['outcome', 'output'],
+      additionalProperties: false,
+    }),
+  )
+  await writeFile(
+    join(root, 'flows/root/flow.ts'),
+    `
+    import { handle } from './sdk/index.js';
+    await handle(async run => {
+      const mode = run.input.mode;
+      const progress = await run.channel({schema:{type:'string'}});
+      const display = await run.channel({schema:{type:'string'}});
+      const gate = await run.channel({schema:{type:'null'}});
+      const stop = new AbortController();
+      let retained = false, displayIncomplete = null;
+      async function closeOffered(endpoint) {
+        try { await endpoint.close(); return true; }
+        catch(error) { if(error.code !== 'PERMISSION_DENIED') throw error; return false; }
+      }
+      const showing = (async () => {
+        try {
+          for await(const line of display.receive) {
+            if(run.channels.progress) await run.channels.progress.send(line);
+            if(mode === 'monitor-cancel') stop.abort();
+            if(line === 'monitor:first' && mode !== 'monitor-cancel' && mode !== 'monitor-fail') {
+              await gate.send.send(null); await gate.send.close();
+            }
+          }
+        } catch(error) { displayIncomplete = error.code; }
+      })();
+      const monitor = run.runChildFlow({operationId:'monitor',slot:mode === 'mismatch' ? 'mismatch' : 'monitor',
+        input:{mode}, channels:{progress:progress.receive,display:display.send}}, {signal:stop.signal})
+        .catch(async error => {
+          retained = await closeOffered(progress.receive);
+          await closeOffered(display.send);
+          await gate.send.send(null); await gate.send.close();
+          return {error:error.code};
+        });
+      if(mode === 'early-monitor-fail') await monitor;
+      const worker = run.runChildFlow({operationId:'worker',slot:'worker',input:{mode},channels:{progress:progress.send,gate:gate.receive}})
+        .catch(error => ({error:error.code}));
+      const results = await Promise.all([worker,monitor]);
+      await showing;
+      return {outcome:'done',output:{worker:results[0],monitor:results[1],retained,displayIncomplete}};
+    });
+  `,
+  )
+  await writeFile(
+    join(root, 'flows/worker/flow.ts'),
+    `
+    import { handle } from './sdk/index.js';
+    await handle(async run => {
+      let observationLost = null;
+      for(const phase of ['first','last']) {
+        try { await run.channels.progress.send(phase); }
+        catch(error) { observationLost = error.code; }
+        if(run.input.mode === 'root-cancel') await Bun.sleep(60_000);
+        if(phase === 'first') { await run.channels.gate.next(); await run.channels.gate.close(); }
+        await Bun.sleep(500);
+      }
+      return {outcome:'done',output:{completed:run.input.mode !== 'invalid-result',observationLost}};
+    });
+  `,
+  )
+  const monitor = `
+    import { handle } from './sdk/index.js';
+    await handle(async run => {
+      console.log('monitor-started');
+      if(run.input.mode === 'early-monitor-fail') throw new Error('monitor failed before producer admission');
+      let count = 0, incomplete = null;
+      try {
+        for await(const phase of run.channels.progress) {
+          count++;
+          await run.channels.display.send('monitor:' + phase);
+          if(run.input.mode === 'monitor-fail') throw new Error('deliberate monitor failure');
+        }
+      } catch(error) {
+        if(run.input.mode === 'monitor-fail') throw error;
+        incomplete = error.code;
+      }
+      return {outcome:'done',output:{count,incomplete}};
+    });
+  `
+  await writeFile(join(root, 'flows/monitor/flow.ts'), monitor)
+  await writeFile(join(root, 'flows/mismatch/flow.ts'), monitor)
 }
 
 async function invokeChannelCli(

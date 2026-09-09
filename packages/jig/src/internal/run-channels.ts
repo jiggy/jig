@@ -23,20 +23,25 @@ export interface PrivateRunChannelOutput {
   diagnostic(bytes: Uint8Array): void
 }
 
+export type PrivateChannelContractCache = Map<string, Promise<ResolvedChannelContract>>
+
 export class PrivateRunChannels {
   readonly broker: DirectChannelBroker
   readonly root: ChannelParticipant
   readonly grants: Readonly<Record<string, ChannelGrant>>
+  readonly contracts: PrivateChannelContractCache
   private readonly readers: Promise<void>[] = []
 
   private constructor(
     root: ChannelParticipant,
     grants: Readonly<Record<string, ChannelGrant>>,
     broker: DirectChannelBroker,
+    contracts: PrivateChannelContractCache,
   ) {
     this.root = root
     this.grants = grants
     this.broker = broker
+    this.contracts = contracts
   }
 
   static async open(
@@ -45,7 +50,8 @@ export class PrivateRunChannels {
     output?: PrivateRunChannelOutput,
   ): Promise<PrivateRunChannels> {
     const broker = new DirectChannelBroker()
-    const resolveContract = channelContractResolver(captured)
+    const contracts: PrivateChannelContractCache = new Map()
+    const resolveContract = channelContractResolver(captured, contracts)
     const root = broker.participant('root', { resolveContract })
     const declarations = await resolveChannelDeclarations(
       inspected.metadata.channels ?? {},
@@ -75,7 +81,7 @@ export class PrivateRunChannels {
         readers.push({ name, endpoint: pair.receive.endpoint })
       }
       const grants = cli.transfer(root, references, declarations)
-      context = new PrivateRunChannels(root, grants, broker)
+      context = new PrivateRunChannels(root, grants, broker, contracts)
       for (const reader of readers) {
         await output!.record({ type: 'begin', channel: reader.name, startSequence: 1 })
         const task = context.drain(cli, reader, output!)
@@ -143,11 +149,12 @@ export class PrivateRunChannels {
 
 export function channelContractResolver(
   captured: CapturedPackage,
+  cache: PrivateChannelContractCache = new Map(),
 ): (path: string) => Promise<ResolvedChannelContract> {
-  const cache = new Map<string, Promise<ResolvedChannelContract>>()
   return (reference) => {
     requireChannelReference(reference, 'channel contract')
-    let pending = cache.get(reference)
+    const key = `${captured.digest}:${reference}`
+    let pending = cache.get(key)
     if (pending !== undefined) return pending
     // Cache is finite independently of the number of failed local attempts.
     if (cache.size >= 16)
@@ -177,7 +184,7 @@ export function channelContractResolver(
         },
       }
     })()
-    cache.set(reference, pending)
+    cache.set(key, pending)
     return pending
   }
 }

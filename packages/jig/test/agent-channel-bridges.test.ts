@@ -9,13 +9,148 @@ import {
   ACP_PUBLIC_UPDATES,
   PrivateAgentUpdateChannel,
 } from '../src/internal/agent-update-channel.js'
-import { type PrivateRunChannelOutput, PrivateRunChannels } from '../src/internal/run-channels.js'
+import {
+  channelContractResolver,
+  type PrivateChannelContractCache,
+  type PrivateRunChannelOutput,
+  PrivateRunChannels,
+} from '../src/internal/run-channels.js'
+import { privateAgentChannelOwnerId } from '../src/internal/root-agent-run-controller.js'
 import { canonicalJson, type JsonValue } from '../src/json.js'
 import type { CapturedPackage } from '../src/package/capture.js'
 import type { InspectedPackage } from '../src/package/inspect.js'
 import { DirectChannelBroker } from '../src/run/channels.js'
 
 describe('private Agent and command channel bridges', () => {
+  test('forwards an unused named writer through a child to its own Agent scope', async () => {
+    const broker = new DirectChannelBroker()
+    const root = broker.participant('root', { resolveContract: () => ACP_PUBLIC_UPDATES })
+    const children = ['left', 'right'].map((name) => broker.participant(`flow:${name}`))
+    const values = await Promise.all(
+      children.map(async (child) => {
+        const pair = await root.create({ contract: './events.json' })
+        const incoming = root.transfer(
+          child,
+          { events: pair.send.endpoint },
+          {
+            events: { direction: 'send', contract: ACP_PUBLIC_UPDATES },
+          },
+        )
+        const agent = broker.participant(privateAgentChannelOwnerId(child.id, 'answer'))
+        child.transfer(
+          agent,
+          { events: incoming.events!.endpoint },
+          {
+            events: { direction: 'send', contract: ACP_PUBLIC_UPDATES },
+          },
+        )
+        await expect(
+          child.send(incoming.events!.endpoint, update('unauthorized')),
+        ).rejects.toMatchObject({ code: 'PERMISSION_DENIED' })
+        const updates = new PrivateAgentUpdateChannel(
+          agent,
+          pair.send.endpoint,
+          new AbortController().signal,
+        )
+        const result = await runPrivateAcpTurn(
+          deterministicAgent(async (client, sessionId) => {
+            await message(client, sessionId, child.id)
+            return 'end_turn'
+          }),
+          { cwd: '/work', instructions: 'answer', onPublicUpdate: (value) => updates.offer(value) },
+        )
+        await updates.finish()
+        agent.finalize(true)
+        child.finalize(true)
+        // The creator is still root: leaf completion does not revoke this sealed prefix.
+        const observed = await root.next(pair.receive.endpoint)
+        expect(await root.next(pair.receive.endpoint)).toEqual({ end: { lastSequence: 1 } })
+        return { result, observed }
+      }),
+    )
+    expect(values.map((value) => value.result.text)).toEqual(['flow:left', 'flow:right'])
+    expect(values.map((value) => value.observed)).toEqual(
+      ['flow:left', 'flow:right'].map((text) => ({
+        item: { sequence: 1, value: update(text) },
+      })),
+    )
+    root.finalize(true)
+  })
+
+  test('Agent channel scope keys cannot collide across root, siblings, or delimiters', () => {
+    const scopes = [
+      privateAgentChannelOwnerId(undefined, 'a:b'),
+      privateAgentChannelOwnerId('a', 'b'),
+      privateAgentChannelOwnerId('a:b', 'c'),
+      privateAgentChannelOwnerId('a', 'b:c'),
+      privateAgentChannelOwnerId('root', 'a:b'),
+      privateAgentChannelOwnerId('left', 'same'),
+      privateAgentChannelOwnerId('right', 'same'),
+    ]
+    expect(new Set(scopes).size).toBe(scopes.length)
+  })
+
+  test('an exact child map mismatch leaves all offered rights with its caller', async () => {
+    const broker = new DirectChannelBroker()
+    const root = broker.participant('root', { resolveContract: () => ACP_PUBLIC_UPDATES })
+    const child = broker.participant('child')
+    const first = await root.create({ schema: { type: 'string' } })
+    const second = await root.create({ contract: './events.json' })
+    const wrong = {
+      ...ACP_PUBLIC_UPDATES,
+      identity: { ...ACP_PUBLIC_UPDATES.identity, digest: `sha256:${'0'.repeat(64)}` },
+    }
+    expect(() =>
+      root.transfer(
+        child,
+        { first: first.send.endpoint, events: second.send.endpoint },
+        {
+          first: { direction: 'send', schema: { type: 'string' } },
+          events: { direction: 'send', contract: wrong },
+        },
+      ),
+    ).toThrow('contract identity differs')
+    await root.send(first.send.endpoint, 'still held')
+    root.close(first.send.endpoint)
+    expect(await root.next(first.receive.endpoint)).toEqual({
+      item: { sequence: 1, value: 'still held' },
+    })
+    expect(await root.next(first.receive.endpoint)).toEqual({ end: { lastSequence: 1 } })
+    const corrected = root.transfer(
+      child,
+      { events: second.send.endpoint },
+      {
+        events: { direction: 'send', contract: ACP_PUBLIC_UPDATES },
+      },
+    )
+    child.close(corrected.events!.endpoint)
+    child.finalize(true)
+    expect(await root.next(second.receive.endpoint)).toEqual({ end: { lastSequence: 0 } })
+    root.finalize(true)
+  })
+
+  test('package-local contract caches share one root bound across child invocations', async () => {
+    const contracts: PrivateChannelContractCache = new Map()
+    let reads = 0
+    const packageAt = (digest: string): CapturedPackage => ({
+      ...captured(),
+      digest,
+      async read(path) {
+        reads++
+        return captured().read(path)
+      },
+    })
+    for (let i = 0; i < 16; i++)
+      await channelContractResolver(packageAt(`package-${i}`), contracts)('./events.json')
+    expect(reads).toBe(16)
+    await channelContractResolver(packageAt('package-0'), contracts)('./events.json')
+    expect(reads).toBe(16)
+    expect(() =>
+      channelContractResolver(packageAt('package-16'), contracts)('./events.json'),
+    ).toThrow('cache limit reached')
+    expect(reads).toBe(16)
+  })
+
   test('projects genuine pre-terminal ACP messages through application filtering without a private echo', async () => {
     const records: JsonValue[] = []
     const context = await PrivateRunChannels.open(captured(), inspected(), output(records))

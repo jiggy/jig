@@ -347,6 +347,14 @@ not establish whether rights moved. The host retains authoritative ownership.
 No cross-root connection, ambient lookup or late injection into an ungranted
 running participant is implied.
 
+Disposing a receiver does not revoke its peer's unused send right. While the
+source owner remains live and the source is neither failed nor sealed, that
+sender remains transferable under the same checks, even after receiver
+disposal. Its sends and close still fail `DISCONNECTED`; transfer cannot revive
+delivery. A disposed receiver is not transferable. Required ports require a
+grant, not a guarantee that the peer remains available. This keeps observation
+disposal independent of whether producer admission wins or loses that race.
+
 | Request | Closed parameters | Successful result |
 | --- | --- | --- |
 | `channel/create` | Optional `delivery: "direct"`; optional `schema` or package-local `contract`, mutually exclusive | `{send: grant, receive: grant}` |

@@ -165,6 +165,14 @@ type AgentCallInput = AgentInput & {
   readonly channels?: { readonly caller: ChannelParticipant; readonly broker: DirectChannelBroker }
 }
 
+/** Effect IDs are local to their owning Flow, including the root's separate scope. */
+export function privateAgentChannelOwnerId(
+  parentOperationId: string | undefined,
+  operationId: string,
+): string {
+  return `agent:${JSON.stringify([parentOperationId ?? null, operationId])}`
+}
+
 export async function executePrivateRootAgentRun(
   input: AgentCallInput,
 ): Promise<RunHostEffectOperationTerminal> {
@@ -181,7 +189,9 @@ export async function executePrivateRootAgentRun(
           'UNAVAILABLE',
           'the selected Agent does not support public update channels',
         )
-      participant = input.channels.broker.participant(`agent:${input.call.operationId}`)
+      participant = input.channels.broker.participant(
+        privateAgentChannelOwnerId(input.parentFlow?.operationId, input.call.operationId),
+      )
       const grants = input.channels.caller.transfer(participant, input.call.channels!, {
         events: {
           direction: 'send',

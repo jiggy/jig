@@ -1130,23 +1130,27 @@ function operationDispatcher(
     ...(hasFlows
       ? {
           runChildFlow: async (call, signal): Promise<RunHostFlowOperationTerminal> =>
-            Object.keys(call.channels ?? {}).length !== 0
-              ? {
-                  status: 'failed',
-                  code: 'UNAVAILABLE',
-                  message: 'child channel transfer is not supported by this host',
-                }
-              : enter(
-                  'flow',
-                  () =>
-                    executePrivateRootFlowCall({
-                      ...operationInput(input, parent),
-                      call,
-                      parentDeadlineUnixMs,
-                      signal,
-                    }),
-                  operationBusy(),
-                ),
+            enter(
+              'flow',
+              () =>
+                executePrivateRootFlowCall({
+                  ...operationInput(input, parent),
+                  channels: {
+                    caller: channels.root,
+                    broker: channels.broker,
+                    contracts: channels.contracts,
+                  },
+                  ...(input.channelOutput === undefined
+                    ? {}
+                    : {
+                        onDiagnostic: (bytes: Uint8Array) => input.channelOutput!.diagnostic(bytes),
+                      }),
+                  call,
+                  parentDeadlineUnixMs,
+                  signal,
+                }),
+              operationBusy(),
+            ),
         }
       : {}),
     ...(hasEffects

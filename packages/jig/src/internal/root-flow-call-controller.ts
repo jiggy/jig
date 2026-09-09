@@ -3,8 +3,14 @@ import { join } from 'node:path'
 
 import type { JsonValue } from '../json.js'
 import { CheckError } from '../diagnostics.js'
-import { inspectCapturedPackage } from '../package/inspect.js'
+import { inspectCapturedPackage, type InspectedPackage } from '../package/inspect.js'
 import { SchemaDiagnostic } from '../schema/index.js'
+import {
+  ChannelOperationError,
+  type ChannelDeclaration,
+  type ChannelParticipant,
+  type DirectChannelBroker,
+} from '../run/channels.js'
 import {
   RunHostSession,
   type RunHostFlowCall,
@@ -70,6 +76,11 @@ import {
   executePrivateRootAgentRun,
   recoverPrivateRootAgentRunOwners,
 } from './root-agent-run-controller.js'
+import {
+  channelContractResolver,
+  resolveChannelDeclarations,
+  type PrivateChannelContractCache,
+} from './run-channels.js'
 
 const ALLOCATION_KIND = 'private-root-child-owner-allocation/1'
 const SANDBOX_KIND = 'private-root-child-sandbox/1'
@@ -106,15 +117,23 @@ interface ChildInput {
   readonly installedSupport: PrivateDirectRunInstalledSupport
   readonly backend: PrivateLinuxCgroupBackend
   readonly agentProvider?: PrivateAgentProvider | undefined
+  readonly channels?: {
+    readonly caller: ChannelParticipant
+    readonly broker: DirectChannelBroker
+    readonly contracts?: PrivateChannelContractCache
+  }
+  readonly onDiagnostic?: (bytes: Uint8Array) => void
+}
+
+type ChildCallInput = ChildInput & {
+  readonly call: RunHostFlowCall
+  readonly parentDeadlineUnixMs: number
+  readonly signal: AbortSignal
 }
 
 /** Execute one exact admitted Flow slot without creating child history. */
 export async function executePrivateRootFlowCall(
-  input: ChildInput & {
-    readonly call: RunHostFlowCall
-    readonly parentDeadlineUnixMs: number
-    readonly signal: AbortSignal
-  },
+  input: ChildCallInput,
 ): Promise<RunHostFlowOperationTerminal> {
   const selected = selectChild(input.parent, input.call.slot)
   if (selected === undefined) {
@@ -125,13 +144,52 @@ export async function executePrivateRootFlowCall(
   }
   if (input.signal.aborted) return failed('CANCELLED', 'the child Flow call was cancelled')
 
-  const invalidInput = await validateChildInput(
-    input.packageStoreRoot,
-    selected.request.package,
-    input.call.input,
-  )
-  if (invalidInput !== undefined) return invalidInput
+  const captured = await captureStoredPackage(input.packageStoreRoot, selected.request.package)
+  let participant: ChannelParticipant | undefined
+  try {
+    const inspected = await inspectCapturedPackage(captured)
+    try {
+      inspected.schemas.input?.validate(input.call.input, 'INVALID_INPUT')
+    } catch (error) {
+      if (!(error instanceof SchemaDiagnostic)) throw error
+      return failed('INVALID_INPUT', 'child Flow input does not satisfy its declared schema')
+    }
+    const resolveContract = channelContractResolver(captured, input.channels?.contracts)
+    const declarations = await resolveChannelDeclarations(
+      inspected.metadata.channels ?? {},
+      resolveContract,
+    )
+    if (
+      input.channels === undefined &&
+      (Object.keys(input.call.channels ?? {}).length !== 0 ||
+        Object.values(declarations).some((declaration) => declaration.required !== false))
+    )
+      return failed('UNAVAILABLE', 'the child channel owner is unavailable')
+    participant = input.channels?.broker.participant(`flow:${input.call.operationId}`, {
+      resolveContract,
+    })
+    return await executePreparedChild(input, selected, inspected, participant, declarations)
+  } catch (error) {
+    if (error instanceof ChannelOperationError)
+      return failed(error.code, error.message, error.details)
+    throw error
+  } finally {
+    // The capture also owns any dynamically resolved package-local channel contracts.
+    // A failed preflight has no moved rights; a dispatched child retains its own duties.
+    participant?.finalize(false)
+    await captured.dispose()
+  }
+}
 
+async function executePreparedChild(
+  input: ChildCallInput,
+  selected: NonNullable<ReturnType<typeof selectChild>>,
+  inspected: InspectedPackage,
+  participant: ChannelParticipant | undefined,
+  declarations: Readonly<Record<string, ChannelDeclaration>>,
+): Promise<RunHostFlowOperationTerminal> {
+  if (selected.disposition.state !== 'ready')
+    return failed('UNAVAILABLE', 'the admitted child Flow is unavailable on this host')
   let recipe: PrivateDirectRunRecipe
   try {
     recipe = await planPrivateDirectRun({
@@ -232,6 +290,19 @@ export async function executePrivateRootFlowCall(
       sandbox: sandbox as unknown as JsonValue,
     })
 
+    if (input.signal.aborted)
+      throw new ChannelOperationError('CANCELLED', 'the child Flow call was cancelled')
+    if (Date.now() >= effectiveDeadlineUnixMs)
+      throw new ChannelOperationError(
+        'DEADLINE_EXCEEDED',
+        'the child Flow deadline elapsed before dispatch',
+      )
+    // All target, input, recipe, resource and owner checks precede the atomic move.
+    // No package bytes execute between this transfer and the sealed admission.
+    const grants =
+      participant === undefined
+        ? undefined
+        : input.channels!.caller.transfer(participant, input.call.channels ?? {}, declarations)
     const startup = startupSignal(input.signal)
     let component
     try {
@@ -246,12 +317,13 @@ export async function executePrivateRootFlowCall(
         input: input.call.input,
         settings: selected.request.settings,
         attachments: Object.freeze({}),
+        ...(grants === undefined ? {} : { channels: grants }),
         scratch: recipe.scratch,
         deadlineUnixMs: effectiveDeadlineUnixMs,
         signal: input.signal,
       },
       { cancellationGraceMs: CANCELLATION_GRACE_MS },
-      specialistDispatcher(input, selected, effectiveDeadlineUnixMs),
+      specialistDispatcher(input, selected, effectiveDeadlineUnixMs, inspected, participant),
     ).run()
     const fence = await component.enforcement
     await releaseKnownChild(input, lifecycle, lease, fence)
@@ -273,6 +345,8 @@ export async function executePrivateRootFlowCall(
     if (Date.now() >= effectiveDeadlineUnixMs) {
       return failed('DEADLINE_EXCEEDED', 'the child Flow deadline elapsed')
     }
+    if (!attemptedDispatch && error instanceof ChannelOperationError)
+      return failed(error.code, error.message, error.details)
     return attemptedDispatch
       ? failed('UNCERTAIN', 'child dispatch may have occurred but no result was proved')
       : failed('EXECUTION_FAILED', 'child Flow execution failed before dispatch')
@@ -321,16 +395,30 @@ function specialistDispatcher(
   input: ChildInput & { readonly call: RunHostFlowCall },
   selected: NonNullable<ReturnType<typeof selectChild>>,
   parentDeadlineUnixMs: number,
-): RunHostOperationDispatcher | undefined {
-  if (Object.keys(selected.request.capabilities).length === 0) return undefined
+  inspected: InspectedPackage,
+  participant: ChannelParticipant | undefined,
+): RunHostOperationDispatcher {
   let active = false
   return {
+    ...(participant === undefined ? {} : { channels: participant }),
+    ...(input.onDiagnostic === undefined ? {} : { onDiagnostic: input.onDiagnostic }),
+    validateResult(result) {
+      const admitted = admitPrivatePackageResult(inspected, {
+        status: 'succeeded',
+        result,
+        diagnostics: { stderr: '', stderrBytes: 0, stderrTruncated: false },
+      })
+      if (admitted.status === 'failed')
+        throw new ChannelOperationError('INVALID_RESULT', admitted.message, admitted.details)
+    },
     async callCapability(call, signal) {
       if (active)
         return failed('RESOURCE_EXHAUSTED', 'the specialist already has an active operation')
       active = true
       try {
-        if (selected.request.capabilities[call.slot]?.digest === PROJECT_COMMAND_CONTRACT_DIGEST)
+        if (selected.request.capabilities[call.slot]?.digest === PROJECT_COMMAND_CONTRACT_DIGEST) {
+          if (Object.keys(call.channels ?? {}).length !== 0)
+            return failed('UNAVAILABLE', 'this capability has no supported channels')
           return await executePrivateProjectCommand({
             ...input,
             parentFlow: {
@@ -342,11 +430,15 @@ function specialistDispatcher(
             parentDeadlineUnixMs,
             signal,
           })
+        }
         if (input.agentProvider === undefined)
           return failed('UNAVAILABLE', 'the admitted Agent provider is unavailable')
         return await executePrivateRootAgentRun({
           ...input,
           agentProvider: input.agentProvider,
+          ...(participant === undefined || input.channels === undefined
+            ? {}
+            : { channels: { caller: participant, broker: input.channels.broker } }),
           parentFlow: {
             operationId: input.call.operationId,
             target: selected.request.target,
@@ -360,30 +452,6 @@ function specialistDispatcher(
         active = false
       }
     },
-  }
-}
-
-async function validateChildInput(
-  store: string,
-  reference: Parameters<typeof captureStoredPackage>[1],
-  value: JsonValue,
-): Promise<RunHostFlowOperationTerminal | undefined> {
-  const captured = await captureStoredPackage(store, reference)
-  try {
-    const inspected = await inspectCapturedPackage(captured)
-    if (
-      Object.values(inspected.metadata.channels ?? {}).some((channel) => channel.required !== false)
-    )
-      return failed('UNAVAILABLE', 'required child channel wiring is not supported by this host')
-    try {
-      inspected.schemas.input?.validate(value, 'INVALID_INPUT')
-    } catch (error) {
-      if (!(error instanceof SchemaDiagnostic)) throw error
-      return failed('INVALID_INPUT', 'child Flow input does not satisfy its declared schema')
-    }
-    return undefined
-  } finally {
-    await captured.dispose()
   }
 }
 

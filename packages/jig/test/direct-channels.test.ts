@@ -7,6 +7,76 @@ import {
 } from '../src/run/channels.js'
 
 describe('finite direct channel broker', () => {
+  test('an unused writer can move after observer disposal without reviving delivery', async () => {
+    for (const required of [true, false]) {
+      const broker = new DirectChannelBroker()
+      const root = broker.participant('root')
+      const monitor = broker.participant('monitor')
+      const worker = broker.participant('worker')
+      const pair = await root.create({ schema: { type: 'string' } })
+      root.transfer(
+        monitor,
+        { progress: pair.receive.endpoint },
+        {
+          progress: { direction: 'receive', schema: { type: 'string' } },
+        },
+      )
+      monitor.release(pair.receive.endpoint)
+      monitor.finalize(true)
+      const granted = root.transfer(
+        worker,
+        { progress: pair.send.endpoint },
+        {
+          progress: { direction: 'send', required, schema: { type: 'string' } },
+        },
+      )
+      await expect(
+        worker.send(granted.progress!.endpoint, 'no longer observed'),
+      ).rejects.toMatchObject({ code: 'DISCONNECTED' })
+      expect(() => worker.close(granted.progress!.endpoint)).toThrow('receiver was released')
+      await expect(root.send(pair.send.endpoint, 'old owner')).rejects.toMatchObject({
+        code: 'PERMISSION_DENIED',
+      })
+      worker.finalize(true)
+      root.finalize(true)
+    }
+  })
+
+  test('disposed receivers and failed or ownerless sources cannot gain new holders', async () => {
+    const broker = new DirectChannelBroker()
+    const root = broker.participant('root')
+    const child = broker.participant('child')
+    const pair = await root.create()
+    root.release(pair.receive.endpoint)
+    expect(() =>
+      root.transfer(
+        child,
+        { port: pair.receive.endpoint },
+        {
+          port: { direction: 'receive' },
+        },
+      ),
+    ).toThrow()
+    root.failWriter(pair.send.endpoint, 'CANCELLED', 'source failed')
+    expect(() =>
+      root.transfer(
+        child,
+        { port: pair.send.endpoint },
+        {
+          port: { direction: 'send' },
+        },
+      ),
+    ).toThrow('no longer available')
+    const owned = await child.create()
+    child.transfer(root, { port: owned.send.endpoint }, { port: { direction: 'send' } })
+    child.finalize(false)
+    const other = broker.participant('other')
+    expect(() =>
+      root.transfer(other, { port: owned.send.endpoint }, { port: { direction: 'send' } }),
+    ).toThrow('participant stopped')
+    root.finalize(false)
+  })
+
   test('owner revocation prevents late asynchronous contract resolution allocating new sources', async () => {
     let resolve!: (contract: ResolvedChannelContract) => void
     const owner = new DirectChannelBroker().participant('root', {

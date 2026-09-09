@@ -229,12 +229,20 @@ export class DirectChannelBroker {
         )
       }
       const source = endpoint.source
-      if (source.released || source.failure !== undefined) {
+      this.assertOpen(source.owner)
+      if (
+        source.failure !== undefined ||
+        (source.released && endpoint.direction === 'receive') ||
+        (source.sealed && endpoint.direction === 'send')
+      ) {
         throw new ChannelOperationError(
           'DISCONNECTED',
           'channel is no longer available for connection',
         )
       }
+      // Receiver disposal removes delivery, not the unused writer's authority.
+      // A later holder receives the same DISCONNECTED send/close outcome; this
+      // permits optional monitoring to stop before its producer is admitted.
       if (declaration.contract !== undefined && source.contract !== undefined) {
         if (!sameIdentity(declaration.contract.identity, source.contract)) {
           throw new ChannelOperationError(
