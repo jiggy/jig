@@ -145,7 +145,14 @@ try {
     [1],
     120_000,
   )
-  assert.equal(unsupportedDependency.stderr, '')
+  // Startup diagnostics are streamed on stderr independently of the terminal
+  // JSON result. This fixture fails before its FLOW handler can start.
+  assert.match(
+    unsupportedDependency.stderr,
+    /Cannot find package 'jig-alpha-deliberately-missing' from '\/package\/flow\.ts'/,
+  )
+  assert.ok(Buffer.byteLength(unsupportedDependency.stderr) <= 64 * 1024)
+  assert.doesNotMatch(unsupportedDependency.stderr, /\u001b|\.jig|\/proc\/|\/home\/|\/tmp\//)
   const dependencyTerminal = requireRecord(JSON.parse(unsupportedDependency.stdout))
   assert.equal(dependencyTerminal.status, 'failed')
   assert.equal(dependencyTerminal.code, 'CHANNEL_LOST')
