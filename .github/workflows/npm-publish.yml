@@ -311,7 +311,7 @@ jobs:
 
   tag:
     name: Tag published source and create package releases
-    needs: publish
+    needs: [publish, build]
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -392,3 +392,41 @@ jobs:
             "npm install @jigging/flow@$FLOW_VERSION" 'https://flow.jig.md/guide/'
           create_release jig "$JIG_VERSION" 'Jig runs admitted FLOW packages under operator control.' \
             "npm install --global @jigging/jig@$JIG_VERSION" 'https://jig.md/guide/'
+
+      - name: Download prepared applications from the tested SDK candidate
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: npm-candidate-flow-${{ needs.publish.outputs.flow_version }}-${{ env.SOURCE_REVISION }}
+          path: ${{ runner.temp }}/flow-candidate
+
+      - name: Attach the retained applications to their matching Jig release
+        env:
+          JIG_VERSION: ${{ needs.publish.outputs.jig_version }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          tag="jig-v$JIG_VERSION"
+          ref_type=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$tag" --jq .object.type)
+          ref_sha=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$tag" --jq .object.sha)
+          target=$ref_sha
+          if [ "$ref_type" = tag ]; then
+            target=$(gh api "repos/$GITHUB_REPOSITORY/git/tags/$ref_sha" --jq .object.sha)
+          fi
+          if [ "$target" != "$SOURCE_REVISION" ]; then
+            echo "No Jig release from this revision; prepared applications remain candidate artifacts."
+            exit 0
+          fi
+          gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' \
+            > "$RUNNER_TEMP/existing-example-assets"
+          mkdir "$RUNNER_TEMP/existing-example-bytes"
+          for asset in tested-patch.tar.gz live-agent.tar.gz examples.json; do
+            candidate="$RUNNER_TEMP/flow-candidate/examples/$asset"
+            test -f "$candidate"
+            if grep -Fx -- "$asset" "$RUNNER_TEMP/existing-example-assets" > /dev/null; then
+              gh release download "$tag" --repo "$GITHUB_REPOSITORY" --pattern "$asset" \
+                --dir "$RUNNER_TEMP/existing-example-bytes"
+              cmp "$candidate" "$RUNNER_TEMP/existing-example-bytes/$asset"
+            else
+              gh release upload "$tag" "$candidate" --repo "$GITHUB_REPOSITORY"
+            fi
+          done

@@ -80,8 +80,10 @@ contract and authority boundary against the application consuming it.
    updates through direct channels: application code filters and presents data,
    and installed consumers receive progress separately from the execution
    result. Preserve ordinary error recovery and simple one-shot calls. Extend
-   the demonstrated connection with isolated broadcast and structured
-   bidirectional interoperability before adding control. Qualify one client over
+   the demonstrated connection through exact child slots, so a reusable worker
+   can hand progress to a replaceable monitor without owning its presentation.
+   Then add isolated broadcast and structured bidirectional interoperability
+   before adding control. Qualify one client over
    the existing ACP foundation for acknowledged interruption, follow-up, and
    continuation. Accepted instructions and
    remaining budgets survive continuation; cancellation revokes it and cleans

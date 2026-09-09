@@ -9,16 +9,20 @@ application is not an unrestricted repository worker or independent probe.
 ## Ownership
 
 - `README.md` introduces the application; its public guide owns user instructions.
-- Root `package.json` owns development dependencies. Flow-local manifests
-  follow the current SDK. Retain Bun-generated Flow-local locks as runnable
-  inputs; regenerate them with the pinned Bun when dependencies change. The
-  repository build/distribution path owns dependency closure as required by
-  `examples/AGENTS.md`.
+- Root `package.json` owns development dependencies; Flow-local manifests
+  declare authoring dependencies on the current SDK. The repository
+  build/distribution path assembles `tested-patch.tar.gz` with self-contained
+  Flows from the matching packed SDK. This directory is authoring source;
+  the release archive owns the prepared runnable dependency closure.
 - `flows/project/` owns root file capture, fixed CLI cases, one- or two-job
-  invocation, evidence checks, applicable patch construction, and deliverables.
+  invocation, single-job channel wiring/presentation, evidence checks,
+  applicable patch construction, and deliverables.
 - `flows/repair/` owns the reusable JSON-input leaf, proposal validation,
-  at most two Agent calls, command effects, and acceptance of observations.
-- `bindings/` owns the exact root-to-leaf slot and reviewed Bun commands.
+  at most two Agent calls, selected phase publication, command effects, and
+  acceptance of observations.
+- `flows/monitor/` owns capability-free filtering and formatting of repair
+  phases. Its settings select the presentation, not the repair policy.
+- `bindings/` owns exact specialist/monitor slots and reviewed Bun commands.
 - `fixtures/log-report/` and `fixtures/timesheet/` own intentionally defective
   CLIs and repository tests; never run variants outside completed containment.
 - `issue.json` selects one project issue; `batch.json` selects two independent
@@ -32,6 +36,17 @@ application is not an unrestricted repository worker or independent probe.
   selected existing TypeScript/JavaScript paths below `src/`.
 - The leaf accepts JSON `issue`, `files`, `editPaths`, and `cases`.
   It has Agent and Project Command capability uses, no attachments or slots.
+- A single job uses two siblings: repair publishes an optional bounded
+  `progress` sender; the replaceable monitor receives `phases` and sends
+  `display` to the root. Phase records carry only phase/attempt, never source,
+  Agent messages, or acceptance evidence. The root prints text or forwards its
+  optional `progress` output without a Log capability. Normal one-shot Agent
+  clients need no event support.
+- Monitoring is separate from execution and checkpoints. Dispose rejected
+  observation paths; account for moved rights through host operations, not a
+  guessed call outcome. Recover settled monitor/display failures as incomplete
+  progress while independently awaiting and retaining repair. Root cancellation,
+  uncertain ownership, and fatal errors abort and join owned branches.
 - The operator names `tests` and `cli` commands in the specialist Binding.
   Jig supplies installed Bun and keyless containment; source is immutable.
 - Host output and termination establish process evidence. Repository tests
@@ -57,6 +72,7 @@ application is not an unrestricted repository worker or independent probe.
   job, serialize saves, identify pending jobs, and retain separate base/candidate
   and acceptance identities. Root failure preserves only acknowledged/accepted
   progress while the independent command owner lives, never arbitrary scratch.
+  Batch uses both child positions for repair and does not start a monitor.
 - Report overlapping patch paths, never merge automatically or claim that
   separately checked candidates were tested together. `done` requires all jobs
   review-ready without conflicting edits; otherwise return honest `blocked`.
@@ -78,7 +94,8 @@ application is not an unrestricted repository worker or independent probe.
   neither check claims registry availability or modifies the authored source.
 - Deterministic checks cover bounds, multi-file proposals, honest failures,
   immutable expectations, evidence contradictions, output collisions, batch
-  validation, selected cancellation, and patch conflicts.
+  validation, selected cancellation, patch conflicts, replaceable monitor
+  presentation, rejected admission, independent retention, and branch cleanup.
 - The provisioned Jig host tests run actual candidate tests and CLI commands
   through admitted root and leaf Flows. Recorded Agent responses prove the
   execution path, not live model quality. Real Agent outcomes need a bounded

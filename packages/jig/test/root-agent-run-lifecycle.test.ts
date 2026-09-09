@@ -130,8 +130,9 @@ proofDescribe('contained repair file application', () => {
       // This is source-candidate host evidence, not a registry-install proof.
       // Vendor the built SDK into disposable Flow copies so a new wire API
       // can be tested before publication, without fabricating an npm lock.
-      for (const name of ['project', 'repair']) {
-        const flow = join(project, 'flows', name)
+      for (const entry of await readdir(join(project, 'flows'), { withFileTypes: true })) {
+        const flow = join(project, 'flows', entry.name)
+        if (!entry.isDirectory() || !(await Bun.file(join(flow, 'FLOW.md')).exists())) continue
         await cp(join(import.meta.dir, '../../flow-sdk/dist'), join(flow, 'sdk'), {
           recursive: true,
         })
@@ -144,7 +145,7 @@ proofDescribe('contained repair file application', () => {
           )
         }
         await rm(join(flow, 'package.json'))
-        await rm(join(flow, 'bun.lock'))
+        await rm(join(flow, 'bun.lock'), { force: true })
       }
       await new Promise<void>((resolve, reject) => {
         server.once('error', reject)

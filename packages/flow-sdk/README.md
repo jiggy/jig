@@ -2,7 +2,7 @@
 
 Minimal, dependency-free TypeScript projection of FLOW Run/1.
 
-This is the prerelease `0.1.0-alpha.9` package. Its authoritative documents
+This is the prerelease `0.1.0-alpha.10` package. Its authoritative documents
 are the [Run SDK/1](https://flow.jig.md/spec/run-sdk) and
 [Run/1](https://flow.jig.md/spec/run-protocol) specifications.
 
@@ -12,7 +12,7 @@ Declare the exact alpha in the FLOW package's `package.json`:
 {
   "private": true,
   "dependencies": {
-    "@jigging/flow": "0.1.0-alpha.9"
+    "@jigging/flow": "0.1.0-alpha.10"
   }
 }
 ```
@@ -90,22 +90,34 @@ For a capability whose `run` method declares an `events` sender matching the
 package-local channel contract:
 
 ```ts
+import { OperationError } from "@jigging/flow";
+
 const events = await run.channel({ contract: "./contracts/updates.json" });
 const work = run.callCapability({
   operationId: "worker", slot: "worker", method: "run", input: run.input,
   channels: { events: events.send },
+}).catch(async (error) => {
+  // Rejected admission may leave the source without a connected producer.
+  await events.receive.close().catch(() => undefined);
+  throw error;
 });
 
-try {
-  for await (const value of events.receive) {
-    console.log(value); // Application-owned filtering and presentation.
+const observation = (async () => {
+  try {
+    for await (const value of events.receive) {
+      console.log(value); // Application-owned filtering and presentation.
+    }
+  } catch (error) {
+    if (!(error instanceof OperationError) ||
+        !["LAGGED", "DISCONNECTED"].includes(error.code)) throw error;
+    console.error("Progress delivery was incomplete.");
   }
-} catch (error) {
-  if (!(error instanceof OperationError) || error.code !== "LAGGED") throw error;
-  console.error("Progress delivery was incomplete.");
-}
+})();
 
-const result = await work; // Channel completion is not execution success.
+const [execution, observed] = await Promise.allSettled([work, observation]);
+if (execution.status === "rejected") throw execution.reason;
+if (observed.status === "rejected") throw observed.reason;
+const result = execution.value; // Channel completion is not execution success.
 ```
 
 `run.channel()` accepts generic JSON values; `schema` optionally constrains

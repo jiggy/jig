@@ -63,6 +63,21 @@ Releases page. GitHub source archives remain source, not installable packages.
 Existing entries are preserved on retries; missing entries are created even
 when the npm version and source tag already existed.
 
+The SDK candidate also prepares `tested-patch.tar.gz` and `live-agent.tar.gz`
+against its exact packed SDK. These application archives include readable,
+unminified Flow entrypoints and their data; they need no per-Flow dependency
+preparation. Original authoring modules remain in the repository, not as
+inactive duplicates beside the executable bundle.
+`examples.json` identifies their source, SDK and archive bytes. The tag job
+attaches those retained artifacts to the same-source Jig release and compares
+already uploaded bytes on retries. To distribute changed applications, advance
+Jig's prerelease even if its runtime code did not change. An independent SDK
+release does not replace applications attached to an earlier Jig release.
+
+For local preparation, run `just build-examples /path/to/flow-sdk.tgz /new/output`.
+This author-side build is not a provider run or a release claim. The source and
+packed gate exercises preparation; installed host checks remain separate.
+
 ## Failure recovery
 
 If candidate construction fails, fix the source in a new reviewed commit. If

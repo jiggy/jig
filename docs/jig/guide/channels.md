@@ -3,13 +3,11 @@
 A Flow can read selected Agent updates, filter them and choose their presentation.
 No logging capability or hook configuration is required.
 
-The [live-agent example](https://github.com/jiggy/jig/tree/main/examples/live-agent)
-targets the channel-enabled development candidate. Prepare its current FLOW
-SDK as package-local source or a bundled Flow through the
-[local authoring route](dependencies.md#local-or-unreleased-code); installing
-its declared registry dependency alone does not supply the candidate APIs.
-With the matching Jig candidate and a configured [native client](agents.md),
-review the prepared application and run it:
+Choose `live-agent.tar.gz` from a
+[matching Jig release](https://github.com/jiggy/jig/releases) and extract the
+prepared application. Its [repository directory](https://github.com/jiggy/jig/tree/main/examples/live-agent)
+is authoring source. With Jig and a configured [native client](agents.md),
+run from the extracted application:
 
 ```sh
 jig review
@@ -93,3 +91,28 @@ it does not redact the actual final Agent answer. No host-side echo bypasses the
 Flow's filtering. Channels have no retention or replay guarantee; use explicit
 [checkpoints](../spec/run-checkpoint.md) when a completed artifact must survive
 later execution interruption.
+
+## Give progress to another Flow
+
+The [tested-patch application](tested-patch.md) separates repair from its
+presentation. For a single issue, its parent creates two direct channels and
+connects two exact child slots:
+
+| Connection | Data | Responsibility |
+| --- | --- | --- |
+| Repair's `progress` → monitor's `phases` | Bounded phase and attempt records | Repair reports its work without choosing a display. |
+| Monitor's `display` → parent | Selected text | Monitor filters and formats; parent prints or forwards it. |
+| Repair's call result → parent | Patch and check evidence | Parent validates, checkpoints and delivers the actual result. |
+
+The parent passes endpoints in `run.runChildFlow({ ..., channels: { ... } })`;
+each child reads its declared endpoints from `run.channels`. No hook or Log
+capability is involved. Replacing the exact `monitor` slot changes presentation
+without editing the repair specialist. A monitor receives no source files,
+Agent powers, commands or patch-approval authority.
+
+The [complete parent](https://github.com/jiggy/jig/blob/main/examples/tested-patch/flows/project/monitoring.ts)
+handles rejected connections, observation loss and cancellation. It always
+settles the repair call independently: a finished stream is not a passing patch,
+and a failed monitor need not discard successful work. Both channels stay owned
+by the parent until its work settles. The existing two-child limit applies;
+the example's batch mode uses both positions for repair workers instead.

@@ -18,6 +18,11 @@ mod site "site/justfile"
 # Build both TypeScript packages
 build: flow::build jig::build
 
+# Prepare runnable applications against an exact packed SDK
+[positional-arguments]
+@build-examples sdk-archive output:
+    bun --no-env-file scripts/build-examples.ts "$1" "$2"
+
 # Format only the requested paths, or the repository when omitted
 [positional-arguments]
 @format *paths:

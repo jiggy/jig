@@ -80,7 +80,7 @@ assert operation.code == "UNAVAILABLE"
 assert effect.error_name == "not-found"
 assert files("jiggy.flow").joinpath("py.typed").is_file()
 distribution = metadata("jiggy-flow")
-assert distribution["Version"] == "0.1.0a1"
+assert distribution["Version"] == "0.1.0a2"
 assert distribution["License-Expression"] == "Apache-2.0"
 assert not distribution.get_all("Requires-Dist")
 assert "../../docs/" not in distribution.get_payload()

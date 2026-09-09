@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { isDeepStrictEqual } from 'node:util'
 import type { RunContext, RunResult } from '@jigging/flow'
 import cases from './cases.json'
+import { monitoredRepair } from './monitoring.ts'
 
 function hash(text: string) {
   return `sha256:${new Bun.CryptoHasher('sha256').update(text).digest('hex')}`
@@ -246,14 +247,14 @@ export async function repairFiles(run: RunContext): Promise<RunResult> {
   if (source?.access !== 'read' || deliverables?.access !== 'read-write')
     throw new TypeError('Supply source and deliverables attachments.')
   const input = await readRepairInput(run.input, source.path)
-  const result = await run.runChildFlow({ operationId: 'repair', slot: 'repair', input })
-  run.signal.throwIfAborted()
-  await writeRepairDeliverables(deliverables.path, input, result)
-  await run.callCapability({
-    operationId: 'progress:1',
-    slot: 'progress',
-    method: 'save',
-    input: { sequence: 1, evidence: result, files: repairDeliverables(input, result) },
+  return monitoredRepair(run, input, async (result) => {
+    run.signal.throwIfAborted()
+    await writeRepairDeliverables(deliverables.path, input, result)
+    await run.callCapability({
+      operationId: 'progress:1',
+      slot: 'progress',
+      method: 'save',
+      input: { sequence: 1, evidence: result, files: repairDeliverables(input, result) },
+    })
   })
-  return result
 }

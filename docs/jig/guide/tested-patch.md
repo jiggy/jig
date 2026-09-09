@@ -8,25 +8,26 @@ Give Jig a small Bun project and a bug. Get back a multi-file patch, the
 commands actually run against it, and independent checks of its behavior.
 Your original files stay unchanged; you decide whether to apply the patch.
 
-The [copyable application](https://github.com/jiggy/jig/tree/main/examples/tested-patch)
-includes its Flow dependency locks; Jig prepares those dependencies during
-review. See the [installation guide](./index.md) for supported hosts.
+Choose `tested-patch.tar.gz` from a
+[matching Jig release](https://github.com/jiggy/jig/releases). It contains the
+prepared application, including its Flow dependency closure. The
+[repository directory](https://github.com/jiggy/jig/tree/main/examples/tested-patch)
+is authoring source. See the [installation guide](./index.md) for supported hosts.
 
 ## Try it
 
-Copy `examples/tested-patch`, [configure an Agent](./agents.md),
-and inspect `issue.json`, `bindings/specialist.ts`, and
-`flows/project/cases.json`. From your copy:
+Extract the application, [configure an Agent](./agents.md), and inspect
+`issue.json`, `bindings/specialist.ts`, and `flows/project/cases.json`.
+From the extracted directory:
 
 ```sh
 jig review
-jig run binding:repair --input @issue.json --attach source=fixtures/log-report --out ../repair-result --timeout 5m
+jig run binding:repair --input @issue.json --attach source=fixtures/log-report --out repair-result --timeout 5m
 ```
 
-Open `../repair-result/files/summary.txt`. A `review.patch` appears beside it
+Open `repair-result/files/summary.txt`. A `review.patch` appears beside it
 only when the repair passed the checks. The destination must be new and
-outside the selected source. Review prepares the Flow's locked SDK; candidate
-commands do not install dependencies.
+outside the selected source. Candidate commands do not install dependencies.
 
 The supplied project is an HTTP access-log reporter: a CLI, a parser, a
 reporting module, and Bun tests. Its parser admits invalid status codes and
@@ -36,6 +37,26 @@ requires changes in two source files.
 Selected text reaches your configured Agent provider. Choose source and a
 provider suitable for your data. Ctrl-C cancels owned work; it cannot retract
 a remote request already received, and unsuccessful calls may incur charges.
+
+## See progress and change its presentation
+
+For a single issue, a separate `monitor` Flow receives the repair specialist's
+phase records and returns selected text to the parent. You see baseline,
+proposal and check progress live on stderr. Add `--receive progress` for
+[structured live output](channels.md#connect-another-application) on stdout.
+Neither presentation reports the final verdict; inspect the patch evidence.
+
+The `monitor` slot in `bindings/repair.ts` selects this capability-free Flow.
+Replace it with another Flow declaring the same channel shapes, or configure
+the included monitor through a Binding: `settings.style` accepts `compact`
+or `descriptive`, and `settings.phases` selects which phases to show (an empty
+list suppresses them). Review changed configuration as usual. The repair
+specialist remains unchanged and the monitor receives no source or Agent access.
+
+`output.monitoring` reports whether observation completed and how many messages
+the parent displayed. Failed optional progress can coexist with a review-ready
+patch. Cancellation, uncertain execution and failed cleanup remain separate
+failures; progress does not override them.
 
 ## What makes a patch review-ready?
 
@@ -115,8 +136,8 @@ Bun/Node built-ins; network and installation are unavailable.
 
 The repair leaf itself needs no attachment or child Flow. Another root can
 reuse it through an exact Binding with its own command policy and JSON cases.
-For application development, install development dependencies at the example
-root and run `bun test test`. Those deterministic checks establish application
+For application development, work in the repository's authoring directory:
+install its development dependencies and run `bun test test` there. Those checks establish application
 policy, not model quality or a market advantage.
 
 ## Two workers, two reviewable patches
@@ -126,7 +147,7 @@ parallel. The timesheet has separate defects in time validation and overnight
 totals. Both jobs reuse the unchanged JSON repair specialist:
 
 ```sh
-jig run binding:repair --input @batch.json --attach source=fixtures --out ../batch-result --timeout 5m
+jig run binding:repair --input @batch.json --attach source=fixtures --out batch-result --timeout 5m
 ```
 
 Each job names its relative project `directory`, an `issue`, permitted
@@ -135,7 +156,7 @@ Those fixed cases live in the root Flow and require review when changed.
 Each project retains the same size and two-proposal limits; a batch can make
 up to four Agent calls. All jobs are captured and validated before work starts.
 
-Open `files/summary.txt`, then each job's folder and its entry under
+Open `batch-result/files/summary.txt`, then each job's folder and its entry under
 `output.jobs` in the packet's `result.json`. A successful sibling keeps its patch even if another
 worker fails. `done` requires every job to be review-ready without conflicting
 edits; otherwise the application returns `blocked`. A job failure retains its
@@ -143,10 +164,11 @@ captured identity and available failure evidence, not an invented test verdict.
 
 For a per-job time bound, set optional `cancelAfterMs` (1–300,000). Its expiry
 requests cancellation of that worker alone; Ctrl-C cancels the complete Run.
-If the root itself fails, final Flow files are not exported. This is not yet
-checkpoint retention through interruption.
+If the root itself fails, only an accepted checkpoint can supply files after
+cleanup; unsaved final files are not exported.
 
 Jig admits at most two sibling calls and reserves each branch's whole resource
-ceiling before dispatch. There is no waiting queue. The application reports
+ceiling before dispatch. Batch mode uses both for repair, without a third monitor.
+There is no waiting queue. The application reports
 overlapping paths but does not combine patches. Their checks establish each
 candidate separately; review and test a combined change before applying it.

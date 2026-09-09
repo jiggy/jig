@@ -82,6 +82,21 @@ test('build-tool refusal stops before removing existing package output', async (
   })
 })
 
+test('example preparation preserves exact archive and output arguments', async () => {
+  await withFixture(async (directory, environment) => {
+    const args = ['a packed SDK with spaces.tgz', 'a new output directory']
+    const result = await run(
+      ['--justfile', join(directory, 'justfile'), 'build-examples', ...args],
+      environment,
+    )
+    expect(result.code).toBe(0)
+    expect(JSON.parse(result.stdout)).toEqual({
+      cwd: directory,
+      args: ['--no-env-file', 'scripts/build-examples.ts', ...args],
+    })
+  })
+})
+
 test('site assembly explains missing Just before creating output or staging', async () => {
   await withFixture(async (directory) => {
     const before = await readdir(directory)

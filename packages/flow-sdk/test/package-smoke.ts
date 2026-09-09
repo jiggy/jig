@@ -70,7 +70,7 @@ try {
     unknown
   >
   assert.equal(Object.hasOwn(manifest, 'private'), false)
-  assert.equal(manifest.version, '0.1.0-alpha.9')
+  assert.equal(manifest.version, '0.1.0-alpha.10')
   assert.equal(Object.hasOwn(manifest, 'scripts'), false)
   assert.equal(manifest.license, 'Apache-2.0')
   assert.deepEqual(manifest.publishConfig, { access: 'public' })

@@ -11,6 +11,10 @@ filtering and a separate execution result.
   optional publication through the root's `progress` channel.
 - `test/` owns deterministic application checks, not native-client evidence.
 - `README.md` teaches ordinary invocation; Jig's public guide owns host setup.
+- Root and Flow manifests declare authoring dependencies on the current SDK.
+  The repository build/distribution path assembles `live-agent.tar.gz` with a
+  self-contained Flow from the matching packed SDK. The release archive owns
+  the prepared runnable dependency closure; this directory is authoring source.
 
 ## Local Contracts
 
@@ -26,10 +30,8 @@ filtering and a separate execution result.
 ## Work Guidance
 
 - Use the ordinary public FLOW SDK; no example launcher or private helpers.
-- Keep provider configuration with the operator. Prepare local SDK source in
-  the finished Flow through the public
-  [dependency authoring guidance](../../docs/jig/guide/dependencies.md#local-or-unreleased-code).
-  Source declarations alone are not a prepared runnable distribution.
+- Keep provider configuration with the operator and dependency preparation
+  with the repository build/distribution path, not the user's quickstart.
 
 ## Verification
 

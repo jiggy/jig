@@ -1,6 +1,6 @@
-import { OperationError, type JsonValue, type RunContext, type RunResult } from '@jigging/flow'
-import { parseInput, parseProposal, candidate, digest, object, type Proposal } from './policy.ts'
-import { evaluate, type Evaluation } from './evidence.ts'
+import { type JsonValue, OperationError, type RunContext, type RunResult } from '@jigging/flow'
+import { type Evaluation, evaluate } from './evidence.ts'
+import { candidate, digest, object, type Proposal, parseInput, parseProposal } from './policy.ts'
 
 interface Attempt {
   proposal?: Proposal
@@ -9,9 +9,37 @@ interface Attempt {
   invalidProposal?: string
 }
 export async function repair(
-  run: Pick<RunContext, 'input' | 'signal' | 'callCapability'>,
+  run: Pick<RunContext, 'input' | 'signal' | 'channels' | 'callCapability'>,
 ): Promise<RunResult> {
   const input = parseInput(run.input)
+  const progress = run.channels.progress
+  if (progress && progress.direction !== 'send')
+    throw new TypeError('progress must be a send channel.')
+  let progressAvailable = true
+  const publish = async (
+    phase: 'baseline' | 'proposal' | 'check' | 'finished',
+    attempt: number,
+  ) => {
+    run.signal.throwIfAborted()
+    if (!progress || !progressAvailable) return
+    try {
+      await progress.send({ phase, attempt })
+    } catch (error) {
+      run.signal.throwIfAborted()
+      if (
+        !(error instanceof OperationError) ||
+        ![
+          'LAGGED',
+          'DISCONNECTED',
+          'RESOURCE_EXHAUSTED',
+          'INVALID_INPUT',
+          'INVALID_RESULT',
+        ].includes(error.code)
+      )
+        throw error
+      progressAvailable = false
+    }
+  }
   const attempts: Attempt[] = []
   let baseline: Evaluation | undefined
   const evidence = () => ({
@@ -20,10 +48,17 @@ export async function repair(
     ...(baseline === undefined ? {} : { baseline }),
     attempts,
   })
-  const finish = (outcome: string, reason: string): RunResult => ({
-    outcome,
-    output: { reason, ...evidence() } as unknown as JsonValue,
-  })
+  const finish = async (outcome: string, reason: string): Promise<RunResult> => {
+    await publish('finished', attempts.length)
+    return {
+      outcome,
+      output: {
+        reason,
+        ...evidence(),
+        ...(progress ? { progress: { complete: progressAvailable } } : {}),
+      } as unknown as JsonValue,
+    }
+  }
   const observe = async (files: Record<string, string>, id: string) => {
     const values: unknown[] = []
     const requests = [
@@ -49,11 +84,16 @@ export async function repair(
     return evaluate(input, files, values)
   }
   try {
+    await publish('baseline', 0)
     baseline = await observe(input.files, 'baseline')
     if (baseline.acceptance.every((c) => c.passed))
-      return finish('blocked', 'The independent acceptance cases did not reproduce the defect.')
+      return await finish(
+        'blocked',
+        'The independent acceptance cases did not reproduce the defect.',
+      )
     for (let index = 0; index < 2; index++) {
       run.signal.throwIfAborted()
+      await publish('proposal', index + 1)
       const response = object(
         await run.callCapability({
           operationId: `patch-${index + 1}`,
@@ -90,7 +130,7 @@ export async function repair(
       if (response.outcome === 'blocked' || response.outcome === 'limit') {
         if (typeof response.text !== 'string')
           throw new OperationError('INVALID_RESULT', 'The Agent omitted its reason.')
-        return finish(response.outcome, response.text)
+        return await finish(response.outcome, response.text)
       }
       if (response.outcome !== 'completed')
         throw new OperationError('INVALID_RESULT', 'The Agent omitted a completed proposal.')
@@ -105,14 +145,15 @@ export async function repair(
       }
       const files = candidate(input, attempt.proposal)
       attempt.candidateDigest = digest(files)
+      await publish('check', index + 1)
       attempt.evaluation = await observe(files, `attempt-${index + 1}`)
       if (attempt.evaluation.accepted)
-        return finish(
+        return await finish(
           'done',
           'The multi-file patch passes the repository command and independent acceptance cases.',
         )
     }
-    return finish(
+    return await finish(
       'blocked',
       'Neither proposal passed the fixed acceptance cases and repository command.',
     )

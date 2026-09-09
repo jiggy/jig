@@ -1,5 +1,5 @@
 {
-  "name": "live-agent-chat-flow",
+  "name": "tested-patch-monitor-flow",
   "private": true,
   "type": "module",
   "dependencies": {
