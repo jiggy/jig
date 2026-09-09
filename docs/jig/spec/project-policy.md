@@ -202,23 +202,31 @@ aggregate preparation limits apply to the captured workspace.
 Bun installs the captured target with `--filter`, script execution disabled,
 and the supplied root lock frozen, or with explicitly permitted lock resolution.
 Workspace lock entries must name captured members and agree with their manifests.
-Only selected members' code is staged, after installation. The collector resolves
-installer-created workspace links only to captured selected members and retains
-regular files in the target's self-contained dependency tree. Unselected member
-links are omitted; unknown links and recursive output trees fail closed.
-The current self-contained layout cannot preserve intermediate `node_modules`
-scopes or collisions between Flow-local and root-hoisted packages. Those layouts
-fail preparation with `PACKAGE_BUN_WORKSPACE_LAYOUT_UNSUPPORTED`; flattening must
-never silently change which dependency an import resolves to.
+Only selected members' code is staged, after installation. Preparation uses the
+pinned Bun hoisted linker and preserves workspace-relative source paths and
+installed dependency scopes. Exact installer aliases to selected member roots
+are retained as bounded private layout metadata, not Package/1 file records.
+This preserves nested versions and canonical module identity, including cyclic
+imports. Unselected member links are omitted; unknown links, aliases traversing
+aliases, and source-path collisions fail closed. Preparation permits at most
+4,096 combined file/alias records and 32 MiB of file content plus layout JSON;
+layout JSON has its own 1 MiB ceiling. Existing project-wide preparation bounds
+also apply. The target entrypoint runs from its retained member path while its
+working directory remains disposable scratch. No isolated-linker mode is exposed.
+Ancestor runtime configuration outside selected packages is not captured.
 Registry dependencies retain the same integrity and source policy.
 
 Workspace members use the root lock; member locks, dependency patches, overrides,
 catalogs, and alternate sources are unsupported. A new review recaptures and
 prepares the workspace, rather than reusing dependencies merely because the Flow
-source has not changed. The prepared identity participates in target-change review
-and admission. Runs neither reopen the workspace nor follow development links.
+source has not changed. Prepared bytes and normalized layout participate in
+target-change review, exact admission, launch and durable materialization identity.
+The host creates only recorded aliases after copying regular bytes, verifies both
+on reopen, and unlinks aliases without following their targets during cleanup.
+Runs neither reopen the workspace nor follow development links. Authored package
+metadata, contracts and Skills remain relative to the admitted Flow package.
 
-Package-local imports remain available without workspaces. Symlinks and
+Package-local imports remain available without workspaces. Authored symlinks and
 hardlinks whose complete link set cannot be proved inside the captured package
 remain invalid; fully contained hardlinks are captured as independent
 regular-file records.

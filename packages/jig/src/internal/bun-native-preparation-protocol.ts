@@ -1,4 +1,5 @@
 import { PACKAGE_1_MAX_PATH_BYTES } from '../package/paths.js'
+import { PRIVATE_BUN_EXECUTION_LAYOUT_LIMITS } from './bun-execution-layout.js'
 
 const MIB = 1024 * 1024
 const MAX_JSON_BYTES_PER_PATH_BYTE = 6
@@ -43,11 +44,14 @@ export const PRIVATE_BUN_SOURCE_MESSAGE_BYTES = maximumPrivateBunFileMessageByte
   PRIVATE_BUN_PREPARATION_LIMITS.sourceBytes,
 )
 
-export const PRIVATE_BUN_PREPARED_MESSAGE_BYTES = maximumPrivateBunFileMessageBytes(
-  'prepared',
-  PRIVATE_BUN_PREPARATION_LIMITS.preparedFiles,
-  PRIVATE_BUN_PREPARATION_LIMITS.preparedBytes,
-)
+export const PRIVATE_BUN_PREPARED_MESSAGE_BYTES =
+  maximumPrivateBunFileMessageBytes(
+    'prepared',
+    PRIVATE_BUN_PREPARATION_LIMITS.preparedFiles,
+    PRIVATE_BUN_PREPARATION_LIMITS.preparedBytes,
+  ) +
+  PRIVATE_BUN_EXECUTION_LAYOUT_LIMITS.bytes +
+  Buffer.byteLength(',"layout":')
 
 export function privateBunMessageFits(bytes: number, maximum: number): boolean {
   return Number.isSafeInteger(bytes) && bytes >= 0 && bytes <= maximum

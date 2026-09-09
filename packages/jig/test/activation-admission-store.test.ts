@@ -1102,6 +1102,7 @@ describe.serial('direct alpha activation store', () => {
         recipeDigest: digest('direct-recipe'),
         observationDigest: digest('direct-observation'),
         executionPackage: fixture.flow,
+        executionLayout: { flowRoot: '', members: [], aliases: [] },
       })
     } finally {
       await fixture.dispose()
@@ -1822,6 +1823,7 @@ async function createFixture(
                 recipeDigest: digest('direct-recipe'),
                 observationDigest: digest('direct-observation'),
                 executionPackage: flow,
+                executionLayout: { flowRoot: '', members: [], aliases: [] },
               }
             : {
                 state: 'unavailable',
@@ -1994,6 +1996,7 @@ async function insertSlottedCandidate(
         recipeDigest: digest('slotted-child-recipe'),
         observationDigest: digest('slotted-child-observation'),
         executionPackage: child,
+        executionLayout: { flowRoot: '', members: [], aliases: [] },
       },
     },
     parent,

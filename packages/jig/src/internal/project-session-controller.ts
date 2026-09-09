@@ -30,6 +30,10 @@ import {
 import { createPrivateActivationPlanningObservation } from './activation-planning.js'
 import type { PrivateAgentProvider } from './agent-provider.js'
 import {
+  EMPTY_PRIVATE_BUN_EXECUTION_LAYOUT,
+  type PrivateBunExecutionLayout,
+} from './bun-execution-layout.js'
+import {
   preparePrivateBunPackage,
   recoverPrivateBunPreparationOwner,
 } from './bun-native-preparation.js'
@@ -243,7 +247,10 @@ function createSession(
         }
         preparationBudget = createPrivateBunPreparationBudget(planningCancellation.signal)
         const recipes: PrivateDirectRunRecipe[] = []
-        const executionPackages = new Map<string, PackageArtifactRef>()
+        const executionPackages = new Map<
+          string,
+          { artifact: PackageArtifactRef; layout: PrivateBunExecutionLayout }
+        >()
         for (const request of requests) {
           preparationBudget.signal.throwIfAborted()
           if (request.mode !== 'run') {
@@ -254,7 +261,9 @@ function createSession(
           }
           try {
             const executionKey = `${request.packagePath}:${request.package.digest}`
-            let executionPackage = executionPackages.get(executionKey)
+            const cached = executionPackages.get(executionKey)
+            let executionPackage = cached?.artifact
+            let executionLayout = cached?.layout ?? EMPTY_PRIVATE_BUN_EXECUTION_LAYOUT
             if (executionPackage === undefined) {
               const source = await captureStoredPackage(packageStoreRoot, request.package)
               try {
@@ -289,10 +298,18 @@ function createSession(
                       allowResolutionNetwork: host.allowResolutionNetwork === true,
                     })
                     try {
-                      preparationBudget.retain(prepared.files, request.packagePath)
-                      executionPackage = await publishCapturedPackage(packageStoreRoot, prepared)
+                      preparationBudget.retain(
+                        prepared.captured.files,
+                        request.packagePath,
+                        Buffer.byteLength(JSON.stringify(prepared.layout)),
+                      )
+                      executionPackage = await publishCapturedPackage(
+                        packageStoreRoot,
+                        prepared.captured,
+                      )
+                      executionLayout = prepared.layout
                     } finally {
-                      await prepared.dispose()
+                      await prepared.captured.dispose()
                     }
                   } finally {
                     await workspace.captured.dispose()
@@ -307,6 +324,7 @@ function createSession(
                       const current = await planPrivateDirectRun({
                         request,
                         executionPackage: admitted.executionPackage,
+                        executionLayout: admitted.executionLayout,
                         installedSupport: host.installedBunSupport,
                         backend: host.backend,
                         agentProvider: host.agentProvider,
@@ -316,6 +334,7 @@ function createSession(
                         current.observation.digest === admitted.observationDigest
                       ) {
                         executionPackage = admitted.executionPackage
+                        executionLayout = admitted.executionLayout
                       }
                     }
                     if (executionPackage === undefined) {
@@ -337,10 +356,18 @@ function createSession(
                         allowResolutionNetwork: host.allowResolutionNetwork === true,
                       })
                       try {
-                        preparationBudget.retain(prepared.files, request.packagePath)
-                        executionPackage = await publishCapturedPackage(packageStoreRoot, prepared)
+                        preparationBudget.retain(
+                          prepared.captured.files,
+                          request.packagePath,
+                          Buffer.byteLength(JSON.stringify(prepared.layout)),
+                        )
+                        executionPackage = await publishCapturedPackage(
+                          packageStoreRoot,
+                          prepared.captured,
+                        )
+                        executionLayout = prepared.layout
                       } finally {
-                        await prepared.dispose()
+                        await prepared.captured.dispose()
                       }
                     }
                   }
@@ -348,12 +375,16 @@ function createSession(
               } finally {
                 await source.dispose()
               }
-              executionPackages.set(executionKey, executionPackage)
+              executionPackages.set(executionKey, {
+                artifact: executionPackage,
+                layout: executionLayout,
+              })
             }
             recipes.push(
               await planPrivateDirectRun({
                 request,
                 executionPackage,
+                executionLayout,
                 installedSupport: host.installedBunSupport,
                 backend: host.backend,
                 agentProvider: host.agentProvider,

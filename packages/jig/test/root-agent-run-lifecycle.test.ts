@@ -52,6 +52,27 @@ test('constructs the Agent fixture with the complete current SDK', async () => {
   }
 })
 
+test('constructs a locked local workspace for root and child Skill-delivery evidence', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'jig-workspace-skill-fixture-'))
+  try {
+    await writeProject(root)
+    await writeSpecialistParent(root)
+    await writeSkillWorkspace(root, true)
+    const transpiler = new Bun.Transpiler({ loader: 'ts', target: 'bun' })
+    for (const member of ['router', 'parent']) {
+      const source = await readFile(join(root, 'flows', member, 'flow.ts'), 'utf8')
+      expect(source).toContain('import { marker } from "skill-context"')
+      expect(source).toContain('../../libs/context/index.ts')
+      expect(() => transpiler.transformSync(source)).not.toThrow()
+    }
+    const lock = await readFile(join(root, 'bun.lock'), 'utf8')
+    expect(lock).toContain('skill-context@workspace:libs/context')
+    expect(lock).not.toContain('https://')
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
 proofDescribe('contained repair file application', () => {
   for (const scenario of ['successful', 'unsuccessful', 'batch'] as const) {
     test(
@@ -504,7 +525,7 @@ proofDescribe('private contained Agent Run lifecycle', () => {
   }, 90_000)
 
   for (const nested of [false, true]) {
-    test(`delivers complete selected Skill bytes to the SDK endpoint from ${nested ? 'a child Binding' : 'a direct Flow'}`, async () => {
+    test(`delivers complete selected Skill bytes from ${nested ? 'a workspace child Binding' : 'a workspace root Flow'}`, async () => {
       const root = await mkdtemp(join(tmpdir(), 'jig-skill-delivery-project-'))
       const releaseRoot = await mkdtemp(join(tmpdir(), 'jig-skill-delivery-release-'))
       const requests: { url: string | undefined; method: string | undefined; body: any }[] = []
@@ -571,6 +592,7 @@ proofDescribe('private contained Agent Run lifecycle', () => {
             'PARENT_SKILL_MUST_NOT_LEAK',
           )
         }
+        await writeSkillWorkspace(root, nested)
         const selected = join(root, 'flows/router/skills/selected')
         const skill = await readFile(
           join(
@@ -596,6 +618,7 @@ proofDescribe('private contained Agent Run lifecycle', () => {
         if (plan.state !== 'applicable') throw new Error('Skill fixture did not produce a Plan')
         await session.apply({ planDigest: plan.planDigest })
         await writeFile(join(selected, 'SKILL.md'), 'UNADMITTED_EDIT_MUST_NOT_LEAK')
+        await writeFile(join(root, 'libs/context/marker.txt'), 'UNADMITTED_WORKSPACE_EDIT')
         expect(
           await runToTerminal(
             session.rootAdministration,
@@ -640,6 +663,8 @@ proofDescribe('private contained Agent Run lifecycle', () => {
           'HIDDEN_SKILL_MARKER',
           'PARENT_SKILL_MUST_NOT_LEAK',
           'UNADMITTED_EDIT_MUST_NOT_LEAK',
+          'DEPENDENCY_SKILL_MUST_NOT_LEAK',
+          'UNADMITTED_WORKSPACE_EDIT',
         ]) {
           expect(JSON.stringify(recorded.body)).not.toContain(excluded)
         }
@@ -1268,6 +1293,74 @@ async function writeProject(root: string): Promise<void> {
   )
   await writeFile(join(flow, 'flow.ts'), flowProgram())
   await cp(join(import.meta.dir, '../../flow-sdk/src'), join(flow, 'flow-sdk'), { recursive: true })
+}
+
+/** Fixed local-only workspace: installed aliases and module-relative resources, no registry. */
+async function writeSkillWorkspace(root: string, nested: boolean): Promise<void> {
+  const library = join(root, 'libs/context')
+  await mkdir(join(library, 'skills/selected'), { recursive: true })
+  await writeFile(
+    join(root, 'package.json'),
+    JSON.stringify({
+      private: true,
+      workspaces: ['flows/*', 'libs/*'],
+    }),
+  )
+  await writeFile(
+    join(library, 'package.json'),
+    JSON.stringify({
+      name: 'skill-context',
+      version: '1.0.0',
+      type: 'module',
+      exports: './index.ts',
+    }),
+  )
+  await writeFile(
+    join(library, 'index.ts'),
+    'export const marker = { text: await Bun.file(new URL("./marker.txt", import.meta.url)).text() };\n',
+  )
+  await writeFile(join(library, 'marker.txt'), 'CAPTURED_WORKSPACE_CONTEXT')
+  await writeFile(join(library, 'skills/selected/SKILL.md'), 'DEPENDENCY_SKILL_MUST_NOT_LEAK')
+  for (const member of nested ? ['router', 'parent'] : ['router']) {
+    const flow = join(root, 'flows', member)
+    await writeFile(
+      join(flow, 'package.json'),
+      JSON.stringify({
+        name: `skill-${member}`,
+        private: true,
+        type: 'module',
+        dependencies: { 'skill-context': 'workspace:*' },
+      }),
+    )
+    const program = await readFile(join(flow, 'flow.ts'), 'utf8')
+    await writeFile(
+      join(flow, 'flow.ts'),
+      [
+        'import { marker } from "skill-context";',
+        'import { marker as canonicalMarker } from "../../libs/context/index.ts";',
+        'if (marker !== canonicalMarker || marker.text !== "CAPTURED_WORKSPACE_CONTEXT")',
+        '  throw new Error("workspace module identity or retained resource changed");',
+        program.replace(/^#![^\n]*\n/, ''),
+      ].join('\n'),
+    )
+  }
+  const lock = Bun.spawn(
+    [
+      process.execPath,
+      '--no-env-file',
+      '--config=/dev/null',
+      'install',
+      '--lockfile-only',
+      '--ignore-scripts',
+    ],
+    { cwd: root, env: {}, stdout: 'pipe', stderr: 'pipe' },
+  )
+  const [exit, stdout, stderr] = await Promise.all([
+    lock.exited,
+    new Response(lock.stdout).text(),
+    new Response(lock.stderr).text(),
+  ])
+  expect(exit, `${stdout}\n${stderr}`).toBe(0)
 }
 
 async function writeSpecialistParent(root: string): Promise<void> {

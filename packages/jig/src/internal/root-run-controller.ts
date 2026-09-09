@@ -3,7 +3,7 @@ import { join } from 'node:path'
 
 import { CheckError } from '../diagnostics.js'
 import { ChannelOperationError } from '../run/channels.js'
-import { type JsonValue } from '../json.js'
+import { canonicalJson, type JsonValue } from '../json.js'
 import { inspectCapturedPackage, type InspectedPackage } from '../package/inspect.js'
 import {
   type RunHostEffectOperationTerminal,
@@ -196,6 +196,7 @@ async function startOrResumeCurrentExecution(
           protectedParent: roots.materializations,
           name: `root-${hexadecimal}`,
           packageDigest: recipe.executionPackage.digest,
+          executionLayout: recipe.executionLayout,
           ownerToken: work.lifecycle.allocation.digest,
         }),
         planPrivateLinuxOwnerStateAllocation({
@@ -712,6 +713,7 @@ async function reproduceRecipe(
   const recipe = await planPrivateDirectRun({
     request,
     executionPackage: target.disposition.executionPackage,
+    executionLayout: target.disposition.executionLayout,
     installedSupport: input.installedSupport,
     backend: input.backend,
     agentProvider: input.agentProvider,
@@ -757,7 +759,7 @@ function backendPlan(
     command: [
       recipe.sandboxExecutablePath,
       ...recipe.bunPolicy,
-      `${recipe.packageDestination}/${recipe.request.entrypoint.path}`,
+      `${recipe.packageDestination}/${recipe.executionLayout.flowRoot ? `${recipe.executionLayout.flowRoot}/` : ''}${recipe.request.entrypoint.path}`,
     ] as readonly [string, ...string[]],
   })
 }
@@ -946,6 +948,9 @@ async function requirePlanMatches(
     plan.packageAllocation.parent.path !== roots.materializations ||
     plan.packageAllocation.name !== `root-${hexadecimal}` ||
     plan.packageAllocation.packageDigest !== expectedMaterializationDigest ||
+    !Buffer.from(
+      canonicalJson(plan.packageAllocation.executionLayout as unknown as JsonValue),
+    ).equals(canonicalJson(recipe.executionLayout as unknown as JsonValue)) ||
     plan.packageAllocation.ownerToken !== work.lifecycle.allocation.digest ||
     plan.ownerAllocation.parent !== roots.owners ||
     plan.ownerAllocation.name !== `r-${hexadecimal.slice(0, 62)}` ||

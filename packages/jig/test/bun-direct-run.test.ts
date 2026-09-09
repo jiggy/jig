@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test'
 
 import type { JsonValue } from '../src/json.js'
 import { planPrivateBunDirectRun } from '../src/internal/bun-direct-run.js'
+import { EMPTY_PRIVATE_BUN_EXECUTION_LAYOUT } from '../src/internal/bun-execution-layout.js'
 import { privateDomainDigest } from '../src/internal/identity.js'
 import { openPrivateInstalledBunHost } from '../src/internal/installed-bun-host.js'
 import { openPrivateInstalledBunSupport } from '../src/internal/installed-bun-support.js'
@@ -36,6 +37,7 @@ describe('private Bun direct Run', () => {
     })
 
     expect(recipe.wallClockCeilingMs).toBe(86_400_000)
+    expect(recipe.executionLayout).toEqual(EMPTY_PRIVATE_BUN_EXECUTION_LAYOUT)
     expect(recipe.resourceCeilings).toEqual({
       memoryBytes: 256 * 1024 * 1024,
       pids: 64,
@@ -43,6 +45,90 @@ describe('private Bun direct Run', () => {
       cpuPeriodMicros: 100_000,
       cleanupTimeoutMs: 5_000,
     })
+  })
+
+  test('binds the selected Flow root and workspace aliases independently of retained bytes', async () => {
+    const installedSupport = await openPrivateInstalledBunSupport(installedBunLocation)
+    const backend = new StaticMechanismBackend({
+      bunPath: '/test/bun',
+      bunHostLibraryPath: '/test/lib',
+    })
+    const request = activationRequest()
+    const executionPackage = { kind: 'flow-package/1' as const, digest: digest('prepared') }
+    const executionLayout = {
+      flowRoot: 'flows/first',
+      members: ['flows/first', 'flows/second', 'libs/first', 'libs/second'],
+      aliases: [{ path: 'node_modules/helper', target: 'libs/first' }],
+    }
+    const plan = (layout: typeof executionLayout) =>
+      planPrivateBunDirectRun({
+        request,
+        executionPackage,
+        executionLayout: layout,
+        installedSupport,
+        backend,
+      })
+    const original = await plan(executionLayout)
+    const repeated = await plan(JSON.parse(JSON.stringify(executionLayout)))
+    const differentRoot = await plan({ ...executionLayout, flowRoot: 'flows/second' })
+    const differentAlias = await plan({
+      ...executionLayout,
+      aliases: [{ path: 'node_modules/helper', target: 'libs/second' }],
+    })
+
+    expect(repeated.digest).toBe(original.digest)
+    expect(repeated.observation.digest).toBe(original.observation.digest)
+    for (const changed of [differentRoot, differentAlias]) {
+      expect(changed.request).toEqual(original.request)
+      expect(changed.executionPackage).toEqual(original.executionPackage)
+      expect(changed.digest).not.toBe(original.digest)
+      expect(changed.observation.digest).not.toBe(original.observation.digest)
+    }
+    expect(original.executionLayout).toEqual(executionLayout)
+    executionLayout.aliases[0]!.target = 'libs/second'
+    expect(original.executionLayout.aliases[0]!.target).toBe('libs/first')
+  })
+
+  test('keeps the ordinary layout equivalent whether explicit or omitted', async () => {
+    const installedSupport = await openPrivateInstalledBunSupport(installedBunLocation)
+    const backend = new StaticMechanismBackend({
+      bunPath: '/test/bun',
+      bunHostLibraryPath: '/test/lib',
+    })
+    const input = { request: activationRequest(), installedSupport, backend }
+    const implicit = await planPrivateBunDirectRun(input)
+    const explicit = await planPrivateBunDirectRun({
+      ...input,
+      executionLayout: EMPTY_PRIVATE_BUN_EXECUTION_LAYOUT,
+    })
+    expect(explicit.digest).toBe(implicit.digest)
+    expect(explicit.observation.digest).toBe(implicit.observation.digest)
+  })
+
+  test('rejects unsafe execution layout before producing a recipe', async () => {
+    const installedSupport = await openPrivateInstalledBunSupport(installedBunLocation)
+    const backend = new StaticMechanismBackend({
+      bunPath: '/test/bun',
+      bunHostLibraryPath: '/test/lib',
+    })
+    for (const executionLayout of [
+      { flowRoot: '../outside', members: ['flows/one'], aliases: [] },
+      { flowRoot: 'flows/one', members: ['flows/other'], aliases: [] },
+      {
+        flowRoot: 'flows/one',
+        members: ['flows/one'],
+        aliases: [{ path: 'node_modules/helper', target: 'libs/unselected' }],
+      },
+    ]) {
+      await expect(
+        planPrivateBunDirectRun({
+          request: activationRequest(),
+          installedSupport,
+          backend,
+          executionLayout,
+        }),
+      ).rejects.toThrow()
+    }
   })
 
   test('requires an authenticated Agent provider without identifying its credential', async () => {

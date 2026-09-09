@@ -364,10 +364,13 @@ function workspaceFilter(): string[] {
 }
 
 function decodeBase64(value: string, label: string): Uint8Array {
-  if (!/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(value)) {
+  const bytes = Buffer.from(value, 'base64')
+  // Canonical round-trip validation stays bounded for large valid files;
+  // a repeated-group regular expression can exhaust the runtime's stack.
+  if (bytes.toString('base64') !== value) {
     throw new WorkerFailure('PACKAGE_BUN_PROTOCOL', `${label} has invalid encoded bytes`)
   }
-  return new Uint8Array(Buffer.from(value, 'base64'))
+  return new Uint8Array(bytes)
 }
 
 function ordinaryRecord(value: unknown): Record<string, unknown> | undefined {
@@ -393,8 +396,10 @@ function enqueue(bytes: Uint8Array): Promise<void> {
   return outputQueue
 }
 
-function sendPrepared(files: readonly SourceFile[]): Promise<void> {
-  const bytes = encodePrivateBunMessage({ type: 'prepared', files })
+function sendPrepared(
+  prepared: Awaited<ReturnType<typeof capturePrivateBunPreparedTree>>,
+): Promise<void> {
+  const bytes = encodePrivateBunMessage({ type: 'prepared', ...prepared })
   if (!privateBunMessageFits(bytes.byteLength - 1, PRIVATE_BUN_PREPARED_MESSAGE_BYTES)) {
     throw new WorkerFailure('PACKAGE_BUN_OUTPUT_LIMIT', 'prepared dependency tree is too large')
   }

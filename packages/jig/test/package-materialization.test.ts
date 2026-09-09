@@ -1,13 +1,16 @@
 import { describe, expect, setDefaultTimeout, test } from 'bun:test'
 import {
   chmod,
+  lstat,
   mkdir,
   mkdtemp,
   readFile,
+  readlink,
   readdir,
   rm,
   stat,
   symlink,
+  unlink,
   writeFile,
 } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -25,6 +28,10 @@ import {
   type PrivatePackageMaterializationLease,
 } from '../src/internal/package-materialization.js'
 import { capturePackageDirectory } from '../src/package/capture.js'
+import {
+  normalizePrivateBunExecutionLayout,
+  privateBunAliasText,
+} from '../src/internal/bun-execution-layout.js'
 
 const crashFixture = join(import.meta.dir, 'fixtures/package-materialization-crash.ts')
 
@@ -430,6 +437,279 @@ describe('private package materialization', () => {
   })
 })
 
+describe('private workspace layout materialization', () => {
+  test('retains canonical aliases through materialization, reopen and disposal', async () => {
+    const fixture = await workspaceFixture()
+    try {
+      const lease = await materializePrivatePackageLease(fixture.captured, fixture.allocation)
+      expect(lease.identity.allocation.executionLayout).toEqual(fixture.layout)
+      for (const alias of fixture.layout.aliases) {
+        expect(await readlink(join(lease.root, alias.path))).toBe(privateBunAliasText(alias))
+        expect(await readFile(join(lease.root, alias.path, 'value.txt'), 'utf8')).toBe(
+          'shared bytes\n',
+        )
+        expect((await stat(join(lease.root, alias.path))).ino).toBe(
+          (await stat(join(lease.root, alias.target))).ino,
+        )
+        expect((await stat(dirname(join(lease.root, alias.path)))).mode & 0o777).toBe(0o555)
+      }
+      // Generic authored capture does not acquire permission to follow links.
+      await expect(capturePackageDirectory(lease.root)).rejects.toThrow()
+      const reopened = await reacquirePrivatePackageMaterializationLease(
+        fixture.protectedParent,
+        JSON.parse(JSON.stringify(lease.identity)),
+      )
+      await reopened.dispose()
+      expect(await readdir(fixture.protectedParent)).toEqual([])
+    } finally {
+      await fixture.dispose()
+    }
+  })
+
+  test('recovers a complete alias tree after its creating process exits', async () => {
+    const fixture = await workspaceFixture()
+    try {
+      const result = await runCrashFixture('complete-without-identity', {
+        JIG_TEST_SOURCE: fixture.source,
+        JIG_TEST_ALLOCATION: JSON.stringify(fixture.allocation),
+      })
+      expect(result.stderr).toBe('')
+      expect(result.exitCode).toBe(72)
+      const recovered = await recoverPrivatePackageMaterializationAllocation(
+        fixture.protectedParent,
+        JSON.parse(JSON.stringify(fixture.allocation)),
+      )
+      expect(recovered.state).toBe('complete')
+      if (recovered.state !== 'complete') throw new Error('expected complete workspace lease')
+      expect(
+        await readFile(
+          join(recovered.lease.root, fixture.layout.aliases[0]!.path, 'value.txt'),
+          'utf8',
+        ),
+      ).toBe('shared bytes\n')
+      await recovered.lease.dispose()
+      expect(await readdir(fixture.protectedParent)).toEqual([])
+    } finally {
+      await fixture.dispose()
+    }
+  })
+
+  test('recovers partial alias creation without following links', async () => {
+    const fixture = await workspaceFixture()
+    try {
+      const result = await runCrashFixture('partial-workspace-aliases', {
+        JIG_TEST_SOURCE: fixture.source,
+        JIG_TEST_ALLOCATION: JSON.stringify(fixture.allocation),
+      })
+      expect(result.stderr).toBe('')
+      expect(result.exitCode).toBe(74)
+      const recovered = await recoverPrivatePackageMaterializationAllocation(
+        fixture.protectedParent,
+        fixture.allocation,
+      )
+      expect(recovered.state).toBe('incomplete-removed')
+      expect(await readdir(fixture.protectedParent)).toEqual([])
+    } finally {
+      await fixture.dispose()
+    }
+  })
+
+  test('resumes disposal after a process removes only one recorded alias', async () => {
+    const fixture = await workspaceFixture()
+    try {
+      const lease = await materializePrivatePackageLease(fixture.captured, fixture.allocation)
+      const result = await runCrashFixture('interrupt-alias-disposal', {
+        JIG_TEST_IDENTITY: JSON.stringify(lease.identity),
+      })
+      expect(result.stderr).toBe('')
+      expect(result.exitCode).toBe(75)
+      await disposePrivatePackageMaterializationLease(
+        fixture.protectedParent,
+        JSON.parse(JSON.stringify(lease.identity)),
+      )
+      expect(await readdir(fixture.protectedParent)).toEqual([])
+    } finally {
+      await fixture.dispose()
+    }
+  })
+
+  test('missing aliases prevent complete recovery but permit bounded removal', async () => {
+    const fixture = await workspaceFixture()
+    try {
+      const lease = await materializePrivatePackageLease(fixture.captured, fixture.allocation)
+      const path = join(lease.root, fixture.layout.aliases[0]!.path)
+      await chmod(dirname(path), 0o700)
+      await unlink(path)
+      await chmod(dirname(path), 0o555)
+      await expect(
+        reacquirePrivatePackageMaterializationLease(fixture.protectedParent, lease.identity),
+      ).rejects.toThrow('lease digest')
+      expect(
+        (
+          await recoverPrivatePackageMaterializationAllocation(
+            fixture.protectedParent,
+            fixture.allocation,
+          )
+        ).state,
+      ).toBe('incomplete-removed')
+      expect(await readdir(fixture.protectedParent)).toEqual([])
+    } finally {
+      await fixture.dispose()
+    }
+  })
+
+  test('changed or unrecorded links never authorize traversal or cleanup', async () => {
+    const fixture = await workspaceFixture()
+    try {
+      const lease = await materializePrivatePackageLease(fixture.captured, fixture.allocation)
+      const alias = fixture.layout.aliases[0]!
+      const path = join(lease.root, alias.path)
+      await chmod(dirname(path), 0o700)
+      await unlink(path)
+      await symlink(fixture.source, path)
+      await chmod(dirname(path), 0o555)
+      await expect(
+        reacquirePrivatePackageMaterializationLease(fixture.protectedParent, lease.identity),
+      ).rejects.toThrow('lease digest')
+      await expect(
+        disposePrivatePackageMaterializationLease(fixture.protectedParent, lease.identity),
+      ).rejects.toThrow('changed digest')
+      await expect(
+        recoverPrivatePackageMaterializationAllocation(fixture.protectedParent, fixture.allocation),
+      ).rejects.toThrow('changed materialization alias')
+      expect(await readFile(join(fixture.source, 'libraries/shared/value.txt'), 'utf8')).toBe(
+        'shared bytes\n',
+      )
+    } finally {
+      await fixture.dispose()
+    }
+  })
+
+  test('extra links cannot be hidden by a declared alias selection', async () => {
+    const fixture = await workspaceFixture()
+    try {
+      const lease = await materializePrivatePackageLease(fixture.captured, fixture.allocation)
+      await chmod(lease.root, 0o700)
+      await symlink(fixture.source, join(lease.root, 'extra-link'))
+      await chmod(lease.root, 0o555)
+      await expect(
+        reacquirePrivatePackageMaterializationLease(fixture.protectedParent, lease.identity),
+      ).rejects.toThrow()
+      expect(await readFile(join(fixture.source, 'libraries/shared/value.txt'), 'utf8')).toBe(
+        'shared bytes\n',
+      )
+    } finally {
+      await fixture.dispose()
+    }
+  })
+
+  test('layout/file collisions fail before creating an allocation leaf', async () => {
+    const fixture = await workspaceFixture()
+    try {
+      const conflictingLayout = normalizePrivateBunExecutionLayout({
+        ...fixture.layout,
+        aliases: [{ path: 'node_modules/@fixture/shared', target: 'libraries/shared' }],
+      })
+      await writeTree(fixture.source, { 'node_modules/@fixture/shared/value.txt': 'conflict' })
+      const captured = await capturePackageDirectory(fixture.source)
+      try {
+        const allocation = await allocatePrivatePackageMaterialization({
+          protectedParent: fixture.protectedParent,
+          name: 'run-conflict',
+          packageDigest: captured.digest,
+          ownerToken: 'workspace:conflict:owner',
+          executionLayout: conflictingLayout,
+        })
+        await expect(materializePrivatePackageLease(captured, allocation)).rejects.toThrow(
+          'execution layout',
+        )
+        expect(await readdir(fixture.protectedParent)).toEqual([])
+      } finally {
+        await captured.dispose()
+      }
+    } finally {
+      await fixture.dispose()
+    }
+  })
+
+  test('durable layout decoding rejects nested traps and accessors without invoking them', async () => {
+    const fixture = await workspaceFixture()
+    try {
+      let calls = 0
+      const proxy = new Proxy(fixture.layout, {
+        getPrototypeOf() {
+          calls++
+          throw new Error('trap')
+        },
+      })
+      expect(() =>
+        normalizePrivatePackageMaterializationAllocationIdentity({
+          ...fixture.allocation,
+          executionLayout: proxy,
+        }),
+      ).toThrow()
+      expect(calls).toBe(0)
+      const accessor = Object.defineProperty({ ...fixture.layout }, 'aliases', {
+        enumerable: true,
+        get() {
+          calls++
+          throw new Error('getter')
+        },
+      })
+      expect(() =>
+        normalizePrivatePackageMaterializationAllocationIdentity({
+          ...fixture.allocation,
+          executionLayout: accessor,
+        }),
+      ).toThrow()
+      expect(calls).toBe(0)
+    } finally {
+      await fixture.dispose()
+    }
+  })
+})
+
+async function workspaceFixture() {
+  const source = await mkdtemp(join(tmpdir(), 'jig-layout-source-'))
+  const protectedParent = await mkdtemp(join(tmpdir(), 'jig-layout-materializations-'))
+  await writeTree(source, {
+    'flows/main/package.json': '{"name":"@fixture/main"}',
+    'flows/main/FLOW.md': '---\nname: main\ndescription: Workspace fixture.\n---\n',
+    'flows/main/flow.ts': 'export const value = 1;\n',
+    'libraries/shared/package.json': '{"name":"@fixture/shared"}',
+    'libraries/shared/value.txt': 'shared bytes\n',
+  })
+  const captured = await capturePackageDirectory(source)
+  const layout = normalizePrivateBunExecutionLayout({
+    flowRoot: 'flows/main',
+    members: ['flows/main', 'libraries/shared'],
+    aliases: [
+      { path: 'flows/main/node_modules/@fixture/shared', target: 'libraries/shared' },
+      { path: 'node_modules/@fixture/shared', target: 'libraries/shared' },
+    ],
+  })
+  const allocation = await allocatePrivatePackageMaterialization({
+    protectedParent,
+    name: 'run-workspace',
+    packageDigest: captured.digest,
+    ownerToken: 'workspace:materialization:owner',
+    executionLayout: layout,
+  })
+  return {
+    source,
+    protectedParent,
+    captured,
+    layout,
+    allocation,
+    async dispose() {
+      await captured.dispose()
+      await makeFixtureRemovable(protectedParent)
+      await rm(source, { recursive: true, force: true })
+      await rm(protectedParent, { recursive: true, force: true })
+    },
+  }
+}
+
 function durableTree(): Readonly<Record<string, string>> {
   return {
     'FLOW.md': '---\nname: durable\ndescription: Durable fixture.\n---\n',
@@ -467,8 +747,9 @@ async function writeTree(root: string, files: Readonly<Record<string, string>>):
 
 async function makeFixtureRemovable(root: string): Promise<void> {
   async function walk(path: string): Promise<void> {
-    const information = await stat(path).catch(() => undefined)
-    if (information === undefined || !information.isDirectory()) return
+    const information = await lstat(path).catch(() => undefined)
+    if (information === undefined || information.isSymbolicLink() || !information.isDirectory())
+      return
     await chmod(path, 0o700).catch(() => undefined)
     for (const name of await readdir(path).catch(() => [])) await walk(join(path, name))
   }

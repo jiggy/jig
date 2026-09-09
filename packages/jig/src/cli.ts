@@ -782,8 +782,6 @@ function renderFailure(error: unknown, runtime: CliRuntime): 1 | 2 {
         'a declared workspace export is missing; build the local dependency before jig review',
       PACKAGE_BUN_WORKSPACE_CHANGED:
         'workspace inputs changed during capture; retry review after the edits settle',
-      PACKAGE_BUN_WORKSPACE_LAYOUT_UNSUPPORTED:
-        'this Jig preparer cannot preserve the workspace’s nested or overlapping dependency scopes; the candidate was not admitted. This is a host support limitation, not a stale lock',
       PACKAGE_BUN_LOCK_INVALID: 'bun.lock is invalid; correct the supplied lock',
       PACKAGE_BUN_LOCK_STALE:
         'package.json and bun.lock disagree; update the supplied lock explicitly',

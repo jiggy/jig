@@ -12,7 +12,11 @@ export interface PrivateBunPreparationBudget {
   readonly deadlineUnixMs: number
   readonly signal: AbortSignal
   reserve(packageDigest: string, projectPath: string): void
-  retain(files: readonly { readonly size: number }[], projectPath: string): void
+  retain(
+    files: readonly { readonly size: number }[],
+    projectPath: string,
+    metadataBytes?: number,
+  ): void
   dispose(): void
 }
 
@@ -55,10 +59,16 @@ export function createPrivateBunPreparationBudget(
       }
       packages.add(packageDigest)
     },
-    retain(files: readonly { readonly size: number }[], projectPath: string): void {
+    retain(
+      files: readonly { readonly size: number }[],
+      projectPath: string,
+      metadataBytes = 0,
+    ): void {
       requireOpen()
       signal.throwIfAborted()
-      let bytes = 0
+      if (!Number.isSafeInteger(metadataBytes) || metadataBytes < 0)
+        throw new TypeError('prepared metadata size is invalid')
+      let bytes = metadataBytes
       for (const file of files) {
         if (!Number.isSafeInteger(file.size) || file.size < 0) {
           throw new TypeError('prepared package file size is invalid')

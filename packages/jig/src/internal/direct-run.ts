@@ -3,6 +3,7 @@ import {
   requirePrivateBunDirectRecipe,
   type PrivateBunDirectRecipe,
 } from './bun-direct-run.js'
+import type { PrivateBunExecutionLayout } from './bun-execution-layout.js'
 import {
   requirePrivateInstalledBunSupport,
   type PrivateInstalledBunSupport,
@@ -24,6 +25,7 @@ export async function planPrivateDirectRun(input: {
   readonly installedSupport: PrivateDirectRunInstalledSupport
   readonly backend: PrivateLinuxCgroupBackend
   readonly executionPackage?: PackageArtifactRef
+  readonly executionLayout?: PrivateBunExecutionLayout
   readonly agentProvider?: PrivateAgentProvider | undefined
 }): Promise<PrivateDirectRunRecipe> {
   const request = requirePrivateActivationRequest(input.request)

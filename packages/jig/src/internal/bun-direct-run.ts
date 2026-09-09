@@ -9,6 +9,11 @@ import {
   type PrivateActivationRecipeObservation,
 } from './activation-planning.js'
 import { type PrivateAgentProvider, requirePrivateAgentProvider } from './agent-provider.js'
+import {
+  EMPTY_PRIVATE_BUN_EXECUTION_LAYOUT,
+  normalizePrivateBunExecutionLayout,
+  type PrivateBunExecutionLayout,
+} from './bun-execution-layout.js'
 import { privateDomainDigest } from './identity.js'
 import {
   type PrivateInstalledBunSupport,
@@ -48,6 +53,7 @@ export interface PrivateBunDirectRecipe {
   readonly digest: string
   readonly request: PrivateActivationRequest
   readonly executionPackage: PackageArtifactRef
+  readonly executionLayout: PrivateBunExecutionLayout
   readonly installedSupport: PrivateInstalledBunSupport
   readonly backend: PrivateLinuxCgroupBackend
   readonly mechanismDigest: string
@@ -69,6 +75,7 @@ export async function planPrivateBunDirectRun(input: {
   readonly installedSupport: PrivateInstalledBunSupport
   readonly backend: PrivateLinuxCgroupBackend
   readonly executionPackage?: PackageArtifactRef
+  readonly executionLayout?: PrivateBunExecutionLayout
   readonly selector?: string
   readonly agentProvider?: PrivateAgentProvider | undefined
 }): Promise<PrivateBunDirectRecipe> {
@@ -76,6 +83,9 @@ export async function planPrivateBunDirectRun(input: {
   const installedSupport = requirePrivateInstalledBunSupport(input.installedSupport)
   const backend = requirePrivateLinuxCgroupBackend(input.backend)
   const executionPackage = normalizePackageArtifactRef(input.executionPackage ?? request.package)
+  const executionLayout = normalizePrivateBunExecutionLayout(
+    input.executionLayout ?? EMPTY_PRIVATE_BUN_EXECUTION_LAYOUT,
+  )
   const selector = input.selector ?? DEFAULT_SELECTOR
   if (
     request.mode !== 'run' ||
@@ -145,6 +155,7 @@ export async function planPrivateBunDirectRun(input: {
   const inspectionDigest = privateDomainDigest('JIG-Private-Bun-Inspection/1', {
     package: request.package,
     executionPackage,
+    executionLayout,
     entrypoint: request.entrypoint,
     selector,
   } as unknown as JsonValue)
@@ -156,6 +167,7 @@ export async function planPrivateBunDirectRun(input: {
   const launchEnvelopeDigest = logicalLaunchDigest(
     request,
     executionPackage,
+    executionLayout,
     installedSupport,
     support,
     agentProvider,
@@ -190,6 +202,7 @@ export async function planPrivateBunDirectRun(input: {
     ),
     request,
     executionPackage,
+    executionLayout,
     installedSupport,
     backend,
     mechanismDigest: support.digest,
@@ -218,6 +231,7 @@ export function requirePrivateBunDirectRecipe(value: unknown): PrivateBunDirectR
 function logicalLaunchDigest(
   request: PrivateActivationRequest,
   executionPackage: PackageArtifactRef,
+  executionLayout: PrivateBunExecutionLayout,
   installedSupport: PrivateInstalledBunSupport,
   mechanism: PrivateLinuxBackendMechanismSupport,
   agentProvider: PrivateAgentProvider | undefined,
@@ -226,6 +240,7 @@ function logicalLaunchDigest(
     requestDigest: request.digest,
     package: request.package,
     executionPackage,
+    executionLayout,
     entrypoint: request.entrypoint,
     installedSupportDigest: installedSupport.digest,
     executableDigest: installedSupport.executableDigest,

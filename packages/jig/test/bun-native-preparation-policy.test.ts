@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 
 import { requirePrivateBunLockPolicy } from '../src/internal/bun-native-lock-policy.js'
+import { PRIVATE_BUN_EXECUTION_LAYOUT_LIMITS } from '../src/internal/bun-execution-layout.js'
 import {
   PRIVATE_BUN_PREPARATION_LIMITS,
   PRIVATE_BUN_PREPARED_MESSAGE_BYTES,
@@ -158,8 +159,11 @@ describe('private Bun preparation policy', () => {
         'prepared',
         PRIVATE_BUN_PREPARATION_LIMITS.preparedFiles,
         PRIVATE_BUN_PREPARATION_LIMITS.preparedBytes,
-      ),
+      ) +
+        PRIVATE_BUN_EXECUTION_LAYOUT_LIMITS.bytes +
+        Buffer.byteLength(',"layout":'),
     )
+    expect(PRIVATE_BUN_EXECUTION_LAYOUT_LIMITS.bytes).toBe(1024 * 1024)
     const segment = '\u0001'.repeat(255)
     const path = `${`p0000${'\u0001'.repeat(250)}`}/${segment}/${segment}/${'\u0001'.repeat(254)}/x`
     expect(Buffer.byteLength(path)).toBe(PACKAGE_1_MAX_PATH_BYTES)

@@ -1,4 +1,8 @@
 import { types as utilTypes } from 'node:util'
+import {
+  normalizePrivateBunExecutionLayout,
+  type PrivateBunExecutionLayout,
+} from './bun-execution-layout.js'
 
 import { privateActivationTargetKey } from './activation-planning.js'
 import { privateDomainDigest } from './identity.js'
@@ -47,6 +51,7 @@ export interface PrivateActivationCandidateTarget {
         readonly recipeDigest: string
         readonly observationDigest: string
         readonly executionPackage: PackageArtifactRef
+        readonly executionLayout: PrivateBunExecutionLayout
       }
     | {
         readonly state: 'unavailable'
@@ -166,6 +171,7 @@ export function createPrivateActivationCandidateV5(
         recipeDigest: recipe.digest,
         observationDigest: recipe.observation.digest,
         executionPackage: recipe.executionPackage,
+        executionLayout: recipe.executionLayout,
       })
     } else {
       disposition = target.disposition
@@ -742,7 +748,7 @@ function normalizeTarget(input: unknown): PrivateActivationCandidateTarget {
   if (state === 'ready') {
     const ready = exactObject(
       value.disposition,
-      ['state', 'recipeDigest', 'observationDigest', 'executionPackage'],
+      ['state', 'recipeDigest', 'observationDigest', 'executionPackage', 'executionLayout'],
       'target disposition',
     )
     return Object.freeze({
@@ -752,6 +758,7 @@ function normalizeTarget(input: unknown): PrivateActivationCandidateTarget {
         recipeDigest: requireDigest(ready.recipeDigest, 'target recipe'),
         observationDigest: requireDigest(ready.observationDigest, 'target observation'),
         executionPackage: normalizePackageArtifactRef(ready.executionPackage),
+        executionLayout: normalizePrivateBunExecutionLayout(ready.executionLayout),
       }),
     })
   }

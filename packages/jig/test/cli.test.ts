@@ -1032,11 +1032,6 @@ describe('finite Jig project commands', () => {
       'flows/chat/package.json',
       'a requested dependency version or tag is unavailable in the registry; check package.json against published versions or use a declared local workspace dependency',
     ],
-    [
-      'PACKAGE_BUN_WORKSPACE_LAYOUT_UNSUPPORTED',
-      'flows/chat/package.json',
-      'this Jig preparer cannot preserve the workspace’s nested or overlapping dependency scopes; the candidate was not admitted. This is a host support limitation, not a stale lock',
-    ],
   ])('renders actionable %s without private error text', async (code, path, guidance) => {
     const events: string[] = []
     const failure = new ProjectAdministrationError('UNAVAILABLE', 'secret-token /private/host', {

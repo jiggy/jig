@@ -159,7 +159,8 @@ not promise the same dependency versions on another host.
 Unreleased code is not forced through a public registry. Package-local source
 modules can be imported directly; `workspace:` dependencies use ordinary Bun
 workspace declarations. Review captures local dependencies and prepares their
-root-locked graph with Bun, retaining regular files rather than runtime links.
+root-locked graph with Bun, retaining canonical paths and exact private aliases
+between captured members rather than copying a library into each dependency slot.
 It recaptures workspace dependencies on each review; unchanged Flow source does
 not authorize reuse of an older local library. Builds remain the author's
 toolchain responsibility. File, Git, or symlink dependencies are not runtime

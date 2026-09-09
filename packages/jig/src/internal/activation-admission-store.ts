@@ -2,6 +2,7 @@ import { constants, type BigIntStats } from 'node:fs'
 import { lstat, mkdir, open, rename, unlink, type FileHandle } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { join } from 'node:path'
+import type { PrivateBunExecutionLayout } from './bun-execution-layout.js'
 
 import { CheckError, invalid, unavailable } from '../diagnostics.js'
 import { canonicalJson, decodeJson1, Json1Error, JSON_1_LIMITS, type JsonValue } from '../json.js'
@@ -392,6 +393,7 @@ export interface PrivateAdmittedExecutionReuse {
   readonly recipeDigest: string
   readonly observationDigest: string
   readonly executionPackage: PackageArtifactRef
+  readonly executionLayout: PrivateBunExecutionLayout
 }
 
 export interface PrivateActivationReviewPlan {
@@ -583,6 +585,7 @@ export function readPrivateAdmittedExecutionReuse(input: {
     recipeDigest: target.disposition.recipeDigest,
     observationDigest: target.disposition.observationDigest,
     executionPackage: target.disposition.executionPackage,
+    executionLayout: target.disposition.executionLayout,
   })
 }
 

@@ -1,5 +1,9 @@
 import { describe, expect, test } from 'bun:test'
 import { createHash } from 'node:crypto'
+import {
+  EMPTY_PRIVATE_BUN_EXECUTION_LAYOUT,
+  type PrivateBunExecutionLayout,
+} from '../src/internal/bun-execution-layout.js'
 
 import { canonicalJson, type JsonValue } from '../src/json.js'
 import {
@@ -48,6 +52,7 @@ describe('private Candidate/5', () => {
       state: 'ready',
       recipeDigest: digest('ready-recipe'),
       observationDigest: digest('ready-observation'),
+      executionLayout: EMPTY_PRIVATE_BUN_EXECUTION_LAYOUT,
       executionPackage: {
         kind: 'flow-package/1',
         digest: digest('prepared:first'),
@@ -79,6 +84,32 @@ describe('private Candidate/5', () => {
       malformed.targets,
     )
     expectInvalidCandidate(encoded, malformed, 'Package/1 artifact digest')
+  })
+
+  test('retains workspace layout and distinguishes layout-only admission changes', () => {
+    const layout = {
+      flowRoot: 'flows/work',
+      members: ['flows/work', 'libs/shared'],
+      aliases: [{ path: 'node_modules/shared', target: 'libs/shared' }],
+    }
+    const first = readyCandidateFixture('same-files', layout)
+    const second = readyCandidateFixture('same-files', {
+      ...layout,
+      aliases: [{ path: 'flows/work/node_modules/shared', target: 'libs/shared' }],
+    })
+    const reopened = decodePrivateActivationCandidateV5(encodePrivateActivationCandidateV5(first))
+    expect(reopened.candidate.targets[0]!.disposition).toMatchObject({ executionLayout: layout })
+    expect(first.candidate.activationMeaningDigest).not.toBe(
+      second.candidate.activationMeaningDigest,
+    )
+    const encoded = encodePrivateActivationCandidateV5(first)
+    const missing = json(encoded.candidate)
+    delete missing.targets[0].disposition.executionLayout
+    missing.activationMeaningDigest = activationMeaningDigest(
+      missing.observedSemanticDigest,
+      missing.targets,
+    )
+    expectInvalidCandidate(encoded, missing, 'must contain exactly')
   })
 
   test('makes the exact Binding slot map part of request and Candidate identity', () => {
@@ -174,6 +205,7 @@ describe('private Candidate/5', () => {
               state: 'ready',
               recipeDigest: digest('new-recipe'),
               observationDigest: digest('planning-observation'),
+              executionLayout: EMPTY_PRIVATE_BUN_EXECUTION_LAYOUT,
               executionPackage: candidate.targets[0].request.package,
             },
           },
@@ -621,7 +653,10 @@ function candidateFixture(paths: readonly string[] = ['flows/run'], extraInertPa
   })
 }
 
-function readyCandidateFixture(executionPackage: string) {
+function readyCandidateFixture(
+  executionPackage: string,
+  executionLayout: PrivateBunExecutionLayout = EMPTY_PRIVATE_BUN_EXECUTION_LAYOUT,
+) {
   const unavailable = candidateFixture()
   const encoded = encodePrivateActivationCandidateV5(unavailable)
   const candidate = json(encoded.candidate)
@@ -629,6 +664,7 @@ function readyCandidateFixture(executionPackage: string) {
     state: 'ready',
     recipeDigest: digest('ready-recipe'),
     observationDigest: digest('ready-observation'),
+    executionLayout,
     executionPackage: {
       kind: 'flow-package/1',
       digest: digest(executionPackage),

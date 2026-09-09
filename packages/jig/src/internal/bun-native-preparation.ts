@@ -10,6 +10,12 @@ import {
   createCapturedPackage,
 } from '../package/capture.js'
 import { packageDigest } from '../package/digest.js'
+import {
+  assertPrivateBunExecutionLayoutFiles,
+  normalizePrivateBunExecutionLayout,
+  privateBunAliasPackageName,
+  type PrivateBunExecutionLayout,
+} from './bun-execution-layout.js'
 import { assertNoPathCollisions, comparePathBytes, validateLogicalPath } from '../package/paths.js'
 import {
   type PrivateBunPreparationOwnerFact,
@@ -57,7 +63,6 @@ const WORKER_FAILURE_CODES = new Set([
   'PACKAGE_BUN_LOCK_STALE',
   'PACKAGE_BUN_OUTPUT_LIMIT',
   'PACKAGE_BUN_OUTPUT_UNSUPPORTED',
-  'PACKAGE_BUN_WORKSPACE_LAYOUT_UNSUPPORTED',
   'PACKAGE_BUN_PREPARATION_FAILED',
   'PACKAGE_BUN_PROTOCOL',
   'PACKAGE_BUN_SOURCE_CHANGED',
@@ -66,6 +71,11 @@ const WORKER_FAILURE_CODES = new Set([
   'PACKAGE_BUN_RESOLUTION_VERSION_UNAVAILABLE',
   'PACKAGE_BUN_RESOLVED_SOURCE_UNSUPPORTED',
 ])
+
+export interface PrivatePreparedBunPackage {
+  readonly captured: CapturedPackage
+  readonly layout: PrivateBunExecutionLayout
+}
 
 /**
  * Prepare one Bun package in the same rootless envelope used by Runs.
@@ -87,7 +97,7 @@ export async function preparePrivateBunPackage(input: {
     readonly members: readonly string[]
     readonly selected: readonly string[]
   }
-}): Promise<CapturedPackage> {
+}): Promise<PrivatePreparedBunPackage> {
   const classification =
     input.workspace === undefined
       ? await inspectPrivateBunPackageInput(input.captured)
@@ -170,7 +180,7 @@ export async function preparePrivateBunPackage(input: {
     value: checkpointValue({ allocation }),
   })
   if (fact === null) throw new Error('Bun preparation allocation was not retained')
-  let terminal: CapturedPackage | CheckError | undefined
+  let terminal: PrivatePreparedBunPackage | CheckError | undefined
   let component: PrivateLinuxComponentProcess | undefined
 
   try {
@@ -184,7 +194,7 @@ export async function preparePrivateBunPackage(input: {
       }),
     )
     component = await sealed.admit(input.signal)
-    const interaction = await interact(component, sourceBytes)
+    const interaction = await interact(component, sourceBytes, input)
     terminal = interaction.terminal
     fact = await requireFact(
       replacePrivateBunPreparationOwner({
@@ -208,7 +218,7 @@ export async function preparePrivateBunPackage(input: {
     if (terminal instanceof CheckError) throw terminal
     return terminal
   } catch (error) {
-    if (!(terminal instanceof CheckError)) await terminal?.dispose().catch(() => undefined)
+    if (!(terminal instanceof CheckError)) await terminal?.captured.dispose().catch(() => undefined)
     await component?.terminate().catch(() => undefined)
     try {
       await recoverPrivateBunPreparationOwner(input)
@@ -225,11 +235,15 @@ export async function preparePrivateBunPackage(input: {
 async function interact(
   component: PrivateLinuxComponentProcess,
   sourceBytes: Uint8Array,
+  input: {
+    readonly captured: CapturedPackage
+    readonly workspace?: { readonly target: string; readonly selected: readonly string[] }
+  },
 ): Promise<{
-  readonly terminal: CapturedPackage | CheckError
+  readonly terminal: PrivatePreparedBunPackage | CheckError
   readonly fence: PrivateLinuxConfirmedEnforcementReceipt
 }> {
-  let terminal: CapturedPackage | CheckError | undefined
+  let terminal: PrivatePreparedBunPackage | CheckError | undefined
   const stderr = collectBounded(component.stderr, 64 * 1024)
   try {
     await component.write(sourceBytes)
@@ -237,8 +251,13 @@ async function interact(
     for await (const value of jsonLines(component.stdout, PRIVATE_BUN_PREPARED_MESSAGE_BYTES)) {
       const message = ordinaryRecord(value, 'preparation message')
       if (message.type === 'prepared') {
-        if (terminal !== undefined || !Array.isArray(message.files)) throw protocolFailure()
-        terminal = await capturedFromPrepared(message.files)
+        if (
+          terminal !== undefined ||
+          !Array.isArray(message.files) ||
+          Reflect.ownKeys(message).length !== 3
+        )
+          throw protocolFailure()
+        terminal = await decodePrivateBunPreparedResult(message.files, message.layout, input)
       } else if (message.type === 'failure') {
         if (
           terminal !== undefined ||
@@ -254,8 +273,7 @@ async function interact(
             message.code === 'PACKAGE_BUN_RESOLUTION_FAILED' ||
             message.code === 'PACKAGE_BUN_RESOLUTION_VERSION_UNAVAILABLE' ||
             message.code === 'PACKAGE_BUN_PREPARATION_FAILED' ||
-            message.code === 'PACKAGE_BUN_OUTPUT_UNSUPPORTED' ||
-            message.code === 'PACKAGE_BUN_WORKSPACE_LAYOUT_UNSUPPORTED'
+            message.code === 'PACKAGE_BUN_OUTPUT_UNSUPPORTED'
             ? 'unavailable'
             : 'invalid',
           message.code,
@@ -276,7 +294,7 @@ async function interact(
       (!(terminal instanceof CheckError) && fence.exitCode !== 0) ||
       !fence.fenced
     ) {
-      if (!(terminal instanceof CheckError)) await terminal?.dispose()
+      if (!(terminal instanceof CheckError)) await terminal?.captured.dispose()
       terminal = new CheckError(
         'unavailable',
         'PACKAGE_BUN_PREPARATION_FAILED',
@@ -285,7 +303,7 @@ async function interact(
     }
     return Object.freeze({ terminal, fence })
   } catch (error) {
-    if (!(terminal instanceof CheckError)) await terminal?.dispose().catch(() => undefined)
+    if (!(terminal instanceof CheckError)) await terminal?.captured.dispose().catch(() => undefined)
     await component.terminate().catch(() => undefined)
     await stderr.catch(() => undefined)
     throw error
@@ -446,11 +464,31 @@ async function sourceMessage(
   return Object.freeze({ type: 'source', files: Object.freeze(files) })
 }
 
-async function capturedFromPrepared(value: readonly unknown[]): Promise<CapturedPackage> {
-  if (value.length > PRIVATE_BUN_PREPARATION_LIMITS.preparedFiles) throw protocolFailure()
+export async function decodePrivateBunPreparedResult(
+  value: readonly unknown[],
+  rawLayout: unknown,
+  input: {
+    readonly captured: CapturedPackage
+    readonly workspace?: { readonly target: string; readonly selected: readonly string[] }
+  },
+): Promise<PrivatePreparedBunPackage> {
+  let layout: PrivateBunExecutionLayout
+  try {
+    layout = normalizePrivateBunExecutionLayout(rawLayout)
+  } catch {
+    throw protocolFailure()
+  }
+  const selected = [...(input.workspace?.selected ?? [])].sort(comparePathBytes)
+  if (
+    layout.flowRoot !== (input.workspace?.target ?? '') ||
+    JSON.stringify(layout.members) !== JSON.stringify(selected)
+  )
+    throw protocolFailure()
+  if (value.length + layout.aliases.length > PRIVATE_BUN_PREPARATION_LIMITS.preparedFiles)
+    throw protocolFailure()
   const contents = new Map<string, Uint8Array>()
   const files: CapturedFile[] = []
-  let total = 0
+  let total = Buffer.byteLength(JSON.stringify(layout))
   let prior: string | undefined
   for (const raw of value) {
     const record = ordinaryRecord(raw, 'prepared file')
@@ -472,6 +510,48 @@ async function capturedFromPrepared(value: readonly unknown[]): Promise<Captured
     files.push(Object.freeze({ path: record.path, size: bytes.byteLength }))
   }
   assertNoPathCollisions(files.map(({ path }) => path))
+  try {
+    assertPrivateBunExecutionLayoutFiles(layout, files)
+  } catch {
+    throw protocolFailure()
+  }
+  const retainedSource = input.captured.files.filter(
+    ({ path }) =>
+      input.workspace === undefined ||
+      path === 'package.json' ||
+      path === 'bun.lock' ||
+      selected.some((member) => path.startsWith(`${member}/`)),
+  )
+  const sourcePaths = new Set(retainedSource.map(({ path }) => path))
+  for (const file of retainedSource) {
+    const actual = contents.get(file.path)
+    if (
+      actual === undefined ||
+      !Buffer.from(actual).equals(Buffer.from(await input.captured.read(file.path)))
+    )
+      throw protocolFailure()
+  }
+  for (const file of files) {
+    if (
+      !sourcePaths.has(file.path) &&
+      file.path !== 'bun.lock' &&
+      !file.path.split('/').includes('node_modules')
+    )
+      throw protocolFailure()
+  }
+  for (const alias of layout.aliases) {
+    const bytes = contents.get(`${alias.target}/package.json`)
+    let manifest: Record<string, unknown>
+    try {
+      manifest = ordinaryRecord(
+        JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes)),
+        'workspace manifest',
+      )
+    } catch {
+      throw protocolFailure()
+    }
+    if (manifest.name !== privateBunAliasPackageName(alias.path)) throw protocolFailure()
+  }
   const frozenFiles = Object.freeze(files)
   const backing: CapturedPackageBacking = {
     stream(path: string): AsyncIterable<Uint8Array> {
@@ -486,7 +566,10 @@ async function capturedFromPrepared(value: readonly unknown[]): Promise<Captured
     },
   }
   const digest = await packageDigest(frozenFiles, (file) => backing.stream(file.path))
-  return createCapturedPackage('prepared Bun dependency tree', frozenFiles, digest, backing)
+  return Object.freeze({
+    captured: createCapturedPackage('prepared Bun dependency tree', frozenFiles, digest, backing),
+    layout,
+  })
 }
 
 async function* jsonLines(
@@ -536,10 +619,15 @@ function ordinaryRecord(value: unknown, label: string): Record<string, unknown> 
 }
 
 function decodeBase64(value: string, label: string): Uint8Array {
-  if (!/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(value)) {
+  const maximum = 4 * Math.ceil(PRIVATE_BUN_PREPARATION_LIMITS.preparedBytes / 3)
+  if (value.length > maximum) {
     throw new CheckError('unavailable', 'PACKAGE_BUN_PROTOCOL', `${label} bytes are invalid`)
   }
-  return new Uint8Array(Buffer.from(value, 'base64'))
+  const bytes = Buffer.from(value, 'base64')
+  if (bytes.toString('base64') !== value) {
+    throw new CheckError('unavailable', 'PACKAGE_BUN_PROTOCOL', `${label} bytes are invalid`)
+  }
+  return bytes
 }
 
 function protocolFailure(): CheckError {

@@ -1,5 +1,13 @@
 import { lstat, opendir, readFile, realpath } from 'node:fs/promises'
 import { join } from 'node:path'
+import {
+  assertPrivateBunExecutionLayoutFiles,
+  EMPTY_PRIVATE_BUN_EXECUTION_LAYOUT,
+  normalizePrivateBunExecutionLayout,
+  privateBunAliasPackageName,
+  type PrivateBunExecutionAlias,
+  type PrivateBunExecutionLayout,
+} from './bun-execution-layout.js'
 import { PRIVATE_BUN_PREPARATION_LIMITS } from './bun-native-preparation-protocol.js'
 
 const PATH = /^(?!\/)(?!.*(?:^|\/)\.\.?(?:\/|$))(?!.*\/\/)[^\0]+$/
@@ -24,148 +32,122 @@ export class WorkerFailure extends Error {
   }
 }
 
+/** Keep Bun's lookup topology; workspace aliases never duplicate their targets. */
 export async function capturePrivateBunPreparedTree(
   packageRoot: string,
   workspace?: Workspace,
-): Promise<readonly SourceFile[]> {
-  if (workspace !== undefined) {
-    const ancestors = new Set<string>()
-    for (const member of workspace.selected) {
-      const parts = member.split('/')
-      while (parts.length > 1) {
-        parts.pop()
-        ancestors.add(parts.join('/'))
-      }
-    }
-    // The retained package has one hoisted root. Dropping an intermediate
-    // node_modules scope would change imports even without a target collision.
-    for (const ancestor of ancestors) {
-      const modules = join(packageRoot, ancestor, 'node_modules')
-      const information = await lstat(modules).catch((error) => {
-        if (error.code === 'ENOENT') return undefined
-        throw error
-      })
-      if (information === undefined) continue
-      if (!information.isDirectory() || information.isSymbolicLink()) unsupportedLayout()
-      for await (const entry of await opendir(modules))
-        if (entry.name !== '.bin') unsupportedLayout()
-    }
-  }
+): Promise<{ readonly files: readonly SourceFile[]; readonly layout: PrivateBunExecutionLayout }> {
   const files: SourceFile[] = []
+  const aliases: PrivateBunExecutionAlias[] = []
   let total = 0
-  const active = new Set<string>()
-  const overrides = new Set<string>()
-  const visit = async (root: string, prefix: string, shared = false): Promise<void> => {
-    if (active.has(root))
-      throw new WorkerFailure(
-        'PACKAGE_BUN_OUTPUT_UNSUPPORTED',
-        'workspace dependency links form a recursive tree',
-      )
-    active.add(root)
-    const directory = await opendir(root)
-    const names: string[] = []
-    for await (const entry of directory) names.push(entry.name)
-    names.sort((left, right) => Buffer.from(left).compare(Buffer.from(right)))
-    for (const name of names) {
-      const path = prefix === '' ? name : `${prefix}/${name}`
-      if (
-        path
-          .split('/')
-          .some((part, index, parts) => part === '.bin' && parts[index - 1] === 'node_modules')
-      )
-        continue
-      requirePath(path)
-      let physical = join(root, name)
-      let information = await lstat(physical)
-      if (information.isSymbolicLink() && workspace !== undefined) {
-        const resolved = await realpath(physical)
-        const member = workspace.members.find((member) => join(packageRoot, member) === resolved)
-        if (member === undefined)
-          throw new WorkerFailure(
-            'PACKAGE_BUN_OUTPUT_UNSUPPORTED',
-            'prepared dependencies contain an unauthorized link',
-          )
-        if (!workspace.selected.includes(member)) continue
-        physical = resolved
-        information = await lstat(physical)
-      }
-      if (shared && overrides.has(path)) {
-        // Flattening would let an unrelated hoisted dependency resolve the
-        // Flow's local version instead of its own locked version. Until the
-        // complete lookup topology can be retained, never admit that rewrite.
-        unsupportedLayout()
-      }
-      if (information.isDirectory() && !information.isSymbolicLink()) {
-        if (
-          !shared &&
-          /^node_modules\/(?:@[^/]+\/)?[^/]+$/.test(path) &&
-          !/^node_modules\/@[^/]+$/.test(path)
-        )
-          overrides.add(path)
-        await visit(physical, path, shared)
-        continue
-      }
-      if (!information.isFile() || information.isSymbolicLink() || information.nlink !== 1) {
-        throw new WorkerFailure(
-          'PACKAGE_BUN_OUTPUT_UNSUPPORTED',
-          'prepared dependencies contain a link or special file',
-        )
-      }
-      if (files.length >= PRIVATE_BUN_PREPARATION_LIMITS.preparedFiles) {
-        throw new WorkerFailure(
-          'PACKAGE_BUN_OUTPUT_LIMIT',
-          'prepared dependency tree has too many files',
-        )
-      }
-      if (information.size > PRIVATE_BUN_PREPARATION_LIMITS.preparedBytes - total)
-        throw new WorkerFailure('PACKAGE_BUN_OUTPUT_LIMIT', 'prepared dependency tree is too large')
-      const bytes = new Uint8Array(await readFile(physical))
-      total += bytes.byteLength
-      if (total > PRIVATE_BUN_PREPARATION_LIMITS.preparedBytes) {
-        throw new WorkerFailure('PACKAGE_BUN_OUTPUT_LIMIT', 'prepared dependency tree is too large')
-      }
-      files.push(Object.freeze({ path, content: Buffer.from(bytes).toString('base64') }))
-    }
-    active.delete(root)
+  const memberNames = new Map<string, string>()
+  for (const member of workspace?.members ?? []) {
+    const manifest = JSON.parse(await readFile(join(packageRoot, member, 'package.json'), 'utf8'))
+    if (typeof manifest.name !== 'string') unsupported('workspace member name is missing')
+    memberNames.set(member, manifest.name)
   }
-  await visit(workspace === undefined ? packageRoot : join(packageRoot, workspace.target), '')
-  if (workspace !== undefined) {
-    const modules = join(packageRoot, 'node_modules')
-    if (
-      await lstat(modules).then(
-        () => true,
-        (error) => {
-          if (error.code === 'ENOENT') return false
-          throw error
-        },
-      )
-    )
-      await visit(modules, 'node_modules', true)
-    const lock = await readFile(join(packageRoot, 'bun.lock'))
-    total += lock.byteLength
-    if (
-      total > PRIVATE_BUN_PREPARATION_LIMITS.preparedBytes ||
-      files.length >= PRIVATE_BUN_PREPARATION_LIMITS.preparedFiles
-    )
+  const reserveRecord = (): void => {
+    if (files.length + aliases.length >= PRIVATE_BUN_PREPARATION_LIMITS.preparedFiles)
       throw new WorkerFailure(
         'PACKAGE_BUN_OUTPUT_LIMIT',
-        'prepared workspace exceeds its output budget',
+        'prepared dependency tree has too many records',
       )
-    files.push({ path: 'bun.lock', content: lock.toString('base64') })
   }
-  files.sort((left, right) => Buffer.from(left.path).compare(Buffer.from(right.path)))
-  return Object.freeze(files)
+  const selectedSource = (path: string): boolean =>
+    workspace === undefined ||
+    workspace.selected.some((member) => path === member || path.startsWith(`${member}/`))
+  const ancestor = (path: string): boolean =>
+    workspace?.selected.some((member) => member.startsWith(`${path}/`)) ?? false
+  const visit = async (root: string, prefix: string, installed = false): Promise<void> => {
+    const names: string[] = []
+    for await (const entry of await opendir(root)) names.push(entry.name)
+    names.sort(compare)
+    for (const name of names) {
+      const path = prefix === '' ? name : `${prefix}/${name}`
+      if (name === '.bin' && prefix.split('/').at(-1) === 'node_modules') continue
+      requirePath(path)
+      const physical = join(root, name)
+      const information = await lstat(physical)
+      const dependencyTree = installed || name === 'node_modules'
+      const retained =
+        dependencyTree ||
+        selectedSource(path) ||
+        ancestor(path) ||
+        (prefix === '' && (name === 'package.json' || name === 'bun.lock'))
+      if (!retained) continue
+      if (information.isSymbolicLink()) {
+        if (workspace === undefined || !dependencyTree)
+          unsupported('prepared source contains an unauthorized link')
+        const packageName = privateBunAliasPackageName(path)
+        const resolved = await realpath(physical)
+        const member = workspace.members.find((value) => join(packageRoot, value) === resolved)
+        if (
+          member === undefined ||
+          packageName === undefined ||
+          memberNames.get(member) !== packageName
+        )
+          unsupported('prepared dependencies contain an unauthorized link')
+        // Bun may link every declared member, even when filtering installation.
+        // Such a link does not authorize capturing an unselected member's source.
+        if (!workspace.selected.includes(member)) continue
+        reserveRecord()
+        aliases.push(Object.freeze({ path, target: member }))
+        continue
+      }
+      if (information.isDirectory()) {
+        await visit(physical, path, dependencyTree)
+        continue
+      }
+      if (!information.isFile() || information.nlink !== 1)
+        unsupported('prepared dependencies contain a link or special file')
+      // Intermediate directories locate members, but their unrelated authored
+      // files are not part of the selected source or installation inputs.
+      if (!dependencyTree && !selectedSource(path) && prefix !== '') continue
+      reserveRecord()
+      if (information.size > PRIVATE_BUN_PREPARATION_LIMITS.preparedBytes - total)
+        throw new WorkerFailure('PACKAGE_BUN_OUTPUT_LIMIT', 'prepared dependency tree is too large')
+      const bytes = await readFile(physical)
+      total += bytes.byteLength
+      if (total > PRIVATE_BUN_PREPARATION_LIMITS.preparedBytes)
+        throw new WorkerFailure('PACKAGE_BUN_OUTPUT_LIMIT', 'prepared dependency tree is too large')
+      files.push(Object.freeze({ path, content: bytes.toString('base64') }))
+    }
+  }
+  await visit(packageRoot, '')
+  files.sort((left, right) => compare(left.path, right.path))
+  aliases.sort((left, right) => compare(left.path, right.path))
+  let layout = EMPTY_PRIVATE_BUN_EXECUTION_LAYOUT
+  try {
+    if (workspace !== undefined)
+      layout = normalizePrivateBunExecutionLayout({
+        flowRoot: workspace.target,
+        members: [...workspace.selected].sort(compare),
+        aliases,
+      })
+    assertPrivateBunExecutionLayoutFiles(layout, files)
+  } catch {
+    unsupported('prepared workspace layout is invalid')
+  }
+  if (
+    total + Buffer.byteLength(JSON.stringify(layout)) >
+    PRIVATE_BUN_PREPARATION_LIMITS.preparedBytes
+  )
+    throw new WorkerFailure(
+      'PACKAGE_BUN_OUTPUT_LIMIT',
+      'prepared dependency tree and layout are too large',
+    )
+  return Object.freeze({ files: Object.freeze(files), layout })
 }
 
 export function requirePath(path: string): void {
-  if (!PATH.test(path) || Buffer.byteLength(path) > 1_024) {
+  if (!PATH.test(path) || Buffer.byteLength(path) > 1_024)
     throw new WorkerFailure('PACKAGE_BUN_PROTOCOL', 'preparation source path is invalid')
-  }
 }
 
-function unsupportedLayout(): never {
-  throw new WorkerFailure(
-    'PACKAGE_BUN_WORKSPACE_LAYOUT_UNSUPPORTED',
-    'workspace dependency scopes cannot be flattened without changing module resolution',
-  )
+function compare(left: string, right: string): number {
+  return Buffer.from(left).compare(Buffer.from(right))
+}
+
+function unsupported(message: string): never {
+  throw new WorkerFailure('PACKAGE_BUN_OUTPUT_UNSUPPORTED', message)
 }

@@ -99,6 +99,7 @@ export async function executePrivateProjectCommand(
       ...input,
       request: target.request,
       executionPackage: target.disposition.executionPackage,
+      executionLayout: target.disposition.executionLayout,
     })
     if (
       recipe.digest !== target.disposition.recipeDigest ||

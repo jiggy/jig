@@ -52,11 +52,14 @@ child calls, project commands, and Agent providers.
   generated graph before frozen installation; retain its exact bytes privately.
 - Workspace capture reads declared ancestor membership and selected dependency
   source, never installed links. Recheck metadata, retain exact regular files,
-  and recapture on review even when the Flow is unchanged. Resolve only known
-  installer-created workspace links during collection; Runs receive no live
-  workspace authority. Reject flattening that drops ancestor dependency scopes
-  or substitutes a Flow-local package for a hoisted one. Bun owns installation,
-  not a parallel Jig resolver.
+  and recapture on review even when the Flow is unchanged. Preserve the pinned
+  hoisted install's workspace-relative paths and dependency scopes. Retain only
+  exact installer aliases to selected member roots in typed private layout
+  metadata, bound through preparation, admission, launch and durable allocation.
+  Materialization creates those aliases after regular bytes; verification and
+  cleanup handle only recorded aliases without following them. Package/1 stays
+  regular-file-only. Runs receive no live workspace authority. Bun owns
+  installation, not a parallel Jig resolver.
 - Provider credentials are host configuration and must not enter Flow input,
   project state, artifacts, diagnostics, or unrelated provider processes.
 - Native Codex subscription access comes from the current operator's

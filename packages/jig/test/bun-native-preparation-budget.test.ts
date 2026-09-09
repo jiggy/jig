@@ -54,4 +54,42 @@ describe('private aggregate Bun preparation budget', () => {
       budget.dispose()
     }
   })
+
+  test('charges layout metadata to the same aggregate byte ceiling', () => {
+    const budget = createPrivateBunPreparationBudget(new AbortController().signal)
+    try {
+      const maximum = PRIVATE_BUN_PROJECT_PREPARATION_LIMITS.preparedBytes
+      budget.retain([{ size: maximum - 1024 }], 'flows/first', 512)
+      expect(() => budget.retain([], 'flows/metadata-overflow', 513)).toThrow(
+        'project dependency preparation exceeds',
+      )
+      // A rejected retention must not consume capacity.
+      expect(() => budget.retain([], 'flows/exact', 512)).not.toThrow()
+      expect(() => budget.retain([], 'flows/one-more', 1)).toThrow(
+        'project dependency preparation exceeds',
+      )
+    } finally {
+      budget.dispose()
+    }
+  })
+
+  test.each([-1, 0.5, Number.NaN, Number.POSITIVE_INFINITY, Number.MAX_SAFE_INTEGER + 1])(
+    'rejects invalid metadata size without consuming budget: %s',
+    (metadataBytes) => {
+      const budget = createPrivateBunPreparationBudget(new AbortController().signal)
+      try {
+        expect(() => budget.retain([], 'flows/invalid', metadataBytes)).toThrow(
+          'prepared metadata size is invalid',
+        )
+        expect(() =>
+          budget.retain(
+            [{ size: PRIVATE_BUN_PROJECT_PREPARATION_LIMITS.preparedBytes }],
+            'flows/exact',
+          ),
+        ).not.toThrow()
+      } finally {
+        budget.dispose()
+      }
+    },
+  )
 })

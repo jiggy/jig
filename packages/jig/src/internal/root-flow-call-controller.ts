@@ -1,7 +1,7 @@
 import { lstat, mkdir, realpath } from 'node:fs/promises'
 import { join } from 'node:path'
 
-import type { JsonValue } from '../json.js'
+import { canonicalJson, type JsonValue } from '../json.js'
 import { CheckError } from '../diagnostics.js'
 import { inspectCapturedPackage, type InspectedPackage } from '../package/inspect.js'
 import { SchemaDiagnostic } from '../schema/index.js'
@@ -195,6 +195,7 @@ async function executePreparedChild(
     recipe = await planPrivateDirectRun({
       request: selected.request,
       executionPackage: selected.disposition.executionPackage,
+      executionLayout: selected.disposition.executionLayout,
       installedSupport: input.installedSupport,
       backend: input.backend,
       agentProvider: input.agentProvider,
@@ -239,6 +240,7 @@ async function executePreparedChild(
       protectedParent: roots.materializations,
       name: `child-${identity.slice(0, 48)}`,
       packageDigest: recipe.executionPackage.digest,
+      executionLayout: recipe.executionLayout,
       ownerToken: `sha256:${identity}`,
     }),
     planPrivateLinuxOwnerStateAllocation({
@@ -521,7 +523,7 @@ function backendPlan(
     command: Object.freeze([
       recipe.sandboxExecutablePath,
       ...recipe.bunPolicy,
-      `${recipe.packageDestination}/${recipe.request.entrypoint.path}`,
+      `${recipe.packageDestination}/${recipe.executionLayout.flowRoot ? `${recipe.executionLayout.flowRoot}/` : ''}${recipe.request.entrypoint.path}`,
     ]) as readonly [string, ...string[]],
   })
 }
@@ -815,6 +817,9 @@ async function requireAllocationMatchesParent(
     allocation.packageAllocation.parent.path !== roots.materializations ||
     allocation.packageAllocation.name !== `child-${identity.slice(0, 48)}` ||
     allocation.packageAllocation.packageDigest !== selected.disposition.executionPackage.digest ||
+    !Buffer.from(
+      canonicalJson(allocation.packageAllocation.executionLayout as unknown as JsonValue),
+    ).equals(canonicalJson(selected.disposition.executionLayout as unknown as JsonValue)) ||
     allocation.packageAllocation.ownerToken !== `sha256:${identity}` ||
     allocation.ownerAllocation.parent !== roots.owners ||
     allocation.ownerAllocation.name !== `c-${identity.slice(0, 47)}`

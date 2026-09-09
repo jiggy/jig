@@ -59,28 +59,31 @@ proofDescribe('private contained Bun dependency preparation', () => {
               allowResolutionNetwork: resolve,
             })
             try {
+              expect(first.layout).toEqual({ flowRoot: '', members: [], aliases: [] })
               expect(
-                first.files.some(({ path }) => path === 'node_modules/is-number/index.js'),
+                first.captured.files.some(({ path }) => path === 'node_modules/is-number/index.js'),
               ).toBeTrue()
               expect(
-                first.files.some(({ path }) => path === 'node_modules/is-odd/index.js'),
+                first.captured.files.some(({ path }) => path === 'node_modules/is-odd/index.js'),
               ).toBeTrue()
               expect(
-                first.files.some(({ path }) => path === 'node_modules/zod/index.js'),
+                first.captured.files.some(({ path }) => path === 'node_modules/zod/index.js'),
               ).toBeTrue()
-              expect(first.files.some(({ path }) => path === 'postinstall-ran')).toBeFalse()
-              expect(first.files.some(({ path }) => path.includes('/.bin/'))).toBeFalse()
-              expect(new TextDecoder().decode(await first.read('flow.ts'))).toContain(
+              expect(
+                first.captured.files.some(({ path }) => path === 'postinstall-ran'),
+              ).toBeFalse()
+              expect(first.captured.files.some(({ path }) => path.includes('/.bin/'))).toBeFalse()
+              expect(new TextDecoder().decode(await first.captured.read('flow.ts'))).toContain(
                 'from "is-odd"',
               )
-              expect(first.files.some(({ path }) => path === 'bun.lock')).toBeTrue()
+              expect(first.captured.files.some(({ path }) => path === 'bun.lock')).toBeTrue()
               if (resolve) {
                 await expect(readFile(join(root, 'bun.lock'))).rejects.toMatchObject({
                   code: 'ENOENT',
                 })
-                expect(new TextDecoder().decode(await first.read('package-lock.json'))).toBe(
-                  'not a lock; must remain inert',
-                )
+                expect(
+                  new TextDecoder().decode(await first.captured.read('package-lock.json')),
+                ).toBe('not a lock; must remain inert')
               }
 
               const second = await preparePrivateBunPackage({
@@ -92,14 +95,15 @@ proofDescribe('private contained Bun dependency preparation', () => {
                 allowResolutionNetwork: resolve,
               })
               try {
+                expect(second.layout).toEqual({ flowRoot: '', members: [], aliases: [] })
                 // Only an authored lock promises the same dependency selection
                 // across two fresh preparations.
-                if (!resolve) expect(second.digest).toBe(first.digest)
+                if (!resolve) expect(second.captured.digest).toBe(first.captured.digest)
               } finally {
-                await second.dispose()
+                await second.captured.dispose()
               }
             } finally {
-              await first.dispose()
+              await first.captured.dispose()
             }
           } finally {
             await coordinator.dispose()
@@ -220,7 +224,8 @@ proofDescribe('private contained Bun dependency preparation', () => {
               coordinator,
               allowResolutionNetwork: resolve,
             })
-            await prepared.dispose()
+            expect(prepared.layout).toEqual({ flowRoot: '', members: [], aliases: [] })
+            await prepared.captured.dispose()
           } finally {
             await captured.dispose()
           }

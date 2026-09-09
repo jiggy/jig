@@ -659,6 +659,7 @@ async function reproduceParentRecipe(input: AgentInput): Promise<PrivateDirectRu
   const recipe = await planPrivateDirectRun({
     request: target.request,
     executionPackage: target.disposition.executionPackage,
+    executionLayout: target.disposition.executionLayout,
     installedSupport: input.installedSupport,
     backend: input.backend,
     agentProvider: input.agentProvider,

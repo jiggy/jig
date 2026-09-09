@@ -21,7 +21,7 @@ try {
     coordinator,
     allowResolutionNetwork: resolutionPermission === '--allow-resolution-network',
   })
-  await prepared.dispose()
+  await prepared.captured.dispose()
 } finally {
   await coordinator.dispose()
   await captured.dispose()

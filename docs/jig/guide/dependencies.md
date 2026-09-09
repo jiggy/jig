@@ -86,8 +86,10 @@ No publication, copied library, or per-Flow installation is needed.
 Review captures the root manifest and lock, member manifests, and the selected
 local dependency sources. A library's `files` list limits its captured source;
 without one, its ordinary files are captured except `.git` and `node_modules`.
-Generated installation links are never followed. Bun prepares the captured
-graph with scripts disabled; Jig retains a self-contained tree of regular files.
+Capture never follows the local installation's links. Bun prepares the captured
+graph with scripts disabled. Jig preserves its hoisted dependency layout and
+workspace aliases within the retained snapshot, so nested versions and shared
+library instances keep their usual resolution behavior.
 Registry dependencies still use the locked default-registry policy above.
 
 Workspace dependencies are recaptured and prepared on each review. Editing a
@@ -99,10 +101,11 @@ Workspace members must have unique names and safe relative paths. Local member
 locks, filesystem links, dependency overrides, patches, and catalogs are not
 supported. Missing members or build outputs fail explicitly, without falling
 back to npm. This is review-time capture, not live workspace access during a Run.
-Dependency directories between the workspace root and a selected member, or
-conflicting Flow-local and hoisted packages, currently fail preparation explicitly:
-Jig cannot yet retain those layouts without changing module resolution.
-Regenerating an otherwise valid lock does not fix this limit.
+Preparation uses Jig's pinned Bun hoisted linker; it does not import the local
+installation or provide an isolated-linker mode. Module-relative files stay
+beside their modules. A Run's working directory remains disposable scratch.
+Ancestor runtime configuration outside selected packages, such as a root
+`tsconfig.json`, is not captured.
 
 The repository examples use this workspace path. Follow the checkout's
 [development setup](https://github.com/jiggy/jig/blob/main/CONTRIBUTING.md#development-shell)
