@@ -44,60 +44,52 @@ foundations do not need to be rebuilt.
 
 ## Next milestones
 
-Build on finite Runs, exact child calls, Agent capabilities, and root file
-capture and delivery. Before each capability, define its smallest public
-contract and authority boundary against the application consuming it.
+Build on finite Runs, exact sibling calls, contained project commands,
+root file delivery and checkpoints, and channel-based observation. Improve
+these public paths rather than rebuilding their foundations.
 
-1. **Repair a real small Bun project.** Generate multi-file patches as
-   structured data. Add a narrowly authorized project-command capability using
-   installed Bun, immutable candidate contents, reviewed invocation policy,
-   and a trusted collector outside candidate execution. Return an applicable
-   patch, exact candidate identity, bounded command output and termination,
-   and independent acceptance results. Repository tests are additional evidence;
-   acceptance assertions inspect captured behavior without importing candidate
-   code. Keep original files and acceptance policy unchanged. Replace the
-   evaluator Flow with this effect so the reusable repair method is a JSON-input
-   leaf; the root application owns file capture and final output. Finish with
-   useful successful and unsuccessful repairs and independent reuse through
-   existing exact slots.
+### Immediate: dependable batch repair
 
-2. **Run a bounded team of repair workers.** Two exact siblings work on
-   independent candidates under aggregate root limits. Cancelling one permits
-   its sibling to finish; parent cancellation settles the complete tree. The
-   application returns separately identified patches and evidence, including
-   failures and conflicts. Application code chooses concurrency and aggregation;
-   Jig enforces authority and limits. This is the first small software factory.
+A user can run two repair workers and receive each patch with trustworthy
+command and acceptance evidence. Diagnose the command-uncertainty failure at
+its responsible host boundary and fix the confirmed cause. Preserve useful
+diagnostics without exposing private execution details; genuine uncertainty
+must remain unsuccessful, never become an automatic retry.
 
-3. **Retain completed progress through interruption.** A root application can
-   checkpoint a bounded aggregate of settled patches and evidence. Acknowledged
-   bytes survive later interruption while the independent command owner lives;
-   failed replacement preserves the previous checkpoint. Publish through the
-   existing output destination after confirmed fencing. Prove loss before,
-   during, and after acknowledgement, honest absence, and no automatic replay.
-   Arbitrary scratch salvage and machine-crash recovery are outside this scope.
+Finish when a focused regression covers the cause and an ordinary installed
+batch run demonstrates independent worker results, retained healthy work when
+another worker fails, and complete cleanup. Keep original repositories and
+acceptance policy unchanged. Do not make the check pass by extending deadlines
+or weakening evidence and containment guarantees.
 
-4. **Observe and direct a continuing native Agent.** First expose live public
-   updates through direct channels: application code filters and presents data,
-   and installed consumers receive progress separately from the execution
-   result. Preserve ordinary error recovery and simple one-shot calls. Extend
-   the demonstrated connection through exact child slots, so a reusable worker
-   can hand progress to a replaceable monitor without owning its presentation.
-   Then add isolated broadcast and structured bidirectional interoperability
-   before adding control. Qualify one client over
-   the existing ACP foundation for acknowledged interruption, follow-up, and
-   continuation. Accepted instructions and
-   remaining budgets survive continuation; cancellation revokes it and cleans
-   owned processes. Native workspace tools require a separate authority
-   decision; candidate commands cannot run in a credential-bearing provider
-   scope. This capability may advance alongside retained progress.
+### Deferred: continuing Agent control and handoff
 
-5. **Automate one worker's time-travel handoff.** While another worker
-   progresses, settle task advancement, obtain a handoff using recent context,
+Reconsider these capabilities with the owner after batch repair is complete.
+They are documented directions, not implementation work authorized by this
+milestone. Before either begins, define the smallest public contract and
+authority boundary against its consuming application.
+
+1. **Direct a continuing native Agent.** An application observes a turn,
+   requests interruption, waits for confirmed settlement, and sends a follow-up
+   in the same owned conversation. Qualify one client over the existing ACP
+   foundation. Channels carry observations, not implicit control authority;
+   execution results remain separate. Preserve simple one-shot calls, ordinary
+   error recovery, accepted instructions, and aggregate remaining budgets.
+   Finish when an installed application demonstrates interruption and
+   continuation, including rejected or uncertain control and full cancellation
+   cleanup. Native workspace tools require a separate authority decision;
+   candidate commands cannot run in a credential-bearing provider scope.
+
+2. **Automate one worker's time-travel handoff.** Build on qualified control,
+   not on observation alone. While another worker progresses, settle task
+   advancement, obtain a handoff using recent context,
    prepare retained earlier context with current files and later instructions,
-   and commit one successor. Preserve budgets and uncertainty; duplicate
+   and commit one successor. Finish when a useful application preserves
+   instructions, budgets, and uncertainty across that replacement; duplicate
    triggers, failed preparation, and cancellation cannot create overlapping
    owners or replay effects. Measure the method's claimed benefit separately
-   from proving its lifecycle.
+   from proving its lifecycle. This is not arbitrary scratch salvage,
+   machine-crash recovery, or automatic replay.
 
 ## Work alongside the milestones
 
