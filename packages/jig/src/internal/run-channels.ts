@@ -12,7 +12,7 @@ import {
   type ChannelGrant,
   ChannelOperationError,
   type ChannelParticipant,
-  DirectChannelBroker,
+  ChannelBroker,
   type ResolvedChannelContract,
 } from '../run/channels.js'
 
@@ -26,7 +26,7 @@ export interface PrivateRunChannelOutput {
 export type PrivateChannelContractCache = Map<string, Promise<ResolvedChannelContract>>
 
 export class PrivateRunChannels {
-  readonly broker: DirectChannelBroker
+  readonly broker: ChannelBroker
   readonly root: ChannelParticipant
   readonly grants: Readonly<Record<string, ChannelGrant>>
   readonly contracts: PrivateChannelContractCache
@@ -35,7 +35,7 @@ export class PrivateRunChannels {
   private constructor(
     root: ChannelParticipant,
     grants: Readonly<Record<string, ChannelGrant>>,
-    broker: DirectChannelBroker,
+    broker: ChannelBroker,
     contracts: PrivateChannelContractCache,
   ) {
     this.root = root
@@ -49,7 +49,7 @@ export class PrivateRunChannels {
     inspected: InspectedPackage,
     output?: PrivateRunChannelOutput,
   ): Promise<PrivateRunChannels> {
-    const broker = new DirectChannelBroker()
+    const broker = new ChannelBroker()
     const contracts: PrivateChannelContractCache = new Map()
     const resolveContract = channelContractResolver(captured, contracts)
     const root = broker.participant('root', { resolveContract })
@@ -67,18 +67,19 @@ export class PrivateRunChannels {
         throw new ChannelOperationError('INVALID_INPUT', 'select each root output once, at most 16')
       for (const name of selected) {
         const declaration = inspected.metadata.channels?.[name]
-        if (declaration?.direction !== 'send' || declaration.delivery === 'broadcast')
+        if (declaration?.direction !== 'send')
           throw new ChannelOperationError(
             'UNAVAILABLE',
-            `root channel ${name} is not a supported direct output`,
+            `root channel ${name} is not a supported output`,
           )
         const pair = await cli.create({
-          delivery: 'direct',
+          delivery: declaration.delivery ?? 'direct',
           ...(declaration.schema === undefined ? {} : { schema: declaration.schema }),
           ...(declaration.contract === undefined ? {} : { contract: declaration.contract }),
         })
         references[name] = pair.send.endpoint
-        readers.push({ name, endpoint: pair.receive.endpoint })
+        const receiver = 'receive' in pair ? pair.receive : cli.subscribe(pair.source)
+        readers.push({ name, endpoint: receiver.endpoint })
       }
       const grants = cli.transfer(root, references, declarations)
       context = new PrivateRunChannels(root, grants, broker, contracts)

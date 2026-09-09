@@ -1,6 +1,6 @@
 # Jig channels
 
-*Status: experimental direct-channel implementation.*
+*Status: experimental direct and isolated-broadcast implementation.*
 
 Channels carry data without granting execution or control authority. FLOW owns
 the [portable contract](https://flow.jig.md/spec/run-protocol); Jig owns exact
@@ -9,7 +9,7 @@ publish and how to display it.
 
 ## Supported connections
 
-A root Flow can create direct channels and pass unused send endpoints to the
+A Flow can create direct or broadcast channels. Direct send endpoints can connect to the
 optional `events` channel of an [Agent Run](agent-run.md). The native ACP adapters
 implement the exact [ACP public updates](../contracts/acp-public-updates.md)
 profile. API clients retain ordinary one-shot support; requesting this profile
@@ -27,8 +27,17 @@ branches. A child cannot invoke further child Flows.
 command's output. Repeat the flag for distinct outputs, up to 16. Required root
 channels must be connected before execution; optional unwired channels are
 absent. Unknown, receive-direction or unsupported selections reject before the
-Flow process starts. Root receive channels, broadcast, subscriptions and
-connections between independent root Runs are not supported.
+Flow process starts. A selected broadcast output receives a command-owned
+subscription before dispatch, starting at sequence one; an unspecified delivery
+uses direct. Root receive channels and connections between independent root
+Runs are not supported.
+
+`run.channel({ delivery: 'broadcast' })` returns a sender and creator-only
+`subscribe()` authority. Each subscription allocates an independent receiver.
+Pass unused receivers to exact child calls or consume them locally; transferring
+the sender does not transfer subscription authority. Late subscriptions start
+at the next accepted source sequence and require a `suffix`-accepting port when
+mapped after sequence one. There is no replay, reconnect, or registry of sources.
 
 Local channel creation needs no capability declaration. Endpoint operations use
 separate bounded protocol capacity, not an Agent/command worker reservation.
@@ -51,13 +60,18 @@ to the exact participant, not merely knowledge of a token.
 Receiver disposal alone does not invalidate an unused sender's ownership. That
 sender can still move while its source owner lives and the source is neither
 failed nor sealed; all mapping checks still apply. Its subsequent send or close
-fails `DISCONNECTED`. This neither reconnects the receiver nor promises delivery:
+fails `DISCONNECTED` for direct delivery. Broadcast retains other subscriptions
+and accepts new ones while open. This neither reconnects the disposed receiver nor promises delivery:
 an early-exiting monitor must not prevent an otherwise admitted worker merely
 by winning the connection race. Disposed receivers cannot move.
 
 A successful send means source acceptance, not processing or durable delivery.
 Receiver disposal stops observation, not the Agent. Direct sends backpressure
-against finite capacity. EOF closes one data interval; the caller must separately
+against finite capacity. Broadcast acceptance never waits for a subscriber:
+overflow fails only that reader with `LAGGED`; incompatible future data fails
+only the affected reader. Writer/source validation failure aborts the source.
+With no subscribers, accepted values consume sequence and source byte budget
+without being retained. EOF closes one data interval; the caller must separately
 await the execution result. Normal caught failures need no acknowledgement API.
 Stopping or failing a monitor does not cancel its worker. A failed child whose
 owned work is conclusively fenced and cleaned returns a recoverable call error;
@@ -69,6 +83,8 @@ failed producer aborts unsealed output. Explicitly sealed output may drain after
 its writer fails, while its source owner remains alive. Ending the source owner's
 lifetime also ends buffered delivery. Active unfinished receivers prevent success;
 cleanup cannot retrospectively turn their abandonment into ordinary completion.
+A newly allocated broadcast subscription is active even before its first read.
+Cancelled allocation waits retain late grants and their cleanup settlement.
 
 ## Fixed root bounds
 

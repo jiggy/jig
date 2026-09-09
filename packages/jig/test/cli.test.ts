@@ -948,6 +948,22 @@ describe('finite Jig project commands', () => {
     expect(invocation.error).not.toContain('\u202e')
   })
 
+  test('channel declaration failures identify the public contract and source location', async () => {
+    const events: string[] = []
+    const failure = new ProjectAdministrationError('INVALID_CANDIDATE', 'private parser detail', {
+      code: 'CHANNEL_FIELD',
+      path: 'flows/worker/FLOW.md',
+    })
+    const invocation = commandInvocation(
+      fakeHost(fakeSession(events, { planFailure: failure }), events),
+    )
+    expect(await main(['review', '--yes'], invocation.options)).toBe(1)
+    expect(invocation.error).toBe(
+      'INVALID_CANDIDATE: check channel declarations and descriptors against FLOW Channel Contract/1; CHANNEL_FIELD at "flows/worker/FLOW.md"\n',
+    )
+    expect(invocation.error).not.toContain('private parser detail')
+  })
+
   test('renders a bounded package unavailability without exposing its private message', async () => {
     const events: string[] = []
     const failure = new ProjectAdministrationError(

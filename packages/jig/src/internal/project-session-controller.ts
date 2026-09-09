@@ -673,6 +673,9 @@ function isCandidateDiagnosticCode(code: string): boolean {
     code.startsWith('PROJECT_MEMBER_') ||
     code.startsWith('PROJECT_SOURCE_') ||
     [
+      'CHANNEL_FIELD',
+      'CHANNEL_LIMIT',
+      'CHANNEL_REFERENCE',
       'PACKAGE_ENTRYPOINT_AMBIGUOUS',
       'PACKAGE_FILE_LIMIT',
       'PACKAGE_FLOW_MISSING',

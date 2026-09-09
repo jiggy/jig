@@ -9,7 +9,7 @@ import {
   ChannelOperationError,
   type ChannelDeclaration,
   type ChannelParticipant,
-  type DirectChannelBroker,
+  type ChannelBroker,
 } from '../run/channels.js'
 import {
   RunHostSession,
@@ -119,7 +119,7 @@ interface ChildInput {
   readonly agentProvider?: PrivateAgentProvider | undefined
   readonly channels?: {
     readonly caller: ChannelParticipant
-    readonly broker: DirectChannelBroker
+    readonly broker: ChannelBroker
     readonly contracts?: PrivateChannelContractCache
   }
   readonly onDiagnostic?: (bytes: Uint8Array) => void

@@ -5,7 +5,7 @@ import { CheckError } from '../diagnostics.js'
 import {
   ChannelOperationError,
   type ChannelParticipant,
-  type DirectChannelBroker,
+  type ChannelBroker,
 } from '../run/channels.js'
 import { ACP_PUBLIC_UPDATES, PrivateAgentUpdateChannel } from './agent-update-channel.js'
 import { canonicalJson, decodeJson1, type JsonObject, type JsonValue } from '../json.js'
@@ -162,7 +162,7 @@ type AgentCallInput = AgentInput & {
   readonly call: RunHostEffectCall
   readonly parentDeadlineUnixMs: number
   readonly signal: AbortSignal
-  readonly channels?: { readonly caller: ChannelParticipant; readonly broker: DirectChannelBroker }
+  readonly channels?: { readonly caller: ChannelParticipant; readonly broker: ChannelBroker }
 }
 
 /** Effect IDs are local to their owning Flow, including the root's separate scope. */

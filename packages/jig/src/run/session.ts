@@ -584,6 +584,7 @@ export class RunHostSession {
     if (
       [
         'channel/create',
+        'channel/subscribe',
         'channel/send',
         'channel/next',
         'channel/close',

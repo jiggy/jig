@@ -5,7 +5,7 @@ import { compileEmbeddedSchema } from '../schema/index.js'
 import type { WireFailureCode } from './session.js'
 
 const LOCAL_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
-export const DIRECT_CHANNEL_LIMITS = Object.freeze({
+export const CHANNEL_LIMITS = Object.freeze({
   sources: 16,
   receivers: 16,
   itemBytes: 64 * 1024,
@@ -31,7 +31,7 @@ export interface ResolvedChannelContract {
 export interface ChannelGrant {
   readonly endpoint: string
   readonly direction: 'send' | 'receive'
-  readonly delivery: 'direct'
+  readonly delivery: 'direct' | 'broadcast'
   readonly contract?: ChannelIdentity
   readonly startSequence?: number
 }
@@ -46,7 +46,7 @@ export interface ChannelDeclaration {
 }
 
 export interface ChannelCreationOptions {
-  readonly delivery?: 'direct'
+  readonly delivery?: 'direct' | 'broadcast'
   readonly schema?: JsonValue
   readonly contract?: string
 }
@@ -55,6 +55,16 @@ export interface ChannelParticipantOptions {
   readonly resolveContract?: (
     path: string,
   ) => ResolvedChannelContract | Promise<ResolvedChannelContract>
+}
+
+interface DirectAllocation {
+  readonly send: ChannelGrant
+  readonly receive: ChannelGrant
+}
+
+interface BroadcastAllocation {
+  readonly send: ChannelGrant
+  readonly source: string
 }
 
 export class ChannelOperationError extends Error {
@@ -97,6 +107,7 @@ interface Endpoint {
   readonly token: string
   readonly direction: 'send' | 'receive'
   readonly source: Source
+  receiver?: Receiver
   holder: ChannelParticipant
   used: boolean
   transferred: boolean
@@ -104,17 +115,25 @@ interface Endpoint {
 
 interface Source {
   readonly owner: ChannelParticipant
+  readonly delivery: 'direct' | 'broadcast'
   readonly contract?: ChannelIdentity
   readonly constraints: Constraint[]
-  readonly queue: Item[]
+  readonly receivers: Receiver[]
   readonly pending: PendingSend[]
   send: Endpoint
-  receive: Endpoint
   sealed: boolean
-  released: boolean
-  ended: boolean
   sequence: number
   totalBytes: number
+  failure?: ChannelOperationError
+}
+
+interface Receiver {
+  readonly endpoint: Endpoint
+  readonly startSequence: number
+  readonly constraints: Constraint[]
+  readonly queue: Item[]
+  released: boolean
+  ended: boolean
   bufferedBytes: number
   inFlight?: Item
   read?: PendingRead
@@ -122,10 +141,12 @@ interface Source {
 }
 
 /** Private finite root broker. Tokens have meaning only with their current participant. */
-export class DirectChannelBroker {
+export class ChannelBroker {
   private readonly endpoints = new Map<string, Endpoint>()
   private readonly participants = new Map<string, ChannelParticipant>()
   private readonly sources: Source[] = []
+  private readonly subscriptions = new Map<string, Source>()
+  private receivers = 0
   private pendingSends = 0
   private pendingBytes = 0
   private failure?: ChannelOperationError
@@ -137,17 +158,24 @@ export class DirectChannelBroker {
     return participant
   }
 
+  create(
+    owner: ChannelParticipant,
+    options: ChannelCreationOptions & { delivery: 'broadcast' },
+  ): Promise<BroadcastAllocation>
+  create(
+    owner: ChannelParticipant,
+    options: ChannelCreationOptions & { delivery?: 'direct' },
+  ): Promise<DirectAllocation>
+  create(
+    owner: ChannelParticipant,
+    options: ChannelCreationOptions,
+  ): Promise<DirectAllocation | BroadcastAllocation>
   async create(
     owner: ChannelParticipant,
     options: ChannelCreationOptions,
-  ): Promise<{
-    send: ChannelGrant
-    receive: ChannelGrant
-  }> {
+  ): Promise<DirectAllocation | BroadcastAllocation> {
     this.assertOpen(owner)
-    if (options.delivery !== undefined && options.delivery !== 'direct') {
-      throw new ChannelOperationError('UNAVAILABLE', 'only direct channels are supported')
-    }
+    const delivery = options.delivery ?? 'direct'
     if (options.schema !== undefined && options.contract !== undefined) {
       throw new TypeError('channel schema and contract are mutually exclusive')
     }
@@ -166,26 +194,48 @@ export class DirectChannelBroker {
     const constraint =
       contract === undefined ? compileConstraint(options.schema) : namedConstraint(contract)
     this.assertOpen(owner)
-    if (this.sources.length >= DIRECT_CHANNEL_LIMITS.sources) {
+    if (
+      this.sources.length >= CHANNEL_LIMITS.sources ||
+      (delivery === 'direct' && this.receivers >= CHANNEL_LIMITS.receivers)
+    ) {
       throw new ChannelOperationError('RESOURCE_EXHAUSTED', 'root channel allocation limit reached')
     }
     const source = {
       owner,
+      delivery,
       ...(contract === undefined ? {} : { contract: Object.freeze({ ...contract.identity }) }),
       constraints: [constraint],
-      queue: [],
+      receivers: [],
       pending: [],
       sealed: false,
-      released: false,
-      ended: false,
       sequence: 0,
       totalBytes: 0,
-      bufferedBytes: 0,
     } as unknown as Source
     source.send = this.endpoint(owner, source, 'send')
-    source.receive = this.endpoint(owner, source, 'receive')
     this.sources.push(source)
-    return { send: grant(source.send), receive: grant(source.receive) }
+    if (delivery === 'broadcast') {
+      const reference = `source:${randomUUID()}`
+      this.subscriptions.set(reference, source)
+      return { send: grant(source.send), source: reference }
+    }
+    return { send: grant(source.send), receive: grant(this.receiver(owner, source).endpoint) }
+  }
+
+  subscribe(owner: ChannelParticipant, reference: string): ChannelGrant {
+    this.assertOpen(owner)
+    const source = this.subscriptions.get(reference)
+    if (source === undefined || source.owner !== owner)
+      throw new ChannelOperationError(
+        'PERMISSION_DENIED',
+        'channel subscription authority is not held by this participant',
+      )
+    this.assertWritable(source)
+    if (this.receivers >= CHANNEL_LIMITS.receivers)
+      throw new ChannelOperationError(
+        'RESOURCE_EXHAUSTED',
+        'root channel receiver allocation limit reached',
+      )
+    return grant(this.receiver(owner, source).endpoint)
   }
 
   transfer(
@@ -222,17 +272,16 @@ export class DirectChannelBroker {
       if (endpoint.direction !== declaration.direction) {
         throw new ChannelOperationError('INVALID_INPUT', `channel ${name} has the wrong direction`)
       }
-      if (declaration.delivery === 'broadcast') {
-        throw new ChannelOperationError(
-          'UNAVAILABLE',
-          'direct endpoint cannot satisfy broadcast delivery',
-        )
+      if (declaration.delivery !== undefined && declaration.delivery !== endpoint.source.delivery) {
+        throw new ChannelOperationError('INVALID_INPUT', `channel ${name} delivery differs`)
       }
       const source = endpoint.source
+      const receiver = endpoint.receiver
       this.assertOpen(source.owner)
       if (
         source.failure !== undefined ||
-        (source.released && endpoint.direction === 'receive') ||
+        receiver?.released ||
+        receiver?.failure !== undefined ||
         (source.sealed && endpoint.direction === 'send')
       ) {
         throw new ChannelOperationError(
@@ -243,6 +292,11 @@ export class DirectChannelBroker {
       // Receiver disposal removes delivery, not the unused writer's authority.
       // A later holder receives the same DISCONNECTED send/close outcome; this
       // permits optional monitoring to stop before its producer is admitted.
+      if (receiver !== undefined && declaration.start !== 'suffix' && receiver.startSequence !== 1)
+        throw new ChannelOperationError(
+          'INVALID_INPUT',
+          `channel ${name} requires the beginning of its source`,
+        )
       if (declaration.contract !== undefined && source.contract !== undefined) {
         if (!sameIdentity(declaration.contract.identity, source.contract)) {
           throw new ChannelOperationError(
@@ -264,8 +318,19 @@ export class DirectChannelBroker {
           : namedConstraint(declaration.contract)
       for (const existing of [
         ...source.constraints,
+        ...(receiver?.constraints ?? []),
+        ...(source.delivery === 'broadcast' && endpoint.direction === 'send'
+          ? source.receivers.filter(activeReceiver).flatMap((subscriber) => subscriber.constraints)
+          : []),
         ...staged
-          .filter((entry) => entry.endpoint.source === source)
+          .filter(
+            (entry) =>
+              entry.endpoint.source === source &&
+              (source.delivery === 'direct' ||
+                endpoint.direction === 'send' ||
+                entry.endpoint.direction === 'send' ||
+                entry.endpoint === endpoint),
+          )
           .map((entry) => entry.constraint),
       ]) {
         if (
@@ -276,14 +341,37 @@ export class DirectChannelBroker {
           throw new ChannelOperationError('INVALID_INPUT', `channel ${name} schema differs`)
         }
       }
-      for (const item of source.queue) validateConstraint(constraint, item.value)
-      if (source.inFlight !== undefined) validateConstraint(constraint, source.inFlight.value)
+      for (const prefix of receiver === undefined ? source.receivers : [receiver]) {
+        if (!activeReceiver(prefix)) continue
+        for (const item of prefix.queue) validateConstraint(constraint, item.value)
+        if (prefix.inFlight !== undefined) validateConstraint(constraint, prefix.inFlight.value)
+      }
       staged.push({ name, endpoint, constraint })
     }
     // No rights or constraints change until all entries and their prefix validate.
+    // A receiver also checks writer constraints staged later in this same map;
+    // object key ordering must not change atomic admission.
+    for (const entry of staged) {
+      if (entry.endpoint.source.delivery !== 'broadcast' || entry.endpoint.direction !== 'receive')
+        continue
+      for (const writer of staged) {
+        if (
+          writer.endpoint.source === entry.endpoint.source &&
+          writer.endpoint.direction === 'send' &&
+          entry.constraint.schema !== undefined &&
+          writer.constraint.schema !== undefined &&
+          entry.constraint.schema !== writer.constraint.schema
+        )
+          throw new ChannelOperationError('INVALID_INPUT', `channel ${entry.name} schema differs`)
+      }
+    }
     const grants: Record<string, ChannelGrant> = Object.create(null)
     for (const entry of staged) {
-      entry.endpoint.source.constraints.push(entry.constraint)
+      const constraints =
+        entry.endpoint.source.delivery === 'broadcast' && entry.endpoint.receiver !== undefined
+          ? entry.endpoint.receiver.constraints
+          : entry.endpoint.source.constraints
+      constraints.push(entry.constraint)
       entry.endpoint.holder = to
       entry.endpoint.transferred = true
       grants[entry.name] = grant(entry.endpoint)
@@ -311,10 +399,17 @@ export class DirectChannelBroker {
       if (signal?.aborted) throw cancelled()
       const pair = await this.create(owner, object as unknown as ChannelCreationOptions)
       if (signal?.aborted) {
-        this.release(owner, pair.receive.endpoint)
+        if ('receive' in pair) this.release(owner, pair.receive.endpoint)
+        else this.close(owner, pair.send.endpoint)
         throw cancelled()
       }
       return pair as unknown as JsonValue
+    }
+    if (method === 'channel/subscribe') {
+      exactKeys(object, ['source'], [])
+      if (typeof object.source !== 'string') throw new TypeError('invalid source reference')
+      if (signal?.aborted) throw cancelled()
+      return this.subscribe(owner, object.source) as unknown as JsonValue
     }
     exactKeys(object, method === 'channel/send' ? ['endpoint', 'value'] : ['endpoint'], [])
     if (typeof object.endpoint !== 'string') throw new TypeError('invalid endpoint')
@@ -350,12 +445,12 @@ export class DirectChannelBroker {
     try {
       const encoded = canonicalJson(value)
       bytes = encoded.byteLength
-      if (bytes > DIRECT_CHANNEL_LIMITS.itemBytes) {
+      if (bytes > CHANNEL_LIMITS.itemBytes) {
         throw new ChannelOperationError('RESOURCE_EXHAUSTED', 'channel item exceeds 64 KiB')
       }
       item = decodeJson1(encoded)
       for (const constraint of source.constraints) validateConstraint(constraint, item)
-      if (source.totalBytes + bytes > DIRECT_CHANNEL_LIMITS.sourceBytes) {
+      if (source.totalBytes + bytes > CHANNEL_LIMITS.sourceBytes) {
         throw new ChannelOperationError(
           'RESOURCE_EXHAUSTED',
           'channel source lifetime byte limit reached',
@@ -369,13 +464,16 @@ export class DirectChannelBroker {
       this.fail(source, failure)
       throw failure
     }
-    if (source.pending.length === 0 && this.hasCapacity(source, bytes)) {
+    if (
+      source.delivery === 'broadcast' ||
+      (source.pending.length === 0 && this.hasCapacity(source.receivers[0]!, bytes))
+    ) {
       this.accept(source, item, bytes)
       return null
     }
     if (
-      this.pendingSends >= DIRECT_CHANNEL_LIMITS.pendingSends ||
-      this.pendingBytes + bytes > DIRECT_CHANNEL_LIMITS.pendingBytes
+      this.pendingSends >= CHANNEL_LIMITS.pendingSends ||
+      this.pendingBytes + bytes > CHANNEL_LIMITS.pendingBytes
     ) {
       throw new ChannelOperationError(
         'RESOURCE_EXHAUSTED',
@@ -412,30 +510,31 @@ export class DirectChannelBroker {
     const endpoint = this.held(owner, token, 'receive')
     endpoint.used = true
     const source = endpoint.source
-    if (source.read !== undefined)
+    const receiver = endpoint.receiver!
+    if (receiver.read !== undefined)
       throw new ChannelOperationError('INVALID_INPUT', 'channel already has a pending read')
     // A subsequent read gives back capacity for the prior committed response.
-    if (source.inFlight !== undefined) {
-      source.bufferedBytes -= source.inFlight.bytes
-      delete source.inFlight
+    if (receiver.inFlight !== undefined) {
+      receiver.bufferedBytes -= receiver.inFlight.bytes
+      delete receiver.inFlight
     }
     this.flush(source)
-    if (source.failure !== undefined) throw source.failure
-    if (source.released)
+    if (receiver.failure !== undefined) throw receiver.failure
+    if (receiver.released)
       throw new ChannelOperationError('DISCONNECTED', 'channel receiver was released')
     if (signal?.aborted) {
       this.release(owner, token)
       throw cancelled()
     }
-    if (source.queue.length !== 0) return this.readItem(source)
+    if (receiver.queue.length !== 0) return this.readItem(receiver)
     if (source.sealed) {
-      source.ended = true
+      receiver.ended = true
       return { end: { lastSequence: source.sequence } }
     }
     return new Promise<JsonValue>((resolve, reject) => {
       const onAbort = () => {
-        if (source.read !== pending) return
-        delete source.read
+        if (receiver.read !== pending) return
+        delete receiver.read
         pending.dispose()
         this.release(owner, token)
         reject(cancelled())
@@ -445,7 +544,7 @@ export class DirectChannelBroker {
         reject,
         dispose: () => signal?.removeEventListener('abort', onAbort),
       }
-      source.read = pending
+      receiver.read = pending
       signal?.addEventListener('abort', onAbort, { once: true })
       if (signal?.aborted) onAbort()
     })
@@ -458,43 +557,48 @@ export class DirectChannelBroker {
     const source = endpoint.source
     if (source.failure !== undefined) throw source.failure
     if (source.sealed) return
-    if (source.released)
+    if (source.delivery === 'direct' && source.receivers[0]!.released)
       throw new ChannelOperationError('DISCONNECTED', 'channel receiver was released')
     if (source.pending.length !== 0)
       throw new ChannelOperationError('INVALID_INPUT', 'channel has unaccepted sends')
     source.sealed = true
-    this.deliver(source)
+    for (const receiver of source.receivers) this.deliver(receiver)
   }
 
   release(owner: ChannelParticipant, token: string): JsonValue {
     const endpoint = this.held(owner, token, 'receive')
     endpoint.used = true
     const source = endpoint.source
+    const receiver = endpoint.receiver!
     const result: JsonValue =
-      source.failure !== undefined
+      receiver.failure !== undefined
         ? {
             status: 'failed',
-            code: source.failure.code,
-            ...(source.failure.details === undefined ? {} : { details: source.failure.details }),
+            code: receiver.failure.code,
+            ...(receiver.failure.details === undefined
+              ? {}
+              : { details: receiver.failure.details }),
           }
-        : source.ended
+        : receiver.ended
           ? { status: 'ended', lastSequence: source.sequence }
           : { status: 'released' }
-    source.released = true
-    source.queue.length = 0
-    source.bufferedBytes = 0
-    delete source.inFlight
+    receiver.released = true
+    receiver.queue.length = 0
+    receiver.bufferedBytes = 0
+    delete receiver.inFlight
     const failure =
-      source.failure ?? new ChannelOperationError('DISCONNECTED', 'channel receiver was released')
-    if (source.read !== undefined) {
-      const read = source.read
-      delete source.read
+      receiver.failure ?? new ChannelOperationError('DISCONNECTED', 'channel receiver was released')
+    if (receiver.read !== undefined) {
+      const read = receiver.read
+      delete receiver.read
       read.dispose()
-      read.reject(source.failure ?? cancelled())
+      read.reject(receiver.failure ?? cancelled())
     }
-    for (const pending of source.pending.splice(0)) {
-      this.removePending(pending)
-      pending.reject(failure)
+    if (source.delivery === 'direct') {
+      for (const pending of source.pending.splice(0)) {
+        this.removePending(pending)
+        pending.reject(failure)
+      }
     }
     return result
   }
@@ -514,17 +618,20 @@ export class DirectChannelBroker {
     const held = [...this.endpoints.values()].filter((endpoint) => endpoint.holder === owner)
     const abandoned = held.some((endpoint) => {
       const source = endpoint.source
+      const receiver = endpoint.receiver
+      const direct = source.delivery === 'direct' ? source.receivers[0]! : undefined
       const unusedPair =
+        direct !== undefined &&
         !source.send.used &&
-        !source.receive.used &&
+        !direct.endpoint.used &&
         !source.send.transferred &&
-        !source.receive.transferred
+        !direct.endpoint.transferred
       return (
-        endpoint.direction === 'receive' &&
+        receiver !== undefined &&
         !unusedPair &&
-        !source.released &&
-        !source.ended &&
-        source.failure === undefined
+        !receiver.released &&
+        !receiver.ended &&
+        receiver.failure === undefined
       )
     })
     const pending = held.some(
@@ -540,12 +647,12 @@ export class DirectChannelBroker {
           endpoint.direction === 'send' &&
           !endpoint.source.sealed &&
           endpoint.source.failure === undefined &&
-          !endpoint.source.released
+          !(endpoint.source.delivery === 'direct' && endpoint.source.receivers[0]!.released)
         )
           this.close(owner, endpoint.token)
       }
       for (const endpoint of held)
-        if (endpoint.direction === 'receive' && !endpoint.source.released)
+        if (endpoint.receiver !== undefined && !endpoint.receiver.released)
           this.release(owner, endpoint.token)
     }
     for (const source of this.sources) {
@@ -575,8 +682,9 @@ export class DirectChannelBroker {
         this.fail(source, new ChannelOperationError(code, 'channel source owner stopped'), true)
       else if (source.send.holder === owner)
         this.fail(source, new ChannelOperationError(code, 'channel owner stopped before sealing'))
-      if (source.receive.holder === owner && !source.released)
-        this.release(owner, source.receive.token)
+      for (const receiver of source.receivers)
+        if (receiver.endpoint.holder === owner && !receiver.released)
+          this.release(owner, receiver.endpoint.token)
     }
   }
 
@@ -603,6 +711,23 @@ export class DirectChannelBroker {
     }
     this.endpoints.set(endpoint.token, endpoint)
     return endpoint
+  }
+
+  private receiver(owner: ChannelParticipant, source: Source): Receiver {
+    const endpoint = this.endpoint(owner, source, 'receive')
+    const receiver: Receiver = {
+      endpoint,
+      startSequence: source.sequence + 1,
+      constraints: [],
+      queue: [],
+      released: false,
+      ended: false,
+      bufferedBytes: 0,
+    }
+    endpoint.receiver = receiver
+    source.receivers.push(receiver)
+    this.receivers += 1
+    return receiver
   }
 
   private held(
@@ -639,21 +764,21 @@ export class DirectChannelBroker {
 
   private assertWritable(source: Source): void {
     if (source.failure !== undefined) throw source.failure
-    if (source.released)
+    if (source.delivery === 'direct' && source.receivers[0]!.released)
       throw new ChannelOperationError('DISCONNECTED', 'channel receiver was released')
     if (source.sealed) throw new ChannelOperationError('OWNER_CLOSED', 'channel source is sealed')
   }
 
-  private hasCapacity(source: Source, bytes: number): boolean {
+  private hasCapacity(receiver: Receiver, bytes: number): boolean {
     return (
-      source.queue.length + (source.inFlight === undefined ? 0 : 1) <
-        DIRECT_CHANNEL_LIMITS.bufferedItems &&
-      source.bufferedBytes + bytes <= DIRECT_CHANNEL_LIMITS.bufferedBytes
+      receiver.queue.length + (receiver.inFlight === undefined ? 0 : 1) <
+        CHANNEL_LIMITS.bufferedItems &&
+      receiver.bufferedBytes + bytes <= CHANNEL_LIMITS.bufferedBytes
     )
   }
 
   private accept(source: Source, value: JsonValue, bytes: number): void {
-    if (source.totalBytes + bytes > DIRECT_CHANNEL_LIMITS.sourceBytes) {
+    if (source.totalBytes + bytes > CHANNEL_LIMITS.sourceBytes) {
       const error = new ChannelOperationError(
         'RESOURCE_EXHAUSTED',
         'channel source lifetime byte limit reached',
@@ -662,25 +787,45 @@ export class DirectChannelBroker {
       throw error
     }
     source.totalBytes += bytes
-    source.bufferedBytes += bytes
-    source.queue.push({ sequence: ++source.sequence, value, bytes })
-    this.deliver(source)
+    const item = { sequence: ++source.sequence, value, bytes }
+    for (const receiver of source.receivers) {
+      if (receiver.released || receiver.failure !== undefined || receiver.ended) continue
+      try {
+        for (const constraint of receiver.constraints) validateConstraint(constraint, value)
+        if (!this.hasCapacity(receiver, bytes))
+          throw new ChannelOperationError(
+            'LAGGED',
+            'channel receiver exceeded its bounded capacity',
+          )
+        receiver.bufferedBytes += bytes
+        receiver.queue.push(item)
+        this.deliver(receiver)
+      } catch (error) {
+        const failure =
+          error instanceof ChannelOperationError
+            ? error
+            : new ChannelOperationError('INVALID_INPUT', 'channel item failed receiver validation')
+        this.failReceiver(receiver, failure)
+      }
+    }
   }
 
-  private readItem(source: Source): JsonValue {
-    const item = source.queue.shift()!
-    source.inFlight = item
+  private readItem(receiver: Receiver): JsonValue {
+    const item = receiver.queue.shift()!
+    receiver.inFlight = item
     return { item: { sequence: item.sequence, value: item.value } }
   }
 
-  private deliver(source: Source): void {
-    const read = source.read
-    if (read === undefined || (source.queue.length === 0 && !source.sealed)) return
-    delete source.read
+  private deliver(receiver: Receiver): void {
+    if (receiver.failure !== undefined || receiver.released || receiver.ended) return
+    const source = receiver.endpoint.source
+    const read = receiver.read
+    if (read === undefined || (receiver.queue.length === 0 && !source.sealed)) return
+    delete receiver.read
     read.dispose()
-    if (source.queue.length !== 0) read.resolve(this.readItem(source))
+    if (receiver.queue.length !== 0) read.resolve(this.readItem(receiver))
     else {
-      source.ended = true
+      receiver.ended = true
       read.resolve({ end: { lastSequence: source.sequence } })
     }
   }
@@ -692,7 +837,10 @@ export class DirectChannelBroker {
   }
 
   private flush(source: Source): void {
-    while (source.pending.length !== 0 && this.hasCapacity(source, source.pending[0]!.bytes)) {
+    while (
+      source.pending.length !== 0 &&
+      this.hasCapacity(source.receivers[0]!, source.pending[0]!.bytes)
+    ) {
       const pending = source.pending.shift()!
       this.removePending(pending)
       try {
@@ -712,19 +860,25 @@ export class DirectChannelBroker {
   }
 
   private fail(source: Source, error: ChannelOperationError, includeSealed = false): void {
-    if (source.failure !== undefined || (source.sealed && !includeSealed) || source.ended) return
+    if (source.failure !== undefined || (source.sealed && !includeSealed)) return
     source.failure = error
-    source.queue.length = 0
-    source.bufferedBytes = source.inFlight?.bytes ?? 0
-    if (source.read !== undefined) {
-      const read = source.read
-      delete source.read
-      read.dispose()
-      read.reject(error)
-    }
+    for (const receiver of source.receivers) this.failReceiver(receiver, error)
     for (const pending of source.pending.splice(0)) {
       this.removePending(pending)
       pending.reject(error)
+    }
+  }
+
+  private failReceiver(receiver: Receiver, error: ChannelOperationError): void {
+    if (receiver.failure !== undefined || receiver.ended || receiver.released) return
+    receiver.failure = error
+    receiver.queue.length = 0
+    receiver.bufferedBytes = receiver.inFlight?.bytes ?? 0
+    if (receiver.read !== undefined) {
+      const read = receiver.read
+      delete receiver.read
+      read.dispose()
+      read.reject(error)
     }
   }
 }
@@ -734,12 +888,18 @@ export class ChannelParticipant {
   finalized = false
   stopped: ChannelOperationError | undefined
   constructor(
-    private readonly broker: DirectChannelBroker,
+    private readonly broker: ChannelBroker,
     readonly id: string,
     private readonly options: ChannelParticipantOptions,
   ) {}
+  create(options: ChannelCreationOptions & { delivery: 'broadcast' }): Promise<BroadcastAllocation>
+  create(options?: ChannelCreationOptions & { delivery?: 'direct' }): Promise<DirectAllocation>
+  create(options: ChannelCreationOptions): Promise<DirectAllocation | BroadcastAllocation>
   create(options: ChannelCreationOptions = {}) {
     return this.broker.create(this, options)
+  }
+  subscribe(source: string) {
+    return this.broker.subscribe(this, source)
   }
   request(method: string, params: JsonValue | undefined, signal?: AbortSignal) {
     return this.broker.request(this, method, params, signal)
@@ -796,10 +956,14 @@ function grant(endpoint: Endpoint): ChannelGrant {
   return Object.freeze({
     endpoint: endpoint.token,
     direction: endpoint.direction,
-    delivery: 'direct' as const,
+    delivery: endpoint.source.delivery,
     ...(endpoint.source.contract === undefined ? {} : { contract: endpoint.source.contract }),
-    ...(endpoint.direction === 'receive' ? { startSequence: 1 } : {}),
+    ...(endpoint.receiver === undefined ? {} : { startSequence: endpoint.receiver.startSequence }),
   })
+}
+
+function activeReceiver(receiver: Receiver): boolean {
+  return !receiver.released && !receiver.ended && receiver.failure === undefined
 }
 
 function sameIdentity(a: ChannelIdentity, b: ChannelIdentity): boolean {

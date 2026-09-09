@@ -19,11 +19,11 @@ import { privateAgentChannelOwnerId } from '../src/internal/root-agent-run-contr
 import { canonicalJson, type JsonValue } from '../src/json.js'
 import type { CapturedPackage } from '../src/package/capture.js'
 import type { InspectedPackage } from '../src/package/inspect.js'
-import { DirectChannelBroker } from '../src/run/channels.js'
+import { ChannelBroker } from '../src/run/channels.js'
 
 describe('private Agent and command channel bridges', () => {
   test('forwards an unused named writer through a child to its own Agent scope', async () => {
-    const broker = new DirectChannelBroker()
+    const broker = new ChannelBroker()
     const root = broker.participant('root', { resolveContract: () => ACP_PUBLIC_UPDATES })
     const children = ['left', 'right'].map((name) => broker.participant(`flow:${name}`))
     const values = await Promise.all(
@@ -91,7 +91,7 @@ describe('private Agent and command channel bridges', () => {
   })
 
   test('an exact child map mismatch leaves all offered rights with its caller', async () => {
-    const broker = new DirectChannelBroker()
+    const broker = new ChannelBroker()
     const root = broker.participant('root', { resolveContract: () => ACP_PUBLIC_UPDATES })
     const child = broker.participant('child')
     const first = await root.create({ schema: { type: 'string' } })
@@ -223,7 +223,7 @@ describe('private Agent and command channel bridges', () => {
   })
 
   test('bounded native ingress failure does not stall the actual ACP final result', async () => {
-    const broker = new DirectChannelBroker()
+    const broker = new ChannelBroker()
     const root = broker.participant('root', { resolveContract: () => ACP_PUBLIC_UPDATES })
     const provider = broker.participant('provider')
     const pair = await root.create({ contract: './events.json' })
@@ -254,7 +254,7 @@ describe('private Agent and command channel bridges', () => {
   })
 
   test('root pending-send pressure cannot turn dropped Agent updates into clean EOF', async () => {
-    const broker = new DirectChannelBroker()
+    const broker = new ChannelBroker()
     const root = broker.participant('root', { resolveContract: () => ACP_PUBLIC_UPDATES })
     const provider = broker.participant('provider')
     const blocked = await root.create()
@@ -286,7 +286,7 @@ describe('private Agent and command channel bridges', () => {
   })
 
   test('cancellation settles a blocked native update pump without replay or fake end', async () => {
-    const broker = new DirectChannelBroker()
+    const broker = new ChannelBroker()
     const root = broker.participant('root', { resolveContract: () => ACP_PUBLIC_UPDATES })
     const provider = broker.participant('provider')
     const pair = await root.create({ contract: './events.json' })
@@ -333,6 +333,46 @@ describe('private Agent and command channel bridges', () => {
     await expect(PrivateRunChannels.open(captured(), inspected())).rejects.toMatchObject({
       code: 'INVALID_INPUT',
     })
+  })
+
+  test('a selected broadcast root output subscribes before dispatch and drains independently', async () => {
+    const records: JsonValue[] = []
+    const visible = deferred<void>()
+    const metadata = inspected()
+    const context = await PrivateRunChannels.open(
+      captured(),
+      {
+        ...metadata,
+        metadata: {
+          ...metadata.metadata,
+          channels: { progress: { direction: 'send', delivery: 'broadcast' } },
+        },
+      },
+      {
+        ...output(records),
+        async record(value) {
+          records.push(value)
+          if ((value as { type?: string }).type === 'data') visible.resolve()
+        },
+      },
+    )
+    expect(context.grants.progress!.delivery).toBe('broadcast')
+    await context.root.send(context.grants.progress!.endpoint, { phase: 'working' })
+    await visible.promise
+    expect(records).toContainEqual({
+      type: 'data',
+      channel: 'progress',
+      sequence: 1,
+      value: { phase: 'working' },
+    })
+    context.root.close(context.grants.progress!.endpoint)
+    context.root.finalize(true)
+    await context.settle()
+    expect(records).toEqual([
+      { type: 'begin', channel: 'progress', startSequence: 1 },
+      { type: 'data', channel: 'progress', sequence: 1, value: { phase: 'working' } },
+      { type: 'end', channel: 'progress', status: 'closed', lastSequence: 1 },
+    ])
   })
 })
 

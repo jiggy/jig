@@ -17,12 +17,15 @@ child calls, project commands, and Agent providers.
   containment, supervision, and execution.
 - Agent clients and launchers, capability enforcement, credential isolation,
   structured results, and package-local skill projection.
-- Direct channel integration resolves admitted package contracts and binds root
+- Channel integration resolves admitted package contracts and binds root
   output, exact child endpoints, or native Agent endpoints. Unused incoming rights
   may move onward; each child and effect retains its own participant identity.
   Child input, recipe, capacity and sealed-owner checks precede atomic transfer.
   Receiver disposal preserves an unused writer's transfer rights, not delivery;
-  later sends still fail disconnected. Root and child contracts share one bounded cache.
+  a disposed direct receiver makes later sends fail disconnected. Root and child
+  contracts share one bounded cache.
+  Broadcast subscription authority remains with the source creator; subscribers
+  have isolated buffers and failures under unchanged aggregate lifetime bounds.
   ACP ingress is separately bounded and never
   blocks its protocol reader; failed progress does not manufacture failed work.
   The installed writer bounds live stdout/stderr and cancels on delivery loss.
@@ -55,7 +58,7 @@ child calls, project commands, and Agent providers.
 - Codex's nested sandbox uses its installation's exact bundled Bubblewrap,
   retained as provider support. The outer host's `JIG_BWRAP_PATH` does not
   select or replace that vendor-integrity-bound asset.
-- Keep known Agent-configuration and dependency-preparation failures actionable
+- Keep known channel-declaration, Agent-configuration and dependency-preparation failures actionable
   through closed diagnostic codes and project-relative locations, never raw
   provider or worker messages. Missing Agent support affects only targets
   which require it.

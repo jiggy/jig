@@ -2,14 +2,14 @@ import { describe, expect, test } from 'bun:test'
 import type { JsonValue } from '../src/json.js'
 import {
   type ChannelGrant,
-  DirectChannelBroker,
+  ChannelBroker,
   type ResolvedChannelContract,
 } from '../src/run/channels.js'
 
 describe('finite direct channel broker', () => {
   test('an unused writer can move after observer disposal without reviving delivery', async () => {
     for (const required of [true, false]) {
-      const broker = new DirectChannelBroker()
+      const broker = new ChannelBroker()
       const root = broker.participant('root')
       const monitor = broker.participant('monitor')
       const worker = broker.participant('worker')
@@ -43,7 +43,7 @@ describe('finite direct channel broker', () => {
   })
 
   test('disposed receivers and failed or ownerless sources cannot gain new holders', async () => {
-    const broker = new DirectChannelBroker()
+    const broker = new ChannelBroker()
     const root = broker.participant('root')
     const child = broker.participant('child')
     const pair = await root.create()
@@ -79,7 +79,7 @@ describe('finite direct channel broker', () => {
 
   test('owner revocation prevents late asynchronous contract resolution allocating new sources', async () => {
     let resolve!: (contract: ResolvedChannelContract) => void
-    const owner = new DirectChannelBroker().participant('root', {
+    const owner = new ChannelBroker().participant('root', {
       resolveContract: () =>
         new Promise((done) => {
           resolve = done
@@ -94,7 +94,7 @@ describe('finite direct channel broker', () => {
   })
 
   test('creator termination revokes sealed undrained intervals held elsewhere', async () => {
-    const broker = new DirectChannelBroker()
+    const broker = new ChannelBroker()
     const creator = broker.participant('creator')
     const receiver = broker.participant('receiver')
     const pair = await creator.create()
@@ -113,7 +113,7 @@ describe('finite direct channel broker', () => {
   })
 
   test('opposite ends in one atomic mapping must also agree with each other', async () => {
-    const broker = new DirectChannelBroker()
+    const broker = new ChannelBroker()
     const root = broker.participant('root')
     const child = broker.participant('child')
     const pair = await root.create()
@@ -135,7 +135,7 @@ describe('finite direct channel broker', () => {
 
   test('asynchronous contract resolution rechecks ownership and cancelled allocation remains disposed', async () => {
     let resolve!: (contract: ResolvedChannelContract) => void
-    const broker = new DirectChannelBroker()
+    const broker = new ChannelBroker()
     const owner = broker.participant('root', {
       resolveContract: () =>
         new Promise((done) => {
@@ -153,8 +153,8 @@ describe('finite direct channel broker', () => {
   })
 
   test('cross-root transfers cannot create communication authority', async () => {
-    const left = new DirectChannelBroker().participant('left')
-    const right = new DirectChannelBroker().participant('right')
+    const left = new ChannelBroker().participant('left')
+    const right = new ChannelBroker().participant('right')
     const pair = await left.create()
     expect(() =>
       left.transfer(right, { events: pair.send.endpoint }, { events: { direction: 'send' } }),
@@ -164,7 +164,7 @@ describe('finite direct channel broker', () => {
   })
 
   test('snapshots values, orders data, and reports a separate clean end', async () => {
-    const owner = new DirectChannelBroker().participant('root')
+    const owner = new ChannelBroker().participant('root')
     const pair = await owner.create()
     const value = { text: 'before' }
     await owner.send(pair.send.endpoint, value)
@@ -179,7 +179,7 @@ describe('finite direct channel broker', () => {
   })
 
   test('forged, duplicate, locally used, or already moved rights cannot be transferred', async () => {
-    const broker = new DirectChannelBroker()
+    const broker = new ChannelBroker()
     const parent = broker.participant('root')
     const child = broker.participant('child')
     const pair = await parent.create()
@@ -210,7 +210,7 @@ describe('finite direct channel broker', () => {
   })
 
   test('a rejected mapping changes neither rights nor queued prefix constraints', async () => {
-    const broker = new DirectChannelBroker()
+    const broker = new ChannelBroker()
     const root = broker.participant('root')
     const child = broker.participant('child')
     const pair = await root.create()
@@ -232,7 +232,7 @@ describe('finite direct channel broker', () => {
 
   test('named meaning is exact and transferred writers must declare it', async () => {
     const contract = named('https://example.org/events')
-    const broker = new DirectChannelBroker()
+    const broker = new ChannelBroker()
     const root = broker.participant('root', { resolveContract: () => contract })
     const child = broker.participant('child')
     const pair = await root.create({ contract: './events.json' })
@@ -252,7 +252,7 @@ describe('finite direct channel broker', () => {
   })
 
   test('late receiver constraints validate pending unaccepted messages when admitted', async () => {
-    const broker = new DirectChannelBroker()
+    const broker = new ChannelBroker()
     const root = broker.participant('root')
     const child = broker.participant('child')
     const pair = await root.create()
@@ -270,7 +270,7 @@ describe('finite direct channel broker', () => {
   })
 
   test('direct credit includes in-flight data and pending sends cancel without sequence gaps', async () => {
-    const owner = new DirectChannelBroker().participant('root')
+    const owner = new ChannelBroker().participant('root')
     const pair = await owner.create()
     for (let i = 0; i < 16; i++) await owner.send(pair.send.endpoint, i)
     const controller = new AbortController()
@@ -298,7 +298,7 @@ describe('finite direct channel broker', () => {
   })
 
   test('release unblocks pending sends and reports failure already known at the host', async () => {
-    const owner = new DirectChannelBroker().participant('root')
+    const owner = new ChannelBroker().participant('root')
     const pair = await owner.create()
     const reading = owner.next(pair.receive.endpoint).catch((error) => error)
     owner.failWriter(pair.send.endpoint, 'LAGGED', 'native ingress overflowed')
@@ -309,7 +309,7 @@ describe('finite direct channel broker', () => {
   })
 
   test('cancelling a pending read disposes the receiver without cancelling its producer', async () => {
-    const broker = new DirectChannelBroker()
+    const broker = new ChannelBroker()
     const root = broker.participant('root')
     const producer = broker.participant('producer')
     const pair = await root.create()
@@ -328,7 +328,7 @@ describe('finite direct channel broker', () => {
   })
 
   test('source/schema limits fail the source before accepting an invalid item', async () => {
-    const owner = new DirectChannelBroker().participant('root')
+    const owner = new ChannelBroker().participant('root')
     const pair = await owner.create({ schema: { type: 'number' } })
     await expect(owner.send(pair.send.endpoint, 'wrong')).rejects.toMatchObject({
       code: 'INVALID_INPUT',
@@ -345,9 +345,8 @@ describe('finite direct channel broker', () => {
     owner.finalize(true)
   })
 
-  test('allocation budgets do not recycle after disposal and broadcast is unsupported', async () => {
-    const owner = new DirectChannelBroker().participant('root')
-    await expect(owner.create({ delivery: 'broadcast' as 'direct' })).rejects.toThrow('only direct')
+  test('direct allocation budgets do not recycle after disposal', async () => {
+    const owner = new ChannelBroker().participant('root')
     for (let i = 0; i < 16; i++) {
       const pair = await owner.create()
       owner.release(pair.receive.endpoint)
@@ -357,7 +356,7 @@ describe('finite direct channel broker', () => {
   })
 
   test('root pending sends are bounded and settlement remains available', async () => {
-    const owner = new DirectChannelBroker().participant('root')
+    const owner = new ChannelBroker().participant('root')
     const pair = await owner.create()
     for (let i = 0; i < 16; i++) await owner.send(pair.send.endpoint, i)
     const pending = Array.from({ length: 16 }, () =>
@@ -374,7 +373,7 @@ describe('finite direct channel broker', () => {
   })
 
   test('retained offered receivers refuse success and abort writers before implicit sealing', async () => {
-    const broker = new DirectChannelBroker()
+    const broker = new ChannelBroker()
     const root = broker.participant('root')
     const sink = broker.participant('sink')
     const input = await root.create()
@@ -386,7 +385,7 @@ describe('finite direct channel broker', () => {
   })
 
   test('explicitly sealed intervals drain after producer failure, but unsealed ones fail', async () => {
-    const broker = new DirectChannelBroker()
+    const broker = new ChannelBroker()
     const root = broker.participant('root')
     const producer = broker.participant('producer')
     const sealed = await root.create()
@@ -406,13 +405,13 @@ describe('finite direct channel broker', () => {
   })
 
   test('whole root revocation wins over an uncommitted EOF, not already committed EOF', async () => {
-    const broker = new DirectChannelBroker()
+    const broker = new ChannelBroker()
     const owner = broker.participant('root')
     const pair = await owner.create()
     owner.close(pair.send.endpoint)
     broker.abort('CANCELLED')
     await expect(owner.next(pair.receive.endpoint)).rejects.toMatchObject({ code: 'CANCELLED' })
-    const other = new DirectChannelBroker()
+    const other = new ChannelBroker()
     const participant = other.participant('other')
     const end = await participant.create()
     participant.close(end.send.endpoint)

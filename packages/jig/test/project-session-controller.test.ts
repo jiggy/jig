@@ -179,6 +179,25 @@ describe('private finite project session', () => {
   })
 
   test('admits only source diagnostic code families and closes private state codes', () => {
+    for (const code of ['CHANNEL_FIELD', 'CHANNEL_LIMIT', 'CHANNEL_REFERENCE']) {
+      const failure = new CheckError(
+        'invalid',
+        code,
+        'private diagnostic text',
+        'flows/bad/FLOW.md',
+      )
+      expect(projectError(failure, 'plan').toJSON()).toEqual({
+        code: 'INVALID_CANDIDATE',
+        message: 'project candidate is invalid',
+        diagnostic: { code, path: 'flows/bad/FLOW.md' },
+      })
+    }
+    expect(
+      projectError(
+        new CheckError('invalid', 'CHANNEL_PRIVATE', 'private detail', 'flows/bad/FLOW.md'),
+        'plan',
+      ).code,
+    ).toBe('INTERNAL')
     const privateFailure = new CheckError(
       'invalid',
       'ADMISSION_STATE_CORRUPT',

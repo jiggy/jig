@@ -1,11 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 
 import { canonicalJson, decodeJson1, type JsonObject, type JsonValue } from '../src/json.js'
-import {
-  type ChannelGrant,
-  ChannelOperationError,
-  DirectChannelBroker,
-} from '../src/run/channels.js'
+import { type ChannelGrant, ChannelOperationError, ChannelBroker } from '../src/run/channels.js'
 import {
   type ExactComponentExit,
   type ExactComponentProcess,
@@ -23,7 +19,7 @@ const encoder = new TextEncoder()
 describe('private RunHostSession', () => {
   test('admitted package result validation happens before implicit writer sealing', async () => {
     const process = new FakeProcess()
-    const broker = new DirectChannelBroker()
+    const broker = new ChannelBroker()
     const command = broker.participant('command')
     const root = broker.participant('root')
     const pair = await command.create()
@@ -57,7 +53,7 @@ describe('private RunHostSession', () => {
 
   test('root cancellation revokes sealed command-owned outputs before receiver EOF commitment', async () => {
     const process = new FakeProcess()
-    const broker = new DirectChannelBroker()
+    const broker = new ChannelBroker()
     const command = broker.participant('command')
     const root = broker.participant('root')
     const pair = await command.create()
@@ -83,68 +79,84 @@ describe('private RunHostSession', () => {
     expect(await running).toMatchObject({ status: 'failed', code: 'CANCELLED' })
   })
 
-  test('serves direct channel requests while an Agent operation remains active and joins without moving twice', async () => {
-    const process = new FakeProcess()
-    const broker = new DirectChannelBroker()
-    const root = broker.participant('root')
-    const provider = broker.participant('agent')
-    const finishAgent = deferred<void>()
-    let dispatches = 0
-    const running = new RunHostSession(
-      process,
-      invocation(),
-      {},
-      {
-        channels: root,
-        callCapability: async (call) => {
-          dispatches++
-          const grants = root.transfer(provider, call.channels!, { events: { direction: 'send' } })
-          await provider.send(grants.events!.endpoint, { text: 'live' })
-          await finishAgent.promise
-          provider.finalize(true)
-          return { status: 'succeeded', result: { value: 'actual result' } }
+  test.each(['direct', 'broadcast'] as const)(
+    'serves %s channel requests while an Agent operation remains active and joins without moving twice',
+    async (delivery) => {
+      const process = new FakeProcess()
+      const broker = new ChannelBroker()
+      const root = broker.participant('root')
+      const provider = broker.participant('agent')
+      const finishAgent = deferred<void>()
+      let dispatches = 0
+      const running = new RunHostSession(
+        process,
+        invocation(),
+        {},
+        {
+          channels: root,
+          callCapability: async (call) => {
+            dispatches++
+            const grants = root.transfer(provider, call.channels!, {
+              events: { direction: 'send' },
+            })
+            await provider.send(grants.events!.endpoint, { text: 'live' })
+            await finishAgent.promise
+            provider.finalize(true)
+            return { status: 'succeeded', result: { value: 'actual result' } }
+          },
         },
-      },
-    ).run()
-    await process.nextHost()
-    process.emit(request('component:create', 'channel/create', {}))
-    const created = ((await process.nextHost()) as JsonObject).result as unknown as {
-      send: ChannelGrant
-      receive: ChannelGrant
-    }
-    const call = {
-      operationId: 'agent:1',
-      slot: 'agent',
-      method: 'run',
-      input: {},
-      channels: { events: created.send.endpoint },
-    }
-    process.emit(request('component:agent', 'capability/call', call))
-    process.emit(request('component:join', 'capability/call', call))
-    process.emit(request('component:next', 'channel/next', { endpoint: created.receive.endpoint }))
-    expect(await process.nextHost()).toMatchObject({
-      id: 'component:next',
-      result: { item: { sequence: 1, value: { text: 'live' } } },
-    })
-    expect(dispatches).toBe(1)
-    finishAgent.resolve()
-    const terminals = [await process.nextHost(), await process.nextHost()]
-    expect(terminals).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ id: 'component:agent', result: { value: 'actual result' } }),
-        expect.objectContaining({ id: 'component:join', result: { value: 'actual result' } }),
-      ]),
-    )
-    process.emit(request('component:end', 'channel/next', { endpoint: created.receive.endpoint }))
-    expect(await process.nextHost()).toMatchObject({ result: { end: { lastSequence: 1 } } })
-    process.emit(result(null))
-    process.finish(0)
-    expect(await running).toMatchObject({ status: 'succeeded' })
-  })
+      ).run()
+      await process.nextHost()
+      process.emit(request('component:create', 'channel/create', { delivery }))
+      const created = ((await process.nextHost()) as JsonObject).result as unknown as {
+        send: ChannelGrant
+        receive: ChannelGrant
+        source?: string
+      }
+      if (delivery === 'broadcast') {
+        process.emit(
+          request('component:subscribe', 'channel/subscribe', { source: created.source! }),
+        )
+        created.receive = ((await process.nextHost()) as JsonObject)
+          .result as unknown as ChannelGrant
+        expect(created.receive).toMatchObject({ delivery: 'broadcast', startSequence: 1 })
+      }
+      const call = {
+        operationId: 'agent:1',
+        slot: 'agent',
+        method: 'run',
+        input: {},
+        channels: { events: created.send.endpoint },
+      }
+      process.emit(request('component:agent', 'capability/call', call))
+      process.emit(request('component:join', 'capability/call', call))
+      process.emit(
+        request('component:next', 'channel/next', { endpoint: created.receive.endpoint }),
+      )
+      expect(await process.nextHost()).toMatchObject({
+        id: 'component:next',
+        result: { item: { sequence: 1, value: { text: 'live' } } },
+      })
+      expect(dispatches).toBe(1)
+      finishAgent.resolve()
+      const terminals = [await process.nextHost(), await process.nextHost()]
+      expect(terminals).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ id: 'component:agent', result: { value: 'actual result' } }),
+          expect.objectContaining({ id: 'component:join', result: { value: 'actual result' } }),
+        ]),
+      )
+      process.emit(request('component:end', 'channel/next', { endpoint: created.receive.endpoint }))
+      expect(await process.nextHost()).toMatchObject({ result: { end: { lastSequence: 1 } } })
+      process.emit(result(null))
+      process.finish(0)
+      expect(await running).toMatchObject({ status: 'succeeded' })
+    },
+  )
 
   test('receiver cancellation settles disposal without cancelling a simultaneous Agent call', async () => {
     const process = new FakeProcess()
-    const broker = new DirectChannelBroker()
+    const broker = new ChannelBroker()
     const root = broker.participant('root')
     const pair = await root.create()
     const finishAgent = deferred<void>()
@@ -197,7 +209,7 @@ describe('private RunHostSession', () => {
 
   test('host finalization rejects a retained active receiver before implicitly sealing an output', async () => {
     const process = new FakeProcess()
-    const broker = new DirectChannelBroker()
+    const broker = new ChannelBroker()
     const root = broker.participant('root')
     const external = broker.participant('external')
     const output = await root.create()

@@ -37,6 +37,90 @@ describe('private foreground command boundary', () => {
 })
 
 proofDescribe('private rootless project session', () => {
+  test('installed broadcast isolates a slow monitor while its worker and root recorder complete', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'jig-private-broadcast-cli-'))
+    try {
+      await writeBroadcastChannelProject(root)
+      const reviewed = await invokeChannelCli(root, ['review', '--yes'])
+      expect(reviewed.code, reviewed.stderr + reviewed.stdout).toBe(0)
+      for (const mode of ['normal', 'lagged', 'schema', 'dispose']) {
+        let live = false
+        const result = await invokeChannelCli(
+          root,
+          [
+            'run',
+            'binding:composition',
+            '--input',
+            JSON.stringify({ mode }),
+            '--receive',
+            'progress',
+          ],
+          {
+            record(record, running) {
+              if (record.type === 'data') live ||= running
+            },
+          },
+        )
+        expect(result.code, mode + ':' + result.stderr + result.stdout).toBe(0)
+        const records = result.stdout
+          .trimEnd()
+          .split('\n')
+          .map((line) => JSON.parse(line))
+        expect(records[0]).toEqual({ type: 'begin', channel: 'progress', startSequence: 1 })
+        expect(records.at(-2)).toMatchObject({ type: 'end', channel: 'progress', status: 'closed' })
+        const terminal = records.at(-1)
+        expect(terminal).toMatchObject({ type: 'terminal', result: { status: 'succeeded' } })
+        const output = terminal.result.output
+        const count = mode === 'lagged' ? 20 : mode === 'schema' ? 2 : 1
+        expect(output.worker).toEqual({ outcome: 'done', output: { completed: true, sent: count } })
+        expect(output.recorded).toHaveLength(count)
+        expect(
+          records.filter((record) => record.type === 'data').map((record) => record.value),
+        ).toEqual(output.recorded)
+        expect(live).toBeTrue()
+        expect(output.monitor.output.incomplete).toBe(
+          mode === 'lagged' ? 'LAGGED' : mode === 'schema' ? 'INVALID_INPUT' : null,
+        )
+        expect(output.monitor.output.count).toBe(mode === 'normal' ? 1 : 0)
+        expect(output.monitor.output.disposed).toBe(mode === 'dispose')
+        await expectNoChildResidue(root)
+        await waitForRootlessCgroups(initialRootlessCgroups)
+        await waitForRootlessTemporaryState(initialRootlessTemporaryState)
+      }
+      let interrupted = false
+      const stopped = await invokeChannelCli(
+        root,
+        [
+          'run',
+          'binding:composition',
+          '--input',
+          JSON.stringify({ mode: 'cancel' }),
+          '--receive',
+          'progress',
+        ],
+        {
+          record(record, _running, cancel) {
+            if (record.type === 'data' && !interrupted) {
+              interrupted = true
+              cancel()
+            }
+          },
+        },
+      )
+      expect(interrupted).toBeTrue()
+      expect(stopped.code).not.toBe(0)
+      for (const line of stopped.stdout.trimEnd().split('\n')) {
+        const record = JSON.parse(line)
+        if (record.type === 'terminal') expect(record.result.status).not.toBe('succeeded')
+      }
+      await expectNoChildResidue(root)
+      await waitForRootlessCgroups(initialRootlessCgroups)
+      await waitForRootlessTemporaryState(initialRootlessTemporaryState)
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  }, 240_000)
+
   test('installed sibling channels preserve exact admission, leaf results, and independent cleanup', async () => {
     const root = await mkdtemp(join(tmpdir(), 'jig-private-child-channel-cli-'))
     try {
@@ -1617,6 +1701,116 @@ async function writeChildChannelProject(root: string): Promise<void> {
   `
   await writeFile(join(root, 'flows/monitor/flow.ts'), monitor)
   await writeFile(join(root, 'flows/mismatch/flow.ts'), monitor)
+}
+
+async function writeBroadcastChannelProject(root: string): Promise<void> {
+  await mkdir(join(root, 'bindings'), { recursive: true })
+  await writeFile(
+    join(root, 'jig.ts'),
+    `
+    import {defineJig,discover} from '@jigging/jig';
+    export default defineJig({flows:discover('flows'),bindings:discover('bindings')});
+  `,
+  )
+  await writeFile(
+    join(root, 'bindings/composition.ts'),
+    `
+    import {defineBinding} from '@jigging/jig';
+    export default defineBinding({package:'./flows/root',slots:{worker:'flow:flows/worker',monitor:'flow:flows/monitor'}});
+  `,
+  )
+  for (const name of ['root', 'worker', 'monitor']) {
+    const directory = join(root, 'flows', name)
+    await mkdir(directory, { recursive: true })
+    await cp(join(import.meta.dir, '../../flow-sdk/dist'), join(directory, 'sdk'), {
+      recursive: true,
+    })
+    const channels =
+      name === 'root'
+        ? { progress: { direction: 'send', delivery: 'broadcast' } }
+        : name === 'worker'
+          ? {
+              events: { direction: 'send', delivery: 'broadcast' },
+              credit: { direction: 'receive' },
+            }
+          : {
+              events: { direction: 'receive', delivery: 'broadcast', schema: { type: 'number' } },
+              go: { direction: 'receive' },
+              ready: { direction: 'send' },
+            }
+    await writeFile(
+      join(directory, 'FLOW.md'),
+      `---\nname: broadcast-${name}\ndescription: Exercise isolated broadcast delivery.\nchannels: ${JSON.stringify(channels)}\n---\n`,
+    )
+  }
+  await writeFile(
+    join(root, 'flows/root/flow.ts'),
+    `
+    import {handle} from './sdk/index.js';
+    await handle(async run => {
+      const source = await run.channel({delivery:'broadcast'});
+      const monitoring = await source.subscribe();
+      const recording = await source.subscribe();
+      const credit = await run.channel();
+      const go = await run.channel();
+      const ready = await run.channel();
+      const monitor = run.runChildFlow({operationId:'monitor',slot:'monitor',input:run.input,
+        channels:{events:monitoring,go:go.receive,ready:ready.send}});
+      for await(const _ of ready.receive) {}
+      if(run.input.mode === 'dispose') await monitor;
+      const recorded = [];
+      const capture = (async () => {
+        for await(const value of recording) {
+          recorded.push(value);
+          await run.channels.progress.send(value);
+          await credit.send.send(null);
+        }
+        await credit.send.close();
+      })();
+      const worker = await run.runChildFlow({operationId:'worker',slot:'worker',input:run.input,
+        channels:{events:source.send,credit:credit.receive}});
+      await capture;
+      if(run.input.mode !== 'dispose') { await go.send.send(null); await go.send.close(); }
+      const monitored = await monitor;
+      return {outcome:'done',output:{worker,monitor:monitored,recorded}};
+    });
+  `,
+  )
+  await writeFile(
+    join(root, 'flows/worker/flow.ts'),
+    `
+    import {handle} from './sdk/index.js';
+    await handle(async run => {
+      const count = run.input.mode === 'lagged' ? 20 : run.input.mode === 'schema' ? 2 : 1;
+      for(let index=0; index<count; index++) {
+        await run.channels.events.send(run.input.mode === 'schema' && index === 1 ? 'invalid for monitor' : index);
+        await run.channels.credit.next();
+        if(run.input.mode === 'cancel') await Bun.sleep(60_000);
+      }
+      await run.channels.events.close();
+      for await(const _ of run.channels.credit) {}
+      return {outcome:'done',output:{completed:true,sent:count}};
+    });
+  `,
+  )
+  await writeFile(
+    join(root, 'flows/monitor/flow.ts'),
+    `
+    import {handle} from './sdk/index.js';
+    await handle(async run => {
+      await run.channels.ready.send(null); await run.channels.ready.close();
+      if(run.input.mode === 'dispose') {
+        await run.channels.events.close(); await run.channels.go.close();
+        return {outcome:'done',output:{count:0,incomplete:null,disposed:true}};
+      }
+      for await(const _ of run.channels.go) {}
+      let count = 0, incomplete = null;
+      try { for await(const _ of run.channels.events) count++; }
+      catch(error) { incomplete = error.code; }
+      return {outcome:'done',output:{count,incomplete,disposed:false}};
+    });
+  `,
+  )
 }
 
 async function invokeChannelCli(

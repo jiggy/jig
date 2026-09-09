@@ -759,7 +759,10 @@ function renderFailure(error: unknown, runtime: CliRuntime): 1 | 2 {
   }
   if (error instanceof ProjectAdministrationError) {
     const projected = projectError(error.code)
-    const dependencyHints: Record<string, string> = {
+    const candidateHints: Record<string, string> = {
+      CHANNEL_FIELD: 'check channel declarations and descriptors against FLOW Channel Contract/1',
+      CHANNEL_LIMIT: 'check channel declaration counts and descriptor bounds',
+      CHANNEL_REFERENCE: 'use a canonical package-local ./ channel contract path',
       PACKAGE_BUN_RESOLUTION_PERMISSION_REQUIRED: `supply bun.lock or rerun jig review with --allow-resolution-network. ${RESOLUTION_WARNING}`,
       PACKAGE_BUN_RESOLUTION_FAILED:
         'dependency resolution failed; requests may already have occurred; check package declarations and registry availability',
@@ -772,7 +775,7 @@ function renderFailure(error: unknown, runtime: CliRuntime): 1 | 2 {
         'package.json and bun.lock disagree; update the supplied lock explicitly',
     }
     const hint =
-      dependencyHints[error.diagnostic?.code ?? ''] ??
+      candidateHints[error.diagnostic?.code ?? ''] ??
       (error.diagnostic?.code === 'PROJECT_AGENT_UNAVAILABLE'
         ? (runtime.host.agentUnavailableHint ??
           'configure the host Agent before review; check exported credentials, model, and selected client')

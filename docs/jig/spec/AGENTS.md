@@ -11,7 +11,7 @@ descriptors.
   capability behavior.
 - `machine/` and `contracts/` contain their assigned published companions.
 - FLOW specifications continue to own portable package and Run semantics.
-- `channels.md` owns Jig's direct-channel support, local limits, native update
+- `channels.md` owns Jig's direct/broadcast channel support, local limits, native update
   projection and installed NDJSON output. `contracts/acp-public-updates.json`
   defines the exact optional Agent update meaning, not raw ACP access.
 

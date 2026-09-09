@@ -53,7 +53,11 @@ export function parseChannelDeclarations(
       invalid('CHANNEL_FIELD', `${name} cannot declare both schema and contract`, path)
     if (entry.schema !== undefined) compileEmbeddedSchema(entry.schema, { path })
     if (entry.contract !== undefined) requireChannelReference(entry.contract, path)
-    if (entry.delivery !== undefined && entry.delivery !== 'direct')
+    if (
+      entry.delivery !== undefined &&
+      entry.delivery !== 'direct' &&
+      entry.delivery !== 'broadcast'
+    )
       invalid('CHANNEL_FIELD', `${name}.delivery is unsupported`, path)
     if (
       entry.start !== undefined &&

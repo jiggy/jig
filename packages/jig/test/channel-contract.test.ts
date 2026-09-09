@@ -147,6 +147,8 @@ describe('channel declarations', () => {
       generic: { direction: 'receive' },
       progress: { direction: 'send', schema: { type: 'string' }, required: false },
       events: { direction: 'receive', contract: reference, delivery: 'direct', start: 'suffix' },
+      broadcast: { direction: 'send', delivery: 'broadcast' },
+      subscriber: { direction: 'receive', delivery: 'broadcast', start: 'suffix' },
     }
     const parsed = parseChannelDeclarations(channels, 'FLOW.md')
     expect(parsed).toEqual(channels)
@@ -166,7 +168,7 @@ describe('channel declarations', () => {
       {},
       { direction: 'duplex' },
       { direction: 'send', required: 'yes' },
-      { direction: 'send', delivery: 'broadcast' },
+      { direction: 'send', delivery: 'websocket' },
       { direction: 'send', contract: reference, schema: true },
       { direction: 'send', start: 'suffix' },
       { direction: 'receive', start: 'latest' },
@@ -213,6 +215,16 @@ describe('channel declarations', () => {
 })
 
 describe('package channel closure', () => {
+  test('captures explicit broadcast declarations through ordinary package inspection', async () => {
+    const channels = {
+      events: { direction: 'send', delivery: 'broadcast' },
+      input: { direction: 'receive', delivery: 'broadcast', start: 'suffix' },
+    }
+    await withPackage({ 'FLOW.md': metadata({ channels }) }, async (root) => {
+      expect((await checkPackageDirectory(root)).metadata.channels).toEqual(channels)
+    })
+  })
+
   test('loads channel profiles referenced by FLOW.md and capability methods', async () => {
     const channels = { events: { direction: 'send', required: false, contract: reference } }
     await withPackage(
