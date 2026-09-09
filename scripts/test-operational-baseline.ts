@@ -61,7 +61,8 @@ try {
     'INVALID_CANDIDATE: a FLOW.md field has an unsupported name or shape; check the indicated field against https://flow.jig.md/spec/package-format; ' +
       'METADATA_FIELD at "flows/malformed/FLOW.md" pointer "/format"\n',
   )
-  assert.doesNotMatch(malformed.stderr, /\.jig|coordinator|sqlite|\/tmp\//i)
+  // A public flow.jig.md help URL is not a protected .jig filesystem path.
+  assert.doesNotMatch(malformed.stderr, /(?:^|[\s"/])\.jig(?:[/\s"]|$)|coordinator|sqlite|\/tmp\//i)
   await assert.rejects(stat(join(project, 'jig.lock')), { code: 'ENOENT' })
   await rm(join(project, 'flows', 'malformed'), { recursive: true })
 
