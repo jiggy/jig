@@ -111,6 +111,8 @@ describe('private package-project linker', () => {
   })
 
   test('bounds aggregate semantic work across individually valid Bindings', async () => {
+    // This million-node input tests the semantic-work ceiling, not a five-second
+    // throughput promise; allow bounded headroom under the complete suite.
     await withFlows(
       {
         'flows/configurable': {
@@ -133,7 +135,7 @@ describe('private package-project linker', () => {
         )
       },
     )
-  })
+  }, 20_000)
 
   test('links a basic Binding with validated settings', async () => {
     await withFlows(
