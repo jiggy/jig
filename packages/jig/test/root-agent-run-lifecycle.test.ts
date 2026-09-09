@@ -53,316 +53,332 @@ test('constructs the Agent fixture with the complete current SDK', async () => {
 })
 
 proofDescribe('contained repair file application', () => {
-  test('exports a multi-file patch through a JSON leaf and real contained project commands with a recorded Agent response', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'jig-repair-file-proof-'))
-    const project = join(root, 'project'),
-      release = join(root, 'release'),
-      out = join(root, 'review')
-    const fixture = join(import.meta.dir, '../../../examples/tested-patch/fixtures/log-report')
-    const originalParse = await readFile(join(fixture, 'src/parse.ts'), 'utf8')
-    const originalReport = await readFile(join(fixture, 'src/report.ts'), 'utf8')
-    const replacements = [
-      {
-        path: 'src/parse.ts',
-        content: originalParse.replace(
-          "typeof value.status !== 'number'",
-          '!Number.isInteger(value.status) || value.status < 100 || value.status > 599',
-        ),
-      },
-      {
-        path: 'src/report.ts',
-        content: originalReport.replace('r.status >= 400).length', 'r.status >= 500).length'),
-      },
-    ]
-    const timesheetFixture = join(fixture, '../timesheet')
-    const originalTime = await readFile(join(timesheetFixture, 'src/parse.ts'), 'utf8')
-    const originalTotal = await readFile(join(timesheetFixture, 'src/total.ts'), 'utf8')
-    const timesheetReplacements = [
-      {
-        path: 'src/parse.ts',
-        content: originalTime.replace('hour > 23', 'hour > 23 || minute > 59'),
-      },
-      {
-        path: 'src/total.ts',
-        content: originalTotal.replace(
-          'Math.max(0, shift.end - shift.start)',
-          '(shift.end - shift.start + 1440) % 1440',
-        ),
-      },
-    ]
-    let calls = 0
-    let repairPasses = true
-    const server = createServer(async (request, response) => {
-      const requestText = await new Response(request as any).text()
-      const selectedReplacements = requestText.includes('src/total.ts')
-        ? timesheetReplacements
-        : replacements
-      calls++
-      response.writeHead(200, { 'content-type': 'application/json' }).end(
-        JSON.stringify({
-          status: 'completed',
-          output: [
-            {
-              type: 'message',
-              role: 'assistant',
-              content: [
+  for (const scenario of ['successful', 'unsuccessful', 'batch'] as const) {
+    test(
+      `exports ${scenario} repair evidence through a JSON leaf and real contained commands`,
+      async () => {
+        const root = await mkdtemp(join(tmpdir(), 'jig-repair-file-proof-'))
+        const project = join(root, 'project'),
+          release = join(root, 'release'),
+          out = join(root, 'review')
+        const fixture = join(import.meta.dir, '../../../examples/tested-patch/fixtures/log-report')
+        const originalParse = await readFile(join(fixture, 'src/parse.ts'), 'utf8')
+        const originalReport = await readFile(join(fixture, 'src/report.ts'), 'utf8')
+        const replacements = [
+          {
+            path: 'src/parse.ts',
+            content: originalParse.replace(
+              "typeof value.status !== 'number'",
+              '!Number.isInteger(value.status) || value.status < 100 || value.status > 599',
+            ),
+          },
+          {
+            path: 'src/report.ts',
+            content: originalReport.replace('r.status >= 400).length', 'r.status >= 500).length'),
+          },
+        ]
+        const timesheetFixture = join(fixture, '../timesheet')
+        const originalTime = await readFile(join(timesheetFixture, 'src/parse.ts'), 'utf8')
+        const originalTotal = await readFile(join(timesheetFixture, 'src/total.ts'), 'utf8')
+        const timesheetReplacements = [
+          {
+            path: 'src/parse.ts',
+            content: originalTime.replace('hour > 23', 'hour > 23 || minute > 59'),
+          },
+          {
+            path: 'src/total.ts',
+            content: originalTotal.replace(
+              'Math.max(0, shift.end - shift.start)',
+              '(shift.end - shift.start + 1440) % 1440',
+            ),
+          },
+        ]
+        let calls = 0
+        const repairPasses = scenario !== 'unsuccessful'
+        const server = createServer(async (request, response) => {
+          const requestText = await new Response(request as any).text()
+          const selectedReplacements = requestText.includes('src/total.ts')
+            ? timesheetReplacements
+            : replacements
+          calls++
+          response.writeHead(200, { 'content-type': 'application/json' }).end(
+            JSON.stringify({
+              status: 'completed',
+              output: [
                 {
-                  type: 'output_text',
-                  text: JSON.stringify({
-                    replacements: repairPasses ? selectedReplacements : [selectedReplacements[1]],
-                    summary:
-                      'Apply the two source corrections and keep all acceptance checks unchanged.',
-                  }),
+                  type: 'message',
+                  role: 'assistant',
+                  content: [
+                    {
+                      type: 'output_text',
+                      text: JSON.stringify({
+                        replacements: repairPasses
+                          ? selectedReplacements
+                          : [selectedReplacements[1]],
+                        summary:
+                          'Apply the two source corrections and keep all acceptance checks unchanged.',
+                      }),
+                    },
+                  ],
                 },
               ],
-            },
-          ],
-        }),
-      )
-    })
-    let owner = new PrivateFileDeliveryOwner(new AbortController().signal)
-    let checkpoints: PrivateRunCheckpoints | undefined
-    try {
-      await cp(join(import.meta.dir, '../../../examples/tested-patch'), project, {
-        recursive: true,
-        filter: (source) => !['node_modules', '.jig', 'jig.lock'].includes(basename(source)),
-      })
-      // This is source-candidate host evidence, not a registry-install proof.
-      // Vendor the built SDK into disposable Flow copies so a new wire API
-      // can be tested before publication, without fabricating an npm lock.
-      for (const entry of await readdir(join(project, 'flows'), { withFileTypes: true })) {
-        const flow = join(project, 'flows', entry.name)
-        if (!entry.isDirectory() || !(await Bun.file(join(flow, 'FLOW.md')).exists())) continue
-        await cp(join(import.meta.dir, '../../flow-sdk/dist'), join(flow, 'sdk'), {
-          recursive: true,
-        })
-        for (const entry of await readdir(flow)) {
-          if (!entry.endsWith('.ts')) continue
-          const path = join(flow, entry)
-          await writeFile(
-            path,
-            (await readFile(path, 'utf8')).replaceAll("'@jigging/flow'", "'./sdk/index.js'"),
+            }),
           )
-        }
-        await rm(join(flow, 'package.json'))
-        await rm(join(flow, 'bun.lock'), { force: true })
-      }
-      await new Promise<void>((resolve, reject) => {
-        server.once('error', reject)
-        server.listen(0, '127.0.0.1', resolve)
-      })
-      const address = server.address()
-      if (!address || typeof address === 'string') throw new Error('no local fixture endpoint')
-      await mkdir(release)
-      const location = await writeInstalledFixture(release)
-      const workerPath = join(release, 'libexec/agent/openai-agent-worker.js')
-      const worker = await readFile(
-        join(installedBunLocation.releaseRoot, 'libexec/agent/openai-agent-worker.js'),
-        'utf8',
-      )
-      await writeFile(
-        workerPath,
-        `const recordedFetch = globalThis.fetch;
+        })
+        const owner = new PrivateFileDeliveryOwner(new AbortController().signal)
+        let checkpoints: PrivateRunCheckpoints | undefined
+        try {
+          await cp(join(import.meta.dir, '../../../examples/tested-patch'), project, {
+            recursive: true,
+            filter: (source) => !['node_modules', '.jig', 'jig.lock'].includes(basename(source)),
+          })
+          // This is source-candidate host evidence, not a registry-install proof.
+          // Vendor the built SDK into disposable Flow copies so a new wire API
+          // can be tested before publication, without fabricating an npm lock.
+          for (const entry of await readdir(join(project, 'flows'), { withFileTypes: true })) {
+            const flow = join(project, 'flows', entry.name)
+            if (!entry.isDirectory() || !(await Bun.file(join(flow, 'FLOW.md')).exists())) continue
+            await cp(join(import.meta.dir, '../../flow-sdk/dist'), join(flow, 'sdk'), {
+              recursive: true,
+            })
+            for (const entry of await readdir(flow)) {
+              if (!entry.endsWith('.ts')) continue
+              const path = join(flow, entry)
+              await writeFile(
+                path,
+                (await readFile(path, 'utf8')).replaceAll("'@jigging/flow'", "'./sdk/index.js'"),
+              )
+            }
+            await rm(join(flow, 'package.json'))
+            await rm(join(flow, 'bun.lock'), { force: true })
+          }
+          await new Promise<void>((resolve, reject) => {
+            server.once('error', reject)
+            server.listen(0, '127.0.0.1', resolve)
+          })
+          const address = server.address()
+          if (!address || typeof address === 'string') throw new Error('no local fixture endpoint')
+          await mkdir(release)
+          const location = await writeInstalledFixture(release)
+          const workerPath = join(release, 'libexec/agent/openai-agent-worker.js')
+          const worker = await readFile(
+            join(installedBunLocation.releaseRoot, 'libexec/agent/openai-agent-worker.js'),
+            'utf8',
+          )
+          await writeFile(
+            workerPath,
+            `const recordedFetch = globalThis.fetch;
 globalThis.fetch = (url, init) => {
   if (String(url) !== 'https://repair-proof.invalid/v1/responses') throw new Error('unexpected endpoint');
   return recordedFetch('http://127.0.0.1:${address.port}/v1/responses', init);
 };\n` + worker,
-      )
-      const installed = await openPrivateInstalledBunHost(location, {
-        OPENAI_API: 'responses',
-        OPENAI_BASE_URL: 'https://repair-proof.invalid/v1',
-        OPENAI_MODEL: 'local-fixed-response',
-        OPENAI_API_KEY: 'synthetic-no-remote-credential',
-      })
-      let stdout = '',
-        stderr = ''
-      const options = {
-        currentDirectory: project,
-        interactive: false,
-        writeOutput: (text: string) => {
-          stdout += text
-        },
-        writeError: (text: string) => {
-          stderr += text
-        },
-        host: {
-          acquire: (
-            directory: string,
-            options?: {
-              runTimeoutMs?: number
-              files?: import('../src/internal/root-run-files.js').PrivateRootRunFiles
+          )
+          const installed = await openPrivateInstalledBunHost(location, {
+            OPENAI_API: 'responses',
+            OPENAI_BASE_URL: 'https://repair-proof.invalid/v1',
+            OPENAI_MODEL: 'local-fixed-response',
+            OPENAI_API_KEY: 'synthetic-no-remote-credential',
+          })
+          let stdout = '',
+            stderr = ''
+          const options = {
+            currentDirectory: project,
+            interactive: false,
+            writeOutput: (text: string) => {
+              stdout += text
             },
-          ) => openPrivateProjectSession({ directory, host: { ...installed, ...options } }),
-          delivery: {
-            get checkpoint() {
-              return checkpoints?.latest ?? null
+            writeError: (text: string) => {
+              stderr += text
             },
-            bindCheckpoint: async (identity: RunCheckpointIdentity) => {
-              checkpoints = new PrivateRunCheckpoints(identity)
+            host: {
+              acquire: (
+                directory: string,
+                options?: {
+                  runTimeoutMs?: number
+                  files?: import('../src/internal/root-run-files.js').PrivateRootRunFiles
+                },
+              ) => openPrivateProjectSession({ directory, host: { ...installed, ...options } }),
+              delivery: {
+                get checkpoint() {
+                  return checkpoints?.latest ?? null
+                },
+                bindCheckpoint: async (identity: RunCheckpointIdentity) => {
+                  checkpoints = new PrivateRunCheckpoints(identity)
+                },
+                saveCheckpoint: async (input: RunCheckpointInput) => checkpoints!.accept(input),
+                prepare: (directory: string, roots: readonly number[]) =>
+                  owner.prepare(directory, process.pid, roots),
+                publish: (record: import('../src/json.js').JsonValue, fd: number | undefined) =>
+                  owner.publish(
+                    { ...(record as any), checkpoint: checkpoints?.latest ?? null },
+                    process.pid,
+                    fd,
+                    checkpoints?.latest,
+                    true,
+                  ),
+              },
             },
-            saveCheckpoint: async (input: RunCheckpointInput) => checkpoints!.accept(input),
-            prepare: (directory: string, roots: readonly number[]) =>
-              owner.prepare(directory, process.pid, roots),
-            publish: (record: import('../src/json.js').JsonValue, fd: number | undefined) =>
-              owner.publish(
-                { ...(record as any), checkpoint: checkpoints?.latest ?? null },
-                process.pid,
-                fd,
-                checkpoints?.latest,
-                true,
+          }
+          expect(await main(['review', '--yes'], options), stderr).toBe(0)
+          stdout = ''
+          stderr = ''
+          const before = await readFile(join(project, 'fixtures/log-report/src/parse.ts'))
+          if (scenario === 'successful') {
+            expect(
+              await main(
+                [
+                  'run',
+                  'binding:repair',
+                  '--input',
+                  '@issue.json',
+                  '--attach',
+                  'source=fixtures/log-report',
+                  '--out',
+                  out,
+                  '--timeout',
+                  '120s',
+                ],
+                options,
               ),
-          },
-        },
-      }
-      expect(await main(['review', '--yes'], options), stderr).toBe(0)
-      stdout = ''
-      stderr = ''
-      const before = await readFile(join(project, 'fixtures/log-report/src/parse.ts'))
-      expect(
-        await main(
-          [
-            'run',
-            'binding:repair',
-            '--input',
-            '@issue.json',
-            '--attach',
-            'source=fixtures/log-report',
-            '--out',
-            out,
-            '--timeout',
-            '120s',
-          ],
-          options,
-        ),
-        stdout + stderr,
-      ).toBe(0)
-      const record = JSON.parse(stdout)
-      expect(record).toMatchObject({
-        status: 'succeeded',
-        outcome: 'done',
-        delivery: { status: 'written' },
-      })
-      expect(await readFile(join(out, 'files/summary.txt'), 'utf8')).toContain('review-ready')
-      expect(await readFile(join(out, 'files/review.patch'), 'utf8')).toContain(
-        '--- a/src/parse.ts',
-      )
-      expect(await readFile(join(out, 'files/review.patch'), 'utf8')).toContain(
-        '--- a/src/report.ts',
-      )
-      expect(record.output.baseline.acceptance.filter((c: any) => !c.passed)).toHaveLength(3)
-      expect(record.output.attempts[0].evaluation.acceptance.every((c: any) => c.passed)).toBe(true)
-      expect(record.output.attempts[0].evaluation.commands[0].exitCode).toBe(0)
-      expect(record.output.recording).toMatchObject({ complete: true, startSequence: 1 })
-      expect(record.output.recording.records).toHaveLength(4)
-      expect(JSON.parse(await readFile(join(out, 'files/progress.json'), 'utf8'))).toEqual(
-        record.output.recording,
-      )
-      expect(JSON.parse(await readFile(join(out, 'result.json'), 'utf8'))).toEqual(record)
-      expect(await readFile(join(project, 'fixtures/log-report/src/parse.ts'))).toEqual(before)
-      expect(await readFile(join(project, 'fixtures/log-report/src/report.ts'), 'utf8')).toEqual(
-        originalReport,
-      )
-      expect(calls).toBe(1)
-      await owner.close()
-      owner = new PrivateFileDeliveryOwner(new AbortController().signal)
-      repairPasses = false
-      stdout = ''
-      stderr = ''
-      const failedOut = join(root, 'unsuccessful')
-      expect(
-        await main(
-          [
-            'run',
-            'binding:repair',
-            '--input',
-            '@issue.json',
-            '--attach',
-            'source=fixtures/log-report',
-            '--out',
-            failedOut,
-            '--timeout',
-            '120s',
-          ],
-          options,
-        ),
-        stdout + stderr,
-      ).toBe(0)
-      const unsuccessful = JSON.parse(stdout)
-      expect(unsuccessful).toMatchObject({
-        status: 'succeeded',
-        outcome: 'blocked',
-        delivery: { status: 'written' },
-      })
-      expect(unsuccessful.output.attempts).toHaveLength(2)
-      expect(unsuccessful.output.attempts.every((a: any) => a.evaluation.accepted === false)).toBe(
-        true,
-      )
-      expect((await readdir(join(failedOut, 'files'))).sort()).toEqual([
-        'progress.json',
-        'proposal-1.patch',
-        'proposal-2.patch',
-        'summary.txt',
-      ])
-      expect(await readFile(join(project, 'fixtures/log-report/src/parse.ts'))).toEqual(before)
-      expect(calls).toBe(3)
-      await owner.close()
-      owner = new PrivateFileDeliveryOwner(new AbortController().signal)
-      repairPasses = true
-      stdout = ''
-      stderr = ''
-      const batchOut = join(root, 'batch')
-      expect(
-        await main(
-          [
-            'run',
-            'binding:repair',
-            '--input',
-            '@batch.json',
-            '--attach',
-            'source=fixtures',
-            '--out',
-            batchOut,
-            '--timeout',
-            '180s',
-          ],
-          options,
-        ),
-        stdout + stderr,
-      ).toBe(0)
-      const batch = JSON.parse(stdout)
-      expect(batch).toMatchObject({
-        status: 'succeeded',
-        outcome: 'done',
-        delivery: { status: 'written' },
-      })
-      expect(batch.output.overlaps).toEqual([])
-      expect(batch.output.jobs).toHaveLength(2)
-      expect(new Set(batch.output.jobs.map((job: any) => job.baseDigest)).size).toBe(2)
-      for (const job of batch.output.jobs) {
-        expect(job).toMatchObject({ status: 'settled', ready: true })
-        expect(job.result.output.baseline.acceptance.some((c: any) => !c.passed)).toBe(true)
-        expect(
-          job.result.output.attempts[0].evaluation.acceptance.every((c: any) => c.passed),
-        ).toBe(true)
-        expect(job.result.output.attempts[0].evaluation.commands[0].exitCode).toBe(0)
-        const patch = await readFile(join(batchOut, 'files', job.id, 'review.patch'), 'utf8')
-        expect(patch).toContain('--- a/src/parse.ts')
-        expect(patch).toContain(job.id === 'logs' ? '--- a/src/report.ts' : '--- a/src/total.ts')
-      }
-      expect(await readFile(join(project, 'fixtures/log-report/src/parse.ts'))).toEqual(before)
-      expect(await readFile(join(project, 'fixtures/timesheet/src/parse.ts'), 'utf8')).toBe(
-        originalTime,
-      )
-      expect(await readFile(join(project, 'fixtures/timesheet/src/total.ts'), 'utf8')).toBe(
-        originalTotal,
-      )
-      expect(calls).toBe(5)
-    } finally {
-      await owner.close()
-      await new Promise<void>((resolve) => server.close(() => resolve()))
-      await rm(root, { recursive: true, force: true })
-    }
-  }, 300_000)
+              stdout + stderr,
+            ).toBe(0)
+            const record = JSON.parse(stdout)
+            expect(record).toMatchObject({
+              status: 'succeeded',
+              outcome: 'done',
+              delivery: { status: 'written' },
+            })
+            expect(await readFile(join(out, 'files/summary.txt'), 'utf8')).toContain('review-ready')
+            expect(await readFile(join(out, 'files/review.patch'), 'utf8')).toContain(
+              '--- a/src/parse.ts',
+            )
+            expect(await readFile(join(out, 'files/review.patch'), 'utf8')).toContain(
+              '--- a/src/report.ts',
+            )
+            expect(record.output.baseline.acceptance.filter((c: any) => !c.passed)).toHaveLength(3)
+            expect(
+              record.output.attempts[0].evaluation.acceptance.every((c: any) => c.passed),
+            ).toBe(true)
+            expect(record.output.attempts[0].evaluation.commands[0].exitCode).toBe(0)
+            expect(record.output.recording).toMatchObject({ complete: true, startSequence: 1 })
+            expect(record.output.recording.records).toHaveLength(4)
+            expect(JSON.parse(await readFile(join(out, 'files/progress.json'), 'utf8'))).toEqual(
+              record.output.recording,
+            )
+            expect(JSON.parse(await readFile(join(out, 'result.json'), 'utf8'))).toEqual(record)
+            expect(await readFile(join(project, 'fixtures/log-report/src/parse.ts'))).toEqual(
+              before,
+            )
+            expect(
+              await readFile(join(project, 'fixtures/log-report/src/report.ts'), 'utf8'),
+            ).toEqual(originalReport)
+            expect(calls).toBe(1)
+          }
+          if (scenario === 'unsuccessful') {
+            const failedOut = join(root, 'unsuccessful')
+            expect(
+              await main(
+                [
+                  'run',
+                  'binding:repair',
+                  '--input',
+                  '@issue.json',
+                  '--attach',
+                  'source=fixtures/log-report',
+                  '--out',
+                  failedOut,
+                  '--timeout',
+                  '120s',
+                ],
+                options,
+              ),
+              stdout + stderr,
+            ).toBe(0)
+            const unsuccessful = JSON.parse(stdout)
+            expect(unsuccessful).toMatchObject({
+              status: 'succeeded',
+              outcome: 'blocked',
+              delivery: { status: 'written' },
+            })
+            expect(unsuccessful.output.attempts).toHaveLength(2)
+            expect(
+              unsuccessful.output.attempts.every((a: any) => a.evaluation.accepted === false),
+            ).toBe(true)
+            expect((await readdir(join(failedOut, 'files'))).sort()).toEqual([
+              'progress.json',
+              'proposal-1.patch',
+              'proposal-2.patch',
+              'summary.txt',
+            ])
+            expect(await readFile(join(project, 'fixtures/log-report/src/parse.ts'))).toEqual(
+              before,
+            )
+            expect(calls).toBe(2)
+          }
+          if (scenario === 'batch') {
+            const batchOut = join(root, 'batch')
+            expect(
+              await main(
+                [
+                  'run',
+                  'binding:repair',
+                  '--input',
+                  '@batch.json',
+                  '--attach',
+                  'source=fixtures',
+                  '--out',
+                  batchOut,
+                  '--timeout',
+                  '180s',
+                ],
+                options,
+              ),
+              stdout + stderr,
+            ).toBe(0)
+            const batch = JSON.parse(stdout)
+            expect(batch).toMatchObject({
+              status: 'succeeded',
+              outcome: 'done',
+              delivery: { status: 'written' },
+            })
+            expect(batch.output.overlaps).toEqual([])
+            expect(batch.output.jobs).toHaveLength(2)
+            expect(new Set(batch.output.jobs.map((job: any) => job.baseDigest)).size).toBe(2)
+            for (const job of batch.output.jobs) {
+              expect(job).toMatchObject({ status: 'settled', ready: true })
+              expect(job.result.output.baseline.acceptance.some((c: any) => !c.passed)).toBe(true)
+              expect(
+                job.result.output.attempts[0].evaluation.acceptance.every((c: any) => c.passed),
+              ).toBe(true)
+              expect(job.result.output.attempts[0].evaluation.commands[0].exitCode).toBe(0)
+              const patch = await readFile(join(batchOut, 'files', job.id, 'review.patch'), 'utf8')
+              expect(patch).toContain('--- a/src/parse.ts')
+              expect(patch).toContain(
+                job.id === 'logs' ? '--- a/src/report.ts' : '--- a/src/total.ts',
+              )
+            }
+            expect(await readFile(join(project, 'fixtures/log-report/src/parse.ts'))).toEqual(
+              before,
+            )
+            expect(await readFile(join(project, 'fixtures/timesheet/src/parse.ts'), 'utf8')).toBe(
+              originalTime,
+            )
+            expect(await readFile(join(project, 'fixtures/timesheet/src/total.ts'), 'utf8')).toBe(
+              originalTotal,
+            )
+            expect(calls).toBe(2)
+          }
+        } finally {
+          await owner.close()
+          await new Promise<void>((resolve) => server.close(() => resolve()))
+          await rm(root, { recursive: true, force: true })
+        }
+        // Each case owns one bounded Run. Leave setup/cleanup time outside its
+        // 120s/180s execution budget instead of killing a three-Run aggregate early.
+      },
+      scenario === 'batch' ? 240_000 : 180_000,
+    )
+  }
 })
 const nativeCodexPath = process.env.JIG_CODEX_PROOF_PATH
 const nativeCodexTest =

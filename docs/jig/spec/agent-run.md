@@ -31,9 +31,13 @@ uses:
 ---
 ```
 
-The slot name `agent` is local to this package. The alpha accepts at most one
-capability use per package, and it must be this exact descriptor. Jig resolves
-and admits its identity offline; the contract URI is not fetched at runtime.
+The slot name `agent` is local to this package. A package may declare one slot
+for each supported capability: Agent Run, [Project Command](project-command.md),
+and [Run Checkpoint](run-checkpoint.md). Each requires its exact descriptor and
+its own eligibility conditions: Project Command needs reviewed Binding command
+policy, and Run Checkpoint requires a root writable attachment and output owner.
+Jig resolves and admits these identities offline; contract URIs are not fetched
+at runtime. Declarations do not grant additional concurrent worker capacity.
 
 ## Calling the Agent
 
