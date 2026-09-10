@@ -41,7 +41,7 @@ export default defineConfig({
   root: resolve(siteDirectory, '../../docs/flow'),
   themeDir: resolve(siteDirectory, '../theme'),
   globalStyles: resolve(siteDirectory, 'diagrams.css'),
-  markdown: { rehypePlugins: [accessibleMarkdown], shiki: { themes: { light: 'github-light-high-contrast', dark: 'github-dark-high-contrast' } } },
+  markdown: { rehypePlugins: [accessibleMarkdown], shiki: { themes: { light: 'github-light-high-contrast', dark: 'one-dark-pro' } } },
   llms: { llmsTxt: documentationIndex(sidebar) },
   route: { exclude: ['**/AGENTS.md'] },
   outDir: process.env.PUBLIC_SITE_OUTPUT ?? resolve(siteDirectory, 'doc_build'),

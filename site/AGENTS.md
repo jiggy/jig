@@ -48,6 +48,10 @@ Jig public sites.
   with focused extensions. Judge presentation against excellent product sites,
   documentation coverage against supported tasks, and simplicity by real paths
   to useful results; avoid unsupported competitive claims.
+- Use Rspress’s native Shiki highlighting with One Dark Pro for dark-mode
+  code blocks and GitHub Light High Contrast for light mode on both sites.
+  `landing.css` must apply the emitted dark token variables under `html.rp-dark`;
+  selecting two palettes in configuration alone does not switch their styles.
 - Keep guide diagrams as static images with the existing image zoom. Preserve
   ordinary Markdown, theme inheritance, mobile containment, and image aspect
   ratios; no embedded diagram viewer is needed for the reading path.
