@@ -2,11 +2,11 @@
 
 Minimal, dependency-free Python projection of FLOW Run/1.
 
-This is the `0.1.0a3` prerelease candidate. Publication is tracked on
-[PyPI](https://pypi.org/project/jiggy-flow/0.1.0a3/); it does not establish a stable
-compatibility promise. Python 3.11 or newer is required. Once published, install
-with `python -m pip install jiggy-flow==0.1.0a3`, or install the candidate wheel
-before publication. The SDK has no third-party runtime dependencies.
+The SDK is prerelease software and requires Python 3.11 or newer. Install the
+latest published prerelease with `python -m pip install --upgrade --pre jiggy-flow`.
+See [PyPI](https://pypi.org/project/jiggy-flow/) for available releases. Prereleases
+do not establish a stable compatibility promise. The SDK has no third-party
+runtime dependencies.
 
 The [Python guide](https://flow.jig.md/guide/python) walks through a complete
 method and a local Run/1 exchange. FLOW does not require Jig; execution support

@@ -11,9 +11,8 @@ FLOW is independent of Jig; choose a host that supports Python execution.
 
 ## Install
 
-The current prerelease candidate is `0.1.0a3`. Check its
-[PyPI version page](https://pypi.org/project/jiggy-flow/0.1.0a3/) for publication.
-Once available, install it into your application's virtual environment:
+Install the latest published prerelease from
+[PyPI](https://pypi.org/project/jiggy-flow/) into your application's virtual environment:
 
 ```sh
 python -m venv .venv
@@ -23,11 +22,11 @@ Activate with `source .venv/bin/activate` on Linux/macOS or
 `.venv\Scripts\Activate.ps1` in Windows PowerShell, then:
 
 ```sh
-python -m pip install jiggy-flow==0.1.0a3
+python -m pip install --upgrade --pre jiggy-flow
 ```
 
-Before publication, install the candidate wheel from its release build with
-`python -m pip install /path/to/jiggy_flow-0.1.0a3-py3-none-any.whl`.
+To test an unpublished candidate, pass the path to its built `.whl` file to
+`python -m pip install`.
 An installed package needs neither this repository nor a development task runner.
 
 ## Write a method

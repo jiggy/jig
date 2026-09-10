@@ -6,10 +6,13 @@ import subprocess
 import shutil
 import tarfile
 import sys
+import tomllib
 from tempfile import TemporaryDirectory
 
 
 def main() -> None:
+    manifest = Path(__file__).resolve().parents[1] / "pyproject.toml"
+    expected_version = tomllib.loads(manifest.read_text())["project"]["version"]
     artifacts = [Path(argument).resolve() for argument in sys.argv[1:]]
     if len(artifacts) != 2:
         raise SystemExit("usage: package_smoke.py DIST.whl DIST.tar.gz")
@@ -68,6 +71,7 @@ def main() -> None:
                     "-I",
                     "-c",
                     """
+import sys
 from importlib.metadata import metadata
 from importlib.resources import files
 import jiggy
@@ -80,7 +84,7 @@ assert operation.code == "UNAVAILABLE"
 assert effect.error_name == "not-found"
 assert files("jiggy.flow").joinpath("py.typed").is_file()
 distribution = metadata("jiggy-flow")
-assert distribution["Version"] == "0.1.0a3"
+assert distribution["Version"] == sys.argv[1]
 assert distribution["License-Expression"] == "Apache-2.0"
 assert not distribution.get_all("Requires-Dist")
 assert "../../docs/" not in distribution.get_payload()
@@ -90,6 +94,7 @@ assert callable(jiggy.flow.handle)
 assert "run_child_flow" in jiggy.flow.RunContext.__dict__
 assert "call_capability" in jiggy.flow.RunContext.__dict__
 """,
+                    expected_version,
                 ],
                 check=True,
                 env=install_environment,

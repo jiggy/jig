@@ -54,6 +54,9 @@ is independently packaged for PyPI prereleases; Jig hosting is outside its scope
   and correlate frames by method and request identity; concurrent cancellation
   notifications need not leave a request at the end of captured output.
 - Keep typing, validation, examples, and package metadata aligned.
+- `pyproject.toml` owns the release version; package checks read it rather than
+  duplicating the value. Installation prose links to the package on PyPI and
+  uses `--pre`, so routine alpha bumps do not require editorial changes.
 - Run installed distributions outside the checkout with no source-path injection.
 - Qualify Python 3.11–3.14 and representative Linux/macOS/Windows interpreters;
   CI configuration is not evidence that a particular run passed.

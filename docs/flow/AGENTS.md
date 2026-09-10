@@ -41,6 +41,9 @@ and capability-contract semantics.
 - Lead introductions with the applications readers can build by composing
   executable methods. Keep stewardship and governance in supporting reference
   material, after the technical value is clear.
+- Keep Python installation guidance independent of the current alpha number:
+  link to the PyPI project and use `--pre`; exact versions belong in manifests
+  and immutable release records.
 - Prefer the smallest portable boundary that permits an independent host and
   component to interoperate.
 
