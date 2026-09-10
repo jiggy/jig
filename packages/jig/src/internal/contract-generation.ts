@@ -6,7 +6,7 @@ import { decodeJson1 } from '../json.js'
 import { parseInvocationContract } from '../invocation-contract.js'
 import type { PrepareCapturedFlow } from '../project/flow-source.js'
 import type { PrivateProjectRoot } from '../project/root.js'
-import { assertPrivateAgentResponseSchema } from './openai-agent-client.js'
+import { assertResponseSchema } from '@jigging/agent-method'
 import { generateContract, type GeneratedContract } from './contract-authoring-client.js'
 
 const SOURCE = 'FLOW.contract.tsp'
@@ -251,7 +251,7 @@ export function prepareContractGeneration(options: {
         parseInvocationContract(Buffer.from(generated.artifacts[DESCRIPTOR]!), DESCRIPTOR)
         for (const [name, content] of Object.entries(generated.artifacts)) {
           if (name !== DESCRIPTOR && name !== 'FLOW.contract.d.ts')
-            assertPrivateAgentResponseSchema(decode(content))
+            assertResponseSchema(decode(content))
           after[name] = content
         }
         after[SOURCE] = generated.source

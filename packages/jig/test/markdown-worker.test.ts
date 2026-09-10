@@ -12,9 +12,9 @@ import {
 } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { basename, isAbsolute, join, resolve } from 'node:path'
+import { assertResponseSchema } from '@jigging/agent-method'
 
 import { markdownAgentContract } from '../src/internal/markdown-agent-contract.js'
-import { assertPrivateAgentResponseSchema } from '../src/internal/openai-agent-client.js'
 import { parseAgentRunInput, parseAgentRunResult } from '../src/internal/private-agent-run.js'
 import { MARKDOWN_INTERPRETER_TEMPLATE } from '../src/markdown/runtime.js'
 
@@ -209,7 +209,7 @@ describe('bundled Markdown worker over FLOW/1', () => {
       }
       expect(call.slot).toBe('markdown-agent')
       const prepared = parseAgentRunInput(contract, call.input)
-      assertPrivateAgentResponseSchema(prepared.input.responseSchema!)
+      assertResponseSchema(prepared.input.responseSchema!)
       expect(prepared.input.instructions.startsWith(MARKDOWN_INTERPRETER_TEMPLATE + '\n\n')).toBe(
         true,
       )
@@ -249,9 +249,8 @@ describe('bundled Markdown worker over FLOW/1', () => {
           throw new Error('unexpected repair/reasoning call')
       }
       parseAgentRunResult(contract, prepared, {
-        outcome: 'completed',
-        text: '',
-        structured: decision as any,
+        outcome: 'done',
+        output: { text: '', structured: decision },
       })
       return agent(decision)
     })

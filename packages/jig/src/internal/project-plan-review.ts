@@ -1,9 +1,9 @@
 import { ProjectAdministrationError } from '../administration/project.js'
 import { privateCliValueFields } from '../cli-value-presentation.js'
+import { isAgentInvocation } from '../project/invocation-slots.js'
 import type { RunTargetIdentity } from '../project/package-project.js'
 import type { PrivateActivationReviewPlan } from './activation-admission-store.js'
 import type { PrivateAgentProvider } from './agent-provider.js'
-import { AGENT_RUN_CONTRACT_DIGEST } from './private-agent-run.js'
 
 // Four MiB leaves a conservative JSON/1 envelope after every ASCII backslash
 // and quote in the review string is escaped by the outer value encoding.
@@ -45,7 +45,7 @@ export function renderPrivateProjectPlanReview(
     agentProvider !== undefined &&
     plan.proposed.targets.some((target) =>
       Object.values(target.request.slots).some(
-        (route) => route.kind === 'native' && route.native === 'agent',
+        (route) => route.kind === 'native' && isAgentInvocation(route.native),
       ),
     )
       ? agentProvider.kind === 'private-openai-agent-provider/1'

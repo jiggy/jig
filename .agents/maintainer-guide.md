@@ -280,6 +280,15 @@ It is not a new FLOW method, model authority, or public provider framework.
 The public value contract belongs in
 [`agent-run.md`](../docs/jig/spec/agent-run.md).
 
+`@jigging/agent-method` owns the reusable preparation and interpretation code,
+with a complete ordinary Flow entrypoint. Its keyless method uses
+[Agent Exchange](../docs/jig/spec/agent-exchange.md) for one bounded provider
+request. Native Agent Run imports the same code while retaining authenticated
+caller Skill selection and independent result validation. An ordinary Agent
+Flow selects only its own Skills or explicit guidance; it does not inherit
+native provenance. Existing specialists can reuse the library without another
+Flow level. Provider configuration, permissions and cleanup remain host-owned.
+
 The Flow supplies bounded instructions, an optional exact package-local skill
 selection, and an optional bounded result schema. It cannot select the Agent
 client, endpoint, model, executable, credential, or network policy. Those are

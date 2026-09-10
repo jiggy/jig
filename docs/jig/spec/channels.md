@@ -10,11 +10,13 @@ publish and how to display it.
 ## Supported connections
 
 A Flow can create direct or broadcast channels. Either delivery can connect a
-send endpoint to the optional `events` channel of an [Agent Run](agent-run.md).
+send endpoint to the optional `events` channel of an [Agent Run](agent-run.md)
+or [Agent Exchange](agent-exchange.md).
 The native ACP adapters
 implement the exact [ACP public updates](../contracts/acp-public-updates.md)
 profile. API clients retain ordinary one-shot support; requesting this profile
-from an unsupported client fails before provider dispatch.
+from an unsupported client fails before the native call transfers endpoints
+or dispatches the provider. An outer ordinary Flow may already have started.
 An Agent can publish once to independently bounded subscribers; applications
 need no relay merely to fan out the same named updates.
 

@@ -134,7 +134,7 @@ A Flow is a direct Run target only when it:
 
 - has one qualified `FLOW.<ext>` entrypoint and invocation profile;
 - has no unresolved Flow requirements, and uses only the exact native
-  Agent Run and Run Checkpoint defaults when native services are required;
+  Agent Run, Agent Exchange and Run Checkpoint defaults when native services are required;
 - declares at most eight attachments, at most one writable; and
 - accepts `{}` as settings.
 
@@ -346,7 +346,7 @@ per-invocation overrides into settings.
 normalizes to `{}`. A Flow selector must identify a direct Flow target, using
 empty settings. A Binding selector uses that Binding's own validated settings
 and must select a Binding with no child slots. Either target may use the exact
-Agent Run invocation, and a configured Binding may also use
+Agent Run or [Agent Exchange](agent-exchange.md) invocation, and a configured Binding may also use
 [Project Command](project-command.md). Slots cannot select the parent's own package, directly
 or through a Binding; unknown targets, cycles, nonleaf Bindings,
 unqualified execution profiles, and packages requiring attachments reject the
@@ -366,7 +366,7 @@ uncontracted requirements with `{}` or named requirements with a local
 `contract` path. A typed Flow route must offer the identical contract ID,
 version and descriptor/closure digest in its root `FLOW.contract.json`. An explicit
 route wins or fails; it never falls back. Uncontracted exact Binding routes
-need no additional declaration. Only the three qualified native contracts may
+need no additional declaration. Only the four qualified native contracts may
 default to host implementation. They remain native-only: claiming their digest
 does not grant a package credentials, command execution or retention authority.
 Review shows the resolved route and expected contract for each target slot.
@@ -560,7 +560,14 @@ Skill selection, and an optional response Schema/1 value. The result is
 There is no method selector or native-only value wrapper. A completed
 structured result is validated against the caller's schema before return.
 
-Selected skills are immediate `skills/<name>/` subtrees containing exact-case
+The exact [Agent Exchange](agent-exchange.md) slot instead accepts one prepared
+prompt and optional bounded response schema. It returns final text and a stop
+reason after transport settlement; the calling method interprets those values.
+Its native authority, operation identity, remaining deadline and reserved
+effect capacity follow the same host rules. It adds neither caller Skill
+projection nor another ordinary Flow level.
+
+Agent Run's selected Skills are immediate `skills/<name>/` subtrees containing exact-case
 `SKILL.md`. Omission selects none. They are copied from the immutable admitted
 package and passed as read-only guidance only to that call; they grant no
 tools, network, filesystem, child target, or other authority. Agent and child

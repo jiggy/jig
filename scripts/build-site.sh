@@ -136,7 +136,7 @@ docs/flow/spec/machine/schema-1.json|schema-1.json|https://flow.jig.md/schemas/s
 docs/jig/spec/machine/project-authoring-1.schema.json|project-authoring-1.schema.json|-'
     forbidden_page='spec/package-format.html'
     mkdir -p -- "$staging/contracts"
-    for contract in agent-run project-command run-checkpoint; do
+    for contract in agent-run agent-exchange project-command run-checkpoint; do
       if [ ! -s "$staging/contracts/$contract.html" ]; then
         echo "the $contract identity landing page is missing" >&2
         exit 1
@@ -147,9 +147,13 @@ docs/jig/spec/machine/project-authoring-1.schema.json|project-authoring-1.schema
       cp -- "$source" "$destination"
       cmp -- "$source" "$destination"
     done
-    mkdir -p -- "$staging/contracts/agent-run/contracts"
-    cp -- "$repository/docs/jig/spec/contracts/agent-run/contracts/acp-public-updates.json" "$staging/contracts/agent-run/contracts/acp-public-updates.json"
-    cmp -- "$repository/docs/jig/spec/contracts/agent-run/contracts/acp-public-updates.json" "$staging/contracts/agent-run/contracts/acp-public-updates.json"
+    for contract in agent-run agent-exchange; do
+      mkdir -p -- "$staging/contracts/$contract/contracts"
+      cp -- "$repository/docs/jig/spec/contracts/$contract/contracts/acp-public-updates.json" "$staging/contracts/$contract/contracts/acp-public-updates.json"
+      cmp -- "$repository/docs/jig/spec/contracts/$contract/contracts/acp-public-updates.json" "$staging/contracts/$contract/contracts/acp-public-updates.json"
+    done
+    test -s "$staging/spec/agent-exchange.html"
+    test -s "$staging/guide/agent-method.html"
     test -s "$staging/contracts/acp-public-updates.html"
     cp -- "$repository/docs/jig/spec/contracts/acp-public-updates.json" "$staging/contracts/acp-public-updates.json"
     cmp -- "$repository/docs/jig/spec/contracts/acp-public-updates.json" "$staging/contracts/acp-public-updates.json"

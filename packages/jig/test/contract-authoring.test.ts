@@ -1,7 +1,7 @@
 import { beforeAll, expect, test } from 'bun:test'
 import { execFileSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
-import { assertPrivateAgentResponseSchema } from '../src/internal/openai-agent-client.js'
+import { assertResponseSchema } from '@jigging/agent-method'
 import {
   type ParsedInvocationContract,
   parseInvocationContract,
@@ -59,7 +59,7 @@ test('generated contract and Agent projection pass the existing exact readers', 
   expect(contract.invocation?.outcomes).toEqual({ blocked: 'No result' })
   const schema = JSON.parse(artifacts['answer.schema.json']!) as JsonObject
   validateJson1(schema)
-  expect(() => assertPrivateAgentResponseSchema(schema)).not.toThrow()
+  expect(() => assertResponseSchema(schema)).not.toThrow()
   contract.schemas.get('/input')!.validate(input, 'INVALID_INPUT')
   contract.schemas.get('/result')!.validate({ outcome: 'done', output: answer }, 'INVALID_RESULT')
   contract.schemas

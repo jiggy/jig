@@ -2,8 +2,8 @@
 
 ## Purpose
 
-Contains the independently built FLOW SDKs, Jig host, and optional contract
-authoring toolchain.
+Contains the independently built FLOW SDKs, reusable Agent method, Jig host,
+and optional contract authoring toolchain.
 
 ## Ownership
 
@@ -49,6 +49,9 @@ authoring toolchain.
 - Cross-package gate: `FLOW_NODE="$(command -v node)" PYTHON="$(command -v python3)" scripts/test-release.sh`
 
 ## Child DOX Index
+
+- [agent-method/AGENTS.md](agent-method/AGENTS.md) — Shared Agent procedure,
+  bounded Skill reader, and complete ordinary Flow artifact.
 
 - [flow-authoring/AGENTS.md](flow-authoring/AGENTS.md) — Optional TypeSpec
   mapping toolchain, generated contracts, Agent projections and editor types.

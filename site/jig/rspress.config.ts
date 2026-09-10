@@ -20,6 +20,7 @@ const sidebar = [
     text: 'Build',
     items: [
       { text: 'Choose an Agent', link: '/guide/agents' },
+      { text: 'Reuse the Agent method', link: '/guide/agent-method' },
       { text: 'Flow dependencies', link: '/guide/dependencies' },
       { text: 'Author contracts', link: '/guide/contracts' },
       { text: 'Working with files', link: '/guide/files' },
@@ -51,6 +52,7 @@ const sidebar = [
       { text: 'Project authoring', link: '/spec/project-sdk' },
       { text: 'Execution policy', link: '/spec/project-policy' },
       { text: 'Agent Run', link: '/spec/agent-run' },
+      { text: 'Agent Exchange', link: '/spec/agent-exchange' },
       { text: 'Project Command', link: '/spec/project-command' },
       { text: 'Channels', link: '/spec/channels' },
       { text: 'Run Checkpoint', link: '/spec/run-checkpoint' },
@@ -62,6 +64,7 @@ const sidebar = [
     collapsed: true,
     items: [
       { text: 'Agent Run', link: '/contracts/agent-run' },
+      { text: 'Agent Exchange', link: '/contracts/agent-exchange' },
       { text: 'ACP public updates', link: '/contracts/acp-public-updates' },
       { text: 'Project Command', link: '/contracts/project-command' },
       { text: 'Run Checkpoint', link: '/contracts/run-checkpoint' },

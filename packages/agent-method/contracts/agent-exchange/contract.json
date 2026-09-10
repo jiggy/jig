@@ -1,0 +1,38 @@
+{
+  "$schema": "https://flow.jig.md/schemas/invocation-contract-1.schema.json",
+  "id": "https://jig.md/contracts/agent-exchange",
+  "version": "1.0.0",
+  "input": {
+    "type": "object",
+    "properties": {
+      "prompt": { "type": "string", "minLength": 1, "maxLength": 1048576 },
+      "responseSchema": { "type": "object" }
+    },
+    "required": ["prompt"],
+    "additionalProperties": false
+  },
+  "result": {
+    "type": "object",
+    "properties": {
+      "outcome": { "const": "done" },
+      "output": {
+        "type": "object",
+        "properties": {
+          "text": { "type": "string", "maxLength": 8388608 },
+          "stop": { "enum": ["end-turn", "refusal", "limit"] }
+        },
+        "required": ["text", "stop"],
+        "additionalProperties": false
+      }
+    },
+    "required": ["outcome", "output"],
+    "additionalProperties": false
+  },
+  "channels": {
+    "events": {
+      "direction": "send",
+      "required": false,
+      "contract": "./contracts/acp-public-updates.json"
+    }
+  }
+}

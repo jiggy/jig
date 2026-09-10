@@ -1,5 +1,10 @@
 import { isContractId, isContractVersion } from '../contract-identity.js'
 import {
+  AGENT_EXCHANGE_CONTRACT_DIGEST,
+  AGENT_EXCHANGE_CONTRACT_ID,
+  AGENT_EXCHANGE_CONTRACT_VERSION,
+} from '../internal/private-agent-exchange.js'
+import {
   AGENT_RUN_CONTRACT_DIGEST,
   AGENT_RUN_CONTRACT_ID,
   AGENT_RUN_CONTRACT_VERSION,
@@ -25,7 +30,7 @@ export interface InvocationIdentity {
 }
 
 export type InvocationRequirement = InvocationIdentity | Readonly<Record<string, never>>
-export type NativeInvocation = 'agent' | 'project-command' | 'run-checkpoint'
+export type NativeInvocation = 'agent' | 'agent-exchange' | 'project-command' | 'run-checkpoint'
 export type InvocationSlot =
   | {
       readonly kind: 'flow'
@@ -45,6 +50,11 @@ const NATIVE: Readonly<Record<NativeInvocation, InvocationIdentity>> = Object.fr
     version: AGENT_RUN_CONTRACT_VERSION,
     digest: AGENT_RUN_CONTRACT_DIGEST,
   }),
+  'agent-exchange': Object.freeze({
+    id: AGENT_EXCHANGE_CONTRACT_ID,
+    version: AGENT_EXCHANGE_CONTRACT_VERSION,
+    digest: AGENT_EXCHANGE_CONTRACT_DIGEST,
+  }),
   'project-command': Object.freeze({
     id: PROJECT_COMMAND_CONTRACT_ID,
     version: PROJECT_COMMAND_CONTRACT_VERSION,
@@ -56,6 +66,11 @@ const NATIVE: Readonly<Record<NativeInvocation, InvocationIdentity>> = Object.fr
     digest: RUN_CHECKPOINT_CONTRACT_DIGEST,
   }),
 })
+
+/** Both Agent interfaces use the same authenticated, bounded provider owner. */
+export function isAgentInvocation(native: NativeInvocation | undefined): boolean {
+  return native === 'agent' || native === 'agent-exchange'
+}
 
 export function nativeInvocationKind(
   identity: InvocationRequirement,

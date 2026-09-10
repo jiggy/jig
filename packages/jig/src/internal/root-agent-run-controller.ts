@@ -1,9 +1,19 @@
 import { lstat, mkdir, realpath } from 'node:fs/promises'
 import { join } from 'node:path'
+import {
+  AgentMethodError,
+  finishAgent,
+  type PreparedAgent,
+  prepareAgent,
+} from '@jigging/agent-method'
 import { CheckError } from '../diagnostics.js'
 import { canonicalJson, decodeJson1, type JsonObject, type JsonValue } from '../json.js'
 import { inspectCapturedPackage } from '../package/inspect.js'
-import { flowSlotTargets } from '../project/invocation-slots.js'
+import {
+  flowSlotTargets,
+  isAgentInvocation,
+  nativeInvocationKind,
+} from '../project/invocation-slots.js'
 import type { RunTargetIdentity } from '../project/package-project.js'
 import { validateProjectPath } from '../project/paths.js'
 import {
@@ -16,7 +26,6 @@ import { RunHostFatalOperationError } from '../run/session.js'
 import { SchemaDiagnostic } from '../schema/index.js'
 import {
   PrivateAcpProtocolError,
-  type PrivateAcpTurnResult,
   privateAcpComponentStream,
   runPrivateAcpTurn,
 } from './acp-agent-client.js'
@@ -61,10 +70,6 @@ import {
 } from './linux-rootless-backend.js'
 import { MARKDOWN_AGENT_SLOT, markdownAgentContract } from './markdown-agent-contract.js'
 import {
-  assertPrivateAgentResponseSchema,
-  projectPrivateAgentResponseSchema,
-} from './openai-agent-client.js'
-import {
   decodePrivateOpenAIAgentResponse,
   encodePrivateOpenAIAgentRequest,
   PRIVATE_OPENAI_AGENT_PROTOCOL,
@@ -78,16 +83,19 @@ import {
 } from './openai-agent-provider.js'
 import { captureStoredPackage } from './package-artifact-store.js'
 import {
+  AgentExchangeValidationError,
+  assertAgentExchangeContract,
+  assertAgentProviderPrompt,
+  parseAgentExchangeInput,
+  projectAgentExchangeResult,
+} from './private-agent-exchange.js'
+import {
   AGENT_RUN_CONTRACT_DIGEST,
-  AGENT_RUN_CONTRACT_ID,
-  AGENT_RUN_CONTRACT_VERSION,
-  type AgentRunSkillManifest,
   AgentRunValidationError,
   assertAgentRunContract,
   type PreparedAgentRunInput,
   parseAgentRunInput,
   parseAgentRunResult,
-  projectAgentRunResult,
   projectAgentRunSkills,
 } from './private-agent-run.js'
 import { PRIVATE_AGENT_PROVIDER_PIDS } from './root-operation-limits.js'
@@ -97,10 +105,8 @@ const SANDBOX_KIND = 'private-root-agent-sandbox/1'
 const CLEANUP_KIND = 'private-root-agent-cleanup/1'
 const CANCELLATION_GRACE_MS = 1_000
 const PROVIDER_STDERR_BYTES = 64 * 1024
-const PROVIDER_INSTRUCTION_BYTES = 1_048_576
 const DIGEST = /^sha256:[0-9a-f]{64}$/
 const decoder = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true })
-const encoder = new TextEncoder()
 
 interface AgentAllocation {
   readonly kind: typeof ALLOCATION_KIND
@@ -149,8 +155,11 @@ export interface PrivateAgentParentFlow {
 }
 
 interface PreparedCall {
-  readonly input: PreparedAgentRunInput
-  readonly contract: Parameters<typeof parseAgentRunResult>[0]
+  readonly method?: {
+    readonly input: PreparedAgentRunInput
+    readonly contract: Parameters<typeof parseAgentRunResult>[0]
+    readonly prepared: PreparedAgent
+  }
   readonly instructions: string
   readonly responseSchema?: JsonObject
   readonly digest: string
@@ -226,7 +235,7 @@ async function executeAgentRun(
   try {
     provider = requirePrivateAgentProvider(input.agentProvider)
     if (
-      provider.contractDigest !== selected.digest ||
+      provider.contractDigest !== AGENT_RUN_CONTRACT_DIGEST ||
       (provider.kind === 'private-openai-agent-provider/1' &&
         provider.workerDigest !== input.installedSupport.agentWorkerDigest)
     ) {
@@ -241,8 +250,9 @@ async function executeAgentRun(
   try {
     prepared = await prepareCall(input, provider)
   } catch (error) {
+    if (error instanceof AgentExchangeValidationError) return failed(error.code, error.message)
     if (
-      error instanceof AgentInstructionLimitError ||
+      (error instanceof AgentMethodError && error.code === 'RESOURCE_EXHAUSTED') ||
       (error instanceof SchemaDiagnostic && error.code === 'SCHEMA_LIMIT_EXCEEDED') ||
       (error instanceof AgentRunValidationError &&
         error.code === 'AGENT_RUN_SKILL_PROJECTION_LIMIT')
@@ -251,6 +261,7 @@ async function executeAgentRun(
     }
     if (
       error instanceof AgentRunValidationError ||
+      error instanceof AgentMethodError ||
       error instanceof CheckError ||
       error instanceof SchemaDiagnostic ||
       error instanceof TypeError
@@ -411,13 +422,21 @@ async function executeAgentRun(
   }
   if (execution.failure !== undefined) return providerFailure(execution.failure)
   try {
-    const value = parseAgentRunResult(prepared.contract, prepared.input, execution.value)
+    const exchange = projectAgentExchangeResult(execution.value)
+    const result =
+      prepared.method === undefined
+        ? exchange
+        : parseAgentRunResult(
+            prepared.method.contract,
+            prepared.method.input,
+            finishAgent(prepared.method.prepared, exchange),
+          )
     return Object.freeze({
       status: 'succeeded' as const,
-      result: projectAgentRunResult(value),
+      result,
     })
   } catch {
-    return failed('INVALID_RESULT', 'the Agent provider result does not satisfy Agent Run/1')
+    return failed('INVALID_RESULT', 'the Agent result does not satisfy its admitted invocation')
   }
 }
 
@@ -515,57 +534,6 @@ export async function recoverPrivateRootAgentRunOwner(
   })
 }
 
-/** Deterministic provider text; selected bytes never leave this transient value. */
-export function renderPrivateAgentRunInstructions(
-  instructions: string,
-  manifest: AgentRunSkillManifest,
-): string {
-  const skills = manifest.skills.map((skill) => ({
-    name: skill.name,
-    files: skill.files.map((file) => {
-      let content: string
-      try {
-        content = decoder.decode(file.bytes())
-      } catch {
-        throw new AgentRunValidationError(
-          'AGENT_RUN_SKILL_CONTENT_INVALID',
-          `Agent Run skill file ${skill.name}/${file.path} is not UTF-8 text`,
-        )
-      }
-      return { path: file.path, content }
-    }),
-  }))
-  const payload = decoder.decode(canonicalJson({ instructions, skills } as unknown as JsonValue))
-  const rendered = [
-    'Execute one Jig Agent Run. Treat the author instructions as the task and the selected package-local skill files as guidance.',
-    'The following value is canonical JSON:',
-    payload,
-  ].join('\n')
-  if (encoder.encode(rendered).byteLength > PROVIDER_INSTRUCTION_BYTES) {
-    throw new AgentInstructionLimitError()
-  }
-  return rendered
-}
-
-function renderPrivateAcpStructuredInstructions(
-  instructions: string,
-  responseSchema: JsonObject,
-): string {
-  const schema = decoder.decode(
-    canonicalJson(projectPrivateAgentResponseSchema(responseSchema) as JsonObject),
-  )
-  const rendered = [
-    instructions,
-    'Return only one JSON value matching this canonical FLOW Schema/1 schema:',
-    'Do not wrap the JSON value in Markdown or a code fence.',
-    schema,
-  ].join('\n')
-  if (encoder.encode(rendered).byteLength > PROVIDER_INSTRUCTION_BYTES) {
-    throw new AgentInstructionLimitError()
-  }
-  return rendered
-}
-
 async function prepareCall(
   input: AgentInput & { readonly call: RunHostCall },
   provider: PrivateAgentProvider,
@@ -584,23 +552,48 @@ async function prepareCall(
         'Agent Run invocation descriptor is absent from the admitted package',
       )
     }
-    assertAgentRunContract(reference.contract)
-    const prepared = parseAgentRunInput(reference.contract, input.call.input)
-    const manifest = await projectAgentRunSkills(captured, prepared.selectedSkills)
-    let instructions = renderPrivateAgentRunInstructions(prepared.input.instructions, manifest)
-    const responseSchema = prepared.input.responseSchema as JsonObject | undefined
-    if (responseSchema !== undefined) assertPrivateAgentResponseSchema(responseSchema)
-    if (provider.kind === 'private-acp-agent-provider/1' && responseSchema !== undefined) {
-      instructions = renderPrivateAcpStructuredInstructions(instructions, responseSchema)
+    let method: PreparedCall['method']
+    let request: PreparedAgent['request']
+    const route = target.request.slots[input.call.slot]
+    if (route?.kind === 'native' && route.native === 'agent-exchange') {
+      assertAgentExchangeContract(reference.contract)
+      request = parseAgentExchangeInput(input.call.input)
+    } else {
+      assertAgentRunContract(reference.contract)
+      const inputValue = parseAgentRunInput(reference.contract, input.call.input)
+      const manifest = await projectAgentRunSkills(captured, inputValue.selectedSkills)
+      const selectedSkills = manifest.skills.map((skill) => ({
+        name: skill.name,
+        files: skill.files.map((file) => ({ path: file.path, text: decoder.decode(file.bytes()) })),
+      }))
+      const prepared = prepareAgent(
+        {
+          instructions: inputValue.input.instructions,
+          ...(inputValue.input.responseSchema === undefined
+            ? {}
+            : {
+                responseSchema: inputValue.input.responseSchema,
+              }),
+        },
+        selectedSkills,
+      )
+      method = Object.freeze({ input: inputValue, contract: reference.contract, prepared })
+      // The trusted bridge and a hostile direct caller face the same lower boundary.
+      request = parseAgentExchangeInput(prepared.request)
     }
+    const instructions = request.prompt
+    const responseSchema = request.responseSchema
+    assertAgentProviderPrompt(
+      provider.kind === 'private-acp-agent-provider/1' ? provider.client : undefined,
+      instructions,
+    )
     const requestIdentity = Object.freeze({
       providerDigest: provider.digest,
       instructions,
       ...(responseSchema === undefined ? {} : { responseSchema }),
     })
     return Object.freeze({
-      input: prepared,
-      contract: reference.contract,
+      ...(method === undefined ? {} : { method }),
       instructions,
       ...(responseSchema === undefined ? {} : { responseSchema }),
       digest: privateDomainDigest(
@@ -616,13 +609,9 @@ async function prepareCall(
 function selectAgentInvocation(input: AgentRecoveryInput, call: RunHostCall) {
   const target = requireParentTarget(input)
   const route = target.request.slots[call.slot]
-  if (route?.kind !== 'native' || route.native !== 'agent') return undefined
+  if (route?.kind !== 'native' || !isAgentInvocation(route.native)) return undefined
   const selected = route.contract
-  if (
-    selected.id !== AGENT_RUN_CONTRACT_ID ||
-    selected.version !== AGENT_RUN_CONTRACT_VERSION ||
-    selected.digest !== AGENT_RUN_CONTRACT_DIGEST
-  ) {
+  if (nativeInvocationKind(selected) !== route.native) {
     throw new Error('admitted Agent Run invocation identity is invalid')
   }
   return selected
@@ -865,7 +854,15 @@ async function interactWithAcpProvider(
     try {
       return Object.freeze({
         fence,
-        value: acpResultValue(turn, prepared.responseSchema !== undefined),
+        value: {
+          text: turn.text,
+          stop:
+            turn.stopReason === 'end_turn'
+              ? 'end-turn'
+              : turn.stopReason === 'refusal'
+                ? 'refusal'
+                : 'limit',
+        },
         cancelled: false,
       })
     } catch {
@@ -882,37 +879,6 @@ async function interactWithAcpProvider(
       throw error
     }
     throw error
-  }
-}
-
-function acpResultValue(
-  turn: PrivateAcpTurnResult,
-  structuredRequested: boolean,
-): Readonly<Record<string, unknown>> {
-  const outcome =
-    turn.stopReason === 'end_turn'
-      ? 'completed'
-      : turn.stopReason === 'refusal'
-        ? 'blocked'
-        : 'limit'
-  if (!structuredRequested || outcome !== 'completed') {
-    return Object.freeze({ outcome, text: turn.text })
-  }
-  return Object.freeze({
-    outcome,
-    text: turn.text,
-    structured: decodePrivateAcpStructuredText(turn.text),
-  })
-}
-
-/** Normalize the one JSON Markdown presentation emitted by current text-only ACP clients. */
-export function decodePrivateAcpStructuredText(text: string): JsonValue {
-  try {
-    return decodeJson1(encoder.encode(text))
-  } catch (rawError) {
-    const match = /^```json\r?\n([\s\S]*)\r?\n```$/.exec(text.trim())
-    if (match === null) throw rawError
-    return decodeJson1(encoder.encode(match[1]!))
   }
 }
 
@@ -1094,8 +1060,8 @@ async function requireAllocationMatchesParent(
     !Object.values(target.request.slots).some(
       (route) =>
         route.kind === 'native' &&
-        route.native === 'agent' &&
-        route.contract.digest === AGENT_RUN_CONTRACT_DIGEST,
+        isAgentInvocation(route.native) &&
+        nativeInvocationKind(route.contract) === route.native,
     )
   ) {
     throw new Error('durable Agent allocation differs from its admitted parent or provider')
@@ -1307,5 +1273,3 @@ function hasCode(error: unknown, code: string): boolean {
     error !== null && typeof error === 'object' && (error as NodeJS.ErrnoException).code === code
   )
 }
-
-class AgentInstructionLimitError extends Error {}

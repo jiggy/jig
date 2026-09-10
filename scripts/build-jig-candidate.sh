@@ -70,6 +70,9 @@ just --justfile "$package/justfile" verify-build-bun
 bun install \
   --cwd "$temporary/source" \
   --filter @jigging/jig \
+  --filter @jigging/agent-method \
+  --filter @jigging/flow-authoring \
+  --filter @jigging/flow \
   --ignore-scripts \
   --config=/dev/null \
   --cache-dir "$temporary/cache" \

@@ -16,7 +16,7 @@ import {
 } from '../src/invocation-contract.js'
 import type { CapturedFile, CapturedPackage } from '../src/package/capture.js'
 import { comparePathBytes } from '../src/package/paths.js'
-import { SCHEMA_1_URI, SchemaDiagnostic } from '../src/schema/index.js'
+import { SCHEMA_1_URI } from '../src/schema/index.js'
 
 const contractPath = new URL(
   '../../../docs/jig/spec/contracts/agent-run/contract.json',
@@ -119,9 +119,9 @@ describe('private Agent Run contract', () => {
     expect(
       parseAgentRunResult(contract, prepared, {
         outcome: 'blocked',
-        text: 'No suitable action.',
+        output: { text: 'No suitable action.' },
       }),
-    ).toEqual({ outcome: 'blocked', text: 'No suitable action.' })
+    ).toEqual({ outcome: 'blocked', output: { text: 'No suitable action.' } })
   })
 
   test('requires recursive responseSchema results and validates their structured value', () => {
@@ -163,27 +163,44 @@ describe('private Agent Run contract', () => {
 
     expect(() =>
       parseAgentRunResult(contract, prepared, {
-        outcome: 'completed',
-        text: 'missing',
+        outcome: 'done',
+        output: { text: 'missing' },
       }),
     ).toThrow(expect.objectContaining({ code: 'AGENT_RUN_STRUCTURED_REQUIRED' }))
     expect(() =>
       parseAgentRunResult(contract, prepared, {
-        outcome: 'completed',
-        text: 'invalid',
-        structured: {
-          assessment: {
-            status: 'clear',
-            amount: 1_500,
-            note: null,
-            sources: [{ page: 1 }],
+        outcome: 'done',
+        output: {
+          text: 'invalid',
+          structured: {
+            assessment: {
+              status: 'clear',
+              amount: 1_500,
+              note: null,
+              sources: [{ page: 1 }],
+            },
           },
         },
       }),
     ).toThrow(expect.objectContaining({ code: 'AGENT_RUN_STRUCTURED_INVALID' }))
     expect(
       parseAgentRunResult(contract, prepared, {
-        outcome: 'completed',
+        outcome: 'done',
+        output: {
+          text: 'valid',
+          structured: {
+            assessment: {
+              status: 'clear',
+              amount: 1_500,
+              note: null,
+              sources: [{ page: 1, excerpt: 'base pay' }],
+            },
+          },
+        },
+      }),
+    ).toEqual({
+      outcome: 'done',
+      output: {
         text: 'valid',
         structured: {
           assessment: {
@@ -193,25 +210,14 @@ describe('private Agent Run contract', () => {
             sources: [{ page: 1, excerpt: 'base pay' }],
           },
         },
-      }),
-    ).toEqual({
-      outcome: 'completed',
-      text: 'valid',
-      structured: {
-        assessment: {
-          status: 'clear',
-          amount: 1_500,
-          note: null,
-          sources: [{ page: 1, excerpt: 'base pay' }],
-        },
       },
     })
     expect(
       parseAgentRunResult(contract, prepared, {
         outcome: 'limit',
-        text: 'output limit reached',
+        output: { text: 'output limit reached' },
       }),
-    ).toEqual({ outcome: 'limit', text: 'output limit reached' })
+    ).toEqual({ outcome: 'limit', output: { text: 'output limit reached' } })
   })
 
   test('rejects malformed values and an invalid response Schema/1 root', () => {
@@ -229,7 +235,7 @@ describe('private Agent Run contract', () => {
     expect(() =>
       parseAgentRunResult(contract, prepared, {
         outcome: 'invented',
-        text: 'invalid',
+        output: { text: 'invalid' },
       }),
     ).toThrow(expect.objectContaining({ code: 'AGENT_RUN_RESULT_INVALID' }))
 
@@ -272,7 +278,7 @@ describe('private Agent Run contract', () => {
       parseAgentRunResult(
         contract,
         { input: { instructions: 'forged' }, selectedSkills: [] },
-        { outcome: 'completed', text: 'not admitted' },
+        { outcome: 'done', output: { text: 'not admitted' } },
       ),
     ).toThrow(expect.objectContaining({ code: 'AGENT_RUN_INPUT_UNPREPARED' }))
   })

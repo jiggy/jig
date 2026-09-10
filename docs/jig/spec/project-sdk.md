@@ -87,7 +87,7 @@ used by this Binding's package as a Run/1 `flow/call` slot. Each value is an
 exact `flow:<project-relative-path>` or `binding:<LocalName>` selector, using
 the same target vocabulary as the CLI. A Flow selector requires a direct
 Flow target; a Binding selector uses that Binding's own validated settings.
-Either child may use the exact native Agent Run invocation; a configured Binding may
+Either child may use the exact native Agent Run or Agent Exchange invocation; a configured Binding may
 also use Project Command. A selected Binding must
 have no child slots. A Binding cannot select its own package, directly or
 through another Binding. Omitting `slots` normalizes to `{}`.
@@ -122,14 +122,15 @@ settings override.
 
 Bindings are optional. A discovered Run package which is valid with empty
 settings, fits the root attachment profile, and uses only the supported
-[Agent Run](agent-run.md) and/or [Run Checkpoint](run-checkpoint.md) contracts
+[Agent Run](agent-run.md), [Agent Exchange](agent-exchange.md) and/or
+[Run Checkpoint](run-checkpoint.md) contracts
 (or no requirements) is also an exact direct Flow
 target. There is no hidden generated Binding.
 
 A required named invocation is declared by `uses.<slot>.contract` in package
 metadata. The selected Flow must offer exactly that ID, version and digest
 through its root `FLOW.contract.json`; anonymous ordinary calls need no contract.
-Unmapped qualified native Agent Run, Project Command and Run Checkpoint slots
+Unmapped qualified native Agent Run, Agent Exchange, Project Command and Run Checkpoint slots
 resolve to the corresponding host implementation. Native authority cannot be
 replaced by mapping a package that merely claims its contract identity.
 Review shows expected contracts and selected routes together. See

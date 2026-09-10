@@ -1,33 +1,20 @@
+import { assertResponseSchema, projectResponseSchema } from '@jigging/agent-method'
 import OpenAI from 'openai'
 import type { ChatCompletionCreateParamsNonStreaming } from 'openai/resources/chat/completions/completions'
 import type { ResponseCreateParamsNonStreaming } from 'openai/resources/responses/responses'
 
+import { canonicalJson, JSON_1_LIMITS, type JsonObject, validateJson1 } from '../json.js'
 import {
-  canonicalJson,
-  decodeJson1,
-  JSON_1_LIMITS,
-  type JsonObject,
-  type JsonValue,
-  validateJson1,
-} from '../json.js'
-import {
-  PrivateOpenAIAgentError,
   PRIVATE_OPENAI_APIS,
-  type PrivateOpenAIApi,
+  PrivateOpenAIAgentError,
   type PrivateOpenAIAgentResult,
+  type PrivateOpenAIApi,
 } from './openai-agent-protocol.js'
 
 const MAX_INSTRUCTION_CHARACTERS = 1_048_576
 const MAX_RESPONSE_SCHEMA_BYTES = 256 * 1024
 const RESPONSE_FORMAT_NAME = 'jig_agent_run_result'
 const MAX_OUTPUT_TOKENS = 4_096
-const MAX_RESPONSE_SCHEMA_DEPTH = 8
-const MAX_PROPERTIES_PER_OBJECT = 32
-const MAX_RESPONSE_SCHEMA_PROPERTIES = 128
-const MAX_ARRAY_ITEMS = 256
-const MAX_RESPONSE_SCHEMA_ENUM_VALUES = 256
-const MAX_RESPONSE_SCHEMA_SYMBOL_CHARACTERS = 120_000
-const MAX_LARGE_ENUM_CHARACTERS = 15_000
 
 export type PrivateOpenAIFetch = (
   input: string | URL | Request,
@@ -58,170 +45,9 @@ type PrivateOpenAIAgentCreateBody =
   | ResponseCreateParamsNonStreaming
   | ChatCompletionCreateParamsNonStreaming
 
-interface ResponseSchemaProfileState {
-  properties: number
-  enumValues: number
-  symbolCharacters: number
-}
-
-/** Validate Jig's deliberately bounded recursive Agent structured-output profile. */
-export function assertPrivateAgentResponseSchema(schema: JsonObject): void {
-  if (schema.$schema !== 'https://flow.jig.md/schemas/schema-1.json') invalidSchemaProfile()
-  const state: ResponseSchemaProfileState = {
-    properties: 0,
-    enumValues: 0,
-    symbolCharacters: 0,
-  }
-  assertResponseSchemaNode(schema, 1, true, state)
-}
-
-function assertResponseSchemaNode(
-  value: unknown,
-  depth: number,
-  root: boolean,
-  state: ResponseSchemaProfileState,
-): void {
-  const schema = ordinaryRecord(value)
-  if (schema === undefined || depth > MAX_RESPONSE_SCHEMA_DEPTH) invalidSchemaProfile()
-
-  if (schema.type === 'object') {
-    assertClosedResponseObject(schema, depth, root, state)
-    return
-  }
-  if (root || Object.hasOwn(schema, '$schema')) invalidSchemaProfile()
-
-  if (schema.type === 'array') {
-    const baseExpected = Object.hasOwn(schema, 'minItems')
-      ? ['items', 'maxItems', 'minItems', 'type']
-      : ['items', 'maxItems', 'type']
-    if (
-      !exactProfileKeys(schema, baseExpected) ||
-      !boundedNonnegativeInteger(schema.maxItems, MAX_ARRAY_ITEMS) ||
-      (Object.hasOwn(schema, 'minItems') &&
-        (!boundedNonnegativeInteger(schema.minItems, MAX_ARRAY_ITEMS) ||
-          (schema.minItems as number) > (schema.maxItems as number)))
-    ) {
-      invalidSchemaProfile()
-    }
-    assertResponseSchemaNode(schema.items, depth + 1, false, state)
-    return
-  }
-
-  if (schema.type === 'integer' || isNullableType(schema.type, 'integer')) {
-    if (!exactProfileKeys(schema, ['type'])) invalidSchemaProfile()
-    return
-  }
-  if (schema.type === 'string' || isNullableType(schema.type, 'string')) {
-    assertResponseString(schema, isNullableType(schema.type, 'string'), state)
-    return
-  }
-  invalidSchemaProfile()
-}
-
-function assertClosedResponseObject(
-  schema: Record<string, unknown>,
-  depth: number,
-  root: boolean,
-  state: ResponseSchemaProfileState,
-): void {
-  const expected = root
-    ? ['$schema', 'additionalProperties', 'properties', 'required', 'type']
-    : ['additionalProperties', 'properties', 'required', 'type']
-  const properties = ordinaryRecord(schema.properties)
-  if (
-    !exactProfileKeys(schema, expected) ||
-    schema.additionalProperties !== false ||
-    properties === undefined ||
-    !Array.isArray(schema.required)
-  ) {
-    invalidSchemaProfile()
-  }
-  const names = Object.keys(properties)
-  if (
-    names.length === 0 ||
-    names.length > MAX_PROPERTIES_PER_OBJECT ||
-    schema.required.length !== names.length ||
-    new Set(schema.required).size !== names.length ||
-    schema.required.some((name) => typeof name !== 'string' || !Object.hasOwn(properties, name))
-  ) {
-    invalidSchemaProfile()
-  }
-  state.properties += names.length
-  if (state.properties > MAX_RESPONSE_SCHEMA_PROPERTIES) invalidSchemaProfile()
-  for (const name of names) {
-    state.symbolCharacters += unicodeScalarLength(name)
-    if (state.symbolCharacters > MAX_RESPONSE_SCHEMA_SYMBOL_CHARACTERS) invalidSchemaProfile()
-    assertResponseSchemaNode(properties[name], depth + 1, false, state)
-  }
-}
-
-function assertResponseString(
-  schema: Record<string, unknown>,
-  nullable: boolean,
-  state: ResponseSchemaProfileState,
-): void {
-  if (!Object.hasOwn(schema, 'enum')) {
-    if (!exactProfileKeys(schema, ['type'])) invalidSchemaProfile()
-    return
-  }
-  if (
-    !exactProfileKeys(schema, ['enum', 'type']) ||
-    !Array.isArray(schema.enum) ||
-    schema.enum.length === 0 ||
-    schema.enum.length > MAX_RESPONSE_SCHEMA_ENUM_VALUES ||
-    schema.enum.some((item) => typeof item !== 'string' && (!nullable || item !== null)) ||
-    new Set(schema.enum).size !== schema.enum.length ||
-    (nullable &&
-      (!schema.enum.includes(null) || !schema.enum.some((item) => typeof item === 'string')))
-  ) {
-    invalidSchemaProfile()
-  }
-  state.enumValues += schema.enum.length
-  const enumCharacters = schema.enum.reduce(
-    (total, item) => total + (typeof item === 'string' ? unicodeScalarLength(item) : 0),
-    0,
-  )
-  if (schema.enum.length > 250 && enumCharacters > MAX_LARGE_ENUM_CHARACTERS) {
-    invalidSchemaProfile()
-  }
-  state.symbolCharacters += enumCharacters
-  if (state.enumValues > MAX_RESPONSE_SCHEMA_ENUM_VALUES) invalidSchemaProfile()
-  if (state.symbolCharacters > MAX_RESPONSE_SCHEMA_SYMBOL_CHARACTERS) invalidSchemaProfile()
-}
-
-function isNullableType(value: unknown, base: 'integer' | 'string'): boolean {
-  return (
-    Array.isArray(value) &&
-    value.length === 2 &&
-    new Set(value).size === 2 &&
-    value.includes(base) &&
-    value.includes('null')
-  )
-}
-
-function exactProfileKeys(value: Record<string, unknown>, expected: readonly string[]): boolean {
-  if (Object.hasOwn(value, 'description') && typeof value.description !== 'string') return false
-  return exactKeys(
-    value,
-    Object.hasOwn(value, 'description') ? [...expected, 'description'] : expected,
-  )
-}
-
-function boundedNonnegativeInteger(value: unknown, maximum: number): boolean {
-  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 && value <= maximum
-}
-
-function unicodeScalarLength(value: string): number {
-  return [...value].length
-}
-
-function invalidSchemaProfile(): never {
-  throw new TypeError('Agent responseSchema must use the bounded structured-output profile')
-}
-
 /**
- * Make one non-streaming OpenAI-SDK call and normalize only its final
- * Agent Run value. Dispatch retry is disabled; process ownership and abort
+ * Make one non-streaming OpenAI-SDK call and extract bounded final transport
+ * facts. Dispatch retry is disabled; process ownership and abort
  * fencing remain the responsibility of the containing worker controller.
  */
 export async function requestPrivateOpenAIAgent(
@@ -248,23 +74,16 @@ export async function requestPrivateOpenAIAgent(
     // diagnostic can contain request data, endpoint credentials, or headers.
     throw new PrivateOpenAIAgentError('AGENT_PROVIDER_UNAVAILABLE', 'OpenAI Agent request failed')
   }
-  return normalizePrivateOpenAIAgentResponse(
-    response,
-    request.api,
-    request.responseSchema !== undefined,
-  )
+  return normalizePrivateOpenAIAgentResponse(response, request.api)
 }
 
 export function normalizePrivateOpenAIAgentResponse(
   response: unknown,
   api: PrivateOpenAIApi,
-  structuredRequested: boolean,
 ): PrivateOpenAIAgentResult {
-  const result =
-    api === 'responses'
-      ? normalizeResponsesResult(response)
-      : normalizeChatCompletionsResult(response)
-  return attachStructuredResult(result, structuredRequested)
+  return api === 'responses'
+    ? normalizeResponsesResult(response)
+    : normalizeChatCompletionsResult(response)
 }
 
 function normalizeResponsesResult(response: unknown): PrivateOpenAIAgentResult {
@@ -296,21 +115,21 @@ function normalizeResponsesResult(response: unknown): PrivateOpenAIAgentResult {
   }
 
   const content = responseContent(record, record.status === 'incomplete')
-  let outcome: PrivateOpenAIAgentResult['outcome']
+  let stop: PrivateOpenAIAgentResult['stop']
   if (content.refusals.length > 0) {
-    outcome = 'blocked'
+    stop = 'refusal'
   } else if (record.status === 'incomplete') {
     const details = ordinaryRecord(record.incomplete_details)
-    outcome = details?.reason === 'content_filter' ? 'blocked' : 'limit'
+    stop = details?.reason === 'content_filter' ? 'refusal' : 'limit'
   } else {
-    outcome = 'completed'
+    stop = 'end-turn'
   }
   const text =
-    outcome === 'blocked' && content.refusals.length > 0
+    stop === 'refusal' && content.refusals.length > 0
       ? joinBounded(content.refusals, '\n')
       : joinBounded(content.text, '')
 
-  return Object.freeze({ outcome, text })
+  return Object.freeze({ text, stop })
 }
 
 function normalizeChatCompletionsResult(response: unknown): PrivateOpenAIAgentResult {
@@ -348,34 +167,17 @@ function normalizeChatCompletionsResult(response: unknown): PrivateOpenAIAgentRe
   ) {
     throw invalidResponse()
   }
-  const outcome: PrivateOpenAIAgentResult['outcome'] =
+  const stop: PrivateOpenAIAgentResult['stop'] =
     refusal !== undefined || choice.finish_reason === 'content_filter'
-      ? 'blocked'
+      ? 'refusal'
       : choice.finish_reason === 'length'
         ? 'limit'
-        : 'completed'
+        : 'end-turn'
   const text = joinBounded(
     [refusal ?? (typeof message.content === 'string' ? message.content : '')],
     '',
   )
-  return Object.freeze({ outcome, text })
-}
-
-function attachStructuredResult(
-  result: PrivateOpenAIAgentResult,
-  structuredRequested: boolean,
-): PrivateOpenAIAgentResult {
-  if (!structuredRequested) return result
-  try {
-    const structured = decodeJson1(new TextEncoder().encode(result.text))
-    return Object.freeze({ ...result, structured })
-  } catch {
-    if (result.outcome !== 'completed') return result
-    throw new PrivateOpenAIAgentError(
-      'AGENT_PROVIDER_RESPONSE_INVALID',
-      'OpenAI structured response is not valid JSON/1',
-    )
-  }
+  return Object.freeze({ text, stop })
 }
 
 function sdkClient(
@@ -434,7 +236,7 @@ function createResponsesBody(
       format: {
         type: 'json_schema',
         name: RESPONSE_FORMAT_NAME,
-        schema: projectPrivateAgentResponseSchema(request.responseSchema),
+        schema: projectResponseSchema(request.responseSchema),
         strict: true,
       },
     },
@@ -457,20 +259,11 @@ function createChatCompletionsBody(
       type: 'json_schema',
       json_schema: {
         name: RESPONSE_FORMAT_NAME,
-        schema: projectPrivateAgentResponseSchema(request.responseSchema),
+        schema: projectResponseSchema(request.responseSchema),
         strict: true,
       },
     },
   }
-}
-
-export function projectPrivateAgentResponseSchema(
-  responseSchema: JsonObject,
-): Record<string, unknown> {
-  // Schema/1's root declaration identifies Jig's validator dialect, not a
-  // provider meta-schema. Keep the exact input untouched and remove only that
-  // declaration from the provider-facing copy.
-  return Object.fromEntries(Object.entries(responseSchema).filter(([name]) => name !== '$schema'))
 }
 
 function requireClientRequest(request: PrivateOpenAIAgentClientRequest): void {
@@ -527,7 +320,7 @@ function requireClientRequest(request: PrivateOpenAIAgentClientRequest): void {
       )
     }
     try {
-      assertPrivateAgentResponseSchema(request.responseSchema)
+      assertResponseSchema(request.responseSchema)
     } catch {
       throw new PrivateOpenAIAgentError(
         'AGENT_PROVIDER_CONFIGURATION',
@@ -638,12 +431,6 @@ function ordinaryRecord(value: unknown): Record<string, unknown> | undefined {
   const prototype = Object.getPrototypeOf(value)
   if (prototype !== Object.prototype && prototype !== null) return undefined
   return value as Record<string, unknown>
-}
-
-function exactKeys(value: object, expected: readonly string[]): boolean {
-  const actual = Object.keys(value).sort()
-  const sorted = [...expected].sort()
-  return actual.length === sorted.length && actual.every((name, index) => name === sorted[index])
 }
 
 function boundedCharacters(value: string, maximum: number): boolean {

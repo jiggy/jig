@@ -10,6 +10,11 @@ The Flow supplies instructions, any selected package-local Skills, and an
 optional structured-result schema. The operator chooses the Agent, model,
 credentials, and endpoint.
 
+Jig uses the reusable [Agent method](../guide/agent-method.md) while retaining
+authenticated Skill selection from the active caller's admitted package.
+The ordinary anonymous Agent Flow uses [Agent Exchange](agent-exchange.md)
+and its own package guidance; it does not replace this native caller contract.
+
 ## Why did this address bring me here?
 
 `https://jig.md/contracts/agent-run` identifies the shared **interface**, not

@@ -1,11 +1,8 @@
 import { describe, expect, test } from 'bun:test'
-
-import type { JsonObject } from '../src/json.js'
 import {
-  assertPrivateAgentResponseSchema,
   normalizePrivateOpenAIAgentResponse,
-  requestPrivateOpenAIAgent,
   type PrivateOpenAIAgentClientRequest,
+  requestPrivateOpenAIAgent,
 } from '../src/internal/openai-agent-client.js'
 import {
   decodePrivateOpenAIAgentRequest,
@@ -13,9 +10,12 @@ import {
   encodePrivateOpenAIAgentFailure,
   encodePrivateOpenAIAgentRequest,
   encodePrivateOpenAIAgentSuccess,
-  PrivateOpenAIAgentError,
   PRIVATE_OPENAI_AGENT_PROTOCOL,
+  PRIVATE_OPENAI_AGENT_REQUEST_BYTES,
+  PRIVATE_OPENAI_AGENT_RESPONSE_BYTES,
+  PrivateOpenAIAgentError,
 } from '../src/internal/openai-agent-protocol.js'
+import { JSON_1_LIMITS, type JsonObject } from '../src/json.js'
 
 const TEST_BASE_URL = 'https://provider.example/api/v1'
 const TEST_MODEL = 'provider/test-model'
@@ -86,110 +86,13 @@ describe('private OpenAI-compatible client', () => {
         },
         { apiKey: process.env.MISTRAL_API_KEY! },
       )
-      expect(result).toMatchObject({
-        outcome: 'completed',
-        structured: { answer: 'READY' },
-      })
+      expect(result.stop).toBe('end-turn')
+      expect(Object.keys(result).sort()).toEqual(['stop', 'text'])
       expect(JSON.parse(result.text)).toEqual({ answer: 'READY' })
     },
     60_000,
   )
 
-  test('accepts the bounded recursive structured-output profile', () => {
-    expect(() => assertPrivateAgentResponseSchema(RESPONSE_SCHEMA)).not.toThrow()
-    expect(() =>
-      assertPrivateAgentResponseSchema(
-        closedSchema({
-          value: { type: ['null', 'integer'] },
-        }),
-      ),
-    ).not.toThrow()
-  })
-
-  test('rejects open, optional, unbounded, and unsupported response shapes', () => {
-    expect(() =>
-      assertPrivateAgentResponseSchema({
-        ...closedSchema({ value: { type: 'string' } }),
-        additionalProperties: true,
-      } as JsonObject),
-    ).toThrow()
-    expect(() =>
-      assertPrivateAgentResponseSchema({
-        ...closedSchema({ value: { type: 'string' } }),
-        required: [],
-      } as JsonObject),
-    ).toThrow()
-    expect(() =>
-      assertPrivateAgentResponseSchema(
-        closedSchema({
-          values: { type: 'array', items: { type: 'string' } },
-        }),
-      ),
-    ).toThrow()
-    expect(() =>
-      assertPrivateAgentResponseSchema(
-        closedSchema({
-          values: { type: 'array', items: { type: 'string' }, maxItems: 257 },
-        }),
-      ),
-    ).toThrow()
-    expect(() =>
-      assertPrivateAgentResponseSchema(
-        closedSchema({
-          value: { type: 'boolean' },
-        }),
-      ),
-    ).toThrow()
-    expect(() =>
-      assertPrivateAgentResponseSchema(
-        closedSchema({
-          value: { type: 'number' },
-        }),
-      ),
-    ).toThrow()
-    expect(() =>
-      assertPrivateAgentResponseSchema(
-        closedSchema({
-          value: { type: 'object', additionalProperties: true },
-        }),
-      ),
-    ).toThrow()
-    expect(() =>
-      assertPrivateAgentResponseSchema(
-        closedSchema({
-          value: { type: ['string', 'null'], enum: ['known'] },
-        }),
-      ),
-    ).toThrow()
-    expect(() =>
-      assertPrivateAgentResponseSchema(
-        closedSchema({
-          value: { type: ['string', 'null'], enum: [null] },
-        }),
-      ),
-    ).toThrow()
-    expect(() =>
-      assertPrivateAgentResponseSchema(
-        closedSchema({
-          value: { type: ['string', 'null'], enum: ['known', null] },
-        }),
-      ),
-    ).not.toThrow()
-  })
-
-  test('rejects response shapes beyond recursive and aggregate bounds', () => {
-    expect(() => assertPrivateAgentResponseSchema(deepSchema(10))).toThrow()
-
-    const properties: Record<string, JsonObject> = {}
-    for (let outer = 0; outer < 32; outer += 1) {
-      const nested: Record<string, JsonObject> = {}
-      for (let inner = 0; inner < 4; inner += 1) {
-        nested[`field${inner}`] = { type: 'integer' }
-      }
-      properties[`group${outer}`] = closedObject(nested)
-    }
-    expect(() => assertPrivateAgentResponseSchema(closedSchema(properties))).toThrow()
-  })
   test('uses the OpenAI Responses API with a variable base URL and strict structured output', async () => {
     const apiKey = 'test-provider-secret'
     let outboundURL: string | undefined
@@ -288,13 +191,12 @@ describe('private OpenAI-compatible client', () => {
     expect(JSON.stringify(outboundBody)).not.toContain(apiKey)
     expect(RESPONSE_SCHEMA.$schema).toBe('https://flow.jig.md/schemas/schema-1.json')
     expect(result).toEqual({
-      outcome: 'completed',
+      stop: 'end-turn',
       text: JSON.stringify(RESPONSE_VALUE),
-      structured: RESPONSE_VALUE,
     })
   })
 
-  test('uses Chat Completions through the same SDK and normalizes structured output', async () => {
+  test('uses Chat Completions through the same SDK and returns raw response facts', async () => {
     let outboundURL: string | undefined
     let outboundBody: Record<string, unknown> | undefined
     const result = await requestPrivateOpenAIAgent(
@@ -382,9 +284,8 @@ describe('private OpenAI-compatible client', () => {
       },
     })
     expect(result).toEqual({
-      outcome: 'completed',
+      stop: 'end-turn',
       text: JSON.stringify(RESPONSE_VALUE),
-      structured: RESPONSE_VALUE,
     })
   })
 
@@ -411,7 +312,7 @@ describe('private OpenAI-compatible client', () => {
         },
       },
     })
-    expect(result).toEqual({ outcome: 'completed', text: 'alpha beta' })
+    expect(result).toEqual({ stop: 'end-turn', text: 'alpha beta' })
 
     expect(
       normalizePrivateOpenAIAgentResponse(
@@ -422,9 +323,8 @@ describe('private OpenAI-compatible client', () => {
           output_text: 'SDK fallback',
         },
         'responses',
-        false,
       ),
-    ).toEqual({ outcome: 'completed', text: 'SDK fallback' })
+    ).toEqual({ stop: 'end-turn', text: 'SDK fallback' })
   })
 
   test('maps incomplete and refusal responses without disguising transport failures', () => {
@@ -437,9 +337,8 @@ describe('private OpenAI-compatible client', () => {
           output: [{ type: 'message', content: [{ type: 'output_text', text: 'partial' }] }],
         },
         'responses',
-        false,
       ),
-    ).toEqual({ outcome: 'limit', text: 'partial' })
+    ).toEqual({ stop: 'limit', text: 'partial' })
 
     expect(
       normalizePrivateOpenAIAgentResponse(
@@ -450,9 +349,8 @@ describe('private OpenAI-compatible client', () => {
           output: [{ type: 'reasoning', summary: [] }],
         },
         'responses',
-        false,
       ),
-    ).toEqual({ outcome: 'limit', text: '' })
+    ).toEqual({ stop: 'limit', text: '' })
 
     expect(
       normalizePrivateOpenAIAgentResponse(
@@ -463,9 +361,8 @@ describe('private OpenAI-compatible client', () => {
           output: [{ type: 'message', content: [{ type: 'output_text', text: 'filtered' }] }],
         },
         'responses',
-        false,
       ),
-    ).toEqual({ outcome: 'blocked', text: 'filtered' })
+    ).toEqual({ stop: 'refusal', text: 'filtered' })
 
     expect(
       normalizePrivateOpenAIAgentResponse(
@@ -475,9 +372,8 @@ describe('private OpenAI-compatible client', () => {
           output: [{ type: 'message', content: [{ type: 'refusal', refusal: 'cannot comply' }] }],
         },
         'responses',
-        false,
       ),
-    ).toEqual({ outcome: 'blocked', text: 'cannot comply' })
+    ).toEqual({ stop: 'refusal', text: 'cannot comply' })
 
     expect(() =>
       normalizePrivateOpenAIAgentResponse(
@@ -487,7 +383,6 @@ describe('private OpenAI-compatible client', () => {
           output: [],
         },
         'responses',
-        false,
       ),
     ).toThrow(
       expect.objectContaining({
@@ -496,22 +391,64 @@ describe('private OpenAI-compatible client', () => {
     )
   })
 
-  test('requires completed structured output to be JSON/1', () => {
-    expect(() =>
+  test('treats unspecified incomplete reasons as a limit without claiming an output-token cause', () => {
+    for (const details of [undefined, null, { reason: 'max_tool_calls' }]) {
+      expect(
+        normalizePrivateOpenAIAgentResponse(
+          {
+            status: 'incomplete',
+            incomplete_details: details,
+            output: [],
+          },
+          'responses',
+        ),
+      ).toEqual({ text: '', stop: 'limit' })
+    }
+  })
+
+  test('projects only final message text and refusal facts from provider metadata', () => {
+    expect(
       normalizePrivateOpenAIAgentResponse(
         {
-          status: 'completed',
-          error: null,
-          output: [{ type: 'message', content: [{ type: 'output_text', text: 'not json' }] }],
+          status: 'incomplete',
+          incomplete_details: { reason: 'max_output_tokens' },
+          model: 'provider-private-model',
+          usage: { output_tokens: 12 },
+          output_text: 'ignored fallback',
+          output: [
+            { type: 'reasoning', summary: [{ text: 'private reasoning' }] },
+            {
+              type: 'message',
+              content: [
+                { type: 'output_text', text: 'discarded answer' },
+                { type: 'refusal', refusal: 'cannot comply' },
+                { type: 'refusal', refusal: 'request refused' },
+              ],
+            },
+          ],
         },
         'responses',
-        true,
       ),
-    ).toThrow(
-      expect.objectContaining({
-        code: 'AGENT_PROVIDER_RESPONSE_INVALID',
-      }),
+    ).toEqual({ text: 'cannot comply\nrequest refused', stop: 'refusal' })
+  })
+
+  test('returns structured response text without interpreting its JSON or domain result', async () => {
+    const result = await requestPrivateOpenAIAgent(
+      { ...clientRequest(), responseSchema: RESPONSE_SCHEMA },
+      {
+        apiKey: 'test-key',
+        client: {
+          async create() {
+            return {
+              status: 'completed',
+              error: null,
+              output: [{ type: 'message', content: [{ type: 'output_text', text: 'not json' }] }],
+            }
+          },
+        },
+      },
     )
+    expect(result).toEqual({ text: 'not json', stop: 'end-turn' })
   })
 
   test('maps Chat Completions terminal reasons and rejects tool dispatch', () => {
@@ -526,9 +463,8 @@ describe('private OpenAI-compatible client', () => {
           ],
         },
         'chat-completions',
-        false,
       ),
-    ).toEqual({ outcome: 'limit', text: 'partial' })
+    ).toEqual({ stop: 'limit', text: 'partial' })
     expect(
       normalizePrivateOpenAIAgentResponse(
         {
@@ -540,10 +476,9 @@ describe('private OpenAI-compatible client', () => {
           ],
         },
         'chat-completions',
-        false,
       ),
     ).toEqual({
-      outcome: 'blocked',
+      stop: 'refusal',
       text: 'cannot comply',
     })
     expect(() =>
@@ -557,7 +492,6 @@ describe('private OpenAI-compatible client', () => {
           ],
         },
         'chat-completions',
-        false,
       ),
     ).toThrow(
       expect.objectContaining({
@@ -638,6 +572,51 @@ describe('private OpenAI-compatible client', () => {
       code: 'AGENT_PROVIDER_CONFIGURATION',
     })
   })
+
+  test('maps shared schema validation failure to a safe configuration diagnostic before dispatch', async () => {
+    let calls = 0
+    await expect(
+      requestPrivateOpenAIAgent(
+        {
+          ...clientRequest(),
+          responseSchema: closedSchema({ 'private-schema-content': { type: 'boolean' } }),
+        },
+        {
+          apiKey: 'test-key',
+          client: {
+            async create() {
+              calls += 1
+              throw new Error('invalid requests must not reach the client')
+            },
+          },
+        },
+      ),
+    ).rejects.toMatchObject({
+      code: 'AGENT_PROVIDER_CONFIGURATION',
+      message: 'OpenAI response schema is outside the supported profile',
+    })
+    expect(calls).toBe(0)
+  })
+
+  test('bounds the aggregate extracted text before returning transport facts', () => {
+    expect(() =>
+      normalizePrivateOpenAIAgentResponse(
+        {
+          status: 'completed',
+          output: [
+            {
+              type: 'message',
+              content: [
+                { type: 'output_text', text: 'a'.repeat(JSON_1_LIMITS.stringBytes) },
+                { type: 'output_text', text: 'b' },
+              ],
+            },
+          ],
+        },
+        'responses',
+      ),
+    ).toThrow(expect.objectContaining({ code: 'AGENT_PROVIDER_OUTPUT_LIMIT' }))
+  })
 })
 
 describe('private OpenAI Agent worker protocol', () => {
@@ -683,7 +662,7 @@ describe('private OpenAI Agent worker protocol', () => {
           JSON.stringify({
             protocol: PRIVATE_OPENAI_AGENT_PROTOCOL,
             status: 'ok',
-            value: { outcome: 'invented', text: 'bad' },
+            value: { stop: 'invented', text: 'bad' },
           }),
         ),
       ),
@@ -694,18 +673,16 @@ describe('private OpenAI Agent worker protocol', () => {
     expect(
       decodePrivateOpenAIAgentResponse(
         encodePrivateOpenAIAgentSuccess({
-          outcome: 'completed',
+          stop: 'end-turn',
           text: 'done',
-          structured: { answer: 'yes' },
         }),
       ),
     ).toEqual({
       protocol: PRIVATE_OPENAI_AGENT_PROTOCOL,
       status: 'ok',
       value: {
-        outcome: 'completed',
+        stop: 'end-turn',
         text: 'done',
-        structured: { answer: 'yes' },
       },
     })
     expect(
@@ -717,6 +694,95 @@ describe('private OpenAI Agent worker protocol', () => {
       status: 'error',
       code: 'AGENT_PROVIDER_UNAVAILABLE',
       message: 'provider unavailable',
+    })
+  })
+
+  test('round-trips every transport stop with an immutable exact result', () => {
+    for (const stop of ['end-turn', 'refusal', 'limit'] as const) {
+      const result = decodePrivateOpenAIAgentResponse(
+        encodePrivateOpenAIAgentSuccess({ text: '', stop }),
+      )
+      expect(result).toEqual({
+        protocol: PRIVATE_OPENAI_AGENT_PROTOCOL,
+        status: 'ok',
+        value: { text: '', stop },
+      })
+      expect(Object.isFrozen(result)).toBe(true)
+      if (result.status === 'ok') expect(Object.isFrozen(result.value)).toBe(true)
+    }
+  })
+
+  test('rejects extra envelope fields and interpreted or malformed worker values', () => {
+    for (const value of [
+      { text: 'answer', stop: 'end-turn', structured: { answer: true } },
+      { text: 'answer', stop: 'end-turn', outcome: 'done' },
+      { text: 'answer', stop: 'output-limit' },
+      { text: 'answer', outcome: 'completed' },
+      { text: 'answer' },
+      { text: null, stop: 'end-turn' },
+    ]) {
+      expect(() => encodePrivateOpenAIAgentSuccess(value)).toThrow(
+        expect.objectContaining({ code: 'AGENT_PROVIDER_PROTOCOL' }),
+      )
+      expect(() =>
+        decodePrivateOpenAIAgentResponse(
+          new TextEncoder().encode(
+            JSON.stringify({ protocol: PRIVATE_OPENAI_AGENT_PROTOCOL, status: 'ok', value }),
+          ),
+        ),
+      ).toThrow(expect.objectContaining({ code: 'AGENT_PROVIDER_PROTOCOL' }))
+    }
+    for (const response of [
+      {
+        protocol: PRIVATE_OPENAI_AGENT_PROTOCOL,
+        status: 'ok',
+        value: { text: 'answer', stop: 'end-turn' },
+        provider: 'private-provider',
+      },
+      {
+        protocol: PRIVATE_OPENAI_AGENT_PROTOCOL,
+        status: 'error',
+        code: 'AGENT_PROVIDER_UNAVAILABLE',
+        message: 'provider unavailable',
+        raw: 'private-provider-error',
+      },
+    ]) {
+      expect(() =>
+        decodePrivateOpenAIAgentResponse(new TextEncoder().encode(JSON.stringify(response))),
+      ).toThrow(expect.objectContaining({ code: 'AGENT_PROVIDER_PROTOCOL' }))
+    }
+    expect(() =>
+      encodePrivateOpenAIAgentRequest({
+        ...clientRequest(),
+        protocol: PRIVATE_OPENAI_AGENT_PROTOCOL,
+        apiKey: 'transient-test-key',
+        provider: 'untrusted-extra',
+      }),
+    ).toThrow(expect.objectContaining({ code: 'AGENT_PROVIDER_PROTOCOL' }))
+  })
+
+  test('retains request, response, text, and failure-message byte bounds', () => {
+    expect(() =>
+      decodePrivateOpenAIAgentRequest(new Uint8Array(PRIVATE_OPENAI_AGENT_REQUEST_BYTES + 1)),
+    ).toThrow(expect.objectContaining({ code: 'AGENT_PROVIDER_PROTOCOL' }))
+    expect(() =>
+      decodePrivateOpenAIAgentResponse(new Uint8Array(PRIVATE_OPENAI_AGENT_RESPONSE_BYTES + 1)),
+    ).toThrow(expect.objectContaining({ code: 'AGENT_PROVIDER_PROTOCOL' }))
+    expect(() =>
+      encodePrivateOpenAIAgentSuccess({
+        text: 'a'.repeat(JSON_1_LIMITS.stringBytes + 1),
+        stop: 'end-turn',
+      }),
+    ).toThrow(expect.objectContaining({ code: 'AGENT_PROVIDER_PROTOCOL' }))
+    expect(
+      decodePrivateOpenAIAgentResponse(
+        encodePrivateOpenAIAgentFailure('AGENT_PROVIDER_UNAVAILABLE', '😀'.repeat(1_025)),
+      ),
+    ).toEqual({
+      protocol: PRIVATE_OPENAI_AGENT_PROTOCOL,
+      status: 'error',
+      code: 'AGENT_PROVIDER_UNAVAILABLE',
+      message: '😀'.repeat(1_024),
     })
   })
 })
@@ -744,14 +810,6 @@ function closedObject(properties: Record<string, JsonObject>): JsonObject {
     required: Object.keys(properties),
     additionalProperties: false,
   }
-}
-
-function deepSchema(depth: number): JsonObject {
-  let property: JsonObject = { type: 'string' }
-  for (let index = 0; index < depth; index += 1) {
-    property = closedObject({ value: property })
-  }
-  return closedSchema({ value: property })
 }
 
 const unusedClient = Object.freeze({

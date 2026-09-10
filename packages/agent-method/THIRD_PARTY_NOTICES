@@ -1,0 +1,12 @@
+@jigging/agent-method is distributed under the Mozilla Public License 2.0.
+The bounded JSON/1 codec, schema profile, instruction presentation and result
+algorithms are adapted from Jig. Their source is included in src/.
+
+The complete dist/flow.js runtime bundles @jigging/flow, the FLOW Run/1 SDK,
+under the Apache License 2.0. Its license is included in licenses/flow.LICENSE.
+The complete ordinary SDK package is included as tooling/flow-sdk.tgz for
+development rebuilds. Its package version and SHA-256 are recorded in
+tooling/flow-sdk.json. Its license is also present inside that archive.
+SDK source is available from https://github.com/jiggy/jig/tree/main/packages/flow-sdk.
+
+No provider SDK is included in this package.

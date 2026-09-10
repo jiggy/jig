@@ -26,6 +26,9 @@ admitted FLOW packages.
   proof-host evidence. `test/fixtures/channel-conversation/` owns the synthetic
   named-channel peers used by installed foreground tests, independently of
   public example selection.
+- Native Agent Run imports `@jigging/agent-method` for preparation and result
+  interpretation. Agent Exchange exposes only bounded provider facts; Jig
+  retains exact source selection, provider authority and owned execution.
 - `justfile`, `scripts/`, `support/`, the manifest, README, licenses, and notices own
   package assembly inputs. Bun generates the ignored root workspace lock;
   `dist/`, `bin/`, and `libexec/` are generated.
@@ -143,6 +146,9 @@ admitted FLOW packages.
   `JIG_PACKAGE_ARCHIVE` and `FLOW_SDK_PACKAGE_ARCHIVE`; otherwise pack built
   candidates. Failed public commands retain their consumer and diagnostics
   under the selected temporary root for investigation.
+- The Agent lifecycle suite accepts `AGENT_METHOD_PACKAGE_ARCHIVE` for the
+  unchanged ordinary method artifact; otherwise it packs the already-built
+  package without rebuilding runtime assets during contained execution.
 - Test diagnostic usefulness as well as redaction, and human-facing output
   alongside its machine-readable contract.
 

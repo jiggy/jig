@@ -11,7 +11,7 @@ import {
 } from '../package/inspect.js'
 import { SchemaDiagnostic } from '../schema/index.js'
 import type { ProjectSource } from './author.js'
-import { nativeInvocationKind } from './invocation-slots.js'
+import { isAgentInvocation, nativeInvocationKind } from './invocation-slots.js'
 import {
   assertNoProjectPathCollisions,
   compareProjectPaths,
@@ -707,9 +707,9 @@ export function isDirectRunEligible(inspected: InspectedPackage): boolean {
     const { id, version } = reference.contract.descriptor
     if (id === undefined || version === undefined) return false
     const native = nativeInvocationKind({ id, version, digest: reference.contract.digest })
-    if (native === 'agent' && inspected.markdown !== undefined) return false
+    if (isAgentInvocation(native) && inspected.markdown !== undefined) return false
     if (
-      native !== 'agent' &&
+      !isAgentInvocation(native) &&
       !(
         native === 'run-checkpoint' &&
         Object.values(inspected.invocation.attachments ?? {}).includes('read-write')

@@ -7,6 +7,7 @@
 
 # Build the installed CLI, inert authoring SDK, and private workers
 @build: verify-build-bun clean
+    just --justfile ../agent-method/justfile build
     just --justfile ../flow-authoring/justfile build
     mkdir -p bin libexec/agent libexec/evaluator libexec/preparation libexec/authoring
     cp scripts/installed-jig.sh bin/jig

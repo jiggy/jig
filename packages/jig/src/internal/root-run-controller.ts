@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import { CheckError } from '../diagnostics.js'
 import type { JsonValue } from '../json.js'
 import { type InspectedPackage, inspectCapturedPackage } from '../package/inspect.js'
+import { isAgentInvocation } from '../project/invocation-slots.js'
 import { ChannelOperationError } from '../run/channels.js'
 import {
   type RunHostOperationDispatcher,
@@ -1139,7 +1140,7 @@ function operationDispatcher(
             }),
           operationBusy(),
         )
-      if (Object.keys(call.channels ?? {}).length !== 0 && route.native !== 'agent')
+      if (Object.keys(call.channels ?? {}).length !== 0 && !isAgentInvocation(route.native))
         return {
           status: 'failed',
           code: 'UNAVAILABLE',

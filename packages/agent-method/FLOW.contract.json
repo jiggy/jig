@@ -1,0 +1,119 @@
+{
+  "$schema": "https://flow.jig.md/schemas/invocation-contract-1.schema.json",
+  "input": {
+    "$ref": "#/$defs/RunInput"
+  },
+  "result": {
+    "oneOf": [
+      {
+        "type": "object",
+        "properties": {
+          "outcome": {
+            "const": "done"
+          },
+          "output": {
+            "$ref": "#/$defs/AgentOutput"
+          }
+        },
+        "required": ["outcome", "output"],
+        "additionalProperties": false
+      },
+      {
+        "type": "object",
+        "properties": {
+          "outcome": {
+            "const": "blocked"
+          },
+          "output": {
+            "$ref": "#/$defs/AgentOutput"
+          }
+        },
+        "required": ["outcome", "output"],
+        "additionalProperties": false
+      },
+      {
+        "type": "object",
+        "properties": {
+          "outcome": {
+            "const": "limit"
+          },
+          "output": {
+            "$ref": "#/$defs/AgentOutput"
+          }
+        },
+        "required": ["outcome", "output"],
+        "additionalProperties": false
+      }
+    ]
+  },
+  "outcomes": {
+    "blocked": "The Agent completed its bounded response but reported that the requested work is blocked.",
+    "limit": "The Agent completed its bounded response but reported an Agent limit; host deadline and cancellation remain operational failures."
+  },
+  "channels": {
+    "events": {
+      "direction": "send",
+      "required": false,
+      "contract": "./contracts/agent-exchange/contracts/acp-public-updates.json"
+    }
+  },
+  "$defs": {
+    "RunInput": {
+      "type": "object",
+      "properties": {
+        "instructions": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1048576
+        },
+        "responseSchema": {
+          "type": "object"
+        },
+        "methodSkills": {
+          "$ref": "#/$defs/SkillNames"
+        },
+        "guidance": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "type": "object",
+            "properties": {
+              "label": {
+                "type": "string",
+                "minLength": 1
+              },
+              "text": {
+                "type": "string"
+              }
+            },
+            "required": ["label", "text"],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": ["instructions"],
+      "additionalProperties": false
+    },
+    "SkillNames": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 64
+      },
+      "maxItems": 64
+    },
+    "AgentOutput": {
+      "type": "object",
+      "properties": {
+        "text": {
+          "type": "string",
+          "maxLength": 8388608
+        },
+        "structured": true
+      },
+      "required": ["text"],
+      "additionalProperties": false
+    }
+  }
+}

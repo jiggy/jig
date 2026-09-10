@@ -1,4 +1,5 @@
 import { types as utilTypes } from 'node:util'
+import type { AgentResult } from '@jigging/agent-method'
 
 import { type ParsedInvocationContract, parseInvocationContract } from '../invocation-contract.js'
 import { canonicalJson, type JsonObject, type JsonValue } from '../json.js'
@@ -29,23 +30,6 @@ export interface PreparedAgentRunInput {
   readonly input: AgentRunInput
   /** Always present; an omitted `input.skills` becomes the empty selection. */
   readonly selectedSkills: readonly string[]
-}
-
-export interface AgentRunResult {
-  readonly outcome: 'completed' | 'blocked' | 'limit'
-  readonly text: string
-  readonly structured?: JsonValue
-}
-
-/** Provider-local completion is projected once into the portable complete invocation result. */
-export function projectAgentRunResult(result: AgentRunResult) {
-  return Object.freeze({
-    outcome: result.outcome === 'completed' ? 'done' : result.outcome,
-    output: Object.freeze({
-      text: result.text,
-      ...(Object.hasOwn(result, 'structured') ? { structured: result.structured! } : {}),
-    }),
-  })
 }
 
 export interface AgentRunSkillFile {
@@ -136,7 +120,7 @@ export function parseAgentRunResult(
   contract: ParsedInvocationContract,
   input: PreparedAgentRunInput,
   value: unknown,
-): AgentRunResult {
+): AgentResult {
   const schemas = requireAgentRunSchemas(contract)
   const prepared = preparedInputs.get(input)
   if (prepared === undefined) {
@@ -146,28 +130,17 @@ export function parseAgentRunResult(
     )
   }
   const resultValue = snapshotAgentJson(value, 'Agent Run result')
-  if (
-    resultValue === null ||
-    typeof resultValue !== 'object' ||
-    Array.isArray(resultValue) ||
-    !['completed', 'blocked', 'limit'].includes(String((resultValue as JsonObject).outcome)) ||
-    Object.keys(resultValue).some((key) => !['outcome', 'text', 'structured'].includes(key))
-  )
-    throw new AgentRunValidationError('AGENT_RUN_RESULT_INVALID', 'invalid native Agent result')
-  schemas.result.validate(
-    projectAgentRunResult(resultValue as unknown as AgentRunResult),
-    'AGENT_RUN_RESULT_INVALID',
-  )
-  const result = resultValue as unknown as AgentRunResult
+  schemas.result.validate(resultValue, 'AGENT_RUN_RESULT_INVALID')
+  const result = resultValue as unknown as AgentResult
   if (prepared.responseSchema !== undefined) {
-    if (result.outcome === 'completed' && !Object.hasOwn(result, 'structured')) {
+    if (result.outcome === 'done' && !Object.hasOwn(result.output, 'structured')) {
       throw new AgentRunValidationError(
         'AGENT_RUN_STRUCTURED_REQUIRED',
         'a completed Agent Run with responseSchema requires a structured result',
       )
     }
-    if (Object.hasOwn(result, 'structured')) {
-      prepared.responseSchema.validate(result.structured, 'AGENT_RUN_STRUCTURED_INVALID')
+    if (Object.hasOwn(result.output, 'structured')) {
+      prepared.responseSchema.validate(result.output.structured, 'AGENT_RUN_STRUCTURED_INVALID')
     }
   }
   return result

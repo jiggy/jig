@@ -8,28 +8,13 @@ An Agent-capable Flow asks Jig to perform intelligent work. You choose the
 client, model, and credentials on the host; the Flow supplies the task and its
 selected Skills. Ordinary Flows that do not call an Agent need no configuration.
 
-Run `jig review` in a terminal. If the project uses an Agent and you have not
-selected one, Jig lists clients with available local configuration and asks you
-to choose. It remembers that client for this project on your machine; subsequent
-reviews and Runs reuse it. Projects without Agent capabilities need no choice.
-Unavailable clients appear in a short secondary line. Use `jig review --details`
-to expand their setup instructions; Jig shows those instructions automatically
-when no client is usable.
+The same operator configuration supplies native Agent Run and
+[Agent Exchange](../spec/agent-exchange.md). The [reusable Agent method](agent-method.md)
+can be invoked as an ordinary Flow or imported into another method; neither
+entrypoint selects your provider or credentials.
 
-The menu labels native clients as supporting live updates and API clients as
-supporting the final result only. The current declarations do not establish
-whether Flow code needs live Agent updates, so the menu cannot guarantee that
-an API client supports every runtime call. A Flow that requests those updates
-needs a native client. No extra project configuration is required for the menu.
-
-Jig reads exported model and credential variables for both `jig review` and
-`jig run`. Project `.env` files are not loaded automatically. Credentials being
-present do not select an Agent. The menu makes no model requests.
-
-For scripts, set `JIG_AGENT_CLIENT` to `codex`, `claude`, `pi`, or `api`, or use
-an existing remembered choice. `--yes` approves the displayed revision; it
-does not choose an Agent. Explicit selection takes precedence over a remembered
-choice. Selection and execution approval remain separate.
+The current alpha reads exported environment variables for both `jig review`
+and `jig run`. Project `.env` files are not loaded automatically.
 
 ## API access
 

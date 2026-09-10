@@ -3,7 +3,11 @@
 **Status:** experimental alpha candidate.
 
 Agent Run is one exact FLOW Invocation Contract consumed through Run/1
-`flow/call`. It does not add an Agent API to `@jigging/flow`, a provider
+`flow/call`. Jig authenticates selected Skills from the active caller's admitted
+package and uses the shared [Agent method](../guide/agent-method.md) to prepare
+the prompt and interpret the response. The separate [Agent Exchange](agent-exchange.md)
+invocation supplies a prepared-prompt transport boundary for reusable methods.
+It does not add an Agent API to `@jigging/flow`, a provider
 configuration field to Bindings, or a semantic router to Jig.
 
 The canonical descriptor is
@@ -30,7 +34,8 @@ Declare the slot in a code Flow's optional `flow.meta.json`:
 ```
 
 The slot name `agent` is local to this package. A package may declare one slot
-for each supported native invocation: Agent Run, [Project Command](project-command.md),
+for each supported native invocation: Agent Run, [Agent Exchange](agent-exchange.md),
+[Project Command](project-command.md),
 and [Run Checkpoint](run-checkpoint.md). Each requires its exact descriptor and
 its own eligibility conditions: Project Command needs reviewed Binding command
 policy, and Run Checkpoint requires a root writable attachment and output owner.
@@ -69,8 +74,12 @@ On the Run/1 wire and in the SDK, `run.call()` returns that complete result.
 An Agent `blocked` or `limit` outcome is ordinary domain data, not an execution
 error. A `done` call requesting `responseSchema` includes `output.structured`;
 Jig validates it against the supplied FLOW Schema/1 schema before returning it.
-Agent execution remains a native-only implementation in this profile. A Flow
+This authenticated caller-context invocation remains native-only in Jig. A Flow
 offering the same descriptor cannot replace its credential or lifecycle owner.
+The anonymous ordinary Agent Flow instead selects its own package Skills and
+accepts plain caller guidance; it does not offer this native contract.
+
+## Structured-output profile
 
 The alpha accepts one bounded recursive structured-output profile. Its root is
 a nonempty closed object with the FLOW Schema/1 `$schema` identifier. Every
@@ -96,7 +105,7 @@ Values may be:
 A nullable string enum includes `null` and at least one string in `enum`;
 otherwise its `type` declaration and allowed values would disagree.
 
-The complete schema is limited to eight schema levels including the root, 128
+The canonical JSON/1 schema is limited to 256 KiB, eight schema levels including the root, 128
 properties across all objects, and 256 enum members across all string enums.
 Property names and enum strings together may contain at most 120,000 Unicode
 characters; an enum with more than 250 members has a 15,000-character limit.

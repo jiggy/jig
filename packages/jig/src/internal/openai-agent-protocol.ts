@@ -4,7 +4,6 @@ import {
   JSON_1_LIMITS,
   type JsonObject,
   type JsonValue,
-  validateJson1,
 } from '../json.js'
 
 export const PRIVATE_OPENAI_AGENT_PROTOCOL = 'jig-private-openai-agent/1' as const
@@ -41,9 +40,8 @@ export interface PrivateOpenAIAgentRequest {
 }
 
 export interface PrivateOpenAIAgentResult {
-  readonly outcome: 'completed' | 'blocked' | 'limit'
   readonly text: string
-  readonly structured?: JsonValue
+  readonly stop: 'end-turn' | 'refusal' | 'limit'
 }
 
 export type PrivateOpenAIAgentWorkerResponse =
@@ -237,31 +235,16 @@ function requirePrivateOpenAIAgentRequest(value: unknown): PrivateOpenAIAgentReq
 
 function requirePrivateOpenAIAgentResult(value: unknown): PrivateOpenAIAgentResult {
   const record = ordinaryRecord(value)
-  const hasStructured = record !== undefined && Object.hasOwn(record, 'structured')
   if (
     record === undefined ||
-    !exactKeys(record, hasStructured ? ['outcome', 'structured', 'text'] : ['outcome', 'text']) ||
-    (record.outcome !== 'completed' &&
-      record.outcome !== 'blocked' &&
-      record.outcome !== 'limit') ||
+    !exactKeys(record, ['stop', 'text']) ||
+    (record.stop !== 'end-turn' && record.stop !== 'refusal' && record.stop !== 'limit') ||
     typeof record.text !== 'string' ||
     new TextEncoder().encode(record.text).byteLength > JSON_1_LIMITS.stringBytes
   ) {
     throw protocolFailure('OpenAI Agent worker result has an invalid shape')
   }
-  if (hasStructured) {
-    try {
-      validateJson1(record.structured)
-    } catch {
-      throw protocolFailure('OpenAI Agent worker structured result is not JSON/1')
-    }
-    return Object.freeze({
-      outcome: record.outcome,
-      text: record.text,
-      structured: record.structured as JsonValue,
-    })
-  }
-  return Object.freeze({ outcome: record.outcome, text: record.text })
+  return Object.freeze({ text: record.text, stop: record.stop })
 }
 
 function encodeBounded(

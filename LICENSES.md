@@ -10,6 +10,7 @@ identify the governing terms for their installed package.
 | Material | License |
 | --- | --- |
 | Jig source, installed package documentation, project specifications, and machine schemas (`packages/jig/**`, except third-party material; `docs/jig/spec/**`) | Mozilla Public License 2.0 ([text](LICENSE)) |
+| Reusable Agent method and its installed Flow artifact (`packages/agent-method/**`, except bundled third-party material) | Mozilla Public License 2.0 ([text](LICENSE)) |
 | FLOW SDKs and their installed package documentation, machine schemas, examples, and conformance material (`packages/flow-sdk/**`; `packages/jiggy-flow/**`; `docs/flow/spec/machine/**`; `docs/flow/spec/examples/**`; `conformance/**`) | Apache License 2.0 ([text](LICENSES/Apache-2.0.txt)) |
 | FLOW normative specifications (`docs/flow/spec/*.md`) and their working-group files (`Governance.md`; `Scope.md`; `Notices.md`) | Community Specification License 1.0 ([text](LICENSES/Community-Spec-1.0.md)) |
 | Manrope and JetBrains Mono font files (`site/theme/fonts/**`) | SIL Open Font License 1.1 (individual notices in [site/theme/fonts](site/theme/fonts)) |

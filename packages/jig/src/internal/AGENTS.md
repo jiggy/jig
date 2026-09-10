@@ -21,8 +21,11 @@ child calls, project commands, and Agent providers.
   and separate command-owned publication after execution fencing.
 - Installed Bun authentication, rootless acquisition, delegation,
   containment, supervision, and execution.
-- Agent clients and launchers, native invocation enforcement, credential isolation,
-  structured results, and package-local skill projection.
+- Agent clients and launchers, native invocation enforcement, credential
+  isolation, independent result validation and package-local Skill projection.
+  Agent Run and Agent Exchange share the same bounded provider owner. The
+  former imports the pinned `@jigging/agent-method` library; editable Flow
+  implementations never execute in the coordinator.
 - Channel integration resolves admitted package contracts and binds root
   output, exact child endpoints, or native Agent endpoints. Unused incoming rights
   may move onward; each child and effect retains its own participant identity.
@@ -88,16 +91,10 @@ child calls, project commands, and Agent providers.
   installation, not a parallel Jig resolver.
 - Provider credentials are host configuration and must not enter Flow input,
   project state, artifacts, diagnostics, or unrelated provider processes.
-- Installed Agent selection accepts explicit codex/claude/pi/api, then an
-  operator-local remembered client. Credentials never select implicitly.
-  `operator-agent-choice.ts` stores only a closed client name, keyed by canonical
-  project path, outside project source in owner-only state. Reject unsafe files;
-  preference is neither approval nor provider authentication. Review may acquire
-  a missing provider after captured capability inspection, before preparation;
-  Run/recovery never prompt or replace a missing selected provider. The chooser
-  verifies local candidates without dispatching model work. Optional channel
-  declarations cannot prove mandatory runtime Agent streaming; do not scan code
-  or add duplicate requirements just to filter clients.
+- Agent Exchange passes accepted prompts unchanged and enforces its prompt,
+  schema and provider bounds before allocation. Native ACP leading-slash prompts
+  are rejected because clients interpret them as control commands; a method's
+  prefix is not the authority safeguard.
 - Native Codex subscription access comes from the current operator's
   file-backed Codex login. Project only its short-lived bearer; never embed a
   development login, retain its refresh token, mount `CODEX_HOME`, or expose a

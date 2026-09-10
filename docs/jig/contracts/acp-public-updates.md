@@ -9,8 +9,8 @@ replacements. Thoughts, tools, permissions and raw ACP payloads are excluded.
 Its exact identity, version and digest are checked offline.
 
 Copy the descriptor into `contracts/acp-public-updates.json` beside the Agent
-Run descriptor in a Flow package. Use the package-local reference to create a
-named channel, then pass its send endpoint to Agent Run's optional `events`
+Run or [Agent Exchange](agent-exchange.md) descriptor in a Flow package. Use the package-local reference to create a
+named channel, then pass its send endpoint to the invocation's optional `events`
 channel. A generic text stream cannot impersonate this named agreement merely
 because its values look similar.
 

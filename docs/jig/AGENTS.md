@@ -21,6 +21,9 @@ use-case and orchestration hypotheses.
   Its first-method walkthrough extends the ordinary greeting project with a
   bounded support-reply draft, not an example-only installation path.
   `guide/dependencies.md` owns package dependency preparation guidance.
+- `guide/agent-method.md` explains the reusable method's pure library and
+  anonymous ordinary Flow artifact, honest source-candidate adoption and the
+  distinction from native authenticated caller Skills.
 - `guide/contracts.md` teaches optional managed TypeSpec authoring and generated
   file ownership; `spec/contract-authoring.md` owns its exact host boundaries.
 - `guide/markdown.md` teaches one-file methods, supported Skill authoring,

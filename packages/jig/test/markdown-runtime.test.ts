@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import { createHash } from 'node:crypto'
+import { assertResponseSchema } from '@jigging/agent-method'
 import {
   type ChannelEndpoint,
   type FlowCall,
@@ -9,7 +10,6 @@ import {
   type RunResult,
 } from '@jigging/flow'
 import { markdownAgentContract } from '../src/internal/markdown-agent-contract.js'
-import { assertPrivateAgentResponseSchema } from '../src/internal/openai-agent-client.js'
 import { parseAgentRunInput, parseAgentRunResult } from '../src/internal/private-agent-run.js'
 import { INVOCATION_CONTRACT_SCHEMA, parseInvocationContract } from '../src/invocation-contract.js'
 import { compileMarkdown } from '../src/markdown/parser.js'
@@ -134,11 +134,13 @@ describe('finite Markdown runtime', () => {
         expect(prepared.input.responseSchema?.$schema).toBe(
           'https://flow.jig.md/schemas/schema-1.json',
         )
-        expect(() => assertPrivateAgentResponseSchema(prepared.input.responseSchema!)).not.toThrow()
+        expect(() => assertResponseSchema(prepared.input.responseSchema!)).not.toThrow()
         const structured = finish('qualified')
         expect(
-          parseAgentRunResult(contract, prepared, { outcome: 'completed', text: '', structured })
-            .structured,
+          parseAgentRunResult(contract, prepared, {
+            outcome: 'done',
+            output: { text: '', structured },
+          }).output.structured,
         ).toEqual(structured)
         return decision(structured)
       }),

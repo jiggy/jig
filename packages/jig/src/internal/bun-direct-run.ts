@@ -1,6 +1,6 @@
 import { unavailable } from '../diagnostics.js'
 import type { JsonValue } from '../json.js'
-import { nativeSlotRoutes } from '../project/invocation-slots.js'
+import { isAgentInvocation, nativeSlotRoutes } from '../project/invocation-slots.js'
 import {
   type PrivateActivationRequest,
   requirePrivateActivationRequest,
@@ -136,7 +136,7 @@ async function describePrivateBunDirectRun(
     !Object.values(request.attachments).includes('read-write')
   )
     throw new TypeError('Run Checkpoint requires a root writable attachment')
-  const usesAgent = nativeRoutes.some(({ native }) => native === 'agent')
+  const usesAgent = nativeRoutes.some(({ native }) => isAgentInvocation(native))
   const usesCommand = nativeRoutes.some(({ native }) => native === 'project-command')
   if (usesAgent && input.agentProvider === undefined) {
     unavailable(
