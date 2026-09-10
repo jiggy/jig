@@ -38,6 +38,9 @@ and capability-contract semantics.
 
 ## Work Guidance
 
+- Lead introductions with the applications readers can build by composing
+  executable methods. Keep stewardship and governance in supporting reference
+  material, after the technical value is clear.
 - Prefer the smallest portable boundary that permits an independent host and
   component to interoperate.
 

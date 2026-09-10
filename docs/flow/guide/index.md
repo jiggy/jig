@@ -4,13 +4,14 @@ title: FLOW specifications
 
 # FLOW specifications
 
-FLOW is a founder-stewarded, openly implementable package and process
-standard. This site publishes its current prerelease specifications directly
-from the source repository.
+FLOW lets you build applications from reusable methods that combine Agent
+instructions and executable code. Package useful work as a **Flow**, call it
+from code, and combine it with other Flows to accomplish more.
 
-A **Flow** packages one reusable method. For an executable Flow, Run/1 carries
-the host's invocation and the method's `{ outcome, output }` result. The host
-supplies local authority; the method keeps its own implementation.
+An executable Flow gives a method a defined input and result, so a program can
+invoke it without an Agent first interpreting its instructions. The method
+can use ordinary code, Agent judgment, or both. The specifications below define
+the small package and process boundaries that make those pieces work together.
 
 ![A Flow package contains descriptive files and an executable method. Operator choices configure a host, such as Jig, which invokes the method through Run/1.](./flow-boundary.svg)
 
@@ -53,3 +54,9 @@ corpus remains in the
 FLOW does not specify project admission, permissions, sandboxing, persistence,
 agent policy, or semantic routing. Those are host responsibilities. The
 [Jig site](https://jig.md/) documents one FLOW host.
+
+## Status and stewardship
+
+These prerelease specifications are published directly from the source
+repository. FLOW is openly implementable; its decision process is described in
+[the governance document](https://github.com/jiggy/jig/blob/main/Governance.md).
