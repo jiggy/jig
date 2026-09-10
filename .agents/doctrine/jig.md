@@ -41,6 +41,33 @@ or several such workers alongside ordinary code and checks. Jig makes this
 work available under a common host boundary while leaving each method's
 internal control and each application's purpose to its author.
 
+### Programmable execution makes capability usable
+
+A builder should be able to combine the flexibility of AI Agents with the
+discipline of a traditional codebase. An executable Flow can express its
+procedure in ordinary code, invoke configured collaborators, validate results,
+and request Agent judgment where useful. Programmatic execution lets those
+procedural choices run as authored without asking a model to reconstruct each
+handoff from instructions.
+
+The Flow's code or runtime owns that procedure. Jig runs accepted methods with
+their configured powers, limits, and lifecycle; it does not become the workflow
+language. Applications supply domain checks and consequence policy. These
+responsibilities make execution understandable without promising that code
+has no bugs or that an Agent's answer is true. Operational availability and
+recovery guarantees remain distinct claims requiring their own evidence.
+
+Practical agency includes directing more useful work without a proportional
+increase in supervision. Explicit methods and evidence can help reserve
+attention for decisions that need judgment. The intended gain must be evaluated
+in a real application; permissions alone do not establish that control is
+usable.
+
+The ordinary experience is to understand a method, accept an exact revision,
+supply local collaborators and powers, run it, and receive evidence with its
+outcome. Then inspect, adapt, and combine the method without adopting its
+internal framework. Execution should be as governable as a process.
+
 ## 2. Keep direction with the authority owner
 
 Delegation, local admission, and method selection are different decisions.

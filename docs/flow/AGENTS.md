@@ -16,7 +16,9 @@ and capability-contract semantics.
 - Admission, containment, permissions, persistence, providers, Agent policy,
   and routing belong to a host such as Jig, not FLOW.
 
-- `guide/understand.md` explains the product purpose and responsibility boundaries.
+- `index.md` introduces callable methods through the proposal-workshop example;
+  `guide/understand.md` develops the Skills bridge, capability compounding, and
+  responsibility boundaries. Keep the example host-specific and FLOW independent.
 - `guide/start.mdx` routes authors to complete SDK or host tutorials without
   treating a source candidate as a published install. Its native language tabs
   preserve both examples in the generated `/guide/start.md` resource.

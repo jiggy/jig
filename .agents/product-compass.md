@@ -93,6 +93,15 @@ A complete application must justify its added ceremony against a strong
 simpler alternative on the dimensions it claims; it need not win every
 comparison. Completing one outcome does not authorize the next subsystem.
 
+## Audience and communication
+
+The [audience strategy](audience.md) owns the initial ICP, needs, domain
+understanding, and hypotheses to validate. The [communication guide](communication.md)
+owns positioning, narrative, and editorial judgment. Both apply the product
+principles; they do not define the shared purpose or exact public contracts.
+Read them before shaping public entrypoints. Their separate ownership lets
+market understanding and wording evolve without silently changing doctrine.
+
 ## From commitments to concrete work
 
 Specifications define exact public contracts within this doctrine.

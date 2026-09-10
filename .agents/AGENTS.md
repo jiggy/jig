@@ -2,16 +2,21 @@
 
 ## Purpose
 
-Owns the product compass and doctrine, first-time engineering orientation, recovery,
-long-term planning, and optional historical field notes that maintainers need,
-plus project-maintained skills for external libraries.
+Owns the product compass, doctrine, audience and communication strategy,
+first-time engineering orientation, recovery, long-term planning, and optional
+historical field notes that maintainers need, plus project-maintained skills
+for external libraries.
 
 ## Ownership
 
 - `product-compass.md` introduces the product authority pyramid and routes
   readers from core ideas through principles to detailed commitments.
-- `doctrine/` owns detailed product reasoning, audience, tradeoffs, intended
+- `doctrine/` owns detailed product reasoning, tradeoffs, intended product
   experience, and the decision test.
+- `audience.md` owns the initial ICP, felt problems, domain understanding,
+  participant needs, and adoption hypotheses.
+- `communication.md` owns positioning, narrative progression, vocabulary,
+  and public editorial judgment, drawing on the audience and doctrine.
 - `maintainer-guide.md` introduces the engineering model, its governing
   principles, operational invariants, and working method.
 - `ROADMAP.md` orders outcome gates and the next concrete development steps
@@ -32,12 +37,15 @@ plus project-maintained skills for external libraries.
   engineering workflow and rationale belong in `maintainer-guide.md`, required
   by the root entrypoint; product rationale belongs in the doctrine and recovery
   landmarks in `suspended-experiments.md`.
-- Edit the compass, doctrine, maintainer guide, roadmap, and recovery index in
-  place. Do not put dated snapshots, current blockers, or release anomalies
-  in them.
+- Edit the compass, doctrine, audience, communication guide, maintainer guide,
+  roadmap, and recovery index in place. Keep dated snapshots, current blockers,
+  and release anomalies in `.tmp/`.
 - Promote a retrospective to `field-notes/` only when it preserves useful
   first-hand causality that Git and the living records cannot. It remains
   non-normative, is never default reading, and must not carry current status.
+- Keep purpose, audience strategy, and communication in their separate owners.
+  Purpose and the compass reference the strategy documents; target segments
+  and editorial choices do not define product purpose or public contracts.
 - Keep the compass a concise entrypoint and the doctrine the home of detailed
   product reasoning. Current behavior, implementation mechanics, roadmap
   order, and research catalogues retain their existing owners.

@@ -23,11 +23,16 @@ Three principles determine what a FLOW design must preserve.
 
 ## 1. Accumulate usable capability
 
-A method becomes more valuable when later practitioners can build on its
-working procedure instead of starting again. A research method, for example,
-might preserve how sources are separated, claims checked, disagreements
-resolved, and uncertainty reported. Its reusable value extends beyond the
-report it produced on one occasion.
+Capability compounds when usable methods become the means to accomplish
+more together. A builder can combine research, evidence review, and synthesis
+into an investigation they would struggle to coordinate through individual
+Agent conversations. Reuse and portability enable that combination; the
+valuable gain is the work it makes achievable.
+
+A method can preserve how sources are separated, claims checked, disagreements
+resolved, and uncertainty reported. Its implementation may evolve rapidly.
+The value lies in usable capability and its composition, rather than the
+lifespan of a particular codebase.
 
 Capability can grow when an unchanged good method reaches a new consumer, or
 when combining methods makes a previously impractical outcome achievable.
@@ -69,11 +74,25 @@ stopping conditions. Asking one Agent to follow a description may be entirely
 sufficient. When the structure itself matters, a reusable procedure should
 make it dependable rather than leave every consumer to reconstruct it.
 
-Skills, tools, libraries, and graph runtimes remain valuable. A Skill can
-include scripts and a tool can expose a complex workflow; these are not rigid
-categories separating knowledge from executable work. FLOW's proposal is a
-shared package and invocation boundary for the complete method, independent
-of how its author implements that method.
+FLOW brings readable instructions and executable methods into one package
+model. An instructions-only Flow can hold guidance and resources. Adding an
+executable implementation gives a compatible host a method it can invoke
+directly, without a model first interpreting the prose to choose what to run.
+The program can use ordinary code throughout, request Agent judgment at chosen
+steps, or combine those approaches. Agent involvement is a method choice.
+
+This makes procedural composition available to ordinary code: callers supply
+input and consume a defined outcome and result. Methods can express ordering,
+checks, branches, and stopping conditions in their implementation, with no
+required model call merely to interpret those instructions. A concrete gain
+in latency, cost, or result quality still needs measurement.
+
+Skills, tools, libraries, and graph runtimes remain valuable. Skills can bundle
+scripts, and those scripts can also be run directly. FLOW's proposal is a shared
+package and invocation boundary for the complete method, independent of how
+its author implements it. Sharing should feel as approachable as a Skill,
+and composition as natural as a function. Exact file compatibility and whether
+a package is executable are governed by Package/1, not by this analogy.
 
 A Flow performs bounded work. It owns its domain logic, prompts, selected
 Skills, validation, and internal method. FLOW owns portable package meaning,

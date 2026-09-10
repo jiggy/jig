@@ -1,12 +1,12 @@
 ---
 pageType: home
-title: Good methods should travel.
-description: An independent standard for sharing executable know-how. Package useful methods so others can run, adapt, and combine them.
+title: Turn Agent skills into applications.
+description: Bring Agent instructions and executable code into one package model. Call and combine methods to build more capable applications with FLOW.
 hero:
   name: FLOW
   eyebrow: Capability compounding
-  text: "Good methods\nshould travel."
-  tagline: Give the next builder a better starting point. Share executable know-how that others can run, adapt, and combine.
+  text: "Turn Agent skills\ninto applications."
+  tagline: You've taught an Agent how to do useful work. FLOW brings instructions and executable code into reusable methods called Flows, so you can build a system from what they can do.
   status: Open standard · prerelease specifications
   statusLink: /guide/
   actions:
@@ -17,82 +17,89 @@ hero:
       text: Explore the standard
       link: /guide/
 features:
-  - title: Ordinary files
-    details: Readable purpose. Inspectable methods.
-  - title: A small boundary
-    details: Finite invocation. Explicit outcomes.
-  - title: Independent by design
-    details: Your language. Your runtime. Your host.
+  - title: Package a method
+    details: Keep its instructions and code together.
+  - title: Call it directly
+    details: Executable steps need no Agent.
+  - title: Build with it
+    details: Combine methods into an application.
 showcase:
-  label: Explore the boundary
-  title: One method. A better starting point.
-  description: Keep the procedure together and the exchange small. A Flow preserves how work gets done without making every consumer adopt the author's application.
-  note: Illustrative package and handler. Execution requires a compatible host; this page runs no Flow.
-  link: /guide/start
-  linkText: Follow the authoring path
+  label: From a drafting Skill to a workshop
+  title: Put drafting, checks, and review to work together.
+  description: A proposal needs more than a first draft. In the proposal-workshop example, a coordinating Flow calls a drafter, checks its output in code, and calls a separate reviewer. Each specialist uses its own Agent instructions.
+  note: Illustrative view of the authored proposal-workshop example, which runs on Jig. This page executes no Flows.
+  link: https://jig.md/guide/proposal-workshop
+  linkText: Follow the complete example
   stages:
     - name: Package
-      title: Keep the method in ordinary files.
-      description: FLOW.md describes the method. An executable package adds its implementation and the resources it needs. Schemas and exact contracts are optional.
-      file: A minimal executable package
+      title: Give the drafting Skill an executable method.
+      description: The drafter keeps its Skill alongside an implementation. FLOW.md explains the method; flow.ts supplies the entrypoint another program can invoke.
+      file: Selected files in the drafter package
       code: |-
-        echo/
+        drafter/
         ├── FLOW.md
-        ├── package.json
-        └── flow.ts
-      tags: [Readable purpose, Inspectable source, Colocated resources]
-    - name: Invoke
-      title: Small at the boundary. Flexible inside.
-      description: The TypeScript SDK handles one Run/1 exchange. Your program owns its method; a compatible host supplies the invocation and local powers.
-      file: flow.ts
+        ├── flow.ts
+        └── skills/
+            └── grounded-drafting/
+                └── SKILL.md
+      tags: [Readable purpose, Agent instructions, Executable entrypoint]
+    - name: Compose
+      title: Let code coordinate the specialists.
+      description: The workshop invokes the methods directly. Code checks requirement coverage and source IDs, and permits at most one revision. A model does not have to interpret those procedural steps.
+      file: Workshop procedure (summary)
       code: |-
-        import { handle } from "@jigging/flow";
-
-        await handle(async (run) => ({
-          outcome: "done",
-          output: { received: run.input },
-        }));
-      tags: [Ordinary code, Finite work, Your internal runtime]
-    - name: Build further
-      title: Give another consumer something useful.
-      description: A defined outcome lets another application use the result. Evaluate the method in its new setting, adapt it, and preserve what proves useful.
-      file: Result for input {"name":"Ada"}
+        Supplied objective and evidence
+          → call the drafting Flow
+          → check coverage and source IDs
+          → call the reviewing Flow
+          → finish or request one revision
+      tags: [Direct invocation, Mechanical checks, Bounded revision]
+    - name: Result
+      title: Return an outcome the application can use.
+      description: A proposal that passes the checks and review is returned with its evidence. Blocked or exhausted work has its own outcome. Agent review remains advisory; the recipient decides whether to act.
+      file: Application outcomes (summary)
       code: |-
-        {
-          "outcome": "done",
-          "output": {
-            "received": { "name": "Ada" }
-          }
-        }
-      tags: [Defined outcomes, Reusable method, Evidence-led improvement]
+        done
+          proposal + review + history
+        blocked
+          available work + reason
+        limit
+          available work + reason
+      tags: [Defined outcomes, Retained feedback, Explicit next decision]
 ---
 
 <section className="statement">
-<p className="eyebrow">Share how the work gets done</p>
-<h2>An answer helps once.<br />A method is a starting point.</h2>
-<p>A research procedure can preserve how sources are gathered, claims checked, and uncertainty reported. Others can adapt it or combine it with another specialist. FLOW provides the shared boundary for that executable know-how.</p>
-<a className="text-link" href="/guide/understand">Why FLOW exists <span aria-hidden="true">↗</span></a>
+<p className="eyebrow">From instructions to execution</p>
+<h2>The workshop calls methods<br />as steps in a program.</h2>
+<p>The drafting Skill still guides an Agent. The workshop's code can invoke the drafting Flow directly, then check its result and pass it to the reviewer. Its procedure does not depend on an Agent reading the whole workflow and reconstructing each handoff.</p>
+<p>That is the connection FLOW adds: readable guidance and executable behavior fit within one package model. A Flow can run ordinary code throughout or bring in Agent judgment where useful.</p>
+<a className="text-link" href="/guide/understand">Understand the method boundary <span aria-hidden="true">↗</span></a>
 </section>
 
 <div className="ownership-grid">
-<section><span className="tile-index">01 / CAPTURE</span><h3>Package the craft.</h3><p>Keep the method's code, instructions, checks, and resources together. Explain what a consumer can expect.</p></section>
-<section><span className="tile-index">02 / APPLY</span><h3>Carry it forward.</h3><p>A compatible host invokes the method with its own local powers. The method keeps its implementation.</p></section>
-<section><span className="tile-index">03 / EVALUATE</span><h3>Preserve what works.</h3><p>Test the result in its setting. Share useful improvements and give the next consumer a stronger starting point.</p></section>
+<section><span className="tile-index">01 / DESCRIBE</span><h3>Explain the method in FLOW.md.</h3><p>Keep its purpose and instructions readable, with the resources it needs. A package can contain guidance alone.</p></section>
+<section><span className="tile-index">02 / IMPLEMENT</span><h3>Add code that can be called.</h3><p>An entrypoint such as flow.ts or flow.py receives input and returns a result through FLOW's invocation protocol. An Agent is optional.</p></section>
+<section><span className="tile-index">03 / COMPOSE</span><h3>Use the result in your program.</h3><p>Connect methods with ordinary code. Your application decides how their results contribute to the task and what to do when a method cannot complete it.</p></section>
 </div>
 
 <section className="feature-editorial">
-<div><p className="eyebrow">Independent by design</p><h2>Methods travel.<br />Authority stays local.</h2></div>
-<div><p>FLOW defines portable package and invocation meaning. Each host supplies permissions, providers, credentials, execution limits, and lifecycle policy.</p><p>No mandatory registry, model provider, programming language, or internal runtime owns that exchange. <a href="https://jig.md/">Jig</a> is one host; FLOW can serve others without adopting Jig's policy model.</p><a className="text-link" href="/guide/">Explore the exact contracts <span aria-hidden="true">↗</span></a></div>
+<div><p className="eyebrow">Capability compounding</p><h2>Methods form<br />a workshop.</h2></div>
+<div><p>Combining the drafter with a reviewer and explicit checks creates a proposal workshop whose procedure you can inspect and adapt. The reviewer is itself a callable method, ready to contribute to another application with suitable inputs.</p><p>This is capability compounding: useful methods become building blocks for work that would be harder to accomplish separately. As you improve a specialist, you can evaluate and use it across the applications that build on its capability.</p><a className="text-link" href="https://jig.md/guide/proposal-workshop">See the methods and their checks</a></div>
 </section>
 
-<section className="statement statement--compact"><p className="eyebrow">Built to be built on</p><h2>A standard with room for your ideas.</h2><p>Start with one method. Use a plain program or a graph library. Add precision where independent consumers need it. Let the useful outcome determine the structure.</p></section>
+<section className="statement statement--compact">
+<p className="eyebrow">A small shared boundary</p>
+<h2>Keep your method.<br />Choose a compatible host.</h2>
+<p>For these pieces to work together, FLOW defines how a package describes itself and how an invocation exchanges input and results. Your method keeps its language, libraries, and internal control. The host supplies execution support and local powers.</p>
+<p>FLOW is an independent standard with no mandatory registry or model provider. <a href="https://jig.md/">Jig</a> is one host; other implementations can use the same public boundary with their own execution policy.</p>
+</section>
 
 <div className="reader-grid">
-<a href="/guide/start" className="reader-card"><span className="tile-index">FOR AUTHORS</span><h3>Share a useful method.</h3><p>Choose a language and a compatible execution path. Learn the package and invocation boundary.</p><span className="card-link">Start building ↗</span></a>
-<a href="/guide/overview" className="reader-card"><span className="tile-index">FOR IMPLEMENTERS</span><h3>Build on exact meaning.</h3><p>Find the package, protocol, SDK, schema, and conformance material in one task map.</p><span className="card-link">Explore the documentation ↗</span></a>
-<a href="/guide/for-agents" className="reader-card"><span className="tile-index">FOR AGENTS</span><h3>Read the source of truth.</h3><p>Fetch focused Markdown pages or the complete public documentation bundle.</p><span className="card-link">Get the context ↗</span></a>
+<a href="/guide/start" className="reader-card"><span className="tile-index">BUILD A METHOD</span><h3>Write your first executable Flow.</h3><p>Choose a language and a compatible execution path, then change the method's result.</p><span className="card-link">Start building ↗</span></a>
+<a href="/guide/overview" className="reader-card"><span className="tile-index">BUILD AN INTEGRATION</span><h3>Find the boundary you need.</h3><p>Explore package, protocol, SDK, schema, and conformance guidance in one task map.</p><span className="card-link">Explore the documentation ↗</span></a>
+<a href="/guide/for-agents" className="reader-card"><span className="tile-index">BUILD WITH AN AGENT</span><h3>Give your Agent the context.</h3><p>Read focused Markdown pages or the complete public documentation bundle.</p><span className="card-link">Get the context ↗</span></a>
 </div>
 
-<details className="honest-details"><summary>What portability does—and does not—promise</summary><p>FLOW is a prerelease standard. Hosts must state which implementations they support; a protocol does not make every package run everywhere. Description-only packages cannot execute a Run/1 invocation. Reuse creates an opportunity for capability compounding; evaluation establishes the benefit. No package format guarantees accuracy or automatic improvement.</p><p><a href="/guide/understand">Understand the design</a> · <a href="/spec/run-protocol">Read Run/1</a></p></details>
+<details className="honest-details"><summary>What to know before you build</summary><p>FLOW is a prerelease standard. An instructions-only package needs an implementation before it can execute a Run/1 invocation, and the chosen host must support that implementation. Code can govern a procedure without guaranteeing that an Agent's answer is correct. The proposal workshop demonstrates composition; it does not prove that multiple Agents outperform one.</p><p><a href="/guide/understand">Understand the design</a> · <a href="/spec/package-format">Read Package/1</a> · <a href="/spec/run-protocol">Read Run/1</a></p></details>
 
-<section className="closing-cta"><p className="eyebrow">Give the next builder a better starting point</p><h2>Make your know-how<br />something others can use.</h2><a className="action action--brand" href="/guide/start">Build your first Flow <span aria-hidden="true">↗</span></a><a className="text-link" href="/guide/">Read the specifications</a></section>
+<section className="closing-cta"><p className="eyebrow">Make the next piece of your system</p><h2>Start with one method.<br />Build what comes next.</h2><a className="action action--brand" href="/guide/start">Build your first Flow <span aria-hidden="true">↗</span></a><a className="text-link" href="/guide/">Read the specifications</a></section>

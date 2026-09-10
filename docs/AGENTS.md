@@ -38,10 +38,11 @@ catalogues for FLOW and Jig.
 
 ## Work Guidance
 
-- Lead public entrypoints with useful outcomes and the owning core idea. Show
-  architectural minimalism through responsibility boundaries and concrete examples.
-  Keep ambition distinct from demonstrated support; never imply that conceptual
-  simplicity removes execution prerequisites or safeguards.
+- Read the [communication guide](../.agents/communication.md) and its audience
+  reference before writing public entrypoints. Each section should answer a
+  question raised by the preceding section; use connected examples to explain
+  capability compounding and programmable execution before architectural detail.
+  Keep ambition distinct from demonstrated support and preserve safeguards.
 - Organize navigation around starting, building, understanding, and reference.
   Tutorials should include an expected result and one useful modification.
 - Write for the reader's decision or task. Introduce unfamiliar concepts in

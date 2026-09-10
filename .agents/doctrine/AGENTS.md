@@ -7,8 +7,9 @@ then guiding principles, design commitments, and their practical consequences.
 
 ## Ownership
 
-- `purpose.md` owns the shared apex, its guiding principles, audience
-  hypothesis, opportunity, and intended experience.
+- `purpose.md` owns the shared apex, its guiding principles, lasting human
+  benefit, and broad opportunity. It references audience and communication
+  strategy rather than defining either.
 - `flow.md` owns capability compounding, executable know-how, and the reasons
   for an independent method ecosystem.
 - `jig.md` owns agency, power under control, and the supporting authority and
@@ -16,6 +17,9 @@ then guiding principles, design commitments, and their practical consequences.
 - `design-judgment.md` owns cross-product responsibilities, accepted tradeoffs,
   product proof, decision criteria, and open design questions, subordinate to
   the shared purpose and both product branches.
+- `../audience.md` owns the ICP and audience hypotheses; `../communication.md`
+  owns public positioning and narrative. Those strategies apply the doctrine
+  without redefining purpose or exact contracts.
 - `../product-compass.md` is the concise shared summary and reading map.
   Specifications, engineering guidance, and roadmap refine the doctrine;
   field notes remain optional historical evidence.
