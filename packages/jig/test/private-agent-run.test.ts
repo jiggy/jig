@@ -1,6 +1,4 @@
 import { beforeAll, describe, expect, test } from 'bun:test'
-
-import { parseCapabilityContract, type ParsedCapabilityContract } from '../src/capability/index.js'
 import { parseChannelContract } from '../src/channel-contract.js'
 import {
   AGENT_RUN_CONTRACT_DIGEST,
@@ -12,20 +10,30 @@ import {
   parseAgentRunResult,
   projectAgentRunSkills,
 } from '../src/internal/private-agent-run.js'
+import {
+  type ParsedInvocationContract,
+  parseInvocationContract,
+} from '../src/invocation-contract.js'
 import type { CapturedFile, CapturedPackage } from '../src/package/capture.js'
 import { comparePathBytes } from '../src/package/paths.js'
 import { SCHEMA_1_URI, SchemaDiagnostic } from '../src/schema/index.js'
 
 const contractPath = new URL(
-  '../../../docs/jig/spec/contracts/agent-run.capability.json',
+  '../../../docs/jig/spec/contracts/agent-run/contract.json',
   import.meta.url,
 )
-let contract: ParsedCapabilityContract
+let contract: ParsedInvocationContract
 
 beforeAll(async () => {
-  contract = parseCapabilityContract(
+  contract = parseInvocationContract(
     await Bun.file(contractPath).bytes(),
-    'agent-run.capability.json',
+    'agent-run/contract.json',
+    new Map([
+      [
+        'contracts/acp-public-updates.json',
+        await Bun.file(new URL('contracts/acp-public-updates.json', contractPath)).bytes(),
+      ],
+    ]),
   )
 })
 
@@ -34,9 +42,9 @@ describe('private Agent Run contract', () => {
     expect(contract.descriptor.id).toBe(AGENT_RUN_CONTRACT_ID)
     expect(contract.descriptor.version).toBe(AGENT_RUN_CONTRACT_VERSION)
     expect(contract.digest).toBe(AGENT_RUN_CONTRACT_DIGEST)
-    expect(Object.keys(contract.descriptor.methods)).toEqual(['run'])
+    expect(contract.profile).toBe('single')
     expect(() => assertAgentRunContract(contract)).not.toThrow()
-    expect(contract.descriptor.methods.run?.channels).toEqual({
+    expect(contract.descriptor.channels).toEqual({
       events: {
         direction: 'send',
         required: false,
@@ -68,11 +76,20 @@ describe('private Agent Run contract', () => {
       'tested-patch/flows/repair',
     ]) {
       const base = new URL(`../../../examples/${flow}/contracts/`, import.meta.url)
-      const consumerContract = parseCapabilityContract(
-        await Bun.file(new URL('agent-run.capability.json', base)).bytes(),
+      const consumerContract = parseInvocationContract(
+        await Bun.file(new URL('agent-run/contract.json', base)).bytes(),
+        'agent-run/contract.json',
+        new Map([
+          [
+            'contracts/acp-public-updates.json',
+            await Bun.file(new URL('agent-run/contracts/acp-public-updates.json', base)).bytes(),
+          ],
+        ]),
       )
       expect(consumerContract.digest).toBe(contract.digest)
-      expect(await Bun.file(new URL('acp-public-updates.json', base)).bytes()).toEqual(profileBytes)
+      expect(
+        await Bun.file(new URL('agent-run/contracts/acp-public-updates.json', base)).bytes(),
+      ).toEqual(profileBytes)
     }
   })
 
@@ -227,8 +244,8 @@ describe('private Agent Run contract', () => {
 
   test('reparses exact descriptor bytes instead of trusting caller schema state', () => {
     const schemas = new Map(contract.schemas)
-    schemas.set('/methods/run/input', { path: 'forged', schemaPointer: '', validate() {} })
-    const forgedSchemas = { ...contract, schemas } as ParsedCapabilityContract
+    schemas.set('/input', { path: 'forged', schemaPointer: '', validate() {} })
+    const forgedSchemas = { ...contract, schemas } as ParsedInvocationContract
     expect(() => parseAgentRunInput(forgedSchemas, { instructions: 3 })).toThrow(
       expect.objectContaining({ code: 'AGENT_RUN_INPUT_INVALID' }),
     )
@@ -236,7 +253,7 @@ describe('private Agent Run contract', () => {
     const changed = {
       ...contract,
       descriptor: { ...contract.descriptor, version: '1.0.1' },
-    } as ParsedCapabilityContract
+    } as ParsedInvocationContract
     expect(() => assertAgentRunContract(changed)).toThrow(
       expect.objectContaining({ code: 'AGENT_RUN_CONTRACT_MISMATCH' }),
     )
@@ -244,7 +261,7 @@ describe('private Agent Run contract', () => {
     const oldDomain = {
       ...contract,
       descriptor: { ...contract.descriptor, id: 'https://jig.dev/contracts/agent-run' },
-    } as ParsedCapabilityContract
+    } as ParsedInvocationContract
     expect(() => assertAgentRunContract(oldDomain)).toThrow(
       expect.objectContaining({ code: 'AGENT_RUN_CONTRACT_MISMATCH' }),
     )

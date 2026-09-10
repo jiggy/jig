@@ -91,8 +91,8 @@ actual=$(
     sed "s|^$repository/||" |
     LC_ALL=C sort
 )
-expected='docs/flow/spec/machine/capability-contract-1.schema.json
-docs/flow/spec/machine/channel-contract-1.schema.json
+expected='docs/flow/spec/machine/channel-contract-1.schema.json
+docs/flow/spec/machine/invocation-contract-1.schema.json
 docs/flow/spec/machine/run-1-errors.json
 docs/flow/spec/machine/run-1.schema.json
 docs/flow/spec/machine/schema-1.json
@@ -120,7 +120,7 @@ case $site_name in
       echo "the Python SDK guide is missing" >&2
       exit 1
     fi
-    schema_map='docs/flow/spec/machine/capability-contract-1.schema.json|capability-contract-1.schema.json|https://flow.jig.md/schemas/capability-contract-1.schema.json
+    schema_map='docs/flow/spec/machine/invocation-contract-1.schema.json|invocation-contract-1.schema.json|https://flow.jig.md/schemas/invocation-contract-1.schema.json
 docs/flow/spec/machine/channel-contract-1.schema.json|channel-contract-1.schema.json|https://flow.jig.md/schemas/channel-contract-1.schema.json
 docs/flow/spec/machine/run-1-errors.json|run-1-errors.json|-
 docs/flow/spec/machine/run-1.schema.json|run-1.json|https://flow.jig.md/schemas/run-1.json
@@ -141,11 +141,15 @@ docs/jig/spec/machine/project-authoring-1.schema.json|project-authoring-1.schema
         echo "the $contract identity landing page is missing" >&2
         exit 1
       fi
-      source="$repository/docs/jig/spec/contracts/$contract.capability.json"
-      destination="$staging/contracts/$contract.capability.json"
+      source="$repository/docs/jig/spec/contracts/$contract/contract.json"
+      destination="$staging/contracts/$contract/contract.json"
+      mkdir -p -- "$staging/contracts/$contract"
       cp -- "$source" "$destination"
       cmp -- "$source" "$destination"
     done
+    mkdir -p -- "$staging/contracts/agent-run/contracts"
+    cp -- "$repository/docs/jig/spec/contracts/agent-run/contracts/acp-public-updates.json" "$staging/contracts/agent-run/contracts/acp-public-updates.json"
+    cmp -- "$repository/docs/jig/spec/contracts/agent-run/contracts/acp-public-updates.json" "$staging/contracts/agent-run/contracts/acp-public-updates.json"
     test -s "$staging/contracts/acp-public-updates.html"
     cp -- "$repository/docs/jig/spec/contracts/acp-public-updates.json" "$staging/contracts/acp-public-updates.json"
     cmp -- "$repository/docs/jig/spec/contracts/acp-public-updates.json" "$staging/contracts/acp-public-updates.json"

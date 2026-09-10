@@ -1,4 +1,4 @@
-# Project Command capability
+# Project Command native invocation
 
 *Status: prerelease implementation candidate.*
 
@@ -7,20 +7,19 @@ the Flow a shell or the candidate access to an Agent provider. The command
 returns host-collected output and termination. Application code decides what
 that evidence means.
 
-This is a Jig-owned capability carried by ordinary FLOW Run/1 `capability/call`.
+This is a Jig-owned native invocation carried by ordinary FLOW Run/1 `flow/call`.
 It adds no FLOW protocol method or requirement on other hosts. Its exact
-[descriptor](https://jig.md/contracts/project-command.capability.json) has ID
+[descriptor](https://jig.md/contracts/project-command/contract.json) has ID
 `https://jig.md/contracts/project-command`, version `1.0.0`, and digest
-`sha256:aed62fe17f01897545f82d7ee91f163a023721431433c8f4f6981b4367c85bcf`.
+`sha256:bbe1184a8f60b342e9afe02baa7af8f0b9b9c09e9ddaa139eb6c7bf7bec91e31`.
 
 ## Reviewed authority
 
-The Flow declares one companion, alongside Agent Run if needed:
+The Flow declares one companion, alongside Agent Run if needed, in `flow.meta.json`
+(or optional `FLOW.md` frontmatter):
 
-```yaml
-uses:
-  command:
-    contract: ./contracts/project-command.capability.json
+```json
+{"uses":{"command":{"contract":"./contracts/project-command/contract.json"}}}
 ```
 
 The operator configures the permitted invocations in a Binding:
@@ -46,7 +45,7 @@ shell command, executable selector, environment map, or runtime registry.
 Command policy participates in review, the portable lock, admission identity,
 and the exact execution recipe. Editing it requires review and admission.
 An omitted or empty map grants no command authority. A map on a package which
-does not declare this capability is invalid. An otherwise valid unconfigured
+does not declare this native invocation is invalid. An otherwise valid unconfigured
 command target is unavailable; unrelated targets remain usable.
 
 A root or exact leaf Binding can use its own command policy. Direct `flow:`
@@ -58,10 +57,9 @@ allowed; [root reservations](project-policy.md) bound their combined resources.
 ## Request
 
 ```ts
-const evidence = await run.callCapability({
+const result = await run.call({
   operationId: 'candidate-tests',
   slot: 'command',
-  method: 'run',
   input: {
     command: 'tests',
     files: {
@@ -85,11 +83,11 @@ const evidence = await run.callCapability({
 Jig fixes Bun's runtime and configuration posture, uses the candidate root
 as the working directory, and invokes the selected entrypoint or exact test
 paths. Dependencies must already be source-local or supported Bun/Node built-ins.
-The capability does not run the Flow package's prepared dependencies.
+The native invocation does not run the Flow package's prepared dependencies.
 
 ## Evidence
 
-The SDK returns one value containing:
+The SDK returns `{ outcome: 'done', output: evidence }`. The evidence contains:
 
 | Field | Meaning |
 | --- | --- |
@@ -106,10 +104,10 @@ it is not a lossless binary channel. Truncation means the retained prefix is
 not complete evidence. Collected text remains untrusted candidate output.
 
 A completed command, including a nonzero exit or process signal, is a
-successful effect carrying process evidence—not a successful repair.
+completed invocation carrying process evidence—not a successful repair.
 Cancellation and deadline expiry are operational failures; collected evidence
 may appear at `details.command` when available. Missing evidence is never
-invented. The method declares no application-error variants.
+invented. The invocation declares only `done`; operational failures do not become domain outcomes.
 
 Host collection establishes what the process emitted and how it terminated.
 It does not establish that repository tests ran honestly: imported candidate
@@ -140,5 +138,5 @@ and exact-replay conflict rules apply.
 
 No writable repository, native Agent workspace tools, shell service, package
 installation, credentials, arbitrary network, or detached job is authorized
-by this capability. It returns observations; the application owns patch policy,
+by this native invocation. It returns observations; the application owns patch policy,
 acceptance, and the human decision to apply or merge.

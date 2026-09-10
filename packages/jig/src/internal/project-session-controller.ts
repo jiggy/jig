@@ -277,6 +277,12 @@ function createSession(
           try {
             const executionKey = `${request.packagePath}:${request.package.digest}`
             let execution = executions.get(executionKey)
+            // Markdown is an interpreter input, not a Bun dependency project. A
+            // package.json resource cannot trigger installation or workspace capture.
+            if (execution === undefined && request.entrypoint.suffix === 'md') {
+              execution = privateBunExecutionArtifact(request.package)
+              executions.set(executionKey, execution)
+            }
             if (execution === undefined) {
               const source = await captureStoredPackage(packageStoreRoot, request.package)
               try {
@@ -750,13 +756,19 @@ function isUnavailableDiagnosticCode(code: string): boolean {
     code === 'PACKAGE_BUN_RESOLVED_SOURCE_UNSUPPORTED' ||
     code === 'PACKAGE_BUN_PREPARATION_FAILED' ||
     code === 'PROJECT_AGENT_UNAVAILABLE' ||
+    code === 'PACKAGE_PROFILE_UNSUPPORTED' ||
+    code === 'PACKAGE_METADATA_UNSUPPORTED' ||
+    code === 'PACKAGE_TOOLS_UNSUPPORTED' ||
+    code === 'PROJECT_INTERFACE_ANONYMOUS' ||
+    code === 'PROJECT_ATTACHMENTS_UNSUPPORTED' ||
     code === 'PROJECT_COMMAND_UNCONFIGURED'
   )
 }
 
 function isCandidateDiagnosticCode(code: string): boolean {
   return (
-    code.startsWith('CAPABILITY_') ||
+    code.startsWith('CONTRACT_') ||
+    code.startsWith('MARKDOWN_') ||
     code.startsWith('METADATA_') ||
     code.startsWith('SCHEMA_') ||
     code.startsWith('PACKAGE_BUN_') ||
@@ -770,9 +782,12 @@ function isCandidateDiagnosticCode(code: string): boolean {
       'CHANNEL_FIELD',
       'CHANNEL_LIMIT',
       'CHANNEL_REFERENCE',
+      'CHANNEL_EQUIVOCATION',
       'PACKAGE_ENTRYPOINT_AMBIGUOUS',
+      'PACKAGE_ENTRYPOINT_MISSING',
+      'PACKAGE_METADATA_OWNER',
+      'PACKAGE_SCHEMA_OWNER',
       'PACKAGE_FILE_LIMIT',
-      'PACKAGE_FLOW_MISSING',
       'PACKAGE_HARDLINK',
       'PACKAGE_LIMIT',
       'PACKAGE_PATH',
@@ -785,7 +800,7 @@ function isCandidateDiagnosticCode(code: string): boolean {
       'PACKAGE_SELECTOR',
       'PACKAGE_SPECIAL_FILE',
       'PACKAGE_SYMLINK',
-      'PROJECT_FLOW_CAPABILITY_UNSUPPORTED',
+      'PROJECT_MARKDOWN_AGENT_RESERVED',
       'PROJECT_FLOW_COLLISION',
       'PROJECT_FLOW_MODE_UNSUPPORTED',
     ].includes(code)

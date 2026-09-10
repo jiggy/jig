@@ -13,7 +13,7 @@ case $site_name in
     default_base=https://flow.jig.md
     home_title='<title>FLOW</title>'
     guide_title='<title>FLOW specifications - FLOW</title>'
-    json_map='docs/flow/spec/machine/capability-contract-1.schema.json|schemas/capability-contract-1.schema.json
+    json_map='docs/flow/spec/machine/invocation-contract-1.schema.json|schemas/invocation-contract-1.schema.json
 docs/flow/spec/machine/channel-contract-1.schema.json|schemas/channel-contract-1.schema.json
 docs/flow/spec/machine/run-1-errors.json|schemas/run-1-errors.json
 docs/flow/spec/machine/run-1.schema.json|schemas/run-1.json
@@ -25,10 +25,11 @@ docs/flow/spec/machine/schema-1.json|schemas/schema-1.json'
     guide_title='<title>Get started with Jig - Jig</title>'
     json_map='docs/jig/spec/machine/jig-lock-1.schema.json|schemas/jig-lock-1.schema.json
 docs/jig/spec/machine/project-authoring-1.schema.json|schemas/project-authoring-1.schema.json
-docs/jig/spec/contracts/agent-run.capability.json|contracts/agent-run.capability.json
+docs/jig/spec/contracts/agent-run/contract.json|contracts/agent-run/contract.json
+docs/jig/spec/contracts/agent-run/contracts/acp-public-updates.json|contracts/agent-run/contracts/acp-public-updates.json
 docs/jig/spec/contracts/acp-public-updates.json|contracts/acp-public-updates.json
-docs/jig/spec/contracts/project-command.capability.json|contracts/project-command.capability.json
-docs/jig/spec/contracts/run-checkpoint.capability.json|contracts/run-checkpoint.capability.json'
+docs/jig/spec/contracts/project-command/contract.json|contracts/project-command/contract.json
+docs/jig/spec/contracts/run-checkpoint/contract.json|contracts/run-checkpoint/contract.json'
     ;;
   *)
     echo "the site must be flow or jig" >&2

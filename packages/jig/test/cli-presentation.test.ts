@@ -376,7 +376,7 @@ describe('CLI experience contract', () => {
     expect(error).toContain('JIG_CLEANUP_FAILED')
     expect(error).toContain('METADATA_DESCRIPTION')
     expect(error).toContain('Location: "flows/chat/FLOW.md"')
-    expect(error).toContain('provide a nonempty text description')
+    expect(error).toContain('when present, description must be nonempty text')
     expect(error).not.toContain('secret')
     expect(error).not.toContain('\u001b')
   })

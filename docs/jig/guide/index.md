@@ -49,8 +49,8 @@ Approve this exact revision for execution? [y/N]
 Enter `y` to authorize that revision, or decline to leave it unapproved. Only
 run the next command after approval.
 
-`init` writes ordinary editable files: `jig.ts`, `flows/hello/FLOW.md`,
-`flows/hello/package.json`, and `flows/hello/flow.ts`, plus a README and empty
+`init` writes ordinary editable files: `jig.ts`, `flows/hello/flow.meta.json`,
+`flows/hello/package.json`, and `flows/hello/FLOW.ts`, plus a README and empty
 Bindings directory. It installs nothing, makes no network requests, and
 approves nothing. Use `jig init --bare <directory>` when you want an empty
 project instead.
@@ -63,7 +63,7 @@ before approval; declining cannot undo those requests. It does not give Runs
 network access. Supplied dependency locks remain frozen. See
 [dependency review](./dependencies.md) for reusable locked packages.
 
-The generated `flow.ts` is ordinary SDK code you can edit:
+The generated `FLOW.ts` is ordinary SDK code you can edit:
 
 ```ts
 import { handle } from "@jigging/flow";
@@ -81,7 +81,7 @@ This Flow needs no Agent configuration.
 
 ## Make one change
 
-In `flows/hello/flow.ts`, change `Hello,` to `Welcome,`. Review and run again:
+In `flows/hello/FLOW.ts`, change `Hello,` to `Welcome,`. Review and run again:
 
 ```sh
 jig review --allow-resolution-network
@@ -107,7 +107,7 @@ for a larger application.
 `jig review` leads with added, changed, and removed packages, Bindings, and
 execution policy, then lists the targets you can run. Changed policy is shown
 in full; unchanged policy is omitted. When proposing a change, use
-`jig review --details` to inspect complete current and proposed policy. If Agent capabilities are used, the
+`jig review --details` to inspect complete current and proposed policy. If Agent invocations are required, the
 review also names the selected non-secret host Agent configuration.
 Inspect the source with your usual tools, then approve the review. In a
 noninteractive environment, `--yes` records your explicit approval; it does not
@@ -149,6 +149,7 @@ protocol failures, and retained-state recovery.
 
 - [Build your first Agent method](./agents.md#build-your-first-agent-method) in the project you just created.
 - [Compose code and Agent methods](./request-triage.md) through one caller.
+- [Run a Markdown method](./markdown.md) without an SDK dependency.
 - [Choose an Agent](./agents.md) using an API or a supported local client.
 - [Work with files](./files.md) to capture inputs and export one result packet.
 - [Manage dependencies](./dependencies.md) for reusable Flow packages.
@@ -159,7 +160,7 @@ protocol failures, and retained-state recovery.
 
 The alpha has independent host evidence on provisioned Ubuntu 24.04 x86_64.
 Other matching Linux hosts are not yet independently validated. Jig checks
-required capabilities and reports missing support.
+required invocation contracts and reports missing support.
 
 - Linux x86_64, glibc 2.17 or newer, and an SSE4.2-capable CPU.
 - Bubblewrap 0.12 or newer and GNU `readlink -f`.

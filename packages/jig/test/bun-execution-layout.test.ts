@@ -18,7 +18,7 @@ function workspace() {
 
 const regularFiles = [
   { path: 'flows/main/package.json' },
-  { path: 'flows/main/flow.ts' },
+  { path: 'flows/main/FLOW.ts' },
   { path: 'libraries/shared/package.json' },
   { path: 'libraries/shared/value.ts' },
 ]

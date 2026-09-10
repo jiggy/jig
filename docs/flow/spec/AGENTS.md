@@ -12,6 +12,12 @@ companions.
   by their companion specification.
 - SDKs and `conformance/` implement and test these contracts; they do not
   redefine them.
+- `invocation-contracts.md` owns the optional root `contract.json`, exact named
+  interface/channel-closure identity, and single-operation execution profile.
+- `package-format.md` owns one `FLOW.<ext>` implementation and its sole metadata
+  owner; `markdown-runtime.md` owns the bounded sequential Markdown profile.
+  `schema-files.md` owns the common dialect, with implementation settings kept
+  separate from invocation declarations.
 - `channel-contracts.md` owns JSON channel declarations and named
   meaning; Run/1 owns their transfer, transport and lifecycle. The current
   machine/SDK subset includes direct and isolated broadcast delivery, not

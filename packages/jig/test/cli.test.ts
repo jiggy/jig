@@ -1555,14 +1555,14 @@ describe('finite Jig project commands', () => {
     const events: string[] = []
     const failure = new ProjectAdministrationError('INVALID_CANDIDATE', 'private parser detail', {
       code: 'CHANNEL_FIELD',
-      path: 'flows/worker/FLOW.md',
+      path: 'flows/worker/contract.json',
     })
     const invocation = commandInvocation(
       fakeHost(fakeSession(events, { planFailure: failure }), events),
     )
     expect(await main(['review', '--yes'], invocation.options)).toBe(1)
     expect(invocation.error).toBe(
-      'Review could not finish\n\n  Location: "flows/worker/FLOW.md"\n\n  Next step\n    check channel declarations and descriptors against FLOW Channel Contract/1\n\n  Diagnostic code: CHANNEL_FIELD\n  Category: INVALID_CANDIDATE\n',
+      'Review could not finish\n\n  Location: "flows/worker/contract.json"\n\n  Next step\n    check channel declarations and descriptors against FLOW Channel Contract/1\n\n  Diagnostic code: CHANNEL_FIELD\n  Category: INVALID_CANDIDATE\n',
     )
     expect(invocation.error).not.toContain('private parser detail')
   })

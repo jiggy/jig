@@ -19,23 +19,22 @@ handle
 RunContext
 RunResult
 OperationError
-CapabilityError
 JSON value types
 attachment types
 handler types
-ChannelSender / ChannelReceiver / ChannelEndpoint / ChannelPair
+ChannelSender / ChannelReceiver / ChannelEndpoint / ChannelPair / ChannelBroadcast
 ChannelContractIdentity
 ```
 
-The TypeScript projection additionally names `ChildFlowRequest`,
-`CapabilityCall`, `CallOptions`, and `ChannelOptions`; Python expresses the same values as keyword-only method
+The TypeScript projection additionally names `FlowCall`, `CallOptions`, and
+`ChannelOptions`; Python expresses the same values as keyword-only method
 arguments and uses ordinary task cancellation.
 
-`handle` receives this Flow's invocation. `runChildFlow` / `run_child_flow`
-requests a Flow through an admitted child slot and returns its complete Run
-result. `callCapability` / `call_capability` calls a named capability method.
-These map to distinct `flow/run`, `flow/run-child`, and `capability/call` wire
-requests; authors do not construct the host-supplied invocation context.
+`handle` receives this Flow's `flow/run` invocation. `run.call(...)` invokes a
+declared local slot through `flow/call` and returns its complete `RunResult`,
+whether the host selects an ordinary Flow or a native implementation. Authors
+do not construct the host-supplied context. The initial single-operation profile
+accepts no method or operation selector.
 
 `handle` owns protocol stdin and stdout for the process and handles exactly one
 root Run. The TypeScript SDK captures its transport first, then replaces the
@@ -78,18 +77,10 @@ type RunResult = {
   readonly output: JsonValue;
 };
 
-interface ChildFlowRequest {
+interface FlowCall {
   readonly operationId: string;
   readonly slot: string;
   readonly intent?: string;
-  readonly input: JsonValue;
-  readonly channels?: Readonly<Record<string, ChannelEndpoint>>;
-}
-
-interface CapabilityCall {
-  readonly operationId: string;
-  readonly slot: string;
-  readonly method: string;
   readonly input: JsonValue;
   readonly channels?: Readonly<Record<string, ChannelEndpoint>>;
 }
@@ -103,11 +94,7 @@ interface RunContext {
   readonly deadlineUnixMs: number;
   readonly signal: AbortSignal;
 
-  runChildFlow(call: ChildFlowRequest, options?: { signal?: AbortSignal }):
-    Promise<RunResult>;
-
-  callCapability(call: CapabilityCall, options?: { signal?: AbortSignal }):
-    Promise<JsonValue>;
+  call(call: FlowCall, options?: { signal?: AbortSignal }): Promise<RunResult>;
 
   channel(options: ChannelOptions & { delivery: 'broadcast' }, callOptions?: CallOptions):
     Promise<ChannelBroadcast>;
@@ -123,7 +110,7 @@ declare function handle(handler: RunHandler): Promise<void>;
 ```
 
 `run.signal` reports root cancellation. If a call-specific signal is already
-aborted when `runChildFlow` or `callCapability` is invoked, or becomes aborted while
+aborted when `run.call` is invoked, or becomes aborted while
 that call is pending, the returned promise rejects with an `OperationError`
 whose `code` is exactly `CANCELLED`. The SDK sends `request/cancel` if the
 request reached the wire. This cancels the local wait promptly; it does not
@@ -134,7 +121,7 @@ failure:
 
 ```ts
 try {
-  await run.callCapability(call, { signal });
+  await run.call(call, { signal });
 } catch (error) {
   if (!(error instanceof OperationError) || error.code !== "CANCELLED") {
     throw error;
@@ -173,7 +160,7 @@ class RunContext(Protocol):
     @property
     def deadline_unix_ms(self) -> int: ...
 
-    async def run_child_flow(
+    async def call(
         self,
         *,
         operation_id: str,
@@ -182,16 +169,6 @@ class RunContext(Protocol):
         intent: str | None = None,
         channels: Mapping[str, ChannelEndpoint] | None = None,
     ) -> RunResult: ...
-
-    async def call_capability(
-        self,
-        *,
-        operation_id: str,
-        slot: str,
-        method: str,
-        input: JsonValue,
-        channels: Mapping[str, ChannelEndpoint] | None = None,
-    ) -> JsonValue: ...
 
     async def channel(
         self,
@@ -210,7 +187,7 @@ def handle(handler: RunHandler) -> None: ...
 `handle` owns and creates the process event loop, so it is a synchronous
 entrypoint and rejects use inside an already-running `asyncio` loop. Root
 cancellation cancels the handler task with ordinary `asyncio.CancelledError`.
-Cancelling a task awaiting `run_child_flow` or `call_capability` cancels that local wait
+Cancelling a task awaiting `run.call` cancels that local wait
 and sends `request/cancel` if the request reached the wire.
 
 ## 4. Values and snapshots
@@ -226,18 +203,25 @@ change its wire meaning. The SDKs do not recursively freeze application
 containers; readonly or frozen outer declarations are authoring guidance, not
 a new runtime object model.
 
+Call fields are closed: `operationId`, `slot`, `input` and only optional
+`intent` and `channels`. Optional-key presence enters Run/1 identity; omitted
+channels and an explicit empty mapping remain distinct. TypeScript explicitly
+present `undefined` optional fields reject; Python `None` means omission for
+its optional keyword arguments. Intent is advisory metadata, never application
+input, Agent instructions, provider arguments or authority.
+
 The SDK never creates an `operationId`. Component code supplies a stable ID
 whose retry and deduplication meaning is defined by Run/1.
 
 ## 5. Results and errors
 
-`runChildFlow` and `run_child_flow` return the complete child `RunResult`, including its
-outcome. In TypeScript, `RunResult` is itself a `JsonValue` and may be retained
-directly inside another Run result without rebuilding or casting it.
-`callCapability` and `call_capability` unwrap a successful effect `{ value }`.
-A declared capability error raises `CapabilityError`, carrying `errorName` and
-`data` in TypeScript or `error_name` and `data` in Python. Its human exception
-message is not portable; authors branch only on the named fields.
+`run.call` returns the complete `RunResult`, including its outcome. In
+TypeScript, `RunResult` is itself a `JsonValue` and may be retained directly
+inside another Run result without rebuilding or casting it. SDKs never unwrap
+output or translate declared outcomes into exceptions. Domain outcomes such as
+`blocked`, `limit` or `not-found` remain normal data; applications interpret them
+explicitly. A handler forwarding a result must declare any custom outcomes it
+can itself return.
 
 Operational failure raises:
 
@@ -254,13 +238,13 @@ operational errors. An unhandled valid wire-visible `OperationError` from the
 root handler is preserved. An ordinary exception, a local-only code, or
 malformed error metadata becomes `EXECUTION_FAILED`.
 
-A standard JSON-RPC error returned for a correctly emitted child request is a
+A standard JSON-RPC error returned for a correctly emitted call is a
 fatal peer incompatibility. The SDK closes the channel as `PROTOCOL_ERROR`
 rather than presenting it as an ordinary call failure.
 
 ## 6. Completion and cancellation
 
-The handler may issue concurrent child calls; the SDK continues reading while
+The handler may issue concurrent calls; the SDK continues reading while
 responses arrive in any order and serializes writes. At most 64
 component-originated requests are live on the wire. It emits at most 65,536
 requests during the channel lifetime; a later call fails locally with
@@ -321,23 +305,23 @@ handle(run)
 ```
 
 These examples require only the root `flow/run` operation. Availability of
-child-Flow and effect slots is host configuration; calling an unavailable slot
+declared slots is host configuration; calling an unavailable slot
 returns `UNAVAILABLE`.
 
-## 8. Child-call examples
+## 8. Call examples
 
-A child-Flow slot may execute the following TypeScript:
+A handler can invoke a declared slot with the following TypeScript:
 
 ```ts
 import { handle } from "@jigging/flow";
 
 await handle(async (run) => {
-  const child = await run.runChildFlow({
+  const child = await run.call({
     operationId: "research:1",
     slot: "research",
     input: run.input,
   });
-  return { outcome: "done", output: child.output };
+  return child;
 });
 ```
 
@@ -348,12 +332,12 @@ from jiggy.flow import RunContext, RunResult, handle
 
 
 async def run(context: RunContext) -> RunResult:
-    child = await context.run_child_flow(
+    child = await context.call(
         operation_id="research:1",
         slot="research",
         input=context.input,
     )
-    return {"outcome": "done", "output": child["output"]}
+    return child
 
 
 handle(run)
@@ -456,7 +440,7 @@ language recovery applies; no acknowledgement or query operation is needed.
 Local failure to start a read is an operation failure, not proof that its
 endpoint ended. A fatal current-connection error remains fatal even when caught.
 Sender acceptance, receiver end and the separate execution result retain their
-different meanings under [Run/1](run-protocol.md#51-channels).
+different meanings under [Run/1](run-protocol.md#5-channels).
 
 An application must start producer work before awaiting its first message.
 In Python, assigning a coroutine alone does not start it. `gather` starts both
@@ -467,8 +451,8 @@ updates = await run.channel(contract="./contracts/public-updates.json")
 
 async def invoke():
     try:
-        return await run.call_capability(
-            operation_id="answer", slot="agent", method="run", input=run.input,
+        return await run.call(
+            operation_id="answer", slot="agent", input=run.input,
             channels={"events": updates.send},
         )
     except (Exception, asyncio.CancelledError):
@@ -497,6 +481,6 @@ if isinstance(observed, BaseException):
 answer = execution
 ```
 
-This excerpt assumes an admitted Agent-like capability and matching package-local
+This excerpt assumes an admitted Agent-like slot and matching package-local
 channel contract. Application code interprets/filter values and the actual final
-answer. Neither that capability's meaning nor a logging sink is part of FLOW.
+answer. Neither that slot's meaning nor a logging sink is part of FLOW.

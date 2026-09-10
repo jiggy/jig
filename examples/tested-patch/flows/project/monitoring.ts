@@ -80,7 +80,7 @@ export async function recordPhases(receiver: ChannelReceiver, signal: AbortSigna
 }
 
 export async function monitoredRepair(
-  run: Pick<RunContext, 'signal' | 'channels' | 'channel' | 'runChildFlow'>,
+  run: Pick<RunContext, 'signal' | 'channels' | 'channel' | 'call'>,
   input: JsonValue,
   retain: (result: RunResult) => Promise<void>,
 ): Promise<RunResult> {
@@ -133,7 +133,7 @@ export async function monitoredRepair(
     const recording = guarded(() => recordPhases(recordingFeed!, run.signal))
     const monitoring = guarded(async () => {
       try {
-        const result = await run.runChildFlow(
+        const result = await run.call(
           {
             operationId: 'monitor',
             slot: 'monitor',
@@ -155,7 +155,7 @@ export async function monitoredRepair(
       }
     })
     const execution = guarded(async () => {
-      const result = await run.runChildFlow(
+      const result = await run.call(
         {
           operationId: 'repair',
           slot: 'repair',

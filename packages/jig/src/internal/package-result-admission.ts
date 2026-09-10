@@ -1,6 +1,6 @@
 import type { InspectedPackage } from '../package/inspect.js'
-import { SchemaDiagnostic } from '../schema/index.js'
 import type { RunHostTerminal } from '../run/session.js'
+import { SchemaDiagnostic } from '../schema/index.js'
 
 /**
  * Turn one clean protocol/process terminal into an admitted package result.
@@ -19,7 +19,7 @@ export function admitPrivatePackageResult(
   if (terminal.status !== 'succeeded') return terminal
 
   const { outcome } = terminal.result
-  if (outcome !== 'done' && !Object.hasOwn(inspected.metadata.outcomes ?? {}, outcome)) {
+  if (outcome !== 'done' && !Object.hasOwn(inspected.invocation?.outcomes ?? {}, outcome)) {
     return invalidResult(
       terminal,
       `component returned undeclared outcome ${JSON.stringify(outcome)}`,

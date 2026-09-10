@@ -1,0 +1,35 @@
+{
+  "$schema": "https://flow.jig.md/schemas/invocation-contract-1.schema.json",
+  "outcomes": {
+    "blocked": "Progress was incomplete; the repair result remains independent."
+  },
+  "channels": {
+    "phases": {
+      "direction": "receive",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "phase": {
+            "type": "string",
+            "enum": ["baseline", "proposal", "check", "finished"]
+          },
+          "attempt": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 2
+          }
+        },
+        "required": ["phase", "attempt"],
+        "additionalProperties": false
+      }
+    },
+    "display": {
+      "direction": "send",
+      "delivery": "direct",
+      "schema": {
+        "type": "string",
+        "maxLength": 256
+      }
+    }
+  }
+}

@@ -107,7 +107,7 @@ export async function repairBatch(run: RunContext): Promise<RunResult> {
             : setTimeout(() => selected.abort(), job.cancelAfterMs)
         let result: RunResult
         try {
-          result = await run.runChildFlow(
+          result = await run.call(
             { operationId: `repair:${job.id}`, slot: 'repair', input },
             { signal: selected.signal },
           )
@@ -179,10 +179,9 @@ export async function repairBatch(run: RunContext): Promise<RunResult> {
                 })
                 .join('\n') +
               `\nPending: ${pending.join(', ') || 'none'}\nPatches were checked separately. Review before applying.\n`
-            await run.callCapability({
+            await run.call({
               operationId: `progress:${++sequence}`,
               slot: 'progress',
-              method: 'save',
               input: {
                 sequence,
                 evidence: {

@@ -64,11 +64,12 @@ test('synthetic selected cancellation preserves the other worker and its verifie
         deliverables: { access: 'read-write', path: out },
       },
       signal: new AbortController().signal,
-      callCapability: async (call) => {
-        saves.push(structuredClone(call.input))
-        return { sequence: saves.length, digest: 'synthetic' }
-      },
-      runChildFlow: async (call, options) => {
+      call: async (call, options) => {
+        if (call.slot === 'progress') {
+          saves.push(structuredClone(call.input))
+          return { outcome: 'done', output: { sequence: saves.length, digest: 'synthetic' } }
+        }
+        expect(call.slot).toBe('repair')
         active++
         peak = Math.max(peak, active)
         try {
@@ -131,7 +132,7 @@ test('a bad second project prevents every dispatch', async () => {
           deliverables: { access: 'read-write', path: join(root, 'unused') },
         },
         signal: new AbortController().signal,
-        runChildFlow: async () => {
+        call: async () => {
           calls++
           throw new Error('must not dispatch')
         },
@@ -161,7 +162,13 @@ test('root interruption preserves the saved first patch without claiming the unf
           source: { access: 'read', path: root },
           deliverables: { access: 'read-write', path: join(root, 'out') },
         },
-        runChildFlow: async (call) => {
+        call: async (call) => {
+          if (call.slot === 'progress') {
+            saves.push(structuredClone(call.input))
+            abort.abort(new Error('operator interruption'))
+            return { outcome: 'done', output: { sequence: 1, digest: 'synthetic' } }
+          }
+          expect(call.slot).toBe('repair')
           if (call.operationId === 'repair:first') return result
           await new Promise((_, reject) =>
             abort.signal.addEventListener('abort', () => reject(abort.signal.reason), {
@@ -169,11 +176,6 @@ test('root interruption preserves the saved first patch without claiming the unf
             }),
           )
           throw new Error('unfinished worker must not complete')
-        },
-        callCapability: async (call) => {
-          saves.push(structuredClone(call.input))
-          abort.abort(new Error('operator interruption'))
-          return { sequence: 1, digest: 'synthetic' }
         },
       } as unknown as RunContext),
     ).rejects.toThrow('operator interruption')

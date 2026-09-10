@@ -44,9 +44,17 @@ foundations do not need to be rebuilt.
 
 ## Next milestones
 
-Build on finite Runs, exact sibling calls, contained project commands,
-root file delivery and checkpoints, and channel-based observation. Improve
-these public paths rather than rebuilding their foundations.
+Build on one reusable invocation interface for Flow specialists and qualified
+native operations, optional `contract.json`, and one `FLOW.<ext>` implementation
+per package. Markdown methods can execute direct recipes or use an admitted
+Agent to interpret prose. Exact sibling calls, contained project commands,
+root file delivery, checkpoints and channels remain the composition foundation.
+Improve these public paths rather than rebuilding them.
+
+Keep useful Markdown-to-code substitution and supported Skill reuse in the
+release checks. The sequential Markdown profile does not promise universal
+Skill support or reliable model judgment; method quality needs its own evidence.
+Native Agent, command and checkpoint powers retain their actual host owners.
 
 ### Immediate: dependable batch repair
 

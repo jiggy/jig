@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import { CheckError } from '../diagnostics.js'
 import type { JsonValue } from '../json.js'
 import { type InspectedPackage, inspectCapturedPackage } from '../package/inspect.js'
+import { flowSlotTargets } from '../project/invocation-slots.js'
 import {
   type ChannelBroker,
   type ChannelDeclaration,
@@ -10,10 +11,11 @@ import {
   type ChannelParticipant,
 } from '../run/channels.js'
 import {
-  type RunHostFlowCall,
-  type RunHostFlowOperationTerminal,
+  type RunHostCall,
+  RunHostFatalOperationError,
   type RunHostOperationDispatcher,
   type RunHostOperationFailure,
+  type RunHostOperationTerminal,
   RunHostSession,
   type RunHostTerminal,
   type WireFailureCode,
@@ -68,7 +70,6 @@ import {
   recoverPrivatePackageMaterializationAllocation,
 } from './package-materialization.js'
 import { admitPrivatePackageResult } from './package-result-admission.js'
-import { PROJECT_COMMAND_CONTRACT_DIGEST } from './private-project-command.js'
 import {
   executePrivateRootAgentRun,
   recoverPrivateRootAgentRunOwners,
@@ -127,7 +128,7 @@ interface ChildInput {
 }
 
 type ChildCallInput = ChildInput & {
-  readonly call: RunHostFlowCall
+  readonly call: RunHostCall
   readonly parentDeadlineUnixMs: number
   readonly signal: AbortSignal
 }
@@ -135,7 +136,7 @@ type ChildCallInput = ChildInput & {
 /** Execute one exact admitted Flow slot without creating child history. */
 export async function executePrivateRootFlowCall(
   input: ChildCallInput,
-): Promise<RunHostFlowOperationTerminal> {
+): Promise<RunHostOperationTerminal> {
   const selected = selectChild(input.parent, input.call.slot)
   if (selected === undefined) {
     return failed('UNAVAILABLE', 'the requested slot has no admitted child Flow')
@@ -157,7 +158,7 @@ export async function executePrivateRootFlowCall(
     }
     const resolveContract = channelContractResolver(captured, input.channels?.contracts)
     const declarations = await resolveChannelDeclarations(
-      inspected.metadata.channels ?? {},
+      inspected.invocation?.channels ?? {},
       resolveContract,
     )
     if (
@@ -188,7 +189,7 @@ async function executePreparedChild(
   inspected: InspectedPackage,
   participant: ChannelParticipant | undefined,
   declarations: Readonly<Record<string, ChannelDeclaration>>,
-): Promise<RunHostFlowOperationTerminal> {
+): Promise<RunHostOperationTerminal> {
   if (selected.disposition.state !== 'ready')
     return failed('UNAVAILABLE', 'the admitted child Flow is unavailable on this host')
   let recipe: PrivateDirectRunRecipe
@@ -334,13 +335,12 @@ async function executePreparedChild(
       const active = await findLifecycle(input, input.call.operationId)
       if (active !== undefined) await recoverOne(input, active)
     } catch (cleanupError) {
-      if (attemptedDispatch && cleanupError instanceof PrivateLinuxFenceUnconfirmedError) {
-        return failed(
-          'UNCERTAIN',
-          'child dispatch may have occurred but its fence is not yet confirmed',
-        )
-      }
-      throw new AggregateError([error, cleanupError], 'child Flow execution and cleanup failed')
+      throw new RunHostFatalOperationError(
+        cleanupError instanceof PrivateLinuxFenceUnconfirmedError
+          ? 'UNCERTAIN'
+          : 'EXECUTION_FAILED',
+        { cause: new AggregateError([error, cleanupError], 'operation cleanup failed') },
+      )
     }
     if (input.signal.aborted) return failed('CANCELLED', 'the child Flow call was cancelled')
     if (Date.now() >= effectiveDeadlineUnixMs) {
@@ -383,17 +383,17 @@ function selectChild(parent: PrivateReacquiredRootExecutionWork, slot: string) {
   if (parentTarget === undefined || parentTarget.request.digest !== parent.intent.requestDigest) {
     throw new Error('parent Run differs from its admitted target')
   }
-  const target = parentTarget.request.flowSlots[slot]
+  const target = flowSlotTargets(parentTarget.request.slots)[slot]
   if (target === undefined) return undefined
   const child = findPrivateActivationCandidateTargetV5(parent.candidate, target)
-  if (child === undefined || Object.keys(child.request.flowSlots).length !== 0) {
+  if (child === undefined || Object.keys(flowSlotTargets(child.request.slots)).length !== 0) {
     throw new Error('admitted Flow slot does not name one leaf child target')
   }
   return child
 }
 
 function specialistDispatcher(
-  input: ChildInput & { readonly call: RunHostFlowCall },
+  input: ChildInput & { readonly call: RunHostCall },
   selected: NonNullable<ReturnType<typeof selectChild>>,
   parentDeadlineUnixMs: number,
   inspected: InspectedPackage,
@@ -412,14 +412,17 @@ function specialistDispatcher(
       if (admitted.status === 'failed')
         throw new ChannelOperationError('INVALID_RESULT', admitted.message, admitted.details)
     },
-    async callCapability(call, signal) {
+    async call(call, signal) {
+      const route = selected.request.slots[call.slot]
+      if (route?.kind !== 'native' || route.native === 'run-checkpoint')
+        return failed('UNAVAILABLE', 'the specialist slot has no admitted native implementation')
       if (active)
         return failed('RESOURCE_EXHAUSTED', 'the specialist already has an active operation')
       active = true
       try {
-        if (selected.request.capabilities[call.slot]?.digest === PROJECT_COMMAND_CONTRACT_DIGEST) {
+        if (route.native === 'project-command') {
           if (Object.keys(call.channels ?? {}).length !== 0)
-            return failed('UNAVAILABLE', 'this capability has no supported channels')
+            return failed('UNAVAILABLE', 'this invocation has no supported channels')
           return await executePrivateProjectCommand({
             ...input,
             parentFlow: {
@@ -460,7 +463,7 @@ async function admitOperationResult(
   store: string,
   reference: Parameters<typeof captureStoredPackage>[1],
   provisional: RunHostTerminal,
-): Promise<RunHostFlowOperationTerminal> {
+): Promise<RunHostOperationTerminal> {
   let admitted = provisional
   if (provisional.status === 'succeeded') {
     const captured = await captureStoredPackage(store, reference)
@@ -518,7 +521,7 @@ function backendPlan(
       cancellationGraceMs: CANCELLATION_GRACE_MS,
     }),
     readOnlyMounts: Object.freeze([
-      ...recipe.installedSupport.runtimeMounts,
+      ...recipe.runtimeMounts,
       { source: packageRoot, destination: recipe.packageDestination },
     ]),
     command: recipe.command,
@@ -798,13 +801,13 @@ async function requireAllocationMatchesParent(
   ) {
     throw new Error('durable child allocation differs from its parent Run')
   }
-  const selected = Object.values(parentTarget.request.flowSlots)
+  const selected = Object.values(flowSlotTargets(parentTarget.request.slots))
     .map((target) => findPrivateActivationCandidateTargetV5(input.parent.candidate, target))
     .find((target) => target?.request.digest === allocation.requestDigest)
   if (
     selected === undefined ||
     selected.disposition.state !== 'ready' ||
-    Object.keys(selected.request.flowSlots).length !== 0
+    Object.keys(flowSlotTargets(selected.request.slots)).length !== 0
   ) {
     throw new Error('durable child allocation is not an admitted leaf Flow')
   }

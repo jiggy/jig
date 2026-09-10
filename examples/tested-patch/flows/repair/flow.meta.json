@@ -1,0 +1,12 @@
+{
+  "name": "project-repair",
+  "description": "Propose a bounded multi-file repair and check the exact candidate through reviewed Bun commands.",
+  "uses": {
+    "agent": {
+      "contract": "./contracts/agent-run/contract.json"
+    },
+    "command": {
+      "contract": "./contracts/project-command/contract.json"
+    }
+  }
+}

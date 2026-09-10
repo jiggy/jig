@@ -1,0 +1,9 @@
+{
+  "name": "proposal-drafter",
+  "description": "Draft or revise one proposal using only supplied evidence and explicit feedback.",
+  "uses": {
+    "agent": {
+      "contract": "./contracts/agent-run/contract.json"
+    }
+  }
+}

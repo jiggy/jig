@@ -1,0 +1,6 @@
+{
+  "$schema": "https://flow.jig.md/schemas/invocation-contract-1.schema.json",
+  "outcomes": {
+    "blocked": "The conversation or independent verification did not complete successfully."
+  }
+}

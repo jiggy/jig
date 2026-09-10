@@ -1,14 +1,13 @@
-import { OperationError, handle } from '../../../packages/flow-sdk/src/index'
+import { handle, OperationError } from '../../../packages/flow-sdk/src/index'
 
 await handle(async (run) => {
   const input = run.input as { case?: unknown }
   switch (input.case) {
     case 'fanout-65': {
       const calls = Array.from({ length: 65 }, (_, index) =>
-        run.callCapability({
+        run.call({
           operationId: `fanout:${index + 1}`,
           slot: 'sink',
-          method: 'write',
           input: { index },
         }),
       )
@@ -18,20 +17,18 @@ await handle(async (run) => {
     }
     case 'operation-identity': {
       const call = () =>
-        run.callCapability({
+        run.call({
           operationId: 'shared:1',
           slot: 'sink',
-          method: 'write',
           input: { value: 'same' },
         })
       const [first, second] = await Promise.all([call(), call()])
       const replay = await call()
       let conflict: string | null = null
       try {
-        await run.callCapability({
+        await run.call({
           operationId: 'shared:1',
           slot: 'sink',
-          method: 'write',
           input: { value: 'different' },
         })
       } catch (error) {
@@ -43,21 +40,19 @@ await handle(async (run) => {
     case 'cancel-shared-waiter': {
       const controller = new AbortController()
       const call = (signal?: AbortSignal) =>
-        run.callCapability(
+        run.call(
           {
             operationId: 'shared-cancel:1',
             slot: 'sink',
-            method: 'write',
             input: { value: 'shared' },
           },
           signal === undefined ? undefined : { signal },
         )
       const cancelled = call(controller.signal)
       const survivor = call()
-      await run.callCapability({
+      await run.call({
         operationId: 'release-shared-cancel:1',
         slot: 'control',
-        method: 'release',
         input: null,
       })
       controller.abort()
@@ -76,10 +71,9 @@ await handle(async (run) => {
     case 'uncertain-replay': {
       const call = async (operationId: string) => {
         try {
-          return await run.callCapability({
+          return await run.call({
             operationId,
             slot: 'sink',
-            method: 'write',
             input: { value: 'uncertain' },
           })
         } catch (error) {
@@ -97,10 +91,9 @@ await handle(async (run) => {
       let rejected: string | null = null
       for (let index = 1; index <= 65_537; index += 1) {
         try {
-          await run.callCapability({
+          await run.call({
             operationId: `lifetime:${index}`,
             slot: 'sink',
-            method: 'write',
             input: null,
           })
           accepted += 1
@@ -112,7 +105,7 @@ await handle(async (run) => {
       return { outcome: 'done', output: { accepted, rejected } }
     }
     case 'one-flow': {
-      const child = await run.runChildFlow({
+      const child = await run.call({
         operationId: 'child:1',
         slot: 'child',
         input: null,
@@ -120,23 +113,21 @@ await handle(async (run) => {
       return { outcome: 'done', output: child }
     }
     case 'two-effects': {
-      const first = await run.callCapability({
+      const first = await run.call({
         operationId: 'first:1',
         slot: 'sink',
-        method: 'write',
         input: { sequence: 1 },
       })
-      const second = await run.callCapability({
+      const second = await run.call({
         operationId: 'second:1',
         slot: 'sink',
-        method: 'write',
         input: { sequence: 2 },
       })
       return { outcome: 'done', output: { first, second } }
     }
     case 'cancel-one-call': {
       const controller = new AbortController()
-      const child = run.runChildFlow(
+      const child = run.call(
         {
           operationId: 'cancelled-child:1',
           slot: 'child',
@@ -144,10 +135,9 @@ await handle(async (run) => {
         },
         { signal: controller.signal },
       )
-      await run.callCapability({
+      await run.call({
         operationId: 'release-cancel:1',
         slot: 'control',
-        method: 'release',
         input: null,
       })
       controller.abort()
@@ -165,16 +155,15 @@ await handle(async (run) => {
       // Abandon the operation without also creating a language-level
       // unhandled rejection when the SDK closes its owner.
       void run
-        .runChildFlow({
+        .call({
           operationId: 'abandoned-child:1',
           slot: 'child',
           input: null,
         })
         .catch(() => undefined)
-      await run.callCapability({
+      await run.call({
         operationId: 'release-abandon:1',
         slot: 'control',
-        method: 'release',
         input: null,
       })
       return { outcome: 'done', output: 'must-not-succeed' }

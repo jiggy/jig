@@ -81,7 +81,7 @@ implementation convenience.
 Project authoring values are inert. They describe membership and configuration
 but do not read, install, approve, or execute anything. FLOW metadata remains
 small and portable; host runtimes, commands, credentials, dependency locks,
-and sandbox policy do not belong in `FLOW.md`.
+and sandbox policy do not belong in portable package metadata.
 
 ### Responsibility boundaries
 
@@ -94,7 +94,7 @@ around untrusted work, and selects the providers that supply local powers.
 
 | Layer | Owns | Must not own |
 | --- | --- | --- |
-| FLOW | Portable packages, JSON and schema rules, the Run process protocol, SDK ergonomics, capability descriptors | Jig admission, providers, sandboxes, persistence, project configuration, or graph policy |
+| FLOW | Portable packages, JSON and schema rules, the Run process protocol, SDK ergonomics, invocation and channel contracts | Jig admission, providers, sandboxes, persistence, project configuration, or graph policy |
 | Jig | Capture, review, admission, exact resolution, host authority, durable lifecycle, containment, and credentials | General workflow semantics, an application ontology, or universal provider/runtime/backend frameworks |
 | Flow package | Application logic, validation, Agent instructions, package-local skills, and optional internal libraries or graphs | Host credentials, open-ended target authority, or containment policy |
 | Component runtime | Live graph or control-flow advancement inside one component process | FLOW/Jig meaning, durable orchestration, admission, or provider policy |
@@ -239,7 +239,7 @@ Backend boundary. One mechanism alone has not earned it.
 A Binding gives one Flow package a reusable project-local configuration.
 Its **child slots** name a closed set of exact `flow:<path>` or `binding:<id>`
 targets from the same admitted generation. A child uses its selected target's
-settings, Agent capability, and reviewed command policy; parent configuration is not inherited. Selected
+settings, native Agent route, and reviewed command policy; parent configuration is not inherited. Selected
 child Bindings are leaves with no further Flow slots. At runtime, a Flow can
 call only its slots; it cannot search a catalogue, invent targets, or acquire
 scheduler authority. Child and Agent scopes inherit the remaining root deadline
@@ -269,9 +269,11 @@ their own unchanged assertions. The exact contract belongs in
 
 ### Agent calls
 
-A **Capability Contract** describes an exact interface for independently
-maintained consumers and implementations. **Agent Run** is the Jig-owned
-contract for bounded Agent work, consumed through ordinary Run/1 `capability/call`.
+A named **Invocation Contract** describes an exact interface for independently
+maintained consumers and implementations. It is offered by a Flow's optional
+`contract.json` and required through a package-local `uses` reference. **Agent
+Run** is a native host implementation of such an interface, consumed through
+the same Run/1 `flow/call` as an exact Flow dependency.
 It is not a new FLOW method, model authority, or public provider framework.
 The public value contract belongs in
 [`agent-run.md`](../docs/jig/spec/agent-run.md).

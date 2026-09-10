@@ -1,0 +1,4 @@
+{
+  "name": "repair-progress-monitor",
+  "description": "Filter and format selected repair phases without receiving source, Agent authority, or patch verdicts."
+}

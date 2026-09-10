@@ -129,15 +129,15 @@ function renderJigModule(): string {
 function greetingFiles(): readonly (readonly [string, string])[] {
   return [
     [
-      'flows/hello/FLOW.md',
-      '---\nname: hello\ndescription: Greet the supplied string, or world for other input values.\n---\n\n# Hello\n\nAn editable first Flow. It needs no Agent or file access.\n',
+      'flows/hello/flow.meta.json',
+      '{"name":"hello","description":"Greet the supplied string, or world for other input values."}\n',
     ],
     [
       'flows/hello/package.json',
       `${JSON.stringify({ private: true, dependencies: { '@jigging/flow': GREETING_SDK_VERSION } }, null, 2)}\n`,
     ],
     [
-      'flows/hello/flow.ts',
+      'flows/hello/FLOW.ts',
       [
         'import { handle } from "@jigging/flow";',
         '',
@@ -165,7 +165,7 @@ function greetingFiles(): readonly (readonly [string, string])[] {
         'declining cannot undo those requests. It does not grant network access to Runs.',
         'Initialization itself makes no network requests and approves nothing.',
         '',
-        'Edit `flows/hello/flow.ts`, repeat `jig review --allow-resolution-network`,',
+        'Edit `flows/hello/FLOW.ts`, repeat `jig review --allow-resolution-network`,',
         'then run the accepted revision. Code edits can require fresh dependency',
         'resolution until you add an authored lock; unchanged reviews reuse admitted bytes.',
         'This ordinary package names the exact SDK revision tested with this Jig build.',

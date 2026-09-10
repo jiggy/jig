@@ -9,7 +9,7 @@ async def run(context):
         source = await context.channel(contract="./updates.json")
         incompatible = False
         try:
-            await context.run_child_flow(
+            await context.call(
                 operation_id="incompatible", slot="incompatible", input=None,
                 channels={"events": source.send},
             )
@@ -21,9 +21,9 @@ async def run(context):
         if "progress" in context.channels:
             channels["progress"] = context.channels["progress"]
         work, monitor = await asyncio.gather(
-            context.run_child_flow(operation_id="worker", slot="worker", input={"role": "worker"},
+            context.call(operation_id="worker", slot="worker", input={"role": "worker"},
                                    channels={"events": source.send}),
-            context.run_child_flow(operation_id="monitor", slot="monitor",
+            context.call(operation_id="monitor", slot="monitor",
                                    input={"role": "monitor", "stop": value.get("stop", False)},
                                    channels=channels),
             return_exceptions=True,
@@ -34,11 +34,11 @@ async def run(context):
             raise monitor
         return {"outcome": "done", "output": {"incompatible": incompatible, "work": work, "monitor": monitor}}
     if value["role"] == "worker":
-        result = await context.call_capability(
-            operation_id="answer", slot="agent", method="run", input=None,
+        result = await context.call(
+            operation_id="answer", slot="agent", input=None,
             channels={"events": context.channels["events"]},
         )
-        return {"outcome": "done", "output": result}
+        return result
     if value["role"] != "monitor":
         raise TypeError("unknown role")
     events = context.channels["events"]

@@ -3,36 +3,36 @@ import {
   isMap,
   isScalar,
   isSeq,
-  parseDocument,
   type Node,
   type Pair,
+  parseDocument,
   type Scalar,
 } from 'yaml'
 
 import { invalid } from '../diagnostics.js'
-import { parseChannelDeclarations, type ChannelDeclaration } from '../channel-contract.js'
-import { Json1Error, validateJson1, type JsonObject, type JsonValue } from '../json.js'
+import { decodeJson1, Json1Error, type JsonObject, type JsonValue, validateJson1 } from '../json.js'
 import { isNfc15_1 } from './paths.js'
 
 const decoder = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true })
 const encoder = new TextEncoder()
-const LOCAL_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
-const JSON_NUMBER = /^-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?$/
-const RESERVED_OUTCOMES = new Set(['done', 'failed', 'cancelled', 'error'])
+const LOCAL_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*(?![\s\S])/
+const JSON_NUMBER = /^-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?(?![\s\S])/
 
-export interface CapabilityUse {
+export interface InvocationUse {
   readonly contract?: string
-  readonly local?: true
 }
 
 export interface FlowMetadata {
-  readonly name: string
-  readonly description: string
-  readonly uses?: Readonly<Record<string, CapabilityUse>>
-  readonly outcomes?: Readonly<Record<string, string>>
-  readonly attachments?: Readonly<Record<string, 'read' | 'read-write'>>
-  readonly channels?: Readonly<Record<string, ChannelDeclaration>>
+  readonly name?: string
+  readonly description?: string
+  readonly uses?: Readonly<Record<string, InvocationUse>>
+  readonly license?: string
+  readonly compatibility?: string
+  readonly metadata?: Readonly<Record<string, string>>
+  readonly 'allowed-tools'?: string
   readonly extensions: JsonObject
+  /** Inspectable unknown declarations prevent execution qualification. */
+  readonly unknownFields: JsonObject
 }
 
 export interface ParsedFlowDocument {
@@ -67,7 +67,7 @@ export function parseFlowMetadataPrefix(bytes: Uint8Array): ParsedFlowMetadataPr
   }
   const opening = openingLength(bytes)
   if (opening === 0) {
-    invalid('METADATA_DELIMITER', 'FLOW.md must begin with an exact --- delimiter line', 'FLOW.md')
+    return { metadata: validateMetadata({}, 'FLOW.md'), bodyOffset: 0 }
   }
   const closing = findClosingDelimiter(bytes, opening)
   if (closing === undefined) {
@@ -101,7 +101,8 @@ export function parseFlowMetadataPrefix(bytes: Uint8Array): ParsedFlowMetadataPr
   if (declaredTags.length > 0) {
     invalid('METADATA_YAML_FEATURE', 'YAML tag directives are not allowed', 'FLOW.md')
   }
-  const root = convertNode(document.contents as Node | null, 1, { nodes: 0 }, true)
+  const root =
+    document.contents === null ? {} : convertNode(document.contents as Node, 1, { nodes: 0 }, true)
   if (!isObject(root)) {
     invalid('METADATA_ROOT', 'FLOW.md frontmatter must be a mapping', 'FLOW.md')
   }
@@ -113,14 +114,49 @@ export function parseFlowMetadataPrefix(bytes: Uint8Array): ParsedFlowMetadataPr
     }
     throw error
   }
-  const metadata = validateMetadata(root)
+  const metadata = validateMetadata(root, 'FLOW.md')
   return { metadata, bodyOffset: closing.end }
+}
+
+export function parseFlowMetadataSidecar(bytes: Uint8Array): FlowMetadata {
+  const path = 'flow.meta.json'
+  if (bytes.byteLength > 262_144) invalid('METADATA_LIMIT', 'metadata exceeds 262144 bytes', path)
+  let root: JsonValue
+  try {
+    root = decodeJson1(bytes)
+  } catch (error) {
+    if (error instanceof Json1Error) invalid('METADATA_INVALID_JSON', error.message, path)
+    throw error
+  }
+  if (!isObject(root)) invalid('METADATA_ROOT', 'metadata must be an object', path)
+  boundJsonMetadata(root, 1, { nodes: 0 }, path)
+  return validateMetadata(root, path)
+}
+
+function boundJsonMetadata(
+  value: JsonValue,
+  depth: number,
+  state: MetadataLimitState,
+  path: string,
+): void {
+  if (depth > 16 || ++state.nodes > 4_096)
+    invalid('METADATA_LIMIT', 'metadata exceeds depth 16 or 4096 nodes', path)
+  if (value === null || typeof value !== 'object') return
+  const children = Object.values(value)
+  if (children.length > 256)
+    invalid('METADATA_LIMIT', 'metadata container exceeds 256 entries', path)
+  if (!Array.isArray(value)) {
+    for (const key of Object.keys(value)) boundJsonMetadata(key, depth + 1, state, path)
+  }
+  for (const child of children) boundJsonMetadata(child, depth + 1, state, path)
 }
 
 function openingLength(bytes: Uint8Array): number {
   if (bytes[0] !== 0x2d || bytes[1] !== 0x2d || bytes[2] !== 0x2d) return 0
+  if (bytes.byteLength === 3) return 3
   if (bytes[3] === 0x0a) return 4
   if (bytes[3] === 0x0d && bytes[4] === 0x0a) return 5
+  if (bytes[3] === 0x0d) return 4
   return 0
 }
 
@@ -130,17 +166,22 @@ function findClosingDelimiter(
 ): { readonly start: number; readonly end: number } | undefined {
   let lineStart = start
   for (let position = start; position <= bytes.byteLength; position += 1) {
-    if (position !== bytes.byteLength && bytes[position] !== 0x0a) continue
-    const rawEnd = position
-    const lineEnd = rawEnd > lineStart && bytes[rawEnd - 1] === 0x0d ? rawEnd - 1 : rawEnd
+    if (position !== bytes.byteLength && bytes[position] !== 0x0a && bytes[position] !== 0x0d)
+      continue
+    const lineEnd = position
     if (
       lineEnd - lineStart === 3 &&
       bytes[lineStart] === 0x2d &&
       bytes[lineStart + 1] === 0x2d &&
       bytes[lineStart + 2] === 0x2d
     ) {
-      return { start: lineStart, end: position < bytes.byteLength ? position + 1 : position }
+      const end =
+        position >= bytes.byteLength
+          ? position
+          : position + (bytes[position] === 0x0d && bytes[position + 1] === 0x0a ? 2 : 1)
+      return { start: lineStart, end }
     }
+    if (bytes[position] === 0x0d && bytes[position + 1] === 0x0a) position += 1
     lineStart = position + 1
   }
   return undefined
@@ -212,108 +253,91 @@ function convertScalar(node: Scalar): JsonValue {
   return source
 }
 
-function validateMetadata(root: JsonObject): FlowMetadata {
-  const known = new Set(['name', 'description', 'uses', 'outcomes', 'attachments', 'channels'])
+function validateMetadata(root: JsonObject, path: string): FlowMetadata {
+  const known = new Set([
+    'name',
+    'description',
+    'uses',
+    'license',
+    'compatibility',
+    'metadata',
+    'allowed-tools',
+  ])
   const extensions: Record<string, JsonValue> = Object.create(null) as Record<string, JsonValue>
+  const unknownFields: Record<string, JsonValue> = Object.create(null)
   for (const [key, value] of Object.entries(root)) {
     if (known.has(key)) continue
     if (key.startsWith('x-') && isLocalName(key.slice(2))) extensions[key] = value
-    else
-      invalid(
-        'METADATA_FIELD',
-        `unknown Metadata/1 field ${key}`,
-        'FLOW.md',
-        `/${key.replaceAll('~', '~0').replaceAll('/', '~1')}`,
-      )
+    else unknownFields[key] = value
   }
-  const name = requireLocalName(root.name, 'name')
-  const description = requireDescription(root.description, 'description')
-  const uses = root.uses === undefined ? undefined : validateUses(root.uses)
-  const outcomes =
-    root.outcomes === undefined ? undefined : validateDescriptions(root.outcomes, true)
-  const attachments =
-    root.attachments === undefined ? undefined : validateAttachments(root.attachments)
+  const name = root.name === undefined ? undefined : requireLocalName(root.name, 'name', path)
+  const description =
+    root.description === undefined
+      ? undefined
+      : requireDescription(root.description, 'description', path)
+  const uses = root.uses === undefined ? undefined : validateUses(root.uses, path)
+  const strings: Record<string, string> = Object.create(null)
+  for (const key of ['license', 'compatibility', 'allowed-tools']) {
+    if (root[key] === undefined) continue
+    if (typeof root[key] !== 'string') invalid('METADATA_FIELD', `${key} must be text`, path)
+    strings[key] = root[key] as string
+  }
+  let extraMetadata: Readonly<Record<string, string>> | undefined
+  if (root.metadata !== undefined) {
+    const entries = requireObject(root.metadata, 'metadata', path)
+    for (const value of Object.values(entries)) {
+      if (typeof value !== 'string')
+        invalid('METADATA_FIELD', 'metadata values must be strings', path)
+    }
+    extraMetadata = entries as Readonly<Record<string, string>>
+  }
 
   const metadata: FlowMetadata = {
-    name,
-    description,
+    ...(name === undefined ? {} : { name }),
+    ...(description === undefined ? {} : { description }),
     ...(uses === undefined ? {} : { uses }),
-    ...(outcomes === undefined ? {} : { outcomes }),
-    ...(attachments === undefined ? {} : { attachments }),
-    ...(root.channels === undefined
-      ? {}
-      : { channels: parseChannelDeclarations(root.channels, 'FLOW.md') }),
+    ...strings,
+    ...(extraMetadata === undefined ? {} : { metadata: extraMetadata }),
     extensions,
+    unknownFields,
   }
   deepFreezeJson(metadata as unknown as JsonValue)
   return metadata
 }
 
-function validateUses(value: JsonValue): Readonly<Record<string, CapabilityUse>> {
-  const object = requireObject(value, 'uses')
-  const result: Record<string, CapabilityUse> = Object.create(null) as Record<string, CapabilityUse>
+function validateUses(value: JsonValue, path: string): Readonly<Record<string, InvocationUse>> {
+  const object = requireObject(value, 'uses', path)
+  const result: Record<string, InvocationUse> = Object.create(null)
   for (const [slot, declaration] of Object.entries(object)) {
-    requireLocalName(slot, `uses.${slot}`)
-    const item = requireObject(declaration, `uses.${slot}`)
-    if (Object.keys(item).length !== 1)
-      invalid('METADATA_USES', `uses.${slot} must have one member`, 'FLOW.md')
-    if (typeof item.contract === 'string') {
-      result[slot] = { contract: requireAuthorReference(item.contract, `uses.${slot}.contract`) }
-    } else if (item.local === true) {
-      result[slot] = { local: true }
-    } else {
-      invalid('METADATA_USES', `uses.${slot} must declare contract or local: true`, 'FLOW.md')
-    }
+    requireLocalName(slot, `uses.${slot}`, path)
+    if (path === 'FLOW.md' && slot === 'markdown-agent')
+      invalid('METADATA_USES', 'markdown-agent is reserved for Markdown interpretation', path)
+    const item = requireObject(declaration, `uses.${slot}`, path)
+    if (Object.keys(item).length === 0) result[slot] = {}
+    else if (Object.keys(item).length === 1 && typeof item.contract === 'string') {
+      result[slot] = {
+        contract: requireAuthorReference(item.contract, `uses.${slot}.contract`, path),
+      }
+    } else
+      invalid('METADATA_USES', `uses.${slot} must be {} or contain only a contract reference`, path)
   }
   return result
 }
 
-function validateDescriptions(
-  value: JsonValue,
-  outcomes: boolean,
-): Readonly<Record<string, string>> {
-  const object = requireObject(value, outcomes ? 'outcomes' : 'descriptions')
-  const result: Record<string, string> = Object.create(null) as Record<string, string>
-  for (const [name, description] of Object.entries(object)) {
-    requireLocalName(name, `outcomes.${name}`)
-    if (outcomes && RESERVED_OUTCOMES.has(name)) {
-      invalid('METADATA_OUTCOME', `outcome ${name} is reserved`, 'FLOW.md')
-    }
-    result[name] = requireDescription(description, `outcomes.${name}`)
-  }
-  return result
-}
-
-function validateAttachments(value: JsonValue): Readonly<Record<string, 'read' | 'read-write'>> {
-  const object = requireObject(value, 'attachments')
-  const result: Record<string, 'read' | 'read-write'> = Object.create(null) as Record<
-    string,
-    'read' | 'read-write'
-  >
-  for (const [name, access] of Object.entries(object)) {
-    requireLocalName(name, `attachments.${name}`)
-    if (access !== 'read' && access !== 'read-write') {
-      invalid('METADATA_ATTACHMENT', `attachments.${name} must be read or read-write`, 'FLOW.md')
-    }
-    result[name] = access
-  }
-  return result
-}
-
-export function requireAuthorReference(value: string, field: string): string {
+export function requireAuthorReference(value: string, field: string, owner = 'FLOW.md'): string {
   if (!value.startsWith('./') || value.length <= 2) {
-    invalid('METADATA_REFERENCE', `${field} must begin with ./`, 'FLOW.md')
+    invalid('METADATA_REFERENCE', `${field} must begin with ./`, owner)
   }
   const path = value.slice(2)
   if (!isCanonicalLogicalPath(path)) {
-    invalid('METADATA_REFERENCE', `${field} is not a canonical package reference`, 'FLOW.md')
+    invalid('METADATA_REFERENCE', `${field} is not a canonical package reference`, owner)
   }
   return value
 }
 
-function requireLocalName(value: JsonValue | undefined, field: string): string {
+function requireLocalName(value: JsonValue | undefined, field: string, path: string): string {
   if (typeof value !== 'string' || !isLocalName(value)) {
-    invalid('METADATA_LOCAL_NAME', `${field} must be a Metadata/1 LocalName`, 'FLOW.md')
+    invalid('METADATA_LOCAL_NAME', `${field} must be a Metadata/1 LocalName`, path)
   }
   return value
 }
@@ -322,17 +346,17 @@ function isLocalName(value: string): boolean {
   return value.length >= 1 && value.length <= 64 && LOCAL_NAME.test(value)
 }
 
-function requireDescription(value: JsonValue | undefined, field: string): string {
-  if (typeof value !== 'string') invalid('METADATA_DESCRIPTION', `${field} must be text`, 'FLOW.md')
+function requireDescription(value: JsonValue | undefined, field: string, path: string): string {
+  if (typeof value !== 'string') invalid('METADATA_DESCRIPTION', `${field} must be text`, path)
   const length = Array.from(value).length
   if (length < 1 || length > 16_384) {
-    invalid('METADATA_DESCRIPTION', `${field} must contain 1-16384 Unicode scalars`, 'FLOW.md')
+    invalid('METADATA_DESCRIPTION', `${field} must contain 1-16384 Unicode scalars`, path)
   }
   return value
 }
 
-function requireObject(value: JsonValue, field: string): JsonObject {
-  if (!isObject(value)) invalid('METADATA_FIELD', `${field} must be a mapping`, 'FLOW.md')
+function requireObject(value: JsonValue, field: string, path: string): JsonObject {
+  if (!isObject(value)) invalid('METADATA_FIELD', `${field} must be a mapping`, path)
   return value
 }
 
@@ -347,7 +371,7 @@ function deepFreezeJson(value: JsonValue): void {
 }
 
 function isCanonicalLogicalPath(path: string): boolean {
-  if (path.includes('\\') || path.includes('\0')) return false
+  if (/[\\\u0000-\u001f\u007f]/.test(path)) return false
   if (!isNfc15_1(path)) return false
   const segments = path.split('/')
   if (segments.length === 0 || segments.length > 64) return false

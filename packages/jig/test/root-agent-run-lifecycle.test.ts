@@ -27,6 +27,7 @@ import {
   type RunCheckpointInput,
 } from '../src/internal/private-run-checkpoint.js'
 import { openPrivateProjectSession } from '../src/internal/project-session-controller.js'
+import { checkPackageDirectory } from '../src/package/inspect.js'
 import { installedBunLocation } from './fixtures/installed-bun-location.js'
 
 const HOSTILE = process.env.JIG_LINUX_ROOTLESS_HOSTILE === '1'
@@ -36,6 +37,9 @@ test('constructs the Agent fixture with the complete current SDK', async () => {
   const root = await mkdtemp(join(tmpdir(), 'jig-agent-fixture-'))
   try {
     await writeProject(root)
+    expect((await checkPackageDirectory(join(root, 'flows/router'))).entrypoint.path).toBe(
+      'FLOW.ts',
+    )
     const child = Bun.spawn(
       [
         process.execPath,
@@ -60,7 +64,7 @@ test('constructs a locked local workspace for root and child Skill-delivery evid
     await writeSkillWorkspace(root, true)
     const transpiler = new Bun.Transpiler({ loader: 'ts', target: 'bun' })
     for (const member of ['router', 'parent']) {
-      const source = await readFile(join(root, 'flows', member, 'flow.ts'), 'utf8')
+      const source = await readFile(join(root, 'flows', member, 'FLOW.ts'), 'utf8')
       expect(source).toContain('import { marker } from "skill-context"')
       expect(source).toContain('../../libs/context/index.ts')
       expect(() => transpiler.transformSync(source)).not.toThrow()
@@ -158,7 +162,7 @@ proofDescribe('contained repair file application', () => {
           // can be tested before publication, without fabricating an npm lock.
           for (const entry of await readdir(join(project, 'flows'), { withFileTypes: true })) {
             const flow = join(project, 'flows', entry.name)
-            if (!entry.isDirectory() || !(await Bun.file(join(flow, 'FLOW.md')).exists())) continue
+            if (!entry.isDirectory() || !(await Bun.file(join(flow, 'FLOW.ts')).exists())) continue
             await cp(join(import.meta.dir, '../../flow-sdk/dist'), join(flow, 'sdk'), {
               recursive: true,
             })
@@ -472,11 +476,14 @@ proofDescribe('private contained Agent Run lifecycle', () => {
       await writeProject(root)
       await writeSpecialistParent(root)
       await writeFile(
-        join(root, 'flows/router/FLOW.md'),
-        '---\nname: subprocess\ndescription: Exercises bounded subprocess execution.\n---\n',
+        join(root, 'flows/router/flow.meta.json'),
+        JSON.stringify({
+          name: 'subprocess',
+          description: 'Exercises bounded subprocess execution.',
+        }),
       )
       await writeFile(
-        join(root, 'flows/router/flow.ts'),
+        join(root, 'flows/router/FLOW.ts'),
         `
         import { handle } from './flow-sdk/index.ts';
         await handle(async () => {
@@ -635,7 +642,7 @@ proofDescribe('private contained Agent Run lifecycle', () => {
             output: {
               status: 'succeeded',
               parentHasKey: false,
-              agent: { outcome: 'completed', structured: EXPECTED_STRUCTURED_AGENT_RESULT },
+              agent: { outcome: 'done', output: { structured: EXPECTED_STRUCTURED_AGENT_RESULT } },
             },
           },
         })
@@ -722,10 +729,7 @@ proofDescribe('private contained Agent Run lifecycle', () => {
             output: {
               status: 'succeeded',
               parentHasKey: false,
-              agent: {
-                outcome: 'completed',
-                structured: EXPECTED_STRUCTURED_AGENT_RESULT,
-              },
+              agent: { outcome: 'done', output: { structured: EXPECTED_STRUCTURED_AGENT_RESULT } },
             },
           },
         })
@@ -782,9 +786,7 @@ proofDescribe('private contained Agent Run lifecycle', () => {
             output: {
               status: 'succeeded',
               parentHasKey: false,
-              agent: {
-                outcome: 'completed',
-              },
+              agent: { outcome: 'done', output: {} },
             },
           },
         })
@@ -843,10 +845,7 @@ proofDescribe('private contained Agent Run lifecycle', () => {
             output: {
               status: 'succeeded',
               parentHasKey: false,
-              agent: {
-                outcome: 'completed',
-                structured: EXPECTED_STRUCTURED_AGENT_RESULT,
-              },
+              agent: { outcome: 'done', output: { structured: EXPECTED_STRUCTURED_AGENT_RESULT } },
             },
           },
         })
@@ -902,10 +901,7 @@ proofDescribe('private contained Agent Run lifecycle', () => {
             output: {
               status: 'succeeded',
               parentHasKey: false,
-              agent: {
-                outcome: 'completed',
-                structured: EXPECTED_STRUCTURED_AGENT_RESULT,
-              },
+              agent: { outcome: 'done', output: { structured: EXPECTED_STRUCTURED_AGENT_RESULT } },
             },
           },
         })
@@ -976,8 +972,8 @@ proofDescribe('private contained Agent Run lifecycle', () => {
                 status: 'succeeded',
                 parentHasKey: false,
                 agent: {
-                  outcome: 'completed',
-                  structured: EXPECTED_STRUCTURED_AGENT_RESULT,
+                  outcome: 'done',
+                  output: { structured: EXPECTED_STRUCTURED_AGENT_RESULT },
                 },
               },
             },
@@ -1163,6 +1159,7 @@ async function writeInstalledFixture(root: string): Promise<PrivateInstalledBunL
   const source = installedBunLocation.releaseRoot
   const files = [
     'libexec/installed-cli.js',
+    'libexec/markdown-runtime.js',
     'libexec/linux-rootless-supervisor.js',
     'libexec/evaluator/project-evaluator-worker.js',
     'libexec/evaluator/project-evaluator-sdk.bundle.js',
@@ -1219,7 +1216,7 @@ async function writeProject(root: string): Promise<void> {
   const flow = join(root, 'flows', 'router')
   await Promise.all(
     [
-      join(flow, 'contracts'),
+      join(flow, 'contracts', 'agent-run'),
       join(flow, 'skills', 'selected'),
       join(flow, 'skills', 'hidden'),
       join(flow, 'flow-sdk'),
@@ -1234,66 +1231,46 @@ async function writeProject(root: string): Promise<void> {
     ].join('\n'),
   )
   await writeFile(
-    join(flow, 'FLOW.md'),
-    [
-      '---',
-      'name: deterministic-agent-router',
-      'description: Exercises one exact contained Agent effect.',
-      'uses:',
-      '  agent:',
-      '    contract: ./contracts/agent-run.capability.json',
-      '---',
-      '',
-    ].join('\n'),
-  )
-  await writeFile(
-    join(flow, 'contracts', 'agent-run.capability.json'),
-    await readFile(
-      join(
-        import.meta.dir,
-        '..',
-        '..',
-        '..',
-        'docs',
-        'jig',
-        'spec',
-        'contracts',
-        'agent-run.capability.json',
-      ),
-    ),
-  )
-  await writeFile(join(flow, 'skills', 'selected', 'SKILL.md'), 'SELECTED_SKILL_MARKER\n')
-  await writeFile(
-    join(flow, 'contracts', 'acp-public-updates.json'),
-    await readFile(
-      new URL('../../../docs/jig/spec/contracts/acp-public-updates.json', import.meta.url),
-    ),
-  )
-  await writeFile(join(flow, 'skills', 'hidden', 'SKILL.md'), 'HIDDEN_SKILL_MARKER\n')
-  await writeFile(
-    join(flow, 'input.schema.json'),
+    join(flow, 'flow.meta.json'),
     JSON.stringify({
-      $schema: 'https://flow.jig.md/schemas/schema-1.json',
-      type: 'object',
-      properties: {
-        scenario: {
-          enum: [
-            'success',
-            'schema-invalid',
-            'schema-input-invalid',
-            'malformed',
-            'slow',
-            'recovery',
-            'api-structured',
-            'api-text',
-          ],
-        },
-      },
-      required: ['scenario'],
-      additionalProperties: false,
+      name: 'deterministic-agent-router',
+      description: 'Exercises one exact contained Agent call.',
+      uses: { agent: { contract: './contracts/agent-run/contract.json' } },
     }),
   )
-  await writeFile(join(flow, 'flow.ts'), flowProgram())
+  await cp(
+    join(import.meta.dir, '../../../docs/jig/spec/contracts/agent-run'),
+    join(flow, 'contracts/agent-run'),
+    { recursive: true },
+  )
+  await writeFile(join(flow, 'skills', 'selected', 'SKILL.md'), 'SELECTED_SKILL_MARKER\n')
+  await writeFile(join(flow, 'skills', 'hidden', 'SKILL.md'), 'HIDDEN_SKILL_MARKER\n')
+  await writeFile(
+    join(flow, 'contract.json'),
+    JSON.stringify({
+      $schema: 'https://flow.jig.md/schemas/invocation-contract-1.schema.json',
+      input: {
+        type: 'object',
+        properties: {
+          scenario: {
+            enum: [
+              'success',
+              'schema-invalid',
+              'schema-input-invalid',
+              'malformed',
+              'slow',
+              'recovery',
+              'api-structured',
+              'api-text',
+            ],
+          },
+        },
+        required: ['scenario'],
+        additionalProperties: false,
+      },
+    }),
+  )
+  await writeFile(join(flow, 'FLOW.ts'), flowProgram())
   await cp(join(import.meta.dir, '../../flow-sdk/src'), join(flow, 'flow-sdk'), { recursive: true })
 }
 
@@ -1334,9 +1311,9 @@ async function writeSkillWorkspace(root: string, nested: boolean): Promise<void>
         dependencies: { 'skill-context': 'workspace:*' },
       }),
     )
-    const program = await readFile(join(flow, 'flow.ts'), 'utf8')
+    const program = await readFile(join(flow, 'FLOW.ts'), 'utf8')
     await writeFile(
-      join(flow, 'flow.ts'),
+      join(flow, 'FLOW.ts'),
       [
         'import { marker } from "skill-context";',
         'import { marker as canonicalMarker } from "../../libs/context/index.ts";',
@@ -1401,16 +1378,16 @@ async function writeSpecialistParent(root: string): Promise<void> {
   await writeFile(join(parent, 'settings.schema.json'), settingsSchema)
   await writeFile(join(specialist, 'settings.schema.json'), settingsSchema)
   await writeFile(
-    join(parent, 'FLOW.md'),
-    '---\nname: parent\ndescription: Calls an exact Agent specialist.\n---\n',
+    join(parent, 'flow.meta.json'),
+    JSON.stringify({ name: 'parent', description: 'Calls an exact Agent specialist.' }),
   )
   await writeFile(
-    join(parent, 'flow.ts'),
+    join(parent, 'FLOW.ts'),
     [
       'import { handle } from "./flow-sdk/index.ts";',
       'await handle(async (run) => {',
       '  const input = run.input as { scenario: string; direct?: boolean };',
-      '  return await run.runChildFlow({ operationId: `agent:${input.scenario}`,',
+      '  return await run.call({ operationId: `agent:${input.scenario}`,',
       '    slot: input.direct ? "direct" : "configured", input: { scenario: input.scenario } });',
       '});',
     ].join('\n'),
@@ -1447,8 +1424,8 @@ function flowProgram(): string {
     'await handle(async (run) => {',
     '  const input = run.input as { scenario: string };',
     '  try {',
-    '    const agent = await run.callCapability({',
-    '      operationId: `agent:${input.scenario}`, slot: "agent", method: "run",',
+    '    const agent = await run.call({',
+    '      operationId: `agent:${input.scenario}`, slot: "agent",',
     '      input: { instructions: input.scenario === "api-structured"',
     '        ? "Return only JSON matching the response schema. Set route to technical, evidence to one item with keyLocation stdin, selectedSkill present, hiddenSkill absent, sourceLine 1, and amount null; set ambiguity to null."',
     '        : input.scenario === "api-text" ? "Reply with exactly READY and nothing else."',
@@ -1502,15 +1479,17 @@ function agentText(terminal: Awaited<ReturnType<typeof waitForTerminal>>): strin
       : undefined
   const agent =
     output !== null && typeof output === 'object' && 'agent' in output ? output.agent : undefined
+  const response =
+    agent !== null && typeof agent === 'object' && 'output' in agent ? agent.output : undefined
   if (
-    typeof agent !== 'object' ||
-    agent === null ||
-    !('text' in agent) ||
-    typeof agent.text !== 'string'
+    typeof response !== 'object' ||
+    response === null ||
+    !('text' in response) ||
+    typeof response.text !== 'string'
   ) {
     throw new Error('native Agent result omitted its text')
   }
-  return agent.text
+  return response.text
 }
 
 async function waitForTerminal(

@@ -1,0 +1,18 @@
+{
+  "$schema": "https://flow.jig.md/schemas/invocation-contract-1.schema.json",
+  "outcomes": {
+    "blocked": "A request was invalid, repeated, unknown, over budget, or the exchange was interrupted."
+  },
+  "channels": {
+    "requests": {
+      "direction": "receive",
+      "delivery": "direct",
+      "contract": "./contracts/sample-request.json"
+    },
+    "replies": {
+      "direction": "send",
+      "delivery": "direct",
+      "contract": "./contracts/sample-celsius.json"
+    }
+  }
+}

@@ -136,16 +136,16 @@ describe('private package materialization', () => {
     const stagingParent = await mkdtemp(join(tmpdir(), 'jig-materialize-parent-'))
     try {
       await writeTree(source, {
-        'FLOW.md': '---\nname: exact\ndescription: Exact fixture.\n---\n',
-        'flow.ts': "export const captured = 'old';\n",
+        'flow.meta.json': JSON.stringify({ name: 'exact', description: 'Exact fixture.' }),
+        'FLOW.ts': "export const captured = 'old';\n",
         'lib/value.ts': 'export default 1;\n',
       })
       const captured = await capturePackageDirectory(source)
       try {
-        await writeFile(join(source, 'flow.ts'), "export const captured = 'new';\n")
+        await writeFile(join(source, 'FLOW.ts'), "export const captured = 'new';\n")
         const materialized = await materializeCapturedPackage(captured, stagingParent)
         expect(materialized.packageDigest).toBe(captured.digest)
-        expect(await readFile(join(materialized.root, 'flow.ts'), 'utf8')).toBe(
+        expect(await readFile(join(materialized.root, 'FLOW.ts'), 'utf8')).toBe(
           "export const captured = 'old';\n",
         )
         expect((await stat(materialized.root)).mode & 0o777).toBe(0o555)
@@ -671,8 +671,11 @@ async function workspaceFixture() {
   const protectedParent = await mkdtemp(join(tmpdir(), 'jig-layout-materializations-'))
   await writeTree(source, {
     'flows/main/package.json': '{"name":"@fixture/main"}',
-    'flows/main/FLOW.md': '---\nname: main\ndescription: Workspace fixture.\n---\n',
-    'flows/main/flow.ts': 'export const value = 1;\n',
+    'flows/main/flow.meta.json': JSON.stringify({
+      name: 'main',
+      description: 'Workspace fixture.',
+    }),
+    'flows/main/FLOW.ts': 'export const value = 1;\n',
     'libraries/shared/package.json': '{"name":"@fixture/shared"}',
     'libraries/shared/value.txt': 'shared bytes\n',
   })
@@ -709,8 +712,8 @@ async function workspaceFixture() {
 
 function durableTree(): Readonly<Record<string, string>> {
   return {
-    'FLOW.md': '---\nname: durable\ndescription: Durable fixture.\n---\n',
-    'flow.ts': "export default 'durable';\n",
+    'flow.meta.json': JSON.stringify({ name: 'durable', description: 'Durable fixture.' }),
+    'FLOW.ts': "export default 'durable';\n",
     'nested/value.txt': 'nested durable bytes\n',
     'nested/removed/value.txt': 'removed before crash\n',
     'nested/remaining/value.txt': 'retained until recovery\n',

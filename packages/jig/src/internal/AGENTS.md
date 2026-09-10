@@ -15,7 +15,7 @@ child calls, project commands, and Agent providers.
   and separate command-owned publication after execution fencing.
 - Installed Bun authentication, rootless acquisition, delegation,
   containment, supervision, and execution.
-- Agent clients and launchers, capability enforcement, credential isolation,
+- Agent clients and launchers, native invocation enforcement, credential isolation,
   structured results, and package-local skill projection.
 - Channel integration resolves admitted package contracts and binds root
   output, exact child endpoints, or native Agent endpoints. Unused incoming rights
@@ -47,6 +47,15 @@ child calls, project commands, and Agent providers.
   current support without cgroup acquisition or namespace execution; Run retains
   full launch revalidation. Include selected child identities, isolate unrelated
   targets, and report failed comparisons as unchecked without private causes.
+- One resolved slot table pins exact Flow targets or qualified native invocations.
+  An explicit typed route must match its provider's offered contract; it cannot
+  fall back or turn a claimed native descriptor into package-held authority.
+  Markdown reasoning derives its reserved native Agent requirement during inert
+  inspection and executes through that same table. Installed interpreter bytes
+  participate in runtime identity; Markdown resources never trigger installation.
+- Unconfirmed cleanup or fencing is fatal to the owning invocation even if code
+  catches its operation error. A conclusively cleaned child failure remains
+  recoverable with ordinary language handling; no result-acknowledgement ledger.
 - Strictly parse, bound, snapshot, and authenticate values crossing a trust
   boundary. Decoding inert bytes must not mint authority.
 - Preserve the sequence observe, identify, plan, seal, admit, revalidate,
@@ -149,7 +158,7 @@ child calls, project commands, and Agent providers.
   Cancellation and expiry escalate against the exact trusted child after a
   bounded grace period and reap it; independent cgroup fencing still owns payload cleanup.
 - Exact child slots may select a Flow or a leaf Binding with its own admitted
-  settings, Agent capability, and reviewed project commands. An effect belongs to that child
+  settings, Agent invocation, and reviewed project commands. An effect belongs to that child
   context, not the root's operation namespace; fence and drain it before
   releasing the child owner. Children cannot acquire another child slot map.
 - Roots admit two Flow branches or one exclusive effect. Reserve each whole
@@ -158,7 +167,7 @@ child calls, project commands, and Agent providers.
   the recipe-bound reservation policy must agree. Leaves admit one effect;
   there is no queue, borrowing, recursive budget, or public scheduler.
 - Channel operations have separate finite transport capacity, not worker slots.
-  Unsupported delivery or capability wiring rejects before dispatch. Observation
+  Unsupported delivery or invocation wiring rejects before dispatch. Observation
   grants no session control; FLOW endpoint rights and source-owner lifetime
   remain authoritative. Keep channel state command-local, not durable replay state.
 - Run Checkpoint uses one separate bounded control operation, not a worker

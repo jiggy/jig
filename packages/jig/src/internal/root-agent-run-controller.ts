@@ -1,9 +1,9 @@
 import { lstat, mkdir, realpath } from 'node:fs/promises'
 import { join } from 'node:path'
-
 import { CheckError } from '../diagnostics.js'
 import { canonicalJson, decodeJson1, type JsonObject, type JsonValue } from '../json.js'
 import { inspectCapturedPackage } from '../package/inspect.js'
+import { flowSlotTargets } from '../project/invocation-slots.js'
 import type { RunTargetIdentity } from '../project/package-project.js'
 import { validateProjectPath } from '../project/paths.js'
 import {
@@ -11,11 +11,8 @@ import {
   ChannelOperationError,
   type ChannelParticipant,
 } from '../run/channels.js'
-import type {
-  RunHostEffectCall,
-  RunHostEffectOperationTerminal,
-  WireFailureCode,
-} from '../run/session.js'
+import type { RunHostCall, RunHostOperationTerminal, WireFailureCode } from '../run/session.js'
+import { RunHostFatalOperationError } from '../run/session.js'
 import { SchemaDiagnostic } from '../schema/index.js'
 import {
   PrivateAcpProtocolError,
@@ -62,6 +59,7 @@ import {
   planPrivateLinuxOwnerStateAllocation,
   releasePrivateLinuxOwnerState,
 } from './linux-rootless-backend.js'
+import { MARKDOWN_AGENT_SLOT, markdownAgentContract } from './markdown-agent-contract.js'
 import {
   assertPrivateAgentResponseSchema,
   projectPrivateAgentResponseSchema,
@@ -89,6 +87,7 @@ import {
   type PreparedAgentRunInput,
   parseAgentRunInput,
   parseAgentRunResult,
+  projectAgentRunResult,
   projectAgentRunSkills,
 } from './private-agent-run.js'
 import { PRIVATE_AGENT_PROVIDER_PIDS } from './root-operation-limits.js'
@@ -159,7 +158,7 @@ interface PreparedCall {
 
 /** Execute one exact admitted Agent Run effect in its own contained process. */
 type AgentCallInput = AgentInput & {
-  readonly call: RunHostEffectCall
+  readonly call: RunHostCall
   readonly parentDeadlineUnixMs: number
   readonly signal: AbortSignal
   readonly channels?: { readonly caller: ChannelParticipant; readonly broker: ChannelBroker }
@@ -175,7 +174,7 @@ export function privateAgentChannelOwnerId(
 
 export async function executePrivateRootAgentRun(
   input: AgentCallInput,
-): Promise<RunHostEffectOperationTerminal> {
+): Promise<RunHostOperationTerminal> {
   let participant: ChannelParticipant | undefined
   let updates: PrivateAgentUpdateChannel | undefined
   try {
@@ -215,13 +214,10 @@ export async function executePrivateRootAgentRun(
 async function executeAgentRun(
   input: AgentCallInput,
   admitChannels: () => PrivateAgentUpdateChannel | undefined,
-): Promise<RunHostEffectOperationTerminal> {
-  const selected = selectAgentCapability(input, input.call)
+): Promise<RunHostOperationTerminal> {
+  const selected = selectAgentInvocation(input, input.call)
   if (selected === undefined) {
-    return failed('UNAVAILABLE', 'the requested slot has no admitted Agent Run capability')
-  }
-  if (input.call.method !== 'run') {
-    return failed('UNAVAILABLE', 'the Agent Run capability has no requested method')
+    return failed('UNAVAILABLE', 'the requested slot has no admitted Agent Run invocation')
   }
   if (input.signal.aborted) return failed('CANCELLED', 'the Agent Run was cancelled')
 
@@ -337,9 +333,11 @@ async function executeAgentRun(
     try {
       await cancelUnusedAllocation(ownerAllocation)
     } catch (cleanupError) {
-      throw new AggregateError(
-        [error, cleanupError],
-        'Agent owner allocation failed and its unused owner could not be released',
+      throw new RunHostFatalOperationError(
+        cleanupError instanceof PrivateLinuxFenceUnconfirmedError
+          ? 'UNCERTAIN'
+          : 'EXECUTION_FAILED',
+        { cause: new AggregateError([error, cleanupError], 'operation cleanup failed') },
       )
     }
     if (error instanceof CheckError && error.code === 'RUN_CHILD_CAPACITY') {
@@ -368,7 +366,6 @@ async function executeAgentRun(
       allocationDigest: lifecycle.allocation.digest,
       sandbox: sandbox as unknown as JsonValue,
     })
-
     attemptedDispatch = true
     const component = await sealed.admit(input.signal)
     execution = await interactWithProvider(component, provider, prepared, input.signal, updates)
@@ -378,13 +375,17 @@ async function executeAgentRun(
       const active = await findLifecycle(input, input.call.operationId)
       if (active !== undefined) await recoverPrivateRootAgentRunOwner(input, active)
     } catch (cleanupError) {
-      if (attemptedDispatch && cleanupError instanceof PrivateLinuxFenceUnconfirmedError) {
-        return failed(
-          'UNCERTAIN',
-          'Agent dispatch may have occurred but its fence is not yet confirmed',
-        )
-      }
-      throw new AggregateError([error, cleanupError], 'Agent Run execution and cleanup failed')
+      throw new RunHostFatalOperationError(
+        cleanupError instanceof PrivateLinuxFenceUnconfirmedError
+          ? 'UNCERTAIN'
+          : 'EXECUTION_FAILED',
+        {
+          cause: new AggregateError(
+            [error, cleanupError],
+            'Agent Run execution and cleanup failed',
+          ),
+        },
+      )
     }
     if (input.signal.aborted) return failed('CANCELLED', 'the Agent Run was cancelled')
     if (Date.now() >= effectiveDeadlineUnixMs) {
@@ -413,7 +414,7 @@ async function executeAgentRun(
     const value = parseAgentRunResult(prepared.contract, prepared.input, execution.value)
     return Object.freeze({
       status: 'succeeded' as const,
-      result: Object.freeze({ value: value as unknown as JsonValue }),
+      result: projectAgentRunResult(value),
     })
   } catch {
     return failed('INVALID_RESULT', 'the Agent provider result does not satisfy Agent Run/1')
@@ -566,18 +567,21 @@ function renderPrivateAcpStructuredInstructions(
 }
 
 async function prepareCall(
-  input: AgentInput & { readonly call: RunHostEffectCall },
+  input: AgentInput & { readonly call: RunHostCall },
   provider: PrivateAgentProvider,
 ): Promise<PreparedCall> {
   const target = requireParentTarget(input)
   const captured = await captureStoredPackage(input.packageStoreRoot, target.request.package)
   try {
     const inspected = await inspectCapturedPackage(captured)
-    const reference = inspected.usedContracts.find(({ slot }) => slot === input.call.slot)
+    const reference =
+      inspected.markdown?.mode === 'mixed' && input.call.slot === MARKDOWN_AGENT_SLOT
+        ? { contract: markdownAgentContract() }
+        : inspected.usedContracts.find(({ slot }) => slot === input.call.slot)
     if (reference === undefined) {
       throw new AgentRunValidationError(
         'AGENT_RUN_CONTRACT_MISMATCH',
-        'Agent Run capability descriptor is absent from the admitted package',
+        'Agent Run invocation descriptor is absent from the admitted package',
       )
     }
     assertAgentRunContract(reference.contract)
@@ -609,16 +613,17 @@ async function prepareCall(
   }
 }
 
-function selectAgentCapability(input: AgentRecoveryInput, call: RunHostEffectCall) {
+function selectAgentInvocation(input: AgentRecoveryInput, call: RunHostCall) {
   const target = requireParentTarget(input)
-  const selected = target.request.capabilities[call.slot]
-  if (selected === undefined) return undefined
+  const route = target.request.slots[call.slot]
+  if (route?.kind !== 'native' || route.native !== 'agent') return undefined
+  const selected = route.contract
   if (
     selected.id !== AGENT_RUN_CONTRACT_ID ||
     selected.version !== AGENT_RUN_CONTRACT_VERSION ||
     selected.digest !== AGENT_RUN_CONTRACT_DIGEST
   ) {
-    throw new Error('admitted Agent Run capability identity is invalid')
+    throw new Error('admitted Agent Run invocation identity is invalid')
   }
   return selected
 }
@@ -639,8 +644,8 @@ export function requireParentTarget(input: AgentRecoveryInput) {
     target === undefined ||
     target.request.digest !== parentFlow.requestDigest ||
     target.disposition.state !== 'ready' ||
-    Object.keys(target.request.flowSlots).length !== 0 ||
-    !Object.values(root.request.flowSlots).some(
+    Object.keys(flowSlotTargets(target.request.slots)).length !== 0 ||
+    !Object.values(flowSlotTargets(root.request.slots)).some(
       (identity) =>
         findPrivateActivationCandidateTargetV5(parent.candidate, identity)?.request.digest ===
         target.request.digest,
@@ -1086,8 +1091,11 @@ async function requireAllocationMatchesParent(
     allocation.operationId !== lifecycle.operationId ||
     allocation.parentRequestDigest !== target.request.digest ||
     allocation.effectiveDeadlineUnixMs > input.parent.intent.deadlineUnixMs ||
-    !Object.values(target.request.capabilities).some(
-      ({ digest }) => digest === AGENT_RUN_CONTRACT_DIGEST,
+    !Object.values(target.request.slots).some(
+      (route) =>
+        route.kind === 'native' &&
+        route.native === 'agent' &&
+        route.contract.digest === AGENT_RUN_CONTRACT_DIGEST,
     )
   ) {
     throw new Error('durable Agent allocation differs from its admitted parent or provider')
@@ -1180,7 +1188,7 @@ export function normalizeParentFlow(
   })
 }
 
-function providerFailure(code: PrivateOpenAIAgentErrorCode): RunHostEffectOperationTerminal {
+function providerFailure(code: PrivateOpenAIAgentErrorCode): RunHostOperationTerminal {
   if (code === 'AGENT_PROVIDER_OUTPUT_LIMIT') {
     return failed('RESOURCE_EXHAUSTED', 'the Agent provider result exceeded its fixed bound')
   }
@@ -1285,7 +1293,7 @@ function failed(
   code: WireFailureCode,
   message: string,
   details?: JsonValue,
-): RunHostEffectOperationTerminal {
+): RunHostOperationTerminal {
   return Object.freeze({
     status: 'failed' as const,
     code,

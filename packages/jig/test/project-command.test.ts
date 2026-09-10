@@ -1,17 +1,17 @@
 import { describe, expect, test } from 'bun:test'
 import { readFile } from 'node:fs/promises'
-import { defineBinding } from '../src/project/author.js'
-import { normalizeProjectCommands } from '../src/project/commands.js'
-import { parseCapabilityContract } from '../src/capability/index.js'
-import { compileSchemaFile } from '../src/schema/index.js'
-import { canonicalJson } from '../src/json.js'
 import {
   assertProjectCommandContract,
-  parseProjectCommandInput,
   PROJECT_COMMAND_CONTRACT_DIGEST,
+  parseProjectCommandInput,
   projectCommandCandidateDigest,
 } from '../src/internal/private-project-command.js'
 import { collectProjectCommandStream } from '../src/internal/root-project-command-controller.js'
+import { parseInvocationContract } from '../src/invocation-contract.js'
+import { canonicalJson } from '../src/json.js'
+import { defineBinding } from '../src/project/author.js'
+import { normalizeProjectCommands } from '../src/project/commands.js'
+import { compileSchemaFile } from '../src/schema/index.js'
 
 const commands = normalizeProjectCommands({
   cli: { run: 'src/cli.ts' },
@@ -45,26 +45,23 @@ describe('Project Command contract and reviewed policy', () => {
       expect(() => defineBinding({ package: 'flows/repair', commands: invalid as never })).toThrow()
   })
   test('matches the exact companion and independently validates input/output shape', async () => {
-    const parsed = parseCapabilityContract(
+    const parsed = parseInvocationContract(
       await readFile(
-        new URL(
-          '../../../docs/jig/spec/contracts/project-command.capability.json',
-          import.meta.url,
-        ),
+        new URL('../../../docs/jig/spec/contracts/project-command/contract.json', import.meta.url),
       ),
     )
     expect(parsed.digest).toBe(PROJECT_COMMAND_CONTRACT_DIGEST)
     expect(() => assertProjectCommandContract(parsed)).not.toThrow()
-    parsed.schemas.get('/methods/run/input')!.validate({ command: 'cli', files })
+    parsed.schemas.get('/input')!.validate({ command: 'cli', files })
     expect(() =>
       assertProjectCommandContract({
         ...parsed,
         descriptor: { ...parsed.descriptor, id: 'https://example.org/other' },
       }),
     ).toThrow()
-    parsed.schemas
-      .get('/methods/run/output')!
-      .validate({
+    parsed.schemas.get('/result')!.validate({
+      outcome: 'done',
+      output: {
         candidateDigest: projectCommandCandidateDigest(files),
         command: 'cli',
         invocation: ['bun', 'src/cli.ts'],
@@ -75,7 +72,8 @@ describe('Project Command contract and reviewed policy', () => {
         signal: null,
         stopReason: 'exited',
         cleanup: 'complete',
-      })
+      },
+    })
   })
   test('identifies exact bytes independently of map insertion order', () => {
     const input = { command: 'cli', files: { ...files }, args: ['--help'], stdin: 'record\n' }

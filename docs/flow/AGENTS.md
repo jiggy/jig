@@ -3,7 +3,7 @@
 ## Purpose
 
 Owns FLOW's independently implementable package, value, process-protocol, SDK,
-and capability-contract semantics.
+and invocation-contract semantics.
 
 ## Ownership
 

@@ -114,13 +114,14 @@ host overhead; cleanup is not skipped when either budget expires.
 
 ## Author a file Flow
 
-Declare portable attachments in `FLOW.md`, then use the paths in
+Declare portable attachments in `contract.json`, then use the paths in
 `run.attachments` through the ordinary FLOW SDK:
 
-```yaml
-attachments:
-  source: read
-  deliverables: read-write
+```json
+{
+  "$schema": "https://flow.jig.md/schemas/invocation-contract-1.schema.json",
+  "attachments": { "source": "read", "deliverables": "read-write" }
+}
 ```
 
 Your method reads `run.attachments.source.path` and writes under

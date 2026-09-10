@@ -111,6 +111,7 @@ describe('fixed installed Bun support', () => {
       await mkdir(preparation, { recursive: true })
       await copyFile(installedBunLocation.executablePath, executable)
       await writeFile(installedCli, 'installed command\n')
+      await writeFile(join(root, 'libexec', 'markdown-runtime.js'), 'markdown interpreter\n')
       await writeFile(join(root, 'libexec', 'linux-rootless-supervisor.js'), 'supervisor\n')
       await writeFile(join(evaluator, 'project-evaluator-worker.js'), 'worker\n')
       await writeFile(join(evaluator, 'project-evaluator-sdk.bundle.js'), 'sdk\n')
@@ -131,6 +132,9 @@ describe('fixed installed Bun support', () => {
       expect((await openPrivateInstalledBunSupport(location)).digest).toBe(support.digest)
       expect(support.sandboxExecutablePath).toBe('/jig-runtime/bun')
       expect(support.sandboxAgentWorkerPath).toBe('/jig-agent-worker.js')
+      expect(support.sandboxMarkdownRuntimePath).toBe('/jig-markdown-runtime.js')
+      expect(support.markdownRuntimePath).toBe(join(root, 'libexec', 'markdown-runtime.js'))
+      expect(support.markdownRuntimeDigest).toMatch(/^sha256:[a-f0-9]{64}$/)
       expect(support.sandboxPreparationWorkerPath).toBe('/jig-preparation-worker.js')
       expect(support.runtimeMounts.map(({ destination }) => destination)).toEqual([
         '/jig-runtime/bun',
@@ -140,6 +144,13 @@ describe('fixed installed Bun support', () => {
         '/jig-runtime/lib/libdl.so.2',
         '/jig-runtime/lib/libpthread.so.0',
       ])
+      await expect(revalidatePrivateInstalledBunSupport(support)).resolves.toBeUndefined()
+
+      await writeFile(join(root, 'libexec', 'markdown-runtime.js'), 'changed interpreter\n')
+      await expect(revalidatePrivateInstalledBunSupport(support)).rejects.toThrow(
+        'installed Bun support changed after selection',
+      )
+      await writeFile(join(root, 'libexec', 'markdown-runtime.js'), 'markdown interpreter\n')
       await expect(revalidatePrivateInstalledBunSupport(support)).resolves.toBeUndefined()
 
       await writeFile(join(preparation, 'bun-native-preparation-worker.js'), 'changed\n')

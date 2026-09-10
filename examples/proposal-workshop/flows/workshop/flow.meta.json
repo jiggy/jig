@@ -1,0 +1,8 @@
+{
+  "name": "proposal-workshop",
+  "description": "Draft, check, review separately, and revise one proposal from supplied evidence.",
+  "uses": {
+    "drafter": {},
+    "reviewer": {}
+  }
+}

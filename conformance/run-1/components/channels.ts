@@ -1,11 +1,10 @@
-import { handle, OperationError, type JsonValue } from '../../../packages/flow-sdk/src/index'
+import { handle, type JsonValue, OperationError } from '../../../packages/flow-sdk/src/index'
 
 await handle(async (run) => {
   const channel = await run.channel()
-  const work = run.callCapability({
+  const work = run.call({
     operationId: 'answer',
     slot: 'worker',
-    method: 'run',
     input: run.input,
     channels: { events: channel.send },
   })

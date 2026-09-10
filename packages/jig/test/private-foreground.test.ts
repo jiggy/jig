@@ -24,6 +24,7 @@ import {
   type PrivateLinuxSealedOwnerIdentity,
 } from '../src/internal/linux-rootless-backend.js'
 import { openPrivateProjectSession } from '../src/internal/project-session-controller.js'
+import { checkPackageDirectory } from '../src/package/inspect.js'
 import { installedBunLocation } from './fixtures/installed-bun-location.js'
 
 const HOSTILE = process.env.JIG_LINUX_ROOTLESS_HOSTILE === '1'
@@ -35,19 +36,52 @@ const initialRootlessTemporaryState = new Set(
 const initialRootlessCgroups = new Set(await rootlessCgroups())
 
 describe('private foreground command boundary', () => {
+  test('constructs current package declarations and parseable code for every contained fixture', async () => {
+    const transpiler = new Bun.Transpiler({ loader: 'ts', target: 'bun' })
+    for (const construct of [
+      writeProject,
+      writeAgentRouterProject,
+      writeChannelProject,
+      writeChildChannelProject,
+      writeBroadcastChannelProject,
+    ]) {
+      const root = await mkdtemp(join(tmpdir(), 'jig-foreground-fixture-'))
+      try {
+        await construct(root)
+        for (const name of await readdir(join(root, 'flows'))) {
+          const directory = join(root, 'flows', name)
+          const inspected = await checkPackageDirectory(directory)
+          expect(inspected.entrypoint).toMatchObject({ path: 'FLOW.ts', suffix: 'ts' })
+          const source = await readFile(join(directory, 'FLOW.ts'), 'utf8')
+          expect(() => transpiler.transformSync(source)).not.toThrow()
+        }
+      } finally {
+        await rm(root, { recursive: true, force: true })
+      }
+    }
+  })
+
   test('requires explicit approval separately from a reviewed Plan', async () => {
     const failure = await invokeFailure(['apply', '.', '--plan', `sha256:${'0'.repeat(64)}`])
     expect(failure).toContain('apply requires explicit --yes approval')
   })
 
   test('constructs every named conversation peer', async () => {
-    for (const peer of ['normal', 'fahrenheit', 'duplicate', 'unexpected', 'eof', 'held'] as const) {
+    for (const peer of [
+      'normal',
+      'fahrenheit',
+      'duplicate',
+      'unexpected',
+      'eof',
+      'held',
+    ] as const) {
       const root = await mkdtemp(join(tmpdir(), 'jig-conversation-fixture-'))
       try {
         await writeChannelConversationProject(root, peer)
         for (const name of ['investigate', 'analysis', 'dataset']) {
           const built = await Bun.build({
-            entrypoints: [join(root, 'flows', name, 'flow.ts')], target: 'bun',
+            entrypoints: [join(root, 'flows', name, 'flow.ts')],
+            target: 'bun',
           })
           expect(built.success, String(built.logs)).toBeTrue()
         }
@@ -515,7 +549,7 @@ proofDescribe('private rootless project session', () => {
         releaseRoot,
         installedCliPath: join(releaseRoot, 'libexec', 'installed-cli.js'),
       }
-      await writeCapabilityFreeProject(root)
+      await writeAgentFreeProject(root)
       session = await openPrivateProjectSession({
         directory: root,
         host: await openPrivateInstalledBunHost(location, {}),
@@ -692,7 +726,7 @@ proofDescribe('private rootless project session', () => {
     const root = await mkdtemp(join(tmpdir(), 'jig-private-agent-isolation-'))
     let session: Awaited<ReturnType<typeof openPrivateProjectSession>> | undefined
     try {
-      await writeCapabilityFreeProject(root)
+      await writeAgentFreeProject(root)
       const host = await openPrivateInstalledBunHost(installedBunLocation, {
         JIG_AGENT_CLIENT: 'codex',
         CODEX_PATH: '/missing/codex',
@@ -702,7 +736,7 @@ proofDescribe('private rootless project session', () => {
 
       const plan = await session.plan({ lockMode: 'update' })
       if (plan.state !== 'applicable') {
-        throw new Error('capability-free project did not produce a Plan')
+        throw new Error('Agent-free project did not produce a Plan')
       }
       await session.apply({ planDigest: plan.planDigest })
       const receipt = await session.rootAdministration.startRun({
@@ -738,7 +772,8 @@ proofDescribe('private rootless project session', () => {
           '',
         ].join('\n'),
       )
-      await writeFile(join(malformed, 'FLOW.md'), 'not Metadata/1\n')
+      await writeFile(join(malformed, 'flow.meta.json'), 'not Metadata/1\n')
+      await writeFile(join(malformed, 'FLOW.ts'), 'export {};\n')
 
       session = await openPrivateProjectSession({
         directory: root,
@@ -752,8 +787,8 @@ proofDescribe('private rootless project session', () => {
         code: 'INVALID_CANDIDATE',
         message: 'project candidate is invalid',
         diagnostic: {
-          code: 'METADATA_DELIMITER',
-          path: 'flows/malformed/FLOW.md',
+          code: 'METADATA_INVALID_JSON',
+          path: 'flows/malformed/flow.meta.json',
         },
       })
       expect(JSON.stringify(failure)).not.toContain(root)
@@ -1140,7 +1175,7 @@ proofDescribe('private rootless project session', () => {
 
       // Applying retained review bytes must not re-evaluate mutable source.
       await writeFile(
-        join(root, 'flows', 'worker', 'flow.ts'),
+        join(root, 'flows', 'worker', 'FLOW.ts'),
         "throw new Error('Run must use the retained reviewed package');\n",
       )
       expect(await invoke(['apply', root, '--plan', planned.planDigest, '--yes'])).toEqual({
@@ -1314,47 +1349,40 @@ async function writeProject(root: string): Promise<void> {
     ].join('\n'),
   )
   await writeFile(
-    join(worker, 'FLOW.md'),
-    [
-      '---',
-      'name: foreground-worker',
-      'description: Returns its input from one contained Bun Run.',
-      '---',
-      '',
-    ].join('\n'),
+    join(worker, 'flow.meta.json'),
+    metadata('foreground-worker', 'Returns its input from one contained Bun Run.'),
   )
   await writeFile(
-    join(worker, 'input.schema.json'),
+    join(worker, 'contract.json'),
     JSON.stringify({
-      $schema: 'https://flow.jig.md/schemas/schema-1.json',
-      type: 'object',
-      properties: {
-        ticket: { type: 'string' },
-        delayMs: { type: 'number', minimum: 0, maximum: 20_000 },
-      },
-      required: ['ticket'],
-      additionalProperties: false,
-    }),
-  )
-  await writeFile(
-    join(worker, 'result.schema.json'),
-    JSON.stringify({
-      $schema: 'https://flow.jig.md/schemas/schema-1.json',
-      type: 'object',
-      properties: {
-        outcome: { const: 'done' },
-        output: {
-          type: 'object',
-          properties: { worker: {} },
-          required: ['worker'],
-          additionalProperties: false,
+      $schema: 'https://flow.jig.md/schemas/invocation-contract-1.schema.json',
+      input: {
+        type: 'object',
+        properties: {
+          ticket: { type: 'string' },
+          delayMs: { type: 'number', minimum: 0, maximum: 20_000 },
         },
+        required: ['ticket'],
+        additionalProperties: false,
       },
-      required: ['outcome', 'output'],
-      additionalProperties: false,
+      result: {
+        type: 'object',
+        properties: {
+          outcome: { const: 'done' },
+          output: {
+            type: 'object',
+            properties: { worker: {} },
+            required: ['worker'],
+            additionalProperties: false,
+          },
+        },
+        required: ['outcome', 'output'],
+        additionalProperties: false,
+      },
     }),
   )
-  await writeFile(join(worker, 'flow.ts'), bunWorkerProgram())
+
+  await writeFile(join(worker, 'FLOW.ts'), bunWorkerProgram())
   const sdk = join(worker, 'flow-sdk')
   await mkdir(sdk)
   for (const name of [
@@ -1389,8 +1417,8 @@ async function writeProject(root: string): Promise<void> {
     recursive,
   ]
   for (const directory of slotPackages) await mkdir(directory, { recursive: true })
-  await writeFile(join(router, 'FLOW.md'), metadata('ticket-router', 'Routes one ticket.'))
-  await writeFile(join(router, 'input.schema.json'), ticketSchema())
+  await writeFile(join(router, 'flow.meta.json'), metadata('ticket-router', 'Routes one ticket.'))
+  await writeFile(join(router, 'contract.json'), ticketSchema())
   await writeFile(
     join(router, 'settings.schema.json'),
     JSON.stringify({
@@ -1401,67 +1429,74 @@ async function writeProject(root: string): Promise<void> {
       additionalProperties: false,
     }),
   )
-  await writeFile(join(router, 'flow.ts'), routerProgram())
-  await writeFile(join(bug, 'FLOW.md'), metadata('handle-bug', 'Handles one bug.'))
-  await writeFile(join(bug, 'input.schema.json'), ticketSchema('bug'))
-  await writeFile(join(bug, 'flow.ts'), childProgram('bug'))
-  await writeFile(join(question, 'FLOW.md'), metadata('answer-question', 'Answers one question.'))
-  await writeFile(join(question, 'input.schema.json'), ticketSchema('question'))
-  await writeFile(join(question, 'flow.ts'), childProgram('question'))
+  await writeFile(join(router, 'FLOW.ts'), routerProgram())
+  await writeFile(join(bug, 'flow.meta.json'), metadata('handle-bug', 'Handles one bug.'))
+  await writeFile(join(bug, 'contract.json'), ticketSchema('bug'))
+  await writeFile(join(bug, 'FLOW.ts'), childProgram('bug'))
   await writeFile(
-    join(invalidInput, 'FLOW.md'),
+    join(question, 'flow.meta.json'),
+    metadata('answer-question', 'Answers one question.'),
+  )
+  await writeFile(join(question, 'contract.json'), ticketSchema('question'))
+  await writeFile(join(question, 'FLOW.ts'), childProgram('question'))
+  await writeFile(
+    join(invalidInput, 'flow.meta.json'),
     metadata('invalid-input-child', 'Must never start for the invalid test input.'),
   )
   await writeFile(
-    join(invalidInput, 'input.schema.json'),
+    join(invalidInput, 'contract.json'),
     JSON.stringify({
-      $schema: 'https://flow.jig.md/schemas/schema-1.json',
-      type: 'object',
-      properties: { allowed: { const: true } },
-      required: ['allowed'],
-      additionalProperties: false,
+      $schema: 'https://flow.jig.md/schemas/invocation-contract-1.schema.json',
+      input: {
+        type: 'object',
+        properties: { allowed: { const: true } },
+        required: ['allowed'],
+        additionalProperties: false,
+      },
     }),
   )
   await writeFile(
-    join(invalidInput, 'flow.ts'),
+    join(invalidInput, 'FLOW.ts'),
     throwingChildProgram('invalid input reached child code'),
   )
   await writeFile(
-    join(invalidResult, 'FLOW.md'),
+    join(invalidResult, 'flow.meta.json'),
     metadata('invalid-result-child', 'Returns a result rejected by its declaration.'),
   )
   await writeFile(
-    join(invalidResult, 'result.schema.json'),
+    join(invalidResult, 'contract.json'),
     JSON.stringify({
-      $schema: 'https://flow.jig.md/schemas/schema-1.json',
-      type: 'object',
-      properties: {
-        outcome: { const: 'done' },
-        output: {
-          type: 'object',
-          properties: { valid: { const: true } },
-          required: ['valid'],
-          additionalProperties: false,
+      $schema: 'https://flow.jig.md/schemas/invocation-contract-1.schema.json',
+      result: {
+        type: 'object',
+        properties: {
+          outcome: { const: 'done' },
+          output: {
+            type: 'object',
+            properties: { valid: { const: true } },
+            required: ['valid'],
+            additionalProperties: false,
+          },
         },
+        required: ['outcome', 'output'],
+        additionalProperties: false,
       },
-      required: ['outcome', 'output'],
-      additionalProperties: false,
     }),
   )
-  await writeFile(join(invalidResult, 'flow.ts'), invalidResultChildProgram())
+  await writeFile(join(invalidResult, 'FLOW.ts'), invalidResultChildProgram())
   await writeFile(
-    join(executionFailure, 'FLOW.md'),
+    join(executionFailure, 'flow.meta.json'),
     metadata('execution-failure-child', 'Fails after it starts.'),
   )
   await writeFile(
-    join(executionFailure, 'flow.ts'),
+    join(executionFailure, 'FLOW.ts'),
     throwingChildProgram('deliberate child failure'),
   )
   await writeFile(
-    join(recursive, 'FLOW.md'),
+    join(recursive, 'flow.meta.json'),
     metadata('recursive-child', 'Attempts one unavailable child call.'),
   )
-  await writeFile(join(recursive, 'flow.ts'), recursiveChildProgram())
+  await writeFile(join(recursive, 'FLOW.ts'), recursiveChildProgram())
   for (const directory of slotPackages) await copyFlowSdk(directory)
   const bindings = join(root, 'bindings')
   await mkdir(bindings)
@@ -1486,7 +1521,7 @@ async function writeProject(root: string): Promise<void> {
   )
 }
 
-async function writeCapabilityFreeProject(root: string): Promise<void> {
+async function writeAgentFreeProject(root: string): Promise<void> {
   const worker = join(root, 'flows', 'worker')
   await mkdir(worker, { recursive: true })
   await writeFile(
@@ -1498,10 +1533,10 @@ async function writeCapabilityFreeProject(root: string): Promise<void> {
     ].join('\n'),
   )
   await writeFile(
-    join(worker, 'FLOW.md'),
-    metadata('agent-isolation', 'Returns its input without an Agent capability.'),
+    join(worker, 'flow.meta.json'),
+    metadata('agent-isolation', 'Returns its input without an Agent invocation.'),
   )
-  await writeFile(join(worker, 'flow.ts'), bunWorkerProgram())
+  await writeFile(join(worker, 'FLOW.ts'), bunWorkerProgram())
   await copyFlowSdk(worker)
 }
 
@@ -1524,56 +1559,37 @@ async function writeAgentRouterProject(root: string): Promise<void> {
   )
 
   await mkdir(join(router, 'contracts'))
-  await writeFile(
-    join(router, 'contracts', 'agent-run.capability.json'),
-    await readFile(
-      join(
-        import.meta.dir,
-        '..',
-        '..',
-        '..',
-        'docs',
-        'jig',
-        'spec',
-        'contracts',
-        'agent-run.capability.json',
-      ),
-    ),
+  await cp(
+    join(import.meta.dir, '../../../docs/jig/spec/contracts/agent-run'),
+    join(router, 'contracts/agent-run'),
+    { recursive: true },
   )
   await mkdir(join(router, 'skills', 'ticket-routing'), { recursive: true })
-  await writeFile(
-    join(router, 'contracts', 'acp-public-updates.json'),
-    await readFile(
-      new URL('../../../docs/jig/spec/contracts/acp-public-updates.json', import.meta.url),
-    ),
-  )
   await writeFile(
     join(router, 'skills', 'ticket-routing', 'SKILL.md'),
     "# Ticket routing\n\nCopy the ticket's explicit `route` field exactly.\n",
   )
   await writeFile(
-    join(router, 'FLOW.md'),
-    [
-      '---',
-      'name: ticket-router',
-      'description: Uses one Agent choice before calling an exact child.',
-      'uses:',
-      '  agent:',
-      '    contract: ./contracts/agent-run.capability.json',
-      '---',
-      '',
-    ].join('\n'),
+    join(router, 'flow.meta.json'),
+    JSON.stringify({
+      name: 'ticket-router',
+      description: 'Uses one Agent choice before calling an exact child.',
+      uses: { agent: { contract: './contracts/agent-run/contract.json' } },
+    }),
   )
-  await writeFile(join(router, 'flow.ts'), agentRouterProgram())
+  await writeFile(join(router, 'FLOW.ts'), agentRouterProgram())
   await copyFlowSdk(router)
 
   for (const [directory, route] of [
     [billing, 'billing'],
     [technical, 'technical'],
   ] as const) {
-    await writeFile(join(directory, 'FLOW.md'), metadata(route, `Handles one ${route} ticket.`))
     await writeFile(
-      join(directory, 'flow.ts'),
+      join(directory, 'flow.meta.json'),
+      metadata(route, `Handles one ${route} ticket.`),
+    )
+    await writeFile(
+      join(directory, 'FLOW.ts'),
       [
         '#!/usr/bin/env bun',
         'import { handle } from "./flow-sdk/index.ts";',
@@ -1621,19 +1637,19 @@ function agentRouterProgram(): string {
     '};',
     'await handle(async (run) => {',
     '  const input = run.input as { route: "billing" | "technical"; ticket: string };',
-    '  const agent = await run.callCapability({',
-    '    operationId: "choose-route", slot: "agent", method: "run",',
+    '  const agent = await run.call({',
+    '    operationId: "choose-route", slot: "agent",',
     '    input: {',
     '      instructions: `Return only JSON matching the response schema. Copy route exactly from this ticket; set evidence to one item with source ticket, sourceLine 1, amount null, and ambiguity null: ${JSON.stringify(input)}`,',
     '      skills: ["ticket-routing"], responseSchema,',
     '    },',
-    '  }) as { outcome: string; structured?: { decision: {',
+    '  }) as { outcome: string; output: { structured?: { decision: {',
     '    route: "billing" | "technical";',
     '    evidence: [{ source: "ticket"; sourceLine: number; amount: number | null; ambiguity: string | null }];',
-    '  } } };',
-    '  if (agent.outcome !== "completed" || agent.structured === undefined) throw new Error("Agent did not choose");',
-    '  const decision = agent.structured.decision;',
-    '  const child = await run.runChildFlow({',
+    '  } } } };',
+    '  if (agent.outcome !== "done" || agent.output.structured === undefined) throw new Error("Agent did not choose");',
+    '  const decision = agent.output.structured.decision;',
+    '  const child = await run.call({',
     '    operationId: "dispatch-route", slot: decision.route, input,',
     '  });',
     '  return { outcome: "done", output: {',
@@ -1646,34 +1662,36 @@ function agentRouterProgram(): string {
 }
 
 function metadata(name: string, description: string): string {
-  return `---\nname: ${name}\ndescription: ${description}\n---\n`
+  return JSON.stringify({ name, description })
 }
 
 function ticketSchema(kind?: 'bug' | 'question'): string {
   return JSON.stringify({
-    $schema: 'https://flow.jig.md/schemas/schema-1.json',
-    type: 'object',
-    properties: {
-      scenario: {
-        enum: [
-          'single',
-          'sequential',
-          'concurrent',
-          'selected-cancel',
-          'invalid-input',
-          'invalid-result',
-          'execution-failure',
-          'recursive',
-          'slow',
-          'fence-uncertain',
-        ],
+    $schema: 'https://flow.jig.md/schemas/invocation-contract-1.schema.json',
+    input: {
+      type: 'object',
+      properties: {
+        scenario: {
+          enum: [
+            'single',
+            'sequential',
+            'concurrent',
+            'selected-cancel',
+            'invalid-input',
+            'invalid-result',
+            'execution-failure',
+            'recursive',
+            'slow',
+            'fence-uncertain',
+          ],
+        },
+        kind: kind === undefined ? { enum: ['bug', 'question'] } : { const: kind },
+        ticket: { type: 'string' },
+        delayMs: { type: 'number', minimum: 0, maximum: 25_000 },
       },
-      kind: kind === undefined ? { enum: ['bug', 'question'] } : { const: kind },
-      ticket: { type: 'string' },
-      delayMs: { type: 'number', minimum: 0, maximum: 25_000 },
+      required: kind === undefined ? ['scenario', 'kind', 'ticket'] : ['kind', 'ticket'],
+      additionalProperties: false,
     },
-    required: kind === undefined ? ['scenario', 'kind', 'ticket'] : ['kind', 'ticket'],
-    additionalProperties: false,
   })
 }
 
@@ -1686,7 +1704,7 @@ function routerProgram(): string {
     '  await Bun.write(`${context.scratch}/parent-marker`, "parent");',
     '  const call = async (operationId: string, slot: string, childInput: unknown, signal?: AbortSignal) => {',
     '    try {',
-    '      const result = await context.runChildFlow({ operationId, slot, input: childInput as any }, { signal });',
+    '      const result = await context.call({ operationId, slot, input: childInput as any }, { signal });',
     '      return { status: "succeeded", result };',
     '    } catch (error) {',
     '      const code = typeof error === "object" && error !== null && "code" in error',
@@ -1697,8 +1715,8 @@ function routerProgram(): string {
     '  };',
     '  if (input.scenario === "sequential") {',
     '    const children = [',
-    '      await context.runChildFlow({ operationId: "sequential:bug", slot: "bug", input: { kind: "bug", ticket: input.ticket } }),',
-    '      await context.runChildFlow({ operationId: "sequential:question", slot: "question", input: { kind: "question", ticket: input.ticket } }),',
+    '      await context.call({ operationId: "sequential:bug", slot: "bug", input: { kind: "bug", ticket: input.ticket } }),',
+    '      await context.call({ operationId: "sequential:question", slot: "question", input: { kind: "question", ticket: input.ticket } }),',
     '    ];',
     '    return { outcome: "done", output: { scenario: input.scenario, children } };',
     '  }',
@@ -1708,7 +1726,7 @@ function routerProgram(): string {
     '      call("concurrent:b", "bug", { kind: "bug", ticket: input.ticket, delayMs: 3000 }),',
     '      call("concurrent:c", "bug", { kind: "bug", ticket: input.ticket, delayMs: 3000 }),',
     '    ]);',
-    '    const after = await context.runChildFlow({ operationId: "concurrent:after", slot: "question", input: { kind: "question", ticket: input.ticket } });',
+    '    const after = await context.call({ operationId: "concurrent:after", slot: "question", input: { kind: "question", ticket: input.ticket } });',
     '    return { outcome: "done", output: { scenario: input.scenario, concurrent, after } };',
     '  }',
     '  if (input.scenario === "selected-cancel") {',
@@ -1743,11 +1761,11 @@ function routerProgram(): string {
     '    return { outcome: "done", output: { scenario: input.scenario, observed } };',
     '  }',
     '  if (input.scenario === "slow") {',
-    '    const child = await context.runChildFlow({ operationId: "slow:1", slot: "bug", input: { kind: "bug", ticket: input.ticket, delayMs: 20_000 } });',
+    '    const child = await context.call({ operationId: "slow:1", slot: "bug", input: { kind: "bug", ticket: input.ticket, delayMs: 20_000 } });',
     '    return { outcome: "done", output: { scenario: input.scenario, child } };',
     '  }',
     '  const route = input.kind === "bug" ? "bug" : "question";',
-    '  const child = await context.runChildFlow({',
+    '  const child = await context.call({',
     '    operationId: "dispatch:1",',
     '    slot: route,',
     '    input,',
@@ -1805,7 +1823,7 @@ function recursiveChildProgram(): string {
   return [
     '#!/usr/bin/env bun',
     'import { handle } from "./flow-sdk/index.ts";',
-    'await handle(async (context) => await context.runChildFlow({',
+    'await handle(async (context) => await context.call({',
     '  operationId: "recursive:inner",',
     '  slot: "not-admitted",',
     '  input: {},',
@@ -1845,23 +1863,18 @@ async function writeChannelProject(root: string): Promise<void> {
     ].join('\n'),
   )
   await writeFile(
-    join(flow, 'FLOW.md'),
-    [
-      '---',
-      'name: channel-worker',
-      'description: Publish direct progress and retain the separate execution result.',
-      'channels:',
-      '  progress:',
-      '    direction: send',
-      '    required: false',
-      '    schema:',
-      '      type: string',
-      '---',
-      '',
-    ].join('\n'),
+    join(flow, 'flow.meta.json'),
+    metadata('channel-worker', 'Publish direct progress and retain the separate execution result.'),
   )
   await writeFile(
-    join(flow, 'flow.ts'),
+    join(flow, 'contract.json'),
+    JSON.stringify({
+      $schema: 'https://flow.jig.md/schemas/invocation-contract-1.schema.json',
+      channels: { progress: { direction: 'send', required: false, schema: { type: 'string' } } },
+    }),
+  )
+  await writeFile(
+    join(flow, 'FLOW.ts'),
     `
     import { handle } from './sdk/index.js';
     await handle(async run => {
@@ -1928,33 +1941,46 @@ async function writeChildChannelProject(root: string): Promise<void> {
               display: { direction: 'send', schema: { type: 'string' } },
             }
     await writeFile(
-      join(directory, 'FLOW.md'),
-      `---\nname: child-channel-${name}\ndescription: Exercise exact child communication.\nchannels: ${JSON.stringify(channels)}\n---\n`,
+      join(directory, 'flow.meta.json'),
+      metadata(`child-channel-${name}`, 'Exercise exact child communication.'),
+    )
+    await writeFile(
+      join(directory, 'contract.json'),
+      JSON.stringify({
+        $schema: 'https://flow.jig.md/schemas/invocation-contract-1.schema.json',
+        channels,
+      }),
     )
   }
   await writeFile(
-    join(root, 'flows/worker/result.schema.json'),
+    join(root, 'flows/worker/contract.json'),
     JSON.stringify({
-      $schema: 'https://flow.jig.md/schemas/schema-1.json',
-      type: 'object',
-      properties: {
-        outcome: { const: 'done' },
-        output: {
-          type: 'object',
-          properties: {
-            completed: { const: true },
-            observationLost: { type: ['string', 'null'] },
+      $schema: 'https://flow.jig.md/schemas/invocation-contract-1.schema.json',
+      result: {
+        type: 'object',
+        properties: {
+          outcome: { const: 'done' },
+          output: {
+            type: 'object',
+            properties: {
+              completed: { const: true },
+              observationLost: { type: ['string', 'null'] },
+            },
+            required: ['completed', 'observationLost'],
+            additionalProperties: false,
           },
-          required: ['completed', 'observationLost'],
-          additionalProperties: false,
         },
+        required: ['outcome', 'output'],
+        additionalProperties: false,
       },
-      required: ['outcome', 'output'],
-      additionalProperties: false,
+      channels: {
+        progress: { direction: 'send', schema: { type: 'string' } },
+        gate: { direction: 'receive', schema: { type: 'null' } },
+      },
     }),
   )
   await writeFile(
-    join(root, 'flows/root/flow.ts'),
+    join(root, 'flows/root/FLOW.ts'),
     `
     import { handle } from './sdk/index.js';
     await handle(async run => {
@@ -1979,7 +2005,7 @@ async function writeChildChannelProject(root: string): Promise<void> {
           }
         } catch(error) { displayIncomplete = error.code; }
       })();
-      const monitor = run.runChildFlow({operationId:'monitor',slot:mode === 'mismatch' ? 'mismatch' : 'monitor',
+      const monitor = run.call({operationId:'monitor',slot:mode === 'mismatch' ? 'mismatch' : 'monitor',
         input:{mode}, channels:{progress:progress.receive,display:display.send}}, {signal:stop.signal})
         .catch(async error => {
           retained = await closeOffered(progress.receive);
@@ -1988,7 +2014,7 @@ async function writeChildChannelProject(root: string): Promise<void> {
           return {error:error.code};
         });
       if(mode === 'early-monitor-fail') await monitor;
-      const worker = run.runChildFlow({operationId:'worker',slot:'worker',input:{mode},channels:{progress:progress.send,gate:gate.receive}})
+      const worker = run.call({operationId:'worker',slot:'worker',input:{mode},channels:{progress:progress.send,gate:gate.receive}})
         .catch(error => ({error:error.code}));
       const results = await Promise.all([worker,monitor]);
       await showing;
@@ -1997,7 +2023,7 @@ async function writeChildChannelProject(root: string): Promise<void> {
   `,
   )
   await writeFile(
-    join(root, 'flows/worker/flow.ts'),
+    join(root, 'flows/worker/FLOW.ts'),
     `
     import { handle } from './sdk/index.js';
     await handle(async run => {
@@ -2036,8 +2062,8 @@ async function writeChildChannelProject(root: string): Promise<void> {
       return {outcome:'done',output:{count,incomplete}};
     });
   `
-  await writeFile(join(root, 'flows/monitor/flow.ts'), monitor)
-  await writeFile(join(root, 'flows/mismatch/flow.ts'), monitor)
+  await writeFile(join(root, 'flows/monitor/FLOW.ts'), monitor)
+  await writeFile(join(root, 'flows/mismatch/FLOW.ts'), monitor)
 }
 
 async function writeBroadcastChannelProject(root: string): Promise<void> {
@@ -2076,12 +2102,19 @@ async function writeBroadcastChannelProject(root: string): Promise<void> {
               ready: { direction: 'send' },
             }
     await writeFile(
-      join(directory, 'FLOW.md'),
-      `---\nname: broadcast-${name}\ndescription: Exercise isolated broadcast delivery.\nchannels: ${JSON.stringify(channels)}\n---\n`,
+      join(directory, 'flow.meta.json'),
+      metadata(`broadcast-${name}`, 'Exercise isolated broadcast delivery.'),
+    )
+    await writeFile(
+      join(directory, 'contract.json'),
+      JSON.stringify({
+        $schema: 'https://flow.jig.md/schemas/invocation-contract-1.schema.json',
+        channels,
+      }),
     )
   }
   await writeFile(
-    join(root, 'flows/root/flow.ts'),
+    join(root, 'flows/root/FLOW.ts'),
     `
     import {handle} from './sdk/index.js';
     await handle(async run => {
@@ -2091,7 +2124,7 @@ async function writeBroadcastChannelProject(root: string): Promise<void> {
       const credit = await run.channel();
       const go = await run.channel();
       const ready = await run.channel();
-      const monitor = run.runChildFlow({operationId:'monitor',slot:'monitor',input:run.input,
+      const monitor = run.call({operationId:'monitor',slot:'monitor',input:run.input,
         channels:{events:monitoring,go:go.receive,ready:ready.send}});
       for await(const _ of ready.receive) {}
       if(run.input.mode === 'dispose') await monitor;
@@ -2104,7 +2137,7 @@ async function writeBroadcastChannelProject(root: string): Promise<void> {
         }
         await credit.send.close();
       })();
-      const worker = await run.runChildFlow({operationId:'worker',slot:'worker',input:run.input,
+      const worker = await run.call({operationId:'worker',slot:'worker',input:run.input,
         channels:{events:source.send,credit:credit.receive}});
       await capture;
       if(run.input.mode !== 'dispose') { await go.send.send(null); await go.send.close(); }
@@ -2114,7 +2147,7 @@ async function writeBroadcastChannelProject(root: string): Promise<void> {
   `,
   )
   await writeFile(
-    join(root, 'flows/worker/flow.ts'),
+    join(root, 'flows/worker/FLOW.ts'),
     `
     import {handle} from './sdk/index.js';
     await handle(async run => {
@@ -2131,7 +2164,7 @@ async function writeBroadcastChannelProject(root: string): Promise<void> {
   `,
   )
   await writeFile(
-    join(root, 'flows/monitor/flow.ts'),
+    join(root, 'flows/monitor/FLOW.ts'),
     `
     import {handle} from './sdk/index.js';
     await handle(async run => {
@@ -2189,7 +2222,7 @@ async function writeChannelConversationProject(root: string, peer: DatasetPeer):
   // Deliberate peers belong to this test, never to the maintained application's
   // public input. Their messages remain shape-valid to exercise domain checks.
   await writeFile(
-    join(root, 'flows/dataset/flow.ts'),
+    join(root, 'flows/dataset/FLOW.ts'),
     `
     import {handle} from './sdk/index.js';
     await handle(async run => {

@@ -1,8 +1,8 @@
 import { readFile } from 'node:fs/promises'
 
 import {
-  planPrivateLinuxOwnerStateAllocation,
   PrivateLinuxCgroupBackend,
+  planPrivateLinuxOwnerStateAllocation,
 } from '../../src/internal/linux-rootless-backend.js'
 
 interface Configuration {
@@ -43,7 +43,7 @@ const plan = {
     '--no-env-file',
     '--no-install',
     '--config=/dev/null',
-    '/package/flow.ts',
+    '/package/FLOW.ts',
   ],
 }
 const allocation = await planPrivateLinuxOwnerStateAllocation({

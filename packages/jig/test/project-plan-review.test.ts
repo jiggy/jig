@@ -3,7 +3,11 @@ import { parse as parseYaml } from 'yaml'
 
 import type { PrivateActivationReviewPlan } from '../src/internal/activation-admission-store.js'
 import type { PrivateAgentProvider } from '../src/internal/agent-provider.js'
-import { AGENT_RUN_CONTRACT_DIGEST } from '../src/internal/private-agent-run.js'
+import {
+  AGENT_RUN_CONTRACT_DIGEST,
+  AGENT_RUN_CONTRACT_ID,
+  AGENT_RUN_CONTRACT_VERSION,
+} from '../src/internal/private-agent-run.js'
 import { renderPrivateProjectPlanReview } from '../src/internal/project-plan-review.js'
 
 describe('private project Plan review', () => {
@@ -44,10 +48,20 @@ describe('private project Plan review', () => {
                 target: { kind: 'flow', path: 'flows/agent' },
                 mode: 'run',
                 packagePath: 'flows/agent',
-                entrypoint: { path: 'flow.ts', suffix: 'ts' },
+                entrypoint: { path: 'FLOW.ts', suffix: 'ts' },
                 settings: {},
                 attachments: {},
-                capabilities: { agent: { digest: AGENT_RUN_CONTRACT_DIGEST } },
+                slots: {
+                  agent: {
+                    kind: 'native',
+                    native: 'agent',
+                    contract: {
+                      id: AGENT_RUN_CONTRACT_ID,
+                      version: AGENT_RUN_CONTRACT_VERSION,
+                      digest: AGENT_RUN_CONTRACT_DIGEST,
+                    },
+                  },
+                },
               },
               disposition: { state: 'ready' },
             },
@@ -106,7 +120,7 @@ describe('private project Plan review', () => {
                 agent: {
                   id: 'https://jig.md/contracts/agent-run',
                   version: '1.0.0',
-                  digest: 'sha256:5e7df4408fd1f6aebf7e1269573a10ff87c7374248a51dacb63cd1c9c97e2b56',
+                  digest: AGENT_RUN_CONTRACT_DIGEST,
                 },
               },
             },
@@ -126,13 +140,13 @@ describe('private project Plan review', () => {
               mode: 'run',
               packagePath: 'flows/review',
               package: { digest },
-              entrypoint: { path: 'flow.ts', suffix: 'ts' },
+              entrypoint: { path: 'FLOW.ts', suffix: 'ts' },
               settings: {
                 style: 'focused',
                 hidden: '\u202e\u200bline\n\t\u0000é😀',
                 '\u202ekey': 'value',
               },
-              flowSlots: {},
+              slots: {},
               attachments: {},
               digest: `sha256:${'b'.repeat(64)}`,
             },
@@ -214,9 +228,9 @@ describe('private project Plan review', () => {
               mode: 'run',
               packagePath: 'flows/old',
               package: { digest },
-              entrypoint: { path: 'flow.ts', suffix: 'ts' },
+              entrypoint: { path: 'FLOW.ts', suffix: 'ts' },
               settings: {},
-              flowSlots: {},
+              slots: {},
               attachments: {},
             },
             disposition: { state: 'ready' },
@@ -239,9 +253,9 @@ describe('private project Plan review', () => {
               mode: 'run',
               packagePath: 'flows/new',
               package: { digest },
-              entrypoint: { path: 'flow.ts', suffix: 'ts' },
+              entrypoint: { path: 'FLOW.ts', suffix: 'ts' },
               settings: {},
-              flowSlots: {},
+              slots: {},
               attachments: {},
             },
             disposition: { state: 'unavailable', code: 'RUNTIME_UNAVAILABLE' },
@@ -275,9 +289,9 @@ describe('private project Plan review', () => {
         mode: 'run' as const,
         packagePath: 'flows/review',
         package: { digest },
-        entrypoint: { path: 'flow.ts', suffix: 'ts' },
+        entrypoint: { path: 'FLOW.ts', suffix: 'ts' },
         settings: {},
-        flowSlots: {},
+        slots: {},
         attachments: {},
       },
       disposition: { state: 'ready' as const },
@@ -323,9 +337,9 @@ describe('private project Plan review', () => {
         mode: 'run' as const,
         packagePath: 'flows/router',
         package: { digest: parentDigest },
-        entrypoint: { path: 'flow.ts', suffix: 'ts' },
+        entrypoint: { path: 'FLOW.ts', suffix: 'ts' },
         settings: {},
-        flowSlots: { work: { kind: 'flow', path: slotPath } },
+        slots: { work: { kind: 'flow', target: { kind: 'flow', path: slotPath } } },
         attachments: {},
       },
       disposition: { state: 'ready' as const },
@@ -340,9 +354,9 @@ describe('private project Plan review', () => {
         mode: 'run' as const,
         packagePath: path,
         package: { digest },
-        entrypoint: { path: 'flow.ts', suffix: 'ts' },
+        entrypoint: { path: 'FLOW.ts', suffix: 'ts' },
         settings: {},
-        flowSlots: {},
+        slots: {},
         attachments: {},
       },
       disposition:
@@ -473,9 +487,14 @@ describe('private project Plan review', () => {
               mode: 'run',
               packagePath: binding.packagePath,
               package: { digest },
-              entrypoint: { path: 'flow.ts', suffix: 'ts' },
+              entrypoint: { path: 'FLOW.ts', suffix: 'ts' },
               settings: binding.settings,
-              flowSlots: binding.slots,
+              slots: Object.fromEntries(
+                Object.entries(binding.slots).map(([name, target]) => [
+                  name,
+                  { kind: 'flow', target },
+                ]),
+              ),
               attachments: {},
             },
             disposition:
@@ -547,8 +566,9 @@ describe('private project Plan review', () => {
         target: { kind: 'flow', path: 'flows/test' },
         mode: 'run',
         packagePath: 'flows/test',
-        entrypoint: { path: 'flow.ts', suffix: 'ts' },
+        entrypoint: { path: 'FLOW.ts', suffix: 'ts' },
         settings: {},
+        slots: {},
         attachments: {},
       },
       disposition: { state: 'ready', recipeDigest: 'private-before' },

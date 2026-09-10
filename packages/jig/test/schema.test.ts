@@ -45,24 +45,24 @@ describe('Schema/1 compilation', () => {
   })
 
   test('compiles a closed root and rejects unsupported or malformed keywords distinctly', () => {
-    const compiled = compileSchemaFile(fileSchema({ type: 'string' }), 'input.schema.json')
+    const compiled = compileSchemaFile(fileSchema({ type: 'string' }), 'value.schema.json')
     compiled.validate('yes', 'INVALID_INPUT')
 
     const unsupported = captured(() =>
-      compileSchemaFile(fileSchema({ format: 'email' }), 'input.schema.json'),
+      compileSchemaFile(fileSchema({ format: 'email' }), 'value.schema.json'),
     )
     expect(unsupported.code).toBe('SCHEMA_KEYWORD_UNSUPPORTED')
     expect(unsupported.schemaPointer).toBe('/format')
     expect(unsupported.keyword).toBe('format')
 
     const malformed = captured(() =>
-      compileSchemaFile(fileSchema({ minLength: -1 }), 'input.schema.json'),
+      compileSchemaFile(fileSchema({ minLength: -1 }), 'value.schema.json'),
     )
     expect(malformed.code).toBe('SCHEMA_INVALID')
     expect(malformed.schemaPointer).toBe('/minLength')
 
     expect(
-      captured(() => compileSchemaFile(fileSchema({ prefixItems: [] }), 'input.schema.json')).code,
+      captured(() => compileSchemaFile(fileSchema({ prefixItems: [] }), 'value.schema.json')).code,
     ).toBe('SCHEMA_INVALID')
   })
 
@@ -79,7 +79,7 @@ describe('Schema/1 compilation', () => {
         maximum: 10,
         exclusiveMaximum: 11,
       }),
-      'input.schema.json',
+      'value.schema.json',
     )
     compiled.validate(2, 'INVALID_INPUT')
   })
@@ -88,23 +88,23 @@ describe('Schema/1 compilation', () => {
     const duplicate = encoder.encode(
       `{"$schema":"${SCHEMA_1_URI}","type":"string","type":"number"}`,
     )
-    expect(captured(() => compileSchemaFile(duplicate, 'input.schema.json')).code).toBe(
+    expect(captured(() => compileSchemaFile(duplicate, 'value.schema.json')).code).toBe(
       'SCHEMA_INVALID_JSON',
     )
 
     expect(
-      captured(() => compileSchemaFile(encoder.encode('true'), 'input.schema.json')).code,
+      captured(() => compileSchemaFile(encoder.encode('true'), 'value.schema.json')).code,
     ).toBe('SCHEMA_INVALID')
     expect(
-      captured(() => compileSchemaFile(fileSchema({ $schema: 'wrong' }), 'input.schema.json')).code,
+      captured(() => compileSchemaFile(fileSchema({ $schema: 'wrong' }), 'value.schema.json')).code,
     ).toBe('SCHEMA_INVALID')
   })
 
   test("keeps enum's 2020-12 recommendations non-normative", () => {
-    const empty = compileSchemaFile(fileSchema({ enum: [] }), 'input.schema.json')
+    const empty = compileSchemaFile(fileSchema({ enum: [] }), 'value.schema.json')
     expect(captured(() => empty.validate('anything', 'INVALID_INPUT')).keyword).toBe('enum')
 
-    const duplicate = compileSchemaFile(fileSchema({ enum: ['same', 'same'] }), 'input.schema.json')
+    const duplicate = compileSchemaFile(fileSchema({ enum: ['same', 'same'] }), 'value.schema.json')
     duplicate.validate('same', 'INVALID_INPUT')
   })
 
@@ -116,17 +116,17 @@ describe('Schema/1 compilation', () => {
         },
         $ref: '#/$defs/Name',
       }),
-      'input.schema.json',
+      'value.schema.json',
     )
     compiled.validate('Ada', 'INVALID_INPUT')
 
     expect(
-      captured(() => compileSchemaFile(fileSchema({ $ref: 'other.json' }), 'input.schema.json'))
+      captured(() => compileSchemaFile(fileSchema({ $ref: 'other.json' }), 'value.schema.json'))
         .code,
     ).toBe('SCHEMA_REFERENCE_INVALID')
     expect(
       captured(() =>
-        compileSchemaFile(fileSchema({ $ref: '#/$defs/Missing' }), 'input.schema.json'),
+        compileSchemaFile(fileSchema({ $ref: '#/$defs/Missing' }), 'value.schema.json'),
       ).code,
     ).toBe('SCHEMA_REFERENCE_INVALID')
     expect(
@@ -135,7 +135,7 @@ describe('Schema/1 compilation', () => {
           fileSchema({
             $defs: { 'not-safe': true },
           }),
-          'input.schema.json',
+          'value.schema.json',
         ),
       ).code,
     ).toBe('SCHEMA_INVALID')
@@ -146,7 +146,7 @@ describe('Schema/1 compilation', () => {
             $defs: { Safe: true },
             $ref: '#/$defs/%53afe',
           }),
-          'input.schema.json',
+          'value.schema.json',
         ),
       ).code,
     ).toBe('SCHEMA_REFERENCE_INVALID')
@@ -158,7 +158,7 @@ describe('Schema/1 compilation', () => {
             B: { allOf: [{ $ref: '#/$defs/A' }] },
           },
         }),
-        'input.schema.json',
+        'value.schema.json',
       ),
     )
     expect(cycle.code).toBe('SCHEMA_REFERENCE_INVALID')
@@ -169,15 +169,15 @@ describe('Schema/1 compilation', () => {
   test('compiles descriptor schemas as one graph with shared root definitions', () => {
     const roots = compileEmbeddedSchemas(
       [
-        { pointer: '/methods/read/input', schema: { $ref: '#/$defs/Id' } },
-        { pointer: '/methods/read/output', schema: { type: 'boolean' } },
+        { pointer: '/input', schema: { $ref: '#/$defs/Id' } },
+        { pointer: '/result', schema: { type: 'boolean' } },
       ],
       {
-        path: 'contracts/store.capability.json',
+        path: 'contracts/store.json',
         rootDefs: { Id: { type: 'string', minLength: 1 } },
       },
     )
-    roots.get('/methods/read/input')!.validate('s-1', 'INVALID_PARAMS')
+    roots.get('/input')!.validate('s-1', 'INVALID_INPUT')
 
     const nested = captured(() =>
       compileEmbeddedSchema(
@@ -185,19 +185,19 @@ describe('Schema/1 compilation', () => {
           $defs: { Local: true },
         },
         {
-          path: 'contracts/store.capability.json',
+          path: 'contracts/store.json',
           rootDefs: {},
-          pointer: '/methods/read/input',
+          pointer: '/input',
         },
       ),
     )
     expect(nested.code).toBe('SCHEMA_INVALID')
-    expect(nested.schemaPointer).toBe('/methods/read/input/$defs')
+    expect(nested.schemaPointer).toBe('/input/$defs')
   })
 
   test('enforces encoded bytes, structural depth, and aggregate node limits', () => {
     const oversized = new Uint8Array(SCHEMA_1_LIMITS.bytes + 1)
-    expect(captured(() => compileSchemaFile(oversized, 'input.schema.json')).code).toBe(
+    expect(captured(() => compileSchemaFile(oversized, 'value.schema.json')).code).toBe(
       'SCHEMA_LIMIT_EXCEEDED',
     )
 
@@ -246,7 +246,7 @@ describe('Schema/1 evaluation', () => {
         minProperties: 3,
         maxProperties: 4,
       }),
-      'input.schema.json',
+      'value.schema.json',
     )
 
     compiled.validate({ kind: 'small', label: 'ok', scores: [1, 5] }, 'INVALID_INPUT')
@@ -269,7 +269,7 @@ describe('Schema/1 evaluation', () => {
         oneOf: [{ type: 'integer' }, { const: 2 }],
         not: { const: 4 },
       }),
-      'input.schema.json',
+      'value.schema.json',
     )
     compiled.validate(3, 'INVALID_INPUT')
     expect(captured(() => compiled.validate(2, 'INVALID_INPUT')).keyword).toBe('oneOf')
@@ -280,7 +280,7 @@ describe('Schema/1 evaluation', () => {
         properties: { okay: true },
         additionalProperties: false,
       }),
-      'input.schema.json',
+      'value.schema.json',
     )
     const extra = captured(() => closed.validate({ extra: 1 }, 'INVALID_INPUT'))
     expect(extra.schemaPointer).toBe('/additionalProperties')
@@ -290,7 +290,7 @@ describe('Schema/1 evaluation', () => {
   test('uses Unicode scalar length', () => {
     const compiled = compileSchemaFile(
       fileSchema({ type: 'string', minLength: 1, maxLength: 1 }),
-      'input.schema.json',
+      'value.schema.json',
     )
     compiled.validate('😀', 'INVALID_INPUT')
     expect(captured(() => compiled.validate('😀a', 'INVALID_INPUT')).keyword).toBe('maxLength')
@@ -299,12 +299,12 @@ describe('Schema/1 evaluation', () => {
   test('reports work exhaustion before returning a validation result', () => {
     const compiled = compileSchemaFile(
       fileSchema({ type: 'string', maxLength: 2_000_000 }),
-      'input.schema.json',
+      'value.schema.json',
     )
     const error = captured(() => compiled.validate('x'.repeat(1_000_001), 'INVALID_INPUT'))
     expect(error.code).toBe('SCHEMA_LIMIT_EXCEEDED')
 
-    const exact = compileSchemaFile(fileSchema({ maxLength: 2_000_000 }), 'input.schema.json')
+    const exact = compileSchemaFile(fileSchema({ maxLength: 2_000_000 }), 'value.schema.json')
     exact.validate('x'.repeat(999_998), 'INVALID_INPUT')
   })
 
@@ -316,7 +316,7 @@ describe('Schema/1 evaluation', () => {
         },
         allOf: [{ $ref: '#/$defs/Long' }, { $ref: '#/$defs/Long' }],
       }),
-      'input.schema.json',
+      'value.schema.json',
     )
     // Evaluating Long twice would exceed the meter; the normative pair cache
     // charges its length work only once.

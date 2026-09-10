@@ -1210,21 +1210,45 @@ function renderFailure(error: unknown, runtime: CliRuntime): 1 | 2 {
   if (error instanceof ProjectAdministrationError) {
     const projected = projectError(error.code)
     const candidateHints: Record<string, string> = {
-      METADATA_DELIMITER:
-        'FLOW.md needs YAML metadata between two exact --- lines at the start of the file',
+      METADATA_DELIMITER: 'when present, FLOW.md frontmatter needs two exact --- delimiter lines',
       METADATA_INVALID_YAML:
         'FLOW.md metadata is not valid YAML; check indentation, quotes and key/value syntax',
       METADATA_DUPLICATE_KEY: 'FLOW.md repeats a metadata key; keep one value for each key',
-      METADATA_DESCRIPTION: 'provide a nonempty text description in FLOW.md',
+      METADATA_DESCRIPTION: 'when present, description must be nonempty text',
       METADATA_FIELD:
-        'a FLOW.md field has an unsupported name or shape; check the indicated field against https://flow.jig.md/spec/package-format',
+        'a metadata field has an unsupported shape; check the indicated field against https://flow.jig.md/spec/package-format',
       METADATA_YAML_FEATURE:
         'use ordinary YAML values without anchors, aliases, tags or merge keys in FLOW.md',
-      METADATA_USES: 'each uses slot must declare a package-local contract or local: true',
-      METADATA_REFERENCE: 'use a canonical package-local ./ reference in FLOW.md',
-      PACKAGE_FLOW_MISSING: 'the selected package needs an exact-case FLOW.md file',
+      METADATA_USES: 'use {} for an uncontracted slot or a package-local contract reference',
+      METADATA_REFERENCE: 'use a canonical package-local ./ contract reference',
+      PACKAGE_ENTRYPOINT_MISSING:
+        'the selected package needs one exact-case FLOW.<suffix> entrypoint',
+      PACKAGE_METADATA_OWNER:
+        'keep Markdown frontmatter in FLOW.md; use flow.meta.json only with a code entrypoint',
+      PACKAGE_SCHEMA_OWNER: 'place invocation input and result schemas in contract.json',
+      PACKAGE_PROFILE_UNSUPPORTED:
+        'use a runtime and single-invocation contract supported by this host',
+      PACKAGE_METADATA_UNSUPPORTED:
+        'this host cannot honor the indicated metadata requirement; use a qualified host or revise that requirement explicitly',
+      PACKAGE_TOOLS_UNSUPPORTED:
+        'the selected runtime cannot enforce this allowed-tools restriction',
+      CONTRACT_FIELD: 'check contract.json fields against FLOW Invocation Contract/1',
+      CONTRACT_IDENTITY:
+        'a required interface must declare both its canonical id and exact version',
+      CONTRACT_LIMIT:
+        'reduce the invocation descriptor or its referenced channel closure to the documented bounds',
+      MARKDOWN_DIRECT_UNAVAILABLE:
+        'a blocks-only method must have every original recipe qualified before any effect',
+      MARKDOWN_DIRECT_RETURN:
+        'end the blocks-only method with an explicit return of a complete outcome and output',
+      MARKDOWN_FENCE_UNCLOSED: 'close each executable flow fence explicitly',
+      MARKDOWN_LIMIT: 'the Markdown procedure exceeds its parser or recipe bounds',
+      PROJECT_BINDING_INTERFACE_MISMATCH:
+        'select a Flow offering the identical required contract id, version and digest',
+      PROJECT_BINDING_INTERFACE_UNRESOLVED:
+        'bind each required Flow slot to an exact compatible Flow or Binding',
       PACKAGE_ENTRYPOINT_AMBIGUOUS:
-        'keep only one root flow.<suffix> implementation in the package',
+        'keep only one root FLOW.<suffix> implementation in the package',
       PROJECT_BINDING_SETTINGS_INVALID:
         'Binding settings do not match the Flow settings schema; correct the indicated value',
       PROJECT_BINDING_PACKAGE_MISSING:

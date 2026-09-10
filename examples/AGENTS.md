@@ -12,14 +12,18 @@ authored examples, not independent consumer evidence or promoted Starters.
 
 - Each application owns its domain method, fixtures, local tests, and exact
   Flow and Binding declarations.
-- Public instructions belong in `docs/jig/`; portable procedure descriptions
-  remain in each package's `FLOW.md`.
+- Public instructions belong in `docs/jig/`; each code package's `README.md`
+  explains its procedure, `FLOW.ts` implements it, `flow.meta.json` owns optional
+  metadata and slot declarations, and `contract.json` owns invocation constraints.
 - Platform contracts remain owned by `docs/`, `packages/`, and `conformance/`.
 
 ## Local Contracts
 
 - Keep each Flow self-contained and invoke collaborators only through the
   public FLOW SDK. Do not import sibling package source or host internals.
+- Use `run.call()` for every declared slot and inspect the complete `RunResult`.
+  Copy named native contract bundles with their descriptor-relative channel
+  paths intact; declarations never substitute for native host authority.
 - Examples track the current Jig and FLOW source together. Build and test them
   against the current SDK without waiting for npm publication; do not preserve
   superseded APIs, release-order warnings, or compatibility branches.

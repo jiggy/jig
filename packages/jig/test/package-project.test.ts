@@ -7,26 +7,29 @@ import {
   captureStoredPackage,
   type PackageArtifactRef,
 } from '../src/internal/package-artifact-store.js'
-import { defineJig } from '../src/project/author.js'
-import { captureFlowSource } from '../src/project/flow-source.js'
-import {
-  linkPackageProject,
-  type InjectedBindingDeclaration,
-} from '../src/project/package-project.js'
-import { retainFlowSourcePackages, type RetainedFlowInput } from '../src/project/retained-flow.js'
 import {
   AGENT_RUN_CONTRACT_DIGEST,
   AGENT_RUN_CONTRACT_ID,
   AGENT_RUN_CONTRACT_VERSION,
 } from '../src/internal/private-agent-run.js'
+import { defineJig } from '../src/project/author.js'
+import { captureFlowSource } from '../src/project/flow-source.js'
+import {
+  type InjectedBindingDeclaration,
+  linkPackageProject,
+} from '../src/project/package-project.js'
+import { type RetainedFlowInput, retainFlowSourcePackages } from '../src/project/retained-flow.js'
 
 const schemaUri = 'https://flow.jig.md/schemas/schema-1.json'
 const acpPublicUpdates = await readFile(
-  new URL('../../../docs/jig/spec/contracts/acp-public-updates.json', import.meta.url),
+  new URL(
+    '../../../docs/jig/spec/contracts/agent-run/contracts/acp-public-updates.json',
+    import.meta.url,
+  ),
   'utf8',
 )
 const agentRunContract = await readFile(
-  new URL('../../../docs/jig/spec/contracts/agent-run.capability.json', import.meta.url),
+  new URL('../../../docs/jig/spec/contracts/agent-run/contract.json', import.meta.url),
   'utf8',
 )
 
@@ -37,8 +40,11 @@ describe('private package-project linker', () => {
     const packageRoot = join(root, 'flows', 'run')
     await mkdir(store, { mode: 0o700 })
     await mkdir(packageRoot, { recursive: true })
-    await writeFile(join(packageRoot, 'FLOW.md'), metadata('name: run\ndescription: Run.'))
-    await writeFile(join(packageRoot, 'flow.ts'), 'export {};\n')
+    await writeFile(
+      join(packageRoot, 'flow.meta.json'),
+      metadata({ name: 'run', description: 'Run.' }),
+    )
+    await writeFile(join(packageRoot, 'FLOW.ts'), 'export {};\n')
     const source = await captureFlowSource(root, defineJig({ flows: ['flows/run'] }).flows)
     try {
       const retained = await retainFlowSourcePackages(store, source)
@@ -46,7 +52,7 @@ describe('private package-project linker', () => {
       await source.dispose()
       const reopened = await captureStoredPackage(store, retained[0]!.package)
       try {
-        expect(new TextDecoder().decode(await reopened.read('flow.ts'))).toBe('export {};\n')
+        expect(new TextDecoder().decode(await reopened.read('FLOW.ts'))).toBe('export {};\n')
       } finally {
         await reopened.dispose()
       }
@@ -116,8 +122,8 @@ describe('private package-project linker', () => {
     await withFlows(
       {
         'flows/configurable': {
-          'FLOW.md': metadata('name: configurable\ndescription: Configurable.'),
-          'flow.ts': 'export {};\n',
+          'flow.meta.json': metadata({ name: 'configurable', description: 'Configurable.' }),
+          'FLOW.ts': 'export {};\n',
           'settings.schema.json': schema({ type: 'object' }),
         },
       },
@@ -141,9 +147,8 @@ describe('private package-project linker', () => {
     await withFlows(
       {
         'flows/review': {
-          'FLOW.md': metadata(`name: review
-description: Review.`),
-          'flow.ts': 'export {};\n',
+          'flow.meta.json': metadata({ name: 'review', description: 'Review.' }),
+          'FLOW.ts': 'export {};\n',
           'settings.schema.json': schema({
             type: 'object',
             properties: { maxRetries: { type: 'integer', minimum: 1 } },
@@ -197,8 +202,8 @@ description: Review.`),
         'flows/router': run('router'),
         'flows/bug': run('bug'),
         'flows/configured': {
-          'FLOW.md': metadata('name: configured\ndescription: Configured.'),
-          'flow.ts': 'export {};\n',
+          'flow.meta.json': metadata({ name: 'configured', description: 'Configured.' }),
+          'FLOW.ts': 'export {};\n',
           'settings.schema.json': schema({
             type: 'object',
             required: ['value'],
@@ -263,40 +268,179 @@ description: Review.`),
     )
   })
 
-  test('rejects capabilities other than exact Agent Run at the alpha linker boundary', async () => {
+  test('requires an explicit matching target for an ordinary named interface', async () => {
     await withFlows(
       {
         'flows/consumer': {
-          'FLOW.md': metadata(`name: consumer
-description: Consumer.
-uses:
-  index:
-    contract: ./contracts/index.capability.json`),
-          'flow.ts': 'export {};\n',
-          'contracts/index.capability.json': capability('https://example.org/contracts/index'),
+          'flow.meta.json': metadata({
+            name: 'consumer',
+            description: 'Consumer.',
+            uses: { index: { contract: './contracts/index.json' } },
+          }),
+          'FLOW.ts': 'export {};\n',
+          'contracts/index.json': invocation({
+            id: 'https://example.org/contracts/index',
+            version: '1.0.0',
+          }),
         },
       },
       async (flows) => {
+        const linked = linkPackageProject({ flows, bindings: [] })
+        expect(linked.flows[0]!.directRun).toBeFalse()
+        expect(linked.flows[0]!.uses.index).toMatchObject({
+          id: 'https://example.org/contracts/index',
+          version: '1.0.0',
+        })
         expectCode(
-          () => linkPackageProject({ flows, bindings: [] }),
-          'PROJECT_FLOW_CAPABILITY_UNSUPPORTED',
+          () =>
+            linkPackageProject({
+              flows,
+              bindings: [binding('bindings/consumer.ts', { package: 'flows/consumer' })],
+            }),
+          'PROJECT_BINDING_INTERFACE_UNRESOLVED',
+          '/slots',
         )
       },
     )
   })
 
-  test('admits exactly one Agent Run capability slot and freezes its exact identity', async () => {
+  test('accepts exact ordinary Flow and Binding substitutes and rejects missing or changed offers', async () => {
+    const contract = invocation({
+      id: 'https://example.org/contracts/review',
+      version: '1.0.0',
+      input: { type: 'string' },
+      result: {
+        type: 'object',
+        properties: { outcome: { const: 'done' }, output: { type: 'string' } },
+        required: ['outcome', 'output'],
+        additionalProperties: false,
+      },
+    })
+    await withFlows(
+      {
+        'flows/consumer': {
+          ...run('consumer'),
+          'flow.meta.json': metadata({
+            name: 'consumer',
+            uses: { review: { contract: './contracts/review.json' } },
+          }),
+          'contracts/review.json': contract,
+        },
+        'flows/first': { ...run('first'), 'contract.json': contract },
+        'flows/second': { ...run('second'), 'contract.json': contract },
+        'flows/plain': run('plain'),
+        'flows/changed': {
+          ...run('changed'),
+          'contract.json': invocation({
+            ...JSON.parse(contract),
+            result: {
+              type: 'object',
+              properties: { outcome: { const: 'done' }, output: { type: 'integer' } },
+              required: ['outcome', 'output'],
+              additionalProperties: false,
+            },
+          }),
+        },
+      },
+      (flows) => {
+        for (const target of ['flow:flows/first', 'flow:flows/second', 'binding:configured']) {
+          const linked = linkPackageProject({
+            flows,
+            bindings: [
+              binding('bindings/configured.ts', { package: 'flows/second' }),
+              binding('bindings/consumer.ts', {
+                package: 'flows/consumer',
+                slots: { review: target },
+              }),
+            ],
+          })
+          expect(linked.bindings.find(({ id }) => id === 'consumer')!.slots.review).toEqual(
+            target === 'binding:configured'
+              ? { kind: 'binding', id: 'configured' }
+              : { kind: 'flow', path: target.slice(5) },
+          )
+          expect(
+            linked.flows.find(({ provenance }) => provenance.projectPath === 'flows/consumer')!
+              .directRun,
+          ).toBeFalse()
+        }
+        for (const target of ['flow:flows/plain', 'flow:flows/changed']) {
+          expectCode(
+            () =>
+              linkPackageProject({
+                flows,
+                bindings: [
+                  binding('bindings/consumer.ts', {
+                    package: 'flows/consumer',
+                    slots: { review: target },
+                  }),
+                ],
+              }),
+            'PROJECT_BINDING_INTERFACE_MISMATCH',
+            '/slots/review',
+          )
+        }
+      },
+    )
+  })
+
+  test('refuses ordinary Flow and Binding substitution for an exact native interface', async () => {
+    await withFlows(
+      {
+        'flows/consumer': {
+          ...run('consumer'),
+          'flow.meta.json': metadata({
+            name: 'consumer',
+            uses: { agent: { contract: './contracts/agent-run/contract.json' } },
+          }),
+          'contracts/agent-run/contract.json': agentRunContract,
+          'contracts/agent-run/contracts/acp-public-updates.json': acpPublicUpdates,
+        },
+        'flows/impostor': {
+          ...run('impostor'),
+          'contract.json': agentRunContract,
+          'contracts/acp-public-updates.json': acpPublicUpdates,
+        },
+      },
+      (flows) => {
+        expect(
+          linkPackageProject({ flows, bindings: [] }).flows.find(
+            ({ provenance }) => provenance.projectPath === 'flows/consumer',
+          )!.directRun,
+        ).toBeTrue()
+        for (const target of ['flow:flows/impostor', 'binding:impostor']) {
+          expectCode(
+            () =>
+              linkPackageProject({
+                flows,
+                bindings: [
+                  binding('bindings/impostor.ts', { package: 'flows/impostor' }),
+                  binding('bindings/consumer.ts', {
+                    package: 'flows/consumer',
+                    slots: { agent: target },
+                  }),
+                ],
+              }),
+            'PROJECT_BINDING_INTERFACE_MISMATCH',
+            '/slots/agent',
+          )
+        }
+      },
+    )
+  })
+
+  test('admits one native Agent slot and freezes its exact identity', async () => {
     await withFlows(
       {
         'flows/agent-consumer': {
-          'FLOW.md': metadata(`name: agent-consumer
-description: Agent consumer.
-uses:
-  agent:
-    contract: ./contracts/agent-run.capability.json`),
-          'flow.ts': 'export {};\n',
-          'contracts/agent-run.capability.json': agentRunContract,
-          'contracts/acp-public-updates.json': acpPublicUpdates,
+          'flow.meta.json': metadata({
+            name: 'agent-consumer',
+            description: 'Agent consumer.',
+            uses: { agent: { contract: './contracts/agent-run/contract.json' } },
+          }),
+          'FLOW.ts': 'export {};\n',
+          'contracts/agent-run/contract.json': agentRunContract,
+          'contracts/agent-run/contracts/acp-public-updates.json': acpPublicUpdates,
         },
       },
       async ([flow]) => {
@@ -315,39 +459,55 @@ uses:
     )
   })
 
-  test('rejects local and multiple capability uses', async () => {
+  test('requires explicit uncontracted slots and rejects repeated native selections', async () => {
     await withFlows(
       {
         'flows/local': {
-          'FLOW.md': metadata(`name: local
-description: Local.
-uses:
-  agent:
-    local: true`),
-          'flow.ts': 'export {};\n',
+          'flow.meta.json': metadata({
+            name: 'local',
+            description: 'Local.',
+            uses: { child: {} },
+          }),
+          'FLOW.ts': 'export {};\n',
         },
         'flows/multiple': {
-          'FLOW.md': metadata(`name: multiple
-description: Multiple.
-uses:
-  primary:
-    contract: ./contracts/agent-run.capability.json
-  secondary:
-    contract: ./contracts/agent-run.capability.json`),
-          'flow.ts': 'export {};\n',
-          'contracts/agent-run.capability.json': agentRunContract,
-          'contracts/acp-public-updates.json': acpPublicUpdates,
+          'flow.meta.json': metadata({
+            name: 'multiple',
+            description: 'Multiple.',
+            uses: {
+              primary: { contract: './contracts/agent-run/contract.json' },
+              secondary: { contract: './contracts/agent-run/contract.json' },
+            },
+          }),
+          'FLOW.ts': 'export {};\n',
+          'contracts/agent-run/contract.json': agentRunContract,
+          'contracts/agent-run/contracts/acp-public-updates.json': acpPublicUpdates,
         },
       },
       async ([local, multiple]) => {
+        expect(
+          linkPackageProject({ flows: [local!], bindings: [] }).flows[0]!.directRun,
+        ).toBeFalse()
+        expect(
+          linkPackageProject({ flows: [multiple!], bindings: [] }).flows[0]!.directRun,
+        ).toBeFalse()
         expectCode(
-          () => linkPackageProject({ flows: [local!], bindings: [] }),
-          'PROJECT_FLOW_CAPABILITY_UNSUPPORTED',
-          '/uses/agent',
+          () =>
+            linkPackageProject({
+              flows: [local!],
+              bindings: [binding('bindings/local.ts', { package: 'flows/local' })],
+            }),
+          'PROJECT_BINDING_INTERFACE_UNRESOLVED',
+          '/slots',
         )
         expectCode(
-          () => linkPackageProject({ flows: [multiple!], bindings: [] }),
-          'PROJECT_FLOW_CAPABILITY_UNSUPPORTED',
+          () =>
+            linkPackageProject({
+              flows: [multiple!],
+              bindings: [binding('bindings/multiple.ts', { package: 'flows/multiple' })],
+            }),
+          'PROJECT_BINDING_INTERFACE_UNRESOLVED',
+          '/slots',
         )
       },
     )
@@ -358,14 +518,14 @@ uses:
       {
         'flows/router': run('router'),
         'flows/agent-child': {
-          'FLOW.md': metadata(`name: agent-child
-description: Agent child.
-uses:
-  agent:
-    contract: ./contracts/agent-run.capability.json`),
-          'flow.ts': 'export {};\n',
-          'contracts/agent-run.capability.json': agentRunContract,
-          'contracts/acp-public-updates.json': acpPublicUpdates,
+          'flow.meta.json': metadata({
+            name: 'agent-child',
+            description: 'Agent child.',
+            uses: { agent: { contract: './contracts/agent-run/contract.json' } },
+          }),
+          'FLOW.ts': 'export {};\n',
+          'contracts/agent-run/contract.json': agentRunContract,
+          'contracts/agent-run/contracts/acp-public-updates.json': acpPublicUpdates,
           'settings.schema.json': schema({
             type: 'object',
             properties: { style: { type: 'string' } },
@@ -493,11 +653,9 @@ uses:
       {
         'flows/plain': run('plain'),
         'flows/configured': {
-          'FLOW.md': metadata(`name: configured
-description: Configured.
-attachments:
-  source: read`),
-          'flow.ts': 'export {};\n',
+          'flow.meta.json': metadata({ name: 'configured', description: 'Configured.' }),
+          'contract.json': invocation({ attachments: { source: 'read' } }),
+          'FLOW.ts': 'export {};\n',
         },
       },
       async (flows) => {
@@ -546,10 +704,11 @@ attachments:
     await withFlows(
       {
         'flows/files': {
-          'FLOW.md': metadata(
-            'name: files\ndescription: Files.\nattachments:\n  first: read-write\n  second: read-write',
-          ),
-          'flow.ts': 'export {};\n',
+          'flow.meta.json': metadata({ name: 'files', description: 'Files.' }),
+          'contract.json': invocation({
+            attachments: { first: 'read-write', second: 'read-write' },
+          }),
+          'FLOW.ts': 'export {};\n',
         },
       },
       (flows) => {
@@ -565,12 +724,12 @@ attachments:
     await withFlows(
       {
         'flows/immutable': {
-          'FLOW.md': metadata(`name: immutable
-description: Immutable.
-x-state:
-  nested:
-    - safe`),
-          'flow.ts': 'export {};\n',
+          'flow.meta.json': metadata({
+            name: 'immutable',
+            description: 'Immutable.',
+            'x-state': { nested: ['safe'] },
+          }),
+          'FLOW.ts': 'export {};\n',
         },
       },
       async (flows) => {
@@ -599,8 +758,8 @@ x-state:
 
 function run(name: string): Record<string, string> {
   return {
-    'FLOW.md': metadata(`name: ${name}\ndescription: ${name}.`),
-    'flow.ts': 'export {};\n',
+    'flow.meta.json': metadata({ name, description: `${name}.` }),
+    'FLOW.ts': 'export {};\n',
   }
 }
 
@@ -608,21 +767,18 @@ function binding(sourcePath: string, definition: unknown): InjectedBindingDeclar
   return { sourcePath, definition }
 }
 
-function metadata(frontmatter: string): string {
-  return `---\n${frontmatter}\n---\n`
+function metadata(value: Record<string, unknown>): string {
+  return JSON.stringify(value)
 }
 
 function schema(value: Record<string, unknown>): string {
   return JSON.stringify({ $schema: schemaUri, ...value })
 }
 
-function capability(id: string): string {
+function invocation(value: Record<string, unknown> = {}): string {
   return JSON.stringify({
-    $schema: 'https://flow.jig.md/schemas/capability-contract-1.schema.json',
-    flowCapabilityContract: 1,
-    id,
-    version: '1.0.0',
-    methods: { call: { input: true, output: true, errors: {} } },
+    $schema: 'https://flow.jig.md/schemas/invocation-contract-1.schema.json',
+    ...value,
   })
 }
 

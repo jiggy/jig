@@ -27,7 +27,7 @@ export async function planPrivateDirectRun(input: {
   readonly agentProvider?: PrivateAgentProvider | undefined
 }): Promise<PrivateDirectRunRecipe> {
   const request = requirePrivateActivationRequest(input.request)
-  if (request.entrypoint.path !== 'flow.ts') {
+  if (request.entrypoint.path !== 'FLOW.ts' && request.entrypoint.path !== 'FLOW.md') {
     throw new TypeError(`no exact Bun direct recipe for ${request.entrypoint.path}`)
   }
   return await planPrivateBunDirectRun({

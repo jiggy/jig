@@ -8,8 +8,12 @@ admitted FLOW packages.
 ## Ownership
 
 - `src/index.ts` and `src/project/author.ts` own the public authoring surface.
-- The CLI, package/project capture, schemas, capability parsing, Run host, and
+- The CLI, package/project capture, invocation contracts, Run host, and
   administration objects are package-owned implementation.
+- `src/markdown/` owns the sequential Markdown parser and interpreter, using
+  the public FLOW SDK inside the ordinary contained runtime. Root `contract.json`
+  owns invocation declarations; code metadata uses `flow.meta.json` and Markdown
+  uses optional frontmatter. Exactly one `FLOW.<ext>` is executable.
 - `src/run/channels.ts` owns finite participant-scoped endpoint rights, atomic
   transfer, bounded direct delivery, isolated broadcast subscriptions and source
   lifetime. It is not an event bus or execution scheduler; package validation
@@ -126,6 +130,13 @@ admitted FLOW packages.
   Check rendered success, failure, waits, cancellation, uncertain cleanup,
   plain/redirected output, narrow widths, and light/dark terminal palettes.
   Preserve byte-exact machine records and complete changed review policy.
+- `test/markdown-worker.test.ts` qualifies installed Markdown composition with
+  the complete packed FLOW SDK in an ordinary declared workspace. It honors
+  `JIG_PACKAGE_ARCHIVE` and `FLOW_SDK_PACKAGE_ARCHIVE`; otherwise pack built
+  candidates. Failed public commands retain their consumer and diagnostics
+  under the selected temporary root for investigation.
+- Test diagnostic usefulness as well as redaction, and human-facing output
+  alongside its machine-readable contract.
 
 ## Child DOX Index
 
@@ -133,3 +144,5 @@ admitted FLOW packages.
   containment, execution, durable state, and Agent-provider boundary.
 - [test/fixtures/channel-conversation/AGENTS.md](test/fixtures/channel-conversation/AGENTS.md) —
   Internal request/reply peers for installed channel and cancellation proof.
+- [src/markdown/AGENTS.md](src/markdown/AGENTS.md) — Frozen recipe parsing,
+  finite interpretation, whole-value handles and bounded reasoning context.

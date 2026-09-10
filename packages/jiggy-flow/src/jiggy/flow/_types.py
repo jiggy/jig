@@ -33,7 +33,7 @@ OperationErrorCode: TypeAlias = Literal[
 
 
 class OperationError(Exception):
-    """A Run/1 operation failed outside a capability's declared error set."""
+    """A Run/1 operation failed outside its normal declared outcomes."""
 
     def __init__(
         self,
@@ -45,15 +45,6 @@ class OperationError(Exception):
         self.message = code if message is None else message
         self.details = details
         super().__init__(self.message)
-
-
-class CapabilityError(Exception):
-    """A capability returned one of its declared application errors."""
-
-    def __init__(self, error_name: str, data: JsonValue):
-        self.error_name = error_name
-        self.data = data
-        super().__init__(error_name)
 
 
 class Attachment(TypedDict):
@@ -166,7 +157,7 @@ class RunContext(Protocol):
         contract: str | None = None,
     ) -> ChannelBroadcast: ...
 
-    async def run_child_flow(
+    async def call(
         self,
         *,
         operation_id: str,
@@ -175,16 +166,6 @@ class RunContext(Protocol):
         intent: str | None = None,
         channels: Mapping[str, ChannelEndpoint] | None = None,
     ) -> RunResult: ...
-
-    async def call_capability(
-        self,
-        *,
-        operation_id: str,
-        slot: str,
-        method: str,
-        input: JsonValue,
-        channels: Mapping[str, ChannelEndpoint] | None = None,
-    ) -> JsonValue: ...
 
 
 RunHandler: TypeAlias = Callable[[RunContext], Awaitable[RunResult]]

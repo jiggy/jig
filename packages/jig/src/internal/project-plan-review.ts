@@ -44,8 +44,8 @@ export function renderPrivateProjectPlanReview(
   const agent =
     agentProvider !== undefined &&
     plan.proposed.targets.some((target) =>
-      Object.values(target.request.capabilities ?? {}).some(
-        (use) => use.digest === AGENT_RUN_CONTRACT_DIGEST,
+      Object.values(target.request.slots).some(
+        (route) => route.kind === 'native' && route.native === 'agent',
       ),
     )
       ? agentProvider.kind === 'private-openai-agent-provider/1'
@@ -85,7 +85,7 @@ export function renderPrivateProjectPlanReview(
   const details = writer.finish()
   const summary = new BoundedAsciiWriter(maximumBytes)
   summary.write('Review changes before approval\n\n')
-  summary.write('Approval permits these exact methods, settings and capabilities to run.\n')
+  summary.write('Approval permits these exact methods, settings and invocation routes to run.\n')
   summary.write('It does not execute a Flow. Declining keeps your previous approval.\n\n')
   if (agent !== undefined) {
     summary.write('Host Agent selected for methods requiring it:\n')
@@ -96,7 +96,7 @@ export function renderPrivateProjectPlanReview(
   }
   writeChanges(
     summary,
-    'Packages (source / dependency identity and capabilities)',
+    'Packages (source / dependency identity and invocation requirements)',
     changes.packages,
     current?.portablePolicy.packages ?? {},
     proposed.portablePolicy.packages,
@@ -307,6 +307,7 @@ function projectCandidate(
     packagePath: request.packagePath,
     entrypoint: request.entrypoint,
     settings: request.settings,
+    slots: request.slots,
     ...(request.commands === undefined ? {} : { commands: request.commands }),
     attachments: request.attachments,
     ...(Object.keys(request.attachments).length === 0

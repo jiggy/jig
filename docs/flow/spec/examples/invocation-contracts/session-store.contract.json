@@ -1,0 +1,79 @@
+{
+  "$schema": "https://flow.jig.md/schemas/invocation-contract-1.schema.json",
+  "id": "https://example.org/contracts/session-store",
+  "version": "1.0.0",
+  "input": {
+    "$ref": "#/$defs/ReadInput"
+  },
+  "result": {
+    "oneOf": [
+      {
+        "type": "object",
+        "properties": {
+          "outcome": {
+            "const": "done"
+          },
+          "output": {
+            "$ref": "#/$defs/Session"
+          }
+        },
+        "required": ["outcome", "output"],
+        "additionalProperties": false
+      },
+      {
+        "type": "object",
+        "properties": {
+          "outcome": {
+            "const": "not-found"
+          },
+          "output": {
+            "$ref": "#/$defs/NotFound"
+          }
+        },
+        "required": ["outcome", "output"],
+        "additionalProperties": false
+      }
+    ]
+  },
+  "outcomes": {
+    "not-found": "The requested session does not exist."
+  },
+  "$defs": {
+    "ReadInput": {
+      "type": "object",
+      "properties": {
+        "sessionId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        }
+      },
+      "required": ["sessionId"],
+      "additionalProperties": false
+    },
+    "Session": {
+      "type": "object",
+      "properties": {
+        "sessionId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        }
+      },
+      "required": ["sessionId"],
+      "additionalProperties": false
+    },
+    "NotFound": {
+      "type": "object",
+      "properties": {
+        "sessionId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        }
+      },
+      "required": ["sessionId"],
+      "additionalProperties": false
+    }
+  }
+}

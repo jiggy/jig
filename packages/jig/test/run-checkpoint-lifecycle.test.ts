@@ -136,27 +136,42 @@ async function fixture() {
     await mkdir(join(path, 'contracts'), { recursive: true })
     await cp(join(import.meta.dir, '../../flow-sdk/dist'), join(path, 'sdk'), { recursive: true })
     await writeFile(
-      join(path, 'FLOW.md'),
-      `---\nname: ${name}\ndescription: Retain bounded progress.\n${name === 'root' ? 'attachments:\n  deliverables: read-write\nuses:\n  progress:\n    contract: ./contracts/run-checkpoint.capability.json\n' : ''}---\n`,
+      join(path, 'flow.meta.json'),
+      JSON.stringify({
+        name,
+        description: 'Retain bounded progress.',
+        ...(name === 'root'
+          ? { uses: { progress: { contract: './contracts/run-checkpoint/contract.json' } } }
+          : {}),
+      }),
     )
     await writeFile(
-      join(path, 'flow.ts'),
+      join(path, 'FLOW.ts'),
       name === 'worker'
         ? `import {handle} from './sdk/index.js'; await handle(async run=>{await Bun.sleep(run.input.ms);return {outcome:'done',output:{value:'settled'}}});`
         : `import {handle} from './sdk/index.js'; import {writeFile} from 'node:fs/promises'; await handle(async run=>{
-        const workers=[1,2].map(i=>run.runChildFlow({operationId:'worker:'+i,slot:'worker',input:{ms:i===1?300:run.input.mode==='complete'?500:60000}}));
-        const save=(sequence,text)=>run.callCapability({operationId:'save:'+sequence,slot:'progress',method:'save',input:{sequence,evidence:{text},files:{'progress.txt':text}}});
+        const workers=[1,2].map(i=>run.call({operationId:'worker:'+i,slot:'worker',input:{ms:i===1?300:run.input.mode==='complete'?500:60000}}));
+        const save=(sequence,text)=>run.call({operationId:'save:'+sequence,slot:'progress',input:{sequence,evidence:{text},files:{'progress.txt':text}}});
         await save(1,'initial');
         await workers[0]; await save(2,'settled');
         await workers[1]; await writeFile(run.attachments.deliverables.path+'/progress.txt','final');
         return {outcome:'done',output:{completed:true}};
       });`,
     )
-    if (name === 'root')
-      await cp(
-        join(import.meta.dir, '../../../docs/jig/spec/contracts/run-checkpoint.capability.json'),
-        join(path, 'contracts/run-checkpoint.capability.json'),
+    if (name === 'root') {
+      await writeFile(
+        join(path, 'contract.json'),
+        JSON.stringify({
+          $schema: 'https://flow.jig.md/schemas/invocation-contract-1.schema.json',
+          attachments: { deliverables: 'read-write' },
+        }),
       )
+      await cp(
+        join(import.meta.dir, '../../../docs/jig/spec/contracts/run-checkpoint'),
+        join(path, 'contracts/run-checkpoint'),
+        { recursive: true },
+      )
+    }
   }
   await mkdir(join(root, 'bindings'))
   await writeFile(

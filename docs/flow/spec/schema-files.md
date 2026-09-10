@@ -3,17 +3,17 @@
 > *Status: prerelease specification candidate. The machine meta-schema is
 > published as [`schema-1.json`](https://flow.jig.md/schemas/schema-1.json).*
 
-FLOW packages may expose three fixed, inert JSON Schema files. They describe
-values; they are never runtime mailboxes, configuration stores, templates, or
-code.
+Schema/1 describes bounded values in invocation contracts, channel contracts and
+the optional implementation settings schema. These declarations are inert;
+they are never runtime mailboxes, configuration stores, templates or code.
 
 | File | Exact value validated |
 |---|---|
-| `input.schema.json` | `flow/run.params.input` |
+| `contract.json` operation `input` | The actual invocation input |
 | `settings.schema.json` | `flow/run.params.settings` |
-| `result.schema.json` | The complete normal `{ "outcome", "output" }` result |
+| `contract.json` operation `result` | The complete normal `{ "outcome", "output" }` result |
 
-The third name is `result`, not `output`, because a package may declare several
+The result schema covers the complete envelope because a package may declare several
 outcomes whose legal output shapes differ. Validating the complete value lets a
 schema express that correlation; an output-only schema could not.
 
@@ -21,11 +21,11 @@ schema express that correlation; an output-only schema could not.
 
 - Run `settings` is always a JSON object, whether or not a schema exists.
   Arrays, scalars, and `null` are never settings values.
-- Without `input.schema.json`, any value admitted by the bounded FLOW JSON
+- Without an invocation `input` schema, any value admitted by the bounded FLOW JSON
   data model is valid input.
 - Without `settings.schema.json`, the only valid settings value is `{}`. A
   package must contain a settings schema to expose a configurable seam.
-- Without `result.schema.json`, any result satisfying the Run/1 base envelope
+- Without an invocation `result` schema, any result satisfying the Run/1 base envelope
   and declared-outcome rules is valid.
 
 Absence never asks a host to infer a schema from TypeScript, Markdown,
@@ -44,28 +44,28 @@ insertion.
 
 A value chosen once for a configured use, such as `maxRetries`, is a setting.
 A value expected to vary from one invocation to another is Run input. Durable
-working data belongs in an attachment or bound capability. These three seams
+working data belongs in an attachment or bound invocation. These three seams
 replace variable interpolation rather than hiding it elsewhere.
 
-Input is validated against the actual call value before a Run process starts.
+Input is validated against the actual call value before implementation dispatch.
 
 A normal component result first passes the Run/1 envelope checks: it has one
 declared domain outcome and an `output` value, and it is not a protocol,
 execution, cancellation, provider-loss, or uncertainty failure disguised as a
 domain outcome. After all owner work has quiesced, the host validates the
-complete result against `result.schema.json`; only then may owner success commit.
+complete result against the selected invocation `result` schema; only then may owner success commit.
 Validation failure is `INVALID_RESULT`.
 
 ## 3. Schema/1 dialect
 
-Each file is a JSON object whose root contains this exact declaration:
+A standalone settings schema is a JSON object whose root contains this exact declaration:
 
 ```json
 "$schema": "https://flow.jig.md/schemas/schema-1.json"
 ```
 
 Schema/1 is a closed, resource-bounded dialect of JSON Schema 2020-12. Boolean
-schemas are allowed below the root. A keyword is valid only in the locations
+schemas are allowed below a standalone root and at embedded schema roots. A keyword is valid only in the locations
 and with the value shapes assigned to it by JSON Schema 2020-12.
 Both schemas and instances first satisfy the
 [`FLOW JSON/1 value model`](json-values.md).
@@ -105,7 +105,7 @@ disagreement. `uniqueItems` is deferred because portable deep-uniqueness work
 is difficult to bound. `propertyNames` is deferred to avoid inventing a virtual
 instance-pointer identity for object keys. Values in `const` and `enum` are
 limited to JSON/1 scalars; structural alternatives use schema applicators.
-`description` and `examples` remain inert annotations. A Capability Contract
+`description` and `examples` remain inert annotations. An Invocation Contract
 descriptor which embeds them still digests the complete descriptor; “inert for
 validation” does not mean “excluded from interface identity.”
 
@@ -116,11 +116,14 @@ percent encoding and JSON Pointer `~` escapes are not supported. Remote,
 relative, anchor, recursive, and dynamic resolution are invalid. Referenced
 definitions use the same closed dialect.
 
-For a Capability Contract/1 embedded schema graph, the descriptor's `$defs`
-map is the sole root definition map. Method, error, and definition schemas do
-not declare their own `$defs`. All embedded roots and shared definitions are
-compiled together so the graph-wide node, depth, and reference rules cannot be
-evaded by splitting an interface into many methods.
+For an Invocation Contract/1 graph, the descriptor's `$defs` is the sole root
+definition map. Input, result and definition schemas cannot declare their own
+`$defs`. All embedded roots, inline channel schemas and shared definitions,
+including unused definitions and unselected operations, share one graph's node,
+depth and reference limits. Inline channel schemas reject `$ref` and `$defs`
+in schema-keyword positions, including nested schemas; literal property names
+and inert annotation/example data remain data. Separately referenced Channel
+Contracts each own their independently bounded graph and definition namespace.
 
 Validation is pure. A conforming evaluator never coerces a value, inserts a
 default, removes a property, resolves a URI, executes code, or changes the
@@ -128,7 +131,7 @@ instance. Number handling and equality use JSON/1 rather than host-language
 integer or decimal extensions.
 
 The exact same Schema/1 keyword and evaluation dialect is used by embedded
-input, output, and error-data schemas in Capability Contract/1; embedded schemas
+input and complete result schemas in Invocation Contract/1; embedded schemas
 do not repeat the file-root `$schema` declaration. FLOW does not maintain two
 subtly different schema languages.
 
@@ -154,7 +157,9 @@ One validation has a deterministic budget of 1,000,000 **work units**. The
 meter is an abstract function of the parsed schema and instance, never a count
 of implementation actions. Each distinct
 `(schema JSON Pointer, instance JSON Pointer)` pair evaluated costs 1 and is
-memoized. Each present, semantically applicable keyword adds exactly:
+memoized within its owning descriptor. Identical pointers in different documents
+never alias. This is a per-value validation budget, not a Run-lifetime quota.
+Each present, semantically applicable keyword adds exactly:
 
 | Keyword | Additional units and child evaluations |
 |---|---|
@@ -222,7 +227,7 @@ keyword              when applicable
 Human wording and multi-error ordering are non-normative. Schema/1 defines no
 standalone public schema digest. A package schema is identified by its
 containing Package/1 digest and canonical logical path; an embedded schema by
-its containing Capability Contract/1 digest and JSON Pointer. A host may use a
+its containing Invocation Contract/1 or Channel Contract/1 identity and JSON Pointer. A host may use a
 private cache fingerprint, but that value is not a portable identity,
 compatibility token, lock input, or author-facing requirement. A host may
 report those containing identities and locations, plus schema compilation and
@@ -232,9 +237,8 @@ example-fixture failures, without evaluating package code.
 
 The companion examples are:
 
-- [`input.schema.json`](https://github.com/jiggy/jig/blob/main/docs/flow/spec/examples/schema-files/input.schema.json)
-- [`settings.schema.json`](https://github.com/jiggy/jig/blob/main/docs/flow/spec/examples/schema-files/settings.schema.json)
-- [`result.schema.json`](https://github.com/jiggy/jig/blob/main/docs/flow/spec/examples/schema-files/result.schema.json)
+- [`contract.json`](https://github.com/jiggy/jig/blob/main/docs/flow/spec/examples/schema-files/contract.json), with input and complete-result schemas.
+- [`settings.schema.json`](https://github.com/jiggy/jig/blob/main/docs/flow/spec/examples/schema-files/settings.schema.json), for implementation configuration.
 
 They demonstrate shape validation and outcome/output correlation. They are
 examples, not implicit schemas for packages which omit the files.

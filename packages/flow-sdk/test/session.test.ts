@@ -1,14 +1,13 @@
 import { describe, expect, spyOn, test } from 'bun:test'
 
-import { decodeJson, encodeJson } from '../src/json.ts'
+import { decodeJson, encodeJson, MAX_FRAME_BYTES } from '../src/json.ts'
 import { RunSession } from '../src/session.ts'
 import type { Transport } from '../src/transport.ts'
 import {
-  CapabilityError,
-  OperationError,
   type ChannelReceiver,
   type JsonObject,
   type JsonValue,
+  OperationError,
 } from '../src/types.ts'
 
 class MemoryTransport implements Transport {
@@ -290,10 +289,9 @@ describe('broadcast channels', () => {
       const source = await run.channel({ delivery: 'broadcast' })
       expect(Object.keys(source)).toEqual(['send', 'subscribe'])
       expect(Object.isFrozen(source)).toBe(true)
-      const work = run.callCapability({
+      const work = run.call({
         operationId: 'work',
         slot: 'worker',
-        method: 'run',
         input: null,
         channels: { events: source.send },
       })
@@ -302,7 +300,7 @@ describe('broadcast channels', () => {
       expect(Object.isFrozen(receive)).toBe(true)
       expect(await receive.next()).toEqual({ done: false, value: 'later' })
       expect(await receive.next()).toEqual({ done: true, value: undefined })
-      return { outcome: 'done', output: await work }
+      return await work
     }).run()
     transport.push(rootRequest())
     await transport.waitForWrites(1)
@@ -316,7 +314,7 @@ describe('broadcast channels', () => {
     respond(transport, 3, { item: { sequence: 5, value: 'later' } })
     await transport.waitForWrites(5)
     respond(transport, 4, { end: { lastSequence: 5 } })
-    respond(transport, 1, { value: 'completed' })
+    respond(transport, 1, { outcome: 'done', output: 'completed' })
     await completion
     expect(transport.message(5).result).toEqual({ outcome: 'done', output: 'completed' })
   })
@@ -420,7 +418,7 @@ describe('broadcast channels', () => {
     const completion = new RunSession(transport, async (run) => {
       const source = await run.channel({ delivery: 'broadcast' })
       await expect(
-        run.runChildFlow({
+        run.call({
           operationId: 'child',
           slot: 'worker',
           input: null,
@@ -428,10 +426,9 @@ describe('broadcast channels', () => {
         }),
       ).rejects.toThrow(TypeError)
       await expect(
-        run.callCapability({
+        run.call({
           operationId: 'data',
           slot: 'worker',
-          method: 'run',
           input: source as never,
         }),
       ).rejects.toThrow(TypeError)
@@ -512,10 +509,9 @@ describe('direct channels', () => {
     const transport = new MemoryTransport()
     const completion = new RunSession(transport, async (run) => {
       const calls = Array.from({ length: 63 }, (_, index) =>
-        run.callCapability({
+        run.call({
           operationId: `work:${index}`,
           slot: 'agent',
-          method: 'run',
           input: null,
         }),
       )
@@ -528,11 +524,12 @@ describe('direct channels', () => {
     }).run()
     transport.push(channelRoot({ progress: grant('r:1', 'receive') }))
     await transport.waitForWrites(63)
-    respond(transport, 0, { value: null })
+    respond(transport, 0, { outcome: 'done', output: null })
     await transport.waitForWrites(64)
     expect(transport.message(63).method).toBe('channel/next')
     respond(transport, 63, { end: { lastSequence: 0 } })
-    for (let index = 1; index < 63; index += 1) respond(transport, index, { value: null })
+    for (let index = 1; index < 63; index += 1)
+      respond(transport, index, { outcome: 'done', output: null })
     await completion
     expect(transport.message(64).result).toEqual({ outcome: 'done', output: null })
   })
@@ -541,15 +538,14 @@ describe('direct channels', () => {
     const transport = new MemoryTransport()
     const completion = new RunSession(transport, async (run) => {
       const calls = Array.from({ length: 63 }, (_, index) =>
-        run.callCapability({
+        run.call({
           operationId: `work:${index}`,
           slot: 'agent',
-          method: 'run',
           input: null,
         }),
       )
       await expect(
-        run.callCapability({ operationId: 'overflow', slot: 'agent', method: 'run', input: null }),
+        run.call({ operationId: 'overflow', slot: 'agent', input: null }),
       ).rejects.toMatchObject({ code: 'RESOURCE_EXHAUSTED' })
       await (run.channels.progress as ChannelReceiver).close()
       await Promise.all(calls)
@@ -559,7 +555,8 @@ describe('direct channels', () => {
     await transport.waitForWrites(64)
     expect(transport.message(63).method).toBe('channel/release')
     respond(transport, 63, { status: 'released' })
-    for (let index = 0; index < 63; index += 1) respond(transport, index, { value: null })
+    for (let index = 0; index < 63; index += 1)
+      respond(transport, index, { outcome: 'done', output: null })
     await completion
     expect(transport.message(64).result).toEqual({ outcome: 'done', output: null })
   })
@@ -567,14 +564,13 @@ describe('direct channels', () => {
   test('breaking iteration releases observation without cancelling execution', async () => {
     const transport = new MemoryTransport()
     const completion = new RunSession(transport, async (run) => {
-      const work = run.callCapability({
+      const work = run.call({
         operationId: 'work',
         slot: 'agent',
-        method: 'run',
         input: null,
       })
       for await (const _ of run.channels.progress as ChannelReceiver) break
-      return { outcome: 'done', output: await work }
+      return await work
     }).run()
     transport.push(channelRoot({ progress: grant('r:1', 'receive') }))
     await transport.waitForWrites(2)
@@ -582,7 +578,7 @@ describe('direct channels', () => {
     await transport.waitForWrites(3)
     expect(transport.message(2).method).toBe('channel/release')
     respond(transport, 2, { status: 'released' })
-    respond(transport, 0, { value: 'answer' })
+    respond(transport, 0, { outcome: 'done', output: 'answer' })
     await completion
     expect(transport.message(3).result).toEqual({ outcome: 'done', output: 'answer' })
   })
@@ -607,14 +603,13 @@ describe('direct channels', () => {
     expect(transport.writes.length).toBe(2)
   })
 
-  test('reads filtered updates while an ordinary capability result remains separate', async () => {
+  test('reads filtered updates while the complete call result remains separate', async () => {
     const transport = new MemoryTransport()
     const completion = new RunSession(transport, async (run) => {
       const pair = await run.channel()
-      const work = run.callCapability({
+      const work = run.call({
         operationId: 'agent:1',
         slot: 'agent',
-        method: 'run',
         input: null,
         channels: { events: pair.send },
       })
@@ -639,21 +634,20 @@ describe('direct channels', () => {
     respond(transport, 4, { end: { lastSequence: 2 } })
     await Promise.resolve()
     expect(transport.writes.length).toBe(5)
-    respond(transport, 1, { value: { outcome: 'completed' } })
+    respond(transport, 1, { outcome: 'done', output: { text: 'completed' } })
     await completion
     expect(transport.message(5).result).toEqual({
       outcome: 'done',
-      output: { selected: ['public'], result: { outcome: 'completed' } },
+      output: { selected: ['public'], result: { outcome: 'done', output: { text: 'completed' } } },
     })
   })
 
   test('caught observer failure does not replace a successful execution result', async () => {
     const transport = new MemoryTransport()
     const completion = new RunSession(transport, async (run) => {
-      const work = run.callCapability({
+      const work = run.call({
         operationId: 'work',
         slot: 'agent',
-        method: 'run',
         input: null,
       })
       let incomplete = false
@@ -669,11 +663,11 @@ describe('direct channels', () => {
     transport.push(channelRoot({ progress: grant('r:1', 'receive') }))
     await transport.waitForWrites(2)
     rejectOperation(transport, 1, 'LAGGED')
-    respond(transport, 0, { value: 'answer' })
+    respond(transport, 0, { outcome: 'done', output: 'answer' })
     await completion
     expect(transport.message(2).result).toEqual({
       outcome: 'done',
-      output: { incomplete: true, result: 'answer' },
+      output: { incomplete: true, result: { outcome: 'done', output: 'answer' } },
     })
   })
 
@@ -816,7 +810,7 @@ describe('direct channels', () => {
   test('unused inherited endpoint can be forwarded without claiming local consumption', async () => {
     const transport = new MemoryTransport()
     const completion = new RunSession(transport, async (run) =>
-      run.runChildFlow({
+      run.call({
         operationId: 'monitor',
         slot: 'monitor',
         input: null,
@@ -977,16 +971,14 @@ describe('RunSession', () => {
     const session = new RunSession(transport, async (run) => {
       run.signal.addEventListener('abort', markFatal, { once: true })
       const calls = [
-        run.callCapability({
+        run.call({
           operationId: 'queued:1',
           slot: 'store',
-          method: 'write',
           input: 1,
         }),
-        run.callCapability({
+        run.call({
           operationId: 'queued:2',
           slot: 'store',
-          method: 'write',
           input: 2,
         }),
       ]
@@ -1003,7 +995,7 @@ describe('RunSession', () => {
 
     await expect(completion).rejects.toMatchObject({ code: 'PROTOCOL_ERROR' })
     expect(transport.writes).toHaveLength(2)
-    expect(transport.message(0).method).toBe('capability/call')
+    expect(transport.message(0).method).toBe('flow/call')
     expect(transport.message(1)).toEqual({
       jsonrpc: '2.0',
       id: null,
@@ -1018,10 +1010,9 @@ describe('RunSession', () => {
       markHandlerDone = resolve
     })
     const session = new RunSession(transport, async (run) => {
-      const output = await run.callCapability({
+      const output = await run.call({
         operationId: 'before-root:1',
         slot: 'store',
-        method: 'read',
         input: null,
       })
       markHandlerDone()
@@ -1035,7 +1026,7 @@ describe('RunSession', () => {
     transport.push({
       jsonrpc: '2.0',
       id: request.id as string,
-      result: { value: 'stored' },
+      result: { outcome: 'done', output: 'stored' },
     })
     await handlerDone
     // Let handleRoot enqueue its response behind the unresolved first write.
@@ -1046,7 +1037,7 @@ describe('RunSession', () => {
 
     await expect(completion).rejects.toMatchObject({ code: 'PROTOCOL_ERROR' })
     expect(transport.writes).toHaveLength(2)
-    expect(transport.message(0).method).toBe('capability/call')
+    expect(transport.message(0).method).toBe('flow/call')
     expect(transport.message(1)).toEqual({
       jsonrpc: '2.0',
       id: null,
@@ -1057,21 +1048,20 @@ describe('RunSession', () => {
   test('keeps the channel full-duplex while calls settle out of order', async () => {
     const transport = new MemoryTransport()
     const session = new RunSession(transport, async (run) => {
-      const child = run.runChildFlow({
+      const child = run.call({
         operationId: 'child:1',
         slot: 'research',
         intent: 'Research the subject.',
         input: run.input,
       })
-      const effect = run.callCapability({
+      const effect = run.call({
         operationId: 'effect:1',
         slot: 'store',
-        method: 'write',
         input: { value: 1 },
       })
       return {
         outcome: 'done',
-        output: { child: (await child).output, effect: await effect },
+        output: { child: await child, effect: await effect },
       }
     })
     const completion = session.run()
@@ -1080,12 +1070,12 @@ describe('RunSession', () => {
 
     const first = transport.message(0)
     const second = transport.message(1)
-    expect(first.method).toBe('flow/run-child')
-    expect(second.method).toBe('capability/call')
+    expect(first.method).toBe('flow/call')
+    expect(second.method).toBe('flow/call')
     transport.push({
       jsonrpc: '2.0',
       id: second.id as string,
-      result: { value: { stored: true } },
+      result: { outcome: 'done', output: { stored: true } },
     })
     transport.push({
       jsonrpc: '2.0',
@@ -1097,30 +1087,178 @@ describe('RunSession', () => {
     expect(transport.message(2).result).toEqual({
       outcome: 'done',
       output: {
-        child: { researched: true },
-        effect: { stored: true },
+        child: { outcome: 'done', output: { researched: true } },
+        effect: { outcome: 'done', output: { stored: true } },
       },
     })
   })
 
-  test('projects declared effect errors without exposing wire envelopes', async () => {
+  test('preserves exact optional members without changing application input', async () => {
     const transport = new MemoryTransport()
     const session = new RunSession(transport, async (run) => {
-      try {
-        await run.callCapability({
-          operationId: 'read:1',
-          slot: 'records',
-          method: 'read',
-          input: null,
-        })
-        throw new Error('expected an CapabilityError')
-      } catch (error) {
-        if (!(error instanceof CapabilityError)) throw error
-        return {
-          outcome: 'done',
-          output: { name: error.errorName, data: error.data },
-        }
+      const call = { operationId: 'identity:1', slot: 'worker', input: { instruction: 'work' } }
+      const ordinary = run.call(call)
+      const explicit = run.call({ ...call, intent: 'Advisory only.', channels: {} })
+      await ordinary
+      await explicit.catch((error) => {
+        if (!(error instanceof OperationError) || error.code !== 'OPERATION_CONFLICT') throw error
+      })
+      return { outcome: 'done', output: null }
+    })
+    const completion = session.run()
+    transport.push(rootRequest())
+    await transport.waitForWrites(2)
+    expect(transport.message(0).params).toEqual({
+      operationId: 'identity:1',
+      slot: 'worker',
+      input: { instruction: 'work' },
+    })
+    expect(transport.message(1).params).toEqual({
+      operationId: 'identity:1',
+      slot: 'worker',
+      input: { instruction: 'work' },
+      intent: 'Advisory only.',
+      channels: {},
+    })
+    expect(transport.message(0).id).not.toBe(transport.message(1).id)
+    expect(transport.message(0).id).not.toBe('identity:1')
+    respond(transport, 0, { outcome: 'done', output: null })
+    rejectOperation(transport, 1, 'OPERATION_CONFLICT')
+    await completion
+    expect(transport.message(2).result).toEqual({ outcome: 'done', output: null })
+  })
+
+  test('rejects unsupported call members locally before emitting any request', async () => {
+    const transport = new MemoryTransport()
+    const completion = new RunSession(transport, async (run) => {
+      for (const extra of ['method', 'operation', 'attachments', 'settings', 'provider']) {
+        await expect(
+          run.call({
+            operationId: 'invalid:1',
+            slot: 'worker',
+            input: null,
+            [extra]: 'run',
+          } as never),
+        ).rejects.toThrow(TypeError)
       }
+      return { outcome: 'done', output: null }
+    }).run()
+    transport.push(rootRequest())
+    await completion
+    expect(transport.writes).toHaveLength(1)
+    expect(transport.message(0).result).toEqual({ outcome: 'done', output: null })
+  })
+
+  test('does not emit or validate inherited optional call members', async () => {
+    const transport = new MemoryTransport()
+    const completion = new RunSession(transport, async (run) => {
+      const call = Object.assign(Object.create({ intent: '', channels: { events: 'forged' } }), {
+        operationId: 'own:1',
+        slot: 'worker',
+        input: null,
+      })
+      return await run.call(call)
+    }).run()
+    transport.push(rootRequest())
+    await transport.waitForWrites(1)
+    expect(transport.message(0).params).toEqual({
+      operationId: 'own:1',
+      slot: 'worker',
+      input: null,
+    })
+    respond(transport, 0, { outcome: 'done', output: null })
+    await completion
+    expect(transport.message(1).result).toEqual({ outcome: 'done', output: null })
+  })
+
+  test('rejects active call and channel-map fields without reading them or emitting work', async () => {
+    const transport = new MemoryTransport()
+    let reads = 0
+    const completion = new RunSession(transport, async (run) => {
+      for (const field of ['operationId', 'slot', 'input', 'intent', 'channels']) {
+        const call = { operationId: 'active:1', slot: 'worker', input: null }
+        Object.defineProperty(call, field, {
+          enumerable: true,
+          get() {
+            reads += 1
+            throw new Error('call getter must not execute')
+          },
+        })
+        await expect(run.call(call)).rejects.toThrow(TypeError)
+      }
+      const channels = Object.defineProperty({}, 'events', {
+        enumerable: true,
+        get() {
+          reads += 1
+          throw new Error('channel-map getter must not execute')
+        },
+      })
+      await expect(
+        run.call({ operationId: 'active:2', slot: 'worker', input: null, channels }),
+      ).rejects.toThrow(TypeError)
+      return { outcome: 'done', output: null }
+    }).run()
+    transport.push(rootRequest())
+    await completion
+    expect(reads).toBe(0)
+    expect(transport.writes).toHaveLength(1)
+    expect(transport.message(0).result).toEqual({ outcome: 'done', output: null })
+  })
+
+  test('settled operational call failure is recoverable through an ordinary catch', async () => {
+    const transport = new MemoryTransport()
+    const completion = new RunSession(transport, async (run) => {
+      try {
+        await run.call({ operationId: 'first', slot: 'worker', input: null })
+      } catch (error) {
+        if (!(error instanceof OperationError) || error.code !== 'EXECUTION_FAILED') throw error
+      }
+      return await run.call({ operationId: 'second', slot: 'fallback', input: null })
+    }).run()
+    transport.push(rootRequest())
+    await transport.waitForWrites(1)
+    rejectOperation(transport, 0, 'EXECUTION_FAILED')
+    await transport.waitForWrites(2)
+    respond(transport, 1, { outcome: 'done', output: 'recovered' })
+    await completion
+    expect(transport.message(2).result).toEqual({ outcome: 'done', output: 'recovered' })
+  })
+
+  test('malformed complete call results fail the transport even if the call is caught', async () => {
+    for (const result of [
+      null,
+      {},
+      { outcome: 'done' },
+      { output: null },
+      { outcome: 'done\n', output: null },
+      { outcome: 'done', output: null, extra: true },
+    ]) {
+      const transport = new MemoryTransport()
+      const completion = new RunSession(transport, async (run) => {
+        await run
+          .call({ operationId: 'malformed', slot: 'worker', input: null })
+          .catch(() => undefined)
+        return { outcome: 'done', output: null }
+      }).run()
+      transport.push(rootRequest())
+      await transport.waitForWrites(1)
+      respond(transport, 0, result)
+      await expect(completion).rejects.toMatchObject({ code: 'PROTOCOL_ERROR' })
+      expect(transport.writes).toHaveLength(1)
+    }
+  })
+
+  test('returns domain refusal as a complete result for ordinary outcome branching', async () => {
+    const transport = new MemoryTransport()
+    const session = new RunSession(transport, async (run) => {
+      const result = await run.call({
+        operationId: 'read:1',
+        slot: 'records',
+        input: null,
+      })
+      expect(result).toEqual({ outcome: 'not-found', output: { id: 7 } })
+      if (result.outcome !== 'not-found') throw new Error('expected domain refusal')
+      return { outcome: 'done', output: { missing: result.output } }
     })
     const completion = session.run()
     transport.push(rootRequest())
@@ -1129,13 +1267,13 @@ describe('RunSession', () => {
     transport.push({
       jsonrpc: '2.0',
       id: request.id as string,
-      result: { error: { name: 'not-found', data: { id: 7 } } },
+      result: { outcome: 'not-found', output: { id: 7 } },
     })
     await completion
 
     expect(transport.message(1).result).toEqual({
       outcome: 'done',
-      output: { name: 'not-found', data: { id: 7 } },
+      output: { missing: { id: 7 } },
     })
   })
 
@@ -1167,10 +1305,9 @@ describe('RunSession', () => {
   test('cannot report success while an unawaited outbound call is live', async () => {
     const transport = new MemoryTransport()
     const session = new RunSession(transport, async (run) => {
-      void run.callCapability({
+      void run.call({
         operationId: 'detached:1',
         slot: 'store',
-        method: 'write',
         input: null,
       })
       return { outcome: 'done', output: null }
@@ -1206,7 +1343,7 @@ describe('RunSession', () => {
     let rejected = false
     const session = new RunSession(transport, async (run) => {
       const controller = new AbortController()
-      const child = run.runChildFlow(
+      const child = run.call(
         {
           operationId: 'cancel-race:1',
           slot: 'worker',
@@ -1249,14 +1386,14 @@ describe('RunSession', () => {
     })
   })
 
-  test('already-aborted call signals reject both call kinds as CANCELLED without dispatch', async () => {
+  test('already-aborted call signals reject calls with and without intent before dispatch', async () => {
     const transport = new MemoryTransport()
     const session = new RunSession(transport, async (run) => {
       const controller = new AbortController()
       controller.abort()
 
       const calls = [
-        run.runChildFlow(
+        run.call(
           {
             operationId: 'cancelled-flow:1',
             slot: 'worker',
@@ -1264,11 +1401,11 @@ describe('RunSession', () => {
           },
           { signal: controller.signal },
         ),
-        run.callCapability(
+        run.call(
           {
-            operationId: 'cancelled-effect:1',
+            operationId: 'cancelled-advisory:1',
             slot: 'records',
-            method: 'write',
+            intent: 'Record the result.',
             input: null,
           },
           { signal: controller.signal },
@@ -1296,14 +1433,49 @@ describe('RunSession', () => {
     })
   })
 
+  for (const malformed of [false, true]) {
+    test(`cancelled calls retain late ${malformed ? 'malformed result validation' : 'operational failure settlement'}`, async () => {
+      const transport = new MemoryTransport()
+      const completion = new RunSession(transport, async (run) => {
+        const controller = new AbortController()
+        const pending = run.call(
+          { operationId: 'late:1', slot: 'worker', input: null },
+          { signal: controller.signal },
+        )
+        controller.abort()
+        await expect(pending).rejects.toMatchObject({ code: 'CANCELLED' })
+        return { outcome: 'done', output: 'cancelled-wait-observed' }
+      }).run()
+      transport.push(rootRequest())
+      await transport.waitForWrites(2)
+      expect(transport.message(1)).toEqual({
+        jsonrpc: '2.0',
+        method: 'request/cancel',
+        params: { requestId: transport.message(0).id },
+      })
+      expect(transport.writes).toHaveLength(2)
+      if (malformed) {
+        respond(transport, 0, { output: 'missing-outcome' })
+        await expect(completion).rejects.toMatchObject({ code: 'PROTOCOL_ERROR' })
+        expect(transport.writes).toHaveLength(2)
+      } else {
+        rejectOperation(transport, 0, 'EXECUTION_FAILED')
+        await completion
+        expect(transport.message(2).result).toEqual({
+          outcome: 'done',
+          output: 'cancelled-wait-observed',
+        })
+      }
+    })
+  }
+
   test('already-aborted call signals take precedence over live-call capacity', async () => {
     const transport = new MemoryTransport()
     const session = new RunSession(transport, async (run) => {
       const pending = Array.from({ length: 64 }, (_, index) =>
-        run.callCapability({
+        run.call({
           operationId: `capacity:${index}`,
           slot: 'records',
-          method: 'write',
           input: null,
         }),
       )
@@ -1312,11 +1484,10 @@ describe('RunSession', () => {
       const controller = new AbortController()
       controller.abort()
       await expect(
-        run.callCapability(
+        run.call(
           {
             operationId: 'capacity:cancelled',
             slot: 'records',
-            method: 'write',
             input: null,
           },
           { signal: controller.signal },
@@ -1326,7 +1497,11 @@ describe('RunSession', () => {
 
       for (let index = 0; index < 64; index += 1) {
         const request = transport.message(index)
-        transport.push({ jsonrpc: '2.0', id: request.id as string, result: { value: null } })
+        transport.push({
+          jsonrpc: '2.0',
+          id: request.id as string,
+          result: { outcome: 'done', output: null },
+        })
       }
       await Promise.all(pending)
       return { outcome: 'done', output: null }
@@ -1343,11 +1518,10 @@ describe('RunSession', () => {
       const controller = new AbortController()
       controller.abort()
       await expect(
-        run.callCapability(
+        run.call(
           {
             operationId: 'lifetime:cancelled',
             slot: 'records',
-            method: 'write',
             input: null,
           },
           { signal: controller.signal },
@@ -1371,11 +1545,10 @@ describe('RunSession', () => {
     const session = new RunSession(transport, async (run) => {
       const controller = new AbortController()
       try {
-        await run.callCapability(
+        await run.call(
           {
             operationId: 'write:permission-check',
             slot: 'records',
-            method: 'write',
             input: null,
           },
           { signal: controller.signal },
@@ -1490,10 +1663,9 @@ describe('RunSession', () => {
     const transport = new MemoryTransport()
     const mutable = { value: 'before' }
     const session = new RunSession(transport, async (run) => {
-      const effect = run.callCapability({
+      const effect = run.call({
         operationId: 'snapshot:1',
         slot: 'store',
-        method: 'write',
         input: mutable,
       })
       mutable.value = 'after'
@@ -1509,7 +1681,7 @@ describe('RunSession', () => {
     transport.push({
       jsonrpc: '2.0',
       id: request.id as string,
-      result: { value: null },
+      result: { outcome: 'done', output: null },
     })
     await completion
   })
@@ -1526,6 +1698,45 @@ describe('RunSession', () => {
       code: 'INVALID_RESULT',
     })
     diagnostic.mockRestore()
+  })
+
+  for (const limit of ['depth', 'nodes', 'bytes']) {
+    test(`maps complete reply envelope ${limit} overflow to INVALID_RESULT`, async () => {
+      let output: JsonValue = null
+      if (limit === 'depth') {
+        for (let index = 0; index < 126; index += 1) output = [output]
+      } else if (limit === 'nodes') {
+        output = Array.from({ length: 4 }, () => Array(65_534).fill(null))
+      } else {
+        const overhead = encodeJson({ outcome: 'done', output: ['', ''] }).byteLength
+        output = ['x'.repeat(8_388_608), 'y'.repeat(MAX_FRAME_BYTES - overhead - 8_388_608)]
+      }
+      const result = { outcome: 'done', output }
+      // The result alone is legal; the actual reply envelope is not.
+      expect(() => encodeJson(result)).not.toThrow()
+      const transport = new MemoryTransport()
+      const completion = new RunSession(transport, async () => result).run()
+      transport.push(rootRequest())
+      await completion
+      expect(transport.writes).toHaveLength(1)
+      expect(transport.message(0).error).toEqual({
+        code: -32000,
+        message: 'Run returned an invalid result',
+        data: { code: 'INVALID_RESULT' },
+      })
+    })
+  }
+
+  test('accepts a result at the complete reply envelope depth boundary', async () => {
+    let output: JsonValue = null
+    for (let index = 0; index < 125; index += 1) output = [output]
+    const result = { outcome: 'done', output }
+    const transport = new MemoryTransport()
+    const completion = new RunSession(transport, async () => result).run()
+    transport.push(rootRequest())
+    await completion
+    expect(transport.writes).toHaveLength(1)
+    expect(transport.message(0).result).toEqual(result)
   })
 
   test('classifies a complete invalid JSON/1 frame as PROTOCOL_ERROR', async () => {
@@ -1631,10 +1842,9 @@ describe('RunSession', () => {
       const transport = new MemoryTransport()
       const session = new RunSession(transport, async (run) => ({
         outcome: 'done',
-        output: await run.callCapability({
+        output: await run.call({
           operationId: 'invalid-response:1',
           slot: 'store',
-          method: 'write',
           input: null,
         }),
       }))
@@ -1659,10 +1869,9 @@ describe('RunSession', () => {
     })
     const session = new RunSession(transport, async (run) => {
       try {
-        await run.callCapability({
+        await run.call({
           operationId: 'peer-failure:1',
           slot: 'store',
-          method: 'write',
           input: null,
         })
       } catch (error) {

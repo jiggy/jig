@@ -16,18 +16,10 @@ export type RunResult = {
   readonly output: JsonValue
 }
 
-export interface ChildFlowRequest {
+export interface FlowCall {
   readonly operationId: string
   readonly slot: string
   readonly intent?: string
-  readonly input: JsonValue
-  readonly channels?: Readonly<Record<string, ChannelEndpoint>>
-}
-
-export interface CapabilityCall {
-  readonly operationId: string
-  readonly slot: string
-  readonly method: string
   readonly input: JsonValue
   readonly channels?: Readonly<Record<string, ChannelEndpoint>>
 }
@@ -85,8 +77,7 @@ export interface RunContext {
   readonly deadlineUnixMs: number
   readonly signal: AbortSignal
 
-  runChildFlow(call: ChildFlowRequest, options?: CallOptions): Promise<RunResult>
-  callCapability(call: CapabilityCall, options?: CallOptions): Promise<JsonValue>
+  call(call: FlowCall, options?: CallOptions): Promise<RunResult>
   channel(
     options: ChannelOptions & { readonly delivery: 'broadcast' },
     callOptions?: CallOptions,
@@ -132,17 +123,5 @@ export class OperationError extends Error {
     this.name = 'OperationError'
     this.code = code
     if (details !== undefined) this.details = details
-  }
-}
-
-export class CapabilityError extends Error {
-  readonly errorName: string
-  readonly data: JsonValue
-
-  constructor(errorName: string, data: JsonValue) {
-    super(`Capability failed with ${errorName}`)
-    this.name = 'CapabilityError'
-    this.errorName = errorName
-    this.data = data
   }
 }

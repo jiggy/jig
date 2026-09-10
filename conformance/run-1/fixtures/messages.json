@@ -25,12 +25,12 @@
       }
     },
     {
-      "name": "child-flow-with-intent",
-      "definition": "childFlowRequest",
+      "name": "call-with-intent",
+      "definition": "flowCallRequest",
       "value": {
         "jsonrpc": "2.0",
         "id": "component:1",
-        "method": "flow/run-child",
+        "method": "flow/call",
         "params": {
           "operationId": "research:1",
           "slot": "research",
@@ -42,16 +42,15 @@
       }
     },
     {
-      "name": "effect-call",
-      "definition": "capabilityCallRequest",
+      "name": "call-without-intent",
+      "definition": "flowCallRequest",
       "value": {
         "jsonrpc": "2.0",
         "id": "component:2",
-        "method": "capability/call",
+        "method": "flow/call",
         "params": {
           "operationId": "artifact-write:1",
           "slot": "artifacts",
-          "method": "write",
           "input": {
             "text": "result"
           }
@@ -82,27 +81,26 @@
       }
     },
     {
-      "name": "effect-value",
-      "definition": "capabilitySuccessResponse",
+      "name": "call-complete-result",
+      "definition": "runSuccessResponse",
       "value": {
         "jsonrpc": "2.0",
         "id": "component:2",
         "result": {
-          "value": null
+          "outcome": "done",
+          "output": null
         }
       }
     },
     {
-      "name": "declared-effect-error",
-      "definition": "capabilitySuccessResponse",
+      "name": "declared-domain-outcome",
+      "definition": "runSuccessResponse",
       "value": {
         "jsonrpc": "2.0",
         "id": "component:2",
         "result": {
-          "error": {
-            "name": "not-found",
-            "data": {}
-          }
+          "outcome": "not-found",
+          "output": {}
         }
       }
     },
@@ -268,19 +266,33 @@
     },
     {
       "name": "channel-reference-call",
-      "definition": "capabilityCallRequest",
+      "definition": "flowCallRequest",
       "value": {
         "jsonrpc": "2.0",
         "id": "component:channel",
-        "method": "capability/call",
+        "method": "flow/call",
         "params": {
           "operationId": "answer",
           "slot": "agent",
-          "method": "run",
           "input": {},
           "channels": {
             "events": "source:write"
           }
+        }
+      }
+    },
+    {
+      "name": "call-explicit-empty-channels",
+      "definition": "flowCallRequest",
+      "value": {
+        "jsonrpc": "2.0",
+        "id": "component:1",
+        "method": "flow/call",
+        "params": {
+          "operationId": "op:1",
+          "slot": "worker",
+          "input": null,
+          "channels": {}
         }
       }
     }
@@ -327,40 +339,36 @@
       }
     },
     {
-      "name": "effect-result-has-two-arms",
-      "definition": "capabilitySuccessResponse",
+      "name": "result-has-unknown-member",
+      "definition": "runSuccessResponse",
       "value": {
         "jsonrpc": "2.0",
         "id": "component:2",
         "result": {
-          "value": null,
-          "error": {
-            "name": "not-found",
-            "data": null
-          }
+          "outcome": "done",
+          "output": null,
+          "extra": true
         }
       }
     },
     {
-      "name": "effect-error-missing-data",
-      "definition": "capabilitySuccessResponse",
+      "name": "result-missing-output",
+      "definition": "runSuccessResponse",
       "value": {
         "jsonrpc": "2.0",
         "id": "component:2",
         "result": {
-          "error": {
-            "name": "not-found"
-          }
+          "outcome": "not-found"
         }
       }
     },
     {
       "name": "intent-is-an-object",
-      "definition": "childFlowRequest",
+      "definition": "flowCallRequest",
       "value": {
         "jsonrpc": "2.0",
         "id": "component:1",
-        "method": "flow/run-child",
+        "method": "flow/call",
         "params": {
           "operationId": "research:1",
           "slot": "research",
@@ -455,15 +463,14 @@
     },
     {
       "name": "channel-call-requires-reference",
-      "definition": "capabilityCallRequest",
+      "definition": "flowCallRequest",
       "value": {
         "jsonrpc": "2.0",
         "id": "component:channel",
-        "method": "capability/call",
+        "method": "flow/call",
         "params": {
           "operationId": "answer",
           "slot": "agent",
-          "method": "run",
           "input": {},
           "channels": {
             "events": {
@@ -473,6 +480,65 @@
               "startSequence": 1
             }
           }
+        }
+      }
+    },
+    {
+      "name": "call-rejects-method-selector",
+      "definition": "flowCallRequest",
+      "value": {
+        "jsonrpc": "2.0",
+        "id": "component:1",
+        "method": "flow/call",
+        "params": {
+          "operationId": "op:1",
+          "slot": "worker",
+          "input": null,
+          "method": "run"
+        }
+      }
+    },
+    {
+      "name": "call-rejects-operation-selector",
+      "definition": "flowCallRequest",
+      "value": {
+        "jsonrpc": "2.0",
+        "id": "component:1",
+        "method": "flow/call",
+        "params": {
+          "operationId": "op:1",
+          "slot": "worker",
+          "input": null,
+          "operation": "run"
+        }
+      }
+    },
+    {
+      "name": "call-rejects-null-intent",
+      "definition": "flowCallRequest",
+      "value": {
+        "jsonrpc": "2.0",
+        "id": "component:1",
+        "method": "flow/call",
+        "params": {
+          "operationId": "op:1",
+          "slot": "worker",
+          "input": null,
+          "intent": null
+        }
+      }
+    },
+    {
+      "name": "call-rejects-trailing-newline-slot",
+      "definition": "flowCallRequest",
+      "value": {
+        "jsonrpc": "2.0",
+        "id": "component:1",
+        "method": "flow/call",
+        "params": {
+          "operationId": "op:1",
+          "slot": "worker\n",
+          "input": null
         }
       }
     }

@@ -1,12 +1,12 @@
 import { describe, expect, test } from 'bun:test'
 
 import {
-  parseEnvelope,
   parseChannelGrant,
   parseChannelGrants,
+  parseEnvelope,
   parseRunResult,
   resultMessage,
-  validateChildFlowRequest,
+  validateFlowCall,
 } from '../src/protocol.ts'
 
 describe('JSON-RPC envelope validation', () => {
@@ -161,9 +161,88 @@ describe('channel grants', () => {
 })
 
 describe('public call validation', () => {
+  test('requires exactly the single-profile members', () => {
+    const call = { operationId: 'call:1', slot: 'worker', input: null }
+    expect(validateFlowCall(call)).toEqual(call)
+    for (const missing of ['operationId', 'slot', 'input']) {
+      const invalid: Record<string, unknown> = { ...call }
+      delete invalid[missing]
+      expect(() => validateFlowCall(invalid as never)).toThrow()
+    }
+    for (const extra of ['method', 'operation', 'provider', 'attachments', 'settings']) {
+      expect(() => validateFlowCall({ ...call, [extra]: 'run' } as never)).toThrow()
+    }
+    for (const invalid of [
+      null,
+      [],
+      { ...call, intent: undefined },
+      { ...call, intent: '' },
+      { ...call, channels: undefined },
+      { ...call, channels: null },
+      { ...call, channels: [] },
+    ]) {
+      expect(() => validateFlowCall(invalid as never)).toThrow()
+    }
+  })
+
+  test('validates whole identifiers and LocalNames', () => {
+    for (const suffix of ['\n', '\r', '\u2028', '\u2029']) {
+      for (const field of ['operationId', 'slot']) {
+        expect(() =>
+          validateFlowCall({
+            operationId: 'call:1',
+            slot: 'worker',
+            input: null,
+            [field]: `worker${suffix}`,
+          }),
+        ).toThrow()
+      }
+    }
+    for (const field of ['operationId', 'slot']) {
+      for (const value of ['', 'x'.repeat(field === 'slot' ? 65 : 129)]) {
+        expect(() =>
+          validateFlowCall({
+            operationId: 'call:1',
+            slot: 'worker',
+            input: null,
+            [field]: value,
+          }),
+        ).toThrow()
+      }
+    }
+  })
+
+  test('rejects accessor, hidden, and symbol call members without evaluating them', () => {
+    let reads = 0
+    for (const field of ['operationId', 'slot', 'input', 'intent', 'channels']) {
+      const call = { operationId: 'call:1', slot: 'worker', input: null }
+      Object.defineProperty(call, field, {
+        enumerable: true,
+        get() {
+          reads += 1
+          return field === 'operationId' && reads === 1 ? 'call:1' : 'invalid value'
+        },
+      })
+      expect(() => validateFlowCall(call)).toThrow(TypeError)
+    }
+    expect(reads).toBe(0)
+
+    const hidden = { operationId: 'call:1', slot: 'worker', input: null }
+    Object.defineProperty(hidden, 'intent', { value: 'hidden' })
+    expect(() => validateFlowCall(hidden)).toThrow(TypeError)
+    expect(() =>
+      validateFlowCall({
+        operationId: 'call:1',
+        slot: 'worker',
+        input: null,
+        [Symbol('intent')]: 'hidden',
+      }),
+    ).toThrow(TypeError)
+  })
+
   test('counts intent length in Unicode scalars rather than UTF-16 units', () => {
     expect(() =>
-      validateChildFlowRequest({
+      validateFlowCall({
         operationId: 'unicode:1',
         slot: 'worker',
         intent: '😀'.repeat(10_000),
@@ -171,7 +250,7 @@ describe('public call validation', () => {
       }),
     ).not.toThrow()
     expect(() =>
-      validateChildFlowRequest({
+      validateFlowCall({
         operationId: 'unicode:2',
         slot: 'worker',
         intent: 'x'.repeat(16_384),
@@ -179,7 +258,7 @@ describe('public call validation', () => {
       }),
     ).not.toThrow()
     expect(() =>
-      validateChildFlowRequest({
+      validateFlowCall({
         operationId: 'unicode:3',
         slot: 'worker',
         intent: 'x'.repeat(16_385),
@@ -191,7 +270,7 @@ describe('public call validation', () => {
   test('rejects non-string iterable and array-like intents at runtime', () => {
     for (const intent of [42, ['x'], { 0: 'x', length: 1 }]) {
       expect(() =>
-        validateChildFlowRequest({
+        validateFlowCall({
           operationId: 'invalid:1',
           slot: 'worker',
           intent,

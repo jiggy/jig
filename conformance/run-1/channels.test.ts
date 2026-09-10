@@ -44,12 +44,11 @@ for (const command of commands) {
           },
         })
         const concurrent = [await peer.receive(), await peer.receive()]
-        const work = concurrent.find((request) => request.method === 'capability/call')!
+        const work = concurrent.find((request) => request.method === 'flow/call')!
         const read = concurrent.find((request) => request.method === 'channel/next')!
         expect(work.params).toEqual({
           operationId: 'answer',
           slot: 'worker',
-          method: 'run',
           input: null,
           channels: { events: 'writer:1' },
         })
@@ -67,7 +66,7 @@ for (const command of commands) {
             },
           })
         else answer(next, { end: { lastSequence: 1 } })
-        answer(work, { value: 'completed' })
+        answer(work, { outcome: 'done', output: 'completed' })
         expect(await peer.receive()).toEqual({
           jsonrpc: '2.0',
           id: 'root:1',
@@ -76,7 +75,7 @@ for (const command of commands) {
             output: {
               complete: !failed,
               values: [{ sample: 'room', celsius: 21 }],
-              work: 'completed',
+              work: { outcome: 'done', output: 'completed' },
             },
           },
         })

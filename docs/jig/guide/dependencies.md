@@ -5,12 +5,12 @@ title: Flow dependencies
 # Flow dependencies
 
 A Flow can reuse libraries while keeping its reviewed execution reproducible.
-The alpha runs `flow.ts` with Jig's installed Bun runtime. Imports may reference
+The alpha runs `FLOW.ts` with Jig's installed Bun runtime. Imports may reference
 supported Bun/Node built-ins, package-local files, or prepared production dependencies.
 
 ## Published packages
 
-Place `package.json` beside `flow.ts` and declare your dependencies there. If
+Place `package.json` beside `FLOW.ts` and declare your dependencies there. If
 the package supplies a matching Bun text `bun.lock`, review installs it frozen:
 
 ```sh
@@ -115,7 +115,9 @@ distributed Flow, use published dependency versions or distribute its workspace.
 Package-local source may also be imported relatively. A package without external
 dependencies needs neither a dependency manifest nor a lock for execution.
 
-Optional input, settings, and result schemas follow
-[FLOW Schema/1](https://flow.jig.md/spec/schema-files), including its required
-`$schema` declaration. See [execution policy](../spec/project-policy.md) for
+Optional invocation input and complete-result schemas belong in `contract.json`;
+implementation settings use `settings.schema.json`. They follow
+[FLOW Schema/1](https://flow.jig.md/spec/schema-files). A `FLOW.md` package uses
+the bundled interpreter and needs no SDK dependency or installation. Its
+resources do not trigger dependency preparation. See [execution policy](../spec/project-policy.md) for
 the exact dependency preparation and admission rules.

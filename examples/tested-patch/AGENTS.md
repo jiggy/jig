@@ -33,7 +33,9 @@ application is not an unrestricted repository worker or independent probe.
   Per project, accept 16 regular Unicode text files totaling 64 KiB and at most eight
   selected existing TypeScript/JavaScript paths below `src/`.
 - The leaf accepts JSON `issue`, `files`, `editPaths`, and `cases`.
-  It has Agent and Project Command capability uses, no attachments or slots.
+  Its `agent` and `command` slots require exact native contracts; it has no
+  attachments or child Flow targets. `run.call()` returns a complete result,
+  and command evidence is validated from the `done` result's `output`.
 - A single job uses two siblings: repair publishes once through an optional
   `progress` sender; the root allocates separate broadcast subscriptions for
   the replaceable monitor and its own recorder before dispatch. The monitor

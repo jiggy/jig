@@ -186,7 +186,7 @@ function application(
   const stop = new AbortController()
   let active = 0,
     peak = 0
-  const root: Pick<RunContext, 'channel' | 'channels' | 'signal' | 'runChildFlow'> = {
+  const root: Pick<RunContext, 'channel' | 'channels' | 'signal' | 'call'> = {
     signal: stop.signal,
     channels: {
       progress: options.output ?? {
@@ -203,7 +203,7 @@ function application(
       pairs.push(pair)
       return pair
     }) as RunContext['channel'],
-    runChildFlow: async (call, request) => {
+    call: async (call, request) => {
       calls.push(call.slot)
       if (call.slot === 'monitor' && options.rejectMonitor)
         throw new OperationError('UNAVAILABLE', 'Synthetic monitor admission rejection.')

@@ -41,63 +41,15 @@
         },
         "uses": {
           "type": "object",
-          "description": "Exact admitted Capability Contract uses keyed by the package-local slot name.",
+          "description": "Invocation requirements keyed by package-local slot: an empty uncontracted requirement or an exact named interface. This is not native-host qualification.",
           "additionalProperties": {
-            "$ref": "#/$defs/capabilityUse"
+            "$ref": "#/$defs/invocationRequirement"
           },
-          "maxProperties": 3
+          "maxProperties": 256
         }
       },
       "required": ["digest", "directRun", "uses"],
       "additionalProperties": false
-    },
-    "capabilityUse": {
-      "oneOf": [
-        {
-          "type": "object",
-          "properties": {
-            "id": { "const": "https://jig.md/contracts/run-checkpoint" },
-            "version": { "const": "1.0.0" },
-            "digest": {
-              "const": "sha256:e7961d96842dc07bf2932f2979b2145301e4071093435e0e4e842a057896c201"
-            }
-          },
-          "required": ["id", "version", "digest"],
-          "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "properties": {
-            "id": {
-              "const": "https://jig.md/contracts/agent-run"
-            },
-            "version": {
-              "const": "1.0.0"
-            },
-            "digest": {
-              "const": "sha256:5e7df4408fd1f6aebf7e1269573a10ff87c7374248a51dacb63cd1c9c97e2b56"
-            }
-          },
-          "required": ["id", "version", "digest"],
-          "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "properties": {
-            "id": {
-              "const": "https://jig.md/contracts/project-command"
-            },
-            "version": {
-              "const": "1.0.0"
-            },
-            "digest": {
-              "const": "sha256:aed62fe17f01897545f82d7ee91f163a023721431433c8f4f6981b4367c85bcf"
-            }
-          },
-          "required": ["id", "version", "digest"],
-          "additionalProperties": false
-        }
-      ]
     },
     "binding": {
       "type": "object",
@@ -198,6 +150,33 @@
           }
         ]
       }
+    },
+    "invocationRequirement": {
+      "oneOf": [
+        {
+          "type": "object",
+          "maxProperties": 0,
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "version": {
+              "type": "string",
+              "minLength": 1
+            },
+            "digest": {
+              "$ref": "#/$defs/digest"
+            }
+          },
+          "required": ["id", "version", "digest"],
+          "additionalProperties": false
+        }
+      ]
     }
   }
 }

@@ -1,15 +1,14 @@
 import { decodeJson, encodeJson } from './json.js'
 import {
+  type ChannelGrant,
   parseChannelGrant,
   requireExactKeys,
   requireLocalName,
   requireObject,
   requireWireId,
-  type ChannelGrant,
+  snapshotDataObject,
 } from './protocol.js'
 import {
-  OperationError,
-  OPERATION_ERROR_CODES,
   type CallOptions,
   type ChannelBroadcast,
   type ChannelEndpoint,
@@ -19,6 +18,8 @@ import {
   type ChannelSender,
   type JsonObject,
   type JsonValue,
+  OPERATION_ERROR_CODES,
+  OperationError,
 } from './types.js'
 
 export type ChannelMethod =
@@ -90,14 +91,12 @@ export class Channels {
 
   mappings(value: Readonly<Record<string, ChannelEndpoint>> | undefined): JsonObject | undefined {
     if (value === undefined) return undefined
-    if (value === null || typeof value !== 'object' || Array.isArray(value))
-      throw new TypeError('channels must be a map')
-    if (Object.keys(value).length > 256) throw new TypeError('too many channel mappings')
+    const mappings = snapshotDataObject(value, 'channel mappings', 256)
     const result: Record<string, JsonValue> = Object.create(null)
     const states: EndpointState[] = []
-    for (const [name, endpoint] of Object.entries(value)) {
+    for (const [name, endpoint] of Object.entries(mappings)) {
       requireLocalName(name)
-      const state = this.brands.get(endpoint)
+      const state = this.brands.get(endpoint as ChannelEndpoint)
       if (!state || state.used || state.closed)
         throw new TypeError('channels require owned unused endpoints')
       if (states.includes(state)) throw new TypeError('one endpoint cannot fill multiple channels')

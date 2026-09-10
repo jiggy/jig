@@ -8,11 +8,11 @@ import type { JsonValue } from '../json.js'
 import type { CapturedPackage } from '../package/capture.js'
 import type { InspectedPackage } from '../package/inspect.js'
 import {
+  ChannelBroker,
   type ChannelDeclaration,
   type ChannelGrant,
   ChannelOperationError,
   type ChannelParticipant,
-  ChannelBroker,
   type ResolvedChannelContract,
 } from '../run/channels.js'
 
@@ -54,7 +54,7 @@ export class PrivateRunChannels {
     const resolveContract = channelContractResolver(captured, contracts)
     const root = broker.participant('root', { resolveContract })
     const declarations = await resolveChannelDeclarations(
-      inspected.metadata.channels ?? {},
+      inspected.invocation?.channels ?? {},
       resolveContract,
     )
     const cli = broker.participant('command', { resolveContract })
@@ -66,7 +66,7 @@ export class PrivateRunChannels {
       if (new Set(selected).size !== selected.length || selected.length > 16)
         throw new ChannelOperationError('INVALID_INPUT', 'select each root output once, at most 16')
       for (const name of selected) {
-        const declaration = inspected.metadata.channels?.[name]
+        const declaration = inspected.invocation?.channels?.[name]
         if (declaration?.direction !== 'send')
           throw new ChannelOperationError(
             'UNAVAILABLE',

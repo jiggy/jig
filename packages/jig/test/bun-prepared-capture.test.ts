@@ -22,7 +22,7 @@ async function fixture() {
   return { root, put, link, dispose: () => rm(root, { recursive: true, force: true }) }
 }
 
-async function execute(root: string, entrypoint = 'flows/work/flow.ts') {
+async function execute(root: string, entrypoint = 'flows/work/FLOW.ts') {
   // These are fixed inert fixture modules, not externally supplied candidate code.
   const child = Bun.spawn(
     [process.execPath, '--no-env-file', '--no-install', '--config=/dev/null', entrypoint],
@@ -57,7 +57,7 @@ test.each(['dep', '@scope/dep'])(
     const value = await fixture()
     try {
       await value.put(
-        'flows/work/flow.ts',
+        'flows/work/FLOW.ts',
         `import helper from "helper"; import dep from ${JSON.stringify(name)}; console.log(JSON.stringify([helper, dep]))`,
       )
       await value.put('node_modules/helper/package.json', {
@@ -133,7 +133,7 @@ test('workspace aliases preserve singleton identity and cyclic dependency lookup
       'import { token } from "@scope/helper"; export function getHelper() { return token }',
     )
     await value.put(
-      'flows/work/flow.ts',
+      'flows/work/FLOW.ts',
       'import { token, cyclic } from "@scope/helper"; import { token as canonical } from "../../libs/helper/index.js"; console.log(JSON.stringify([token === canonical, cyclic()]))',
     )
     await value.link('node_modules/@scope/helper', 'libs/helper')

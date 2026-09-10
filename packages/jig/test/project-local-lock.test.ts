@@ -31,37 +31,46 @@ import { type RetainedFlowInput, retainFlowSourcePackages } from '../src/project
 const encoder = new TextEncoder()
 const schemaUri = 'https://flow.jig.md/schemas/schema-1.json'
 const acpPublicUpdates = await readFile(
-  new URL('../../../docs/jig/spec/contracts/acp-public-updates.json', import.meta.url),
+  new URL(
+    '../../../docs/jig/spec/contracts/agent-run/contracts/acp-public-updates.json',
+    import.meta.url,
+  ),
   'utf8',
 )
 const agentRunContract = await readFile(
-  new URL('../../../docs/jig/spec/contracts/agent-run.capability.json', import.meta.url),
+  new URL('../../../docs/jig/spec/contracts/agent-run/contract.json', import.meta.url),
   'utf8',
 )
 
 describe('private package-project portable lock projection', () => {
   test('checkpoint authority is exact, root-only, and retained in lock identity', async () => {
     const descriptor = await readFile(
-      new URL('../../../docs/jig/spec/contracts/run-checkpoint.capability.json', import.meta.url),
+      new URL('../../../docs/jig/spec/contracts/run-checkpoint/contract.json', import.meta.url),
       'utf8',
     )
-    for (const attachments of ['attachments:\n  out: read-write\n', '']) {
+    for (const attachments of [{ out: 'read-write' }, {}]) {
       await withFlows(
         {
           'flows/checkpoint': {
-            'FLOW.md': metadata(
-              `name: checkpoint\ndescription: Save progress.\n${attachments}uses:\n  progress:\n    contract: ./contracts/run-checkpoint.capability.json`,
-            ),
-            'flow.ts': 'export {};\n',
-            'contracts/run-checkpoint.capability.json': descriptor,
+            'flow.meta.json': metadata({
+              name: 'checkpoint',
+              description: 'Save progress.',
+              uses: { progress: { contract: './contracts/run-checkpoint/contract.json' } },
+            }),
+            'contract.json': JSON.stringify({
+              $schema: 'https://flow.jig.md/schemas/invocation-contract-1.schema.json',
+              attachments,
+            }),
+            'FLOW.ts': 'export {};\n',
+            'contracts/run-checkpoint/contract.json': descriptor,
           },
           'flows/parent': {
-            'FLOW.md': metadata('name: parent\ndescription: Parent.'),
-            'flow.ts': 'export {};\n',
+            'flow.meta.json': metadata({ name: 'parent', description: 'Parent.' }),
+            'FLOW.ts': 'export {};\n',
           },
         },
         async (flows) => {
-          if (!attachments) {
+          if (!Object.hasOwn(attachments, 'out')) {
             expect(() => linkPackageProject({ flows, bindings: [] })).toThrow('writable attachment')
             return
           }
@@ -165,18 +174,18 @@ describe('private package-project portable lock projection', () => {
     })
   })
 
-  test('projects exact Agent capability uses into portable lock identity', async () => {
+  test('projects exact interface requirements without granting native authority during lock decode', async () => {
     await withFlows(
       {
         'flows/router': {
-          'FLOW.md': metadata(`name: router
-description: Router.
-uses:
-  agent:
-    contract: ./contracts/agent-run.capability.json`),
-          'flow.ts': 'export {};\n',
-          'contracts/agent-run.capability.json': agentRunContract,
-          'contracts/acp-public-updates.json': acpPublicUpdates,
+          'flow.meta.json': metadata({
+            name: 'router',
+            description: 'Router.',
+            uses: { agent: { contract: './contracts/agent-run/contract.json' } },
+          }),
+          'FLOW.ts': 'export {};\n',
+          'contracts/agent-run/contract.json': agentRunContract,
+          'contracts/agent-run/contracts/acp-public-updates.json': acpPublicUpdates,
         },
       },
       async (flows) => {
@@ -191,12 +200,12 @@ uses:
         expect(Object.isFrozen(lock.packages['flows/router']!.uses.agent)).toBeTrue()
         const decoded = decodePrivateProjectLocalLock(encodePrivateProjectLocalLock(lock))
         expect(decoded).toEqual(lock)
-        expectInvalid(
-          structuredClone(lock),
-          (value) => {
-            value.packages['flows/router'].uses.agent.version = '2.0.0'
-          },
-          'must select an exact supported contract',
+        const changed = structuredClone(lock)
+        ;(changed.packages['flows/router']!.uses.agent as { version: string }).version = '2.0.0'
+        const changedDecoded = decodePrivateProjectLocalLock(lockBytes(changed))
+        expect(changedDecoded.packages['flows/router']!.uses.agent!.version).toBe('2.0.0')
+        expect(privateProjectLocalLockDigest(changedDecoded)).not.toBe(
+          privateProjectLocalLockDigest(lock),
         )
       },
     )
@@ -204,17 +213,19 @@ uses:
 
   test('retains reviewed command authority in lock and activation identity', async () => {
     const commandContract = await readFile(
-      new URL('../../../docs/jig/spec/contracts/project-command.capability.json', import.meta.url),
+      new URL('../../../docs/jig/spec/contracts/project-command/contract.json', import.meta.url),
       'utf8',
     )
     await withFlows(
       {
         'flows/command': {
-          'FLOW.md': metadata(
-            'name: command\ndescription: Command.\nuses:\n  command:\n    contract: ./contracts/project-command.capability.json',
-          ),
-          'flow.ts': 'export {};\n',
-          'contracts/project-command.capability.json': commandContract,
+          'flow.meta.json': metadata({
+            name: 'command',
+            description: 'Command.',
+            uses: { command: { contract: './contracts/project-command/contract.json' } },
+          }),
+          'FLOW.ts': 'export {};\n',
+          'contracts/project-command/contract.json': commandContract,
         },
       },
       async (flows) => {
@@ -350,7 +361,7 @@ uses:
     })
 
     const changed = projectTrees()
-    changed['flows/worker']!['flow.ts'] = 'export const changed = true;\n'
+    changed['flows/worker']!['FLOW.ts'] = 'export const changed = true;\n'
     await withFlows(changed, async (flows) => {
       const second = encodePrivateProjectLocalLock(
         createPrivateProjectLocalLock(linkedProject(flows, 3)),
@@ -528,9 +539,8 @@ function rootPackageCollection(count: number): unknown {
 function projectTrees(): Record<string, Record<string, string>> {
   return {
     'flows/configured': {
-      'FLOW.md': metadata(`name: configured
-description: Configured.`),
-      'flow.ts': 'export {};\n',
+      'flow.meta.json': metadata({ name: 'configured', description: 'Configured.' }),
+      'FLOW.ts': 'export {};\n',
       'settings.schema.json': schema({
         type: 'object',
         properties: { maxRetries: { type: 'integer' } },
@@ -539,12 +549,12 @@ description: Configured.`),
       }),
     },
     'flows/worker': {
-      'FLOW.md': metadata('name: worker\ndescription: Worker.'),
-      'flow.ts': 'export {};\n',
+      'flow.meta.json': metadata({ name: 'worker', description: 'Worker.' }),
+      'FLOW.ts': 'export {};\n',
     },
     'flows/backup': {
-      'FLOW.md': metadata('name: backup\ndescription: Backup.'),
-      'flow.ts': 'export {};\n',
+      'flow.meta.json': metadata({ name: 'backup', description: 'Backup.' }),
+      'FLOW.ts': 'export {};\n',
     },
   }
 }
@@ -570,8 +580,8 @@ function binding(sourcePath: string, definition: unknown): InjectedBindingDeclar
   return { sourcePath, definition }
 }
 
-function metadata(frontmatter: string): string {
-  return `---\n${frontmatter}\n---\n`
+function metadata(value: Record<string, unknown>): string {
+  return JSON.stringify(value)
 }
 
 function schema(value: Record<string, unknown>): string {

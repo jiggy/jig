@@ -17,6 +17,8 @@ const expectedInstalledFiles = [
   'dist/project/author.d.ts',
   'dist/project/commands.d.ts',
   'libexec/installed-cli.js',
+  'libexec/markdown-runtime.js',
+  'libexec/flow.LICENSE',
   'libexec/agent/openai.LICENSE',
   'libexec/agent/openai-agent-worker.js',
   'libexec/agent/codex-acp.LICENSE',
@@ -140,7 +142,7 @@ try {
   const greeting = join(consumer, 'greeting')
   const initializedGreeting = await run([command, 'init', greeting], consumer)
   assert.match(initializedGreeting.stdout, /jig review --allow-resolution-network/)
-  assert.match(await readFile(join(greeting, 'flows/hello/flow.ts'), 'utf8'), /@jigging\/flow/)
+  assert.match(await readFile(join(greeting, 'flows/hello/FLOW.ts'), 'utf8'), /@jigging\/flow/)
   await assert.rejects(stat(join(greeting, '.jig')), { code: 'ENOENT' })
   await assert.rejects(stat(join(greeting, 'flows/hello/node_modules')), { code: 'ENOENT' })
   await assert.rejects(stat(ambientMarker), { code: 'ENOENT' })
@@ -204,6 +206,7 @@ try {
 
   for (const relative of [
     'libexec/linux-rootless-supervisor.js',
+    'libexec/markdown-runtime.js',
     'libexec/evaluator/project-evaluator-worker.js',
     'libexec/evaluator/project-evaluator-sdk.bundle.js',
     'libexec/agent/openai-agent-worker.js',

@@ -250,10 +250,9 @@ export async function repairFiles(run: RunContext): Promise<RunResult> {
   const result = await monitoredRepair(run, input, async (result) => {
     run.signal.throwIfAborted()
     await writeRepairDeliverables(deliverables.path, input, result)
-    await run.callCapability({
+    await run.call({
       operationId: 'progress:1',
       slot: 'progress',
-      method: 'save',
       input: { sequence: 1, evidence: result, files: repairDeliverables(input, result) },
     })
   })

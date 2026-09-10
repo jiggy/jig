@@ -7,7 +7,7 @@ import { canonicalJson, decodeJson1, JSON_1_LIMITS, Json1Error, type JsonValue }
 import { type InspectedPackage, inspectCapturedPackage } from '../package/inspect.js'
 import { isDirectRunEligible } from '../project/flow-source.js'
 import {
-  projectSupportedCapabilityUses,
+  projectInvocationRequirements,
   type RunTargetIdentity,
 } from '../project/package-project.js'
 import {
@@ -4728,7 +4728,7 @@ function requirePackageProjection(
 ): void {
   let uses: PrivateLockPackage['uses']
   try {
-    uses = projectSupportedCapabilityUses(inspected, path)
+    uses = projectInvocationRequirements(inspected, path)
   } catch {
     invalid(
       'ADMISSION_ARTIFACT_MISMATCH',

@@ -1,38 +1,36 @@
-# Jig Agent Run capability
+# Jig Agent Run invocation
 
 **Status:** experimental alpha candidate.
 
-Agent Run is one exact FLOW Capability Contract consumed through Run/1
-`capability/call`. It does not add an Agent API to `@jigging/flow`, a provider
+Agent Run is one exact FLOW Invocation Contract consumed through Run/1
+`flow/call`. It does not add an Agent API to `@jigging/flow`, a provider
 configuration field to Bindings, or a semantic router to Jig.
 
 The canonical descriptor is
-[`agent-run.capability.json`](https://jig.md/contracts/agent-run.capability.json):
+[`agent-run/contract.json`](https://jig.md/contracts/agent-run/contract.json):
 
 ```text
 id       https://jig.md/contracts/agent-run
 version  1.0.0
-digest   sha256:5e7df4408fd1f6aebf7e1269573a10ff87c7374248a51dacb63cd1c9c97e2b56
-method   run
+digest   sha256:63ba08f956904d64d499efcd3e93ac19773c61f2efc7de2673a660eb80963cb3
 ```
 
 An Agent-using Flow includes an exact package-local copy of those descriptor
 bytes and the referenced `contracts/acp-public-updates.json` descriptor. The
-latter defines the method's optional named output channel. Refer to Agent Run
-from `FLOW.md`:
+latter defines the invocation's optional named output channel. Copy the complete
+`agent-run/` bundle, preserving its descriptor-relative `contracts/` directory.
+Declare the slot in a code Flow's optional `flow.meta.json`:
 
-```yaml
----
-name: ticket-router
-description: Select and run one exact ticket handler.
-uses:
-  agent:
-    contract: ./contracts/agent-run.capability.json
----
+```json
+{
+  "name": "ticket-router",
+  "description": "Select and run one exact ticket handler.",
+  "uses": { "agent": { "contract": "./contracts/agent-run/contract.json" } }
+}
 ```
 
 The slot name `agent` is local to this package. A package may declare one slot
-for each supported capability: Agent Run, [Project Command](project-command.md),
+for each supported native invocation: Agent Run, [Project Command](project-command.md),
 and [Run Checkpoint](run-checkpoint.md). Each requires its exact descriptor and
 its own eligibility conditions: Project Command needs reviewed Binding command
 policy, and Run Checkpoint requires a root writable attachment and output owner.
@@ -48,7 +46,7 @@ control and does not replace the final result. API clients remain one-shot;
 requested unsupported channels reject before dispatch. See [channels](channels.md)
 for ownership, buffering and installed output.
 
-The contract has one method, `run`. Its input is:
+The contract has one invocation, with no method selector. Its input is:
 
 ```ts
 {
@@ -62,17 +60,17 @@ Its result is:
 
 ```ts
 {
-  outcome: "completed" | "blocked" | "limit";
-  text: string;
-  structured?: JsonValue;
+  outcome: "done" | "blocked" | "limit";
+  output: { text: string; structured?: JsonValue };
 }
 ```
 
-On the Run/1 wire, a successful effect response is
-`{ "value": <Agent result> }`. `@jigging/flow` unwraps that envelope, so
-`run.callCapability()` resolves directly to the Agent result. A completed call
-which requested `responseSchema` includes `structured`, and Jig validates that
-value against the supplied FLOW Schema/1 schema before returning it.
+On the Run/1 wire and in the SDK, `run.call()` returns that complete result.
+An Agent `blocked` or `limit` outcome is ordinary domain data, not an execution
+error. A `done` call requesting `responseSchema` includes `output.structured`;
+Jig validates it against the supplied FLOW Schema/1 schema before returning it.
+Agent execution remains a native-only implementation in this profile. A Flow
+offering the same descriptor cannot replace its credential or lifecycle owner.
 
 The alpha accepts one bounded recursive structured-output profile. Its root is
 a nonempty closed object with the FLOW Schema/1 `$schema` identifier. Every
@@ -109,7 +107,7 @@ profile. Use an unstructured call for other result shapes. Unsupported schemas
 fail before provider dispatch rather than being translated approximately.
 
 `operationId` has the ordinary Run/1 meaning: use one stable identity for one
-logical call. Reusing it with changed slot, method, or input conflicts. Work
+logical call. Reusing it with changed slot, input, intent, or channel mappings conflicts. Work
 which may have been dispatched is fenced and reported honestly; Jig does not
 silently send it again. Cancellation fences Jig's local provider worker, but
 cannot retract a request which the remote provider has already accepted.
@@ -143,9 +141,8 @@ matching exact Binding-local child slot:
 import { handle, type JsonValue } from "@jigging/flow";
 
 type AgentResult = {
-  readonly outcome: "completed" | "blocked" | "limit";
-  readonly text: string;
-  readonly structured?: { readonly route: "billing" | "technical" };
+  readonly outcome: "done" | "blocked" | "limit";
+  readonly output: { readonly text: string; readonly structured?: { readonly route: "billing" | "technical" } };
 };
 
 const routeSchema = {
@@ -159,10 +156,9 @@ const routeSchema = {
 } as const;
 
 await handle(async (run) => {
-  const agent = await run.callCapability({
+  const agent = await run.call({
     operationId: "choose-route",
     slot: "agent",
-    method: "run",
     input: {
       instructions:
         `Choose billing or technical for this ticket: ${JSON.stringify(run.input)}`,
@@ -171,16 +167,16 @@ await handle(async (run) => {
     },
   }) as AgentResult;
 
-  if (agent.outcome !== "completed" || agent.structured === undefined) {
+  if (agent.outcome !== "done" || agent.output.structured === undefined) {
     return {
       outcome: "done",
       output: { routed: false, agent } as JsonValue,
     };
   }
 
-  const child = await run.runChildFlow({
+  const child = await run.call({
     operationId: "dispatch-route",
-    slot: agent.structured.route,
+    slot: agent.output.structured.route,
     input: run.input,
   });
 
@@ -210,7 +206,7 @@ to `billing` or `technical`, and Jig resolves that name only through the
 Binding's exact same-generation slots. Either child may use Agent Run itself.
 A slot may instead name `binding:<id>` to invoke a specialist with that
 Binding's own admitted settings. Selected child Bindings must have no child
-slots; parent settings, slots, and capabilities are never inherited implicitly.
+slots; parent settings, slots, and native authority are never inherited implicitly.
 
 Each specialist selects Skills from its own admitted package for each Agent
 call. A fresh call does not include the parent's or another specialist's
@@ -398,7 +394,7 @@ policy.
 
 If the selected client, executable support, credential, or model is missing or
 invalid, reviewing an Agent-bearing target reports it unavailable. A
-capability-free target in an already admitted generation remains runnable
+target without native requirements in an already admitted generation remains runnable
 because its recipe does not depend on the Agent implementation.
 
 `jig review` authenticates and admits the selected local configuration. It does

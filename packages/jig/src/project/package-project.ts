@@ -1,15 +1,9 @@
 import { CheckError, invalid } from '../diagnostics.js'
-import { assertAgentRunContract } from '../internal/private-agent-run.js'
-import {
-  assertProjectCommandContract,
-  PROJECT_COMMAND_CONTRACT_DIGEST,
-} from '../internal/private-project-command.js'
-import {
-  assertRunCheckpointContract,
-  RUN_CHECKPOINT_CONTRACT_DIGEST,
-} from '../internal/private-run-checkpoint.js'
+import { MARKDOWN_AGENT_SLOT, markdownAgentContract } from '../internal/markdown-agent-contract.js'
+import { PROJECT_COMMAND_CONTRACT_DIGEST } from '../internal/private-project-command.js'
+import { RUN_CHECKPOINT_CONTRACT_DIGEST } from '../internal/private-run-checkpoint.js'
 import type { JsonObject, JsonValue } from '../json.js'
-import type { InspectedPackage } from '../package/inspect.js'
+import { type InspectedPackage, requireSupportedPackageProfile } from '../package/inspect.js'
 import { SchemaDiagnostic } from '../schema/index.js'
 import {
   type BindingDefinition,
@@ -20,6 +14,13 @@ import {
 } from './author.js'
 import type { ProjectCommands } from './commands.js'
 import { isDirectRunEligible } from './flow-source.js'
+import {
+  type InvocationIdentity,
+  type InvocationRequirement,
+  isNativeInvocationId,
+  resolveInvocationSlots,
+  sameInvocationIdentity,
+} from './invocation-slots.js'
 import {
   assertNoProjectPathCollisions,
   compareProjectPaths,
@@ -48,15 +49,11 @@ export interface LinkedFlow {
   readonly package: RetainedFlowInput['package']
   readonly mode: 'run'
   readonly metadata: InspectedPackage['metadata']
-  readonly uses: Readonly<Record<string, LinkedCapabilityUse>>
+  readonly uses: Readonly<Record<string, InvocationRequirement>>
+  readonly invocation: NonNullable<InspectedPackage['invocation']>
+  readonly offeredContract?: InvocationIdentity
   readonly entrypoint?: InspectedPackage['entrypoint']
   readonly directRun: boolean
-}
-
-export interface LinkedCapabilityUse {
-  readonly id: string
-  readonly version: string
-  readonly digest: string
 }
 
 export type RunTargetIdentity =
@@ -154,8 +151,8 @@ function prepareFlows(values: readonly unknown[], budget: WorkBudget): readonly 
         retained.provenance.projectPath,
       )
     }
-    const uses = projectSupportedCapabilityUses(retained.inspected, retained.provenance.projectPath)
-    const attachments = Object.values(retained.inspected.metadata.attachments ?? {})
+    const uses = projectInvocationRequirements(retained.inspected, retained.provenance.projectPath)
+    const attachments = Object.values(retained.inspected.invocation?.attachments ?? {})
     if (
       attachments.filter((access) => access === 'read-write').length > 1 ||
       attachments.length > 8
@@ -166,12 +163,22 @@ function prepareFlows(values: readonly unknown[], budget: WorkBudget): readonly 
         retained.provenance.projectPath,
       )
     }
-    budget.consume(1 + Object.keys(retained.inspected.metadata.attachments ?? {}).length)
+    budget.consume(1 + Object.keys(retained.inspected.invocation?.attachments ?? {}).length)
     const linked = Object.freeze({
       provenance: retained.provenance,
       package: retained.package,
       mode: 'run' as const,
       metadata: retained.inspected.metadata,
+      invocation: retained.inspected.invocation ?? {},
+      ...(retained.inspected.contract?.descriptor.id === undefined
+        ? {}
+        : {
+            offeredContract: {
+              id: retained.inspected.contract.descriptor.id,
+              version: retained.inspected.contract.descriptor.version!,
+              digest: retained.inspected.contract.digest,
+            },
+          }),
       uses,
       ...(retained.inspected.entrypoint === undefined
         ? {}
@@ -194,57 +201,46 @@ function prepareFlows(values: readonly unknown[], budget: WorkBudget): readonly 
   return Object.freeze(flows)
 }
 
-export function projectSupportedCapabilityUses(
+export function projectInvocationRequirements(
   inspected: InspectedPackage,
   packagePath: string,
-): Readonly<Record<string, LinkedCapabilityUse>> {
-  const declarations = Object.entries(inspected.metadata.uses ?? {})
-  if (declarations.length === 0) return Object.freeze(Object.create(null))
-  if (declarations.length > 3) {
-    invalid(
-      'PROJECT_FLOW_CAPABILITY_UNSUPPORTED',
-      'Jig supports one slot for each supported capability',
-      packagePath,
-    )
+): Readonly<Record<string, InvocationRequirement>> {
+  const output: Record<string, InvocationRequirement> = Object.create(null)
+  if (inspected.markdown?.mode === 'mixed') {
+    const contract = markdownAgentContract()
+    output[MARKDOWN_AGENT_SLOT] = Object.freeze({
+      id: contract.descriptor.id!,
+      version: contract.descriptor.version!,
+      digest: contract.digest,
+    })
   }
-  const output: Record<string, LinkedCapabilityUse> = Object.create(null)
-  const used = new Set<string>()
-  for (const [slot, declaration] of declarations) {
+  for (const [slot, declaration] of Object.entries(inspected.metadata.uses ?? {})) {
     if (declaration.contract === undefined) {
-      invalid(
-        'PROJECT_FLOW_CAPABILITY_UNSUPPORTED',
-        'Jig requires an exact supported capability contract',
-        packagePath,
-        `/uses/${pointerToken(slot)}`,
-      )
+      output[slot] = Object.freeze({})
+      continue
     }
     const reference = inspected.usedContracts.find((candidate) => candidate.slot === slot)
     if (reference === undefined)
-      throw new Error('inspected capability reference invariant violated')
-    try {
-      if (reference.contract.digest === RUN_CHECKPOINT_CONTRACT_DIGEST) {
-        assertRunCheckpointContract(reference.contract)
-        if (!Object.values(inspected.metadata.attachments ?? {}).includes('read-write'))
-          throw new TypeError('Run Checkpoint requires a root writable attachment')
-      } else if (reference.contract.digest === PROJECT_COMMAND_CONTRACT_DIGEST)
-        assertProjectCommandContract(reference.contract)
-      else assertAgentRunContract(reference.contract)
-      if (used.has(reference.contract.digest))
-        throw new TypeError('a supported capability may be declared only once')
-      used.add(reference.contract.digest)
-    } catch (error) {
+      throw new Error('inspected invocation reference invariant violated')
+    const { id, version } = reference.contract.descriptor
+    if (id === undefined || version === undefined)
       invalid(
-        'PROJECT_FLOW_CAPABILITY_UNSUPPORTED',
-        errorText(error),
+        'PROJECT_INTERFACE_ANONYMOUS',
+        'a required interface must have a named identity',
         packagePath,
         `/uses/${pointerToken(slot)}`,
       )
-    }
-    output[slot] = Object.freeze({
-      id: reference.contract.descriptor.id,
-      version: reference.contract.descriptor.version,
-      digest: reference.contract.digest,
-    })
+    output[slot] = Object.freeze({ id, version, digest: reference.contract.digest })
+    if (
+      id === 'https://jig.md/contracts/run-checkpoint' &&
+      reference.contract.digest === RUN_CHECKPOINT_CONTRACT_DIGEST &&
+      !Object.values(inspected.invocation?.attachments ?? {}).includes('read-write')
+    )
+      invalid(
+        'PROJECT_CHECKPOINT_ATTACHMENT',
+        'Run Checkpoint requires a root writable attachment',
+        packagePath,
+      )
   }
   return Object.freeze(output)
 }
@@ -303,15 +299,18 @@ function prepareBindings(
         '/package',
       )
     }
-    if (flow.inspected.entrypoint === undefined) {
-      invalid(
-        'PROJECT_BINDING_ENTRYPOINT_REQUIRED',
-        `Binding ${id} selects an instruction-only package without a supported code entrypoint`,
-        declarationPath,
-        '/package',
-      )
-    }
+    requireSupportedPackageProfile(flow.inspected, definition.package)
     validateSettings(definition.settings, flow.inspected, declarationPath)
+    if (
+      flow.inspected.markdown?.mode === 'mixed' &&
+      Object.hasOwn(definition.slots, MARKDOWN_AGENT_SLOT)
+    )
+      invalid(
+        'PROJECT_MARKDOWN_AGENT_RESERVED',
+        'the interpreter Agent route is operator-selected, not an authored Flow replacement',
+        declarationPath,
+        '/slots/markdown-agent',
+      )
     if (
       definition.commands !== undefined &&
       !Object.values(flow.value.uses).some(
@@ -320,7 +319,7 @@ function prepareBindings(
     )
       invalid(
         'PROJECT_BINDING_COMMANDS_UNDECLARED',
-        'commands require a Project Command capability declaration',
+        'commands require a Project Command invocation declaration',
         declarationPath,
         '/commands',
       )
@@ -337,13 +336,19 @@ function linkBinding(
   bindingById: ReadonlyMap<string, PreparedBinding>,
 ): LinkedPackageBinding {
   const { id, declarationPath, definition } = prepared
+  const slots = linkFlowSlots(prepared, flowByPath, bindingById)
+  try {
+    resolveInvocationSlots(prepared.flow.value.uses, slots)
+  } catch (error) {
+    invalid('PROJECT_BINDING_INTERFACE_UNRESOLVED', errorText(error), declarationPath, '/slots')
+  }
   return Object.freeze({
     kind: 'package' as const,
     id,
     declarationPath,
     packagePath: definition.package,
     settings: definition.settings,
-    slots: linkFlowSlots(prepared, flowByPath, bindingById),
+    slots,
     ...(definition.commands === undefined ? {} : { commands: definition.commands }),
   })
 }
@@ -376,7 +381,7 @@ function linkFlowSlots(
         pointer,
       )
     }
-    if (Object.keys(target.inspected.metadata.attachments ?? {}).length !== 0) {
+    if (Object.keys(target.inspected.invocation?.attachments ?? {}).length !== 0) {
       invalid(
         'PROJECT_BINDING_SLOT_ATTACHMENTS_UNSUPPORTED',
         `Binding ${bindingId} slot ${name} requires root-only file attachments`,
@@ -400,6 +405,19 @@ function linkFlowSlots(
         pointer,
       )
     }
+    const expected = binding.flow.value.uses[name]
+    if (
+      expected?.id !== undefined &&
+      (isNativeInvocationId(expected.id) ||
+        target.value.offeredContract === undefined ||
+        !sameInvocationIdentity(expected, target.value.offeredContract))
+    )
+      invalid(
+        'PROJECT_BINDING_INTERFACE_MISMATCH',
+        `slot ${name} requires an exact matching, non-native Flow interface`,
+        declarationPath,
+        pointer,
+      )
     slots[name] = identity
   }
   return Object.freeze(slots)

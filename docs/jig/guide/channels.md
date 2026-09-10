@@ -47,7 +47,7 @@ and a direct display channel, then connects two exact child slots:
 | Monitor's `display` → parent | Selected text | Monitor filters and formats; parent prints or forwards it. |
 | Repair's call result → parent | Patch and check evidence | Parent validates, checkpoints and delivers the actual result. |
 
-The parent passes endpoints in `run.runChildFlow({ ..., channels: { ... } })`;
+The parent passes endpoints in `run.call({ ..., channels: { ... } })`;
 each child reads its declared endpoints from `run.channels`. No hook or Log
 capability is involved. Replacing the exact `monitor` slot changes presentation
 without editing the repair specialist. A monitor receives no source files,

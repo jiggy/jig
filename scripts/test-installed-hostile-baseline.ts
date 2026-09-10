@@ -3,8 +3,8 @@ import {
   chmod,
   mkdir,
   mkdtemp,
-  readFile,
   readdir,
+  readFile,
   realpath,
   rm,
   stat,
@@ -134,23 +134,16 @@ try {
     }
     return mode === 'invalid-result' ? 'not an object' : { mode };
   `,
-    [
-      'attachments:',
-      '  source: read',
-      '  deliverables: read-write',
-      'outcomes:',
-      '  blocked: Useful unsuccessful output.',
-    ],
-  )
-  await writeFile(
-    join(project, 'flows/file-work/result.schema.json'),
-    JSON.stringify({
-      $schema: 'https://flow.jig.md/schemas/schema-1.json',
-      type: 'object',
-      properties: { outcome: { type: 'string' }, output: { type: 'object' } },
-      required: ['outcome', 'output'],
-      additionalProperties: false,
-    }),
+    {
+      attachments: { source: 'read', deliverables: 'read-write' },
+      outcomes: { blocked: 'Useful unsuccessful output.' },
+      result: {
+        type: 'object',
+        properties: { outcome: { type: 'string' }, output: { type: 'object' } },
+        required: ['outcome', 'output'],
+        additionalProperties: false,
+      },
+    },
   )
   await writeHostileFlow(
     project,
@@ -158,7 +151,7 @@ try {
     `
     return { bytes: [...readFileSync(request.params.attachments.source.path + '/bytes.bin')] };
   `,
-    ['attachments:', '  source: read'],
+    { attachments: { source: 'read' } },
   )
   const selected = join(consumer, 'selected')
   await mkdir(selected)
@@ -374,23 +367,26 @@ async function writeHostileFlow(
   project: string,
   name: string,
   attack: string,
-  metadata: readonly string[] = [],
+  invocation: Record<string, unknown> = {},
 ): Promise<void> {
   const flow = join(project, 'flows', name)
   await mkdir(flow)
   await writeFile(
-    join(flow, 'FLOW.md'),
-    [
-      '---',
-      `name: ${name}`,
-      'description: Exercise one bounded installed-host containment invariant.',
-      ...metadata,
-      '---',
-      '',
-    ].join('\n'),
+    join(flow, 'flow.meta.json'),
+    JSON.stringify({
+      name,
+      description: 'Exercise one bounded installed-host containment invariant.',
+    }),
   )
   await writeFile(
-    join(flow, 'flow.ts'),
+    join(flow, 'contract.json'),
+    JSON.stringify({
+      $schema: 'https://flow.jig.md/schemas/invocation-contract-1.schema.json',
+      ...invocation,
+    }),
+  )
+  await writeFile(
+    join(flow, 'FLOW.ts'),
     `
 import { existsSync, readFileSync } from "node:fs";
 import { createInterface } from "node:readline";

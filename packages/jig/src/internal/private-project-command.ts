@@ -1,13 +1,13 @@
 import { createHash } from 'node:crypto'
-import { parseCapabilityContract, type ParsedCapabilityContract } from '../capability/index.js'
+import { type ParsedInvocationContract, parseInvocationContract } from '../invocation-contract.js'
 import { canonicalJson, type JsonValue } from '../json.js'
-import { projectCommandPath, type ProjectCommands } from '../project/commands.js'
+import { type ProjectCommands, projectCommandPath } from '../project/commands.js'
 import { snapshotPrivateOrdinaryJson } from './private-ordinary-json.js'
 
 export const PROJECT_COMMAND_CONTRACT_ID = 'https://jig.md/contracts/project-command'
 export const PROJECT_COMMAND_CONTRACT_VERSION = '1.0.0'
 export const PROJECT_COMMAND_CONTRACT_DIGEST =
-  'sha256:aed62fe17f01897545f82d7ee91f163a023721431433c8f4f6981b4367c85bcf'
+  'sha256:bbe1184a8f60b342e9afe02baa7af8f0b9b9c09e9ddaa139eb6c7bf7bec91e31'
 export const PROJECT_COMMAND_LIMITS = Object.freeze({
   files: 64,
   bytes: 262_144,
@@ -30,10 +30,14 @@ export function isProjectCommandContract(value: {
   )
 }
 
-export function assertProjectCommandContract(contract: ParsedCapabilityContract): void {
-  const parsed = parseCapabilityContract(canonicalJson(contract.descriptor as unknown as JsonValue))
+export function assertProjectCommandContract(contract: ParsedInvocationContract): void {
+  const parsed = parseInvocationContract(canonicalJson(contract.descriptor as unknown as JsonValue))
   if (
-    !isProjectCommandContract({ ...parsed.descriptor, digest: parsed.digest }) ||
+    !isProjectCommandContract({
+      id: parsed.descriptor.id,
+      version: parsed.descriptor.version,
+      digest: parsed.digest,
+    }) ||
     parsed.digest !== contract.digest
   )
     throw new TypeError('expected the exact supported Project Command contract')

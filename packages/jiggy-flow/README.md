@@ -14,20 +14,20 @@ belongs to the chosen host. Its authoritative documents are [Run SDK/1](https://
 [Run/1](https://flow.jig.md/spec/run-protocol). This installed README contains
 a minimal quickstart.
 
-Finite work uses `handle()`:
+Finite work uses `handle()` in the package's single `FLOW.py` entrypoint:
 
 ```python
 from jiggy.flow import RunContext, RunResult, handle
 
 
 async def run(context: RunContext) -> RunResult:
-    child = await context.run_child_flow(
+    child = await context.call(
         operation_id="research:1",
         slot="research",
         intent="Research this request.",
         input=context.input,
     )
-    return {"outcome": "done", "output": child["output"]}
+    return child
 
 
 handle(run)
@@ -38,8 +38,21 @@ root Run. Once called, it routes ordinary `print()` and `sys.stdout` output to
 diagnostic stderr, including output after `handle()` returns. Output written
 before `handle()` begins and raw writes to file descriptor 1 remain invalid
 protocol output. Handler cancellation uses ordinary `asyncio.CancelledError`.
-Cancelling a task awaiting `run_child_flow()` or `call_capability()` sends the matching
+Cancelling a task awaiting `call()` sends the matching
 Run/1 cancellation notification.
+
+`call()` invokes a declared local slot and returns the complete
+`{"outcome": ..., "output": ...}` result. Domain outcomes such as `blocked` or
+`not-found` are normal data; interpret them explicitly. Operational failures raise
+`OperationError`. The optional `intent` is advisory metadata, separate from the
+application `input`. An omitted `channels` map and `channels={}` retain distinct
+call identities. Calls have no method selector. A handler forwarding a result
+must declare any custom outcomes it can return in its own contract.
+
+Optional `flow.meta.json` declares package metadata and dependency slots. Optional
+`contract.json` owns input/result validation, custom outcomes, channels and caller
+attachments; `settings.schema.json` separately validates implementation settings.
+No descriptor is needed for unconstrained bounded input and a `done` result.
 
 ## Direct channels
 
@@ -49,15 +62,15 @@ without confusing progress completion with the Agent's result:
 
 ```python
 import asyncio
-from jiggy.flow import JsonValue, OperationError, RunContext, RunResult
+from jiggy.flow import OperationError, RunContext, RunResult
 
 async def run(context: RunContext) -> RunResult:
     updates = await context.channel(contract="./contracts/public-updates.json")
 
-    async def invoke() -> JsonValue:
+    async def invoke() -> RunResult:
         try:
-            return await context.call_capability(
-                operation_id="answer", slot="agent", method="run", input=context.input,
+            return await context.call(
+                operation_id="answer", slot="agent", input=context.input,
                 channels={"events": updates.send},
             )
         except (Exception, asyncio.CancelledError):
@@ -90,7 +103,7 @@ dispatch. `asyncio.gather` starts execution and observation together and settles
 The application must still interpret the returned Agent outcome.
 
 `context.channels` contains declared, host-granted endpoints. An unused endpoint
-can be passed through `channels=` on an ordinary child or capability call.
+can be passed through `channels=` on an ordinary `call()`.
 `await sender.send(value)` acknowledges host acceptance, not processing;
 `await sender.close()` seals the writer. Receivers provide one async iterator,
 `start_sequence`, and `aclose()`. Use `async with` or `finally: await receiver.aclose()`

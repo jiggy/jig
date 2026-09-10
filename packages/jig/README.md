@@ -77,6 +77,7 @@ for supported installations and authentication.
 
 ## Guides
 
+- [Markdown methods](https://jig.md/guide/markdown)
 - [Choose an Agent](https://jig.md/guide/agents)
 - [Working with files](https://jig.md/guide/files)
 - [Dependencies](https://jig.md/guide/dependencies)

@@ -25,9 +25,11 @@ is independently packaged for PyPI prereleases; Jig hosting is outside its scope
   output after entry is redirected to standard error.
 - Python names may be idiomatic, but wire keys, JSON/1 limits, errors,
   cancellation, and terminal behavior remain Run/1-exact.
-- `run_child_flow()` emits `flow/run-child`; `call_capability()` emits
-  `capability/call`. `CapabilityError` represents declared capability errors;
-  `OperationError` retains operational failure semantics.
+- `call()` emits `flow/call` with operation identity, slot and input, plus optional
+  advisory intent and channel mappings. It returns the complete `RunResult`;
+  declared domain outcomes remain normal data and `OperationError` represents
+  operational failures. The initial single-operation profile has no selector.
+  Preserve optional-key presence and ordinary task cancellation semantics.
 - Direct and broadcast channels exchange JSON/1 values through `run.channel()`, declared
   `run.channels`, and ordinary call `channels=` maps. `_channels.py` owns typed
   endpoint behavior; `_runtime.py` owns correlated wire requests and retained

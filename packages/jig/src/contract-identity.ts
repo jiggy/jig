@@ -1,6 +1,6 @@
-const DNS_LABEL = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/
-const PATH_SEGMENT = /^[a-z0-9._~-]+$/
-const VERSION = /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/
+const DNS_LABEL = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?![\s\S])/
+const PATH_SEGMENT = /^[a-z0-9._~-]+(?![\s\S])/
+const VERSION = /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?![\s\S])/
 
 /** Canonical, inert contract identity: never a request to fetch a URL. */
 export function isContractId(value: string): boolean {

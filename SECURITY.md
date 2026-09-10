@@ -30,7 +30,7 @@ unsupported root declarations are rejected first; the resolved graph must
 pass the usual source/integrity policy before frozen installation and
 admission. Bun sees only manifest and lock during installation, not other
 authored configuration or foreign lockfiles. The Agent worker
-inherits networking only for an admitted Agent `capability/call`. The host may use
+inherits networking only for an admitted native Agent `flow/call`. The host may use
 the official OpenAI JavaScript SDK against an operator-selected HTTPS endpoint
 with either the `responses` or `chat-completions` wire shape, or run native
 Codex, Claude Code, or Pi through one private ACP mechanism. Client paths,
@@ -50,6 +50,14 @@ no public provider SPI or registry.
 
 Authored package code and lifecycle scripts never execute during preparation,
 and every Flow Run remains offline.
+
+The bundled Markdown interpreter runs inside that same keyless Flow envelope.
+It selects only captured original recipes and calls the reviewed native Agent
+through the reserved `markdown-agent` route. Model decisions, resource content
+and `allowed-tools` text cannot create routes, credentials or host permissions.
+Raw resource reads are limited to captured package bytes. Reasoning requests
+carry complete bounded context; overflow fails instead of silently dropping
+instructions. Markdown resources do not trigger dependency installation.
 
 Project Command effects execute supplied immutable text using installed Bun
 and reviewed Binding invocations in their own keyless, offline scopes. Their

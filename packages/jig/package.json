@@ -45,6 +45,8 @@
     "dist/project/commands.d.ts",
     "dist/json.d.ts",
     "libexec/installed-cli.js",
+    "libexec/markdown-runtime.js",
+    "libexec/flow.LICENSE",
     "libexec/linux-rootless-supervisor.js",
     "libexec/evaluator/project-evaluator-worker.js",
     "libexec/evaluator/project-evaluator-sdk.bundle.js",
@@ -71,6 +73,9 @@
     "@oven/bun-linux-x64-baseline": "1.3.3"
   },
   "devDependencies": {
+    "@jigging/flow": "workspace:*",
+    "@types/commonmark": "0.27.10",
+    "commonmark": "0.31.2",
     "@agentclientprotocol/claude-agent-acp": "0.73.0",
     "@agentclientprotocol/codex-acp": "1.8.0",
     "@agentclientprotocol/sdk": "1.4.0",

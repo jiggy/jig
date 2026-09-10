@@ -2,16 +2,16 @@ import { type BigIntStats, constants } from 'node:fs'
 import { type FileHandle, lstat, open, opendir } from 'node:fs/promises'
 
 import { CheckError, invalid, unavailable } from '../diagnostics.js'
-import {
-  AGENT_RUN_CONTRACT_DIGEST,
-  AGENT_RUN_CONTRACT_ID,
-  AGENT_RUN_CONTRACT_VERSION,
-} from '../internal/private-agent-run.js'
-import { isRunCheckpointContract } from '../internal/private-run-checkpoint.js'
 import { type CapturedPackage, captureOpenedPackageDirectory } from '../package/capture.js'
-import { type InspectedPackage, inspectCapturedPackage } from '../package/inspect.js'
+import {
+  type InspectedPackage,
+  inspectCapturedPackage,
+  packageEntrypointSuffix,
+  packageProfileIssue,
+} from '../package/inspect.js'
 import { SchemaDiagnostic } from '../schema/index.js'
 import type { ProjectSource } from './author.js'
+import { nativeInvocationKind } from './invocation-slots.js'
 import {
   assertNoProjectPathCollisions,
   compareProjectPaths,
@@ -490,23 +490,27 @@ async function flowMarker(
   directory: FileHandle,
   logicalPath: string,
 ): Promise<{ readonly selected: boolean; readonly fingerprint: string }> {
-  const path = `/proc/self/fd/${directory.fd}/FLOW.md`
-  let information: BigIntStats
-  try {
-    information = await lstat(path, { bigint: true })
-  } catch (error) {
-    if (isMissing(error)) return { selected: false, fingerprint: 'missing' }
-    if (isEntryRace(error))
-      sourceChanged('FLOW.md changed during discovery', `${logicalPath}/FLOW.md`)
-    unavailable(
-      'PROJECT_SOURCE_IO',
-      `cannot inspect FLOW.md: ${errorText(error)}`,
-      `${logicalPath}/FLOW.md`,
-    )
+  const records: string[] = []
+  let selected = false
+  for await (const name of readDirectoryNames(directory)) {
+    if (packageEntrypointSuffix(name) === undefined) continue
+    let information: BigIntStats
+    try {
+      information = await lstat(`/proc/self/fd/${directory.fd}/${name}`, { bigint: true })
+    } catch (error) {
+      if (isEntryRace(error))
+        sourceChanged('Flow implementation changed during discovery', `${logicalPath}/${name}`)
+      unavailable(
+        'PROJECT_SOURCE_IO',
+        `cannot inspect Flow implementation: ${errorText(error)}`,
+        `${logicalPath}/${name}`,
+      )
+    }
+    records.push(`${name}:${statFingerprint(information)}`)
+    if (information.isFile()) selected = true
   }
-  if (information.isSymbolicLink()) return { selected: false, fingerprint: 'symlink' }
-  if (!information.isFile()) return { selected: false, fingerprint: 'non-file' }
-  return { selected: true, fingerprint: statFingerprint(information) }
+  records.sort(compareProjectPaths)
+  return { selected, fingerprint: JSON.stringify(records) }
 }
 
 async function verifyDiscoveryObservation(
@@ -653,7 +657,12 @@ function assertProjectPathCollisions(paths: readonly string[]): void {
 }
 
 export function isDirectRunEligible(inspected: InspectedPackage): boolean {
-  if (inspected.mode !== 'run' || inspected.entrypoint === undefined) return false
+  if (
+    inspected.mode !== 'run' ||
+    inspected.invocation === undefined ||
+    packageProfileIssue(inspected) !== undefined
+  )
+    return false
   const uses = Object.entries(inspected.metadata.uses ?? {})
   if (uses.length > 2) return false
   const seen = new Set<string>()
@@ -662,16 +671,19 @@ export function isDirectRunEligible(inspected: InspectedPackage): boolean {
     const reference = inspected.usedContracts.find((candidate) => candidate.slot === slot)
     if (
       reference === undefined ||
-      seen.has(reference.contract.digest) ||
+      reference.contract.profile !== 'single' ||
+      seen.has(reference.contract.digest)
+    )
+      return false
+    const { id, version } = reference.contract.descriptor
+    if (id === undefined || version === undefined) return false
+    const native = nativeInvocationKind({ id, version, digest: reference.contract.digest })
+    if (native === 'agent' && inspected.markdown?.mode === 'mixed') return false
+    if (
+      native !== 'agent' &&
       !(
-        (isRunCheckpointContract({
-          ...reference.contract.descriptor,
-          digest: reference.contract.digest,
-        }) &&
-          Object.values(inspected.metadata.attachments ?? {}).includes('read-write')) ||
-        (reference.contract.descriptor.id === AGENT_RUN_CONTRACT_ID &&
-          reference.contract.descriptor.version === AGENT_RUN_CONTRACT_VERSION &&
-          reference.contract.digest === AGENT_RUN_CONTRACT_DIGEST)
+        native === 'run-checkpoint' &&
+        Object.values(inspected.invocation.attachments ?? {}).includes('read-write')
       )
     )
       return false

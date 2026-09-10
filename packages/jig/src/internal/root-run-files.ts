@@ -190,8 +190,7 @@ export class PrivateRootRunFiles {
         decodeJson1(
           canonicalJson({
             settings: request.settings,
-            capabilities: request.capabilities,
-            flowSlots: request.flowSlots,
+            slots: request.slots,
             ...(request.commands === undefined ? {} : { commands: request.commands }),
             attachments: request.attachments,
           } as unknown as JsonValue),
@@ -217,7 +216,9 @@ export class PrivateRootRunFiles {
     epoch: number,
   ): Promise<void> {
     if (
-      !Object.values(request.capabilities).some((c) => c.digest === RUN_CHECKPOINT_CONTRACT_DIGEST)
+      !Object.values(request.slots).some(
+        (route) => route.kind === 'native' && route.native === 'run-checkpoint',
+      )
     )
       return
     if (this.#checkpointBound) {

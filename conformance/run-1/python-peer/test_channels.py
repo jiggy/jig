@@ -25,9 +25,9 @@ class DirectChannelPeerTests(unittest.TestCase):
                 "receive": {"endpoint": "reader:1", "direction": "receive", "delivery": "direct", "startSequence": 1},
             }))
             concurrent = [peer.receive(), peer.receive()]
-            work = next(item for item in concurrent if item.get("method") == "capability/call")
+            work = next(item for item in concurrent if item.get("method") == "flow/call")
             read = next(item for item in concurrent if item.get("method") == "channel/next")
-            peer.validate_request(work, "capability/call")
+            peer.validate_request(work, "flow/call")
             peer.validate_request(read, "channel/next")
             self.assertEqual(work["params"]["channels"], {"events": "writer:1"})
             peer.send(success(read["id"], {"item": {"sequence": 1, "value": {"sample": "room", "celsius": 21}}}))
@@ -38,9 +38,9 @@ class DirectChannelPeerTests(unittest.TestCase):
                 }})
             else:
                 peer.send(success(last["id"], {"end": {"lastSequence": 1}}))
-            peer.send(success(work["id"], {"value": "completed"}))
+            peer.send(success(work["id"], {"outcome": "done", "output": "completed"}))
             self.assertEqual(peer.receive()["result"], {"outcome": "done", "output": {
-                "complete": not failed, "values": [{"sample": "room", "celsius": 21}], "work": "completed",
+                "complete": not failed, "values": [{"sample": "room", "celsius": 21}], "work": {"outcome": "done", "output": "completed"},
             }})
             peer.finish()
 

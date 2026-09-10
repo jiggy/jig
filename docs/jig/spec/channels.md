@@ -21,7 +21,7 @@ need no relay merely to fan out the same named updates.
 Existing exact child calls also accept channel maps. A root may hand a sender
 to one child and its receiver to another, or keep one end itself. Each child
 receives only its declared, admitted endpoints in `run.channels`; an unused
-incoming endpoint can be forwarded to a compatible capability method. No new
+incoming endpoint can be forwarded to a compatible invocation. No new
 call method, attachment authority or target-discovery right is introduced.
 The existing two-sibling limit remains: a worker and a monitor occupy both
 branches. A child cannot invoke further child Flows.
@@ -42,14 +42,14 @@ the sender does not transfer subscription authority. Late subscriptions start
 at the next accepted source sequence and require a `suffix`-accepting port when
 mapped after sequence one. There is no replay, reconnect, or registry of sources.
 
-Local channel creation needs no capability declaration. Endpoint operations use
+Local channel creation needs no native requirement declaration. Endpoint operations use
 separate bounded protocol capacity, not an Agent/command worker reservation.
 They do not increase concurrent execution authority.
 
 ## Admission and lifetime
 
 Contracts resolve only from the admitted package, including references in
-capability-method declarations. No URL fetch, inferred compatibility or adapter
+invocation declarations. No URL fetch, inferred compatibility or adapter
 conversion occurs. Jig checks local names, direction, exact named meaning,
 schema agreement, delivery and start position before atomically moving rights.
 Failed admission moves nothing. The sender of a call loses its offered rights

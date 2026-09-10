@@ -161,9 +161,6 @@ class GraphBuilder {
   }
 
   addEmbeddedRoots(entries: readonly EmbeddedSchemaSource[], rootDefs?: JsonObject): void {
-    if (entries.length === 0) {
-      this.fail('SCHEMA_INVALID', 'at least one embedded schema is required', '')
-    }
     this.validateJsonValue(rootDefs, '/$defs')
     if (rootDefs !== undefined) {
       for (const name of orderedKeys(rootDefs)) {

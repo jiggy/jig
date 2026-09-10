@@ -2,83 +2,81 @@
 
 > *Status: prerelease specification candidate.*
 
-A FLOW package is one immutable logical file tree. Its only required file is
-an exact-case root `FLOW.md`. A package may add zero or one obvious root
-implementation named `flow.<suffix>`.
+A FLOW package is one immutable logical file tree containing exactly one root
+implementation named `FLOW.<ext>`. Markdown is an implementation format; a code
+package has no required Markdown companion. Optional invocation declarations
+live in `contract.json`, independently of implementation format.
 
-Package identity depends only on the tree's canonical paths and exact file
-bytes. It does not depend on Git, a package registry, the source directory, or
-the runtime chosen by a host.
+Package identity depends only on canonical paths and exact file bytes. It does
+not depend on Git, a registry, the source directory or the runtime selected by
+a host. Valid package meaning does not establish local permission or support
+to execute it.
 
 ## 1. Package tree
 
 A source adapter selects one component subtree and stages every descendant
-regular file. `FLOW.md` must be at the staged root. Package/1 has no ignore
-file, package-manager filtering, dependency exclusion, or generated-file
-exception: a regular file inside the selected tree is package content.
+regular file. Package/1 has no ignore file, package-manager filtering, dependency
+exclusion or generated-file exception: every selected regular file is content.
 
-Empty directories have no Package/1 meaning. Symlinks and other special files
-are invalid. A filesystem adapter rejects a multiply linked source inode unless
-it can prove that every alias is inside the same selected, nonprotected tree.
-Accepted hardlinks become independent path-and-content records; inode identity
-is not package data.
+Empty directories have no meaning. Symlinks and other special files are invalid.
+A filesystem adapter rejects a multiply linked source inode unless it proves
+every alias lies inside the same selected, nonprotected tree. Accepted hardlinks
+become separate path/content records; inode identity is not package data.
 
-Inspection and execution use the same privately staged bytes. They never
-reopen visible source after its package digest has been computed. A mutable
-directory adapter uses descriptor-relative reads and retries detected changes;
-it must not claim atomic source-snapshot provenance when its source mechanism
-does not provide it.
+Inspection and execution use the same privately staged bytes. They never reopen
+visible source after calculating the package digest. A mutable-directory adapter
+uses descriptor-relative reads and retries detected changes; it cannot claim
+atomic source-snapshot provenance when its source mechanism does not provide it.
 
-Two source mechanisms produce the same Package/1 digest exactly when they
-present the same canonical logical file map.
+Two source mechanisms produce the same Package/1 digest exactly when they present
+the same canonical logical file map. Scripts, assets and references remain
+ordinary captured resources. Their existence does not grant execution or reads.
 
-## 2. `FLOW.md` Metadata/1
+## 2. Metadata/1
 
-`FLOW.md` is valid UTF-8 without a BOM and contains Unicode scalar values only.
-It begins with an exact `---` delimiter line and ends its frontmatter at the
-next exact `---` delimiter line. Delimiters may use LF or CRLF independently.
-The bytes through the closing delimiter are limited to 262,144 bytes. The
-remaining bytes are the Markdown body and retain their exact line endings.
+Metadata is optional. The owner depends on the implementation:
 
-The minimum document is:
+| Implementation | Sole metadata owner |
+| --- | --- |
+| `FLOW.md` | Optional frontmatter in that file. A root `flow.meta.json` beside it is invalid. |
+| Any other `FLOW.<ext>` | Optional root `flow.meta.json`. Imported code and comment headers are never metadata. |
 
-```yaml
----
-name: resize-image
-description: Resize an image to the requested dimensions.
----
-```
+There is no merge or precedence. Ordinary `metadata.json` is an ordinary
+resource. Metadata absence is an empty metadata object; names and descriptions
+remain absent, with package paths available for display. Names need not match
+directory names.
 
-`name` is a `LocalName`: 1–64 lower-ASCII characters matching:
+Present known fields are validated as follows:
 
-```text
-[a-z0-9]+(?:-[a-z0-9]+)*
-```
+| Field | Rule |
+| --- | --- |
+| `name` | Optional `LocalName`: 1–64 lower-ASCII characters matching `[a-z0-9]+(?:-[a-z0-9]+)*` as a complete string. |
+| `description` | Optional nonempty human-readable string of 1–16,384 Unicode scalars. |
+| `uses` | Optional map of dependency-slot `LocalName` keys to the declarations below. |
+| `license` | Optional string describing licensing. |
+| `compatibility` | Optional string describing environmental requirements. |
+| `metadata` | Optional string-to-string map of descriptive metadata. |
+| `allowed-tools` | Optional string whose execution restriction must be qualified and enforced by the runtime. |
+| `x-<LocalName>` | Inert extension value satisfying the metadata and JSON/1 bounds. |
 
-It is a friendly package-local label, not global identity. `description` is
-1–16,384 Unicode scalars of human-readable text.
+Malformed known fields reject package metadata. Unknown top-level fields remain
+inspectable but prevent execution qualification; they never silently acquire
+meaning. Extensions cannot grant powers or acquire core Metadata/1 meaning.
+Invocation input/result schemas, outcomes, channels and attachments belong only
+to `contract.json`; putting them in metadata does not declare them.
 
-Metadata/1 has this closed unnamespaced vocabulary:
+### Frontmatter and sidecars
 
-```text
-name          required LocalName
-description   required non-empty string
-uses          optional map of capability slots
-outcomes      optional map of custom outcome descriptions
-attachments   optional map of attachment access modes
-channels      optional map of directional channel requirements
-```
+`FLOW.md` is valid UTF-8 without a BOM and contains Unicode scalars only.
+Optional frontmatter starts only when its first line is exactly `---` and ends
+at the next line exactly `---`. Line endings are not part of the delimiter;
+LF and CRLF are admitted. A started block without a closing delimiter rejects.
+Empty frontmatter is empty metadata; a non-object YAML document rejects. Without
+frontmatter, the entire file is the exact Markdown body.
 
-Unknown unnamespaced fields reject. An extension key is exactly `x-` followed
-by a `LocalName`. Its bounded JSON-shaped value is inert package metadata and
-can never acquire core Metadata/1 meaning.
-
-Frontmatter uses the YAML 1.2 JSON schema with string mapping keys. Exact plain
-`null`, `true`, `false`, and JSON-number scalars become their JSON values;
-other admitted scalars become strings. Duplicate keys, explicit tags, anchors,
-aliases, merge keys, non-string mapping keys, and implementation-specific
-scalar types reject. The parsed value must satisfy FLOW JSON/1 and these
-additional bounds:
+The bytes through the closing delimiter are at most 262,144 bytes. A sidecar is
+at most 262,144 original UTF-8 bytes, is parsed as JSON/1 with duplicate-member
+checks, and must contain an object. Both metadata forms satisfy JSON/1 and:
 
 ```text
 nesting depth          16
@@ -87,96 +85,116 @@ entries per map       256
 items per sequence    256
 ```
 
-### Capability uses
+Frontmatter uses the bounded YAML 1.2 JSON schema with string mapping keys.
+Exact plain `null`, `true`, `false` and JSON-number scalars become JSON values;
+other admitted scalars become strings. Duplicate keys, tags, anchors, aliases,
+merge keys, non-string keys and implementation-specific scalar types reject.
+The body retains its exact bytes and line endings.
 
-Each `uses` key is a `LocalName`. A slot has exactly one of these forms:
+For example, this is a complete Markdown package:
+
+```markdown
+---
+name: writing
+description: Improve supplied prose while preserving its claims.
+---
+Return a concise revision. Preserve uncertainty and attribution.
+```
+
+### Dependencies
+
+Each `uses` entry is exactly an empty object or an object containing one
+`contract` reference:
 
 ```yaml
 uses:
-  index:
-    contract: ./contracts/index.capability.json
-  scratch:
-    local: true
+  reviewer:
+    contract: ./interfaces/reviewer/contract.json
+  archive: {}
 ```
 
-`contract` names one package-local Capability Contract/1 descriptor. An author
-reference begins with exact `./`, then uses one or more canonical package path
-segments. It cannot contain an empty, `.`, `..`, backslash, absolute, encoded,
-or escaping form. The referenced regular file must exist in the staged package.
+The first entry expects a named [Invocation Contract/1](invocation-contracts.md)
+and its complete channel closure. The second declares an uncontracted slot
+available only through explicit host configuration, without an interchangeability
+claim. One namespace covers Flow and native targets. There is no method selector
+or separate local-effect marker.
 
-A host derives contract identity, version, and digest from the descriptor. Those
-values are not copied into `FLOW.md`. The `local: true` form deliberately names
-a nonportable local seam. The two forms are mutually exclusive.
+An author reference starts with exact `./`, followed by one or more canonical
+downward-only logical path segments. Empty, dot, dot-dot, backslash, C0 control,
+DEL, absolute or escaping forms reject. Never decode or normalize author
+references. Resolve by exact case to a regular file in the immutable package.
+Hosts derive identity from that descriptor and
+closure; metadata never repeats hashes, IDs or versions. Descriptor channel
+references resolve relative to its own containing directory.
 
-### Outcomes and attachments
+A declaration supplies neither a target nor execution authority. Required
+dependencies must qualify before invocation. Unsupported explicit choices never
+fall back to another implementation. Runtime-derived dependencies must be
+disclosed during qualification; the Markdown profile reserves `markdown-agent`
+for its own reasoning dependency.
 
-Each `outcomes` key is a `LocalName` with a nonempty description. `done`,
-`failed`, `cancelled`, and `error` are reserved and cannot be declared as
-custom outcomes.
+### Environment and tool restrictions
 
-Each `attachments` key is a `LocalName`. Its value is exactly `read` or
-`read-write`. Metadata declares required attachment names and maximum access;
-attachment-source mapping is host policy outside Package/1. A host may expose
-that mapping through an explicit configuration mechanism.
+Review displays compatibility/environment prose. Known missing required
+facilities prevent qualification; a missing prerequisite discovered during work
+fails before its requested effect. Parsing cannot certify arbitrary prose
+requirements or an Agent's completion claim.
 
-### Channels
-
-Each `channels` key is a `LocalName` and declares a directional communication
-port, not permission to run another participant. Its fields and exact named
-agreement are defined by [Channel Contract/1](channel-contracts.md). Host
-invocation grants supply the actual endpoints. Optional unwired ports are
-absent; ordinary one-shot packages need no channel declaration.
-
-### Format evolution
-
-Metadata/1 has no `flow` or `format` field. A future core vocabulary must use a
-new discriminator or entrypoint convention and is invalid under Metadata/1.
-The Markdown body remains the package's public procedure and description; a
-host cannot infer that prose and an implementation are equivalent.
+A runtime must explicitly qualify enforcement of a declared `allowed-tools`
+restriction, or report execution unsupported. It cannot silently treat that
+field as inert. [Markdown/1](markdown-runtime.md) defines its bounded projection;
+this specification qualifies no code runtime's restriction enforcement.
+Resources and text cannot grant native tools, filesystem authority, credentials
+or provider configuration.
 
 ## 3. Implementation entrypoint
 
-A package may contain at most one root regular file whose name matches:
+Exactly one root regular file has the exact uppercase basename `FLOW` and
+one lowercase extension:
 
 ```text
-flow.<suffix>
+FLOW.<ext>
 ```
 
-`suffix` is 1–16 lowercase ASCII letters or digits. Nested files and names with
-more than one suffix are ordinary resources.
+`ext` contains 1–16 lowercase ASCII letters or digits. Missing or simultaneous
+implementations reject. There is no companion requirement, fallback or alternate
+case. Nested files and names with additional suffixes remain ordinary resources.
 
-If the implementation begins with `#!`, its first line must be exactly:
+For a code implementation beginning with `#!`, the first line must be exactly:
 
 ```text
 #!/usr/bin/env <selector>
 ```
 
-The line may end in LF or CRLF. `selector` is 1–64 characters matching
-`[A-Za-z0-9][A-Za-z0-9._+-]*`. Arguments, `env -S`, absolute interpreter
-paths, interpolation, and shell commands are not part of this selector. The
-selector identifies implementation semantics; it does not prescribe how a
-host installs or invokes a runtime.
+The line may end with LF or CRLF. `selector` is 1–64 characters matching
+`[A-Za-z0-9][A-Za-z0-9._+-]*`. Arguments, `env -S`, absolute interpreter paths,
+interpolation and shell commands are not selectors. It identifies implementation
+semantics, not installation or a host launch command.
 
-No entrypoint means the package contains instructions only. Package validity
-does not imply that a particular host can execute it.
+`FLOW.md` can contain ordinary instructions, exact SDK recipes or both, under
+[Markdown/1](markdown-runtime.md). A host must explicitly support and qualify its
+selected parser/interpreter profile; absence of support fails visibly. A host
+cannot substitute prose for a different executable implementation.
 
-## 4. Conventional schemas
+## 4. Invocation contract and settings
 
-A Run package may contain these exact optional root files:
+Only these optional exact root owners establish validation:
 
-| File | Value validated |
-|---|---|
-| `input.schema.json` | Invocation input |
-| `settings.schema.json` | The complete immutable Run settings object |
-| `result.schema.json` | The complete `{ "outcome", "output" }` result |
+| File | Meaning |
+| --- | --- |
+| `contract.json` | [Invocation Contract/1](invocation-contracts.md): input, complete result, explicit outcomes, channels and caller attachments. |
+| `settings.schema.json` | [Schema/1](schema-files.md): the complete immutable implementation settings object. |
 
-Each present file must compile as FLOW Schema/1 during inert package
-inspection. Without an input schema, any JSON/1 input is valid. Without a
-settings schema, only `{}` is valid settings. Without a result schema, the
-Run/1 envelope and declared-outcome rules still apply.
+Compile present declarations during inert inspection, before code or instructions
+run. Without a contract, input is any bounded JSON/1, only `done` is a normal
+outcome, output is bounded JSON/1, and there are no declared ports. An anonymous
+contract may add only the local constraints needed; a named identity is optional.
+Without a settings schema only `{}` is valid settings. No code inference,
+environment fallback, per-call merge or defaults are inserted.
 
-The result schema covers the complete result so it can correlate each outcome
-with its output shape.
+Exact root `input.schema.json` and `result.schema.json` are disallowed package
+paths. Similarly named nested resources have no inferred invocation meaning.
+There is no alternate declaration reader or schema/frontmatter mode.
 
 ## 5. Canonical paths and limits
 
@@ -235,18 +253,23 @@ Those are provenance or admission evidence, not package identity.
 
 ## 7. Required conformance
 
-Conforming implementations must prove at least:
+Conforming implementations must establish:
 
-1. The minimum Metadata/1 document passes and every unknown unnamespaced field
-   rejects.
-2. BOM, invalid UTF-8, malformed delimiters, unsafe YAML features, invalid
-   JSON/1 values, and every metadata bound plus one reject.
-3. Zero or one root implementation passes; two reject; selector spelling is
-   exact.
-4. Every present conventional schema is compiled during inert inspection.
-5. Missing, escaping, or case-mismatched author references reject.
-6. Enumeration order, directories, modes, ownership, and timestamps do not
-   change identity; path, content, or extra-file changes do.
-7. Traversal, absolute, backslash, NUL, non-NFC, case-fold collision, symlink,
-   and unproved hardlink cases reject consistently.
-8. Independent streaming digest implementations produce identical results.
+1. Exactly one root implementation; absent, simultaneous and alternate-case
+   entrypoints reject, with exact code-selector spelling.
+2. Optional metadata has one owner; Markdown plus a sidecar rejects. Missing
+   names/descriptions remain absent, while malformed known fields reject and
+   unknown fields prevent execution qualification.
+3. BOM, invalid UTF-8, unclosed frontmatter, unsafe YAML, duplicate JSON members,
+   non-object metadata and every metadata bound plus one reject.
+4. Present contract/settings declarations compile during inert inspection;
+   removed root schema paths and misplaced invocation metadata cannot execute.
+5. Missing, escaping or case-mismatched author references reject; invocation
+   channel references retain descriptor-relative closure meaning.
+6. Declared tool restrictions require actual qualified enforcement, and missing
+   execution or reasoning support never silently substitutes another method.
+7. Enumeration order, directories, modes, ownership and timestamps do not change
+   identity; path, content and extra-file changes do.
+8. Traversal, absolute, backslash, NUL, non-NFC, case-fold collision, symlink and
+   unproved hardlink cases reject consistently.
+9. Independent streaming digest implementations produce identical results.

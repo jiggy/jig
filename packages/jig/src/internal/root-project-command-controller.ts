@@ -1,11 +1,8 @@
 import { closeSync } from 'node:fs'
 import { CheckError } from '../diagnostics.js'
 import { canonicalJson, type JsonObject, type JsonValue } from '../json.js'
-import type {
-  RunHostEffectCall,
-  RunHostEffectOperationTerminal,
-  WireFailureCode,
-} from '../run/session.js'
+import type { RunHostCall, RunHostOperationTerminal, WireFailureCode } from '../run/session.js'
+import { RunHostFatalOperationError } from '../run/session.js'
 import {
   allocatePrivateRootChildOwner,
   closePrivateRootChildOwner,
@@ -68,19 +65,19 @@ interface Allocation {
 /** One keyless command owner, independent of the Flow and the candidate process. */
 export async function executePrivateProjectCommand(
   input: Context & {
-    readonly call: RunHostEffectCall
+    readonly call: RunHostCall
     readonly parentDeadlineUnixMs: number
     readonly signal: AbortSignal
   },
-): Promise<RunHostEffectOperationTerminal> {
+): Promise<RunHostOperationTerminal> {
   const target = requireParentTarget(input)
-  const capability = target.request.capabilities[input.call.slot]
+  const route = target.request.slots[input.call.slot]
   if (
-    capability === undefined ||
-    !isProjectCommandContract(capability) ||
-    input.call.method !== 'run'
+    route?.kind !== 'native' ||
+    route.native !== 'project-command' ||
+    !isProjectCommandContract(route.contract)
   )
-    return failed('UNAVAILABLE', 'the requested slot has no admitted Project Command run method')
+    return failed('UNAVAILABLE', 'the requested slot has no admitted Project Command invocation')
   if (input.signal.aborted) return failed('CANCELLED', 'the project command was cancelled')
   let prepared: PreparedProjectCommand
   try {
@@ -160,8 +157,17 @@ export async function executePrivateProjectCommand(
       allocation: allocation as unknown as JsonValue,
     })
   } catch (error) {
-    const cancelled = await cancelPrivateLinuxOwnerStateAllocation(ownerAllocation)
-    await releasePrivateLinuxOwnerState(ownerAllocation, cancelled)
+    try {
+      const cancelled = await cancelPrivateLinuxOwnerStateAllocation(ownerAllocation)
+      await releasePrivateLinuxOwnerState(ownerAllocation, cancelled)
+    } catch (cleanupError) {
+      throw new RunHostFatalOperationError(
+        cleanupError instanceof PrivateLinuxFenceUnconfirmedError
+          ? 'UNCERTAIN'
+          : 'EXECUTION_FAILED',
+        { cause: new AggregateError([error, cleanupError], 'command allocation cleanup failed') },
+      )
+    }
     if (error instanceof CheckError && error.code === 'RUN_CHILD_CAPACITY')
       return failed('RESOURCE_EXHAUSTED', 'the parent already has an active operation')
     throw error
@@ -211,7 +217,10 @@ export async function executePrivateProjectCommand(
       return failed('CANCELLED', 'the project command was cancelled', details)
     if (reason === 'deadline')
       return failed('DEADLINE_EXCEEDED', 'the project command exceeded its deadline', details)
-    return { status: 'succeeded', result: { value: value as unknown as JsonValue } }
+    return {
+      status: 'succeeded',
+      result: { outcome: 'done', output: value as unknown as JsonValue },
+    }
   } catch (error) {
     try {
       const row = (await owners(input)).find(
@@ -221,11 +230,11 @@ export async function executePrivateProjectCommand(
       )
       if (row !== undefined) await releaseCommand(input, row)
     } catch (cleanupError) {
-      if (attempted && cleanupError instanceof PrivateLinuxFenceUnconfirmedError)
-        return failed('UNCERTAIN', 'command dispatch may have occurred but fencing is unconfirmed')
-      throw new AggregateError(
-        [error, cleanupError],
-        'project command execution and cleanup failed',
+      throw new RunHostFatalOperationError(
+        cleanupError instanceof PrivateLinuxFenceUnconfirmedError
+          ? 'UNCERTAIN'
+          : 'EXECUTION_FAILED',
+        { cause: new AggregateError([error, cleanupError], 'operation cleanup failed') },
       )
     }
     if (input.signal.aborted) return failed('CANCELLED', 'the project command was cancelled')
@@ -360,7 +369,12 @@ async function releaseCommand(
     allocation.coordinatorEpoch !== input.parent.run.coordinatorEpoch ||
     allocation.parentRequestDigest !== target.request.digest ||
     allocation.deadlineUnixMs > input.parent.intent.deadlineUnixMs ||
-    !Object.values(target.request.capabilities).some(isProjectCommandContract) ||
+    !Object.values(target.request.slots).some(
+      (route) =>
+        route.kind === 'native' &&
+        route.native === 'project-command' &&
+        isProjectCommandContract(route.contract),
+    ) ||
     allocation.ownerAllocation.parent !== (await protectedOwnerRoot(input.projectRoot)) ||
     allocation.ownerAllocation.name !== `x-${identity.slice(0, 62)}` ||
     (input.parentFlow !== undefined && input.parentFlow.operationId !== parentFlow?.operationId)
@@ -497,6 +511,6 @@ function failed(
   code: WireFailureCode,
   message: string,
   details?: JsonValue,
-): RunHostEffectOperationTerminal {
+): RunHostOperationTerminal {
   return { status: 'failed', code, message, ...(details === undefined ? {} : { details }) }
 }

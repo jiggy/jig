@@ -1,5 +1,6 @@
 import { unavailable } from '../diagnostics.js'
 import type { JsonValue } from '../json.js'
+import { nativeSlotRoutes } from '../project/invocation-slots.js'
 import {
   type PrivateActivationRequest,
   requirePrivateActivationRequest,
@@ -53,6 +54,7 @@ export interface PrivateBunDirectRecipe {
   readonly request: PrivateActivationRequest
   readonly execution: PrivateBunExecutionArtifact
   readonly command: readonly [string, ...string[]]
+  readonly runtimeMounts: PrivateInstalledBunSupport['runtimeMounts']
   readonly installedSupport: PrivateInstalledBunSupport
   readonly backend: PrivateLinuxCgroupBackend
   readonly mechanismDigest: string
@@ -68,7 +70,7 @@ export interface PrivateBunDirectRecipe {
   readonly agentProvider?: PrivateAgentProvider | undefined
 }
 
-/** Plan one exact, dependency-closed Bun flow.ts Run. */
+/** Plan one exact, dependency-closed Bun FLOW.ts Run. */
 export async function planPrivateBunDirectRun(input: {
   readonly request: PrivateActivationRequest
   readonly installedSupport: PrivateInstalledBunSupport
@@ -108,57 +110,53 @@ async function describePrivateBunDirectRun(
   const selector = input.selector ?? DEFAULT_SELECTOR
   if (
     request.mode !== 'run' ||
-    request.entrypoint.path !== 'flow.ts' ||
-    request.entrypoint.suffix !== 'ts' ||
+    !['FLOW.ts', 'FLOW.md'].includes(request.entrypoint.path) ||
+    !['ts', 'md'].includes(request.entrypoint.suffix) ||
     (request.entrypoint.selector !== undefined && request.entrypoint.selector !== selector)
   ) {
-    throw new TypeError('private Bun recipe requires one matching flow.ts activation')
+    throw new TypeError('private Bun recipe requires one matching FLOW.ts or FLOW.md activation')
   }
+  if (
+    request.entrypoint.suffix === 'md' &&
+    (execution.package.digest !== request.package.digest ||
+      execution.layout.flowRoot !== '' ||
+      execution.layout.aliases.length !== 0)
+  )
+    throw new TypeError(
+      'Markdown runs use only their captured package, without dependency preparation',
+    )
   if (request.target.kind === 'flow') {
     if (Object.keys(request.settings).length !== 0) {
       throw new TypeError('private Bun direct Flow recipe requires zero configuration')
     }
   }
-  const capabilityUses = Object.values(request.capabilities)
+  const nativeRoutes = nativeSlotRoutes(request.slots)
   if (
-    capabilityUses.some(({ digest }) => digest === RUN_CHECKPOINT_CONTRACT_DIGEST) &&
+    nativeRoutes.some(({ native }) => native === 'run-checkpoint') &&
     !Object.values(request.attachments).includes('read-write')
   )
     throw new TypeError('Run Checkpoint requires a root writable attachment')
-  const usesAgent = capabilityUses.some(({ digest }) => digest === AGENT_RUN_CONTRACT_DIGEST)
-  const usesCommand = capabilityUses.some(
-    ({ digest }) => digest === PROJECT_COMMAND_CONTRACT_DIGEST,
-  )
+  const usesAgent = nativeRoutes.some(({ native }) => native === 'agent')
+  const usesCommand = nativeRoutes.some(({ native }) => native === 'project-command')
   if (usesAgent && input.agentProvider === undefined) {
     unavailable(
       'PROJECT_AGENT_UNAVAILABLE',
       'the target requires a configured host Agent',
-      `${request.packagePath}/FLOW.md`,
+      `${request.packagePath}/${request.entrypoint.path}`,
     )
   }
   const agentProvider = !usesAgent ? undefined : requirePrivateAgentProvider(input.agentProvider)
-  if (
-    capabilityUses.some(
-      ({ digest }) =>
-        ![
-          AGENT_RUN_CONTRACT_DIGEST,
-          PROJECT_COMMAND_CONTRACT_DIGEST,
-          RUN_CHECKPOINT_CONTRACT_DIGEST,
-        ].includes(digest),
-    ) ||
-    capabilityUses.length > 3 ||
-    (agentProvider !== undefined && agentProvider.contractDigest !== AGENT_RUN_CONTRACT_DIGEST)
-  ) {
-    throw new TypeError('private Bun recipe requires exact supported capabilities')
+  if (agentProvider !== undefined && agentProvider.contractDigest !== AGENT_RUN_CONTRACT_DIGEST) {
+    throw new TypeError('private Bun recipe requires qualified native invocation support')
   }
   if (usesCommand && Object.keys(request.commands ?? {}).length === 0)
     unavailable(
       'PROJECT_COMMAND_UNCONFIGURED',
       'configure commands in a Binding for this Project Command Flow',
-      `${request.packagePath}/FLOW.md`,
+      `${request.packagePath}/${request.entrypoint.path}`,
     )
   if (!usesCommand && request.commands !== undefined)
-    throw new TypeError('command policy requires the Project Command capability')
+    throw new TypeError('command policy requires the Project Command invocation')
 
   const adapterDigest = privateDomainDigest('JIG-Private-Bun-Direct-Adapter/1', {
     revision: ADAPTER_REVISION,
@@ -178,7 +176,7 @@ async function describePrivateBunDirectRun(
   } as unknown as JsonValue)
   const authorityDigest = privateDomainDigest('JIG-Private-Bun-Authority/1', {
     attachments: request.attachments,
-    capabilities: request.capabilities,
+    slots: request.slots,
     ...(request.commands === undefined ? {} : { commands: request.commands }),
   } as unknown as JsonValue)
   const launchEnvelopeDigest = logicalLaunchDigest(
@@ -219,6 +217,17 @@ async function describePrivateBunDirectRun(
     request,
     execution,
     installedSupport,
+    runtimeMounts: Object.freeze([
+      ...installedSupport.runtimeMounts,
+      ...(request.entrypoint.suffix === 'md'
+        ? [
+            {
+              source: installedSupport.markdownRuntimePath,
+              destination: installedSupport.sandboxMarkdownRuntimePath,
+            },
+          ]
+        : []),
+    ]),
     mechanismDigest: support.digest,
     observation,
     sandboxExecutablePath: installedSupport.sandboxExecutablePath,
@@ -226,6 +235,7 @@ async function describePrivateBunDirectRun(
     command: Object.freeze([
       installedSupport.sandboxExecutablePath,
       ...BUN_POLICY,
+      ...(request.entrypoint.suffix === 'md' ? [installedSupport.sandboxMarkdownRuntimePath] : []),
       `${PACKAGE_DESTINATION}/${execution.layout.flowRoot ? `${execution.layout.flowRoot}/` : ''}${request.entrypoint.path}`,
     ]) as readonly [string, ...string[]],
     scratch: SCRATCH,
@@ -277,11 +287,11 @@ function logicalLaunchDigest(
       outputBytes: 16 * 1024 * 1024,
       rootOnly: true,
     },
-    capabilities: request.capabilities,
+    slots: request.slots,
     ...(request.commands === undefined
       ? {}
       : { commands: request.commands, commandLimits: PROJECT_COMMAND_LIMITS }),
-    ...(Object.values(request.capabilities).some((c) => c.digest === RUN_CHECKPOINT_CONTRACT_DIGEST)
+    ...(nativeSlotRoutes(request.slots).some((route) => route.native === 'run-checkpoint')
       ? { checkpointLimits: RUN_CHECKPOINT_LIMITS }
       : {}),
     ...(agentProvider === undefined ? {} : { agentProviderDigest: agentProvider.digest }),

@@ -8,10 +8,9 @@ async def run(context):
     if case == "fanout-65":
         calls = [
             asyncio.create_task(
-                context.call_capability(
+                context.call(
                     operation_id=f"fanout:{index + 1}",
                     slot="sink",
-                    method="write",
                     input={"index": index},
                 )
             )
@@ -22,10 +21,9 @@ async def run(context):
 
     if case == "operation-identity":
         async def call():
-            return await context.call_capability(
+            return await context.call(
                 operation_id="shared:1",
                 slot="sink",
-                method="write",
                 input={"value": "same"},
             )
 
@@ -35,10 +33,9 @@ async def run(context):
         replay = await call()
         conflict = None
         try:
-            await context.call_capability(
+            await context.call(
                 operation_id="shared:1",
                 slot="sink",
-                method="write",
                 input={"value": "different"},
             )
         except OperationError as error:
@@ -55,10 +52,9 @@ async def run(context):
 
     if case == "cancel-shared-waiter":
         async def call_shared():
-            return await context.call_capability(
+            return await context.call(
                 operation_id="shared-cancel:1",
                 slot="sink",
-                method="write",
                 input={"value": "shared"},
             )
 
@@ -66,10 +62,9 @@ async def run(context):
         await asyncio.sleep(0)
         survivor = asyncio.create_task(call_shared())
         await asyncio.sleep(0)
-        await context.call_capability(
+        await context.call(
             operation_id="release-shared-cancel:1",
             slot="control",
-            method="release",
             input=None,
         )
         cancelled.cancel()
@@ -89,10 +84,9 @@ async def run(context):
     if case == "uncertain-replay":
         async def call_uncertain(operation_id):
             try:
-                return await context.call_capability(
+                return await context.call(
                     operation_id=operation_id,
                     slot="sink",
-                    method="write",
                     input={"value": "uncertain"},
                 )
             except OperationError as error:
@@ -111,10 +105,9 @@ async def run(context):
         rejected = None
         for index in range(1, 65_538):
             try:
-                await context.call_capability(
+                await context.call(
                     operation_id=f"lifetime:{index}",
                     slot="sink",
-                    method="write",
                     input=None,
                 )
                 accepted += 1
@@ -126,7 +119,7 @@ async def run(context):
         }
 
     if case == "one-flow":
-        child = await context.run_child_flow(
+        child = await context.call(
             operation_id="child:1",
             slot="child",
             input=None,
@@ -134,32 +127,29 @@ async def run(context):
         return {"outcome": "done", "output": child}
 
     if case == "two-effects":
-        first = await context.call_capability(
+        first = await context.call(
             operation_id="first:1",
             slot="sink",
-            method="write",
             input={"sequence": 1},
         )
-        second = await context.call_capability(
+        second = await context.call(
             operation_id="second:1",
             slot="sink",
-            method="write",
             input={"sequence": 2},
         )
         return {"outcome": "done", "output": {"first": first, "second": second}}
 
     if case == "cancel-one-call":
         child = asyncio.create_task(
-            context.run_child_flow(
+            context.call(
                 operation_id="cancelled-child:1",
                 slot="child",
                 input=None,
             )
         )
-        await context.call_capability(
+        await context.call(
             operation_id="release-cancel:1",
             slot="control",
-            method="release",
             input=None,
         )
         child.cancel()
@@ -173,16 +163,15 @@ async def run(context):
 
     if case == "abandoned-call":
         asyncio.create_task(
-            context.run_child_flow(
+            context.call(
                 operation_id="abandoned-child:1",
                 slot="child",
                 input=None,
             )
         )
-        await context.call_capability(
+        await context.call(
             operation_id="release-abandon:1",
             slot="control",
-            method="release",
             input=None,
         )
         return {"outcome": "done", "output": "must-not-succeed"}

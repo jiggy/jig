@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import * as acp from '@agentclientprotocol/sdk'
 
-import descriptor from '../../../docs/jig/spec/contracts/acp-public-updates.json' with {
+import descriptor from '../../../docs/jig/spec/contracts/agent-run/contracts/acp-public-updates.json' with {
   type: 'json',
 }
 import { runPrivateAcpTurn } from '../src/internal/acp-agent-client.js'
@@ -10,13 +10,13 @@ import {
   PRIVATE_AGENT_UPDATE_CHANNELS,
   PrivateAgentUpdateChannel,
 } from '../src/internal/agent-update-channel.js'
+import { privateAgentChannelOwnerId } from '../src/internal/root-agent-run-controller.js'
 import {
   channelContractResolver,
   type PrivateChannelContractCache,
   type PrivateRunChannelOutput,
   PrivateRunChannels,
 } from '../src/internal/run-channels.js'
-import { privateAgentChannelOwnerId } from '../src/internal/root-agent-run-controller.js'
 import { canonicalJson, type JsonValue } from '../src/json.js'
 import type { CapturedPackage } from '../src/package/capture.js'
 import type { InspectedPackage } from '../src/package/inspect.js'
@@ -382,13 +382,13 @@ describe('private Agent and command channel bridges', () => {
   test('a selected broadcast root output subscribes before dispatch and drains independently', async () => {
     const records: JsonValue[] = []
     const visible = deferred<void>()
-    const metadata = inspected()
+    const packageFacts = inspected()
     const context = await PrivateRunChannels.open(
       captured(),
       {
-        ...metadata,
-        metadata: {
-          ...metadata.metadata,
+        ...packageFacts,
+        invocation: {
+          ...packageFacts.invocation!,
           channels: { progress: { direction: 'send', delivery: 'broadcast' } },
         },
       },
@@ -454,11 +454,17 @@ function inspected(): InspectedPackage {
   return {
     digest: 'test',
     mode: 'run',
+    entrypoint: { path: 'FLOW.ts', suffix: 'ts' },
     metadata: {
       name: 'test',
       description: 'test',
       extensions: {},
+      unknownFields: {},
+    },
+    invocation: {
       channels: { progress: { direction: 'send' } },
+      outcomes: {},
+      attachments: {},
     },
     schemas: {},
     usedContracts: [],

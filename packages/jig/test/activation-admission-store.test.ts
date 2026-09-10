@@ -1342,9 +1342,13 @@ describe.serial('direct alpha activation store', () => {
       const request = reopened.candidate.candidate.targets.find(
         ({ request }) => request.target.kind === 'binding',
       )!.request
-      expect(request.flowSlots).toEqual({ child: { kind: 'flow', path: 'flows/child' } })
-      expect(Object.isFrozen(request.flowSlots)).toBeTrue()
-      expect(reopened.candidate.lock.bindings.router!.slots).toEqual(request.flowSlots)
+      expect(request.slots).toEqual({
+        child: { kind: 'flow', target: { kind: 'flow', path: 'flows/child' } },
+      })
+      expect(Object.isFrozen(request.slots)).toBeTrue()
+      expect(reopened.candidate.lock.bindings.router!.slots).toEqual({
+        child: { kind: 'flow', path: 'flows/child' },
+      })
     } finally {
       await coordinator?.dispose()
       await fixture.dispose()
@@ -2016,21 +2020,23 @@ async function createFixture(
     await mkdir(flowSource)
     await mkdir(declarationSource)
     await writeFile(
-      join(flowSource, 'FLOW.md'),
-      ['---', 'name: run', 'description: Direct alpha store fixture.', '---', ''].join('\n'),
+      join(flowSource, 'flow.meta.json'),
+      JSON.stringify({ name: 'run', description: 'Direct alpha store fixture.' }),
     )
-    await writeFile(join(flowSource, 'flow.ts'), '#!/usr/bin/env bun\nexport {};\n')
+    await writeFile(join(flowSource, 'FLOW.ts'), '#!/usr/bin/env bun\nexport {};\n')
     await writeFile(
-      join(flowSource, 'input.schema.json'),
+      join(flowSource, 'contract.json'),
       JSON.stringify({
-        $schema: 'https://flow.jig.md/schemas/schema-1.json',
-        type: 'object',
-        properties: {
-          value: { type: 'string' },
-          nested: { type: 'object' },
+        $schema: 'https://flow.jig.md/schemas/invocation-contract-1.schema.json',
+        input: {
+          type: 'object',
+          properties: {
+            value: { type: 'string' },
+            nested: { type: 'object' },
+          },
+          required: ['value'],
+          additionalProperties: false,
         },
-        required: ['value'],
-        additionalProperties: false,
       }),
     )
     await writeFile(join(declarationSource, 'jig.ts'), 'export default {};\n')
@@ -2054,7 +2060,7 @@ async function createFixture(
       mode: 'run',
       packagePath: 'flows/run',
       package: flow,
-      entrypoint: { path: 'flow.ts', suffix: 'ts' },
+      entrypoint: { path: 'FLOW.ts', suffix: 'ts' },
       settings: {},
       attachments: {},
     })
@@ -2217,7 +2223,7 @@ async function insertSlottedCandidate(
       request: activationRequest({
         ...parentContent,
         target: { kind: 'binding', id: 'router' },
-        flowSlots: { child: { kind: 'flow', path: 'flows/child' } },
+        slots: { child: { kind: 'flow', target: { kind: 'flow', path: 'flows/child' } } },
       }),
       disposition: {
         ...parent.disposition,
@@ -2231,7 +2237,7 @@ async function insertSlottedCandidate(
         mode: 'run',
         packagePath: 'flows/child',
         package: child,
-        entrypoint: { path: 'flow.ts', suffix: 'ts' },
+        entrypoint: { path: 'FLOW.ts', suffix: 'ts' },
         settings: {},
         attachments: {},
       }),
@@ -2434,7 +2440,7 @@ function successTerminal(output: JsonValue): PrivateRootRunTerminal {
 }
 
 function activationRequest(content: Record<string, unknown>): Record<string, unknown> {
-  const request = { kind: 'activation-request/4', capabilities: {}, flowSlots: {}, ...content }
+  const request = { kind: 'activation-request/4', slots: {}, ...content }
   return {
     ...request,
     digest: privateDomainDigest('JIG-Activation-Request/4', request as unknown as JsonValue),
@@ -2464,10 +2470,10 @@ async function retainDistinctExecutionPackage(
   const source = join(fixture.base, `execution-${label}`)
   await mkdir(join(source, 'node_modules', 'dependency'), { recursive: true })
   await writeFile(
-    join(source, 'FLOW.md'),
-    ['---', 'name: run', 'description: Prepared direct alpha store fixture.', '---', ''].join('\n'),
+    join(source, 'flow.meta.json'),
+    JSON.stringify({ name: 'run', description: 'Prepared direct alpha store fixture.' }),
   )
-  await writeFile(join(source, 'flow.ts'), "#!/usr/bin/env bun\nimport 'dependency';\nexport {};\n")
+  await writeFile(join(source, 'FLOW.ts'), "#!/usr/bin/env bun\nimport 'dependency';\nexport {};\n")
   await writeFile(join(source, 'node_modules', 'dependency', 'index.js'), 'export {};\n')
   return await retainPackage(fixture.store, source)
 }

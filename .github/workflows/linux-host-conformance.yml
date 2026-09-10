@@ -128,6 +128,13 @@ jobs:
           "$JIG_CI_BUN" test packages/jig/test/root-agent-run-lifecycle.test.ts
           --timeout 180000
 
+      - name: Prove installed Markdown and exact typed calls
+        run: >-
+          scripts/ci/provision-github-rootless-host.sh run-acquisition-host
+          env JIG_LINUX_ROOTLESS_HOSTILE=1
+          "$JIG_CI_BUN" test packages/jig/test/markdown-worker.test.ts
+          --timeout 120000
+
       - name: Run Operational Baseline/1 against the packed archive
         run: >-
           scripts/ci/provision-github-rootless-host.sh run-acquisition-host

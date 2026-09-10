@@ -6,7 +6,6 @@ export type {
   Attachment,
   AttachmentAccess,
   CallOptions,
-  CapabilityCall,
   ChannelBroadcast,
   ChannelContractIdentity,
   ChannelEndpoint,
@@ -14,7 +13,7 @@ export type {
   ChannelPair,
   ChannelReceiver,
   ChannelSender,
-  ChildFlowRequest,
+  FlowCall,
   JsonObject,
   JsonScalar,
   JsonValue,
@@ -23,10 +22,7 @@ export type {
   RunHandler,
   RunResult,
 } from './types.js'
-export {
-  CapabilityError,
-  OperationError,
-} from './types.js'
+export { OperationError } from './types.js'
 
 /** Handle exactly one FLOW Run/1 root request over protocol stdio. */
 export async function handle(handler: RunHandler): Promise<void> {

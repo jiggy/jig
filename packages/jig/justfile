@@ -16,6 +16,8 @@
     bun build src/internal/linux-rootless-supervisor.ts --target=bun --format=esm --outfile=libexec/linux-rootless-supervisor.js
     bun build src/internal/project-evaluator-worker.ts --target=bun --format=esm --outfile=libexec/evaluator/project-evaluator-worker.js
     bun build src/internal/openai-agent-worker.ts --target=bun --format=esm --outfile=libexec/agent/openai-agent-worker.js
+    bun build src/internal/markdown-runtime-worker.ts --target=bun --format=esm --outfile=libexec/markdown-runtime.js
+    cp ../flow-sdk/LICENSE libexec/flow.LICENSE
     bun build src/internal/codex-agent-launcher.ts --target=bun --format=esm --outfile=libexec/agent/codex-agent-launcher.js
     cp node_modules/@agentclientprotocol/codex-acp/dist/index.js libexec/agent/codex-acp.js
     cp node_modules/@agentclientprotocol/codex-acp/LICENSE libexec/agent/codex-acp.LICENSE
@@ -75,5 +77,6 @@ check: build test
     JIG_LINUX_ROOTLESS_HOSTILE=1 bun test test/private-foreground.test.ts --timeout 30000
     JIG_LINUX_ROOTLESS_HOSTILE=1 bun test test/project-command-lifecycle.test.ts --timeout 180000
     JIG_LINUX_ROOTLESS_HOSTILE=1 bun test test/run-checkpoint-lifecycle.test.ts --timeout 90000
+    JIG_LINUX_ROOTLESS_HOSTILE=1 bun test test/markdown-worker.test.ts --timeout 120000
     JIG_LINUX_ROOTLESS_HOSTILE=1 bun test test/root-agent-run-lifecycle.test.ts --timeout 180000
     bun test test/native-agent-startup.test.ts --timeout 60000

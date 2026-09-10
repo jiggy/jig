@@ -40,7 +40,7 @@ Omission means an empty source.
 Discovery is shallow and inert:
 
 - a Flow root selects immediate real directories containing exact-case
-  `FLOW.md`;
+  `FLOW.<ext>`;
 - a Binding root selects immediate regular `*.ts` files;
 - it does not recurse, follow symlinks, execute declarations, or interpret
   globs; and
@@ -83,11 +83,11 @@ export default defineBinding({
 must satisfy the package's `settings.schema.json` when one exists.
 
 `slots` is an optional map with at most 256 entries. Each key is a LocalName
-used by this Binding's package as a Run/1 `flow/run-child` slot. Each value is an
+used by this Binding's package as a Run/1 `flow/call` slot. Each value is an
 exact `flow:<project-relative-path>` or `binding:<LocalName>` selector, using
 the same target vocabulary as the CLI. A Flow selector requires a direct
 Flow target; a Binding selector uses that Binding's own validated settings.
-Either child may use the exact Agent Run capability; a configured Binding may
+Either child may use the exact native Agent Run invocation; a configured Binding may
 also use Project Command. A selected Binding must
 have no child slots. A Binding cannot select its own package, directly or
 through another Binding. Omitting `slots` normalizes to `{}`.
@@ -97,14 +97,15 @@ The example's `critic` Binding selects a separate package such as
 Slots are exact project links, not requests for later resolution. Project
 review binds each slot to the named Flow or Binding target in the same candidate,
 and admission retains that complete relation in one immutable generation.
-Slots belong only to the Binding declaration: running the package through its
-`flow:` identity has no slots, even when a Binding for that package does.
+Explicit Flow routes belong only to the Binding declaration: running the package
+through its `flow:` identity never borrows them. Native defaults are resolved
+from that target's own requirements.
 Plain package paths are not slot selectors. A leading `./` after `flow:` is
 normalized away; the `binding:` suffix must be a LocalName.
 
 `commands` optionally names reviewed [Project Command](project-command.md)
 invocations, for example `commands: { tests: { test: ['test/project.test.ts'] } }`.
-Only packages declaring that exact capability may receive a nonempty map.
+Only packages declaring that exact native invocation may receive a nonempty map.
 Command configuration is independent of ordinary Flow settings and travels
 with the selected Binding, never by inheritance from its caller. Review and
 admission include the exact invocation policy.
@@ -122,8 +123,17 @@ settings override.
 Bindings are optional. A discovered Run package which is valid with empty
 settings, fits the root attachment profile, and uses only the supported
 [Agent Run](agent-run.md) and/or [Run Checkpoint](run-checkpoint.md) contracts
-(or no capabilities) is also an exact direct Flow
+(or no requirements) is also an exact direct Flow
 target. There is no hidden generated Binding.
+
+A required named invocation is declared by `uses.<slot>.contract` in package
+metadata. The selected Flow must offer exactly that ID, version and digest
+through its root `contract.json`; anonymous ordinary calls need no contract.
+Unmapped qualified native Agent Run, Project Command and Run Checkpoint slots
+resolve to the corresponding host implementation. Native authority cannot be
+replaced by mapping a package that merely claims its contract identity.
+Review shows expected contracts and selected routes together. See
+[project policy](project-policy.md#5-bindings) for qualification and limits.
 
 ## Value rules
 

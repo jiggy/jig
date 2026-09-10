@@ -139,9 +139,9 @@ describe('private Bun direct Run', () => {
     expect(original.command).toEqual([
       original.sandboxExecutablePath,
       ...original.bunPolicy,
-      '/package/flows/first/flow.ts',
+      '/package/flows/first/FLOW.ts',
     ])
-    expect(differentRoot.command.at(-1)).toBe('/package/flows/second/flow.ts')
+    expect(differentRoot.command.at(-1)).toBe('/package/flows/second/FLOW.ts')
     executionLayout.aliases[0]!.target = 'libs/second'
     expect(original.execution.layout.aliases[0]!.target).toBe('libs/first')
   })
@@ -205,7 +205,7 @@ describe('private Bun direct Run', () => {
     ).rejects.toMatchObject({
       kind: 'unavailable',
       code: 'PROJECT_AGENT_UNAVAILABLE',
-      path: `${request.packagePath}/FLOW.md`,
+      path: `${request.packagePath}/FLOW.ts`,
     })
 
     const firstProvider = openPrivateOpenAIAgentProvider(installedSupport, {
@@ -287,7 +287,7 @@ describe('private Bun direct Run', () => {
           backend,
           agentProvider: host.agentProvider,
         }),
-      ).resolves.toMatchObject({ request: { capabilities: {} } })
+      ).resolves.toMatchObject({ request: { slots: {} } })
       await expect(
         planPrivateBunDirectRun({
           request: activationRequest(true),
@@ -342,18 +342,21 @@ function activationRequest(agent = false): PrivateActivationRequest {
       kind: 'flow-package/1' as const,
       digest: digest('package'),
     }),
-    entrypoint: Object.freeze({ path: 'flow.ts', suffix: 'ts', selector: 'bun' }),
+    entrypoint: Object.freeze({ path: 'FLOW.ts', suffix: 'ts', selector: 'bun' }),
     settings: Object.freeze({}),
-    capabilities: agent
+    slots: agent
       ? Object.freeze({
           agent: Object.freeze({
-            id: AGENT_RUN_CONTRACT_ID,
-            version: AGENT_RUN_CONTRACT_VERSION,
-            digest: AGENT_RUN_CONTRACT_DIGEST,
+            kind: 'native' as const,
+            native: 'agent' as const,
+            contract: Object.freeze({
+              id: AGENT_RUN_CONTRACT_ID,
+              version: AGENT_RUN_CONTRACT_VERSION,
+              digest: AGENT_RUN_CONTRACT_DIGEST,
+            }),
           }),
         })
       : Object.freeze({}),
-    flowSlots: Object.freeze({}),
     attachments: Object.freeze({}),
   })
   return restorePrivateActivationRequest(

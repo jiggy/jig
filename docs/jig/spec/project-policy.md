@@ -77,7 +77,7 @@ export default defineJig({
 ```
 
 For `flows`, Jig selects immediate child directories containing exact-case
-`FLOW.md`. For `bindings`, it selects immediate regular files named
+`FLOW.<ext>` entrypoints. For `bindings`, it selects immediate regular files named
 `<LocalName>.ts`. Discovery does not recurse or follow symlinks. A missing
 valid discovery root contributes an empty set. Other entries are inert.
 
@@ -132,9 +132,9 @@ FLOW Package/1 tree. Package paths and digests enter the project candidate.
 
 A Flow is a direct Run target only when it:
 
-- has one code entrypoint;
-- declares no capability use, or at most one slot each for the exact Jig
-  Agent Run and Run Checkpoint Capability Contracts;
+- has one qualified `FLOW.<ext>` entrypoint and invocation profile;
+- has no unresolved Flow requirements, and uses only the exact native
+  Agent Run and Run Checkpoint defaults when native services are required;
 - declares at most eight attachments, at most one writable; and
 - accepts `{}` as settings.
 
@@ -145,10 +145,18 @@ packages are therefore invoked through configured Bindings, not direct targets.
 
 [Run Checkpoint](run-checkpoint.md) requires a root writable attachment and
 the installed command's `--out` owner. Its accepted aggregate survives later
-execution interruption under that capability's bounded retention contract.
+execution interruption under that invocation's bounded retention contract.
 
-The first alpha host has one exact recipe: `flow.ts` run by Bun inside the
-rootless execution envelope. A package with production dependencies supplies
+Jig qualifies `FLOW.ts` through installed Bun and `FLOW.md` through the
+bundled [Markdown interpreter](https://flow.jig.md/spec/markdown-runtime),
+both inside the same rootless execution envelope. Other valid formats and
+named-operation contracts are unavailable, not silently substituted.
+Markdown-only recipe packages execute without an Agent; mixed prose derives
+the reserved `markdown-agent` native requirement. Review pins that requirement
+to operator Agent configuration. Authored routes cannot replace it. Markdown
+resources are inert: their `package.json` does not initiate Bun preparation.
+
+A TypeScript package with production dependencies supplies
 ordinary root `package.json` and optionally supplies a text `bun.lock`.
 Project Flow capture excludes generated `node_modules` paths, without following
 their links; dependency preparation never trusts a development installation.
@@ -338,19 +346,30 @@ per-invocation overrides into settings.
 normalizes to `{}`. A Flow selector must identify a direct Flow target, using
 empty settings. A Binding selector uses that Binding's own validated settings
 and must select a Binding with no child slots. Either target may use the exact
-Agent Run capability, and a configured Binding may also use
+Agent Run invocation, and a configured Binding may also use
 [Project Command](project-command.md). Slots cannot select the parent's own package, directly
 or through a Binding; unknown targets, cycles, nonleaf Bindings,
-instruction-only packages, and packages requiring attachments reject the
+unqualified execution profiles, and packages requiring attachments reject the
 candidate. Plain package paths are not slot selectors. Linking captures each
 target identity, and apply admits the complete relation and target
 configuration in the same immutable generation.
 In the example, `binding:critic` is a separate declaration selecting a
 different package, such as `flows/critique`, with its own settings and no slots.
 
-Slots are Binding-local. Starting `flow:flows/review` never borrows slots from
-`binding:reviewer`, and no direct `flow:` target has slots. The map is neither
+Explicit Flow routes are Binding-local. Starting `flow:flows/review` never borrows
+routes from `binding:reviewer`; native defaults are resolved from that target's
+own requirements. The map is neither
 a candidate catalogue nor authority to select a different child at runtime.
+
+`uses` in `flow.meta.json` (code) or optional Markdown frontmatter declares
+uncontracted requirements with `{}` or named requirements with a local
+`contract` path. A typed Flow route must offer the identical contract ID,
+version and descriptor/closure digest in its root `contract.json`. An explicit
+route wins or fails; it never falls back. Uncontracted exact Binding routes
+need no additional declaration. Only the three qualified native contracts may
+default to host implementation. They remain native-only: claiming their digest
+does not grant a package credentials, command execution or retention authority.
+Review shows the resolved route and expected contract for each target slot.
 
 Attachment declarations participate in root eligibility and review without
 invocation paths. A direct root or configured Binding receives its declared
@@ -386,7 +405,7 @@ or run package code.
 If any target has no exact supported recipe, this alpha planning operation
 returns `UNAVAILABLE` and publishes no applicable Plan. Missing or invalid
 host Agent configuration for an Agent-using target includes
-`PROJECT_AGENT_UNAVAILABLE` and its project-relative `FLOW.md` location.
+`PROJECT_AGENT_UNAVAILABLE` and a project-relative package location.
 Failure to prepare dependencies includes `PACKAGE_BUN_PREPARATION_FAILED`
 and its project-relative `package.json` location. These diagnostics include
 fixed guidance, not credentials, raw provider errors, or installer output.
@@ -397,7 +416,7 @@ content digest, which is the same portable identity written to `jig.lock`.
 The default CLI view leads with additions, changes, removals, and the resulting
 target list. It shows every changed portable record in full and omits unchanged
 records. `jig review --details` shows complete current and proposed policy.
-When Agent capabilities are present, both views identify the proposed host
+When Agent invocations are required, both views identify the proposed host
 client, configured model, and API endpoint or native authentication mode through
 a non-secret field allowlist. They never expose credentials or private paths.
 Approval behavior is identical in both views; `--details` is display policy,
@@ -425,7 +444,7 @@ meaning without admitting it.
 `jig.lock` is the one portable desired-state lock. It records only:
 
 - selected package paths and Package/1 digests;
-- direct-target eligibility;
+- direct-target eligibility and invocation requirements;
 - Binding package choices, settings, and exact child slots.
 
 Lock slot values are closed target identities: `{ "kind": "flow", "path":
@@ -483,7 +502,7 @@ dispatch. Repeating the key with identical content returns the same Run;
 changed reuse conflicts and never dispatches again.
 
 After allocation, Jig validates the actual input against
-`input.schema.json`, when present. Invalid input terminates that same durable
+the `input` schema in `contract.json`, when present. Invalid input terminates that same durable
 Run without starting package code.
 
 Package schema roots use FLOW Schema/1 and therefore declare exactly
@@ -492,10 +511,10 @@ package rule, not Jig project authoring metadata.
 
 The host launches one Run/1 process from the exact admitted package bytes in a
 rootless Linux envelope. It validates the returned outcome and the complete
-result against package declarations and `result.schema.json`. A success is
+result against `contract.json` outcomes and its `result` schema. A success is
 published only after the complete process tree is fenced, reaped, and cleaned.
 
-While a Binding Run remains open, its package may use Run/1 `flow/run-child` with
+While a Binding Run remains open, its package may use Run/1 `flow/call` with
 one of that Binding's admitted slot names. Jig resolves the name only to the
 exact Flow or Binding target captured in the same admitted generation. The call
 carries one JSON/1 input and returns that child's complete JSON/1 Run result;
@@ -534,13 +553,12 @@ not just each parent's immediate children. Trusted coordinators and supervisors
 are outside this payload budget. It is not fair-share scheduling or combined
 utilization accounting. Every descendant remains within the root deadline.
 
-An Agent-capable root or child package may use ordinary Run/1 `capability/call`
-through its one exact admitted Agent Run Capability Contract slot. The `run`
-method accepts instructions, an optional exact package-local skill selection,
-and an optional response Schema/1 value. Its wire success is
-`{ "value": { "outcome", "text", "structured"? } }`; Run SDK/1 unwraps the
-outer `value`. A completed structured result is validated against the caller's
-schema before it is returned to the package.
+An Agent-using root or child uses the same `flow/call` through its exact native
+Agent Run slot. Input carries instructions, an optional exact package-local
+Skill selection, and an optional response Schema/1 value. The result is
+`{ "outcome": "done" | "blocked" | "limit", "output": { "text", "structured"? } }`.
+There is no method selector or native-only value wrapper. A completed
+structured result is validated against the caller's schema before return.
 
 Selected skills are immediate `skills/<name>/` subtrees containing exact-case
 `SKILL.md`. Omission selects none. They are copied from the immutable admitted
@@ -670,7 +688,7 @@ A known successful terminal is not downgraded when coordinator loss leaves only
 earlier checkpoint files for delivery; the source identifies those bytes.
 A valid custom outcome may publish files. Operational execution or
 result-validation failure publishes only the actual host record when available,
-unless the root declared [Run Checkpoint](run-checkpoint.md). That capability
+unless the root declared [Run Checkpoint](run-checkpoint.md). That native invocation
 delivers its latest accepted aggregate after confirmed cleanup and adds an
 explicit checkpoint record or `null`; it never exports unfinished scratch.
 unconfirmed Project Session cleanup also suppresses Flow files and returns a
@@ -815,7 +833,7 @@ The direct-alpha project implementation must prove at least:
     Binding targets, receive their own admitted settings and empty attachments,
     cannot exceed the parent deadline, and leave no separately addressable
     child history.
-16. One exact Agent Run capability projects only explicitly selected
+16. One exact Agent Run invocation projects only explicitly selected
     package-local skill subtrees, validates structured output, remains inside
     the parent deadline, and gives the Flow neither network nor its provider
     credential.

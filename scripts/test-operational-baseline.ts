@@ -220,7 +220,7 @@ try {
   // JSON result. This fixture fails before its FLOW handler can start.
   assert.match(
     unsupportedDependency.stderr,
-    /Cannot find package 'jig-alpha-deliberately-missing' from '\/package\/flow\.ts'/,
+    /Cannot find package 'jig-alpha-deliberately-missing' from '\/package\/FLOW\.ts'/,
   )
   assert.ok(Buffer.byteLength(unsupportedDependency.stderr) <= 64 * 1024)
   assert.doesNotMatch(unsupportedDependency.stderr, /\u001b|\.jig|\/proc\/|\/home\/|\/tmp\//)
@@ -306,7 +306,7 @@ try {
   )
   assert.deepEqual(requireRecord(JSON.parse(resolvedRun.stdout)).output, { capitalized: 'Ada' })
 
-  const entry = join(resolvingFlow, 'flow.ts')
+  const entry = join(resolvingFlow, 'FLOW.ts')
   await writeFile(entry, `${await readFile(entry, 'utf8')}\n// source changed\n`)
   const changed = await run([jig, 'review', resolvingProject, '--yes'], consumer, [2], 120_000)
   assert.match(changed.stderr, /PACKAGE_BUN_RESOLUTION_PERMISSION_REQUIRED/)
@@ -435,25 +435,42 @@ async function writeHelloFlow(project: string): Promise<void> {
   const flow = join(project, 'flows', 'hello')
   await mkdir(flow)
   await writeFile(
-    join(flow, 'FLOW.md'),
-    [
-      '---',
-      'name: hello',
-      'description: Return a greeting for the supplied name.',
-      '---',
-      '',
-      'A dependency-closed finite FLOW Run/1 example.',
-      '',
-    ].join('\n'),
+    join(flow, 'flow.meta.json'),
+    JSON.stringify({ name: 'hello', description: 'Return a greeting for the supplied name.' }),
   )
+  await writeFile(join(flow, 'README.md'), 'A dependency-closed finite FLOW Run/1 example.\n')
   await writeFile(
-    join(flow, 'input.schema.json'),
+    join(flow, 'contract.json'),
     JSON.stringify({
-      $schema: 'https://flow.jig.md/schemas/schema-1.json',
-      type: 'object',
-      properties: { name: { type: 'string' } },
-      required: ['name'],
-      additionalProperties: false,
+      $schema: 'https://flow.jig.md/schemas/invocation-contract-1.schema.json',
+      input: {
+        type: 'object',
+        properties: { name: { type: 'string' } },
+        required: ['name'],
+        additionalProperties: false,
+      },
+      result: {
+        type: 'object',
+        properties: {
+          outcome: { const: 'done' },
+          output: {
+            type: 'object',
+            properties: {
+              greeting: { type: 'string' },
+              received: {
+                type: 'object',
+                properties: { name: { type: 'string' } },
+                required: ['name'],
+                additionalProperties: false,
+              },
+            },
+            required: ['greeting', 'received'],
+            additionalProperties: false,
+          },
+        },
+        required: ['outcome', 'output'],
+        additionalProperties: false,
+      },
     }),
   )
   await writeFile(
@@ -465,34 +482,9 @@ async function writeHelloFlow(project: string): Promise<void> {
       additionalProperties: false,
     }),
   )
+
   await writeFile(
-    join(flow, 'result.schema.json'),
-    JSON.stringify({
-      $schema: 'https://flow.jig.md/schemas/schema-1.json',
-      type: 'object',
-      properties: {
-        outcome: { const: 'done' },
-        output: {
-          type: 'object',
-          properties: {
-            greeting: { type: 'string' },
-            received: {
-              type: 'object',
-              properties: { name: { type: 'string' } },
-              required: ['name'],
-              additionalProperties: false,
-            },
-          },
-          required: ['greeting', 'received'],
-          additionalProperties: false,
-        },
-      },
-      required: ['outcome', 'output'],
-      additionalProperties: false,
-    }),
-  )
-  await writeFile(
-    join(flow, 'flow.ts'),
+    join(flow, 'FLOW.ts'),
     [
       'import { createInterface } from "node:readline";',
       '',
@@ -555,7 +547,7 @@ async function exerciseWorkspace(jig: string, consumer: string): Promise<void> {
       dependencies: { 'local-greeting': 'workspace:*' },
     }),
   )
-  const method = join(project, 'flows/hello/flow.ts')
+  const method = join(project, 'flows/hello/FLOW.ts')
   const source = await readFile(method, 'utf8')
   await writeFile(
     method,
@@ -617,16 +609,14 @@ async function writeMalformedFlow(project: string): Promise<void> {
   const flow = join(project, 'flows', 'malformed')
   await mkdir(flow)
   await writeFile(
-    join(flow, 'FLOW.md'),
-    [
-      '---',
-      'name: malformed',
-      'description: Exercise one bounded author diagnostic.',
-      'format: 1',
-      '---',
-      '',
-    ].join('\n'),
+    join(flow, 'flow.meta.json'),
+    JSON.stringify({
+      name: 'malformed',
+      description: 'Exercise one bounded author diagnostic.',
+      license: 1,
+    }),
   )
+  await writeFile(join(flow, 'FLOW.ts'), 'export {};\n')
 }
 
 async function writeFriendlyBinding(project: string): Promise<void> {
@@ -648,30 +638,24 @@ async function writeMissingDependencyFlow(project: string): Promise<void> {
   const flow = join(project, 'flows', 'missing-dependency')
   await mkdir(flow)
   await writeFile(
-    join(flow, 'FLOW.md'),
-    [
-      '---',
-      'name: missing-dependency',
-      'description: Prove that unsupported dependencies fail without installation.',
-      '---',
-      '',
-    ].join('\n'),
+    join(flow, 'flow.meta.json'),
+    JSON.stringify({
+      name: 'missing-dependency',
+      description: 'Prove that unsupported dependencies fail without installation.',
+    }),
   )
-  await writeFile(join(flow, 'flow.ts'), 'import "jig-alpha-deliberately-missing";\n')
+  await writeFile(join(flow, 'FLOW.ts'), 'import "jig-alpha-deliberately-missing";\n')
 }
 
 async function writeLockedDependencyFlow(project: string): Promise<void> {
   const flow = join(project, 'flows', 'locked-dependency')
   await mkdir(flow)
   await writeFile(
-    join(flow, 'FLOW.md'),
-    [
-      '---',
-      'name: locked-dependency',
-      'description: Run one ordinary locked Bun production dependency.',
-      '---',
-      '',
-    ].join('\n'),
+    join(flow, 'flow.meta.json'),
+    JSON.stringify({
+      name: 'locked-dependency',
+      description: 'Run one ordinary locked Bun production dependency.',
+    }),
   )
   await writeFile(
     join(flow, 'package.json'),
@@ -703,7 +687,7 @@ async function writeLockedDependencyFlow(project: string): Promise<void> {
 }\n`,
   )
   await writeFile(
-    join(flow, 'flow.ts'),
+    join(flow, 'FLOW.ts'),
     [
       'import capitalize from "lodash/capitalize.js";',
       'import { createInterface } from "node:readline";',

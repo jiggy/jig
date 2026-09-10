@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Owns the current Jig host contracts, machine schemas, and exact capability
+Owns the current Jig host contracts, machine schemas, and exact native invocation
 descriptors.
 
 ## Ownership
@@ -10,7 +10,7 @@ descriptors.
 - `cli-experience.md` owns task presentation, progress, color/plain behavior, actionable failures, section boundaries, secondary emphasis, and CLI acceptance requirements.
 
 - Prose files own Jig-specific admission, project, execution, SDK, and Agent
-  capability behavior.
+  invocation behavior.
 - `machine/` and `contracts/` contain their assigned published companions.
 - FLOW specifications continue to own portable package and Run semantics.
 - `channels.md` owns Jig's direct/broadcast channel support, local limits, native update

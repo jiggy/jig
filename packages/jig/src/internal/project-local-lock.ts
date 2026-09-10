@@ -7,7 +7,10 @@ import {
 } from '../json.js'
 import { normalizeProjectCommands, type ProjectCommands } from '../project/commands.js'
 import {
-  type LinkedCapabilityUse,
+  type InvocationRequirement,
+  normalizeInvocationIdentity,
+} from '../project/invocation-slots.js'
+import {
   type PackageProjectValue,
   type RunTargetIdentity,
   requirePackageProjectValue,
@@ -19,13 +22,6 @@ import {
 } from '../project/paths.js'
 import { PRIVATE_ACTIVATION_TARGET_LIMIT } from './activation-planning.js'
 import { privateDomainDigest } from './identity.js'
-import {
-  AGENT_RUN_CONTRACT_DIGEST,
-  AGENT_RUN_CONTRACT_ID,
-  AGENT_RUN_CONTRACT_VERSION,
-} from './private-agent-run.js'
-import { isProjectCommandContract } from './private-project-command.js'
-import { isRunCheckpointContract } from './private-run-checkpoint.js'
 
 const DIGEST = /^sha256:[0-9a-f]{64}$/
 const LOCAL_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
@@ -34,7 +30,7 @@ const validatedLocks = new WeakSet<object>()
 export interface PrivateLockPackage {
   readonly digest: string
   readonly directRun: boolean
-  readonly uses: Readonly<Record<string, LinkedCapabilityUse>>
+  readonly uses: Readonly<Record<string, InvocationRequirement>>
 }
 
 export interface PrivateLockBinding {
@@ -148,40 +144,19 @@ function normalizePackages(value: unknown): PrivateProjectLocalLock['packages'] 
 function normalizeUses(
   value: unknown,
   label: string,
-): Readonly<Record<string, LinkedCapabilityUse>> {
+): Readonly<Record<string, InvocationRequirement>> {
   const input = object(value, `${label} uses`)
   const names = Object.keys(input)
-  if (names.length > 3) throw new TypeError(`${label} uses exceed 3 entries`)
-  const output: Record<string, LinkedCapabilityUse> = Object.create(null) as Record<
-    string,
-    LinkedCapabilityUse
-  >
+  if (names.length > 256) throw new TypeError(`${label} uses exceed 256 entries`)
+  const output: Record<string, InvocationRequirement> = Object.create(null)
   for (const name of names.sort()) {
-    localName(name, `${label} capability slot`)
-    const item = exactObject(
-      input[name],
-      ['id', 'version', 'digest'],
-      `${label} capability slot ${name}`,
-    )
-    if (
-      !isProjectCommandContract(item as { id: unknown; version: unknown; digest: unknown }) &&
-      !isRunCheckpointContract(item as { id: unknown; version: unknown; digest: unknown }) &&
-      (item.id !== AGENT_RUN_CONTRACT_ID ||
-        item.version !== AGENT_RUN_CONTRACT_VERSION ||
-        item.digest !== AGENT_RUN_CONTRACT_DIGEST)
-    ) {
-      throw new TypeError(
-        `${label} capability slot ${name} must select an exact supported contract`,
-      )
-    }
-    output[name] = Object.freeze({
-      id: item.id as string,
-      version: item.version as string,
-      digest: item.digest as string,
-    })
+    localName(name, `${label} invocation slot`)
+    const requirement = object(input[name], `${label} slot ${name}`)
+    output[name] =
+      Object.keys(requirement).length === 0
+        ? Object.freeze({})
+        : normalizeInvocationIdentity(requirement)
   }
-  if (new Set(Object.values(output).map(({ digest }) => digest)).size !== names.length)
-    throw new TypeError('lock capability contracts must be distinct')
   return Object.freeze(output)
 }
 

@@ -1,8 +1,8 @@
 import {
-  handle,
-  OperationError,
   type ChannelEndpoint,
+  handle,
   type JsonValue,
+  OperationError,
   type RunResult,
 } from '../../../packages/flow-sdk/src/index'
 
@@ -14,7 +14,7 @@ await handle(async (run): Promise<RunResult> => {
     const source = await run.channel({ contract: './updates.json' })
     let incompatible = false
     try {
-      await run.runChildFlow({
+      await run.call({
         operationId: 'incompatible',
         slot: 'incompatible',
         input: null,
@@ -24,7 +24,7 @@ await handle(async (run): Promise<RunResult> => {
       if (!(error instanceof OperationError) || error.code !== 'INVALID_INPUT') throw error
       incompatible = true
     }
-    const work = run.runChildFlow({
+    const work = run.call({
       operationId: 'worker',
       slot: 'worker',
       input: { role: 'worker' },
@@ -32,7 +32,7 @@ await handle(async (run): Promise<RunResult> => {
     })
     const channels: Record<string, ChannelEndpoint> = { events: source.receive }
     if (run.channels.progress) channels.progress = run.channels.progress
-    const monitor = run.runChildFlow({
+    const monitor = run.call({
       operationId: 'monitor',
       slot: 'monitor',
       input: { role: 'monitor', stop: input.stop === true },
@@ -44,14 +44,13 @@ await handle(async (run): Promise<RunResult> => {
     return { outcome: 'done', output: { incompatible, work: worked.value, monitor: watched.value } }
   }
   if (input.role === 'worker') {
-    const result = await run.callCapability({
+    const result = await run.call({
       operationId: 'answer',
       slot: 'agent',
-      method: 'run',
       input: null,
       channels: { events: run.channels.events! },
     })
-    return { outcome: 'done', output: result }
+    return result
   }
   if (input.role !== 'monitor') throw new TypeError('unknown role')
   const events = run.channels.events

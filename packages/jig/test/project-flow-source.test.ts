@@ -15,8 +15,7 @@ describe('private project Flow source capture', () => {
   linuxTest('application development dependencies do not enter Flow capture', async () => {
     await withProject(async (root) => {
       await packageFiles(root, 'flows/worker', {
-        'FLOW.md': metadata('worker'),
-        'flow.ts': 'export {};\n',
+        'FLOW.ts': 'export {};\n',
       })
       await mkdir(join(root, 'node_modules'))
       await symlink('/missing/development-only', join(root, 'node_modules', 'unused'))
@@ -50,36 +49,40 @@ describe('private project Flow source capture', () => {
     })
   })
 
-  linuxTest('discovers only immediate real directories with exact FLOW.md', async () => {
-    await withProject(async (root) => {
-      await packageFiles(root, 'flows/z', { 'FLOW.md': metadata('z'), 'flow.py': 'pass\n' })
-      await packageFiles(root, 'flows/a', { 'FLOW.md': metadata('a'), 'flow.ts': 'export {};\n' })
-      await packageFiles(root, 'flows/not-a-package', { 'README.md': 'inert\n' })
-      await packageFiles(root, 'flows/nested/too-deep', { 'FLOW.md': metadata('deep') })
-      await writeFile(join(root, 'flows', 'ordinary.txt'), 'inert')
+  linuxTest(
+    'discovers only immediate real directories with canonical Flow implementations',
+    async () => {
+      await withProject(async (root) => {
+        await packageFiles(root, 'flows/z', { 'FLOW.py': 'pass\n' })
+        await packageFiles(root, 'flows/a', { 'FLOW.ts': 'export {};\n' })
+        await packageFiles(root, 'flows/not-a-package', { 'README.md': 'inert\n' })
+        await packageFiles(root, 'flows/inexact', { 'flow.ts': 'export {};\n' })
+        await packageFiles(root, 'flows/nested/too-deep', { 'FLOW.md': metadata('deep') })
+        await writeFile(join(root, 'flows', 'ordinary.txt'), 'inert')
 
-      const source = await captureFlowSource(root, defineJig({ flows: discover('flows') }).flows)
-      try {
-        expect(source.members.map((member) => member.provenance.projectPath)).toEqual([
-          'flows/a',
-          'flows/z',
-        ])
-        expect(source.observations[0]).toEqual({
-          kind: 'discover',
-          root: 'flows',
-          state: 'captured',
-          members: ['flows/a', 'flows/z'],
-        })
-      } finally {
-        await source.dispose()
-      }
-    })
-  })
+        const source = await captureFlowSource(root, defineJig({ flows: discover('flows') }).flows)
+        try {
+          expect(source.members.map((member) => member.provenance.projectPath)).toEqual([
+            'flows/a',
+            'flows/z',
+          ])
+          expect(source.observations[0]).toEqual({
+            kind: 'discover',
+            root: 'flows',
+            state: 'captured',
+            members: ['flows/a', 'flows/z'],
+          })
+        } finally {
+          await source.dispose()
+        }
+      })
+    },
+  )
 
   linuxTest('canonicalizes exact members before capture and records their provenance', async () => {
     await withProject(async (root) => {
-      await packageFiles(root, 'flows/a', { 'FLOW.md': metadata('a'), 'flow.ts': 'export {};\n' })
-      await packageFiles(root, 'flows/z', { 'FLOW.md': metadata('z'), 'flow.py': 'pass\n' })
+      await packageFiles(root, 'flows/a', { 'FLOW.ts': 'export {};\n' })
+      await packageFiles(root, 'flows/z', { 'FLOW.py': 'pass\n' })
       const paths = ['flows/z', 'flows/a']
       const capture = captureFlowSource(root, { kind: 'members', paths })
       paths[0] = 'flows/missing'
@@ -103,7 +106,7 @@ describe('private project Flow source capture', () => {
 
   linuxTest('keeps exact membership strict and project-confined', async () => {
     await withProject(async (root) => {
-      await packageFiles(root, 'flows/ok', { 'FLOW.md': metadata('ok'), 'flow.ts': 'export {};\n' })
+      await packageFiles(root, 'flows/ok', { 'FLOW.ts': 'export {};\n' })
       await expectCode(
         () => captureFlowSource(root, { kind: 'members', paths: ['flows/missing'] }),
         'PROJECT_MEMBER_MISSING',
@@ -162,7 +165,7 @@ describe('private project Flow source capture', () => {
 
   linuxTest('rejects malformed selected packages instead of hiding them', async () => {
     await withProject(async (root) => {
-      await packageFiles(root, 'flows/bad', { 'FLOW.md': 'not frontmatter\n' })
+      await packageFiles(root, 'flows/bad', { 'FLOW.md': '---\nname: broken\n' })
       const failure = await captureFlowSource(root, discover('flows')).then(
         () => undefined,
         (error) => error,
@@ -178,9 +181,8 @@ describe('private project Flow source capture', () => {
   linuxTest('scopes malformed package schemas to one project-relative location', async () => {
     await withProject(async (root) => {
       await packageFiles(root, 'flows/bad-schema', {
-        'FLOW.md': metadata('bad-schema'),
-        'flow.ts': 'export {};\n',
-        'input.schema.json': 'not JSON\n',
+        'FLOW.ts': 'export {};\n',
+        'contract.json': 'not JSON\n',
       })
       const failure = await captureFlowSource(root, discover('flows')).then(
         () => undefined,
@@ -188,9 +190,8 @@ describe('private project Flow source capture', () => {
       )
       expect(failure).toBeInstanceOf(CheckError)
       expect(failure).toMatchObject({
-        code: 'SCHEMA_INVALID_JSON',
-        path: 'flows/bad-schema/input.schema.json',
-        pointer: '',
+        code: 'CONTRACT_INVALID_JSON',
+        path: 'flows/bad-schema/contract.json',
       })
     })
   })
@@ -198,17 +199,13 @@ describe('private project Flow source capture', () => {
   linuxTest('excludes generated node_modules before generic package capture', async () => {
     await withProject(async (root) => {
       await packageFiles(root, 'flows/locked', {
-        'FLOW.md': metadata('locked'),
-        'flow.ts': 'export {};\n',
+        'FLOW.ts': 'export {};\n',
       })
       await mkdir(join(root, 'outside-dependency'))
       await symlink(join(root, 'outside-dependency'), join(root, 'flows', 'locked', 'node_modules'))
       const captured = await captureFlowSource(root, discover('flows'))
       try {
-        expect(captured.members[0]!.captured.files.map(({ path }) => path)).toEqual([
-          'FLOW.md',
-          'flow.ts',
-        ])
+        expect(captured.members[0]!.captured.files.map(({ path }) => path)).toEqual(['FLOW.ts'])
       } finally {
         await captured.dispose()
       }
@@ -218,10 +215,9 @@ describe('private project Flow source capture', () => {
   linuxTest('cleans prior member snapshots and descriptors after a partial failure', async () => {
     await withProject(async (root) => {
       await packageFiles(root, 'flows/a-good', {
-        'FLOW.md': metadata('good'),
-        'flow.ts': 'export {};\n',
+        'FLOW.ts': 'export {};\n',
       })
-      await packageFiles(root, 'flows/z-bad', { 'FLOW.md': 'not frontmatter\n' })
+      await packageFiles(root, 'flows/z-bad', { 'FLOW.md': '---\nname: broken\n' })
       const before = (await readdir('/proc/self/fd')).length
       for (let attempt = 0; attempt < 8; attempt += 1) {
         await expectCode(() => captureFlowSource(root, discover('flows')), 'METADATA_DELIMITER')
@@ -233,8 +229,7 @@ describe('private project Flow source capture', () => {
   linuxTest('retains exact bytes after visible source mutation', async () => {
     await withProject(async (root) => {
       await packageFiles(root, 'flows/a', {
-        'FLOW.md': metadata('a'),
-        'flow.ts': 'export {};\n',
+        'FLOW.ts': 'export {};\n',
         'value.txt': 'before',
       })
       const source = await captureFlowSource(root, discover('flows'))
@@ -255,26 +250,44 @@ describe('private project Flow source capture', () => {
   linuxTest('derives only exact zero-configuration Run targets', async () => {
     await withProject(async (root) => {
       await packageFiles(root, 'flows/direct', {
-        'FLOW.md': metadata('direct'),
-        'flow.ts': 'export {};\n',
+        'FLOW.ts': 'export {};\n',
       })
-      await packageFiles(root, 'flows/instruction-only', { 'FLOW.md': metadata('instruction') })
+      await packageFiles(root, 'flows/markdown', { 'FLOW.md': metadata('instruction') })
       await packageFiles(root, 'flows/dependency', {
-        'FLOW.md': metadata('dependency', 'uses:\n  host:\n    local: true'),
-        'flow.py': 'pass\n',
+        'flow.meta.json': JSON.stringify({ uses: { host: {} } }),
+        'FLOW.py': 'pass\n',
       })
       await packageFiles(root, 'flows/attachment', {
-        'FLOW.md': metadata('attachment', 'attachments:\n  source: read'),
-        'flow.py': 'pass\n',
+        'contract.json': JSON.stringify({
+          $schema: 'https://flow.jig.md/schemas/invocation-contract-1.schema.json',
+          attachments: { source: 'read' },
+        }),
+        'FLOW.py': 'pass\n',
       })
       await packageFiles(root, 'flows/settings', {
-        'FLOW.md': metadata('settings'),
-        'flow.py': 'pass\n',
+        'FLOW.py': 'pass\n',
         'settings.schema.json': schema({
           type: 'object',
           properties: { required: { type: 'string' } },
           required: ['required'],
           additionalProperties: false,
+        }),
+      })
+      await packageFiles(root, 'flows/unknown-metadata', {
+        'FLOW.md': metadata('unknown', 'requirement: true'),
+      })
+      await packageFiles(root, 'flows/code-tools', {
+        'FLOW.ts': 'export {}',
+        'flow.meta.json': JSON.stringify({ 'allowed-tools': 'Read' }),
+      })
+      await packageFiles(root, 'flows/unsupported-tools', {
+        'FLOW.md': metadata('tools', 'allowed-tools: Bash'),
+      })
+      await packageFiles(root, 'flows/named-profile', {
+        'FLOW.ts': 'export {}',
+        'contract.json': JSON.stringify({
+          $schema: 'https://flow.jig.md/schemas/invocation-contract-1.schema.json',
+          operations: { run: {} },
         }),
       })
 
@@ -293,6 +306,13 @@ describe('private project Flow source capture', () => {
             path: 'flows/direct',
             packageDigest: source.members.find(
               (member) => member.provenance.projectPath === 'flows/direct',
+            )!.captured.digest,
+          },
+          {
+            kind: 'flow',
+            path: 'flows/markdown',
+            packageDigest: source.members.find(
+              (member) => member.provenance.projectPath === 'flows/markdown',
             )!.captured.digest,
           },
         ])
@@ -317,8 +337,10 @@ describe('private project Flow source capture', () => {
           captured: { digest: 'sha256:test' },
           inspected: {
             mode: 'run',
-            entrypoint: { path: 'flow.ts', suffix: 'ts' },
-            metadata: { name: 'a', description: 'a', extensions: {} },
+            entrypoint: { path: 'FLOW.ts', suffix: 'ts' },
+            invocation: {},
+            usedContracts: [],
+            metadata: { name: 'a', description: 'a', extensions: {}, unknownFields: {} },
             schemas: {
               settings: {
                 validate: () => {
@@ -357,7 +379,7 @@ async function packageFiles(
 }
 
 function metadata(name: string, extra = ''): string {
-  return `---\nname: ${name}\ndescription: ${name}.\n${extra.length === 0 ? '' : `${extra}\n`}---\n`
+  return `---\nname: ${name}\ndescription: ${name}.\n${extra.length === 0 ? '' : `${extra}\n`}---\nReturn the supplied input.\n`
 }
 
 function schema(value: unknown): string {

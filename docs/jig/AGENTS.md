@@ -10,7 +10,7 @@ use-case and orchestration hypotheses.
 - `spec/cli-experience.md` owns the mandatory experience contract for all public CLI output.
 
 - `spec/` owns current Jig host requirements and machine companions.
-- `contracts/` owns explanatory pages served at capability identity URLs.
+- `contracts/` owns explanatory pages served at invocation identity URLs.
   They route readers to specifications, canonical JSON downloads, and usage;
   they do not define interfaces or act as provider endpoints.
 - `index.md` and `guide/` teach implemented behavior and recommended practice,
@@ -21,7 +21,9 @@ use-case and orchestration hypotheses.
   Its first-method walkthrough extends the ordinary greeting project with a
   bounded support-reply draft, not an example-only installation path.
   `guide/dependencies.md` owns package dependency preparation guidance.
-- `guide/channels.md` teaches tested-patch progress and subprocess
+- `guide/markdown.md` teaches one-file methods, supported Skill authoring,
+  exact recipes and the installed sequential interpreter's limits.
+- `guide/channels.md` teaches application-owned live progress and subprocess
   consumption; `contracts/` also explains named channel agreements.
   Root and package READMEs introduce the product and link to these owners.
 - `guide/*.diagram.json` and matching SVGs own explanatory diagrams alongside
@@ -120,4 +122,4 @@ use-case and orchestration hypotheses.
 ## Child DOX Index
 
 - [spec/AGENTS.md](spec/AGENTS.md) — Current Jig specifications, machine
-  schemas, and exact capability contracts.
+  schemas, and exact native invocation contracts.

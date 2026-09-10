@@ -1,16 +1,16 @@
 import { types as utilTypes } from 'node:util'
 
-import { parseCapabilityContract, type ParsedCapabilityContract } from '../capability/index.js'
+import { type ParsedInvocationContract, parseInvocationContract } from '../invocation-contract.js'
 import { canonicalJson, type JsonObject, type JsonValue } from '../json.js'
 import type { CapturedPackage } from '../package/capture.js'
 import { comparePathBytes } from '../package/paths.js'
-import { compileSchemaFile, type CompiledSchema } from '../schema/index.js'
+import { type CompiledSchema, compileSchemaFile } from '../schema/index.js'
 import { snapshotPrivateOrdinaryJson } from './private-ordinary-json.js'
 
 export const AGENT_RUN_CONTRACT_ID = 'https://jig.md/contracts/agent-run'
 export const AGENT_RUN_CONTRACT_VERSION = '1.0.0'
 export const AGENT_RUN_CONTRACT_DIGEST =
-  'sha256:5e7df4408fd1f6aebf7e1269573a10ff87c7374248a51dacb63cd1c9c97e2b56'
+  'sha256:63ba08f956904d64d499efcd3e93ac19773c61f2efc7de2673a660eb80963cb3'
 
 const LOCAL_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
 const MAX_SELECTED_SKILLS = 64
@@ -37,6 +37,17 @@ export interface AgentRunResult {
   readonly structured?: JsonValue
 }
 
+/** Provider-local completion is projected once into the portable complete invocation result. */
+export function projectAgentRunResult(result: AgentRunResult) {
+  return Object.freeze({
+    outcome: result.outcome === 'completed' ? 'done' : result.outcome,
+    output: Object.freeze({
+      text: result.text,
+      ...(Object.hasOwn(result, 'structured') ? { structured: result.structured! } : {}),
+    }),
+  })
+}
+
 export interface AgentRunSkillFile {
   /** Logical path relative to this skill's `skills/<name>/` root. */
   readonly path: string
@@ -58,6 +69,7 @@ export interface AgentRunSkillManifest {
 
 export type AgentRunValidationCode =
   | 'AGENT_RUN_CONTRACT_MISMATCH'
+  | 'AGENT_RUN_RESULT_INVALID'
   | 'AGENT_RUN_JSON_INVALID'
   | 'AGENT_RUN_SKILL_SELECTION_INVALID'
   | 'AGENT_RUN_SKILL_UNKNOWN'
@@ -88,13 +100,13 @@ interface PreparedInputState {
 const preparedInputs = new WeakMap<PreparedAgentRunInput, PreparedInputState>()
 
 /** Reject every descriptor except the exact current Jig Agent Run contract. */
-export function assertAgentRunContract(contract: ParsedCapabilityContract): void {
+export function assertAgentRunContract(contract: ParsedInvocationContract): void {
   requireAgentRunSchemas(contract)
 }
 
 /** Snapshot and validate one method input before any Agent provider work. */
 export function parseAgentRunInput(
-  contract: ParsedCapabilityContract,
+  contract: ParsedInvocationContract,
   value: unknown,
 ): PreparedAgentRunInput {
   const schemas = requireAgentRunSchemas(contract)
@@ -121,7 +133,7 @@ export function parseAgentRunInput(
 
 /** Snapshot and validate one method result against its prepared input. */
 export function parseAgentRunResult(
-  contract: ParsedCapabilityContract,
+  contract: ParsedInvocationContract,
   input: PreparedAgentRunInput,
   value: unknown,
 ): AgentRunResult {
@@ -134,7 +146,18 @@ export function parseAgentRunResult(
     )
   }
   const resultValue = snapshotAgentJson(value, 'Agent Run result')
-  schemas.result.validate(resultValue, 'AGENT_RUN_RESULT_INVALID')
+  if (
+    resultValue === null ||
+    typeof resultValue !== 'object' ||
+    Array.isArray(resultValue) ||
+    !['completed', 'blocked', 'limit'].includes(String((resultValue as JsonObject).outcome)) ||
+    Object.keys(resultValue).some((key) => !['outcome', 'text', 'structured'].includes(key))
+  )
+    throw new AgentRunValidationError('AGENT_RUN_RESULT_INVALID', 'invalid native Agent result')
+  schemas.result.validate(
+    projectAgentRunResult(resultValue as unknown as AgentRunResult),
+    'AGENT_RUN_RESULT_INVALID',
+  )
   const result = resultValue as unknown as AgentRunResult
   if (prepared.responseSchema !== undefined) {
     if (result.outcome === 'completed' && !Object.hasOwn(result, 'structured')) {
@@ -234,7 +257,7 @@ export async function projectAgentRunSkills(
   })
 }
 
-function requireAgentRunSchemas(contract: ParsedCapabilityContract): AgentRunSchemas {
+function requireAgentRunSchemas(contract: ParsedInvocationContract): AgentRunSchemas {
   if (
     contract === null ||
     typeof contract !== 'object' ||
@@ -257,14 +280,37 @@ function requireAgentRunSchemas(contract: ParsedCapabilityContract): AgentRunSch
     return contractMismatch('Agent Run contract fields must be ordinary data')
   }
 
-  let parsed: ParsedCapabilityContract
+  let parsed: ParsedInvocationContract
   try {
     const descriptor = snapshotPrivateOrdinaryJson(
       descriptorField.value,
       'Agent Run contract descriptor',
       (message) => new AgentRunValidationError('AGENT_RUN_CONTRACT_MISMATCH', message),
     )
-    parsed = parseCapabilityContract(canonicalJson(descriptor), 'Agent Run contract')
+    const channelsField = Object.getOwnPropertyDescriptor(contract, 'channelContracts')
+    if (channelsField === undefined || !('value' in channelsField))
+      return contractMismatch('Agent Run channel closure is absent')
+    const channelDocuments = new Map<string, Uint8Array>()
+    for (const [path, channel] of Map.prototype.entries.call(channelsField.value)) {
+      const field = Object.getOwnPropertyDescriptor(channel, 'descriptor')
+      if (field === undefined || !('value' in field))
+        return contractMismatch('Agent Run channel descriptor is invalid')
+      channelDocuments.set(
+        path,
+        canonicalJson(
+          snapshotPrivateOrdinaryJson(
+            field.value,
+            'Agent channel contract',
+            (message) => new TypeError(message),
+          ),
+        ),
+      )
+    }
+    parsed = parseInvocationContract(
+      canonicalJson(descriptor),
+      'Agent Run contract',
+      channelDocuments,
+    )
   } catch (error) {
     if (error instanceof AgentRunValidationError) throw error
     const message = error instanceof Error ? error.message : String(error)
@@ -276,16 +322,15 @@ function requireAgentRunSchemas(contract: ParsedCapabilityContract): AgentRunSch
     parsed.descriptor.version !== AGENT_RUN_CONTRACT_VERSION ||
     parsed.digest !== AGENT_RUN_CONTRACT_DIGEST ||
     digestField.value !== parsed.digest ||
-    Object.keys(parsed.descriptor.methods).length !== 1 ||
-    !Object.hasOwn(parsed.descriptor.methods, 'run')
+    parsed.profile !== 'single'
   ) {
     return contractMismatch('Agent Run requires the exact current 1.0.0 contract descriptor')
   }
 
-  const input = parsed.schemas.get('/methods/run/input')
-  const result = parsed.schemas.get('/methods/run/output')
+  const input = parsed.schemas.get('/input')
+  const result = parsed.schemas.get('/result')
   if (input === undefined || result === undefined) {
-    return contractMismatch('Agent Run contract is missing its run method schemas')
+    return contractMismatch('Agent Run contract is missing its invocation schemas')
   }
   return Object.freeze({ input, result })
 }

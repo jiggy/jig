@@ -5,16 +5,16 @@ import {
 } from '../src/internal/bun-execution-layout.js'
 import { decodePrivateBunPreparedResult } from '../src/internal/bun-native-preparation.js'
 import { PRIVATE_BUN_PREPARATION_LIMITS } from '../src/internal/bun-native-preparation-protocol.js'
-import { createCapturedPackage, type CapturedPackage } from '../src/package/capture.js'
+import { type CapturedPackage, createCapturedPackage } from '../src/package/capture.js'
 import { packageDigest } from '../src/package/digest.js'
 import { comparePathBytes } from '../src/package/paths.js'
 
-const ordinarySource = { 'flow.ts': 'export {}\n', 'package.json': '{"name":"ordinary"}' }
+const ordinarySource = { 'FLOW.ts': 'export {}\n', 'package.json': '{"name":"ordinary"}' }
 const workspaceSource = {
   'package.json': '{"private":true,"workspaces":["flows/*","libs/*"]}',
   'bun.lock': 'retained lock bytes',
   'flows/main/package.json': '{"name":"main","dependencies":{"helper":"workspace:*"}}',
-  'flows/main/flow.ts': 'import "helper"\n',
+  'flows/main/FLOW.ts': 'import "helper"\n',
   'libs/helper/package.json': '{"name":"helper","exports":"./index.ts"}',
   'libs/helper/index.ts': 'export const value = 42\n',
   'libs/unselected/package.json': '{"name":"unselected"}',
@@ -41,8 +41,8 @@ describe('private prepared Bun result decoder', () => {
       )
       try {
         expect(result.layout).toEqual(EMPTY_PRIVATE_BUN_EXECUTION_LAYOUT)
-        expect(await result.captured.read('flow.ts')).toEqual(
-          Buffer.from(ordinarySource['flow.ts']),
+        expect(await result.captured.read('FLOW.ts')).toEqual(
+          Buffer.from(ordinarySource['FLOW.ts']),
         )
         expect(await result.captured.read('node_modules/dependency/index.js')).toEqual(
           Buffer.from('export default 42'),
@@ -82,7 +82,7 @@ describe('private prepared Bun result decoder', () => {
     try {
       const files =
         mode === 'changed'
-          ? records({ ...ordinarySource, 'flow.ts': 'changed source' })
+          ? records({ ...ordinarySource, 'FLOW.ts': 'changed source' })
           : records({ 'package.json': ordinarySource['package.json'] })
       await expect(
         decodePrivateBunPreparedResult(files, EMPTY_PRIVATE_BUN_EXECUTION_LAYOUT, { captured }),

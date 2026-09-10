@@ -64,7 +64,7 @@ class ChannelTests(unittest.TestCase):
         self.create("channels")
         first, second = self.component.receive(), self.component.receive()
         calls = {first["method"]: first, second["method"]: second}
-        work, read = calls["capability/call"], calls["channel/next"]
+        work, read = calls["flow/call"], calls["channel/next"]
         self.assertEqual(work["params"]["channels"], {"events": "writer:1"})
         self.answer(read, {"item": {"sequence": 1, "value": {"public": False, "text": "hidden"}}})
         read = self.component.receive()
@@ -72,21 +72,21 @@ class ChannelTests(unittest.TestCase):
         read = self.component.receive()
         self.answer(read, {"end": {"lastSequence": 2}})
         self.assertFalse(self.component.has_output())
-        self.answer(work, {"value": {"outcome": "completed"}})
-        self.finish({"complete": True, "agent": {"outcome": "completed"}})
+        self.answer(work, {"outcome": "done", "output": {"text": "completed"}})
+        self.finish({"complete": True, "agent": {"outcome": "done", "output": {"text": "completed"}}})
         self.assertEqual(self.component.remaining_stderr().decode().strip(), "visible")
 
     def test_channel_failure_is_recoverable_without_acknowledgement(self) -> None:
         self.create("channels")
         calls = [self.component.receive(), self.component.receive()]
-        work = next(call for call in calls if call["method"] == "capability/call")
+        work = next(call for call in calls if call["method"] == "flow/call")
         read = next(call for call in calls if call["method"] == "channel/next")
         self.fail_wire(read, "LAGGED")
         release = self.component.receive()
         self.assertEqual(release["method"], "channel/release")
         self.answer(release, {"status": "failed", "code": "LAGGED"})
-        self.answer(work, {"value": "completed"})
-        self.finish({"complete": False, "agent": "completed"})
+        self.answer(work, {"outcome": "done", "output": "completed"})
+        self.finish({"complete": False, "agent": {"outcome": "done", "output": "completed"}})
 
     def test_late_read_failure_is_exposed_by_disposal_once(self) -> None:
         self.create("channel-cancel-read")
@@ -160,6 +160,12 @@ class ChannelTests(unittest.TestCase):
         self.answer(send, None)
         self.assertEqual(self.component.receive()["error"]["data"]["code"], "INVALID_RESULT")
         self.component.wait()
+
+    def test_invalid_root_envelope_precedes_success_path_channel_disposal(self) -> None:
+        self.create("channel-deep-result")
+        self.assertEqual(self.component.receive()["error"]["data"]["code"], "INVALID_RESULT")
+        self.component.wait()
+        self.assertEqual(self.component.remaining_stdout(), b"")
 
     def test_inherited_grant_can_be_consumed(self) -> None:
         request = root_request("channel-inherited")
@@ -236,8 +242,8 @@ class ChannelCapacityTests(unittest.IsolatedAsyncioTestCase):
     async def test_saturated_ordinary_requests_leave_a_disposal_slot(self) -> None:
         runtime, output = self.runtime()
         receiver = runtime._register_endpoint(grant("reader:1", "receive"))
-        calls = [asyncio.create_task(runtime.call_capability(
-            operation_id=f"call:{index}", slot="service", method="run", input=None,
+        calls = [asyncio.create_task(runtime.call(
+            operation_id=f"call:{index}", slot="service", input=None,
         )) for index in range(63)]
         await self.until(lambda: len(output.payloads) == 63)
         closing = asyncio.create_task(receiver.aclose())

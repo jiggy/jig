@@ -42,7 +42,7 @@ operational baselines, and public-site assembly.
 - Site assembly requires Jig's contract identity pages and exact descriptor
   downloads together. The deployed-site check verifies their page titles,
   JSON content types, and canonical bytes; neither operation is runtime
-  capability resolution.
+  invocation resolution.
 
 ## Local Contracts
 
@@ -63,6 +63,9 @@ operational baselines, and public-site assembly.
 - Prefer POSIX shell for orchestration and TypeScript for non-trivial data or
   protocol logic.
 - Keep destructive cleanup limited to paths created by the current script.
+- Baseline fixtures use one `FLOW.<ext>`, code metadata in `flow.meta.json`,
+  and invocation declarations in `contract.json`. Preserve file-publication,
+  diagnostic, authority, and residue assertions when updating their format.
 - Validate worktree arguments and shared-link collisions before creating a
   checkout. A later link failure leaves the checkout with an explicit diagnostic;
   never force-remove potentially edited work as failure cleanup.

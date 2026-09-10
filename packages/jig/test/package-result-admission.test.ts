@@ -8,7 +8,7 @@ import type { JsonValue } from '../src/json.js'
 import { checkPackageDirectory, type InspectedPackage } from '../src/package/inspect.js'
 import type { RunDiagnostics, RunHostTerminal } from '../src/run/session.js'
 
-const schemaUri = 'https://flow.jig.md/schemas/schema-1.json'
+const contractUri = 'https://flow.jig.md/schemas/invocation-contract-1.schema.json'
 const diagnostics = Object.freeze({
   stderr: 'component diagnostic\n',
   stderrBytes: 21,
@@ -19,10 +19,12 @@ describe('private Package/1 result admission', () => {
   test('accepts done and declared custom outcomes without a result schema', async () => {
     await withInspectedPackage(
       {
-        'FLOW.md': flowMetadata(`name: outcomes
-description: Outcome package.
-outcomes:
-  waiting: External input is required.`),
+        'FLOW.ts': 'export {}\n',
+        'flow.meta.json': JSON.stringify({ name: 'outcomes', description: 'Outcome package.' }),
+        'contract.json': JSON.stringify({
+          $schema: contractUri,
+          outcomes: { waiting: 'External input is required.' },
+        }),
       },
       async (inspected) => {
         const done = succeeded('done', { value: 1 })
@@ -37,7 +39,8 @@ outcomes:
   test('rejects undeclared and reserved normal outcomes while preserving diagnostics', async () => {
     await withInspectedPackage(
       {
-        'FLOW.md': flowMetadata('name: outcomes\ndescription: Outcome package.'),
+        'FLOW.ts': 'export {}\n',
+        'flow.meta.json': JSON.stringify({ name: 'outcomes', description: 'Outcome package.' }),
       },
       async (inspected) => {
         for (const outcome of ['waiting', 'failed', 'cancelled', 'error']) {
@@ -56,31 +59,36 @@ outcomes:
   test('validates the complete correlated result schema', async () => {
     await withInspectedPackage(
       {
-        'FLOW.md': flowMetadata(`name: correlated
-description: Correlated result package.
-outcomes:
-  waiting: External input is required.`),
-        'result.schema.json': schemaDocument({
-          oneOf: [
-            {
-              type: 'object',
-              properties: {
-                outcome: { const: 'done' },
-                output: { type: 'string' },
+        'FLOW.ts': 'export {}\n',
+        'flow.meta.json': JSON.stringify({
+          name: 'correlated',
+          description: 'Correlated result package.',
+        }),
+        'contract.json': JSON.stringify({
+          $schema: contractUri,
+          outcomes: { waiting: 'External input is required.' },
+          result: {
+            oneOf: [
+              {
+                type: 'object',
+                properties: {
+                  outcome: { const: 'done' },
+                  output: { type: 'string' },
+                },
+                required: ['outcome', 'output'],
+                additionalProperties: false,
               },
-              required: ['outcome', 'output'],
-              additionalProperties: false,
-            },
-            {
-              type: 'object',
-              properties: {
-                outcome: { const: 'waiting' },
-                output: { type: 'null' },
+              {
+                type: 'object',
+                properties: {
+                  outcome: { const: 'waiting' },
+                  output: { type: 'null' },
+                },
+                required: ['outcome', 'output'],
+                additionalProperties: false,
               },
-              required: ['outcome', 'output'],
-              additionalProperties: false,
-            },
-          ],
+            ],
+          },
         }),
       },
       async (inspected) => {
@@ -93,9 +101,9 @@ outcomes:
           code: 'INVALID_RESULT',
           details: {
             code: 'INVALID_RESULT',
-            path: 'result.schema.json',
+            path: 'contract.json',
             instancePointer: '',
-            schemaPointer: '/oneOf',
+            schemaPointer: '/result/oneOf',
             keyword: 'oneOf',
           },
         })
@@ -107,7 +115,8 @@ outcomes:
   test('does not reclassify an existing protocol or execution failure', async () => {
     await withInspectedPackage(
       {
-        'FLOW.md': flowMetadata('name: exact\ndescription: Exact package.'),
+        'FLOW.ts': 'export {}\n',
+        'flow.meta.json': JSON.stringify({ name: 'exact', description: 'Exact package.' }),
       },
       async (inspected) => {
         for (const code of ['PROTOCOL_ERROR', 'EXECUTION_FAILED'] as const) {
@@ -130,14 +139,6 @@ function succeeded(outcome: string, output: JsonValue): RunHostTerminal {
     result: Object.freeze({ outcome, output }),
     diagnostics,
   })
-}
-
-function flowMetadata(frontmatter: string): string {
-  return `---\n${frontmatter}\n---\n`
-}
-
-function schemaDocument(schema: Record<string, unknown>): string {
-  return JSON.stringify({ $schema: schemaUri, ...schema })
 }
 
 async function withInspectedPackage(

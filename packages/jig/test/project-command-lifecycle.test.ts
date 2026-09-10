@@ -1,15 +1,15 @@
+import { constants, Database } from 'bun:sqlite'
 import { describe, expect, test } from 'bun:test'
-import { Database, constants } from 'bun:sqlite'
-import { cp, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
+import { cp, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { openPrivateInstalledBunHost } from '../src/internal/installed-bun-host.js'
-import { openPrivateProjectSession } from '../src/internal/project-session-controller.js'
-import { installedBunLocation } from './fixtures/installed-bun-location.js'
 import type { RootAdministration, StartRootRunReceipt } from '../src/administration/root.js'
-import type { JsonValue } from '../src/json.js'
+import { openPrivateInstalledBunHost } from '../src/internal/installed-bun-host.js'
 import { projectCommandCandidateDigest } from '../src/internal/private-project-command.js'
+import { openPrivateProjectSession } from '../src/internal/project-session-controller.js'
 import { PRIVATE_ROOT_RESOURCE_POLICY } from '../src/internal/root-operation-limits.js'
+import type { JsonValue } from '../src/json.js'
+import { installedBunLocation } from './fixtures/installed-bun-location.js'
 
 const proof = process.env.JIG_LINUX_ROOTLESS_HOSTILE === '1' ? describe.serial : describe.skip
 
@@ -235,21 +235,28 @@ async function fixture(root: string) {
     await mkdir(join(flow, 'contracts'), { recursive: true })
     await cp(join(import.meta.dir, '../../flow-sdk/dist'), join(flow, 'sdk'), { recursive: true })
     await writeFile(
-      join(flow, 'FLOW.md'),
-      `---\nname: ${name}\ndescription: Collect bounded project-command evidence.\n${name === 'command' ? 'uses:\n  command:\n    contract: ./contracts/project-command.capability.json\n' : ''}---\n`,
+      join(flow, 'flow.meta.json'),
+      JSON.stringify({
+        name,
+        description: 'Collect bounded project-command evidence.',
+        ...(name === 'command'
+          ? { uses: { command: { contract: './contracts/project-command/contract.json' } } }
+          : {}),
+      }),
     )
     await writeFile(
-      join(flow, 'flow.ts'),
+      join(flow, 'FLOW.ts'),
       name === 'command'
-        ? 'import {handle} from "./sdk/index.js"; await handle(async run=>({outcome:"done",output:await run.callCapability({operationId:"command",slot:"command",method:"run",input:run.input})}));'
+        ? 'import {handle} from "./sdk/index.js"; await handle(async run=>await run.call({operationId:"command",slot:"command",input:run.input}));'
         : name === 'pair'
-          ? 'import {handle} from "./sdk/index.js"; await handle(async run=>({outcome:"done",output:await Promise.all(["a","b"].map(operationId=>run.runChildFlow({operationId,slot:"worker",input:run.input})))}));'
-          : 'import {handle} from "./sdk/index.js"; await handle(async run=>run.runChildFlow({operationId:"worker",slot:"worker",input:run.input}));',
+          ? 'import {handle} from "./sdk/index.js"; await handle(async run=>({outcome:"done",output:await Promise.all(["a","b"].map(operationId=>run.call({operationId,slot:"worker",input:run.input})))}));'
+          : 'import {handle} from "./sdk/index.js"; await handle(async run=>run.call({operationId:"worker",slot:"worker",input:run.input}));',
     )
     if (name === 'command')
       await cp(
-        join(import.meta.dir, '../../../docs/jig/spec/contracts/project-command.capability.json'),
-        join(flow, 'contracts/project-command.capability.json'),
+        join(import.meta.dir, '../../../docs/jig/spec/contracts/project-command'),
+        join(flow, 'contracts/project-command'),
+        { recursive: true },
       )
   }
   await writeFile(

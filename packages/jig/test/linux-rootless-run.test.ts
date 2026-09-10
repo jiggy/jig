@@ -1,22 +1,21 @@
 import { afterAll, describe, expect, test } from 'bun:test'
 import { spawn } from 'node:child_process'
-import { mkdir, mkdtemp, readFile, readdir, realpath, rm, stat, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readdir, readFile, realpath, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-
+import { privateCaptureAttachments } from '../src/internal/linux-file-input.js'
+import { resolvePrivateLinuxHostLoader } from '../src/internal/linux-host-paths.js'
 import {
   PrivateLinuxCgroupBackend,
   PrivateLinuxFenceUnconfirmedError,
-  requirePrivateLinuxMechanismUnchanged,
-  releasePrivateLinuxOwnerState,
-  type PrivateLinuxReadOnlyMount,
   type PrivateLinuxLaunchPlan,
+  type PrivateLinuxReadOnlyMount,
   type PrivateLinuxSealedOwnerIdentity,
+  releasePrivateLinuxOwnerState,
+  requirePrivateLinuxMechanismUnchanged,
 } from '../src/internal/linux-rootless-backend.js'
 import { RunHostSession } from '../src/run/session.js'
-import { privateCaptureAttachments } from '../src/internal/linux-file-input.js'
-import { resolvePrivateLinuxHostLoader } from '../src/internal/linux-host-paths.js'
 import { installedBunLocation } from './fixtures/installed-bun-location.js'
 
 const HOSTILE = process.env.JIG_LINUX_ROOTLESS_HOSTILE === '1'
@@ -827,7 +826,7 @@ function plan(
     command: [
       '/jig-runtime/bun',
       ...['--no-env-file', '--no-install', '--config=/dev/null'],
-      '/package/flow.ts',
+      '/package/FLOW.ts',
     ],
   }
 }
@@ -854,7 +853,7 @@ async function runtimeMounts(
 
 async function createFixture(source: string): Promise<string> {
   const directory = await mkdtemp(join(tmpdir(), 'jig-rootless-fixture-'))
-  await writeFile(join(directory, 'flow.ts'), source, 'utf8')
+  await writeFile(join(directory, 'FLOW.ts'), source, 'utf8')
   return directory
 }
 

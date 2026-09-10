@@ -8,9 +8,13 @@ It is deliberately separate from the SDK implementations.
 The current corpus covers:
 
 - `fixtures/messages.json` checks the context-free message schemas;
+- `schema.test.ts` also checks anonymous/named invocation descriptor shapes,
+  disjoint future named operations, inline channel restrictions, and public
+  descriptor examples; structural acceptance does not qualify execution;
 - `fixtures/framing.json` records raw JSON/1 and framing boundaries;
 - `components.test.ts` drives one golden full-duplex conversation through the
-  TypeScript and Python SDK components;
+  TypeScript and Python SDK components using unified `flow/call` requests and
+  complete results, including a normal declared domain outcome;
 - `channels.test.ts` and the independent Python peer exchange structured direct
   messages with both SDKs, including failed observation with successful work;
 - `component-matrix.test.ts` exercises black-box state, root and call-specific

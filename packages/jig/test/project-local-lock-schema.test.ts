@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import { readFile } from 'node:fs/promises'
 
+import { AGENT_RUN_CONTRACT_DIGEST } from '../src/internal/private-agent-run.js'
 import { compileSchemaFile, SchemaDiagnostic } from '../src/schema/index.js'
 
 const schema = compileSchemaFile(
@@ -23,7 +24,7 @@ const lock = {
         agent: {
           id: 'https://jig.md/contracts/agent-run',
           version: '1.0.0',
-          digest: 'sha256:5e7df4408fd1f6aebf7e1269573a10ff87c7374248a51dacb63cd1c9c97e2b56',
+          digest: AGENT_RUN_CONTRACT_DIGEST,
         },
       },
     },
@@ -46,6 +47,33 @@ function changed(value: unknown, mutate: (copy: Record<string, any>) => void): u
 describe('Jig lock/1 shape schema', () => {
   test('accepts the complete current lock shape', () => {
     expect(() => schema.validate(lock, 'INVALID_JIG_LOCK')).not.toThrow()
+  })
+
+  test('accepts explicit uncontracted slots and arbitrary exact invocation requirements', () => {
+    for (const requirement of [
+      {},
+      { id: 'https://example.org/contracts/review', version: '2.0.0', digest },
+    ]) {
+      const value = changed(lock, (item) => {
+        item.packages['flows/direct'].uses.agent = requirement
+        item.packages['flows/direct'].directRun = false
+      })
+      expect(() => schema.validate(value, 'INVALID_JIG_LOCK')).not.toThrow()
+    }
+  })
+
+  test('bounds invocation requirements independently of the number of native implementations', () => {
+    const value = changed(lock, (item) => {
+      item.packages['flows/direct'].uses = Object.fromEntries(
+        Array.from({ length: 256 }, (_, index) => [`slot-${index}`, {}]),
+      )
+      item.packages['flows/direct'].directRun = false
+    })
+    expect(() => schema.validate(value, 'INVALID_JIG_LOCK')).not.toThrow()
+    const oversized = changed(value, (item) => {
+      item.packages['flows/direct'].uses.extra = {}
+    })
+    expect(() => schema.validate(oversized, 'INVALID_JIG_LOCK')).toThrow(SchemaDiagnostic)
   })
 
   for (const [name, value] of [
@@ -85,9 +113,15 @@ describe('Jig lock/1 shape schema', () => {
       }),
     ],
     [
-      'a different capability contract',
+      'an incomplete invocation identity',
       changed(lock, (item) => {
-        item.packages['flows/direct'].uses.agent.id = 'https://example.org/contracts/agent'
+        delete item.packages['flows/direct'].uses.agent.version
+      }),
+    ],
+    [
+      'a malformed invocation digest',
+      changed(lock, (item) => {
+        item.packages['flows/direct'].uses.agent.digest = 'sha256:bad'
       }),
     ],
   ] as const) {

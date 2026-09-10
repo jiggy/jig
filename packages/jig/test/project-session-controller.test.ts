@@ -1,5 +1,5 @@
-import { describe, expect, test } from 'bun:test'
 import { Database } from 'bun:sqlite'
+import { describe, expect, test } from 'bun:test'
 import { randomUUID } from 'node:crypto'
 import { mkdir, mkdtemp, readFile, rename, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -258,17 +258,24 @@ describe('private finite project session', () => {
   })
 
   test('admits only source diagnostic code families and closes private state codes', () => {
-    for (const code of ['CHANNEL_FIELD', 'CHANNEL_LIMIT', 'CHANNEL_REFERENCE']) {
+    for (const code of [
+      'CHANNEL_FIELD',
+      'CHANNEL_LIMIT',
+      'CHANNEL_REFERENCE',
+      'CONTRACT_FIELD',
+      'CONTRACT_LIMIT',
+      'CONTRACT_REFERENCE',
+    ]) {
       const failure = new CheckError(
         'invalid',
         code,
         'private diagnostic text',
-        'flows/bad/FLOW.md',
+        'flows/bad/contract.json',
       )
       expect(projectError(failure, 'plan').toJSON()).toEqual({
         code: 'INVALID_CANDIDATE',
         message: 'project candidate is invalid',
-        diagnostic: { code, path: 'flows/bad/FLOW.md' },
+        diagnostic: { code, path: 'flows/bad/contract.json' },
       })
     }
     expect(

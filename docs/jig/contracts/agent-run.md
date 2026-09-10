@@ -14,33 +14,35 @@ credentials, and endpoint.
 
 `https://jig.md/contracts/agent-run` identifies the shared **interface**, not
 an Agent server or an API endpoint. You may have found it in a
-`*.capability.json` file inside a Flow package.
+`contract.json` file inside a Flow package.
 
 That file is a local copy of the interface the Flow expects, not a new Agent
 implementation. Jig matches its contract ID, exact version, and canonical
-descriptor digest against supported host capabilities. Copying the file does
+descriptor digest against supported native host implementations. Copying the file does
 not provide an Agent or grant permission to use one.
 
-This page is an explanatory guide. Jig does not fetch it to resolve a
-capability, and changing this page does not change the contract. Matching uses
+This page is an explanatory guide. Jig does not fetch it to resolve an
+invocation, and changing this page does not change the contract. Matching uses
 the package-local descriptor offline. The ID names the contract across
 versions; the descriptor carries the version and exact interface.
 
 ## Where to go next
 
-- **Use the capability:** read the [Agent Run specification](../spec/agent-run.md)
+- **Use the invocation:** read the [Agent Run specification](../spec/agent-run.md)
   for request and result fields, Skills, limits, and failure behavior.
 - **Configure an Agent:** follow the
   [host configuration instructions](../spec/agent-run.md#alpha-host-implementations).
   Do not use this contract ID as your provider's base URL.
 - **Get the interface file:** download the
-  [Agent Run JSON descriptor](https://jig.md/contracts/agent-run.capability.json).
-  Keep an exact copy in the Flow package and reference that local file from
-  `FLOW.md`, as the specification shows.
+  [Agent Run JSON descriptor](https://jig.md/contracts/agent-run/contract.json).
+  Keep its [referenced channel descriptor](https://jig.md/contracts/agent-run/contracts/acp-public-updates.json)
+  beside it under `contracts/acp-public-updates.json`; copy the complete bundle
+  into the Flow package and reference the invocation descriptor from
+  `flow.meta.json` (or Markdown frontmatter), as the specification shows.
 - **See it in an application:** try the
   [support-case application](../guide/support-case.md).
 - **Understand contract matching:** read
-  [FLOW Capability Contract/1](https://flow.jig.md/spec/capability-contracts).
+  [FLOW Invocation Contract/1](https://flow.jig.md/spec/invocation-contracts).
 
 The interface is a prerelease candidate. Check the specification and your
 installed host's supported contract before adopting a descriptor update.

@@ -56,8 +56,10 @@ how their methods advance; explicit boundaries let other software use the work.
 The elegance we seek is substantial expressive power through a small set of
 responsibilities. "Microkernel-inspired" names that design conviction. It does
 not require an operating system, general service framework, or universal
-application model. Flows perform bounded work; capabilities expose interfaces
-or controlled effects; runtimes own internal control. FLOW's independent
+application model. Flows perform bounded work; optional invocation contracts
+name interchangeable interfaces, including services backed by host-held powers.
+Uniform calls do not make that native authority package authority.
+Runtimes own internal control; applications own purpose. FLOW's independent
 method boundary supports this composition without adopting Jig's host policy.
 Their detailed product reasoning lives in [FLOW](flow.md) and [Jig](jig.md).
 

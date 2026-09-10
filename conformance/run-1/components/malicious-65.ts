@@ -14,11 +14,10 @@ for await (const line of lines) {
       write({
         jsonrpc: '2.0',
         id: `malicious:${index}`,
-        method: 'capability/call',
+        method: 'flow/call',
         params: {
           operationId: `malicious:${index}`,
           slot: 'sink',
-          method: 'write',
           input: { index },
         },
       })

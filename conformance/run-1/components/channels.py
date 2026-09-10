@@ -5,8 +5,8 @@ from jiggy.flow import OperationError, handle
 
 async def run(context):
     channel = await context.channel()
-    work = asyncio.create_task(context.call_capability(
-        operation_id="answer", slot="worker", method="run", input=context.input,
+    work = asyncio.create_task(context.call(
+        operation_id="answer", slot="worker", input=context.input,
         channels={"events": channel.send},
     ))
     values = []

@@ -9,7 +9,7 @@ protocols. Generic channels need no named contract.
 
 ## 1. Declarations
 
-`FLOW.md` and Capability Contract/1 method objects may declare a `channels`
+Invocation Contract/1 operation objects may declare a `channels`
 map. Each key is a `LocalName`; each value is a closed object:
 
 | Field | Meaning |
@@ -28,8 +28,13 @@ nor replay. Declarations describe requirements, not grants. A required port must
 be connected before invocation; this does not guarantee its peer will succeed.
 Channel names are local slots, not globally discoverable addresses.
 
-References obey Package/1's canonical package-local reference rules. Hosts
-resolve them within the exact calling/receiving package; no URI is fetched.
+References obey Package/1's canonical downward-only reference rules. Resolve
+declaration references relative to the invocation descriptor's containing
+directory in the immutable package; runtime creation references remain relative
+to the calling package root. No URI is fetched. The complete referenced closure
+participates in the [invocation identity](invocation-contracts.md#2-offline-channel-closure-and-exact-digest).
+Inline item schemas are reference-free: `$ref` and `$defs` in schema-keyword
+positions reject; literal property names and annotation/example data remain data.
 
 ## 2. Descriptor and identity
 
@@ -38,7 +43,7 @@ A self-contained UTF-8 JSON/1 descriptor has exactly these fields:
 | Field | Meaning |
 | --- | --- |
 | `$schema` | `https://flow.jig.md/schemas/channel-contract-1.schema.json` |
-| `id` | Canonical [Capability Contract/1 identity URI](capability-contracts.md#11-contract-identity-and-version-syntax) |
+| `id` | Canonical [Invocation Contract/1 identity URI](invocation-contracts.md#11-contract-identity-and-version-syntax) |
 | `version` | Exact three-component SemVer core, using the same syntax |
 | `semantics` | Normative nonempty description, at most 16,384 UTF-8 bytes |
 | `item` | One Schema/1 schema; `true` accepts any JSON/1 value |
@@ -90,6 +95,6 @@ versus snapshots and domain completeness. Sequence one identifies this source's
 origin, not complete upstream history. A clean channel end cannot establish a
 successful Agent result, accepted application outcome or durable processing.
 
-The exchange and lifecycle rules are in [Run/1](run-protocol.md#51-channels).
+The exchange and lifecycle rules are in [Run/1](run-protocol.md#5-channels).
 This contract does not grant network access, session mutation or arbitrary
 transports. Binary payloads require separately specified support.

@@ -28,9 +28,9 @@ async function fixture(versions = false) {
     type: 'module',
     dependencies: { helper: 'workspace:*', ...(versions ? { semver: '7.7.2' } : {}) },
   })
-  await put(`${target}/FLOW.md`, '---\nname: work\ndescription: Workspace fixture.\n---\n')
+  await put(`${target}/flow.meta.json`, { name: 'work', description: 'Workspace fixture.' })
   await put(
-    `${target}/flow.ts`,
+    `${target}/FLOW.ts`,
     versions
       ? 'import { message } from "helper"; import version from "semver/package.json"; console.log(JSON.stringify([message, version.version]))\n'
       : 'import { message } from "helper"; console.log(message)\n',
@@ -367,7 +367,7 @@ test.each(['unlocked', 'locked', 'stale', 'topology', 'versions', 'large'] as co
           '--no-env-file',
           '--no-install',
           '--config=/dev/null',
-          `${layout.flowRoot}/flow.ts`,
+          `${layout.flowRoot}/FLOW.ts`,
         ],
         { cwd: prepared, env: {}, stdout: 'pipe', stderr: 'pipe' },
       )

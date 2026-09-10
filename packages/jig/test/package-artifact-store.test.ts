@@ -7,8 +7,8 @@ import {
   mkdir,
   mkdtemp,
   open,
-  readFile,
   readdir,
+  readFile,
   rm,
   symlink,
   truncate,
@@ -20,12 +20,12 @@ import { dirname, join } from 'node:path'
 
 import {
   captureStoredPackage,
+  type PackageArtifactRef,
   PRIVATE_PACKAGE_ARTIFACT_STORE_LIMITS,
   privatePackageArtifactArchiveBytes,
-  type PackageArtifactRef,
   publishCapturedPackage,
 } from '../src/internal/package-artifact-store.js'
-import { capturePackageDirectory, type CapturedPackage } from '../src/package/capture.js'
+import { type CapturedPackage, capturePackageDirectory } from '../src/package/capture.js'
 
 const metadata = '---\nname: retained\ndescription: Retained fixture.\n---\n'
 
@@ -34,7 +34,7 @@ describe('private Package/1 artifact store', () => {
     await withStoreAndSource(async (store, source) => {
       await writeTree(source, {
         'FLOW.md': metadata,
-        'flow.ts': "export default 'old';\n",
+        'resources/value.ts': "export default 'old';\n",
         'lib/value.bin': Uint8Array.of(0, 1, 255),
       })
       const captured = await capturePackageDirectory(source)
@@ -52,7 +52,7 @@ describe('private Package/1 artifact store', () => {
       await rm(source, { recursive: true, force: true })
       const reopened = await captureStoredPackage(store, reference)
       try {
-        expect(new TextDecoder().decode(await reopened.read('flow.ts'))).toBe(
+        expect(new TextDecoder().decode(await reopened.read('resources/value.ts'))).toBe(
           "export default 'old';\n",
         )
         expect(await reopened.read('lib/value.bin')).toEqual(Uint8Array.of(0, 1, 255))
