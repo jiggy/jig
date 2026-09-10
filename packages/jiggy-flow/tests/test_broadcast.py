@@ -173,17 +173,47 @@ class BroadcastRuntimeTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(self.runtime._fatal)
 
     async def test_release_end_cannot_precede_racing_committed_read(self):
+        await self._assert_release_end_waits_for_committed_read("request/cancel")
+
+    async def test_release_end_cannot_precede_committed_read_when_release_is_written_first(self):
+        await self._assert_release_end_waits_for_committed_read("channel/release")
+
+    async def _assert_release_end_waits_for_committed_read(self, first_method):
         feed = await self.subscribe(await self.source(), "reader:1")
         reading, read = await self.request(anext(feed))
-        closing = asyncio.create_task(feed.aclose())
-        await self.until(lambda: self.frames()[-1].get("method") == "channel/release")
-        release = self.frames()[-1]
-        await self.answer(release, {"status": "ended", "lastSequence": 0})
-        self.assertFalse(closing.done())
-        await self.answer(read, {"item": {"sequence": 1, "value": "first"}})
-        await asyncio.gather(reading, return_exceptions=True)
-        with self.assertRaises(OperationError) as failed:
-            await closing
+        write = self.runtime._write
+        first_written = asyncio.Event()
+        methods = {"request/cancel", "channel/release"}
+
+        async def ordered_write(value, **kwargs):
+            method = value.get("method")
+            if method in methods and method != first_method:
+                await first_written.wait()
+            await write(value, **kwargs)
+            if method == first_method:
+                first_written.set()
+
+        # Disposal and read cancellation write independently. Exercise both
+        # orders, and select the release by identity rather than its position
+        # at the end of a concurrently written frame list.
+        before = len(self.output.payloads)
+        with patch.object(self.runtime, "_write", ordered_write):
+            closing = asyncio.create_task(feed.aclose())
+            await self.until(lambda: len(self.output.payloads) >= before + 2)
+            frames = self.frames()[before:]
+            self.assertEqual([frame["method"] for frame in frames],
+                             [first_method, (methods - {first_method}).pop()])
+            release = next(frame for frame in frames if frame["method"] == "channel/release")
+            cancel = next(frame for frame in frames if frame["method"] == "request/cancel")
+            self.assertEqual(release["params"], {"endpoint": "reader:1"})
+            self.assertEqual(cancel["params"], {"requestId": read["id"]})
+            await self.answer(release, {"status": "ended", "lastSequence": 0})
+            await self.until(lambda: feed._released)
+            self.assertFalse(closing.done())
+            await self.answer(read, {"item": {"sequence": 1, "value": "first"}})
+            await asyncio.gather(reading, return_exceptions=True)
+            with self.assertRaises(OperationError) as failed:
+                await closing
         self.assertEqual(failed.exception.code, "PROTOCOL_ERROR")
         self.assertTrue(self.runtime._fatal)
 

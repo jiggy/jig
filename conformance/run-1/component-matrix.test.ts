@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test'
+import { rejects } from 'node:assert/strict'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
@@ -683,7 +684,7 @@ test('a nonzero exit invalidates a complete root response', async () => {
   ])
   try {
     expect(await peer.receive()).toEqual(JSON.parse(response))
-    await expect(peer.finish()).rejects.toThrow('component exited 7')
+    await rejects(peer.finish(), /component exited 7/)
   } finally {
     await peer.dispose()
   }

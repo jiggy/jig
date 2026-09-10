@@ -50,7 +50,9 @@ is independently packaged for PyPI prereleases; Jig hosting is outside its scope
 
 - Preserve Python's `bool` versus `int` distinction in JSON/1 validation.
 - Test thread/event-loop coordination and terminal-write races through
-  subprocess behavior.
+  subprocess behavior. Unit race tests should force the relevant write orders
+  and correlate frames by method and request identity; concurrent cancellation
+  notifications need not leave a request at the end of captured output.
 - Keep typing, validation, examples, and package metadata aligned.
 - Run installed distributions outside the checkout with no source-path injection.
 - Qualify Python 3.11–3.14 and representative Linux/macOS/Windows interpreters;

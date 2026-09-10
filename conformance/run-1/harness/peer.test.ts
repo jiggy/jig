@@ -1,4 +1,5 @@
 import { expect, test } from 'bun:test'
+import { rejects } from 'node:assert/strict'
 
 import { ComponentPeer } from './peer'
 
@@ -11,7 +12,7 @@ test('component peer rejects a valid trailing frame', async () => {
 
   try {
     expect(await peer.receive()).toEqual({ first: true })
-    await expect(peer.finish()).rejects.toThrow('unexpected frame')
+    await rejects(peer.finish(), /unexpected frame/)
   } finally {
     await peer.dispose()
   }
@@ -26,7 +27,7 @@ test('component peer rejects partial trailing output', async () => {
 
   try {
     expect(await peer.receive()).toEqual({ first: true })
-    await expect(peer.finish()).rejects.toThrow('partial frame')
+    await rejects(peer.finish(), /partial frame/)
   } finally {
     await peer.dispose()
   }

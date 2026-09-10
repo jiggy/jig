@@ -39,6 +39,9 @@ protocol candidates.
 
 - Change shared fixtures, both peers, SDK tests, and specifications together
   when portable behavior changes.
+- Use `node:assert/strict`'s `rejects` for failures that await subprocess exit.
+  Bun's promise rejection matcher can stall exit observation in the pinned
+  runner. Preserve checks for exit status, trailing frames, and partial bytes.
 
 ## Verification
 
