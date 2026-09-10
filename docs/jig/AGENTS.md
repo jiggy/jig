@@ -92,6 +92,9 @@ use-case and orchestration hypotheses.
 
 - Use `sh` fences for shell commands; reserve `console` for transcripts with
   prompts and output, so command examples receive syntax highlighting.
+- Keep the first greeting input simple: a JSON string with one type check
+  and a fallback. Keep the generated starter, commands, and before/after
+  results aligned throughout the tutorial.
 - Start with the user's visible result and the simplest credible alternative.
 - Explain an unfamiliar name in one short paragraph before presenting tests,
   topology, prerequisites, or metrics.

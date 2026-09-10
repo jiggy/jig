@@ -34,7 +34,7 @@ Create a project, review its changes, approve it, then run its greeting Flow:
 jig init hello-jig
 cd hello-jig
 jig review --allow-resolution-network
-jig run flow:flows/hello --input '{"name":"Ada"}'
+jig run flow:flows/hello --input '"Ada"'
 ```
 
 During `jig review`, inspect the generated source with your editor and read
@@ -68,16 +68,14 @@ The generated `flow.ts` is ordinary SDK code you can edit:
 import { handle } from "@jigging/flow";
 
 await handle(async (run) => {
-  const name = typeof run.input === "object" && run.input !== null &&
-      !Array.isArray(run.input) && typeof run.input.name === "string"
-    ? run.input.name
-    : "world";
+  const name = typeof run.input === "string" ? run.input : "world";
   return { outcome: "done", output: { message: `Hello, ${name}!` } };
 });
 ```
 
 The result includes `status: "succeeded"`, `outcome: "done"`, and
 `output: { "message": "Hello, Ada!" }`, alongside bounded diagnostics.
+The input is a JSON string; other input values use `"world"`.
 This Flow needs no Agent configuration.
 
 ## Make one change
@@ -86,7 +84,7 @@ In `flows/hello/flow.ts`, change `Hello,` to `Welcome,`. Review and run again:
 
 ```sh
 jig review --allow-resolution-network
-jig run flow:flows/hello --input '{"name":"Ada"}'
+jig run flow:flows/hello --input '"Ada"'
 ```
 
 Approve the source change only after reviewing it. The new output contains

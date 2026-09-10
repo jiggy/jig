@@ -130,7 +130,7 @@ function greetingFiles(): readonly (readonly [string, string])[] {
   return [
     [
       'flows/hello/FLOW.md',
-      '---\nname: hello\ndescription: Return a greeting for the supplied name.\n---\n\n# Hello\n\nAn editable first Flow. It needs no Agent or file access.\n',
+      '---\nname: hello\ndescription: Greet the supplied string, or world for other input values.\n---\n\n# Hello\n\nAn editable first Flow. It needs no Agent or file access.\n',
     ],
     [
       'flows/hello/package.json',
@@ -142,10 +142,7 @@ function greetingFiles(): readonly (readonly [string, string])[] {
         'import { handle } from "@jigging/flow";',
         '',
         'await handle(async (run) => {',
-        '  const input = run.input;',
-        '  const name = typeof input === "object" && input !== null &&',
-        '      !Array.isArray(input) && typeof input.name === "string"',
-        '    ? input.name : "world";',
+        '  const name = typeof run.input === "string" ? run.input : "world";',
         '  return { outcome: "done", output: { message: `Hello, ${name}!` } };',
         '});',
         '',
@@ -160,7 +157,7 @@ function greetingFiles(): readonly (readonly [string, string])[] {
         '',
         '```sh',
         'jig review --allow-resolution-network',
-        'jig run flow:flows/hello --input \'{"name":"Ada"}\'',
+        'jig run flow:flows/hello --input \'"Ada"\'',
         '```',
         '',
         'Review prepares dependencies privately, shows changes, and asks for approval.',

@@ -26,7 +26,7 @@ admitted FLOW packages.
   are private composition or test seams.
 - Expose only the documented CLI and authoring surface; private host machinery
   is not a provider, runtime, or containment SPI.
-- Default `init` writes an ordinary greeting Flow; `--bare` writes only the
+- Default `init` writes a greeting Flow with a string input and a world fallback; `--bare` writes only the
   skeleton. Neither installs, networks, approves, or executes. Generated
   packages use the same dependency review as consumer-authored packages. The
   greeting names the exact tested SDK version; its regression checks the SDK
