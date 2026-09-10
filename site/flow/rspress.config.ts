@@ -2,6 +2,7 @@ import { resolve } from 'node:path'
 import { defineConfig } from '@rspress/core'
 import { documentationIndex } from '../theme/llms'
 import { accessibleMarkdown } from '../theme/accessible-markdown'
+import { diagramImages } from '../theme/diagram-images'
 
 const siteDirectory = import.meta.dirname
 
@@ -41,7 +42,7 @@ export default defineConfig({
   root: resolve(siteDirectory, '../../docs/flow'),
   themeDir: resolve(siteDirectory, '../theme'),
   globalStyles: resolve(siteDirectory, 'diagrams.css'),
-  markdown: { rehypePlugins: [accessibleMarkdown], shiki: { themes: { light: 'github-light-high-contrast', dark: 'one-dark-pro' } } },
+  markdown: { remarkPlugins: [diagramImages], rehypePlugins: [accessibleMarkdown], shiki: { themes: { light: 'one-light', dark: 'one-dark-pro' } } },
   llms: { llmsTxt: documentationIndex(sidebar) },
   route: { exclude: ['**/AGENTS.md'] },
   outDir: process.env.PUBLIC_SITE_OUTPUT ?? resolve(siteDirectory, 'doc_build'),
@@ -50,7 +51,16 @@ export default defineConfig({
   description: 'An independent standard for sharing executable know-how.',
   icon: new URL('./public/favicon.svg', import.meta.url).href,
   logoText: 'FLOW',
-  builderConfig: { output: { cleanDistPath: false } },
+  builderConfig: {
+    output: { cleanDistPath: false },
+    tools: { rspack: { module: { rules: [{
+      test: /\.svg$/,
+      resourceQuery: /diagram-theme=/,
+      type: 'asset/resource',
+      generator: { filename: 'static/svg/[name].[contenthash:10][ext]' },
+      use: [resolve(siteDirectory, '../theme/diagram-theme-loader.cjs')],
+    }] } } },
+  },
   themeConfig: {
     llmsUI: { placement: 'title', viewOptions: ['markdownLink'] },
     editLink: { docRepoBaseUrl: 'https://github.com/jiggy/jig/tree/main/docs/flow' },

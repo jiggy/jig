@@ -30,7 +30,7 @@ variables are present, Jig asks you to resolve the ambiguity.
 Select a supported client using `JIG_AGENT_CLIENT`: `codex`, `claude`, or `pi`.
 For example:
 
-```console
+```sh
 export JIG_AGENT_CLIENT=codex
 jig review
 ```

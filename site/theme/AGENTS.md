@@ -26,6 +26,10 @@ shared reading experience.
   are copied to each site's `/font-licenses/` directory during assembly.
 - `accessible-markdown.ts` gives generated heading links accessible names and
   makes tables keyboard-focusable for horizontal scrolling.
+- `diagram-images.ts` and `diagram-theme-loader.cjs` generate fixed light/dark
+  variants of local Archify SVGs during HTML builds. Site appearance selects
+  the visible image; native zoom and the original Markdown image remain intact.
+  This avoids relying on WebKit inheriting color schemes inside SVG images.
 - Public prose stays in `docs/`; shared presentation stays in `../landing.css`.
 
 ## Local Contracts

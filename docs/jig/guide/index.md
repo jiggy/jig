@@ -18,7 +18,7 @@ missing execution support rather than weakening isolation.
 
 Install the CLI:
 
-```console
+```sh
 npm install --global @jigging/jig@alpha
 ```
 
@@ -30,7 +30,7 @@ follow the [development instructions](https://github.com/jiggy/jig/blob/main/CON
 
 Create a project, review its changes, approve it, then run its greeting Flow:
 
-```console
+```sh
 jig init hello-jig
 cd hello-jig
 jig review --allow-resolution-network
@@ -84,7 +84,7 @@ This Flow needs no Agent configuration.
 
 In `flows/hello/flow.ts`, change `Hello,` to `Welcome,`. Review and run again:
 
-```console
+```sh
 jig review --allow-resolution-network
 jig run flow:flows/hello --input '{"name":"Ada"}'
 ```

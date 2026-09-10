@@ -13,13 +13,13 @@ supported Bun/Node built-ins, package-local files, or prepared production depend
 Place `package.json` beside `flow.ts` and declare your dependencies there. If
 the package supplies a matching Bun text `bun.lock`, review installs it frozen:
 
-```console
+```sh
 jig review
 ```
 
 If it has no lock, explicitly permit fresh resolution for this review:
 
-```console
+```sh
 jig review --allow-resolution-network
 ```
 
@@ -41,7 +41,7 @@ Jig names each Flow before starting its resolution.
 Prefer an authored lock when sharing reproducible dependencies across machines.
 You can optionally generate one with Bun 1.3.3:
 
-```console
+```sh
 bun install --lockfile-only
 ```
 

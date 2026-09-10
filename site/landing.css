@@ -304,3 +304,7 @@ html.rp-dark .shiki span {
   font-weight: var(--shiki-dark-font-weight) !important;
   text-decoration: var(--shiki-dark-text-decoration) !important;
 }
+
+/* Select fixed SVG palettes by site appearance, including mobile WebKit. */
+html:not(.dark) img[data-diagram-theme='dark'],
+html.dark img[data-diagram-theme='light'] { display: none; }

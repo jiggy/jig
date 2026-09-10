@@ -90,6 +90,8 @@ use-case and orchestration hypotheses.
 
 ## Work Guidance
 
+- Use `sh` fences for shell commands; reserve `console` for transcripts with
+  prompts and output, so command examples receive syntax highlighting.
 - Start with the user's visible result and the simplest credible alternative.
 - Explain an unfamiliar name in one short paragraph before presenting tests,
   topology, prerequisites, or metrics.
