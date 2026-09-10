@@ -3,6 +3,7 @@
 # ---------------------------------------------------------------------------- #
 
 mod flow "packages/flow-sdk/justfile"
+mod authoring "packages/flow-authoring/justfile"
 mod python "packages/jiggy-flow/justfile"
 mod jig "packages/jig/justfile"
 mod site "site/justfile"
@@ -15,8 +16,8 @@ mod site "site/justfile"
 @default:
     just --list --list-submodules
 
-# Build both TypeScript packages
-build: flow::build jig::build
+# Build the TypeScript packages
+build: flow::build jig::build authoring::build
 
 # Format only the requested paths, or the repository when omitted
 [positional-arguments]

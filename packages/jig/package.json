@@ -73,6 +73,7 @@
     "@oven/bun-linux-x64-baseline": "1.3.3"
   },
   "devDependencies": {
+    "@jigging/flow-authoring": "workspace:*",
     "@jigging/flow": "workspace:*",
     "@types/commonmark": "0.27.10",
     "commonmark": "0.31.2",

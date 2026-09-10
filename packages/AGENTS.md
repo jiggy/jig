@@ -2,7 +2,8 @@
 
 ## Purpose
 
-Contains the independently built and distributed FLOW SDKs and Jig host.
+Contains the independently built FLOW SDKs, Jig host, and optional contract
+authoring prototype.
 
 ## Ownership
 
@@ -48,6 +49,9 @@ Contains the independently built and distributed FLOW SDKs and Jig host.
 - Cross-package gate: `FLOW_NODE="$(command -v node)" PYTHON="$(command -v python3)" scripts/test-release.sh`
 
 ## Child DOX Index
+
+- [flow-authoring/AGENTS.md](flow-authoring/AGENTS.md) — Optional TypeSpec
+  mapping prototype, generated contracts, Agent projections and editor types.
 
 - [flow-sdk/AGENTS.md](flow-sdk/AGENTS.md) — Public TypeScript Run SDK/1
   package.

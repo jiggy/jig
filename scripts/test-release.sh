@@ -31,6 +31,7 @@ if ! "$python_bin" --version >/dev/null 2>&1; then
 fi
 
 just flow::build
+just authoring::test
 just jig::build
 
 release_tmp=$(mktemp -d "${TMPDIR:-/tmp}/jig-release.XXXXXX")

@@ -1,0 +1,26 @@
+# ---------------------------------------------------------------------------- #
+#                                   COMMANDS                                   #
+# ---------------------------------------------------------------------------- #
+
+node := env("FLOW_NODE", "node")
+
+@default:
+    just --list
+
+# Build the optional authoring prototype
+@build:
+    bun node_modules/typescript/bin/tsc -p tsconfig.json
+
+# Build and pack ordinary public artifacts without lifecycle scripts
+[positional-arguments]
+@pack *args: build
+    bun pm pack --ignore-scripts "$@"
+
+# ---------------------------------------------------------------------------- #
+#                                    CHECKS                                    #
+# ---------------------------------------------------------------------------- #
+
+# Qualify the mapping using actual Node worker lifecycle and generated types
+[positional-arguments]
+@test *args: build
+    "{{node}}" --test "$@" test/*.node.mjs
