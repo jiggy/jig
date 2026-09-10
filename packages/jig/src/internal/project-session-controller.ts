@@ -13,6 +13,7 @@ import {
 } from '../administration/project.js'
 import type { RootRunTerminal } from '../administration/root.js'
 import { CheckError } from '../diagnostics.js'
+import { prepareContractGeneration } from './contract-generation.js'
 import { validateJson1 } from '../json.js'
 import {
   buildPrivateActivationRequests,
@@ -83,6 +84,8 @@ export interface PrivateProjectSessionHost {
   readonly channelOutput?: PrivateRunChannelOutput
   readonly allowResolutionNetwork?: boolean
   readonly onResolution?: (packagePath: string) => void
+  readonly generateContracts?: boolean
+  readonly onGeneration?: (packagePath: string, files: readonly string[]) => void
 }
 
 /** Recover only the already-bound Run. This entrypoint has no submission or planning surface. */
@@ -231,6 +234,13 @@ function createSession(
           {
             projectRoot: owner.root,
             storeRoot: packageStoreRoot,
+            prepareFlow: prepareContractGeneration({
+              project: owner.root,
+              generate: host.generateContracts === true,
+              signal: planningCancellation.signal,
+              verify: () => owner.verify(),
+              ...(host.onGeneration ? { report: host.onGeneration } : {}),
+            }),
             evaluator: {
               backend: host.backend,
               installedSupport: host.installedBunSupport,
@@ -693,12 +703,15 @@ export function projectError(
       isCandidateDiagnosticCode(error.code)
     ) {
       try {
-        return new ProjectAdministrationError('INVALID_CANDIDATE', 'project candidate is invalid', {
-          code: error.code,
-          path: error.path,
-          ...(error.pointer === undefined ? {} : { pointer: error.pointer }),
-          ...(error.typeMismatch === undefined ? {} : { typeMismatch: error.typeMismatch }),
-        })
+        return new ProjectAdministrationError(
+          'INVALID_CANDIDATE',
+          error.code === 'AUTHORING_COMPILE' ? error.message : 'project candidate is invalid',
+          {
+            code: error.code,
+            path: error.path,
+            ...(error.pointer === undefined ? {} : { pointer: error.pointer }),
+          },
+        )
       } catch {
         return new ProjectAdministrationError('INVALID_CANDIDATE', 'project candidate is invalid')
       }
@@ -749,6 +762,14 @@ export function scopePrivatePackagePlanningError(error: unknown, packagePath: st
 
 function isUnavailableDiagnosticCode(code: string): boolean {
   return (
+    [
+      'AUTHORING_NODE',
+      'AUTHORING_COMPILER',
+      'AUTHORING_STALE',
+      'AUTHORING_INTERRUPTED',
+      'AUTHORING_LIMIT',
+      'AUTHORING_STATE',
+    ].includes(code) ||
     code === 'PACKAGE_BUN_SOURCE_UNSUPPORTED' ||
     code === 'PACKAGE_BUN_RESOLUTION_PERMISSION_REQUIRED' ||
     code === 'PACKAGE_BUN_RESOLUTION_FAILED' ||
@@ -767,6 +788,7 @@ function isUnavailableDiagnosticCode(code: string): boolean {
 
 function isCandidateDiagnosticCode(code: string): boolean {
   return (
+    ['AUTHORING_COMPILE', 'AUTHORING_CONFLICT'].includes(code) ||
     code.startsWith('CONTRACT_') ||
     code.startsWith('MARKDOWN_') ||
     code.startsWith('METADATA_') ||

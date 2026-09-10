@@ -43,6 +43,12 @@ export interface CapturedFlowMember {
   readonly inspected: InspectedPackage
 }
 
+export type PrepareCapturedFlow = (
+  directory: FileHandle,
+  provenance: FlowMemberProvenance,
+  captured: CapturedPackage,
+) => Promise<boolean>
+
 export interface FlowDiscoveryObservation {
   readonly kind: 'discover'
   readonly root: string
@@ -110,6 +116,7 @@ export async function captureFlowSource(
 export async function captureOpenedFlowSource(
   projectRoot: PrivateProjectRoot,
   source?: ProjectSource,
+  prepare?: PrepareCapturedFlow,
 ): Promise<CapturedFlowSource> {
   const project = requirePrivateProjectRoot(projectRoot)
   const normalized = validateSource(source)
@@ -119,8 +126,8 @@ export async function captureOpenedFlowSource(
     try {
       const observations =
         normalized.kind === 'discover'
-          ? await captureDiscovered(project, normalized.roots, captured)
-          : await captureExact(project, normalized.paths, captured)
+          ? await captureDiscovered(project, normalized.roots, captured, prepare)
+          : await captureExact(project, normalized.paths, captured, prepare)
       await project.verify()
       captured.sort((left, right) =>
         compareProjectPaths(left.provenance.projectPath, right.provenance.projectPath),
@@ -164,6 +171,7 @@ async function captureDiscovered(
   project: OpenDirectory & { readonly requestedPath: string },
   roots: readonly string[],
   captured: CapturedFlowMember[],
+  prepare?: PrepareCapturedFlow,
 ): Promise<readonly FlowDiscoveryObservation[]> {
   const observations: DiscoveryObservation[] = []
   const physicalRoots = new Map<string, string>()
@@ -206,11 +214,15 @@ async function captureDiscovered(
           }
           physicalMembers.set(identity, projectPath)
           captured.push(
-            await captureMember(member.handle, {
-              membership: 'discovered',
-              configuredRoot: root,
-              projectPath,
-            }),
+            await captureMember(
+              member.handle,
+              {
+                membership: 'discovered',
+                configuredRoot: root,
+                projectPath,
+              },
+              prepare,
+            ),
           )
         } finally {
           await member.handle.close().catch(() => undefined)
@@ -245,6 +257,7 @@ async function captureExact(
   project: OpenDirectory & { readonly requestedPath: string },
   paths: readonly string[],
   captured: CapturedFlowMember[],
+  prepare?: PrepareCapturedFlow,
 ): Promise<readonly FlowExactObservation[]> {
   const physicalMembers = new Map<string, string>()
   const observations: ExactObservation[] = []
@@ -264,10 +277,14 @@ async function captureExact(
       physicalMembers.set(identity, projectPath)
       observations.push({ path: projectPath, identity })
       captured.push(
-        await captureMember(member.handle, {
-          membership: 'exact',
-          projectPath,
-        }),
+        await captureMember(
+          member.handle,
+          {
+            membership: 'exact',
+            projectPath,
+          },
+          prepare,
+        ),
       )
     } finally {
       await member.handle.close().catch(() => undefined)
@@ -292,6 +309,7 @@ async function captureExact(
 async function captureMember(
   handle: FileHandle,
   provenance: FlowMemberProvenance,
+  prepare?: PrepareCapturedFlow,
 ): Promise<CapturedFlowMember> {
   let captured: CapturedPackage | undefined
   try {
@@ -300,6 +318,17 @@ async function captureMember(
       maximumFiles: 65_536,
       maximumBytes: 4_294_967_296,
     })
+    if (await prepare?.(handle, provenance, captured)) {
+      await captured.dispose()
+      captured = await captureOpenedPackageDirectory(provenance.projectPath, handle, {
+        includes: (path) => !path.split('/').includes('node_modules'),
+        maximumFiles: 65_536,
+        maximumBytes: 4_294_967_296,
+      })
+      // Recheck freshness after publication and recapture, without executing a compiler twice.
+      if (await prepare!(handle, provenance, captured))
+        sourceChanged('generated source changed again during capture', provenance.projectPath)
+    }
     const inspected = await inspectCapturedPackage(captured)
     return Object.freeze({ provenance: Object.freeze(provenance), captured, inspected })
   } catch (error) {

@@ -81,7 +81,7 @@ code with it. Its pipe polling is POSIX-specific. Installed SDK runtime tests
 also run in the Windows CI job independently of this peer.
 
 `FLOW.py` is the package's single implementation. Add optional `flow.meta.json`
-for metadata/dependencies and `contract.json` for input/result validation or
+for metadata/dependencies and `FLOW.contract.json` for input/result validation or
 ports, as specified by [Package/1](../spec/package-format.md). A host owns
 launching the interpreter, dependency preparation, authority, limits and cleanup.
 

@@ -127,9 +127,9 @@ test('packing explicitly builds first and preserves the destination argument', a
   expect(result.stderr).not.toContain('--compile')
   expect(result.stderr.indexOf('Bun.version')).toBeLessThan(result.stderr.indexOf('await rm'))
   expect(result.stderr.indexOf('--outfile=libexec/installed-cli.js')).toBeLessThan(
-    result.stderr.indexOf('bun pm pack'),
+    result.stderr.indexOf('bun scripts/pack.ts'),
   )
-  expect(result.stderr).toContain('bun pm pack --ignore-scripts "$@"')
+  expect(result.stderr).toContain('bun scripts/pack.ts "$@"')
   await withFixture(async (directory, environment) => {
     const destination = join(directory, 'package archives')
     const packed = await run(

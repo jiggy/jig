@@ -9,9 +9,9 @@ they are never runtime mailboxes, configuration stores, templates or code.
 
 | File | Exact value validated |
 |---|---|
-| `contract.json` operation `input` | The actual invocation input |
+| `FLOW.contract.json` operation `input` | The actual invocation input |
 | `settings.schema.json` | `flow/run.params.settings` |
-| `contract.json` operation `result` | The complete normal `{ "outcome", "output" }` result |
+| `FLOW.contract.json` operation `result` | The complete normal `{ "outcome", "output" }` result |
 
 The result schema covers the complete envelope because a package may declare several
 outcomes whose legal output shapes differ. Validating the complete value lets a
@@ -237,7 +237,7 @@ example-fixture failures, without evaluating package code.
 
 The companion examples are:
 
-- [`contract.json`](https://github.com/jiggy/jig/blob/main/docs/flow/spec/examples/schema-files/contract.json), with input and complete-result schemas.
+- [`FLOW.contract.json`](https://github.com/jiggy/jig/blob/main/docs/flow/spec/examples/schema-files/FLOW.contract.json), with input and complete-result schemas.
 - [`settings.schema.json`](https://github.com/jiggy/jig/blob/main/docs/flow/spec/examples/schema-files/settings.schema.json), for implementation configuration.
 
 They demonstrate shape validation and outcome/output correlation. They are

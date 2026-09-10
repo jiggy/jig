@@ -203,7 +203,7 @@ describe('Schema/1 compilation', () => {
 
     let deep: JsonValue = true
     for (let index = 0; index < SCHEMA_1_LIMITS.depth; index += 1) deep = { not: deep }
-    expect(captured(() => compileEmbeddedSchema(deep, { path: 'contract.json' })).code).toBe(
+    expect(captured(() => compileEmbeddedSchema(deep, { path: 'FLOW.contract.json' })).code).toBe(
       'SCHEMA_LIMIT_EXCEEDED',
     )
 
@@ -211,9 +211,9 @@ describe('Schema/1 compilation', () => {
       pointer: `/methods/${index}`,
       schema: true as const,
     }))
-    expect(captured(() => compileEmbeddedSchemas(entries, { path: 'contract.json' })).code).toBe(
-      'SCHEMA_LIMIT_EXCEEDED',
-    )
+    expect(
+      captured(() => compileEmbeddedSchemas(entries, { path: 'FLOW.contract.json' })).code,
+    ).toBe('SCHEMA_LIMIT_EXCEEDED')
   })
 })
 

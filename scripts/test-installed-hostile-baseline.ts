@@ -379,7 +379,7 @@ async function writeHostileFlow(
     }),
   )
   await writeFile(
-    join(flow, 'contract.json'),
+    join(flow, 'FLOW.contract.json'),
     JSON.stringify({
       $schema: 'https://flow.jig.md/schemas/invocation-contract-1.schema.json',
       ...invocation,

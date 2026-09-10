@@ -45,6 +45,7 @@
     "dist/project/commands.d.ts",
     "dist/json.d.ts",
     "libexec/installed-cli.js",
+    "libexec/authoring/contract-authoring-worker.js",
     "libexec/markdown-runtime.js",
     "libexec/flow.LICENSE",
     "libexec/linux-rootless-supervisor.js",

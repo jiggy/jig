@@ -8,13 +8,13 @@ one finite call. A Flow may use the same interface whether its host selects an
 ordinary Flow or a trusted native implementation. Interface equality does not
 establish implementation trust, execution authority or a shared lifetime.
 
-Most Flows need no named agreement. Optional root `contract.json` is the sole
+Most Flows need no named agreement. Optional root `FLOW.contract.json` is the sole
 invocation declaration owner:
 
 | Need | Declaration |
 | --- | --- |
 | Unconstrained finite work | No descriptor: bounded JSON/1 input, implicit `done` and bounded JSON/1 output, no declared ports or custom outcomes. |
-| Local validation, ports or custom outcomes | An anonymous `contract.json` containing the needed declarations. |
+| Local validation, ports or custom outcomes | An anonymous `FLOW.contract.json` containing the needed declarations. |
 | Independently agreed interface | The same descriptor with an exact `id` and `version`. |
 
 Package metadata declares dependencies and readable purpose; it does not repeat
@@ -131,7 +131,7 @@ path. Deduplicate repeated paths; two different paths with equal content remain
 separate entries. Every target is a complete valid Channel Contract, whose
 Schema/1 references are internal, so this is not a recursive file graph.
 
-For example, moving `contract.json` and its referenced `contracts/events.json`
+For example, moving `FLOW.contract.json` and its referenced `contracts/events.json`
 together beneath `interfaces/reviewer/` preserves interface identity. Runtime
 channel creation still accepts the package-relative path
 `./interfaces/reviewer/contracts/events.json`; there is no fragment selector,

@@ -3,7 +3,7 @@
 ## Purpose
 
 Contains the independently built FLOW SDKs, Jig host, and optional contract
-authoring prototype.
+authoring toolchain.
 
 ## Ownership
 
@@ -51,7 +51,7 @@ authoring prototype.
 ## Child DOX Index
 
 - [flow-authoring/AGENTS.md](flow-authoring/AGENTS.md) — Optional TypeSpec
-  mapping prototype, generated contracts, Agent projections and editor types.
+  mapping toolchain, generated contracts, Agent projections and editor types.
 
 - [flow-sdk/AGENTS.md](flow-sdk/AGENTS.md) — Public TypeScript Run SDK/1
   package.

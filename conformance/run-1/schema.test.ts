@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import Ajv2020 from 'ajv/dist/2020.js'
 import sessionContract from '../../docs/flow/spec/examples/invocation-contracts/session-store.contract.json'
-import ticketContract from '../../docs/flow/spec/examples/schema-files/contract.json'
+import ticketContract from '../../docs/flow/spec/examples/schema-files/FLOW.contract.json'
 import channelContractSchema from '../../docs/flow/spec/machine/channel-contract-1.schema.json'
 import invocationContractSchema from '../../docs/flow/spec/machine/invocation-contract-1.schema.json'
 import schema from '../../docs/flow/spec/machine/run-1.schema.json'
@@ -98,7 +98,7 @@ describe('Run/1 message schemas', () => {
       invocation({
         ...contract,
         channels: {
-          readings: { direction: 'send', schema: true, contract: './contract.json' },
+          readings: { direction: 'send', schema: true, contract: './FLOW.contract.json' },
         },
       }),
     ).toBe(false)

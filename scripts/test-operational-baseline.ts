@@ -420,12 +420,7 @@ async function selectPackageArchive(artifacts: string): Promise<string> {
   // Build and pack the release candidate exactly once. Packing is explicitly
   // script-free so it cannot trigger a second build through `prepack`.
   await run(['just', 'build'], packageRoot, [0], 120_000)
-  await run(
-    ['bun', 'pm', 'pack', '--ignore-scripts', '--destination', artifacts],
-    packageRoot,
-    [0],
-    60_000,
-  )
+  await run(['bun', 'scripts/pack.ts', '--destination', artifacts], packageRoot, [0], 60_000)
   const archives = (await readdir(artifacts)).filter((name) => name.endsWith('.tgz'))
   assert.equal(archives.length, 1, 'packing must produce exactly one Jig archive')
   return join(artifacts, archives[0]!)
@@ -440,7 +435,7 @@ async function writeHelloFlow(project: string): Promise<void> {
   )
   await writeFile(join(flow, 'README.md'), 'A dependency-closed finite FLOW Run/1 example.\n')
   await writeFile(
-    join(flow, 'contract.json'),
+    join(flow, 'FLOW.contract.json'),
     JSON.stringify({
       $schema: 'https://flow.jig.md/schemas/invocation-contract-1.schema.json',
       input: {

@@ -295,7 +295,7 @@ class ChannelCapacityTests(unittest.IsolatedAsyncioTestCase):
     async def test_schema_and_contract_are_exclusive_even_for_true(self) -> None:
         runtime, output = self.runtime()
         with self.assertRaises(ValueError):
-            await runtime.channel(delivery="direct", schema=True, contract="./contract.json")
+            await runtime.channel(delivery="direct", schema=True, contract="./FLOW.contract.json")
         self.assertEqual(output.payloads, [])
 
     async def test_local_read_admission_failure_does_not_end_receiver(self) -> None:

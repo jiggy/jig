@@ -4,7 +4,7 @@
 
 Make reusable contracts practical to edit without requiring a source compiler
 in FLOW consumers. This package owns the bounded TypeSpec mapping prototype;
-it does not implement host-managed publication or change package discovery.
+it returns artifacts to Jig's separately owned managed publisher.
 
 ## Ownership
 
@@ -23,7 +23,7 @@ it does not implement host-managed publication or change package discovery.
 
 ## Work Guidance
 
-- Qualify the mapping before adding publication, watchers or Jig integration.
+- Keep publication and project ownership in Jig; this library remains standalone.
 - Use only the pinned compiler and bundled authoring definitions.
 
 ## Verification

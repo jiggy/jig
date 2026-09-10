@@ -77,7 +77,7 @@ bun install \
   --no-progress \
   --no-summary
 just --justfile "$package/justfile" build
-bun pm pack --cwd "$package" --ignore-scripts --destination "$temporary/artifacts"
+bun "$package/scripts/pack.ts" --destination "$temporary/artifacts"
 
 set -- "$temporary"/artifacts/*.tgz
 if [ "$#" -ne 1 ] || [ ! -f "$1" ]; then

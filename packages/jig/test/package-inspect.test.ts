@@ -150,7 +150,7 @@ describe('aggregate Package/1 inspection', () => {
     await withPackage(
       {
         'FLOW.ts': 'export {};\n',
-        'contract.json': contract({
+        'FLOW.contract.json': contract({
           input: { type: 'string', minLength: 1 },
           result: {
             type: 'object',
@@ -170,7 +170,7 @@ describe('aggregate Package/1 inspection', () => {
         checked.schemas.input!.validate('input', 'INVALID_INPUT')
         checked.schemas.settings!.validate({}, 'INVALID_SETTINGS')
         checked.schemas.result!.validate({ outcome: 'done', output: null }, 'INVALID_RESULT')
-        expect(checked.schemas.input!.path).toBe('contract.json')
+        expect(checked.schemas.input!.path).toBe('FLOW.contract.json')
         expect(checked.schemas.input!.schemaPointer).toBe('/input')
         expect(() => checked.schemas.input!.validate('', 'INVALID_INPUT')).toThrow(SchemaDiagnostic)
       },
@@ -186,7 +186,7 @@ describe('aggregate Package/1 inspection', () => {
     await withPackage(
       {
         'FLOW.md': 'Prose',
-        'contract.json': contract({ input: { type: 'string', pattern: '.*' } }),
+        'FLOW.contract.json': contract({ input: { type: 'string', pattern: '.*' } }),
       },
       async (root) => {
         await expect(checkPackageDirectory(root)).rejects.toBeInstanceOf(SchemaDiagnostic)
@@ -196,7 +196,7 @@ describe('aggregate Package/1 inspection', () => {
 
   test('retains named-profile validity without selecting a runnable invocation', async () => {
     await withPackage(
-      { 'FLOW.ts': 'export {}', 'contract.json': contract({ operations: { run: {} } }) },
+      { 'FLOW.ts': 'export {}', 'FLOW.contract.json': contract({ operations: { run: {} } }) },
       async (root) => {
         const checked = await checkPackageDirectory(root)
         expect(checked.contract!.profile).toBe('named')
@@ -248,7 +248,7 @@ describe('aggregate Package/1 inspection', () => {
     await withPackage(
       {
         'FLOW.md': 'Prose',
-        'contract.json': contract({
+        'FLOW.contract.json': contract({
           channels: { updates: { direction: 'send', contract: './missing.json', required: false } },
         }),
       },
@@ -260,7 +260,7 @@ describe('aggregate Package/1 inspection', () => {
     await withPackage(
       {
         'FLOW.md': '---\nuses: {reviewer: {contract: ./reviewer.json}}\n---\nProse',
-        'contract.json': namedContract({ input: true }),
+        'FLOW.contract.json': namedContract({ input: true }),
         'reviewer.json': namedContract({ input: false }),
       },
       (root) => expectCheckError(() => checkPackageDirectory(root), 'CONTRACT_EQUIVOCATION'),

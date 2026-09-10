@@ -21,6 +21,8 @@ use-case and orchestration hypotheses.
   Its first-method walkthrough extends the ordinary greeting project with a
   bounded support-reply draft, not an example-only installation path.
   `guide/dependencies.md` owns package dependency preparation guidance.
+- `guide/contracts.md` teaches optional managed TypeSpec authoring and generated
+  file ownership; `spec/contract-authoring.md` owns its exact host boundaries.
 - `guide/markdown.md` teaches one-file methods, supported Skill authoring,
   exact recipes and the installed sequential interpreter's limits.
 - `guide/channels.md` teaches application-owned live progress and subprocess

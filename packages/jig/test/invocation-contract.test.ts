@@ -127,10 +127,10 @@ describe('Invocation Contract/1', () => {
       }),
     )
     const documents = new Map([['contracts/updates.json', bytes(channel())]])
-    const root = parseInvocationContract(source, 'contract.json', documents)
+    const root = parseInvocationContract(source, 'FLOW.contract.json', documents)
     const relocated = parseInvocationContract(
       source,
-      'interfaces/reviewer/contract.json',
+      'interfaces/reviewer/FLOW.contract.json',
       documents,
     )
     expect(root.digest).toBe(relocated.digest)
@@ -138,7 +138,9 @@ describe('Invocation Contract/1', () => {
       'interfaces/reviewer/contracts/updates.json',
     )
     const changed = new Map([['contracts/updates.json', bytes(channel({ semantics: 'Changed.' }))]])
-    expect(parseInvocationContract(source, 'contract.json', changed).digest).not.toBe(root.digest)
+    expect(parseInvocationContract(source, 'FLOW.contract.json', changed).digest).not.toBe(
+      root.digest,
+    )
     expect(() => parseInvocationContract(source)).toThrow(CheckError)
   })
 
@@ -161,9 +163,9 @@ describe('Invocation Contract/1', () => {
       ['a.json', bytes(channel())],
       ['b.json', bytes(channel())],
     ])
-    expect(parseInvocationContract(source, 'contract.json', documents).channelContracts.size).toBe(
-      2,
-    )
+    expect(
+      parseInvocationContract(source, 'FLOW.contract.json', documents).channelContracts.size,
+    ).toBe(2)
   })
 
   test('preserves declaration omission rather than inserting channel defaults', () => {
@@ -257,7 +259,7 @@ describe('Invocation Contract/1', () => {
     expect(() =>
       parseInvocationContract(
         bytes(descriptor({ channels: boundedChannels })),
-        'contract.json',
+        'FLOW.contract.json',
         documents,
       ),
     ).toThrow('preimage exceeds')

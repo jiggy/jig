@@ -19,7 +19,7 @@ operational baselines, and public-site assembly.
   calls the standard Python build frontend directly.
 - `test-release.sh` includes the authored examples' deterministic application
   tests and the optional contract author's Node mapping/type/lifecycle checks.
-  The authoring prototype is not a released host feature. For application tests,
+  The compiler is bundled with Jig; managed authoring is checked through its CLI. For application tests,
   it installs the freshly packed SDK as a development dependency of
   disposable application copies, without lifecycle scripts or edits to source
   manifests. Generated workspace `node_modules` links are excluded from those
@@ -66,7 +66,7 @@ operational baselines, and public-site assembly.
   protocol logic.
 - Keep destructive cleanup limited to paths created by the current script.
 - Baseline fixtures use one `FLOW.<ext>`, code metadata in `flow.meta.json`,
-  and invocation declarations in `contract.json`. Preserve file-publication,
+  and invocation declarations in `FLOW.contract.json`. Preserve file-publication,
   diagnostic, authority, and residue assertions when updating their format.
 - Validate worktree arguments and shared-link collisions before creating a
   checkout. A later link failure leaves the checkout with an explicit diagnostic;

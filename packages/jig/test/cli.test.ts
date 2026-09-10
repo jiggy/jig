@@ -896,6 +896,49 @@ describe('finite Jig project commands', () => {
     expect(invocation.error).toContain('Usage:')
   })
 
+  test('contract generation is explicit and does not grant resolution or execution approval', async () => {
+    const received: Parameters<PrivateCliCommandHost['acquire']>[1][] = []
+    const events: string[] = []
+    const host: PrivateCliCommandHost = {
+      acquire: async (_path, options) => {
+        received.push(options)
+        options?.onGeneration?.('flows/hello\u001b', ['FLOW.contract.json'])
+        return fakeSession(events, {
+          plan: {
+            state: 'applicable',
+            operation: 'admission',
+            planDigest: digest,
+            review: {
+              mediaType: 'text/plain; charset=utf-8',
+              text: 'review\n',
+              details: 'details\n',
+            },
+          },
+        })
+      },
+    }
+    const invocation = commandInvocation(host)
+    expect(await main(['review', '--generate-contracts'], invocation.options)).toBe(2)
+    expect(received[0]?.generateContracts).toBeTrue()
+    expect(received[0]?.allowResolutionNetwork).toBeUndefined()
+    expect(invocation.error).toContain('These writes do not approve execution')
+    expect(invocation.error).not.toContain('\u001b')
+    expect(events.some((event) => event.startsWith('apply:'))).toBeFalse()
+    await main(['review', '--yes'], commandInvocation(host).options)
+    expect(received[1]?.generateContracts).toBeUndefined()
+  })
+
+  test.each([
+    ['review', '--generate'],
+    ['review', '--generate-contracts', '--generate-contracts'],
+    ['run', 'flow:flows/a', '--generate-contracts'],
+  ])('rejects vague, duplicate or misplaced contract generation: %j', async (args) => {
+    const events: string[] = []
+    const invocation = commandInvocation(fakeHost(fakeSession(events), events))
+    expect(await main(args, invocation.options)).toBe(2)
+    expect(events).toEqual([])
+  })
+
   test('run uses the current project, explicit Flow target, default input, and no planning', async () => {
     const events: string[] = []
     const terminal: RootRunTerminal = {
@@ -1555,14 +1598,14 @@ describe('finite Jig project commands', () => {
     const events: string[] = []
     const failure = new ProjectAdministrationError('INVALID_CANDIDATE', 'private parser detail', {
       code: 'CHANNEL_FIELD',
-      path: 'flows/worker/contract.json',
+      path: 'flows/worker/FLOW.contract.json',
     })
     const invocation = commandInvocation(
       fakeHost(fakeSession(events, { planFailure: failure }), events),
     )
     expect(await main(['review', '--yes'], invocation.options)).toBe(1)
     expect(invocation.error).toBe(
-      'Review could not finish\n\n  Location: "flows/worker/contract.json"\n\n  Next step\n    check channel declarations and descriptors against FLOW Channel Contract/1\n\n  Diagnostic code: CHANNEL_FIELD\n  Category: INVALID_CANDIDATE\n',
+      'Review could not finish\n\n  Location: "flows/worker/FLOW.contract.json"\n\n  Next step\n    check channel declarations and descriptors against FLOW Channel Contract/1\n\n  Diagnostic code: CHANNEL_FIELD\n  Category: INVALID_CANDIDATE\n',
     )
     expect(invocation.error).not.toContain('private parser detail')
   })

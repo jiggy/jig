@@ -14,7 +14,7 @@ the result it needs.
 
 `https://jig.md/contracts/project-command` identifies the shared **interface**,
 not a command server, a shell, or permission to run arbitrary programs. You may
-have found it in a `contract.json` file inside a Flow package.
+have found it in a `FLOW.contract.json` file inside a Flow package.
 
 That file is a local copy of the interface the Flow expects. Jig matches its
 contract ID, exact version, and canonical descriptor digest against supported

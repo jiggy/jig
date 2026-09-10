@@ -369,12 +369,12 @@ describe('private package-project linker', () => {
           }),
           'contracts/review.json': contract,
         },
-        'flows/first': { ...run('first'), 'contract.json': contract },
-        'flows/second': { ...run('second'), 'contract.json': contract },
+        'flows/first': { ...run('first'), 'FLOW.contract.json': contract },
+        'flows/second': { ...run('second'), 'FLOW.contract.json': contract },
         'flows/plain': run('plain'),
         'flows/changed': {
           ...run('changed'),
-          'contract.json': invocation({
+          'FLOW.contract.json': invocation({
             ...JSON.parse(contract),
             result: {
               type: 'object',
@@ -441,7 +441,7 @@ describe('private package-project linker', () => {
         },
         'flows/impostor': {
           ...run('impostor'),
-          'contract.json': agentRunContract,
+          'FLOW.contract.json': agentRunContract,
           'contracts/acp-public-updates.json': acpPublicUpdates,
         },
       },
@@ -697,7 +697,7 @@ describe('private package-project linker', () => {
         'flows/plain': run('plain'),
         'flows/configured': {
           'flow.meta.json': metadata({ name: 'configured', description: 'Configured.' }),
-          'contract.json': invocation({ attachments: { source: 'read' } }),
+          'FLOW.contract.json': invocation({ attachments: { source: 'read' } }),
           'FLOW.ts': 'export {};\n',
         },
       },
@@ -748,7 +748,7 @@ describe('private package-project linker', () => {
       {
         'flows/files': {
           'flow.meta.json': metadata({ name: 'files', description: 'Files.' }),
-          'contract.json': invocation({
+          'FLOW.contract.json': invocation({
             attachments: { first: 'read-write', second: 'read-write' },
           }),
           'FLOW.ts': 'export {};\n',

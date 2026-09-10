@@ -21,7 +21,7 @@ describe('private Package/1 result admission', () => {
       {
         'FLOW.ts': 'export {}\n',
         'flow.meta.json': JSON.stringify({ name: 'outcomes', description: 'Outcome package.' }),
-        'contract.json': JSON.stringify({
+        'FLOW.contract.json': JSON.stringify({
           $schema: contractUri,
           outcomes: { waiting: 'External input is required.' },
         }),
@@ -64,7 +64,7 @@ describe('private Package/1 result admission', () => {
           name: 'correlated',
           description: 'Correlated result package.',
         }),
-        'contract.json': JSON.stringify({
+        'FLOW.contract.json': JSON.stringify({
           $schema: contractUri,
           outcomes: { waiting: 'External input is required.' },
           result: {
@@ -101,7 +101,7 @@ describe('private Package/1 result admission', () => {
           code: 'INVALID_RESULT',
           details: {
             code: 'INVALID_RESULT',
-            path: 'contract.json',
+            path: 'FLOW.contract.json',
             instancePointer: '',
             schemaPointer: '/result/oneOf',
             keyword: 'oneOf',

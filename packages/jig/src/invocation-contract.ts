@@ -78,7 +78,7 @@ interface PreparedInvocationContract {
 /** Discover the complete validated, bounded offline closure before reading its files. */
 export function invocationContractChannelPaths(
   bytes: Uint8Array,
-  path = 'contract.json',
+  path = 'FLOW.contract.json',
 ): readonly string[] {
   return prepareInvocationContract(bytes, path).paths
 }
@@ -86,7 +86,7 @@ export function invocationContractChannelPaths(
 /** Parse an exact descriptor and its supplied offline channel documents; never fetch. */
 export function parseInvocationContract(
   bytes: Uint8Array,
-  path = 'contract.json',
+  path = 'FLOW.contract.json',
   channelDocuments: ReadonlyMap<string, Uint8Array> = new Map(),
 ): ParsedInvocationContract {
   const prepared = prepareInvocationContract(bytes, path)

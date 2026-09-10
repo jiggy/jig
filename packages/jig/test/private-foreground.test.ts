@@ -1353,7 +1353,7 @@ async function writeProject(root: string): Promise<void> {
     metadata('foreground-worker', 'Returns its input from one contained Bun Run.'),
   )
   await writeFile(
-    join(worker, 'contract.json'),
+    join(worker, 'FLOW.contract.json'),
     JSON.stringify({
       $schema: 'https://flow.jig.md/schemas/invocation-contract-1.schema.json',
       input: {
@@ -1418,7 +1418,7 @@ async function writeProject(root: string): Promise<void> {
   ]
   for (const directory of slotPackages) await mkdir(directory, { recursive: true })
   await writeFile(join(router, 'flow.meta.json'), metadata('ticket-router', 'Routes one ticket.'))
-  await writeFile(join(router, 'contract.json'), ticketSchema())
+  await writeFile(join(router, 'FLOW.contract.json'), ticketSchema())
   await writeFile(
     join(router, 'settings.schema.json'),
     JSON.stringify({
@@ -1431,20 +1431,20 @@ async function writeProject(root: string): Promise<void> {
   )
   await writeFile(join(router, 'FLOW.ts'), routerProgram())
   await writeFile(join(bug, 'flow.meta.json'), metadata('handle-bug', 'Handles one bug.'))
-  await writeFile(join(bug, 'contract.json'), ticketSchema('bug'))
+  await writeFile(join(bug, 'FLOW.contract.json'), ticketSchema('bug'))
   await writeFile(join(bug, 'FLOW.ts'), childProgram('bug'))
   await writeFile(
     join(question, 'flow.meta.json'),
     metadata('answer-question', 'Answers one question.'),
   )
-  await writeFile(join(question, 'contract.json'), ticketSchema('question'))
+  await writeFile(join(question, 'FLOW.contract.json'), ticketSchema('question'))
   await writeFile(join(question, 'FLOW.ts'), childProgram('question'))
   await writeFile(
     join(invalidInput, 'flow.meta.json'),
     metadata('invalid-input-child', 'Must never start for the invalid test input.'),
   )
   await writeFile(
-    join(invalidInput, 'contract.json'),
+    join(invalidInput, 'FLOW.contract.json'),
     JSON.stringify({
       $schema: 'https://flow.jig.md/schemas/invocation-contract-1.schema.json',
       input: {
@@ -1464,7 +1464,7 @@ async function writeProject(root: string): Promise<void> {
     metadata('invalid-result-child', 'Returns a result rejected by its declaration.'),
   )
   await writeFile(
-    join(invalidResult, 'contract.json'),
+    join(invalidResult, 'FLOW.contract.json'),
     JSON.stringify({
       $schema: 'https://flow.jig.md/schemas/invocation-contract-1.schema.json',
       result: {
@@ -1867,7 +1867,7 @@ async function writeChannelProject(root: string): Promise<void> {
     metadata('channel-worker', 'Publish direct progress and retain the separate execution result.'),
   )
   await writeFile(
-    join(flow, 'contract.json'),
+    join(flow, 'FLOW.contract.json'),
     JSON.stringify({
       $schema: 'https://flow.jig.md/schemas/invocation-contract-1.schema.json',
       channels: { progress: { direction: 'send', required: false, schema: { type: 'string' } } },
@@ -1945,7 +1945,7 @@ async function writeChildChannelProject(root: string): Promise<void> {
       metadata(`child-channel-${name}`, 'Exercise exact child communication.'),
     )
     await writeFile(
-      join(directory, 'contract.json'),
+      join(directory, 'FLOW.contract.json'),
       JSON.stringify({
         $schema: 'https://flow.jig.md/schemas/invocation-contract-1.schema.json',
         channels,
@@ -1953,7 +1953,7 @@ async function writeChildChannelProject(root: string): Promise<void> {
     )
   }
   await writeFile(
-    join(root, 'flows/worker/contract.json'),
+    join(root, 'flows/worker/FLOW.contract.json'),
     JSON.stringify({
       $schema: 'https://flow.jig.md/schemas/invocation-contract-1.schema.json',
       result: {
@@ -2106,7 +2106,7 @@ async function writeBroadcastChannelProject(root: string): Promise<void> {
       metadata(`broadcast-${name}`, 'Exercise isolated broadcast delivery.'),
     )
     await writeFile(
-      join(directory, 'contract.json'),
+      join(directory, 'FLOW.contract.json'),
       JSON.stringify({
         $schema: 'https://flow.jig.md/schemas/invocation-contract-1.schema.json',
         channels,

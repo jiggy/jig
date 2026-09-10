@@ -187,7 +187,7 @@ class Interpreter {
     )
     if (compiled.contract?.result !== undefined)
       this.resultSchema = compileEmbeddedSchema(compiled.contract.result, {
-        path: 'contract.json',
+        path: 'FLOW.contract.json',
         pointer: '/result',
         ...(compiled.contract.$defs === undefined ? {} : { rootDefs: compiled.contract.$defs }),
       })

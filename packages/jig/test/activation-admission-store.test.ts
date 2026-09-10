@@ -2025,7 +2025,7 @@ async function createFixture(
     )
     await writeFile(join(flowSource, 'FLOW.ts'), '#!/usr/bin/env bun\nexport {};\n')
     await writeFile(
-      join(flowSource, 'contract.json'),
+      join(flowSource, 'FLOW.contract.json'),
       JSON.stringify({
         $schema: 'https://flow.jig.md/schemas/invocation-contract-1.schema.json',
         input: {

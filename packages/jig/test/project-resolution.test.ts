@@ -237,8 +237,8 @@ describe('private package resolution', () => {
         }),
         'contracts/review.json': contract,
       },
-      'flows/first': { ...run('first'), 'contract.json': contract },
-      'flows/second': { ...run('second'), 'contract.json': contract },
+      'flows/first': { ...run('first'), 'FLOW.contract.json': contract },
+      'flows/second': { ...run('second'), 'FLOW.contract.json': contract },
     }
     const requests: PrivateActivationRequest[] = []
     const semanticDigests: string[] = []

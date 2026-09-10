@@ -50,7 +50,7 @@ call identities. Calls have no method selector. A handler forwarding a result
 must declare any custom outcomes it can return in its own contract.
 
 Optional `flow.meta.json` declares package metadata and dependency slots. Optional
-`contract.json` owns input/result validation, custom outcomes, channels and caller
+`FLOW.contract.json` owns input/result validation, custom outcomes, channels and caller
 attachments; `settings.schema.json` separately validates implementation settings.
 No descriptor is needed for unconstrained bounded input and a `done` result.
 

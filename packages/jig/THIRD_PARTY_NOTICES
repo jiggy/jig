@@ -4,6 +4,17 @@ THIRD-PARTY MATERIAL USED BY JIG
 This file records third-party material included by the current Jig build. It
 does not replace any third-party license or cure an unmet distribution term.
 
+BUNDLED CONTRACT AUTHORING
+--------------------------
+
+The archive includes @jigging/flow-authoring (Apache-2.0),
+@typespec/compiler 1.16.0 (MIT), and its yaml dependency (ISC).
+Their complete package files and license notices are retained in
+libexec/authoring/node_modules, together with the compiler's runtime dependencies.
+The authoring compiler runs separately from Flow execution; consumers of
+generated native JSON do not need it. Node is an operator-supplied runtime,
+not bundled in the archive.
+
 EXTERNAL RUNTIME DEPENDENCY — NOT INCLUDED
 ------------------------------------------
 

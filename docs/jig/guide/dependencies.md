@@ -115,7 +115,7 @@ distributed Flow, use published dependency versions or distribute its workspace.
 Package-local source may also be imported relatively. A package without external
 dependencies needs neither a dependency manifest nor a lock for execution.
 
-Optional invocation input and complete-result schemas belong in `contract.json`;
+Optional invocation input and complete-result schemas belong in `FLOW.contract.json`;
 implementation settings use `settings.schema.json`. They follow
 [FLOW Schema/1](https://flow.jig.md/spec/schema-files). A `FLOW.md` package uses
 the bundled interpreter and needs no SDK dependency or installation. Its

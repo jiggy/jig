@@ -114,7 +114,7 @@ host overhead; cleanup is not skipped when either budget expires.
 
 ## Author a file Flow
 
-Declare portable attachments in `contract.json`, then use the paths in
+Declare portable attachments in `FLOW.contract.json`, then use the paths in
 `run.attachments` through the ordinary FLOW SDK:
 
 ```json

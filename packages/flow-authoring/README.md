@@ -4,12 +4,12 @@ Write one model and derive its invocation contract, explicitly selected Agent
 schemas and implementation types. The resulting JSON needs no compiler in the
 host that consumes it.
 
-This is a **private, prerelease mapping prototype**, not a published package or
-an automatic build feature in Jig. It returns artifacts as data and never edits
-project files, reviews or admits a Run. It implements the selected TypeSpec
-authoring direction before host-managed publication.
+This private prerelease package is bundled with Jig. Its standalone API returns
+artifacts as data and never edits project files or admits a Run. Jig's
+[managed workflow](https://jig.md/guide/contracts) composes it with explicit
+generation, checked publication and normal review: `jig review --generate-contracts`.
 
-## Use the prototype
+## Use the standalone compiler
 
 Build with `just authoring::build`; qualify it with `just authoring::test`.
 The API runs on Node 22 or newer. Bun installs/builds the workspace; the compiler
@@ -66,11 +66,8 @@ The prototype returns:
 - Each explicitly selected `./name.schema.json`: an Agent response schema.
 - The complete pinned authored source, separately as `result.source`.
 
-**Current Jig package discovery still uses root `contract.json`.** This
-prototype's proposed `FLOW.contract.json` filename is not yet an installed Jig
-entrypoint. Qualification uses the existing descriptor validators directly.
-Companion renaming, YAML metadata and managed file publication remain a later
-synchronized integration; no compatibility aliases have been added.
+`FLOW.contract.json` is the native package invocation descriptor. Other hosts
+consume that JSON without this compiler or Jig's local management records.
 
 Native JSON remains independently editable and the authority for portable
 contract meaning. A compilerless consumer cannot verify that it corresponds to
@@ -190,6 +187,5 @@ Cancellation and timeout await worker termination and return an
 must succeed. Errors expose `diagnostic.code`, `message`, `line`, `column`
 and, for projection failures, `output`.
 
-This prototype does not qualify multi-file publication, crash recovery,
-concurrent-edit protection, automatic refresh or Jig admission changes.
-Those remain distinct work after the mapping and consumer experience are proven.
+This library does not publish files. Jig owns its separate managed publication,
+recovery, captured-source freshness and admission boundaries.

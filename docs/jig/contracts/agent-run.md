@@ -14,7 +14,7 @@ credentials, and endpoint.
 
 `https://jig.md/contracts/agent-run` identifies the shared **interface**, not
 an Agent server or an API endpoint. You may have found it in a
-`contract.json` file inside a Flow package.
+`FLOW.contract.json` file inside a Flow package.
 
 That file is a local copy of the interface the Flow expects, not a new Agent
 implementation. Jig matches its contract ID, exact version, and canonical

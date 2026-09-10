@@ -357,7 +357,7 @@ describe('finite isolated broadcast channels', () => {
     const creating = owner
       .request(
         'channel/create',
-        { delivery: 'broadcast', contract: './contract.json' },
+        { delivery: 'broadcast', contract: './FLOW.contract.json' },
         controller.signal,
       )
       .catch((error) => error)

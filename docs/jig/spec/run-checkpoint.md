@@ -17,7 +17,7 @@ into the Flow package and declare its local slot in `flow.meta.json`
 {"uses":{"progress":{"contract":"./contracts/run-checkpoint/contract.json"}}}
 ```
 
-Declare the attachment in the package’s `contract.json`:
+Declare the attachment in the package’s `FLOW.contract.json`:
 
 ```json
 {

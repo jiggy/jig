@@ -154,7 +154,7 @@ describe('channel declarations', () => {
     expect(Object.isFrozen(parsed.progress!.schema)).toBe(true)
     const operation = parseInvocationContract(
       bytes(invocation(channels)),
-      'contract.json',
+      'FLOW.contract.json',
       new Map([['contracts/public-events.json', bytes(descriptor())]]),
     ).invocation!
     expect(operation.channels).toEqual(channels)
@@ -219,7 +219,7 @@ describe('package channel closure', () => {
       input: { direction: 'receive', delivery: 'broadcast', start: 'suffix' },
     }
     await withPackage(
-      { 'FLOW.md': metadata({}), 'contract.json': JSON.stringify(invocation(channels)) },
+      { 'FLOW.md': metadata({}), 'FLOW.contract.json': JSON.stringify(invocation(channels)) },
       async (root) => {
         expect((await checkPackageDirectory(root)).invocation!.channels).toEqual(channels)
       },
@@ -233,7 +233,7 @@ describe('package channel closure', () => {
         'FLOW.md': metadata({
           uses: { worker: { contract: './contracts/worker.json' } },
         }),
-        'contract.json': JSON.stringify({ $schema: INVOCATION_CONTRACT_SCHEMA, channels }),
+        'FLOW.contract.json': JSON.stringify({ $schema: INVOCATION_CONTRACT_SCHEMA, channels }),
         'contracts/worker.json': JSON.stringify(
           invocation({ events: { ...channels.events, contract: './public-events.json' } }),
         ),
@@ -263,7 +263,7 @@ describe('package channel closure', () => {
                   invocation({ events: { ...channels.events, contract: './public-events.json' } }),
                 ),
               }
-            : { 'contract.json': JSON.stringify(invocation(channels)) }),
+            : { 'FLOW.contract.json': JSON.stringify(invocation(channels)) }),
         },
         async (root) => {
           await expect(checkPackageDirectory(root)).rejects.toMatchObject({
@@ -282,7 +282,7 @@ describe('package channel closure', () => {
         'FLOW.md': metadata({
           uses: { worker: { contract: './contracts/worker.json' } },
         }),
-        'contract.json': JSON.stringify({
+        'FLOW.contract.json': JSON.stringify({
           $schema: INVOCATION_CONTRACT_SCHEMA,
           channels: { events: { direction: 'receive', contract: reference } },
         }),

@@ -5,7 +5,7 @@
 A FLOW package is one immutable logical file tree containing exactly one root
 implementation named `FLOW.<ext>`. Markdown is an implementation format; a code
 package has no required Markdown companion. Optional invocation declarations
-live in `contract.json`, independently of implementation format.
+live in `FLOW.contract.json`, independently of implementation format.
 
 Package identity depends only on canonical paths and exact file bytes. It does
 not depend on Git, a registry, the source directory or the runtime selected by
@@ -63,7 +63,7 @@ Malformed known fields reject package metadata. Unknown top-level fields remain
 inspectable but prevent execution qualification; they never silently acquire
 meaning. Extensions cannot grant powers or acquire core Metadata/1 meaning.
 Invocation input/result schemas, outcomes, channels and attachments belong only
-to `contract.json`; putting them in metadata does not declare them.
+to `FLOW.contract.json`; putting them in metadata does not declare them.
 
 ### Frontmatter and sidecars
 
@@ -182,7 +182,7 @@ Only these optional exact root owners establish validation:
 
 | File | Meaning |
 | --- | --- |
-| `contract.json` | [Invocation Contract/1](invocation-contracts.md): input, complete result, explicit outcomes, channels and caller attachments. |
+| `FLOW.contract.json` | [Invocation Contract/1](invocation-contracts.md): input, complete result, explicit outcomes, channels and caller attachments. |
 | `settings.schema.json` | [Schema/1](schema-files.md): the complete immutable implementation settings object. |
 
 Compile present declarations during inert inspection, before code or instructions

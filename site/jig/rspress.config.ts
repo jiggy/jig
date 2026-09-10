@@ -21,6 +21,7 @@ const sidebar = [
     items: [
       { text: 'Choose an Agent', link: '/guide/agents' },
       { text: 'Flow dependencies', link: '/guide/dependencies' },
+      { text: 'Author contracts', link: '/guide/contracts' },
       { text: 'Working with files', link: '/guide/files' },
       { text: 'Live progress', link: '/guide/channels' },
       { text: 'Workflow structure', link: '/guide/workflow-design' },

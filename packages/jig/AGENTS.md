@@ -10,8 +10,12 @@ admitted FLOW packages.
 - `src/index.ts` and `src/project/author.ts` own the public authoring surface.
 - The CLI, package/project capture, invocation contracts, Run host, and
   administration objects are package-owned implementation.
+- Explicit review `--generate-contracts` owns optional TypeSpec preparation and checked
+  publication. Plain review checks local freshness; Run never compiles. The
+  compiler is bundled, with Node 22+ selected only from fixed system locations
+  or the operator's absolute `JIG_AUTHORING_NODE_PATH`.
 - `src/markdown/` owns the sequential Markdown parser and interpreter, using
-  the public FLOW SDK inside the ordinary contained runtime. Root `contract.json`
+  the public FLOW SDK inside the ordinary contained runtime. Root `FLOW.contract.json`
   owns invocation declarations; code metadata uses `flow.meta.json` and Markdown
   uses optional frontmatter. Exactly one `FLOW.<ext>` is executable.
 - `src/run/channels.ts` owns finite participant-scoped endpoint rights, atomic
@@ -25,6 +29,9 @@ admitted FLOW packages.
 - `justfile`, `scripts/`, `support/`, the manifest, README, licenses, and notices own
   package assembly inputs. Bun generates the ignored root workspace lock;
   `dist/`, `bin/`, and `libexec/` are generated.
+- `scripts/pack.ts` stages the complete script-disabled npm compiler installation
+  under private `libexec/authoring`, then archives the allowlisted package tree.
+  Consumers do not resolve the authoring workspace package from a registry.
 
 ## Local Contracts
 

@@ -164,15 +164,8 @@ async function runPrivateInstalledCli(
             directory: project,
             host: Object.freeze({
               ...installedHost,
-              get agentProvider() {
-                return installedHost.agentProvider
-              },
-              prepareAgent: async (signal: AbortSignal) => {
-                const previous = installedHost.agentProvider
-                const provider = await installedHost.prepareAgent?.(signal)
-                if (provider !== previous) noticeAgent()
-                return provider
-              },
+              ...(options?.generateContracts ? { generateContracts: true } : {}),
+              ...(options?.onGeneration ? { onGeneration: options.onGeneration } : {}),
               ...(options?.runTimeoutMs === undefined
                 ? {}
                 : { runTimeoutMs: options.runTimeoutMs }),

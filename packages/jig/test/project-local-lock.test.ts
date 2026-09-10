@@ -57,7 +57,7 @@ describe('private package-project portable lock projection', () => {
               description: 'Save progress.',
               uses: { progress: { contract: './contracts/run-checkpoint/contract.json' } },
             }),
-            'contract.json': JSON.stringify({
+            'FLOW.contract.json': JSON.stringify({
               $schema: 'https://flow.jig.md/schemas/invocation-contract-1.schema.json',
               attachments,
             }),

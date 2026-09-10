@@ -182,7 +182,7 @@ describe('private project Flow source capture', () => {
     await withProject(async (root) => {
       await packageFiles(root, 'flows/bad-schema', {
         'FLOW.ts': 'export {};\n',
-        'contract.json': 'not JSON\n',
+        'FLOW.contract.json': 'not JSON\n',
       })
       const failure = await captureFlowSource(root, discover('flows')).then(
         () => undefined,
@@ -191,7 +191,7 @@ describe('private project Flow source capture', () => {
       expect(failure).toBeInstanceOf(CheckError)
       expect(failure).toMatchObject({
         code: 'CONTRACT_INVALID_JSON',
-        path: 'flows/bad-schema/contract.json',
+        path: 'flows/bad-schema/FLOW.contract.json',
       })
     })
   })
@@ -258,7 +258,7 @@ describe('private project Flow source capture', () => {
         'FLOW.py': 'pass\n',
       })
       await packageFiles(root, 'flows/attachment', {
-        'contract.json': JSON.stringify({
+        'FLOW.contract.json': JSON.stringify({
           $schema: 'https://flow.jig.md/schemas/invocation-contract-1.schema.json',
           attachments: { source: 'read' },
         }),
@@ -285,7 +285,7 @@ describe('private project Flow source capture', () => {
       })
       await packageFiles(root, 'flows/named-profile', {
         'FLOW.ts': 'export {}',
-        'contract.json': JSON.stringify({
+        'FLOW.contract.json': JSON.stringify({
           $schema: 'https://flow.jig.md/schemas/invocation-contract-1.schema.json',
           operations: { run: {} },
         }),

@@ -119,8 +119,10 @@ execute those choices on this host.
 
 - **Planning is Run-admission-neutral, not read-only.** Review may capture,
   evaluate, prepare, and retain evidence. Before confirmation it must not
-  modify visible project meaning, grant execution authority, or run package
-  code.
+  modify visible project meaning without separate authoring consent, grant
+  execution authority, or run package code. Explicit `--generate-contracts` authorizes
+  bounded contract publication before the separate Run approval. It is not a
+  general build hook; ordinary review remains compiler-free.
 - **Capture precedes authority.** Mutable visible source is neither evaluated
   nor executed directly.
 - **Parsed and hashed does not mean authorized.** Validation, a digest, or a
@@ -271,7 +273,7 @@ their own unchanged assertions. The exact contract belongs in
 
 A named **Invocation Contract** describes an exact interface for independently
 maintained consumers and implementations. It is offered by a Flow's optional
-`contract.json` and required through a package-local `uses` reference. **Agent
+`FLOW.contract.json` and required through a package-local `uses` reference. **Agent
 Run** is a native host implementation of such an interface, consumed through
 the same Run/1 `flow/call` as an exact Flow dependency.
 It is not a new FLOW method, model authority, or public provider framework.

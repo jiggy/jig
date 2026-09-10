@@ -57,7 +57,7 @@ reads and effect recipes; it does not disable the interpreter's reasoning call
 or its duty to settle execution.
 
 Optional name and description stay in Markdown frontmatter. Invocation schemas,
-outcomes, channels and attachments belong only in optional `contract.json`.
+outcomes, channels and attachments belong only in optional `FLOW.contract.json`.
 A package has exactly one `FLOW.<ext>`: use `README.md` for commentary beside a
 code implementation, not a second Markdown entrypoint.
 

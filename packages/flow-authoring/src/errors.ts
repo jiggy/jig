@@ -15,16 +15,11 @@ export class AuthoringError extends Error {
   }
 }
 
-export function fail(
-  code: string,
-  message: string,
-  target?: DiagnosticTarget | typeof NoTarget,
-  output?: string,
-): never {
+export function fail(code: string, message: string, target?: unknown, output?: string): never {
   let line = 1,
     column = 1
   if (target && target !== NoTarget) {
-    const location = getSourceLocation(target)
+    const location = getSourceLocation(target as DiagnosticTarget)
     const position = location.file.getLineAndCharacterOfPosition(location.pos)
     line = position.line + 1
     column = position.character + 1

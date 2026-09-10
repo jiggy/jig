@@ -7,10 +7,12 @@
 
 # Build the installed CLI, inert authoring SDK, and private workers
 @build: verify-build-bun clean
-    mkdir -p bin libexec/agent libexec/evaluator libexec/preparation
+    just --justfile ../flow-authoring/justfile build
+    mkdir -p bin libexec/agent libexec/evaluator libexec/preparation libexec/authoring
     cp scripts/installed-jig.sh bin/jig
     chmod 755 bin/jig
     bun node_modules/typescript/bin/tsc -p tsconfig.json
+    cp dist/internal/contract-authoring-worker.js libexec/authoring/contract-authoring-worker.js
     bun build src/index.ts --target=bun --format=esm --outfile=dist/index.js
     bun build src/installed-cli.ts --target=bun --format=esm --outfile=libexec/installed-cli.js
     bun build src/internal/linux-rootless-supervisor.ts --target=bun --format=esm --outfile=libexec/linux-rootless-supervisor.js
@@ -45,7 +47,7 @@ clean:
 # Build, then pack; release publication reuses an already tested archive
 [positional-arguments]
 @pack *args: build
-    bun pm pack --ignore-scripts "$@"
+    bun scripts/pack.ts "$@"
 
 # ---------------------------------------------------------------------------- #
 #                                    CHECKS                                    #

@@ -147,7 +147,7 @@ describe('bundled Markdown worker over FLOW/1', () => {
       const success = scenario === 'success'
       const root = await fixture({
         'FLOW.md': block('send progress "partial"') + block('close progress'),
-        'contract.json': JSON.stringify({
+        'FLOW.contract.json': JSON.stringify({
           $schema: 'https://flow.jig.md/schemas/invocation-contract-1.schema.json',
           channels: { progress: { direction: 'send' } },
         }),
@@ -393,7 +393,7 @@ hosted('fresh installed Markdown admission on the provisioned proof host', () =>
 
 async function writeTypeScriptEcho(root: string, descriptor: string): Promise<void> {
   await mkdir(root)
-  await writeFile(join(root, 'contract.json'), descriptor)
+  await writeFile(join(root, 'FLOW.contract.json'), descriptor)
   await writeFile(join(root, 'flow.meta.json'), JSON.stringify({ name: basename(root) }))
   await writeFile(
     join(root, 'FLOW.ts'),
@@ -448,7 +448,7 @@ async function selectArchive(
     return canonical
   }
   await command(
-    [process.execPath, 'pm', 'pack', '--ignore-scripts', '--destination', artifacts],
+    [process.execPath, 'scripts/pack.ts', '--destination', artifacts],
     resolve(packageRoot, '..', packageName),
   )
   const archives = (await readdir(artifacts)).filter((name) => name.endsWith('.tgz'))

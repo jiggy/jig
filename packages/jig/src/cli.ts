@@ -93,7 +93,7 @@ requests, approval, or execution happens during initialization.
 
 Example: jig init hello-jig
 The destination must not exist; existing files are never replaced.`,
-  review: `Usage: jig review [project] [--allow-resolution-network] [--yes] [--details]
+  review: `Usage: jig review [project] [--generate-contracts] [--allow-resolution-network] [--yes] [--details]
 
 Capture source, prepare dependencies, show changes, then ask for approval.
 The project defaults to the current directory. This command has side effects:
@@ -102,6 +102,8 @@ it retains private snapshots and, after approval, updates jig.lock.
   --allow-resolution-network  Permit fresh resolution for missing dependency locks
   --yes                      Approve the displayed revision without a prompt
   --details                  Show complete policy when proposing a change
+  --generate-contracts                 Generate contracts with Jig's bundled TypeSpec tool
+                             Writes managed companions before Run approval
 
 Examples:
   jig review
@@ -159,10 +161,8 @@ export interface PrivateCliCommandHost {
       readonly onResolution?: (packagePath: string) => void
       readonly onNotice?: (text: string) => void
       readonly onStage?: (stage: string) => void
-      readonly chooseAgent?: (
-        choices: readonly PrivateAgentChoice[],
-        signal: AbortSignal,
-      ) => Promise<string | undefined>
+      readonly generateContracts?: boolean
+      readonly onGeneration?: (packagePath: string, files: readonly string[]) => void
     },
   ): Promise<ProjectSession>
   readonly delivery?: PrivateDeliveryConnection
@@ -432,51 +432,21 @@ async function executeReview(arguments_: readonly string[], runtime: CliRuntime)
       return 0
     },
     {
-      ...(runtime.interactive
-        ? {
-            chooseAgent: async (choices: readonly PrivateAgentChoice[], signal: AbortSignal) => {
-              const available = choices.filter((choice) => choice.unavailable === undefined)
-              const unavailable = choices.filter((choice) => choice.unavailable !== undefined)
-              const compatibility = available.some((choice) => choice.id === 'api')
-                ? '  Flows needing live updates require a native client; this menu cannot detect that need.\n'
-                : ''
-              const exclusions =
-                parsed.details || available.length === 0
-                  ? unavailable
-                      .map((choice) => `  Unavailable: ${choice.label}\n    ${choice.unavailable}`)
-                      .join('\n')
-                  : unavailable.length > 0
-                    ? `  Unavailable: ${unavailable.map((choice) => choice.label.split(' — ')[0]).join(', ')}. Setup: jig review --details.`
-                    : ''
-              runtime.writeOutput(
-                `Choose an Agent for this project\n\nRemembered locally. Approval remains a separate step.\n${compatibility}${exclusions ? `${exclusions}\n` : ''}\n${available.length === 0 ? '  No clients available. Configure a client above, then retry jig review.' : available.map((choice, index) => `  ${index + 1}. ${choice.label}`).join('\n')}\n\n`,
-              )
-              if (available.length === 0) return undefined
-              while (true) {
-                const answer = (
-                  await runtime.answer('Agent number (Enter to cancel): ', signal)
-                ).trim()
-                if (answer === '') return undefined
-                const selected = /^[1-9][0-9]*$/.test(answer)
-                  ? available[Number(answer) - 1]
-                  : undefined
-                if (selected !== undefined) {
-                  runtime.progress.stage('Capturing source and preparing dependencies')
-                  return selected.id
-                }
-                runtime.writeOutput(
-                  `Enter a number from 1 to ${available.length}, or press Enter to cancel.\n`,
-                )
-              }
-            },
-          }
-        : {}),
       ...(parsed.allowResolutionNetwork
         ? {
             allowResolutionNetwork: true,
-            onResolution: (path) =>
+            onResolution: (path: string) =>
               runtime.writeNotice(
                 `Warning: Dependency network access allowed\n\n  Package: ${asciiJsonString(path)}\n  Scope: This review only; Runs gain no network access.\n  Bun may contact dependency-selected public or private-network services\n  before graph validation. Requests cannot be undone; unsupported\n  dependencies may still fail.\n\n`,
+              ),
+          }
+        : {}),
+      ...(parsed.generate
+        ? {
+            generateContracts: true,
+            onGeneration: (path: string, files: readonly string[]) =>
+              runtime.writeNotice(
+                `Generating ${asciiJsonString(path)}: ${files.map(asciiJsonString).join(', ')}. These writes do not approve execution.\n`,
               ),
           }
         : {}),
@@ -781,14 +751,17 @@ function parseReview(
   readonly yes: boolean
   readonly details: boolean
   readonly allowResolutionNetwork: boolean
+  readonly generate: boolean
 } {
   let project: string | undefined
   let yes = false
   let allowResolutionNetwork = false
   let details = false
+  let generate = false
   for (const argument of arguments_.slice(1)) {
     if (argument === '--yes' && !yes) yes = true
     else if (argument === '--details' && !details) details = true
+    else if (argument === '--generate-contracts' && !generate) generate = true
     else if (argument === '--allow-resolution-network' && !allowResolutionNetwork)
       allowResolutionNetwork = true
     else if (!argument.startsWith('-') && project === undefined) project = argument
@@ -800,7 +773,7 @@ function parseReview(
           : 'Specify only one project directory.',
       )
   }
-  return { project: project ?? currentDirectory, yes, details, allowResolutionNetwork }
+  return { project: project ?? currentDirectory, yes, details, allowResolutionNetwork, generate }
 }
 
 function parseRun(arguments_: readonly string[]): {
@@ -1210,6 +1183,17 @@ function renderFailure(error: unknown, runtime: CliRuntime): 1 | 2 {
   if (error instanceof ProjectAdministrationError) {
     const projected = projectError(error.code)
     const candidateHints: Record<string, string> = {
+      AUTHORING_STALE:
+        'run jig review --generate-contracts to refresh the authored contract before review',
+      AUTHORING_INTERRUPTED:
+        'run jig review --generate-contracts to finish the recorded batch; resolve edited-file conflicts first',
+      AUTHORING_CONFLICT:
+        'a generated destination was edited or is not owned by this generator; preserve your changes and restore or move the conflicting file before generating',
+      AUTHORING_NODE:
+        'contract generation needs Node 22+; set JIG_AUTHORING_NODE_PATH to its absolute executable',
+      AUTHORING_COMPILER:
+        'the bounded compiler did not complete; check Node 22+ and retry generation',
+      AUTHORING_COMPILE: asciiJsonString(error.message),
       METADATA_DELIMITER: 'when present, FLOW.md frontmatter needs two exact --- delimiter lines',
       METADATA_INVALID_YAML:
         'FLOW.md metadata is not valid YAML; check indentation, quotes and key/value syntax',
@@ -1225,14 +1209,14 @@ function renderFailure(error: unknown, runtime: CliRuntime): 1 | 2 {
         'the selected package needs one exact-case FLOW.<suffix> entrypoint',
       PACKAGE_METADATA_OWNER:
         'keep Markdown frontmatter in FLOW.md; use flow.meta.json only with a code entrypoint',
-      PACKAGE_SCHEMA_OWNER: 'place invocation input and result schemas in contract.json',
+      PACKAGE_SCHEMA_OWNER: 'place invocation input and result schemas in FLOW.contract.json',
       PACKAGE_PROFILE_UNSUPPORTED:
         'use a runtime and single-invocation contract supported by this host',
       PACKAGE_METADATA_UNSUPPORTED:
         'this host cannot honor the indicated metadata requirement; use a qualified host or revise that requirement explicitly',
       PACKAGE_TOOLS_UNSUPPORTED:
         'the selected runtime cannot enforce this allowed-tools restriction',
-      CONTRACT_FIELD: 'check contract.json fields against FLOW Invocation Contract/1',
+      CONTRACT_FIELD: 'check FLOW.contract.json fields against FLOW Invocation Contract/1',
       CONTRACT_IDENTITY:
         'a required interface must declare both its canonical id and exact version',
       CONTRACT_LIMIT:

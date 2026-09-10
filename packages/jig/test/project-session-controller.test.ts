@@ -270,12 +270,12 @@ describe('private finite project session', () => {
         'invalid',
         code,
         'private diagnostic text',
-        'flows/bad/contract.json',
+        'flows/bad/FLOW.contract.json',
       )
       expect(projectError(failure, 'plan').toJSON()).toEqual({
         code: 'INVALID_CANDIDATE',
         message: 'project candidate is invalid',
-        diagnostic: { code, path: 'flows/bad/contract.json' },
+        diagnostic: { code, path: 'flows/bad/FLOW.contract.json' },
       })
     }
     expect(

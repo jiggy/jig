@@ -45,7 +45,7 @@ foundations do not need to be rebuilt.
 ## Next milestones
 
 Build on one reusable invocation interface for Flow specialists and qualified
-native operations, optional `contract.json`, and one `FLOW.<ext>` implementation
+native operations, optional `FLOW.contract.json`, and one `FLOW.<ext>` implementation
 per package. Every Markdown method uses an admitted Agent to interpret its
 body and select exact recipes. Exact sibling calls, contained project commands,
 root file delivery, checkpoints and channels remain the composition foundation.

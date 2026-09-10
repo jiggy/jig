@@ -73,7 +73,7 @@ export function packageProfileIssue(inspected: InspectedPackage): PackageProfile
     return {
       code: 'PACKAGE_PROFILE_UNSUPPORTED',
       message: 'Named invocation operations are not supported by this execution profile.',
-      path: 'contract.json',
+      path: 'FLOW.contract.json',
     }
   }
   const requiredNamed = inspected.usedContracts.find(({ contract }) => contract.profile === 'named')
@@ -158,13 +158,13 @@ export async function inspectCapturedPackage(captured: CapturedPackage): Promise
     if (byPath.has(path))
       invalid(
         'PACKAGE_SCHEMA_OWNER',
-        `${path} is not an invocation declaration; use contract.json`,
+        `${path} is not an invocation declaration; use FLOW.contract.json`,
         path,
       )
   }
   const contractCache = new Map<string, ParsedInvocationContract>()
-  const contract = byPath.has('contract.json')
-    ? await readContract(captured, byPath, contractCache, 'contract.json')
+  const contract = byPath.has('FLOW.contract.json')
+    ? await readContract(captured, byPath, contractCache, 'FLOW.contract.json')
     : undefined
   const invocation = contract === undefined ? Object.freeze({}) : contract.invocation
   const schemas: { input?: CompiledSchema; settings?: CompiledSchema; result?: CompiledSchema } = {}

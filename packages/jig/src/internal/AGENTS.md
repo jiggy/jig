@@ -11,6 +11,12 @@ child calls, project commands, and Agent providers.
 - Activation planning, admission storage, project sessions, root controllers,
   and durable lifecycle state.
 - Package artifact retention, materialization, and preparation.
+- Contract generation owns captured TypeSpec requests, a bounded trusted Node
+  subprocess with empty environment and stdin lifetime lease, and per-package
+  publication journals beneath `.jig`. It requires separate `--generate-contracts` consent.
+  Only exact before/after bytes may settle interrupted batches; observed edits
+  conflict. Completion recaptures visible files before review. Individual renames
+  are not atomic multi-file publication or protection against every editor race.
 - Invocation file capture, sealed input projection, bounded anonymous output,
   and separate command-owned publication after execution fencing.
 - Installed Bun authentication, rootless acquisition, delegation,

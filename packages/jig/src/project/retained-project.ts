@@ -17,6 +17,7 @@ import {
   captureOpenedFlowSource,
   type FlowDiscoveryObservation,
   type FlowExactObservation,
+  type PrepareCapturedFlow,
 } from './flow-source.js'
 import { linkPackageProject, type PackageProjectValue } from './package-project.js'
 import { retainAuthorClosure, type RetainedAuthorClosure } from './retained-author-closure.js'
@@ -39,6 +40,7 @@ export interface PrivateRetainedOpenedProjectOptions {
   readonly projectRoot: PrivateProjectRoot
   readonly storeRoot: string
   readonly evaluator: PrivateAuthorEvaluatorOptions
+  readonly prepareFlow?: PrepareCapturedFlow
 }
 
 export interface RetainedBindingDeclaration {
@@ -147,7 +149,7 @@ export async function retainOpenedPackageProject(
     }
     await bindingSource.verify()
 
-    flowSource = await captureOpenedFlowSource(root, project.value.flows)
+    flowSource = await captureOpenedFlowSource(root, project.value.flows, options.prepareFlow)
     const retainedFlows = await retainFlowSourcePackages(options.storeRoot, flowSource)
     const declarationArtifact = await retainAuthorClosure(options.storeRoot, closure)
     await bindingSource.verify()

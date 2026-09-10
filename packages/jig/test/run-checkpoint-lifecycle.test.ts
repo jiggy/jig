@@ -160,7 +160,7 @@ async function fixture() {
     )
     if (name === 'root') {
       await writeFile(
-        join(path, 'contract.json'),
+        join(path, 'FLOW.contract.json'),
         JSON.stringify({
           $schema: 'https://flow.jig.md/schemas/invocation-contract-1.schema.json',
           attachments: { deliverables: 'read-write' },

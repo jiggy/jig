@@ -14,7 +14,7 @@ authored examples, not independent consumer evidence or promoted Starters.
   Flow and Binding declarations.
 - Public instructions belong in `docs/jig/`; each code package's `README.md`
   explains its procedure, `FLOW.ts` implements it, `flow.meta.json` owns optional
-  metadata and slot declarations, and `contract.json` owns invocation constraints.
+  metadata and slot declarations, and `FLOW.contract.json` owns invocation constraints.
 - Platform contracts remain owned by `docs/`, `packages/`, and `conformance/`.
 
 ## Local Contracts

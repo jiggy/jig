@@ -414,8 +414,8 @@ an Agent finish. Adding a heading or comment does not alter these rules.
 ```text
 fast/FLOW.ts                 considered/FLOW.md
 fast/flow.meta.json          considered/settings.schema.json
-fast/settings.schema.json    considered/contract.json
-fast/contract.json
+fast/settings.schema.json    considered/FLOW.contract.json
+fast/FLOW.contract.json
 ```
 
 The contract bundles are byte-identical named reviewer agreements. Code metadata

@@ -1246,7 +1246,7 @@ async function writeProject(root: string): Promise<void> {
   await writeFile(join(flow, 'skills', 'selected', 'SKILL.md'), 'SELECTED_SKILL_MARKER\n')
   await writeFile(join(flow, 'skills', 'hidden', 'SKILL.md'), 'HIDDEN_SKILL_MARKER\n')
   await writeFile(
-    join(flow, 'contract.json'),
+    join(flow, 'FLOW.contract.json'),
     JSON.stringify({
       $schema: 'https://flow.jig.md/schemas/invocation-contract-1.schema.json',
       input: {

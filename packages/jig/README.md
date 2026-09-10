@@ -40,7 +40,7 @@ Project commands:
 
 ```text
 jig init [--bare] <directory>
-jig review [project] [--allow-resolution-network] [--yes] [--details]
+jig review [project] [--generate-contracts] [--allow-resolution-network] [--yes] [--details]
 jig run <flow:path|binding:id> [options]
 jig inspect [flow:path|binding:id] [--json]
 ```
@@ -48,6 +48,10 @@ jig inspect [flow:path|binding:id] [--json]
 `review` shows changed policy; `--details` includes complete current and proposed
 policy. `--yes` approves without a prompt but does not grant resolution network
 permission. `--bare` creates only an empty project skeleton.
+
+`--generate-contracts` compiles authored TypeSpec contracts and publishes their
+managed JSON and types before the separate execution-approval question. Plain
+review does not compile; already-generated contracts need no compiler runtime.
 
 `inspect` lists approved targets or shows a target's retained interface without
 evaluating source, contacting providers, preparing dependencies or changing state.
@@ -81,6 +85,7 @@ for supported installations and authentication.
 - [Choose an Agent](https://jig.md/guide/agents)
 - [Working with files](https://jig.md/guide/files)
 - [Dependencies](https://jig.md/guide/dependencies)
+- [Author contracts once](https://jig.md/guide/contracts)
 - [Workflow design](https://jig.md/guide/workflow-design)
 - [Project authoring](https://jig.md/spec/project-sdk)
 - [Execution policy](https://jig.md/spec/project-policy)

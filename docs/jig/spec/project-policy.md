@@ -364,7 +364,7 @@ a candidate catalogue nor authority to select a different child at runtime.
 `uses` in `flow.meta.json` (code) or optional Markdown frontmatter declares
 uncontracted requirements with `{}` or named requirements with a local
 `contract` path. A typed Flow route must offer the identical contract ID,
-version and descriptor/closure digest in its root `contract.json`. An explicit
+version and descriptor/closure digest in its root `FLOW.contract.json`. An explicit
 route wins or fails; it never falls back. Uncontracted exact Binding routes
 need no additional declaration. Only the three qualified native contracts may
 default to host implementation. They remain native-only: claiming their digest
@@ -502,7 +502,7 @@ dispatch. Repeating the key with identical content returns the same Run;
 changed reuse conflicts and never dispatches again.
 
 After allocation, Jig validates the actual input against
-the `input` schema in `contract.json`, when present. Invalid input terminates that same durable
+the `input` schema in `FLOW.contract.json`, when present. Invalid input terminates that same durable
 Run without starting package code.
 
 Package schema roots use FLOW Schema/1 and therefore declare exactly
@@ -511,7 +511,7 @@ package rule, not Jig project authoring metadata.
 
 The host launches one Run/1 process from the exact admitted package bytes in a
 rootless Linux envelope. It validates the returned outcome and the complete
-result against `contract.json` outcomes and its `result` schema. A success is
+result against `FLOW.contract.json` outcomes and its `result` schema. A success is
 published only after the complete process tree is fenced, reaped, and cleaned.
 
 While a Binding Run remains open, its package may use Run/1 `flow/call` with

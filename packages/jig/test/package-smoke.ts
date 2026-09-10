@@ -17,6 +17,7 @@ const expectedInstalledFiles = [
   'dist/project/author.d.ts',
   'dist/project/commands.d.ts',
   'libexec/installed-cli.js',
+  'libexec/authoring/contract-authoring-worker.js',
   'libexec/markdown-runtime.js',
   'libexec/flow.LICENSE',
   'libexec/agent/openai.LICENSE',
@@ -74,7 +75,13 @@ try {
     await readFile(join(installed, 'package.json'), 'utf8'),
   ) as Record<string, unknown>
   assert.deepEqual(installedFiles, expectedInstalledFiles)
+  await stat(
+    join(installed, 'libexec/authoring/node_modules/@jigging/flow-authoring/dist/index.js'),
+  )
   assert.deepEqual(installedManifest.bin, { jig: './bin/jig' })
+  await assert.rejects(stat(join(installed, 'libexec/authoring/node_modules/.package-lock.json')), {
+    code: 'ENOENT',
+  })
   assert.deepEqual(installedManifest.dependencies, {
     '@oven/bun-linux-x64-baseline': '1.3.3',
   })
@@ -138,6 +145,7 @@ try {
   assert.doesNotMatch(runHelp.stdout, /jig init|--allow-resolution-network/)
   const reviewHelp = await run([command, 'review', '--help'], consumer)
   assert.match(reviewHelp.stdout, /--details/)
+  assert.match(reviewHelp.stdout, /--generate-contracts/)
   assert.match(reviewHelp.stdout, /--yes does not grant resolution networking/)
   const greeting = join(consumer, 'greeting')
   const initializedGreeting = await run([command, 'init', greeting], consumer)
@@ -152,6 +160,44 @@ try {
     rm(join(consumer, 'bunfig.toml')),
     rm(join(consumer, 'ambient-preload.mjs')),
   ])
+
+  // Exercise the installed compiler closure, not workspace imports. This catches
+  // archive omissions even when another package manager would fetch missing deps.
+  const compiler = Bun.spawn(
+    [
+      process.env.JIG_AUTHORING_NODE_PATH ?? process.env.FLOW_NODE ?? 'node',
+      join(installed, 'libexec/authoring/contract-authoring-worker.js'),
+    ],
+    { cwd: consumer, env: {}, stdin: 'pipe', stdout: 'pipe', stderr: 'pipe' },
+  )
+  const compilerTimeout = setTimeout(() => compiler.kill('SIGKILL'), 25000)
+  try {
+    compiler.stdin.write(
+      JSON.stringify({
+        source: `
+import "@jigging/flow-authoring/typespec";
+using FLOW;
+@invocation(Input, Result) namespace Smoke;
+@closed model Input { name: string; }
+@closed model Result { outcome: "done"; output: string; }
+`,
+      }) + '\n',
+    )
+    await compiler.stdin.flush()
+    const [code, output, diagnostic] = await Promise.all([
+      compiler.exited,
+      new Response(compiler.stdout).text(),
+      new Response(compiler.stderr).text(),
+    ])
+    assert.equal(code, 0, diagnostic)
+    const generated = JSON.parse(output)
+    assert.equal(JSON.parse(generated.artifacts['FLOW.contract.json']).$defs.Input.type, 'object')
+    assert.match(generated.artifacts['FLOW.contract.d.ts'], /FlowInput/)
+  } finally {
+    clearTimeout(compilerTimeout)
+    compiler.kill('SIGKILL')
+    await compiler.exited
+  }
 
   const runtime = join(consumer, 'node_modules', '@oven', 'bun-linux-x64-baseline', 'bin', 'bun')
   const runtimeBytes = await readFile(runtime)
@@ -296,7 +342,7 @@ async function selectArchive(artifacts: string): Promise<string> {
     }
     return canonical
   }
-  await run(['bun', 'pm', 'pack', '--ignore-scripts', '--destination', artifacts], packageRoot)
+  await run(['bun', 'scripts/pack.ts', '--destination', artifacts], packageRoot)
   const archives = (await readdir(artifacts)).filter((name) => name.endsWith('.tgz'))
   assert.equal(archives.length, 1)
   return join(artifacts, archives[0]!)
@@ -306,6 +352,7 @@ async function listFiles(root: string, prefix = ''): Promise<string[]> {
   const output: string[] = []
   for (const entry of await readdir(join(root, prefix), { withFileTypes: true })) {
     const path = prefix === '' ? entry.name : `${prefix}/${entry.name}`
+    if (path === 'libexec/authoring/node_modules') continue
     if (entry.isDirectory()) output.push(...(await listFiles(root, path)))
     else if (entry.isFile()) output.push(path)
     else throw new Error(`installed package contains a non-file member: ${path}`)

@@ -128,7 +128,7 @@ target. There is no hidden generated Binding.
 
 A required named invocation is declared by `uses.<slot>.contract` in package
 metadata. The selected Flow must offer exactly that ID, version and digest
-through its root `contract.json`; anonymous ordinary calls need no contract.
+through its root `FLOW.contract.json`; anonymous ordinary calls need no contract.
 Unmapped qualified native Agent Run, Project Command and Run Checkpoint slots
 resolve to the corresponding host implementation. Native authority cannot be
 replaced by mapping a package that merely claims its contract identity.
