@@ -575,7 +575,7 @@ async function prepareCall(
   try {
     const inspected = await inspectCapturedPackage(captured)
     const reference =
-      inspected.markdown?.mode === 'mixed' && input.call.slot === MARKDOWN_AGENT_SLOT
+      inspected.markdown !== undefined && input.call.slot === MARKDOWN_AGENT_SLOT
         ? { contract: markdownAgentContract() }
         : inspected.usedContracts.find(({ slot }) => slot === input.call.slot)
     if (reference === undefined) {

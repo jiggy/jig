@@ -9,18 +9,21 @@ const recipe = (instruction: string, fence = '```') => `${fence}flow\n${instruct
 const finish = 'return {"outcome":"done","output":null}'
 
 describe('captured Markdown recipe compilation', () => {
-  test('accepts ordinary Skill prose and classifies exact direct bodies syntactically', () => {
+  test('accepts Skill prose and recipe-only bodies without an execution-mode distinction', () => {
     expect(
       compileMarkdown(
         source(
           "---\nname: writing\ndescription: Revise supplied prose.\n---\nPreserve the author's claims.",
         ),
-      ).mode,
-    ).toBe('mixed')
-    expect(compileMarkdown(source(` \t\r\n${recipe(finish)}\r\n`)).mode).toBe('direct')
-    expect(compileMarkdown(source(`${recipe(finish)}<!-- Explanation -->`)).mode).toBe('mixed')
-    expect(compileMarkdown(source('# Heading only')).mode).toBe('mixed')
-    expect(compileMarkdown(source('<!-- Comment only -->')).mode).toBe('mixed')
+      ).recipes,
+    ).toEqual([])
+    for (const body of [recipe(finish), `${recipe(finish)}<!-- Explanation -->`]) {
+      const compiled = compileMarkdown(source(` \t\r\n${body}\r\n`))
+      expect(compiled.recipes).toHaveLength(1)
+      expect(compiled).not.toHaveProperty('mode')
+    }
+    expect(compileMarkdown(source('# Heading only')).recipes).toEqual([])
+    expect(compileMarkdown(source('<!-- Comment only -->')).recipes).toEqual([])
     for (const body of ['', ' \r\n\t']) expect(() => compileMarkdown(source(body))).toThrow('empty')
   })
 
@@ -59,10 +62,12 @@ describe('captured Markdown recipe compilation', () => {
     })
   })
 
-  test('requires an explicit matching closing fence and preserves mixed unavailability', () => {
+  test('requires an explicit matching closing fence and preserves unavailable candidates', () => {
     const unclosed = compileMarkdown(source(`Prose\n\n\`\`\`flow\n${finish}`))
     expect(unclosed.recipes[0]!.diagnostic!.code).toBe('MARKDOWN_FENCE_UNCLOSED')
-    expect(() => compileMarkdown(source(`\`\`\`flow\n${finish}`))).toThrow('Every direct recipe')
+    expect(compileMarkdown(source(`\`\`\`flow\n${finish}`)).recipes[0]!.diagnostic!.code).toBe(
+      'MARKDOWN_FENCE_UNCLOSED',
+    )
     const malformed = compileMarkdown(source(`Prose\n${recipe('call missing {broken')}`))
     expect(malformed.recipes[0]!.diagnostic!.code).toBe('MARKDOWN_RECIPE_INVALID')
     expect(Object.isFrozen(malformed.recipes[0]!.diagnostic)).toBe(true)
@@ -95,15 +100,17 @@ describe('captured Markdown recipe compilation', () => {
     })
   })
 
-  test('preflights unreachable direct recipes and requires an explicit return', () => {
-    expect(() => compileMarkdown(source(recipe(finish) + recipe('call missing null')))).toThrow(
-      'Every direct recipe',
-    )
-    expect(() =>
-      compileMarkdown(source('---\nuses: {reviewer: {}}\n---\n' + recipe('call reviewer @input'))),
-    ).toThrow('explicit return')
+  test('freezes every recipe without requiring a return or restricting dynamic operands', () => {
+    const compiled = compileMarkdown(source(recipe(finish) + recipe('call missing null')))
+    expect(compiled.recipes[1]!.diagnostic!.code).toBe('MARKDOWN_SLOT_UNAVAILABLE')
+    expect(
+      compileMarkdown(source('---\nuses: {reviewer: {}}\n---\n' + recipe('call reviewer @input')))
+        .recipes[0]!.diagnostic,
+    ).toBeUndefined()
     for (const operand of ['@value', '?'])
-      expect(() => compileMarkdown(source(recipe(`return ${operand}`)))).toThrow('cannot use')
+      expect(
+        compileMarkdown(source(recipe(`return ${operand}`))).recipes[0]!.diagnostic,
+      ).toBeUndefined()
   })
 
   test('qualifies recipe declarations and tool restrictions without inventing slot tools', () => {

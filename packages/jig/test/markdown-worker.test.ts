@@ -11,7 +11,7 @@ import {
   writeFile,
 } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { isAbsolute, join, resolve } from 'node:path'
+import { basename, isAbsolute, join, resolve } from 'node:path'
 
 import { markdownAgentContract } from '../src/internal/markdown-agent-contract.js'
 import { assertPrivateAgentResponseSchema } from '../src/internal/openai-agent-client.js'
@@ -64,7 +64,12 @@ async function fixture(files: Record<string, string>) {
 
 // A deterministic wire peer is evidence for the bundled worker/SDK seam, not a
 // provider or containment claim. Responses enter only through public FLOW/1.
-async function exchange(root: string, input: unknown, respond: (request: any) => unknown) {
+async function exchange(
+  root: string,
+  input: unknown,
+  respond: (request: any) => unknown,
+  channels: Record<string, unknown> = {},
+) {
   const child = Bun.spawn([process.execPath, worker, join(root, 'FLOW.md')], {
     cwd: root,
     stdin: 'pipe',
@@ -86,6 +91,7 @@ async function exchange(root: string, input: unknown, respond: (request: any) =>
       input,
       settings: {},
       attachments: {},
+      channels,
       scratch: root,
       deadlineUnixMs: Date.now() + 10_000,
     },
@@ -99,17 +105,18 @@ async function exchange(root: string, input: unknown, respond: (request: any) =>
       received += bytes.byteLength
       if (received > 8_388_608) throw new Error('worker trace exceeds its test bound')
       pending += decoder.decode(bytes, { stream: true })
-      let newline: number
-      while ((newline = pending.indexOf('\n')) >= 0) {
+      let newline = pending.indexOf('\n')
+      while (newline >= 0) {
         const message = JSON.parse(pending.slice(0, newline))
         pending = pending.slice(newline + 1)
         messages.push(message)
         if (message.id === 'markdown:root') {
           await child.stdin.end()
         } else {
-          expect(message.method).toBe('flow/call')
+          expect(['flow/call', 'channel/send', 'channel/close']).toContain(message.method)
           send({ jsonrpc: '2.0', id: message.id, result: respond(message) })
         }
+        newline = pending.indexOf('\n')
       }
     }
     expect(pending + decoder.decode()).toBe('')
@@ -123,13 +130,55 @@ async function exchange(root: string, input: unknown, respond: (request: any) =>
 }
 
 describe('bundled Markdown worker over FLOW/1', () => {
-  test('executes a frontmatter-free direct recipe without requesting an Agent', async () => {
+  test('requires an Agent decision even for one frontmatter-free return recipe', async () => {
     const root = await fixture({ 'FLOW.md': block('return @input') })
     const result = done({ exact: ['😺', null, 0] })
-    const messages = await exchange(root, result, () => {
-      throw new Error('unexpected call')
+    const messages = await exchange(root, result, (request) => {
+      expect(request.params.slot).toBe('markdown-agent')
+      return agent(selection(1))
     })
-    expect(messages).toEqual([{ jsonrpc: '2.0', id: 'markdown:root', result }])
+    expect(messages).toHaveLength(2)
+    expect(messages.at(-1)).toEqual({ jsonrpc: '2.0', id: 'markdown:root', result })
+  })
+
+  test('only an explicitly selected close seals a writer, including before a later failure', async () => {
+    for (const scenario of ['success', 'invalid-result', 'explicit-close-then-failure']) {
+      const explicit = scenario === 'explicit-close-then-failure'
+      const success = scenario === 'success'
+      const root = await fixture({
+        'FLOW.md': block('send progress "partial"') + block('close progress'),
+        'contract.json': JSON.stringify({
+          $schema: 'https://flow.jig.md/schemas/invocation-contract-1.schema.json',
+          channels: { progress: { direction: 'send' } },
+        }),
+      })
+      let reasons = 0
+      const messages = await exchange(
+        root,
+        null,
+        (request) => {
+          if (request.method !== 'flow/call') return null
+          expect(request.params.slot).toBe('markdown-agent')
+          reasons++
+          if (reasons === 1) return agent(selection(1))
+          if (explicit && reasons === 2) return agent(selection(2))
+          return agent({
+            action: 'finish',
+            recipe: 0,
+            operand: 'literal',
+            path: '',
+            value: JSON.stringify({ outcome: success ? 'done' : 'undeclared', output: null }),
+          })
+        },
+        { progress: { endpoint: 'progress-writer', direction: 'send', delivery: 'direct' } },
+      )
+      expect(messages.filter((entry) => entry.method === 'channel/send')).toHaveLength(1)
+      expect(messages.filter((entry) => entry.method === 'channel/close')).toHaveLength(
+        explicit ? 1 : 0,
+      )
+      if (success) expect(messages.at(-1)).toMatchObject({ result: done(null) })
+      else expect(messages.at(-1)).toMatchObject({ error: { data: { code: 'INVALID_RESULT' } } })
+    }
   })
 
   test('settles native-shaped decisions, explicit captured reads and exact whole-value calls', async () => {
@@ -258,8 +307,8 @@ test('reuses a supplied canonical archive without creating a replacement pack', 
   expect(await readdir(artifacts)).toEqual([])
 })
 
-hosted('fresh installed Markdown on the provisioned proof host', () => {
-  test('substitutes an exact typed TypeScript child without changing its Markdown caller', async () => {
+hosted('fresh installed Markdown admission on the provisioned proof host', () => {
+  test('requires an Agent for every Markdown body while code execution remains Agent-free', async () => {
     const root = await mkdtemp(join(temporary, 'installed-'))
     const artifacts = join(root, 'artifacts')
     const sdkArtifacts = join(root, 'sdk-artifacts')
@@ -304,115 +353,57 @@ hosted('fresh installed Markdown on the provisioned proof host', () => {
       input: resultSchema,
       result: resultSchema,
     })
-    for (const name of ['echo', 'caller']) await mkdir(join(project, 'flows', name))
-    await writeFile(join(project, 'flows/echo/FLOW.md'), block('return @input'))
-    await writeFile(join(project, 'flows/echo/contract.json'), descriptor)
-    await writeFile(join(project, 'flows/caller/echo.contract.json'), descriptor)
-    const callerSource =
-      '---\nuses:\n  echo:\n    contract: ./echo.contract.json\n---\n' +
-      block('call echo @input') +
-      '\n' +
-      block('return @previous')
-    await writeFile(join(project, 'flows/caller/FLOW.md'), callerSource)
+    for (const name of ['recipes', 'prose']) await mkdir(join(project, 'flows', name))
+    await writeFile(join(project, 'flows/recipes/FLOW.md'), block('return @input'))
+    await writeFile(
+      join(project, 'flows/prose/FLOW.md'),
+      'Return the input unchanged.\n' + block('return @input'),
+    )
     await writeTypeScriptEcho(join(project, 'flows/code-echo'), descriptor)
     await prepareCandidateSdkWorkspace(
       project,
       await selectArchive(sdkArtifacts, undefined, 'flow-sdk'),
     )
-    await writeFile(
-      join(project, 'bindings/caller.ts'),
-      'import { defineBinding } from "@jigging/jig"; export default defineBinding({ package: "./flows/caller", slots: { echo: "flow:flows/echo" } });\n',
-    )
-    await command([jig, 'review', '--yes'], project)
-    const output = { exact: ['😺', null], text: 'x'.repeat(102_400) }
-    let markdownResult: unknown
-    for (const target of ['flow:flows/echo', 'binding:caller']) {
-      const result = JSON.parse(
-        await command(
-          [jig, 'run', target, '--input', JSON.stringify(done(output))],
-          project,
-          0,
-          `Markdown target ${target}`,
-        ),
+    for (const name of ['recipes', 'prose', 'code-echo']) {
+      await writeFile(
+        join(project, 'jig.ts'),
+        `import { defineJig } from "@jigging/jig"; export default defineJig({ flows: ["flows/${name}"] });\n`,
       )
-      expect(result).toMatchObject({ status: 'succeeded', outcome: 'done', output })
-      if (target === 'binding:caller') markdownResult = result.output
-    }
-    await writeFile(
-      join(project, 'bindings/caller.ts'),
-      'import { defineBinding } from "@jigging/jig"; export default defineBinding({ package: "./flows/caller", slots: { echo: "flow:flows/code-echo" } });\n',
-    )
-    await command([jig, 'review', '--yes'], project)
-    const substituted = JSON.parse(
+      const markdown = name !== 'code-echo'
       await command(
-        [jig, 'run', 'binding:caller', '--input', JSON.stringify(done(output))],
+        [jig, 'review', '--yes'],
+        project,
+        markdown ? 2 : 0,
+        `review ${name}`,
+        markdown ? `PROJECT_AGENT_UNAVAILABLE at "flows/${name}/FLOW.md"` : undefined,
+      )
+    }
+    const output = { exact: ['😺', null], text: 'x'.repeat(102_400) }
+    const result = JSON.parse(
+      await command(
+        [jig, 'run', 'flow:flows/code-echo', '--input', JSON.stringify(done(output))],
         project,
         0,
-        'substituted TypeScript child',
+        'Agent-free code Flow',
       ),
     )
-    expect(substituted).toMatchObject({ status: 'succeeded', outcome: 'done', output })
-    expect(substituted.output).toEqual(markdownResult)
-    const deadlineStarted = Date.now()
-    const expired = JSON.parse(
-      await command(
-        [
-          jig,
-          'run',
-          'binding:caller',
-          '--input',
-          JSON.stringify(done('delay-until-root-deadline')),
-          '--timeout',
-          '2s',
-        ],
-        project,
-        1,
-        'Markdown root deadline',
-      ),
-    )
-    expect(expired).toMatchObject({ status: 'failed', code: 'DEADLINE_EXCEEDED' })
-    expect(Object.hasOwn(expired, 'cleanup')).toBe(false)
-    expect(Date.now() - deadlineStarted).toBeLessThan(20_000)
-    const recovered = JSON.parse(
-      await command(
-        [jig, 'run', 'binding:caller', '--input', JSON.stringify(done(output))],
-        project,
-        0,
-        'ordinary call after root deadline',
-      ),
-    )
-    expect(recovered).toMatchObject({ status: 'succeeded', outcome: 'done', output })
-    expect(recovered.output).toEqual(markdownResult)
-    expect(await readFile(join(project, 'flows/caller/FLOW.md'), 'utf8')).toBe(callerSource)
-    for (const path of [
-      'flows/caller/echo.contract.json',
-      'flows/echo/contract.json',
-      'flows/code-echo/contract.json',
-    ]) {
-      expect(await readFile(join(project, path), 'utf8')).toBe(descriptor)
-    }
+    expect(result).toMatchObject({ status: 'succeeded', outcome: 'done', output })
   }, 120_000)
 })
 
 async function writeTypeScriptEcho(root: string, descriptor: string): Promise<void> {
   await mkdir(root)
   await writeFile(join(root, 'contract.json'), descriptor)
-  await writeFile(join(root, 'flow.meta.json'), JSON.stringify({ name: 'code-echo' }))
+  await writeFile(join(root, 'flow.meta.json'), JSON.stringify({ name: basename(root) }))
   await writeFile(
     join(root, 'FLOW.ts'),
     'import { handle, type RunResult } from "@jigging/flow";\n' +
-      'await handle(async (run) => {\n' +
-      '  const result = run.input as RunResult;\n' +
-      '  if (result.output === "delay-until-root-deadline") {\n' +
-      '    await new Promise((resolve) => setTimeout(resolve, 30_000));\n' +
-      '  }\n' +
-      '  return result;\n' +
-      '});\n',
+      'await handle((run) => run.input as RunResult);\n',
   )
   await writeFile(
     join(root, 'package.json'),
     JSON.stringify({
-      name: 'code-echo',
+      name: basename(root),
       private: true,
       dependencies: { '@jigging/flow': 'workspace:*' },
     }),
@@ -430,7 +421,7 @@ async function prepareCandidateSdkWorkspace(project: string, archive: string): P
   expect((await readdir(sdk)).sort()).toEqual(['LICENSE', 'README.md', 'dist', 'package.json'])
   await writeFile(
     join(project, 'package.json'),
-    JSON.stringify({ private: true, workspaces: ['flows/code-echo', 'vendor/flow-sdk'] }),
+    JSON.stringify({ private: true, workspaces: ['flows/*', 'vendor/flow-sdk'] }),
   )
   await command(
     [process.execPath, 'install', '--lockfile-only', '--ignore-scripts', '--no-progress'],
@@ -470,9 +461,14 @@ async function command(
   cwd: string,
   expectedCode = 0,
   stage?: string,
+  expectedDiagnostic?: string,
 ): Promise<string> {
   const started = Date.now()
-  const child = Bun.spawn(args, { cwd, stdout: 'pipe', stderr: 'pipe', timeout: 60_000 })
+  // This installed check must neither depend on nor spend operator Agent access.
+  const env = Object.fromEntries(
+    Object.entries(process.env).filter(([key]) => !/^(OPENAI_|OPENROUTER_|JIG_AGENT_)/.test(key)),
+  )
+  const child = Bun.spawn(args, { cwd, env, stdout: 'pipe', stderr: 'pipe', timeout: 60_000 })
   const [code, stdout, stderr] = await Promise.all([
     child.exited,
     new Response(child.stdout).text(),
@@ -499,5 +495,6 @@ async function command(
       `Public command ${action}${stage === undefined ? '' : ` (${stage})`} failed (${code}) after ${Date.now() - started}ms: ${stderr}\n${stdout}`,
     )
   }
+  if (expectedDiagnostic !== undefined) expect(stderr).toContain(expectedDiagnostic)
   return stdout
 }

@@ -34,6 +34,49 @@ const agentRunContract = await readFile(
 )
 
 describe('private package-project linker', () => {
+  test('derives the same reserved Agent requirement for every Markdown body, but not code', async () => {
+    const recipe = '```flow\nreturn {"outcome":"done","output":null}\n```\n'
+    await withFlows(
+      {
+        'flows/recipes': { 'FLOW.md': recipe },
+        'flows/prose': { 'FLOW.md': 'Return a complete result.\n' + recipe },
+        'flows/code': run('code'),
+      },
+      (flows) => {
+        const linked = linkPackageProject({ flows, bindings: [] })
+        const recipes = linked.flows.find(
+          (flow) => flow.provenance.projectPath === 'flows/recipes',
+        )!
+        const prose = linked.flows.find((flow) => flow.provenance.projectPath === 'flows/prose')!
+        expect(Object.keys(recipes.uses)).toEqual(['markdown-agent'])
+        expect(recipes.uses).toEqual(prose.uses)
+        expect(recipes.uses['markdown-agent']).toMatchObject({
+          id: 'https://jig.md/contracts/agent-run',
+          version: '1.0.0',
+        })
+        expect(
+          linked.flows.find((flow) => flow.provenance.projectPath === 'flows/code')!.uses,
+        ).toEqual({})
+        for (const packagePath of ['flows/recipes', 'flows/prose']) {
+          expectCode(
+            () =>
+              linkPackageProject({
+                flows,
+                bindings: [
+                  binding('bindings/replaced.ts', {
+                    package: packagePath,
+                    slots: { 'markdown-agent': 'flow:flows/code' },
+                  }),
+                ],
+              }),
+            'PROJECT_MARKDOWN_AGENT_RESERVED',
+            '/slots/markdown-agent',
+          )
+        }
+      },
+    )
+  })
+
   test('retains captured Flow members without taking source ownership', async () => {
     const root = await mkdtemp(join(tmpdir(), 'jig-retained-source-'))
     const store = join(root, 'store')

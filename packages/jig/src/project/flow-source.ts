@@ -678,7 +678,7 @@ export function isDirectRunEligible(inspected: InspectedPackage): boolean {
     const { id, version } = reference.contract.descriptor
     if (id === undefined || version === undefined) return false
     const native = nativeInvocationKind({ id, version, digest: reference.contract.digest })
-    if (native === 'agent' && inspected.markdown?.mode === 'mixed') return false
+    if (native === 'agent' && inspected.markdown !== undefined) return false
     if (
       native !== 'agent' &&
       !(

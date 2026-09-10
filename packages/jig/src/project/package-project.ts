@@ -206,7 +206,7 @@ export function projectInvocationRequirements(
   packagePath: string,
 ): Readonly<Record<string, InvocationRequirement>> {
   const output: Record<string, InvocationRequirement> = Object.create(null)
-  if (inspected.markdown?.mode === 'mixed') {
+  if (inspected.markdown !== undefined) {
     const contract = markdownAgentContract()
     output[MARKDOWN_AGENT_SLOT] = Object.freeze({
       id: contract.descriptor.id!,
@@ -302,7 +302,7 @@ function prepareBindings(
     requireSupportedPackageProfile(flow.inspected, definition.package)
     validateSettings(definition.settings, flow.inspected, declarationPath)
     if (
-      flow.inspected.markdown?.mode === 'mixed' &&
+      flow.inspected.markdown !== undefined &&
       Object.hasOwn(definition.slots, MARKDOWN_AGENT_SLOT)
     )
       invalid(

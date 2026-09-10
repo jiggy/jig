@@ -51,7 +51,6 @@ export interface FrozenRecipe {
   readonly diagnostic?: RecipeDiagnostic
 }
 export interface CompiledMarkdown {
-  readonly mode: 'direct' | 'mixed'
   readonly body: string
   readonly metadata: FlowMetadata
   readonly invocation: InvocationOperationDescriptor
@@ -105,7 +104,6 @@ export function compileMarkdown(
     slotContracts[reference.slot] = reference.contract.descriptor
   const policy = toolPolicy(metadata['allowed-tools'])
   const recipes: FrozenRecipe[] = []
-  const spans: { start: number; end: number }[] = []
   for (let node = root.firstChild; node !== null; node = node.next) {
     if (node.type !== 'code_block') continue
     const [start, end] = node.sourcepos
@@ -149,7 +147,6 @@ export function compileMarkdown(
       line: start[0],
       endLine: end[0],
     }
-    spans.push({ start: first.start, end: last.end })
     recipes.push(
       freeze({
         index: recipes.length + 1,
@@ -159,42 +156,7 @@ export function compileMarkdown(
       }),
     )
   }
-  let cursor = 0
-  let direct = recipes.length > 0
-  for (const span of spans) {
-    if (!WHITESPACE.test(body.slice(cursor, span.start))) direct = false
-    cursor = span.end
-  }
-  if (!WHITESPACE.test(body.slice(cursor))) direct = false
-  if (direct) {
-    if (recipes.some((recipe) => recipe.diagnostic !== undefined))
-      unavailable(
-        'MARKDOWN_DIRECT_UNAVAILABLE',
-        'Every direct recipe, including unreachable recipes, must be available.',
-        'FLOW.md',
-      )
-    if (!recipes.some((recipe) => recipe.instruction?.operation === 'return'))
-      unavailable(
-        'MARKDOWN_DIRECT_RETURN',
-        'A direct Markdown procedure requires an explicit return recipe.',
-        'FLOW.md',
-      )
-    if (
-      recipes.some(
-        (recipe) =>
-          recipe.instruction !== undefined &&
-          'operand' in recipe.instruction &&
-          ['value', 'fresh'].includes(recipe.instruction.operand.kind),
-      )
-    )
-      unavailable(
-        'MARKDOWN_DIRECT_OPERAND',
-        'Direct recipes cannot use @value or ? operands.',
-        'FLOW.md',
-      )
-  }
   return freeze({
-    mode: direct ? 'direct' : 'mixed',
     body,
     metadata,
     invocation,

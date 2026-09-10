@@ -151,7 +151,7 @@ Jig qualifies `FLOW.ts` through installed Bun and `FLOW.md` through the
 bundled [Markdown interpreter](https://flow.jig.md/spec/markdown-runtime),
 both inside the same rootless execution envelope. Other valid formats and
 named-operation contracts are unavailable, not silently substituted.
-Markdown-only recipe packages execute without an Agent; mixed prose derives
+Every Markdown package, including a recipe-only body, derives
 the reserved `markdown-agent` native requirement. Review pins that requirement
 to operator Agent configuration. Authored routes cannot replace it. Markdown
 resources are inert: their `package.json` does not initiate Bun preparation.

@@ -85,6 +85,43 @@ function reasoningContext(call: FlowCall): any {
 }
 
 describe('finite Markdown runtime', () => {
+  test('Agent selection controls recipe-only bodies just as it controls prose', async () => {
+    for (const prose of ['', '# Procedure\n', '<!-- explanation -->\n']) {
+      let calls = 0
+      const result = await runMarkdown(
+        compile(
+          prose +
+            block('return {"outcome":"done","output":"first"}') +
+            block('return {"outcome":"done","output":"selected"}'),
+        ),
+        context(async (call) => {
+          reasoningContext(call)
+          calls++
+          return decision(staticRecipe(2))
+        }),
+        emptyResources,
+      )
+      expect(result).toEqual(done('selected'))
+      expect(calls).toBe(1)
+    }
+  })
+
+  test('a recipe-only body cannot execute when its reasoning dependency fails', async () => {
+    let calls = 0
+    await expect(
+      runMarkdown(
+        compile(block('return {"outcome":"done","output":null}')),
+        context(async (call) => {
+          reasoningContext(call)
+          calls++
+          throw new OperationError('UNAVAILABLE', 'No admitted Agent.')
+        }),
+        emptyResources,
+      ),
+    ).rejects.toMatchObject({ code: 'UNAVAILABLE' })
+    expect(calls).toBe(1)
+  })
+
   test('qualifies the actual decision request and result through the native Agent schema seam', async () => {
     const contract = markdownAgentContract()
     let calls = 0
@@ -181,8 +218,9 @@ describe('finite Markdown runtime', () => {
     ).rejects.toMatchObject({ code: 'INVALID_INPUT' })
     expect(turns).toBe(1)
   })
-  test('direct execution performs exact calls and propagates complete declared domain results', async () => {
+  test('recipe-only bodies require Agent selection and propagate complete declared domain results', async () => {
     const calls: FlowCall[] = []
+    let reasons = 0
     const compiled = compile(
       block('call reviewer @input') + block('return @previous'),
       'uses: {reviewer: {}}',
@@ -194,6 +232,7 @@ describe('finite Markdown runtime', () => {
         compiled,
         context(
           async (call) => {
+            if (call.slot === 'markdown-agent') return decision(staticRecipe(++reasons))
             calls.push(call)
             return result
           },
@@ -205,9 +244,10 @@ describe('finite Markdown runtime', () => {
     expect(calls).toEqual([
       { operationId: 'markdown:recipe:1', slot: 'reviewer', input: { text: 'source' } },
     ])
+    expect(reasons).toBe(2)
   })
 
-  test('preserves literals and stops at the first explicit return', async () => {
+  test('preserves literals and stops at the selected explicit return', async () => {
     const compiled = compile(
       block('return {"outcome":"done","output":{"literal":"@input","ref":{"$ref":"@previous"}}}') +
         block('return {"outcome":"done","output":"unreachable"}'),
@@ -215,8 +255,9 @@ describe('finite Markdown runtime', () => {
     expect(
       await runMarkdown(
         compiled,
-        context(async () => {
-          throw new Error('unexpected call')
+        context(async (call) => {
+          reasoningContext(call)
+          return decision(staticRecipe(1))
         }),
         emptyResources,
       ),
@@ -225,6 +266,7 @@ describe('finite Markdown runtime', () => {
 
   test('resolves @previous before clearing it for the next attempted call', async () => {
     let index = 0
+    let reasons = 0
     const first = done({ evidence: 'exact' })
     const compiled = compile(
       block('call reviewer @input') + block('call archive @previous') + block('return @previous'),
@@ -233,6 +275,7 @@ describe('finite Markdown runtime', () => {
     const result = await runMarkdown(
       compiled,
       context(async (call) => {
+        if (call.slot === 'markdown-agent') return decision(staticRecipe(++reasons))
         if (++index === 1) return first
         expect(call.input).toEqual(first)
         return done('stored')
@@ -349,7 +392,7 @@ describe('finite Markdown runtime', () => {
     expect(calls).toBe(1)
   })
 
-  test('reports frozen mixed recipe unavailability and rejects malformed decision packets', async () => {
+  test('reports frozen recipe unavailability and rejects malformed decision packets', async () => {
     let turn = 0
     const compiled = compile('A tutorial may be unused.\n' + block('call reviewer {broken'))
     expect(
@@ -461,7 +504,6 @@ describe('finite Markdown runtime', () => {
           'Add every integer in the supplied JSON array. Return a JSON object with a single property, sum, whose value is the computed integer. Do not add explanation or call external tools.\n',
       ),
     )
-    expect(compiled.mode).toBe('mixed')
     expect(compiled.recipes).toEqual([])
     expect(compiled.toolPolicy).toBe('none')
     let calls = 0
@@ -599,7 +641,7 @@ describe('finite Markdown runtime', () => {
     expect(sent).toEqual([null])
   })
 
-  test('direct receive forwards the iterator wrapper and preflights absent optional endpoints', async () => {
+  test('forwards the iterator wrapper and exposes absent optional endpoints before selection', async () => {
     const sent: JsonValue[] = []
     const receiver = {
       direction: 'receive',
@@ -634,19 +676,29 @@ describe('finite Markdown runtime', () => {
     await expect(
       runMarkdown(
         compiled,
-        context(async () => done(null)),
+        context(async (call) => {
+          const state = reasoningContext(call)
+          expect(state.recipes.slice(0, 2).map((entry: any) => entry.diagnostic.code)).toEqual([
+            'MARKDOWN_ENDPOINT_UNAVAILABLE',
+            'MARKDOWN_ENDPOINT_UNAVAILABLE',
+          ])
+          return decision(staticRecipe(3))
+        }),
         emptyResources,
       ),
-    ).rejects.toMatchObject({ code: 'UNAVAILABLE' })
+    ).resolves.toEqual(done(null))
+    let reasons = 0
     await runMarkdown(
       compiled,
-      context(async () => done(null), { channels: { updates: receiver, published: sender } }),
+      context(async () => decision(staticRecipe(++reasons)), {
+        channels: { updates: receiver, published: sender },
+      }),
       emptyResources,
     )
     expect(sent).toEqual([{ done: false, value: { id: 7 } }])
   })
 
-  test('exposes settled late disposal failure before a new mixed finish', async () => {
+  test('exposes settled late disposal failure before a new finish', async () => {
     let closeCalls = 0
     let reasons = 0
     const receiver = {
@@ -717,16 +769,29 @@ describe('finite Markdown runtime', () => {
     }
   })
 
-  test('observes root cancellation before another activation and closes granted endpoints', async () => {
+  test('disposes receivers on root cancellation without sealing granted writers', async () => {
     const controller = new AbortController()
     let calls = 0
     let closed = 0
+    let disposed = 0
     const sender = {
       direction: 'send',
       delivery: 'direct',
       send: async () => {},
       close: async () => {
         closed++
+      },
+    } as ChannelEndpoint
+    const receiver = {
+      direction: 'receive',
+      delivery: 'direct',
+      startSequence: 0,
+      next: async () => ({ done: true, value: undefined }),
+      close: async () => {
+        disposed++
+      },
+      [Symbol.asyncIterator]() {
+        return this
       },
     } as ChannelEndpoint
     await expect(
@@ -738,13 +803,14 @@ describe('finite Markdown runtime', () => {
             controller.abort()
             return decision(finish())
           },
-          { signal: controller.signal, channels: { events: sender } },
+          { signal: controller.signal, channels: { events: sender, updates: receiver } },
         ),
         emptyResources,
       ),
     ).rejects.toMatchObject({ code: 'CANCELLED' })
     expect(calls).toBe(1)
-    expect(closed).toBe(1)
+    expect(closed).toBe(0)
+    expect(disposed).toBe(1)
   })
 
   test('bounds complete reasoning context before dispatch and retains honest settled overflow', async () => {
@@ -771,7 +837,8 @@ describe('finite Markdown runtime', () => {
     await expect(
       runMarkdown(
         compiled,
-        context(async () => {
+        context(async (call) => {
+          if (call.slot === 'markdown-agent') return decision(staticRecipe(1))
           effects++
           return done('x'.repeat(4_300_000))
         }),

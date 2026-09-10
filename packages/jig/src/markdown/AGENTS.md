@@ -8,7 +8,7 @@ the operator's authority and execution ownership intact.
 ## Ownership
 
 - The parser owns CommonMark structure, original source spans, frozen exact
-  recipes, direct/mixed classification and profile bounds.
+  recipes and profile bounds. All nonempty bodies use Agent interpretation.
 - The interpreter owns sequential recipe activation, bounded reasoning context,
   immutable value handles and explicit terminal handling inside one Flow process.
 - Host admission, provider selection, process containment and installed worker
@@ -27,8 +27,12 @@ the operator's authority and execution ownership intact.
   automatically replay uncertain work.
 - The template explains that prose-only Skills can finish without recipes or
   tools and places their requested answer inside the required result envelope.
-- Direct execution validates all recipes before effects. Mixed execution exposes
-  frozen unavailable diagnostics without weakening whole-invocation qualification.
+- Inspect every recipe before reasoning and expose frozen unavailable diagnostics
+  without weakening whole-invocation qualification. Fence-only bodies do not
+  introduce a separate execution mode or bypass Agent admission.
+- Dispose receivers on completion and failure. Only an authored close seals a
+  writer; implicit writer finalization stays with the host after validation and
+  owned-work settlement, so a failed interpreter cannot manufacture clean EOF.
 - Failure, cancellation, budgets and owned-work settlement limit success even
   when an Agent returns plausible output.
 
@@ -48,6 +52,8 @@ the operator's authority and execution ownership intact.
   run it only on the provisioned proof host. It reuses the canonical regular
   `.tgz` from `JIG_PACKAGE_ARCHIVE` when supplied; otherwise build the Jig
   package first so the regression can pack its current generated artifacts.
-  This gate proves direct and typed child execution, not live Agent quality.
+  This gate proves Markdown's Agent-admission requirement and Agent-free code
+  execution. Worker peers separately test interpretation and cancellation;
+  neither establishes live model quality.
 
 ## Child DOX Index

@@ -130,8 +130,9 @@ admitted FLOW packages.
   Check rendered success, failure, waits, cancellation, uncertain cleanup,
   plain/redirected output, narrow widths, and light/dark terminal palettes.
   Preserve byte-exact machine records and complete changed review policy.
-- `test/markdown-worker.test.ts` qualifies installed Markdown composition with
-  the complete packed FLOW SDK in an ordinary declared workspace. It honors
+- `test/markdown-worker.test.ts` checks installed Markdown's Agent-admission
+  requirement and Agent-free code execution with the complete packed FLOW SDK
+  in an ordinary declared workspace. It honors
   `JIG_PACKAGE_ARCHIVE` and `FLOW_SDK_PACKAGE_ARCHIVE`; otherwise pack built
   candidates. Failed public commands retain their consumer and diagnostics
   under the selected temporary root for investigation.

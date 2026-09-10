@@ -1,7 +1,9 @@
 # Run a Markdown method
 
 A Flow can be one `FLOW.md` file. Jig runs it through its installed interpreter:
-no SDK import, package manifest or dependency installation is needed.
+an operator-configured [Agent](agents.md) interprets its body, while the runtime
+enforces exact recipes, permissions and limits. No SDK import, package manifest
+or dependency installation is needed for the method.
 
 Create a project with [Jig installed](index.md):
 
@@ -19,22 +21,20 @@ return {"outcome":"done","output":"Hello!"}
 ```
 ````
 
-Then review and run it:
+Configure an [Agent](agents.md), then review and run it:
 
 ```sh
 jig review
 jig run flow:flows/hello
 ```
 
-This blocks-only method executes its recipes in order without an Agent. Its
-result has `outcome: "done"` and `output: "Hello!"`. `return @input` can instead
-return a caller-supplied complete result; `return @previous` forwards the exact
-result of an earlier `call`. Neither asks a model to reconstruct the value.
+The Agent decides when to activate the recipe. Selecting it returns
+`outcome: "done"` and `output: "Hello!"` exactly. Recipe-only bodies and prose
+use the same interpreter; fence order does not enforce execution order.
+Use `FLOW.ts` for deterministic sequencing or execution without an Agent.
 
 ## Use prose and existing Skills
 
-Prose makes execution interpreted: your [operator-configured Agent](agents.md)
-chooses the next step, while the runtime enforces exact recipes and bounds.
 Review shows the derived `markdown-agent` route before approval.
 
 For example, `flows/summary/FLOW.md` can contain:
@@ -83,6 +83,12 @@ recipe; it cannot change its target or static input. A named contract can make
 that dependency substitutable without changing the consumer. Native Agent,
 command and checkpoint invocations use the same calling boundary but retain
 their separate host permissions.
+
+`return @previous` forwards an earlier successful call's complete result;
+`@value` lets the Agent select a retained whole value without reconstructing it.
+Those guarantees preserve data, not the quality of the Agent's choice or its
+adherence to a multi-step procedure. An unsuccessful interpretation remains
+an unsuccessful Run.
 
 The first Markdown profile is sequential. It can `call`, `send`, `receive`,
 `close` and `return` using exact original recipes and granted channels. It

@@ -46,13 +46,13 @@ foundations do not need to be rebuilt.
 
 Build on one reusable invocation interface for Flow specialists and qualified
 native operations, optional `contract.json`, and one `FLOW.<ext>` implementation
-per package. Markdown methods can execute direct recipes or use an admitted
-Agent to interpret prose. Exact sibling calls, contained project commands,
+per package. Every Markdown method uses an admitted Agent to interpret its
+body and select exact recipes. Exact sibling calls, contained project commands,
 root file delivery, checkpoints and channels remain the composition foundation.
 Improve these public paths rather than rebuilding them.
 
-Keep useful Markdown-to-code substitution and supported Skill reuse in the
-release checks. The sequential Markdown profile does not promise universal
+Qualify Markdown-to-code substitution and supported Skill reuse through ordinary
+interpreted calls. The sequential Markdown profile does not promise universal
 Skill support or reliable model judgment; method quality needs its own evidence.
 Native Agent, command and checkpoint powers retain their actual host owners.
 

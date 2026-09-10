@@ -1237,10 +1237,6 @@ function renderFailure(error: unknown, runtime: CliRuntime): 1 | 2 {
         'a required interface must declare both its canonical id and exact version',
       CONTRACT_LIMIT:
         'reduce the invocation descriptor or its referenced channel closure to the documented bounds',
-      MARKDOWN_DIRECT_UNAVAILABLE:
-        'a blocks-only method must have every original recipe qualified before any effect',
-      MARKDOWN_DIRECT_RETURN:
-        'end the blocks-only method with an explicit return of a complete outcome and output',
       MARKDOWN_FENCE_UNCLOSED: 'close each executable flow fence explicitly',
       MARKDOWN_LIMIT: 'the Markdown procedure exceeds its parser or recipe bounds',
       PROJECT_BINDING_INTERFACE_MISMATCH:

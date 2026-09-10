@@ -205,30 +205,11 @@ class Interpreter {
           'UNAVAILABLE',
           'The Markdown package has unsupported execution requirements.',
         )
-      if (this.compiled.mode === 'direct') {
-        if (this.recipes.some((recipe) => recipe.diagnostic !== undefined))
-          throw new OperationError(
-            'UNAVAILABLE',
-            'A direct recipe is unavailable before execution.',
-          )
-        for (const recipe of this.recipes) {
-          const result = await this.activate(recipe)
-          if (result !== undefined) {
-            await this.settleEndpoints(false)
-            this.checkRoot()
-            return result
-          }
-        }
-        throw new OperationError(
-          'INVALID_RESULT',
-          'The direct procedure did not return a complete result.',
-        )
-      }
       while (true) {
         const decision = await this.reason()
         if (decision.action === 'finish') {
           const result = this.completeResult(this.decisionValue(decision))
-          if (await this.settleEndpoints(true)) continue
+          if (await this.settleReceivers(true)) continue
           this.checkRoot()
           return result
         }
@@ -238,15 +219,16 @@ class Interpreter {
         }
         const result = await this.activate(this.recipes[decision.recipe - 1]!, decision)
         if (result !== undefined) {
-          if (await this.settleEndpoints(true)) continue
+          if (await this.settleReceivers(true)) continue
           this.checkRoot()
           return result
         }
       }
     } finally {
-      // Explicitly settle even when parsing, reasoning or a recipe terminates.
-      // The SDK and host still own cancellation/fatal-transport cleanup.
-      await this.settleEndpoints(false)
+      // Dispose receivers, including late failures. Only an authored close may
+      // seal a writer here; the host decides implicit sealing after validation
+      // and owned-work settlement, or aborts unsealed writers on failure.
+      await this.settleReceivers(false)
     }
   }
 
@@ -407,7 +389,7 @@ class Interpreter {
     return decodeJson1(new TextEncoder().encode(decision.value))
   }
 
-  private resolveOperand(operand: RecipeOperand, decision?: Decision): JsonValue {
+  private resolveOperand(operand: RecipeOperand, decision: Decision): JsonValue {
     switch (operand.kind) {
       case 'literal':
         return snapshot(operand.value)
@@ -422,19 +404,11 @@ class Interpreter {
         return snapshot(this.previous)
       case 'value':
       case 'fresh':
-        if (decision === undefined)
-          throw new OperationError(
-            'INVALID_INPUT',
-            'This operand requires an explicit reasoning decision.',
-          )
         return this.decisionValue(decision)
     }
   }
 
-  private async activate(
-    recipe: FrozenRecipe,
-    decision?: Decision,
-  ): Promise<RunResult | undefined> {
+  private async activate(recipe: FrozenRecipe, decision: Decision): Promise<RunResult | undefined> {
     this.checkRoot()
     if (this.activationCount >= MARKDOWN_LIMITS.activations)
       throw new MarkdownLimitError('Markdown recipe activation budget exhausted.')
@@ -537,7 +511,7 @@ class Interpreter {
       }
       this.checkRoot()
     } catch (error) {
-      if (this.compiled.mode === 'direct' || !isRecoverable(error)) throw error
+      if (!isRecoverable(error)) throw error
       this.checkRoot()
       this.observations.push(
         errorObservation(error, { kind: 'recipe-error', operationId, recipe: recipe.index }),
@@ -652,11 +626,11 @@ class Interpreter {
     return snapshot(result) as unknown as RunResult
   }
 
-  private async settleEndpoints(recover: boolean): Promise<boolean> {
+  private async settleReceivers(recover: boolean): Promise<boolean> {
     let observedFailure = false
     let fatal: unknown
     for (const [name, state] of this.endpoints) {
-      if (state.closed) continue
+      if (state.closed || state.endpoint.direction !== 'receive') continue
       try {
         await state.endpoint.close()
         state.closed = true

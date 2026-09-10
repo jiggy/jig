@@ -3,9 +3,10 @@
 > *Status: prerelease specification candidate for sequential Markdown execution.*
 
 Markdown/1 projects finite SDK operations through exact recipes inside an ordinary
-`FLOW.md` procedure. Mixed prose uses bounded reasoning; a complete direct body
-runs its frozen instructions in order. Every call still crosses Run/1 and every
-result is a complete `{outcome, output}` value. The profile adds no scheduler,
+`FLOW.md` procedure. Every body uses bounded Agent interpretation, including a
+body made entirely of recipes. Recipes are available actions, not an automatic
+execution sequence. Every call still crosses Run/1 and every result is a complete
+`{outcome, output}` value. The profile adds no scheduler,
 provider framework, tool authority or expression language.
 
 [Package/1](package-format.md) owns the single entrypoint and its optional
@@ -65,7 +66,7 @@ The Read projection is narrower than arbitrary harness filesystem Read. It never
 qualifies a dependency by its name or apparent read-only behavior. Internal
 reasoning, explicit return/finish and endpoint close/disposal remain available;
 tool restrictions cannot prohibit required settlement. Unavailable effect recipes
-follow mixed/direct rules below. No restriction grants authority.
+follow the availability rules below. No restriction grants authority.
 
 Display compatibility/environment prose during review. Known missing required
 facilities prevent qualification; a missing prerequisite discovered during work
@@ -73,7 +74,7 @@ fails before its requested effect. Parsing cannot certify arbitrary requirements
 or prove a model's completion claim. Shell scripts need separately supported
 execution authority; this profile supplies none.
 
-## Frozen recipes; tolerant mixed interpretation
+## Frozen recipes; Agent-directed interpretation
 
 Candidate recipes are fenced-code-block nodes directly under the document root.
 Compare the RAW opening-line text after the opening fence, trimming only U+0020
@@ -90,8 +91,8 @@ example fence are inert. Prose saying “example” does not change a candidate'
 status. Only original entrypoint spans participate.
 
 Inspect every candidate before reasoning/effects. Freeze its span, instruction
-or exact diagnostic, and availability. In mixed documents, a malformed recipe,
-unknown recipe target, unsupported recipe operation or absent optional endpoint
+or exact diagnostic, and availability. A malformed recipe, unknown recipe
+target, unsupported recipe operation or absent optional endpoint
 is exposed as unavailable. Its selection returns a bounded pre-effect diagnostic;
 unrelated prose may continue. There is no model repair or deferred source parsing.
 Unsafe/invalid package metadata, missing required dependencies or invocation ports,
@@ -99,10 +100,9 @@ unsupported tool restrictions and missing reasoning remain whole-run failures:
 this does not turn Invocation Contract/1's required declarations into optional dependencies.
 
 Frozen unavailable meaning remains exact and grants no effect. This preserves
-otherwise supported prose around an unused malformed FLOW tutorial. Direct
-bodies still reject every unavailable candidate before
-effects, including unreachable ones. Known runtime uncertainty/failure is never
-reclassified as mere recipe unavailability.
+otherwise supported instructions around an unused malformed FLOW tutorial.
+The same rule applies to recipe-only bodies. Known runtime uncertainty/failure
+is never reclassified as mere recipe unavailability.
 
 Each executable fence contains exactly one SDK instruction:
 
@@ -136,11 +136,9 @@ only an available frozen recipe.
 | `?` | Agent must supply fresh literal JSON. |
 
 For receive, `@previous` is the iterator result, not the message alone.
-A mixed body can select the exact message handle through `@value`. A direct
-body cannot make that selection: receive followed by `send published @previous`
-forwards the iterator wrapper. Direct exact message-only forwarding is not
-expressible in this first profile; ordinary code can express it. This limitation
-is accepted, not hidden behind an implicit wrapper conversion.
+The Agent can select the exact message handle through `@value`.
+Receive followed by `send published @previous` forwards the iterator wrapper,
+not an implicit conversion to its message.
 
 `@value` earns its separate spelling: “forward an existing exact review” can
 forbid model reconstruction, while `?` deliberately permits authored data. A
@@ -168,7 +166,7 @@ or an ordinary code specialist; exact whole-value transport does not solve that.
 
 ## Actual reasoning and selection
 
-Every mixed body discloses a runtime Agent dependency. Reserve `markdown-agent`
+Every Markdown body discloses a runtime Agent dependency. Reserve `markdown-agent`
 against authored Markdown uses and recipe targets. The profile derives this
 ordinary slot requirement; existing operator binding selects its exact qualifying
 native Agent route and configuration. Calls use the same admitted selection via
@@ -276,17 +274,22 @@ settled read or close error can be caught, including a late `LAGGED` first expos
 during disposal. Failed cleanup, unfinished ownership, root cancellation, fatal
 transport and uncertainty still prohibit success. No acknowledgement ledger.
 
-After frontmatter, a direct body contains at least one candidate flow fence and
-otherwise only spaces, tabs, CR or LF between those fences. It must have at least
-one return and no `@value` or `?`; validate the complete body before effects.
-Execute top-to-bottom; first return stops, operational errors propagate, declared
-outcomes remain normal values. Return never executes later blocks or fabricates
-fallthrough output. Final envelope/outcome validation and owned-work settlement
-precede success.
-
 A body consisting only of spaces/tabs/CR/LF rejects execution as empty. Every
-other non-direct body selects reasoning, including heading-only/comment-only
-bodies. This exact syntactic policy makes no judgment about their usefulness.
+other body uses reasoning, including recipe-only, heading-only and comment-only
+bodies. Adding prose or comments does not select a different execution mode.
+The Agent chooses whether and when to activate recipes; there is no required
+return recipe or implicit top-to-bottom execution. A selected valid return or
+finish supplies a complete result and stops interpretation after settlement.
+Use a code implementation when the method requires deterministic sequencing
+or execution without an Agent.
+
+Before returning, dispose held receivers and expose settled late failures to
+reasoning. On failure, still dispose receivers without resuming interpretation.
+Only an explicitly selected `close` recipe seals a writer in the interpreter.
+Implicit writer sealing belongs to Run/1 finalization after full result validation
+and owned-work settlement; failure aborts unsealed writers. An explicitly sealed
+interval remains completed even if its producer subsequently fails. Neither
+kind of channel completion establishes execution success.
 
 Profile ceilings: 256 KiB entrypoint body; 4,096 AST nodes/depth 64; 256 recipes;
 256 total recipe activations and 32 reasoning calls; 1 MiB aggregate loaded
@@ -328,7 +331,7 @@ No recipes, authored Agent slot or invocation contract are required. Its
 qualified runtime reasons and returns a validated complete result; renaming
 alone proves neither quality nor actual runtime support.
 
-### Mixed selection and exact forwarding: fragment
+### Selection and exact forwarding: fragment
 
 ````markdown
 ---
@@ -360,7 +363,7 @@ deliberately select A's complete result or exact output; it cannot accept retype
 JSON. `?` can author JSON but cannot turn a handle string into a reference.
 The literal recipe cannot be overridden or reached through a generic slot tool.
 
-### Mixed channel fragment: one instruction per fence
+### Channel fragment: one instruction per fence
 
 ````markdown
 Forward useful messages unchanged. Ignore unrelated messages.
@@ -376,18 +379,16 @@ close updates
 ```
 ````
 
-This is a mixed-body fragment, not a complete direct program. It needs
-declared/granted ports. Receiving `{id:7}` creates both the
+This fragment needs declared/granted ports. Receiving `{id:7}` creates both the
 iterator-result handle and exact `{id:7}` message handle. The Agent can select the
 message for sending without retyping. Using `@previous` here would instead
-send the complete iterator result. Direct message-only forwarding is unsupported.
-With an independently running producer,
+send the complete iterator result. With an independently running producer,
 a wired child can filter such messages. This profile cannot start an Agent and
 observe/filter its stream while that same blocking call runs. A slow optional
 observer's settled `LAGGED`, including late close exposure, can be recovered;
 actual worker completion remains separate.
 
-### Complete direct file
+### Recipe-only body
 
 ````markdown
 ---
@@ -400,16 +401,13 @@ call reviewer @input
 ```flow
 return @previous
 ```
-```flow
-return {"outcome":"done","output":"unreachable"}
-```
 ````
 
-A call error terminates; a domain refusal propagates only if the root contract
-also declares it. Removing both returns rejects before the call. Adding
-`<!-- explanation -->` selects mixed reasoning. A malformed unreachable block
-still rejects direct execution. A heading-only `# Summarize the input` is mixed,
-not syntactically empty.
+The Agent interprets this body like any other Markdown: it chooses recipes, and
+may finish without selecting them. Selecting the return forwards the last
+successful complete call result unchanged; a domain refusal can be returned
+only if the root contract also declares it. Removing the return still permits
+an Agent finish. Adding a heading or comment does not alter these rules.
 
 ### Interchangeable implementations
 
@@ -462,8 +460,8 @@ A qualifying implementation must establish:
 1. Exact CommonMark root-fence detection, raw info-string matching, explicit
    closing fences and source offsets; nested, quoted, HTML, escaped-info and
    displayed-example fences remain inert.
-2. Complete pre-effect compilation, including unavailable mixed recipes and
-   unreachable direct recipes. Invalid package metadata and missing required
+2. Complete pre-effect compilation, including every unavailable recipe in
+   prose and recipe-only bodies. Invalid package metadata and missing required
    dependencies never become recipe-only unavailability.
 3. Exact immutable operands, fixed result/output and iterator/message
    projections, cursor invalidation on failure, foreign/missing-handle rejection,
@@ -474,10 +472,12 @@ A qualifying implementation must establish:
    completed structured reasoning results, and visible limit/blocked failure.
 6. Caller-owned activation identities, no replay of uncertain effects, root
    cancellation, backpressure, late disposal and failed-cleanup refusal.
-7. Direct return stopping, no fallthrough output, domain-outcome validation,
-   charged parsing/value/context limits and honest post-effect exhaustion.
+7. Agent selection for every body, selected return/finish stopping, domain-outcome
+   validation, charged parsing/value/context limits and honest post-effect exhaustion.
+8. Receiver disposal on completion/failure, no implicit interpreter writer
+   close, and preservation of explicitly sealed intervals on later failure.
 
 The initial profile deliberately lacks concurrent own-call observation,
-scripts/native tools, direct message-only forwarding, arbitrary field selectors
-and universal Skill compatibility. Additional profiles require exact semantics
+scripts/native tools, arbitrary field selectors and universal Skill compatibility.
+Additional profiles require exact semantics
 and separate qualification; no runtime may silently approximate those features.
