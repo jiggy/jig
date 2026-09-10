@@ -8,8 +8,9 @@ then guiding principles, design commitments, and their practical consequences.
 ## Ownership
 
 - `purpose.md` owns the shared apex, its guiding principles, lasting human
-  benefit, and broad opportunity. It references audience and communication
-  strategy rather than defining either.
+  benefit, builder ecosystem vision, and shared intended experience. It develops
+  why the products advance that purpose and references audience and
+  communication strategy rather than defining either.
 - `flow.md` owns capability compounding, executable know-how, and the reasons
   for an independent method ecosystem.
 - `jig.md` owns agency, power under control, and the supporting authority and
@@ -54,8 +55,10 @@ then guiding principles, design commitments, and their practical consequences.
 - Preserve the positive product promise alongside its safeguards. Agency
   includes human and software consumers; ownership supports power under
   control. Capability compounding requires useful improvement, not just reuse.
-- Preserve existing reasoning before adding text. Add depth only where a new
-  reader would otherwise miss an important connection or tradeoff.
+- Preserve substantive reasoning when shortening or separating document
+  ownership. Keep the ambition, causal argument, and intended experience
+  developed in the purpose; the compass owns the short summary. Links to
+  detailed branches should support the shared argument, not replace it.
 - Keep editorial instructions here, not inside the product essays.
 
 ## Verification
