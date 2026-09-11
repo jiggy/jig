@@ -50,7 +50,7 @@ receiving host remain responsible for their powers.
 - **Package author:** [authoring path](./start.mdx), [Package/1](../spec/package-format.md), and your SDK guide.
 - **Host implementer:** [Run/1](../spec/run-protocol.md), [JSON/1](../spec/json-values.md), and the public conformance corpus.
 - **SDK implementer:** [Run SDK/1](../spec/run-sdk.md) together with Run/1.
-- **Interface author:** [capability contracts](../spec/capability-contracts.md) or [channel contracts](../spec/channel-contracts.md).
+- **Interface author:** [invocation contracts](../spec/invocation-contracts.md) or [channel contracts](../spec/channel-contracts.md).
 
 Jig's operator configuration belongs in [Jig's documentation](https://jig.md/guide/for-agents).
 It is not a portable FLOW requirement.

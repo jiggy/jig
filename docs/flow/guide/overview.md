@@ -28,7 +28,7 @@ A compatible host supplies local powers.
 | Validate inputs, settings, or results | [Schema/1](../spec/schema-files.md) |
 | Launch a method or implement a host | [Run/1](../spec/run-protocol.md) |
 | Implement or use an SDK | [Run SDK/1](../spec/run-sdk.md) |
-| Define an independently maintained capability interface | [Capability Contract/1](../spec/capability-contracts.md) |
+| Define an independently maintained invocation interface | [Invocation Contract/1](../spec/invocation-contracts.md) |
 | Define exact live-message meaning | [Channel Contract/1](../spec/channel-contracts.md) |
 | Resolve terminology or a common question | [Concepts and questions](./concepts.md) |
 
