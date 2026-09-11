@@ -447,7 +447,9 @@ async function selectArchive(
     return canonical
   }
   await command(
-    [process.execPath, 'scripts/pack.ts', '--destination', artifacts],
+    packageName === 'jig'
+      ? [process.execPath, 'scripts/pack.ts', '--destination', artifacts]
+      : [process.execPath, 'pm', 'pack', '--ignore-scripts', '--destination', artifacts],
     resolve(packageRoot, '..', packageName),
   )
   const archives = (await readdir(artifacts)).filter((name) => name.endsWith('.tgz'))
