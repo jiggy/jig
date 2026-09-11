@@ -1020,16 +1020,18 @@ proofDescribe('private rootless project session', () => {
         directory: root,
         host: Object.freeze({ ...withheldBase, backend: withheldBackend }),
       })
-      expect(await uncertainRecovery.rootAdministration.runStatus(uncertainReceipt)).toMatchObject({
+      // Recovery settles the retained ownership; it cannot rewrite a fatal
+      // execution result into success or authorize replay of the child.
+      const recoveredUncertain =
+        await uncertainRecovery.rootAdministration.runStatus(uncertainReceipt)
+      expect(recoveredUncertain).toMatchObject({
         state: 'terminal',
         terminal: {
-          status: 'succeeded',
-          output: {
-            scenario: 'fence-uncertain',
-            observed: { status: 'failed', code: 'UNCERTAIN' },
-          },
+          status: 'failed',
+          code: 'UNCERTAIN',
         },
       })
+      expect(recoveredUncertain).not.toHaveProperty('terminal.output')
       expect(withheldBackend.childAdmits()).toBe(1)
       expect(inspectRunOwnership(root, uncertainReceipt.runId)).toEqual({
         childOwners: 0,
