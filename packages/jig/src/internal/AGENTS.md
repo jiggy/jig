@@ -71,6 +71,11 @@ child calls, project commands, and Agent providers.
   execute. Never execute mutable project source or stale host evidence.
 - Flow code receives no ambient host authority. Minimize environment, mounts,
   executables, network, credentials, and capabilities explicitly.
+- Dedicated trusted launchers restrict inherited descriptors synchronously
+  before each execution hop, including before Bubblewrap. Keep only stdio
+  and exact setup/input handoffs; refusal to enforce the restriction fails
+  closed. Do not mutate the coordinator's descriptor table or leave host
+  descriptors accessible through a sandbox-visible trusted parent.
 - Stage only captured manifests and the supplied root lock for Bun installation;
   materialize other authored files afterward. They must not trigger config
   loading, preloads, or foreign-lock migration. Supplied locks remain frozen.

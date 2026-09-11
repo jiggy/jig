@@ -12,6 +12,9 @@ support, explicitly supplied root attachments, private scratch space, private pr
 the Run/1 channel. It does not receive the project tree, host environment,
 ambient `PATH`, host process tree, host network, writable cgroup controls,
 general host devices, inherited descriptors, or Jig's control channel.
+Trusted launchers exclude unselected descriptors before entering the sandbox
+and before launching package code, including access through visible parent
+processes. Missing enforcement refuses execution.
 
 Jig applies aggregate CPU, memory, and process limits before package code can
 execute. Every terminal path fences the complete process tree and removes its

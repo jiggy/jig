@@ -1,6 +1,16 @@
 import { afterAll, describe, expect, test } from 'bun:test'
 import { spawn } from 'node:child_process'
-import { mkdir, mkdtemp, readdir, readFile, realpath, rm, stat, writeFile } from 'node:fs/promises'
+import {
+  mkdir,
+  mkdtemp,
+  open,
+  readdir,
+  readFile,
+  realpath,
+  rm,
+  stat,
+  writeFile,
+} from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -58,8 +68,145 @@ test('constructs the held-continuation fixture from current trusted source', asy
     await rm(fixture.root, { recursive: true, force: true })
   }
 })
+test('constructs the unavailable-descriptor-restriction fixture from current trusted source', async () => {
+  const fixture = await unavailableDescriptorRestrictionSupervisor()
+  try {
+    const source = await readFile(fixture.path, 'utf8')
+    expect(() => new Bun.Transpiler({ loader: 'ts' }).transformSync(source)).not.toThrow()
+    expect(source).toContain('if (-1 !== 0)')
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true })
+  }
+})
 
 delegatedDescribe('private rootless Linux Run', () => {
+  test('refuses execution and fences when inherited descriptor restriction is unavailable', async () => {
+    const host = await hostConfiguration()
+    const fixture = await createFixture("throw new Error('package must not execute');")
+    const supervisor = await unavailableDescriptorRestrictionSupervisor()
+    const ownerStateParent = await mkdtemp(join(tmpdir(), 'jig-rootless-descriptor-owner-'))
+    const backend = new PrivateLinuxCgroupBackend({
+      bunPath: host.bun,
+      bunHostLibraryPath: host.bunHostLibraryPath,
+      supervisorPath: supervisor.path,
+    })
+    const owner = await backend.seal(plan(host, fixture, 'descriptor-unavailable'), {
+      parent: ownerStateParent,
+      name: 'owner',
+    })
+    let released = false
+    try {
+      await expect(owner.admit()).rejects.toThrow()
+      const receipt = await waitForFence(backend, owner.identity, 5_000)
+      expect(receipt).toMatchObject({ fenced: true, stopReason: 'setup_failed', exitCode: null })
+      expect(await missing(owner.identity.runCgroup)).toBe(true)
+      await releasePrivateLinuxOwnerState(owner.identity, receipt)
+      released = true
+      expect(await missing(owner.identity.ownerStateDirectory)).toBe(true)
+      await waitForNoRunCgroups()
+    } finally {
+      // Retain recovery evidence if fencing could not be confirmed.
+      if (released) {
+        await rm(fixture, { recursive: true, force: true })
+        await rm(supervisor.root, { recursive: true, force: true })
+        await rm(ownerStateParent, { recursive: true, force: true })
+      }
+    }
+  }, 15_000)
+
+  test('excludes unselected file and directory descriptors from the payload and visible parents', async () => {
+    const host = await hostConfiguration()
+    const secretRoot = await mkdtemp(join(tmpdir(), 'jig-rootless-descriptor-'))
+    const secretPath = join(secretRoot, 'synthetic.txt')
+    await writeFile(secretPath, 'ungranted-synthetic-descriptor')
+    const secretFile = await open(secretPath, 'r')
+    const secretDirectory = await open(secretRoot, 'r')
+    const fixture = await createFixture(`
+      import { readdirSync, readlinkSync, readFileSync, writeFileSync } from 'node:fs';
+      const forbidden = ${JSON.stringify([secretPath, secretRoot])};
+      const leaks = [];
+      let inspected = 0;
+      const entries = (path) => { try { return readdirSync(path); } catch { return []; } };
+      for (const pid of entries('/proc').filter((name) => /^[0-9]+$/.test(name))) {
+        for (const tid of entries('/proc/' + pid + '/task')) {
+          const directory = '/proc/' + pid + '/task/' + tid + '/fd';
+          for (const fd of entries(directory)) {
+            let target;
+            try { target = readlinkSync(directory + '/' + fd); } catch { continue; }
+            inspected++;
+            if (forbidden.includes(target)) {
+              let content;
+              try {
+                content = readFileSync(directory + '/' + fd + (target === forbidden[1] ? '/synthetic.txt' : ''), 'utf8');
+              } catch { content = 'unreadable'; }
+              leaks.push({ pid, tid, fd, target, content });
+            }
+          }
+        }
+      }
+      const input = readFileSync('/jig-input/source/input.bin');
+      writeFileSync('/jig-output/result.bin', input);
+      console.log(JSON.stringify({ inspected, leaks, input: [...input] }));
+    `)
+    await writeFile(join(fixture, 'input.bin'), new Uint8Array([0, 255, 128]))
+    const capture = privateCaptureAttachments([
+      { name: 'source', directory: fixture, select: ['input.bin'] },
+    ])
+    let component: Awaited<ReturnType<PrivateLinuxCgroupBackend['launch']>> | undefined
+    try {
+      // Exercise actual inheritable handles, not merely descriptors already
+      // protected by the caller's runtime. This test uses Jig's fixed Bun.
+      for (const handle of [secretFile, secretDirectory]) {
+        const info = await readFile(`/proc/self/fdinfo/${handle.fd}`, 'utf8')
+        const flags = info.match(/^flags:\s+([0-7]+)$/m)?.[1]
+        expect(flags).toBeDefined()
+        expect(Number.parseInt(flags!, 8) & 0o2000000).toBe(0)
+      }
+      component = await host.backend.launch({
+        ...plan(host, fixture, 'descriptor-denial'),
+        output: true,
+        inputDirectories: ['/jig-input/source'],
+        capturedInputs: capture.attachments[0]!.files.map((file) => ({
+          ...file,
+          destination: `/jig-input/source/${file.path}`,
+        })),
+      })
+      await component.closeInput()
+      const [stdout, stderr, receipt] = await Promise.all([
+        collect(component.stdout),
+        collect(component.stderr),
+        component.enforcement,
+      ])
+      expect(stderr).toBe('')
+      expect(receipt).toMatchObject({ exitCode: 0, fenced: true, stopReason: 'payload_exit' })
+      const facts = JSON.parse(stdout)
+      expect(facts.inspected).toBeGreaterThan(0)
+      expect(facts.leaks).toEqual([])
+      expect(facts.input).toEqual([0, 255, 128])
+      expect([
+        ...(await readFile(`/proc/self/fd/${component.outputDirectory!.fd}/result.bin`)),
+      ]).toEqual([0, 255, 128])
+      expect(await missing(component.cgroup.runCgroup)).toBe(true)
+      expect(await missing(component.owner.owner.ownerStateDirectory)).toBe(true)
+      // Restriction occurs only in dedicated trusted launchers, never the coordinator.
+      expect(await secretFile.readFile('utf8')).toBe('ungranted-synthetic-descriptor')
+      expect(await readFile(`/proc/self/fd/${secretDirectory.fd}/synthetic.txt`, 'utf8')).toBe(
+        'ungranted-synthetic-descriptor',
+      )
+    } finally {
+      try {
+        await component?.terminate()
+      } finally {
+        await component?.outputDirectory?.close()
+        capture.close()
+        await secretFile.close()
+        await secretDirectory.close()
+        await rm(fixture, { recursive: true, force: true })
+        await rm(secretRoot, { recursive: true, force: true })
+      }
+    }
+  }, 15_000)
+
   test('preserves real fast-command evidence when coordinator readiness is delayed', async () => {
     const host = await hostConfiguration()
     const supervisor = await delayedReadyForwardingSupervisor()
@@ -855,6 +1002,29 @@ async function createFixture(source: string): Promise<string> {
   const directory = await mkdtemp(join(tmpdir(), 'jig-rootless-fixture-'))
   await writeFile(join(directory, 'FLOW.ts'), source, 'utf8')
   return directory
+}
+
+async function unavailableDescriptorRestrictionSupervisor(): Promise<{
+  readonly path: string
+  readonly root: string
+}> {
+  const sourcePath = fileURLToPath(
+    new URL('../src/internal/linux-rootless-supervisor.ts', import.meta.url),
+  )
+  const source = replaceOnce(
+    await readFile(sourcePath, 'utf8'),
+    'if (controls.symbols.close_range!(3, 0xffffffff, 4) !== 0)',
+    'if (-1 !== 0)',
+  )
+  const root = await mkdtemp(join(tmpdir(), 'jig-rootless-delayed-supervisor-'))
+  const path = join(root, 'linux-rootless-supervisor.ts')
+  try {
+    await writeFile(path, source, { mode: 0o600 })
+    return Object.freeze({ path: await realpath(path), root })
+  } catch (error) {
+    await rm(root, { recursive: true, force: true })
+    throw error
+  }
 }
 
 async function delayedReadinessSupervisor(
