@@ -34,6 +34,13 @@ const lock = {
       packagePath: 'flows/configured',
       settings: { retries: 2 },
       slots: { direct: { kind: 'flow', path: 'flows/direct' } },
+      attachments: {
+        reference: {
+          source: 'resources/reference',
+          digest,
+          files: [{ path: 'data', bytes: 4, digest }],
+        },
+      },
     },
   },
 }
@@ -78,6 +85,18 @@ describe('Jig lock/1 shape schema', () => {
 
   for (const [name, value] of [
     ['a format discriminator', { kind: 'jig-lock/1', ...lock }],
+    [
+      'an attachment without retained identity',
+      changed(lock, (item) => {
+        item.bindings.configured.attachments = { reference: 'resources/reference' }
+      }),
+    ],
+    [
+      'an oversized captured file',
+      changed(lock, (item) => {
+        item.bindings.configured.attachments.reference.files[0].bytes = 8388609
+      }),
+    ],
     [
       'a missing package map',
       changed(lock, (item) => {

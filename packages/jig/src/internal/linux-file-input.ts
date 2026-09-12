@@ -322,7 +322,10 @@ export function privateReadOperatorFile(path: string, maxBytes: number): Buffer 
   }
 }
 
-export function privateCaptureAttachments(selections: readonly PrivateFileSelection[]): {
+export function privateCaptureAttachments(
+  selections: readonly PrivateFileSelection[],
+  parent?: number,
+): {
   readonly attachments: readonly PrivateCapturedAttachment[]
   close(): void
 } {
@@ -347,7 +350,10 @@ export function privateCaptureAttachments(selections: readonly PrivateFileSelect
     for (const selection of [...selections].sort((a, b) => (a.name < b.name ? -1 : 1))) {
       checkTime()
       const name = privateAttachmentName(selection.name)
-      const rootFd = privateOpenFileRoot(selection.directory)
+      const rootFd =
+        parent === undefined
+          ? privateOpenFileRoot(selection.directory)
+          : privateOpenAt(parent, privateFilePath(selection.directory), O_PATH | O_DIRECTORY)
       opened.push(rootFd)
       const files: PrivateCapturedFile[] = []
       const capture = (path: string) => {

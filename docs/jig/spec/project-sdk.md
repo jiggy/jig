@@ -110,8 +110,18 @@ Command configuration is independent of ordinary Flow settings and travels
 with the selected Binding, never by inheritance from its caller. Review and
 admission include the exact invocation policy.
 
-File paths are invocation inputs, not authoring declarations. Root Flows and
-Bindings can use declared attachments through the
+`attachments` optionally binds declared read attachments to project-relative
+directories, for example `attachments: { decoder: "./tools/base64" }`.
+Review captures those directories and includes their sources, content digests,
+and complete file manifests in the proposed Binding. Approval pins those bytes;
+Runs never reopen their originals. Names must match read-only declarations in
+the selected Flow's `FLOW.contract.json`; unknown or writable selections fail.
+Omission or an empty map selects nothing. A `flow:` target never borrows another
+Binding's captured files. See [reviewed attachments](project-policy.md#reviewed-binding-attachments)
+for bounds, retained storage and tool-bundle limitations.
+
+Other read attachments remain per-invocation `--attach` inputs; a Run cannot
+override a Binding's captured selection. Root Flows and Bindings use the same
 [root file profile](project-policy.md#root-file-runs). Binding child slots
 cannot select attachment-bearing packages or inherit parent file authority.
 

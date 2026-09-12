@@ -61,8 +61,8 @@ describe('Jig project authoring SDK/1', () => {
     ['escaping package', () => defineBinding({ package: '../flow' })],
     ['unknown Binding field', () => defineBinding({ package: 'flows/a', grants: {} } as never)],
     [
-      'unsupported attachments',
-      () => defineBinding({ package: 'flows/a', attachments: {} } as never),
+      'non-path attachments',
+      () => defineBinding({ package: 'flows/a', attachments: { source: 3 } } as never),
     ],
     [
       'invalid slot name',

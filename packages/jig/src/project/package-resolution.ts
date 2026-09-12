@@ -1,5 +1,4 @@
 import { types as utilTypes } from 'node:util'
-
 import {
   PRIVATE_ACTIVATION_TARGET_LIMIT,
   type PrivateActivationPlanningDisposition,
@@ -9,6 +8,7 @@ import {
   privateActivationTargetKey,
   requirePrivateActivationPlanningObservation,
 } from '../internal/activation-planning.js'
+import { type BoundAttachments, normalizeBoundAttachments } from '../internal/bound-attachments.js'
 import { privateDomainDigest } from '../internal/identity.js'
 import {
   normalizePackageArtifactRef,
@@ -49,6 +49,7 @@ export interface PrivateActivationRequest {
   readonly slots: InvocationSlots
   readonly attachments: Readonly<Record<string, 'read' | 'read-write'>>
   readonly commands?: ProjectCommands
+  readonly boundAttachments?: BoundAttachments
 }
 
 export type PrivateResolutionUnavailableCode = PrivateActivationUnavailableCode
@@ -126,6 +127,9 @@ export function buildPrivateActivationRequests(
         settings: binding.settings,
         slots: resolveInvocationSlots(flow.uses, binding.slots),
         ...(binding.commands === undefined ? {} : { commands: binding.commands }),
+        ...(binding.boundAttachments === undefined
+          ? {}
+          : { boundAttachments: binding.boundAttachments }),
         attachments: normalizeRequestAttachments(flow.invocation.attachments ?? {}),
       }),
     )
@@ -166,6 +170,9 @@ export function restorePrivateActivationRequest(value: unknown): PrivateActivati
       'settings',
       'slots',
       'attachments',
+      ...(value !== null && typeof value === 'object' && Object.hasOwn(value, 'boundAttachments')
+        ? ['boundAttachments']
+        : []),
       ...(value !== null && typeof value === 'object' && Object.hasOwn(value, 'commands')
         ? ['commands']
         : []),
@@ -235,6 +242,9 @@ export function restorePrivateActivationRequest(value: unknown): PrivateActivati
     settings: snapshotJsonObject(root.settings, 'activation settings'),
     slots: normalizeInvocationSlots(snapshotJsonObject(root.slots, 'activation slots')),
     attachments: normalizeRequestAttachments(root.attachments),
+    ...(root.boundAttachments === undefined
+      ? {}
+      : { boundAttachments: normalizeBoundAttachments(root.boundAttachments) }),
     ...(root.commands === undefined
       ? {}
       : {
@@ -337,6 +347,14 @@ export function requirePrivateRetainedResolutionObservation(
 function createRequest(
   input: Omit<PrivateActivationRequest, 'kind' | 'digest'>,
 ): PrivateActivationRequest {
+  if (input.boundAttachments !== undefined) {
+    if (
+      input.target.kind !== 'binding' ||
+      Object.keys(input.boundAttachments).length === 0 ||
+      Object.keys(input.boundAttachments).some((name) => input.attachments[name] !== 'read')
+    )
+      throw new TypeError('retained attachments require declared read attachments on a Binding')
+  }
   const valueWithoutDigest = Object.freeze({
     kind: 'activation-request/4' as const,
     target: input.target,
@@ -347,6 +365,7 @@ function createRequest(
     settings: input.settings,
     slots: input.slots,
     attachments: input.attachments,
+    ...(input.boundAttachments === undefined ? {} : { boundAttachments: input.boundAttachments }),
     ...(input.commands === undefined ? {} : { commands: input.commands }),
   })
   const request = Object.freeze({
@@ -390,6 +409,9 @@ function semanticProject(project: PackageProjectValue): JsonValue {
       settings: binding.settings,
       slots: binding.slots,
       ...(binding.commands === undefined ? {} : { commands: binding.commands }),
+      ...(binding.boundAttachments === undefined
+        ? {}
+        : { boundAttachments: binding.boundAttachments }),
     })),
   } as unknown as JsonValue
 }

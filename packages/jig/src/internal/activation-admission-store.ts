@@ -40,6 +40,7 @@ import {
   requirePrivateCreatedActivationCandidateV5,
 } from './activation-admission.js'
 import { privateActivationTargetKey } from './activation-planning.js'
+import { verifyBoundAttachment } from './bound-attachments.js'
 import type { PrivateBunExecutionArtifact } from './bun-execution-layout.js'
 import { privateDomainDigest } from './identity.js'
 import {
@@ -885,7 +886,7 @@ export async function submitPrivateRootRun(input: {
       } catch {
         invalid(
           'RUN_ATTACHMENTS_INVALID',
-          'provide the admitted root read attachments and its required output destination',
+          'provide the unbound root read attachments and required output destination; captured Binding attachments cannot be overridden, and combined input must fit the file limits',
         )
       }
     }
@@ -4580,6 +4581,7 @@ async function publishVisibleLock(
     }
     if (cleanup.length > 0) {
       if (failure !== undefined) cleanup.unshift(failure)
+      // biome-ignore lint/correctness/noUnsafeFinally: Failed cleanup prevents success; include the original failure above.
       throw new AggregateError(cleanup, 'lock publication and stage cleanup did not both complete')
     }
   }
@@ -4678,6 +4680,9 @@ async function reacquireCandidateArtifacts(
     const digests = new Set<string>([
       candidate.candidate.declarationArtifact.package.digest,
       ...Object.values(candidate.lock.packages).map((entry) => entry.digest),
+      ...Object.values(candidate.lock.bindings).flatMap((entry) =>
+        Object.values(entry.attachments ?? {}).map((item) => item.digest),
+      ),
       ...candidate.candidate.targets.flatMap((target) =>
         target.disposition.state === 'ready' ? [target.disposition.execution.package.digest] : [],
       ),
@@ -4695,6 +4700,10 @@ async function reacquireCandidateArtifacts(
         inspections.set(expected.digest, inspected)
       }
       requirePackageProjection(path, expected, inspected)
+    }
+    for (const binding of Object.values(candidate.lock.bindings)) {
+      for (const expected of Object.values(binding.attachments ?? {}))
+        await verifyBoundAttachment(captures.get(expected.digest)!, expected)
     }
   } catch (error) {
     failure = error

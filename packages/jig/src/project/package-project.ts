@@ -1,4 +1,5 @@
 import { CheckError, invalid } from '../diagnostics.js'
+import { type BoundAttachments, normalizeBoundAttachments } from '../internal/bound-attachments.js'
 import { MARKDOWN_AGENT_SLOT, markdownAgentContract } from '../internal/markdown-agent-contract.js'
 import { PROJECT_COMMAND_CONTRACT_DIGEST } from '../internal/private-project-command.js'
 import { RUN_CHECKPOINT_CONTRACT_DIGEST } from '../internal/private-run-checkpoint.js'
@@ -37,6 +38,7 @@ const authenticPackageProjects = new WeakSet<object>()
 export interface InjectedBindingDeclaration {
   readonly sourcePath: string
   readonly definition: unknown
+  readonly capturedAttachments?: BoundAttachments
 }
 
 export interface PackageProjectInput {
@@ -68,6 +70,7 @@ export interface LinkedPackageBinding {
   readonly settings: JsonObject
   readonly slots: Readonly<Record<string, RunTargetIdentity>>
   readonly commands?: ProjectCommands
+  readonly boundAttachments?: BoundAttachments
 }
 
 export interface PackageProjectValue {
@@ -80,6 +83,7 @@ interface PreparedBinding {
   readonly declarationPath: string
   readonly definition: BindingDefinition
   readonly flow: PreparedFlow
+  readonly boundAttachments?: BoundAttachments
 }
 
 interface PreparedFlow {
@@ -251,7 +255,19 @@ function prepareBindings(
   budget: WorkBudget,
 ): readonly PreparedBinding[] {
   const bindings = values.map((value, index) => {
-    const record = readClosedRecord(value, ['sourcePath', 'definition'], `bindings[${index}]`)
+    const record = readClosedRecord(
+      value,
+      [
+        'sourcePath',
+        'definition',
+        ...(value !== null &&
+        typeof value === 'object' &&
+        Object.hasOwn(value, 'capturedAttachments')
+          ? ['capturedAttachments']
+          : []),
+      ],
+      `bindings[${index}]`,
+    )
     const declarationPath = normalizeProjectPath(
       record.sourcePath,
       `bindings[${index}] source path`,
@@ -323,7 +339,36 @@ function prepareBindings(
         declarationPath,
         '/commands',
       )
-    return Object.freeze({ id, declarationPath, definition, flow })
+    const boundAttachments = normalizeBoundAttachments(record.capturedAttachments ?? {})
+    const selected = definition.attachments ?? {}
+    if (Object.keys(selected).sort().join('\0') !== Object.keys(boundAttachments).sort().join('\0'))
+      invalid(
+        'PROJECT_BINDING_ATTACHMENTS_NOT_CAPTURED',
+        'Binding attachments require retained file capture',
+        declarationPath,
+      )
+    for (const [name, source] of Object.entries(selected)) {
+      if (flow.inspected.invocation?.attachments?.[name] !== 'read')
+        invalid(
+          'PROJECT_BINDING_ATTACHMENT_UNDECLARED',
+          `attachment ${name} must be declared read-only by the selected Flow`,
+          declarationPath,
+          `/attachments/${name}`,
+        )
+      if (boundAttachments[name]!.source !== source)
+        invalid(
+          'PROJECT_BINDING_ATTACHMENTS_NOT_CAPTURED',
+          'Binding attachment capture does not match its selection',
+          declarationPath,
+        )
+    }
+    return Object.freeze({
+      id,
+      declarationPath,
+      definition,
+      flow,
+      ...(Object.keys(boundAttachments).length === 0 ? {} : { boundAttachments }),
+    })
   })
   bindings.sort((left, right) => compareProjectPaths(left.id, right.id))
   assertUniqueBindings(bindings)
@@ -350,6 +395,9 @@ function linkBinding(
     settings: definition.settings,
     slots,
     ...(definition.commands === undefined ? {} : { commands: definition.commands }),
+    ...(prepared.boundAttachments === undefined
+      ? {}
+      : { boundAttachments: prepared.boundAttachments }),
   })
 }
 

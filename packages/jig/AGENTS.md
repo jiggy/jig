@@ -66,6 +66,11 @@ admitted FLOW packages.
   only bounded, canonical current formats.
 - Capture mutable project source before evaluation, admission, preparation, or
   execution; Runs use retained admitted bytes.
+- Binding `attachments` selects project-relative read trees captured at review,
+  using the existing portable attachment interface. Retained resources participate
+  in review, lock and exact configuration identity; per-run mappings cannot
+  override them. Keep this root-only profile and its bounds synchronized with
+  `docs/jig/spec/project-policy.md`.
 - Public output must not disclose credentials, sandbox internals, private
   paths, or internal identity records. Review may show the resolved
   operator-selected native Agent executable path for informed selection.

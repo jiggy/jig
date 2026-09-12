@@ -380,6 +380,52 @@ parent file access. Unsupported declaration counts reject the project candidate.
 Bindings contain no runtime command, environment map, package-manager policy,
 or generic permission bag.
 
+### Reviewed Binding attachments
+
+A Binding may supply `attachments: { decoder: "tools/base64" }`. Each LocalName
+key must name a declared `read` attachment; each value is a project-relative
+directory, resolved from the project root. At most eight selections are allowed.
+Empty or absent maps select nothing. These values are inert requests to capture
+project resources, not live mount permissions. Absolute paths, traversal and
+protected `.jig` paths are invalid. No environment or host path expansion occurs.
+
+Every review recaptures each selected tree using the root file capture controls
+and limits below, including no links or nested mounts. There are no selectors or
+implicit exclusions: a selected directory means its complete bounded regular-file
+tree. Review does not execute its contents, discover libraries, install tools,
+or search host executables. Capture is not a secret scan; selected bytes are
+retained in protected storage even if execution approval is declined.
+
+The Binding lock and review include each source path, tree digest and file
+manifest (relative paths, lengths and SHA-256 digests). The retained tree uses
+the existing bounded content-addressed store. Admission revalidates those
+artifacts with the complete candidate. The exact activation and configuration
+identities include them. A source edit changes the next proposed generation,
+not the current admission; deleting an original does not invalidate its retained
+copy. Missing or corrupt retained bytes fail without recapture or substitution.
+
+Only that root Binding receives the captured bytes through ordinary
+`run.attachments`. Other read attachments require `--attach`; supplying an
+already-bound name fails rather than overriding it. Bound and per-run inputs
+share the 64-file/8-MiB execution budget. Both use sealed descriptors and the
+same read-only input projection, without source modes or live host paths.
+Children and native Agent/command scopes receive none of these attachments.
+
+These trees can contain data or self-contained code/tool bundles. A script may
+use installed Bun; a native bundle must supply its own compatible closure.
+Jig does not resolve an arbitrary installed binary's loader or libraries, preserve
+executable permissions, or grant mounts for absolute paths embedded in a tool.
+Direct code access permits all its behavior within the existing execution
+envelope; configured filenames or arguments do not restrict it to one operation.
+Narrower semantic rights need a separately authorized owner, not an executable
+renamed to look harmless. This profile adds no network, credential or shared
+writable resource authority.
+
+Execution cancellation fences owned descendants and releases invocation copies.
+Removing a selection and approving the new generation revokes it for future
+Runs, not an already running invocation; stop that Run separately. Retained
+review artifacts remain subject to the existing store limit and retention policy.
+
 ## 6. Candidate and planning
 
 Planning uses one descriptor-held project identity for the complete finite
@@ -446,6 +492,7 @@ meaning without admitting it.
 - selected package paths and Package/1 digests;
 - direct-target eligibility and invocation requirements;
 - Binding package choices, settings, and exact child slots.
+- Binding command policy and reviewed attachment source paths, tree digests and file manifests.
 
 Lock slot values are closed target identities: `{ "kind": "flow", "path":
 "flows/research" }` or `{ "kind": "binding", "id": "critic" }`. The lock
@@ -627,7 +674,8 @@ and `--select NAME=FILE`, and one `--out DIR`. Parsing performs no file reads;
 acquisition happens once, preserving caller-relative paths through reexecution.
 An ordinary quoted JSON string beginning with `@` is still an inline value.
 
-Every declared read attachment requires exactly one mapping. Selectors name
+Every declared read attachment not supplied by the selected Binding requires
+exactly one mapping. Selectors name
 exact regular files relative to that root; without selectors Jig enumerates
 its bounded tree. Unknown or duplicate mappings/selectors fail before dispatch.
 Review requires no invocation paths. The declared writable attachment requires
@@ -657,8 +705,9 @@ mount semantics because neither the path nor its descriptor enters Flow code.
 JSON/1's byte and value limits still apply.
 
 Input is projected from immutable sealed bytes, never live host directories.
-Captured bytes live only through command ownership and are not retained as
-Package/1 artifacts. Durable request evidence sorts attachment names and paths
+Per-run captured bytes live only through command ownership and are not retained
+as Package/1 artifacts. Reviewed Binding resources instead belong to the admitted
+configuration and retained store described above. Durable request evidence sorts attachment names and paths
 ordinally and records names, lengths, SHA-256 content digests, and the absolute
 output intent. Equivalent selected bytes have the same data identity regardless
 of source spelling; hashes never authenticate the private file descriptors.
@@ -675,7 +724,7 @@ and path limits as capture. Sparse excess, links, and special files reject
 delivery without changing a separately accepted execution terminal.
 
 Destination preparation precedes dispatch. The new leaf must be absent beneath
-an existing anchored parent, outside every selected input root and protected
+an existing anchored parent, outside every per-run selected input root and protected
 state. A separate command owner owns destination staging before allocation,
 survives coordinator failure, and removes unpublished staging without another
 invocation. Output storage, its bounded read buffer, and destination copies

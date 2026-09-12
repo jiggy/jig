@@ -814,7 +814,8 @@ function requireRequestLockProjection(
       binding === undefined ||
       !sameJson(binding.settings, request.settings) ||
       !sameJson(binding.slots, flowSlotTargets(request.slots)) ||
-      !sameJson(binding.commands ?? {}, request.commands ?? {})
+      !sameJson(binding.commands ?? {}, request.commands ?? {}) ||
+      !sameJson(binding.attachments ?? {}, request.boundAttachments ?? {})
     ) {
       throw new TypeError(
         'activation request Binding configuration does not match its lock projection',
@@ -825,7 +826,8 @@ function requireRequestLockProjection(
   if (
     Object.keys(request.settings).length !== 0 ||
     Object.keys(flowSlotTargets(request.slots)).length !== 0 ||
-    request.commands !== undefined
+    request.commands !== undefined ||
+    request.boundAttachments !== undefined
   ) {
     throw new TypeError('direct Flow activation request must have empty configuration')
   }

@@ -157,8 +157,14 @@ child calls, project commands, and Agent providers.
 - Durable transitions use exact identities and conflict-safe commits;
   recovery must not create duplicate owners or official Runs.
 - Root attachments use invocation-owned descriptors and canonical file identity;
-  hashes alone never grant file access. Captured bytes are not Package/1 inputs.
-  Child and Agent contexts receive no attachment or destination authority.
+  hashes alone never grant file access. Per-run captured bytes are not retained
+  artifacts. Child and Agent contexts receive no attachment or destination authority.
+- Reviewed Binding read selections reuse the bounded file capture controls and
+  retained artifact store. Bind source, manifest and tree identity to the exact
+  configuration; revalidate at admission and project retained bytes at execution,
+  never live sources. Runtime mappings cannot override them. Combined retained
+  and per-run input stays within the root file budget; no child inheritance,
+  executable discovery, library resolver, network or credential authority.
 - Keep execution settlement separate from delivery. Retain bounded output after
   writer fencing; publish once without replacement through the independent
   command owner. Coordinator loss must remove unpublished staging. Late failure

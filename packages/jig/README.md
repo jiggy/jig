@@ -49,6 +49,11 @@ jig inspect [flow:path|binding:id] [--json]
 policy. `--yes` approves without a prompt but does not grant resolution network
 permission. `--bare` creates only an empty project skeleton.
 
+A Binding can pin a declared read attachment with
+`attachments: { reference: './resources/reference' }`. Review captures and
+identifies its files; Runs use those approved bytes without repeating `--attach`
+or exposing the live source directory. See [working with files](https://jig.md/guide/files).
+
 `--generate-contracts` compiles authored TypeSpec contracts and publishes their
 managed JSON and types before the separate execution-approval question. Plain
 review does not compile; already-generated contracts need no compiler runtime.

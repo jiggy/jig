@@ -24,6 +24,7 @@ import {
   recordPrivateRootExecutionCheckpoint,
 } from './activation-admission-store.js'
 import type { PrivateAgentProvider } from './agent-provider.js'
+import { openBoundAttachments } from './bound-attachments.js'
 import { privateBunExecutionMaterialization } from './bun-execution-layout.js'
 import {
   type PrivateDirectRunInstalledSupport,
@@ -72,7 +73,7 @@ import {
   executePrivateProjectCommand,
   recoverPrivateProjectCommandOwners,
 } from './root-project-command-controller.js'
-import type { PrivateRootRunFiles } from './root-run-files.js'
+import { PrivateRootRunFiles } from './root-run-files.js'
 import { failedPrivateRootTerminal, normalizePrivateRootTerminal } from './root-run-state.js'
 import { type PrivateRunChannelOutput, PrivateRunChannels } from './run-channels.js'
 
@@ -170,6 +171,7 @@ async function startOrResumeCurrentExecution(
   let channelPackage: Awaited<ReturnType<typeof captureStoredPackage>> | undefined
   let stopChannels: (() => void) | undefined
   let channelDeadline: ReturnType<typeof setTimeout> | undefined
+  let boundFiles: Awaited<ReturnType<typeof openBoundAttachments>> | undefined
   try {
     let recipe: PrivateDirectRunRecipe
     let plan: PrivateDirectRootPlanRecord
@@ -251,7 +253,13 @@ async function startOrResumeCurrentExecution(
     if (stop.terminal !== undefined) {
       return await settleBeforeSandbox(input, work, plan, stop.terminal)
     }
-    const fileProjection = input.files?.projection(work.run.runId, recipe.request, work.run.files)
+    boundFiles = await openBoundAttachments(input.packageStoreRoot, recipe.request.boundAttachments)
+    const fileProjection = (input.files ?? new PrivateRootRunFiles([], null)).projection(
+      work.run.runId,
+      recipe.request,
+      work.run.files,
+      boundFiles.attachments,
+    )
     if (Object.keys(recipe.request.attachments).length !== 0 && fileProjection === undefined)
       throw new Error('root attachment authority is unavailable')
     const sealed = await input.backend.seal(
@@ -449,9 +457,13 @@ async function startOrResumeCurrentExecution(
       try {
         await channelPackage?.dispose()
       } finally {
-        if (channelDeadline !== undefined) clearTimeout(channelDeadline)
-        if (stopChannels !== undefined) input.signal?.removeEventListener('abort', stopChannels)
-        stop.dispose()
+        try {
+          boundFiles?.close()
+        } finally {
+          if (channelDeadline !== undefined) clearTimeout(channelDeadline)
+          if (stopChannels !== undefined) input.signal?.removeEventListener('abort', stopChannels)
+          stop.dispose()
+        }
       }
     }
   }

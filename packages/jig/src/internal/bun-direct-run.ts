@@ -176,6 +176,9 @@ async function describePrivateBunDirectRun(
   } as unknown as JsonValue)
   const authorityDigest = privateDomainDigest('JIG-Private-Bun-Authority/1', {
     attachments: request.attachments,
+    ...(request.boundAttachments === undefined
+      ? {}
+      : { boundAttachments: request.boundAttachments }),
     slots: request.slots,
     ...(request.commands === undefined ? {} : { commands: request.commands }),
   } as unknown as JsonValue)

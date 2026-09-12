@@ -105,6 +105,11 @@
         },
         "commands": {
           "$ref": "#/$defs/commands"
+        },
+        "attachments": {
+          "type": "object",
+          "maxProperties": 8,
+          "additionalProperties": { "$ref": "#/$defs/projectPath" }
         }
       },
       "required": ["kind", "package", "settings", "slots"],

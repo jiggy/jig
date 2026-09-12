@@ -103,7 +103,7 @@ export function renderPrivateProjectPlanReview(
   )
   writeChanges(
     summary,
-    'Bindings (settings, child slots and command policy)',
+    'Bindings (settings, child slots, command policy and captured files)',
     changes.bindings,
     current?.portablePolicy.bindings ?? {},
     proposed.portablePolicy.bindings,
@@ -310,6 +310,9 @@ function projectCandidate(
     slots: request.slots,
     ...(request.commands === undefined ? {} : { commands: request.commands }),
     attachments: request.attachments,
+    ...(request.boundAttachments === undefined
+      ? {}
+      : { capturedAttachments: Object.keys(request.boundAttachments) }),
     ...(Object.keys(request.attachments).length === 0
       ? {}
       : {

@@ -75,9 +75,37 @@
         },
         "commands": {
           "$ref": "#/$defs/commands"
+        },
+        "attachments": {
+          "type": "object",
+          "maxProperties": 8,
+          "additionalProperties": { "$ref": "#/$defs/attachment" }
         }
       },
       "required": ["packagePath", "settings", "slots"],
+      "additionalProperties": false
+    },
+    "attachment": {
+      "type": "object",
+      "properties": {
+        "source": { "type": "string", "minLength": 1, "maxLength": 1024 },
+        "digest": { "$ref": "#/$defs/digest" },
+        "files": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "type": "object",
+            "properties": {
+              "path": { "type": "string", "minLength": 1, "maxLength": 512 },
+              "bytes": { "type": "integer", "minimum": 0, "maximum": 8388608 },
+              "digest": { "$ref": "#/$defs/digest" }
+            },
+            "required": ["path", "bytes", "digest"],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": ["source", "digest", "files"],
       "additionalProperties": false
     },
     "targetIdentity": {

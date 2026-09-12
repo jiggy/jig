@@ -21,6 +21,8 @@ use-case and orchestration hypotheses.
   Its first-method walkthrough extends the ordinary greeting project with a
   bounded support-reply draft, not an example-only installation path.
   `guide/dependencies.md` owns package dependency preparation guidance.
+- `guide/files.md` explains per-run files and review-pinned Binding resources,
+  their shared read attachment interface, retention and root-only limits.
 - `guide/agent-method.md` explains the reusable method's pure library and
   anonymous ordinary Flow artifact, honest source-candidate adoption and the
   distinction from native authenticated caller Skills.

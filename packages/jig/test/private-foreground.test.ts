@@ -44,6 +44,7 @@ describe('private foreground command boundary', () => {
       writeChannelProject,
       writeChildChannelProject,
       writeBroadcastChannelProject,
+      writeBoundResourceProject,
     ]) {
       const root = await mkdtemp(join(tmpdir(), 'jig-foreground-fixture-'))
       try {
@@ -98,6 +99,91 @@ describe('private foreground command boundary', () => {
 })
 
 proofDescribe('private rootless project session', () => {
+  test('reviewed Binding resources run unchanged methods with immutable bytes, honest failure and cancellation', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'jig-bound-resource-consumer-'))
+    try {
+      await writeBoundResourceProject(root)
+      const review = await invokeChannelCli(root, ['review', '--yes'])
+      expect(review.code, review.stderr).toBe(0)
+      expect(review.stdout).toContain('capturedAttachments')
+      expect(review.stdout).toContain('tools/first')
+      const lock = JSON.parse(await readFile(join(root, 'jig.lock'), 'utf8'))
+      expect(lock.bindings.first.attachments.decoder.files).toHaveLength(1)
+      // Neither changing nor removing originals may change an existing admission.
+      await writeFile(join(root, 'tools/first/decode.ts'), 'throw new Error("unreviewed")')
+      await rm(join(root, 'tools/second'), { recursive: true })
+      for (const id of ['first', 'second']) {
+        const result = await invokeChannelCli(root, [
+          'run',
+          `binding:${id}`,
+          '--input',
+          '"AP+ACg0B/g=="',
+        ])
+        expect(result.code, result.stderr + result.stdout).toBe(0)
+        expect(JSON.parse(result.stdout)).toMatchObject({
+          status: 'succeeded',
+          outcome: 'done',
+          output: { bytes: [0, 255, 128, 10, 13, 1, 254], immutable: true, hostAbsent: true },
+        })
+      }
+      const override = await invokeChannelCli(root, [
+        'run',
+        'binding:first',
+        '--attach',
+        'decoder=tools/first',
+      ])
+      expect(override.code).not.toBe(0)
+      expect(override.stderr).toContain('cannot be overridden')
+      const failed = await invokeChannelCli(root, ['run', 'binding:first', '--input', '"bad"'])
+      expect(JSON.parse(failed.stdout)).toMatchObject({
+        status: 'succeeded',
+        outcome: 'blocked',
+        output: { exitCode: 2 },
+      })
+      let stopped = false
+      const cancelled = await invokeChannelCli(
+        root,
+        ['run', 'binding:first', '--input', '"hold"'],
+        {
+          diagnostic(text, _running, cancel) {
+            if (text.includes('bound-tool-started')) {
+              stopped = true
+              cancel()
+            }
+          },
+        },
+      )
+      expect(stopped).toBeTrue()
+      expect(cancelled.code).not.toBe(0)
+      if (cancelled.stdout.trim()) expect(JSON.parse(cancelled.stdout).status).not.toBe('succeeded')
+      await expectNoChildResidue(root)
+      await waitForRootlessCgroups(initialRootlessCgroups)
+      await waitForRootlessTemporaryState(initialRootlessTemporaryState)
+      // An invalid recapture cannot silently replace the prior generation.
+      const missing = await invokeChannelCli(root, ['review', '--yes'])
+      expect(missing.code).not.toBe(0)
+      expect(await readFile(join(root, 'jig.lock'), 'utf8')).toBe(JSON.stringify(lock) + '\n')
+      for (const id of ['first', 'second'])
+        await writeFile(
+          join(root, 'bindings', id + '.ts'),
+          "import { defineBinding } from '@jigging/jig'; export default defineBinding({ package: 'flows/decode' });",
+        )
+      const revoke = await invokeChannelCli(root, ['review', '--yes'])
+      expect(revoke.code, revoke.stderr).toBe(0)
+      const refused = await invokeChannelCli(root, [
+        'run',
+        'binding:first',
+        '--input',
+        '"AP+ACg0B/g=="',
+      ])
+      expect(refused.code).not.toBe(0)
+      expect(refused.stderr).toContain('unbound read attachments')
+      await waitForRootlessCgroups(initialRootlessCgroups)
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  }, 300_000)
+
   test('installed dataset conversation preserves named meaning, correlated results, and cancellation', async () => {
     for (const peer of [
       'normal',
@@ -2325,6 +2411,67 @@ async function invokeChannelCli(
     } finally {
       reader.releaseLock()
     }
+  }
+}
+
+// Ordinary public Run/1 consumer: no repository SDK injection or host imports.
+async function writeBoundResourceProject(root: string): Promise<void> {
+  await writeFile(
+    join(root, 'jig.ts'),
+    'import { defineJig, discover } from "@jigging/jig"; export default defineJig({flows: discover("flows"), bindings: discover("bindings")});',
+  )
+  await mkdir(join(root, 'bindings'))
+  await mkdir(join(root, 'flows/decode'), { recursive: true })
+  await writeFile(
+    join(root, 'flows/decode/FLOW.contract.json'),
+    JSON.stringify({
+      $schema: 'https://flow.jig.md/schemas/invocation-contract-1.schema.json',
+      attachments: { decoder: 'read' },
+      outcomes: { blocked: 'The selected decoder refused its input.' },
+    }),
+  )
+  await writeFile(
+    join(root, 'flows/decode/FLOW.ts'),
+    `
+import { createInterface } from 'node:readline';
+import { spawn } from 'node:child_process';
+import { readFileSync, writeFileSync, existsSync } from 'node:fs';
+const lines = createInterface({ input: process.stdin });
+for await (const line of lines) {
+  const request = JSON.parse(line);
+  if (request.method !== 'flow/run') continue;
+  const tool = request.params.attachments.decoder.path + '/decode.ts';
+  const original = readFileSync(tool);
+  let immutable = false;
+  try { writeFileSync(tool, 'overwrite'); } catch { immutable = true; }
+  if (!readFileSync(tool).equals(original)) throw new Error('resource changed');
+  const child = spawn(process.execPath, ['--no-env-file', '--no-install', '--config=/dev/null', tool, String(request.params.input)], { stdio: ['ignore', 'pipe', 'pipe'] });
+  const bytes = [];
+  child.stdout.on('data', data => bytes.push(data));
+  child.stderr.pipe(process.stderr);
+  const exitCode = await new Promise((resolve, reject) => { child.once('error', reject); child.once('close', resolve); });
+  const result = exitCode === 0 ? { outcome: 'done', output: { bytes: [...Buffer.concat(bytes)], immutable, hostAbsent: !existsSync(${JSON.stringify(root)}) } } : { outcome: 'blocked', output: { exitCode } };
+  process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id: request.id, result }) + '\\n');
+  lines.close(); break;
+}
+`,
+  )
+  for (const [id, decode] of [
+    ['first', 'Buffer.from(value, "base64")'],
+    ['second', 'Uint8Array.from(atob(value), c => c.charCodeAt(0))'],
+  ]) {
+    await mkdir(join(root, 'tools', id!), { recursive: true })
+    await writeFile(
+      join(root, 'tools', id!, 'decode.ts'),
+      `const value = process.argv[2];
+if (value === 'bad') process.exit(2);
+if (value === 'hold') { console.error('bound-tool-started'); setInterval(() => {}, 1000); }
+else process.stdout.write(${decode});`,
+    )
+    await writeFile(
+      join(root, 'bindings', id! + '.ts'),
+      `import { defineBinding } from '@jigging/jig'; export default defineBinding({ package: 'flows/decode', attachments: { decoder: 'tools/${id}' } });`,
+    )
   }
 }
 

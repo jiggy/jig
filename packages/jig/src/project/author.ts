@@ -51,6 +51,7 @@ export interface PackageBindingDefinition {
   readonly settings: JsonObject
   readonly slots: Readonly<Record<string, string>>
   readonly commands?: ProjectCommands
+  readonly attachments?: Readonly<Record<string, string>>
 }
 
 export interface PackageBindingInput {
@@ -58,6 +59,7 @@ export interface PackageBindingInput {
   readonly settings?: JsonObject
   readonly slots?: Readonly<Record<string, string>>
   readonly commands?: ProjectCommands
+  readonly attachments?: Readonly<Record<string, string>>
 }
 
 export type BindingDefinition = PackageBindingDefinition
@@ -132,8 +134,8 @@ function normalizeBinding(
   assertClosedObject(
     captured,
     canonical
-      ? ['kind', 'package', 'settings', 'slots', 'commands']
-      : ['package', 'settings', 'slots', 'commands'],
+      ? ['kind', 'package', 'settings', 'slots', 'commands', 'attachments']
+      : ['package', 'settings', 'slots', 'commands', 'attachments'],
     'Binding definition',
   )
   if (canonical && captured.kind !== 'package') {
@@ -150,13 +152,32 @@ function normalizeBinding(
   const commands = normalizeProjectCommands(
     Object.hasOwn(captured, 'commands') ? captured.commands : {},
   )
+  const attachments = normalizeBindingAttachments(
+    Object.hasOwn(captured, 'attachments') ? captured.attachments : {},
+  )
   return record({
     kind: 'package',
     package: packagePath,
     settings,
     slots,
     ...(Object.keys(commands).length === 0 ? {} : { commands }),
+    ...(Object.keys(attachments).length === 0 ? {} : { attachments }),
   }) as unknown as PackageBindingDefinition
+}
+
+/** Inert project-relative selections, never authority to reopen live files at Run time. */
+export function normalizeBindingAttachments(value: unknown): Readonly<Record<string, string>> {
+  const input = snapshotJsonObject(value, 'attachments')
+  if (Object.keys(input).length > 8) throw new TypeError('attachments exceed eight entries')
+  const output: Record<string, string> = Object.create(null)
+  for (const name of Object.keys(input).sort(compareUtf8)) {
+    validateLocalName(name, 'attachment name')
+    const path = normalizeProjectPath(input[name], `attachment ${name}`)
+    if (path.split('/').some((part) => part.toLowerCase() === '.jig'))
+      throw new TypeError('attachments cannot select protected Jig state')
+    output[name] = path
+  }
+  return Object.freeze(output)
 }
 
 function normalizeFlowSlots(value: unknown): Readonly<Record<string, string>> {

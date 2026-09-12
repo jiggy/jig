@@ -143,6 +143,15 @@ multiply linked files, nested mounts and protected host-state aliases. Source
 and destination-parent filesystems must be ext4, XFS, Btrfs or tmpfs. This does
 not detect secrets in explicitly selected files or defeat a malicious host user.
 
+Bindings may select read-only project-relative resource trees for capture during
+review. Their bytes and manifests are retained under the existing Package/1
+store cap, including after declined review. They are not secret storage or live
+host mounts. Each Run revalidates and projects only its selected Binding's
+retained bytes, combined with per-run input under the same 64-file/8-MiB limit.
+Neither children nor native provider scopes inherit them. Tool code receives no
+additional execution privilege: all of its behavior is available within the
+existing sandbox, without subcommand restrictions, network or credentials.
+
 The sole writable attachment uses a 16 MiB anonymous tmpfs under the Run's
 256 MiB aggregate memory ceiling, including filesystem metadata. A trusted
 descriptor retains that bounded mount after all payload writers are fenced.

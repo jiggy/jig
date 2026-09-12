@@ -19,6 +19,7 @@ const binding = defineBinding({
   package: './flows/review',
   settings: { retries: 2 },
   slots: { child: 'flow:./flows/child', reviewer: 'binding:reviewer' },
+  attachments: { reference: './resources/reference' },
 })
 
 function changed(value: unknown, mutate: (copy: Record<string, any>) => void): unknown {
@@ -59,9 +60,9 @@ describe('Project Authoring SDK/1 shape schema', () => {
       }),
     ],
     [
-      'unsupported Binding attachments',
+      'non-path Binding attachments',
       changed(binding, (item) => {
-        item.attachments = {}
+        item.attachments = { source: { path: 'data' } }
       }),
     ],
     [

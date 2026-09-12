@@ -1231,6 +1231,12 @@ function renderFailure(error: unknown, runtime: CliRuntime): 1 | 2 {
         'keep only one root FLOW.<suffix> implementation in the package',
       PROJECT_BINDING_SETTINGS_INVALID:
         'Binding settings do not match the Flow settings schema; correct the indicated value',
+      PROJECT_BINDING_ATTACHMENTS_INVALID:
+        'check the Binding attachment directories: use stable project-relative regular-file trees without links, protected state or nested mounts, within the file limits',
+      PROJECT_BINDING_ATTACHMENT_UNDECLARED:
+        'select only attachment names declared read-only in the Flow contract',
+      PROJECT_BINDING_ATTACHMENTS_NOT_CAPTURED:
+        'the selected Binding files could not be retained consistently; review stable source directories again',
       PROJECT_BINDING_PACKAGE_MISSING:
         'the Binding references a Flow not selected by jig.ts; correct the path or project membership',
       PROJECT_BINDING_SLOT_MISSING:
@@ -1317,7 +1323,7 @@ function renderFailure(error: unknown, runtime: CliRuntime): 1 | 2 {
       runtime.writeError(
         renderDiagnostic(
           'JIG_RUN_FILES_INVALID',
-          "supply exactly the admitted target's read attachments with --attach and its required writable destination with --out",
+          'supply exactly the unbound read attachments with --attach and the required writable destination with --out; captured Binding attachments cannot be overridden. Combined inputs must fit the 64-file/8-MiB limit',
         ),
       )
       return 1

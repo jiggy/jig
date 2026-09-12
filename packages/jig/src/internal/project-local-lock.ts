@@ -21,6 +21,7 @@ import {
   validateProjectPath,
 } from '../project/paths.js'
 import { PRIVATE_ACTIVATION_TARGET_LIMIT } from './activation-planning.js'
+import { type BoundAttachments, normalizeBoundAttachments } from './bound-attachments.js'
 import { privateDomainDigest } from './identity.js'
 
 const DIGEST = /^sha256:[0-9a-f]{64}$/
@@ -38,6 +39,7 @@ export interface PrivateLockBinding {
   readonly settings: JsonObject
   readonly slots: Readonly<Record<string, RunTargetIdentity>>
   readonly commands?: ProjectCommands
+  readonly attachments?: BoundAttachments
 }
 
 export interface PrivateProjectLocalLock {
@@ -71,6 +73,7 @@ export function createPrivateProjectLocalLock(
       settings: binding.settings,
       slots: binding.slots,
       ...(binding.commands === undefined ? {} : { commands: binding.commands }),
+      ...(binding.boundAttachments === undefined ? {} : { attachments: binding.boundAttachments }),
     })
   }
   const lock = normalizeLock({ packages, bindings })
@@ -175,6 +178,9 @@ function normalizeBindings(value: unknown): PrivateProjectLocalLock['bindings'] 
         'settings',
         'slots',
         ...(Object.hasOwn(object(input[id], `Binding ${id}`), 'commands') ? ['commands'] : []),
+        ...(Object.hasOwn(object(input[id], `Binding ${id}`), 'attachments')
+          ? ['attachments']
+          : []),
       ],
       `Binding ${id}`,
     )
@@ -185,6 +191,9 @@ function normalizeBindings(value: unknown): PrivateProjectLocalLock['bindings'] 
       settings,
       slots,
       ...(item.commands === undefined ? {} : { commands: normalizeProjectCommands(item.commands) }),
+      ...(item.attachments === undefined
+        ? {}
+        : { attachments: normalizeBoundAttachments(item.attachments) }),
     })
   }
   return Object.freeze(output)
