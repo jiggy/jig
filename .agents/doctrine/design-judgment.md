@@ -38,12 +38,28 @@ Flow, library, provider, application, or Starter should own it. Crossing such a
 boundary is a reason to examine a host responsibility, not automatic
 justification for a new public abstraction.
 
-“Microkernel-inspired” describes this discipline. It is not a mandate to
-recreate an operating system, general service framework, or universal
-application model. Flows perform bounded work; capabilities expose stable
-interfaces or controlled effects; runtimes own internal control; applications
-decide why the work exists. Their detailed product reasoning lives in
-[FLOW](flow.md) and [Jig](jig.md).
+### The microkernel architectural thesis
+
+Jig draws on microkernel architecture: keep the common execution core focused
+on responsibilities that must hold across component boundaries, and let
+substantial capability live in independently composed methods. Methods own
+their work; applications own their purpose; operators own their powers. Jig
+owns the boundaries through which authorized work begins, interacts, and ends.
+
+We believe this separation is a strong foundation for agent-native software.
+Methods can combine authored procedures with flexible Agent judgment while
+authority and execution lifecycle remain outside the model's judgment.
+Capability can grow through composition without requiring the host to absorb
+each new workflow or Agent technique. Runtime independence lets authors choose
+how their methods advance; explicit boundaries let other software use the work.
+
+The elegance we seek is substantial expressive power through a small set of
+responsibilities. "Microkernel-inspired" names that design conviction. It does
+not require an operating system, general service framework, or universal
+application model. Flows perform bounded work; capabilities expose interfaces
+or controlled effects; runtimes own internal control. FLOW's independent
+method boundary supports this composition without adopting Jig's host policy.
+Their detailed product reasoning lives in [FLOW](flow.md) and [Jig](jig.md).
 
 ## 2. Preserve the promise with the least burden
 
@@ -97,6 +113,26 @@ keeps room for the work the product actually promises.
 A vision guides judgment without proving that a chosen mechanism works.
 Decision criteria, experiments, and useful applications supply that evidence;
 none authorizes a contradiction of a higher-level commitment.
+
+### Beliefs, commitments, and demonstrated properties
+
+Architectural conviction explains why we build. We can state that conviction
+and its causal reasoning directly, without first establishing a competitive
+ranking. Three kinds of statement have different roles:
+
+| Kind | Role | Example |
+| --- | --- | --- |
+| **Belief** | Explains why a direction is worth pursuing. | Explicit execution boundaries are a strong foundation for composing Agent intelligence into software. |
+| **Commitment** | Constrains acceptable designs. | Model output cannot grant itself authority, and owned execution must be settled. |
+| **Demonstrated property** | Reports what evidence establishes under stated conditions. | A particular implementation fences descendants after coordinator failure under its tested threat model. |
+
+Beliefs deserve clear arguments; commitments guide implementation; demonstrated
+properties require evidence. Conviction is not a substitute for proof of a
+security guarantee, performance claim, or comparative advantage. Equally,
+evidence standards should not make an explanation of our design depend on a
+benchmark or reduce its ambition to what one current test exercises. None of
+these categories changes the product authority pyramid or silently selects a
+new API, implementation, or release claim.
 
 ### The decision test
 
@@ -187,8 +223,12 @@ a platform until every imagined use fits is not completion.
 
 ### The software factory makes the thesis visible
 
-The north-star application combines the promises into an outcome people can
-inspect, rather than asking them to value architecture in isolation:
+The software factory remains a demanding north-star application. It illustrates
+the broader ambition of applications incorporating Agent work into their own
+operation, with explicit authority, composition, checks, and completion. Its
+development domain does not limit that ambition to coding assistance.
+
+The application combines the promises into an outcome people can inspect:
 
 ```text
 authorized issue

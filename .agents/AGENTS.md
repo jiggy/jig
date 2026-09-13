@@ -11,8 +11,8 @@ for external libraries.
 
 - `product-compass.md` introduces the product authority pyramid and routes
   readers from core ideas through principles to detailed commitments.
-- `doctrine/` owns detailed product reasoning, tradeoffs, intended product
-  experience, and the decision test.
+- `doctrine/` owns detailed product and architectural reasoning, tradeoffs,
+  intended product experience, and the decision test.
 - `audience.md` owns the initial ICP, felt problems, domain understanding,
   participant needs, and adoption hypotheses.
 - `communication.md` owns positioning, narrative progression, vocabulary,
@@ -46,6 +46,8 @@ for external libraries.
 - Keep purpose, audience strategy, and communication in their separate owners.
   Purpose and the compass reference the strategy documents; target segments
   and editorial choices do not define product purpose or public contracts.
+  Audience strategy owns the opportunity of bringing Agents into production
+  software; communication explains the design conviction and its benefits.
 - Keep the compass a concise entrypoint and the doctrine the home of detailed
   product reasoning. Current behavior, implementation mechanics, roadmap
   order, and research catalogues retain their existing owners.

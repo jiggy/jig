@@ -14,10 +14,12 @@ screenshots, comparisons, and review notes belong in `.tmp/`.
 
 ## Lead from recognizable work to greater capability
 
-The reader already sees what Agents can produce. Help them see how to turn
-that capability into a system they can understand and direct. Begin with a
-recognizable task or difficulty, explain the missing connection, and demonstrate
-the benefit before introducing its architectural machinery.
+The reader already uses Agents to help develop software. Help them see how to
+put that intelligence inside the software they build. Begin with a useful task
+they want an application to perform, explain what makes delegation difficult,
+and show how explicit execution boundaries let the pieces work together.
+Review fatigue can make the difficulty recognizable, but production composition
+is the primary opportunity.
 
 The shared positioning anchor is **the flexibility of AI Agents combined with
 the discipline of a traditional codebase**. It connects an existing source of
@@ -27,11 +29,14 @@ results. It is not a promise that models become deterministic or error-free.
 | Product | Reader's starting point | Connection to establish | Benefit to make tangible |
 | --- | --- | --- | --- |
 | **FLOW** | Skills and instructions already capture useful know-how. | A method can also expose executable code that a program invokes directly; Agent involvement is chosen inside the method. | Build applications from capabilities and make more work achievable by combining them. |
-| **Jig** | Agent output is hard to keep up with, coordinate, and review. | Flows express methods in code and Jig supplies the host boundary for running them. | Run understandable procedures that use Agent judgment and produce evidence for the next decision. |
+| **Jig** | Agents are useful during development, but delegating work inside a product raises fears about behavior and consequences. | Code and Agent work compose through Flows; Jig keeps authority and execution lifecycle outside model judgment. | Build applications that put Agent intelligence to work within explicit boundaries and handle its outcomes. |
 
-Portability and a small architecture explain how the promise is sustained.
-They should follow the immediate benefit. Long-lived code, protocol elegance,
-or restrictions alone are weak opening reasons for this audience to care.
+“You trust Agents to help build your software. Now build software that puts
+Agents to work” is a useful narrative bridge. Continue by explaining how the
+architecture supports that ambition; the reader should understand why we chose
+it, not merely encounter a list of controls. Portability and a small execution
+core connect the immediate benefit to a system the builder can own and extend.
+Long-lived code or protocol elegance alone are weak opening reasons to care.
 
 ## Build one continuous explanation
 
@@ -52,10 +57,12 @@ The preferred FLOW progression is:
 
 The preferred Jig progression is:
 
-1. Recognize the work of supervising and evaluating Agent output.
-2. Follow a useful application through its procedure and checks.
-3. Explain what the methods and application own, and what Jig handles.
-4. Show how those pieces enable further work while remaining understandable.
+1. Connect familiar development assistance to Agent work inside an application.
+2. Acknowledge unpredictable or misdirected behavior and explain the need for
+   boundaries beyond instructions.
+3. Follow a useful application through code, Agent judgment, checks and outcomes.
+4. Explain the microkernel design through what methods, applications, operators
+   and Jig each own, and show why composition can grow from that small core.
 5. Offer a supported first run, with meaningful prerequisites easy to find.
 
 These are reasoning sequences, not a requirement for five page sections.
@@ -94,6 +101,13 @@ judgment remains inside the steps that need it. Ordinary bugs and uncertain
 model output remain possible; useful checks require application knowledge.
 Uptime, disaster recovery, and semantic correctness need their own evidence.
 
+Name the fear of an Agent hallucinating, following injected instructions, or
+taking unintended actions without turning it into a claim of universal
+protection. Jig makes work governable and composable; it does not make judgment
+correct. Explain how host authority and application checks address different
+parts of the problem. A harmful decision within granted authority can still
+occur. Give the reader the relevant limit alongside the mechanism it qualifies.
+
 Introduce Jig's control through understandable execution, inspectable evidence,
 and the ability to direct and stop work. Powers and permissions remain essential
 and explicit where a user makes those decisions. Do not imply a human must
@@ -103,8 +117,30 @@ approve every step already covered by delegated authority.
 Pair the metaphor with a concrete explanation; it is not a new public type.
 A visual may show data moving between these pieces and reveal the code or
 Agent work inside them. It must not imply an autonomous routing engine, a
-general scheduler, or host control of a Flow's internal graph. Introduce
-“microkernel-inspired” only after the small host's responsibility is understood.
+general scheduler, or host control of a Flow's internal graph.
+
+## Explain why we believe in the architecture
+
+“A microkernel for agent-native systems” is an architectural analogy worth
+explaining. Pair it immediately with the concrete division: methods own work,
+applications own purpose, operators supply powers, and Jig owns the common
+execution boundaries. This is how the small core supports richer methods
+without absorbing every Agent technique or becoming a workflow language.
+
+Lead with the positive design conviction: Agents have room to reason within
+their role, code can express known procedures, and software can compose both
+while authority and execution lifecycle stay explicit. Explain what makes
+this arrangement distinctive through its responsibilities and consequences.
+Our reason for building does not depend on a competitive ranking.
+
+Follow the doctrine's distinction between
+[beliefs, commitments, and demonstrated properties](doctrine/design-judgment.md#beliefs-commitments-and-demonstrated-properties).
+State beliefs confidently as beliefs and explain their reasoning. Do not make
+every architectural explanation wait for a comparative benchmark. Measured
+speed, proven threat resistance, production scale, exclusivity and superiority
+are factual claims and need their own evidence. Avoid “the only solution,”
+“agents cannot run in production,” and “eliminates prompt injection.” Those
+claims are unnecessary to explain why this architecture deserves to exist.
 
 ## Make examples earn the promise
 
@@ -128,7 +164,11 @@ product and its value in their own words. Review these concrete properties:
 - The opening connects a familiar task to something more achievable.
 - Each section supplies the reason for the next; remove repeated slogans.
 - The example makes direct execution, Agent involvement, and checks visible.
+- The Jig story connects development assistance to delegated application work
+  and explains the positive reason for its architecture.
 - FLOW independence and the application/method/host responsibilities are clear.
+- Design convictions are expressed clearly and distinguished from demonstrated
+  guarantees; model correctness is not implied by execution control.
 - Reliability, compatibility, and comparative claims match their evidence.
 - The next step is useful, and its requirements are discoverable.
 - The narrative remains complete in generated Markdown, including tab content.

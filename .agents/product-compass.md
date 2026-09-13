@@ -69,6 +69,12 @@ own purpose and domain rules. Operators supply Agents, credentials, limits,
 and execution policy. No package or chooser acquires those powers by naming
 them.
 
+Jig's [architectural thesis](doctrine/design-judgment.md#the-microkernel-architectural-thesis)
+is that a small execution core makes room for substantial capability in
+composed methods. Agents can reason and adapt within their roles while
+authority and execution lifecycle remain outside model judgment. This is the
+positive reason for its microkernel-inspired design.
+
 ### The promises remain intact
 
 Discovery is not admission: accepting a method authorizes exact reviewed
@@ -92,6 +98,11 @@ north-star example, not Jig's application ontology.
 A complete application must justify its added ceremony against a strong
 simpler alternative on the dimensions it claims; it need not win every
 comparison. Completing one outcome does not authorize the next subsystem.
+
+We state our design beliefs and their reasoning directly. Explaining why we
+build does not require a competitive ranking. The design layer distinguishes
+[beliefs, commitments, and demonstrated properties](doctrine/design-judgment.md#beliefs-commitments-and-demonstrated-properties):
+conviction guides the work; evidence establishes what its implementation achieves.
 
 ## Audience and communication
 

@@ -85,7 +85,9 @@ must remain coherent when the method author, data owner, and people bearing
 the consequences are different. The person capable of executing work is not
 automatically entitled to choose its consequences.
 Software may act under delegated authority without requiring a human at every
-interface. [Jig](jig.md) develops these principles into agency through power
+interface. Applications should be able to incorporate intelligent work into
+their operation while their owners retain direction over its authority and
+consequences. [Jig](jig.md) develops these principles into agency through power
 under control.
 
 FLOW addresses the exchange of methods; Jig addresses putting them to work

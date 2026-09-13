@@ -13,11 +13,11 @@ then guiding principles, design commitments, and their practical consequences.
   communication strategy rather than defining either.
 - `flow.md` owns capability compounding, executable know-how, and the reasons
   for an independent method ecosystem.
-- `jig.md` owns agency, power under control, and the supporting authority and
-  ownership principles.
-- `design-judgment.md` owns cross-product responsibilities, accepted tradeoffs,
-  product proof, decision criteria, and open design questions, subordinate to
-  the shared purpose and both product branches.
+- `jig.md` owns agency, power under control, Agents as participants in software,
+  and the authority and ownership principles that hold under misdirected behavior.
+- `design-judgment.md` owns cross-product responsibilities, the microkernel
+  architectural thesis, accepted tradeoffs, product proof, decision criteria,
+  and open design questions, subordinate to the shared purpose and both branches.
 - `../audience.md` owns the ICP and audience hypotheses; `../communication.md`
   owns public positioning and narrative. Those strategies apply the doctrine
   without redefining purpose or exact contracts.
@@ -27,8 +27,10 @@ then guiding principles, design commitments, and their practical consequences.
 
 ## Local Contracts
 
-- Distinguish chosen values, testable product hypotheses, and revisable design
-  commitments. Aspirations do not prove outcomes or mandate a mechanism.
+- Distinguish chosen values, architectural beliefs, testable product hypotheses,
+  design commitments, and demonstrated properties. State beliefs with their
+  reasoning; a competitive ranking is not required to explain why we build.
+  Aspirations and beliefs do not prove outcomes or mandate a mechanism.
 - Apply the root authority pyramid to every conclusion. Lower-level detail
   must satisfy all applicable higher-level commitments; neither detail nor a
   broad slogan may bypass them. Surface conflicts for resolution at their owner.
@@ -55,6 +57,9 @@ then guiding principles, design commitments, and their practical consequences.
 - Preserve the positive product promise alongside its safeguards. Agency
   includes human and software consumers; ownership supports power under
   control. Capability compounding requires useful improvement, not just reuse.
+- Explain how the architecture enables Agent work within explicit boundaries.
+  Keep production adoption hypotheses in audience strategy, and distinguish
+  governed execution from correct Agent judgment without burying the ambition.
 - Preserve substantive reasoning when shortening or separating document
   ownership. Keep the ambition, causal argument, and intended experience
   developed in the purpose; the compass owns the short summary. Links to

@@ -1,4 +1,4 @@
-# Audience — builders whose capability is outgrowing their attention
+# Audience — builders bringing Agents into production software
 
 Jig and FLOW serve the aspiration to [expand human possibility](doctrine/purpose.md).
 This document owns the initial ideal customer profile (ICP), audience needs,
@@ -9,11 +9,18 @@ the shared purpose or the products' core ideas.
 
 ## Initial audience
 
-The chosen initial audience is developers who already use Agents to do useful
-work, alone or in small teams, and want to build larger systems from that
-capability. They work with Skills, prompts, scripts, and ordinary application
-code. Their ability to generate work can outgrow their ability to review and
-coordinate it.
+The chosen initial audience is developers and teams already getting substantial
+value from Agents during development and interactive work. They want to put
+that intelligence inside their products and operational systems. They work
+with Skills, prompts, scripts, and ordinary application code; the next step is
+software that invokes and composes Agent work as part of its own operation.
+
+The central opportunity is the gap between work a person supervises in a
+conversation and work an application must authorize, evaluate, and handle when
+it goes wrong. Here, production use means serving real application or
+operational needs without a developer supervising every invocation. Review
+fatigue and excessive generated code are supporting symptoms. The larger
+attraction is being able to build systems that put Agent capabilities to work.
 
 This is a product direction informed by the owner's experience. The pain,
 adoption, and benefit claims below are working hypotheses, not findings from
@@ -27,16 +34,26 @@ should help them understand a recognizable problem.
 
 | Likely expression of pain | Need to investigate | Useful outcome to demonstrate |
 | --- | --- | --- |
+| “Agents help me build my product, but I don't trust them inside it.” | Turn intelligent work into bounded application components with explicit authority and outcomes. | An application invokes Agent work, checks its result, and handles failure without a developer directing each call. |
+| “What if it goes rogue or follows instructions hidden in its input?” | Keep authority outside model judgment, including under misalignment or prompt injection. | A bounded adversarial example shows attempted unauthorized work refused and the remaining risks understood. |
+| “A convincing wrong answer could trigger the wrong action.” | Separate successful execution from semantic correctness and permission to cause a consequence. | Application checks reject an unsuitable result or route uncertainty according to domain policy. |
+| “I keep rebuilding the plumbing around every Agent.” | Compose reusable methods while leaving authority and execution lifecycle with the host. | Code and Agent work contribute through explicit invocation boundaries, with visible cancellation and failure handling. |
 | “My Agents produce too much AI slop.” | Separate plausible generation from work that satisfies the application's checks. | A result accompanied by relevant evidence and a clear reason when work is unsuccessful. |
 | “Reviewing everything has become my job.” | Put repeatable checks and procedural coordination in code, reserving attention for judgment and consequences. | More useful work without a proportional increase in supervision. |
-| “I keep repeating the steps, and the Agent still misses things.” | Express important ordering, validation, and stopping conditions as execution. | A method whose procedure is explicit and inspectable. |
-| “Adding another Agent gives me more work to coordinate.” | Compose focused methods through defined inputs and results. | Several understandable pieces accomplish a task together. |
 
-“Unreliable execution” may be an accurate diagnosis without being the phrase
-that attracts this audience. Here the relevant concern is whether the intended
-procedure runs as authored. Uptime and disaster recovery are different concerns.
-The [Jig doctrine](doctrine/jig.md) separates program structure, host guarantees,
-and the quality of an Agent's answer.
+These fears involve different failure modes: wrong answers, unintended actions,
+and work that cannot be accounted for or stopped. Prompting alone cannot carry
+the authority and lifecycle responsibilities of the surrounding application.
+Jig's architectural thesis addresses those boundaries; application checks still
+own the meaning and acceptability of results. The [Jig doctrine](doctrine/jig.md)
+separates program structure, host guarantees, and the quality of an Agent's
+answer.
+
+Production users may also need concurrency, throughput, uptime and recovery.
+Investigate those requirements separately. Interest in high-load systems is
+a demand signal to explore, not evidence of current capacity or a commitment
+to build a hosted service. The opportunity does not depend on claiming that
+existing Agent deployments are impossible or that other approaches have no value.
 
 ## What the reader already understands
 
@@ -50,18 +67,27 @@ invoked part of a program. An executable Flow can run ordinary code, request
 Agent judgment, or combine the two. A caller does not need a model to interpret
 the method's prose before invoking its executable implementation.
 
+For Jig, connect that method boundary to who authorizes the work, what happens
+when an Agent behaves unexpectedly, and how execution ends. Introduce the
+microkernel idea through this division of responsibilities so a reader can
+understand why a small execution core supports more capable applications.
+
 ## What should make adoption attractive
 
 The desired first understanding of FLOW is: “I can build a system from small,
 executable capabilities and combine them into something more powerful.” The
 desired understanding of Jig is: “I can use Agent flexibility within an
-application whose procedure I can understand, run, and direct.”
+application while keeping its authority, composition, and execution lifecycle
+under my system's control.”
 
-A useful entry task has recognizable stakes and a bounded result: a tested
-patch, a proposal grounded in supplied evidence, or another procedure with
-checks the builder understands. Start with one useful method, then demonstrate
-what becomes possible when it works with another. Do not assume that more
-Agents or more packages improve the result.
+A useful entry task has recognizable stakes and a bounded result: an
+application classifies a request, drafts a proposal grounded in supplied
+evidence, or produces a tested patch. Show the Agent's contribution, the code
+that evaluates it, and the application's next decision. Start with one useful
+method, then demonstrate what becomes possible when it works with another.
+Examples should make delegated software operation visible; the software factory
+remains one demanding demonstration rather than the whole audience story.
+Do not assume that more Agents or more packages improve the result.
 
 Preserving code for a long time is not the initial attraction. Implementations,
 models, and workflows change quickly. The value to demonstrate is the work
@@ -92,11 +118,16 @@ over another participant's data, providers, or consequences.
 Observe builders doing a real task with their current tools before attributing
 the whole difficulty to a missing execution format. In particular, investigate:
 
-- whether review and coordination are the limiting work;
+- which valuable production tasks builders are withholding from Agents, and why;
+- how fears of hallucination, misalignment, prompt injection, and unintended
+  actions differ from observed failures and current mitigations;
+- whether explicit invocation, authority and lifecycle boundaries make those
+  tasks practical, and which domain checks remain the builder's responsibility;
 - whether the Skills-to-executable-method connection is understandable;
 - whether composition adds useful capability beyond one Agent or a script;
 - whether setup and review costs are justified by the demonstrated benefit;
-- whether users can distinguish an executed procedure from a correct answer.
+- whether users can distinguish an executed procedure from a correct answer;
+- what concurrency, cost and latency the intended application actually needs.
 
 Use observed task completion, supervision effort, defects, cost, and latency
 where the claim requires them. Keep study records in `.tmp/` and update these

@@ -43,6 +43,12 @@ internal control and each application's purpose to its author.
 
 ### Programmable execution makes capability usable
 
+We believe explicit execution boundaries let Agent intelligence become a
+composable part of software, while keeping authority and responsibility with
+the system's owners. Agents should be first-class participants in applications:
+software can invoke their work, combine it with other methods, and handle its
+outcome without a person directing every invocation.
+
 A builder should be able to combine the flexibility of AI Agents with the
 discipline of a traditional codebase. An executable Flow can express its
 procedure in ordinary code, invoke configured collaborators, validate results,
@@ -50,12 +56,25 @@ and request Agent judgment where useful. Programmatic execution lets those
 procedural choices run as authored without asking a model to reconstruct each
 handoff from instructions.
 
+Working natively with Agents means leaving them room to interpret, reason,
+and adapt within their role. Authored code can express known procedures;
+Agent judgment can address the parts that need interpretation. A method can
+combine both, and its author chooses their arrangement. The surrounding
+system's authority and execution lifecycle must not depend on an Agent
+faithfully interpreting every operational instruction.
+
 The Flow's code or runtime owns that procedure. Jig runs accepted methods with
 their configured powers, limits, and lifecycle; it does not become the workflow
 language. Applications supply domain checks and consequence policy. These
 responsibilities make execution understandable without promising that code
 has no bugs or that an Agent's answer is true. Operational availability and
 recovery guarantees remain distinct claims requiring their own evidence.
+
+This separation is the reason for Jig's
+[microkernel-inspired design](design-judgment.md#the-microkernel-architectural-thesis):
+a small common execution core lets substantial capability live in composed
+methods. Agent techniques can develop within those methods while the host
+keeps authority and lifecycle responsibilities explicit.
 
 Practical agency includes directing more useful work without a proportional
 increase in supervision. Explicit methods and evidence can help reserve
@@ -92,6 +111,20 @@ explicitly delegated.
 
 This is the separation of intelligence from authority. It preserves flexible
 reasoning without making a model's judgment the source of its own powers.
+
+### Boundaries remain meaningful when behavior is misdirected
+
+Agent behavior may be mistaken, misleading, manipulated, or inconsistent with
+the task. Hallucination, misalignment, and prompt injection are design premises:
+the authority boundary must remain effective when an Agent follows the wrong
+instructions or reaches the wrong conclusion.
+
+Prompting guides behavior; execution boundaries govern what work is authorized.
+Jig must enforce its stated boundaries without needing to judge an Agent's
+intentions. A misleading answer or harmful use of an already granted power
+can still occur. Applications own domain checks and consequence policy;
+operators choose the powers they are willing to delegate. Governable execution
+and correct judgment are separate responsibilities.
 
 ### Methods travel; authority is supplied locally
 
