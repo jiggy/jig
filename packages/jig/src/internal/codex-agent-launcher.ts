@@ -15,6 +15,8 @@ async function main(): Promise<void> {
   }
   if (startup === 'subscription') materializeCredential()
   delete process.env.JIG_CODEX_STARTUP_INPUT
+  // Bun's private loader path must not override the native installation's ABI.
+  delete process.env.LD_LIBRARY_PATH
   await import(ADAPTER_SPECIFIER)
 }
 

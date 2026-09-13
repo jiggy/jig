@@ -4,6 +4,7 @@ import {
   openPrivateCodexAgentProvider,
   PrivateCodexExecutableUnavailableError,
   PrivateCodexLoginUnavailableError,
+  PrivateCodexRuntimeUnavailableError,
   PrivateCodexSandboxUnavailableError,
 } from './codex-agent-provider.js'
 import {
@@ -143,22 +144,24 @@ async function tryOpenAgentProvider(
         error instanceof PrivateNativeAgentExecutableUnavailableError
           ? `install the native ${client} client on the operator PATH outside the project, or export ${(error instanceof PrivateNativeAgentExecutableUnavailableError ? error.client : 'codex').toUpperCase()}_PATH with its absolute executable path, then retry jig review; an invalid explicit override must be corrected or unset`
           : error instanceof PrivateCodexSandboxUnavailableError
-            ? 'restore the complete Codex installation with its matching codex-resources/bwrap, then retry jig review'
-            : error instanceof PrivateCodexLoginUnavailableError
-              ? 'configure Codex with cli_auth_credentials_store="file", run codex login as this OS user, and retry jig review; Jig reads CODEX_HOME/auth.json or ~/.codex/auth.json'
-              : error instanceof PrivateAgentConfigurationError
-                ? `correct the exported ${
-                    openRouter
-                      ? error.field === 'OPENAI_API_KEY'
-                        ? 'OPENROUTER_API_KEY'
-                        : error.field === 'OPENAI_MODEL'
-                          ? 'OPENROUTER_MODEL'
-                          : error.field
-                      : error.field
-                  } value before jig review`
-                : client === undefined
-                  ? 'the API Agent could not be opened; check the installed support assets and exported configuration'
-                  : `the selected ${client} client could not be opened; check its executable and exported host configuration`,
+            ? 'make an unprivileged bwrap available on operator PATH or install Codex with its bundled codex-resources/bwrap, then retry jig review'
+            : error instanceof PrivateCodexRuntimeUnavailableError
+              ? 'the selected Codex installation has unsupported or missing runtime files; install a complete native Linux x86-64 Codex package, then retry jig review'
+              : error instanceof PrivateCodexLoginUnavailableError
+                ? 'configure Codex with cli_auth_credentials_store="file", run codex login as this OS user, and retry jig review; Jig reads CODEX_HOME/auth.json or ~/.codex/auth.json'
+                : error instanceof PrivateAgentConfigurationError
+                  ? `correct the exported ${
+                      openRouter
+                        ? error.field === 'OPENAI_API_KEY'
+                          ? 'OPENROUTER_API_KEY'
+                          : error.field === 'OPENAI_MODEL'
+                            ? 'OPENROUTER_MODEL'
+                            : error.field
+                        : error.field
+                    } value before jig review`
+                  : client === undefined
+                    ? 'the API Agent could not be opened; check the installed support assets and exported configuration'
+                    : `the selected ${client} client could not be opened; check its executable and exported host configuration`,
     }
   }
 }

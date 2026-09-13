@@ -67,9 +67,17 @@ child calls, project commands, and Agent providers.
   file-backed Codex login. Project only its short-lived bearer; never embed a
   development login, retain its refresh token, mount `CODEX_HOME`, or expose a
   host keyring to Agent execution.
-- Codex's nested sandbox uses its installation's exact bundled Bubblewrap,
-  retained as provider support. The outer host's `JIG_BWRAP_PATH` does not
-  select or replace that vendor-integrity-bound asset.
+- Codex's nested sandbox uses an unprivileged Bubblewrap selected from its
+  declarative binary wrapper's PATH prefix and operator PATH, excluding project
+  routes, or the matching bundled helper when no eligible PATH helper exists.
+  `JIG_BWRAP_PATH` selects only outer containment. Never substitute a system
+  helper at the vendor bundle path; keep bundled fallback off PATH to preserve
+  Codex's vendor digest check. Inspect supported ELF and binary-wrapper
+  metadata without executing it; retain individual executable, loader, and
+  library files at installation paths, hash their bytes, and revalidate before
+  launch. Reject unsupported or project-selected dependencies; never mount a
+  whole installation/store or import ambient loader variables. The Codex launcher
+  removes Bun's private loader override before starting the native client.
 - Keep known channel-declaration, Agent-configuration and dependency-preparation failures actionable
   through closed diagnostic codes and project-relative locations, never raw
   provider or worker messages. Missing Agent support affects only targets
@@ -128,7 +136,7 @@ child calls, project commands, and Agent providers.
   private continuation gate before candidate execution.
   Drain buffered supervisor control after process exit within a fixed bound;
   exit alone neither disproves a pending receipt nor establishes fencing.
-- Resolve containment and system-management tools from fixed locations, or
+- Resolve Jig's outer containment and system-management tools from fixed locations, or
   Bubblewrap from the operator's absolute `JIG_BWRAP_PATH`, never ambient `PATH`. An explicit
   selection receives the same validation and cannot fall back on failure.
   Run loader support mounts the real glibc files, not a shim or whole Nix store.

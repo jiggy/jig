@@ -2,7 +2,7 @@ import { constants } from 'node:fs'
 import { access, lstat, readlink, realpath } from 'node:fs/promises'
 import { delimiter, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 
-type NativeClient = 'codex' | 'claude' | 'pi'
+type NativeClient = 'codex' | 'claude' | 'pi' | 'bwrap'
 
 export class PrivateNativeAgentExecutableUnavailableError extends Error {
   constructor(readonly client: NativeClient) {
@@ -26,27 +26,12 @@ export async function resolvePrivateNativeAgentExecutable(
       return await executable(selected)
     }
 
-    const projectRoot = await realpath(project)
-    const excluded = [project, projectRoot]
-    for (const root of [project, projectRoot]) {
-      for (let directory = dirname(root); ; directory = dirname(directory)) {
-        const dependencies = join(directory, 'node_modules')
-        excluded.push(dependencies)
-        try {
-          excluded.push(await realpath(dependencies))
-        } catch (error) {
-          if (!absent(error)) throw error
-        }
-        if (dirname(directory) === directory) break
-      }
-    }
-    const forbidden = (path: string) => excluded.some((root) => inside(root, path))
+    const outside = await privateNativeAgentSupportResolver(project)
     for (const directory of (searchPath ?? '').split(delimiter)) {
       if (!isAbsolute(directory) || directory.includes('\0')) continue
       const candidate = `${directory}${sep}${client}`
-      if (forbidden(candidate)) continue
       try {
-        const path = await outsideProject(candidate, forbidden)
+        const path = await outside(candidate)
         if (path === undefined) continue
         if ((await executable(path)) !== path) throw new Error('executable selection changed')
         return path
@@ -58,6 +43,32 @@ export async function resolvePrivateNativeAgentExecutable(
     throw new PrivateNativeAgentExecutableUnavailableError(client)
   }
   throw new PrivateNativeAgentExecutableUnavailableError(client)
+}
+
+/** Apply the same project exclusion to implicit installation dependencies. */
+export async function privateNativeAgentSupportResolver(
+  projectDirectory: string,
+): Promise<(path: string) => Promise<string | undefined>> {
+  const project = resolve(projectDirectory)
+  const projectRoot = await realpath(project)
+  const excluded = [project, projectRoot]
+  for (const root of [project, projectRoot]) {
+    for (let directory = dirname(root); ; directory = dirname(directory)) {
+      const dependencies = join(directory, 'node_modules')
+      excluded.push(dependencies)
+      try {
+        excluded.push(await realpath(dependencies))
+      } catch (error) {
+        if (!absent(error)) throw error
+      }
+      if (dirname(directory) === directory) break
+    }
+  }
+  const forbidden = (path: string) => excluded.some((root) => inside(root, path))
+  return async (path) => {
+    if (!isAbsolute(path) || path.includes('\0') || forbidden(path)) return undefined
+    return await outsideProject(path, forbidden)
+  }
 }
 
 async function outsideProject(

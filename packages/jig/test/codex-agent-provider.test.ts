@@ -21,6 +21,8 @@ import {
 import { openPrivateInstalledBunHost } from '../src/internal/installed-bun-host.js'
 import { installedBunLocation } from './fixtures/installed-bun-location.js'
 
+import { nativeElf } from './fixtures/native-elf.js'
+
 const temporary = new Set<string>()
 const encoder = new TextEncoder()
 afterEach(async () => {
@@ -29,6 +31,81 @@ afterEach(async () => {
 })
 
 describe('private native Codex Agent provider', () => {
+  test('uses operator Bubblewrap without a bundled directory and rejects later replacement', async () => {
+    const fixture = await files()
+    const project = join(fixture.root, 'project')
+    const tools = join(fixture.root, 'tools')
+    await mkdir(project)
+    await mkdir(tools)
+    const helper = join(tools, 'bwrap')
+    await writeFile(helper, nativeElf(), { mode: 0o700 })
+    await writeFile(join(project, 'bwrap'), nativeElf(), { mode: 0o700 })
+    await rm(fixture.nativeBubblewrapPath)
+    const provider = await openPrivateCodexAgentProvider(
+      installedBunLocation.releaseRoot,
+      {
+        CODEX_PATH: fixture.executablePath,
+        PATH: `${project}:${tools}`,
+        JIG_BWRAP_PATH: '/unrelated-outer-helper',
+        OPENAI_API_KEY: 'test-key',
+        OPENAI_MODEL: 'test-model',
+      },
+      project,
+    )
+    const runtime = privateAcpAgentRuntime(provider)
+    expect(runtime.environment.PATH).toBe(tools)
+    expect(runtime.readOnlyMounts).toContainEqual({ source: helper, destination: helper })
+    expect(
+      runtime.readOnlyMounts.some((mount) => mount.destination.includes('codex-resources')),
+    ).toBe(false)
+    await revalidatePrivateAcpAgentProvider(provider)
+    await writeFile(helper, nativeElf({ search: '' }))
+    await expect(revalidatePrivateAcpAgentProvider(provider)).rejects.toThrow('support changed')
+  })
+
+  test('retains the wrapped executable and libraries, selecting the wrapper helper before operator PATH', async () => {
+    const fixture = await files()
+    const wrapped = join(dirname(fixture.executablePath), '.codex-wrapped')
+    const library = join(fixture.root, 'runtime.so')
+    const tools = join(fixture.root, 'tools')
+    await mkdir(tools)
+    const helper = join(tools, 'bwrap')
+    await writeFile(helper, nativeElf(), { mode: 0o700 })
+    await writeFile(library, nativeElf())
+    await writeFile(wrapped, nativeElf({ needed: [library] }), { mode: 0o700 })
+    await writeFile(
+      fixture.executablePath,
+      nativeElf({
+        wrapper: `makeCWrapper '${wrapped}' \\\n    --inherit-argv0 \\\n    --prefix 'PATH' ':' '${tools}'\n\n`,
+      }),
+    )
+    const environment = {
+      CODEX_PATH: fixture.executablePath,
+      PATH: dirname(fixture.nativeBubblewrapPath),
+      OPENAI_API_KEY: 'test-key',
+      OPENAI_MODEL: 'test-model',
+    }
+    const provider = await openPrivateCodexAgentProvider(
+      installedBunLocation.releaseRoot,
+      environment,
+    )
+    const runtime = privateAcpAgentRuntime(provider)
+    expect(runtime.environment.PATH).toBe(tools)
+    for (const path of [wrapped, library, helper]) {
+      expect(runtime.readOnlyMounts).toContainEqual({ source: path, destination: path })
+    }
+    await revalidatePrivateAcpAgentProvider(provider)
+    await writeFile(library, nativeElf({ search: '' }))
+    await expect(revalidatePrivateAcpAgentProvider(provider)).rejects.toThrow('support changed')
+    const replacement = await openPrivateCodexAgentProvider(
+      installedBunLocation.releaseRoot,
+      environment,
+    )
+    expect(replacement.digest).not.toBe(provider.digest)
+    await writeFile(wrapped, nativeElf({ search: '' }))
+    await expect(revalidatePrivateAcpAgentProvider(replacement)).rejects.toThrow('support changed')
+  })
+
   test('opens a PATH-selected client and retains its identity across PATH changes', async () => {
     const fixture = await files()
     const environment = {
@@ -168,7 +245,7 @@ describe('private native Codex Agent provider', () => {
       JIG_BWRAP_PATH: join(fixture.root, 'outer-bwrap'),
     })
     expect(missingSandbox.agentUnavailableHint).toContain(
-      'restore the complete Codex installation with its matching codex-resources/bwrap',
+      'make an unprivileged bwrap available on operator PATH',
     )
     const unsupported = await openPrivateInstalledBunHost(installedBunLocation, {
       JIG_AGENT_CLIENT: 'unknown',
@@ -223,10 +300,10 @@ describe('private native Codex Agent provider', () => {
     expect(runtime.executablePath).toBe(fixture.executablePath)
     expect(runtime.readOnlyMounts).toContainEqual({
       source: fixture.nativeBubblewrapPath,
-      destination: '/agent/codex-resources/bwrap',
+      destination: fixture.nativeBubblewrapPath,
     })
     await revalidatePrivateAcpAgentProvider(provider)
-    await writeFile(fixture.nativeBubblewrapPath, 'changed bundled helper\n')
+    await writeFile(fixture.nativeBubblewrapPath, nativeElf({ search: '' }))
     await expect(revalidatePrivateAcpAgentProvider(provider)).rejects.toThrow(
       'ACP Agent support changed after selection',
     )
@@ -248,8 +325,9 @@ describe('private native Codex Agent provider', () => {
     })
     expect(privateAcpAgentRuntime(provider).readOnlyMounts).toContainEqual({
       source: fixture.nativeBubblewrapPath,
-      destination: '/agent/codex-resources/bwrap',
+      destination: fixture.nativeBubblewrapPath,
     })
+    expect(privateAcpAgentRuntime(provider).environment.PATH).toBe('/agent')
   })
 
   test.each(['missing', 'symlink', 'directory', 'non-executable'])(
@@ -345,7 +423,8 @@ describe('private native Codex Agent provider', () => {
         sqlite_home: '/tmp/codex-state',
       }),
       CODEX_HOME: '/tmp/codex-home',
-      CODEX_PATH: '/agent/codex',
+      CODEX_PATH: support.executablePath,
+      PATH: '/agent',
       CODEX_SQLITE_HOME: '/tmp/codex-state',
       INITIAL_AGENT_MODE: 'read-only',
       JIG_CODEX_STARTUP_INPUT: 'subscription',
@@ -355,7 +434,7 @@ describe('private native Codex Agent provider', () => {
     expect(runtime.readOnlyMounts).toEqual([
       { source: support.requirementsPath, destination: '/etc/codex/requirements.toml' },
       { source: support.adapterPath, destination: '/agent/codex-acp.js' },
-      { source: support.nativeBubblewrapPath, destination: '/agent/codex-resources/bwrap' },
+      { source: support.nativeBubblewrapPath, destination: support.nativeBubblewrapPath },
       { source: support.certificatesPath, destination: '/etc/ssl/certs/ca-certificates.crt' },
     ])
     expect(runtime.nestedUserNamespaces).toBe(true)
@@ -513,7 +592,7 @@ describe('private native Codex Agent provider', () => {
     expect(runtime.readOnlyMounts).toEqual([
       { source: support.requirementsPath, destination: '/etc/codex/requirements.toml' },
       { source: support.adapterPath, destination: '/agent/codex-acp.js' },
-      { source: support.nativeBubblewrapPath, destination: '/agent/codex-resources/bwrap' },
+      { source: support.nativeBubblewrapPath, destination: support.nativeBubblewrapPath },
       { source: support.certificatesPath, destination: '/etc/ssl/certs/ca-certificates.crt' },
     ])
     expect(runtime.nestedUserNamespaces).toBe(true)
@@ -567,6 +646,8 @@ async function files(): Promise<{
   readonly adapterPath: string
   readonly executablePath: string
   readonly nativeBubblewrapPath: string
+  readonly nativeBubblewrapSource: 'bundled'
+  readonly runtimeMounts: readonly []
   readonly certificatesPath: string
   readonly requirementsPath: string
 }> {
@@ -586,8 +667,8 @@ async function files(): Promise<{
   await Promise.all([
     writeFile(launcherPath, 'launcher\n'),
     writeFile(adapterPath, 'adapter\n'),
-    writeFile(executablePath, 'codex\n', { mode: 0o700 }),
-    writeFile(nativeBubblewrapPath, 'bwrap\n', { mode: 0o700 }),
+    writeFile(executablePath, nativeElf(), { mode: 0o700 }),
+    writeFile(nativeBubblewrapPath, nativeElf(), { mode: 0o700 }),
     writeFile(certificatesPath, 'certificates\n'),
     writeFile(requirementsPath, PRIVATE_CODEX_REQUIREMENTS),
   ])
@@ -597,6 +678,8 @@ async function files(): Promise<{
     adapterPath,
     executablePath,
     nativeBubblewrapPath,
+    nativeBubblewrapSource: 'bundled',
+    runtimeMounts: [],
     certificatesPath,
     requirementsPath,
   }

@@ -294,15 +294,33 @@ The selected regular executable and client-specific support files receive the
 same validation and identity checks with either selection method. Invalid client
 support fails without trying another installation. Review shows
 the native client and its resolved operator executable path. Launch uses the
-resolved executable checked against admitted provider identity, with no new PATH
-lookup inside the Agent process. A changed selection cannot silently replace
-reviewed executable or support bytes.
+resolved executable checked against admitted provider identity, without repeating
+host PATH discovery. A changed selection cannot silently replace reviewed
+executable or support bytes.
 
-Jig's current Codex adapter uses the installation's matching bundled
-`codex-resources/bwrap`, beside the executable directory or its parent in the
-client installation. Jig preserves the client's bundled-helper integrity check;
-`JIG_BWRAP_PATH` selects only Jig's outer containment tool. The selected native
-executable and bundled support bytes enter provider identity.
+Jig's Codex adapter supports Linux x86-64 ELF executables and the declarative
+`makeBinaryWrapper` form which preserves arguments and prefixes PATH. Arbitrary
+shell/JavaScript wrappers, wrapper flags or environment changes, and nested
+wrappers are unsupported. Jig reads installation metadata without executing the
+client during review. It retains the wrapped executable, ELF interpreter, and
+transitive shared libraries as individual regular files at their installation
+paths. Library resolution uses ELF RUNPATH/RPATH, `$ORIGIN`, and supported Linux
+loader locations; it does not import ambient loader variables or whole runtime
+directories. Missing, malformed, project-selected, or unsupported dependencies
+fail closed. Each executable's runtime dependency walk is bounded to 128 file
+destinations.
+
+For Codex's nested sandbox, Jig selects the first eligible unprivileged `bwrap`
+from the wrapper's declared PATH prefix followed by operator PATH, with the
+same project and dependency-directory exclusions as client discovery. With no
+eligible helper, it selects the installation's matching `codex-resources/bwrap`
+beside the executable directory or its parent. A PATH-selected helper is never
+substituted at the vendor bundle path. `JIG_BWRAP_PATH` selects only Jig's outer
+containment tool. Executable, wrapper, helper, shared-library bytes, and their
+contained paths enter provider identity and are revalidated before launch.
+A bundled fallback stays off PATH so Codex applies its vendor integrity check.
+For a PATH-selected helper, only its directory enters the initial contained
+PATH; other operator PATH entries do not become filesystem authority.
 
 Subscription mode requires Codex's `cli_auth_credentials_store = "file"`
 setting. Jig reads the current operator's file during review and Run, validates

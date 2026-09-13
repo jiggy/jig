@@ -55,9 +55,15 @@ a shell wrapper or npm JavaScript launcher is not itself the native executable.
 
 Install Codex and sign in as the OS user running Jig, using
 [Codex's login instructions](https://developers.openai.com/codex/auth/).
-Jig uses Codex's matching installed `codex-resources/bwrap`; Codex checks that
-helper's integrity. `JIG_BWRAP_PATH` configures Jig's outer containment, not
-Codex's bundled helper.
+Jig supports standalone Linux x86-64 Codex binaries and native packages using
+Nix's binary PATH wrapper. It retains the executable and required shared
+libraries as individual reviewed files.
+
+For Codex's nested sandbox, Jig selects an unprivileged `bwrap` from the
+installation wrapper's PATH prefix or your exported PATH. If none is available,
+it uses the installation's matching `codex-resources/bwrap`. You do not need that
+bundled directory when your package supplies Bubblewrap separately.
+`JIG_BWRAP_PATH` configures only Jig's outer containment tool.
 
 The current adapter reads a file-backed login from `$CODEX_HOME/auth.json`,
 defaulting to `~/.codex/auth.json`. Configure Codex with

@@ -723,7 +723,14 @@ function backendPlan(
         : [
             { source: acp.adapterPath, destination: acp.sandboxAdapterPath },
             { source: acp.executablePath, destination: acp.sandboxExecutablePath },
-            ...acp.readOnlyMounts,
+            ...acp.readOnlyMounts.filter((mount) => {
+              const runtime = recipe.installedSupport.runtimeMounts.find(
+                (existing) => existing.destination === mount.destination,
+              )
+              // One exact system loader can support both Bun and the client.
+              // Conflicting bytes remain a duplicate and fail plan validation.
+              return runtime === undefined || runtime.source !== mount.source
+            }),
           ]),
     ]),
     command: Object.freeze(

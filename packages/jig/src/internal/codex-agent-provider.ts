@@ -5,14 +5,14 @@ import { basename, dirname, join } from 'node:path'
 import {
   createPrivateAcpAgentProvider,
   type PrivateAcpAgentProvider,
+  type PrivateAcpReadOnlyMount,
 } from './acp-agent-provider.js'
 import { resolvePrivateNativeAgentExecutable } from './native-agent-executable.js'
+import { inspectPrivateNativeAgentRuntime } from './native-agent-runtime.js'
 
 const CODEX_CLIENT = 'openai-codex'
 const SANDBOX_LAUNCHER_PATH = '/agent/codex-agent-launcher.js'
 const SANDBOX_ADAPTER_PATH = '/agent/codex-acp.js'
-const SANDBOX_EXECUTABLE_PATH = '/agent/codex'
-const SANDBOX_NATIVE_BUBBLEWRAP_PATH = '/agent/codex-resources/bwrap'
 const HOST_CERTIFICATES_PATH = '/etc/ssl/certs/ca-certificates.crt'
 const SANDBOX_CERTIFICATES_PATH = '/etc/ssl/certs/ca-certificates.crt'
 const SANDBOX_CODEX_HOME = '/tmp/codex-home'
@@ -27,6 +27,7 @@ const encoder = new TextEncoder()
 export class PrivateCodexLoginUnavailableError extends Error {}
 export class PrivateCodexExecutableUnavailableError extends Error {}
 export class PrivateCodexSandboxUnavailableError extends Error {}
+export class PrivateCodexRuntimeUnavailableError extends Error {}
 const decoder = new TextDecoder('utf-8', { fatal: true })
 const OPENAI_API_KEY = 'OPENAI_API_KEY'
 const OPENAI_MODEL = 'OPENAI_MODEL'
@@ -51,8 +52,11 @@ export interface PrivateCodexAgentSupport {
   readonly adapterPath: string
   /** Exact native OpenAI Codex executable selected by trusted host policy. */
   readonly executablePath: string
-  /** Exact native Bubblewrap shipped beside that Codex executable. */
+  /** Exact unprivileged Bubblewrap selected for Codex's nested sandbox. */
   readonly nativeBubblewrapPath: string
+  readonly nativeBubblewrapSource: 'path' | 'bundled'
+  /** Exact shared libraries and wrapped executable, mounted at installation paths. */
+  readonly runtimeMounts: readonly PrivateAcpReadOnlyMount[]
   /** Exact host trust bundle selected by the installed Jig host. */
   readonly certificatesPath: string
   /** Exact managed constraints containing PRIVATE_CODEX_REQUIREMENTS. */
@@ -87,6 +91,7 @@ export async function openPrivateCodexAgentProvider(
   environment: Readonly<Record<string, string | undefined>> = process.env,
   projectDirectory: string = process.cwd(),
 ): Promise<PrivateAcpAgentProvider> {
+  environment = Object.freeze({ ...environment })
   let executablePath: string
   try {
     executablePath = await resolvePrivateNativeAgentExecutable(
@@ -97,11 +102,49 @@ export async function openPrivateCodexAgentProvider(
   } catch {
     throw new PrivateCodexExecutableUnavailableError('the native Codex executable is unavailable')
   }
+  let runtime: Awaited<ReturnType<typeof inspectPrivateNativeAgentRuntime>>
+  try {
+    runtime = await inspectPrivateNativeAgentRuntime(executablePath, projectDirectory)
+  } catch (error) {
+    throw new PrivateCodexRuntimeUnavailableError('the Codex installation runtime is unavailable', {
+      cause: error,
+    })
+  }
+  const nativeBubblewrap = await nativeBubblewrapFor(
+    executablePath,
+    {
+      PATH: [runtime.pathPrefix, environment.PATH].filter(Boolean).join(':'),
+    },
+    projectDirectory,
+  )
+  const nativeBubblewrapPath = nativeBubblewrap.path
+  let bubblewrapRuntime: Awaited<ReturnType<typeof inspectPrivateNativeAgentRuntime>>
+  try {
+    bubblewrapRuntime = await inspectPrivateNativeAgentRuntime(
+      nativeBubblewrapPath,
+      projectDirectory,
+    )
+    if (bubblewrapRuntime.pathPrefix) throw new Error('wrapped Bubblewrap is unsupported')
+  } catch (error) {
+    throw new PrivateCodexRuntimeUnavailableError('the Codex sandbox runtime is unavailable', {
+      cause: error,
+    })
+  }
+  const mounts = new Map<string, PrivateAcpReadOnlyMount>()
+  for (const mount of [...runtime.mounts, ...bubblewrapRuntime.mounts]) {
+    const existing = mounts.get(mount.destination)
+    if (existing !== undefined && existing.source !== mount.source) {
+      throw new PrivateCodexRuntimeUnavailableError('Codex runtime paths conflict')
+    }
+    mounts.set(mount.destination, mount)
+  }
   const support = Object.freeze({
     launcherPath: join(releaseRoot, 'libexec', 'agent', 'codex-agent-launcher.js'),
     adapterPath: join(releaseRoot, 'libexec', 'agent', 'codex-acp.js'),
     executablePath,
-    nativeBubblewrapPath: await nativeBubblewrapFor(executablePath),
+    nativeBubblewrapPath,
+    nativeBubblewrapSource: nativeBubblewrap.source,
+    runtimeMounts: Object.freeze([...mounts.values()]),
     certificatesPath: await ordinaryFile(HOST_CERTIFICATES_PATH, 'host certificate bundle'),
     requirementsPath: join(releaseRoot, 'libexec', 'agent', 'codex-requirements.toml'),
   })
@@ -121,12 +164,15 @@ export async function openPrivateCodexAgentProvider(
     if (api !== undefined && api !== 'responses') {
       throw new Error('native Codex requires the OpenAI Responses API')
     }
-    return await createPrivateCodexOpenAIApiAgentProvider({
+    const provider = await createPrivateCodexOpenAIApiAgentProvider({
       ...support,
       apiKey,
       model: apiModel,
       ...(apiBaseURL === undefined ? {} : { baseURL: apiBaseURL }),
     })
+    await runtime.revalidate()
+    await bubblewrapRuntime.revalidate()
+    return provider
   }
   const sourceHome = environment.CODEX_HOME ?? join(homedir(), '.codex')
   let credential: Uint8Array
@@ -135,11 +181,14 @@ export async function openPrivateCodexAgentProvider(
   } catch {
     throw new PrivateCodexLoginUnavailableError('Codex file-backed login is unavailable')
   }
-  return await createPrivateCodexSubscriptionAgentProvider({
+  const provider = await createPrivateCodexSubscriptionAgentProvider({
     ...support,
     credential,
     ...(environment.CODEX_MODEL === undefined ? {} : { model: environment.CODEX_MODEL }),
   })
+  await runtime.revalidate()
+  await bubblewrapRuntime.revalidate()
+  return provider
 }
 
 /**
@@ -219,8 +268,8 @@ export async function createPrivateCodexSubscriptionAgentProvider(
     adapterPath: value.launcherPath,
     sandboxAdapterPath: SANDBOX_LAUNCHER_PATH,
     executablePath: value.executablePath,
-    sandboxExecutablePath: SANDBOX_EXECUTABLE_PATH,
-    environment: codexEnvironment(true, model),
+    sandboxExecutablePath: value.executablePath,
+    environment: codexEnvironment(true, model, value),
     configuration: model === undefined ? [] : [{ configId: 'model', value: model }],
     modeId: 'read-only',
     startupInput: frameStartupInput(credential),
@@ -230,6 +279,7 @@ export async function createPrivateCodexSubscriptionAgentProvider(
     },
     nestedUserNamespaces: true,
     readOnlyMounts: [
+      ...value.runtimeMounts,
       {
         source: value.requirementsPath,
         destination: SANDBOX_REQUIREMENTS_PATH,
@@ -242,7 +292,7 @@ export async function createPrivateCodexSubscriptionAgentProvider(
       },
       {
         source: value.nativeBubblewrapPath,
-        destination: SANDBOX_NATIVE_BUBBLEWRAP_PATH,
+        destination: value.nativeBubblewrapPath,
         role: 'support',
       },
       {
@@ -272,12 +322,13 @@ export async function createPrivateCodexOpenAIApiAgentProvider(
     adapterPath: value.launcherPath,
     sandboxAdapterPath: SANDBOX_LAUNCHER_PATH,
     executablePath: value.executablePath,
-    sandboxExecutablePath: SANDBOX_EXECUTABLE_PATH,
-    environment: codexEnvironment(false, value.model),
+    sandboxExecutablePath: value.executablePath,
+    environment: codexEnvironment(false, value.model, value),
     configuration: [{ configId: 'model', value: value.model }],
     modeId: 'read-only',
     nestedUserNamespaces: true,
     readOnlyMounts: [
+      ...value.runtimeMounts,
       {
         source: value.requirementsPath,
         destination: SANDBOX_REQUIREMENTS_PATH,
@@ -290,7 +341,7 @@ export async function createPrivateCodexOpenAIApiAgentProvider(
       },
       {
         source: value.nativeBubblewrapPath,
-        destination: SANDBOX_NATIVE_BUBBLEWRAP_PATH,
+        destination: value.nativeBubblewrapPath,
         role: 'support',
       },
       {
@@ -323,6 +374,7 @@ export async function createPrivateCodexOpenAIApiAgentProvider(
 function codexEnvironment(
   subscription: boolean,
   model: string | undefined,
+  support: PrivateCodexAgentSupport,
 ): Readonly<Record<string, string>> {
   return Object.freeze({
     CODEX_CONFIG: JSON.stringify({
@@ -340,7 +392,12 @@ function codexEnvironment(
       sqlite_home: '/tmp/codex-state',
     }),
     CODEX_HOME: SANDBOX_CODEX_HOME,
-    CODEX_PATH: SANDBOX_EXECUTABLE_PATH,
+    CODEX_PATH: support.executablePath,
+    // Keep a bundled fallback off PATH so Codex performs its vendor digest check.
+    PATH:
+      support.nativeBubblewrapSource === 'bundled'
+        ? '/agent'
+        : dirname(support.nativeBubblewrapPath),
     CODEX_SQLITE_HOME: '/tmp/codex-state',
     INITIAL_AGENT_MODE: 'read-only',
     ...(subscription ? { JIG_CODEX_STARTUP_INPUT: 'subscription' } : {}),
@@ -349,9 +406,25 @@ function codexEnvironment(
   })
 }
 
-async function nativeBubblewrapFor(executablePath: string): Promise<string> {
-  // Codex verifies its bundled helper against its own compiled digest. The
-  // outer host's JIG_BWRAP_PATH must never replace that vendor-bound artifact.
+async function nativeBubblewrapFor(
+  executablePath: string,
+  environment: Readonly<Record<string, string | undefined>>,
+  projectDirectory: string,
+): Promise<{ readonly path: string; readonly source: 'path' | 'bundled' }> {
+  // Codex prefers operator PATH; bundled fallback still keeps its own bytes.
+  // Never put an unrelated helper at Codex's vendor-integrity-bound path.
+  let system: string | undefined
+  try {
+    system = await resolvePrivateNativeAgentExecutable('bwrap', environment, projectDirectory)
+  } catch {
+    /* No eligible operator helper; check the installation's bundle. */
+  }
+  if (system !== undefined) {
+    if (((await lstat(system)).mode & 0o6000) !== 0) {
+      throw new PrivateCodexSandboxUnavailableError('Codex Bubblewrap must be unprivileged')
+    }
+    return { path: system, source: 'path' }
+  }
   const executableDirectory = dirname(executablePath)
   const adjacent = join(executableDirectory, 'codex-resources', 'bwrap')
   const packageResource = join(executableDirectory, '..', 'codex-resources', 'bwrap')
@@ -372,7 +445,7 @@ async function nativeBubblewrapFor(executablePath: string): Promise<string> {
       if ((information.mode & 0o6000) !== 0 || (information.mode & 0o111) === 0) {
         throw new PrivateCodexSandboxUnavailableError('Codex bundled Bubblewrap is invalid')
       }
-      return path
+      return { path, source: 'bundled' }
     }
     throw new PrivateCodexSandboxUnavailableError('Codex bundled Bubblewrap is unavailable')
   } catch (error) {
