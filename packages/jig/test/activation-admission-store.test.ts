@@ -1,6 +1,17 @@
 import { describe, expect, setDefaultTimeout, test } from 'bun:test'
 import { createHash } from 'node:crypto'
-import { chmod, mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
+import {
+  chmod,
+  mkdir,
+  mkdtemp,
+  readFile,
+  readdir,
+  rename,
+  rm,
+  stat,
+  symlink,
+  writeFile,
+} from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -20,6 +31,7 @@ import {
   closePrivateRootChildOwner,
   closePrivateRootExecution,
   initializePrivateActivationState,
+  inspectPrivateApprovedProject,
   listPrivateRootChildOwners,
   listPrivateRootExecutionWork,
   loadPrivateRootRunForCoordinator,
@@ -67,6 +79,106 @@ const TABLES = [
 setDefaultTimeout(30_000)
 
 describe.serial('direct alpha activation store', () => {
+  test('inspection reads only approved retained meaning without state writes or coordinator acquisition', async () => {
+    const fixture = await createFixture('ready')
+    let coordinator: PrivateProjectCoordinator | undefined
+    try {
+      expect(await inspectPrivateApprovedProject(fixture.root)).toEqual({
+        state: 'unreviewed',
+        targets: [],
+      })
+      const approved = await admit(fixture)
+      // A newer proposal is not the approved target set.
+      const pending = await insertSlottedCandidate(fixture)
+      seedPlan(fixture, pending, {
+        baseGeneration: approved,
+        observedLock: 'present',
+        operation: 'admission',
+      })
+      await rename(fixture.store, join(fixture.root, '.jig/private-package-store'))
+      // Inspection must neither evaluate these live bytes nor need the coordinator lock.
+      await writeFile(join(fixture.root, 'jig.ts'), 'throw new Error("must not evaluate")')
+      coordinator = await openPrivateProjectCoordinator({ projectRoot: fixture.root })
+      const before = await readFile(fixture.database)
+      const information = await stat(fixture.database)
+      const entries = await readdir(join(fixture.root, '.jig'))
+      expect(await inspectPrivateApprovedProject(fixture.root)).toMatchObject({
+        state: 'approved',
+        targets: [{ target: 'flow:flows/run', package: 'flows/run' }],
+      })
+      expect(await inspectPrivateApprovedProject(fixture.root, 'flow:flows/run')).toMatchObject({
+        state: 'approved',
+        name: 'run',
+        description: 'Direct alpha store fixture.',
+        schemas: { input: { type: 'object', required: ['value'] } },
+        capabilities: {},
+        attachments: {},
+        children: {},
+        settings: {},
+        channels: {},
+      })
+      await expect(
+        inspectPrivateApprovedProject(fixture.root, 'binding:missing'),
+      ).rejects.toMatchObject({ code: 'INSPECTION_TARGET_MISSING' })
+      expect(await readFile(fixture.database)).toEqual(before)
+      expect((await stat(fixture.database)).mtimeMs).toBe(information.mtimeMs)
+      expect(await readdir(join(fixture.root, '.jig'))).toEqual(entries)
+    } finally {
+      await coordinator?.dispose()
+      await fixture.dispose()
+    }
+  })
+
+  test('inspection does not create state or initialize an empty database', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'jig-inspect-empty-'))
+    try {
+      expect(await inspectPrivateApprovedProject(root)).toEqual({
+        state: 'unreviewed',
+        targets: [],
+      })
+      expect(await readdir(root)).toEqual([])
+      await writeFile(join(root, 'jig.lock'), '{}\n')
+      expect(await inspectPrivateApprovedProject(root)).toEqual({
+        state: 'unreviewed',
+        targets: [],
+      })
+      await mkdir(join(root, '.jig'), { mode: 0o700 })
+      const database = join(root, '.jig/jig.sqlite3')
+      await writeFile(database, '', { mode: 0o600 })
+      await expect(inspectPrivateApprovedProject(root)).rejects.toMatchObject({
+        code: 'ADMISSION_SCHEMA_VERSION',
+      })
+      expect((await readFile(database)).length).toBe(0)
+      expect(await readdir(join(root, '.jig'))).toEqual(['jig.sqlite3'])
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  test('inspection fails closed on unsafe state and a held SQLite writer without recovery', async () => {
+    const fixture = await createFixture('ready')
+    try {
+      await admit(fixture)
+      const writer = openSqlite(fixture.database, 'readwrite')
+      try {
+        writer.exec('BEGIN EXCLUSIVE')
+        await expect(inspectPrivateApprovedProject(fixture.root)).rejects.toMatchObject({
+          code: 'ADMISSION_STATE_BUSY',
+        })
+      } finally {
+        writer.exec('ROLLBACK')
+        writer.close(true)
+      }
+      const before = await readFile(fixture.database)
+      await rename(fixture.database, `${fixture.database}.saved`)
+      await symlink(`${fixture.database}.saved`, fixture.database)
+      await expect(inspectPrivateApprovedProject(fixture.root)).rejects.toBeDefined()
+      expect(await readFile(`${fixture.database}.saved`)).toEqual(before)
+    } finally {
+      await fixture.dispose()
+    }
+  })
+
   test('reserves two branches atomically and retains capacity through fencing until cleanup', async () => {
     const fixture = await createFixture('ready')
     let coordinator: PrivateProjectCoordinator | undefined

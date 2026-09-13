@@ -74,6 +74,7 @@ interface EvaluationFailure {
   readonly instancePointer: string
   readonly schemaPointer: string
   readonly keyword?: string
+  readonly typeMismatch?: import('./types.js').SchemaTypeMismatch
 }
 
 interface EvaluationResult {
@@ -548,6 +549,7 @@ class CompiledSchemaImpl implements CompiledSchema {
         failure.schemaPointer,
         failure.keyword,
         failure.instancePointer,
+        failure.typeMismatch,
       )
     }
   }
@@ -597,7 +599,24 @@ function evaluate(
     const types =
       typeof schema.type === 'string' ? [schema.type] : (schema.type as readonly string[])
     charge(state, types.length, graph.path, childPointer(schemaPointer, 'type'), instancePointer)
-    if (!types.some((type) => hasType(instance, type))) reject('type')
+    if (!types.some((type) => hasType(instance, type))) {
+      retain({
+        instancePointer,
+        schemaPointer: childPointer(schemaPointer, 'type'),
+        keyword: 'type',
+        typeMismatch: {
+          expected: types,
+          received:
+            instance === null
+              ? 'null'
+              : Array.isArray(instance)
+                ? 'array'
+                : typeof instance === 'number' && Number.isInteger(instance)
+                  ? 'integer'
+                  : typeof instance,
+        },
+      })
+    }
   }
 
   if (schema.const !== undefined) {
@@ -908,6 +927,7 @@ function diagnostic(
   schemaPointer: string,
   keyword?: string,
   instancePointer = '',
+  typeMismatch?: import('./types.js').SchemaTypeMismatch,
 ): SchemaDiagnostic {
   return new SchemaDiagnostic(message, {
     code,
@@ -915,6 +935,7 @@ function diagnostic(
     schemaPointer,
     path,
     ...(keyword === undefined ? {} : { keyword }),
+    ...(typeMismatch === undefined ? {} : { typeMismatch }),
   })
 }
 

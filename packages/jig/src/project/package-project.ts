@@ -431,6 +431,7 @@ function validateSettings(settings: JsonObject, inspected: InspectedPackage, pat
         error.message,
         path,
         `/settings${error.instancePointer}`,
+        error.typeMismatch,
       )
     }
     throw error

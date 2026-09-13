@@ -54,6 +54,9 @@ makes usable control an observable requirement;
    Show one failure explanation, retaining additional details without repeating
    the raw status/code/message as a separate result block. Explain whether work started and whether
    effects or cleanup are uncertain whenever that affects recovery.
+   Preserve value-free expected/received JSON type facts for schema type errors
+   across planning and execution boundaries. Never echo rejected values or
+   arbitrary worker messages to manufacture a more detailed cause.
 5. **Useful next actions.** Successful setup and review identify the next
    supported action. Failures give a verified command, specific correction, or
    relevant documentation when available. Never invent commands or recommend
@@ -83,6 +86,9 @@ makes usable control an observable requirement;
    Cancellation requested is not cancellation complete. Lost work and unknown
    delivery never invite automatic replay. A declined review is a decision,
    not a crash; already incurred dependency effects are not undone.
+   Human Run output leads with host-observed execution and application outcome,
+   packet delivery when requested, and unconfirmed cleanup when known. Preserve
+   arbitrary application output afterward; field names never establish success.
 8. **Progressive detail.** Ordinary output supports the next decision. Exact
    review details, Run JSON/NDJSON, and bounded diagnostics retain their roles;
    no debug flag is implied. Never hide important failures or authority notices
@@ -110,6 +116,18 @@ makes usable control an observable requirement;
     identify the outcome and next action from the transcript alone.
 
 ## Implementation and review ownership
+
+`jig inspect [flow:path|binding:id] [--json]` is read-only inspection of the
+current project's last locally approved snapshot. Without a target it lists
+exact approved selectors; with one it projects retained package descriptions,
+schemas, settings, capability identities, child slots, attachments, channels and
+commands. It never evaluates visible source, fetches dependencies, reads Agent
+credentials, acquires execution authority, recovers state, or writes project
+state. A pending or declined review and a portable `jig.lock` do not substitute
+for local approval. The display must identify its retained basis and exclude
+claims of source freshness or current runtime/provider readiness. Missing state
+reports `unreviewed`; unsafe, incompatible or busy state produces a bounded
+diagnostic without repair. Redirected output or `--json` is JSON, never styling.
 
 The CLI's shared presentation and progress modules own human formatting;
 command branches supply facts. Installed-launcher errors follow the same

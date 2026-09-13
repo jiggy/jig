@@ -1,6 +1,33 @@
 import { expect, test } from 'bun:test'
 import { PrivateCliRunPresentation } from '../src/cli-run-presentation.js'
 
+test('host facts precede arbitrary results without interpreting application claims as success', async () => {
+  let output = ''
+  const view = new PrivateCliRunPresentation(
+    async (text) => {
+      output += text
+    },
+    false,
+    80,
+  )
+  await view.result(
+    {
+      status: 'succeeded',
+      outcome: 'blocked',
+      output: { success: true, explanation: 'The application decides what this means.' },
+      delivery: { status: 'unknown', destination: 'review\u001b[2J' },
+      cleanup: { status: 'failed', code: 'PROJECT_CLOSE_FAILED' },
+    },
+    '',
+  )
+  expect(output.indexOf('Execution: completed')).toBeLessThan(output.indexOf('"success": true'))
+  expect(output).toContain('Application outcome: "blocked"')
+  expect(output).toContain('Packet delivery: "unknown"')
+  expect(output).toContain('Cleanup: not confirmed')
+  expect(output).toContain('\\u001b')
+  expect(output).not.toContain('\u001b')
+})
+
 test('channel text fragments join, switches stay labelled and closure is separate from execution', async () => {
   let output = ''
   const view = new PrivateCliRunPresentation(

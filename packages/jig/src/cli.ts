@@ -19,7 +19,9 @@ import {
   privateCliDiagnostic as renderDiagnostic,
 } from './cli-presentation.js'
 import { PrivateCliProgress } from './cli-progress.js'
-import { PrivateCliRunPresentation } from './cli-run-presentation.js'
+import { PrivateCliRunPresentation, privateCliValueFields } from './cli-run-presentation.js'
+import { inspectPrivateApprovedProject } from './internal/activation-admission-store.js'
+import { CheckError } from './diagnostics.js'
 import type { PrivateDeliveryConnection, PrivateDeliveryReceipt } from './internal/file-delivery.js'
 import {
   PrivateFileInputError,
@@ -40,6 +42,7 @@ import type { PrivateRunChannelOutput } from './internal/run-channels.js'
 import { canonicalJson, decodeJson1, JSON_1_LIMITS, Json1Error, type JsonValue } from './json.js'
 import { bindingRef, flowRef, type RunTargetRef } from './project/author.js'
 import { createProject, ProjectInitError } from './project-init.js'
+import { schemaTypeMismatchText } from './schema/types.js'
 
 const HELP = `Jig runs reusable methods with powers you approve.
 
@@ -47,18 +50,34 @@ Usage:
   jig init <directory>       Create a project with a small greeting Flow
   jig review [project]       Review changes and approve an exact revision
   jig run <target>           Run a reviewed Flow or Binding
+  jig inspect [target]       Show the approved targets or a target's interface
   jig --version             Print the installed version
 
 Start here:
   jig init hello-jig
   cd hello-jig
   jig review --allow-resolution-network
-  jig run flow:flows/hello --input '{"name":"Ada"}'
+  jig run flow:flows/hello --input '"Ada"'
 
 Use jig <command> --help for options and examples.
 Guide: https://jig.md/guide/`
 
 const COMMAND_HELP = {
+  inspect: `Usage: jig inspect [flow:path|binding:id] [--json]
+
+List the current project's approved targets, or show one target's retained
+input/result schemas, settings, child slots, capabilities, files and channels.
+
+This reads only the last approved snapshot. It does not evaluate source,
+install dependencies, contact providers, recover state or approve changes.
+Visible edits and current runtime/provider readiness are not checked.
+
+  --json     Emit JSON even in a terminal (redirected output is always JSON)
+
+Examples:
+  jig inspect
+  jig inspect flow:flows/hello
+  jig inspect binding:repair --json`,
   init: `Usage: jig init [--bare] <directory>
 
 Create a new editable project and greeting Flow. No installation, network
@@ -102,7 +121,7 @@ installed and source changes are not approved automatically.
                      Units: ms, s, m, h. Cleanup still runs after the deadline.
 
 Examples:
-  jig run flow:flows/hello --input '{"name":"Ada"}'
+  jig run flow:flows/hello --input '"Ada"'
   jig run binding:repair --input @issue.json --attach source=./src --out ./review
   jig run binding:worker --receive progress --timeout 2m
 
@@ -207,6 +226,7 @@ export async function main(
     if (arguments_[0] === 'init') return await executeInit(arguments_, runtime)
     if (arguments_[0] === 'review') return await executeReview(arguments_, runtime)
     if (arguments_[0] === 'run') return await executeRun(arguments_, runtime)
+    if (arguments_[0] === 'inspect') return await executeInspect(arguments_, runtime)
     runtime.writeError(
       renderDiagnostic(
         'JIG_USAGE',
@@ -253,9 +273,54 @@ function isHelpRequest(arguments_: readonly string[]): boolean {
   return (
     help &&
     (arguments_.length === 1 ||
-      (arguments_.length === 2 &&
-        (arguments_[0] === 'init' || arguments_[0] === 'review' || arguments_[0] === 'run')))
+      (arguments_.length === 2 && Object.hasOwn(COMMAND_HELP, arguments_[0]!)))
   )
+}
+
+async function executeInspect(arguments_: readonly string[], runtime: CliRuntime): Promise<number> {
+  let selector: string | undefined
+  let json = false
+  for (const value of arguments_.slice(1)) {
+    if (value === '--json' && !json) json = true
+    else if (!value.startsWith('-') && selector === undefined) {
+      // Reuse the exact selector grammar without resolving or executing it.
+      try {
+        parseTarget(value)
+      } catch {
+        usage('inspect', 'Use an exact flow:path or binding:id target.')
+      }
+      selector = value
+    } else usage('inspect', 'Specify at most one target and one --json option.')
+  }
+  let snapshot: JsonValue
+  try {
+    snapshot = await inspectPrivateApprovedProject(runtime.currentDirectory, selector)
+  } catch (error) {
+    if (error instanceof CheckError && error.code === 'INSPECTION_TARGET_MISSING')
+      throw new CliDiagnostic(
+        'JIG_TARGET_NOT_FOUND',
+        'That target is not in the approved revision. Use jig inspect to list approved targets, or jig review to review source changes.',
+        1,
+      )
+    throw new CliDiagnostic(
+      'JIG_INSPECTION_UNAVAILABLE',
+      'The approved snapshot could not be read safely. No state was changed. If a review is in progress, wait and retry; otherwise use jig review to diagnose the project state.',
+      2,
+    )
+  }
+  if (runtime.humanOutput && !json) {
+    const unreviewed =
+      typeof snapshot === 'object' &&
+      snapshot !== null &&
+      'state' in snapshot &&
+      snapshot.state === 'unreviewed'
+    runtime.writeOutput(
+      unreviewed
+        ? 'No approved revision\n\n  Run jig review to review and approve this project. Nothing was changed.\n'
+        : `Approved snapshot\n\n  This is retained project meaning, not a check of current source or runtime readiness.\n\n${privateCliValueFields(snapshot)}\nNext: jig run <target>; use jig review after source or configuration changes.\n`,
+    )
+  } else await runtime.writeRecord(`${textDecoder.decode(canonicalJson(snapshot))}\n`)
+  return 0
 }
 
 async function executeInit(arguments_: readonly string[], runtime: CliRuntime): Promise<number> {
@@ -272,7 +337,7 @@ async function executeInit(arguments_: readonly string[], runtime: CliRuntime): 
     runtime.writeOutput(
       bare
         ? `Created bare Jig project ${asciiJsonString(destination)}.\n\nNext:\n  Add a Flow under flows/ and select it in jig.ts, then run jig review.\n`
-        : `Created Jig project ${asciiJsonString(destination)}.\n\nNext:\n${/^[\x20-\x7e]+$/.test(destination) ? `  cd ${shellWord(destination)}\n` : '  Open the created directory in your terminal, then:\n'}  jig review --allow-resolution-network\n  jig run flow:flows/hello --input '{"name":"Ada"}'\n\nNo dependencies installed or execution approved. See jig review --help.\n`,
+        : `Created Jig project ${asciiJsonString(destination)}.\n\nNext:\n${/^[\x20-\x7e]+$/.test(destination) ? `  cd ${shellWord(destination)}\n` : '  Open the created directory in your terminal, then:\n'}  jig review --allow-resolution-network\n  jig run flow:flows/hello --input '"Ada"'\n\nNo dependencies installed or execution approved. See jig review --help.\n`,
     )
     return 0
   } catch (error) {
@@ -596,13 +661,14 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
       )
       return 2
     }
-    await emitTerminal(decodeJson1(encodedRecord))
     const terminal = status.terminal
+    // State the failure before expanding its validation or retained-evidence details.
+    if (terminal.status !== 'succeeded') runtime.writeError(renderRunFailure(terminal))
+    await emitTerminal(decodeJson1(encodedRecord))
     if (terminal.status === 'succeeded')
       runtime.progress.note(
         `Execution completed. Application outcome: ${asciiJsonString(terminal.outcome)}. See output in the ${presentation ? 'result above' : 'JSON result'}.`,
       )
-    else runtime.writeError(renderRunFailure(terminal))
     if (delivery !== undefined)
       runtime.progress.note(
         `Delivery: ${delivery.status}. Destination: ${asciiJsonString(parsed.output!)}.${delivery.status === 'written' ? ' Inspect result.json and files/.' : ' Check the destination before starting new work.'}`,
@@ -1026,7 +1092,13 @@ const unavailableHost: PrivateCliCommandHost = {
 }
 
 async function terminalConfirmation(prompt: string, signal?: AbortSignal): Promise<boolean> {
-  const terminal = createInterface({ input: process.stdin, output: process.stdout })
+  // A yes/no prompt needs a line, not readline's raw-mode cursor editor.
+  // Keep approval usable on plain terminals without emitting control sequences.
+  const terminal = createInterface({
+    input: process.stdin,
+    output: process.stdout,
+    terminal: false,
+  })
   try {
     const answer =
       signal === undefined
@@ -1280,7 +1352,7 @@ function renderRunFailure(
   if (terminal.code === 'INVALID_INPUT')
     return renderDiagnostic(
       'JIG_RUN_INPUT_INVALID',
-      `Input does not match the target input schema.${typeof details?.instancePointer === 'string' ? `\nValue: ${asciiJsonString(details.instancePointer.slice(0, 512))}` : ''}\nNext step: Check --input against the Flow input.schema.json; see the result for validation details.`,
+      `Input does not match the target input schema.${typeof details?.instancePointer === 'string' ? `\nValue: ${details.instancePointer === '' ? 'entire input' : asciiJsonString(details.instancePointer.slice(0, 512))}` : ''}${schemaTypeMismatchText(details?.typeMismatch) === undefined ? '' : `\n${schemaTypeMismatchText(details?.typeMismatch)}`}\nNext step: Check --input against the approved schema with jig inspect <target>; see the result for validation details.`,
     )
   if (terminal.status === 'lost')
     return renderDiagnostic(
@@ -1325,7 +1397,8 @@ function renderProjectDiagnostic(error: ProjectAdministrationError, message: str
   if (diagnostic === undefined) return renderDiagnostic(error.code, message)
   const pointer =
     diagnostic.pointer === undefined ? '' : `\n  Value: ${asciiJsonString(diagnostic.pointer)}`
-  return `Review could not finish\n\n  Location: ${asciiJsonString(diagnostic.path)}${pointer}\n\n  Next step\n    ${message}\n\n  Diagnostic code: ${diagnostic.code}\n  Category: ${error.code}\n`
+  const mismatch = schemaTypeMismatchText(diagnostic.typeMismatch)
+  return `Review could not finish\n\n  Location: ${asciiJsonString(diagnostic.path)}${pointer}${mismatch === undefined ? '' : `\n  ${mismatch}`}\n\n  Next step\n    ${message}\n\n  Diagnostic code: ${diagnostic.code}\n  Category: ${error.code}\n`
 }
 
 function asciiJsonString(value: string): string {

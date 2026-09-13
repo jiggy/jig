@@ -83,7 +83,7 @@ export function privateCliHumanText(
     .split('\n')
     .map((line) => {
       const section =
-        /^(Run output:|Selected Agent:|Host Agent selected|Packages \(|Bindings \(|Run targets \(|Targets after approval:|Review changes|Jig project|Warning:|Error:|Review could not finish|Run failed|Execution lost|Project ready|Created |Execution completed|Approval required|Review required|Review declined|Command interrupted|Run cancelled|Waiting for your approval)/.test(
+        /^(Run output:|Approved snapshot|No approved revision|Selected Agent:|Host Agent selected|Packages \(|Bindings \(|Run targets \(|Targets after approval:|Review changes|Jig project|Warning:|Error:|Review could not finish|Run failed|Execution lost|Project ready|Created |Execution completed|Approval required|Review required|Review declined|Command interrupted|Run cancelled|Waiting for your approval)/.test(
           line,
         )
       const wrapped = wrapHumanLine(line, columns)
@@ -178,6 +178,8 @@ export function privateCliDiagnostic(
     JIG_REPORT_LIMIT: 'Error: Result report is too large',
     JIG_RUN_PROTOCOL_ERROR: 'Error: Flow communication failed',
     JIG_RUN_TARGET_NOT_FOUND: 'Error: Target is not approved',
+    JIG_TARGET_NOT_FOUND: 'Error: Target is not approved',
+    JIG_INSPECTION_UNAVAILABLE: 'Error: Approved snapshot is unavailable',
     JIG_RUN_INPUT_INVALID: 'Error: Run input is invalid',
     JIG_RUN_TARGET_INVALID: 'Error: Run target is invalid',
     JIG_INIT_DESTINATION_EXISTS: 'Error: Project destination already exists',

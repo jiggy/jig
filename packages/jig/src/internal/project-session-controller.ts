@@ -26,6 +26,7 @@ import {
   loadPrivateRootRunForCoordinator,
   publishPrivateActivationReviewPlan,
   readPrivateAdmittedExecutionReuse,
+  PRIVATE_PACKAGE_STORE_DIRECTORY as STORE_DIRECTORY,
 } from './activation-admission-store.js'
 import { createPrivateActivationPlanningObservation } from './activation-planning.js'
 import type { PrivateAgentProvider } from './agent-provider.js'
@@ -69,8 +70,6 @@ import {
 import { executePrivateRootRunLaunch } from './root-run-controller.js'
 import type { PrivateRootRunFiles } from './root-run-files.js'
 import type { PrivateRunChannelOutput } from './run-channels.js'
-
-const STORE_DIRECTORY = 'private-package-store'
 
 /** One closed proof-host input. It is not a public host or extension SPI. */
 export interface PrivateProjectSessionHost {
@@ -673,6 +672,7 @@ export function projectError(
           code: error.code,
           path: error.path,
           ...(error.pointer === undefined ? {} : { pointer: error.pointer }),
+          ...(error.typeMismatch === undefined ? {} : { typeMismatch: error.typeMismatch }),
         })
       } catch {
         return new ProjectAdministrationError('INVALID_CANDIDATE', 'project candidate is invalid')

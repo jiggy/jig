@@ -104,6 +104,7 @@ export type {
 } from './root-run-state.js'
 
 const STATE_DIRECTORY = '.jig'
+export const PRIVATE_PACKAGE_STORE_DIRECTORY = 'private-package-store'
 const DATABASE_NAME = 'jig.sqlite3'
 const COORDINATOR_DATABASE_NAME = 'coordinator.sqlite3'
 const LOCK_NAME = 'jig.lock'
@@ -1998,6 +1999,14 @@ function rootPreflightTerminal(
       schemaPointer: error.schemaPointer,
       path: error.path,
       ...(error.keyword === undefined ? {} : { keyword: error.keyword }),
+      ...(error.typeMismatch === undefined
+        ? {}
+        : {
+            typeMismatch: {
+              expected: [...error.typeMismatch.expected],
+              received: error.typeMismatch.received,
+            },
+          }),
     })
   }
   return undefined
@@ -3070,10 +3079,105 @@ function initializeOrVerifyCoordinatorSchema(database: SqliteDatabase): void {
   }
 }
 
+/** Read the last approved snapshot, not visible source or a pending review.
+ * No coordinator, runtime, recovery, resolution, or write transaction is acquired.
+ */
+export async function inspectPrivateApprovedProject(
+  projectRoot: string,
+  selector?: string,
+): Promise<JsonValue> {
+  let owner: StateOwner
+  try {
+    owner = await openStateOwner(projectRoot, false, 'read-only')
+  } catch (error) {
+    if (hasCode(error, 'ENOENT') || hasCode(error, 'ADMISSION_STATE_MISSING'))
+      return { state: 'unreviewed', targets: [] }
+    throw error
+  }
+  try {
+    const head = readAdmissionHead(owner.database, owner.root)
+    if (head.revision === null) {
+      owner.database.exec('COMMIT')
+      await owner.finish()
+      return { state: 'unreviewed', targets: [] }
+    }
+    const receipt = loadAndCrossCheckAdmission(
+      owner.database,
+      requireAdmissionRow(owner.database, head.revision),
+      owner.root,
+    )
+    const candidate = loadCandidateRow(
+      requireCandidateRow(owner.database, BigInt(receipt.admission.candidateRevision)),
+    )
+    requireCandidateRoot(candidate, owner.root)
+    owner.database.exec('COMMIT')
+    const targets = candidate.candidate.targets.map(({ request }) => ({
+      target:
+        request.target.kind === 'flow'
+          ? `flow:${request.target.path}`
+          : `binding:${request.target.id}`,
+      package: request.packagePath,
+    }))
+    let result: JsonValue = { state: 'approved', revision: candidate.candidate.lockDigest, targets }
+    if (selector !== undefined) {
+      const index = targets.findIndex((item) => item.target === selector)
+      if (index < 0) invalid('INSPECTION_TARGET_MISSING', 'target is not in the approved revision')
+      const { request } = candidate.candidate.targets[index]!
+      const captured = await captureStoredPackage(
+        descriptorChild(owner.directory, PRIVATE_PACKAGE_STORE_DIRECTORY),
+        request.package,
+      )
+      try {
+        const inspected = await inspectCapturedPackage(captured)
+        requirePackageProjection(
+          request.packagePath,
+          candidate.lock.packages[request.packagePath]!,
+          inspected,
+        )
+        const schemas: Record<string, JsonValue> = {}
+        for (const name of ['input', 'settings', 'result'] as const) {
+          if (inspected.schemas[name] !== undefined) {
+            schemas[name] = decodeJson1(await captured.read(`${name}.schema.json`, 262_144))
+          }
+        }
+        result = {
+          state: 'approved',
+          revision: candidate.candidate.lockDigest,
+          target: selector,
+          package: request.packagePath,
+          digest: request.package.digest,
+          name: inspected.metadata.name,
+          description: inspected.metadata.description,
+          schemas,
+          settings: request.settings,
+          capabilities: request.capabilities as unknown as JsonValue,
+          children: Object.fromEntries(
+            Object.entries(request.flowSlots).map(([slot, target]) => [
+              slot,
+              target.kind === 'flow' ? `flow:${target.path}` : `binding:${target.id}`,
+            ]),
+          ),
+          attachments: request.attachments,
+          channels: (inspected.metadata.channels ?? {}) as unknown as JsonValue,
+          commands: (request.commands ?? {}) as unknown as JsonValue,
+        }
+      } finally {
+        await captured.dispose()
+      }
+    }
+    await owner.finish()
+    return result
+  } finally {
+    await owner.dispose()
+  }
+}
+
 async function openStateOwner(
   projectRoot: PrivateProjectRootSource,
   create: boolean,
+  access: 'read-write' | 'read-only' = 'read-write',
 ): Promise<StateOwner> {
+  if (create && access === 'read-only') throw new TypeError('read-only state cannot be created')
   const ownsRoot = typeof projectRoot === 'string'
   const root = ownsRoot
     ? await openPrivateProjectRoot(projectRoot)
@@ -3115,7 +3219,10 @@ async function openStateOwner(
     )
     const sqlite = loadSqlite()
     const flags =
-      sqliteFlag(sqlite, 'SQLITE_OPEN_READWRITE') | sqliteFlag(sqlite, 'SQLITE_OPEN_NOFOLLOW')
+      sqliteFlag(
+        sqlite,
+        access === 'read-only' ? 'SQLITE_OPEN_READONLY' : 'SQLITE_OPEN_READWRITE',
+      ) | sqliteFlag(sqlite, 'SQLITE_OPEN_NOFOLLOW')
     database = sqlite.Database.open(visibleDatabasePath, flags)
     await verifyVisibleHierarchy(
       root,
@@ -3125,7 +3232,21 @@ async function openStateOwner(
       databaseInformation,
     )
     configureConnection(database)
-    initializeOrVerifySchema(database, root)
+    if (access === 'read-only') {
+      database.exec('PRAGMA query_only=ON; BEGIN')
+      if (
+        pragmaInteger(database, 'user_version') !== SCHEMA_VERSION ||
+        pragmaInteger(database, 'application_id') !== APPLICATION_ID
+      ) {
+        invalid(
+          'ADMISSION_SCHEMA_VERSION',
+          'private admission database has an unsupported format identity',
+        )
+      }
+      verifySchema(database, root)
+    } else {
+      initializeOrVerifySchema(database, root)
+    }
     await verifyPathIdentity(
       databasePath,
       databaseInformation,

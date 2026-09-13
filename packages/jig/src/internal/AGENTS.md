@@ -37,6 +37,11 @@ child calls, project commands, and Agent providers.
 ## Local Contracts
 
 - Every `Private*` export remains package-private and is not an extension SPI.
+- Approved-snapshot inspection uses SQLite read-only/query-only access and a
+  consistent read transaction, never schema initialization, recovery, or a
+  coordinator. Reuse filesystem identity and retained-artifact verification;
+  reject unreadable state instead of repairing it. Only explicit public target
+  fields leave the store; private recipes and authority records remain private.
 - Strictly parse, bound, snapshot, and authenticate values crossing a trust
   boundary. Decoding inert bytes must not mint authority.
 - Preserve the sequence observe, identify, plan, seal, admit, revalidate,

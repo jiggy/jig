@@ -37,6 +37,56 @@ import { createProject, type ProjectInitFileSystem } from '../src/project-init.j
 
 const cli = resolve(import.meta.dir, '../src/cli.ts')
 
+test('real confirmation accepts a line without cursor control on a plain terminal', async () => {
+  const child = Bun.spawn(
+    [
+      process.execPath,
+      '--eval',
+      `import { main } from ${JSON.stringify(cli)};
+     Object.defineProperty(process.stdout, 'isTTY', { value: true });
+     const session = {
+       async plan() { return { state: 'applicable', operation: 'admission',
+         planDigest: 'sha256:' + '0'.repeat(64),
+         review: { text: 'review', details: 'review' } }; },
+       async apply() { process.stdout.write('APPLIED\\n'); },
+       async close() { process.stdout.write('CLOSED\\n'); },
+     };
+     process.exitCode = await main(['review'], {
+       interactive: true, host: { async acquire() { return session; } },
+     });`,
+    ],
+    {
+      env: { ...process.env, NO_COLOR: '1', TERM: 'dumb' },
+      stdin: 'pipe',
+      stdout: 'pipe',
+      stderr: 'pipe',
+    },
+  )
+  const timeout = setTimeout(() => child.kill(), 8_000)
+  let output = ''
+  let answered = false
+  try {
+    const stderr = new Response(child.stderr).text()
+    for await (const chunk of child.stdout) {
+      output += new TextDecoder().decode(chunk)
+      if (!answered && output.includes('[y/N] ')) {
+        answered = true
+        child.stdin.write('yes\n')
+        child.stdin.end()
+      }
+    }
+    expect(await child.exited).toBe(0)
+    expect(answered).toBe(true)
+    expect(output).toContain('APPLIED\nCLOSED\n')
+    expect(output).toContain('Project ready')
+    expect(output + (await stderr)).not.toMatch(/[\u001b\u009b]/)
+  } finally {
+    clearTimeout(timeout)
+    child.kill()
+    await child.exited
+  }
+}, 10_000)
+
 test('jig init --bare creates only the fixed inert project envelope', async () => {
   const root = await mkdtemp(join(tmpdir(), 'jig-cli-init-'))
   const destination = join(root, 'project')
@@ -225,7 +275,21 @@ test('default init writes an ordinary editable SDK Flow without installing or ap
     ).toBe(0)
     expect(output).toContain("cd 'hello'")
     expect(output).toContain('jig review --allow-resolution-network')
-    expect(output).toContain('jig run flow:flows/hello')
+    expect(output).toContain(`jig run flow:flows/hello --input '"Ada"'`)
+    expect(await readFile(new URL('../README.md', import.meta.url), 'utf8')).toContain(
+      `jig run flow:flows/hello --input '"Ada"'`,
+    )
+    for (const args of [['--help'], ['run', '--help']]) {
+      let help = ''
+      expect(
+        await main(args, {
+          writeOutput: (text) => {
+            help += text
+          },
+        }),
+      ).toBe(0)
+      expect(help).toContain(`jig run flow:flows/hello --input '"Ada"'`)
+    }
     expect(await readFile(join(directory, 'flows/hello/flow.ts'), 'utf8')).toContain(
       'import { handle } from "@jigging/flow"',
     )
@@ -241,6 +305,49 @@ test('default init writes an ordinary editable SDK Flow without installing or ap
     await expect(createProject(directory)).rejects.toMatchObject({
       code: 'JIG_INIT_DESTINATION_EXISTS',
     })
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('inspect is read-only and host-free, with exact JSON for subprocesses', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'jig-cli-inspect-'))
+  try {
+    for (const args of [['inspect'], ['inspect', '--json'], ['inspect', '--help']]) {
+      let output = ''
+      expect(privateCliRequiresHost(args)).toBeFalse()
+      expect(
+        await main(args, {
+          currentDirectory: root,
+          host: {
+            acquire: async () => {
+              throw new Error('must not acquire')
+            },
+          },
+          writeOutput: (text) => {
+            output += text
+          },
+          writeRecord: async (text) => {
+            output += text
+          },
+        }),
+      ).toBe(0)
+      if (!args.includes('--help'))
+        expect(JSON.parse(output)).toEqual({ state: 'unreviewed', targets: [] })
+      expect(await readdir(root)).toEqual([])
+    }
+    let output = ''
+    expect(
+      await main(['inspect'], {
+        currentDirectory: root,
+        terminalOutput: true,
+        writeOutput: (text) => {
+          output += text
+        },
+      }),
+    ).toBe(0)
+    expect(output).toContain('No approved revision')
+    expect(output).toContain('jig review')
   } finally {
     await rm(root, { recursive: true, force: true })
   }
@@ -382,6 +489,46 @@ describe('finite Jig project commands', () => {
     })
     expect(await main(['run', 'flow:flows/work'], machine.options)).toBe(0)
     expect(machine.output).toBe(new TextDecoder().decode(canonicalJson(terminal)) + '\n')
+  })
+
+  test('explains invalid input before expanding details and names the whole input clearly', async () => {
+    const terminal: RootRunTerminal = {
+      status: 'failed',
+      code: 'INVALID_INPUT',
+      message: 'input rejected',
+      details: {
+        instancePointer: '',
+        schemaPointer: '/type',
+        path: 'input.schema.json',
+        typeMismatch: { expected: ['string'], received: 'object' },
+      },
+      diagnostics: { stderr: '', stderrBytes: 0, stderrTruncated: false },
+    }
+    const invocation = commandInvocation(fakeHost(fakeSession([], { terminal }), []), {
+      terminalOutput: true,
+    })
+    const transcript: string[] = []
+    expect(
+      await main(['run', 'flow:flows/work'], {
+        ...invocation.options,
+        writeError: (text) => {
+          transcript.push(text)
+          invocation.options.writeError?.(text)
+        },
+        writeOutput: (text) => {
+          transcript.push(text)
+          invocation.options.writeOutput?.(text)
+        },
+      }),
+    ).toBe(1)
+    const output = transcript.join('')
+    expect(output).toContain('Value: entire input')
+    expect(output).toMatch(/jig inspect\s+<target>/)
+    expect(output).toContain('Run output: result')
+    expect(output.indexOf('Expected string; received object.')).toBeLessThan(
+      output.indexOf('Run output: result'),
+    )
+    expect(output).not.toContain('Value: ""')
   })
 
   test('stale approval requests review, preserves machine details, and does not imply execution', async () => {
@@ -1356,6 +1503,7 @@ describe('finite Jig project commands', () => {
         code: 'PROJECT_BINDING_SETTINGS_INVALID',
         path: 'bindings/review-\u202e.ts',
         pointer: '/settings/prefix\n',
+        typeMismatch: { expected: ['string'], received: 'integer' },
       },
     )
     const invocation = commandInvocation(
@@ -1366,7 +1514,7 @@ describe('finite Jig project commands', () => {
     expect(events).toEqual(['acquire:/project', 'plan:update', 'close'])
     expect(invocation.output).toBe('')
     expect(invocation.error).toBe(
-      'Review could not finish\n\n  Location: "bindings/review-\\u202e.ts"\n  Value: "/settings/prefix\\u000a"\n\n  Next step\n    Binding settings do not match the Flow settings schema; correct the indicated value\n\n  Diagnostic code: PROJECT_BINDING_SETTINGS_INVALID\n  Category: INVALID_CANDIDATE\n',
+      'Review could not finish\n\n  Location: "bindings/review-\\u202e.ts"\n  Value: "/settings/prefix\\u000a"\n  Expected string; received integer.\n\n  Next step\n    Binding settings do not match the Flow settings schema; correct the indicated value\n\n  Diagnostic code: PROJECT_BINDING_SETTINGS_INVALID\n  Category: INVALID_CANDIDATE\n',
     )
     expect(invocation.error).not.toContain('\u202e')
   })

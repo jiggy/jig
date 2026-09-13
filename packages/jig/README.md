@@ -5,7 +5,7 @@ combine specialists, inspect their results, and stop owned work.
 
 ## Install
 
-```console
+```sh
 npm install --global @jigging/jig@alpha
 ```
 
@@ -18,11 +18,11 @@ npm installs Jig's exact Bun runtime dependency alongside the package.
 
 Create an editable first Flow:
 
-```console
+```sh
 jig init hello-jig
 cd hello-jig
 jig review --allow-resolution-network
-jig run flow:flows/hello --input '{"name":"Ada"}'
+jig run flow:flows/hello --input '"Ada"'
 ```
 
 Initialization installs nothing and approves nothing. Review prepares the SDK
@@ -30,22 +30,28 @@ privately and asks for approval. The resolution flag allows dependency-selected
 network requests before approval; declining cannot undo those requests. Runs
 gain no network access. No separate Bun install is needed.
 
-Read the [first Flow guide](https://jig.md/guide/#your-first-flow), or try
+Then [add a support-reply Agent](https://jig.md/guide/agents#build-your-first-agent-method)
+to that same project. Read the [first Flow guide](https://jig.md/guide/#your-first-flow), or try
 [an issue becoming a tested patch](https://jig.md/guide/tested-patch): selected
 local source becomes a reviewable patch with executed checks, while the original
 repository stays unchanged.
 
-Jig has three project commands:
+Project commands:
 
 ```text
 jig init [--bare] <directory>
 jig review [project] [--allow-resolution-network] [--yes] [--details]
 jig run <flow:path|binding:id> [options]
+jig inspect [flow:path|binding:id] [--json]
 ```
 
 `review` shows changed policy; `--details` includes complete current and proposed
 policy. `--yes` approves without a prompt but does not grant resolution network
 permission. `--bare` creates only an empty project skeleton.
+
+`inspect` lists approved targets or shows a target's retained interface without
+evaluating source, contacting providers, preparing dependencies or changing state.
+It describes the last approval, not current source or runtime readiness.
 
 `run` executes the approved revision and shows a readable terminal result after
 settling owned work. `--receive` streams labelled channel text. Redirect stdout

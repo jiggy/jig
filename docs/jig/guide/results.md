@@ -16,7 +16,23 @@ relevant project-relative location where available and suggest a safe next step.
 A missing target lists targets from the approved revision; Jig never picks one
 for you.
 
-Interactive stdout shows a readable result. With `--receive`, channel text
+Use `jig inspect` to list targets in the last approved revision. Use
+`jig inspect binding:repair` (or an exact `flow:` target) to read its input,
+settings and result schemas, configured settings, child slots, capabilities,
+attachments, channels and commands. `--json` or redirected stdout returns JSON.
+Inspection needs no Agent credentials and performs no source evaluation,
+dependency preparation, state recovery or approval. It describes retained
+meaning, not current source or remote readiness; use `jig review` to review edits.
+Without local approval, it reports `unreviewed`, even if a portable lock exists.
+
+Type errors identify the value's location and, where available, its expected
+and received JSON types. They do not print the rejected value. For example,
+`Expected string; received object.` means the caller should pass a JSON string,
+not wrap it in an object. `jig inspect <target>` shows the approved input contract.
+
+Interactive stdout leads with execution and application outcome, plus packet
+delivery and unconfirmed cleanup when present, then retains the complete result.
+Application fields such as `success` are data, not host verdicts. With `--receive`, channel text
 streams continuously under labelled headings. Use `--json` for raw records in
 a terminal. Redirected stdout automatically contains exact JSON, or NDJSON
 when `--receive` is selected. Stderr

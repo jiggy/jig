@@ -2,6 +2,7 @@ import { types as utilTypes } from 'node:util'
 
 import { validateJson1 } from '../json.js'
 import { isProtectedProjectPath, validateProjectPath } from '../project/paths.js'
+import { schemaTypeMismatchText, type SchemaTypeMismatch } from '../schema/types.js'
 import type { RootAdministration } from './root.js'
 
 const DIGEST = /^sha256:[0-9a-f]{64}$/
@@ -33,6 +34,7 @@ export interface ProjectAdministrationDiagnostic {
   readonly code: string
   readonly path: string
   readonly pointer?: string
+  readonly typeMismatch?: SchemaTypeMismatch
 }
 
 export interface ProjectPlanRequest {
@@ -198,7 +200,7 @@ function normalizeProjectAdministrationDiagnostic(
     throw new TypeError('project diagnostic is invalid')
   }
   const actual = Reflect.ownKeys(value)
-  const allowed = ['code', 'path', 'pointer']
+  const allowed = ['code', 'path', 'pointer', 'typeMismatch']
   if (
     actual.some((key) => typeof key !== 'string' || !allowed.includes(key)) ||
     !actual.includes('code') ||
@@ -250,9 +252,22 @@ function normalizeProjectAdministrationDiagnostic(
     pointer = fields.pointer
   }
 
+  let typeMismatch: SchemaTypeMismatch | undefined
+  if (actual.includes('typeMismatch')) {
+    validateJson1(fields.typeMismatch)
+    const detail = exactRecord(fields.typeMismatch, ['expected', 'received'], 'type mismatch')
+    if (schemaTypeMismatchText(detail) === undefined) {
+      throw new TypeError('project diagnostic type mismatch is invalid')
+    }
+    typeMismatch = Object.freeze({
+      expected: Object.freeze([...(detail.expected as string[])]),
+      received: detail.received as string,
+    })
+  }
   return Object.freeze({
     code,
     path,
     ...(pointer === undefined ? {} : { pointer }),
+    ...(typeMismatch === undefined ? {} : { typeMismatch }),
   })
 }

@@ -28,6 +28,22 @@ function captured(action: () => void): SchemaDiagnostic {
 }
 
 describe('Schema/1 compilation', () => {
+  test('reports type mismatches without retaining the input value', () => {
+    const compiled = compileSchemaFile(
+      fileSchema({
+        type: 'object',
+        properties: {
+          token: { type: ['integer', 'null'] },
+        },
+      }),
+      'settings.schema.json',
+    )
+    const failure = captured(() => compiled.validate({ token: 'private-token' }, 'INVALID_INPUT'))
+    expect(failure.instancePointer).toBe('/token')
+    expect(failure.typeMismatch).toEqual({ expected: ['integer', 'null'], received: 'string' })
+    expect(JSON.stringify(failure)).not.toContain('private-token')
+  })
+
   test('compiles a closed root and rejects unsupported or malformed keywords distinctly', () => {
     const compiled = compileSchemaFile(fileSchema({ type: 'string' }), 'input.schema.json')
     compiled.validate('yes', 'INVALID_INPUT')

@@ -18,7 +18,7 @@ function quoted(text: string): string {
 }
 
 /** Preserve arbitrary application schemas, including nulls, arrays and text paragraphs. */
-function fields(value: JsonValue, depth = 1): string {
+export function privateCliValueFields(value: JsonValue, depth = 1): string {
   const indent = '  '.repeat(depth)
   if (typeof value === 'string')
     return (
@@ -42,6 +42,8 @@ function fields(value: JsonValue, depth = 1): string {
     })
     .join('')
 }
+
+const fields = privateCliValueFields
 
 function isObject(value: JsonValue | undefined): value is { readonly [key: string]: JsonValue } {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
@@ -102,10 +104,41 @@ export class PrivateCliRunPresentation {
   async result(record: JsonValue, streamedDiagnostics: string): Promise<void> {
     let view = record
     let note = ''
+    // These are host envelope facts only. Application text and field names
+    // cannot establish execution, acceptance, delivery or cleanup success.
+    if (isObject(record)) {
+      const summary: string[] = []
+      if (record.status === 'succeeded') {
+        summary.push('  Execution: completed.')
+        if (typeof record.outcome === 'string')
+          summary.push(`  Application outcome: ${quoted(record.outcome)}.`)
+      } else if (record.status === 'failed') summary.push('  Execution: failed.')
+      else if (record.status === 'lost')
+        summary.push('  Execution: lost; effects may be uncertain.')
+      if (isObject(record.delivery)) {
+        summary.push(`  Packet delivery: ${quoted(String(record.delivery.status))}.`)
+        if (typeof record.delivery.destination === 'string')
+          summary.push(`  Destination: ${quoted(record.delivery.destination)}`)
+      }
+      if (isObject(record.cleanup) && record.cleanup.status === 'failed')
+        summary.push('  Cleanup: not confirmed. Do not start replacement work yet.')
+      if (isObject(record.checkpoint))
+        summary.push('  Checkpoint: retained progress, not proof of success. See details below.')
+      if (
+        summary.length > 0 &&
+        (record.status === 'succeeded' || Object.hasOwn(record, 'output') || summary.length > 1)
+      ) {
+        await this.#section('summary')
+        await this.write(privateCliHumanText(`${summary.join('\n')}\n`, this.color, this.columns))
+      }
+      const { status: _status, outcome: _outcome, ...rest } = record
+      // Failed/lost records are handled below with their original discriminants.
+      if (record.status === 'succeeded') view = rest
+    }
     if (isObject(record)) {
       const diagnostics = record.diagnostics
       if (isObject(diagnostics) && diagnostics.stderr === streamedDiagnostics) {
-        const { diagnostics: _diagnostics, ...rest } = record
+        const { diagnostics: _diagnostics, ...rest } = view as Record<string, JsonValue>
         view = rest
         if (diagnostics.stderrBytes !== 0)
           note = `\n  Diagnostics: ${diagnostics.stderrBytes} bytes shown live${diagnostics.stderrTruncated ? '; retained capture truncated' : ''}.\n`

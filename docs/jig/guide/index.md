@@ -93,7 +93,8 @@ Approve the source change only after reviewing it. The new output contains
 previously accepted version. The network flag has the same dependency-resolution
 meaning described above; it does not authorize the Flow to access the network.
 
-You have now created, run, and adapted a method. Next, see
+You have now created, run, and adapted a method. Next,
+[add a support-reply Agent to this same project](./agents.md#build-your-first-agent-method), or see
 [one caller use code, an Agent, or both](./request-triage.md). The method boundary
 stays consistent as the implementation changes. Read [how Jig works](./understand.md)
 for the architecture behind it, or try [a tested patch](./tested-patch.md)
@@ -119,6 +120,8 @@ editing; code-only edits can require fresh resolution too. An unchanged review
 reuses the admitted bytes. An authored lock avoids fresh dependency selection.
 
 Use `flow:<path>` for a package or `binding:<id>` for a configured invocation.
+Use `jig inspect` to list the approved targets, or `jig inspect <target>` to
+read a target's retained schemas and configuration without performing a review.
 A Binding supplies application settings and exact dependencies; see
 [project authoring](../spec/project-sdk.md). Omitting `--input` supplies `{}`.
 Use `@FILE` for JSON input from a file and `--timeout 2m` for a longer Run.
@@ -131,7 +134,8 @@ The greeting returns execution status, the method's outcome, and its output.
 Other methods can complete execution successfully while returning an application
 outcome such as `blocked`. Inspect the outcome as well as the CLI exit status.
 
-Stdout carries the machine-readable result; stderr carries diagnostics. Ctrl-C
+Terminal stdout shows a readable result; redirected stdout or `--json` carries
+the machine-readable result. Stderr carries diagnostics and status. Ctrl-C
 requests cancellation. Wait for cleanup before starting new work, and do not
 blindly retry an interrupted or uncertain operation.
 
@@ -140,6 +144,7 @@ protocol failures, and retained-state recovery.
 
 ## Next steps
 
+- [Build your first Agent method](./agents.md#build-your-first-agent-method) in the project you just created.
 - [Compose code and Agent methods](./request-triage.md) through one caller.
 - [Choose an Agent](./agents.md) using an API or a supported local client.
 - [Work with files](./files.md) to capture inputs and export one result packet.

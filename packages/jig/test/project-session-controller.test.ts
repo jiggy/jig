@@ -17,6 +17,34 @@ import {
 const missingPlan = `sha256:${'0'.repeat(64)}`
 
 describe('private finite project session', () => {
+  test('preserves closed type facts while discarding private error messages', () => {
+    const failure = projectError(
+      new CheckError(
+        'invalid',
+        'PROJECT_BINDING_SETTINGS_INVALID',
+        'private-token',
+        'bindings/reviewer.ts',
+        '/settings/count',
+        { expected: ['integer'], received: 'string' },
+      ),
+      'plan',
+    )
+    expect(failure.diagnostic?.typeMismatch).toEqual({ expected: ['integer'], received: 'string' })
+    expect(JSON.stringify(failure)).not.toContain('private-token')
+    const unsafe = projectError(
+      new CheckError(
+        'invalid',
+        'PROJECT_BINDING_SETTINGS_INVALID',
+        'private-token',
+        'bindings/reviewer.ts',
+        '/settings/count',
+        { expected: ['private-token'], received: 'string' },
+      ),
+      'plan',
+    )
+    expect(unsafe.diagnostic).toBeUndefined()
+  })
+
   test('revokes every escaped authority and releases the owner exactly once', async () => {
     const root = await mkdtemp(join(tmpdir(), 'jig-project-session-'))
     try {
