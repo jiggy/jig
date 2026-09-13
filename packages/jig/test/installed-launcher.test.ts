@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { chmod, mkdtemp, mkdir, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -50,7 +50,7 @@ test('installed launcher uses the NixOS system tool, not ambient readlink or Bun
     const missing = command()
     expect(await missing.exited).toBe(2)
     expect(await new Response(missing.stderr).text()).toBe(
-      'JIG_COMMAND_UNAVAILABLE: the installed Jig runtime is unavailable\n',
+      'Error: Jig could not start\n\n  The installed Jig runtime is unavailable.\n\n  Next step: Restore the complete Jig installation.\n  See https://jig.md/guide/#install.\n\n  Diagnostic code: JIG_COMMAND_UNAVAILABLE\n',
     )
   } finally {
     await rm(root, { recursive: true, force: true })

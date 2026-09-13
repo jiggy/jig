@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
 import { closeSync, fstatSync } from 'node:fs'
 import { connect, createServer, type Socket } from 'node:net'
+import { privateCliStderrDiagnostic } from '../cli-presentation.js'
 import { canonicalJson, decodeJson1, type JsonValue } from '../json.js'
 import {
   type PrivateDeliveryConnection,
@@ -226,13 +227,19 @@ export async function privateOwnFileCommand(
         )
         if (receipt.status !== 'written') {
           process.stderr.write(
-            `JIG_DELIVERY_FAILED: retained-result publication failed (${receipt.code})\n`,
+            privateCliStderrDiagnostic(
+              'JIG_DELIVERY_FAILED',
+              `Retained-result publication failed (${receipt.code}). Inspect the output destination before starting new work; repeating the command starts a new Run. See https://jig.md/guide/results.`,
+            ),
           )
           recoveryFailed = true
         }
       } catch {
         process.stderr.write(
-          'JIG_CHECKPOINT_UNAVAILABLE: cleanup or retained-result delivery could not be confirmed\n',
+          privateCliStderrDiagnostic(
+            'JIG_CHECKPOINT_UNAVAILABLE',
+            'Cleanup or retained-result delivery could not be confirmed. Inspect the destination and settle existing work before starting another command. See https://jig.md/guide/results.',
+          ),
         )
         recoveryFailed = true
       }
@@ -254,7 +261,10 @@ export async function privateOwnFileCommand(
   }
   if (cleanupFailed) {
     process.stderr.write(
-      'JIG_DELIVERY_CLEANUP_FAILED: unfinished delivery storage could not be removed\n',
+      privateCliStderrDiagnostic(
+        'JIG_DELIVERY_CLEANUP_FAILED',
+        'Unfinished delivery storage could not be removed. Preserve any published result and inspect destination permissions before starting new work. See https://jig.md/guide/results.',
+      ),
     )
     return { exitCode: 2, signal: null }
   }

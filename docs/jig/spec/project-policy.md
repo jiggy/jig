@@ -571,7 +571,7 @@ A Run is `pending` until it has one durable terminal:
   be proved.
 
 The installed CLI preserves JSON stdout, or NDJSON for selected channels.
-Plain elapsed status and cancellation updates are terminal-only stderr;
+Elapsed status and cancellation updates follow the [CLI experience contract](cli-experience.md) on terminal stderr;
 diagnostics remain available with redirected streams. A cancellation request
 is not a cleanup acknowledgement. Execution completion, application outcome,
 delivery, and late cleanup failure remain distinct observations. Status output

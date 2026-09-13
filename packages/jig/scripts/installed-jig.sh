@@ -3,7 +3,15 @@
 set -eu
 
 fail() {
-  printf '%s\n' 'JIG_COMMAND_UNAVAILABLE: the installed Jig runtime is unavailable' >&2
+  if [ -t 2 ] && [ "${TERM:-}" != dumb ] && [ "${NO_COLOR+x}" != x ]; then
+    printf '\033[1;31m%s\033[0m\n' 'Error: Jig could not start' >&2
+  else
+    printf '%s\n' 'Error: Jig could not start' >&2
+  fi
+  printf '%s\n' '' '  The installed Jig runtime is unavailable.' '' \
+    '  Next step: Restore the complete Jig installation.' \
+    '  See https://jig.md/guide/#install.' '' \
+    '  Diagnostic code: JIG_COMMAND_UNAVAILABLE' >&2
   exit 2
 }
 

@@ -7,6 +7,8 @@ use-case and orchestration hypotheses.
 
 ## Ownership
 
+- `spec/cli-experience.md` owns the mandatory experience contract for all public CLI output.
+
 - `spec/` owns current Jig host requirements and machine companions.
 - `contracts/` owns explanatory pages served at capability identity URLs.
   They route readers to specifications, canonical JSON downloads, and usage;

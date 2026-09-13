@@ -150,7 +150,7 @@ describe('private project Plan review', () => {
 
     expect(rendered.mediaType).toBe('text/plain; charset=utf-8')
     expect(rendered.text).toContain('"packagePath": "flows/review"')
-    expect(rendered.text).toContain('"settings": {')
+    expect(rendered.text).toContain('"settings" (object):')
     expect(rendered.text).toContain('"style": "focused"')
     expect(rendered.text).toContain(
       '"hidden": "\\u202e\\u200bline\\n\\t\\u0000\\u00e9\\ud83d\\ude00"',

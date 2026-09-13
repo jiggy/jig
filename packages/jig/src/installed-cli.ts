@@ -9,6 +9,7 @@ import {
   privateCliRequiresHost,
   publicTerminal,
 } from './cli.js'
+import { privateCliStderrDiagnostic } from './cli-presentation.js'
 import { PrivateCliOutput } from './internal/cli-output.js'
 import {
   privateConnectFileOwner,
@@ -31,17 +32,30 @@ interface InstalledCliOutcome {
 }
 
 const BUN_POLICY = Object.freeze(['--no-env-file', '--no-install', '--config=/dev/null'] as const)
-const installedCliPath = await realpath(fileURLToPath(import.meta.url))
-const releaseRoot = dirname(dirname(installedCliPath))
-const executablePath = await realpath(process.execPath)
-if (
-  process.argv[0] !== executablePath ||
-  process.argv[1] !== installedCliPath ||
-  (await realpath('/proc/self/exe')) !== executablePath ||
-  process.execArgv.length !== BUN_POLICY.length ||
-  process.execArgv.some((value, index) => value !== BUN_POLICY[index])
-) {
-  throw new Error('the installed Jig command has an invalid startup posture')
+let installedCliPath: string
+let releaseRoot: string
+let executablePath: string
+try {
+  installedCliPath = await realpath(fileURLToPath(import.meta.url))
+  releaseRoot = dirname(dirname(installedCliPath))
+  executablePath = await realpath(process.execPath)
+  if (
+    process.argv[0] !== executablePath ||
+    process.argv[1] !== installedCliPath ||
+    (await realpath('/proc/self/exe')) !== executablePath ||
+    process.execArgv.length !== BUN_POLICY.length ||
+    process.execArgv.some((value, index) => value !== BUN_POLICY[index])
+  ) {
+    throw new Error('the installed Jig command has an invalid startup posture')
+  }
+} catch {
+  process.stderr.write(
+    privateCliStderrDiagnostic(
+      'JIG_COMMAND_UNAVAILABLE',
+      'Jig could not validate its installed launcher. Invoke the installed jig command directly. If that fails, restore the complete installation; see https://jig.md/guide/#install.',
+    ),
+  )
+  process.exit(2)
 }
 
 /** The one installed alpha entrypoint. It is bundled into `libexec`. */
@@ -105,8 +119,8 @@ async function runPrivateInstalledCli(
           agentUnavailableHint = installedHost.agentUnavailableHint
           if (arguments_[0] === 'review' && installedHost.agentExecutable !== undefined) {
             const selected = installedHost.agentExecutable
-            await stderr.write(
-              `Agent client: ${selected.client} (${JSON.stringify(selected.path)})\n`,
+            options?.onNotice?.(
+              `Selected Agent:\n\n  Client: ${selected.client}\n  Executable: ${JSON.stringify(selected.path).replace(/[\u007f-\uffff]/g, (value) => `\\u${value.charCodeAt(0).toString(16).padStart(4, '0')}`)}\n\n`,
             )
           }
           return openPrivateProjectSession({
@@ -162,10 +176,18 @@ async function runPrivateInstalledCli(
   } catch (error) {
     if (error instanceof PrivateRootlessLinuxAcquisitionError) {
       process.stderr.write(
-        'SANDBOX_UNAVAILABLE: the required rootless Linux sandbox is unavailable\nCheck the supported-host requirements: systemd user service, delegated cgroups, namespaces and Bubblewrap >= 0.12.\nSee https://jig.md/guide/#supported-host. No weaker fallback is used.\n',
+        privateCliStderrDiagnostic(
+          'SANDBOX_UNAVAILABLE',
+          'Check the supported-host requirements: systemd user service, delegated cgroups, namespaces and Bubblewrap >= 0.12.\nNext step: https://jig.md/guide/#supported-host',
+        ),
       )
     } else {
-      process.stderr.write('JIG_COMMAND_UNAVAILABLE: the command could not be completed\n')
+      process.stderr.write(
+        privateCliStderrDiagnostic(
+          'JIG_COMMAND_UNAVAILABLE',
+          'The cause could not be determined. Inspect any result and effects before starting new work.\nNext step: Check https://jig.md/guide/results and include this code when reporting the failure.',
+        ),
+      )
     }
     return exit(2)
   }

@@ -1,12 +1,16 @@
-/** Plain terminal status. Never writes to stdout or infers application success. */
+import { privateCliHeading, privateCliStyleEnabled } from './cli-presentation.js'
+
+/** One bounded active line on terminal stderr; never infers completed work. */
 export class PrivateCliProgress {
   #stage = ''
   #started = performance.now()
-  #timer?: ReturnType<typeof setInterval>
+  #timer: ReturnType<typeof setInterval> | undefined
   #cancelled = false
+  #visible = false
   readonly #abort = () => {
+    this.pause()
     this.#cancelled = true
-    this.#stage = 'Cancellation requested; waiting for owned work to stop and clean up'
+    this.#stage = 'Cancellation requested; waiting for work to stop and clean up'
     this.#write()
   }
 
@@ -14,31 +18,80 @@ export class PrivateCliProgress {
     readonly enabled: boolean,
     readonly write: (text: string) => void,
     readonly signal?: AbortSignal,
+    readonly animated = privateCliStyleEnabled(enabled),
+    readonly columns: () => number = () => process.stderr.columns || 80,
   ) {}
 
   stage(value: string): void {
     if (!this.enabled || this.#cancelled || value === this.#stage) return
+    this.pause()
     if (this.#timer === undefined) {
-      this.#started = performance.now()
       this.signal?.addEventListener('abort', this.#abort, { once: true })
-      this.#timer = setInterval(() => this.#write(), 10_000)
-      this.#timer.unref()
+      if (this.animated) {
+        this.#timer = setInterval(() => this.#write(), 1_000)
+        this.#timer.unref()
+      }
     }
     this.#stage = value
     if (this.signal?.aborted) this.#abort()
     else this.#write()
   }
 
+  /** Finish the line before another writer, a prompt, or a terminal result. */
+  pause(): void {
+    if (this.#visible) this.write('\r\u001b[2K')
+    if (this.#stage && this.animated) this.write(`  - ${this.#stage}\n`)
+    this.#visible = false
+    this.#stage = ''
+  }
+
+  /** A complete notice preserves the known active stage and its heartbeat. */
+  notice(value: string): void {
+    if (this.#visible) this.write('\r\u001b[2K')
+    this.#visible = false
+    this.write(value)
+    if (this.animated) this.#write()
+  }
+
+  complete(): void {
+    if (this.#cancelled) {
+      this.pause()
+      return
+    }
+    if (!this.#stage) return
+    if (this.#visible) this.write('\r\u001b[2K')
+    if (this.animated) this.write(`${privateCliHeading('  ✓', 'success', true)} ${this.#stage}\n`)
+    this.#visible = false
+    this.#stage = ''
+  }
+
   note(value: string): void {
+    this.pause()
     if (this.enabled) this.write(`${value}\n`)
   }
 
   close(): void {
+    this.pause()
     clearInterval(this.#timer)
+    this.#timer = undefined
     this.signal?.removeEventListener('abort', this.#abort)
   }
 
   #write(): void {
-    this.write(`[${((performance.now() - this.#started) / 1000).toFixed(1)}s] ${this.#stage}\n`)
+    if (!this.#stage) return
+    if (!this.animated) {
+      this.write(`  - ${this.#stage}\n`)
+      return
+    }
+    const elapsed = ` ${((performance.now() - this.#started) / 1000).toFixed(0)}s`
+    const width = Math.max(1, this.columns() - elapsed.length - 5)
+    const label =
+      this.#stage.length > width
+        ? width < 4
+          ? '.'.repeat(width)
+          : `${this.#stage.slice(0, width - 3)}...`
+        : this.#stage
+    this.write(`\r\u001b[2K  … ${label}${elapsed}`)
+    this.#visible = true
   }
 }

@@ -122,10 +122,10 @@ try {
     await writeFile(manifestPath, manifestBytes)
   }
   assert.equal(help.stderr, '')
-  assert.match(help.stdout, /^  jig init <directory> +Create/m)
-  assert.match(help.stdout, /^  jig review \[project\] +Review/m)
-  assert.match(help.stdout, /^  jig --version +Print/m)
-  assert.match(help.stdout, /^  jig run <target> +Run/m)
+  assert.match(help.stdout, /^ {2}jig init <directory> +Create/m)
+  assert.match(help.stdout, /^ {2}jig review \[project\] +Review/m)
+  assert.match(help.stdout, /^ {2}jig --version +Print/m)
+  assert.match(help.stdout, /^ {2}jig run <target> +Run/m)
   assert.doesNotMatch(help.stdout, /setup|package check|planDigest/)
   const runHelp = await run([command, 'run', '--help'], consumer)
   assert.equal(runHelp.stderr, '')
@@ -167,9 +167,31 @@ try {
     /EXTERNAL RUNTIME DEPENDENCY — NOT INCLUDED/,
   )
 
+  // A direct, invalid launch must explain recovery without printing a private stack.
+  const invalidLaunch = Bun.spawn(
+    [runtime, join(installed, 'libexec/installed-cli.js'), '--help'],
+    {
+      cwd: consumer,
+      stdout: 'pipe',
+      stderr: 'pipe',
+    },
+  )
+  const invalidLaunchOutput = await new Response(invalidLaunch.stdout).text()
+  const invalidLaunchError = await new Response(invalidLaunch.stderr).text()
+  assert.equal(await invalidLaunch.exited, 2)
+  assert.equal(invalidLaunchOutput, '')
+  assert.match(invalidLaunchError, /^Error: Command could not finish/)
+  assert.match(invalidLaunchError, /Invoke the installed jig command directly/)
+  assert.match(invalidLaunchError, /Diagnostic code: JIG_COMMAND_UNAVAILABLE/)
+  assert.doesNotMatch(invalidLaunchError, /libexec|at runPrivate/)
+  assert.equal(invalidLaunchError.includes('\u001b'), false)
+
   const bareProject = join(consumer, 'bare-project')
   const initialized = await run([command, 'init', '--bare', bareProject], consumer)
-  assert.equal(initialized.stdout, 'created bare Jig project\n')
+  assert.equal(
+    initialized.stdout,
+    `Created bare Jig project ${JSON.stringify(bareProject)}.\n\nNext:\n  Add a Flow under flows/ and select it in jig.ts, then run jig review.\n`,
+  )
   assert.equal(initialized.stderr, '')
   assert.deepEqual((await readdir(bareProject)).sort(), [
     '.gitignore',

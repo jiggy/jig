@@ -318,6 +318,15 @@ A result must describe what happened honestly, including what remains
 uncertain. The same discipline governs runtime completion and the claims used
 to justify engineering changes.
 
+### CLI experience is a product gate
+
+Before changing public command output, read the binding
+[CLI experience contract](../docs/jig/spec/cli-experience.md). It covers every
+command and installed-launcher failure, not only the happy path. Use shared
+presentation, preserve machine records and consent details, and check rendered
+failure, cancellation, redirected, plain, and narrow-terminal behavior before
+closeout. Treat unreadable diagnostics and premature success as product defects.
+
 ### Dispatch and completion
 
 Dispatch is the point at which package or provider effects can begin. An

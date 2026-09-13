@@ -18,8 +18,11 @@ for you.
 
 Stdout contains the JSON result, or NDJSON when `--receive` is selected. Stderr
 carries diagnostics and, on a terminal, elapsed status and cancellation updates.
-Piped stdout remains machine-readable. No spinner or terminal control codes are
-required. Ctrl-C requests cancellation; wait for cleanup before starting new
+Piped stdout remains machine-readable. Interactive terminals show one active
+status line and use color for headings and outcomes. Set `NO_COLOR=1` or
+`TERM=dumb` for plain output without animation; redirected streams are always
+plain. Errors put the explanation and next action before the diagnostic code.
+The [CLI experience contract](../spec/cli-experience.md) defines these guarantees. Ctrl-C requests cancellation; wait for cleanup before starting new
 work. An interruption or uncertain result is not permission to blindly retry.
 An interrupted command may exit without a JSON result; scripts must check the
 exit status and handle an absent terminal value.

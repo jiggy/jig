@@ -33,7 +33,7 @@ admitted FLOW packages.
   manifest so a moving npm tag cannot silently select a different wire contract.
 - Command help and syntax errors do not acquire execution authority. Review
   leads with complete changed policy; `--details` includes unchanged policy.
-  Run stdout stays JSON/NDJSON. Plain elapsed status uses terminal stderr only;
+  Run stdout stays JSON/NDJSON. Elapsed status uses terminal stderr only;
   cancellation requested and cleanup confirmed are separate facts.
 - FLOW and Jig specifications and machine schemas are authoritative. Accept
   only bounded, canonical current formats.
@@ -52,6 +52,12 @@ admitted FLOW packages.
 
 ## Work Guidance
 
+- Before any public CLI output change, read and apply
+  [the CLI experience contract](../../docs/jig/spec/cli-experience.md).
+  `src/cli-presentation.ts` and `src/cli-progress.ts` own shared human
+  presentation; launcher failures follow the same structure. Never introduce
+  a separate raw diagnostic style or route machine output through styling.
+
 - Change implementation, normative specification, schema, README, and tests
   together when a public contract changes.
 - Keep fault-injection seams private.
@@ -69,8 +75,10 @@ admitted FLOW packages.
 - `just jig::check`
 - Use `scripts/test-release.sh` for packed or cross-protocol changes.
 - Trust-boundary changes require the provisioned host-conformance workflow.
-- Test diagnostic usefulness as well as redaction, and human-facing output
-  alongside its machine-readable contract.
+- CLI acceptance: `bun test packages/jig/test/cli.test.ts packages/jig/test/cli-presentation.test.ts packages/jig/test/cli-output.test.ts packages/jig/test/project-plan-review.test.ts`.
+  Check rendered success, failure, waits, cancellation, uncertain cleanup,
+  plain/redirected output, narrow widths, and light/dark terminal palettes.
+  Preserve byte-exact machine records and complete changed review policy.
 
 ## Child DOX Index
 

@@ -2,7 +2,7 @@
 
 import { randomBytes } from 'node:crypto'
 import { lstat } from 'node:fs/promises'
-import { resolve } from 'node:path'
+import { basename, resolve } from 'node:path'
 import { createInterface } from 'node:readline/promises'
 import { setTimeout as delay } from 'node:timers/promises'
 import manifest from '../package.json' with { type: 'json' }
@@ -14,6 +14,11 @@ import {
   type RootRunStatus,
   type RootRunTerminal,
 } from './administration/root.js'
+import {
+  privateCliHumanText,
+  privateCliStyleEnabled,
+  privateCliDiagnostic as renderDiagnostic,
+} from './cli-presentation.js'
 import { PrivateCliProgress } from './cli-progress.js'
 import type { PrivateDeliveryConnection, PrivateDeliveryReceipt } from './internal/file-delivery.js'
 import {
@@ -125,6 +130,7 @@ export interface PrivateCliCommandHost {
       readonly channelOutput?: PrivateRunChannelOutput
       readonly allowResolutionNetwork?: boolean
       readonly onResolution?: (packagePath: string) => void
+      readonly onNotice?: (text: string) => void
     },
   ): Promise<ProjectSession>
   readonly delivery?: PrivateDeliveryConnection
@@ -155,6 +161,8 @@ interface CliRuntime {
   readonly writeOutput: (text: string) => void
   readonly writeRecord: (text: string) => Promise<void>
   readonly writeError: (text: string) => void
+  readonly writeDiagnostic: (text: string) => void
+  readonly writeNotice: (text: string) => void
   readonly createSubmissionId: () => string
 }
 
@@ -193,11 +201,21 @@ export async function main(
     if (arguments_[0] === 'init') return await executeInit(arguments_, runtime)
     if (arguments_[0] === 'review') return await executeReview(arguments_, runtime)
     if (arguments_[0] === 'run') return await executeRun(arguments_, runtime)
-    runtime.writeError(`Unknown command. Use jig --help to see available commands.\n\n${HELP}\n`)
+    runtime.writeError(
+      renderDiagnostic(
+        'JIG_USAGE',
+        `Unknown command. Use jig --help to see available commands.\n\n${HELP}`,
+      ),
+    )
     return 2
   } catch (error) {
     if (runtime.signal?.aborted) {
-      runtime.writeError(renderDiagnostic('JIG_COMMAND_INTERRUPTED', 'the command was interrupted'))
+      runtime.writeError(
+        renderDiagnostic(
+          'JIG_COMMAND_INTERRUPTED',
+          'The command was interrupted. Inspect any result and completed steps before starting new work; cancellation does not undo completed effects.',
+        ),
+      )
       return 2
     }
     return renderFailure(error, runtime)
@@ -247,13 +265,18 @@ async function executeInit(arguments_: readonly string[], runtime: CliRuntime): 
     await createProject(resolve(runtime.currentDirectory, destination), undefined, bare)
     runtime.writeOutput(
       bare
-        ? 'created bare Jig project\n'
+        ? `Created bare Jig project ${asciiJsonString(destination)}.\n\nNext:\n  Add a Flow under flows/ and select it in jig.ts, then run jig review.\n`
         : `Created Jig project ${asciiJsonString(destination)}.\n\nNext:\n${/^[\x20-\x7e]+$/.test(destination) ? `  cd ${shellWord(destination)}\n` : '  Open the created directory in your terminal, then:\n'}  jig review --allow-resolution-network\n  jig run flow:flows/hello --input '{"name":"Ada"}'\n\nNo dependencies installed or execution approved. See jig review --help.\n`,
     )
     return 0
   } catch (error) {
     if (error instanceof ProjectInitError) {
-      runtime.writeError(renderDiagnostic(error.code, error.message))
+      runtime.writeError(
+        renderDiagnostic(
+          error.code,
+          `${error.message}.\nNext step: ${error.code === 'JIG_INIT_DESTINATION_EXISTS' ? 'Choose a new directory; existing files are never replaced.' : error.code === 'JIG_INIT_CLEANUP_FAILED' ? 'Inspect the incomplete destination and preserve unfamiliar files before removing it; see jig init --help.' : 'Check the destination parent directory and its write permissions; see jig init --help.'}`,
+        ),
+      )
       return error.kind === 'invalid' ? 1 : 2
     }
     throw error
@@ -267,16 +290,17 @@ function shellWord(value: string): string {
 
 async function executeReview(arguments_: readonly string[], runtime: CliRuntime): Promise<number> {
   const parsed = parseReview(arguments_, runtime.currentDirectory)
-  return await withProjectSession(
+  runtime.progress.note(
+    `Reviewing ${asciiJsonString(basename(resolve(runtime.currentDirectory, parsed.project)))}`,
+  )
+  const result = await withProjectSession(
     parsed.project,
     runtime,
     async (session) => {
-      runtime.progress.stage('Capturing source and preparing dependencies for review')
+      runtime.progress.stage('Capturing source and preparing dependencies')
       const plan = await session.plan({ lockMode: 'update' })
-      if (plan.state === 'unchanged') {
-        runtime.writeOutput('project is ready\n')
-        return 0
-      }
+      runtime.progress.complete()
+      if (plan.state === 'unchanged') return 0
 
       runtime.writeOutput(
         `${(parsed.details ? plan.review.details : plan.review.text).trimEnd()}\n`,
@@ -285,18 +309,21 @@ async function executeReview(arguments_: readonly string[], runtime: CliRuntime)
         if (!runtime.interactive) {
           throw new CliDiagnostic(
             'JIG_APPROVAL_REQUIRED',
-            'project changes require confirmation; rerun with --yes',
+            'Review the displayed changes. To approve this exact revision without a prompt, rerun jig review --yes (with the same project and resolution options).',
             2,
           )
         }
-        runtime.progress.stage('Waiting for your approval; no Flow has been started')
+        runtime.progress.note('Waiting for your approval. No Flow has been started.')
         const accepted = await runtime.confirm(
           'Approve this exact revision for execution? [y/N] ',
           runtime.signal,
         )
         if (!accepted) {
           runtime.writeError(
-            renderDiagnostic('JIG_CHANGES_DECLINED', 'project changes were not admitted'),
+            renderDiagnostic(
+              'JIG_CHANGES_DECLINED',
+              'The proposed changes were not approved. Your previous approval is unchanged. Dependency requests already made cannot be undone.',
+            ),
           )
           return 1
         }
@@ -305,23 +332,32 @@ async function executeReview(arguments_: readonly string[], runtime: CliRuntime)
       runtime.signal?.throwIfAborted()
       runtime.progress.stage('Recording approval for the reviewed revision')
       await session.apply({ planDigest: plan.planDigest })
-      runtime.writeOutput('project is ready\n')
+      runtime.progress.complete()
       return 0
     },
     parsed.allowResolutionNetwork
       ? {
           allowResolutionNetwork: true,
           onResolution: (path) =>
-            runtime.writeError(
-              `Resolving dependencies for ${asciiJsonString(path)}. ${RESOLUTION_WARNING}\n`,
+            runtime.writeNotice(
+              `Warning: Dependency network access allowed\n\n  Package: ${asciiJsonString(path)}\n  Scope: This review only; Runs gain no network access.\n  Bun may contact dependency-selected public or private-network services\n  before graph validation. Requests cannot be undone; unsupported\n  dependencies may still fail.\n\n`,
             ),
         }
       : undefined,
   )
+  runtime.signal?.throwIfAborted()
+  if (result === 0)
+    runtime.writeOutput(
+      'Project ready\n\n  The exact reviewed revision is approved. No Flow was started.\n  Next: jig run <target> (see jig run --help).\n',
+    )
+  return result
 }
 
 async function executeRun(arguments_: readonly string[], runtime: CliRuntime): Promise<number> {
   const parsed = parseRun(arguments_)
+  runtime.progress.note(
+    `Running ${asciiJsonString(parsed.target.kind === 'flow' ? `flow:${parsed.target.path}` : `binding:${parsed.target.id}`)}`,
+  )
   runtime.progress.stage('Reading selected inputs')
   const outputStop = new AbortController()
   runtime = {
@@ -334,7 +370,7 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
   const diagnostics = new TextDecoder('utf-8')
   const writeLive = (text: string, diagnostic = false): void => {
     try {
-      if (diagnostic) runtime.writeError(text)
+      if (diagnostic) runtime.writeDiagnostic(text)
       else runtime.writeOutput(text)
     } catch (error) {
       outputStop.abort()
@@ -354,12 +390,11 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
     diagnostic(bytes) {
       // Diagnostics are untrusted text, not terminal-control instructions.
       writeLive(
-        diagnostics
-          .decode(bytes, { stream: true })
-          .replace(
-            /[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/g,
-            (value) => `\\u${value.charCodeAt(0).toString(16).padStart(4, '0')}`,
-          ),
+        diagnostics.decode(bytes, { stream: true }).replace(
+          // biome-ignore lint/suspicious/noControlCharactersInRegex: Escape untrusted terminal controls while preserving tabs and line feeds.
+          /[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/g,
+          (value) => `\\u${value.charCodeAt(0).toString(16).padStart(4, '0')}`,
+        ),
         true,
       )
     },
@@ -465,7 +500,8 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
           target: parsed.target,
           input,
         })
-        runtime.progress.stage('Waiting for the Run result (Ctrl-C to cancel)')
+        runtime.progress.complete()
+        runtime.progress.stage('Waiting for the Flow result (Ctrl-C to cancel)')
         return await waitForTerminal(
           session.rootAdministration,
           receipt.runId,
@@ -534,50 +570,11 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
     }
     await emitTerminal(decodeJson1(encodedRecord))
     const terminal = status.terminal
-    if (terminal.status === 'failed' && terminal.code === 'PROTOCOL_ERROR') {
-      runtime.writeError(
-        'JIG_RUN_PROTOCOL_ERROR: the Flow did not complete the FLOW Run/1 exchange.\n' +
-          'Check its SDK version against this Jig release and keep stdout reserved for protocol messages.\n' +
-          'Inspect the result and any effects before another Run; review source changes first. See https://flow.jig.md/spec/run-sdk.\n',
+    if (terminal.status === 'succeeded')
+      runtime.progress.note(
+        `Execution completed. Application outcome: ${asciiJsonString(terminal.outcome)}. See output in the JSON result.`,
       )
-    }
-    if (
-      terminal.status === 'failed' &&
-      terminal.details !== undefined &&
-      terminal.details !== null &&
-      typeof terminal.details === 'object' &&
-      !Array.isArray(terminal.details)
-    ) {
-      const details = terminal.details as Readonly<Record<string, JsonValue>>
-      if (details.code === 'RUN_TARGET_NOT_FOUND') {
-        runtime.writeError(
-          'JIG_RUN_TARGET_NOT_FOUND: that target is not in the reviewed revision. No Flow was started.\n',
-        )
-        const targets = details.availableTargets
-        if (Array.isArray(targets)) {
-          runtime.writeError('Reviewed targets:\n')
-          for (const target of targets.slice(0, 16))
-            if (typeof target === 'string')
-              runtime.writeError(`  ${asciiJsonString(target.slice(0, 512))}\n`)
-          if (targets.length === 0) runtime.writeError('  None. Add a Flow under flows/ first.\n')
-        }
-        runtime.writeError(
-          'Choose an exact target above, or run jig review after changing jig.ts. No target is selected automatically.\n',
-        )
-      } else if (terminal.code === 'INVALID_INPUT') {
-        runtime.writeError('JIG_RUN_INPUT_INVALID: input does not match the target input schema.\n')
-        if (typeof details.instancePointer === 'string')
-          runtime.writeError(`Value: ${asciiJsonString(details.instancePointer.slice(0, 512))}\n`)
-        runtime.writeError(
-          'Check --input against the Flow input.schema.json; see the JSON result for validation details.\n',
-        )
-      }
-    }
-    runtime.progress.note(
-      terminal.status === 'succeeded'
-        ? `Execution completed. Application outcome: ${asciiJsonString(terminal.outcome)}. See output in the JSON result.`
-        : `Execution ${terminal.status}. Code: ${asciiJsonString(terminal.code)}. ${terminal.status === 'lost' ? 'Effects may be uncertain; do not blindly repeat the Run.' : 'Inspect the result and diagnostics before starting new work.'}`,
-    )
+    else runtime.writeError(renderRunFailure(terminal))
     if (delivery !== undefined)
       runtime.progress.note(
         `Delivery: ${delivery.status}. Destination: ${asciiJsonString(parsed.output!)}.${delivery.status === 'written' ? ' Inspect result.json and files/.' : ' Check the destination before starting new work.'}`,
@@ -590,7 +587,7 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
       runtime.writeError(
         renderDiagnostic(
           'JIG_CLEANUP_FAILED',
-          'the execution terminal is preserved, but Project Session cleanup failed',
+          'The execution result is preserved, but cleanup could not be confirmed. Wait until existing work is settled before starting new work; see https://jig.md/guide/results.',
         ),
       )
       return 2
@@ -817,8 +814,12 @@ async function withProjectSession<T>(
   onSettledCloseFailure?: () => void,
 ): Promise<T> {
   runtime.signal?.throwIfAborted()
-  runtime.progress.stage('Opening the project and checking reviewed support')
-  const session = await runtime.host.acquire(project, acquisition)
+  runtime.progress.stage('Checking project prerequisites')
+  const session = await runtime.host.acquire(project, {
+    ...acquisition,
+    onNotice: (text) => runtime.writeNotice(text),
+  })
+  runtime.progress.complete()
   let closePromise: Promise<void> | undefined
   const close = () => (closePromise ??= session.close())
   const onAbort = () => {
@@ -840,13 +841,21 @@ async function withProjectSession<T>(
   let closeFailed = false
   let closeFailure: unknown
   try {
-    runtime.progress.stage('Settling owned execution and cleaning up')
+    runtime.progress.stage('Stopping remaining work and cleaning up')
     await close()
+    runtime.progress.complete()
     if (runtime.signal?.aborted)
-      runtime.progress.note('Owned execution cleanup completed. The command remains interrupted.')
+      runtime.progress.note('Cleanup complete. The command remains interrupted.')
   } catch (error) {
     closeFailed = true
     closeFailure = error
+    if (onSettledCloseFailure === undefined)
+      runtime.writeError(
+        renderDiagnostic(
+          'JIG_CLEANUP_FAILED',
+          'Cleanup could not be confirmed. Do not start new work until the existing work is settled. See https://jig.md/guide/results.',
+        ),
+      )
   } finally {
     runtime.signal?.removeEventListener('abort', onAbort)
   }
@@ -907,30 +916,60 @@ function cliRuntime(options: PrivateCliOptions): CliRuntime {
     ((text: string) => {
       process.stderr.write(text)
     })
+  const writeOutput =
+    options.writeOutput ??
+    ((text: string) => {
+      process.stdout.write(text)
+    })
+  const terminal = options.terminalOutput ?? process.stderr.isTTY === true
+  const errorColor = privateCliStyleEnabled(terminal)
+  const outputColor = privateCliStyleEnabled(
+    options.terminalOutput ?? process.stdout.isTTY === true,
+  )
+  const progress = new PrivateCliProgress(
+    terminal,
+    (text) =>
+      writeError(
+        privateCliHumanText(text, errorColor, terminal ? process.stderr.columns || 80 : undefined),
+      ),
+    options.signal,
+  )
   return {
-    progress: new PrivateCliProgress(
-      options.terminalOutput ?? process.stderr.isTTY === true,
-      writeError,
-      options.signal,
-    ),
+    progress,
     host: options.host ?? unavailableHost,
     currentDirectory: options.currentDirectory ?? process.cwd(),
     ...(options.signal === undefined ? {} : { signal: options.signal }),
     interactive:
       options.interactive ?? (process.stdin.isTTY === true && process.stdout.isTTY === true),
     confirm: options.confirm ?? terminalConfirmation,
-    writeRecord:
-      options.writeRecord ??
-      (async (text) => {
-        if (options.writeOutput) options.writeOutput(text)
-        else process.stdout.write(text)
-      }),
-    writeOutput:
-      options.writeOutput ??
-      ((text) => {
-        process.stdout.write(text)
-      }),
-    writeError,
+    writeRecord: async (text) => {
+      progress.pause()
+      if (options.writeRecord) await options.writeRecord(text)
+      else writeOutput(text)
+    },
+    writeOutput: (text) => {
+      progress.pause()
+      writeOutput(
+        privateCliHumanText(
+          text,
+          outputColor,
+          (options.terminalOutput ?? process.stdout.isTTY === true)
+            ? process.stdout.columns || 80
+            : undefined,
+        ),
+      )
+    },
+    writeError: (text) => {
+      progress.pause()
+      writeError(
+        privateCliHumanText(text, errorColor, terminal ? process.stderr.columns || 80 : undefined),
+      )
+    },
+    writeNotice: (text) => progress.notice(text),
+    writeDiagnostic: (text) => {
+      progress.pause()
+      writeError(text)
+    },
     createSubmissionId:
       options.createSubmissionId ?? (() => `jig-cli-${randomBytes(16).toString('hex')}`),
   }
@@ -960,12 +999,15 @@ async function defaultPause(milliseconds: number): Promise<void> {
 }
 
 function renderFailure(error: unknown, runtime: CliRuntime): 1 | 2 {
+  if (
+    error instanceof AggregateError &&
+    error.message === 'project command and close both failed'
+  ) {
+    renderFailure(error.errors[0], runtime)
+    return 2
+  }
   if (error instanceof CliDiagnostic) {
-    runtime.writeError(
-      error.code === 'JIG_USAGE'
-        ? `${error.message}\n`
-        : renderDiagnostic(error.code, error.message),
-    )
+    runtime.writeError(renderDiagnostic(error.code, error.message))
     return error.exitCode
   }
   if (error instanceof ProjectAdministrationError) {
@@ -1084,7 +1126,10 @@ function renderFailure(error: unknown, runtime: CliRuntime): 1 | 2 {
     return projected.exitCode
   }
   runtime.writeError(
-    renderDiagnostic('JIG_COMMAND_UNAVAILABLE', 'the command could not be completed'),
+    renderDiagnostic(
+      'JIG_COMMAND_UNAVAILABLE',
+      'The cause could not be determined. Inspect the result and any effects before starting new work. Check https://jig.md/guide/results and include this diagnostic code when reporting the failure.',
+    ),
   )
   return 2
 }
@@ -1103,21 +1148,30 @@ function projectError(code: ProjectAdministrationError['code']): {
     code === 'PLAN_NOT_FOUND' ||
     code === 'STALE_PLAN'
   const messages: Record<ProjectAdministrationError['code'], string> = {
-    INVALID_REQUEST: 'the project request is invalid',
+    INVALID_REQUEST:
+      'The project request is invalid. Check the command options with jig review --help.',
     PROJECT_NOT_FOUND:
       'the project was not found; change into a Jig project or pass its directory to jig review',
-    PROJECT_UNSAFE: 'the project cannot be opened safely',
+    PROJECT_UNSAFE:
+      'The project cannot be opened safely. Check its ownership and permissions against https://jig.md/guide/#supported-host.',
     PROJECT_STATE_INVALID:
       'the retained .jig state is incompatible with this Jig build or damaged; preserve .jig and jig.lock for recovery. Once prior work is confirmed stopped and cleaned up, move them outside the project and run jig review again',
-    INVALID_CANDIDATE: 'the project definition is invalid',
-    LOCK_MISMATCH: 'the project lock does not match the reviewed state',
-    PLAN_NOT_FOUND: 'the reviewed project changes are no longer available',
-    STALE_PLAN: 'the project changed before its review could be applied',
+    INVALID_CANDIDATE:
+      'The project definition is invalid. Check jig.ts and the selected FLOW.md metadata; see https://jig.md/guide/.',
+    LOCK_MISMATCH:
+      'The project lock does not match the reviewed state. Run jig review to inspect and approve the current revision.',
+    PLAN_NOT_FOUND:
+      'The reviewed project changes are no longer available. Run jig review again to inspect a fresh proposal.',
+    STALE_PLAN:
+      'The project changed before approval could be recorded. Let source edits settle, then run jig review again.',
     PROJECT_BUSY:
       'the project is already in use; wait for its current command to finish or cancel that command; do not delete .jig to bypass ownership',
-    PROJECT_CLOSED: 'the project session is closed',
-    UNAVAILABLE: 'the project command is unavailable',
-    INTERNAL: 'the project command failed',
+    PROJECT_CLOSED:
+      'The project session is closed. Inspect any result and cleanup status before starting another command.',
+    UNAVAILABLE:
+      'The project command is unavailable. Check the supported host and installation requirements at https://jig.md/guide/#supported-host.',
+    INTERNAL:
+      'The project command failed; its cause could not be determined. Preserve any result and check https://jig.md/guide/results before starting new work.',
   }
   return { message: messages[code], exitCode: invalid ? 1 : 2 }
 }
@@ -1129,30 +1183,89 @@ function rootError(code: RootAdministrationError['code']): {
   const invalid =
     code === 'INVALID_REQUEST' || code === 'SUBMISSION_CONFLICT' || code === 'RUN_NOT_FOUND'
   const messages: Record<RootAdministrationError['code'], string> = {
-    INVALID_REQUEST: 'the Run request is invalid',
-    SUBMISSION_CONFLICT: 'the Run could not be submitted',
-    RUN_NOT_FOUND: 'the Run was not found',
-    PROJECT_BUSY: 'the project is already in use',
-    PROJECT_CLOSED: 'the project session is closed',
-    UNAVAILABLE: 'the Run command is unavailable',
-    INTERNAL: 'the Run command failed',
+    INVALID_REQUEST:
+      'The Run request is invalid. Check the target and options with jig run --help.',
+    SUBMISSION_CONFLICT:
+      'The Run request conflicts with existing work. Inspect the existing result and effects before starting new work; see https://jig.md/guide/results.',
+    RUN_NOT_FOUND:
+      'The Run could not be found. Its effects are not established by this failure. Check https://jig.md/guide/results before starting new work.',
+    PROJECT_BUSY:
+      'The project is already in use. Wait for the current command to finish or cancel it and wait for cleanup.',
+    PROJECT_CLOSED:
+      'The project session is closed. Inspect any result and cleanup status before starting another command.',
+    UNAVAILABLE:
+      'The Run command is unavailable. Check https://jig.md/guide/#supported-host and inspect any existing result before starting new work.',
+    INTERNAL:
+      'The Run command failed; its cause could not be determined. Inspect the result and any effects, and check https://jig.md/guide/results before starting new work.',
   }
   return { message: messages[code], exitCode: invalid ? 1 : 2 }
 }
 
-function renderDiagnostic(code: string, message: string): string {
-  return `${code}: ${message}\n`
+function renderRunFailure(
+  terminal: Exclude<RootRunTerminal, { readonly status: 'succeeded' }>,
+): string {
+  if (terminal.code === 'PROTOCOL_ERROR')
+    return renderDiagnostic(
+      'JIG_RUN_PROTOCOL_ERROR',
+      'The Flow did not complete the FLOW Run/1 exchange.\nCheck its SDK version against this Jig release and keep stdout reserved for protocol messages.\nInspect the result and any effects before another Run; review source changes first. See https://flow.jig.md/spec/run-sdk.',
+    )
+  const details =
+    terminal.status === 'failed' &&
+    terminal.details !== null &&
+    typeof terminal.details === 'object' &&
+    !Array.isArray(terminal.details)
+      ? (terminal.details as Record<string, JsonValue>)
+      : undefined
+  if (details?.code === 'RUN_TARGET_NOT_FOUND') {
+    const targets = Array.isArray(details.availableTargets)
+      ? details.availableTargets
+          .slice(0, 16)
+          .filter((value): value is string => typeof value === 'string')
+      : []
+    return renderDiagnostic(
+      'JIG_RUN_TARGET_NOT_FOUND',
+      `That target is not in the reviewed revision. No Flow was started.\n\nReviewed targets:\n${targets.length === 0 ? '  None. Add a Flow under flows/ first.' : targets.map((target) => `  ${asciiJsonString(target.slice(0, 512))}`).join('\n')}\n\nNext step: Choose an exact target above, or run jig review after changing jig.ts. No target is selected automatically.`,
+    )
+  }
+  if (terminal.code === 'INVALID_INPUT')
+    return renderDiagnostic(
+      'JIG_RUN_INPUT_INVALID',
+      `Input does not match the target input schema.${typeof details?.instancePointer === 'string' ? `\nValue: ${asciiJsonString(details.instancePointer.slice(0, 512))}` : ''}\nNext step: Check --input against the Flow input.schema.json; see the JSON result for validation details.`,
+    )
+  if (terminal.status === 'lost')
+    return renderDiagnostic(
+      terminal.code,
+      'Effects may be uncertain; do not blindly repeat the Run. Inspect the result and any effects before starting new work. See https://jig.md/guide/results.',
+      'Execution lost',
+    )
+  const reasons: Record<string, string> = {
+    CANCELLED: 'Execution was cancelled.',
+    DEADLINE_EXCEEDED: 'Execution reached its deadline.',
+    OWNER_CLOSED: 'Execution stopped because its owner closed.',
+    OPERATION_CONFLICT: 'The operation conflicts with existing work.',
+    UNAVAILABLE: 'Required execution support was unavailable.',
+    PERMISSION_DENIED: 'The requested action was outside the approved permissions.',
+    RESOURCE_EXHAUSTED: 'Execution reached a resource limit.',
+    INVALID_RESULT: 'The Flow returned a result that does not match its declared contract.',
+    UNCERTAIN: 'The operation may have produced effects; do not blindly repeat the Run.',
+    EXECUTION_FAILED: 'The Flow could not complete execution.',
+    CHANNEL_LOST: 'A required connection was lost.',
+    LAGGED: 'A required receiver could not keep up with its channel.',
+    DISCONNECTED: 'A required participant disconnected.',
+  }
+  return renderDiagnostic(
+    terminal.code,
+    `${reasons[terminal.code] ?? 'The cause could not be determined.'} Inspect the result and diagnostics before starting new work. See https://jig.md/guide/results.`,
+    terminal.code === 'CANCELLED' ? 'Run cancelled' : 'Run failed',
+  )
 }
 
 function renderProjectDiagnostic(error: ProjectAdministrationError, message: string): string {
   const diagnostic = error.diagnostic
   if (diagnostic === undefined) return renderDiagnostic(error.code, message)
   const pointer =
-    diagnostic.pointer === undefined ? '' : ` pointer ${asciiJsonString(diagnostic.pointer)}`
-  return (
-    `${error.code}: ${message}; ${diagnostic.code} at ` +
-    `${asciiJsonString(diagnostic.path)}${pointer}\n`
-  )
+    diagnostic.pointer === undefined ? '' : `\n  Value: ${asciiJsonString(diagnostic.pointer)}`
+  return `Review could not finish\n\n  Location: ${asciiJsonString(diagnostic.path)}${pointer}\n\n  Next step\n    ${message}\n\n  Diagnostic code: ${diagnostic.code}\n  Category: ${error.code}\n`
 }
 
 function asciiJsonString(value: string): string {

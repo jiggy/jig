@@ -7,6 +7,8 @@ descriptors.
 
 ## Ownership
 
+- `cli-experience.md` owns task presentation, progress, color/plain behavior, actionable failures, and CLI acceptance requirements.
+
 - Prose files own Jig-specific admission, project, execution, SDK, and Agent
   capability behavior.
 - `machine/` and `contracts/` contain their assigned published companions.

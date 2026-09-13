@@ -78,7 +78,7 @@ export function renderPrivateProjectPlanReview(
   summary.write('It does not execute a Flow. Declining keeps your previous approval.\n\n')
   if (agent !== undefined) {
     summary.write('Host Agent selected for methods requiring it:\n')
-    writeAsciiJson(summary, agent, 0)
+    writePolicy(summary, agent, 1)
     summary.write(
       '\nInstructions and selected data go to this Agent. Credentials are never part of the review.\n\n',
     )
@@ -156,7 +156,7 @@ function writeChanges(
       ] as const) {
         if (value === undefined) continue
         writer.write(`${name}:\n`)
-        writeAsciiJson(writer, value, 0)
+        writePolicy(writer, value, 1)
         writer.write('\n')
       }
     }
@@ -340,6 +340,29 @@ class BoundedAsciiWriter {
     if (this.#buffer.length === 0) return
     this.#parts.push(this.#buffer)
     this.#buffer = ''
+  }
+}
+
+/** A complete policy tree: exact keys/values, explicit container types, no JSON wall. */
+function writePolicy(writer: BoundedAsciiWriter, value: unknown, depth: number): void {
+  if (value === null || typeof value !== 'object' || Object.keys(value).length === 0) {
+    writeAsciiJson(writer, value, depth)
+    return
+  }
+  const entries = Array.isArray(value)
+    ? value.map((item, index) => [String(index), item] as const)
+    : Object.entries(value).sort(([left], [right]) => compareUtf16(left, right))
+  for (const [key, item] of entries) {
+    writeIndent(writer, depth)
+    writeAsciiJsonString(writer, key)
+    if (item !== null && typeof item === 'object' && Object.keys(item).length > 0) {
+      writer.write(Array.isArray(item) ? ' (list):\n' : ' (object):\n')
+      writePolicy(writer, item, depth + 1)
+    } else {
+      writer.write(': ')
+      writeAsciiJson(writer, item, depth)
+      writer.write('\n')
+    }
   }
 }
 
