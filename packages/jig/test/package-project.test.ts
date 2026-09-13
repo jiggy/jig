@@ -602,7 +602,7 @@ describe('private package-project linker', () => {
     )
   })
 
-  test('rejects unknown, self, cyclic, and nonleaf Binding slot targets', async () => {
+  test('accepts two child levels while rejecting unknown, self and cyclic slot targets', async () => {
     await withFlows(
       {
         'flows/router': run('router'),
@@ -625,7 +625,19 @@ describe('private package-project linker', () => {
           'PROJECT_BINDING_SLOT_RECURSIVE',
           '/slots/child',
         )
-        for (const target of ['flow:flows/leaf', 'binding:router']) {
+        expect(
+          linkPackageProject({
+            flows,
+            bindings: [
+              router('binding:reviewer'),
+              binding('bindings/reviewer.ts', {
+                package: 'flows/reviewer',
+                slots: { child: 'flow:flows/leaf' },
+              }),
+            ],
+          }).bindings,
+        ).toHaveLength(2)
+        for (const target of ['binding:router']) {
           expectCode(
             () =>
               linkPackageProject({
@@ -638,8 +650,8 @@ describe('private package-project linker', () => {
                   }),
                 ],
               }),
-            'PROJECT_BINDING_SLOT_NOT_LEAF',
-            '/slots/child',
+            'PROJECT_BINDING_SLOT_RECURSIVE',
+            '/slots',
           )
         }
         expectCode(

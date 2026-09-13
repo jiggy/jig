@@ -29,6 +29,7 @@ import {
   normalizeProjectPath,
 } from './paths.js'
 import { type RetainedFlowInput, requireRetainedFlowInput } from './retained-flow.js'
+import { validateChildGraph } from './slot-graph.js'
 
 const LOCAL_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
 const MAX_MEMBERS = 65_536
@@ -141,6 +142,11 @@ export function linkPackageProject(
       preparedBindings.map((binding) => linkBinding(binding, flowByPath, bindingById, grants)),
     ),
   })
+  // Inspect the complete linked graph, not only each immediate target. This
+  // bounds every possible invocation path before any package is admitted.
+  validateChildGraph(new Map(value.bindings.map((binding) => [binding.id, binding])), (units) =>
+    budget.consume(units),
+  )
   authenticPackageProjects.add(value)
   return value
 }
@@ -462,19 +468,6 @@ function linkFlowSlots(
       invalid(
         'PROJECT_BINDING_SLOT_NOT_DIRECT',
         `Binding ${bindingId} slot ${name} must select a direct Flow target or configured Binding`,
-        declarationPath,
-        pointer,
-      )
-    }
-    if (
-      childBinding !== undefined &&
-      Object.values(childBinding.definition.slots).some(
-        (value) => typeof value === 'string' && !value.startsWith('grant:'),
-      )
-    ) {
-      invalid(
-        'PROJECT_BINDING_SLOT_NOT_LEAF',
-        `Binding ${bindingId} slot ${name} selects a Binding with child slots`,
         declarationPath,
         pointer,
       )

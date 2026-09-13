@@ -91,8 +91,9 @@ are slot selections, not CLI Run targets. A Flow selector requires a direct
 Flow target; a Binding selector uses that Binding's own validated settings.
 Either child may use the exact native Agent Run or Agent Exchange invocation; a configured Binding may
 also use explicitly granted Project Command or HTTP slots. A selected Binding
-must have no further Flow/Binding child routes; resource slots do not count
-as child routes. A Binding cannot select its own package, directly or
+may have further Flow/Binding child routes within two child levels; resource
+slots do not count as child routes. Aggregate reservations may limit concurrency
+for deeper branches; see [project policy](project-policy.md). A Binding cannot select its own package, directly or
 through another Binding. Omitting `slots` normalizes to `{}`.
 The example's `critic` Binding selects a separate package such as
 `flows/critique`, with its own settings and no slots.

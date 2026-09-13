@@ -172,11 +172,31 @@ Keep source and rebuilt runtime together; do not hand-edit generated files.
 
 ## Composition and observations
 
-A Jig root can call this Flow as an exact ordinary child, and the child can
-use HTTP within its reserved effect capacity. Two such siblings fit the
-existing two-worker topology. A leaf specialist that already occupies a child
-position uses the library in-process; it cannot insert another ordinary Flow
-level. Existing aggregate resources and the remaining root deadline apply.
+A Jig root can call this Flow directly or through a specialist's ordinary
+slot. Each Flow uses its own Binding; the Agent's HTTP grant remains separate
+from the specialist's authority. Two direct Agent siblings fit the root budget.
+A specialist → Agent branch uses both child levels and reserves enough capacity
+to exclude a concurrent second branch. Existing aggregate resources and the
+remaining root deadline apply. See [project policy](../spec/project-policy.md).
+
+For a specialist accepting a text input, the existing SDK call is sufficient:
+
+```ts
+import { handle } from '@jigging/flow'
+
+await handle(run => run.call({
+  operationId: 'answer',
+  slot: 'agent',
+  input: { instructions: `Classify this request: ${run.input}` },
+}))
+```
+
+Configure its Binding with `slots: { agent: 'binding:agent' }`, where the
+`agent` Binding selects the ordinary method and its HTTP grant as shown above.
+An application's Binding can then select that specialist with
+`slots: { specialist: 'binding:specialist' }`. Each call returns the method's
+ordinary outcome and output; a failed descendant call throws through `run.call`
+and may be handled with normal `try/catch` after cleanup.
 
 This text-only HTTP method declares no channels. It does not expose streaming
 or ACP updates and is not a replacement for native Agent callers that require

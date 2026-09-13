@@ -95,12 +95,12 @@ prompts unchanged; the host adds no method prefix. Direct API clients accept
 literal leading-slash prompts.
 
 An exact Exchange requirement qualifies for Jig's native default on a root or
-leaf Flow. A root may call an ordinary Agent Flow, which calls Exchange using
-its reserved native effect capacity. The existing two-worker aggregate bounds,
-root exclusivity, leaf restrictions and remaining root deadline are unchanged.
-A leaf cannot add another ordinary Flow layer; a specialist at that depth can
-import the reusable method library in-process. Each selected target retains
-its own admitted settings and authority.
+child Flow. A root may call a specialist that calls another Flow, within
+[two child levels and the aggregate reservation budget](project-policy.md).
+Each child permits one active invocation. A method may instead import the
+reusable preparation/result library in-process. Each selected target retains
+its own admitted settings and authority; the remaining root deadline applies
+throughout the chain.
 
 Native [Agent Run](agent-run.md) remains the authenticated caller-context
 integration. Jig selects Skills from its active caller's admitted source,

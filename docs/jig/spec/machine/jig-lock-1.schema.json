@@ -67,7 +67,7 @@
         },
         "slots": {
           "type": "object",
-          "description": "Exact Flow, leaf Binding, or resolved resource policy keyed by consumer-local slot.",
+          "description": "Exact Flow, bounded Binding, or resolved resource policy keyed by consumer-local slot.",
           "additionalProperties": {
             "$ref": "#/$defs/targetIdentity"
           },

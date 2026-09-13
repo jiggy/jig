@@ -18,9 +18,10 @@ this README does not assert registry publication.
 | Jig native Agent Run | Authenticated Skills in the active caller's admitted package | Jig's existing native integration, using this same library |
 
 The ordinary Flow is anonymous. Its result does not establish native caller
-context. With Jig's current topology a root can call the Agent Flow, which
-calls HTTP Request. A specialist already running as a child uses the library
-in-process or native Agent Run; it cannot insert another Flow level.
+context. A root can call the Agent Flow directly or through a specialist's
+ordinary slot. Each uses its own Binding and grants. The specialist → Agent
+branch reserves both child levels and excludes a concurrent second branch
+under Jig's fixed aggregate resource budget. Two direct Agent siblings still fit.
 
 ## Pure library
 

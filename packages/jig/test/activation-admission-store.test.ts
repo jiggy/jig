@@ -192,6 +192,97 @@ describe.serial('direct alpha activation store', () => {
     }
   })
 
+  test('reserves a two-level branch and prevents dispatch beneath a fenced ancestor', async () => {
+    const fixture = await createFixture('ready')
+    let coordinator: PrivateProjectCoordinator | undefined
+    try {
+      await admit(fixture)
+      coordinator = await openPrivateProjectCoordinator({ projectRoot: fixture.root })
+      const submitted = await submitReadyRun(fixture, coordinator, 'deep-branch')
+      const context = { coordinator, projectRoot: fixture.root, parentRunId: submitted.run.runId }
+      const branch = await allocatePrivateRootChildOwner({
+        ...context,
+        operationId: 'specialist',
+        allocation: { kind: 'private-root-child-owner-allocation/1', flowDepth: 2 },
+      })
+      const branchSandbox = await recordPrivateRootChildSandbox({
+        ...context,
+        operationId: branch.operationId,
+        allocationDigest: branch.allocation.digest,
+        sandbox: { kind: 'test-flow-sandbox' },
+      })
+      await expect(
+        allocatePrivateRootChildOwner({
+          ...context,
+          operationId: 'sibling',
+          allocation: { kind: 'private-root-child-owner-allocation/1', flowDepth: 1 },
+        }),
+      ).rejects.toMatchObject({ code: 'RUN_CHILD_CAPACITY' })
+      const childInput = {
+        ...context,
+        parentOperationId: branch.operationId,
+        operationId: 'agent-flow',
+        allocation: { kind: 'private-root-child-owner-allocation/1', flowDepth: 1 },
+      }
+      const child = await allocatePrivateRootChildOwner(childInput)
+      await recordPrivateRootChildSandbox({
+        ...context,
+        parentOperationId: branch.operationId,
+        operationId: child.operationId,
+        allocationDigest: child.allocation.digest,
+        sandbox: { kind: 'test-flow-sandbox', owner: 'agent-flow' },
+      })
+      const effectInput = {
+        ...context,
+        parentOperationId: child.operationId,
+        operationId: 'http',
+        allocation: { kind: 'private-contained-effect-owner/1' },
+      }
+      const effect = await allocatePrivateRootChildOwner(effectInput)
+      expect((await listPrivateRootChildOwners(context)).length).toBe(3)
+      await expect(
+        closePrivateRootChildOwner({
+          ...context,
+          parentOperationId: branch.operationId,
+          operationId: child.operationId,
+          allocationDigest: child.allocation.digest,
+          sandboxDigest: null,
+          fenceDigest: null,
+          cleanupDigest: null,
+        }),
+      ).rejects.toMatchObject({ code: 'RUN_EXECUTION_INCOMPLETE' })
+      await closePrivateRootChildOwner({
+        ...context,
+        parentOperationId: child.operationId,
+        operationId: effect.operationId,
+        allocationDigest: effect.allocation.digest,
+        sandboxDigest: null,
+        fenceDigest: null,
+        cleanupDigest: null,
+      })
+      await expect(
+        allocatePrivateRootChildOwner({
+          ...effectInput,
+          operationId: 'too-deep',
+          allocation: { kind: 'private-root-child-owner-allocation/1', flowDepth: 1 },
+        }),
+      ).rejects.toMatchObject({ code: 'RUN_CHILD_OWNER_CONFLICT' })
+      await recordPrivateRootChildFence({
+        ...context,
+        operationId: branch.operationId,
+        allocationDigest: branch.allocation.digest,
+        sandboxDigest: branchSandbox.sandbox!.digest,
+        fence: { kind: 'test-fence' },
+      })
+      await expect(
+        allocatePrivateRootChildOwner({ ...effectInput, operationId: 'late-http' }),
+      ).rejects.toMatchObject({ code: 'RUN_CHILD_PARENT_INACTIVE' })
+    } finally {
+      await coordinator?.dispose()
+      await fixture.dispose()
+    }
+  })
+
   test('inspection includes selected children but does not let unrelated targets stale a selected target', async () => {
     const fixture = await createFixture('ready')
     try {
@@ -271,7 +362,6 @@ describe.serial('direct alpha activation store', () => {
       await fixture.dispose()
     }
   })
-
   test('reserves two branches atomically and retains capacity through fencing until cleanup', async () => {
     const fixture = await createFixture('ready')
     let coordinator: PrivateProjectCoordinator | undefined
@@ -284,7 +374,7 @@ describe.serial('direct alpha activation store', () => {
         allocatePrivateRootChildOwner({
           ...context,
           operationId,
-          allocation: { kind: 'private-root-child-owner-allocation/1', operationId },
+          allocation: { kind: 'private-root-child-owner-allocation/1', flowDepth: 1, operationId },
         })
       const raced = await Promise.allSettled([
         allocate('worker:a'),
@@ -504,7 +594,7 @@ describe.serial('direct alpha activation store', () => {
       const flow = await allocatePrivateRootChildOwner({
         ...context,
         operationId: 'shared:1',
-        allocation: { kind: 'private-root-child-owner-allocation/1', value: 1 },
+        allocation: { kind: 'private-root-child-owner-allocation/1', flowDepth: 1, value: 1 },
       })
       const agentInput = {
         ...context,
@@ -524,7 +614,7 @@ describe.serial('direct alpha activation store', () => {
       await expect(
         allocatePrivateRootChildOwner({
           ...agentInput,
-          allocation: { kind: 'private-root-child-owner-allocation/1' },
+          allocation: { kind: 'private-root-child-owner-allocation/1', flowDepth: 1 },
         }),
       ).rejects.toMatchObject({ code: 'RUN_CHILD_OWNER_CONFLICT' })
       await expect(
@@ -646,7 +736,7 @@ describe.serial('direct alpha activation store', () => {
       const flow = await allocatePrivateRootChildOwner({
         ...context,
         operationId: 'flow:1',
-        allocation: { kind: 'private-root-child-owner-allocation/1' },
+        allocation: { kind: 'private-root-child-owner-allocation/1', flowDepth: 1 },
       })
       const sandbox = await recordPrivateRootChildSandbox({
         ...context,
@@ -724,7 +814,7 @@ describe.serial('direct alpha activation store', () => {
           ...context,
           parentRunId: fencedRoot.run.runId,
           operationId: 'late:child',
-          allocation: { kind: 'private-root-child-owner-allocation/1', late: true },
+          allocation: { kind: 'private-root-child-owner-allocation/1', flowDepth: 1, late: true },
         }),
       ).rejects.toMatchObject({ code: 'RUN_CHILD_PARENT_INACTIVE' })
     } finally {

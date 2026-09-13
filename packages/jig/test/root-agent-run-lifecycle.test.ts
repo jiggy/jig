@@ -714,174 +714,267 @@ proofDescribe('private contained Agent Run lifecycle', () => {
     }, 90_000)
   }
 
-  test('runs unchanged packed HTTP Agent siblings without a native Agent provider', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'jig-agent-method-project-'))
-    const releaseRoot = await mkdtemp(join(tmpdir(), 'jig-agent-method-release-'))
-    const requests: {
-      at: number
-      method: string | undefined
-      url: string | undefined
-      body: any
-    }[] = []
-    const pending: { response: ServerResponse; lane: string }[] = []
-    let simultaneousRequests = 0
-    // This is a local transport fixture, not independent consumption or model-quality evidence.
-    // The unchanged method and trusted HTTP worker run. No Agent provider is configured.
-    const server = createServer(async (request, response) => {
-      try {
-        expect(request.headers.authorization).toBe('Bearer synthetic-unused-credential')
-        const body = JSON.parse(await new Response(request as any).text())
-        requests.push({ at: Date.now(), method: request.method, url: request.url, body })
-        const payload = agentPromptPayload(body.messages[0].content)
-        const lane = payload.guidance.find((item: any) => item.label === 'lane')?.text
-        if (lane !== 'left' && lane !== 'right') throw new Error('unexpected method request')
-        pending.push({ response, lane })
-        simultaneousRequests = Math.max(simultaneousRequests, pending.length)
-        // Neither response completes until both sibling provider workers have arrived.
-        if (pending.length === 2) {
-          for (const item of pending.splice(0)) {
-            item.response.writeHead(200, { 'content-type': 'application/json' }).end(
-              JSON.stringify({
-                object: 'chat.completion',
-                choices: [
-                  {
-                    index: 0,
-                    finish_reason: 'stop',
-                    message: { role: 'assistant', content: JSON.stringify({ lane: item.lane }) },
-                  },
-                ],
+  for (const nested of [false, true]) {
+    test(
+      nested
+        ? 'runs an unchanged packed HTTP Agent through a specialist'
+        : 'runs unchanged packed HTTP Agent siblings without a native Agent provider',
+      async () => {
+        const expectedLanes = nested ? ['left'] : ['left', 'right']
+        const root = await mkdtemp(join(tmpdir(), 'jig-agent-method-project-'))
+        const releaseRoot = await mkdtemp(join(tmpdir(), 'jig-agent-method-release-'))
+        const requests: {
+          at: number
+          method: string | undefined
+          url: string | undefined
+          body: any
+        }[] = []
+        const pending: { response: ServerResponse; lane: string }[] = []
+        let simultaneousRequests = 0
+        let hold = false
+        let completed = false
+        // This is a local transport fixture, not independent consumption or model-quality evidence.
+        // The unchanged method and trusted HTTP worker run. No Agent provider is configured.
+        const server = createServer(async (request, response) => {
+          try {
+            expect(request.headers.authorization).toBe('Bearer synthetic-unused-credential')
+            const body = JSON.parse(await new Response(request as any).text())
+            requests.push({ at: Date.now(), method: request.method, url: request.url, body })
+            const payload = agentPromptPayload(body.messages[0].content)
+            const lane = payload.guidance.find((item: any) => item.label === 'lane')?.text
+            if (lane !== 'left' && lane !== 'right') throw new Error('unexpected method request')
+            pending.push({ response, lane })
+            simultaneousRequests = Math.max(simultaneousRequests, pending.length)
+            // Neither response completes until both sibling provider workers have arrived.
+            if (!hold && pending.length === expectedLanes.length) {
+              for (const item of pending.splice(0)) {
+                item.response.writeHead(200, { 'content-type': 'application/json' }).end(
+                  JSON.stringify({
+                    object: 'chat.completion',
+                    choices: [
+                      {
+                        index: 0,
+                        finish_reason: 'stop',
+                        message: {
+                          role: 'assistant',
+                          content: JSON.stringify({ lane: item.lane }),
+                        },
+                      },
+                    ],
+                  }),
+                )
+              }
+            }
+          } catch {
+            response.writeHead(400).end()
+          }
+        })
+        let session: Awaited<ReturnType<typeof openPrivateProjectSession>> | undefined
+        try {
+          await new Promise<void>((resolve, reject) => {
+            server.once('error', reject)
+            server.listen(0, '127.0.0.1', resolve)
+          })
+          const address = server.address()
+          if (address === null || typeof address === 'string') throw new Error('no recorder port')
+          const location = await writeInstalledFixture(releaseRoot)
+          await writeAgentMethodProject(
+            root,
+            `http://127.0.0.1:${address.port}/v1/chat/completions`,
+            nested,
+          )
+          const skill = await readFile(
+            join(root, 'flows/method/skills/answer-check/SKILL.md'),
+            'utf8',
+          )
+          session = await openPrivateProjectSession({
+            directory: root,
+            host: await openPrivateInstalledBunHost(location, {
+              METHOD_TEST_TOKEN: 'synthetic-unused-credential',
+            }),
+          })
+          const plan = await session.plan({ lockMode: 'update' })
+          if (plan.state !== 'applicable')
+            throw new Error('Agent method fixture did not produce a Plan')
+          await session.apply({ planDigest: plan.planDigest, allowAuthorityChanges: true })
+          const run = async (scenario: string) => {
+            const started = Date.now()
+            const receipt = await session!.rootAdministration.startRun({
+              submissionId: `method-${scenario}`,
+              target: { kind: 'binding', id: 'method-pair' },
+              input: { scenario },
+            })
+            try {
+              // Observe settlement beyond the unchanged 30-second execution deadline.
+              return await waitForTerminal(session!.rootAdministration, receipt, 60_000)
+            } catch (cause) {
+              throw new Error(
+                `Agent method fixture did not settle: ${JSON.stringify({
+                  scenario,
+                  elapsedMs: Date.now() - started,
+                  status: await session!.rootAdministration.runStatus(receipt),
+                  requests: requests.map((item) => ({
+                    afterMs: item.at - started,
+                    guidance: agentPromptPayload(item.body.messages[0].content).guidance,
+                  })),
+                  owners: withStore(root, (database) =>
+                    database
+                      .query(
+                        'SELECT scope_operation_id, operation_id, allocation_digest IS NOT NULL AS allocated, sandbox_digest IS NOT NULL AS sandboxed, fence_digest IS NOT NULL AS fenced, cleanup_digest IS NOT NULL AS cleaned FROM root_child_owners',
+                      )
+                      .all(),
+                  ),
+                })}`,
+                { cause },
+              )
+            }
+          }
+          for (const scenario of ['invalid-input', 'oversized']) {
+            expect(await run(scenario)).toMatchObject({
+              terminal: {
+                status: 'succeeded',
+                outcome: 'done',
+                output: {
+                  status: 'failed',
+                  code: scenario === 'oversized' ? 'RESOURCE_EXHAUSTED' : 'INVALID_INPUT',
+                },
+              },
+            })
+            expect(requests).toHaveLength(0)
+            await expectNoAgentOwner(root)
+          }
+          expect(await run('batch')).toMatchObject({
+            terminal: {
+              status: 'succeeded',
+              outcome: 'done',
+              output: {
+                status: 'succeeded',
+                parentHasKey: false,
+                results: expectedLanes.map((lane) => ({
+                  outcome: 'done',
+                  output: { text: JSON.stringify({ lane }), structured: { lane } },
+                })),
+              },
+            },
+          })
+          expect(requests).toHaveLength(expectedLanes.length)
+          expect(simultaneousRequests).toBe(expectedLanes.length)
+          const lanes: string[] = []
+          for (const request of requests) {
+            expect(request).toMatchObject({
+              method: 'POST',
+              url: '/v1/chat/completions',
+              body: {
+                model: 'local-recording-fixture',
+                max_completion_tokens: 128,
+                store: false,
+                stream: false,
+                n: 1,
+              },
+            })
+            const payload = agentPromptPayload(request.body.messages[0].content)
+            expect(payload.skills).toEqual([
+              { name: 'answer-check', files: [{ path: 'SKILL.md', content: skill }] },
+            ])
+            expect(payload.guidance).toHaveLength(1)
+            expect(payload.guidance[0].label).toBe('lane')
+            lanes.push(payload.guidance[0].text)
+            for (const forbidden of [
+              'SELECTED_SKILL_MARKER',
+              'HIDDEN_SKILL_MARKER',
+              'synthetic-unused-credential',
+            ])
+              expect(JSON.stringify(request.body)).not.toContain(forbidden)
+          }
+          expect(lanes.sort()).toEqual(expectedLanes)
+          await expectNoAgentOwner(root)
+          if (nested) {
+            hold = true
+            const waitForRequest = async (count: number) => {
+              const deadline = Date.now() + 25_000
+              while (requests.length < count && Date.now() < deadline) await Bun.sleep(25)
+              expect(requests).toHaveLength(count)
+            }
+            const cancelled = await session.rootAdministration.startRun({
+              submissionId: 'chain-cancel',
+              target: { kind: 'binding', id: 'method-pair' },
+              input: { scenario: 'batch' },
+            })
+            await waitForRequest(2)
+            await session.close()
+            session = await openPrivateProjectSession({
+              directory: root,
+              host: await openPrivateInstalledBunHost(location, {
+                METHOD_TEST_TOKEN: 'synthetic-unused-credential',
               }),
+            })
+            expect(await waitForTerminal(session.rootAdministration, cancelled)).toMatchObject({
+              terminal: { status: 'failed', code: 'CANCELLED' },
+            })
+            await expectNoAgentOwner(root)
+            await session.close()
+            session = undefined
+
+            const crashed = Bun.spawn(
+              [
+                process.execPath,
+                join(import.meta.dir, 'fixtures/agent-session-runner.ts'),
+                root,
+                location.releaseRoot,
+                location.executablePath,
+                'chain-loss',
+                'http-chain',
+              ],
+              {
+                env: { ...process.env, METHOD_TEST_TOKEN: 'synthetic-unused-credential' },
+                stdout: 'pipe',
+                stderr: 'pipe',
+              },
             )
+            const diagnostics = new Response(crashed.stderr).text()
+            let receipt: StartRootRunReceipt
+            try {
+              receipt = JSON.parse(await firstLine(crashed.stdout)) as StartRootRunReceipt
+              await waitForRequest(3)
+            } finally {
+              if (crashed.exitCode === null) crashed.kill('SIGKILL')
+              await crashed.exited
+              await diagnostics
+            }
+            await waitForCgroups(initialCgroups)
+            session = await openPrivateProjectSession({
+              directory: root,
+              host: await openPrivateInstalledBunHost(location, {
+                METHOD_TEST_TOKEN: 'synthetic-unused-credential',
+              }),
+            })
+            expect(await waitForTerminal(session.rootAdministration, receipt)).toMatchObject({
+              terminal: { status: 'lost', code: 'COORDINATOR_LOST' },
+            })
+            expect(requests).toHaveLength(3)
+            await expectNoAgentOwner(root)
+          }
+          await session.close()
+          session = undefined
+          await waitForCgroups(initialCgroups)
+          await waitForTemporaryState(initialTemporaryState)
+          completed = true
+        } finally {
+          try {
+            await session?.close()
+          } finally {
+            for (const item of pending) item.response.destroy()
+            await closeServer(server)
+            if (completed) {
+              await rm(root, { recursive: true, force: true })
+              await rm(releaseRoot, { recursive: true, force: true })
+            } else console.error(`Retained HTTP Agent fixture: ${root}, ${releaseRoot}`)
           }
         }
-      } catch {
-        response.writeHead(400).end()
-      }
-    })
-    let session: Awaited<ReturnType<typeof openPrivateProjectSession>> | undefined
-    try {
-      await new Promise<void>((resolve, reject) => {
-        server.once('error', reject)
-        server.listen(0, '127.0.0.1', resolve)
-      })
-      const address = server.address()
-      if (address === null || typeof address === 'string') throw new Error('no recorder port')
-      const location = await writeInstalledFixture(releaseRoot)
-      await writeAgentMethodProject(root, `http://127.0.0.1:${address.port}/v1/chat/completions`)
-      const skill = await readFile(join(root, 'flows/method/skills/answer-check/SKILL.md'), 'utf8')
-      session = await openPrivateProjectSession({
-        directory: root,
-        host: await openPrivateInstalledBunHost(location, {
-          METHOD_TEST_TOKEN: 'synthetic-unused-credential',
-        }),
-      })
-      const plan = await session.plan({ lockMode: 'update' })
-      if (plan.state !== 'applicable')
-        throw new Error('Agent method fixture did not produce a Plan')
-      await session.apply({ planDigest: plan.planDigest, allowAuthorityChanges: true })
-      const run = async (scenario: string) => {
-        const started = Date.now()
-        const receipt = await session!.rootAdministration.startRun({
-          submissionId: `method-${scenario}`,
-          target: { kind: 'binding', id: 'method-pair' },
-          input: { scenario },
-        })
-        try {
-          // Observe settlement beyond the unchanged 30-second execution deadline.
-          return await waitForTerminal(session!.rootAdministration, receipt, 60_000)
-        } catch (cause) {
-          throw new Error(
-            `Agent method fixture did not settle: ${JSON.stringify({
-              scenario,
-              elapsedMs: Date.now() - started,
-              status: await session!.rootAdministration.runStatus(receipt),
-              requests: requests.map((item) => ({
-                afterMs: item.at - started,
-                guidance: agentPromptPayload(item.body.messages[0].content).guidance,
-              })),
-              owners: withStore(root, (database) =>
-                database
-                  .query(
-                    'SELECT scope_operation_id, operation_id, allocation_digest IS NOT NULL AS allocated, sandbox_digest IS NOT NULL AS sandboxed, fence_digest IS NOT NULL AS fenced, cleanup_digest IS NOT NULL AS cleaned FROM root_child_owners',
-                  )
-                  .all(),
-              ),
-            })}`,
-            { cause },
-          )
-        }
-      }
-      for (const scenario of ['invalid-input', 'oversized']) {
-        expect(await run(scenario)).toMatchObject({
-          terminal: {
-            status: 'succeeded',
-            outcome: 'done',
-            output: {
-              status: 'failed',
-              code: scenario === 'oversized' ? 'RESOURCE_EXHAUSTED' : 'INVALID_INPUT',
-            },
-          },
-        })
-        expect(requests).toHaveLength(0)
-        await expectNoAgentOwner(root)
-      }
-      expect(await run('batch')).toMatchObject({
-        terminal: {
-          status: 'succeeded',
-          outcome: 'done',
-          output: {
-            status: 'succeeded',
-            parentHasKey: false,
-            results: ['left', 'right'].map((lane) => ({
-              outcome: 'done',
-              output: { text: JSON.stringify({ lane }), structured: { lane } },
-            })),
-          },
-        },
-      })
-      expect(requests).toHaveLength(2)
-      expect(simultaneousRequests).toBe(2)
-      const lanes: string[] = []
-      for (const request of requests) {
-        expect(request).toMatchObject({
-          method: 'POST',
-          url: '/v1/chat/completions',
-          body: {
-            model: 'local-recording-fixture',
-            max_completion_tokens: 128,
-            store: false,
-            stream: false,
-            n: 1,
-          },
-        })
-        const payload = agentPromptPayload(request.body.messages[0].content)
-        expect(payload.skills).toEqual([
-          { name: 'answer-check', files: [{ path: 'SKILL.md', content: skill }] },
-        ])
-        expect(payload.guidance).toHaveLength(1)
-        expect(payload.guidance[0].label).toBe('lane')
-        lanes.push(payload.guidance[0].text)
-        for (const forbidden of [
-          'SELECTED_SKILL_MARKER',
-          'HIDDEN_SKILL_MARKER',
-          'synthetic-unused-credential',
-        ])
-          expect(JSON.stringify(request.body)).not.toContain(forbidden)
-      }
-      expect(lanes.sort()).toEqual(['left', 'right'])
-      await expectNoAgentOwner(root)
-      await session.close()
-      session = undefined
-      await waitForCgroups(initialCgroups)
-      await waitForTemporaryState(initialTemporaryState)
-    } finally {
-      await session?.close().catch(() => undefined)
-      for (const item of pending) item.response.destroy()
-      await closeServer(server)
-      await rm(root, { recursive: true, force: true })
-      await rm(releaseRoot, { recursive: true, force: true })
-    }
-  }, 150_000)
+      },
+      nested ? 240_000 : 150_000,
+    )
+  }
 
   nativeCodexTest(
     'executes native Codex through ACP with an operator-provided file-backed subscription',
@@ -1497,7 +1590,7 @@ function agentPromptPayload(prompt: string): any {
   return JSON.parse(lines[marker + 1]!)
 }
 
-async function writeAgentMethodProject(root: string, url: string): Promise<void> {
+async function writeAgentMethodProject(root: string, url: string, nested = false): Promise<void> {
   await writeProject(root)
   const method = join(root, 'flows/method')
   const artifacts = join(root, 'artifacts')
@@ -1548,7 +1641,7 @@ async function writeAgentMethodProject(root: string, url: string): Promise<void>
     [
       'import { defineBinding } from "@jigging/jig";',
       'export default defineBinding({ package: "flows/router",',
-      '  slots: { left: "binding:method", right: "binding:method" } });',
+      `  slots: { left: "binding:${nested ? 'specialist' : 'method'}", right: "binding:method" } });`,
     ].join('\n'),
   )
   const router = join(root, 'flows/router')
@@ -1584,10 +1677,28 @@ async function writeAgentMethodProject(root: string, url: string): Promise<void>
       },
     }),
   )
-  await writeFile(join(router, 'FLOW.ts'), agentMethodCallerProgram())
+  await writeFile(join(router, 'FLOW.ts'), agentMethodCallerProgram(nested))
+  if (nested) {
+    const specialist = join(root, 'flows/specialist')
+    await mkdir(specialist)
+    await cp(join(router, 'flow-sdk'), join(specialist, 'flow-sdk'), { recursive: true })
+    await writeFile(
+      join(specialist, 'FLOW.ts'),
+      `import { handle } from './flow-sdk/index.ts';
+await handle(async run => {
+  if (process.env.METHOD_TEST_TOKEN !== undefined) throw new Error('credential leaked');
+  return await run.call({operationId: 'left', slot: 'agent', input: run.input});
+});`,
+    )
+    await writeFile(
+      join(root, 'bindings/specialist.ts'),
+      `import { defineBinding } from '@jigging/jig';
+export default defineBinding({package:'flows/specialist', slots:{agent:'binding:method'}});`,
+    )
+  }
 }
 
-function agentMethodCallerProgram(): string {
+function agentMethodCallerProgram(nested = false): string {
   return [
     'import { handle } from "./flow-sdk/index.ts";',
     'await handle(async (run) => {',
@@ -1598,7 +1709,7 @@ function agentMethodCallerProgram(): string {
     '      await run.call({ operationId: scenario, slot: "left", input });',
     '      return { outcome: "done", output: { status: "unexpected-dispatch" } };',
     '    }',
-    '    const results = await Promise.all(["left", "right"].map((lane) => run.call({',
+    `    const results = await Promise.all(${JSON.stringify(nested ? ['left'] : ['left', 'right'])}.map((lane) => run.call({`,
     '      operationId: lane, slot: lane, input: {',
     '        instructions: "Return the lane from explicit guidance as JSON.",',
     '        guidance: [{ label: "lane", text: lane }], methodSkills: ["answer-check"],',

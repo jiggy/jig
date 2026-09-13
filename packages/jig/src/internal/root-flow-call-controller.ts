@@ -42,6 +42,12 @@ import {
 } from './direct-run.js'
 import type { PrivateHttpGrants } from './http-grants.js'
 import { privateDomainDigest } from './identity.js'
+import {
+  normalizeParentFlow,
+  requireParentTarget,
+  requireParentFlowOwner,
+  type PrivateParentFlow,
+} from './invocation-context.js'
 import { revalidatePrivateInstalledBunSupport } from './installed-bun-support.js'
 import {
   cancelPrivateLinuxOwnerStateAllocation,
@@ -95,6 +101,8 @@ interface ChildAllocation {
   readonly parentRunId: string
   readonly coordinatorEpoch: number
   readonly operationId: string
+  readonly parentFlow: PrivateParentFlow | null
+  readonly flowDepth: number
   readonly requestDigest: string
   readonly effectiveDeadlineUnixMs: number
   readonly packageAllocation: PrivatePackageMaterializationAllocationIdentity
@@ -116,6 +124,7 @@ interface ChildInput {
   readonly projectRoot: string
   readonly packageStoreRoot: string
   readonly parent: PrivateReacquiredRootExecutionWork
+  readonly parentFlow?: PrivateParentFlow | undefined
   readonly coordinator: PrivateProjectCoordinator
   readonly installedSupport: PrivateDirectRunInstalledSupport
   readonly backend: PrivateLinuxCgroupBackend
@@ -137,9 +146,24 @@ type ChildCallInput = ChildInput & {
 
 /** Execute one exact admitted Flow slot without creating child history. */
 export async function executePrivateRootFlowCall(
-  input: ChildCallInput,
+  request: ChildCallInput,
 ): Promise<RunHostOperationTerminal> {
-  const selected = selectChild(input.parent, input.call.slot)
+  // Wire identifiers remain local to their caller. The host-owned nested Flow
+  // identity also names its durable scope and cannot collide across siblings.
+  const input =
+    request.parentFlow === undefined
+      ? request
+      : {
+          ...request,
+          call: {
+            ...request.call,
+            operationId: `f-${privateDomainDigest('JIG-Private-Nested-Flow/1', {
+              parent: request.parentFlow.operationId,
+              operation: request.call.operationId,
+            }).slice(7)}`,
+          },
+        }
+  const selected = selectChild(input, input.call.slot)
   if (selected === undefined) {
     return failed('UNAVAILABLE', 'the requested slot has no admitted child Flow')
   }
@@ -221,6 +245,8 @@ async function executePreparedChild(
   if (Date.now() >= effectiveDeadlineUnixMs) {
     return failed('DEADLINE_EXCEEDED', 'the child Flow deadline elapsed before dispatch')
   }
+  if (input.parentFlow !== undefined)
+    await requireParentFlowOwner(input, input.parentFlow, effectiveDeadlineUnixMs)
 
   const existing = (
     await listPrivateRootChildOwners({
@@ -230,7 +256,7 @@ async function executePreparedChild(
     })
   ).find(
     ({ operationId, parentOperationId }) =>
-      parentOperationId === undefined && operationId === input.call.operationId,
+      parentOperationId === input.parentFlow?.operationId && operationId === input.call.operationId,
   )
   if (existing !== undefined) {
     await recoverOne(input, existing)
@@ -256,6 +282,8 @@ async function executePreparedChild(
     parentRunId: input.parent.run.runId,
     coordinatorEpoch: input.parent.run.coordinatorEpoch,
     operationId: input.call.operationId,
+    parentFlow: input.parentFlow ?? null,
+    flowDepth: childFlowDepth(input, selected),
     requestDigest: selected.request.digest,
     effectiveDeadlineUnixMs,
     packageAllocation,
@@ -268,6 +296,7 @@ async function executePreparedChild(
       projectRoot: input.projectRoot,
       parentRunId: input.parent.run.runId,
       operationId: input.call.operationId,
+      ...childScope(input.parentFlow?.operationId),
       allocation: allocation as unknown as JsonValue,
     })
   } catch (error) {
@@ -291,6 +320,7 @@ async function executePreparedChild(
       projectRoot: input.projectRoot,
       parentRunId: input.parent.run.runId,
       operationId: input.call.operationId,
+      ...childScope(input.parentFlow?.operationId),
       allocationDigest: lifecycle.allocation.digest,
       sandbox: sandbox as unknown as JsonValue,
     })
@@ -365,7 +395,11 @@ export async function recoverPrivateRootFlowCallOwners(input: ChildInput): Promi
     parentRunId: input.parent.run.runId,
   })
   for (const owner of owners) {
-    if (isPrivateRootFlowCallOwner(owner)) await recoverOne(input, owner)
+    if (
+      isPrivateRootFlowCallOwner(owner) &&
+      owner.parentOperationId === input.parentFlow?.operationId
+    )
+      await recoverOne(input, owner)
   }
 }
 
@@ -376,23 +410,36 @@ export function isPrivateRootFlowCallOwner(lifecycle: PrivateRootChildOwnerLifec
     value !== null &&
     typeof value === 'object' &&
     !Array.isArray(value) &&
-    lifecycle.parentOperationId === undefined &&
     (value as Record<string, JsonValue>).kind === ALLOCATION_KIND
   )
 }
 
-function selectChild(parent: PrivateReacquiredRootExecutionWork, slot: string) {
-  const parentTarget = findPrivateActivationCandidateTargetV5(parent.candidate, parent.run.target)
-  if (parentTarget === undefined || parentTarget.request.digest !== parent.intent.requestDigest) {
-    throw new Error('parent Run differs from its admitted target')
-  }
+function selectChild(input: ChildInput, slot: string) {
+  const parentTarget = requireParentTarget(input)
   const target = flowSlotTargets(parentTarget.request.slots)[slot]
   if (target === undefined) return undefined
-  const child = findPrivateActivationCandidateTargetV5(parent.candidate, target)
-  if (child === undefined || Object.keys(flowSlotTargets(child.request.slots)).length !== 0) {
-    throw new Error('admitted Flow slot does not name one leaf child target')
+  const child = findPrivateActivationCandidateTargetV5(input.parent.candidate, target)
+  if (child === undefined) {
+    throw new Error('admitted Flow slot does not name a child target')
   }
   return child
+}
+
+function childFlowDepth(
+  input: ChildInput,
+  selected: NonNullable<ReturnType<typeof selectChild>>,
+  level = 1,
+): number {
+  const children = Object.values(flowSlotTargets(selected.request.slots))
+  if (children.length === 0) return 1
+  if (level >= 2 || input.parentFlow !== undefined)
+    throw new Error('child Flow depth exceeds admission')
+  for (const target of children) {
+    const child = findPrivateActivationCandidateTargetV5(input.parent.candidate, target)
+    if (child === undefined) throw new Error('missing admitted child')
+    childFlowDepth(input, child, level + 1)
+  }
+  return 2
 }
 
 function specialistDispatcher(
@@ -417,12 +464,31 @@ function specialistDispatcher(
     },
     async call(call, signal) {
       const route = selected.request.slots[call.slot]
-      if (route?.kind !== 'native' || route.native === 'run-checkpoint')
-        return failed('UNAVAILABLE', 'the specialist slot has no admitted native implementation')
+      if (route === undefined || (route.kind === 'native' && route.native === 'run-checkpoint'))
+        return failed('UNAVAILABLE', 'the specialist slot has no admitted implementation')
       if (active)
         return failed('RESOURCE_EXHAUSTED', 'the specialist already has an active operation')
       active = true
       try {
+        if (route.kind === 'flow') {
+          return await executePrivateRootFlowCall({
+            ...input,
+            parentFlow: {
+              operationId: input.call.operationId,
+              target: selected.request.target,
+              requestDigest: selected.request.digest,
+              parent: input.parentFlow ?? null,
+            },
+            ...(participant === undefined || input.channels === undefined
+              ? {}
+              : {
+                  channels: { ...input.channels, caller: participant },
+                }),
+            call,
+            parentDeadlineUnixMs,
+            signal,
+          })
+        }
         if (route.native === 'project-command' || route.native === 'http-request') {
           if (Object.keys(call.channels ?? {}).length !== 0)
             return failed('UNAVAILABLE', 'this invocation has no supported channels')
@@ -432,6 +498,7 @@ function specialistDispatcher(
               operationId: input.call.operationId,
               target: selected.request.target,
               requestDigest: selected.request.digest,
+              parent: input.parentFlow ?? null,
             },
             call,
             parentDeadlineUnixMs,
@@ -451,6 +518,7 @@ function specialistDispatcher(
             operationId: input.call.operationId,
             target: selected.request.target,
             requestDigest: selected.request.digest,
+            parent: input.parentFlow ?? null,
           },
           call,
           parentDeadlineUnixMs,
@@ -550,26 +618,12 @@ async function releaseKnownChild(
     projectRoot: input.projectRoot,
     parentRunId: lifecycle.parentRunId,
     operationId: lifecycle.operationId,
+    ...childScope(lifecycle.parentOperationId),
     allocationDigest: lifecycle.allocation.digest,
     sandboxDigest: lifecycle.sandbox!.digest,
     fence: fence as unknown as JsonValue,
   })
-  await recoverPrivateRootAgentRunOwners({
-    ...input,
-    parentFlow: {
-      operationId: lifecycle.operationId,
-      target: selected.request.target,
-      requestDigest: selected.request.digest,
-    },
-  })
-  await recoverPrivateContainedEffectOwners({
-    ...input,
-    parentFlow: {
-      operationId: lifecycle.operationId,
-      target: selected.request.target,
-      requestDigest: selected.request.digest,
-    },
-  })
+  await recoverDescendants(input, lifecycle, selected)
   await disposePrivatePackageMaterializationLease(
     lease.identity.allocation.parent.path,
     lease.identity,
@@ -581,6 +635,7 @@ async function releaseKnownChild(
     projectRoot: input.projectRoot,
     parentRunId: lifecycle.parentRunId,
     operationId: lifecycle.operationId,
+    ...childScope(lifecycle.parentOperationId),
     allocationDigest: lifecycle.allocation.digest,
     sandboxDigest: lifecycle.sandbox!.digest,
     fenceDigest: lifecycle.fence!.digest,
@@ -591,11 +646,35 @@ async function releaseKnownChild(
     projectRoot: input.projectRoot,
     parentRunId: lifecycle.parentRunId,
     operationId: lifecycle.operationId,
+    ...childScope(lifecycle.parentOperationId),
     allocationDigest: lifecycle.allocation.digest,
     sandboxDigest: lifecycle.sandbox!.digest,
     fenceDigest: lifecycle.fence!.digest,
     cleanupDigest: lifecycle.cleanup!.digest,
   })
+}
+
+function childScope(parentOperationId: string | undefined): { parentOperationId?: string } {
+  return parentOperationId === undefined ? {} : { parentOperationId }
+}
+
+async function recoverDescendants(
+  input: ChildInput,
+  lifecycle: PrivateRootChildOwnerLifecycle,
+  selected: NonNullable<ReturnType<typeof selectChild>>,
+): Promise<void> {
+  const context = {
+    ...input,
+    parentFlow: {
+      operationId: lifecycle.operationId,
+      target: selected.request.target,
+      requestDigest: selected.request.digest,
+      parent: input.parentFlow ?? null,
+    },
+  }
+  await recoverPrivateRootFlowCallOwners(context)
+  await recoverPrivateRootAgentRunOwners(context)
+  await recoverPrivateContainedEffectOwners(context)
 }
 
 async function recoverOne(
@@ -617,6 +696,7 @@ async function recoverOne(
         projectRoot: input.projectRoot,
         parentRunId: lifecycle.parentRunId,
         operationId: lifecycle.operationId,
+        ...childScope(lifecycle.parentOperationId),
         allocationDigest: lifecycle.allocation.digest,
         sandboxDigest: lifecycle.sandbox!.digest,
         fence: fence as unknown as JsonValue,
@@ -624,22 +704,7 @@ async function recoverOne(
     } else {
       fence = parseFence(lifecycle)
     }
-    await recoverPrivateRootAgentRunOwners({
-      ...input,
-      parentFlow: {
-        operationId: lifecycle.operationId,
-        target: selected.request.target,
-        requestDigest: selected.request.digest,
-      },
-    })
-    await recoverPrivateContainedEffectOwners({
-      ...input,
-      parentFlow: {
-        operationId: lifecycle.operationId,
-        target: selected.request.target,
-        requestDigest: selected.request.digest,
-      },
-    })
+    await recoverDescendants(input, lifecycle, selected)
     const recovered = await recoverPrivatePackageMaterializationAllocation(
       allocation.packageAllocation.parent.path,
       allocation.packageAllocation,
@@ -653,6 +718,7 @@ async function recoverOne(
         projectRoot: input.projectRoot,
         parentRunId: lifecycle.parentRunId,
         operationId: lifecycle.operationId,
+        ...childScope(lifecycle.parentOperationId),
         allocationDigest: lifecycle.allocation.digest,
         sandboxDigest: lifecycle.sandbox!.digest,
         fenceDigest: lifecycle.fence!.digest,
@@ -674,6 +740,7 @@ async function recoverOne(
     projectRoot: input.projectRoot,
     parentRunId: lifecycle.parentRunId,
     operationId: lifecycle.operationId,
+    ...childScope(lifecycle.parentOperationId),
     allocationDigest: lifecycle.allocation.digest,
     sandboxDigest: lifecycle.sandbox?.digest ?? null,
     fenceDigest: lifecycle.fence?.digest ?? null,
@@ -691,7 +758,10 @@ async function findLifecycle(
       projectRoot: input.projectRoot,
       parentRunId: input.parent.run.runId,
     })
-  ).find((item) => item.parentOperationId === undefined && item.operationId === operationId)
+  ).find(
+    (item) =>
+      item.parentOperationId === input.parentFlow?.operationId && item.operationId === operationId,
+  )
 }
 
 function parseAllocation(lifecycle: PrivateRootChildOwnerLifecycle): ChildAllocation {
@@ -702,6 +772,8 @@ function parseAllocation(lifecycle: PrivateRootChildOwnerLifecycle): ChildAlloca
       'parentRunId',
       'coordinatorEpoch',
       'operationId',
+      'parentFlow',
+      'flowDepth',
       'requestDigest',
       'effectiveDeadlineUnixMs',
       'packageAllocation',
@@ -711,7 +783,7 @@ function parseAllocation(lifecycle: PrivateRootChildOwnerLifecycle): ChildAlloca
   )
   if (
     value.kind !== ALLOCATION_KIND ||
-    lifecycle.parentOperationId !== undefined ||
+    (value.flowDepth !== 1 && value.flowDepth !== 2) ||
     value.parentRunId !== lifecycle.parentRunId ||
     value.operationId !== lifecycle.operationId ||
     typeof value.coordinatorEpoch !== 'number' ||
@@ -729,6 +801,8 @@ function parseAllocation(lifecycle: PrivateRootChildOwnerLifecycle): ChildAlloca
     parentRunId: value.parentRunId as string,
     coordinatorEpoch: value.coordinatorEpoch,
     operationId: value.operationId as string,
+    parentFlow: normalizeParentFlow(value.parentFlow, lifecycle.parentOperationId),
+    flowDepth: value.flowDepth,
     requestDigest: value.requestDigest,
     effectiveDeadlineUnixMs: value.effectiveDeadlineUnixMs,
     packageAllocation: normalizePrivatePackageMaterializationAllocationIdentity(
@@ -791,13 +865,12 @@ async function requireAllocationMatchesParent(
   lifecycle: PrivateRootChildOwnerLifecycle,
   allocation: ChildAllocation,
 ): Promise<NonNullable<ReturnType<typeof selectChild>>> {
-  const parentTarget = findPrivateActivationCandidateTargetV5(
-    input.parent.candidate,
-    input.parent.run.target,
-  )
+  const parentFlow = allocation.parentFlow
+  if (lifecycle.parentOperationId !== input.parentFlow?.operationId)
+    throw new Error('child allocation belongs to another scope')
+  const parentTarget = requireParentTarget({ ...input, parentFlow: parentFlow ?? undefined })
   if (
     parentTarget === undefined ||
-    parentTarget.request.digest !== input.parent.intent.requestDigest ||
     allocation.parentRunId !== input.parent.run.runId ||
     allocation.coordinatorEpoch !== input.parent.run.coordinatorEpoch ||
     allocation.operationId !== lifecycle.operationId ||
@@ -811,10 +884,12 @@ async function requireAllocationMatchesParent(
   if (
     selected === undefined ||
     selected.disposition.state !== 'ready' ||
-    Object.keys(flowSlotTargets(selected.request.slots)).length !== 0
+    allocation.flowDepth !== childFlowDepth(input, selected)
   ) {
-    throw new Error('durable child allocation is not an admitted leaf Flow')
+    throw new Error('durable child allocation differs from its admitted Flow branch')
   }
+  if (parentFlow !== null)
+    await requireParentFlowOwner(input, parentFlow, allocation.effectiveDeadlineUnixMs)
   const roots = await protectedWorkRoots(input.projectRoot)
   const identity = childIdentity(lifecycle.parentRunId, lifecycle.operationId)
   if (

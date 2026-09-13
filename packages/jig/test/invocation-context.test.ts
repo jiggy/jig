@@ -9,10 +9,19 @@ test('parent identity is exact, local, and distinct from a root operation', () =
     operationId: 'worker',
     target: { kind: 'binding', id: 'agent' },
     requestDigest: 'sha256:' + '1'.repeat(64),
+    parent: null,
   }
   expect(normalizeParentFlow(null, undefined)).toBeNull()
   expect(normalizeParentFlow(parent, 'worker')).toEqual(parent)
   expect(Object.isFrozen(normalizeParentFlow(parent, 'worker'))).toBe(true)
+  expect(() => normalizeParentFlow({ ...parent, operationId: 'worker\n' }, 'worker\n')).toThrow(
+    'identity is invalid',
+  )
+  const nested = { ...parent, operationId: 'agent', parent }
+  expect(normalizeParentFlow(nested, 'agent')).toEqual(nested)
+  expect(() => normalizeParentFlow({ ...parent, parent: nested }, 'worker')).toThrow(
+    'two child levels',
+  )
   for (const value of [parent, {}, undefined])
     expect(() => normalizeParentFlow(value, undefined)).toThrow()
   for (const value of [

@@ -543,6 +543,73 @@ void binding;
         /INVALID_RESULT/,
       )
       assert.equal(requests, 2) // One per invocation, including the unsuccessful one.
+      // An ordinary consumer adds two authored methods around the unchanged
+      // Agent. No private dispatch helper or special SDK entrypoint is involved.
+      await mkdir(join(agentProject, 'libs/flow'), { recursive: true })
+      await run(
+        ['tar', '-xzf', sdkArchive, '--strip-components=1', '-C', join(agentProject, 'libs/flow')],
+        consumer,
+      )
+      await writeFile(
+        join(agentProject, 'package.json'),
+        JSON.stringify({
+          private: true,
+          workspaces: ['flows/application', 'flows/specialist', 'libs/flow'],
+        }),
+      )
+      for (const [name, slot, target] of [
+        ['application', 'specialist', 'binding:specialist'],
+        ['specialist', 'agent', 'binding:agent'],
+      ]) {
+        const flow = join(agentProject, 'flows', name!)
+        await mkdir(flow)
+        await writeFile(
+          join(flow, 'package.json'),
+          JSON.stringify({
+            name,
+            private: true,
+            type: 'module',
+            dependencies: { '@jigging/flow': 'workspace:*' },
+          }),
+        )
+        await writeFile(
+          join(flow, 'FLOW.ts'),
+          `import {handle} from '@jigging/flow';
+await handle(run => run.call({operationId:'answer',slot:${JSON.stringify(slot)},input:run.input}));`,
+        )
+        await writeFile(
+          join(agentProject, 'bindings', `${name}.ts`),
+          'import {defineBinding} from "@jigging/jig"; export default defineBinding(' +
+            JSON.stringify({ package: `flows/${name}`, slots: { [slot!]: target } }) +
+            ');',
+        )
+      }
+      await run(
+        [command, 'review', '--yes', '--allow-resolution-network'],
+        agentProject,
+        environment,
+        120000,
+      )
+      mode = 'answer'
+      const composed = await run(
+        [command, 'run', 'binding:application', '--input', input],
+        agentProject,
+        environment,
+        120000,
+      )
+      assert.deepEqual(JSON.parse(composed.stdout).output.structured, { category: 'support' })
+      assert.equal(JSON.parse(composed.stdout).status, 'succeeded')
+      mode = 'malformed'
+      await assert.rejects(
+        run(
+          [command, 'run', 'binding:application', '--input', input],
+          agentProject,
+          environment,
+          120000,
+        ),
+        /INVALID_RESULT/,
+      )
+      assert.equal(requests, 4)
     } finally {
       await server.stop(true)
     }

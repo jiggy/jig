@@ -121,8 +121,10 @@ finish afterward. The memory, PID, and CPU ceilings in the table are fixed.
 
 A Binding child Flow or effect runs in a separate scope while its parent
 remains live. The root permits two sibling Flows or one exclusive effect;
-each leaf permits one effect. Before dispatch, durable root ownership reserves
-each entire branch, including its largest possible effect. Reservations last
+each child permits one Flow or effect, within two child Flow levels. Before
+dispatch, durable root ownership reserves the longest admitted Flow path in
+each branch, including its largest possible effect. A two-level branch excludes
+a concurrent second branch under the unchanged aggregate ceilings. Reservations last
 through confirmed fencing and cleanup, even after execution fails.
 
 At most five payload/provider envelopes fit the fixed root aggregate ceiling:

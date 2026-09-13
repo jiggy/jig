@@ -10,6 +10,8 @@ admitted FLOW packages.
 - `src/index.ts` and `src/project/author.ts` own the public authoring surface.
 - The CLI, package/project capture, invocation contracts, Run host, and
   administration objects are package-owned implementation.
+- `src/project/slot-graph.ts` supplies the same two-child-level, acyclic graph
+  validation to source linking and retained-lock decoding.
 - Explicit review `--generate-contracts` owns optional TypeSpec preparation and checked
   publication. Plain review checks local freshness; Run never compiles. The
   compiler is bundled, with Node 22+ selected only from fixed system locations
@@ -161,7 +163,8 @@ admitted FLOW packages.
 - With `JIG_LINUX_ROOTLESS_HOSTILE=1`, `test/package-smoke.ts` also qualifies
   inline/named command grants through the installed public CLI and complete
   packed SDK in a consumer workspace, and the complete HTTP-backed Agent artifact
-  without rewritten workers. It honors `JIG_PACKAGE_ARCHIVE`,
+  without rewritten workers, including application → specialist → Agent
+  composition and invalid-result propagation. It honors `JIG_PACKAGE_ARCHIVE`,
   `FLOW_SDK_PACKAGE_ARCHIVE` and `AGENT_METHOD_PACKAGE_ARCHIVE`.
   Failed smoke consumers and candidate archives remain available for diagnosis.
 - The Agent lifecycle suite accepts `AGENT_METHOD_PACKAGE_ARCHIVE` for the

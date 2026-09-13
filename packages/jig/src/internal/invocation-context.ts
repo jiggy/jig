@@ -1,6 +1,6 @@
 import { lstat, mkdir, realpath } from 'node:fs/promises'
 import { join } from 'node:path'
-import type { JsonObject } from '../json.js'
+import { canonicalJson, type JsonObject } from '../json.js'
 import { flowSlotTargets } from '../project/invocation-slots.js'
 import type { RunTargetIdentity } from '../project/package-project.js'
 import { validateProjectPath } from '../project/paths.js'
@@ -11,26 +11,31 @@ import {
   type PrivateReacquiredRootExecutionWork,
 } from './activation-admission-store.js'
 
-/** Current root/direct-child identity checks, shared by every contained effect.
- * This is private ownership machinery, not a provider or recursive-call API. */
+/** Bounded invocation ancestry, shared by every contained effect.
+ * This is private ownership machinery, not a provider API. */
 export interface PrivateInvocationContext {
   readonly projectRoot: string
   readonly parent: PrivateReacquiredRootExecutionWork
-  readonly parentFlow?: PrivateParentFlow
+  readonly parentFlow?: PrivateParentFlow | undefined
   readonly coordinator: PrivateProjectCoordinator
 }
 
 const DIGEST = /^sha256:[0-9a-f]{64}$/
 
-/** Exact admitted direct child Flow that owns the effect. */
+/** Exact admitted Flow and its immediate invocation parent. */
 export interface PrivateParentFlow {
   readonly operationId: string
   readonly target: RunTargetIdentity
   readonly requestDigest: string
+  readonly parent: PrivateParentFlow | null
 }
 
 export function requireParentTarget(input: PrivateInvocationContext) {
-  const { parent, parentFlow } = input
+  const { parent } = input
+  const parentFlow =
+    input.parentFlow === undefined
+      ? undefined
+      : normalizeParentFlow(input.parentFlow, input.parentFlow.operationId)!
   const root = findPrivateActivationCandidateTargetV5(parent.candidate, parent.run.target)
   if (
     root === undefined ||
@@ -40,13 +45,13 @@ export function requireParentTarget(input: PrivateInvocationContext) {
     throw new Error('parent Run differs from its admitted target')
   }
   if (parentFlow === undefined) return root
+  const caller = requireParentTarget({ ...input, parentFlow: parentFlow.parent ?? undefined })
   const target = findPrivateActivationCandidateTargetV5(parent.candidate, parentFlow.target)
   if (
     target === undefined ||
     target.request.digest !== parentFlow.requestDigest ||
     target.disposition.state !== 'ready' ||
-    Object.keys(flowSlotTargets(target.request.slots)).length !== 0 ||
-    !Object.values(flowSlotTargets(root.request.slots)).some(
+    !Object.values(flowSlotTargets(caller.request.slots)).some(
       (identity) =>
         findPrivateActivationCandidateTargetV5(parent.candidate, identity)?.request.digest ===
         target.request.digest,
@@ -69,7 +74,8 @@ export async function requireParentFlowOwner(
   })
   const parent = owners.find(
     (owner) =>
-      owner.parentOperationId === undefined && owner.operationId === parentFlow.operationId,
+      owner.parentOperationId === parentFlow.parent?.operationId &&
+      owner.operationId === parentFlow.operationId,
   )
   const allocation = parent?.allocation.value as JsonObject | undefined
   if (
@@ -81,6 +87,10 @@ export async function requireParentFlowOwner(
     allocation.coordinatorEpoch !== input.parent.run.coordinatorEpoch ||
     allocation.operationId !== parentFlow.operationId ||
     allocation.requestDigest !== parentFlow.requestDigest ||
+    allocation.parentFlow === undefined ||
+    !Buffer.from(canonicalJson(allocation.parentFlow)).equals(
+      Buffer.from(canonicalJson(parentFlow.parent as unknown as JsonObject | null)),
+    ) ||
     typeof allocation.effectiveDeadlineUnixMs !== 'number' ||
     !Number.isSafeInteger(allocation.effectiveDeadlineUnixMs) ||
     allocation.effectiveDeadlineUnixMs > input.parent.intent.deadlineUnixMs ||
@@ -89,22 +99,32 @@ export async function requireParentFlowOwner(
   ) {
     throw new Error('invocation parent Flow differs from its durable execution owner')
   }
+  if (parentFlow.parent !== null)
+    await requireParentFlowOwner(input, parentFlow.parent, deadlineUnixMs)
 }
 
 export function normalizeParentFlow(
   value: unknown,
   parentOperationId: string | undefined,
+  depth = 0,
 ): PrivateParentFlow | null {
   if (parentOperationId === undefined) {
     if (value !== null) throw new TypeError('root invocation allocation has a nested parent')
     return null
   }
+  if (depth >= 2) throw new TypeError('invocation ancestry exceeds two child levels')
   const parent = exactObject(
     value,
-    ['operationId', 'target', 'requestDigest'],
+    ['operationId', 'target', 'requestDigest', 'parent'],
     'invocation parent Flow',
   )
-  if (parent.operationId !== parentOperationId || !isDigest(parent.requestDigest)) {
+  if (
+    typeof parent.operationId !== 'string' ||
+    parent.operationId.length > 128 ||
+    !/^[A-Za-z0-9][A-Za-z0-9._:/-]*$(?![\s\S])/.test(parent.operationId) ||
+    parent.operationId !== parentOperationId ||
+    !isDigest(parent.requestDigest)
+  ) {
     throw new TypeError('invocation parent Flow identity is invalid')
   }
   const target = exactObject(
@@ -129,6 +149,11 @@ export function normalizeParentFlow(
     operationId: parentOperationId,
     target: identity,
     requestDigest: parent.requestDigest,
+    parent: normalizeParentFlow(
+      parent.parent,
+      parent.parent === null ? undefined : parent.parent?.operationId,
+      depth + 1,
+    ),
   })
 }
 

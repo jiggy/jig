@@ -342,19 +342,17 @@ describe('private package-project portable lock projection', () => {
         },
         'must contain exactly',
       )
-      expectInvalid(
-        base,
-        (item) => {
-          item.bindings.reviewer.slots = { nested: { kind: 'flow', path: 'flows/backup' } }
-        },
-        'Binding with child slots',
-      )
+      const deeper = structuredClone(base)
+      deeper.bindings.reviewer.slots = { nested: { kind: 'flow', path: 'flows/backup' } }
+      expect(
+        decodePrivateProjectLocalLock(lockBytes(deeper)).bindings.reviewer!.slots.nested,
+      ).toEqual({ kind: 'flow', path: 'flows/backup' })
       expectInvalid(
         base,
         (item) => {
           item.bindings.reviewer.slots = { nested: { kind: 'binding', id: 'router' } }
         },
-        'Binding with child slots',
+        'cycle',
       )
     })
   })

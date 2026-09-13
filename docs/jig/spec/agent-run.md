@@ -214,8 +214,8 @@ The model returns data, not authority. The response schema limits its answer
 to `billing` or `technical`, and Jig resolves that name only through the
 Binding's exact same-generation slots. Either child may use Agent Run itself.
 A slot may instead name `binding:<id>` to invoke a specialist with that
-Binding's own admitted settings. Selected child Bindings must have no child
-slots; parent settings, slots, and native authority are never inherited implicitly.
+Binding's own admitted settings and slots, within the bounded call tree below.
+Parent settings, slots, and native authority are never inherited implicitly.
 
 Each specialist selects Skills from its own admitted package for each Agent
 call. A fresh call does not include the parent's or another specialist's
@@ -223,8 +223,9 @@ conversation unless the application explicitly passes that content as input.
 Provider selection and credentials remain host-owned; no new Skill or provider
 configuration field is added to Bindings.
 
-The root allows two sibling Flow calls or one exclusive effect; a leaf allows
-one Agent, project command, or HTTP request effect. The root reserves each branch's resources before
+The root allows up to two sibling Flow calls or one exclusive effect; a child allows
+one active Flow or effect, within two child Flow levels and the
+[aggregate reservation budget](project-policy.md). The root reserves each branch's resources before
 dispatch, including its effect capacity. Parent cancellation
 and the inherited deadline govern the child and its Agent worker; cleanup
 must settle both before the parent result becomes terminal. As with root Agent

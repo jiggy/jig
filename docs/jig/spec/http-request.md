@@ -92,8 +92,8 @@ request; the collector validates the bounded reply outside the worker scope.
 Credentials are delivered over private stdin, never through FLOW input,
 project records, command-line arguments or public diagnostics.
 
-Ownership is recorded before dispatch. Root and leaf calls use the existing
-exclusive effect capacity and aggregate resource reservations. A leaf receives
+Ownership is recorded before dispatch. Root and child calls use the existing
+exclusive effect capacity and aggregate resource reservations. A child receives
 only its own Binding selections, never the parent's. Cancellation and
 coordinator loss fence the worker and socket owner before resources are
 released. A result becomes successful only after confirmed local cleanup.

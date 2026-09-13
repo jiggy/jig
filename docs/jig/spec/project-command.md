@@ -48,7 +48,7 @@ At most eight command grants may be selected by one Binding. Missing or
 incompatible slot grants reject the candidate; no implicit command authority
 is supplied.
 
-A root or exact leaf Binding can use its own command policy. Direct `flow:`
+A root or exact child Binding can use its own command policy. Direct `flow:`
 targets have no command policy. A child receives neither parent commands nor
 attachments. A command is exclusive in its context. The root may instead run
 two sibling Flows, each with its own effect capacity. Sequential commands are

@@ -347,12 +347,12 @@ per-invocation overrides into settings.
 or `grant:<LocalName>` selections. Omission
 normalizes to `{}`. A Flow selector must identify a direct Flow target, using
 empty settings. A Binding selector uses that Binding's own validated settings
-and must select a Binding with no further Flow or Binding routes. Grant slots
+and may select a Binding with further routes, within two child Flow levels. Grant slots
 do not count as child routes. Either target may use the exact
 Agent Run or [Agent Exchange](agent-exchange.md) invocation, and a configured
 Binding may also use [Project Command](project-command.md) or
 [HTTP Request](http-request.md). Slots cannot select the parent's own package, directly
-or through a Binding; unknown targets, cycles, nonleaf Bindings,
+or through a Binding; unknown targets, cycles, paths exceeding two child levels,
 unqualified execution profiles, and packages requiring attachments reject the
 candidate. Plain package paths are not slot selectors. Linking captures each
 target identity, and apply admits the complete relation and target
@@ -592,8 +592,8 @@ there is no argument or response channel for target selection, settings,
 attachments, or host authority.
 
 Each child starts in a fresh Run/1 context with its own scratch directory,
-the selected target's own settings, empty attachments, and no child slots.
-A direct Flow child has empty settings. Parent settings and attachments are
+the selected target's own settings and slots, and empty attachments.
+A direct Flow child has empty settings and no configured slots. Parent settings and attachments are
 not inherited. Its effective deadline is the earlier of its
 own direct-Run ceiling and the parent's deadline, so it can never outlive or
 widen the parent deadline.
@@ -607,17 +607,21 @@ result; Jig creates no child Run history and exposes no child administration,
 scheduler, catalogue, or resolver.
 
 The root permits two active sibling Flow calls, or one exclusive Agent or
-command effect. Each leaf permits one effect and no child Flow calls. A third
-sibling or conflicting effect receives `RESOURCE_EXHAUSTED` before dispatch;
+command effect. A child permits one active Flow or effect; at most two child
+Flow levels may occur beneath a root. A third sibling, conflicting operation,
+or branch exceeding remaining aggregate capacity receives `RESOURCE_EXHAUSTED` before dispatch;
 there is no host queue or automatic retry. Identical waiters join the same
 operation. Applications use ordinary promises to schedule and aggregate work,
 and per-call cancellation to stop a selected sibling without stopping another.
 Run/1's request-lifetime limit still applies.
 
-Before dispatch, Jig reserves a Flow branch plus its largest possible effect
+Before dispatch, Jig reserves every Flow level in the selected branch's longest
+admitted path plus its largest possible effect
 against a fixed root payload budget: 1,280 MiB memory, 448 tasks, and 2.5 CPU
 cores with a 100 ms quota period. Each actual envelope is kernel-limited below
-its reservation. Unused reservations are not borrowed; reservations remain
+its reservation. Two shallow branches fit; a two-level branch occupies capacity
+that prevents any concurrent second branch under these fixed ceilings.
+Unused reservations are not borrowed; reservations remain
 until confirmed fencing and cleanup. This bounds the complete root call tree,
 not just each parent's immediate children. Trusted coordinators and supervisors
 are outside this payload budget. It is not fair-share scheduling or combined
@@ -641,8 +645,8 @@ Agent Run's selected Skills are immediate `skills/<name>/` subtrees containing e
 `SKILL.md`. Omission selects none. They are copied from the immutable admitted
 package and passed as read-only guidance only to that call; they grant no
 tools, network, filesystem, child target, or other authority. Agent and child
-calls share the root's absolute deadline. Each child occupies one root branch;
-its own Agent call uses the effect capacity already reserved for that branch.
+calls share the root's absolute deadline. Each direct child occupies one root
+branch; its descendants use that branch's reserved Flow and effect capacity.
 Child skills come only from the selected
 child's admitted package.
 Possibly dispatched Agent work is fenced and reported as uncertain rather
@@ -908,7 +912,7 @@ The direct-alpha project implementation must prove at least:
     filesystem isolation, deadline enforcement, cancellation, or whole-tree
     cleanup.
 14. Repeated Runs leave no process, cgroup, scratch, or private-device residue.
-15. Binding-local child calls resolve only exact same-generation Flow or leaf
+15. Binding-local child calls resolve only exact same-generation Flow or bounded
     Binding targets, receive their own admitted settings and empty attachments,
     cannot exceed the parent deadline, and leave no separately addressable
     child history.

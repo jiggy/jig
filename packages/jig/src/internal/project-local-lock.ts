@@ -24,6 +24,7 @@ import {
 import { PRIVATE_ACTIVATION_TARGET_LIMIT } from './activation-planning.js'
 import { type BoundAttachments, normalizeBoundAttachments } from './bound-attachments.js'
 import { privateDomainDigest } from './identity.js'
+import { validateChildGraph } from '../project/slot-graph.js'
 
 const DIGEST = /^sha256:[0-9a-f]{64}$/
 const LOCAL_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
@@ -223,14 +224,9 @@ function validateReferences(
           `Binding ${id} slot ${name} must select a direct Run package or configured Binding`,
         )
       }
-      if (
-        childBinding !== undefined &&
-        Object.values(childBinding.slots).some((slot) => slot.kind !== 'grant')
-      ) {
-        throw new TypeError(`Binding ${id} slot ${name} selects a Binding with child slots`)
-      }
     }
   }
+  validateChildGraph(new Map(Object.entries(bindings)))
 }
 
 function normalizeSlots(

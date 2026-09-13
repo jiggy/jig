@@ -77,7 +77,10 @@ import {
   type PrivateProjectLocalLock,
   privateProjectLocalLockDigest,
 } from './project-local-lock.js'
-import { canReservePrivateRootOperation } from './root-operation-limits.js'
+import {
+  canReservePrivateRootOperation,
+  isPrivateChildFlowAllocation,
+} from './root-operation-limits.js'
 import { type PrivateRunFileIdentity, requirePrivateRootFileMapping } from './root-run-files.js'
 import {
   createPrivateExternalSubmissionOrigin,
@@ -1121,19 +1124,34 @@ export async function allocatePrivateRootChildOwner(input: {
         }
         return loaded
       }
-      requireActiveChildScope(owner.database, input.parentRunId, input.parentOperationId)
+      const parentDepth = requireActiveChildScope(
+        owner.database,
+        input.parentRunId,
+        input.parentOperationId,
+      )
+      if (isPrivateChildFlowAllocation(input.allocation)) {
+        const depth = (input.allocation as Record<string, JsonValue>).flowDepth
+        if (
+          (depth !== 1 && depth !== 2) ||
+          (parentDepth !== undefined && depth >= parentDepth) ||
+          findFlowOwner(owner.database, input.parentRunId, input.operationId) !== null
+        )
+          invalid('RUN_CHILD_OWNER_CONFLICT', 'Flow owner identity or reserved depth is invalid')
+      }
       if (
         input.parentOperationId !== undefined &&
         (input.allocation === null ||
           typeof input.allocation !== 'object' ||
           Array.isArray(input.allocation) ||
-          !['private-root-agent-owner-allocation/1', 'private-contained-effect-owner/1'].includes(
-            String((input.allocation as Record<string, JsonValue>).kind),
-          ))
+          ![
+            'private-root-child-owner-allocation/1',
+            'private-root-agent-owner-allocation/1',
+            'private-contained-effect-owner/1',
+          ].includes(String((input.allocation as Record<string, JsonValue>).kind)))
       ) {
         invalid(
           'RUN_CHILD_OWNER_CONFLICT',
-          'a child Flow may own only an Agent or contained effect',
+          'a child Flow may own only a bounded Flow or contained effect',
         )
       }
       if (input.parentOperationId === undefined) {
@@ -1157,7 +1175,7 @@ export async function allocatePrivateRootChildOwner(input: {
         countScopedRootChildOwners(owner.database, input.parentRunId, input.parentOperationId) !==
         0n
       ) {
-        invalid('RUN_CHILD_CAPACITY', 'the child Flow already has an active effect')
+        invalid('RUN_CHILD_CAPACITY', 'the child Flow already has an active operation')
       }
       runFinalized(
         owner.database,
@@ -1474,7 +1492,8 @@ export async function closePrivateRootChildOwner(input: {
         input.parentOperationId,
       )
       if (
-        input.parentOperationId === undefined &&
+        row !== null &&
+        isPrivateChildFlowAllocation(loadRootChildOwner(row).allocation.value) &&
         countScopedRootChildOwners(owner.database, input.parentRunId, input.operationId) !== 0n
       ) {
         invalid('RUN_EXECUTION_INCOMPLETE', 'child Flow still has an active operation owner')
@@ -1727,12 +1746,12 @@ function requireActiveChildScope(
   database: SqliteDatabase,
   parentRunId: string,
   parentOperationId?: string,
-): void {
+): number | undefined {
   if (requireRootExecutionLifecycle(database, parentRunId).fence_digest !== null) {
     invalid('RUN_CHILD_PARENT_INACTIVE', 'the parent root Run is fenced')
   }
   if (parentOperationId === undefined) return
-  const parent = findRootChildOwner(database, parentRunId, parentOperationId)
+  const parent = findFlowOwner(database, parentRunId, parentOperationId)
   if (parent === null || parent.sandbox_digest === null || parent.fence_digest !== null) {
     invalid('RUN_CHILD_PARENT_INACTIVE', 'the parent child Flow has no active sandbox')
   }
@@ -1743,7 +1762,44 @@ function requireActiveChildScope(
     Array.isArray(allocation) ||
     (allocation as Record<string, JsonValue>).kind !== 'private-root-child-owner-allocation/1'
   ) {
-    invalid('RUN_CHILD_PARENT_INACTIVE', 'only a direct child Flow may own a nested operation')
+    invalid('RUN_CHILD_PARENT_INACTIVE', 'only a Flow may own a nested operation')
+  }
+  const depth = (allocation as Record<string, JsonValue>).flowDepth
+  if (depth !== 1 && depth !== 2)
+    invalid('RUN_CHILD_PARENT_INACTIVE', 'parent has no reserved depth')
+  if (parent.scope_operation_id !== '') {
+    const ancestor = findFlowOwner(database, parentRunId, parent.scope_operation_id)
+    if (
+      depth !== 1 ||
+      ancestor === null ||
+      ancestor.scope_operation_id !== '' ||
+      ancestor.sandbox_digest === null ||
+      ancestor.fence_digest !== null ||
+      (loadRootChildOwner(ancestor).allocation.value as Record<string, JsonValue>).flowDepth !== 2
+    )
+      invalid('RUN_CHILD_PARENT_INACTIVE', 'the ancestor Flow has no active reserved sandbox')
+  }
+  return depth
+}
+
+/** Flow owner identifiers are unique within a root, even across sibling scopes. */
+function findFlowOwner(
+  database: SqliteDatabase,
+  parentRunId: string,
+  operationId: string,
+): RootChildOwnerRow | null {
+  const query = statement<RootChildOwnerRow>(
+    database,
+    'SELECT * FROM root_child_owners WHERE parent_run_id = ?1 AND operation_id = ?2',
+  )
+  try {
+    const rows = query
+      .all(parentRunId, operationId)
+      .filter((row) => isPrivateChildFlowAllocation(loadRootChildOwner(row).allocation.value))
+    if (rows.length > 1) corrupt('ambiguous Flow owner identity')
+    return rows[0] === undefined ? null : copiedRootChildOwnerRow(rows[0])
+  } finally {
+    query.finalize()
   }
 }
 

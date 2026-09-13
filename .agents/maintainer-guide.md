@@ -243,11 +243,13 @@ Its **child slots** name a closed set of exact `flow:<path>` or `binding:<id>`
 targets from the same admitted generation. A child uses its selected target's
 settings, native Agent route, and reviewed command/HTTP slot grants;
 parent configuration is not inherited. Selected
-child Bindings are leaves with no further Flow slots. At runtime, a Flow can
+child Bindings may expose further Flow slots within two child levels. At runtime, a Flow can
 call only its slots; it cannot search a catalogue, invent targets, or acquire
 scheduler authority. Child and Agent scopes inherit the remaining root deadline
-and cannot extend it. A root may await two sibling specialists; each leaf may
-await one Agent, project command, or HTTP request. Root worker effects remain exclusive.
+and cannot extend it. A root may await two shallow sibling specialists; each child may
+await one Flow or effect. A two-level branch reserves its additional Flow and
+excludes a concurrent second branch under the unchanged aggregate ceiling.
+Root worker effects remain exclusive.
 Root-owned [checkpoints](../docs/jig/spec/run-checkpoint.md) use separate bounded
 control capacity to retain completed evidence while workers remain active.
 Durable whole-branch reservations bound aggregate resources before dispatch and stay
@@ -301,7 +303,8 @@ caller Skill selection and independent result validation. An ordinary Agent
 Flow selects only its own Skills or explicit guidance; it does not inherit
 native provenance. Existing specialists can reuse the library with
 [Agent Exchange](../docs/jig/spec/agent-exchange.md) without another Flow level.
-The ordinary HTTP method does not yet replace native streaming or caller context.
+An ordinary specialist can call the HTTP method through its own exact slot;
+this does not yet replace native streaming or authenticated caller context.
 Endpoint permissions, credentials and cleanup remain host-owned.
 
 The Flow supplies bounded instructions, an optional exact package-local skill

@@ -13,7 +13,7 @@ child calls, project commands, delegated HTTP, and Agent providers.
 - `invocation-context.ts` owns shared admitted-parent identity and durable
   parent-owner checks, plus protected owner-root validation. Agent, command and
   HTTP controllers use these checks; resource ownership must not import Agent
-  execution logic. The current root/direct-child limits still apply.
+  execution logic. Parent descriptors retain the exact bounded ancestry.
 - Package artifact retention, materialization, and preparation.
 - Contract generation owns captured TypeSpec requests, a bounded trusted Node
   subprocess with empty environment and stdin lifetime lease, and per-package
@@ -184,15 +184,21 @@ child calls, project commands, delegated HTTP, and Agent providers.
   preserves a known terminal or publication and never authorizes replay.
   Cancellation and expiry escalate against the exact trusted child after a
   bounded grace period and reap it; independent cgroup fencing still owns payload cleanup.
-- Exact child slots may select a Flow or a leaf Binding with its own admitted
+- Exact child slots may select a Flow or a bounded Binding with its own admitted
   settings, Agent invocation, reviewed command and HTTP slot grants. An effect belongs to that child
   context, not the root's operation namespace; fence and drain it before
-  releasing the child owner. Children cannot acquire another child slot map.
+  releasing the child owner. Two child Flow levels use their own admitted slot
+  maps; private nested Flow identifiers include their parent identity.
 - Roots admit two Flow branches or one exclusive effect. Reserve each whole
-  branch against the fixed aggregate root budget before dispatch; retain its
+  branch's longest admitted Flow path plus one effect against the fixed aggregate
+  root budget before dispatch; retain its
   reservation until confirmed fencing and cleanup. Kernel envelope limits and
-  the recipe-bound reservation policy must agree. Leaves admit one effect;
-  there is no queue, borrowing, recursive budget, or public scheduler.
+  the recipe-bound reservation policy must agree. Each child admits one Flow or
+  effect; the second child level admits only an effect. A deeper branch excludes
+  any concurrent second branch under the unchanged root ceiling. There is no
+  queue, borrowing, recursive budget, or public scheduler. An ancestor fence
+  prevents all further descendant dispatch; recovery drains descendants before
+  releasing each Flow owner and its branch reservation.
 - Channel operations have separate finite transport capacity, not worker slots.
   Unsupported delivery or invocation wiring rejects before dispatch. Observation
   grants no session control; FLOW endpoint rights and source-owner lifetime
