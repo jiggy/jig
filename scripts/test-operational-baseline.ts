@@ -50,17 +50,17 @@ try {
   const jig = join(consumer, 'node_modules', '.bin', 'jig')
   const project = join(consumer, 'hello-project')
   const initialized = await run([jig, 'init', '--bare', project], consumer)
-  assert.equal(initialized.stdout, 'created bare Jig project\n')
+  assert.match(initialized.stdout, /^Created bare Jig project /)
+  assert.match(initialized.stdout, /Add a Flow under flows\//)
   assert.equal(initialized.stderr, '')
 
   await writeMalformedFlow(project)
   const malformed = await run([jig, 'review', project, '--yes'], consumer, [1], 120_000)
   assert.equal(malformed.stdout, '')
-  assert.equal(
-    malformed.stderr,
-    'INVALID_CANDIDATE: a FLOW.md field has an unsupported name or shape; check the indicated field against https://flow.jig.md/spec/package-format; ' +
-      'METADATA_FIELD at "flows/malformed/FLOW.md" pointer "/format"\n',
-  )
+  assert.match(malformed.stderr, /^Review could not finish\n/)
+  assert.match(malformed.stderr, /Location: "flows\/malformed\/FLOW.md"\n  Value: "\/format"/)
+  assert.match(malformed.stderr, /Next step\n.*unsupported name or shape/)
+  assert.match(malformed.stderr, /Diagnostic code: METADATA_FIELD\n  Category: INVALID_CANDIDATE/)
   // A public flow.jig.md help URL is not a protected .jig filesystem path.
   assert.doesNotMatch(malformed.stderr, /(?:^|[\s"/])\.jig(?:[/\s"]|$)|coordinator|sqlite|\/tmp\//i)
   await assert.rejects(stat(join(project, 'jig.lock')), { code: 'ENOENT' })
@@ -73,7 +73,10 @@ try {
 
   const approved = await run([jig, 'review', project, '--yes'], consumer, [0], 120_000)
   assert.match(approved.stdout, /^Review changes before approval\n/)
-  assert.match(approved.stdout, /\nproject is ready\n$/)
+  assert.match(
+    approved.stdout,
+    /\nProject ready\n\n  The exact reviewed revision is approved\. No Flow was started\./,
+  )
   assert.equal(approved.stderr, '')
   assert.doesNotMatch(
     approved.stdout,
@@ -108,17 +111,21 @@ try {
   await mkdir(preparationGuard, { mode: 0o700 })
   try {
     const unchanged = await run([jig, 'review', project, '--yes'], consumer, [0], 120_000)
-    assert.deepEqual(unchanged, { stdout: 'project is ready\n', stderr: '', exitCode: 0 })
+    assert.equal(
+      unchanged.stdout,
+      'Project ready\n\n  The exact reviewed revision is approved. No Flow was started.\n  Next: jig run <target> (see jig run --help).\n',
+    )
+    assert.equal(unchanged.stderr, '')
+    assert.equal(unchanged.exitCode, 0)
   } finally {
     await rm(preparationGuard, { recursive: true, force: true })
   }
 
   const invalidTarget = await run([jig, 'run', 'hello'], project, [1], 60_000)
   assert.equal(invalidTarget.stdout, '')
-  assert.equal(
-    invalidTarget.stderr,
-    'JIG_RUN_TARGET_INVALID: use flow:<path> or binding:<id>, for example flow:flows/hello. Run jig review after adding a target.\n',
-  )
+  assert.match(invalidTarget.stderr, /^Error: Run target is invalid\n/)
+  assert.match(invalidTarget.stderr, /use flow:<path> or binding:<id>/)
+  assert.match(invalidTarget.stderr, /Diagnostic code: JIG_RUN_TARGET_INVALID/)
 
   const malformedInput = await run(
     [jig, 'run', 'flow:flows/hello', '--input', '{'],
@@ -127,10 +134,12 @@ try {
     60_000,
   )
   assert.equal(malformedInput.stdout, '')
-  assert.equal(
+  assert.match(malformedInput.stderr, /^Error: Run input is invalid\n/)
+  assert.match(
     malformedInput.stderr,
-    'JIG_RUN_INPUT_INVALID: --input must be valid JSON; quote inline JSON or use --input @file.json. No Flow was started.\n',
+    /--input must be valid JSON; quote inline JSON or use --input @file.json. No Flow was started./,
   )
+  assert.match(malformedInput.stderr, /Diagnostic code: JIG_RUN_INPUT_INVALID/)
 
   const schemaInvalid = await run(
     [jig, 'run', 'flow:flows/hello', '--input', JSON.stringify({ name: 42 })],
@@ -138,15 +147,26 @@ try {
     [1],
     120_000,
   )
-  assert.equal(
-    schemaInvalid.stderr,
-    'JIG_RUN_INPUT_INVALID: input does not match the target input schema.\n' +
-      'Value: "/name"\n' +
-      'Check --input against the Flow input.schema.json; see the JSON result for validation details.\n',
-  )
+  assert.match(schemaInvalid.stderr, /Input does not match the target input schema/)
+  assert.match(schemaInvalid.stderr, /Value: "\/name"\n  Expected string; received integer\./)
+  assert.match(schemaInvalid.stderr, /Next step: Check --input/)
+  assert.match(schemaInvalid.stderr, /Diagnostic code: JIG_RUN_INPUT_INVALID/)
   const rejectedTerminal = requireRecord(JSON.parse(schemaInvalid.stdout))
   assert.equal(rejectedTerminal.status, 'failed')
   assert.equal(rejectedTerminal.code, 'INVALID_INPUT')
+  assert.deepEqual(requireRecord(rejectedTerminal.details).typeMismatch, {
+    expected: ['string'],
+    received: 'integer',
+  })
+
+  const databaseBeforeInspect = await readFile(join(project, '.jig/jig.sqlite3'))
+  const inspected = requireRecord(
+    JSON.parse((await run([jig, 'inspect', 'flow:flows/hello'], project)).stdout),
+  )
+  assert.equal(inspected.state, 'approved')
+  assert.equal(inspected.target, 'flow:flows/hello')
+  assert.equal(requireRecord(requireRecord(inspected.schemas).input).type, 'object')
+  assert.deepEqual(await readFile(join(project, '.jig/jig.sqlite3')), databaseBeforeInspect)
 
   const unsupportedDependency = await run(
     [jig, 'run', 'flow:flows/missing-dependency'],
@@ -210,7 +230,7 @@ try {
     [2],
     120_000,
   )
-  assert.match(unapprovedResolution.stderr, /Resolving dependencies for "flows\/locked-dependency"/)
+  assert.match(unapprovedResolution.stderr, /Package: "flows\/locked-dependency"/)
   assert.match(unapprovedResolution.stderr, /private-network services/)
   assert.match(unapprovedResolution.stderr, /JIG_APPROVAL_REQUIRED/)
   await assert.rejects(stat(join(resolvingProject, 'jig.lock')), { code: 'ENOENT' })
@@ -228,14 +248,14 @@ try {
     [0],
     120_000,
   )
-  assert.match(resolved.stderr, /Resolving dependencies for/)
+  assert.match(resolved.stderr, /Warning: Dependency network access allowed/)
   await assert.rejects(stat(join(resolvingFlow, 'bun.lock')), { code: 'ENOENT' })
   await assert.rejects(stat(join(resolvingFlow, 'node_modules')), { code: 'ENOENT' })
   await assert.rejects(stat(join(resolvingFlow, 'postinstall-ran')), { code: 'ENOENT' })
   const admittedLock = await readFile(join(resolvingProject, 'jig.lock'), 'utf8')
   const reused = await run([jig, 'review', resolvingProject, '--yes'], consumer, [0], 120_000)
   assert.equal(reused.stderr, '')
-  assert.equal(reused.stdout, 'project is ready\n')
+  assert.match(reused.stdout, /^Project ready\n/)
   const resolvedRun = await run(
     [jig, 'run', 'flow:flows/locked-dependency', '--input', JSON.stringify('ada')],
     resolvingProject,
@@ -302,7 +322,7 @@ try {
     [1],
     120_000,
   )
-  assert.equal(deadline.stderr, '')
+  assert.match(deadline.stderr, /Diagnostic code: DEADLINE_EXCEEDED/)
   const deadlineTerminal = requireRecord(JSON.parse(deadline.stdout))
   assert.equal(deadlineTerminal.status, 'failed')
   assert.equal(deadlineTerminal.code, 'DEADLINE_EXCEEDED')
@@ -506,13 +526,14 @@ async function exerciseWorkspace(jig: string, consumer: string): Promise<void> {
     [2],
     120_000,
   )
-  assert.match(missing.stderr, /ADMISSION_MISSING:.*complete jig review/)
+  assert.match(missing.stderr, /complete jig review/)
+  assert.match(missing.stderr, /Diagnostic code: ADMISSION_MISSING/)
   await run(
     ['bun', '--no-env-file', '--config=/dev/null', 'install', '--ignore-scripts'],
     workspace,
   )
   const approved = await run([jig, 'review', '--yes'], project, [0], 120_000)
-  assert.match(approved.stdout, /project is ready/)
+  assert.match(approved.stdout, /Project ready/)
   const before = requireRecord(JSON.parse(await readFile(join(project, 'jig.lock'), 'utf8')))
   await writeFile(library, 'export const prefix = "Updated";\n')
   const original = await run(

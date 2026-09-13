@@ -58,11 +58,10 @@ try {
   const jig = join(consumer, 'node_modules', '.bin', 'jig')
   const project = join(consumer, 'hostile-project')
   const initialized = await run([jig, 'init', '--bare', project], consumer)
-  assert.deepEqual(initialized, {
-    exitCode: 0,
-    stdout: 'created bare Jig project\n',
-    stderr: '',
-  })
+  assert.equal(initialized.exitCode, 0)
+  assert.match(initialized.stdout, /^Created bare Jig project /)
+  assert.match(initialized.stdout, /Add a Flow under flows\//)
+  assert.equal(initialized.stderr, '')
 
   await writeHostileFlow(
     project,
@@ -168,7 +167,10 @@ try {
   await writeFile(join(consumer, 'input.json'), '{"mode":"copy"}\n')
 
   const approved = await run([jig, 'review', project, '--yes'], consumer, [0], 120_000)
-  assert.match(approved.stdout, /\nproject is ready\n$/)
+  assert.match(
+    approved.stdout,
+    /\nProject ready\n\n  The exact reviewed revision is approved\. No Flow was started\./,
+  )
   assert.equal(approved.stderr, '')
 
   process.stdout.write('Installed file Runs: capture, publication, exhaustion and failed results\n')
@@ -300,7 +302,7 @@ try {
   const deadlineStartedUnixMs = Date.now()
   const deadline = await run([jig, 'run', 'flow:flows/fixed-deadline'], project, [1], 75_000)
   const deadlineElapsedMs = Date.now() - deadlineStartedUnixMs
-  assert.equal(deadline.stderr, '')
+  assert.match(deadline.stderr, /Diagnostic code: DEADLINE_EXCEEDED/)
   const deadlineTerminal = requireRecord(JSON.parse(deadline.stdout))
   assert.equal(deadlineTerminal.status, 'failed')
   assert.equal(deadlineTerminal.code, 'DEADLINE_EXCEEDED')

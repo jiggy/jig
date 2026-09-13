@@ -286,7 +286,7 @@ delegatedDescribe('private rootless Linux Run', () => {
       await rm(finite, { recursive: true, force: true })
       await waitForNoRunCgroups()
     }
-  })
+  }, 15_000) // Two real launches plus independent fencing can exceed Bun's 5s harness default.
 
   test('rejects mount aliases into protected host or payload namespaces', async () => {
     const host = await hostConfiguration()
