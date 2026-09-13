@@ -74,6 +74,10 @@ admitted FLOW packages.
   and preserve separate execution, application, delivery, and cleanup outcomes.
   A generic failure without diagnostics must state the missing evidence; do not
   imply that the Flow never started or repeat an identical raw error block.
+  Generic human failure summaries must retain specific terminal failure messages;
+  hiding the structured result's message must never discard its cause. Quote and
+  escape reported text as data, and do not infer missing evidence from empty
+  stderr when the terminal already carries a specific explanation.
   Render host-only REVIEW_REQUIRED with `jig review` as the next action.
   Flow-supplied error details cannot establish that execution never started.
 

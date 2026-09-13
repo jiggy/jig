@@ -1288,7 +1288,11 @@ function renderRunFailure(
       'Effects may be uncertain; do not blindly repeat the Run. Inspect the result and any effects before starting new work. See https://jig.md/guide/results.',
       'Execution lost',
     )
-  if (terminal.code === 'EXECUTION_FAILED' && terminal.diagnostics.stderrBytes === 0)
+  if (
+    terminal.code === 'EXECUTION_FAILED' &&
+    terminal.diagnostics.stderrBytes === 0 &&
+    (!terminal.message.trim() || terminal.message === 'root Run execution failed')
+  )
     return renderDiagnostic(
       terminal.code,
       'Execution failed, but the host did not retain a more specific cause.\nNo Flow diagnostic text was captured. This result does not establish whether the Flow started.\n\nInspect any effects before starting new work. See https://jig.md/guide/results.',
@@ -1311,7 +1315,7 @@ function renderRunFailure(
   }
   return renderDiagnostic(
     terminal.code,
-    `${reasons[terminal.code] ?? 'The cause could not be determined.'} Inspect the result and diagnostics before starting new work. See https://jig.md/guide/results.`,
+    `${reasons[terminal.code] ?? 'The cause could not be determined.'}${terminal.message.trim() ? `\n\nReported cause:\n  ${asciiJsonString(terminal.message)}` : ''}\n\nInspect any effects before starting new work. See https://jig.md/guide/results.`,
     terminal.code === 'CANCELLED' ? 'Run cancelled' : 'Run failed',
   )
 }

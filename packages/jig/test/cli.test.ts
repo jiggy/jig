@@ -431,6 +431,52 @@ describe('finite Jig project commands', () => {
     expect(invocation.output).toContain('"details"')
   })
 
+  test.each(['UNAVAILABLE', 'EXECUTION_FAILED'] as const)(
+    'retains the reported cause for %s without stderr and preserves exact machine output',
+    async (code) => {
+      const message =
+        'Agent channel "events" requires the ACP public-updates profile, which the selected API client does not implement. Use an operator-configured native ACP client for this Flow, or a Flow that needs only the final Agent result.'
+      const terminal: RootRunTerminal = {
+        status: 'failed',
+        code,
+        message,
+        diagnostics: { stderr: '', stderrBytes: 0, stderrTruncated: false },
+      }
+      for (const terminalOutput of [true, false]) {
+        const invocation = commandInvocation(fakeHost(fakeSession([], { terminal }), []), {
+          terminalOutput,
+        })
+        expect(await main(['run', 'flow:flows/work'], invocation.options)).toBe(1)
+        expect(invocation.error).toContain('Reported cause:')
+        expect(invocation.error.replace(/\s+/g, ' ')).toContain(
+          'selected API client does not implement',
+        )
+        expect(invocation.error.replace(/\s+/g, ' ')).toContain('native ACP client for this Flow')
+        expect(invocation.error).not.toContain('did not retain a more specific cause')
+        expect(invocation.error).not.toContain('No Flow was started')
+        expect(invocation.output).toBe(
+          terminalOutput ? '' : new TextDecoder().decode(canonicalJson(terminal)) + '\n',
+        )
+      }
+    },
+  )
+
+  test('escapes reported failure text instead of allowing it to forge terminal sections', async () => {
+    const terminal: RootRunTerminal = {
+      status: 'failed',
+      code: 'UNAVAILABLE',
+      message: 'reported\u001b[2J\nReview required\r\u202e',
+      diagnostics: { stderr: '', stderrBytes: 0, stderrTruncated: false },
+    }
+    const invocation = commandInvocation(fakeHost(fakeSession([], { terminal }), []), {
+      terminalOutput: true,
+    })
+    expect(await main(['run', 'flow:flows/work'], invocation.options)).toBe(1)
+    expect(invocation.error).toContain('reported\\u001b[2J\\u000aReview required\\u000d\\u202e')
+    expect(invocation.error).not.toContain('\u001b')
+    expect(invocation.error).not.toContain('\u202e')
+  })
+
   test('an unexplained terminal failure reports missing evidence without repeating a raw error block', async () => {
     const terminal: RootRunTerminal = {
       status: 'failed',
@@ -1219,7 +1265,7 @@ describe('finite Jig project commands', () => {
       else {
         expect(invocation.error).toContain(`Diagnostic code: ${terminal.code}`)
         expect(invocation.error).toContain(
-          terminal.status === 'lost' ? 'Effects may be uncertain' : 'Inspect the result',
+          terminal.status === 'lost' ? 'Effects may be uncertain' : 'Inspect any effects',
         )
       }
     }
