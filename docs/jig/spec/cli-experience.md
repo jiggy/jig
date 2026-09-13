@@ -24,7 +24,15 @@ makes usable control an observable requirement;
    carry every meaning independently of color or symbols. Use terminal palette
    colors without background fills; remain legible in light and dark themes.
    Narrow terminals must retain complete consent and recovery information;
-   only the transient progress label may shorten to fit.
+   only the transient progress label may shorten to fit. Separate major terminal
+   sections with a blank line, a restrained horizontal rule, and a bold heading;
+   keep individual records and their fields grouped beneath that heading. Plain
+   terminal mode preserves these boundaries without escape sequences.
+   Use the terminal's gray for secondary metadata: hashes, diagnostic codes,
+   categories, change counts, completed-stage text, elapsed time, and optional
+   detail notes. Keep permission consequences, changed policy values, failures,
+   and next actions at normal or emphasized contrast. Gray never hides content
+   or substitutes for labels, spacing, or explicit status words.
 4. **Readable failures.** Order the failure summary, relevant location, known
    explanation/recovery, and diagnostic code. Codes support search and software;
    they must not replace the explanation. Name known missing prerequisites.

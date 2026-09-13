@@ -46,6 +46,47 @@ describe('CLI experience contract', () => {
     }
   })
 
+  test('major sections remain distinct in color and plain terminals, with secondary metadata in gray', () => {
+    const input = [
+      'Review changes before approval',
+      '',
+      'Approval permits these exact methods, settings and capabilities to run.',
+      '',
+      'Packages (source / dependency identity and capabilities): 1 added, 0 changed, 0 removed',
+      '',
+      'Added: "flows/chat"',
+      '  "digest": "sha256:1234"',
+      '  "directRun": true',
+      '',
+      'Targets after approval:',
+      '  "flow:flows/chat" - ready',
+      '',
+      'Unchanged policy is omitted above. Use jig review --details for complete policy.',
+    ].join('\n')
+    for (const width of [40, 80]) {
+      const colored = privateCliHumanText(input, true, width)
+      const plain = privateCliHumanText(input, false, width)
+      expect(strip(colored)).toBe(plain)
+      const rule = '-'.repeat(Math.min(60, width - 1))
+      expect(plain.split(rule)).toHaveLength(4)
+      expect(plain).toContain(`${rule}\nTargets after approval:\n\n`)
+      expect(colored).toContain('\u001b[90m  "digest": "sha256:1234"\u001b[39m')
+      expect(colored).toContain('\u001b[90m  1 added, 0 changed, 0 removed\u001b[39m')
+      expect(colored).not.toContain('\u001b[90mApproval permits')
+      expect(colored).not.toContain('\u001b[90m  "directRun"')
+      expect(plain).not.toContain('\u001b')
+      expect(plain).toContain('"flow:flows/chat" - ready')
+    }
+    const diagnostic = privateCliHumanText(
+      'Review could not finish\n\n  Next step\n    Supply bun.lock.\n\n  Diagnostic code: MISSING_LOCK\n  Category: UNAVAILABLE\n',
+      true,
+      80,
+    )
+    expect(diagnostic).toContain('\u001b[90m  Diagnostic code: MISSING_LOCK\u001b[39m')
+    expect(diagnostic).not.toContain('\u001b[90m    Supply bun.lock.')
+    expect(diagnostic).toContain('\u001b[1;31mReview could not finish')
+  })
+
   test('long waits update one narrow active line and retain only confirmed completion', async () => {
     let transcript = ''
     const progress = new PrivateCliProgress(

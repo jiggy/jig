@@ -57,6 +57,8 @@ admitted FLOW packages.
   `src/cli-presentation.ts` and `src/cli-progress.ts` own shared human
   presentation; launcher failures follow the same structure. Never introduce
   a separate raw diagnostic style or route machine output through styling.
+  Major terminal sections need visible boundaries; secondary metadata uses
+  gray while consent, policy values, and recovery actions remain prominent.
 
 - Change implementation, normative specification, schema, README, and tests
   together when a public contract changes.

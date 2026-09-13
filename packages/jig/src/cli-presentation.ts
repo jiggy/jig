@@ -13,55 +13,87 @@ export function privateCliHeading(
   return `\u001b[${code}m${text}\u001b[0m`
 }
 
-/** Style only trusted, complete human lines; never interpret arbitrary terminal escapes. */
+/** Secondary metadata stays readable using the terminal's configurable gray. */
+export function privateCliSecondary(text: string, color: boolean): string {
+  return color ? `\u001b[90m${text}\u001b[39m` : text
+}
+
+/** Style only trusted human text; machine records and live diagnostics bypass this. */
 export function privateCliHumanText(text: string, color: boolean, columns?: number): string {
-  if (columns !== undefined && columns >= 20) {
-    text = text
-      .split('\n')
-      .map((line) => {
-        // Exact quoted policy/paths, shell examples and cursor updates retain their bytes.
-        if (
-          line.includes('"') ||
-          line.includes('\u001b') ||
-          line.includes('\r') ||
-          /^\s*(?:jig |cd |[{}])/.test(line)
-        )
-          return line
-        const indent = /^ */.exec(line)?.[0] ?? ''
-        const words = line.slice(indent.length).split(' ')
-        const lines: string[] = []
-        let current = indent
-        for (const word of words) {
-          if (current.length > indent.length && current.length + word.length + 1 > columns) {
-            lines.push(current)
-            current = indent + word
-          } else current += (current.length > indent.length ? ' ' : '') + word
-        }
-        lines.push(current)
-        return lines.join('\n')
-      })
-      .join('\n')
-  }
-  if (!color) return text
   return text
     .split('\n')
     .map((line) => {
-      if (/^(Error:|Review could not finish|Run failed|Execution lost)/.test(line))
-        return privateCliHeading(line, 'error', true)
-      if (
-        /^(Warning:|Approval required|Review declined|Command interrupted|Run cancelled)/.test(line)
-      )
-        return privateCliHeading(line, 'warning', true)
-      if (/^(Project ready|Created |Execution completed)/.test(line))
-        return privateCliHeading(line, 'success', true)
-      if (
-        /^[A-Z][^{}]*:$/.test(line) ||
-        /^(Usage:|Review changes|Jig project|Reviewing |Running )/.test(line)
-      )
-        return privateCliHeading(line, 'info', true)
-      return line
+      const section =
+        /^(Selected Agent:|Host Agent selected|Packages \(|Bindings \(|Run targets \(|Targets after approval:|Review changes|Jig project|Warning:|Error:|Review could not finish|Run failed|Execution lost|Project ready|Created |Execution completed|Approval required|Review declined|Command interrupted|Run cancelled|Waiting for your approval)/.test(
+          line,
+        )
+      const wrapped = wrapHumanLine(line, columns)
+      let rendered = wrapped
+      const counts = /^((?:Packages|Bindings|Run targets) \(.*\)): (.*)$/.exec(line)
+      if (counts) {
+        rendered =
+          privateCliHeading(wrapHumanLine(counts[1] ?? '', columns), 'info', color) +
+          (columns === undefined ? '' : '\n') +
+          privateCliSecondary(
+            wrapHumanLine(`${columns === undefined ? ': ' : '  '}${counts[2]}`, columns),
+            color,
+          )
+      } else if (color) {
+        if (/^(Error:|Review could not finish|Run failed|Execution lost)/.test(line))
+          rendered = privateCliHeading(wrapped, 'error', true)
+        else if (
+          /^(Warning:|Approval required|Review declined|Command interrupted|Run cancelled)/.test(
+            line,
+          )
+        )
+          rendered = privateCliHeading(wrapped, 'warning', true)
+        else if (/^(Project ready|Created |Execution completed)/.test(line))
+          rendered = privateCliHeading(wrapped, 'success', true)
+        else if (
+          /^\s*(?:Diagnostic code:|Category:|"digest": "sha256:)/.test(line) ||
+          /^Unchanged policy is omitted/.test(line)
+        )
+          rendered = privateCliSecondary(wrapped, true)
+        else if (
+          section ||
+          /^[A-Z][^{}]*:$/.test(line) ||
+          /^(Usage:|Reviewing |Running |Added:|Changed:|Removed:)/.test(line)
+        )
+          rendered = privateCliHeading(wrapped, 'info', true)
+      }
+      // Width is supplied only for a terminal. Plain terminal mode keeps the same
+      // spatial hierarchy; redirected text retains its compact, complete transcript.
+      if (section && columns !== undefined) {
+        const rule = '-'.repeat(Math.max(1, Math.min(60, columns - 1)))
+        return `\n${privateCliSecondary(rule, color)}\n${rendered}\n`
+      }
+      return rendered
     })
     .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+}
+
+function wrapHumanLine(line: string, columns?: number): string {
+  if (
+    columns === undefined ||
+    columns < 20 ||
+    line.includes('"') ||
+    line.includes('\u001b') ||
+    line.includes('\r') ||
+    /^\s*(?:jig |cd |[{}])/.test(line)
+  )
+    return line
+  const indent = /^ */.exec(line)?.[0] ?? ''
+  const lines: string[] = []
+  let current = indent
+  for (const word of line.slice(indent.length).split(' ')) {
+    if (current.length > indent.length && current.length + word.length + 1 > columns) {
+      lines.push(current)
+      current = indent + word
+    } else current += (current.length > indent.length ? ' ' : '') + word
+  }
+  lines.push(current)
+  return lines.join('\n')
 }
 
 export function privateCliDiagnostic(

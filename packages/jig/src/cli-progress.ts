@@ -1,4 +1,8 @@
-import { privateCliHeading, privateCliStyleEnabled } from './cli-presentation.js'
+import {
+  privateCliHeading,
+  privateCliSecondary,
+  privateCliStyleEnabled,
+} from './cli-presentation.js'
 
 /** One bounded active line on terminal stderr; never infers completed work. */
 export class PrivateCliProgress {
@@ -60,7 +64,10 @@ export class PrivateCliProgress {
     }
     if (!this.#stage) return
     if (this.#visible) this.write('\r\u001b[2K')
-    if (this.animated) this.write(`${privateCliHeading('  ✓', 'success', true)} ${this.#stage}\n`)
+    if (this.animated)
+      this.write(
+        `${privateCliHeading('  ✓', 'success', true)} ${privateCliSecondary(this.#stage, true)}\n`,
+      )
     this.#visible = false
     this.#stage = ''
   }
@@ -91,7 +98,7 @@ export class PrivateCliProgress {
           ? '.'.repeat(width)
           : `${this.#stage.slice(0, width - 3)}...`
         : this.#stage
-    this.write(`\r\u001b[2K  … ${label}${elapsed}`)
+    this.write(`\r\u001b[2K  … ${label}${privateCliSecondary(elapsed, true)}`)
     this.#visible = true
   }
 }
