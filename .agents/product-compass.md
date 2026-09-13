@@ -69,6 +69,12 @@ own purpose and domain rules. Operators supply Agents, credentials, limits,
 and execution policy. No package or chooser acquires those powers by naming
 them.
 
+FLOW gives executable methods
+[one compositional boundary for code and Agents](doctrine/flow.md#one-compositional-model-for-code-and-agents):
+the caller uses the method's contract whether its implementation uses code,
+Agent judgment, or both. Jig supplies local authority and accountable execution
+around that boundary. This connects capability compounding to power under control.
+
 Jig's [architectural thesis](doctrine/design-judgment.md#the-microkernel-architectural-thesis)
 is that a small execution core makes room for substantial capability in
 composed methods. Agents can reason and adapt within their roles while

@@ -75,7 +75,8 @@ understand why a small execution core supports more capable applications.
 ## What should make adoption attractive
 
 The desired first understanding of FLOW is: “I can build a system from small,
-executable capabilities and combine them into something more powerful.” The
+executable capabilities that compose the same way whether they use code,
+Agents, or both, and combine them into something more powerful.” The
 desired understanding of Jig is: “I can use Agent flexibility within an
 application while keeping its authority, composition, and execution lifecycle
 under my system's control.”
@@ -124,6 +125,8 @@ the whole difficulty to a missing execution format. In particular, investigate:
 - whether explicit invocation, authority and lifecycle boundaries make those
   tasks practical, and which domain checks remain the builder's responsibility;
 - whether the Skills-to-executable-method connection is understandable;
+- whether readers understand a common calling boundary without assuming
+  identical behavior, authority, or quality across implementations;
 - whether composition adds useful capability beyond one Agent or a script;
 - whether setup and review costs are justified by the demonstrated benefit;
 - whether users can distinguish an executed procedure from a correct answer;

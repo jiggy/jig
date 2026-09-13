@@ -28,7 +28,7 @@ results. It is not a promise that models become deterministic or error-free.
 
 | Product | Reader's starting point | Connection to establish | Benefit to make tangible |
 | --- | --- | --- | --- |
-| **FLOW** | Skills and instructions already capture useful know-how. | A method can also expose executable code that a program invokes directly; Agent involvement is chosen inside the method. | Build applications from capabilities and make more work achievable by combining them. |
+| **FLOW** | Skills and instructions already capture useful know-how. | Executable methods give code and Agent work the same caller-facing boundary; the implementation chooses how to do the work. | Build applications from capabilities that compose consistently whether their methods use code, Agents, or both. |
 | **Jig** | Agents are useful during development, but delegating work inside a product raises fears about behavior and consequences. | Code and Agent work compose through Flows; Jig keeps authority and execution lifecycle outside model judgment. | Build applications that put Agent intelligence to work within explicit boundaries and handle its outcomes. |
 
 “You trust Agents to help build your software. Now build software that puts
@@ -50,7 +50,8 @@ The preferred FLOW progression is:
 
 1. Recognize useful work the reader has already taught an Agent to perform.
 2. Show how an executable method can be called directly by code.
-3. Show ordinary code and Agent judgment contributing to the same application.
+3. Show code and Agent judgment behind the same method boundary, with the
+   caller composing through the method's contract.
 4. Demonstrate what combining methods makes possible: capability compounding.
 5. Explain the small package boundary and host independence, then offer a
    concrete first authoring step.
@@ -120,6 +121,19 @@ Agent work inside them. It must not imply an autonomous routing engine, a
 general scheduler, or host control of a Flow's internal graph.
 
 ## Explain why we believe in the architecture
+
+**One compositional model for code and Agents** is central to the story.
+For Jig and FLOW, AI-native means that a caller can compose executable methods
+through the same boundary whether their implementation uses code, Agent
+judgment, or both. FLOW owns that common method boundary; Jig owns local
+authority and execution lifecycle. Explain their complementary contributions.
+
+“Build with code and Agents as parts of the same system” expresses the benefit.
+Make it concrete by showing a caller invoking a method and then revealing
+different implementations behind its contract. The calling model stays
+consistent; the required powers, side effects, quality and performance remain
+visible where they matter. A shared interface does not prove that two methods
+are behaviorally interchangeable.
 
 “A microkernel for agent-native systems” is an architectural analogy worth
 explaining. Pair it immediately with the concrete division: methods own work,

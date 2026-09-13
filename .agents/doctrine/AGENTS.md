@@ -11,8 +11,8 @@ then guiding principles, design commitments, and their practical consequences.
   benefit, builder ecosystem vision, and shared intended experience. It develops
   why the products advance that purpose and references audience and
   communication strategy rather than defining either.
-- `flow.md` owns capability compounding, executable know-how, and the reasons
-  for an independent method ecosystem.
+- `flow.md` owns capability compounding, executable know-how, one compositional
+  model for code and Agents, and the reasons for an independent method ecosystem.
 - `jig.md` owns agency, power under control, Agents as participants in software,
   and the authority and ownership principles that hold under misdirected behavior.
 - `design-judgment.md` owns cross-product responsibilities, the microkernel
@@ -60,6 +60,9 @@ then guiding principles, design commitments, and their practical consequences.
 - Explain how the architecture enables Agent work within explicit boundaries.
   Keep production adoption hypotheses in audience strategy, and distinguish
   governed execution from correct Agent judgment without burying the ambition.
+- Keep the common method boundary in FLOW's reasoning and local execution
+  authority in Jig's. A consistent calling model does not imply equivalent
+  behavior or remove review of a changed implementation.
 - Preserve substantive reasoning when shortening or separating document
   ownership. Keep the ambition, causal argument, and intended experience
   developed in the purpose; the compass owns the short summary. Links to

@@ -81,12 +81,6 @@ directly, without a model first interpreting the prose to choose what to run.
 The program can use ordinary code throughout, request Agent judgment at chosen
 steps, or combine those approaches. Agent involvement is a method choice.
 
-This makes procedural composition available to ordinary code: callers supply
-input and consume a defined outcome and result. Methods can express ordering,
-checks, branches, and stopping conditions in their implementation, with no
-required model call merely to interpret those instructions. A concrete gain
-in latency, cost, or result quality still needs measurement.
-
 Skills, tools, libraries, and graph runtimes remain valuable. Skills can bundle
 scripts, and those scripts can also be run directly. FLOW's proposal is a shared
 package and invocation boundary for the complete method, independent of how
@@ -99,6 +93,33 @@ Skills, validation, and internal method. FLOW owns portable package meaning,
 values, finite invocation, outcomes, and optional exact interoperability
 contracts. Exact public mechanics remain in the
 [FLOW specifications](../../docs/flow/spec/).
+
+### One compositional model for code and Agents
+
+Agent judgment and authored procedures belong in the same compositional model.
+A method can use code where the procedure is known, intelligence where
+interpretation is useful, and both where the task demands it.
+
+For an executable Flow, the caller supplies input and consumes a defined
+outcome and result. That method boundary stays consistent whether the work
+inside uses ordinary code, Agent judgment, or other Flows. Code and Agents
+occupy the same compositional level through the methods that contain their
+work. The caller should not need different orchestration merely because an
+implementation involves intelligence.
+
+This is the architectural meaning of AI-native composition: software builds
+with code and Agents through one method boundary. A method can gain checks,
+replace some reasoning with code, or combine further specialists while
+preserving its caller-facing contract. That gives capability room to develop
+without forcing every caller to adopt the implementation's internal model.
+The revised implementation still needs its host's applicable review and
+authorization; interface consistency does not admit changed execution bytes.
+
+A common interface does not establish equivalent behavior. Quality, side
+effects, required powers, cost, and latency can differ; substitution requires
+the method's relevant contract and application requirements to hold. Authored
+procedures remain ordinary code, and Agent judgment remains uncertain. The
+shared boundary makes their composition coherent without erasing those facts.
 
 ### Runtime and host independence
 
