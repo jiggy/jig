@@ -426,7 +426,11 @@ proofDescribe('private rootless project session', () => {
         type: 'terminal',
         result: { status: 'failed', code: 'UNAVAILABLE' },
       })
-      expect(rejected.stderr).toBe('')
+      expect(rejected.stderr).toContain('Run failed')
+      expect(rejected.stderr).toContain('Required execution support was unavailable.')
+      expect(rejected.stderr).toContain('https://jig.md/guide/results')
+      expect(rejected.stderr).toContain('Diagnostic code: UNAVAILABLE')
+      expect(rejected.stderr).not.toContain('\u001b[')
 
       let cancelledOnData = false
       const interrupted = await invokeChannelCli(
