@@ -410,6 +410,10 @@ delegatedDescribe('private rootless Linux Run', () => {
     }
   })
 
+  // This test owns two launches, a five-second payload deadline, and fencing.
+  // Bun's five-second default can kill the detached cleanup supervisor itself.
+  // Keep the proof-host recipe's runner allowance here as well; payload limits
+  // remain unchanged when this file runs inside the aggregate source suite.
   test('revalidates one retained authority while its own Run is active', async () => {
     const host = await hostConfiguration()
     const waiting = await createFixture('await new Promise(() => {});')
@@ -427,12 +431,14 @@ delegatedDescribe('private rootless Linux Run', () => {
       expect(await second.completion).toMatchObject({ exitCode: 0, fenced: true })
       expect(await missing(second.cgroup.runCgroup)).toBe(true)
     } finally {
-      await first?.terminate().catch(() => undefined)
+      // Retain fixtures/evidence if settlement fails; do not delete the source
+      // of a still-owned process or hide the fencing failure.
+      await first?.terminate()
       await rm(waiting, { recursive: true, force: true })
       await rm(finite, { recursive: true, force: true })
       await waitForNoRunCgroups()
     }
-  }, 15_000) // Two real launches plus independent fencing can exceed Bun's 5s harness default.
+  }, 30_000)
 
   test('rejects mount aliases into protected host or payload namespaces', async () => {
     const host = await hostConfiguration()
