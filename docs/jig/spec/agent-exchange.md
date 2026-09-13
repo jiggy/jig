@@ -102,13 +102,12 @@ reusable preparation/result library in-process. Each selected target retains
 its own admitted settings and authority; the remaining root deadline applies
 throughout the chain.
 
-Native [Agent Run](agent-run.md) remains the authenticated caller-context
-integration. Jig selects Skills from its active caller's admitted source,
-prepares and finishes the call through the same pinned method library, and
-independently checks the complete result. The ordinary anonymous Agent Flow
-selects only its own package Skills and receives any caller guidance as plain
-input. It does not implement the native caller-context promise or replace
-native Agent Run qualification.
+[Agent Run](agent-run.md) accepts explicit instructions and Skill contents;
+Exchange accepts a prepared prompt. Either named interface may be offered by
+an ordinary Flow, selected through an exact Binding route with its own grants.
+Jig's native default independently validates its provider boundary. A method
+consumer owns dynamic result checks and domain interpretation when selecting
+an ordinary replacement. Neither interface attests caller-supplied context.
 
 ## Optional public updates
 
@@ -137,7 +136,7 @@ implement its exact agreement and channel lifecycle, or reject the request
 before dispatch. These obligations do not require Jig's admission store,
 containment implementation, configuration variables, SDK or private controller.
 An independent host run proves only the public boundaries and workload it
-actually exercises; it does not prove Jig's native caller-Skill qualification.
+actually exercises; it does not establish Agent answer quality or Jig host conformance.
 
 See [reuse the Agent method](../guide/agent-method.md) for the library and
 ordinary Flow artifact, adoption and adaptation.

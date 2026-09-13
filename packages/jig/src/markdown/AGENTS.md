@@ -25,6 +25,8 @@ the operator's authority and execution ownership intact.
 - Reason only through the derived `markdown-agent` slot with the fixed admitted
   template and complete bounded context. Never repair malformed decisions or
   automatically replay uncertain work.
+- An explicit matching Agent Flow may fill that slot; otherwise use the native
+  default. Validate decisions independently of either implementation.
 - The template explains that prose-only Skills can finish without recipes or
   tools and places their requested answer inside the required result envelope.
 - Inspect every recipe before reasoning and expose frozen unavailable diagnostics

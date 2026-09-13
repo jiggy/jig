@@ -169,7 +169,8 @@ or an ordinary code specialist; exact whole-value transport does not solve that.
 Every Markdown body discloses a runtime Agent dependency. Reserve `markdown-agent`
 against authored Markdown uses and recipe targets. The profile derives this
 ordinary slot requirement; existing operator binding selects its exact qualifying
-native Agent route and configuration. Calls use the same admitted selection via
+Agent implementation and configuration, whether a Flow or a native service.
+Calls use the same admitted selection via
 `run.call`, under the Markdown invocation's authenticated caller. No wrapper,
 provider identity from text, inherited credentials or native tools are introduced.
 

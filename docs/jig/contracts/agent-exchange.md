@@ -24,8 +24,8 @@ resolve a call. Copying the descriptor grants no permission to use a provider.
   Preserve the latter's `contracts/acp-public-updates.json` path beside the
   invocation descriptor when copying the bundle.
 - [Choose an Agent](../guide/agents.md) in the host's operator configuration.
-- Read [Agent Run](agent-run.md) for the separate native invocation that
-  authenticates selected Skills from its active caller's package.
+- Read [Agent Run](agent-run.md) for the method interface that accepts explicit
+  instructions and Skill contents and returns a checked structured answer.
 
 This interface is a prerelease source candidate. Its `done` result reports
 completed transport; the returned text and stop reason still need the method's

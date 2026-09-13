@@ -153,8 +153,8 @@ bundled [Markdown interpreter](https://flow.jig.md/spec/markdown-runtime),
 both inside the same rootless execution envelope. Other valid formats and
 named-operation contracts are unavailable, not silently substituted.
 Every Markdown package, including a recipe-only body, derives
-the reserved `markdown-agent` native requirement. Review pins that requirement
-to operator Agent configuration. Authored routes cannot replace it. Markdown
+the typed `markdown-agent` requirement. Review pins an explicit matching Agent
+Flow route, or the native default when no route was selected. Markdown
 resources are inert: their `package.json` does not initiate Bun preparation.
 
 A TypeScript package with production dependencies supplies
@@ -372,8 +372,11 @@ version and descriptor/closure digest in its root `FLOW.contract.json`. An expli
 route wins or fails; it never falls back. Uncontracted exact Binding routes
 need no additional declaration. Only the qualified native contracts (Agent Run,
 Agent Exchange, Project Command, HTTP Request and Run Checkpoint) may default
-to host implementation. They remain native-only: claiming their digest does not
-grant a package credentials, endpoint access, command execution or retention authority.
+to host implementation. Agent Run and Agent Exchange can instead route to an
+ordinary Flow offering the exact contract. HTTP Request, Project Command and
+Run Checkpoint remain host-only evidence/authority interfaces. Claiming a
+descriptor grants no credentials, endpoint access, command execution or
+retention authority.
 Review shows the resolved route and expected contract for each target slot.
 
 Attachment declarations participate in root eligibility and review without
@@ -627,12 +630,14 @@ not just each parent's immediate children. Trusted coordinators and supervisors
 are outside this payload budget. It is not fair-share scheduling or combined
 utilization accounting. Every descendant remains within the root deadline.
 
-An Agent-using root or child uses the same `flow/call` through its exact native
-Agent Run slot. Input carries instructions, an optional exact package-local
-Skill selection, and an optional response Schema/1 value. The result is
+An Agent-using root or child uses `flow/call` through its exact Agent Run slot,
+selecting a Flow or native implementation. Input carries instructions, optional
+explicit Skill contents and guidance, and an optional response Schema/1 value. The result is
 `{ "outcome": "done" | "blocked" | "limit", "output": { "text", "structured"? } }`.
 There is no method selector or native-only value wrapper. A completed
-structured result is validated against the caller's schema before return.
+structured result must match the caller's schema. Consumers validate replacement
+results independently; the native implementation additionally checks its own
+dynamic result boundary.
 
 The exact [Agent Exchange](agent-exchange.md) slot instead accepts one prepared
 prompt and optional bounded response schema. It returns final text and a stop
@@ -641,14 +646,13 @@ Its native authority, operation identity, remaining deadline and reserved
 effect capacity follow the same host rules. It adds neither caller Skill
 projection nor another ordinary Flow level.
 
-Agent Run's selected Skills are immediate `skills/<name>/` subtrees containing exact-case
-`SKILL.md`. Omission selects none. They are copied from the immutable admitted
-package and passed as read-only guidance only to that call; they grant no
-tools, network, filesystem, child target, or other authority. Agent and child
+Agent Run accepts explicit selected Skill contents, with exact-case `SKILL.md`
+in each Skill. A caller can read its captured `skills/<name>/` trees using
+the public method library. Supplied text is guidance, not host-attested origin;
+it grants no tools, network, filesystem, child target, or other authority. Agent and child
 calls share the root's absolute deadline. Each direct child occupies one root
 branch; its descendants use that branch's reserved Flow and effect capacity.
-Child skills come only from the selected
-child's admitted package.
+No ancestor or sibling's files or conversation are included implicitly.
 Possibly dispatched Agent work is fenced and reported as uncertain rather
 than automatically replayed.
 

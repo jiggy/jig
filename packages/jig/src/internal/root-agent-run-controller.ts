@@ -41,15 +41,15 @@ import {
 } from './direct-run.js'
 import type { PrivateHttpGrants } from './http-grants.js'
 import { privateDomainDigest } from './identity.js'
+import { revalidatePrivateInstalledBunSupport } from './installed-bun-support.js'
 import {
   normalizeParentFlow,
+  type PrivateInvocationContext,
+  type PrivateParentFlow,
   protectedOwnerRoot,
   requireParentFlowOwner,
   requireParentTarget,
-  type PrivateInvocationContext,
-  type PrivateParentFlow,
 } from './invocation-context.js'
-import { revalidatePrivateInstalledBunSupport } from './installed-bun-support.js'
 import {
   cancelPrivateLinuxOwnerStateAllocation,
   normalizePrivateLinuxConfirmedEnforcementReceipt,
@@ -95,7 +95,6 @@ import {
   type PreparedAgentRunInput,
   parseAgentRunInput,
   parseAgentRunResult,
-  projectAgentRunSkills,
 } from './private-agent-run.js'
 import { PRIVATE_AGENT_PROVIDER_PIDS } from './root-operation-limits.js'
 
@@ -105,7 +104,6 @@ const CLEANUP_KIND = 'private-root-agent-cleanup/1'
 const CANCELLATION_GRACE_MS = 1_000
 const PROVIDER_STDERR_BYTES = 64 * 1024
 const DIGEST = /^sha256:[0-9a-f]{64}$/
-const decoder = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true })
 
 interface AgentAllocation {
   readonly kind: typeof ALLOCATION_KIND
@@ -242,9 +240,7 @@ async function executeAgentRun(
     if (error instanceof AgentExchangeValidationError) return failed(error.code, error.message)
     if (
       (error instanceof AgentMethodError && error.code === 'RESOURCE_EXHAUSTED') ||
-      (error instanceof SchemaDiagnostic && error.code === 'SCHEMA_LIMIT_EXCEEDED') ||
-      (error instanceof AgentRunValidationError &&
-        error.code === 'AGENT_RUN_SKILL_PROJECTION_LIMIT')
+      (error instanceof SchemaDiagnostic && error.code === 'SCHEMA_LIMIT_EXCEEDED')
     ) {
       return failed('RESOURCE_EXHAUSTED', 'the Agent Run input exceeds its fixed provider bound')
     }
@@ -550,22 +546,8 @@ async function prepareCall(
     } else {
       assertAgentRunContract(reference.contract)
       const inputValue = parseAgentRunInput(reference.contract, input.call.input)
-      const manifest = await projectAgentRunSkills(captured, inputValue.selectedSkills)
-      const selectedSkills = manifest.skills.map((skill) => ({
-        name: skill.name,
-        files: skill.files.map((file) => ({ path: file.path, text: decoder.decode(file.bytes()) })),
-      }))
-      const prepared = prepareAgent(
-        {
-          instructions: inputValue.input.instructions,
-          ...(inputValue.input.responseSchema === undefined
-            ? {}
-            : {
-                responseSchema: inputValue.input.responseSchema,
-              }),
-        },
-        selectedSkills,
-      )
+      const { skills, ...methodInput } = inputValue.input
+      const prepared = prepareAgent(methodInput, skills ?? [])
       method = Object.freeze({ input: inputValue, contract: reference.contract, prepared })
       // The trusted bridge and a hostile direct caller face the same lower boundary.
       request = parseAgentExchangeInput(prepared.request)

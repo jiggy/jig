@@ -26,7 +26,7 @@ child calls, project commands, delegated HTTP, and Agent providers.
 - Installed Bun authentication, rootless acquisition, delegation,
   containment, supervision, and execution.
 - Agent clients and launchers, native invocation enforcement, credential
-  isolation, independent result validation and package-local Skill projection.
+  isolation, explicit-context bounds and independent native result validation.
   Agent Run and Agent Exchange share the same bounded provider owner. The
   former imports the pinned `@jigging/agent-method` library; editable Flow
   implementations never execute in the coordinator.
@@ -113,6 +113,10 @@ child calls, project commands, delegated HTTP, and Agent providers.
   schema and provider bounds before allocation. Native ACP leading-slash prompts
   are rejected because clients interpret them as control commands; a method's
   prefix is not the authority safeguard.
+- The finite ACP peer refuses permission requests with the protocol's cancelled
+  outcome, never a peer-supplied option ID. Permission refusal does not issue
+  session control against an identity supplied by the request; Run cancellation
+  remains tied to the owned session and host fencing.
 - Native Codex subscription access comes from the current operator's
   file-backed Codex login. Project only its short-lived bearer; never embed a
   development login, retain its refresh token, mount `CODEX_HOME`, or expose a

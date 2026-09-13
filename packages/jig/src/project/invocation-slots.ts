@@ -1,5 +1,3 @@
-import { validateGrantPolicy } from './grant-validation.js'
-import { type GrantedSlot, type GrantPolicy, normalizeGrant } from './grants.js'
 import { isContractId, isContractVersion } from '../contract-identity.js'
 import {
   AGENT_EXCHANGE_CONTRACT_DIGEST,
@@ -27,6 +25,8 @@ import {
   RUN_CHECKPOINT_CONTRACT_VERSION,
 } from '../internal/private-run-checkpoint.js'
 import { canonicalJson, decodeJson1, type JsonValue } from '../json.js'
+import { validateGrantPolicy } from './grant-validation.js'
+import { type GrantedSlot, type GrantPolicy, normalizeGrant } from './grants.js'
 import type { RunTargetIdentity } from './package-project.js'
 import { normalizeProjectPath } from './paths.js'
 
@@ -98,8 +98,10 @@ export function nativeInvocationKind(
   )
 }
 
-export function isNativeInvocationId(id: string | undefined): boolean {
-  return Object.values(NATIVE).some((identity) => identity.id === id)
+export function isHostOnlyInvocationId(id: string | undefined): boolean {
+  return Object.entries(NATIVE).some(
+    ([kind, identity]) => !isAgentInvocation(kind as NativeInvocation) && identity.id === id,
+  )
 }
 
 export function sameInvocationIdentity(
@@ -251,8 +253,8 @@ export function normalizeInvocationSlots(value: unknown): InvocationSlots {
       } else throw new TypeError('unknown Flow slot target')
       const contract =
         slot.contract === undefined ? undefined : normalizeInvocationIdentity(slot.contract)
-      if (contract !== undefined && isNativeInvocationId(contract.id))
-        throw new TypeError('native interfaces cannot be replaced by ordinary Flow targets')
+      if (contract !== undefined && isHostOnlyInvocationId(contract.id))
+        throw new TypeError('host evidence interfaces cannot be replaced by ordinary Flow targets')
       output[name] = Object.freeze({
         kind: 'flow',
         target: identity,

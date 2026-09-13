@@ -30,7 +30,9 @@ admitted FLOW packages.
   public example selection.
 - Native Agent Run imports `@jigging/agent-method` for preparation and result
   interpretation. Agent Exchange exposes only bounded provider facts; Jig
-  retains exact source selection, provider authority and owned execution.
+  retains source admission, resource authority and owned execution. Agent Run
+  and Exchange can route to exact ordinary Flow implementations. Skill content
+  is explicit caller data; consumers independently check dynamic results.
 - `justfile`, `scripts/`, `support/`, the manifest, README, licenses, and notices own
   package assembly inputs. Bun generates the ignored root workspace lock;
   `dist/`, `bin/`, and `libexec/` are generated.
@@ -164,7 +166,8 @@ admitted FLOW packages.
   inline/named command grants through the installed public CLI and complete
   packed SDK in a consumer workspace, and the complete HTTP-backed Agent artifact
   without rewritten workers, including application → specialist → Agent
-  composition and invalid-result propagation. It honors `JIG_PACKAGE_ARCHIVE`,
+  composition, named-contract substitution, Markdown selection and independent
+  decision rejection. It honors `JIG_PACKAGE_ARCHIVE`,
   `FLOW_SDK_PACKAGE_ARCHIVE` and `AGENT_METHOD_PACKAGE_ARCHIVE`.
   Failed smoke consumers and candidate archives remain available for diagnosis.
 - The Agent lifecycle suite accepts `AGENT_METHOD_PACKAGE_ARCHIVE` for the

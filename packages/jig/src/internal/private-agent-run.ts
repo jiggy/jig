@@ -1,64 +1,25 @@
 import { types as utilTypes } from 'node:util'
-import type { AgentResult } from '@jigging/agent-method'
+import { type AgentCallInput, type AgentResult, prepareAgent } from '@jigging/agent-method'
 
 import { type ParsedInvocationContract, parseInvocationContract } from '../invocation-contract.js'
-import { canonicalJson, type JsonObject, type JsonValue } from '../json.js'
-import type { CapturedPackage } from '../package/capture.js'
-import { comparePathBytes } from '../package/paths.js'
+import { canonicalJson, type JsonValue } from '../json.js'
 import { type CompiledSchema, compileSchemaFile } from '../schema/index.js'
 import { snapshotPrivateOrdinaryJson } from './private-ordinary-json.js'
 
 export const AGENT_RUN_CONTRACT_ID = 'https://jig.md/contracts/agent-run'
 export const AGENT_RUN_CONTRACT_VERSION = '1.0.0'
 export const AGENT_RUN_CONTRACT_DIGEST =
-  'sha256:63ba08f956904d64d499efcd3e93ac19773c61f2efc7de2673a660eb80963cb3'
-
-const LOCAL_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
-const MAX_SELECTED_SKILLS = 64
-const MAX_PROJECTED_FILES = 1_024
-const MAX_PROJECTED_BYTES = 1_048_576
-const EMPTY_SKILLS: readonly string[] = Object.freeze([])
-
-export interface AgentRunInput {
-  readonly instructions: string
-  readonly skills?: readonly string[]
-  readonly responseSchema?: JsonObject
-}
+  'sha256:f03ba919ddd9036b342ab03e438bb2dc65eca284829383268cb74d655a0ffba1'
 
 export interface PreparedAgentRunInput {
   /** The immutable, ordinary JSON/1 value accepted by the exact contract. */
-  readonly input: AgentRunInput
-  /** Always present; an omitted `input.skills` becomes the empty selection. */
-  readonly selectedSkills: readonly string[]
-}
-
-export interface AgentRunSkillFile {
-  /** Logical path relative to this skill's `skills/<name>/` root. */
-  readonly path: string
-  readonly size: number
-  /** Return a fresh copy so a consumer cannot mutate the retained manifest. */
-  bytes(): Uint8Array
-}
-
-export interface AgentRunSkill {
-  readonly name: string
-  readonly files: readonly AgentRunSkillFile[]
-}
-
-export interface AgentRunSkillManifest {
-  readonly skills: readonly AgentRunSkill[]
-  readonly fileCount: number
-  readonly contentBytes: number
+  readonly input: AgentCallInput
 }
 
 export type AgentRunValidationCode =
   | 'AGENT_RUN_CONTRACT_MISMATCH'
   | 'AGENT_RUN_RESULT_INVALID'
   | 'AGENT_RUN_JSON_INVALID'
-  | 'AGENT_RUN_SKILL_SELECTION_INVALID'
-  | 'AGENT_RUN_SKILL_UNKNOWN'
-  | 'AGENT_RUN_SKILL_PROJECTION_LIMIT'
-  | 'AGENT_RUN_SKILL_CONTENT_INVALID'
   | 'AGENT_RUN_INPUT_UNPREPARED'
   | 'AGENT_RUN_STRUCTURED_REQUIRED'
 
@@ -96,8 +57,9 @@ export function parseAgentRunInput(
   const schemas = requireAgentRunSchemas(contract)
   const inputValue = snapshotAgentJson(value, 'Agent Run input')
   schemas.input.validate(inputValue, 'AGENT_RUN_INPUT_INVALID')
-  const input = inputValue as unknown as AgentRunInput
-  const selectedSkills = validateSkillSelection(input.skills ?? EMPTY_SKILLS)
+  const input = inputValue as unknown as AgentCallInput
+  const { skills, ...methodInput } = input
+  prepareAgent(methodInput, skills ?? [])
   const responseSchema = Object.hasOwn(input, 'responseSchema')
     ? compileSchemaFile(
         canonicalJson(input.responseSchema as JsonValue),
@@ -105,7 +67,7 @@ export function parseAgentRunInput(
       )
     : undefined
 
-  const prepared = Object.freeze({ input, selectedSkills })
+  const prepared = Object.freeze({ input })
   preparedInputs.set(
     prepared,
     Object.freeze({
@@ -144,90 +106,6 @@ export function parseAgentRunResult(
     }
   }
   return result
-}
-
-/**
- * Copy only the selected immediate `skills/<name>/` trees out of one captured
- * Package/1 snapshot. The returned manifest contains no package or host path.
- */
-export async function projectAgentRunSkills(
-  captured: CapturedPackage,
-  selected: unknown,
-): Promise<AgentRunSkillManifest> {
-  const names = validateSkillSelection(selected)
-  if (names.length === 0) {
-    return Object.freeze({ skills: Object.freeze([]), fileCount: 0, contentBytes: 0 })
-  }
-
-  interface PlannedFile {
-    readonly packagePath: string
-    readonly relativePath: string
-    readonly size: number
-  }
-  interface PlannedSkill {
-    readonly name: string
-    readonly files: readonly PlannedFile[]
-  }
-
-  const planned: PlannedSkill[] = []
-  let fileCount = 0
-  let contentBytes = 0
-  for (const name of names) {
-    const prefix = `skills/${name}/`
-    const packageFiles = captured.files.filter((file) => file.path.startsWith(prefix))
-    if (!packageFiles.some((file) => file.path === `${prefix}SKILL.md`)) {
-      throw new AgentRunValidationError(
-        'AGENT_RUN_SKILL_UNKNOWN',
-        `Agent Run selected unavailable package-local skill ${name}`,
-      )
-    }
-    const files = packageFiles
-      .map((file): PlannedFile => {
-        if (!Number.isSafeInteger(file.size) || file.size < 0) {
-          throw new AgentRunValidationError(
-            'AGENT_RUN_SKILL_CONTENT_INVALID',
-            `Agent Run skill file ${file.path} has an invalid captured size`,
-          )
-        }
-        return Object.freeze({
-          packagePath: file.path,
-          relativePath: file.path.slice(prefix.length),
-          size: file.size,
-        })
-      })
-      .sort((left, right) => comparePathBytes(left.relativePath, right.relativePath))
-    fileCount += files.length
-    for (const file of files) contentBytes += file.size
-    if (fileCount > MAX_PROJECTED_FILES || contentBytes > MAX_PROJECTED_BYTES) {
-      throw new AgentRunValidationError(
-        'AGENT_RUN_SKILL_PROJECTION_LIMIT',
-        `Agent Run skill projection exceeds ${MAX_PROJECTED_FILES} files or ${MAX_PROJECTED_BYTES} bytes`,
-      )
-    }
-    planned.push(Object.freeze({ name, files: Object.freeze(files) }))
-  }
-
-  const skills: AgentRunSkill[] = []
-  for (const skill of planned) {
-    const files: AgentRunSkillFile[] = []
-    for (const file of skill.files) {
-      const bytes = await captured.read(file.packagePath, file.size)
-      if (!(bytes instanceof Uint8Array) || bytes.byteLength !== file.size) {
-        throw new AgentRunValidationError(
-          'AGENT_RUN_SKILL_CONTENT_INVALID',
-          `Agent Run skill file ${file.packagePath} does not match its captured size`,
-        )
-      }
-      files.push(projectedFile(file.relativePath, bytes))
-    }
-    skills.push(Object.freeze({ name: skill.name, files: Object.freeze(files) }))
-  }
-
-  return Object.freeze({
-    skills: Object.freeze(skills),
-    fileCount,
-    contentBytes,
-  })
 }
 
 function requireAgentRunSchemas(contract: ParsedInvocationContract): AgentRunSchemas {
@@ -306,56 +184,6 @@ function requireAgentRunSchemas(contract: ParsedInvocationContract): AgentRunSch
     return contractMismatch('Agent Run contract is missing its invocation schemas')
   }
   return Object.freeze({ input, result })
-}
-
-function validateSkillSelection(value: unknown): readonly string[] {
-  let snapshot: JsonValue
-  try {
-    snapshot = snapshotPrivateOrdinaryJson(
-      value,
-      'Agent Run skill selection',
-      (message) => new AgentRunValidationError('AGENT_RUN_SKILL_SELECTION_INVALID', message),
-    )
-  } catch (error) {
-    if (error instanceof AgentRunValidationError) throw error
-    throw error
-  }
-  if (!Array.isArray(snapshot) || snapshot.length > MAX_SELECTED_SKILLS) {
-    throw new AgentRunValidationError(
-      'AGENT_RUN_SKILL_SELECTION_INVALID',
-      `Agent Run skills must be an array of at most ${MAX_SELECTED_SKILLS} LocalNames`,
-    )
-  }
-  let prior: string | undefined
-  const names: string[] = []
-  for (const name of snapshot) {
-    if (typeof name !== 'string' || name.length < 1 || name.length > 64 || !LOCAL_NAME.test(name)) {
-      throw new AgentRunValidationError(
-        'AGENT_RUN_SKILL_SELECTION_INVALID',
-        'Agent Run skills must contain only LocalNames',
-      )
-    }
-    if (prior !== undefined && comparePathBytes(prior, name) >= 0) {
-      throw new AgentRunValidationError(
-        'AGENT_RUN_SKILL_SELECTION_INVALID',
-        'Agent Run skills must be unique and strictly ordered by unsigned UTF-8 bytes',
-      )
-    }
-    names.push(name)
-    prior = name
-  }
-  return Object.freeze(names)
-}
-
-function projectedFile(path: string, source: Uint8Array): AgentRunSkillFile {
-  const retained = Uint8Array.from(source)
-  return Object.freeze({
-    path,
-    size: retained.byteLength,
-    bytes(): Uint8Array {
-      return Uint8Array.from(retained)
-    },
-  })
 }
 
 function snapshotAgentJson(value: unknown, label: string): JsonValue {

@@ -3,9 +3,10 @@
 **Status:** experimental alpha candidate.
 
 Agent Run is one exact FLOW Invocation Contract consumed through Run/1
-`flow/call`. Jig authenticates selected Skills from the active caller's admitted
-package and uses the shared [Agent method](../guide/agent-method.md) to prepare
-the prompt and interpret the response. The separate [Agent Exchange](agent-exchange.md)
+`flow/call`. A caller supplies explicit instructions, Skill contents and optional
+guidance. The shared [Agent method](../guide/agent-method.md) prepares the prompt
+and interprets the response, either as an ordinary Flow or within Jig's native
+implementation. The separate [Agent Exchange](agent-exchange.md)
 invocation supplies a prepared-prompt transport boundary for reusable methods.
 It does not add an Agent API to `@jigging/flow`, a provider
 configuration field to Bindings, or a semantic router to Jig.
@@ -16,7 +17,7 @@ The canonical descriptor is
 ```text
 id       https://jig.md/contracts/agent-run
 version  1.0.0
-digest   sha256:63ba08f956904d64d499efcd3e93ac19773c61f2efc7de2673a660eb80963cb3
+digest   sha256:f03ba919ddd9036b342ab03e438bb2dc65eca284829383268cb74d655a0ffba1
 ```
 
 An Agent-using Flow includes an exact package-local copy of those descriptor
@@ -56,7 +57,8 @@ The contract has one invocation, with no method selector. Its input is:
 ```ts
 {
   instructions: string;
-  skills?: readonly string[];
+  skills?: readonly { name: string; files: readonly { path: string; text: string }[] }[];
+  guidance?: readonly { label: string; text: string }[];
   responseSchema?: JsonObject;
 }
 ```
@@ -73,11 +75,14 @@ Its result is:
 On the Run/1 wire and in the SDK, `run.call()` returns that complete result.
 An Agent `blocked` or `limit` outcome is ordinary domain data, not an execution
 error. A `done` call requesting `responseSchema` includes `output.structured`;
-Jig validates it against the supplied FLOW Schema/1 schema before returning it.
-This authenticated caller-context invocation remains native-only in Jig. A Flow
-offering the same descriptor cannot replace its credential or lifecycle owner.
-The anonymous ordinary Agent Flow instead selects its own package Skills and
-accepts plain caller guidance; it does not offer this native contract.
+The consumer must check it against the requested schema before using it. The pure
+`checkAgentResult(result, responseSchema)` helper supplies this check without
+dispatch or authority. Jig validates the static invocation contract for every
+implementation; its native implementation also checks the dynamic schema.
+An ordinary Flow offering the exact descriptor can replace the Agent through
+an explicit Binding route. Its own grants supply its powers; matching a
+descriptor grants neither credentials nor network access. Supported optional
+channels still require qualification by the selected implementation.
 
 ## Structured-output profile
 
@@ -130,13 +135,19 @@ skills/<name>/SKILL.md
 skills/<name>/...optional supporting files...
 ```
 
-`skills` contains unique LocalNames in ascending byte order. Jig projects only
-the selected subtrees as fresh read-only guidance for that one Agent call. All
-projected files must be UTF-8 text. Selection is limited to 64 skills, 1,024
-files, and 1 MiB of file content; the complete rendered provider input also
-has a 1 MiB bound. Omitting `skills`, or passing `[]`, selects none. A skill
-grants no Flow, filesystem, network, tool, or host authority, and unselected
-package files are not projected.
+The caller reads the selected files and passes their complete contents in
+`skills`; names are not requests for the host to open files. The optional
+`readPackageSkills(packageRoot, names)` library reader performs bounded reads
+of explicit trees from the caller's package. Under Jig these are the caller's
+captured source files. A caller may also supply constructed text: names and
+paths describe that data, not independently host-attested provenance.
+
+Skill names and file paths must be unique; every Skill contains `SKILL.md`.
+The shared method sorts them by UTF-8 bytes. Skill files must be UTF-8 text.
+Skills and guidance share 64 groups, 1,024 files/text items, and 1 MiB of
+content including instructions. The rendered provider input has its own
+1 MiB bound. Omission or `[]` supplies no Skills. Content grants no Flow,
+filesystem, network, tool, or host authority.
 
 `SKILL.md` and its supporting files are plain UTF-8 guidance. Jig does not
 require frontmatter or define another skill metadata grammar.
@@ -148,6 +159,8 @@ matching exact Binding-local child slot:
 
 ```ts
 import { handle, type JsonValue } from "@jigging/flow";
+import { checkAgentResult } from "@jigging/agent-method";
+import { readPackageSkills } from "@jigging/agent-method/skills";
 
 type AgentResult = {
   readonly outcome: "done" | "blocked" | "limit";
@@ -165,16 +178,16 @@ const routeSchema = {
 } as const;
 
 await handle(async (run) => {
-  const agent = await run.call({
+  const agent = checkAgentResult(await run.call({
     operationId: "choose-route",
     slot: "agent",
     input: {
       instructions:
         `Choose billing or technical for this ticket: ${JSON.stringify(run.input)}`,
-      skills: ["ticket-routing"],
+      skills: await readPackageSkills(new URL('./', import.meta.url), ['ticket-routing']),
       responseSchema: routeSchema,
     },
-  }) as AgentResult;
+  }), routeSchema) as AgentResult;
 
   if (agent.outcome !== "done" || agent.output.structured === undefined) {
     return {
@@ -220,8 +233,8 @@ Parent settings, slots, and native authority are never inherited implicitly.
 Each specialist selects Skills from its own admitted package for each Agent
 call. A fresh call does not include the parent's or another specialist's
 conversation unless the application explicitly passes that content as input.
-Provider selection and credentials remain host-owned; no new Skill or provider
-configuration field is added to Bindings.
+The operator selects the implementation and its grants. The caller does not
+inherit the selected implementation's credentials or source files.
 
 The root allows up to two sibling Flow calls or one exclusive effect; a child allows
 one active Flow or effect, within two child Flow levels and the

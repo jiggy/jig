@@ -67,7 +67,6 @@ describe('explicit package Skill reader', () => {
 
 describe('ordinary Flow wiring', () => {
   test('rejects missing model settings and unsupported channels before dispatch', async () => {
-    const { url } = await fixture()
     let calls = 0
     const run = {
       input: { instructions: 'Answer.' },
@@ -80,13 +79,18 @@ describe('ordinary Flow wiring', () => {
         throw new Error('must not dispatch')
       },
     } as unknown as RunContext
-    await expect(agentFlow(run, url)).rejects.toThrow('model')
+    await expect(agentFlow(run)).rejects.toThrow('model')
     await expect(
-      agentFlow(
-        { ...run, settings: { model: 'x' }, channels: { events: {} } } as unknown as RunContext,
-        url,
-      ),
+      agentFlow({
+        ...run,
+        settings: { model: 'x' },
+        channels: { events: {} },
+      } as unknown as RunContext),
     ).rejects.toThrow('channels')
+    expect(calls).toBe(0)
+    await expect(
+      agentFlow({ ...run, input: { instructions: 'Work.', skills: null } } as RunContext),
+    ).rejects.toThrow()
     expect(calls).toBe(0)
   })
   test('prepares once and requests one HTTP completion with the original cancellation signal', async () => {
@@ -94,7 +98,7 @@ describe('ordinary Flow wiring', () => {
     let calls = 0
     const signal = new AbortController().signal
     const run = {
-      input: { instructions: 'Answer.', methodSkills: ['check'] },
+      input: { instructions: 'Answer.', skills: await readPackageSkills(url, ['check']) },
       settings: { model: 'fixture-model' },
       attachments: {},
       channels: {},
@@ -132,12 +136,11 @@ describe('ordinary Flow wiring', () => {
         }
       },
     } as unknown as RunContext
-    expect(await agentFlow(run, url)).toEqual({ outcome: 'done', output: { text: 'Answer.' } })
+    expect(await agentFlow(run)).toEqual({ outcome: 'done', output: { text: 'Answer.' } })
     expect(calls).toBe(1)
   })
 
   test('keeps operational failure as failure without a retry', async () => {
-    const { url } = await fixture()
     let calls = 0
     const failure = new Error('uncertain transport')
     const run = {
@@ -151,7 +154,7 @@ describe('ordinary Flow wiring', () => {
         throw failure
       },
     } as unknown as RunContext
-    await expect(agentFlow(run, url)).rejects.toBe(failure)
+    await expect(agentFlow(run)).rejects.toBe(failure)
     expect(calls).toBe(1)
   })
 })

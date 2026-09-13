@@ -9,7 +9,7 @@ ordinary Flow, preserving operator ownership of Agent execution.
 
 - `src/` owns prompt preparation, structured schema checking, JSON/1 decoding,
   result assembly, the optional package Skill reader, and ordinary Run/1 wiring.
-- The root `FLOW.ts` supplies the literal package root to the bundled runtime.
+- The root `FLOW.ts` invokes the bundled runtime; it performs no implicit Skill reads.
 - `contracts/agent-exchange/` mirrors the exact public descriptor and channel
   closure for library consumers. `contracts/http-request/` mirrors the ordinary
   Flow's exact delegated HTTP interface. Canonical descriptors live under
@@ -27,8 +27,10 @@ ordinary Flow, preserving operator ownership of Agent execution.
 - The ordinary Flow owns one non-streaming text-only Chat Completions exchange
   through its HTTP slot, with model/token settings checked before dispatch.
   Endpoint, credentials and request policy belong to the host grant. No retries,
-  native Agent dependency, channel projection or direct networking. Its selected
-  Skills belong to this package, never callers.
+  native Agent dependency, channel projection or direct networking. Skill contents
+  and guidance arrive as explicit caller data, not host-authenticated provenance.
+  `FLOW.contract.json` offers the exact Agent Run interface; an unsupported
+  optional channel rejects before HTTP dispatch.
 - `settings.schema.json` owns model/token authoring validation. HTTP request
   and response limits narrow the shared library's larger prompt bounds; reject
   oversized requests before dispatch, never truncate them.
@@ -43,7 +45,8 @@ ordinary Flow, preserving operator ownership of Agent execution.
   complete SDK artifact already tested by release automation. Match its package
   identity; the supplied archive digest records the actual candidate bytes.
 - Native Jig imports this same method and independently validates its trusted
-  boundaries. This package does not assert native caller context or authority.
+  boundaries. `checkAgentResult` lets consumers independently check any selected
+  Agent's dynamic structured result; it grants no authority or provenance.
 
 ## Work Guidance
 

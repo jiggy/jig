@@ -34,13 +34,18 @@ const agentRunContract = await readFile(
 )
 
 describe('private package-project linker', () => {
-  test('derives the same reserved Agent requirement for every Markdown body, but not code', async () => {
+  test('derives the same typed Agent requirement for Markdown and permits a matching replacement', async () => {
     const recipe = '```flow\nreturn {"outcome":"done","output":null}\n```\n'
     await withFlows(
       {
         'flows/recipes': { 'FLOW.md': recipe },
         'flows/prose': { 'FLOW.md': 'Return a complete result.\n' + recipe },
         'flows/code': run('code'),
+        'flows/agent': {
+          ...run('agent'),
+          'FLOW.contract.json': agentRunContract,
+          'contracts/acp-public-updates.json': acpPublicUpdates,
+        },
       },
       (flows) => {
         const linked = linkPackageProject({ flows, bindings: [] })
@@ -69,9 +74,20 @@ describe('private package-project linker', () => {
                   }),
                 ],
               }),
-            'PROJECT_MARKDOWN_AGENT_RESERVED',
+            'PROJECT_BINDING_INTERFACE_MISMATCH',
             '/slots/markdown-agent',
           )
+          expect(() =>
+            linkPackageProject({
+              flows,
+              bindings: [
+                binding('bindings/replaced.ts', {
+                  package: packagePath,
+                  slots: { 'markdown-agent': 'flow:flows/agent' },
+                }),
+              ],
+            }),
+          ).not.toThrow()
         }
       },
     )
@@ -427,7 +443,7 @@ describe('private package-project linker', () => {
     )
   })
 
-  test('refuses ordinary Flow and Binding substitution for an exact native interface', async () => {
+  test('accepts ordinary Flow and Binding implementations of the exact Agent interface', async () => {
     await withFlows(
       {
         'flows/consumer': {
@@ -452,21 +468,18 @@ describe('private package-project linker', () => {
           )!.directRun,
         ).toBeTrue()
         for (const target of ['flow:flows/impostor', 'binding:impostor']) {
-          expectCode(
-            () =>
-              linkPackageProject({
-                flows,
-                bindings: [
-                  binding('bindings/impostor.ts', { package: 'flows/impostor' }),
-                  binding('bindings/consumer.ts', {
-                    package: 'flows/consumer',
-                    slots: { agent: target },
-                  }),
-                ],
-              }),
-            'PROJECT_BINDING_INTERFACE_MISMATCH',
-            '/slots/agent',
-          )
+          expect(() =>
+            linkPackageProject({
+              flows,
+              bindings: [
+                binding('bindings/impostor.ts', { package: 'flows/impostor' }),
+                binding('bindings/consumer.ts', {
+                  package: 'flows/consumer',
+                  slots: { agent: target },
+                }),
+              ],
+            }),
+          ).not.toThrow()
         }
       },
     )

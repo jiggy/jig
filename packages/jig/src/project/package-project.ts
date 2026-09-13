@@ -12,13 +12,13 @@ import {
   type PackageBindingInput,
   parseRunTargetSelector,
 } from './author.js'
-import { type GrantedSlot, type GrantPolicy, normalizeGrant, grantName } from './grants.js'
 import { snapshotJsonObject } from './author-value.js'
 import { isDirectRunEligible } from './flow-source.js'
+import { type GrantedSlot, type GrantPolicy, grantName, normalizeGrant } from './grants.js'
 import {
   type InvocationIdentity,
   type InvocationRequirement,
-  isNativeInvocationId,
+  isHostOnlyInvocationId,
   resolveInvocationSlots,
   sameInvocationIdentity,
 } from './invocation-slots.js'
@@ -338,16 +338,6 @@ function prepareBindings(
     }
     requireSupportedPackageProfile(flow.inspected, definition.package)
     validateSettings(definition.settings, flow.inspected, declarationPath)
-    if (
-      flow.inspected.markdown !== undefined &&
-      Object.hasOwn(definition.slots, MARKDOWN_AGENT_SLOT)
-    )
-      invalid(
-        'PROJECT_MARKDOWN_AGENT_RESERVED',
-        'the interpreter Agent route is operator-selected, not an authored Flow replacement',
-        declarationPath,
-        '/slots/markdown-agent',
-      )
     const boundAttachments = normalizeBoundAttachments(record.capturedAttachments ?? {})
     const selected = definition.attachments ?? {}
     if (Object.keys(selected).sort().join('\0') !== Object.keys(boundAttachments).sort().join('\0'))
@@ -475,13 +465,13 @@ function linkFlowSlots(
     const expected = binding.flow.value.uses[name]
     if (
       expected?.id !== undefined &&
-      (isNativeInvocationId(expected.id) ||
+      (isHostOnlyInvocationId(expected.id) ||
         target.value.offeredContract === undefined ||
         !sameInvocationIdentity(expected, target.value.offeredContract))
     )
       invalid(
         'PROJECT_BINDING_INTERFACE_MISMATCH',
-        `slot ${name} requires an exact matching, non-native Flow interface`,
+        `slot ${name} requires an exact matching Flow interface without host-only evidence claims`,
         declarationPath,
         pointer,
       )

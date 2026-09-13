@@ -455,7 +455,7 @@ void binding;
       ],
       consumer,
     )
-    let mode: 'answer' | 'malformed' = 'answer'
+    let mode: 'answer' | 'malformed' | 'markdown' | 'markdown-malformed' = 'answer'
     let requests = 0
     const server = Bun.serve({
       hostname: '127.0.0.1',
@@ -470,7 +470,10 @@ void binding;
         assert.equal(body.store, false)
         assert.equal(body.n, 1)
         assert.equal(body.tools, undefined)
-        assert.match(body.messages[0].content, /Classify this request/)
+        assert.match(
+          body.messages[0].content,
+          mode.startsWith('markdown') ? /Return the word READY/ : /Classify this request/,
+        )
         assert.doesNotMatch(JSON.stringify(body), /local-method-test-token/)
         return Response.json({
           object: 'chat.completion',
@@ -480,7 +483,17 @@ void binding;
               finish_reason: 'stop',
               message: {
                 role: 'assistant',
-                content: mode === 'answer' ? '{"category":"support"}' : '{"category":42}',
+                content: mode.startsWith('markdown')
+                  ? JSON.stringify({
+                      action: 'finish',
+                      recipe: mode === 'markdown-malformed' ? 99 : 0,
+                      operand: 'literal',
+                      value: JSON.stringify({ outcome: 'done', output: 'READY' }),
+                      path: '',
+                    })
+                  : mode === 'answer'
+                    ? '{"category":"support"}'
+                    : '{"category":42}',
               },
             },
           ],
@@ -577,6 +590,21 @@ void binding;
           `import {handle} from '@jigging/flow';
 await handle(run => run.call({operationId:'answer',slot:${JSON.stringify(slot)},input:run.input}));`,
         )
+        if (name === 'specialist') {
+          await mkdir(join(flow, 'contracts/agent/contracts'), { recursive: true })
+          await writeFile(
+            join(flow, 'contracts/agent/contract.json'),
+            await readFile(join(agentProject, 'flows/agent/FLOW.contract.json')),
+          )
+          await writeFile(
+            join(flow, 'contracts/agent/contracts/acp-public-updates.json'),
+            await readFile(join(agentProject, 'flows/agent/contracts/acp-public-updates.json')),
+          )
+          await writeFile(
+            join(flow, 'flow.meta.json'),
+            JSON.stringify({ uses: { agent: { contract: './contracts/agent/contract.json' } } }),
+          )
+        }
         await writeFile(
           join(agentProject, 'bindings', `${name}.ts`),
           'import {defineBinding} from "@jigging/jig"; export default defineBinding(' +
@@ -610,6 +638,40 @@ await handle(run => run.call({operationId:'answer',slot:${JSON.stringify(slot)},
         /INVALID_RESULT/,
       )
       assert.equal(requests, 4)
+      // A Markdown consumer selects the same ordinary Agent, with no native
+      // provider setup. The interpreter retains its independent decision gate.
+      await mkdir(join(agentProject, 'flows/markdown'))
+      await writeFile(join(agentProject, 'flows/markdown/FLOW.md'), 'Return the word READY.\n')
+      await writeFile(
+        join(agentProject, 'bindings/markdown.ts'),
+        'import {defineBinding} from "@jigging/jig"; export default defineBinding({package:"flows/markdown",slots:{"markdown-agent":"binding:agent"}});',
+      )
+      await run(
+        [command, 'review', '--yes', '--allow-resolution-network'],
+        agentProject,
+        environment,
+        120000,
+      )
+      mode = 'markdown'
+      const markdown = await run(
+        [command, 'run', 'binding:markdown', '--input', 'null'],
+        agentProject,
+        environment,
+        120000,
+      )
+      assert.equal(JSON.parse(markdown.stdout).status, 'succeeded')
+      assert.equal(JSON.parse(markdown.stdout).output, 'READY')
+      mode = 'markdown-malformed'
+      await assert.rejects(
+        run(
+          [command, 'run', 'binding:markdown', '--input', 'null'],
+          agentProject,
+          environment,
+          120000,
+        ),
+        /INVALID_RESULT/,
+      )
+      assert.equal(requests, 6)
     } finally {
       await server.stop(true)
     }

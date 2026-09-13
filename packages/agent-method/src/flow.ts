@@ -1,33 +1,39 @@
 import { handle, OperationError, type RunContext, type RunResult } from '@jigging/flow'
-
-import { type AgentInput, AgentMethodError, finishAgent, prepareAgent } from './index.js'
 import { chatRequest, chatResult } from './chat.js'
-import { readPackageSkills } from './skills.js'
+import {
+  type AgentInput,
+  AgentMethodError,
+  finishAgent,
+  prepareAgent,
+  type SkillText,
+} from './index.js'
 import { ordinaryRecord, snapshot } from './values.js'
 
-export async function agentFlow(run: RunContext, packageRoot: URL): Promise<RunResult> {
+export async function agentFlow(run: RunContext): Promise<RunResult> {
   try {
     const input = ordinaryRecord(snapshot(run.input, 'INVALID_INPUT'))
     if (
       input === undefined ||
       Object.keys(input).some(
-        (name) => !['instructions', 'guidance', 'responseSchema', 'methodSkills'].includes(name),
+        (name) => !['instructions', 'guidance', 'responseSchema', 'skills'].includes(name),
       )
     ) {
-      throw new AgentMethodError('INVALID_INPUT', 'Supply Agent input with optional methodSkills')
-    }
-    if (Object.keys(run.attachments).length > 0 || Object.keys(run.channels).length > 0) {
       throw new AgentMethodError(
         'INVALID_INPUT',
+        'Supply instructions and optional explicit guidance, skills or responseSchema',
+      )
+    }
+    if (Object.keys(run.attachments).length > 0 || Object.keys(run.channels).length > 0) {
+      throw new OperationError(
+        'UNAVAILABLE',
         'This text-only Agent method accepts no attachments or channels',
       )
     }
-    const selected = await readPackageSkills(
-      packageRoot,
-      (Object.hasOwn(input, 'methodSkills') ? input.methodSkills : []) as readonly string[],
+    const { skills, ...methodInput } = input
+    const prepared = prepareAgent(
+      methodInput as unknown as AgentInput,
+      (skills === undefined ? [] : skills) as unknown as readonly SkillText[],
     )
-    const { methodSkills: _selection, ...methodInput } = input
-    const prepared = prepareAgent(methodInput as unknown as AgentInput, selected)
     const body = chatRequest(prepared, run.settings)
     const result = await run.call(
       {
@@ -45,6 +51,6 @@ export async function agentFlow(run: RunContext, packageRoot: URL): Promise<RunR
   }
 }
 
-export async function runAgentFlow(packageRoot: URL): Promise<void> {
-  await handle((run) => agentFlow(run, packageRoot))
+export async function runAgentFlow(): Promise<void> {
+  await handle(agentFlow)
 }

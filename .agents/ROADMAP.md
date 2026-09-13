@@ -67,8 +67,8 @@ another invocation API or weakening existing authority and lifecycle promises.
    credentials and cleanup. Finish with installed use and honest failure evidence,
    without a privileged Agent Exchange underneath.
 2. **Use that Agent from existing specialists.** Support the exact bounded
-   application → specialist → Agent → resource chain. Preserve caller guidance
-   provenance, independent result checks, remaining deadlines, aggregate capacity
+   application → specialist → Agent → resource chain. Preserve explicit selected
+   caller context, independent result checks, remaining deadlines, aggregate capacity
    and complete descendant cleanup. Make Markdown selection ordinary too;
    remove superseded API-provider paths once their promises are replaced.
 3. **Move one finite native ACP adapter into a Flow.** Qualify narrowly reviewed

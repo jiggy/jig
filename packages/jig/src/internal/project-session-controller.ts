@@ -828,7 +828,6 @@ function isCandidateDiagnosticCode(code: string): boolean {
       'PACKAGE_SELECTOR',
       'PACKAGE_SPECIAL_FILE',
       'PACKAGE_SYMLINK',
-      'PROJECT_MARKDOWN_AGENT_RESERVED',
       'PROJECT_FLOW_COLLISION',
       'PROJECT_FLOW_MODE_UNSUPPORTED',
     ].includes(code)

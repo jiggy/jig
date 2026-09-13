@@ -21,16 +21,15 @@ consumer build hook or unpublished runtime dependency.
 
 | Entry | Guidance source | Use |
 | --- | --- | --- |
-| Native Agent Run | Authenticated selected Skills from the active caller's admitted package | Keep caller-context integration in Jig. |
-| Ordinary Agent Flow | Its own package's explicitly selected Skills, plus plain caller guidance | Invoke or adapt the complete method through ordinary Run/1. |
+| Native Agent Run | Explicit caller Skill contents and guidance | Use the installed native clients. |
+| Ordinary Agent Flow | The same explicit contents and guidance | Select or adapt a method through ordinary Run/1. |
 | Pure method library | Explicit text and structured Skill data supplied by its caller | Reuse preparation and interpretation inside an existing method. |
 
-Jig's native Agent Run imports the same pinned method implementation, while
-retaining its caller authentication, dynamic result checks and host lifecycle.
-The ordinary Flow is anonymous: it has no named Agent Run identity or inherited
-caller source. Its settings choose a model and token cap; its HTTP slot receives
-endpoint authority from the operator. Installing or invoking it does not establish
-native caller-context equivalence.
+Both implementations offer the exact Agent Run contract. An explicit Binding
+route chooses the ordinary Flow; its settings choose a model and token cap,
+and its HTTP slot receives endpoint authority from the operator. Skill names
+and paths describe supplied data, not host-attested provenance. Consumers check
+structured results independently of the selected implementation.
 
 ## Invoke the ordinary Flow
 
@@ -41,14 +40,13 @@ Its input is:
   instructions: string;
   guidance?: readonly { label: string; text: string }[];
   responseSchema?: JsonObject;
-  methodSkills?: readonly string[];
+  skills?: readonly { name: string; files: readonly { path: string; text: string }[] }[];
 }
 ```
 
-`methodSkills` selects immediate `skills/<name>/` directories in this method
-package, each containing `SKILL.md`. Omission selects none. Add and review
-package-owned Skills when adapting the method; do not copy a caller's selected
-file paths into this field. Plain `guidance` preserves the supplied order and
+`skills` carries complete selected UTF-8 contents, including `SKILL.md` for
+each Skill. Omission supplies none. The public `readPackageSkills` reader can
+load explicit trees from the caller's own captured package. Plain `guidance` preserves the supplied order and
 requires unique nonempty labels. A label describes text, not provenance,
 permission or a Skill manifest. Selected Skills and guidance labels occupy
 separate namespaces.
@@ -72,7 +70,7 @@ export default defineJig({ flows: ['./flows/agent-method'] })
 An already installed real package directory can also be named explicitly if
 it satisfies Jig's normal capture rules. Package-manager links are still links:
 shallow discovery does not follow them, and an explicit symlink is not an
-adoption exception. No Binding is needed solely to select `methodSkills`.
+adoption exception.
 
 Add `bindings: discover('./bindings')` to the project (import `discover` from
 `@jigging/jig`) and create `bindings/agent.ts`:
@@ -152,9 +150,24 @@ second preparation argument uses `SkillText` values shaped as
 
 The separate `@jigging/agent-method/skills` export provides
 `readPackageSkills(packageRoot: URL, names)` for explicit bounded reads.
-The supplied ordinary entrypoint passes its own literal package URL.
+The caller supplies its own literal package URL.
 This reader does not authenticate a Jig caller or acquire another package's
 source. Its exact API and build instructions live in the package README.
+
+Consumers of an Agent implementation can validate its result independently:
+
+```ts
+import { checkAgentResult } from '@jigging/agent-method'
+
+const result = checkAgentResult(await run.call({
+  operationId: 'answer', slot: 'agent',
+  input: { instructions: 'Answer the question.', responseSchema },
+}), responseSchema)
+```
+
+This pure check requires matching `structured` data for `done`, permits an
+honest blocked or limited answer, and throws on malformed results. Application
+checks still decide whether a schema-valid answer is useful or true.
 
 When using Exchange with a native ACP client, a prepared prompt beginning with
 `/` after leading whitespace is rejected as `INVALID_INPUT` before allocation
@@ -198,10 +211,14 @@ An application's Binding can then select that specialist with
 ordinary outcome and output; a failed descendant call throws through `run.call`
 and may be handled with normal `try/catch` after cleanup.
 
-This text-only HTTP method declares no channels. It does not expose streaming
-or ACP updates and is not a replacement for native Agent callers that require
-them. Native Agent Run remains available separately.
+The shared contract declares optional Agent updates, but this text-only HTTP
+implementation does not support them. A requested channel fails before HTTP
+dispatch. Native clients remain available for callers requiring ACP updates.
+
+Markdown uses the same contract: its Binding can select
+`slots: { 'markdown-agent': 'binding:agent' }`. The interpreter checks each
+structured decision before activating an exact authored recipe.
 
 Other finite Run/1 hosts can supply the same exact HTTP Request interface under
 their own authority. Library reuse, unchanged Flow consumption,
-native caller-Skill support and Agent answer quality require separate evidence.
+and Agent answer quality require separate evidence.

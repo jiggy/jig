@@ -13,10 +13,10 @@ descriptors.
   invocation behavior.
 - `machine/` and `contracts/` contain their assigned published companions.
 - FLOW specifications continue to own portable package and Run semantics.
-- `agent-run.md` owns the authenticated native caller-context invocation;
+- `agent-run.md` owns the explicit-context Agent method interface;
   `agent-exchange.md` owns the bounded prepared-prompt transport interface.
   Their descriptor-relative channel closures remain exact. The reusable
-  method package mirrors the Exchange bundle; it owns method interpretation.
+  method package offers Agent Run and mirrors Exchange; it owns method interpretation.
 - `contract-authoring.md` owns explicit generation, local freshness, bounded
   compiler operation, output ownership and interrupted-publication recovery.
 - `grants.md` owns inline/named resource policy, capture and reuse, recipient

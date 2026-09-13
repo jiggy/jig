@@ -818,7 +818,7 @@ proofDescribe('private contained Agent Run lifecycle', () => {
             nested,
           )
           const skill = await readFile(
-            join(root, 'flows/method/skills/answer-check/SKILL.md'),
+            join(root, 'flows/router/skills/answer-check/SKILL.md'),
             'utf8',
           )
           session = await openPrivateProjectSession({
@@ -1679,6 +1679,11 @@ async function writeAgentMethodProject(root: string, url: string, nested = false
     ].join('\n'),
   )
   const router = join(root, 'flows/router')
+  await mkdir(join(router, 'skills/answer-check'), { recursive: true })
+  await copyFile(
+    join(method, 'skills/answer-check/SKILL.md'),
+    join(router, 'skills/answer-check/SKILL.md'),
+  )
   await writeFile(
     join(root, 'bindings/method.ts'),
     [
@@ -1743,10 +1748,10 @@ function agentMethodCallerProgram(nested = false): string {
     '      await run.call({ operationId: scenario, slot: "left", input });',
     '      return { outcome: "done", output: { status: "unexpected-dispatch" } };',
     '    }',
-    `    const results = await Promise.all(${JSON.stringify(nested ? ['left'] : ['left', 'right'])}.map((lane) => run.call({`,
+    `    const results = await Promise.all(${JSON.stringify(nested ? ['left'] : ['left', 'right'])}.map(async (lane) => run.call({`,
     '      operationId: lane, slot: lane, input: {',
     '        instructions: "Return the lane from explicit guidance as JSON.",',
-    '        guidance: [{ label: "lane", text: lane }], methodSkills: ["answer-check"],',
+    '        guidance: [{ label: "lane", text: lane }], skills: [{ name: "answer-check", files: [{ path: "SKILL.md", text: await Bun.file(new URL("./skills/answer-check/SKILL.md", import.meta.url)).text() }] }],',
     '        responseSchema: { $schema: "https://flow.jig.md/schemas/schema-1.json", type: "object",',
     '          properties: { lane: { type: "string", enum: [lane] } }, required: ["lane"], additionalProperties: false },',
     '      },',
@@ -1887,6 +1892,13 @@ function flowProgram(exchange = false): string {
   return [
     '#!/usr/bin/env bun',
     'import { handle } from "./flow-sdk/index.ts";',
+    'async function selectedSkills() {',
+    '  const root = new URL("./skills/selected/", import.meta.url);',
+    '  const files = [];',
+    '  for await (const path of new Bun.Glob("**/*").scan({cwd: root.pathname, onlyFiles: true}))',
+    '    files.push({path, text: await Bun.file(new URL(path, root)).text()});',
+    '  return [{name: "selected", files}];',
+    '}',
     'const responseSchema = {',
     '  $schema: "https://flow.jig.md/schemas/schema-1.json", type: "object",',
     '  properties: {',
@@ -1923,7 +1935,7 @@ function flowProgram(exchange = false): string {
           '      input: { instructions: input.scenario === "api-structured"',
           '        ? "Return only JSON matching the response schema. Set route to technical, evidence to one item with keyLocation stdin, selectedSkill present, hiddenSkill absent, sourceLine 1, and amount null; set ambiguity to null."',
           '        : input.scenario === "api-text" ? "Reply with exactly READY and nothing else."',
-          '        : `scenario:${input.scenario}. Return sourceLine 1, amount null, and ambiguity null.`, skills: ["selected"],',
+          '        : `scenario:${input.scenario}. Return sourceLine 1, amount null, and ambiguity null.`, skills: await selectedSkills(),',
           '        ...(input.scenario === "api-text" ? {} : {',
           '          responseSchema: input.scenario === "schema-input-invalid"',
           '            ? { $schema: "https://flow.jig.md/schemas/schema-1.json", type: "unknown" }',

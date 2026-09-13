@@ -1729,7 +1729,7 @@ function agentRouterProgram(): string {
     '    operationId: "choose-route", slot: "agent",',
     '    input: {',
     '      instructions: `Return only JSON matching the response schema. Copy route exactly from this ticket; set evidence to one item with source ticket, sourceLine 1, amount null, and ambiguity null: ${JSON.stringify(input)}`,',
-    '      skills: ["ticket-routing"], responseSchema,',
+    '      skills: [{ name: "ticket-routing", files: [{path: "SKILL.md", text: await Bun.file(new URL("./skills/ticket-routing/SKILL.md", import.meta.url)).text()}] }], responseSchema,',
     '    },',
     '  }) as { outcome: string; output: { structured?: { decision: {',
     '    route: "billing" | "technical";',

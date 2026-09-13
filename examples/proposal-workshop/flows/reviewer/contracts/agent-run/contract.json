@@ -69,23 +69,32 @@
           "maxLength": 1048576
         },
         "skills": {
-          "$ref": "#/$defs/SkillNames"
+          "$ref": "#/$defs/SkillContents"
         },
         "responseSchema": {
           "type": "object"
+        },
+        "guidance": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "type": "object",
+            "properties": {
+              "label": {
+                "type": "string",
+                "minLength": 1
+              },
+              "text": {
+                "type": "string"
+              }
+            },
+            "required": ["label", "text"],
+            "additionalProperties": false
+          }
         }
       },
       "required": ["instructions"],
       "additionalProperties": false
-    },
-    "SkillNames": {
-      "type": "array",
-      "items": {
-        "type": "string",
-        "minLength": 1,
-        "maxLength": 64
-      },
-      "maxItems": 64
     },
     "AgentOutput": {
       "type": "object",
@@ -98,6 +107,42 @@
       },
       "required": ["text"],
       "additionalProperties": false
+    },
+    "SkillContents": {
+      "type": "array",
+      "maxItems": 64,
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "files": {
+            "type": "array",
+            "maxItems": 1024,
+            "items": {
+              "type": "object",
+              "properties": {
+                "path": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 4096
+                },
+                "text": {
+                  "type": "string",
+                  "maxLength": 1048576
+                }
+              },
+              "required": ["path", "text"],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": ["name", "files"],
+        "additionalProperties": false
+      }
     }
   }
 }

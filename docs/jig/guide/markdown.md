@@ -36,6 +36,9 @@ Use `FLOW.ts` for deterministic sequencing or execution without an Agent.
 ## Use prose and existing Skills
 
 Review shows the derived `markdown-agent` route before approval.
+To select an ordinary [Agent Flow](agent-method.md), configure the Markdown
+Binding with `slots: { 'markdown-agent': 'binding:agent' }`. Its Agent contract
+must match exactly; the interpreter independently validates each decision.
 
 For example, `flows/summary/FLOW.md` can contain:
 

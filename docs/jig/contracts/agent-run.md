@@ -10,10 +10,10 @@ The Flow supplies instructions, any selected package-local Skills, and an
 optional structured-result schema. The operator chooses the Agent, model,
 credentials, and endpoint.
 
-Jig uses the reusable [Agent method](../guide/agent-method.md) while retaining
-authenticated Skill selection from the active caller's admitted package.
-The ordinary anonymous Agent Flow uses [Agent Exchange](agent-exchange.md)
-and its own package guidance; it does not replace this native caller contract.
+Jig's native implementation and the ordinary [Agent Flow](../guide/agent-method.md)
+share this interface. Selected Skill contents are explicit caller data, not
+host-attested provenance. Consumers independently check structured answers;
+the operator chooses an implementation and grants its required resources.
 
 ## Why did this address bring me here?
 
@@ -23,7 +23,7 @@ an Agent server or an API endpoint. You may have found it in a
 
 That file is a local copy of the interface the Flow expects, not a new Agent
 implementation. Jig matches its contract ID, exact version, and canonical
-descriptor digest against supported native host implementations. Copying the file does
+descriptor digest against the selected Flow or supported native implementation. Copying the file does
 not provide an Agent or grant permission to use one.
 
 This page is an explanatory guide. Jig does not fetch it to resolve an

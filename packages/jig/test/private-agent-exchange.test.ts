@@ -10,7 +10,12 @@ import {
   projectAgentExchangeResult,
 } from '../src/internal/private-agent-exchange.js'
 import { parseInvocationContract } from '../src/invocation-contract.js'
-import { defaultInvocationSlots, resolveInvocationSlots } from '../src/project/invocation-slots.js'
+import {
+  defaultInvocationSlots,
+  isHostOnlyInvocationId,
+  normalizeInvocationSlots,
+  resolveInvocationSlots,
+} from '../src/project/invocation-slots.js'
 
 const identity = {
   id: AGENT_EXCHANGE_CONTRACT_ID,
@@ -26,6 +31,23 @@ const schema = {
 } as const
 
 describe('bounded native Agent Exchange', () => {
+  test('keeps host execution and retention evidence non-substitutable', () => {
+    for (const name of ['http-request', 'project-command', 'run-checkpoint']) {
+      const contract = {
+        id: `https://jig.md/contracts/${name}`,
+        version: '1.0.0',
+        digest: `sha256:${'0'.repeat(64)}`,
+      }
+      expect(isHostOnlyInvocationId(contract.id)).toBe(true)
+      expect(() =>
+        normalizeInvocationSlots({
+          effect: { kind: 'flow', target: { kind: 'flow', path: 'flows/fake' }, contract },
+        }),
+      ).toThrow('host evidence interfaces')
+    }
+    expect(isHostOnlyInvocationId('https://jig.md/contracts/agent-run')).toBe(false)
+    expect(isHostOnlyInvocationId('https://jig.md/contracts/agent-exchange')).toBe(false)
+  })
   test('matches the published descriptor and the complete ordinary method bundle', async () => {
     const bases = [
       new URL('../../../docs/jig/spec/contracts/agent-exchange/', import.meta.url),
@@ -53,21 +75,27 @@ describe('bounded native Agent Exchange', () => {
     expect(records[0]).toEqual(records[1])
   })
 
-  test('pins an exact native route; matching names or Flow targets cannot mint it', () => {
+  test('pins the native default while permitting an explicitly selected Flow implementation', () => {
     expect(defaultInvocationSlots({ model: identity })).toEqual({
       model: { kind: 'native', native: 'agent-exchange', contract: identity },
     })
     expect(() =>
       defaultInvocationSlots({ model: { ...identity, digest: `sha256:${'0'.repeat(64)}` } }),
     ).toThrow()
-    expect(() =>
+    expect(
       resolveInvocationSlots(
         { model: identity },
         {
           model: { kind: 'flow', path: 'flows/pretender' },
         },
       ),
-    ).toThrow('native interfaces cannot be replaced')
+    ).toMatchObject({
+      model: {
+        kind: 'flow',
+        target: { kind: 'flow', path: 'flows/pretender' },
+        contract: identity,
+      },
+    })
   })
 
   test('snapshots a complete prompt and supported schema without interpreting it', () => {
