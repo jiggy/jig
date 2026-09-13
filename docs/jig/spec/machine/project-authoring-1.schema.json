@@ -22,7 +22,7 @@
     },
     "targetSelector": {
       "type": "string",
-      "description": "An exact flow:<project-relative-path> or binding:<LocalName> selector. Jig additionally validates the prefix and canonical target identity.",
+      "description": "An exact flow:<path>, binding:<id>, or grant:<name> selector. Prefixes and canonical identities are additionally validated by Jig.",
       "minLength": 6,
       "maxLength": 1029
     },
@@ -79,6 +79,9 @@
         },
         "bindings": {
           "$ref": "#/$defs/source"
+        },
+        "grants": {
+          "$ref": "#/$defs/source"
         }
       },
       "additionalProperties": false
@@ -99,25 +102,23 @@
         "slots": {
           "type": "object",
           "additionalProperties": {
-            "$ref": "#/$defs/targetSelector"
+            "oneOf": [
+              {
+                "$ref": "#/$defs/targetSelector"
+              },
+              {
+                "$ref": "#/$defs/grantPolicy"
+              }
+            ]
           },
           "maxProperties": 256
-        },
-        "http": {
-          "type": "object",
-          "maxProperties": 8,
-          "additionalProperties": {
-            "type": "string",
-            "maxLength": 64
-          }
-        },
-        "commands": {
-          "$ref": "#/$defs/commands"
         },
         "attachments": {
           "type": "object",
           "maxProperties": 8,
-          "additionalProperties": { "$ref": "#/$defs/projectPath" }
+          "additionalProperties": {
+            "$ref": "#/$defs/projectPath"
+          }
         }
       },
       "required": ["kind", "package", "settings", "slots"],
@@ -126,42 +127,85 @@
     "bindingDefinition": {
       "$ref": "#/$defs/packageBinding"
     },
-    "commands": {
-      "type": "object",
-      "maxProperties": 8,
-      "additionalProperties": {
-        "oneOf": [
-          {
-            "type": "object",
-            "properties": {
-              "run": {
+    "grantPolicy": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "http"
+            },
+            "url": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2048
+            },
+            "method": {
+              "enum": ["GET", "POST"]
+            },
+            "bearerEnv": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "requestBytes": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 262144
+            },
+            "responseBytes": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1048576
+            },
+            "timeoutMs": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 60000
+            },
+            "bodySchema": {
+              "type": ["object", "boolean"]
+            }
+          },
+          "required": ["kind", "url", "method", "requestBytes", "responseBytes", "timeoutMs"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "command"
+            },
+            "run": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            }
+          },
+          "required": ["kind", "run"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "command"
+            },
+            "test": {
+              "type": "array",
+              "items": {
                 "type": "string",
                 "minLength": 1,
                 "maxLength": 256
-              }
-            },
-            "required": ["run"],
-            "additionalProperties": false
+              },
+              "minItems": 1,
+              "maxItems": 16
+            }
           },
-          {
-            "type": "object",
-            "properties": {
-              "test": {
-                "type": "array",
-                "minItems": 1,
-                "maxItems": 16,
-                "items": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 256
-                }
-              }
-            },
-            "required": ["test"],
-            "additionalProperties": false
-          }
-        ]
-      }
+          "required": ["kind", "test"],
+          "additionalProperties": false
+        }
+      ]
     }
   }
 }

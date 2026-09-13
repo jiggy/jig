@@ -405,7 +405,7 @@ describe('finite Jig project commands', () => {
         expect(invocation.output).not.toContain('Usage: jig review')
       } else if (arguments_[0] === 'review') {
         expect(invocation.output).toContain('--details')
-        expect(invocation.output).toContain('--yes does not grant resolution networking')
+        expect(invocation.output).toContain('--yes alone does not approve new resource authority')
       } else if (arguments_[0] === 'init') {
         expect(invocation.output).toContain('--bare')
       } else expect(invocation.output).toContain('jig --version')
@@ -463,6 +463,7 @@ describe('finite Jig project commands', () => {
             planDigest: digest,
             review: {
               mediaType: 'text/plain; charset=utf-8',
+              authorityChanges: false,
               text: 'summary\n',
               details: 'complete policy\n',
             },
@@ -759,6 +760,7 @@ describe('finite Jig project commands', () => {
       planDigest: digest,
       review: {
         mediaType: 'text/plain; charset=utf-8',
+        authorityChanges: false,
         text: 'review project changes\n',
         details: 'complete review\n',
       },
@@ -776,12 +778,60 @@ describe('finite Jig project commands', () => {
     expect(invocation.error).toBe('')
   })
 
+  test('new grants require explicit authority approval without complicating ordinary review', async () => {
+    for (const args of [
+      ['review', '--yes'],
+      ['review', '--yes', '--allow-authority-changes'],
+      ['review'],
+    ]) {
+      const events: string[] = []
+      const plan: ProjectPlanResult = {
+        state: 'applicable',
+        operation: 'admission',
+        planDigest: digest,
+        review: {
+          mediaType: 'text/plain; charset=utf-8',
+          text: 'Exact endpoint and recipient\n',
+          details: 'details\n',
+          authorityChanges: true,
+        },
+      }
+      const base = fakeSession(events, { plan })
+      let authority: boolean | undefined
+      const session = {
+        ...base,
+        async apply(request: any) {
+          authority = request.allowAuthorityChanges
+          return base.apply(request)
+        },
+      }
+      const invocation = commandInvocation(fakeHost(session, events), {
+        interactive: true,
+        confirm: async () => true,
+      })
+      const code = await main(args, invocation.options)
+      if (args.length === 2) {
+        expect(code).toBe(2)
+        expect(events.some((event) => event.startsWith('apply:'))).toBe(false)
+        expect(invocation.error).toContain('--allow-authority-changes')
+      } else {
+        expect(code).toBe(0)
+        expect(authority).toBe(true)
+      }
+    }
+  })
+
   test('review requires TTY confirmation unless --yes is explicit', async () => {
     const plan: ProjectPlanResult = {
       state: 'applicable',
       operation: 'lock-repair',
       planDigest: digest,
-      review: { mediaType: 'text/plain; charset=utf-8', text: 'review\n', details: 'details\n' },
+      review: {
+        authorityChanges: false,
+        mediaType: 'text/plain; charset=utf-8',
+        text: 'review\n',
+        details: 'details\n',
+      },
     }
     const nonInteractiveEvents: string[] = []
     const nonInteractive = commandInvocation(
@@ -822,7 +872,12 @@ describe('finite Jig project commands', () => {
         state: 'applicable',
         operation: 'admission',
         planDigest: digest,
-        review: { mediaType: 'text/plain; charset=utf-8', text: 'review\n', details: 'details\n' },
+        review: {
+          authorityChanges: false,
+          mediaType: 'text/plain; charset=utf-8',
+          text: 'review\n',
+          details: 'details\n',
+        },
       }
       let received: Parameters<PrivateCliCommandHost['acquire']>[1]
       const host: PrivateCliCommandHost = {
@@ -910,6 +965,7 @@ describe('finite Jig project commands', () => {
             planDigest: digest,
             review: {
               mediaType: 'text/plain; charset=utf-8',
+              authorityChanges: false,
               text: 'review\n',
               details: 'details\n',
             },
@@ -1621,7 +1677,7 @@ describe('finite Jig project commands', () => {
     )
     expect(await main(['review', '--yes'], invocation.options)).toBe(1)
     expect(invocation.error).toContain('unknown fields, invalid values')
-    expect(invocation.error).toContain('defineJig accepts only flows and bindings')
+    expect(invocation.error).toContain('defineJig accepts only flows, bindings and grants')
     expect(invocation.error).toContain('Location: "jig.ts"')
     expect(invocation.error).toContain('Diagnostic code: PROJECT_EVALUATION_FAILED')
     expect(invocation.error).not.toContain('secret')

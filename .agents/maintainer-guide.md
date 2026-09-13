@@ -241,7 +241,7 @@ Backend boundary. One mechanism alone has not earned it.
 A Binding gives one Flow package a reusable project-local configuration.
 Its **child slots** name a closed set of exact `flow:<path>` or `binding:<id>`
 targets from the same admitted generation. A child uses its selected target's
-settings, native Agent route, reviewed commands, and HTTP resource selections;
+settings, native Agent route, and reviewed command/HTTP slot grants;
 parent configuration is not inherited. Selected
 child Bindings are leaves with no further Flow slots. At runtime, a Flow can
 call only its slots; it cannot search a catalogue, invent targets, or acquire
@@ -272,7 +272,10 @@ their own unchanged assertions. The exact contract belongs in
 
 HTTP Request supplies delegated endpoint access through ordinary invocation.
 An operator grant fixes the exact request destination, method, optional bearer
-reference, body constraints and limits; a Binding selects its name. The trusted
+reference, body constraints and limits; its Binding slot selects inline policy
+or a named captured JSON grant. Source proposes; the existing admission path
+requires explicit approval for new/changed resource authority. An admitted
+generation does not change when a grant source file changes. The trusted
 worker holds the credential and network while authored methods remain keyless
 and offline. The [HTTP contract](../docs/jig/spec/http-request.md) owns exact
 behavior, including remote uncertainty and endpoint trust. This does not make

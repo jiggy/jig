@@ -33,7 +33,7 @@ application is not an unrestricted repository worker or independent probe.
   Per project, accept 16 regular Unicode text files totaling 64 KiB and at most eight
   selected existing TypeScript/JavaScript paths below `src/`.
 - The leaf accepts JSON `issue`, `files`, `editPaths`, and `cases`.
-  Its `agent` and `command` slots require exact native contracts; it has no
+  Its `agent`, `tests` and `cli` slots require exact native contracts; it has no
   attachments or child Flow targets. `run.call()` returns a complete result,
   and command evidence is validated from the `done` result's `output`.
 - A single job uses two siblings: repair publishes once through an optional
@@ -52,7 +52,9 @@ application is not an unrestricted repository worker or independent probe.
   guessed call outcome. Recover settled monitor/display failures as incomplete
   progress while independently awaiting and retaining repair. Root cancellation,
   uncertain ownership, and fatal errors abort and join owned branches.
-- The operator names `tests` and `cli` commands in the specialist Binding.
+- The operator grants the `tests` and `cli` slots in the specialist Binding
+  with ordinary `kind: "command"` policies. Call input contains candidate
+  data, never another command selector.
   Jig supplies installed Bun and keyless containment; source is immutable.
 - Host output and termination establish process evidence. Repository tests
   can be interfered with by candidate code. Independent assertions compare

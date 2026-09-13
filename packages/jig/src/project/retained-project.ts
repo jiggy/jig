@@ -1,3 +1,5 @@
+import { captureGrantSource } from './grant-source.js'
+import type { GrantPolicy } from './grants.js'
 import { CheckError, invalid } from '../diagnostics.js'
 import { PRIVATE_ACTIVATION_TARGET_LIMIT } from '../internal/activation-planning.js'
 import { type BoundAttachments, captureBoundAttachments } from '../internal/bound-attachments.js'
@@ -61,6 +63,8 @@ export interface PrivateRetainedPackageProject {
   readonly project: EvaluatedAuthorDeclaration<JigDefinition>
   readonly flowSource: readonly (FlowDiscoveryObservation | FlowExactObservation)[]
   readonly bindingSource: readonly DeclarationSourceObservation[]
+  readonly grantSource: readonly DeclarationSourceObservation[]
+  readonly grants: Readonly<Record<string, GrantPolicy>>
   readonly flows: readonly RetainedFlowInput[]
   readonly bindings: readonly RetainedBindingDeclaration[]
   readonly linked: PackageProjectValue
@@ -139,6 +143,7 @@ export async function retainOpenedPackageProject(
       )
     }
 
+    const grantSource = await captureGrantSource(root, project.value.grants)
     const bindings: RetainedBindingDeclaration[] = []
     for (const member of bindingSource.members) {
       const evaluation = (await evaluateAuthorClosure(
@@ -177,16 +182,19 @@ export async function retainOpenedPackageProject(
       )
     }
     await bindingSource.verify()
+    await grantSource.verify()
 
     flowSource = await captureOpenedFlowSource(root, project.value.flows, options.prepareFlow)
     const retainedFlows = await retainFlowSourcePackages(options.storeRoot, flowSource)
     const declarationArtifact = await retainAuthorClosure(options.storeRoot, closure)
     await bindingSource.verify()
+    await grantSource.verify()
     await root.verify()
 
     const linked = linkPackageProject(
       {
         flows: retainedFlows,
+        grants: grantSource.grants,
         bindings: bindings.map(({ sourcePath, evaluation, attachments }) => ({
           sourcePath,
           definition: evaluation.value,
@@ -205,6 +213,8 @@ export async function retainOpenedPackageProject(
       project,
       flowSource: flowSource.observations,
       bindingSource: bindingSource.observations,
+      grantSource: grantSource.observations,
+      grants: grantSource.grants,
       flows: retainedFlows,
       bindings,
     })
@@ -215,6 +225,8 @@ export async function retainOpenedPackageProject(
       project,
       flowSource: flowSource.observations,
       bindingSource: bindingSource.observations,
+      grantSource: grantSource.observations,
+      grants: grantSource.grants,
       flows: retainedFlows,
       bindings: Object.freeze(bindings),
       linked,
@@ -293,6 +305,8 @@ function digestCapture(input: {
   readonly project: EvaluatedAuthorDeclaration<JigDefinition>
   readonly flowSource: readonly (FlowDiscoveryObservation | FlowExactObservation)[]
   readonly bindingSource: readonly DeclarationSourceObservation[]
+  readonly grantSource: readonly DeclarationSourceObservation[]
+  readonly grants: Readonly<Record<string, GrantPolicy>>
   readonly flows: readonly RetainedFlowInput[]
   readonly bindings: readonly RetainedBindingDeclaration[]
 }): string {
@@ -302,6 +316,8 @@ function digestCapture(input: {
     project: evaluationIdentity(input.project),
     flowSource: input.flowSource,
     bindingSource: input.bindingSource,
+    grantSource: input.grantSource,
+    grants: input.grants,
     flows: input.flows.map((flow) => ({ provenance: flow.provenance, package: flow.package })),
     bindings: input.bindings.map((binding) => ({
       id: binding.id,

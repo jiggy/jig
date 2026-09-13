@@ -12,27 +12,22 @@ HTTP Request uses the existing Run/1 `flow/call`. It adds no FLOW protocol or
 SDK method. Other hosts may implement the same interface under their own
 authority policy. Its [descriptor](https://jig.md/contracts/http-request/contract.json)
 has ID `https://jig.md/contracts/http-request`, version `1.0.0`, and digest
-`sha256:6f7ce64345c424e09b0cd74e59d98391a3f93bb7d43e204a0fc5261b831b6b2d`.
+`sha256:08a5f03724125edf863c4592c3558b7cda097e9cf7501f4d8c60dcbf6502bb0d`.
 
 ## Declaration, selection, permission
 
-These three steps have different owners:
+The Flow declares the HTTP Request interface at a local slot in metadata.
+Its Binding supplies a [grant](grants.md), inline or by named reuse:
 
-| Owner | Declaration | Meaning |
-| --- | --- | --- |
-| Flow author | `uses: { http: { contract: "./http.json" } }` in metadata | Require the locally bundled HTTP Request interface. No permission granted. |
-| Application | `http: { reference: "documents" }` in a Binding | Request the operator resource `documents` under the local name `reference`. |
-| Operator | `JIG_HTTP_GRANTS`, followed by project review | Supply and approve the exact destination, authentication reference and limits. |
+```ts
+slots: {
+  reference: { kind: 'http', url: 'https://docs.example.org/reference', method: 'GET' },
+}
+```
 
-`http` is an optional Binding map of at most eight names. Keys and values are
-lowercase alphanumeric words separated by single hyphens, at most 64 ASCII
-characters. An empty map supplies no authority. Nonempty selections require
-the HTTP Request declaration. Every selected resource must exist and have its
-credential available before the target becomes executable.
-
-`JIG_HTTP_GRANTS` is an operator environment variable containing a JSON/1
-object of at most 32 named grants and 128 KiB. Project `.env` files are not
-loaded. A grant has these closed fields:
+The operator reviews the destination, credential reference and limits before
+admitting this exact connection. The Flow receives no policy-editing authority.
+The closed HTTP grant contains `kind: 'http'` and these fields:
 
 | Field | Meaning and limits |
 | --- | --- |
@@ -44,30 +39,22 @@ loaded. A grant has these closed fields:
 | `timeoutMs` | Positive integer, default and maximum 60,000; shortened by enclosing deadlines. |
 | `bodySchema` | Optional embedded Schema/1 declaration, at most 16 KiB canonical JSON, only for POST. Validates the request body before dispatch. No remote schema resolution. |
 
-The selected public policy participates in authority, launch and recipe
-identity. Review shows each target's exact URL, method, credential reference
-and limits. The portable lock records resource-name selections, not credentials
-or local consent. Modifying policy requires another review. Merely possessing
-an interface descriptor or editing a Binding cannot grant a missing resource.
-
-The host snapshots configuration and credential bytes when its command starts.
-Changing the public policy prevents a new Run from using an older admission;
-removing a grant or required credential likewise denies use. Secret rotation
-alone does not change policy identity. Existing commands retain their snapshot:
-cancel them to revoke work already in progress. Remote effects already accepted
-cannot be undone by cancellation.
+The resolved policy participates in the portable lock, authority and exact
+execution recipe. [Grant admission](grants.md#review-and-admission) distinguishes
+source proposals from active permissions. Each Binding may have up to eight
+HTTP slots; multiple slots do not increase execution capacity.
 
 ## Invocation and response
 
 ```ts
 const result = await run.call({
   operationId: 'fetch-reference',
-  slot: 'http',
-  input: { resource: 'reference' },
+  slot: 'reference',
+  input: {},
 })
 ```
 
-Input has exactly `resource` and optional `body`. GET forbids a body; POST
+Input is an object with only optional `body`. GET forbids a body; POST
 requires a JSON/1 value, including `null` when its schema allows that. There
 are no caller-selected URLs, methods, headers, credentials, redirects, retries,
 cookies, proxies, streaming switches or channel endpoints. To request another

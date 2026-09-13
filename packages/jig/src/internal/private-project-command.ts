@@ -1,13 +1,17 @@
 import { createHash } from 'node:crypto'
 import { type ParsedInvocationContract, parseInvocationContract } from '../invocation-contract.js'
 import { canonicalJson, type JsonValue } from '../json.js'
-import { type ProjectCommands, projectCommandPath } from '../project/commands.js'
+import {
+  type ProjectCommand,
+  normalizeProjectCommand,
+  projectCommandPath,
+} from '../project/commands.js'
 import { snapshotPrivateOrdinaryJson } from './private-ordinary-json.js'
 
 export const PROJECT_COMMAND_CONTRACT_ID = 'https://jig.md/contracts/project-command'
 export const PROJECT_COMMAND_CONTRACT_VERSION = '1.0.0'
 export const PROJECT_COMMAND_CONTRACT_DIGEST =
-  'sha256:bbe1184a8f60b342e9afe02baa7af8f0b9b9c09e9ddaa139eb6c7bf7bec91e31'
+  'sha256:745905affe3fab5e7bcb3066419702ceaefca38871be131281a5e7f9f53dc59f'
 export const PROJECT_COMMAND_LIMITS = Object.freeze({
   files: 64,
   bytes: 262_144,
@@ -44,13 +48,13 @@ export function assertProjectCommandContract(contract: ParsedInvocationContract)
 }
 
 export interface ProjectCommandInput {
-  readonly command: string
   readonly files: Readonly<Record<string, string>>
   readonly args?: readonly string[]
   readonly stdin?: string
 }
 
 export interface PreparedProjectCommand {
+  readonly policy: ProjectCommand
   readonly input: ProjectCommandInput
   readonly candidateDigest: string
   readonly invocation: readonly string[]
@@ -59,7 +63,6 @@ export interface PreparedProjectCommand {
 
 export interface ProjectCommandResult {
   readonly candidateDigest: string
-  readonly command: string
   readonly invocation: readonly string[]
   readonly stdinDigest: string
   readonly stdout: { readonly text: string; readonly truncated: boolean }
@@ -72,7 +75,7 @@ export interface ProjectCommandResult {
 
 export function parseProjectCommandInput(
   value: unknown,
-  commands: ProjectCommands,
+  policy: ProjectCommand,
 ): PreparedProjectCommand {
   const input = snapshotPrivateOrdinaryJson(
     value,
@@ -83,11 +86,9 @@ export function parseProjectCommandInput(
     !input ||
     typeof input !== 'object' ||
     Array.isArray(input) ||
-    Object.keys(input).some((key) => !['command', 'files', 'args', 'stdin'].includes(key)) ||
-    typeof input.command !== 'string' ||
-    !Object.hasOwn(commands, input.command)
+    Object.keys(input).some((key) => !['files', 'args', 'stdin'].includes(key))
   )
-    throw new TypeError('select a command from the admitted Binding commands')
+    throw new TypeError('command input accepts files, args, and stdin')
   if (!input.files || typeof input.files !== 'object' || Array.isArray(input.files))
     throw new TypeError('command files must be an object of UTF-8 source text')
   const paths = Object.keys(input.files).sort()
@@ -120,7 +121,7 @@ export function parseProjectCommandInput(
   const stdin = input.stdin === undefined ? '' : input.stdin
   if (typeof stdin !== 'string' || Buffer.byteLength(stdin) > PROJECT_COMMAND_LIMITS.stdinBytes)
     throw new TypeError('command stdin exceeds 16 KiB')
-  const command = commands[input.command]!
+  const command = normalizeProjectCommand(policy)
   const selected = 'run' in command ? [command.run] : command.test
   if (selected.some((path) => !Object.hasOwn(input.files, path)))
     throw new TypeError('candidate omits a reviewed command file')
@@ -131,6 +132,7 @@ export function parseProjectCommandInput(
   )
   return Object.freeze({
     input,
+    policy: command,
     invocation,
     candidateDigest: projectCommandCandidateDigest(input.files),
     stdinDigest: digest(Buffer.from(stdin)),

@@ -16,6 +16,8 @@ const expectedInstalledFiles = [
   'dist/json.d.ts',
   'dist/project/author.d.ts',
   'dist/project/commands.d.ts',
+  'dist/project/grants.d.ts',
+  'dist/schema/types.d.ts',
   'libexec/installed-cli.js',
   'libexec/authoring/contract-authoring-worker.js',
   'libexec/markdown-runtime.js',
@@ -147,7 +149,7 @@ try {
   const reviewHelp = await run([command, 'review', '--help'], consumer)
   assert.match(reviewHelp.stdout, /--details/)
   assert.match(reviewHelp.stdout, /--generate-contracts/)
-  assert.match(reviewHelp.stdout, /--yes does not grant resolution networking/)
+  assert.match(reviewHelp.stdout, /--yes alone does not approve new resource authority/)
   const greeting = join(consumer, 'greeting')
   const initializedGreeting = await run([command, 'init', greeting], consumer)
   assert.match(initializedGreeting.stdout, /jig review --allow-resolution-network/)
@@ -272,16 +274,15 @@ using FLOW;
     join(consumer, 'smoke.mjs'),
     `
 import { defineBinding, defineJig, discover } from "@jigging/jig";
-const project = defineJig({ flows: discover("./flows") });
+const project = defineJig({ flows: discover("./flows"), grants: discover("./grants") });
 const binding = defineBinding({
   package: "./flows/review",
   settings: { profile: "fast" },
-  slots: { worker: "flow:./flows/worker" },
-  commands: { cli: { run: "src/cli.ts" } },
+  slots: { worker: "flow:./flows/worker", cli: { kind: "command", run: "src/cli.ts" }, reference: "grant:documents" },
 });
 if (project.flows.roots[0] !== "flows" || binding.package !== "flows/review" ||
     binding.settings.profile !== "fast" || binding.slots.worker !== "flow:flows/worker" ||
-    binding.commands.cli.run !== "src/cli.ts") {
+    binding.slots.cli.run !== "src/cli.ts") {
   throw new Error("bad package exports");
 }
 `,
@@ -297,8 +298,7 @@ const project = defineJig(input);
 const bindingInput: PackageBindingInput = {
   package: "./flows/router",
   settings: { profile: "fast" },
-  slots: { worker: "flow:./flows/worker" },
-  commands: { tests: { test: ["test/project.test.ts"] } },
+  slots: { worker: "flow:./flows/worker", tests: { kind: "command", test: ["test/project.test.ts"] }, reference: { kind: "http", url: "https://example.org/", method: "POST", bodySchema: { type: "object", additionalProperties: false } } },
 };
 const binding = defineBinding(bindingInput);
 void project;
@@ -327,23 +327,140 @@ void binding;
     ],
     packageRoot,
   )
+  if (process.env.JIG_LINUX_ROOTLESS_HOSTILE === '1') {
+    const project = join(consumer, 'granted-command')
+    for (const path of ['flows/check', 'bindings', 'grants', 'libs/flow'])
+      await mkdir(join(project, path), { recursive: true })
+    // Qualify both candidate archives before publication. The complete SDK is an
+    // ordinary local workspace member, never an injected private runtime helper.
+    const sdkArtifacts = join(temporary, 'sdk-artifacts')
+    await mkdir(sdkArtifacts)
+    const sdkArchive = await selectArchive(sdkArtifacts, 'flow-sdk')
+    await run(
+      ['tar', '-xzf', sdkArchive, '--strip-components=1', '-C', join(project, 'libs/flow')],
+      consumer,
+    )
+    await writeFile(
+      join(project, 'package.json'),
+      JSON.stringify({ private: true, workspaces: ['flows/*', 'libs/*'] }),
+    )
+    await writeFile(
+      join(project, 'jig.ts'),
+      'import {defineJig,discover} from "@jigging/jig"; export default defineJig({flows:discover("flows"),bindings:discover("bindings"),grants:discover("grants")});',
+    )
+    await writeFile(
+      join(project, 'flows/check/package.json'),
+      JSON.stringify({
+        name: 'grant-consumer',
+        private: true,
+        type: 'module',
+        dependencies: { '@jigging/flow': 'workspace:*' },
+      }),
+    )
+    await writeFile(
+      join(project, 'flows/check/flow.meta.json'),
+      JSON.stringify({ uses: { check: { contract: './command.json' } } }),
+    )
+    await writeFile(
+      join(project, 'flows/check/command.json'),
+      await readFile(
+        join(packageRoot, '../../docs/jig/spec/contracts/project-command/contract.json'),
+      ),
+    )
+    await writeFile(
+      join(project, 'flows/check/FLOW.ts'),
+      'import {handle} from "@jigging/flow"; await handle(run=>run.call({operationId:"check",slot:"check",input:run.input}));',
+    )
+    await writeFile(
+      join(project, 'grants/check.json'),
+      JSON.stringify({ kind: 'command', run: 'index.ts' }),
+    )
+    for (const [name, policy] of [
+      ['inline', { kind: 'command', run: 'index.ts' }],
+      ['named', 'grant:check'],
+    ]) {
+      await writeFile(
+        join(project, 'bindings', name + '.ts'),
+        'import {defineBinding} from "@jigging/jig"; export default defineBinding(' +
+          JSON.stringify({ package: 'flows/check', slots: { check: policy } }) +
+          ');',
+      )
+    }
+    await assert.rejects(
+      run([command, 'review', '--yes', '--allow-resolution-network'], project, {}, 120000),
+      /JIG_AUTHORITY_APPROVAL_REQUIRED/,
+    )
+    await run(
+      [command, 'review', '--yes', '--allow-authority-changes', '--allow-resolution-network'],
+      project,
+      {},
+      120000,
+    )
+    for (const target of ['binding:inline', 'binding:named']) {
+      const observed = await run(
+        [
+          command,
+          'run',
+          target,
+          '--input',
+          JSON.stringify({ files: { 'index.ts': 'console.log("checked");' } }),
+        ],
+        project,
+        {},
+        120000,
+      )
+      const result = JSON.parse(observed.stdout)
+      assert.equal(result.status, 'succeeded')
+      assert.equal(result.output.exitCode, 0)
+      assert.equal(result.output.stdout.text, 'checked\n')
+      assert.equal(result.output.cleanup, 'complete')
+      assert.deepEqual(result.output.invocation, ['bun', 'index.ts'])
+    }
+    const unsuccessful = await run(
+      [
+        command,
+        'run',
+        'binding:named',
+        '--input',
+        JSON.stringify({
+          files: { 'index.ts': 'console.error("failed check"); process.exit(17);' },
+        }),
+      ],
+      project,
+      {},
+      120000,
+    )
+    const failure = JSON.parse(unsuccessful.stdout)
+    assert.equal(failure.output.exitCode, 17)
+    assert.equal(failure.output.stderr.text, 'failed check\n')
+    assert.equal(failure.output.cleanup, 'complete')
+  }
 } finally {
   await rm(temporary, { recursive: true, force: true })
 }
 
-async function selectArchive(artifacts: string): Promise<string> {
-  const supplied = process.env.JIG_PACKAGE_ARCHIVE
+async function selectArchive(
+  artifacts: string,
+  packageName: 'jig' | 'flow-sdk' = 'jig',
+): Promise<string> {
+  const variable = packageName === 'jig' ? 'JIG_PACKAGE_ARCHIVE' : 'FLOW_SDK_PACKAGE_ARCHIVE'
+  const supplied = process.env[variable]
   if (supplied !== undefined) {
     if (!isAbsolute(supplied) || supplied.includes('\0') || !supplied.endsWith('.tgz')) {
-      throw new Error('JIG_PACKAGE_ARCHIVE must name one absolute .tgz file')
+      throw new Error(`${variable} must name one absolute .tgz file`)
     }
     const canonical = await realpath(supplied)
     if (canonical !== supplied || !(await stat(canonical)).isFile()) {
-      throw new Error('JIG_PACKAGE_ARCHIVE must name one canonical regular file')
+      throw new Error(`${variable} must name one canonical regular file`)
     }
     return canonical
   }
-  await run(['bun', 'scripts/pack.ts', '--destination', artifacts], packageRoot)
+  await run(
+    packageName === 'jig'
+      ? ['bun', 'scripts/pack.ts', '--destination', artifacts]
+      : ['bun', 'pm', 'pack', '--ignore-scripts', '--destination', artifacts],
+    resolve(packageRoot, '..', packageName),
+  )
   const archives = (await readdir(artifacts)).filter((name) => name.endsWith('.tgz'))
   assert.equal(archives.length, 1)
   return join(artifacts, archives[0]!)
@@ -365,6 +482,7 @@ async function run(
   command: string[],
   cwd: string,
   environment: NodeJS.ProcessEnv = {},
+  timeoutMs = 30_000,
 ): Promise<{ readonly stdout: string; readonly stderr: string }> {
   const child = Bun.spawn(command, {
     cwd,
@@ -372,7 +490,7 @@ async function run(
     stdout: 'pipe',
     stderr: 'pipe',
   })
-  const timeout = setTimeout(() => child.kill(), 30_000)
+  const timeout = setTimeout(() => child.kill(), timeoutMs)
   const [exitCode, stdout, stderr] = await Promise.all([
     child.exited,
     new Response(child.stdout).text(),

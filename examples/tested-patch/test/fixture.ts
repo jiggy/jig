@@ -54,7 +54,6 @@ export function recorded(
   const c = cases.find((c) => c.stdin === stdin && JSON.stringify(c.args) === JSON.stringify(args))
   return {
     candidateDigest: digest(files),
-    command,
     invocation:
       command === 'tests'
         ? ['bun', 'test', 'test/project.test.ts']
@@ -106,7 +105,7 @@ export async function syntheticRepair(
       return {
         outcome: 'done',
         output: recorded(
-          p.command,
+          call.slot,
           p.files,
           p.args,
           p.stdin,

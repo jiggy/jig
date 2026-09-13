@@ -11,6 +11,7 @@ const MAX_MESSAGE_SCALARS = 1_024
 const MAX_POINTER_SCALARS = 1_024
 
 export type ProjectAdministrationErrorCode =
+  | 'AUTHORITY_APPROVAL_REQUIRED'
   | 'INVALID_REQUEST'
   | 'PROJECT_NOT_FOUND'
   | 'PROJECT_UNSAFE'
@@ -51,11 +52,13 @@ export type ProjectPlanResult =
         readonly mediaType: 'text/plain; charset=utf-8'
         readonly text: string
         readonly details: string
+        readonly authorityChanges: boolean
       }
     }
 
 export interface ProjectApplyRequest {
   readonly planDigest: string
+  readonly allowAuthorityChanges?: boolean
 }
 
 export interface ProjectApplyReceipt {
@@ -120,11 +123,29 @@ export function normalizeProjectPlanRequest(value: unknown): ProjectPlanRequest 
 
 /** Package-private request normalization for the trusted project controller. */
 export function normalizeProjectApplyRequest(value: unknown): ProjectApplyRequest {
-  const input = exactRecord(value, ['planDigest'], 'apply request')
+  const input = exactRecord(
+    value,
+    [
+      'planDigest',
+      ...(value !== null &&
+      typeof value === 'object' &&
+      Object.hasOwn(value, 'allowAuthorityChanges')
+        ? ['allowAuthorityChanges']
+        : []),
+    ],
+    'apply request',
+  )
   if (typeof input.planDigest !== 'string' || !DIGEST.test(input.planDigest)) {
     invalidRequest('apply planDigest is invalid')
   }
-  return Object.freeze({ planDigest: input.planDigest })
+  if (input.allowAuthorityChanges !== undefined && typeof input.allowAuthorityChanges !== 'boolean')
+    invalidRequest('allowAuthorityChanges must be boolean')
+  return Object.freeze({
+    planDigest: input.planDigest,
+    ...(input.allowAuthorityChanges === undefined
+      ? {}
+      : { allowAuthorityChanges: input.allowAuthorityChanges as boolean }),
+  })
 }
 
 function exactRecord(
@@ -162,6 +183,7 @@ function exactRecord(
 
 function requireErrorCode(value: unknown): asserts value is ProjectAdministrationErrorCode {
   if (
+    value !== 'AUTHORITY_APPROVAL_REQUIRED' &&
     value !== 'INVALID_REQUEST' &&
     value !== 'PROJECT_NOT_FOUND' &&
     value !== 'PROJECT_UNSAFE' &&

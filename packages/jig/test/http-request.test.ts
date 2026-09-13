@@ -5,7 +5,6 @@ import { createServer as createHttpsServer } from 'node:https'
 import {
   HTTP_LIMITS,
   httpCredential,
-  httpGrantDigest,
   normalizeHttpGrant,
   openPrivateHttpGrants,
   selectHttpGrants,
@@ -17,28 +16,36 @@ import {
   parseHttpWorkerResult,
 } from '../src/internal/private-http-request.js'
 import { parseInvocationContract } from '../src/invocation-contract.js'
+import { normalizeGrant } from '../src/project/grants.js'
+import { resolveInvocationSlots } from '../src/project/invocation-slots.js'
+import { canonicalJson } from '../src/json.js'
 import { defineBinding } from '../src/project/author.js'
 import { compileSchemaFile } from '../src/schema/index.js'
 import { untrustedCertificate, untrustedKey } from './http-tls-fixture.js'
 
 describe('delegated HTTP policy and trusted transport', () => {
   test('normalizes inert Binding selections and the exact invocation companion', async () => {
-    const binding = defineBinding({ package: 'flows/read', http: { source: 'reference' } })
+    const binding = defineBinding({
+      package: 'flows/read',
+      slots: { source: { kind: 'http', url: 'https://example.org/', method: 'GET' } },
+    })
     const schema = compileSchemaFile(
       await readFile(
         new URL('../../../docs/jig/spec/machine/project-authoring-1.schema.json', import.meta.url),
       ),
     )
     schema.validate(binding)
-    for (const http of [null, [], { source: 'https://example.org/' }, { source: '../secret' }])
-      expect(() => defineBinding({ package: 'flows/read', http: http as never })).toThrow()
+    for (const source of [null, [], 'https://example.org/', '../secret'])
+      expect(() =>
+        defineBinding({ package: 'flows/read', slots: { source: source as never } }),
+      ).toThrow()
     const contract = parseInvocationContract(
       await readFile(
         new URL('../../../docs/jig/spec/contracts/http-request/contract.json', import.meta.url),
       ),
     )
     expect(contract.digest).toBe(HTTP_REQUEST_CONTRACT_DIGEST)
-    contract.schemas.get('/input')!.validate({ resource: 'source' })
+    contract.schemas.get('/input')!.validate({})
     contract.schemas
       .get('/result')!
       .validate({ outcome: 'done', output: { status: 403, body: 'denied' } })
@@ -55,47 +62,41 @@ describe('delegated HTTP policy and trusted transport', () => {
         additionalProperties: false,
       },
     }
-    const configuration = JSON.stringify({ service: policy })
-    const first = openPrivateHttpGrants({
-      JIG_HTTP_GRANTS: configuration,
-      TEST_TOKEN: 'first-private-token',
-    })
-    const rotated = openPrivateHttpGrants({
-      JIG_HTTP_GRANTS: configuration,
-      TEST_TOKEN: 'rotated-private-token',
-    })
+    const first = openPrivateHttpGrants({ TEST_TOKEN: 'first-private-token' })
+    const rotated = openPrivateHttpGrants({ TEST_TOKEN: 'rotated-private-token' })
+    const route = (value: unknown) =>
+      resolveInvocationSlots(
+        {
+          api: {
+            id: 'https://jig.md/contracts/http-request',
+            version: '1.0.0',
+            digest: HTTP_REQUEST_CONTRACT_DIGEST,
+          },
+        },
+        { api: { kind: 'grant', policy: normalizeGrant(value) } },
+      )
+    const slots = route({ kind: 'http', ...policy })
+    const selected = selectHttpGrants(first, slots)
     expect(JSON.stringify(first)).not.toContain('first-private-token')
-    expect(httpCredential(first, 'service')).toBe('first-private-token')
-    const selected = selectHttpGrants(first, { api: 'service' })
-    expect(httpGrantDigest(selected)).toBe(
-      httpGrantDigest(selectHttpGrants(rotated, { api: 'service' })),
-    )
-    expect(() =>
-      selectHttpGrants(openPrivateHttpGrants({ JIG_HTTP_GRANTS: configuration }), {
-        api: 'service',
-      }),
-    ).toThrow()
-    expect(() => selectHttpGrants(undefined, { api: 'service' })).toThrow()
-    expect(() => selectHttpGrants(first, { api: 'ungranted' })).toThrow()
-    expect(() => selectHttpGrants({ grants: first.grants }, { api: 'service' })).toThrow()
-    expect(parseHttpRequest({ resource: 'api', body: { text: 'hello' } }, selected).body).toBe(
+    expect(httpCredential(first, selected.api!)).toBe('first-private-token')
+    expect(canonicalJson(selected)).toEqual(canonicalJson(selectHttpGrants(rotated, slots)))
+    expect(() => selectHttpGrants(openPrivateHttpGrants({}), slots)).toThrow()
+    expect(() => selectHttpGrants(undefined, slots)).toThrow()
+    expect(() => selectHttpGrants({ kind: 'private-grant-credentials' }, slots)).toThrow()
+    expect(parseHttpRequest({ body: { text: 'hello' } }, selected.api!).body).toBe(
       '{"text":"hello"}',
     )
     for (const input of [
-      { resource: 'api', body: { text: 'hello', tools: [] } },
-      { resource: 'api', body: { text: 'hello' }, url: 'https://elsewhere.org/' },
-      { resource: 'api', body: { text: 'hello' }, headers: { authorization: 'secret' } },
-      { resource: 'api', method: 'GET' },
+      { body: { text: 'hello', tools: [] } },
+      { body: { text: 'hello' }, url: 'https://elsewhere.org/' },
+      { body: { text: 'hello' }, headers: { authorization: 'secret' } },
+      { method: 'GET' },
       { resource: 'service' },
     ])
-      expect(() => parseHttpRequest(input, selected)).toThrow()
-    const changed = openPrivateHttpGrants({
-      JIG_HTTP_GRANTS: JSON.stringify({ service: { ...policy, timeoutMs: 1000 } }),
-      TEST_TOKEN: 'first-private-token',
-    })
-    expect(httpGrantDigest(selectHttpGrants(changed, { api: 'service' }))).not.toBe(
-      httpGrantDigest(selected),
-    )
+      expect(() => parseHttpRequest(input, selected.api!)).toThrow()
+    expect(
+      canonicalJson(selectHttpGrants(first, route({ kind: 'http', ...policy, timeoutMs: 1000 }))),
+    ).not.toEqual(canonicalJson(selected))
   })
   test('bounds and closes policy, accepts neither ambient network nor malformed destinations', () => {
     const base = { url: 'https://example.org/', method: 'GET' }
@@ -117,9 +118,7 @@ describe('delegated HTTP policy and trusted transport', () => {
       { ...base, url: 'https://example.org/#' },
     ])
       expect(() => normalizeHttpGrant(value)).toThrow()
-    expect(() =>
-      parseHttpRequest({ resource: 'api', body: null }, { api: normalizeHttpGrant(base) }),
-    ).toThrow()
+    expect(() => parseHttpRequest({ body: null }, normalizeHttpGrant(base))).toThrow()
   })
   test('sends exactly one authorized request with JSON and bearer, reports HTTP rejection as a response', async () => {
     const seen: unknown[] = []

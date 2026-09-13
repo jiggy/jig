@@ -5,11 +5,11 @@ import {
   type JsonObject,
   type JsonValue,
 } from '../json.js'
-import { normalizeProjectCommands, type ProjectCommands } from '../project/commands.js'
-import { normalizeHttpSelections } from '../project/http.js'
+import { type GrantedSlot, normalizeGrant, grantName } from '../project/grants.js'
 import {
   type InvocationRequirement,
   normalizeInvocationIdentity,
+  resolveInvocationSlots,
 } from '../project/invocation-slots.js'
 import {
   type PackageProjectValue,
@@ -38,9 +38,7 @@ export interface PrivateLockPackage {
 export interface PrivateLockBinding {
   readonly packagePath: string
   readonly settings: JsonObject
-  readonly slots: Readonly<Record<string, RunTargetIdentity>>
-  readonly http?: Readonly<Record<string, string>>
-  readonly commands?: ProjectCommands
+  readonly slots: Readonly<Record<string, RunTargetIdentity | GrantedSlot>>
   readonly attachments?: BoundAttachments
 }
 
@@ -74,8 +72,6 @@ export function createPrivateProjectLocalLock(
       packagePath: binding.packagePath,
       settings: binding.settings,
       slots: binding.slots,
-      ...(binding.http === undefined ? {} : { http: binding.http }),
-      ...(binding.commands === undefined ? {} : { commands: binding.commands }),
       ...(binding.boundAttachments === undefined ? {} : { attachments: binding.boundAttachments }),
     })
   }
@@ -180,8 +176,6 @@ function normalizeBindings(value: unknown): PrivateProjectLocalLock['bindings'] 
         'packagePath',
         'settings',
         'slots',
-        ...(Object.hasOwn(object(input[id], `Binding ${id}`), 'http') ? ['http'] : []),
-        ...(Object.hasOwn(object(input[id], `Binding ${id}`), 'commands') ? ['commands'] : []),
         ...(Object.hasOwn(object(input[id], `Binding ${id}`), 'attachments')
           ? ['attachments']
           : []),
@@ -194,8 +188,6 @@ function normalizeBindings(value: unknown): PrivateProjectLocalLock['bindings'] 
       packagePath: projectPath(item.packagePath, `Binding ${id} packagePath`),
       settings,
       slots,
-      ...(item.http === undefined ? {} : { http: normalizeHttpSelections(item.http) }),
-      ...(item.commands === undefined ? {} : { commands: normalizeProjectCommands(item.commands) }),
       ...(item.attachments === undefined
         ? {}
         : { attachments: normalizeBoundAttachments(item.attachments) }),
@@ -211,7 +203,9 @@ function validateReferences(
   for (const [id, binding] of Object.entries(bindings)) {
     const selected = packages[binding.packagePath]
     if (selected === undefined) throw new TypeError(`Binding ${id} selects an unknown package`)
+    resolveInvocationSlots(selected.uses, binding.slots)
     for (const [name, identity] of Object.entries(binding.slots)) {
+      if (identity.kind === 'grant') continue
       const childBinding = identity.kind === 'binding' ? bindings[identity.id] : undefined
       const path = identity.kind === 'flow' ? identity.path : childBinding?.packagePath
       if (path === undefined) {
@@ -229,7 +223,10 @@ function validateReferences(
           `Binding ${id} slot ${name} must select a direct Run package or configured Binding`,
         )
       }
-      if (childBinding !== undefined && Object.keys(childBinding.slots).length !== 0) {
+      if (
+        childBinding !== undefined &&
+        Object.values(childBinding.slots).some((slot) => slot.kind !== 'grant')
+      ) {
         throw new TypeError(`Binding ${id} slot ${name} selects a Binding with child slots`)
       }
     }
@@ -239,15 +236,26 @@ function validateReferences(
 function normalizeSlots(
   value: unknown,
   label: string,
-): Readonly<Record<string, RunTargetIdentity>> {
+): Readonly<Record<string, RunTargetIdentity | GrantedSlot>> {
   const input = object(value, `${label} slots`)
   const names = Object.keys(input)
   if (names.length > 256) throw new TypeError(`${label} slots exceed 256 entries`)
-  const output: Record<string, RunTargetIdentity> = Object.create(null)
+  const output: Record<string, RunTargetIdentity | GrantedSlot> = Object.create(null)
   for (const name of names.sort()) {
     localName(name, `${label} slot`)
     const target = object(input[name], `${label} slot ${name}`)
-    if (target.kind === 'flow') {
+    if (target.kind === 'grant') {
+      exactObject(
+        target,
+        ['kind', 'policy', ...(Object.hasOwn(target, 'name') ? ['name'] : [])],
+        label,
+      )
+      output[name] = Object.freeze({
+        kind: 'grant',
+        policy: normalizeGrant(target.policy),
+        ...(target.name === undefined ? {} : { name: grantName(target.name) }),
+      })
+    } else if (target.kind === 'flow') {
       output[name] = Object.freeze({
         kind: 'flow',
         path: projectPath(

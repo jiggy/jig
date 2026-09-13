@@ -1,7 +1,7 @@
 # Use a service without handing over its credential
 
 A Flow may need a private document, a notification endpoint, or a model API.
-Give it a named HTTP resource: the method builds and interprets requests,
+Give its invocation slot an HTTP grant: the method builds and interprets requests,
 while Jig keeps the credential and limits where those requests can go.
 
 This guide describes the HTTP-enabled source candidate, not a published release.
@@ -23,7 +23,7 @@ import { handle } from '@jigging/flow'
 
 await handle(async (run) => {
   const result = await run.call({
-    operationId: 'read', slot: 'http', input: { resource: 'source' },
+    operationId: 'read', slot: 'http', input: {},
   })
   const response = result.output as { status: number; body: string }
   if (response.status !== 200) throw new Error(`Document request returned ${response.status}`)
@@ -32,21 +32,18 @@ await handle(async (run) => {
 ```
 
 Use [ordinary dependency preparation](dependencies.md) for `@jigging/flow`.
-The Binding selects a resource name, not the secret or endpoint:
+The Binding proposes an exact endpoint and references its credential:
 
 ```ts
 import { defineBinding } from '@jigging/jig'
 
 export default defineBinding({
   package: 'flows/reference',
-  http: { source: 'documents' },
+  slots: {
+    http: { kind: 'http', url: 'https://docs.example.org/reference', method: 'GET',
+      bearerEnv: 'DOCUMENT_TOKEN', responseBytes: 65536 },
+  },
 })
-```
-
-The operator supplies `JIG_HTTP_GRANTS`, independently of package code:
-
-```sh
-export JIG_HTTP_GRANTS='{"documents":{"url":"https://docs.example.org/reference","method":"GET","bearerEnv":"DOCUMENT_TOKEN","responseBytes":65536}}'
 ```
 
 Supply `DOCUMENT_TOKEN` through the operator environment, then review and run
@@ -58,7 +55,7 @@ jig run binding:reference
 ```
 
 The result's `output.document` contains the fetched text. To use another
-document, change the operator grant's URL and review the changed permission.
+document, change the Binding grant's URL and review the changed permission.
 
 Review shows the exact destination and permission. A missing resource or
 credential is unavailable; the package cannot manufacture either by declaring
@@ -77,7 +74,6 @@ const result = await run.call({
   operationId: 'generate',
   slot: 'http',
   input: {
-    resource: 'completion',
     body: {
       model: 'model-permitted-by-grant',
       max_tokens: 256,
@@ -93,7 +89,7 @@ if (typeof text !== 'string') throw new TypeError('Model response omitted its an
 return { outcome: 'done', output: text }
 ```
 
-Select its operator grant under `completion` in this Flow's Binding. The
+Give this Flow's `http` slot a grant with `kind: "http"` and `method: "POST"`. The
 operator grants one exact POST endpoint and can use `bodySchema` to require
 a particular model, cap `max_tokens`, and reject extra fields. The method can
 be edited or replaced without modifying Jig, but its input still has to fit
@@ -111,8 +107,9 @@ secret returned by a hostile service.
 
 Check the returned HTTP status and validate the body. A network failure may
 occur after a remote action, so Jig does not retry it. Cancelling stops local
-owned work, not effects the remote server already accepted. Removing a grant
-blocks subsequent commands; cancel an active command to stop its existing
-authority snapshot.
+owned work, not effects the remote server already accepted. Admit a grant removal to prevent new Runs from receiving it. Cancel active
+work to settle its existing authority snapshot.
+
+For shared policy, use optional [named grants](../spec/grants.md#reuse-a-named-policy-when-useful).
 
 See [HTTP Request](../spec/http-request.md) for exact bounds and error behavior.

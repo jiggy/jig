@@ -5,7 +5,10 @@
     "agent": {
       "contract": "./contracts/agent-run/contract.json"
     },
-    "command": {
+    "tests": {
+      "contract": "./contracts/project-command/contract.json"
+    },
+    "cli": {
       "contract": "./contracts/project-command/contract.json"
     }
   }

@@ -5,21 +5,29 @@
   "input": {
     "type": "object",
     "properties": {
-      "resource": { "type": "string", "minLength": 1, "maxLength": 64 },
       "body": {}
     },
-    "required": ["resource"],
+    "required": [],
     "additionalProperties": false
   },
   "result": {
     "type": "object",
     "properties": {
-      "outcome": { "const": "done" },
+      "outcome": {
+        "const": "done"
+      },
       "output": {
         "type": "object",
         "properties": {
-          "status": { "type": "integer", "minimum": 200, "maximum": 599 },
-          "body": { "type": "string", "maxLength": 1048576 }
+          "status": {
+            "type": "integer",
+            "minimum": 200,
+            "maximum": 599
+          },
+          "body": {
+            "type": "string",
+            "maxLength": 1048576
+          }
         },
         "required": ["status", "body"],
         "additionalProperties": false

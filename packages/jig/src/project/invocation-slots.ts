@@ -1,3 +1,5 @@
+import { validateGrantPolicy } from './grant-validation.js'
+import { type GrantedSlot, type GrantPolicy, normalizeGrant } from './grants.js'
 import { isContractId, isContractVersion } from '../contract-identity.js'
 import {
   AGENT_EXCHANGE_CONTRACT_DIGEST,
@@ -50,6 +52,7 @@ export type InvocationSlot =
   | {
       readonly kind: 'native'
       readonly native: NativeInvocation
+      readonly grant?: GrantPolicy
       readonly contract: InvocationIdentity
     }
 export type InvocationSlots = Readonly<Record<string, InvocationSlot>>
@@ -121,11 +124,23 @@ export function defaultInvocationSlots(
 /** Explicit selections always win or fail; only omitted native requirements have defaults. */
 export function resolveInvocationSlots(
   uses: Readonly<Record<string, InvocationRequirement>>,
-  targets: Readonly<Record<string, RunTargetIdentity>>,
+  targets: Readonly<Record<string, RunTargetIdentity | GrantedSlot>>,
 ): InvocationSlots {
   const slots: Record<string, InvocationSlot> = Object.create(null)
   for (const [name, target] of Object.entries(targets)) {
     const requirement = uses[name]
+    if (target.kind === 'grant') {
+      const native = target.policy.kind === 'http' ? 'http-request' : 'project-command'
+      if (requirement === undefined || !sameInvocationIdentity(requirement, NATIVE[native]))
+        throw new TypeError('slot ' + name + ' requires the exact contract for its grant kind')
+      slots[name] = Object.freeze({
+        kind: 'native',
+        native,
+        contract: NATIVE[native],
+        grant: target.policy,
+      })
+      continue
+    }
     slots[name] = Object.freeze({
       kind: 'flow',
       target,
@@ -135,8 +150,8 @@ export function resolveInvocationSlots(
   for (const [name, contract] of Object.entries(uses)) {
     if (Object.hasOwn(slots, name)) continue
     const native = nativeInvocationKind(contract)
-    if (native === undefined)
-      throw new TypeError(`slot ${name} requires an explicit matching Flow or Binding`)
+    if (native === undefined || native === 'http-request' || native === 'project-command')
+      throw new TypeError(`slot ${name} requires an explicit matching Flow, Binding, or grant`)
     slots[name] = Object.freeze({ kind: 'native', native, contract: NATIVE[native] })
   }
   return normalizeInvocationSlots(slots)
@@ -188,15 +203,38 @@ export function normalizeInvocationSlots(value: unknown): InvocationSlots {
     localName(name)
     const slot = object(input[name])
     if (slot.kind === 'native') {
-      exact(slot, ['kind', 'native', 'contract'])
+      exact(slot, [
+        'kind',
+        'native',
+        'contract',
+        ...(Object.hasOwn(slot, 'grant') ? ['grant'] : []),
+      ])
       const contract = normalizeInvocationIdentity(slot.contract)
       const native = nativeInvocationKind(contract)
-      if (native === undefined || slot.native !== native || usedNative.has(native))
+      if (
+        native === undefined ||
+        slot.native !== native ||
+        (usedNative.has(native) && native !== 'http-request' && native !== 'project-command')
+      )
         throw new TypeError(
           `slot ${name} does not select one distinct supported native implementation`,
         )
       usedNative.add(native)
-      output[name] = Object.freeze({ kind: 'native', native, contract })
+      const requiresGrant = native === 'http-request' || native === 'project-command'
+      const grant = slot.grant === undefined ? undefined : normalizeGrant(slot.grant)
+      if (
+        requiresGrant !== (grant !== undefined) ||
+        (grant !== undefined &&
+          (grant.kind === 'http' ? native !== 'http-request' : native !== 'project-command'))
+      )
+        throw new TypeError('slot ' + name + ' requires its matching resource grant')
+      if (grant !== undefined) validateGrantPolicy(grant)
+      output[name] = Object.freeze({
+        kind: 'native',
+        native,
+        contract,
+        ...(grant === undefined ? {} : { grant }),
+      })
     } else if (slot.kind === 'flow') {
       exact(slot, ['kind', 'target', ...(Object.hasOwn(slot, 'contract') ? ['contract'] : [])])
       const target = object(slot.target)
@@ -221,6 +259,13 @@ export function normalizeInvocationSlots(value: unknown): InvocationSlots {
         ...(contract === undefined ? {} : { contract }),
       })
     } else throw new TypeError(`slot ${name} has an unknown implementation kind`)
+  }
+  for (const native of ['http-request', 'project-command']) {
+    if (
+      Object.values(output).filter((slot) => slot.kind === 'native' && slot.native === native)
+        .length > 8
+    )
+      throw new TypeError('resource slots exceed eight per kind')
   }
   return Object.freeze(output)
 }

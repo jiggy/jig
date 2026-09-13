@@ -69,8 +69,8 @@ export async function repair(
       run.signal.throwIfAborted()
       const observation = await run.call({
         operationId: `${id}-${index}`,
-        slot: 'command',
-        input: { ...request, files },
+        slot: request.command,
+        input: { args: request.args, stdin: request.stdin, files },
       })
       if (observation.outcome !== 'done')
         throw new OperationError(

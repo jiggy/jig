@@ -5,9 +5,8 @@ import { snapshotPrivateOrdinaryJson } from './private-ordinary-json.js'
 export const HTTP_REQUEST_CONTRACT_ID = 'https://jig.md/contracts/http-request'
 export const HTTP_REQUEST_CONTRACT_VERSION = '1.0.0'
 export const HTTP_REQUEST_CONTRACT_DIGEST =
-  'sha256:6f7ce64345c424e09b0cd74e59d98391a3f93bb7d43e204a0fc5261b831b6b2d'
+  'sha256:08a5f03724125edf863c4592c3558b7cda097e9cf7501f4d8c60dcbf6502bb0d'
 export interface PreparedHttpRequest {
-  readonly resource: string
   readonly grant: HttpGrant
   readonly body?: string
 }
@@ -19,20 +18,13 @@ export type HttpWorkerResult =
   | { readonly response: HttpResponse }
   | { readonly failure: 'UNCERTAIN' | 'RESOURCE_EXHAUSTED' | 'INVALID_RESULT' }
 
-export function parseHttpRequest(
-  value: unknown,
-  grants: Readonly<Record<string, HttpGrant>>,
-): PreparedHttpRequest {
+export function parseHttpRequest(value: unknown, policy: HttpGrant): PreparedHttpRequest {
   const input = object(value)
-  if (
-    Object.keys(input).some((key) => !['resource', 'body'].includes(key)) ||
-    typeof input.resource !== 'string' ||
-    !Object.hasOwn(grants, input.resource)
-  )
-    throw new TypeError('select an admitted HTTP resource and an optional JSON body')
-  const grant = normalizeHttpGrant(grants[input.resource])
+  if (Object.keys(input).some((key) => key !== 'body'))
+    throw new TypeError('HTTP input accepts only an optional JSON body')
+  const grant = normalizeHttpGrant(policy)
   const body = httpRequestBody(grant, input.body)
-  return { resource: input.resource, grant, ...(body === undefined ? {} : { body }) }
+  return { grant, ...(body === undefined ? {} : { body }) }
 }
 
 export function parseHttpWorkerResult(value: unknown, grant: HttpGrant): HttpWorkerResult {

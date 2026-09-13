@@ -43,6 +43,8 @@
     "dist/index.d.ts",
     "dist/project/author.d.ts",
     "dist/project/commands.d.ts",
+    "dist/project/grants.d.ts",
+    "dist/schema/types.d.ts",
     "dist/json.d.ts",
     "libexec/installed-cli.js",
     "libexec/authoring/contract-authoring-worker.js",

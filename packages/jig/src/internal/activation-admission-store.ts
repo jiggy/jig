@@ -1,3 +1,5 @@
+import { requiresAuthorityApproval } from './grant-review.js'
+import { ProjectAdministrationError } from '../administration/project.js'
 import { type BigIntStats, constants } from 'node:fs'
 import { type FileHandle, lstat, mkdir, open, rename, unlink } from 'node:fs/promises'
 import { createRequire } from 'node:module'
@@ -1799,6 +1801,7 @@ function requireCoordinatorRoot(
  * generation. The returned canonical record is the idempotent receipt.
  */
 export async function applyPrivateActivationReviewPlan(input: {
+  readonly allowAuthorityChanges?: boolean
   readonly projectRoot: string | PrivateProjectRoot
   readonly packageStoreRoot: string
   readonly planDigest: string
@@ -1825,6 +1828,17 @@ export async function applyPrivateActivationReviewPlan(input: {
     requirePlanBase(owner.database, plan, owner.root)
     requireCandidateRoot(candidate, owner.root)
     requireDerivedPlanOperation(owner.database, plan, candidate, owner.root)
+    if (
+      !input.allowAuthorityChanges &&
+      requiresAuthorityApproval(
+        loadPlanBaseCandidate(owner.database, plan, owner.root)?.lock ?? null,
+        candidate.lock,
+      )
+    )
+      throw new ProjectAdministrationError(
+        'AUTHORITY_APPROVAL_REQUIRED',
+        'new or changed resource grants require explicit authority approval for this plan',
+      )
     artifacts = await reacquireCandidateArtifacts(input.packageStoreRoot, candidate)
 
     const receipt = await immediate(owner, async () => {

@@ -31,23 +31,19 @@ proof('delegated HTTP through contained root and child Runs', () => {
       bearerEnv: 'HTTP_TEST_TOKEN',
       timeoutMs: 40000,
     }
-    const environment = {
-      JIG_HTTP_GRANTS: JSON.stringify(
-        Object.fromEntries(
-          ['document', 'redirect', 'echo', 'big', 'wait'].map((name) => [name, grant]),
-        ),
-      ),
-      HTTP_TEST_TOKEN: 'private-http-test-token',
-    }
+    const grants = Object.fromEntries(
+      ['document', 'redirect', 'echo', 'big', 'wait'].map((name) => [name, grant]),
+    )
+    const environment = { HTTP_TEST_TOKEN: 'private-http-test-token' }
     const host = await openPrivateInstalledBunHost(installedBunLocation, environment)
     let session: Awaited<ReturnType<typeof openPrivateProjectSession>> | undefined
     let coordinator: ReturnType<typeof Bun.spawn> | undefined
     try {
-      await fixture(root)
+      await fixture(root, grants)
       session = await openPrivateProjectSession({ directory: root, host })
       const plan = await session.plan({ lockMode: 'update' })
       if (plan.state !== 'applicable') throw new Error('missing HTTP admission')
-      await session.apply({ planDigest: plan.planDigest })
+      await session.apply({ planDigest: plan.planDigest, allowAuthorityChanges: true })
       await session.close()
       session = undefined
       const program = `
@@ -55,7 +51,7 @@ proof('delegated HTTP through contained root and child Runs', () => {
         import {openPrivateInstalledBunHost} from ${JSON.stringify(join(import.meta.dir, '../src/internal/installed-bun-host.ts'))};
         import {writeFile} from 'node:fs/promises';
         const session = await openPrivateProjectSession({directory:${JSON.stringify(root)},host:await openPrivateInstalledBunHost(${JSON.stringify(installedBunLocation)},process.env)});
-        const receipt = await session.rootAdministration.startRun({submissionId:'lost-http',target:{kind:'binding',id:'parent'},input:{resource:'wait',body:{text:'question'}}});
+        const receipt = await session.rootAdministration.startRun({submissionId:'lost-http',target:{kind:'binding',id:'parent'},input:{slot:'wait',body:{text:'question'}}});
         await writeFile(${JSON.stringify(join(root, 'receipt.json'))}, JSON.stringify(receipt));
         await Bun.sleep(60000);`
       coordinator = Bun.spawn(
@@ -142,12 +138,11 @@ proof('delegated HTTP through contained root and child Runs', () => {
       ]),
     )
     const environment = {
-      JIG_HTTP_GRANTS: JSON.stringify(grants),
       HTTP_TEST_TOKEN: 'private-http-test-token',
     }
     let session: Awaited<ReturnType<typeof openPrivateProjectSession>> | undefined
     try {
-      await fixture(root)
+      await fixture(root, grants)
       const host = await openPrivateInstalledBunHost(installedBunLocation, environment)
       session = await openPrivateProjectSession({ directory: root, host })
       const plan = await session.plan({ lockMode: 'update' })
@@ -156,7 +151,7 @@ proof('delegated HTTP through contained root and child Runs', () => {
       const review = plan.review
       expect(JSON.stringify(review)).toContain(`http://127.0.0.1:${server.port}/document`)
       expect(JSON.stringify(review)).not.toContain('private-http-test-token')
-      await session.apply({ planDigest: plan.planDigest })
+      await session.apply({ planDigest: plan.planDigest, allowAuthorityChanges: true })
       let count = 0
       const start = (input: unknown, id = 'reader') =>
         session!.rootAdministration.startRun({
@@ -166,7 +161,7 @@ proof('delegated HTTP through contained root and child Runs', () => {
         })
       const run = async (input: unknown, id?: string) =>
         terminal(session!.rootAdministration, await start(input, id))
-      const valid = { resource: 'document', body: { text: 'question' } }
+      const valid = { slot: 'document', body: { text: 'question' } }
       expect(await run(valid)).toMatchObject({
         terminal: { status: 'succeeded', output: { status: 200, body: 'trusted document' } },
       })
@@ -184,30 +179,32 @@ proof('delegated HTTP through contained root and child Runs', () => {
       for (const input of [
         { ...valid, url: 'http://127.0.0.1/forbidden' },
         { ...valid, headers: {} },
-        { ...valid, resource: 'not-granted' },
         { ...valid, body: { text: 'question', model: 'unapproved' } },
       ])
         expect(await run(input)).toMatchObject({
           terminal: { status: 'failed', code: 'INVALID_INPUT' },
         })
+      expect(await run({ ...valid, slot: 'not-granted' })).toMatchObject({
+        terminal: { status: 'failed', code: 'UNAVAILABLE' },
+      })
       expect(seen.length).toBe(2)
       expect(await run({ probe: true, port: server.port })).toMatchObject({
         terminal: {
           status: 'succeeded',
-          output: { token: null, grants: null, host: false, worker: false, network: false },
+          output: { token: null, host: false, worker: false, network: false },
         },
       })
-      expect(await run({ ...valid, resource: 'redirect' })).toMatchObject({
+      expect(await run({ ...valid, slot: 'redirect' })).toMatchObject({
         terminal: { status: 'succeeded', output: { status: 302 } },
       })
-      expect(await run({ ...valid, resource: 'echo' })).toMatchObject({
+      expect(await run({ ...valid, slot: 'echo' })).toMatchObject({
         terminal: { status: 'failed', code: 'INVALID_RESULT' },
       })
-      expect(await run({ ...valid, resource: 'big' })).toMatchObject({
+      expect(await run({ ...valid, slot: 'big' })).toMatchObject({
         terminal: { status: 'failed', code: 'RESOURCE_EXHAUSTED' },
       })
       expect(seen.some(({ path }) => path === '/forbidden')).toBe(false)
-      const stopped = await start({ ...valid, resource: 'wait' }, 'parent')
+      const stopped = await start({ ...valid, slot: 'wait' }, 'parent')
       await waitUntil(() => seen.some(({ path }) => path === '/wait'))
       await session.close()
       session = await openPrivateProjectSession({ directory: root, host })
@@ -216,33 +213,25 @@ proof('delegated HTTP through contained root and child Runs', () => {
       })
       await noOwners(root)
       await session.close()
-      const changedHost = await openPrivateInstalledBunHost(installedBunLocation, {
-        ...environment,
-        JIG_HTTP_GRANTS: JSON.stringify({
-          ...grants,
-          document: { ...grants.document, responseBytes: 512 },
-        }),
-      })
-      session = await openPrivateProjectSession({ directory: root, host: changedHost })
+      await writeFile(
+        join(root, 'grants/document.json'),
+        JSON.stringify({ kind: 'http', ...grants.document, responseBytes: 512 }),
+      )
+      session = await openPrivateProjectSession({ directory: root, host })
       const requestsBefore = seen.length
-      let rejected = false
-      try {
-        const status = await run(valid)
-        rejected = status.state === 'terminal' && status.terminal.status !== 'succeeded'
-      } catch {
-        rejected = true
-      }
-      expect(rejected).toBe(true)
-      expect(seen.length).toBe(requestsBefore)
-      await noOwners(root)
-      const revised = await session.plan({ lockMode: 'locked' })
-      expect(revised.state).toBe('applicable')
+      // Source changes propose new authority; the admitted generation continues unchanged.
+      expect(await run(valid)).toMatchObject({ terminal: { status: 'succeeded' } })
+      const revised = await session.plan({ lockMode: 'update' })
       if (revised.state !== 'applicable') throw new Error('changed HTTP policy cannot be reviewed')
-      await session.apply({ planDigest: revised.planDigest })
+      expect(revised.review.authorityChanges).toBe(true)
+      await expect(session.apply({ planDigest: revised.planDigest })).rejects.toMatchObject({
+        code: 'AUTHORITY_APPROVAL_REQUIRED',
+      })
+      await session.apply({ planDigest: revised.planDigest, allowAuthorityChanges: true })
       expect(await run(valid)).toMatchObject({
         terminal: { status: 'succeeded', output: { status: 200, body: 'trusted document' } },
       })
-      expect(seen.length).toBe(requestsBefore + 1)
+      expect(seen.length).toBe(requestsBefore + 2)
       await noOwners(root)
       // Credentials are never persisted in the lock or authority records.
       expect(await readFile(join(root, 'jig.lock'), 'utf8')).not.toContain(
@@ -261,8 +250,14 @@ proof('delegated HTTP through contained root and child Runs', () => {
   }, 180000)
 })
 
-async function fixture(root: string) {
+async function fixture(root: string, grants: Record<string, unknown>) {
   await mkdir(join(root, 'bindings'), { recursive: true })
+  await mkdir(join(root, 'grants'), { recursive: true })
+  for (const [name, policy] of Object.entries(grants))
+    await writeFile(
+      join(root, 'grants', name + '.json'),
+      JSON.stringify({ kind: 'http', ...(policy as object) }),
+    )
   for (const name of ['reader', 'parent']) {
     const path = join(root, 'flows', name)
     await mkdir(path, { recursive: true })
@@ -272,7 +267,13 @@ async function fixture(root: string) {
       JSON.stringify({
         name,
         description: 'Bounded HTTP resource consumer.',
-        ...(name === 'reader' ? { uses: { http: { contract: './http.json' } } } : {}),
+        ...(name === 'reader'
+          ? {
+              uses: Object.fromEntries(
+                Object.keys(grants).map((name) => [name, { contract: './http.json' }]),
+              ),
+            }
+          : {}),
       }),
     )
     if (name === 'reader')
@@ -287,18 +288,18 @@ async function fixture(root: string) {
         : `import {handle} from './sdk/index.js'; import {existsSync} from 'node:fs';
         await handle(async run=>{
           if(run.input.probe) { let network=false; try { await fetch('http://127.0.0.1:'+run.input.port+'/forbidden',{signal:AbortSignal.timeout(200)}); network=true } catch {}
-            return {outcome:'done',output:{token:process.env.HTTP_TEST_TOKEN??null,grants:process.env.JIG_HTTP_GRANTS??null,host:existsSync('/etc/passwd'),worker:existsSync('/jig-http-worker.js'),network}} }
-          return run.call({operationId:'http',slot:'http',input:run.input});
+            return {outcome:'done',output:{token:process.env.HTTP_TEST_TOKEN??null,host:existsSync('/etc/passwd'),worker:existsSync('/jig-http-worker.js'),network}} }
+          const {slot,...input}=run.input; return run.call({operationId:'http',slot,input});
         });`,
     )
   }
   await writeFile(
     join(root, 'jig.ts'),
-    'import {defineJig,discover} from "@jigging/jig"; export default defineJig({flows:discover("flows"),bindings:discover("bindings")});',
+    'import {defineJig,discover} from "@jigging/jig"; export default defineJig({flows:discover("flows"),bindings:discover("bindings"),grants:discover("grants")});',
   )
   await writeFile(
     join(root, 'bindings/reader.ts'),
-    'import {defineBinding} from "@jigging/jig"; export default defineBinding({package:"flows/reader",http:{document:"document",redirect:"redirect",echo:"echo",big:"big",wait:"wait"}});',
+    'import {defineBinding} from "@jigging/jig"; export default defineBinding({package:"flows/reader",slots:{document:"grant:document",redirect:"grant:redirect",echo:"grant:echo",big:"grant:big",wait:"grant:wait"}});',
   )
   await writeFile(
     join(root, 'bindings/parent.ts'),

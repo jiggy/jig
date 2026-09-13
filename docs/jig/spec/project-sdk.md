@@ -33,7 +33,7 @@ export default defineJig({
 });
 ```
 
-`flows` and `bindings` are independently optional. Each accepts either a
+`flows`, `bindings`, and `grants` are independently optional. Each accepts either a
 `discover()` value or an exact array of project-relative member paths.
 Omission means an empty source.
 
@@ -42,6 +42,7 @@ Discovery is shallow and inert:
 - a Flow root selects immediate real directories containing exact-case
   `FLOW.<ext>`;
 - a Binding root selects immediate regular `*.ts` files;
+- a grant root selects immediate regular `<LocalName>.json` policies;
 - it does not recurse, follow symlinks, execute declarations, or interpret
   globs; and
 - a missing valid discovery root is empty, while any invalid selected member
@@ -84,12 +85,14 @@ must satisfy the package's `settings.schema.json` when one exists.
 
 `slots` is an optional map with at most 256 entries. Each key is a LocalName
 used by this Binding's package as a Run/1 `flow/call` slot. Each value is an
-exact `flow:<project-relative-path>` or `binding:<LocalName>` selector, using
-the same target vocabulary as the CLI. A Flow selector requires a direct
+exact `flow:<project-relative-path>` or `binding:<LocalName>` selector,
+an inline resource grant, or a `grant:<LocalName>` selection. Grant names
+are slot selections, not CLI Run targets. A Flow selector requires a direct
 Flow target; a Binding selector uses that Binding's own validated settings.
 Either child may use the exact native Agent Run or Agent Exchange invocation; a configured Binding may
-also use Project Command. A selected Binding must
-have no child slots. A Binding cannot select its own package, directly or
+also use explicitly granted Project Command or HTTP slots. A selected Binding
+must have no further Flow/Binding child routes; resource slots do not count
+as child routes. A Binding cannot select its own package, directly or
 through another Binding. Omitting `slots` normalizes to `{}`.
 The example's `critic` Binding selects a separate package such as
 `flows/critique`, with its own settings and no slots.
@@ -103,19 +106,23 @@ from that target's own requirements.
 Plain package paths are not slot selectors. A leading `./` after `flow:` is
 normalized away; the `binding:` suffix must be a LocalName.
 
-`commands` optionally names reviewed [Project Command](project-command.md)
-invocations, for example `commands: { tests: { test: ['test/project.test.ts'] } }`.
-Only packages declaring that exact native invocation may receive a nonempty map.
-Command configuration is independent of ordinary Flow settings and travels
-with the selected Binding, never by inheritance from its caller. Review and
-admission include the exact invocation policy.
+Resource policies are inline by default:
 
-`http` optionally selects named [HTTP Request](http-request.md) resources,
-for example `http: { reference: "documents" }`. These names refer to independent
-operator grants in `JIG_HTTP_GRANTS`, not paths, credentials or contracts.
-The operator supplies exact endpoint policy and approves its use in review.
-Declaring a selection grants no permission. Root and leaf
-Bindings have their own selections; parent grants are not inherited.
+```ts
+slots: {
+  tests: { kind: 'command', test: ['test/project.test.ts'] },
+  reference: { kind: 'http', url: 'https://docs.example.org/reference', method: 'GET' },
+}
+```
+
+For reuse, select `reference: 'grant:documents'` and include
+`grants: discover('./grants')` in `jig.ts`. The filename
+`grants/documents.json` supplies the policy name; its object uses exactly the
+same grammar as an inline grant. Each selected slot must declare the exact
+supported contract for its resource kind. Both resource kinds permit eight
+slots per Binding without increasing execution capacity.
+[Grants](grants.md) owns capture limits and explicit authority approval.
+Parent permissions are never inherited.
 
 `attachments` optionally binds declared read attachments to project-relative
 directories, for example `attachments: { decoder: "./tools/base64" }`.
@@ -147,9 +154,9 @@ target. There is no hidden generated Binding.
 A required named invocation is declared by `uses.<slot>.contract` in package
 metadata. The selected Flow must offer exactly that ID, version and digest
 through its root `FLOW.contract.json`; anonymous ordinary calls need no contract.
-Unmapped qualified native Agent Run, Agent Exchange, Project Command,
-HTTP Request and Run Checkpoint slots
-resolve to the corresponding host implementation. Native authority cannot be
+Unmapped qualified Agent Run, Agent Exchange and Run Checkpoint slots
+resolve to their native defaults. HTTP Request and Project Command require
+explicit slot grants. Native authority cannot be
 replaced by mapping a package that merely claims its contract identity.
 Review shows expected contracts and selected routes together. See
 [project policy](project-policy.md#5-bindings) for qualification and limits.
@@ -207,8 +214,8 @@ applied retained Plan.
 ## Deliberate exclusions
 
 SDK/1 does not define dynamic child-Flow resolution, candidate catalogues,
-semantic choice, Hooks, Services, Journal publishers, Agent selection, generic
-grants, runtime selection, sandbox selection, attachment projection, or
-administration. A Binding's exact `slots` map is the complete child-Flow
+semantic choice, Hooks, Services, Journal publishers, Agent selection, arbitrary
+permission grants, runtime selection, sandbox selection, attachment projection, or
+administration. A Binding's exact `slots` map includes its complete child-Flow
 authoring surface; the excluded concepts are absent rather than represented by
 placeholders.

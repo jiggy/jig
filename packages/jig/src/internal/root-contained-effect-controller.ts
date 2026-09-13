@@ -1,3 +1,5 @@
+import type { GrantPolicy, HttpGrant } from '../project/grants.js'
+import type { ProjectCommand } from '../project/commands.js'
 import { closeSync } from 'node:fs'
 import { CheckError } from '../diagnostics.js'
 import { canonicalJson, decodeJson1, type JsonObject, type JsonValue } from '../json.js'
@@ -13,7 +15,7 @@ import {
   recordPrivateRootChildSandbox,
 } from './activation-admission-store.js'
 import { type PrivateDirectRunRecipe, planPrivateDirectRun } from './direct-run.js'
-import { HTTP_LIMITS, httpCredential, selectHttpGrants } from './http-grants.js'
+import { HTTP_LIMITS, httpCredential } from './http-grants.js'
 import { privateDomainDigest } from './identity.js'
 import { revalidatePrivateInstalledBunSupport } from './installed-bun-support.js'
 import { privateSealedBytes, sha256 } from './linux-file-input.js'
@@ -82,6 +84,7 @@ export async function executePrivateContainedEffect(
   const route = target.request.slots[input.call.slot]
   if (
     route?.kind !== 'native' ||
+    route.grant === undefined ||
     !(
       (route.native === 'project-command' && isProjectCommandContract(route.contract)) ||
       (route.native === 'http-request' && route.contract.digest === HTTP_REQUEST_CONTRACT_DIGEST)
@@ -94,17 +97,14 @@ export async function executePrivateContainedEffect(
     | { kind: 'http'; value: PreparedHttpRequest }
   try {
     prepared =
-      route.native === 'project-command'
+      route.grant.kind === 'command'
         ? {
             kind: 'command',
-            value: parseProjectCommandInput(input.call.input, target.request.commands ?? {}),
+            value: parseProjectCommandInput(input.call.input, commandPolicy(route.grant)),
           }
         : {
             kind: 'http',
-            value: parseHttpRequest(
-              input.call.input,
-              selectHttpGrants(input.httpGrants, target.request.http ?? {}),
-            ),
+            value: parseHttpRequest(input.call.input, httpPolicy(route.grant)),
           }
   } catch {
     return failed(
@@ -228,9 +228,7 @@ export async function executePrivateContainedEffect(
     attempted = true
     const component = await sealed.admit(input.signal)
     const bearer =
-      prepared.kind === 'http'
-        ? httpCredential(input.httpGrants!, target.request.http![prepared.value.resource]!)
-        : undefined
+      prepared.kind === 'http' ? httpCredential(input.httpGrants, prepared.value.grant) : undefined
     const stdin =
       prepared.kind === 'command'
         ? (prepared.value.input.stdin ?? '')
@@ -292,7 +290,6 @@ export async function executePrivateContainedEffect(
     const command = prepared.value
     const value: ProjectCommandResult = Object.freeze({
       candidateDigest: command.candidateDigest,
-      command: command.input.command,
       invocation: command.invocation,
       stdinDigest: command.stdinDigest,
       stdout: observed.stdout,
@@ -376,7 +373,7 @@ function commandPlan(
   identity: string,
   deadlineUnixMs: number,
 ): PrivateLinuxLaunchPlan {
-  const policy = recipe.request.commands![prepared.input.command]!
+  const policy = prepared.policy
   const args =
     'run' in policy
       ? [
@@ -641,4 +638,15 @@ function failed(
   details?: JsonValue,
 ): RunHostOperationTerminal {
   return { status: 'failed', code, message, ...(details === undefined ? {} : { details }) }
+}
+
+function commandPolicy(grant: GrantPolicy): ProjectCommand {
+  if (grant.kind !== 'command') throw new TypeError('expected command grant')
+  const { kind: _, ...policy } = grant
+  return policy
+}
+function httpPolicy(grant: GrantPolicy): HttpGrant {
+  if (grant.kind !== 'http') throw new TypeError('expected HTTP grant')
+  const { kind: _, ...policy } = grant
+  return policy
 }

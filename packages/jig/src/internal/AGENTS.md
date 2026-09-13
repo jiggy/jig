@@ -43,8 +43,10 @@ child calls, project commands, delegated HTTP, and Agent providers.
   installed Bun, and a collector outside candidate execution. Command owner
   rows and independent supervision survive coordinator loss without replay.
 - Command and HTTP effects share the contained-effect owner and recovery path.
-  HTTP grants are snapshotted operator policy, selected by Binding names and
-  bound into review and recipe identity. The fixed worker receives only one
+  HTTP/command grants resolve at Binding slots and are pinned in review and
+  recipe identity. Optional catalog files are captured project proposals. The
+  apply boundary checks explicit authority approval for new/changed recipients
+  or policies; it never infers consent from file access or normal --yes. The fixed worker receives only one
   request's credential over private stdin; it imports no authored code. The
   collector validates its bounded result after fencing. No redirect, proxy,
   automatic retry or raw credential projection is permitted. Remote effects
@@ -179,7 +181,7 @@ child calls, project commands, delegated HTTP, and Agent providers.
   Cancellation and expiry escalate against the exact trusted child after a
   bounded grace period and reap it; independent cgroup fencing still owns payload cleanup.
 - Exact child slots may select a Flow or a leaf Binding with its own admitted
-  settings, Agent invocation, reviewed project commands, and HTTP selections. An effect belongs to that child
+  settings, Agent invocation, reviewed command and HTTP slot grants. An effect belongs to that child
   context, not the root's operation namespace; fence and drain it before
   releasing the child owner. Children cannot acquire another child slot map.
 - Roots admit two Flow branches or one exclusive effect. Reserve each whole

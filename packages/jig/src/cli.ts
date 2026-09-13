@@ -93,7 +93,7 @@ requests, approval, or execution happens during initialization.
 
 Example: jig init hello-jig
 The destination must not exist; existing files are never replaced.`,
-  review: `Usage: jig review [project] [--generate-contracts] [--allow-resolution-network] [--yes] [--details]
+  review: `Usage: jig review [project] [--generate-contracts] [--allow-resolution-network] [--yes] [--allow-authority-changes] [--details]
 
 Capture source, prepare dependencies, show changes, then ask for approval.
 The project defaults to the current directory. This command has side effects:
@@ -101,6 +101,7 @@ it retains private snapshots and, after approval, updates jig.lock.
 
   --allow-resolution-network  Permit fresh resolution for missing dependency locks
   --yes                      Approve the displayed revision without a prompt
+  --allow-authority-changes   Also approve new or changed resource grants
   --details                  Show complete policy when proposing a change
   --generate-contracts                 Generate contracts with Jig's bundled TypeSpec tool
                              Writes managed companions before Run approval
@@ -112,7 +113,7 @@ Examples:
 
 Resolution can contact dependency-selected public or private-network services
 before graph validation. Requests cannot be undone by declining approval.
-When an Agent is needed and none is selected, interactive review asks you to\nchoose and remembers the client locally. For scripts, set JIG_AGENT_CLIENT to\ncodex, claude, pi, or api. --yes approves changes; it does not choose an Agent.\n--yes does not grant resolution networking. Runs gain no network access.
+--yes alone does not approve new resource authority or resolution networking.
 Supplied locks stay frozen; stale locks must be updated explicitly.`,
   run: `Usage: jig run <flow:path|binding:id> [options]
 
@@ -401,6 +402,12 @@ async function executeReview(arguments_: readonly string[], runtime: CliRuntime)
       runtime.writeOutput(
         `${(parsed.details ? plan.review.details : plan.review.text).trimEnd()}\n`,
       )
+      if (parsed.yes && plan.review.authorityChanges && !parsed.allowAuthorityChanges)
+        throw new CliDiagnostic(
+          'JIG_AUTHORITY_APPROVAL_REQUIRED',
+          'New or changed resource grants need explicit approval. Review the delegation changes, then use interactive review or add --allow-authority-changes to --yes.',
+          2,
+        )
       if (!parsed.yes) {
         if (!runtime.interactive) {
           throw new CliDiagnostic(
@@ -427,7 +434,10 @@ async function executeReview(arguments_: readonly string[], runtime: CliRuntime)
 
       runtime.signal?.throwIfAborted()
       runtime.progress.stage('Recording approval for the reviewed revision')
-      await session.apply({ planDigest: plan.planDigest })
+      await session.apply({
+        planDigest: plan.planDigest,
+        allowAuthorityChanges: !parsed.yes || parsed.allowAuthorityChanges,
+      })
       runtime.progress.complete()
       return 0
     },
@@ -749,17 +759,21 @@ function parseReview(
 ): {
   readonly project: string
   readonly yes: boolean
+  readonly allowAuthorityChanges: boolean
   readonly details: boolean
   readonly allowResolutionNetwork: boolean
   readonly generate: boolean
 } {
   let project: string | undefined
   let yes = false
+  let allowAuthorityChanges = false
   let allowResolutionNetwork = false
   let details = false
   let generate = false
   for (const argument of arguments_.slice(1)) {
     if (argument === '--yes' && !yes) yes = true
+    else if (argument === '--allow-authority-changes' && !allowAuthorityChanges)
+      allowAuthorityChanges = true
     else if (argument === '--details' && !details) details = true
     else if (argument === '--generate-contracts' && !generate) generate = true
     else if (argument === '--allow-resolution-network' && !allowResolutionNetwork)
@@ -773,7 +787,14 @@ function parseReview(
           : 'Specify only one project directory.',
       )
   }
-  return { project: project ?? currentDirectory, yes, details, allowResolutionNetwork, generate }
+  return {
+    project: project ?? currentDirectory,
+    yes,
+    details,
+    allowAuthorityChanges,
+    allowResolutionNetwork,
+    generate,
+  }
 }
 
 function parseRun(arguments_: readonly string[]): {
@@ -1241,12 +1262,18 @@ function renderFailure(error: unknown, runtime: CliRuntime): 1 | 2 {
         'the Binding references a Flow not selected by jig.ts; correct the path or project membership',
       PROJECT_BINDING_SLOT_MISSING:
         'a child slot references a target not selected by jig.ts; correct the slot or project membership',
+      PROJECT_GRANT_MISSING:
+        'the slot names a grant not included by jig.ts; include grants: discover("./grants") and provide the matching <name>.json, or use an inline policy',
+      PROJECT_GRANT_INVALID:
+        'the grant must contain a supported closed HTTP or command policy; check its kind, endpoint, limits and body schema against https://jig.md/spec/grants',
+      PROJECT_GRANTS_LIMIT:
+        'keep the grant catalog within 256 entries and 1 MiB total, with at most 32 KiB per file',
       PROJECT_MEMBER_MISSING:
         'a selected project member is missing; restore it or update the membership in jig.ts',
       PROJECT_MEMBER_COLLISION:
         'project members have colliding paths or names; give each selected member a distinct identity',
       PROJECT_EVALUATION_FAILED:
-        'the project definition could not be evaluated; check the indicated module for unknown fields, invalid values, syntax or import errors. defineJig accepts only flows and bindings',
+        'the project definition could not be evaluated; check the indicated module for unknown fields, invalid values, syntax or import errors. defineJig accepts only flows, bindings and grants',
       PROJECT_EVALUATION_LIMIT:
         'project evaluation exceeded its resource or time limit; keep authoring modules small and inert. If they already are, check host load before retrying review. No Flow was started',
       PROJECT_DECLARATION_INVALID:
@@ -1274,7 +1301,7 @@ function renderFailure(error: unknown, runtime: CliRuntime): 1 | 2 {
       PACKAGE_BUN_WORKSPACE_CHANGED:
         'workspace inputs changed during capture; retry review after the edits settle',
       PROJECT_HTTP_UNAVAILABLE:
-        'configure the Binding http selections, matching JIG_HTTP_GRANTS, and selected bearer environment variables before review',
+        'configure the selected slot grants and bearer environment variables before review',
       PACKAGE_BUN_LOCK_INVALID: 'bun.lock is invalid; correct the supplied lock',
       PACKAGE_BUN_LOCK_STALE:
         'package.json and bun.lock disagree; update the supplied lock explicitly',
@@ -1284,13 +1311,11 @@ function renderFailure(error: unknown, runtime: CliRuntime): 1 | 2 {
       (error.diagnostic?.code === 'PROJECT_AGENT_UNAVAILABLE'
         ? (runtime.host.agentUnavailableHint ??
           'configure the host Agent before review; check exported credentials, model, and selected client')
-        : error.diagnostic?.code === 'PROJECT_COMMAND_UNCONFIGURED'
-          ? 'select a Binding with reviewed commands for this Flow'
-          : error.diagnostic?.code === 'PACKAGE_BUN_NODE_MODULES'
-            ? 'move generated node_modules outside the Flow package; jig review prepares its locked production dependencies'
-            : error.diagnostic?.code === 'PACKAGE_BUN_PREPARATION_FAILED'
-              ? 'locked dependencies could not be prepared; check registry access and package availability'
-              : undefined)
+        : error.diagnostic?.code === 'PACKAGE_BUN_NODE_MODULES'
+          ? 'move generated node_modules outside the Flow package; jig review prepares its locked production dependencies'
+          : error.diagnostic?.code === 'PACKAGE_BUN_PREPARATION_FAILED'
+            ? 'locked dependencies could not be prepared; check registry access and package availability'
+            : undefined)
     runtime.writeError(
       error.diagnostic !== undefined
         ? renderProjectDiagnostic(error, hint ?? projected.message)
@@ -1357,6 +1382,7 @@ function projectError(code: ProjectAdministrationError['code']): {
     code === 'PLAN_NOT_FOUND' ||
     code === 'STALE_PLAN'
   const messages: Record<ProjectAdministrationError['code'], string> = {
+    AUTHORITY_APPROVAL_REQUIRED: 'Review resource delegation changes and approve them explicitly.',
     INVALID_REQUEST:
       'The project request is invalid. Check the command options with jig review --help.',
     PROJECT_NOT_FOUND:

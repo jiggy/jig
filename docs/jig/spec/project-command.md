@@ -11,15 +11,15 @@ This is a Jig-owned native invocation carried by ordinary FLOW Run/1 `flow/call`
 It adds no FLOW protocol method or requirement on other hosts. Its exact
 [descriptor](https://jig.md/contracts/project-command/contract.json) has ID
 `https://jig.md/contracts/project-command`, version `1.0.0`, and digest
-`sha256:bbe1184a8f60b342e9afe02baa7af8f0b9b9c09e9ddaa139eb6c7bf7bec91e31`.
+`sha256:745905affe3fab5e7bcb3066419702ceaefca38871be131281a5e7f9f53dc59f`.
 
 ## Reviewed authority
 
-The Flow declares one companion, alongside Agent Run if needed, in `flow.meta.json`
+The Flow declares the companion for each command slot, alongside Agent Run if needed, in `flow.meta.json`
 (or optional `FLOW.md` frontmatter):
 
 ```json
-{"uses":{"command":{"contract":"./contracts/project-command/contract.json"}}}
+{"uses":{"tests":{"contract":"./contracts/project-command/contract.json"},"cli":{"contract":"./contracts/project-command/contract.json"}}}
 ```
 
 The operator configures the permitted invocations in a Binding:
@@ -27,15 +27,15 @@ The operator configures the permitted invocations in a Binding:
 ```ts
 export default defineBinding({
   package: 'flows/repair',
-  commands: {
-    tests: { test: ['test/project.test.ts'] },
-    cli: { run: 'src/cli.ts' },
+  slots: {
+    tests: { kind: 'command', test: ['test/project.test.ts'] },
+    cli: { kind: 'command', run: 'src/cli.ts' },
   },
 })
 ```
 
-`commands` is an optional map of at most eight LocalNames. Each entry contains
-exactly one of `run` (one `.ts` or `.js` entrypoint) or `test` (1–16 distinct
+Each command slot receives a [grant](grants.md), inline or named, with
+`kind: "command"` and exactly one of `run` (one `.ts` or `.js` entrypoint) or `test` (1–16 distinct
 `.test.ts`, `.test.js`, `.spec.ts`, or `.spec.js` paths). Paths are canonical
 relative ASCII names, at most 256 bytes and 16 components, without traversal,
 backslashes, empty components, or shell syntax. The named files must exist
@@ -44,9 +44,9 @@ shell command, executable selector, environment map, or runtime registry.
 
 Command policy participates in review, the portable lock, admission identity,
 and the exact execution recipe. Editing it requires review and admission.
-An omitted or empty map grants no command authority. A map on a package which
-does not declare this native invocation is invalid. An otherwise valid unconfigured
-command target is unavailable; unrelated targets remain usable.
+At most eight command grants may be selected by one Binding. Missing or
+incompatible slot grants reject the candidate; no implicit command authority
+is supplied.
 
 A root or exact leaf Binding can use its own command policy. Direct `flow:`
 targets have no command policy. A child receives neither parent commands nor
@@ -59,9 +59,8 @@ allowed; [root reservations](project-policy.md) bound their combined resources.
 ```ts
 const result = await run.call({
   operationId: 'candidate-tests',
-  slot: 'command',
+  slot: 'tests',
   input: {
-    command: 'tests',
     files: {
       'src/value.ts': 'export const value = 2',
       'test/project.test.ts': 'import { test, expect } from "bun:test"; import { value } from "../src/value.ts"; test("value", () => expect(value).toBe(2))',
@@ -92,7 +91,7 @@ The SDK returns `{ outcome: 'done', output: evidence }`. The evidence contains:
 | Field | Meaning |
 | --- | --- |
 | `candidateDigest` | SHA-256 of the canonical JSON/1 `files` map, prefixed `sha256:`. No trailing newline is hashed. |
-| `command`, `invocation` | Selected policy name and logical argument vector beginning with `bun`; no host paths. |
+| `invocation` | Logical argument vector beginning with `bun`; no host paths. The application already knows which slot it called. |
 | `stdinDigest` | SHA-256 of the UTF-8 stdin bytes, prefixed `sha256:`. |
 | `stdout`, `stderr` | `{text, truncated}` for the first 64 KiB of each stream. The collector drains the rest. |
 | `exitCode`, `signal` | Actual collected termination, with unavailable alternatives represented by `null`. |

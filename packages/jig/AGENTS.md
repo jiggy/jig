@@ -71,10 +71,13 @@ admitted FLOW packages.
   in review, lock and exact configuration identity; per-run mappings cannot
   override them. Keep this root-only profile and its bounds synchronized with
   `docs/jig/spec/project-policy.md`.
-- Binding `http` selects named operator grants, not credentials or destinations.
-  `docs/jig/spec/http-request.md` owns the exact closed policy. The installed
-  trusted worker is part of authenticated support; changed public grants cannot
-  reuse an older recipe. Use the ordinary `run.call` surface, not an HTTP SDK method.
+- Binding slots select inline HTTP/command grants or optional named JSON policies.
+  `docs/jig/spec/grants.md` owns capture, reuse and recipient-scoped approval.
+  New or changed delegations require explicit authority approval in the same
+  retained plan; source edits cannot mutate active generations. Secrets remain
+  private operator environment snapshots. Use ordinary `run.call`.
+- Authoring helpers stay inert and guest-realm-only. Full URL/schema checks
+  belong to trusted linking, not imports or host constructors inside the evaluator.
 - Public output must not disclose credentials, sandbox internals, private
   paths, or internal identity records. Review may show the resolved
   operator-selected native Agent executable path for informed selection.
@@ -155,6 +158,9 @@ admitted FLOW packages.
   `JIG_PACKAGE_ARCHIVE` and `FLOW_SDK_PACKAGE_ARCHIVE`; otherwise pack built
   candidates. Failed public commands retain their consumer and diagnostics
   under the selected temporary root for investigation.
+- With `JIG_LINUX_ROOTLESS_HOSTILE=1`, `test/package-smoke.ts` also qualifies
+  inline/named command grants through the installed public CLI and complete
+  packed SDK in a consumer workspace. It honors both candidate archive variables.
 - The Agent lifecycle suite accepts `AGENT_METHOD_PACKAGE_ARCHIVE` for the
   unchanged ordinary method artifact; otherwise it packs the already-built
   package without rebuilding runtime assets during contained execution.

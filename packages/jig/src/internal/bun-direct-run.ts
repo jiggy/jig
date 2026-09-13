@@ -140,7 +140,6 @@ async function describePrivateBunDirectRun(
   )
     throw new TypeError('Run Checkpoint requires a root writable attachment')
   const usesAgent = nativeRoutes.some(({ native }) => isAgentInvocation(native))
-  const usesCommand = nativeRoutes.some(({ native }) => native === 'project-command')
   if (usesAgent && input.agentProvider === undefined) {
     unavailable(
       'PROJECT_AGENT_UNAVAILABLE',
@@ -152,25 +151,16 @@ async function describePrivateBunDirectRun(
   if (agentProvider !== undefined && agentProvider.contractDigest !== AGENT_RUN_CONTRACT_DIGEST) {
     throw new TypeError('private Bun recipe requires qualified native invocation support')
   }
-  if (usesCommand && Object.keys(request.commands ?? {}).length === 0)
-    unavailable(
-      'PROJECT_COMMAND_UNCONFIGURED',
-      'configure commands in a Binding for this Project Command Flow',
-      `${request.packagePath}/${request.entrypoint.path}`,
-    )
-  if (!usesCommand && request.commands !== undefined)
-    throw new TypeError('command policy requires the Project Command invocation')
-
   let http: Readonly<Record<string, HttpGrant>>
   const usesHttp = nativeRoutes.some(({ native }) => native === 'http-request')
   try {
-    http = selectHttpGrants(input.httpGrants, request.http ?? {})
+    http = selectHttpGrants(input.httpGrants, request.slots)
     if (usesHttp && Object.keys(http).length === 0) throw new Error('missing resource')
     if (!usesHttp && Object.keys(http).length !== 0) throw new Error('undeclared resource')
   } catch {
     unavailable(
       'PROJECT_HTTP_UNAVAILABLE',
-      'configure the Binding http selections, matching JIG_HTTP_GRANTS, and selected bearer environment variables before review',
+      'configure matching slot grants and selected bearer environment variables before review',
       `${request.packagePath}/${request.entrypoint.path}`,
     )
   }
@@ -197,7 +187,6 @@ async function describePrivateBunDirectRun(
       : { boundAttachments: request.boundAttachments }),
     slots: request.slots,
     http,
-    ...(request.commands === undefined ? {} : { commands: request.commands }),
   } as unknown as JsonValue)
   const launchEnvelopeDigest = logicalLaunchDigest(
     request,
@@ -312,9 +301,9 @@ function logicalLaunchDigest(
       rootOnly: true,
     },
     slots: request.slots,
-    ...(request.commands === undefined
-      ? {}
-      : { commands: request.commands, commandLimits: PROJECT_COMMAND_LIMITS }),
+    ...(nativeSlotRoutes(request.slots).some((route) => route.native === 'project-command')
+      ? { commandLimits: PROJECT_COMMAND_LIMITS }
+      : {}),
     ...(nativeSlotRoutes(request.slots).some((route) => route.native === 'run-checkpoint')
       ? { checkpointLimits: RUN_CHECKPOINT_LIMITS }
       : {}),

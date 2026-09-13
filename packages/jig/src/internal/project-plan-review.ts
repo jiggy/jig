@@ -4,7 +4,7 @@ import { isAgentInvocation } from '../project/invocation-slots.js'
 import type { RunTargetIdentity } from '../project/package-project.js'
 import type { PrivateActivationReviewPlan } from './activation-admission-store.js'
 import type { PrivateAgentProvider } from './agent-provider.js'
-import { type PrivateHttpGrants, selectHttpGrants } from './http-grants.js'
+import { grantChanges, requiresAuthorityApproval } from './grant-review.js'
 
 // Four MiB leaves a conservative JSON/1 envelope after every ASCII backslash
 // and quote in the review string is escaped by the outer value encoding.
@@ -15,6 +15,7 @@ export interface PrivateProjectPlanReview {
   readonly mediaType: 'text/plain; charset=utf-8'
   readonly text: string
   readonly details: string
+  readonly authorityChanges: boolean
 }
 
 /**
@@ -26,7 +27,6 @@ export function renderPrivateProjectPlanReview(
   review: PrivateActivationReviewPlan,
   maximumBytes = MAX_REVIEW_BYTES,
   agentProvider?: PrivateAgentProvider,
-  httpGrants?: PrivateHttpGrants,
 ): PrivateProjectPlanReview {
   if (!Number.isSafeInteger(maximumBytes) || maximumBytes < 1 || maximumBytes > MAX_REVIEW_BYTES) {
     throw new TypeError('project plan review byte limit is invalid')
@@ -63,18 +63,14 @@ export function renderPrivateProjectPlanReview(
             authentication: agentProvider.credentialMode,
           }
       : undefined
-  const http = Object.fromEntries(
-    plan.proposed.targets
-      .filter(
-        ({ request, disposition }) => request.http !== undefined && disposition.state === 'ready',
-      )
-      .map(({ request }) => [
-        targetKey(request.target),
-        selectHttpGrants(httpGrants, request.http),
-      ]),
+  const grants = grantChanges(review.baseCandidate?.lock ?? null, plan.proposed.lock)
+  const authorityChanges = requiresAuthorityApproval(
+    review.baseCandidate?.lock ?? null,
+    plan.proposed.lock,
   )
   const proposal = {
-    ...(Object.keys(http).length === 0 ? {} : { proposedHostHttp: http }),
+    authorityChanges,
+    grants,
     changes,
     executionChanges: Object.fromEntries(
       changes.targets.changed.map((key) => [
@@ -100,11 +96,11 @@ export function renderPrivateProjectPlanReview(
   summary.write('Review changes before approval\n\n')
   summary.write('Approval permits these exact methods, settings and invocation routes to run.\n')
   summary.write('It does not execute a Flow. Declining keeps your previous approval.\n\n')
-  if (Object.keys(http).length !== 0) {
-    summary.write('HTTP authority selected for these targets:\n')
-    writeAsciiJson(summary, http, 0)
+  if (grants.length !== 0) {
+    summary.write('Resource delegation changes (recipient, exact policy):\n')
+    writeAsciiJson(summary, grants, 0)
     summary.write(
-      '\nThese exact requests may send data and create remote effects. No redirects or retries.\n\n',
+      '\nNew or changed grants require explicit authority approval. Removed grants affect new Runs after admission.\n\n',
     )
   }
   if (agent !== undefined) {
@@ -123,7 +119,7 @@ export function renderPrivateProjectPlanReview(
   )
   writeChanges(
     summary,
-    'Bindings (settings, child slots, command policy, HTTP resources and captured files)',
+    'Bindings (settings, invocation slots, resource grants and captured files)',
     changes.bindings,
     current?.portablePolicy.bindings ?? {},
     proposed.portablePolicy.bindings,
@@ -162,6 +158,7 @@ export function renderPrivateProjectPlanReview(
       'project review exceeds the supported display size',
     )
   return Object.freeze({
+    authorityChanges,
     mediaType: 'text/plain; charset=utf-8' as const,
     text,
     details,
@@ -328,8 +325,6 @@ function projectCandidate(
     entrypoint: request.entrypoint,
     settings: request.settings,
     slots: request.slots,
-    ...(request.http === undefined ? {} : { http: request.http }),
-    ...(request.commands === undefined ? {} : { commands: request.commands }),
     attachments: request.attachments,
     ...(request.boundAttachments === undefined
       ? {}
@@ -416,7 +411,9 @@ function changedBindingSlotDependencies(
     const prior = current.portablePolicy.bindings[id]
     if (prior === undefined) continue
     const keys = new Set(
-      [...Object.values(prior.slots), ...Object.values(binding.slots)].map(targetKey),
+      [...Object.values(prior.slots), ...Object.values(binding.slots)]
+        .filter((slot): slot is RunTargetIdentity => slot.kind !== 'grant')
+        .map(targetKey),
     )
     if (
       [...keys].some((key) => {

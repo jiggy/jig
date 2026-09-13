@@ -224,7 +224,6 @@ export class PrivateRootRunFiles {
           canonicalJson({
             settings: request.settings,
             slots: request.slots,
-            ...(request.commands === undefined ? {} : { commands: request.commands }),
             attachments: request.attachments,
             ...(request.boundAttachments === undefined
               ? {}

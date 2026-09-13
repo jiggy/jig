@@ -145,7 +145,6 @@ export function inspect(input: Input, result: RunResult) {
         command.candidateDigest !== identity(files) ||
         command.cleanup !== 'complete' ||
         command.stopReason !== 'exited' ||
-        command.command !== (i === 0 ? 'tests' : 'cli') ||
         command.stdinDigest !== hash(i === 0 ? '' : input.cases[i - 1]!.stdin) ||
         !Array.isArray(command.invocation) ||
         command.invocation[0] !== 'bun' ||

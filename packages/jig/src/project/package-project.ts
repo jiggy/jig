@@ -1,8 +1,6 @@
 import { CheckError, invalid } from '../diagnostics.js'
 import { type BoundAttachments, normalizeBoundAttachments } from '../internal/bound-attachments.js'
 import { MARKDOWN_AGENT_SLOT, markdownAgentContract } from '../internal/markdown-agent-contract.js'
-import { HTTP_REQUEST_CONTRACT_DIGEST } from '../internal/private-http-request.js'
-import { PROJECT_COMMAND_CONTRACT_DIGEST } from '../internal/private-project-command.js'
 import { RUN_CHECKPOINT_CONTRACT_DIGEST } from '../internal/private-run-checkpoint.js'
 import type { JsonObject, JsonValue } from '../json.js'
 import { type InspectedPackage, requireSupportedPackageProfile } from '../package/inspect.js'
@@ -14,7 +12,8 @@ import {
   type PackageBindingInput,
   parseRunTargetSelector,
 } from './author.js'
-import type { ProjectCommands } from './commands.js'
+import { type GrantedSlot, type GrantPolicy, normalizeGrant, grantName } from './grants.js'
+import { snapshotJsonObject } from './author-value.js'
 import { isDirectRunEligible } from './flow-source.js'
 import {
   type InvocationIdentity,
@@ -45,6 +44,7 @@ export interface InjectedBindingDeclaration {
 export interface PackageProjectInput {
   readonly flows: readonly RetainedFlowInput[]
   readonly bindings: readonly InjectedBindingDeclaration[]
+  readonly grants?: Readonly<Record<string, GrantPolicy>>
 }
 
 export interface LinkedFlow {
@@ -69,9 +69,7 @@ export interface LinkedPackageBinding {
   readonly declarationPath: string
   readonly packagePath: string
   readonly settings: JsonObject
-  readonly slots: Readonly<Record<string, RunTargetIdentity>>
-  readonly http?: Readonly<Record<string, string>>
-  readonly commands?: ProjectCommands
+  readonly slots: Readonly<Record<string, RunTargetIdentity | GrantedSlot>>
   readonly boundAttachments?: BoundAttachments
 }
 
@@ -104,7 +102,22 @@ export function linkPackageProject(
   ) {
     throw new TypeError('maximum activation targets must be a positive safe integer')
   }
-  const root = readClosedRecord(input, ['flows', 'bindings'], 'package project')
+  const root = readClosedRecord(
+    input,
+    ['flows', 'bindings', ...(input && Object.hasOwn(input, 'grants') ? ['grants'] : [])],
+    'package project',
+  )
+  const grantValues = root.grants === undefined ? {} : snapshotJsonObject(root.grants, 'grants')
+  if (Object.keys(grantValues).length > 256)
+    invalid('PROJECT_GRANTS_LIMIT', 'grant catalog exceeds 256 entries')
+  const grants = Object.freeze(
+    Object.fromEntries(
+      Object.entries(grantValues).map(([name, policy]) => [
+        grantName(name),
+        normalizeGrant(policy),
+      ]),
+    ),
+  )
   const budget = new WorkBudget()
   const flows = prepareFlows(readBoundedArray(root.flows, 'flows'), budget)
   const flowByPath = new Map(flows.map((flow) => [flow.value.provenance.projectPath, flow]))
@@ -125,7 +138,7 @@ export function linkPackageProject(
   const value = Object.freeze({
     flows: Object.freeze(flows.map((flow) => flow.value)),
     bindings: Object.freeze(
-      preparedBindings.map((binding) => linkBinding(binding, flowByPath, bindingById)),
+      preparedBindings.map((binding) => linkBinding(binding, flowByPath, bindingById, grants)),
     ),
   })
   authenticPackageProjects.add(value)
@@ -329,28 +342,6 @@ function prepareBindings(
         declarationPath,
         '/slots/markdown-agent',
       )
-    if (
-      definition.commands !== undefined &&
-      !Object.values(flow.value.uses).some(
-        ({ digest }) => digest === PROJECT_COMMAND_CONTRACT_DIGEST,
-      )
-    )
-      invalid(
-        'PROJECT_BINDING_COMMANDS_UNDECLARED',
-        'commands require a Project Command invocation declaration',
-        declarationPath,
-        '/commands',
-      )
-    if (
-      definition.http !== undefined &&
-      !Object.values(flow.value.uses).some(({ digest }) => digest === HTTP_REQUEST_CONTRACT_DIGEST)
-    )
-      invalid(
-        'PROJECT_BINDING_HTTP_UNDECLARED',
-        'http selections require an HTTP Request invocation declaration',
-        declarationPath,
-        '/http',
-      )
     const boundAttachments = normalizeBoundAttachments(record.capturedAttachments ?? {})
     const selected = definition.attachments ?? {}
     if (Object.keys(selected).sort().join('\0') !== Object.keys(boundAttachments).sort().join('\0'))
@@ -391,9 +382,10 @@ function linkBinding(
   prepared: PreparedBinding,
   flowByPath: ReadonlyMap<string, PreparedFlow>,
   bindingById: ReadonlyMap<string, PreparedBinding>,
+  grants: Readonly<Record<string, GrantPolicy>>,
 ): LinkedPackageBinding {
   const { id, declarationPath, definition } = prepared
-  const slots = linkFlowSlots(prepared, flowByPath, bindingById)
+  const slots = linkFlowSlots(prepared, flowByPath, bindingById, grants)
   try {
     resolveInvocationSlots(prepared.flow.value.uses, slots)
   } catch (error) {
@@ -406,8 +398,6 @@ function linkBinding(
     packagePath: definition.package,
     settings: definition.settings,
     slots,
-    ...(definition.http === undefined ? {} : { http: definition.http }),
-    ...(definition.commands === undefined ? {} : { commands: definition.commands }),
     ...(prepared.boundAttachments === undefined
       ? {}
       : { boundAttachments: prepared.boundAttachments }),
@@ -418,11 +408,29 @@ function linkFlowSlots(
   binding: PreparedBinding,
   flowByPath: ReadonlyMap<string, PreparedFlow>,
   bindingById: ReadonlyMap<string, PreparedBinding>,
-): Readonly<Record<string, RunTargetIdentity>> {
+  grants: Readonly<Record<string, GrantPolicy>>,
+): Readonly<Record<string, RunTargetIdentity | GrantedSlot>> {
   const { id: bindingId, declarationPath, definition } = binding
-  const slots: Record<string, RunTargetIdentity> = Object.create(null)
+  const slots: Record<string, RunTargetIdentity | GrantedSlot> = Object.create(null)
   for (const [name, selector] of Object.entries(definition.slots)) {
     const pointer = `/slots/${pointerToken(name)}`
+    if (typeof selector !== 'string' || selector.startsWith('grant:')) {
+      const resourceName = typeof selector === 'string' ? grantName(selector.slice(6)) : undefined
+      const policy = resourceName === undefined ? selector : grants[resourceName]
+      if (policy === undefined)
+        invalid(
+          'PROJECT_GRANT_MISSING',
+          'slot selects a missing grant: ' + resourceName,
+          declarationPath,
+          pointer,
+        )
+      slots[name] = Object.freeze({
+        kind: 'grant',
+        policy: normalizeGrant(policy),
+        ...(resourceName === undefined ? {} : { name: resourceName }),
+      })
+      continue
+    }
     const identity = parseRunTargetSelector(selector, `slot ${name}`)
     const childBinding = identity.kind === 'binding' ? bindingById.get(identity.id) : undefined
     const target = identity.kind === 'flow' ? flowByPath.get(identity.path) : childBinding?.flow
@@ -458,7 +466,12 @@ function linkFlowSlots(
         pointer,
       )
     }
-    if (childBinding !== undefined && Object.keys(childBinding.definition.slots).length !== 0) {
+    if (
+      childBinding !== undefined &&
+      Object.values(childBinding.definition.slots).some(
+        (value) => typeof value === 'string' && !value.startsWith('grant:'),
+      )
+    ) {
       invalid(
         'PROJECT_BINDING_SLOT_NOT_LEAF',
         `Binding ${bindingId} slot ${name} selects a Binding with child slots`,

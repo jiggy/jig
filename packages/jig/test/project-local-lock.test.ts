@@ -235,14 +235,17 @@ describe('private package-project portable lock projection', () => {
             bindings: [
               binding('bindings/command.ts', {
                 package: 'flows/command',
-                commands: { cli: { run } },
+                slots: { command: { kind: 'command', run } },
               }),
             ],
           })
         const first = project('src/cli.ts'),
           second = project('src/other.ts')
         const lock = createPrivateProjectLocalLock(first)
-        expect(lock.bindings.command!.commands).toEqual({ cli: { run: 'src/cli.ts' } })
+        expect(lock.bindings.command!.slots.command).toEqual({
+          kind: 'grant',
+          policy: { kind: 'command', run: 'src/cli.ts' },
+        })
         expect(decodePrivateProjectLocalLock(encodePrivateProjectLocalLock(lock))).toEqual(lock)
         expect(privateProjectLocalLockDigest(createPrivateProjectLocalLock(second))).not.toBe(
           privateProjectLocalLockDigest(lock),
@@ -257,13 +260,19 @@ describe('private package-project portable lock projection', () => {
         expect(() =>
           restorePrivateActivationRequest({
             ...request,
-            commands: { cli: { run: 'src/other.ts' } },
+            slots: {
+              ...request.slots,
+              command: {
+                ...request.slots.command,
+                grant: { kind: 'command', run: 'src/other.ts' },
+              },
+            },
           }),
         ).toThrow()
         expectInvalid(
           lock,
           (value) => {
-            value.bindings.command.commands.cli = { shell: 'bun test' }
+            value.bindings.command.slots.command.policy = { kind: 'command', shell: 'bun test' }
           },
           'run or test',
         )

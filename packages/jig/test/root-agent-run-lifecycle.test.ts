@@ -266,7 +266,10 @@ globalThis.fetch = (url, init) => {
               },
             },
           }
-          expect(await main(['review', '--yes'], options), stderr).toBe(0)
+          expect(
+            await main(['review', '--yes', '--allow-authority-changes'], options),
+            stderr,
+          ).toBe(0)
           stdout = ''
           stderr = ''
           const before = await readFile(join(project, 'fixtures/log-report/src/parse.ts'))

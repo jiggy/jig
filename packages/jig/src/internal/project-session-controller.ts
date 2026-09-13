@@ -457,12 +457,7 @@ function createSession(
           candidate,
           lockMode: request.lockMode,
           beforePersistApplicable(applicable): void {
-            review = renderPrivateProjectPlanReview(
-              applicable,
-              undefined,
-              host.agentProvider,
-              host.httpGrants,
-            )
+            review = renderPrivateProjectPlanReview(applicable, undefined, host.agentProvider)
           },
         })
         preparationBudget.signal.throwIfAborted()
@@ -495,6 +490,7 @@ function createSession(
           projectRoot: owner.root,
           packageStoreRoot,
           planDigest: request.planDigest,
+          allowAuthorityChanges: request.allowAuthorityChanges === true,
         })
         await owner.verify()
         return Object.freeze(
@@ -791,8 +787,7 @@ function isUnavailableDiagnosticCode(code: string): boolean {
     code === 'PACKAGE_METADATA_UNSUPPORTED' ||
     code === 'PACKAGE_TOOLS_UNSUPPORTED' ||
     code === 'PROJECT_INTERFACE_ANONYMOUS' ||
-    code === 'PROJECT_ATTACHMENTS_UNSUPPORTED' ||
-    code === 'PROJECT_COMMAND_UNCONFIGURED'
+    code === 'PROJECT_ATTACHMENTS_UNSUPPORTED'
   )
 }
 
@@ -805,6 +800,7 @@ function isCandidateDiagnosticCode(code: string): boolean {
     code.startsWith('SCHEMA_') ||
     code.startsWith('PACKAGE_BUN_') ||
     code.startsWith('PROJECT_BINDING_') ||
+    code.startsWith('PROJECT_GRANT') ||
     code.startsWith('PROJECT_DECLARATION_') ||
     code.startsWith('PROJECT_EVALUATION_') ||
     code.startsWith('PROJECT_EVALUATOR_') ||

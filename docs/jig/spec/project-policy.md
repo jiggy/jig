@@ -140,8 +140,8 @@ A Flow is a direct Run target only when it:
 
 Direct eligibility is structural. Host execution support is planned
 separately, so an eligible target can still be unavailable on this host.
-Project Command requires a Binding's reviewed `commands`; HTTP Request requires
-its `http` resource selections and matching operator grants. These packages
+Project Command and HTTP Request require a Binding's reviewed resource grants
+at the declared invocation slots. These packages
 are invoked through configured Bindings, not direct targets.
 
 [Run Checkpoint](run-checkpoint.md) requires a root writable attachment and
@@ -173,7 +173,7 @@ frozen; missing, stale, and invalid are distinct states, not repair modes.
 For a package with runtime dependencies but no authored lock, the operator may
 pass `jig review --allow-resolution-network`. Without it, planning returns
 `PACKAGE_BUN_RESOLUTION_PERMISSION_REQUIRED` at the affected manifest before
-resolving that package. `--yes` grants only final Run admission, not networking.
+resolving that package. `--yes` grants final revision admission, not resolution networking or new resource delegations.
 The flag is local to the current review, not a project value, portable lock
 field, or retained permission. It grants no Run authority by itself.
 
@@ -343,10 +343,12 @@ settings are invalid. Jig does not merge defaults, environment values, or
 per-invocation overrides into settings.
 
 `slots` is an optional map of at most 256 LocalName keys to exact
-`flow:<project-relative-path>` or `binding:<LocalName>` selectors. Omission
+`flow:<project-relative-path>` or `binding:<LocalName>` selectors, inline grants,
+or `grant:<LocalName>` selections. Omission
 normalizes to `{}`. A Flow selector must identify a direct Flow target, using
 empty settings. A Binding selector uses that Binding's own validated settings
-and must select a Binding with no child slots. Either target may use the exact
+and must select a Binding with no further Flow or Binding routes. Grant slots
+do not count as child routes. Either target may use the exact
 Agent Run or [Agent Exchange](agent-exchange.md) invocation, and a configured
 Binding may also use [Project Command](project-command.md) or
 [HTTP Request](http-request.md). Slots cannot select the parent's own package, directly
@@ -383,17 +385,21 @@ parent file access. Unsupported declaration counts reject the project candidate.
 Bindings contain no runtime command, environment map, package-manager policy,
 or generic permission bag.
 
-### Delegated HTTP resources
+### Resource grants
 
-A Binding's `http` maps consumer-local resource names to operator names in
-`JIG_HTTP_GRANTS`. It contains neither endpoints nor secrets. Each selected
-grant fixes an exact URL, method, optional bearer environment reference, byte
-and time limits, and optional request-body schema. Review exposes that public
-policy, and the execution recipe pins it. A separate trusted worker enforces
-it while Flow code remains offline and keyless. Missing or changed grants
-cannot reuse old authority. Root and child Bindings use their own selections;
-HTTP shares exclusive effect capacity with Agent and command calls. See
-[HTTP Request](http-request.md) for the exact policy and failure contract.
+A Binding supplies inline `kind: 'http'` or `kind: 'command'` policies
+through its ordinary `slots` map. Optional `grants: discover('./grants')`
+membership enables `grant:<name>` reuse with one JSON policy per named file.
+These are proposals until explicit admission. [Grants](grants.md) defines the
+closed grammar, capture limits, recipient-scoped continuity and authority
+approval; HTTP and command calls require exact matching invocation contracts.
+
+An admitted slot pins its policy. A trusted worker enforces it outside Flow
+execution. Source edits do not revoke active admissions; a new approved
+generation changes new Runs, while cancellation settles existing work.
+HTTP, Agent and command calls share the existing exclusive effect capacity.
+Root and child Bindings receive only their own grants. Grant slots do not
+introduce nested Flow routes or additional execution capacity.
 
 ### Reviewed Binding attachments
 
@@ -507,10 +513,11 @@ meaning without admitting it.
 - selected package paths and Package/1 digests;
 - direct-target eligibility and invocation requirements;
 - Binding package choices, settings, and exact child slots.
-- Binding command policy and reviewed attachment source paths, tree digests and file manifests.
+- Resolved slot grant policies and reviewed attachment source paths, tree digests and file manifests.
 
 Lock slot values are closed target identities: `{ "kind": "flow", "path":
-"flows/research" }` or `{ "kind": "binding", "id": "critic" }`. The lock
+"flows/research" }` or `{ "kind": "binding", "id": "critic" }`,
+or resolved grants `{ "kind": "grant", "policy": { ... }, "name": "optional-name" }`. The lock
 retains the selected Binding's configuration in its own Binding entry.
 
 It contains no runtime path, runtime version guess, host closure, sandbox
@@ -523,7 +530,8 @@ choices, not execution consent on a new host.
 Applying a reviewed Plan:
 
 1. reopens the retained Plan and artifacts by digest;
-2. rechecks the project identity and the candidate and admission heads;
+2. rechecks the project identity, candidate and admission heads, and explicit
+   approval for new or changed resource delegations;
 3. writes the exact proposed `jig.lock` durably; and
 4. advances local admission in one compare-and-set transaction.
 
@@ -641,10 +649,10 @@ Possibly dispatched Agent work is fenced and reported as uncertain rather
 than automatically replayed.
 
 A command-capable Binding may call the exact [Project Command](project-command.md)
-contract with a bounded text candidate and a reviewed command name. Jig uses
+contract through a granted slot with a bounded text candidate. Jig uses
 the installed Bun runtime inside a separate keyless envelope and collects
 output and termination outside candidate execution. The root or child has
-only its own admitted command map. Command effects share the context's single
+only its own admitted slot policy. Command effects share the context's single
 active-operation limit and its containing deadlines. Independent assertions
 remain application policy; repository test logs cannot establish an
 independent verdict. Commands confer no shell, network, installation,

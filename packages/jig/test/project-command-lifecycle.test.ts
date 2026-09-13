@@ -25,7 +25,7 @@ proof('contained Project Command effect', () => {
       const plan = await session.plan({ lockMode: 'update' })
       expect(plan.state).toBe('applicable')
       if (plan.state !== 'applicable') throw new Error('command fixture is not reviewable')
-      await session.apply({ planDigest: plan.planDigest })
+      await session.apply({ planDigest: plan.planDigest, allowAuthorityChanges: true })
       const run = async (
         id: string,
         files: Record<string, string>,
@@ -124,7 +124,7 @@ proof('contained Project Command effect', () => {
       expect(JSON.stringify(ordinary)).toContain('observed failure')
       expect(JSON.stringify(ordinary)).not.toContain('unauthorized-')
       const invalid = await run('command-unknown', files, { command: 'shell' })
-      expect(invalid).toMatchObject({ terminal: { status: 'failed', code: 'INVALID_INPUT' } })
+      expect(invalid).toMatchObject({ terminal: { status: 'failed', code: 'UNAVAILABLE' } })
       const flood = await run('command-flood', {
         'src/cli.ts':
           'process.stdout.write("x".repeat(131072)); process.stderr.write("e".repeat(131072));',
@@ -178,7 +178,7 @@ proof('contained Project Command effect', () => {
       session = await openPrivateProjectSession({ directory: root, host })
       const plan = await session.plan({ lockMode: 'update' })
       if (plan.state !== 'applicable') throw new Error('loss fixture is not applicable')
-      await session.apply({ planDigest: plan.planDigest })
+      await session.apply({ planDigest: plan.planDigest, allowAuthorityChanges: true })
       await session.close()
       const program = `
         import { openPrivateProjectSession } from ${JSON.stringify(join(import.meta.dir, '../src/internal/project-session-controller.ts'))};
@@ -240,14 +240,21 @@ async function fixture(root: string) {
         name,
         description: 'Collect bounded project-command evidence.',
         ...(name === 'command'
-          ? { uses: { command: { contract: './contracts/project-command/contract.json' } } }
+          ? {
+              uses: Object.fromEntries(
+                ['cli', 'tests'].map((slot) => [
+                  slot,
+                  { contract: './contracts/project-command/contract.json' },
+                ]),
+              ),
+            }
           : {}),
       }),
     )
     await writeFile(
       join(flow, 'FLOW.ts'),
       name === 'command'
-        ? 'import {handle} from "./sdk/index.js"; await handle(async run=>await run.call({operationId:"command",slot:"command",input:run.input}));'
+        ? 'import {handle} from "./sdk/index.js"; await handle(async run=>{const {command,...input}=run.input;return run.call({operationId:"command",slot:command,input})});'
         : name === 'pair'
           ? 'import {handle} from "./sdk/index.js"; await handle(async run=>({outcome:"done",output:await Promise.all(["a","b"].map(operationId=>run.call({operationId,slot:"worker",input:run.input})))}));'
           : 'import {handle} from "./sdk/index.js"; await handle(async run=>run.call({operationId:"worker",slot:"worker",input:run.input}));',
@@ -265,7 +272,7 @@ async function fixture(root: string) {
   )
   await writeFile(
     join(root, 'bindings/command.ts'),
-    'import {defineBinding} from "@jigging/jig"; export default defineBinding({package:"flows/command",commands:{cli:{run:"src/cli.ts"},tests:{test:["test/project.test.ts"]}}});',
+    'import {defineBinding} from "@jigging/jig"; export default defineBinding({package:"flows/command",slots:{cli:{kind:"command",run:"src/cli.ts"},tests:{kind:"command",test:["test/project.test.ts"]}}});',
   )
   await writeFile(
     join(root, 'bindings/parent.ts'),
