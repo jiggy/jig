@@ -6,7 +6,7 @@ import {
   createPrivateAcpAgentProvider,
   type PrivateAcpAgentProvider,
 } from './acp-agent-provider.js'
-import { privateLinuxHostToolCandidates, resolvePrivateLinuxHostPath } from './linux-host-paths.js'
+import { resolvePrivateNativeAgentExecutable } from './native-agent-executable.js'
 
 const CODEX_CLIENT = 'openai-codex'
 const SANDBOX_LAUNCHER_PATH = '/agent/codex-agent-launcher.js'
@@ -85,8 +85,18 @@ export interface PrivateCodexOpenAIApiAgentConfiguration extends PrivateCodexAge
 export async function openPrivateCodexAgentProvider(
   releaseRoot: string,
   environment: Readonly<Record<string, string | undefined>> = process.env,
+  projectDirectory: string = process.cwd(),
 ): Promise<PrivateAcpAgentProvider> {
-  const executablePath = await resolveCodexExecutable(environment.CODEX_PATH)
+  let executablePath: string
+  try {
+    executablePath = await resolvePrivateNativeAgentExecutable(
+      'codex',
+      environment,
+      projectDirectory,
+    )
+  } catch {
+    throw new PrivateCodexExecutableUnavailableError('the native Codex executable is unavailable')
+  }
   const support = Object.freeze({
     launcherPath: join(releaseRoot, 'libexec', 'agent', 'codex-agent-launcher.js'),
     adapterPath: join(releaseRoot, 'libexec', 'agent', 'codex-acp.js'),
@@ -337,27 +347,6 @@ function codexEnvironment(
     NO_BROWSER: '1',
     SSL_CERT_FILE: SANDBOX_CERTIFICATES_PATH,
   })
-}
-
-async function resolveCodexExecutable(selected: string | undefined): Promise<string> {
-  if (selected !== undefined && (!selected.startsWith('/') || selected.includes('\0'))) {
-    throw new PrivateCodexExecutableUnavailableError(
-      'CODEX_PATH must be an absolute executable path',
-    )
-  }
-  try {
-    const path = await resolvePrivateLinuxHostPath(
-      selected === undefined ? privateLinuxHostToolCandidates('codex') : [selected],
-    )
-    const information = await lstat(path)
-    if (!information.isFile() || information.isSymbolicLink() || (information.mode & 0o111) === 0) {
-      throw new PrivateCodexExecutableUnavailableError('the native Codex executable is invalid')
-    }
-    return path
-  } catch (error) {
-    if (error instanceof PrivateCodexExecutableUnavailableError) throw error
-    throw new PrivateCodexExecutableUnavailableError('the native Codex executable is unavailable')
-  }
 }
 
 async function nativeBubblewrapFor(executablePath: string): Promise<string> {

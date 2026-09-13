@@ -1,11 +1,11 @@
 import { lstat, realpath } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
-import { resolvePrivateLinuxHostLoader } from './linux-host-paths.js'
-
 import {
   createPrivateAcpAgentProvider,
   type PrivateAcpAgentProvider,
 } from './acp-agent-provider.js'
+import { resolvePrivateLinuxHostLoader } from './linux-host-paths.js'
+import { resolvePrivateNativeAgentExecutable } from './native-agent-executable.js'
 
 const CLAUDE_CLIENT = 'anthropic-claude-code'
 const DEFAULT_MODEL = 'default'
@@ -59,11 +59,13 @@ export interface PrivateClaudeAnthropicApiAgentConfiguration extends PrivateClau
 export async function openPrivateClaudeAgentProvider(
   releaseRoot: string,
   environment: Readonly<Record<string, string | undefined>> = process.env,
+  projectDirectory: string = process.cwd(),
 ): Promise<PrivateAcpAgentProvider> {
-  const executablePath = environment.CLAUDE_PATH
-  if (executablePath === undefined || executablePath.length === 0) {
-    throw new Error('the native Claude Code executable is unavailable')
-  }
+  const executablePath = await resolvePrivateNativeAgentExecutable(
+    'claude',
+    environment,
+    projectDirectory,
+  )
   const support = Object.freeze({
     launcherPath: join(releaseRoot, 'libexec', 'agent', 'claude-agent-launcher.js'),
     adapterPath: join(releaseRoot, 'libexec', 'agent', 'claude-agent-acp.js'),

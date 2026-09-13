@@ -53,6 +53,7 @@ async function runPrivateInstalledCli(
     return exit(await main(arguments_, signal === undefined ? {} : { signal }))
   }
 
+  const operatorEnvironment = Object.freeze({ ...process.env })
   try {
     const recovery = privateFileRecovery()
     if (recovery === undefined && privateNeedsFileOwner(arguments_)) {
@@ -70,24 +71,45 @@ async function runPrivateInstalledCli(
 
     const delivery = await privateConnectFileOwner()
     try {
-      const installedHost = await openPrivateInstalledBunHost({
+      const location = Object.freeze({
         releaseRoot: await realpath(releaseRoot),
         executablePath,
         installedCliPath,
       })
+      let agentUnavailableHint: string | undefined
       if (recovery !== undefined) {
         delete process.env.JIG_PRIVATE_FILE_RECOVERY
+        const installedHost = await openPrivateInstalledBunHost(
+          location,
+          operatorEnvironment,
+          recovery.project,
+        )
         const terminal = await recoverPrivateCheckpointRun(recovery, installedHost)
         process.stdout.write(`${Buffer.from(canonicalJson(publicTerminal(terminal))).toString()}\n`)
         return exit(0)
       }
       const host: PrivateCliCommandHost = Object.freeze({
         ...(delivery === undefined ? {} : { delivery }),
-        ...(installedHost.agentUnavailableHint === undefined
-          ? {}
-          : { agentUnavailableHint: installedHost.agentUnavailableHint }),
-        acquire: (project: string, options?: Parameters<PrivateCliCommandHost['acquire']>[1]) =>
-          openPrivateProjectSession({
+        get agentUnavailableHint() {
+          return agentUnavailableHint
+        },
+        acquire: async (
+          project: string,
+          options?: Parameters<PrivateCliCommandHost['acquire']>[1],
+        ) => {
+          const installedHost = await openPrivateInstalledBunHost(
+            location,
+            operatorEnvironment,
+            project,
+          )
+          agentUnavailableHint = installedHost.agentUnavailableHint
+          if (arguments_[0] === 'review' && installedHost.agentExecutable !== undefined) {
+            const selected = installedHost.agentExecutable
+            await stderr.write(
+              `Agent client: ${selected.client} (${JSON.stringify(selected.path)})\n`,
+            )
+          }
+          return openPrivateProjectSession({
             directory: project,
             host: Object.freeze({
               ...installedHost,
@@ -107,7 +129,8 @@ async function runPrivateInstalledCli(
                       : { onResolution: options.onResolution }),
                   }),
             }),
-          }),
+          })
+        },
       })
       const outputStop = new AbortController()
       const stdout = new PrivateCliOutput(process.stdout, outputStop)

@@ -8,10 +8,9 @@ const LOADER_PATHS = [
 
 /** System-owned locations only; project files and ambient PATH never select tools. */
 export function privateLinuxHostToolCandidates(
-  name: 'bwrap' | 'codex' | 'systemd-run' | 'systemctl',
+  name: 'bwrap' | 'systemd-run' | 'systemctl',
 ): readonly string[] {
   return [
-    ...(name === 'codex' ? [`/usr/local/bin/${name}`] : []),
     `/usr/bin/${name}`,
     `/bin/${name}`,
     `/run/current-system/sw/bin/${name}`,

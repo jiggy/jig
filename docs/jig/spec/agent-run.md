@@ -273,17 +273,32 @@ adapter:
 | Client | Host selection | Subscription configuration | API configuration |
 | --- | --- | --- | --- |
 | Codex | `JIG_AGENT_CLIENT=codex`; optional absolute `CODEX_PATH` | Operator-owned, file-backed `$CODEX_HOME/auth.json` (default `~/.codex/auth.json`), created by `codex login`; optional `CODEX_MODEL`, with omission retaining the client default | `OPENAI_API_KEY` and `OPENAI_MODEL`; optional `OPENAI_BASE_URL`; `OPENAI_API` must be omitted or `responses` |
-| Claude Code | `JIG_AGENT_CLIENT=claude`, `CLAUDE_PATH` | `CLAUDE_CODE_OAUTH_TOKEN`; optional `CLAUDE_MODEL` | Exactly one of `ANTHROPIC_API_KEY` or `ANTHROPIC_AUTH_TOKEN`, plus `ANTHROPIC_MODEL`; optional `ANTHROPIC_BASE_URL` |
-| Pi | `JIG_AGENT_CLIENT=pi`, `PI_PATH` | `PI_PROVIDER` and `PI_MODEL`; authentication from `PI_CODING_AGENT_DIR/auth.json` or `~/.pi/agent/auth.json` | `PI_PROVIDER`, `PI_MODEL`, and `PI_API_KEY`, using a provider implemented by Pi |
+| Claude Code | `JIG_AGENT_CLIENT=claude`; optional absolute `CLAUDE_PATH` | `CLAUDE_CODE_OAUTH_TOKEN`; optional `CLAUDE_MODEL` | Exactly one of `ANTHROPIC_API_KEY` or `ANTHROPIC_AUTH_TOKEN`, plus `ANTHROPIC_MODEL`; optional `ANTHROPIC_BASE_URL` |
+| Pi | `JIG_AGENT_CLIENT=pi`; optional absolute `PI_PATH` | `PI_PROVIDER` and `PI_MODEL`; authentication from `PI_CODING_AGENT_DIR/auth.json` or `~/.pi/agent/auth.json` | `PI_PROVIDER`, `PI_MODEL`, and `PI_API_KEY`, using a provider implemented by Pi |
 
 The current Pi profile accepts the official self-contained Linux x64 Pi
 0.84.4 release layout. It does not interpret the multi-file npm installation
 or make Node part of Jig's runtime closure.
 
-When `CODEX_PATH` is omitted, Jig resolves Codex only from fixed system-owned
-locations, never project files or ambient `PATH`. An explicit absolute path may
-be a link; Jig resolves, validates, and identifies its exact executable before
-review. Jig's current Codex adapter uses the installation's matching bundled
+Jig snapshots the operator environment before loading project code. An explicit
+`CODEX_PATH`, `CLAUDE_PATH`, or `PI_PATH` selects that client's executable and
+must be an absolute path; an invalid override fails without fallback. Otherwise,
+Jig searches the operator's `PATH` in order for `codex`, `claude`, or `pi`.
+Empty and relative entries are ignored. Implicit discovery excludes the project
+tree and ancestor `node_modules` directories, including symlink routes through
+those locations. Operator-managed symlinks are supported. Shell aliases are not
+executables, and discovery does not make shell wrappers or JavaScript launchers
+supported native clients.
+
+The selected regular executable and client-specific support files receive the
+same validation and identity checks with either selection method. Invalid client
+support fails without trying another installation. Review shows
+the native client and its resolved operator executable path. Launch uses the
+resolved executable checked against admitted provider identity, with no new PATH
+lookup inside the Agent process. A changed selection cannot silently replace
+reviewed executable or support bytes.
+
+Jig's current Codex adapter uses the installation's matching bundled
 `codex-resources/bwrap`, beside the executable directory or its parent in the
 client installation. Jig preserves the client's bundled-helper integrity check;
 `JIG_BWRAP_PATH` selects only Jig's outer containment tool. The selected native

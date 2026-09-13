@@ -40,7 +40,8 @@ admitted FLOW packages.
 - Capture mutable project source before evaluation, admission, preparation, or
   execution; Runs use retained admitted bytes.
 - Public output must not disclose credentials, sandbox internals, private
-  paths, or internal identity records.
+  paths, or internal identity records. Review may show the resolved
+  operator-selected native Agent executable path for informed selection.
 - Make errors actionable: explain the failure, known cause, relevant location,
   and next safe step, alongside useful machine codes. Review must support
   informed consent; result displays must distinguish execution completion from

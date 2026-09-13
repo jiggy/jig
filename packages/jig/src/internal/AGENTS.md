@@ -128,8 +128,8 @@ child calls, project commands, and Agent providers.
   private continuation gate before candidate execution.
   Drain buffered supervisor control after process exit within a fixed bound;
   exit alone neither disproves a pending receipt nor establishes fencing.
-- Resolve host tools from the fixed system locations, or Bubblewrap from the
-  operator's absolute `JIG_BWRAP_PATH`, never ambient `PATH`. An explicit
+- Resolve containment and system-management tools from fixed locations, or
+  Bubblewrap from the operator's absolute `JIG_BWRAP_PATH`, never ambient `PATH`. An explicit
   selection receives the same validation and cannot fall back on failure.
   Run loader support mounts the real glibc files, not a shim or whole Nix store.
   File-capture FFI and executable runtime support use the same loader selection.
@@ -155,9 +155,14 @@ child calls, project commands, and Agent providers.
   model used in development must not become a product default.
 - OpenRouter's natural credential/model pair is a convenience for its fixed
   compatible endpoint, not a provider registry. Ambiguous provider families
-  fail closed. Explicit native Codex selection may resolve only fixed
-  system-owned locations or an absolute operator override; exact executable
-  and Bubblewrap bytes remain reviewed provider identity.
+  fail closed.
+- Native Codex, Claude Code, and Pi use a snapshot of the operator
+  environment captured before project loading. Absolute client overrides are
+  authoritative; otherwise search absolute PATH entries in order, excluding the
+  actual project tree and ancestor dependency directories through every symlink
+  hop. Review may show the resolved operator executable path, never credentials
+  or private retained paths. Launch revalidates the selected executable and
+  support bytes against reviewed identity; it never repeats PATH discovery.
 - Keep each native client a thin profile over the common ACP lifecycle. A new
   client must not require FLOW changes, and a public provider/customization SPI
   requires independent installed consumers to earn its shape.

@@ -1,3 +1,4 @@
+import { privateAcpAgentRuntime } from './acp-agent-provider.js'
 import { openPrivateClaudeAgentProvider } from './claude-agent-provider.js'
 import {
   openPrivateCodexAgentProvider,
@@ -10,6 +11,7 @@ import {
   type PrivateInstalledBunLocation,
 } from './installed-bun-support.js'
 import { PrivateLinuxCgroupBackend } from './linux-rootless-backend.js'
+import { PrivateNativeAgentExecutableUnavailableError } from './native-agent-executable.js'
 import {
   openPrivateOpenAIAgentProvider,
   PrivateAgentConfigurationError,
@@ -23,15 +25,22 @@ const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1'
 interface AgentSelection {
   readonly agentProvider?: PrivateProjectSessionHost['agentProvider']
   readonly agentUnavailableHint?: string
+  readonly agentExecutable?: { readonly client: string; readonly path: string }
 }
 
 /** Open the one fixed installed alpha host. This is not a public host SPI. */
 export async function openPrivateInstalledBunHost(
   location: PrivateInstalledBunLocation,
   environment: Readonly<Record<string, string | undefined>> = process.env,
+  projectDirectory: string = process.cwd(),
 ): Promise<PrivateProjectSessionHost & AgentSelection> {
+  const operatorEnvironment = Object.freeze({ ...environment })
   const installedBunSupport = await openPrivateInstalledBunSupport(location)
-  const agent = await tryOpenAgentProvider(installedBunSupport, environment)
+  const agent = await tryOpenAgentProvider(
+    installedBunSupport,
+    operatorEnvironment,
+    projectDirectory,
+  )
   return Object.freeze({
     backend: new PrivateLinuxCgroupBackend({
       bunPath: installedBunSupport.executablePath,
@@ -47,6 +56,7 @@ export async function openPrivateInstalledBunHost(
 async function tryOpenAgentProvider(
   installedBunSupport: Awaited<ReturnType<typeof openPrivateInstalledBunSupport>>,
   environment: Readonly<Record<string, string | undefined>>,
+  projectDirectory: string,
 ): Promise<AgentSelection> {
   const client = environment[AGENT_CLIENT]
   if (client !== undefined && !['codex', 'claude', 'pi'].includes(client))
@@ -97,21 +107,41 @@ async function tryOpenAgentProvider(
           ? await openPrivateCodexAgentProvider(
               installedBunSupport.releaseRoot,
               selectedEnvironment,
+              projectDirectory,
             )
           : client === 'claude'
-            ? await openPrivateClaudeAgentProvider(installedBunSupport.releaseRoot, environment)
+            ? await openPrivateClaudeAgentProvider(
+                installedBunSupport.releaseRoot,
+                environment,
+                projectDirectory,
+              )
             : client === 'pi'
-              ? await openPrivatePiAgentProvider(installedBunSupport.releaseRoot, environment)
+              ? await openPrivatePiAgentProvider(
+                  installedBunSupport.releaseRoot,
+                  environment,
+                  projectDirectory,
+                )
               : (() => {
                   throw new Error('the native Agent client is unsupported')
                 })()
-    return { agentProvider }
+    return {
+      agentProvider,
+      ...(client === undefined || agentProvider?.kind !== 'private-acp-agent-provider/1'
+        ? {}
+        : {
+            agentExecutable: {
+              client,
+              path: privateAcpAgentRuntime(agentProvider).executablePath,
+            },
+          }),
+    }
   } catch (error) {
     // Provider support is target-scoped; Agent-bearing recipe planning rejects its absence.
     return {
       agentUnavailableHint:
-        error instanceof PrivateCodexExecutableUnavailableError
-          ? "export CODEX_PATH with the absolute path of this operator's installed codex executable, then retry jig review"
+        error instanceof PrivateCodexExecutableUnavailableError ||
+        error instanceof PrivateNativeAgentExecutableUnavailableError
+          ? `install the native ${client} client on the operator PATH outside the project, or export ${(error instanceof PrivateNativeAgentExecutableUnavailableError ? error.client : 'codex').toUpperCase()}_PATH with its absolute executable path, then retry jig review; an invalid explicit override must be corrected or unset`
           : error instanceof PrivateCodexSandboxUnavailableError
             ? 'restore the complete Codex installation with its matching codex-resources/bwrap, then retry jig review'
             : error instanceof PrivateCodexLoginUnavailableError

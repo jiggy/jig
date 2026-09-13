@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from 'bun:test'
 import { chmod, mkdir, mkdtemp, rename, rm, symlink, writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
 import { tmpdir } from 'node:os'
+import { dirname, join } from 'node:path'
 
 import {
   privateAcpAgentRuntime,
@@ -11,12 +11,12 @@ import {
   createPrivateCodexOpenAIApiAgentProvider,
   createPrivateCodexSubscriptionAgentProvider,
   openPrivateCodexAgentProvider,
+  PRIVATE_CODEX_DEFAULT_OPENAI_BASE_URL,
+  PRIVATE_CODEX_REQUIREMENTS,
   PrivateCodexExecutableUnavailableError,
   PrivateCodexLoginUnavailableError,
   PrivateCodexSandboxUnavailableError,
   projectPrivateCodexSubscriptionCredential,
-  PRIVATE_CODEX_DEFAULT_OPENAI_BASE_URL,
-  PRIVATE_CODEX_REQUIREMENTS,
 } from '../src/internal/codex-agent-provider.js'
 import { openPrivateInstalledBunHost } from '../src/internal/installed-bun-host.js'
 import { installedBunLocation } from './fixtures/installed-bun-location.js'
@@ -29,6 +29,51 @@ afterEach(async () => {
 })
 
 describe('private native Codex Agent provider', () => {
+  test('opens a PATH-selected client and retains its identity across PATH changes', async () => {
+    const fixture = await files()
+    const environment = {
+      PATH: dirname(fixture.executablePath),
+      JIG_AGENT_CLIENT: 'codex',
+      OPENAI_API_KEY: 'test-secret',
+      OPENAI_MODEL: 'test-model',
+    }
+    const pending = openPrivateInstalledBunHost(installedBunLocation, environment)
+    environment.PATH = '/missing-after-snapshot'
+    const host = await pending
+    expect(host.agentUnavailableHint).toBeUndefined()
+    expect(host.agentExecutable).toEqual({ client: 'codex', path: fixture.executablePath })
+    const provider = host.agentProvider
+    if (provider?.kind !== 'private-acp-agent-provider/1')
+      throw new Error('missing native provider')
+    expect(privateAcpAgentRuntime(provider).executablePath).toBe(fixture.executablePath)
+    await revalidatePrivateAcpAgentProvider(provider)
+    await writeFile(fixture.executablePath, 'replacement executable', { mode: 0o700 })
+    await expect(revalidatePrivateAcpAgentProvider(provider)).rejects.toThrow()
+    const rejected = await openPrivateInstalledBunHost(
+      installedBunLocation,
+      {
+        ...environment,
+        PATH: dirname(fixture.executablePath),
+      },
+      fixture.root,
+    )
+    expect(rejected.agentProvider).toBeUndefined()
+    expect(rejected.agentUnavailableHint).toContain('operator PATH outside the project')
+  })
+
+  test('a PATH-selected installation with missing support does not fall back', async () => {
+    const first = await files()
+    const second = await files()
+    await rm(first.nativeBubblewrapPath)
+    await expect(
+      openPrivateCodexAgentProvider(installedBunLocation.releaseRoot, {
+        PATH: `${dirname(first.executablePath)}:${dirname(second.executablePath)}`,
+        OPENAI_API_KEY: 'test-secret',
+        OPENAI_MODEL: 'test-model',
+      }),
+    ).rejects.toThrow(PrivateCodexSandboxUnavailableError)
+  })
+
   test('selects the Codex subscription by default and an explicit Responses API', async () => {
     const fixture = await files()
     const codexHome = join(fixture.root, 'canonical-home')

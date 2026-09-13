@@ -5,9 +5,9 @@ import { dirname, join } from 'node:path'
 
 import { privateAcpAgentRuntime } from '../src/internal/acp-agent-provider.js'
 import {
-  privatePiModels,
   PRIVATE_PI_NATIVE_ARGUMENTS,
   PRIVATE_PI_SETTINGS,
+  privatePiModels,
 } from '../src/internal/pi-agent-launcher.js'
 import {
   createPrivatePiApiKeyAgentProvider,
@@ -26,7 +26,21 @@ afterEach(async () => {
 })
 
 describe('private native Pi Agent provider', () => {
-  test('opens Pi only from an explicit native path and provider selection', async () => {
+  test('opens the operator PATH client with its matching native assets', async () => {
+    const support = await files()
+    const provider = await openPrivatePiAgentProvider(
+      join(support.launcherPath, '..', '..', '..'),
+      {
+        PATH: dirname(support.executablePath),
+        PI_PROVIDER: 'openrouter',
+        PI_MODEL: 'test-model',
+        PI_API_KEY: 'test-secret',
+      },
+    )
+    expect(privateAcpAgentRuntime(provider).executablePath).toBe(support.executablePath)
+  })
+
+  test('opens Pi from a native path and explicit provider selection', async () => {
     const support = await files()
     const releaseRoot = join(support.launcherPath, '..', '..', '..')
     const provider = await openPrivatePiAgentProvider(releaseRoot, {

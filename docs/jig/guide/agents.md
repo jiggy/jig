@@ -40,6 +40,17 @@ not grant the Agent a terminal or access to your original repository.
 Client-specific requirements are listed in the
 [Agent Run specification](../spec/agent-run.md).
 
+Jig finds the selected native client on your exported `PATH`, including an
+operator-managed profile or `nix-shell`. You can select a particular executable
+with an absolute `CODEX_PATH`, `CLAUDE_PATH`, or `PI_PATH`. An invalid override
+must be corrected or unset; it does not fall back to PATH discovery. Review
+shows the resolved executable so you can check which installation you selected.
+
+Discovery skips relative PATH entries, the project tree, and ancestor
+`node_modules` directories, including symlink routes through them. Shell aliases
+are not visible to Jig. The adapters require supported native installations;
+a shell wrapper or npm JavaScript launcher is not itself the native executable.
+
 ### Codex
 
 Install Codex and sign in as the OS user running Jig, using
@@ -48,18 +59,11 @@ Jig uses Codex's matching installed `codex-resources/bwrap`; Codex checks that
 helper's integrity. `JIG_BWRAP_PATH` configures Jig's outer containment, not
 Codex's bundled helper.
 
-Jig's current Codex adapter has two installation limitations:
+The current adapter reads a file-backed login from `$CODEX_HOME/auth.json`,
+defaulting to `~/.codex/auth.json`. Configure Codex with
+`cli_auth_credentials_store = "file"` before signing in. Jig does not currently
+read Codex's OS-keyring credentials.
 
-- It searches fixed system locations, including `/usr/local/bin`, rather than
-  the operator's `PATH`. An absolute `CODEX_PATH` can select a supported native
-  executable; shell wrappers and npm JavaScript launchers are not themselves
-  that executable.
-- It reads a file-backed login from `$CODEX_HOME/auth.json`, defaulting to
-  `~/.codex/auth.json`. Codex supports file and OS-keyring credentials; this
-  adapter currently supports only the file option, configured in Codex with
-  `cli_auth_credentials_store = "file"` before login.
-
-These are Jig integration limitations, not requirements of Codex generally.
 The current adapter supplies a short-lived credential to the contained client;
 it does not give it your full authentication store or refresh credentials.
 

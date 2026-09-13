@@ -1,12 +1,11 @@
-import { constants } from 'node:fs'
-import { access, lstat, readFile, realpath } from 'node:fs/promises'
+import { lstat, readFile, realpath } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
-
 import {
   createPrivateAcpAgentProvider,
   type PrivateAcpAgentProvider,
 } from './acp-agent-provider.js'
+import { resolvePrivateNativeAgentExecutable } from './native-agent-executable.js'
 
 const PI_CLIENT = 'pi'
 const SANDBOX_LAUNCHER_PATH = '/agent/pi-agent-launcher.js'
@@ -37,12 +36,13 @@ const decoder = new TextDecoder('utf-8', { fatal: true })
 export async function openPrivatePiAgentProvider(
   releaseRoot: string,
   environment: Readonly<Record<string, string | undefined>> = process.env,
+  projectDirectory: string = process.cwd(),
 ): Promise<PrivateAcpAgentProvider> {
-  const executable = environment.PI_PATH
-  if (executable === undefined || executable.length === 0) {
-    throw new Error('the native Pi executable is unavailable')
-  }
-  const executablePath = await executableFile(executable, 'native Pi executable')
+  const executablePath = await resolvePrivateNativeAgentExecutable(
+    'pi',
+    environment,
+    projectDirectory,
+  )
   const nativeRoot = dirname(executablePath)
   const manifestPath = await piManifestFile(join(nativeRoot, 'package.json'))
   const support: PrivatePiAgentSupport = Object.freeze({
@@ -445,13 +445,6 @@ function ordinaryJson(value: unknown, depth = 0): boolean {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
-}
-
-async function executableFile(path: string, label: string): Promise<string> {
-  const exact = await ordinaryFile(path, label)
-  if (((await lstat(exact)).mode & 0o111) === 0) throw new Error(`${label} is invalid`)
-  await access(exact, constants.X_OK)
-  return exact
 }
 
 async function ordinaryFile(path: string, label: string): Promise<string> {

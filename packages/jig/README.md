@@ -54,6 +54,12 @@ as `blocked` is not task success even when execution completed correctly.
 Use `jig <command> --help` for focused help and `jig --version` for the installed
 version.
 
+Native Codex, Claude Code, and Pi clients are discovered on the operator's
+`PATH`. Absolute `CODEX_PATH`, `CLAUDE_PATH`, and `PI_PATH` overrides select a
+specific installation. Review shows the resolved executable; project-local
+binaries are excluded from implicit discovery. See [Choose an Agent](https://jig.md/guide/agents)
+for supported installations and authentication.
+
 ## Guides
 
 - [Choose an Agent](https://jig.md/guide/agents)

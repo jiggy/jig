@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from 'bun:test'
 import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
-import { dirname, join } from 'node:path'
 import { tmpdir } from 'node:os'
+import { dirname, join } from 'node:path'
 
 import { privateAcpAgentRuntime } from '../src/internal/acp-agent-provider.js'
 import { projectPrivateClaudeCredential } from '../src/internal/claude-agent-launcher.js'
@@ -19,6 +19,15 @@ afterEach(async () => {
 })
 
 describe('private native Claude Code Agent provider', () => {
+  test('opens the operator PATH client with an optional absolute override', async () => {
+    const support = await files()
+    const provider = await openPrivateClaudeAgentProvider(support.releaseRoot, {
+      PATH: dirname(support.executablePath),
+      CLAUDE_CODE_OAUTH_TOKEN: 'test-secret',
+    })
+    expect(privateAcpAgentRuntime(provider).executablePath).toBe(support.executablePath)
+  })
+
   test('selects subscription by default and an explicit Anthropic-compatible API', async () => {
     const fixture = await files()
     const subscription = await openPrivateClaudeAgentProvider(fixture.releaseRoot, {

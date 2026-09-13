@@ -128,7 +128,7 @@ export interface PrivateCliCommandHost {
     },
   ): Promise<ProjectSession>
   readonly delivery?: PrivateDeliveryConnection
-  readonly agentUnavailableHint?: string
+  readonly agentUnavailableHint?: string | undefined
   pause?(milliseconds: number): Promise<void>
 }
 

@@ -736,12 +736,14 @@ failure, session close, and coordinator loss kills the whole cgroup, waits
 until it is unpopulated, removes its resources, and surfaces cleanup failure.
 There is no weaker fallback path.
 
-Host executables default to `/usr/bin`, `/bin`, and the NixOS system profile
+Containment and system-management executables default to `/usr/bin`, `/bin`, and the NixOS system profile
 `/run/current-system/sw/bin`. The operator may select Bubblewrap through an
 absolute `JIG_BWRAP_PATH` in the host environment. An explicit selection must
 pass the same executable, feature, retained-identity, and revalidation checks;
 failure never selects another executable. Neither project input nor ambient
-`PATH` selects host executables. The selection is not exposed to Flow code.
+`PATH` selects those containment tools. Native Agent clients use the separate
+[operator executable discovery rules](agent-run.md#alpha-host-implementations).
+The selection is not exposed to Flow code.
 NixOS uses its system-managed nix-ld link to select the real glibc
 loader. Runtime support is still authenticated and mounted file by file;
 neither the nix-ld shim nor the entire Nix store is exposed to a Run. These
