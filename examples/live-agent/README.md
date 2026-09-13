@@ -17,18 +17,21 @@ The example uses the checkout's SDK workspace. Complete the
 [workspace setup](https://jig.md/guide/dependencies#local-workspace-packages)
 once; review captures the local dependency bytes.
 
-Text appears live on diagnostic stderr. The final result records the Agent's
+Text fragments appear continuously on diagnostic stderr, preserving spaces and
+paragraph breaks rather than adding a line break for every update. The final result records the Agent's
 outcome and whether progress delivery completed. Ctrl-C requests cancellation.
 Provider configuration and credentials remain with the operator.
 
 For structured subprocess output:
 
 ```sh
-jig run flow:flows/chat --input @input.json --receive progress
+jig run flow:flows/chat --input @input.json --receive progress --json
 ```
 
 The same Flow sends text through its selected output instead of printing it.
 Stdout contains channel records followed by the terminal execution result.
+Omit `--json` in a terminal for continuous text under a channel heading and a
+readable final result. Redirected output always retains the machine records.
 An incomplete stream is not proof that the Agent failed; the terminal result
 remains necessary.
 

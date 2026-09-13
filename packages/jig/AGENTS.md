@@ -33,7 +33,8 @@ admitted FLOW packages.
   manifest so a moving npm tag cannot silently select a different wire contract.
 - Command help and syntax errors do not acquire execution authority. Review
   leads with complete changed policy; `--details` includes unchanged policy.
-  Run stdout stays JSON/NDJSON. Elapsed status uses terminal stderr only;
+  Run stdout is readable on terminals; redirection or `--json` selects exact
+  JSON/NDJSON. Elapsed status uses terminal stderr only;
   cancellation requested and cleanup confirmed are separate facts.
 - FLOW and Jig specifications and machine schemas are authoritative. Accept
   only bounded, canonical current formats.
@@ -64,6 +65,9 @@ admitted FLOW packages.
   Review uses contextual field diffs; identity-only target changes need an
   explicit explanation, never identical previous/proposed blocks. Ignore object
   insertion order when comparing review records; preserve array order.
+  `cli-run-presentation.ts` owns human Run results and channel streaming. Join
+  text fragments exactly, label channel switches and endings, escape controls,
+  and preserve separate execution, application, delivery, and cleanup outcomes.
 
 - Change implementation, normative specification, schema, README, and tests
   together when a public contract changes.
@@ -82,7 +86,7 @@ admitted FLOW packages.
 - `just jig::check`
 - Use `scripts/test-release.sh` for packed or cross-protocol changes.
 - Trust-boundary changes require the provisioned host-conformance workflow.
-- CLI acceptance: `bun test packages/jig/test/cli.test.ts packages/jig/test/cli-presentation.test.ts packages/jig/test/cli-output.test.ts packages/jig/test/project-plan-review.test.ts`.
+- CLI acceptance: `bun test packages/jig/test/cli.test.ts packages/jig/test/cli-presentation.test.ts packages/jig/test/cli-run-presentation.test.ts packages/jig/test/cli-output.test.ts packages/jig/test/project-plan-review.test.ts`.
   Check rendered success, failure, waits, cancellation, uncertain cleanup,
   plain/redirected output, narrow widths, and light/dark terminal palettes.
   Preserve byte-exact machine records and complete changed review policy.

@@ -52,7 +52,7 @@ function syntaxColor(role: SyntaxRole, env: NodeJS.ProcessEnv): string {
 function highlightPolicy(line: string, env: NodeJS.ProcessEnv): string {
   if (
     line.includes('\u001b') ||
-    !/^\s*(?:"(?:[^"\\]|\\.)*"\s*(?::|\((?:object|list)\):|,?$)|(?:true|false|null|-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)\s*,?$|[{}[\]])/.test(
+    !/^\s*(?:"(?:[^"\\]|\\.)*"\s*(?::|\((?:object|list|text)\):|,?$)|(?:true|false|null|-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)\s*,?$|[{}[\]])/.test(
       line,
     )
   )
@@ -61,7 +61,7 @@ function highlightPolicy(line: string, env: NodeJS.ProcessEnv): string {
     /"(?:[^"\\]|\\.)*"|\b(?:true|false|null)\b|-?\b\d+(?:\.\d+)?(?:[eE][+-]?\d+)?/g,
     (token, offset: number) => {
       const role: SyntaxRole = token.startsWith('"')
-        ? /^\s*(?::|\((?:object|list)\):)/.test(line.slice(offset + token.length))
+        ? /^\s*(?::|\((?:object|list|text)\):)/.test(line.slice(offset + token.length))
           ? 'key'
           : 'string'
         : /^(true|false|null)$/.test(token)
@@ -83,7 +83,7 @@ export function privateCliHumanText(
     .split('\n')
     .map((line) => {
       const section =
-        /^(Selected Agent:|Host Agent selected|Packages \(|Bindings \(|Run targets \(|Targets after approval:|Review changes|Jig project|Warning:|Error:|Review could not finish|Run failed|Execution lost|Project ready|Created |Execution completed|Approval required|Review declined|Command interrupted|Run cancelled|Waiting for your approval)/.test(
+        /^(Run output:|Selected Agent:|Host Agent selected|Packages \(|Bindings \(|Run targets \(|Targets after approval:|Review changes|Jig project|Warning:|Error:|Review could not finish|Run failed|Execution lost|Project ready|Created |Execution completed|Approval required|Review declined|Command interrupted|Run cancelled|Waiting for your approval)/.test(
           line,
         )
       const wrapped = wrapHumanLine(line, columns)

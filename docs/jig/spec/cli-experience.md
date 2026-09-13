@@ -72,7 +72,14 @@ makes usable control an observable requirement;
    review details, Run JSON/NDJSON, and bounded diagnostics retain their roles;
    no debug flag is implied. Never hide important failures or authority notices
    behind an optional mode. Do not expose secrets or private host state.
-9. **Automation and accessibility.** Run stdout remains exact JSON or NDJSON;
+9. **Automation and accessibility.** Terminal Run stdout defaults to a readable
+   result and labelled live channels. Join text fragments without invented line
+   breaks; preserve paragraph breaks, non-text values, channel switches and
+   closed/failed endings. Channel closure is not execution success. Application
+   result schemas remain arbitrary; never infer success from text or field names.
+   Summarize captured diagnostics only when the exact text was already streamed;
+   retain unseen diagnostics and truncation information. Escape untrusted controls.
+   Redirected Run stdout or explicit `--json` remains exact JSON or NDJSON;
    version stdout remains the version alone. Human status uses stderr.
    Redirected streams contain no terminal escapes or animation; failures and
    consequential notices remain readable. `NO_COLOR` (including an empty value)

@@ -156,7 +156,10 @@ async function runPrivateInstalledCli(
             writeOutput: (text) => {
               void stdout.write(text).catch(() => undefined)
             },
-            writeRecord: (text) => stdout.write(text),
+            writeRecord: async (text) => {
+              await stderr.flush()
+              await stdout.write(text)
+            },
             writeError: (text) => {
               void stderr.write(text).catch(() => undefined)
             },

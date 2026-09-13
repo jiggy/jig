@@ -16,7 +16,10 @@ relevant project-relative location where available and suggest a safe next step.
 A missing target lists targets from the approved revision; Jig never picks one
 for you.
 
-Stdout contains the JSON result, or NDJSON when `--receive` is selected. Stderr
+Interactive stdout shows a readable result. With `--receive`, channel text
+streams continuously under labelled headings. Use `--json` for raw records in
+a terminal. Redirected stdout automatically contains exact JSON, or NDJSON
+when `--receive` is selected. Stderr
 carries diagnostics and, on a terminal, elapsed status and cancellation updates.
 Piped stdout remains machine-readable. Interactive terminals show one active
 status line and use color for headings and outcomes. Set `NO_COLOR=1` or

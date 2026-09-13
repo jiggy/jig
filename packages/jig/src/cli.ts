@@ -6,7 +6,6 @@ import { basename, resolve } from 'node:path'
 import { createInterface } from 'node:readline/promises'
 import { setTimeout as delay } from 'node:timers/promises'
 import manifest from '../package.json' with { type: 'json' }
-
 import { ProjectAdministrationError, type ProjectSession } from './administration/project.js'
 import {
   type RootAdministration,
@@ -20,6 +19,7 @@ import {
   privateCliDiagnostic as renderDiagnostic,
 } from './cli-presentation.js'
 import { PrivateCliProgress } from './cli-progress.js'
+import { PrivateCliRunPresentation } from './cli-run-presentation.js'
 import type { PrivateDeliveryConnection, PrivateDeliveryReceipt } from './internal/file-delivery.js'
 import {
   PrivateFileInputError,
@@ -92,6 +92,7 @@ Supplied locks stay frozen; stale locks must be updated explicitly.`,
 Run an exact reviewed target in the current project. No dependencies are
 installed and source changes are not approved automatically.
 
+  --json             Emit exact JSON/NDJSON even in a terminal
   --input JSON|@FILE  Supply JSON inline or from a file (default: {})
   --attach NAME=DIR   Capture a declared read attachment; repeat for each name
   --select NAME=FILE  Select a relative file within an attachment; repeat as needed
@@ -106,8 +107,9 @@ Examples:
   jig run binding:worker --receive progress --timeout 2m
 
 Ctrl-C cancels owned work and waits for cleanup. Repeating a run starts new work.
-Stdout is JSON, or NDJSON with --receive. Diagnostics and terminal status use
-stderr; scripts should check the result and exit status.`,
+Terminal stdout shows readable results and live channel text. Redirect stdout or
+use --json for JSON (NDJSON with --receive). Diagnostics and status use stderr.
+Scripts should check the result and exit status.`,
 } as const
 
 function usage(command: keyof typeof COMMAND_HELP, message: string): never {
@@ -152,6 +154,9 @@ export interface PrivateCliOptions {
 }
 
 interface CliRuntime {
+  readonly humanOutput: boolean
+  readonly outputColor: boolean
+  readonly outputColumns: number
   readonly progress: PrivateCliProgress
   readonly host: PrivateCliCommandHost
   readonly currentDirectory: string
@@ -367,6 +372,15 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
       ...(runtime.signal === undefined ? [] : [runtime.signal]),
     ]),
   }
+  const presentation =
+    runtime.humanOutput && !parsed.json
+      ? new PrivateCliRunPresentation(
+          runtime.writeRecord,
+          runtime.outputColor,
+          runtime.outputColumns,
+        )
+      : undefined
+  let streamedDiagnostics = ''
   const diagnostics = new TextDecoder('utf-8')
   const writeLive = (text: string, diagnostic = false): void => {
     try {
@@ -381,16 +395,20 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
     receive: parsed.receive,
     async record(value) {
       try {
-        await runtime.writeRecord(`${textDecoder.decode(canonicalJson(value))}\n`)
+        if (presentation) await presentation.channel(value)
+        else await runtime.writeRecord(`${textDecoder.decode(canonicalJson(value))}\n`)
       } catch (error) {
         outputStop.abort()
         throw error
       }
     },
     diagnostic(bytes) {
+      const decoded = diagnostics.decode(bytes, { stream: true })
+      if (streamedDiagnostics.length <= 64 * 1024)
+        streamedDiagnostics = (streamedDiagnostics + decoded).slice(0, 64 * 1024 + 1)
       // Diagnostics are untrusted text, not terminal-control instructions.
       writeLive(
-        diagnostics.decode(bytes, { stream: true }).replace(
+        decoded.replace(
           // biome-ignore lint/suspicious/noControlCharactersInRegex: Escape untrusted terminal controls while preserving tabs and line feeds.
           /[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/g,
           (value) => `\\u${value.charCodeAt(0).toString(16).padStart(4, '0')}`,
@@ -400,6 +418,10 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
     },
   }
   const emitTerminal = async (record: JsonValue): Promise<void> => {
+    if (presentation) {
+      await presentation.result(record, streamedDiagnostics)
+      return
+    }
     await runtime.writeRecord(
       `${textDecoder.decode(canonicalJson(parsed.receive.length === 0 ? record : { type: 'terminal', result: record }))}\n`,
     )
@@ -489,6 +511,7 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
         )
       }
     }
+    runtime.progress.complete()
     let cleanupFailed = false
     const status = await withProjectSession(
       runtime.currentDirectory,
@@ -502,12 +525,16 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
         })
         runtime.progress.complete()
         runtime.progress.stage('Waiting for the Flow result (Ctrl-C to cancel)')
-        return await waitForTerminal(
-          session.rootAdministration,
-          receipt.runId,
-          runtime.host.pause ?? defaultPause,
-          runtime.signal,
-        )
+        try {
+          return await waitForTerminal(
+            session.rootAdministration,
+            receipt.runId,
+            runtime.host.pause ?? defaultPause,
+            runtime.signal,
+          )
+        } finally {
+          await presentation?.finish()
+        }
       },
       {
         runTimeoutMs: parsed.timeoutMs,
@@ -572,7 +599,7 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
     const terminal = status.terminal
     if (terminal.status === 'succeeded')
       runtime.progress.note(
-        `Execution completed. Application outcome: ${asciiJsonString(terminal.outcome)}. See output in the JSON result.`,
+        `Execution completed. Application outcome: ${asciiJsonString(terminal.outcome)}. See output in the ${presentation ? 'result above' : 'JSON result'}.`,
       )
     else runtime.writeError(renderRunFailure(terminal))
     if (delivery !== undefined)
@@ -651,6 +678,7 @@ function parseRun(arguments_: readonly string[]): {
   readonly output?: string
   readonly timeoutMs: number
   readonly receive: readonly string[]
+  readonly json: boolean
 } {
   if (arguments_.length < 2)
     usage('run', 'Choose a target, for example flow:flows/hello or binding:repair.')
@@ -660,11 +688,18 @@ function parseRun(arguments_: readonly string[]): {
   const attachments = new Map<string, string>(),
     selectors = new Map<string, string[]>()
   let timeoutMs = PRIVATE_DEFAULT_ROOT_RUN_TIMEOUT_MS
+  let json = false
   let sawInput = false
   let sawTimeout = false
   const receive: string[] = []
   for (let index = 2; index < arguments_.length; index += 2) {
     const option = arguments_[index]
+    if (option === '--json') {
+      if (json) usage('run', '--json may only be supplied once.')
+      json = true
+      index -= 1
+      continue
+    }
     const value = arguments_[index + 1]
     if (!['--input', '--attach', '--select', '--out', '--receive', '--timeout'].includes(option!))
       usage('run', `Unknown run option ${asciiJsonString(option!.slice(0, 128))}.`)
@@ -750,6 +785,7 @@ function parseRun(arguments_: readonly string[]): {
     input,
     timeoutMs,
     receive,
+    json,
     attachments: [...attachments].map(([name, directory]) => ({
       name,
       directory,
@@ -935,6 +971,9 @@ function cliRuntime(options: PrivateCliOptions): CliRuntime {
     options.signal,
   )
   return {
+    humanOutput: options.terminalOutput ?? process.stdout.isTTY === true,
+    outputColor,
+    outputColumns: process.stdout.columns || 80,
     progress,
     host: options.host ?? unavailableHost,
     currentDirectory: options.currentDirectory ?? process.cwd(),
@@ -1230,7 +1269,7 @@ function renderRunFailure(
   if (terminal.code === 'INVALID_INPUT')
     return renderDiagnostic(
       'JIG_RUN_INPUT_INVALID',
-      `Input does not match the target input schema.${typeof details?.instancePointer === 'string' ? `\nValue: ${asciiJsonString(details.instancePointer.slice(0, 512))}` : ''}\nNext step: Check --input against the Flow input.schema.json; see the JSON result for validation details.`,
+      `Input does not match the target input schema.${typeof details?.instancePointer === 'string' ? `\nValue: ${asciiJsonString(details.instancePointer.slice(0, 512))}` : ''}\nNext step: Check --input against the Flow input.schema.json; see the result for validation details.`,
     )
   if (terminal.status === 'lost')
     return renderDiagnostic(

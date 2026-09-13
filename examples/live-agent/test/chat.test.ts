@@ -1,9 +1,9 @@
 import { describe, expect, spyOn, test } from 'bun:test'
 import {
-  OperationError,
   type ChannelReceiver,
   type ChannelSender,
   type JsonValue,
+  OperationError,
   type RunContext,
 } from '@jigging/flow'
 import { chat } from '../flows/chat/chat.ts'
@@ -72,11 +72,15 @@ function fixture(
 
 describe('live Agent application', () => {
   test('prints public text but not plan records and preserves the execution result', async () => {
-    const log = spyOn(console, 'log').mockImplementation(() => {})
+    const log = spyOn(process.stderr, 'write').mockImplementation((_chunk, ...args) => {
+      const callback = args.at(-1)
+      if (typeof callback === 'function') callback()
+      return true
+    })
     try {
       const sample = fixture()
       const result = await chat(sample.run)
-      expect(log.mock.calls).toEqual([['hello'], ['world']])
+      expect(log.mock.calls.map((call) => call[0])).toEqual(['hello', 'world', '\n'])
       expect(result).toEqual({
         outcome: 'done',
         output: {
@@ -90,8 +94,49 @@ describe('live Agent application', () => {
     }
   })
 
+  test('preserves token spacing and authored newlines without adding one per update', async () => {
+    const writes: string[] = []
+    const log = spyOn(process.stderr, 'write').mockImplementation((chunk, ...args) => {
+      writes.push(String(chunk))
+      const callback = args.at(-1)
+      if (typeof callback === 'function') callback()
+      return true
+    })
+    try {
+      await chat(
+        fixture({
+          updates: [text('One'), text(' answer'), text('.\n'), text(''), text('Next line.\n')],
+        }).run,
+      )
+      expect(writes.join('')).toBe('One answer.\nNext line.\n')
+    } finally {
+      log.mockRestore()
+    }
+  })
+
+  test('a diagnostic write failure leaves the Agent outcome intact and marks progress incomplete', async () => {
+    const log = spyOn(process.stderr, 'write').mockImplementation((_chunk, ...args) => {
+      const callback = args.at(-1)
+      if (typeof callback === 'function') callback(new Error('closed diagnostic destination'))
+      process.stderr.emit('error', new Error('closed diagnostic destination'))
+      return false
+    })
+    try {
+      expect(await chat(fixture().run)).toMatchObject({
+        outcome: 'done',
+        output: { progress: { complete: false, displayed: 0 }, result: { text: 'actual answer' } },
+      })
+    } finally {
+      log.mockRestore()
+    }
+  })
+
   test('publishes through the selected root channel without duplicate console output', async () => {
-    const log = spyOn(console, 'log').mockImplementation(() => {})
+    const log = spyOn(process.stderr, 'write').mockImplementation((_chunk, ...args) => {
+      const callback = args.at(-1)
+      if (typeof callback === 'function') callback()
+      return true
+    })
     try {
       const sample = fixture({ connectOutput: true })
       await chat(sample.run)
@@ -103,7 +148,11 @@ describe('live Agent application', () => {
   })
 
   test('suppresses progress without rewriting the Agent answer', async () => {
-    const log = spyOn(console, 'log').mockImplementation(() => {})
+    const log = spyOn(process.stderr, 'write').mockImplementation((_chunk, ...args) => {
+      const callback = args.at(-1)
+      if (typeof callback === 'function') callback()
+      return true
+    })
     try {
       const sample = fixture({
         connectOutput: true,

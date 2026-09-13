@@ -12,8 +12,9 @@ jig review
 jig run flow:flows/chat --input '{"instructions":"Explain why the sky is blue."}'
 ```
 
-Selected text appears live on stderr. The final JSON on stdout contains the
-actual Agent result. This is observation, not permission to interrupt, continue
+Selected text appears live on stderr. The final result on stdout contains the
+actual Agent result, displayed readably in a terminal or as JSON when redirected
+or when `--json` is selected. This is observation, not permission to interrupt, continue
 or replace the Agent session.
 
 The chat Flow creates the channel and passes its writer to the Agent
@@ -53,7 +54,10 @@ const observation = (async () => {
           content && typeof content === 'object' && !Array.isArray(content) &&
           'type' in content && content.type === 'text' &&
           'text' in content && typeof content.text === 'string')
-        console.log(content.text)
+        await new Promise<void>((resolve, reject) => {
+          process.stderr.write(content.text as string, (error) =>
+            error ? reject(error) : resolve())
+        })
     }
   } catch (error) {
     if (!(error instanceof OperationError) ||
@@ -67,8 +71,10 @@ if (observed.status === 'rejected') throw observed.reason
 const result = execution.value
 ```
 
-The [complete application](https://github.com/jiggy/jig/blob/main/examples/live-agent/flows/chat/chat.ts)
-adds bounded input validation, output selection and Agent-outcome interpretation.
+Text updates are fragments; do not add a newline after each one. The
+[complete application](https://github.com/jiggy/jig/blob/main/examples/live-agent/flows/chat/chat.ts)
+adds bounded input validation, output selection, a final diagnostic newline,
+write-failure handling, and Agent-outcome interpretation.
 Ordinary `catch` is sufficient. Closing the receiver joins disposal
 and may reveal a racing failure not previously exposed. It stops observation,
 not the Agent; await the Agent result separately. A caught display failure can
@@ -81,7 +87,7 @@ The example declares an optional `progress` output. Select it to receive the
 Flow's chosen text as structured live records instead of console diagnostics:
 
 ```sh
-jig run flow:flows/chat --input '{"instructions":"Explain tides."}' --receive progress
+jig run flow:flows/chat --input '{"instructions":"Explain tides."}' --receive progress --json
 ```
 
 Read `begin`, ordered `data`, `end`, then `terminal` from stdout. Parse each

@@ -350,7 +350,7 @@ describe('finite Jig project commands', () => {
     const invocation = commandInvocation(fakeHost(fakeSession(events, { terminal }), events), {
       terminalOutput: true,
     })
-    expect(await main(['run', 'flow:flows/work'], invocation.options)).toBe(0)
+    expect(await main(['run', 'flow:flows/work', '--json'], invocation.options)).toBe(0)
     expect(JSON.parse(invocation.output)).toEqual(terminal)
     expect(invocation.output).toBe(
       '{"diagnostics":{"stderr":"","stderrBytes":0,"stderrTruncated":false},"outcome":"blocked","output":{"why":"needs a decision"},"status":"succeeded"}\n',
@@ -359,6 +359,29 @@ describe('finite Jig project commands', () => {
     expect(invocation.error).toContain('Stopping remaining work and cleaning up')
     expect(invocation.error).not.toContain('\u001b')
     expect(invocation.error).not.toContain('Success')
+  })
+
+  test('interactive runs show a readable result while redirected runs preserve exact JSON', async () => {
+    const terminal: RootRunTerminal = {
+      status: 'succeeded',
+      outcome: 'done',
+      output: { answer: 'One answer.\nA second paragraph.', count: 2 },
+      diagnostics: { stderr: '', stderrBytes: 0, stderrTruncated: false },
+    }
+    const events: string[] = []
+    const human = commandInvocation(fakeHost(fakeSession(events, { terminal }), events), {
+      terminalOutput: true,
+    })
+    expect(await main(['run', 'flow:flows/work'], human.options)).toBe(0)
+    expect(human.output).toContain('Run output: result')
+    expect(human.output).toContain('One answer.\n')
+    expect(human.output).not.toContain('"diagnostics"')
+    expect(human.error).toContain('result above')
+    const machine = commandInvocation(fakeHost(fakeSession(events, { terminal }), events), {
+      terminalOutput: false,
+    })
+    expect(await main(['run', 'flow:flows/work'], machine.options)).toBe(0)
+    expect(machine.output).toBe(new TextDecoder().decode(canonicalJson(terminal)) + '\n')
   })
 
   test('protocol failures have safe recovery guidance without changing the JSON result', async () => {
@@ -656,6 +679,37 @@ describe('finite Jig project commands', () => {
       expect(invocation.error).toBe('')
     },
   )
+
+  test('terminal channel output joins fragments; --json retains the exact NDJSON records', async () => {
+    const records = [
+      { type: 'begin', channel: 'progress', startSequence: 1 },
+      { type: 'data', channel: 'progress', sequence: 1, value: 'One' },
+      { type: 'data', channel: 'progress', sequence: 2, value: ' answer.' },
+      { type: 'end', channel: 'progress', status: 'closed', lastSequence: 2 },
+    ] as const
+    const host: PrivateCliCommandHost = {
+      async acquire(_path, options) {
+        for (const record of records) await options!.channelOutput!.record(record)
+        return fakeSession([])
+      },
+    }
+    const human = commandInvocation(host, { terminalOutput: true })
+    expect(await main(['run', 'binding:work', '--receive', 'progress'], human.options)).toBe(0)
+    expect(human.output).toContain('One answer.\n')
+    expect(human.output).toContain('Channel "progress": closed')
+    expect(human.output).not.toContain('"sequence"')
+    const machine = commandInvocation(host, { terminalOutput: true })
+    expect(
+      await main(['run', 'binding:work', '--json', '--receive', 'progress'], machine.options),
+    ).toBe(0)
+    expect(machine.output).toStartWith(
+      records.map((record) => new TextDecoder().decode(canonicalJson(record)) + '\n').join(''),
+    )
+    expect(JSON.parse(machine.output.trimEnd().split('\n').at(-1)!)).toMatchObject({
+      type: 'terminal',
+      result: { status: 'succeeded' },
+    })
+  })
 
   test('live Flow diagnostics stay on stderr, escape controls, and retain fragmented UTF-8', async () => {
     const invocation = commandInvocation({

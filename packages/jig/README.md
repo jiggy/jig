@@ -47,9 +47,10 @@ jig run <flow:path|binding:id> [options]
 policy. `--yes` approves without a prompt but does not grant resolution network
 permission. `--bare` creates only an empty project skeleton.
 
-`run` executes the approved revision and returns JSON after settling owned work
-(NDJSON with `--receive`). Terminal-only elapsed status, cancellation updates,
-and diagnostics use stderr, never protocol stdout. An application outcome such
+`run` executes the approved revision and shows a readable terminal result after
+settling owned work. `--receive` streams labelled channel text. Redirect stdout
+or use `--json` for exact JSON (NDJSON with `--receive`). Terminal-only elapsed
+status, cancellation updates, and diagnostics use stderr. An application outcome such
 as `blocked` is not task success even when execution completed correctly.
 Use `jig <command> --help` for focused help and `jig --version` for the installed
 version.

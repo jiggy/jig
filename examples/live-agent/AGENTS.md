@@ -18,7 +18,10 @@ filtering and a separate execution result.
 
 - One Agent call, no child Flows, tools, attachments, retries, or credentials.
 - Agent updates use the exact optional named contract. The application prints
-  public text fragments, ignores plans, and can suppress progress entirely.
+  public text fragments without adding per-fragment newlines, ignores plans,
+  and can suppress progress entirely. Preserve fragment spacing and authored
+  newlines; finish an unterminated diagnostic stream with one newline. Await
+  diagnostic writes so progress does not outrun its destination.
 - Suppression affects progress only; the actual Agent result remains intact.
 - Optional output-channel failure and input-stream failure are reported as
   incomplete progress, independently of the Agent outcome.

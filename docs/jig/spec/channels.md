@@ -112,7 +112,8 @@ not an otherwise valid Agent result. No raw ACP stream is echoed privately.
 
 ## Installed subprocess output
 
-With `--receive`, stdout is newline-delimited JSON/1, with these records:
+With `--receive` and redirected stdout or explicit `--json`, stdout is
+newline-delimited JSON/1, with these records:
 
 | `type` | Fields |
 | --- | --- |
@@ -127,7 +128,11 @@ interleave. A rejected selection produces only a failed terminal. The terminal
 alone establishes execution status. A missing terminal or incomplete final line
 means incomplete delivery, not success or permission to retry.
 
-Without `--receive`, stdout remains the ordinary single terminal JSON value.
+Without `--receive`, machine output is the ordinary single terminal JSON value.
+Interactive stdout defaults to readable results. Selected channel text is joined
+under a channel heading; other values remain structured, and channel switches
+and closed/failed endings are visible. Transport sequence metadata stays in
+`--json` output. See the [CLI experience contract](cli-experience.md).
 Flow console diagnostics stream to stderr in both modes, independently of
 channel records; terminal control characters are escaped and the existing Run
 diagnostic bounds still apply. Diagnostics are neither channel values nor evidence

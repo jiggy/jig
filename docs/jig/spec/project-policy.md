@@ -570,7 +570,8 @@ A Run is `pending` until it has one durable terminal:
 - `COORDINATOR_LOST` when earlier dispatch may have occurred but no result can
   be proved.
 
-The installed CLI preserves JSON stdout, or NDJSON for selected channels.
+The installed CLI shows readable results on terminal stdout. Redirected stdout
+or `--json` preserves JSON, or NDJSON for selected channels.
 Elapsed status and cancellation updates follow the [CLI experience contract](cli-experience.md) on terminal stderr;
 diagnostics remain available with redirected streams. A cancellation request
 is not a cleanup acknowledgement. Execution completion, application outcome,

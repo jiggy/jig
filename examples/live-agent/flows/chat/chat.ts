@@ -1,4 +1,4 @@
-import { OperationError, type JsonValue, type RunContext, type RunResult } from '@jigging/flow'
+import { type JsonValue, OperationError, type RunContext, type RunResult } from '@jigging/flow'
 
 export async function chat(run: RunContext): Promise<RunResult> {
   const input = parseInput(run.input)
@@ -30,13 +30,17 @@ export async function chat(run: RunContext): Promise<RunResult> {
 
   const observation = (async () => {
     let destinationAvailable = true
+    let needsNewline = false
     try {
       for await (const value of events.receive) {
         const text = publicText(value)
         if (text === undefined || input.suppress || !destinationAvailable) continue
         try {
           if (output) await output.send(text)
-          else console.log(text)
+          else {
+            await writeProgress(text)
+            if (text.length > 0) needsNewline = !text.endsWith('\n')
+          }
           progress.displayed += 1
         } catch (error) {
           if (!deliveryFailure(error)) throw error
@@ -47,6 +51,14 @@ export async function chat(run: RunContext): Promise<RunResult> {
     } catch (error) {
       if (!deliveryFailure(error) && !(error instanceof TypeError)) throw error
       progress.complete = false
+    } finally {
+      if (needsNewline && destinationAvailable) {
+        try {
+          await writeProgress('\n')
+        } catch {
+          progress.complete = false
+        }
+      }
     }
   })()
 
@@ -110,4 +122,20 @@ function parseInput(value: JsonValue): { instructions: string; suppress: boolean
     throw new TypeError('Supply instructions and optional suppress: true or false')
   }
   return { instructions: value.instructions, suppress: value.suppress === true }
+}
+
+/** Text updates are fragments, not log records; stderr keeps Run/1 stdout intact. */
+function writeProgress(text: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const failed = () => reject(new OperationError('DISCONNECTED'))
+    // Writable errors also emit an event; handle it as optional display loss.
+    process.stderr.once('error', failed)
+    process.stderr.write(text, (error) => {
+      if (error) failed()
+      else {
+        process.stderr.removeListener('error', failed)
+        resolve()
+      }
+    })
+  })
 }
