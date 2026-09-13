@@ -1,6 +1,6 @@
 import { closeSync } from 'node:fs'
 import { CheckError } from '../diagnostics.js'
-import { canonicalJson, type JsonObject, type JsonValue } from '../json.js'
+import { canonicalJson, decodeJson1, type JsonObject, type JsonValue } from '../json.js'
 import type { RunHostCall, RunHostOperationTerminal, WireFailureCode } from '../run/session.js'
 import { RunHostFatalOperationError } from '../run/session.js'
 import {
@@ -13,6 +13,7 @@ import {
   recordPrivateRootChildSandbox,
 } from './activation-admission-store.js'
 import { type PrivateDirectRunRecipe, planPrivateDirectRun } from './direct-run.js'
+import { HTTP_LIMITS, httpCredential, selectHttpGrants } from './http-grants.js'
 import { privateDomainDigest } from './identity.js'
 import { revalidatePrivateInstalledBunSupport } from './installed-bun-support.js'
 import { privateSealedBytes, sha256 } from './linux-file-input.js'
@@ -32,6 +33,12 @@ import {
   planPrivateLinuxOwnerStateAllocation,
   releasePrivateLinuxOwnerState,
 } from './linux-rootless-backend.js'
+import {
+  HTTP_REQUEST_CONTRACT_DIGEST,
+  type PreparedHttpRequest,
+  parseHttpRequest,
+  parseHttpWorkerResult,
+} from './private-http-request.js'
 import { snapshotPrivateOrdinaryJson } from './private-ordinary-json.js'
 import {
   isProjectCommandContract,
@@ -47,11 +54,12 @@ import {
   requireParentTarget,
 } from './root-agent-run-controller.js'
 
-const KIND = 'private-project-command-owner/1'
+const KIND = 'private-contained-effect-owner/1'
 const ROOT = '/jig-input/project'
 type Context = Parameters<typeof requireParentTarget>[0]
 interface Allocation {
   readonly kind: typeof KIND
+  readonly effect: 'project-command' | 'http-request'
   readonly parentRunId: string
   readonly coordinatorEpoch: number
   readonly operationId: string
@@ -62,8 +70,8 @@ interface Allocation {
   readonly ownerAllocation: PrivateLinuxOwnerStateAllocationIdentity
 }
 
-/** One keyless command owner, independent of the Flow and the candidate process. */
-export async function executePrivateProjectCommand(
+/** Shared durable ownership for command and credential-bearing HTTP workers. */
+export async function executePrivateContainedEffect(
   input: Context & {
     readonly call: RunHostCall
     readonly parentDeadlineUnixMs: number
@@ -74,18 +82,34 @@ export async function executePrivateProjectCommand(
   const route = target.request.slots[input.call.slot]
   if (
     route?.kind !== 'native' ||
-    route.native !== 'project-command' ||
-    !isProjectCommandContract(route.contract)
+    !(
+      (route.native === 'project-command' && isProjectCommandContract(route.contract)) ||
+      (route.native === 'http-request' && route.contract.digest === HTTP_REQUEST_CONTRACT_DIGEST)
+    )
   )
-    return failed('UNAVAILABLE', 'the requested slot has no admitted Project Command invocation')
-  if (input.signal.aborted) return failed('CANCELLED', 'the project command was cancelled')
-  let prepared: PreparedProjectCommand
+    return failed('UNAVAILABLE', 'the requested slot has no admitted contained operation')
+  if (input.signal.aborted) return failed('CANCELLED', 'the contained operation was cancelled')
+  let prepared:
+    | { kind: 'command'; value: PreparedProjectCommand }
+    | { kind: 'http'; value: PreparedHttpRequest }
   try {
-    prepared = parseProjectCommandInput(input.call.input, target.request.commands ?? {})
+    prepared =
+      route.native === 'project-command'
+        ? {
+            kind: 'command',
+            value: parseProjectCommandInput(input.call.input, target.request.commands ?? {}),
+          }
+        : {
+            kind: 'http',
+            value: parseHttpRequest(
+              input.call.input,
+              selectHttpGrants(input.httpGrants, target.request.http ?? {}),
+            ),
+          }
   } catch {
     return failed(
       'INVALID_INPUT',
-      'select a reviewed command and supply bounded candidate files, arguments, and stdin',
+      'supply valid bounded input for an admitted command or HTTP resource',
     )
   }
 
@@ -101,18 +125,21 @@ export async function executePrivateProjectCommand(
       recipe.digest !== target.disposition.recipeDigest ||
       recipe.observation.digest !== target.disposition.observationDigest
     )
-      throw new Error('command parent recipe changed')
+      throw new Error('operation parent recipe changed')
     await revalidatePrivateInstalledBunSupport(input.installedSupport)
   } catch {
-    return failed('UNAVAILABLE', 'the admitted project-command runtime cannot be reproduced')
+    return failed('UNAVAILABLE', 'the admitted contained-operation runtime cannot be reproduced')
   }
   const deadlineUnixMs = Math.min(
     input.parentDeadlineUnixMs,
     input.parent.intent.deadlineUnixMs,
-    Date.now() + PROJECT_COMMAND_LIMITS.timeoutMs,
+    Date.now() +
+      (prepared.kind === 'http'
+        ? prepared.value.grant.timeoutMs
+        : PROJECT_COMMAND_LIMITS.timeoutMs),
   )
   if (deadlineUnixMs <= Date.now())
-    return failed('DEADLINE_EXCEEDED', 'the command deadline elapsed before dispatch')
+    return failed('DEADLINE_EXCEEDED', 'the operation deadline elapsed before dispatch')
   if (input.parentFlow !== undefined)
     await requireParentFlowOwner(input, input.parentFlow, deadlineUnixMs)
   const rows = (await owners(input)).filter(
@@ -120,13 +147,13 @@ export async function executePrivateProjectCommand(
   )
   const prior = rows.find((row) => row.operationId === input.call.operationId)
   if (prior !== undefined) {
-    if (!isCommandOwner(prior)) throw new Error('command identity names a different operation')
-    await releaseCommand(input, prior)
-    return failed('UNCERTAIN', 'a prior command dispatch was fenced without a proved result')
+    if (!isEffectOwner(prior)) throw new Error('operation identity names a different effect')
+    await releaseEffect(input, prior)
+    return failed('UNCERTAIN', 'a prior operation dispatch was fenced without a proved result')
   }
   if (rows.length !== 0)
     return failed('RESOURCE_EXHAUSTED', 'the parent already has an active operation')
-  const identity = commandIdentity(
+  const identity = effectIdentity(
     input.parent.run.runId,
     input.call.operationId,
     input.parentFlow?.operationId,
@@ -137,6 +164,7 @@ export async function executePrivateProjectCommand(
   })
   const allocation: Allocation = {
     kind: KIND,
+    effect: route.native as Allocation['effect'],
     parentRunId: input.parent.run.runId,
     coordinatorEpoch: input.parent.run.coordinatorEpoch,
     operationId: input.call.operationId,
@@ -145,7 +173,7 @@ export async function executePrivateProjectCommand(
     deadlineUnixMs,
     ownerAllocation,
     requestDigest: privateDomainDigest(
-      'JIG-Project-Command-Request/1',
+      'JIG-Contained-Effect-Request/1',
       prepared as unknown as JsonValue,
     ),
   }
@@ -165,7 +193,7 @@ export async function executePrivateProjectCommand(
         cleanupError instanceof PrivateLinuxFenceUnconfirmedError
           ? 'UNCERTAIN'
           : 'EXECUTION_FAILED',
-        { cause: new AggregateError([error, cleanupError], 'command allocation cleanup failed') },
+        { cause: new AggregateError([error, cleanupError], 'operation allocation cleanup failed') },
       )
     }
     if (error instanceof CheckError && error.code === 'RUN_CHILD_CAPACITY')
@@ -175,7 +203,9 @@ export async function executePrivateProjectCommand(
   const files: PrivateLinuxCapturedInput[] = []
   let attempted = false
   try {
-    for (const [path, source] of Object.entries(prepared.input.files)) {
+    for (const [path, source] of Object.entries(
+      prepared.kind === 'command' ? prepared.value.input.files : {},
+    )) {
       const bytes = Buffer.from(source)
       files.push({
         fd: privateSealedBytes(bytes),
@@ -185,7 +215,9 @@ export async function executePrivateProjectCommand(
       })
     }
     const sealed = await input.backend.seal(
-      commandPlan(recipe, prepared, files, identity, deadlineUnixMs),
+      prepared.kind === 'command'
+        ? commandPlan(recipe, prepared.value, files, identity, deadlineUnixMs)
+        : httpPlan(recipe, identity, deadlineUnixMs),
       ownerAllocation,
     )
     lifecycle = await recordPrivateRootChildSandbox({
@@ -195,16 +227,74 @@ export async function executePrivateProjectCommand(
     })
     attempted = true
     const component = await sealed.admit(input.signal)
-    const observed = await collectCommand(component, prepared.input.stdin ?? '')
-    await releaseCommand(input, lifecycle, observed.fence)
+    const bearer =
+      prepared.kind === 'http'
+        ? httpCredential(input.httpGrants!, target.request.http![prepared.value.resource]!)
+        : undefined
+    const stdin =
+      prepared.kind === 'command'
+        ? (prepared.value.input.stdin ?? '')
+        : Buffer.from(
+            canonicalJson({
+              grant: prepared.value.grant as unknown as JsonValue,
+              ...(prepared.value.body === undefined ? {} : { body: prepared.value.body }),
+              ...(bearer === undefined ? {} : { bearer }),
+            }),
+          ).toString('utf8')
+    const observed = await collectEffect(
+      component,
+      stdin,
+      prepared.kind === 'http'
+        ? HTTP_LIMITS.responseBytes * 6 + 4096
+        : PROJECT_COMMAND_LIMITS.streamBytes,
+    )
+    await releaseEffect(input, lifecycle, observed.fence)
     const reason = observed.fence.stopReason
     if (!['payload_exit', 'cancelled', 'deadline'].includes(reason))
-      return failed('UNCERTAIN', 'the command was fenced without a proved command terminal')
+      return failed(
+        'UNCERTAIN',
+        'the operation was fenced without a proved terminal; effects may have occurred',
+      )
+    if (prepared.kind === 'http') {
+      if (input.signal.aborted || reason === 'cancelled')
+        return failed('CANCELLED', 'HTTP request cancelled; remote effects may have occurred')
+      if (reason === 'deadline')
+        return failed(
+          'DEADLINE_EXCEEDED',
+          'HTTP request deadline; remote effects may have occurred',
+        )
+      if (observed.stdout.truncated || observed.fence.exitCode !== 0)
+        return failed(
+          'UNCERTAIN',
+          'HTTP worker did not provide a complete result; remote effects may have occurred',
+        )
+      let result
+      try {
+        result = parseHttpWorkerResult(
+          decodeJson1(Buffer.from(observed.stdout.text)),
+          prepared.value.grant,
+        )
+        if ('response' in result && bearer !== undefined && result.response.body.includes(bearer))
+          throw new Error('credential echo')
+      } catch {
+        return failed('INVALID_RESULT', 'HTTP response rejected; remote effects may have occurred')
+      }
+      if ('failure' in result)
+        return failed(
+          result.failure,
+          'HTTP response unavailable; remote effects may have occurred. The request was not retried.',
+        )
+      return {
+        status: 'succeeded',
+        result: { outcome: 'done', output: result.response as unknown as JsonValue },
+      }
+    }
+    const command = prepared.value
     const value: ProjectCommandResult = Object.freeze({
-      candidateDigest: prepared.candidateDigest,
-      command: prepared.input.command,
-      invocation: prepared.invocation,
-      stdinDigest: prepared.stdinDigest,
+      candidateDigest: command.candidateDigest,
+      command: command.input.command,
+      invocation: command.invocation,
+      stdinDigest: command.stdinDigest,
       stdout: observed.stdout,
       stderr: observed.stderr,
       exitCode: observed.fence.exitCode,
@@ -214,7 +304,7 @@ export async function executePrivateProjectCommand(
     })
     const details = { command: value } as unknown as JsonValue
     if (input.signal.aborted || reason === 'cancelled')
-      return failed('CANCELLED', 'the project command was cancelled', details)
+      return failed('CANCELLED', 'the contained operation was cancelled', details)
     if (reason === 'deadline')
       return failed('DEADLINE_EXCEEDED', 'the project command exceeded its deadline', details)
     return {
@@ -228,7 +318,7 @@ export async function executePrivateProjectCommand(
           row.operationId === input.call.operationId &&
           row.parentOperationId === input.parentFlow?.operationId,
       )
-      if (row !== undefined) await releaseCommand(input, row)
+      if (row !== undefined) await releaseEffect(input, row)
     } catch (cleanupError) {
       throw new RunHostFatalOperationError(
         cleanupError instanceof PrivateLinuxFenceUnconfirmedError
@@ -237,17 +327,45 @@ export async function executePrivateProjectCommand(
         { cause: new AggregateError([error, cleanupError], 'operation cleanup failed') },
       )
     }
-    if (input.signal.aborted) return failed('CANCELLED', 'the project command was cancelled')
+    if (input.signal.aborted) return failed('CANCELLED', 'the contained operation was cancelled')
     if (Date.now() >= deadlineUnixMs)
-      return failed('DEADLINE_EXCEEDED', 'the project command deadline elapsed')
+      return failed(
+        'DEADLINE_EXCEEDED',
+        'the contained operation deadline elapsed; effects may have occurred',
+      )
     return failed(
       attempted ? 'UNCERTAIN' : 'EXECUTION_FAILED',
       attempted
-        ? 'command dispatch may have occurred but no result was proved'
-        : 'project command setup failed before dispatch',
+        ? 'operation dispatch may have occurred but no result was proved'
+        : 'contained operation setup failed before dispatch',
     )
   } finally {
     for (const file of files) closeSync(file.fd)
+  }
+}
+
+function httpPlan(
+  recipe: PrivateDirectRunRecipe,
+  identity: string,
+  deadlineUnixMs: number,
+): PrivateLinuxLaunchPlan {
+  return {
+    runId: `effect-${identity.slice(0, 40)}`,
+    limits: { ...recipe.resourceCeilings, deadlineUnixMs, cancellationGraceMs: 1000 },
+    readOnlyMounts: [
+      ...recipe.installedSupport.runtimeMounts,
+      {
+        source: recipe.installedSupport.httpWorkerPath,
+        destination: recipe.installedSupport.sandboxHttpWorkerPath,
+      },
+      { source: '/etc/resolv.conf', destination: '/etc/resolv.conf' },
+    ],
+    command: [
+      recipe.sandboxExecutablePath,
+      ...recipe.bunPolicy,
+      recipe.installedSupport.sandboxHttpWorkerPath,
+    ],
+    network: 'inherited',
   }
 }
 
@@ -276,7 +394,7 @@ function commandPlan(
           ...policy.test.map((path) => `${ROOT}/${path}`),
         ]
   return {
-    runId: `command-${identity.slice(0, 40)}`,
+    runId: `effect-${identity.slice(0, 40)}`,
     limits: { ...recipe.resourceCeilings, deadlineUnixMs, cancellationGraceMs: 1000 },
     readOnlyMounts: recipe.installedSupport.runtimeMounts,
     capturedInputs: files,
@@ -289,12 +407,13 @@ function commandPlan(
 /** Drains both pipes concurrently while retaining only their bounded prefixes. */
 export async function collectProjectCommandStream(
   source: AsyncIterable<Uint8Array>,
+  limit: number = PROJECT_COMMAND_LIMITS.streamBytes,
 ): Promise<ProjectCommandResult['stdout']> {
   const chunks: Uint8Array[] = []
   let retained = 0
   let truncated = false
   for await (const chunk of source) {
-    const keep = Math.min(chunk.length, PROJECT_COMMAND_LIMITS.streamBytes - retained)
+    const keep = Math.min(chunk.length, limit - retained)
     if (keep > 0) {
       chunks.push(Uint8Array.from(chunk.subarray(0, keep)))
       retained += keep
@@ -304,11 +423,15 @@ export async function collectProjectCommandStream(
   return Object.freeze({ text: new TextDecoder().decode(Buffer.concat(chunks)), truncated })
 }
 
-async function collectCommand(component: PrivateLinuxComponentProcess, stdin: string) {
+async function collectEffect(
+  component: PrivateLinuxComponentProcess,
+  stdin: string,
+  stdoutLimit: number,
+) {
   // Observe every backend settlement promise, including exceptional enforcement.
   for (const promise of [component.completion, component.evidence, component.terminationReason])
     void promise.catch(() => undefined)
-  const stdout = collectProjectCommandStream(component.stdout)
+  const stdout = collectProjectCommandStream(component.stdout, stdoutLimit)
   const stderr = collectProjectCommandStream(component.stderr)
   const send = (async () => {
     try {
@@ -328,17 +451,17 @@ async function collectCommand(component: PrivateLinuxComponentProcess, stdin: st
   }
 }
 
-export async function recoverPrivateProjectCommandOwners(input: Context): Promise<void> {
+export async function recoverPrivateContainedEffectOwners(input: Context): Promise<void> {
   for (const owner of await owners(input)) {
     if (
-      isCommandOwner(owner) &&
+      isEffectOwner(owner) &&
       (input.parentFlow === undefined || owner.parentOperationId === input.parentFlow.operationId)
     )
-      await releaseCommand(input, owner)
+      await releaseEffect(input, owner)
   }
 }
 
-function isCommandOwner(row: PrivateRootChildOwnerLifecycle): boolean {
+function isEffectOwner(row: PrivateRootChildOwnerLifecycle): boolean {
   const value = row.allocation.value
   return (
     value !== null &&
@@ -348,7 +471,7 @@ function isCommandOwner(row: PrivateRootChildOwnerLifecycle): boolean {
   )
 }
 
-async function releaseCommand(
+async function releaseEffect(
   input: Context,
   row: PrivateRootChildOwnerLifecycle,
   knownFence?: PrivateLinuxConfirmedEnforcementReceipt,
@@ -359,7 +482,7 @@ async function releaseCommand(
   const { parentFlow: _requestedParentFlow, ...rootInput } = input
   const context = { ...rootInput, ...(parentFlow === null ? {} : { parentFlow }) }
   const target = requireParentTarget(context)
-  const identity = commandIdentity(
+  const identity = effectIdentity(
     lifecycle.parentRunId,
     lifecycle.operationId,
     lifecycle.parentOperationId,
@@ -372,30 +495,32 @@ async function releaseCommand(
     !Object.values(target.request.slots).some(
       (route) =>
         route.kind === 'native' &&
-        route.native === 'project-command' &&
-        isProjectCommandContract(route.contract),
+        route.native === allocation.effect &&
+        (route.native === 'project-command'
+          ? isProjectCommandContract(route.contract)
+          : route.contract.digest === HTTP_REQUEST_CONTRACT_DIGEST),
     ) ||
     allocation.ownerAllocation.parent !== (await protectedOwnerRoot(input.projectRoot)) ||
     allocation.ownerAllocation.name !== `x-${identity.slice(0, 62)}` ||
     (input.parentFlow !== undefined && input.parentFlow.operationId !== parentFlow?.operationId)
   )
-    throw new Error('command owner differs from its admitted parent')
+    throw new Error('operation owner differs from its admitted parent')
   if (parentFlow !== null)
     await requireParentFlowOwner(context, parentFlow, allocation.deadlineUnixMs)
   const key = operationKey(input, lifecycle.operationId, lifecycle.parentOperationId)
   if (lifecycle.sandbox === undefined) {
     if (lifecycle.fence !== undefined || lifecycle.cleanup !== undefined)
-      throw new Error('command fence precedes sandbox')
+      throw new Error('operation fence precedes sandbox')
     const cancelled = await cancelPrivateLinuxOwnerStateAllocation(allocation.ownerAllocation)
     await releasePrivateLinuxOwnerState(allocation.ownerAllocation, cancelled)
   } else {
     const owner = normalizePrivateLinuxSealedOwnerIdentity(lifecycle.sandbox.value)
     if (
       owner.ownerStateAllocationDigest !== allocation.ownerAllocation.digest ||
-      owner.runId !== `command-${identity.slice(0, 40)}` ||
+      owner.runId !== `effect-${identity.slice(0, 40)}` ||
       owner.deadlineUnixMs !== allocation.deadlineUnixMs
     )
-      throw new Error('command sandbox differs from its allocation')
+      throw new Error('operation sandbox differs from its allocation')
     const fence =
       lifecycle.fence === undefined
         ? (knownFence ?? (await input.backend.recoverFence(owner)))
@@ -425,7 +550,7 @@ async function releaseCommand(
       normalizePrivateLinuxOwnerStateReleaseReceipt(lifecycle.cleanup.value).digest !==
       released.digest
     )
-      throw new Error('command cleanup receipt changed')
+      throw new Error('operation cleanup receipt changed')
   }
   await closePrivateRootChildOwner({
     ...key,
@@ -439,11 +564,12 @@ async function releaseCommand(
 function parseAllocation(row: PrivateRootChildOwnerLifecycle): Allocation {
   const value = snapshotPrivateOrdinaryJson(
     row.allocation.value,
-    'command allocation',
+    'operation allocation',
     (message) => new TypeError(message),
   ) as JsonObject
   const fields = [
     'kind',
+    'effect',
     'parentRunId',
     'coordinatorEpoch',
     'operationId',
@@ -459,6 +585,8 @@ function parseAllocation(row: PrivateRootChildOwnerLifecycle): Allocation {
     Object.keys(value).length !== fields.length ||
     fields.some((field) => !Object.hasOwn(value, field)) ||
     value.kind !== KIND ||
+    typeof value.effect !== 'string' ||
+    !['project-command', 'http-request'].includes(value.effect) ||
     value.parentRunId !== row.parentRunId ||
     value.operationId !== row.operationId ||
     typeof value.coordinatorEpoch !== 'number' ||
@@ -472,7 +600,7 @@ function parseAllocation(row: PrivateRootChildOwnerLifecycle): Allocation {
     typeof value.requestDigest !== 'string' ||
     !/^sha256:[0-9a-f]{64}$/.test(value.requestDigest)
   )
-    throw new TypeError('invalid command owner allocation')
+    throw new TypeError('invalid operation owner allocation')
   return {
     ...value,
     parentFlow: normalizeParentFlow(value.parentFlow, row.parentOperationId),
@@ -496,12 +624,12 @@ function owners(input: Context) {
     parentRunId: input.parent.run.runId,
   })
 }
-function commandIdentity(
+function effectIdentity(
   parentRunId: string,
   operationId: string,
   parentOperationId?: string,
 ): string {
-  return privateDomainDigest('JIG-Project-Command-Owner/1', {
+  return privateDomainDigest('JIG-Contained-Effect-Owner/1', {
     parentRunId,
     operationId,
     parentOperationId: parentOperationId ?? null,

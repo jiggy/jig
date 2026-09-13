@@ -4,6 +4,7 @@ import { isAgentInvocation } from '../project/invocation-slots.js'
 import type { RunTargetIdentity } from '../project/package-project.js'
 import type { PrivateActivationReviewPlan } from './activation-admission-store.js'
 import type { PrivateAgentProvider } from './agent-provider.js'
+import { type PrivateHttpGrants, selectHttpGrants } from './http-grants.js'
 
 // Four MiB leaves a conservative JSON/1 envelope after every ASCII backslash
 // and quote in the review string is escaped by the outer value encoding.
@@ -25,6 +26,7 @@ export function renderPrivateProjectPlanReview(
   review: PrivateActivationReviewPlan,
   maximumBytes = MAX_REVIEW_BYTES,
   agentProvider?: PrivateAgentProvider,
+  httpGrants?: PrivateHttpGrants,
 ): PrivateProjectPlanReview {
   if (!Number.isSafeInteger(maximumBytes) || maximumBytes < 1 || maximumBytes > MAX_REVIEW_BYTES) {
     throw new TypeError('project plan review byte limit is invalid')
@@ -61,7 +63,18 @@ export function renderPrivateProjectPlanReview(
             authentication: agentProvider.credentialMode,
           }
       : undefined
+  const http = Object.fromEntries(
+    plan.proposed.targets
+      .filter(
+        ({ request, disposition }) => request.http !== undefined && disposition.state === 'ready',
+      )
+      .map(({ request }) => [
+        targetKey(request.target),
+        selectHttpGrants(httpGrants, request.http),
+      ]),
+  )
   const proposal = {
+    ...(Object.keys(http).length === 0 ? {} : { proposedHostHttp: http }),
     changes,
     executionChanges: Object.fromEntries(
       changes.targets.changed.map((key) => [
@@ -87,6 +100,13 @@ export function renderPrivateProjectPlanReview(
   summary.write('Review changes before approval\n\n')
   summary.write('Approval permits these exact methods, settings and invocation routes to run.\n')
   summary.write('It does not execute a Flow. Declining keeps your previous approval.\n\n')
+  if (Object.keys(http).length !== 0) {
+    summary.write('HTTP authority selected for these targets:\n')
+    writeAsciiJson(summary, http, 0)
+    summary.write(
+      '\nThese exact requests may send data and create remote effects. No redirects or retries.\n\n',
+    )
+  }
   if (agent !== undefined) {
     summary.write('Host Agent selected for methods requiring it:\n')
     writePolicy(summary, agent, 1)
@@ -103,7 +123,7 @@ export function renderPrivateProjectPlanReview(
   )
   writeChanges(
     summary,
-    'Bindings (settings, child slots, command policy and captured files)',
+    'Bindings (settings, child slots, command policy, HTTP resources and captured files)',
     changes.bindings,
     current?.portablePolicy.bindings ?? {},
     proposed.portablePolicy.bindings,
@@ -308,6 +328,7 @@ function projectCandidate(
     entrypoint: request.entrypoint,
     settings: request.settings,
     slots: request.slots,
+    ...(request.http === undefined ? {} : { http: request.http }),
     ...(request.commands === undefined ? {} : { commands: request.commands }),
     attachments: request.attachments,
     ...(request.boundAttachments === undefined

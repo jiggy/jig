@@ -71,6 +71,10 @@ admitted FLOW packages.
   in review, lock and exact configuration identity; per-run mappings cannot
   override them. Keep this root-only profile and its bounds synchronized with
   `docs/jig/spec/project-policy.md`.
+- Binding `http` selects named operator grants, not credentials or destinations.
+  `docs/jig/spec/http-request.md` owns the exact closed policy. The installed
+  trusted worker is part of authenticated support; changed public grants cannot
+  reuse an older recipe. Use the ordinary `run.call` surface, not an HTTP SDK method.
 - Public output must not disclose credentials, sandbox internals, private
   paths, or internal identity records. Review may show the resolved
   operator-selected native Agent executable path for informed selection.

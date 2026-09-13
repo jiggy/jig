@@ -110,6 +110,7 @@ describe('fixed installed Bun support', () => {
       await mkdir(evaluator, { recursive: true })
       await mkdir(preparation, { recursive: true })
       await copyFile(installedBunLocation.executablePath, executable)
+      await writeFile(join(root, 'libexec', 'http-request-worker.js'), 'http worker\n')
       await writeFile(installedCli, 'installed command\n')
       await writeFile(join(root, 'libexec', 'markdown-runtime.js'), 'markdown interpreter\n')
       await writeFile(join(root, 'libexec', 'linux-rootless-supervisor.js'), 'supervisor\n')
@@ -131,6 +132,8 @@ describe('fixed installed Bun support', () => {
       )
       expect((await openPrivateInstalledBunSupport(location)).digest).toBe(support.digest)
       expect(support.sandboxExecutablePath).toBe('/jig-runtime/bun')
+      expect(support.sandboxHttpWorkerPath).toBe('/jig-http-worker.js')
+      expect(support.httpWorkerDigest).toMatch(/^sha256:[a-f0-9]{64}$/)
       expect(support.sandboxAgentWorkerPath).toBe('/jig-agent-worker.js')
       expect(support.sandboxMarkdownRuntimePath).toBe('/jig-markdown-runtime.js')
       expect(support.markdownRuntimePath).toBe(join(root, 'libexec', 'markdown-runtime.js'))
@@ -146,6 +149,12 @@ describe('fixed installed Bun support', () => {
       ])
       await expect(revalidatePrivateInstalledBunSupport(support)).resolves.toBeUndefined()
 
+      await writeFile(join(root, 'libexec', 'http-request-worker.js'), 'changed http worker\n')
+      await expect(revalidatePrivateInstalledBunSupport(support)).rejects.toThrow(
+        'installed Bun support changed after selection',
+      )
+      await writeFile(join(root, 'libexec', 'http-request-worker.js'), 'http worker\n')
+      await expect(revalidatePrivateInstalledBunSupport(support)).resolves.toBeUndefined()
       await writeFile(join(root, 'libexec', 'markdown-runtime.js'), 'changed interpreter\n')
       await expect(revalidatePrivateInstalledBunSupport(support)).rejects.toThrow(
         'installed Bun support changed after selection',

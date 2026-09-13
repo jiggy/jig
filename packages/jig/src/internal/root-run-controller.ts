@@ -31,6 +31,7 @@ import {
   type PrivateDirectRunRecipe,
   planPrivateDirectRun,
 } from './direct-run.js'
+import type { PrivateHttpGrants } from './http-grants.js'
 import { revalidatePrivateInstalledBunSupport } from './installed-bun-support.js'
 import {
   cancelPrivateLinuxOwnerStateAllocation,
@@ -65,14 +66,14 @@ import {
   recoverPrivateRootAgentRunOwners,
 } from './root-agent-run-controller.js'
 import {
+  executePrivateContainedEffect,
+  recoverPrivateContainedEffectOwners,
+} from './root-contained-effect-controller.js'
+import {
   executePrivateRootFlowCall,
   recoverPrivateRootFlowCallOwners,
 } from './root-flow-call-controller.js'
 import { PRIVATE_ROOT_RESOURCE_POLICY } from './root-operation-limits.js'
-import {
-  executePrivateProjectCommand,
-  recoverPrivateProjectCommandOwners,
-} from './root-project-command-controller.js'
 import { PrivateRootRunFiles } from './root-run-files.js'
 import { failedPrivateRootTerminal, normalizePrivateRootTerminal } from './root-run-state.js'
 import { type PrivateRunChannelOutput, PrivateRunChannels } from './run-channels.js'
@@ -124,6 +125,7 @@ export async function executePrivateRootRunLaunch(input: {
   readonly coordinator: PrivateProjectCoordinator
   readonly installedSupport: PrivateDirectRunInstalledSupport
   readonly backend: PrivateLinuxCgroupBackend
+  readonly httpGrants?: PrivateHttpGrants | undefined
   readonly agentProvider?: PrivateAgentProvider | undefined
   readonly files?: PrivateRootRunFiles
   readonly channelOutput?: PrivateRunChannelOutput
@@ -727,6 +729,7 @@ async function reproduceRecipe(
     execution: target.disposition.execution,
     installedSupport: input.installedSupport,
     backend: input.backend,
+    httpGrants: input.httpGrants,
     agentProvider: input.agentProvider,
   })
   if (
@@ -1066,6 +1069,7 @@ function operationInput(input: RootExecutionInput, parent: PrivateReacquiredRoot
     coordinator: input.coordinator,
     installedSupport: input.installedSupport,
     backend: input.backend,
+    httpGrants: input.httpGrants,
     agentProvider: input.agentProvider,
   } as const
 }
@@ -1075,7 +1079,7 @@ async function recoverPrivateRootOperationOwners(
 ): Promise<void> {
   await recoverPrivateRootFlowCallOwners(input)
   await recoverPrivateRootAgentRunOwners(input)
-  await recoverPrivateProjectCommandOwners(input)
+  await recoverPrivateContainedEffectOwners(input)
 }
 
 function operationDispatcher(
@@ -1197,11 +1201,11 @@ function operationDispatcher(
           activeCheckpoint = false
         }
       }
-      if (route.native === 'project-command')
+      if (route.native === 'project-command' || route.native === 'http-request')
         return enter(
           'effect',
           () =>
-            executePrivateProjectCommand({
+            executePrivateContainedEffect({
               ...operationInput(input, parent),
               call,
               parentDeadlineUnixMs,

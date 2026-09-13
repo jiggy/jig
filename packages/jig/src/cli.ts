@@ -1273,6 +1273,8 @@ function renderFailure(error: unknown, runtime: CliRuntime): 1 | 2 {
         'a declared workspace export is missing; build the local dependency before jig review',
       PACKAGE_BUN_WORKSPACE_CHANGED:
         'workspace inputs changed during capture; retry review after the edits settle',
+      PROJECT_HTTP_UNAVAILABLE:
+        'configure the Binding http selections, matching JIG_HTTP_GRANTS, and selected bearer environment variables before review',
       PACKAGE_BUN_LOCK_INVALID: 'bun.lock is invalid; correct the supplied lock',
       PACKAGE_BUN_LOCK_STALE:
         'package.json and bun.lock disagree; update the supplied lock explicitly',

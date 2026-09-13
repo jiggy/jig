@@ -9,6 +9,7 @@ import {
   PrivateCodexRuntimeUnavailableError,
   PrivateCodexSandboxUnavailableError,
 } from './codex-agent-provider.js'
+import { openPrivateHttpGrants } from './http-grants.js'
 import {
   openPrivateInstalledBunSupport,
   type PrivateInstalledBunLocation,
@@ -117,82 +118,14 @@ export async function openPrivateInstalledBunHost(
     }),
     installedBunSupport,
     runTimeoutMs: PRIVATE_DEFAULT_ROOT_RUN_TIMEOUT_MS,
-    get agentProvider() {
-      return agent.agentProvider
-    },
-    get agentUnavailableHint() {
-      return agent.agentUnavailableHint
-    },
-    get agentExecutable() {
-      return agent.agentExecutable
-    },
-    async prepareAgent(signal: AbortSignal) {
-      if (preferenceFailure) {
-        agent = {
-          agentUnavailableHint:
-            'the saved Agent choice could not be read safely; set JIG_AGENT_CLIENT=codex, claude, pi, or api explicitly and retry jig review',
-        }
+    ...agent,
+    httpGrants: (() => {
+      try {
+        return openPrivateHttpGrants(environment)
+      } catch {
         return undefined
       }
-      if (
-        agent.agentProvider !== undefined ||
-        operatorEnvironment.JIG_AGENT_CLIENT !== undefined ||
-        selection?.choose === undefined
-      )
-        return agent.agentProvider
-      const candidates: { choice: PrivateAgentChoice; opened: AgentSelection }[] = []
-      for (const id of ['codex', 'claude', 'pi', 'api']) {
-        signal.throwIfAborted()
-        const opened = await tryOpenAgentProvider(
-          installedBunSupport,
-          { ...operatorEnvironment, JIG_AGENT_CLIENT: id },
-          projectDirectory,
-        )
-        const label =
-          id === 'api'
-            ? 'API endpoint — final result only'
-            : `${id === 'codex' ? 'Codex' : id === 'claude' ? 'Claude Code' : 'Pi'} — final result and live updates`
-        candidates.push({
-          choice: {
-            id,
-            label,
-            ...(opened.agentProvider === undefined
-              ? { unavailable: opened.agentUnavailableHint ?? 'Client unavailable' }
-              : {}),
-          },
-          opened,
-        })
-      }
-      signal.throwIfAborted()
-      const chosen = await selection.choose(
-        candidates.map(({ choice }) => choice),
-        signal,
-      )
-      signal.throwIfAborted()
-      const candidate = candidates.find(
-        ({ choice, opened }) => choice.id === chosen && opened.agentProvider !== undefined,
-      )
-      if (candidate === undefined) {
-        agent = {
-          agentUnavailableHint:
-            'no Agent was selected; run jig review in a terminal to choose, or set JIG_AGENT_CLIENT=codex, claude, pi, or api explicitly',
-        }
-        return undefined
-      }
-      if (selection.remember) {
-        try {
-          await writePrivateAgentChoice(operatorEnvironment, projectDirectory, candidate.choice.id)
-        } catch {
-          agent = {
-            agentUnavailableHint:
-              'the Agent choice could not be saved safely; set JIG_AGENT_CLIENT=codex, claude, pi, or api explicitly and retry jig review',
-          }
-          return undefined
-        }
-      }
-      agent = candidate.opened
-      return agent.agentProvider
-    },
+    })(),
   })
 }
 

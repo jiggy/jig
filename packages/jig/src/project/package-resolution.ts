@@ -17,6 +17,7 @@ import {
 import { canonicalJson, decodeJson1, type JsonObject, type JsonValue } from '../json.js'
 import type { PackageEntrypoint } from '../package/inspect.js'
 import { normalizeProjectCommands, type ProjectCommands } from './commands.js'
+import { normalizeHttpSelections } from './http.js'
 import {
   type InvocationSlots,
   normalizeInvocationSlots,
@@ -48,6 +49,7 @@ export interface PrivateActivationRequest {
   readonly settings: JsonObject
   readonly slots: InvocationSlots
   readonly attachments: Readonly<Record<string, 'read' | 'read-write'>>
+  readonly http?: Readonly<Record<string, string>>
   readonly commands?: ProjectCommands
   readonly boundAttachments?: BoundAttachments
 }
@@ -126,6 +128,7 @@ export function buildPrivateActivationRequests(
         entrypoint: flow.entrypoint,
         settings: binding.settings,
         slots: resolveInvocationSlots(flow.uses, binding.slots),
+        ...(binding.http === undefined ? {} : { http: binding.http }),
         ...(binding.commands === undefined ? {} : { commands: binding.commands }),
         ...(binding.boundAttachments === undefined
           ? {}
@@ -172,6 +175,9 @@ export function restorePrivateActivationRequest(value: unknown): PrivateActivati
       'attachments',
       ...(value !== null && typeof value === 'object' && Object.hasOwn(value, 'boundAttachments')
         ? ['boundAttachments']
+        : []),
+      ...(value !== null && typeof value === 'object' && Object.hasOwn(value, 'http')
+        ? ['http']
         : []),
       ...(value !== null && typeof value === 'object' && Object.hasOwn(value, 'commands')
         ? ['commands']
@@ -245,6 +251,7 @@ export function restorePrivateActivationRequest(value: unknown): PrivateActivati
     ...(root.boundAttachments === undefined
       ? {}
       : { boundAttachments: normalizeBoundAttachments(root.boundAttachments) }),
+    ...(root.http === undefined ? {} : { http: normalizeHttpSelections(root.http) }),
     ...(root.commands === undefined
       ? {}
       : {
@@ -366,6 +373,7 @@ function createRequest(
     slots: input.slots,
     attachments: input.attachments,
     ...(input.boundAttachments === undefined ? {} : { boundAttachments: input.boundAttachments }),
+    ...(input.http === undefined ? {} : { http: input.http }),
     ...(input.commands === undefined ? {} : { commands: input.commands }),
   })
   const request = Object.freeze({
@@ -408,6 +416,7 @@ function semanticProject(project: PackageProjectValue): JsonValue {
       packagePath: binding.packagePath,
       settings: binding.settings,
       slots: binding.slots,
+      ...(binding.http === undefined ? {} : { http: binding.http }),
       ...(binding.commands === undefined ? {} : { commands: binding.commands }),
       ...(binding.boundAttachments === undefined
         ? {}

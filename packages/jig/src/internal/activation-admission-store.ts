@@ -1125,13 +1125,13 @@ export async function allocatePrivateRootChildOwner(input: {
         (input.allocation === null ||
           typeof input.allocation !== 'object' ||
           Array.isArray(input.allocation) ||
-          !['private-root-agent-owner-allocation/1', 'private-project-command-owner/1'].includes(
+          !['private-root-agent-owner-allocation/1', 'private-contained-effect-owner/1'].includes(
             String((input.allocation as Record<string, JsonValue>).kind),
           ))
       ) {
         invalid(
           'RUN_CHILD_OWNER_CONFLICT',
-          'a child Flow may own only an Agent or project-command operation',
+          'a child Flow may own only an Agent or contained effect',
         )
       }
       if (input.parentOperationId === undefined) {

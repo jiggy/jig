@@ -297,7 +297,7 @@ function ownerRows(root: string): number {
     return (
       database
         .query(
-          "SELECT count(*) AS count FROM root_child_owners WHERE sandbox_digest IS NOT NULL AND CAST(allocation_bytes AS TEXT) LIKE '%private-project-command-owner/1%'",
+          "SELECT count(*) AS count FROM root_child_owners WHERE sandbox_digest IS NOT NULL AND CAST(allocation_bytes AS TEXT) LIKE '%private-contained-effect-owner/1%'",
         )
         .get() as { count: number }
     ).count

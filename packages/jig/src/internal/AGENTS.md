@@ -4,7 +4,7 @@
 
 Owns Jig's trusted private machinery for admission, retained artifacts,
 project and Run lifecycles, rootless Linux containment, dependency preparation,
-child calls, project commands, and Agent providers.
+child calls, project commands, delegated HTTP, and Agent providers.
 
 ## Ownership
 
@@ -42,6 +42,13 @@ child calls, project commands, and Agent providers.
 - Project commands use reviewed Binding policy, sealed candidate bytes,
   installed Bun, and a collector outside candidate execution. Command owner
   rows and independent supervision survive coordinator loss without replay.
+- Command and HTTP effects share the contained-effect owner and recovery path.
+  HTTP grants are snapshotted operator policy, selected by Binding names and
+  bound into review and recipe identity. The fixed worker receives only one
+  request's credential over private stdin; it imports no authored code. The
+  collector validates its bounded result after fencing. No redirect, proxy,
+  automatic retry or raw credential projection is permitted. Remote effects
+  remain possible after an unsuccessful local result.
 
 ## Local Contracts
 
@@ -172,7 +179,7 @@ child calls, project commands, and Agent providers.
   Cancellation and expiry escalate against the exact trusted child after a
   bounded grace period and reap it; independent cgroup fencing still owns payload cleanup.
 - Exact child slots may select a Flow or a leaf Binding with its own admitted
-  settings, Agent invocation, and reviewed project commands. An effect belongs to that child
+  settings, Agent invocation, reviewed project commands, and HTTP selections. An effect belongs to that child
   context, not the root's operation namespace; fence and drain it before
   releasing the child owner. Children cannot acquire another child slot map.
 - Roots admit two Flow branches or one exclusive effect. Reserve each whole

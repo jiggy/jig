@@ -6,6 +6,7 @@ import {
   type JsonValue,
 } from '../json.js'
 import { normalizeProjectCommands, type ProjectCommands } from '../project/commands.js'
+import { normalizeHttpSelections } from '../project/http.js'
 import {
   type InvocationRequirement,
   normalizeInvocationIdentity,
@@ -38,6 +39,7 @@ export interface PrivateLockBinding {
   readonly packagePath: string
   readonly settings: JsonObject
   readonly slots: Readonly<Record<string, RunTargetIdentity>>
+  readonly http?: Readonly<Record<string, string>>
   readonly commands?: ProjectCommands
   readonly attachments?: BoundAttachments
 }
@@ -72,6 +74,7 @@ export function createPrivateProjectLocalLock(
       packagePath: binding.packagePath,
       settings: binding.settings,
       slots: binding.slots,
+      ...(binding.http === undefined ? {} : { http: binding.http }),
       ...(binding.commands === undefined ? {} : { commands: binding.commands }),
       ...(binding.boundAttachments === undefined ? {} : { attachments: binding.boundAttachments }),
     })
@@ -177,6 +180,7 @@ function normalizeBindings(value: unknown): PrivateProjectLocalLock['bindings'] 
         'packagePath',
         'settings',
         'slots',
+        ...(Object.hasOwn(object(input[id], `Binding ${id}`), 'http') ? ['http'] : []),
         ...(Object.hasOwn(object(input[id], `Binding ${id}`), 'commands') ? ['commands'] : []),
         ...(Object.hasOwn(object(input[id], `Binding ${id}`), 'attachments')
           ? ['attachments']
@@ -190,6 +194,7 @@ function normalizeBindings(value: unknown): PrivateProjectLocalLock['bindings'] 
       packagePath: projectPath(item.packagePath, `Binding ${id} packagePath`),
       settings,
       slots,
+      ...(item.http === undefined ? {} : { http: normalizeHttpSelections(item.http) }),
       ...(item.commands === undefined ? {} : { commands: normalizeProjectCommands(item.commands) }),
       ...(item.attachments === undefined
         ? {}

@@ -1,6 +1,7 @@
 import type { JsonObject, JsonValue } from '../json.js'
 import { JSON_1_LIMITS, validateJson1 } from '../json.js'
 import { normalizeProjectCommands, type ProjectCommands } from './commands.js'
+import { normalizeHttpSelections } from './http.js'
 import {
   assertNoProjectPathCollisions,
   compareProjectPaths,
@@ -50,6 +51,7 @@ export interface PackageBindingDefinition {
   readonly package: string
   readonly settings: JsonObject
   readonly slots: Readonly<Record<string, string>>
+  readonly http?: Readonly<Record<string, string>>
   readonly commands?: ProjectCommands
   readonly attachments?: Readonly<Record<string, string>>
 }
@@ -58,6 +60,7 @@ export interface PackageBindingInput {
   readonly package: string
   readonly settings?: JsonObject
   readonly slots?: Readonly<Record<string, string>>
+  readonly http?: Readonly<Record<string, string>>
   readonly commands?: ProjectCommands
   readonly attachments?: Readonly<Record<string, string>>
 }
@@ -134,8 +137,8 @@ function normalizeBinding(
   assertClosedObject(
     captured,
     canonical
-      ? ['kind', 'package', 'settings', 'slots', 'commands', 'attachments']
-      : ['package', 'settings', 'slots', 'commands', 'attachments'],
+      ? ['kind', 'package', 'settings', 'slots', 'commands', 'http', 'attachments']
+      : ['package', 'settings', 'slots', 'commands', 'http', 'attachments'],
     'Binding definition',
   )
   if (canonical && captured.kind !== 'package') {
@@ -149,6 +152,7 @@ function normalizeBinding(
   const slots = Object.hasOwn(captured, 'slots')
     ? normalizeFlowSlots(captured.slots)
     : emptyRecord<string>()
+  const http = normalizeHttpSelections(Object.hasOwn(captured, 'http') ? captured.http : {})
   const commands = normalizeProjectCommands(
     Object.hasOwn(captured, 'commands') ? captured.commands : {},
   )
@@ -160,6 +164,7 @@ function normalizeBinding(
     package: packagePath,
     settings,
     slots,
+    ...(Object.keys(http).length === 0 ? {} : { http }),
     ...(Object.keys(commands).length === 0 ? {} : { commands }),
     ...(Object.keys(attachments).length === 0 ? {} : { attachments }),
   }) as unknown as PackageBindingDefinition

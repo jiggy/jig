@@ -1,15 +1,15 @@
 import { expect, test } from 'bun:test'
 import {
   canReservePrivateRootOperation,
-  privateRootBranchReservation,
-  PRIVATE_ROOT_RESOURCE_POLICY,
-  PRIVATE_FLOW_RESOURCE_CEILINGS,
   PRIVATE_AGENT_PROVIDER_PIDS,
+  PRIVATE_FLOW_RESOURCE_CEILINGS,
+  PRIVATE_ROOT_RESOURCE_POLICY,
+  privateRootBranchReservation,
 } from '../src/internal/root-operation-limits.js'
 
 const flow = { kind: 'private-root-child-owner-allocation/1' }
 const agent = { kind: 'private-root-agent-owner-allocation/1' }
-const command = { kind: 'private-project-command-owner/1' }
+const command = { kind: 'private-contained-effect-owner/1' }
 
 test('two whole branch reservations fit the root budget, including both provider envelopes', () => {
   expect(privateRootBranchReservation(2)).toEqual({

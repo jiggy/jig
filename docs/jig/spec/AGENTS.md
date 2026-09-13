@@ -19,6 +19,9 @@ descriptors.
   method package mirrors the Exchange bundle; it owns method interpretation.
 - `contract-authoring.md` owns explicit generation, local freshness, bounded
   compiler operation, output ownership and interrupted-publication recovery.
+- `http-request.md` owns named operator grants, exact endpoint requests,
+  private bearer delivery and finite contained-worker settlement. Its descriptor
+  is a native invocation companion, not a FLOW-wide resource model.
 - `channels.md` owns Jig's direct/broadcast channel support, local limits, native update
   projection and installed NDJSON output. `contracts/acp-public-updates.json`
   defines the exact optional Agent update meaning, not raw ACP access.

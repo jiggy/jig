@@ -19,6 +19,7 @@ const expectedInstalledFiles = [
   'libexec/installed-cli.js',
   'libexec/authoring/contract-authoring-worker.js',
   'libexec/markdown-runtime.js',
+  'libexec/http-request-worker.js',
   'libexec/flow.LICENSE',
   'libexec/agent/openai.LICENSE',
   'libexec/agent/openai-agent-worker.js',

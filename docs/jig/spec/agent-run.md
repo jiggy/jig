@@ -224,7 +224,7 @@ Provider selection and credentials remain host-owned; no new Skill or provider
 configuration field is added to Bindings.
 
 The root allows two sibling Flow calls or one exclusive effect; a leaf allows
-one Agent or command effect. The root reserves each branch's resources before
+one Agent, project command, or HTTP request effect. The root reserves each branch's resources before
 dispatch, including its effect capacity. Parent cancellation
 and the inherited deadline govern the child and its Agent worker; cleanup
 must settle both before the parent result becomes terminal. As with root Agent

@@ -54,6 +54,12 @@ A Binding can pin a declared read attachment with
 identifies its files; Runs use those approved bytes without repeating `--attach`
 or exposing the live source directory. See [working with files](https://jig.md/guide/files).
 
+For service access, `http: { reference: 'documents' }` selects an independently
+configured operator grant. Jig enforces its exact endpoint, method, credential
+reference and limits outside the Flow. The same ordinary call can retrieve a
+document or support an editable API client without handing it a secret or a
+network socket. See [delegated HTTP access](https://jig.md/guide/http).
+
 `--generate-contracts` compiles authored TypeSpec contracts and publishes their
 managed JSON and types before the separate execution-approval question. Plain
 review does not compile; already-generated contracts need no compiler runtime.
@@ -89,6 +95,7 @@ for supported installations and authentication.
 - [Markdown methods](https://jig.md/guide/markdown)
 - [Choose an Agent](https://jig.md/guide/agents)
 - [Working with files](https://jig.md/guide/files)
+- [Delegated HTTP access](https://jig.md/guide/http)
 - [Dependencies](https://jig.md/guide/dependencies)
 - [Author contracts once](https://jig.md/guide/contracts)
 - [Workflow design](https://jig.md/guide/workflow-design)

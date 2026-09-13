@@ -140,8 +140,9 @@ A Flow is a direct Run target only when it:
 
 Direct eligibility is structural. Host execution support is planned
 separately, so an eligible target can still be unavailable on this host.
-Project Command requires a Binding's reviewed `commands`; command-capable
-packages are therefore invoked through configured Bindings, not direct targets.
+Project Command requires a Binding's reviewed `commands`; HTTP Request requires
+its `http` resource selections and matching operator grants. These packages
+are invoked through configured Bindings, not direct targets.
 
 [Run Checkpoint](run-checkpoint.md) requires a root writable attachment and
 the installed command's `--out` owner. Its accepted aggregate survives later
@@ -346,8 +347,9 @@ per-invocation overrides into settings.
 normalizes to `{}`. A Flow selector must identify a direct Flow target, using
 empty settings. A Binding selector uses that Binding's own validated settings
 and must select a Binding with no child slots. Either target may use the exact
-Agent Run or [Agent Exchange](agent-exchange.md) invocation, and a configured Binding may also use
-[Project Command](project-command.md). Slots cannot select the parent's own package, directly
+Agent Run or [Agent Exchange](agent-exchange.md) invocation, and a configured
+Binding may also use [Project Command](project-command.md) or
+[HTTP Request](http-request.md). Slots cannot select the parent's own package, directly
 or through a Binding; unknown targets, cycles, nonleaf Bindings,
 unqualified execution profiles, and packages requiring attachments reject the
 candidate. Plain package paths are not slot selectors. Linking captures each
@@ -366,9 +368,10 @@ uncontracted requirements with `{}` or named requirements with a local
 `contract` path. A typed Flow route must offer the identical contract ID,
 version and descriptor/closure digest in its root `FLOW.contract.json`. An explicit
 route wins or fails; it never falls back. Uncontracted exact Binding routes
-need no additional declaration. Only the four qualified native contracts may
-default to host implementation. They remain native-only: claiming their digest
-does not grant a package credentials, command execution or retention authority.
+need no additional declaration. Only the qualified native contracts (Agent Run,
+Agent Exchange, Project Command, HTTP Request and Run Checkpoint) may default
+to host implementation. They remain native-only: claiming their digest does not
+grant a package credentials, endpoint access, command execution or retention authority.
 Review shows the resolved route and expected contract for each target slot.
 
 Attachment declarations participate in root eligibility and review without
@@ -379,6 +382,18 @@ parent file access. Unsupported declaration counts reject the project candidate.
 
 Bindings contain no runtime command, environment map, package-manager policy,
 or generic permission bag.
+
+### Delegated HTTP resources
+
+A Binding's `http` maps consumer-local resource names to operator names in
+`JIG_HTTP_GRANTS`. It contains neither endpoints nor secrets. Each selected
+grant fixes an exact URL, method, optional bearer environment reference, byte
+and time limits, and optional request-body schema. Review exposes that public
+policy, and the execution recipe pins it. A separate trusted worker enforces
+it while Flow code remains offline and keyless. Missing or changed grants
+cannot reuse old authority. Root and child Bindings use their own selections;
+HTTP shares exclusive effect capacity with Agent and command calls. See
+[HTTP Request](http-request.md) for the exact policy and failure contract.
 
 ### Reviewed Binding attachments
 

@@ -15,6 +15,7 @@ import {
   type PrivateBunExecutionArtifact,
   privateBunExecutionArtifact,
 } from './bun-execution-layout.js'
+import { type HttpGrant, type PrivateHttpGrants, selectHttpGrants } from './http-grants.js'
 import { privateDomainDigest } from './identity.js'
 import {
   type PrivateInstalledBunSupport,
@@ -67,6 +68,7 @@ export interface PrivateBunDirectRecipe {
   readonly bunPolicy: typeof BUN_POLICY
   readonly privateProcessFilesystem: true
   readonly privateRuntimeDevices: true
+  readonly http: Readonly<Record<string, HttpGrant>>
   readonly agentProvider?: PrivateAgentProvider | undefined
 }
 
@@ -77,6 +79,7 @@ export async function planPrivateBunDirectRun(input: {
   readonly backend: PrivateLinuxCgroupBackend
   readonly execution?: PrivateBunExecutionArtifact
   readonly selector?: string
+  readonly httpGrants?: PrivateHttpGrants | undefined
   readonly agentProvider?: PrivateAgentProvider | undefined
 }): Promise<PrivateBunDirectRecipe> {
   const backend = requirePrivateLinuxCgroupBackend(input.backend)
@@ -158,6 +161,19 @@ async function describePrivateBunDirectRun(
   if (!usesCommand && request.commands !== undefined)
     throw new TypeError('command policy requires the Project Command invocation')
 
+  let http: Readonly<Record<string, HttpGrant>>
+  const usesHttp = nativeRoutes.some(({ native }) => native === 'http-request')
+  try {
+    http = selectHttpGrants(input.httpGrants, request.http ?? {})
+    if (usesHttp && Object.keys(http).length === 0) throw new Error('missing resource')
+    if (!usesHttp && Object.keys(http).length !== 0) throw new Error('undeclared resource')
+  } catch {
+    unavailable(
+      'PROJECT_HTTP_UNAVAILABLE',
+      'configure the Binding http selections, matching JIG_HTTP_GRANTS, and selected bearer environment variables before review',
+      `${request.packagePath}/${request.entrypoint.path}`,
+    )
+  }
   const adapterDigest = privateDomainDigest('JIG-Private-Bun-Direct-Adapter/1', {
     revision: ADAPTER_REVISION,
     installedSupportDigest: installedSupport.digest,
@@ -180,6 +196,7 @@ async function describePrivateBunDirectRun(
       ? {}
       : { boundAttachments: request.boundAttachments }),
     slots: request.slots,
+    http,
     ...(request.commands === undefined ? {} : { commands: request.commands }),
   } as unknown as JsonValue)
   const launchEnvelopeDigest = logicalLaunchDigest(
@@ -188,6 +205,7 @@ async function describePrivateBunDirectRun(
     installedSupport,
     support,
     agentProvider,
+    http,
   )
   const observation = createPrivateActivationRecipeObservation({
     requestDigest: request.digest,
@@ -219,6 +237,7 @@ async function describePrivateBunDirectRun(
     ),
     request,
     execution,
+    http,
     installedSupport,
     runtimeMounts: Object.freeze([
       ...installedSupport.runtimeMounts,
@@ -265,6 +284,7 @@ function logicalLaunchDigest(
   installedSupport: PrivateInstalledBunSupport,
   mechanism: PrivateLinuxBackendMechanismSupport,
   agentProvider: PrivateAgentProvider | undefined,
+  http: Readonly<Record<string, HttpGrant>>,
 ): string {
   return privateDomainDigest('JIG-Private-Bun-Logical-Launch/1', {
     requestDigest: request.digest,
@@ -279,6 +299,7 @@ function logicalLaunchDigest(
     resourceCeilings: RESOURCE_CEILINGS,
     wallClockCeilingMs: PRIVATE_MAX_ROOT_RUN_TIMEOUT_MS,
     rootResourcePolicy: PRIVATE_ROOT_RESOURCE_POLICY,
+    http,
     environment: Object.freeze({
       LD_LIBRARY_PATH: '/jig-runtime/lib',
     }),

@@ -130,6 +130,13 @@ jobs:
           "$JIG_CI_BUN" test packages/jig/test/project-command-lifecycle.test.ts
           --timeout 180000
 
+      - name: Prove delegated HTTP authority and coordinator-loss cleanup
+        run: >-
+          scripts/ci/provision-github-rootless-host.sh run-delegated
+          env JIG_LINUX_ROOTLESS_HOSTILE=1
+          "$JIG_CI_BUN" test packages/jig/test/http-request-lifecycle.test.ts
+          --timeout 240000
+
       - name: Prove retained progress and coordinator-loss delivery
         run: >-
           scripts/ci/provision-github-rootless-host.sh run-delegated

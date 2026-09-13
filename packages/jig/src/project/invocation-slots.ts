@@ -10,6 +10,11 @@ import {
   AGENT_RUN_CONTRACT_VERSION,
 } from '../internal/private-agent-run.js'
 import {
+  HTTP_REQUEST_CONTRACT_DIGEST,
+  HTTP_REQUEST_CONTRACT_ID,
+  HTTP_REQUEST_CONTRACT_VERSION,
+} from '../internal/private-http-request.js'
+import {
   PROJECT_COMMAND_CONTRACT_DIGEST,
   PROJECT_COMMAND_CONTRACT_ID,
   PROJECT_COMMAND_CONTRACT_VERSION,
@@ -30,7 +35,12 @@ export interface InvocationIdentity {
 }
 
 export type InvocationRequirement = InvocationIdentity | Readonly<Record<string, never>>
-export type NativeInvocation = 'agent' | 'agent-exchange' | 'project-command' | 'run-checkpoint'
+export type NativeInvocation =
+  | 'http-request'
+  | 'agent'
+  | 'agent-exchange'
+  | 'project-command'
+  | 'run-checkpoint'
 export type InvocationSlot =
   | {
       readonly kind: 'flow'
@@ -45,6 +55,11 @@ export type InvocationSlot =
 export type InvocationSlots = Readonly<Record<string, InvocationSlot>>
 
 const NATIVE: Readonly<Record<NativeInvocation, InvocationIdentity>> = Object.freeze({
+  'http-request': Object.freeze({
+    id: HTTP_REQUEST_CONTRACT_ID,
+    version: HTTP_REQUEST_CONTRACT_VERSION,
+    digest: HTTP_REQUEST_CONTRACT_DIGEST,
+  }),
   agent: Object.freeze({
     id: AGENT_RUN_CONTRACT_ID,
     version: AGENT_RUN_CONTRACT_VERSION,

@@ -1392,6 +1392,7 @@ async function writeInstalledFixture(root: string): Promise<PrivateInstalledBunL
     'libexec/installed-cli.js',
     'libexec/markdown-runtime.js',
     'libexec/linux-rootless-supervisor.js',
+    'libexec/http-request-worker.js',
     'libexec/evaluator/project-evaluator-worker.js',
     'libexec/evaluator/project-evaluator-sdk.bundle.js',
     'libexec/evaluator/project-authoring-1.schema.json',

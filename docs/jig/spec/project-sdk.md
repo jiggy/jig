@@ -110,6 +110,13 @@ Command configuration is independent of ordinary Flow settings and travels
 with the selected Binding, never by inheritance from its caller. Review and
 admission include the exact invocation policy.
 
+`http` optionally selects named [HTTP Request](http-request.md) resources,
+for example `http: { reference: "documents" }`. These names refer to independent
+operator grants in `JIG_HTTP_GRANTS`, not paths, credentials or contracts.
+The operator supplies exact endpoint policy and approves its use in review.
+Declaring a selection grants no permission. Root and leaf
+Bindings have their own selections; parent grants are not inherited.
+
 `attachments` optionally binds declared read attachments to project-relative
 directories, for example `attachments: { decoder: "./tools/base64" }`.
 Review captures those directories and includes their sources, content digests,
@@ -140,7 +147,8 @@ target. There is no hidden generated Binding.
 A required named invocation is declared by `uses.<slot>.contract` in package
 metadata. The selected Flow must offer exactly that ID, version and digest
 through its root `FLOW.contract.json`; anonymous ordinary calls need no contract.
-Unmapped qualified native Agent Run, Agent Exchange, Project Command and Run Checkpoint slots
+Unmapped qualified native Agent Run, Agent Exchange, Project Command,
+HTTP Request and Run Checkpoint slots
 resolve to the corresponding host implementation. Native authority cannot be
 replaced by mapping a package that merely claims its contract identity.
 Review shows expected contracts and selected routes together. See

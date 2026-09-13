@@ -1,9 +1,9 @@
 import { resolve } from 'node:path'
 import { defineConfig } from '@rspress/core'
-import { documentationIndex } from '../theme/llms'
 import { accessibleMarkdown } from '../theme/accessible-markdown'
 import { diagramImages } from '../theme/diagram-images'
 import { codeThemes } from '../theme/code-themes'
+import { documentationIndex } from '../theme/llms'
 
 const siteDirectory = import.meta.dirname
 
@@ -23,6 +23,7 @@ const sidebar = [
       { text: 'Reuse the Agent method', link: '/guide/agent-method' },
       { text: 'Flow dependencies', link: '/guide/dependencies' },
       { text: 'Author contracts', link: '/guide/contracts' },
+      { text: 'Delegate HTTP access', link: '/guide/http' },
       { text: 'Working with files', link: '/guide/files' },
       { text: 'Live progress', link: '/guide/channels' },
       { text: 'Workflow structure', link: '/guide/workflow-design' },
@@ -54,6 +55,7 @@ const sidebar = [
       { text: 'Agent Run', link: '/spec/agent-run' },
       { text: 'Agent Exchange', link: '/spec/agent-exchange' },
       { text: 'Project Command', link: '/spec/project-command' },
+      { text: 'HTTP Request', link: '/spec/http-request' },
       { text: 'Channels', link: '/spec/channels' },
       { text: 'Run Checkpoint', link: '/spec/run-checkpoint' },
     ],
@@ -67,6 +69,7 @@ const sidebar = [
       { text: 'Agent Exchange', link: '/contracts/agent-exchange' },
       { text: 'ACP public updates', link: '/contracts/acp-public-updates' },
       { text: 'Project Command', link: '/contracts/project-command' },
+      { text: 'HTTP Request', link: '/contracts/http-request' },
       { text: 'Run Checkpoint', link: '/contracts/run-checkpoint' },
     ],
   },

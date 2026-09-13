@@ -20,7 +20,7 @@ Jig applies aggregate CPU, memory, and process limits before package code can
 execute. Every terminal path fences the complete process tree and removes its
 rootless owner state before reporting completion.
 
-Project evaluation, the fixed dependency installer, and the fixed Agent
+Project evaluation, the fixed dependency installer, HTTP request worker, and Agent
 provider worker use the same containment mechanism in separate scopes. The
 preparation worker inherits networking only during `jig review`; supplied
 locks are validated before the fixed installer's first fetch. Without an
@@ -50,6 +50,21 @@ the Flow environment, launch arguments, Plans, locks, or retained Run state;
 non-secret client, selected API, endpoint, model, and exact support identities
 are reviewed as provider identity but are not exposed to the Flow. Jig exposes
 no public provider SPI or registry.
+
+The HTTP Request worker receives one reviewed exact URL/method grant and its
+optional bearer via private stdin. It alone has network access for that request;
+Flow code gets neither the credential nor sockets. No authored imports, redirects,
+proxies, arbitrary headers or automatic retries run in that worker. Request and
+response sizes and deadlines are bounded, and optional operator-owned Schema/1
+validates the JSON request body. Public grant policy is review-pinned; secrets
+are excluded from identities and retained records. Revocation stops new commands;
+cancel existing commands to stop their snapshotted authority. Remote effects
+already accepted cannot be recalled. HTTP status is evidence, not domain success.
+Exact HTTPS URLs use normal TLS verification and host DNS; this is not an IP
+firewall, and selected private services are permitted. Numeric-loopback HTTP is
+also supported explicitly. The selected service must be trusted with its token:
+literal echoes reject, but encoded disclosure is not generally detectable.
+See [HTTP Request](docs/jig/spec/http-request.md) for the complete boundary.
 
 Authored package code and lifecycle scripts never execute during preparation,
 and every Flow Run remains offline.

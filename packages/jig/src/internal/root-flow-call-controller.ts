@@ -40,6 +40,7 @@ import {
   type PrivateDirectRunRecipe,
   planPrivateDirectRun,
 } from './direct-run.js'
+import type { PrivateHttpGrants } from './http-grants.js'
 import { privateDomainDigest } from './identity.js'
 import { revalidatePrivateInstalledBunSupport } from './installed-bun-support.js'
 import {
@@ -75,9 +76,9 @@ import {
   recoverPrivateRootAgentRunOwners,
 } from './root-agent-run-controller.js'
 import {
-  executePrivateProjectCommand,
-  recoverPrivateProjectCommandOwners,
-} from './root-project-command-controller.js'
+  executePrivateContainedEffect,
+  recoverPrivateContainedEffectOwners,
+} from './root-contained-effect-controller.js'
 import {
   channelContractResolver,
   type PrivateChannelContractCache,
@@ -118,6 +119,7 @@ interface ChildInput {
   readonly coordinator: PrivateProjectCoordinator
   readonly installedSupport: PrivateDirectRunInstalledSupport
   readonly backend: PrivateLinuxCgroupBackend
+  readonly httpGrants?: PrivateHttpGrants | undefined
   readonly agentProvider?: PrivateAgentProvider | undefined
   readonly channels?: {
     readonly caller: ChannelParticipant
@@ -199,6 +201,7 @@ async function executePreparedChild(
       execution: selected.disposition.execution,
       installedSupport: input.installedSupport,
       backend: input.backend,
+      httpGrants: input.httpGrants,
       agentProvider: input.agentProvider,
     })
   } catch {
@@ -420,10 +423,10 @@ function specialistDispatcher(
         return failed('RESOURCE_EXHAUSTED', 'the specialist already has an active operation')
       active = true
       try {
-        if (route.native === 'project-command') {
+        if (route.native === 'project-command' || route.native === 'http-request') {
           if (Object.keys(call.channels ?? {}).length !== 0)
             return failed('UNAVAILABLE', 'this invocation has no supported channels')
-          return await executePrivateProjectCommand({
+          return await executePrivateContainedEffect({
             ...input,
             parentFlow: {
               operationId: input.call.operationId,
@@ -439,6 +442,7 @@ function specialistDispatcher(
           return failed('UNAVAILABLE', 'the admitted Agent provider is unavailable')
         return await executePrivateRootAgentRun({
           ...input,
+          httpGrants: input.httpGrants,
           agentProvider: input.agentProvider,
           ...(participant === undefined || input.channels === undefined
             ? {}
@@ -558,7 +562,7 @@ async function releaseKnownChild(
       requestDigest: selected.request.digest,
     },
   })
-  await recoverPrivateProjectCommandOwners({
+  await recoverPrivateContainedEffectOwners({
     ...input,
     parentFlow: {
       operationId: lifecycle.operationId,
@@ -628,7 +632,7 @@ async function recoverOne(
         requestDigest: selected.request.digest,
       },
     })
-    await recoverPrivateProjectCommandOwners({
+    await recoverPrivateContainedEffectOwners({
       ...input,
       parentFlow: {
         operationId: lifecycle.operationId,

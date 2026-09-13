@@ -49,6 +49,7 @@ import {
   type PrivateDirectRunRecipe,
   planPrivateDirectRun,
 } from './direct-run.js'
+import type { PrivateHttpGrants } from './http-grants.js'
 import { privateDomainDigest } from './identity.js'
 import { revalidatePrivateInstalledBunSupport } from './installed-bun-support.js'
 import {
@@ -140,6 +141,7 @@ interface AgentRecoveryInput {
   readonly coordinator: PrivateProjectCoordinator
   readonly installedSupport: PrivateDirectRunInstalledSupport
   readonly backend: PrivateLinuxCgroupBackend
+  readonly httpGrants?: PrivateHttpGrants | undefined
   readonly agentProvider?: PrivateAgentProvider | undefined
 }
 
@@ -655,6 +657,7 @@ async function reproduceParentRecipe(input: AgentInput): Promise<PrivateDirectRu
     execution: target.disposition.execution,
     installedSupport: input.installedSupport,
     backend: input.backend,
+    httpGrants: input.httpGrants,
     agentProvider: input.agentProvider,
   })
   if (

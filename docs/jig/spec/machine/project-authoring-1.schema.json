@@ -103,6 +103,14 @@
           },
           "maxProperties": 256
         },
+        "http": {
+          "type": "object",
+          "maxProperties": 8,
+          "additionalProperties": {
+            "type": "string",
+            "maxLength": 64
+          }
+        },
         "commands": {
           "$ref": "#/$defs/commands"
         },

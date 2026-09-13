@@ -6,7 +6,7 @@ import {
   parseProjectCommandInput,
   projectCommandCandidateDigest,
 } from '../src/internal/private-project-command.js'
-import { collectProjectCommandStream } from '../src/internal/root-project-command-controller.js'
+import { collectProjectCommandStream } from '../src/internal/root-contained-effect-controller.js'
 import { parseInvocationContract } from '../src/invocation-contract.js'
 import { canonicalJson } from '../src/json.js'
 import { defineBinding } from '../src/project/author.js'

@@ -241,12 +241,13 @@ Backend boundary. One mechanism alone has not earned it.
 A Binding gives one Flow package a reusable project-local configuration.
 Its **child slots** name a closed set of exact `flow:<path>` or `binding:<id>`
 targets from the same admitted generation. A child uses its selected target's
-settings, native Agent route, and reviewed command policy; parent configuration is not inherited. Selected
+settings, native Agent route, reviewed commands, and HTTP resource selections;
+parent configuration is not inherited. Selected
 child Bindings are leaves with no further Flow slots. At runtime, a Flow can
 call only its slots; it cannot search a catalogue, invent targets, or acquire
 scheduler authority. Child and Agent scopes inherit the remaining root deadline
 and cannot extend it. A root may await two sibling specialists; each leaf may
-await one Agent or project command. Root worker effects remain exclusive.
+await one Agent, project command, or HTTP request. Root worker effects remain exclusive.
 Root-owned [checkpoints](../docs/jig/spec/run-checkpoint.md) use separate bounded
 control capacity to retain completed evidence while workers remain active.
 Durable whole-branch reservations bound aggregate resources before dispatch and stay
@@ -268,6 +269,15 @@ credentials, network, installation, or host repository. Repository test output
 is not an independent verdict; applications check captured behavior under
 their own unchanged assertions. The exact contract belongs in
 [`project-command.md`](../docs/jig/spec/project-command.md).
+
+HTTP Request supplies delegated endpoint access through ordinary invocation.
+An operator grant fixes the exact request destination, method, optional bearer
+reference, body constraints and limits; a Binding selects its name. The trusted
+worker holds the credential and network while authored methods remain keyless
+and offline. The [HTTP contract](../docs/jig/spec/http-request.md) owns exact
+behavior, including remote uncertainty and endpoint trust. This does not make
+authored code part of the host's trusted implementation or introduce raw-secret
+or arbitrary-process delegation.
 
 ### Agent calls
 

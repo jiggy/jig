@@ -47,6 +47,7 @@
     "libexec/installed-cli.js",
     "libexec/authoring/contract-authoring-worker.js",
     "libexec/markdown-runtime.js",
+    "libexec/http-request-worker.js",
     "libexec/flow.LICENSE",
     "libexec/linux-rootless-supervisor.js",
     "libexec/evaluator/project-evaluator-worker.js",

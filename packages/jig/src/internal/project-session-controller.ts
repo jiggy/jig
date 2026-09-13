@@ -1,6 +1,5 @@
 import { type BigIntStats, constants } from 'node:fs'
 import { lstat, mkdir, open } from 'node:fs/promises'
-
 import {
   normalizeProjectApplyRequest,
   normalizeProjectPlanRequest,
@@ -13,7 +12,6 @@ import {
 } from '../administration/project.js'
 import type { RootRunTerminal } from '../administration/root.js'
 import { CheckError } from '../diagnostics.js'
-import { prepareContractGeneration } from './contract-generation.js'
 import { validateJson1 } from '../json.js'
 import {
   buildPrivateActivationRequests,
@@ -48,8 +46,10 @@ import {
   requirePrivateBunResolutionPermission,
 } from './bun-package-input.js'
 import { capturePrivateBunWorkspace } from './bun-workspace-capture.js'
+import { prepareContractGeneration } from './contract-generation.js'
 import { type PrivateDirectRunRecipe, planPrivateDirectRun } from './direct-run.js'
 import type { PrivateFileRecovery } from './file-command.js'
+import type { PrivateHttpGrants } from './http-grants.js'
 import { privateDomainDigest } from './identity.js'
 import type { PrivateInstalledBunSupport } from './installed-bun-support.js'
 import type { PrivateLinuxCgroupBackend } from './linux-rootless-backend.js'
@@ -78,6 +78,7 @@ export interface PrivateProjectSessionHost {
   readonly backend: PrivateLinuxCgroupBackend
   readonly installedBunSupport: PrivateInstalledBunSupport
   readonly runTimeoutMs: number
+  readonly httpGrants?: PrivateHttpGrants | undefined
   readonly agentProvider?: PrivateAgentProvider | undefined
   readonly prepareAgent?: (signal: AbortSignal) => Promise<PrivateAgentProvider | undefined>
   readonly files?: PrivateRootRunFiles
@@ -163,6 +164,7 @@ export async function openPrivateProjectSession(input: {
           coordinator,
           installedSupport: input.host.installedBunSupport,
           backend: input.host.backend,
+          httpGrants: input.host.httpGrants,
           agentProvider: input.host.agentProvider,
           ...(input.host.files === undefined ? {} : { files: input.host.files }),
           ...(input.host.channelOutput === undefined
@@ -354,7 +356,8 @@ function createSession(
                         execution: admitted.execution,
                         installedSupport: host.installedBunSupport,
                         backend: host.backend,
-                        agentProvider,
+                        httpGrants: host.httpGrants,
+                        agentProvider: host.agentProvider,
                       })
                       if (
                         current.digest === admitted.recipeDigest &&
@@ -408,7 +411,8 @@ function createSession(
                 execution,
                 installedSupport: host.installedBunSupport,
                 backend: host.backend,
-                agentProvider,
+                httpGrants: host.httpGrants,
+                agentProvider: host.agentProvider,
               }),
             )
           } catch (error) {
@@ -453,7 +457,12 @@ function createSession(
           candidate,
           lockMode: request.lockMode,
           beforePersistApplicable(applicable): void {
-            review = renderPrivateProjectPlanReview(applicable, undefined, agentProvider)
+            review = renderPrivateProjectPlanReview(
+              applicable,
+              undefined,
+              host.agentProvider,
+              host.httpGrants,
+            )
           },
         })
         preparationBudget.signal.throwIfAborted()
@@ -777,6 +786,7 @@ function isUnavailableDiagnosticCode(code: string): boolean {
     code === 'PACKAGE_BUN_RESOLVED_SOURCE_UNSUPPORTED' ||
     code === 'PACKAGE_BUN_PREPARATION_FAILED' ||
     code === 'PROJECT_AGENT_UNAVAILABLE' ||
+    code === 'PROJECT_HTTP_UNAVAILABLE' ||
     code === 'PACKAGE_PROFILE_UNSUPPORTED' ||
     code === 'PACKAGE_METADATA_UNSUPPORTED' ||
     code === 'PACKAGE_TOOLS_UNSUPPORTED' ||

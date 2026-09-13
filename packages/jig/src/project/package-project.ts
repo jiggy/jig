@@ -1,6 +1,7 @@
 import { CheckError, invalid } from '../diagnostics.js'
 import { type BoundAttachments, normalizeBoundAttachments } from '../internal/bound-attachments.js'
 import { MARKDOWN_AGENT_SLOT, markdownAgentContract } from '../internal/markdown-agent-contract.js'
+import { HTTP_REQUEST_CONTRACT_DIGEST } from '../internal/private-http-request.js'
 import { PROJECT_COMMAND_CONTRACT_DIGEST } from '../internal/private-project-command.js'
 import { RUN_CHECKPOINT_CONTRACT_DIGEST } from '../internal/private-run-checkpoint.js'
 import type { JsonObject, JsonValue } from '../json.js'
@@ -69,6 +70,7 @@ export interface LinkedPackageBinding {
   readonly packagePath: string
   readonly settings: JsonObject
   readonly slots: Readonly<Record<string, RunTargetIdentity>>
+  readonly http?: Readonly<Record<string, string>>
   readonly commands?: ProjectCommands
   readonly boundAttachments?: BoundAttachments
 }
@@ -339,6 +341,16 @@ function prepareBindings(
         declarationPath,
         '/commands',
       )
+    if (
+      definition.http !== undefined &&
+      !Object.values(flow.value.uses).some(({ digest }) => digest === HTTP_REQUEST_CONTRACT_DIGEST)
+    )
+      invalid(
+        'PROJECT_BINDING_HTTP_UNDECLARED',
+        'http selections require an HTTP Request invocation declaration',
+        declarationPath,
+        '/http',
+      )
     const boundAttachments = normalizeBoundAttachments(record.capturedAttachments ?? {})
     const selected = definition.attachments ?? {}
     if (Object.keys(selected).sort().join('\0') !== Object.keys(boundAttachments).sort().join('\0'))
@@ -394,6 +406,7 @@ function linkBinding(
     packagePath: definition.package,
     settings: definition.settings,
     slots,
+    ...(definition.http === undefined ? {} : { http: definition.http }),
     ...(definition.commands === undefined ? {} : { commands: definition.commands }),
     ...(prepared.boundAttachments === undefined
       ? {}

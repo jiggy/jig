@@ -18,6 +18,7 @@ const BUN_DESTINATION = '/jig-runtime/bun'
 const LIBRARY_DESTINATION = '/jig-runtime/lib'
 const EVALUATOR_DESTINATION = '/jig-evaluator'
 const PREPARATION_WORKER_DESTINATION = '/jig-preparation-worker.js'
+const HTTP_WORKER_DESTINATION = '/jig-http-worker.js'
 const AGENT_WORKER_DESTINATION = '/jig-agent-worker.js'
 const MARKDOWN_RUNTIME_DESTINATION = '/jig-markdown-runtime.js'
 const BUN_PACKAGE = join('@oven', 'bun-linux-x64-baseline', 'bin', 'bun')
@@ -50,6 +51,9 @@ export interface PrivateInstalledBunSupport {
   readonly preparationWorkerPath: string
   readonly preparationWorkerDigest: string
   readonly sandboxPreparationWorkerPath: typeof PREPARATION_WORKER_DESTINATION
+  readonly httpWorkerPath: string
+  readonly httpWorkerDigest: string
+  readonly sandboxHttpWorkerPath: typeof HTTP_WORKER_DESTINATION
   readonly agentWorkerPath: string
   readonly agentWorkerDigest: string
   readonly sandboxAgentWorkerPath: typeof AGENT_WORKER_DESTINATION
@@ -121,6 +125,11 @@ export async function openPrivateInstalledBunSupport(
     false,
     'installed Bun preparation worker',
   )
+  const httpWorkerPath = await exactRegularFile(
+    join(releaseRoot, 'libexec', 'http-request-worker.js'),
+    false,
+    'installed HTTP worker',
+  )
   const agentWorkerPath = await exactRegularFile(
     join(releaseRoot, 'libexec', 'agent', 'openai-agent-worker.js'),
     false,
@@ -158,6 +167,7 @@ export async function openPrivateInstalledBunSupport(
     libraryDigests,
     evaluatorDigests,
     preparationWorkerDigest,
+    httpWorkerDigest,
     agentWorkerDigest,
     markdownRuntimeDigest,
   ] = await Promise.all([
@@ -182,6 +192,7 @@ export async function openPrivateInstalledBunSupport(
       ),
     ),
     privateFileDigest(preparationWorkerPath),
+    privateFileDigest(httpWorkerPath),
     privateFileDigest(agentWorkerPath),
     privateFileDigest(markdownRuntimePath),
   ])
@@ -211,6 +222,7 @@ export async function openPrivateInstalledBunSupport(
     libraries: libraryDigests,
     evaluatorSupportDigest,
     preparationWorkerDigest,
+    httpWorkerDigest,
     agentWorkerDigest,
     markdownRuntimeDigest,
   })
@@ -242,7 +254,10 @@ export async function openPrivateInstalledBunSupport(
     preparationWorkerPath,
     preparationWorkerDigest,
     sandboxPreparationWorkerPath: PREPARATION_WORKER_DESTINATION,
+    httpWorkerPath,
+    sandboxHttpWorkerPath: HTTP_WORKER_DESTINATION,
     agentWorkerPath,
+    httpWorkerDigest,
     agentWorkerDigest,
     sandboxAgentWorkerPath: AGENT_WORKER_DESTINATION,
     markdownRuntimePath,
@@ -280,6 +295,7 @@ export async function revalidatePrivateInstalledBunSupport(value: unknown): Prom
     current.supervisorPath !== support.supervisorPath ||
     current.evaluatorSupportPath !== support.evaluatorSupportPath ||
     current.preparationWorkerPath !== support.preparationWorkerPath ||
+    current.httpWorkerPath !== support.httpWorkerPath ||
     current.agentWorkerPath !== support.agentWorkerPath ||
     current.markdownRuntimePath !== support.markdownRuntimePath
   ) {
