@@ -1,5 +1,15 @@
 import { describe, expect, test } from 'bun:test'
-import { cp, lstat, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
+import {
+  cp,
+  lstat,
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  rm,
+  symlink,
+  writeFile,
+} from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
@@ -461,6 +471,101 @@ proofDescribe('private rootless project session', () => {
       await waitForRootlessTemporaryState(initialRootlessTemporaryState)
     } finally {
       await rm(root, { recursive: true, force: true })
+    }
+  }, 180_000)
+
+  test('a rebuilt Jig requires review before any Flow starts and explains the environment-only change', async () => {
+    const temporary = await mkdtemp(join(tmpdir(), 'jig-stale-approval-'))
+    const root = join(temporary, 'project')
+    const releaseRoot = join(temporary, 'installed')
+    let session: Awaited<ReturnType<typeof openPrivateProjectSession>> | undefined
+    try {
+      await mkdir(root)
+      await mkdir(releaseRoot)
+      await cp(join(installedBunLocation.releaseRoot, 'libexec'), join(releaseRoot, 'libexec'), {
+        recursive: true,
+      })
+      await cp(
+        join(installedBunLocation.releaseRoot, 'package.json'),
+        join(releaseRoot, 'package.json'),
+      )
+      await symlink(
+        join(installedBunLocation.releaseRoot, 'node_modules'),
+        join(releaseRoot, 'node_modules'),
+      )
+      const location = {
+        ...installedBunLocation,
+        releaseRoot,
+        installedCliPath: join(releaseRoot, 'libexec', 'installed-cli.js'),
+      }
+      await writeCapabilityFreeProject(root)
+      session = await openPrivateProjectSession({
+        directory: root,
+        host: await openPrivateInstalledBunHost(location, {}),
+      })
+      const first = await session.plan({ lockMode: 'update' })
+      if (first.state !== 'applicable') throw new Error('expected initial review')
+      await session.apply({ planDigest: first.planDigest })
+      await session.close()
+      session = undefined
+      await writeFile(
+        location.installedCliPath,
+        (await readFile(location.installedCliPath, 'utf8')) + '\n// rebuilt Jig\n',
+      )
+      session = await openPrivateProjectSession({
+        directory: root,
+        host: await openPrivateInstalledBunHost(location, {}),
+      })
+      const rejected = await session.rootAdministration.startRun({
+        submissionId: 'stale-host',
+        target: { kind: 'flow', path: 'flows/worker' },
+        input: null,
+      })
+      expect(await waitForTerminalStatus(session.rootAdministration, rejected)).toMatchObject({
+        state: 'terminal',
+        terminal: {
+          status: 'failed',
+          code: 'REVIEW_REQUIRED',
+          details: {
+            reason: 'EXECUTION_ENVIRONMENT_CHANGED',
+            flowStarted: false,
+          },
+        },
+      })
+      expect(inspectRootExecution(root, rejected.runId).sandboxDigest).toBe('null')
+      await session.close()
+      session = await openPrivateProjectSession({
+        directory: root,
+        host: await openPrivateInstalledBunHost(location, {}),
+      })
+      expect(await session.rootAdministration.runStatus(rejected)).toMatchObject({
+        state: 'terminal',
+        terminal: { code: 'REVIEW_REQUIRED' },
+      })
+      const next = await session.plan({ lockMode: 'update' })
+      if (next.state !== 'applicable') throw new Error('expected renewed review')
+      expect(next.review.text).toContain('Execution environment changed:')
+      expect(next.review.text).toContain(
+        'Flow source, prepared dependencies, settings and permissions are unchanged.',
+      )
+      await session.apply({ planDigest: next.planDigest })
+      const accepted = await session.rootAdministration.startRun({
+        submissionId: 'fresh-host',
+        target: { kind: 'flow', path: 'flows/worker' },
+        input: { proof: 'reviewed' },
+      })
+      expect(await waitForTerminalStatus(session.rootAdministration, accepted)).toMatchObject({
+        state: 'terminal',
+        terminal: { status: 'succeeded', output: { worker: { proof: 'reviewed' } } },
+      })
+      await session.close()
+      session = undefined
+      await expectNoChildResidue(root)
+      await waitForRootlessCgroups(initialRootlessCgroups)
+      await waitForRootlessTemporaryState(initialRootlessTemporaryState)
+    } finally {
+      await session?.close().catch(() => undefined)
+      await rm(temporary, { recursive: true, force: true })
     }
   }, 180_000)
 

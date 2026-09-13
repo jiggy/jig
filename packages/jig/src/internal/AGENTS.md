@@ -93,8 +93,17 @@ child calls, project commands, and Agent providers.
   Unreadable retained state has a distinct closed diagnostic from unsafe
   filesystem ownership. Preserve it on failed acquisition; never infer permission
   to reset admission or bypass cleanup from a decoding failure.
+- A reproduced root recipe that differs from its approval is a known pre-execution
+  refusal: retain host-only REVIEW_REQUIRED with flowStarted=false,
+  and direct the operator to review. Do not collapse it to EXECUTION_FAILED or
+  infer this reason from arbitrary failures. Recovery and cancellation keep their
+  existing precedence. Flow wire failures cannot emit this code; never replay work or claim no execution after a sandbox began.
 - Review projects only explicit public policy and allowlisted non-secret Agent
-  selections. A change-first display must retain every changed record; full
+  selections. Environment-only target changes name the execution environment,
+  distinguish unchanged source/dependencies/policy, and explain the new approval.
+  Combined fingerprints cannot identify individual historical components; disclose
+  that limit instead of inventing a component diff or displaying opaque identities.
+  A change-first display must retain every changed record; full
   policy remains available without revealing private recipes or consent tokens.
   Missing-target suggestions come from the retained admitted revision, never a
   live filesystem scan, and cannot grant authority or select a replacement.

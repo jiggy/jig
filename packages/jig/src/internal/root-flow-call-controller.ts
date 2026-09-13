@@ -305,7 +305,7 @@ async function executePreparedChild(
         ? undefined
         : input.channels!.caller.transfer(participant, input.call.channels ?? {}, declarations)
     const startup = startupSignal(input.signal)
-    let component
+    let component: Awaited<ReturnType<typeof sealed.admit>>
     try {
       attemptedDispatch = true
       component = await sealed.admit(startup.signal)
@@ -473,6 +473,8 @@ async function admitOperationResult(
   if (admitted.status === 'succeeded') {
     return Object.freeze({ status: 'succeeded' as const, result: admitted.result })
   }
+  if (admitted.code === 'REVIEW_REQUIRED')
+    return failed('UNAVAILABLE', 'the child execution requires renewed project review')
   if (admitted.code === 'PROTOCOL_ERROR' || admitted.code === 'CHANNEL_LOST') {
     return failed('EXECUTION_FAILED', 'the child Flow execution channel failed')
   }

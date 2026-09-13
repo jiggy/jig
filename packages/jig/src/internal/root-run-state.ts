@@ -1,5 +1,5 @@
 import { invalid } from '../diagnostics.js'
-import { canonicalJson, decodeJson1, validateJson1, type JsonValue } from '../json.js'
+import { canonicalJson, decodeJson1, type JsonValue, validateJson1 } from '../json.js'
 import type { RunTargetIdentity } from '../project/package-project.js'
 import { normalizeProjectPath } from '../project/paths.js'
 import type { RunHostTerminal } from '../run/session.js'
@@ -26,6 +26,7 @@ const RUN_HOST_FAILURE_CODES = new Set([
   'INVALID_RESULT',
   'UNCERTAIN',
   'EXECUTION_FAILED',
+  'REVIEW_REQUIRED',
   'PROTOCOL_ERROR',
   'CHANNEL_LOST',
   'LAGGED',
@@ -329,9 +330,7 @@ export function normalizePrivateRootTerminal(value: unknown): PrivateRootRunTerm
   }
   if (status === 'failed') {
     const hasDetails =
-      value !== null &&
-      typeof value === 'object' &&
-      Object.prototype.hasOwnProperty.call(value, 'details')
+      value !== null && typeof value === 'object' && Object.hasOwn(value, 'details')
     const root = exactRecord(
       value,
       hasDetails
@@ -365,9 +364,7 @@ export function privateRootTerminalBytes(terminal: PrivateRootRunTerminal): Uint
 function normalizeTarget(value: unknown): RunTargetIdentity {
   const target = exactRecord(
     value,
-    value !== null &&
-      typeof value === 'object' &&
-      Object.prototype.hasOwnProperty.call(value, 'path')
+    value !== null && typeof value === 'object' && Object.hasOwn(value, 'path')
       ? ['kind', 'path']
       : ['kind', 'id'],
     'root Run target',

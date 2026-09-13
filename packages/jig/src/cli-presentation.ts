@@ -83,7 +83,7 @@ export function privateCliHumanText(
     .split('\n')
     .map((line) => {
       const section =
-        /^(Run output:|Selected Agent:|Host Agent selected|Packages \(|Bindings \(|Run targets \(|Targets after approval:|Review changes|Jig project|Warning:|Error:|Review could not finish|Run failed|Execution lost|Project ready|Created |Execution completed|Approval required|Review declined|Command interrupted|Run cancelled|Waiting for your approval)/.test(
+        /^(Run output:|Selected Agent:|Host Agent selected|Packages \(|Bindings \(|Run targets \(|Targets after approval:|Review changes|Jig project|Warning:|Error:|Review could not finish|Run failed|Execution lost|Project ready|Created |Execution completed|Approval required|Review required|Review declined|Command interrupted|Run cancelled|Waiting for your approval)/.test(
           line,
         )
       const wrapped = wrapHumanLine(line, columns)
@@ -101,7 +101,7 @@ export function privateCliHumanText(
         if (/^(Error:|Review could not finish|Run failed|Execution lost)/.test(line))
           rendered = privateCliHeading(wrapped, 'error', true)
         else if (
-          /^(Warning:|Approval required|Review declined|Command interrupted|Run cancelled)/.test(
+          /^(Warning:|Approval required|Review required|Review declined|Command interrupted|Run cancelled)/.test(
             line,
           )
         )

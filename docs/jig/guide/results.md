@@ -30,6 +30,17 @@ work. An interruption or uncertain result is not permission to blindly retry.
 An interrupted command may exit without a JSON result; scripts must check the
 exit status and handle an absent terminal value.
 
+A `REVIEW_REQUIRED` diagnostic means the current execution environment differs
+from the approved revision. No Flow started for that Run. Run `jig review`, inspect
+and approve the proposed revision, then explicitly start a new Run. A Jig rebuild,
+runtime change, Agent configuration change, or changed sandbox support can require
+review even when your project source is unchanged. In machine output this is
+host-only `code: "REVIEW_REQUIRED"` with
+`details.reason: "EXECUTION_ENVIRONMENT_CHANGED"` and `details.flowStarted: false`.
+Review distinguishes environment-only changes from source, prepared dependency,
+and permission changes. The retained combined fingerprint does not identify which
+individual historical component changed; review states this evidence limit.
+
 An `EXECUTION_FAILED` result with no captured diagnostic text does not establish
 whether the Flow started. The public result contains no more specific cause;
 keep the command and diagnostic code for investigation and inspect any effects

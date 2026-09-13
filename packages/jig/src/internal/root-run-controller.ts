@@ -715,7 +715,7 @@ async function reproduceRecipe(
     recipe.digest !== work.intent.recipeDigest ||
     recipe.observation.digest !== work.intent.observationDigest
   ) {
-    throw new Error('current host mechanisms do not reproduce the admitted Run recipe')
+    throw new ReviewRequiredError()
   }
   return recipe
 }
@@ -726,7 +726,7 @@ async function revalidateRecipe(recipe: PrivateDirectRunRecipe): Promise<void> {
     revalidatePrivateInstalledBunSupport(recipe.installedSupport),
   ])
   if (mechanism.support.digest !== recipe.mechanismDigest) {
-    throw new Error('direct Run recipe no longer matches retained host support')
+    throw new ReviewRequiredError()
   }
 }
 
@@ -1257,7 +1257,20 @@ function terminal(run: PrivateRootRunSnapshot): PrivateRootExecutionDisposition 
   return Object.freeze({ state: 'terminal' as const, run })
 }
 
+class ReviewRequiredError extends Error {
+  constructor() {
+    super(
+      'The current execution environment differs from the reviewed revision. Run jig review before executing this target.',
+    )
+  }
+}
+
 function executionFailed(_error: unknown): RunHostTerminal {
+  if (_error instanceof ReviewRequiredError)
+    return failedPrivateRootTerminal('REVIEW_REQUIRED', _error.message, {
+      reason: 'EXECUTION_ENVIRONMENT_CHANGED',
+      flowStarted: false,
+    })
   if (_error instanceof ChannelOperationError)
     return failedPrivateRootTerminal(_error.code, _error.message)
   return failedPrivateRootTerminal('EXECUTION_FAILED', 'root Run execution failed')

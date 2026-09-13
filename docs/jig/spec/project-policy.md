@@ -583,6 +583,18 @@ unknown. Closing the project session rejects new starts, revokes its issued Run
 authority, settles or fences live Runs, waits for cleanup, and preserves
 already durable status records.
 
+### Stale execution approval
+
+If the current host cannot reproduce an admitted root execution recipe because
+its execution environment changed, Jig refuses execution with the host-only
+`REVIEW_REQUIRED` failure code and directs the operator to `jig review`.
+Its details are `reason: "EXECUTION_ENVIRONMENT_CHANGED"` and `flowStarted: false`.
+This refusal is established before starting Flow code; it is not inferred from
+arbitrary execution failures or missing diagnostics. Existing cancellation and
+recovery precedence remain authoritative. Flow Run/1 responses cannot emit this
+host-only code. Neither the refusal nor subsequent review replays the failed Run.
+
+
 ### Root file Runs
 
 The installed command accepts `--input JSON|@FILE`, repeated `--attach NAME=DIR`

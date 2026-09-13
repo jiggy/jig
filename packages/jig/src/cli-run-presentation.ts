@@ -113,6 +113,17 @@ export class PrivateCliRunPresentation {
     }
     // The command's failure block owns status, code and the safe explanation.
     if (isObject(view) && (view.status === 'failed' || view.status === 'lost')) {
+      const review = view.details
+      if (
+        view.code === 'REVIEW_REQUIRED' &&
+        isObject(review) &&
+        review.reason === 'EXECUTION_ENVIRONMENT_CHANGED' &&
+        review.flowStarted === false &&
+        Object.keys(review).length === 2
+      ) {
+        const { details: _review, ...rest } = view
+        view = rest
+      }
       const { status: _status, code: _code, message: _message, ...details } = view
       view = details
       if (Object.keys(details).length === 0 && note === '') return

@@ -384,6 +384,53 @@ describe('finite Jig project commands', () => {
     expect(machine.output).toBe(new TextDecoder().decode(canonicalJson(terminal)) + '\n')
   })
 
+  test('stale approval requests review, preserves machine details, and does not imply execution', async () => {
+    const terminal: RootRunTerminal = {
+      status: 'failed',
+      code: 'REVIEW_REQUIRED',
+      message: 'Review required',
+      details: {
+        reason: 'EXECUTION_ENVIRONMENT_CHANGED',
+        flowStarted: false,
+      },
+      diagnostics: { stderr: '', stderrBytes: 0, stderrTruncated: false },
+    }
+    for (const terminalOutput of [true, false]) {
+      const invocation = commandInvocation(fakeHost(fakeSession([], { terminal }), []), {
+        terminalOutput,
+      })
+      expect(await main(['run', 'flow:flows/work'], invocation.options)).toBe(1)
+      expect(invocation.error).toContain('Review required')
+      expect(invocation.error).toContain('Run jig review')
+      expect(invocation.error).toContain('No Flow was started for this Run.')
+      expect(invocation.error).not.toContain('Inspect any effects')
+      expect(invocation.output).toBe(
+        terminalOutput ? '' : new TextDecoder().decode(canonicalJson(terminal)) + '\n',
+      )
+    }
+  })
+
+  test('Flow-controlled error details cannot claim that execution never started', async () => {
+    const terminal: RootRunTerminal = {
+      status: 'failed',
+      code: 'UNAVAILABLE',
+      message: 'Flow failure',
+      details: {
+        code: 'REVIEW_REQUIRED',
+        reason: 'EXECUTION_ENVIRONMENT_CHANGED',
+        flowStarted: false,
+      },
+      diagnostics: { stderr: '', stderrBytes: 0, stderrTruncated: false },
+    }
+    const invocation = commandInvocation(fakeHost(fakeSession([], { terminal }), []), {
+      terminalOutput: true,
+    })
+    expect(await main(['run', 'flow:flows/work'], invocation.options)).toBe(1)
+    expect(invocation.error).not.toContain('No Flow was started')
+    expect(invocation.error).not.toContain('Run jig review')
+    expect(invocation.output).toContain('"details"')
+  })
+
   test('an unexplained terminal failure reports missing evidence without repeating a raw error block', async () => {
     const terminal: RootRunTerminal = {
       status: 'failed',

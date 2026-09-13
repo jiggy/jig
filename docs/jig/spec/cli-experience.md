@@ -67,9 +67,17 @@ makes usable control an observable requirement;
    `+` proposed markers, preserving exact values and container types. Omit
    unchanged fields; additions/removals retain the complete affected value.
    When retained execution or a selected child changes but public target fields
-   do not, explain that fact instead of printing identical before/after blocks.
+   do not, identify the changed execution environment, prepared files, or child
+   selection and explain what approval authorizes. State when source, dependencies,
+   settings and permissions are unchanged. A combined environment fingerprint does
+   not identify individual old components; disclose this limitation rather than
+   inventing a component diff. Never substitute an opaque "retained identity"
+   label or identical before/after blocks for an explanation.
    Object key order alone is not a change; array order remains meaningful.
    Presentation must not hide policy behind truncation, decoration, or a pager.
+   A known mismatch between the current execution environment and the approved
+   recipe must request `jig review`, not become a generic execution failure.
+   Say no Flow started only when the host established a pre-execution refusal.
 7. **Honest completion.** Command success follows required cleanup. Execution
    completion, application outcome, delivery, and cleanup remain separate.
    Cancellation requested is not cancellation complete. Lost work and unknown

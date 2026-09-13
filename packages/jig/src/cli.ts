@@ -1260,6 +1260,12 @@ function renderRunFailure(
     !Array.isArray(terminal.details)
       ? (terminal.details as Record<string, JsonValue>)
       : undefined
+  if (terminal.code === 'REVIEW_REQUIRED')
+    return renderDiagnostic(
+      'REVIEW_REQUIRED',
+      'The current execution environment no longer matches your approval. Jig, its runtime, the selected Agent configuration, or sandbox support has changed.\nNo Flow was started for this Run.\n\nNext step: Run jig review, inspect the changes, and approve the revision before running this target again.',
+      'Review required',
+    )
   if (details?.code === 'RUN_TARGET_NOT_FOUND') {
     const targets = Array.isArray(details.availableTargets)
       ? details.availableTargets

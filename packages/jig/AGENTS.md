@@ -65,13 +65,17 @@ admitted FLOW packages.
   Structured human policy uses the shared syntax highlighter and `JIG_THEME`
   palettes; preserve exact escaped values and never style machine records.
   Review uses contextual field diffs; identity-only target changes need an
-  explicit explanation, never identical previous/proposed blocks. Ignore object
+  concrete explanation of the changed execution environment or prepared files,
+  unchanged policy, and approval consequence, never identical previous/proposed
+  blocks or an unexplained "retained identity" label. Ignore object
   insertion order when comparing review records; preserve array order.
   `cli-run-presentation.ts` owns human Run results and channel streaming. Join
   text fragments exactly, label channel switches and endings, escape controls,
   and preserve separate execution, application, delivery, and cleanup outcomes.
   A generic failure without diagnostics must state the missing evidence; do not
   imply that the Flow never started or repeat an identical raw error block.
+  Render host-only REVIEW_REQUIRED with `jig review` as the next action.
+  Flow-supplied error details cannot establish that execution never started.
 
 - Change implementation, normative specification, schema, README, and tests
   together when a public contract changes.

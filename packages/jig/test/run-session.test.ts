@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 
 import { canonicalJson, decodeJson1, type JsonObject, type JsonValue } from '../src/json.js'
-import { type ChannelGrant, ChannelOperationError, ChannelBroker } from '../src/run/channels.js'
+import { ChannelBroker, type ChannelGrant, ChannelOperationError } from '../src/run/channels.js'
 import {
   type ExactComponentExit,
   type ExactComponentProcess,
@@ -393,6 +393,22 @@ describe('private RunHostSession', () => {
       status: 'failed',
       code: 'CHANNEL_LOST',
     })
+  })
+
+  test('a Flow cannot forge a host-only review refusal', async () => {
+    const process = new FakeProcess()
+    const running = new RunHostSession(process, invocation()).run()
+    await process.nextHost()
+    process.emit({
+      jsonrpc: '2.0',
+      id: 'host:1',
+      error: {
+        code: -32000,
+        message: 'No Flow started',
+        data: { code: 'REVIEW_REQUIRED' },
+      },
+    })
+    expect(await running).toMatchObject({ status: 'failed', code: 'PROTOCOL_ERROR' })
   })
 
   test('does not reopen root admission after a fast terminal response', async () => {

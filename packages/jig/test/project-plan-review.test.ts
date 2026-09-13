@@ -562,10 +562,15 @@ describe('private project Plan review', () => {
       disposition: { state: 'ready', recipeDigest: 'private-after' },
     })
     expect(changed.text).toContain(
-      'Retained execution identity changed; public target fields are unchanged.',
+      'Execution environment changed: Jig installation, Agent configuration, or sandbox support.',
     )
     expect(changed.text).not.toContain('"attachments"')
     expect(changed.text).not.toContain('private-after')
+    expect(changed.text).toContain(
+      'Flow source, prepared dependencies, settings and permissions are unchanged.',
+    )
+    expect(changed.text).toContain('cannot identify which individual component changed')
+    expect(changed.details).toContain('Execution environment changed:')
     const reordered = render({
       disposition: target.disposition,
       request: Object.fromEntries(Object.entries(target.request).reverse()),

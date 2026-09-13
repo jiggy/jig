@@ -62,6 +62,17 @@ export function renderPrivateProjectPlanReview(
       : undefined
   const proposal = {
     changes,
+    executionChanges: Object.fromEntries(
+      changes.targets.changed.map((key) => [
+        key,
+        executionChangeExplanation(
+          review.baseCandidate?.candidate.targets.find(
+            (target) => targetKey(target.request.target) === key,
+          ),
+          plan.proposed.targets.find((target) => targetKey(target.request.target) === key),
+        ),
+      ]),
+    ),
     current,
     proposed,
     ...(agent === undefined ? {} : { proposedHostAgent: agent }),
@@ -106,14 +117,12 @@ export function renderPrivateProjectPlanReview(
     ),
     Object.fromEntries(proposed.targets.map((target) => [targetKey(target.target), target])),
     (key) =>
-      samePolicy(
+      executionChangeExplanation(
         review.baseCandidate?.candidate.targets.find(
           (target) => targetKey(target.request.target) === key,
         ),
         plan.proposed.targets.find((target) => targetKey(target.request.target) === key),
-      )
-        ? 'Selected child execution changed; public target fields are unchanged.'
-        : 'Retained execution identity changed; public target fields are unchanged.',
+      ),
   )
   summary.write('Targets after approval:\n')
   if (proposed.targets.length === 0)
@@ -137,6 +146,39 @@ export function renderPrivateProjectPlanReview(
     text,
     details,
   })
+}
+
+type ReviewedTarget = PrivateActivationReviewPlan['candidate']['candidate']['targets'][number]
+
+function executionChangeExplanation(
+  before: ReviewedTarget | undefined,
+  after: ReviewedTarget | undefined,
+): string {
+  if (samePolicy(before, after))
+    return 'A selected child target changed. Approval authorizes this parent to use the changed child revision described in this review.'
+  if (before?.disposition.state === 'ready' && after?.disposition.state === 'ready') {
+    const reasons: string[] = []
+    if (!samePolicy(before.request, after.request))
+      reasons.push(
+        'The execution request changed; see the package, settings and permission changes in this review.',
+      )
+    if (!samePolicy(before.disposition.execution, after.disposition.execution))
+      reasons.push('Prepared execution files or dependency layout changed.')
+    if (reasons.length === 0) {
+      reasons.push(
+        'Execution environment changed: Jig installation, Agent configuration, or sandbox support.',
+      )
+      reasons.push('Flow source, prepared dependencies, settings and permissions are unchanged.')
+      reasons.push(
+        'The previous approval retains a combined environment fingerprint; it cannot identify which individual component changed.',
+      )
+      reasons.push(
+        'Approval authorizes this target to run with the currently selected execution environment.',
+      )
+    }
+    return reasons.join('\n  ')
+  }
+  return 'Execution availability or its supporting evidence changed. Review the proposed availability and selected environment before approving.'
 }
 
 function writeChanges(

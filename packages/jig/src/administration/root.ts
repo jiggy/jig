@@ -1,4 +1,4 @@
-import { JSON_1_LIMITS, validateJson1, type JsonValue } from '../json.js'
+import { JSON_1_LIMITS, type JsonValue, validateJson1 } from '../json.js'
 import { bindingRef, flowRef, type RunTargetRef } from '../project/author.js'
 
 const DIGEST = /^sha256:[0-9a-f]{64}$/
@@ -30,6 +30,7 @@ export type RootRunFailureCode =
   | 'INVALID_RESULT'
   | 'UNCERTAIN'
   | 'EXECUTION_FAILED'
+  | 'REVIEW_REQUIRED'
   | 'PROTOCOL_ERROR'
   | 'CHANNEL_LOST'
   | 'LAGGED'

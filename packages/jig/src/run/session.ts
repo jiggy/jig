@@ -52,7 +52,12 @@ export type WireFailureCode =
   | 'LAGGED'
   | 'DISCONNECTED'
 
-export type RunHostFailureCode = WireFailureCode | 'PROTOCOL_ERROR' | 'CHANNEL_LOST'
+// Host-only refusal; deliberately absent from the Flow wire failure codes.
+export type RunHostFailureCode =
+  | WireFailureCode
+  | 'PROTOCOL_ERROR'
+  | 'CHANNEL_LOST'
+  | 'REVIEW_REQUIRED'
 
 export interface RunAttachment {
   readonly path: string
