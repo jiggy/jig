@@ -92,162 +92,185 @@ proof('delegated HTTP through contained root and child Runs', () => {
       await rm(root, { recursive: true, force: true })
     }
   }, 90000)
-  test('enforces exact grants outside a keyless Flow, pins policy, and settles cancellation', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'jig-http-proof-'))
-    const seen: { path: string; auth: string | null; method: string; body: string }[] = []
-    const server = Bun.serve({
-      hostname: '127.0.0.1',
-      port: 0,
-      async fetch(request) {
-        const path = new URL(request.url).pathname
-        seen.push({
-          path,
-          auth: request.headers.get('authorization'),
-          method: request.method,
-          body: await request.text(),
-        })
-        if (path === '/wait')
-          return await new Promise<Response>((resolve) =>
-            request.signal.addEventListener('abort', () => resolve(new Response('stopped')), {
-              once: true,
-            }),
-          )
-        if (path === '/redirect')
-          return new Response('moved', { status: 302, headers: { location: '/forbidden' } })
-        if (path === '/echo') return new Response('private-http-test-token')
-        if (path === '/big') return new Response('x'.repeat(2048))
-        return new Response('trusted document')
-      },
-    })
-    const grants = Object.fromEntries(
-      ['document', 'redirect', 'echo', 'big', 'wait'].map((name) => [
-        name,
-        {
-          url: `http://127.0.0.1:${server.port}/${name}`,
-          method: 'POST',
-          bearerEnv: 'HTTP_TEST_TOKEN',
-          responseBytes: 1024,
-          timeoutMs: 20000,
-          bodySchema: {
-            type: 'object',
-            properties: { text: { type: 'string' } },
-            required: ['text'],
-            additionalProperties: false,
+  for (const [scenario, name] of Object.entries({
+    input: 'validates HTTP input and exact root and child grants before dispatch',
+    response: 'isolates HTTP credentials and bounds responses without following redirects',
+    cancellation: 'settles a child HTTP request before closing its parent',
+    policy: 'pins HTTP policy until explicit authority approval',
+  })) {
+    test(name, async () => {
+      const root = await mkdtemp(join(tmpdir(), 'jig-http-proof-'))
+      const seen: { path: string; auth: string | null; method: string; body: string }[] = []
+      const server = Bun.serve({
+        hostname: '127.0.0.1',
+        port: 0,
+        async fetch(request) {
+          const path = new URL(request.url).pathname
+          seen.push({
+            path,
+            auth: request.headers.get('authorization'),
+            method: request.method,
+            body: await request.text(),
+          })
+          if (path === '/wait')
+            return await new Promise<Response>((resolve) =>
+              request.signal.addEventListener('abort', () => resolve(new Response('stopped')), {
+                once: true,
+              }),
+            )
+          if (path === '/redirect')
+            return new Response('moved', { status: 302, headers: { location: '/forbidden' } })
+          if (path === '/echo') return new Response('private-http-test-token')
+          if (path === '/big') return new Response('x'.repeat(2048))
+          return new Response('trusted document')
+        },
+      })
+      const grants = Object.fromEntries(
+        ['document', 'redirect', 'echo', 'big', 'wait'].map((name) => [
+          name,
+          {
+            url: `http://127.0.0.1:${server.port}/${name}`,
+            method: 'POST',
+            bearerEnv: 'HTTP_TEST_TOKEN',
+            responseBytes: 1024,
+            timeoutMs: 20000,
+            bodySchema: {
+              type: 'object',
+              properties: { text: { type: 'string' } },
+              required: ['text'],
+              additionalProperties: false,
+            },
           },
-        },
-      ]),
-    )
-    const environment = {
-      HTTP_TEST_TOKEN: 'private-http-test-token',
-    }
-    let session: Awaited<ReturnType<typeof openPrivateProjectSession>> | undefined
-    try {
-      await fixture(root, grants)
-      const host = await openPrivateInstalledBunHost(installedBunLocation, environment)
-      session = await openPrivateProjectSession({ directory: root, host })
-      const plan = await session.plan({ lockMode: 'update' })
-      expect(plan.state).toBe('applicable')
-      if (plan.state !== 'applicable') throw new Error(JSON.stringify(plan))
-      const review = plan.review
-      expect(JSON.stringify(review)).toContain(`http://127.0.0.1:${server.port}/document`)
-      expect(JSON.stringify(review)).not.toContain('private-http-test-token')
-      await session.apply({ planDigest: plan.planDigest, allowAuthorityChanges: true })
-      let count = 0
-      const start = (input: unknown, id = 'reader') =>
-        session!.rootAdministration.startRun({
-          submissionId: `http-${++count}`,
-          target: { kind: 'binding', id },
-          input: input as never,
-        })
-      const run = async (input: unknown, id?: string) =>
-        terminal(session!.rootAdministration, await start(input, id))
-      const valid = { slot: 'document', body: { text: 'question' } }
-      expect(await run(valid)).toMatchObject({
-        terminal: { status: 'succeeded', output: { status: 200, body: 'trusted document' } },
-      })
-      expect(await run(valid, 'parent')).toMatchObject({
-        terminal: { status: 'succeeded', output: { status: 200, body: 'trusted document' } },
-      })
-      expect(seen).toEqual(
-        [0, 1].map(() => ({
-          path: '/document',
-          method: 'POST',
-          auth: 'Bearer private-http-test-token',
-          body: '{"text":"question"}',
-        })),
+        ]),
       )
-      for (const input of [
-        { ...valid, url: 'http://127.0.0.1/forbidden' },
-        { ...valid, headers: {} },
-        { ...valid, body: { text: 'question', model: 'unapproved' } },
-      ])
-        expect(await run(input)).toMatchObject({
-          terminal: { status: 'failed', code: 'INVALID_INPUT' },
-        })
-      expect(await run({ ...valid, slot: 'not-granted' })).toMatchObject({
-        terminal: { status: 'failed', code: 'UNAVAILABLE' },
-      })
-      expect(seen.length).toBe(2)
-      expect(await run({ probe: true, port: server.port })).toMatchObject({
-        terminal: {
-          status: 'succeeded',
-          output: { token: null, host: false, worker: false, network: false },
-        },
-      })
-      expect(await run({ ...valid, slot: 'redirect' })).toMatchObject({
-        terminal: { status: 'succeeded', output: { status: 302 } },
-      })
-      expect(await run({ ...valid, slot: 'echo' })).toMatchObject({
-        terminal: { status: 'failed', code: 'INVALID_RESULT' },
-      })
-      expect(await run({ ...valid, slot: 'big' })).toMatchObject({
-        terminal: { status: 'failed', code: 'RESOURCE_EXHAUSTED' },
-      })
-      expect(seen.some(({ path }) => path === '/forbidden')).toBe(false)
-      const stopped = await start({ ...valid, slot: 'wait' }, 'parent')
-      await waitUntil(() => seen.some(({ path }) => path === '/wait'))
-      await session.close()
-      session = await openPrivateProjectSession({ directory: root, host })
-      expect(await terminal(session.rootAdministration, stopped)).toMatchObject({
-        terminal: { status: 'failed', code: 'CANCELLED' },
-      })
-      await noOwners(root)
-      await session.close()
-      await writeFile(
-        join(root, 'grants/document.json'),
-        JSON.stringify({ kind: 'http', ...grants.document, responseBytes: 512 }),
-      )
-      session = await openPrivateProjectSession({ directory: root, host })
-      const requestsBefore = seen.length
-      // Source changes propose new authority; the admitted generation continues unchanged.
-      expect(await run(valid)).toMatchObject({ terminal: { status: 'succeeded' } })
-      const revised = await session.plan({ lockMode: 'update' })
-      if (revised.state !== 'applicable') throw new Error('changed HTTP policy cannot be reviewed')
-      expect(revised.review.authorityChanges).toBe(true)
-      await expect(session.apply({ planDigest: revised.planDigest })).rejects.toMatchObject({
-        code: 'AUTHORITY_APPROVAL_REQUIRED',
-      })
-      await session.apply({ planDigest: revised.planDigest, allowAuthorityChanges: true })
-      expect(await run(valid)).toMatchObject({
-        terminal: { status: 'succeeded', output: { status: 200, body: 'trusted document' } },
-      })
-      expect(seen.length).toBe(requestsBefore + 2)
-      await noOwners(root)
-      // Credentials are never persisted in the lock or authority records.
-      expect(await readFile(join(root, 'jig.lock'), 'utf8')).not.toContain(
-        'private-http-test-token',
-      )
-      expect(
-        (await readFile(join(root, '.jig/jig.sqlite3'))).includes(
-          Buffer.from('private-http-test-token'),
-        ),
-      ).toBe(false)
-    } finally {
-      await session?.close()
-      await server.stop(true)
-      await rm(root, { recursive: true, force: true })
-    }
-  }, 180000)
+      const environment = {
+        HTTP_TEST_TOKEN: 'private-http-test-token',
+      }
+      let session: Awaited<ReturnType<typeof openPrivateProjectSession>> | undefined
+      let completed = false
+      try {
+        await fixture(root, grants)
+        const host = await openPrivateInstalledBunHost(installedBunLocation, environment)
+        session = await openPrivateProjectSession({ directory: root, host })
+        const plan = await session.plan({ lockMode: 'update' })
+        expect(plan.state).toBe('applicable')
+        if (plan.state !== 'applicable') throw new Error(JSON.stringify(plan))
+        const review = plan.review
+        expect(JSON.stringify(review)).toContain(`http://127.0.0.1:${server.port}/document`)
+        expect(JSON.stringify(review)).not.toContain('private-http-test-token')
+        await session.apply({ planDigest: plan.planDigest, allowAuthorityChanges: true })
+        let count = 0
+        const start = (input: unknown, id = 'reader') =>
+          session!.rootAdministration.startRun({
+            submissionId: `http-${++count}`,
+            target: { kind: 'binding', id },
+            input: input as never,
+          })
+        const run = async (input: unknown, id?: string) =>
+          terminal(session!.rootAdministration, await start(input, id))
+        const valid = { slot: 'document', body: { text: 'question' } }
+        if (scenario === 'input') {
+          expect(await run(valid)).toMatchObject({
+            terminal: { status: 'succeeded', output: { status: 200, body: 'trusted document' } },
+          })
+          expect(await run(valid, 'parent')).toMatchObject({
+            terminal: { status: 'succeeded', output: { status: 200, body: 'trusted document' } },
+          })
+          expect(seen).toEqual(
+            [0, 1].map(() => ({
+              path: '/document',
+              method: 'POST',
+              auth: 'Bearer private-http-test-token',
+              body: '{"text":"question"}',
+            })),
+          )
+          for (const input of [
+            { ...valid, url: 'http://127.0.0.1/forbidden' },
+            { ...valid, headers: {} },
+            { ...valid, body: { text: 'question', model: 'unapproved' } },
+          ])
+            expect(await run(input)).toMatchObject({
+              terminal: { status: 'failed', code: 'INVALID_INPUT' },
+            })
+          expect(await run({ ...valid, slot: 'not-granted' })).toMatchObject({
+            terminal: { status: 'failed', code: 'UNAVAILABLE' },
+          })
+          expect(seen.length).toBe(2)
+        } else if (scenario === 'response') {
+          expect(await run({ probe: true, port: server.port })).toMatchObject({
+            terminal: {
+              status: 'succeeded',
+              output: { token: null, host: false, worker: false, network: false },
+            },
+          })
+          expect(await run({ ...valid, slot: 'redirect' })).toMatchObject({
+            terminal: { status: 'succeeded', output: { status: 302 } },
+          })
+          expect(await run({ ...valid, slot: 'echo' })).toMatchObject({
+            terminal: { status: 'failed', code: 'INVALID_RESULT' },
+          })
+          expect(await run({ ...valid, slot: 'big' })).toMatchObject({
+            terminal: { status: 'failed', code: 'RESOURCE_EXHAUSTED' },
+          })
+          expect(seen.some(({ path }) => path === '/forbidden')).toBe(false)
+        } else if (scenario === 'cancellation') {
+          const stopped = await start({ ...valid, slot: 'wait' }, 'parent')
+          await waitUntil(() => seen.some(({ path }) => path === '/wait'))
+          await session.close()
+          session = await openPrivateProjectSession({ directory: root, host })
+          expect(await terminal(session.rootAdministration, stopped)).toMatchObject({
+            terminal: { status: 'failed', code: 'CANCELLED' },
+          })
+        } else {
+          expect(await run(valid)).toMatchObject({
+            terminal: { status: 'succeeded', output: { status: 200, body: 'trusted document' } },
+          })
+          await session.close()
+          await writeFile(
+            join(root, 'grants/document.json'),
+            JSON.stringify({ kind: 'http', ...grants.document, responseBytes: 512 }),
+          )
+          session = await openPrivateProjectSession({ directory: root, host })
+          const requestsBefore = seen.length
+          // Source changes propose new authority; the admitted generation continues unchanged.
+          expect(await run(valid)).toMatchObject({ terminal: { status: 'succeeded' } })
+          const revised = await session.plan({ lockMode: 'update' })
+          if (revised.state !== 'applicable')
+            throw new Error('changed HTTP policy cannot be reviewed')
+          expect(revised.review.authorityChanges).toBe(true)
+          await expect(session.apply({ planDigest: revised.planDigest })).rejects.toMatchObject({
+            code: 'AUTHORITY_APPROVAL_REQUIRED',
+          })
+          await session.apply({ planDigest: revised.planDigest, allowAuthorityChanges: true })
+          expect(await run(valid)).toMatchObject({
+            terminal: { status: 'succeeded', output: { status: 200, body: 'trusted document' } },
+          })
+          expect(seen.length).toBe(requestsBefore + 2)
+        }
+        await noOwners(root)
+        // Credentials are never persisted in the lock or authority records.
+        expect(await readFile(join(root, 'jig.lock'), 'utf8')).not.toContain(
+          'private-http-test-token',
+        )
+        expect(
+          (await readFile(join(root, '.jig/jig.sqlite3'))).includes(
+            Buffer.from('private-http-test-token'),
+          ),
+        ).toBe(false)
+        await session.close()
+        session = undefined
+        completed = true
+      } finally {
+        try {
+          await session?.close()
+        } finally {
+          await server.stop(true)
+          if (completed) await rm(root, { recursive: true, force: true })
+          else console.error(`Retained HTTP fixture: ${root}`)
+        }
+      }
+    }, 180000)
+  }
 })
 
 async function fixture(root: string, grants: Record<string, unknown>) {
