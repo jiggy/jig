@@ -52,7 +52,7 @@ test('HTTP and malformed replies remain failures, without echoing provider data'
     response(null),
     response('x', 'tool_calls'),
     response('x', null),
-    response('x', 'stop', { tool_calls: [] }),
+    response('x', 'stop', { tool_calls: [{ id: 'call', type: 'function' }] }),
     response(['not text']),
     { outcome: 'done', output: { status: 200, body: '{"choices":[],"choices":[]}' } },
     { outcome: 'done', output: { status: 200, body: 'not json' } },
@@ -61,6 +61,7 @@ test('HTTP and malformed replies remain failures, without echoing provider data'
 })
 
 test('complete answers, refusals and exhausted completions retain distinct outcomes', () => {
+  expect(chatResult(response('Answer.', 'stop', { tool_calls: [] })).output.text).toBe('Answer.')
   expect(finishAgent(prepared, chatResult(response()))).toEqual({
     outcome: 'done',
     output: { text: 'Answer.' },

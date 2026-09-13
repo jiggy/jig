@@ -71,7 +71,9 @@ export function chatResult(result: unknown): ExchangeResult {
   if (
     choice?.index !== 0 ||
     message?.role !== 'assistant' ||
-    (message.tool_calls !== undefined && message.tool_calls !== null) ||
+    (message.tool_calls !== undefined &&
+      message.tool_calls !== null &&
+      !(Array.isArray(message.tool_calls) && message.tool_calls.length === 0)) ||
     (message.function_call !== undefined && message.function_call !== null)
   )
     return invalid('Agent returned an unsupported message or tool request')
