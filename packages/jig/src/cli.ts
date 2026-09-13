@@ -3,7 +3,7 @@
 import { randomBytes } from 'node:crypto'
 import { lstat } from 'node:fs/promises'
 import { basename, resolve } from 'node:path'
-import { createInterface } from 'node:readline/promises'
+import { createInterface } from 'node:readline'
 import { setTimeout as delay } from 'node:timers/promises'
 import manifest from '../package.json' with { type: 'json' }
 import { ProjectAdministrationError, type ProjectSession } from './administration/project.js'
@@ -26,6 +26,7 @@ import {
 } from './internal/activation-admission-store.js'
 import { CheckError } from './diagnostics.js'
 import type { PrivateDeliveryConnection, PrivateDeliveryReceipt } from './internal/file-delivery.js'
+import type { PrivateAgentChoice } from './internal/installed-bun-host.js'
 import {
   PrivateFileInputError,
   privateAttachmentName,
@@ -108,7 +109,7 @@ Examples:
 
 Resolution can contact dependency-selected public or private-network services
 before graph validation. Requests cannot be undone by declining approval.
---yes does not grant resolution networking. Runs gain no network access.
+When an Agent is needed and none is selected, interactive review asks you to\nchoose and remembers the client locally. For scripts, set JIG_AGENT_CLIENT to\ncodex, claude, pi, or api. --yes approves changes; it does not choose an Agent.\n--yes does not grant resolution networking. Runs gain no network access.
 Supplied locks stay frozen; stale locks must be updated explicitly.`,
   run: `Usage: jig run <flow:path|binding:id> [options]
 
@@ -157,6 +158,10 @@ export interface PrivateCliCommandHost {
       readonly onResolution?: (packagePath: string) => void
       readonly onNotice?: (text: string) => void
       readonly onStage?: (stage: string) => void
+      readonly chooseAgent?: (
+        choices: readonly PrivateAgentChoice[],
+        signal: AbortSignal,
+      ) => Promise<string | undefined>
     },
   ): Promise<ProjectSession>
   readonly delivery?: PrivateDeliveryConnection
@@ -172,6 +177,7 @@ export interface PrivateCliOptions {
   readonly interactive?: boolean
   readonly terminalOutput?: boolean
   readonly confirm?: (prompt: string, signal?: AbortSignal) => Promise<boolean>
+  readonly answer?: (prompt: string, signal?: AbortSignal) => Promise<string>
   readonly writeOutput?: (text: string) => void
   readonly writeRecord?: (text: string) => Promise<void>
   readonly writeError?: (text: string) => void
@@ -189,6 +195,7 @@ interface CliRuntime {
   readonly signal?: AbortSignal
   readonly interactive: boolean
   readonly confirm: (prompt: string, signal?: AbortSignal) => Promise<boolean>
+  readonly answer: (prompt: string, signal?: AbortSignal) => Promise<string>
   readonly writeOutput: (text: string) => void
   readonly writeRecord: (text: string) => Promise<void>
   readonly writeError: (text: string) => void
@@ -423,15 +430,49 @@ async function executeReview(arguments_: readonly string[], runtime: CliRuntime)
       runtime.progress.complete()
       return 0
     },
-    parsed.allowResolutionNetwork
-      ? {
-          allowResolutionNetwork: true,
-          onResolution: (path) =>
-            runtime.writeNotice(
-              `Warning: Dependency network access allowed\n\n  Package: ${asciiJsonString(path)}\n  Scope: This review only; Runs gain no network access.\n  Bun may contact dependency-selected public or private-network services\n  before graph validation. Requests cannot be undone; unsupported\n  dependencies may still fail.\n\n`,
-            ),
-        }
-      : undefined,
+    {
+      ...(runtime.interactive
+        ? {
+            chooseAgent: async (choices: readonly PrivateAgentChoice[], signal: AbortSignal) => {
+              const available = choices.filter((choice) => choice.unavailable === undefined)
+              runtime.writeOutput(
+                `Choose an Agent for this project\n\nThe choice is remembered locally. Approval remains a separate step.\nSome Flows need live Agent updates. Their declarations do not establish\nthat requirement; API clients support only the final result.\n\n${choices
+                  .filter((choice) => choice.unavailable !== undefined)
+                  .map((choice) => `  Unavailable: ${choice.label}\n    ${choice.unavailable}`)
+                  .join(
+                    '\n',
+                  )}\n\nAvailable clients:\n${available.length === 0 ? '  None. Configure a client above, then retry jig review.' : available.map((choice, index) => `  ${index + 1}. ${choice.label}`).join('\n')}\n\n`,
+              )
+              if (available.length === 0) return undefined
+              while (true) {
+                const answer = (
+                  await runtime.answer('Agent number (Enter to cancel): ', signal)
+                ).trim()
+                if (answer === '') return undefined
+                const selected = /^[1-9][0-9]*$/.test(answer)
+                  ? available[Number(answer) - 1]
+                  : undefined
+                if (selected !== undefined) {
+                  runtime.progress.stage('Capturing source and preparing dependencies')
+                  return selected.id
+                }
+                runtime.writeOutput(
+                  `Enter a number from 1 to ${available.length}, or press Enter to cancel.\n`,
+                )
+              }
+            },
+          }
+        : {}),
+      ...(parsed.allowResolutionNetwork
+        ? {
+            allowResolutionNetwork: true,
+            onResolution: (path) =>
+              runtime.writeNotice(
+                `Warning: Dependency network access allowed\n\n  Package: ${asciiJsonString(path)}\n  Scope: This review only; Runs gain no network access.\n  Bun may contact dependency-selected public or private-network services\n  before graph validation. Requests cannot be undone; unsupported\n  dependencies may still fail.\n\n`,
+              ),
+          }
+        : {}),
+    },
   )
   runtime.signal?.throwIfAborted()
   if (result === 0)
@@ -1072,6 +1113,7 @@ function cliRuntime(options: PrivateCliOptions): CliRuntime {
     interactive:
       options.interactive ?? (process.stdin.isTTY === true && process.stdout.isTTY === true),
     confirm: options.confirm ?? terminalConfirmation,
+    answer: options.answer ?? terminalAnswer,
     writeRecord: async (text) => {
       progress.pause()
       if (options.writeRecord) await options.writeRecord(text)
@@ -1112,19 +1154,30 @@ const unavailableHost: PrivateCliCommandHost = {
 }
 
 async function terminalConfirmation(prompt: string, signal?: AbortSignal): Promise<boolean> {
-  // A yes/no prompt needs a line, not readline's raw-mode cursor editor.
-  // Keep approval usable on plain terminals without emitting control sequences.
+  return /^(?:y|yes)$/i.test((await terminalAnswer(prompt, signal)).trim())
+}
+
+async function terminalAnswer(prompt: string, signal?: AbortSignal): Promise<string> {
+  signal?.throwIfAborted()
   const terminal = createInterface({
     input: process.stdin,
     output: process.stdout,
+    // Line prompts need no raw-mode cursor editor, including on plain terminals.
     terminal: false,
   })
   try {
-    const answer =
-      signal === undefined
-        ? await terminal.question(prompt)
-        : await terminal.question(prompt, { signal })
-    return /^(?:y|yes)$/i.test(answer.trim())
+    return await new Promise<string>((resolve, reject) => {
+      const abort = () => {
+        reject(signal?.reason)
+        terminal.close()
+      }
+      terminal.once('close', () => {
+        signal?.removeEventListener('abort', abort)
+        resolve('')
+      })
+      signal?.addEventListener('abort', abort, { once: true })
+      terminal.question(prompt, resolve)
+    })
   } finally {
     terminal.close()
   }

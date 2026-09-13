@@ -16,8 +16,9 @@ use-case and orchestration hypotheses.
 - `index.md` and `guide/` teach implemented behavior and recommended practice,
   with installation prerequisites centralized in `guide/index.md`. Describe
   current behavior, not comparisons with superseded alpha releases.
-- `guide/agents.md` owns operator Agent setup and current adapter limitations;
-  its first-method walkthrough extends the ordinary greeting project with a
+- `guide/agents.md` owns guided Agent selection, operator-local preferences,
+  explicit automation setup, and current adapter limitations;
+  Its first-method walkthrough extends the ordinary greeting project with a
   bounded support-reply draft, not an example-only installation path.
   `guide/dependencies.md` owns package dependency preparation guidance.
 - `guide/channels.md` teaches application-owned live progress and subprocess

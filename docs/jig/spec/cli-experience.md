@@ -81,6 +81,13 @@ makes usable control an observable requirement;
    A known mismatch between the current execution environment and the approved
    recipe must request `jig review`, not become a generic execution failure.
    Say no Flow started only when the host established a pre-execution refusal.
+   Agent selection follows [Agent Run](agent-run.md#alpha-host-implementations):
+   prompt only for Agent-using projects without explicit or remembered selection.
+   Number only available choices, explain unavailable clients, distinguish final
+   results from live updates, and state the limits of compatibility checks.
+   Keep selectable options adjacent to the prompt, after exclusion explanations.
+   Suspend progress before input. Empty input, EOF and interruption choose nothing;
+   `--yes` never selects a client. Remembering a client does not approve execution.
 7. **Honest completion.** Command success follows required cleanup. Execution
    completion, application outcome, delivery, and cleanup remain separate.
    Cancellation requested is not cancellation complete. Lost work and unknown

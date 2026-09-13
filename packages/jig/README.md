@@ -63,6 +63,12 @@ as `blocked` is not task success even when execution completed correctly.
 Use `jig <command> --help` for focused help and `jig --version` for the installed
 version.
 
+For projects that use an Agent, interactive `jig review` asks you to choose a
+locally available client and remembers the choice for this project. Credentials
+alone do not select a provider. Scripts can set `JIG_AGENT_CLIENT` to `codex`,
+`claude`, `pi`, or `api`; `--yes` approves changes without choosing a client.
+The menu distinguishes native live updates from API final results.
+
 Native Codex, Claude Code, and Pi clients are discovered on the operator's
 `PATH`. Absolute `CODEX_PATH`, `CLAUDE_PATH`, and `PI_PATH` overrides select a
 specific installation. Review shows the resolved executable; project-local

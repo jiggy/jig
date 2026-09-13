@@ -12,7 +12,7 @@ import { installedBunLocation } from './fixtures/installed-bun-location.js'
 
 describe('fixed installed Bun support', () => {
   test.each([
-    [{}, 'export OPENROUTER_API_KEY and OPENROUTER_MODEL, or OPENAI_API_KEY and OPENAI_MODEL'],
+    [{}, 'no Agent client is selected'],
     [{ OPENAI_API_KEY: 'not-a-real-credential' }, 'export OPENAI_MODEL'],
     [
       {
@@ -36,7 +36,7 @@ describe('fixed installed Bun support', () => {
     ],
     [
       { JIG_AGENT_CLIENT: 'invalid-private-value' },
-      'JIG_AGENT_CLIENT must be codex, claude, or pi',
+      'JIG_AGENT_CLIENT must be codex, claude, pi, or api',
     ],
     [{ OPENROUTER_API_KEY: 'not-a-real-credential' }, 'export OPENROUTER_MODEL'],
     [
@@ -51,7 +51,12 @@ describe('fixed installed Bun support', () => {
   ] as const)(
     'keeps configuration failures target-scoped and safe to explain: %j',
     async (environment, hint) => {
-      const host = await openPrivateInstalledBunHost(installedBunLocation, environment)
+      const host = await openPrivateInstalledBunHost(installedBunLocation, {
+        ...(Object.keys(environment).some((key) => key.startsWith('OPEN'))
+          ? { JIG_AGENT_CLIENT: 'api' }
+          : {}),
+        ...environment,
+      })
       expect(host.agentProvider).toBeUndefined()
       expect(host.agentUnavailableHint).toContain(hint)
       expect(host.agentUnavailableHint).not.toContain('not-a-real-credential')
@@ -62,10 +67,12 @@ describe('fixed installed Bun support', () => {
 
   test('accepts natural OpenRouter variables as one fixed compatible endpoint', async () => {
     const host = await openPrivateInstalledBunHost(installedBunLocation, {
+      JIG_AGENT_CLIENT: 'api',
       OPENROUTER_API_KEY: 'not-a-real-credential',
       OPENROUTER_MODEL: 'provider/test-model',
     })
     const explicit = await openPrivateInstalledBunHost(installedBunLocation, {
+      JIG_AGENT_CLIENT: 'api',
       OPENAI_API: 'chat-completions',
       OPENAI_API_KEY: 'other-private-credential',
       OPENAI_BASE_URL: 'https://openrouter.ai/api/v1',

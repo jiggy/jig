@@ -83,7 +83,7 @@ export function privateCliHumanText(
     .split('\n')
     .map((line) => {
       const section =
-        /^(Run output:|Approval environment matches|Approval validity not checked|No approved revision|Selected Agent:|Host Agent selected|Packages \(|Bindings \(|Run targets \(|Targets after approval:|Review changes|Jig project|Warning:|Error:|Review could not finish|Run failed|Execution lost|Project ready|Created |Execution completed|Approval required|Review required|Review declined|Command interrupted|Run cancelled|Waiting for your approval)/.test(
+        /^(Choose an Agent|Run output:|Approval environment matches|Approval validity not checked|No approved revision|Selected Agent:|Host Agent selected|Packages \(|Bindings \(|Run targets \(|Targets after approval:|Review changes|Jig project|Warning:|Error:|Review could not finish|Run failed|Execution lost|Project ready|Created |Execution completed|Approval required|Review required|Review declined|Command interrupted|Run cancelled|Waiting for your approval)/.test(
           line,
         )
       const wrapped = wrapHumanLine(line, columns)

@@ -79,11 +79,43 @@ test('real confirmation accepts a line without cursor control on a plain termina
     expect(answered).toBe(true)
     expect(output).toContain('APPLIED\nCLOSED\n')
     expect(output).toContain('Project ready')
-    expect(output + (await stderr)).not.toMatch(/[\u001b\u009b]/)
+    const combined = output + (await stderr)
+    expect(combined).not.toContain('\u001b')
+    expect(combined).not.toContain('\u009b')
   } finally {
     clearTimeout(timeout)
     child.kill()
     await child.exited
+  }
+}, 10_000)
+
+test('terminal approval treats EOF as declining and emits no plain-mode cursor controls', async () => {
+  const script = `
+    import { main } from ${JSON.stringify(cli)};
+    process.exitCode = await main(['review'], {
+      interactive: true,
+      host: { acquire: async () => ({
+        plan: async () => ({ state: 'applicable', operation: 'admission', planDigest: 'sha256:' + 'a'.repeat(64), review: { text: 'Review changes before approval\\n', details: '', mediaType: 'text/plain; charset=utf-8' } }),
+        apply: async () => { throw new Error('EOF must never approve') },
+        close: async () => {},
+      }) },
+    });
+  `
+  const child = Bun.spawn([process.execPath, '--eval', script], {
+    env: { ...process.env, NO_COLOR: '1' },
+    stdin: 'ignore',
+    stdout: 'pipe',
+    stderr: 'pipe',
+  })
+  try {
+    expect(await child.exited).toBe(1)
+    const output = await new Response(child.stdout).text()
+    const error = await new Response(child.stderr).text()
+    expect(output).toContain('Approve this exact revision')
+    expect(error).toContain('JIG_CHANGES_DECLINED')
+    expect(output + error).not.toContain('\u001b')
+  } finally {
+    child.kill()
   }
 }, 10_000)
 
@@ -1651,6 +1683,71 @@ describe('finite Jig project commands', () => {
     expect(invocation.error).toContain('export OPENAI_MODEL before jig review')
     expect(invocation.error).not.toContain('private-secret')
   })
+
+  test.each([true, false])(
+    'Agent chooser preserves approval and filters unavailable options (interactive=%s)',
+    async (interactive) => {
+      const events: string[] = []
+      const answers = ['99', '1']
+      let chosen: string | undefined
+      const session = fakeSession(events, {
+        plan: {
+          state: 'applicable',
+          operation: 'admission',
+          planDigest: digest,
+          review: {
+            mediaType: 'text/plain; charset=utf-8',
+            text: 'review\n',
+            details: 'details\n',
+          },
+        },
+      })
+      const invocation = commandInvocation({
+        async acquire(_project, options) {
+          return {
+            ...session,
+            async plan(request) {
+              if (interactive) {
+                expect(options?.chooseAgent).toBeDefined()
+                chosen = await options!.chooseAgent!(
+                  [
+                    { id: 'codex', label: 'Codex — final result and live updates' },
+                    {
+                      id: 'api',
+                      label: 'API endpoint — final result only',
+                      unavailable: 'Configure API credentials first',
+                    },
+                  ],
+                  new AbortController().signal,
+                )
+              } else expect(options?.chooseAgent).toBeUndefined()
+              return session.plan(request)
+            },
+          }
+        },
+      })
+      expect(
+        await main(['review', '--yes'], {
+          ...invocation.options,
+          interactive,
+          answer: async () => answers.shift()!,
+        }),
+      ).toBe(0)
+      if (interactive) {
+        expect(chosen).toBe('codex')
+        expect(invocation.output).toContain('1. Codex')
+        expect(invocation.output).not.toContain('2. API')
+        expect(invocation.output).toContain('Unavailable: API')
+        expect(invocation.output.indexOf('Available clients:')).toBeGreaterThan(
+          invocation.output.indexOf('Unavailable: API'),
+        )
+        expect(invocation.output).toContain('Enter a number from 1 to 1')
+        expect(invocation.output).toContain('Approval remains a separate step')
+      } else expect(invocation.output).not.toContain('Choose an Agent')
+      expect(events).toContain(`apply:${digest}`)
+      expect(events.at(-1)).toBe('close')
+    },
+  )
 
   interface FakeSessionOptions {
     readonly plan?: ProjectPlanResult

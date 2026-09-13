@@ -235,8 +235,35 @@ Every implementation below serves the same Agent Run contract. A Flow cannot
 select a client, endpoint, model, executable, or credential. Those are trusted
 host configuration used by both `jig review` and `jig run`.
 
-With `JIG_AGENT_CLIENT` unset, Jig uses the official OpenAI JavaScript SDK for
-one direct API call. For any compatible endpoint, the operator may supply:
+The installed CLI selects the Agent in this order: an explicit
+`JIG_AGENT_CLIENT` (`codex`, `claude`, `pi`, or `api`), then the operator's
+remembered choice for the canonical project directory. Credentials alone
+never select a client. With neither selection, interactive `jig review`
+prompts only when a captured target uses Agent Run, before dependency
+preparation. Unavailable clients are explained but cannot be selected.
+An empty answer, end of input, or interruption does not select a default.
+Noninteractive review requires an explicit or remembered choice; `--yes`
+authorizes approval, not client selection. Run and recovery never prompt.
+
+The chooser checks local configuration and runtime support without issuing
+model requests. It distinguishes native live updates from API final results;
+it does not claim remote readiness. Existing Agent Run declarations make
+updates optional and do not establish whether Flow code will request them.
+Do not infer that requirement from code text or an application output channel.
+No additional Flow metadata or authoring interface is required for selection.
+
+A prompted choice is remembered immediately as operator preference, separately
+from approval. The installed CLI stores only the client name under
+`$XDG_STATE_HOME/jig/agent-choices` (default `~/.local/state/jig/agent-choices`),
+keyed by canonical project directory. State must be operator-owned and outside
+the project; credentials, model configuration and consent are not stored there.
+A failed or declined review can leave this preference, but cannot grant Run
+authority. Explicit selection overrides the preference without rewriting it.
+A missing or invalid selected client never silently falls back to another.
+Changing provider identity still requires ordinary review.
+
+Selecting `api` uses the official OpenAI JavaScript SDK for one direct API
+call. For any compatible endpoint, the operator may supply:
 
 | Variable | Meaning |
 | --- | --- |
@@ -261,7 +288,7 @@ variables with `OPENAI_API=chat-completions`. Compatible endpoints do not create
 a separate provider object or default model.
 
 As a convenience for OpenRouter's fixed endpoint, Jig also accepts the natural
-`OPENROUTER_API_KEY` and `OPENROUTER_MODEL` pair. It selects
+`OPENROUTER_API_KEY` and `OPENROUTER_MODEL` pair after selecting `api`. It selects
 `https://openrouter.ai/api/v1` using Chat Completions. Combining that pair with
 `OPENAI_*` is ambiguous and unavailable. The natural names and the equivalent
 generic endpoint configuration produce the same reviewed provider identity.

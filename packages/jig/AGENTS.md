@@ -89,6 +89,12 @@ admitted FLOW packages.
   Render host-only REVIEW_REQUIRED with `jig review` as the next action.
   Flow-supplied error details cannot establish that execution never started.
 
+- Agent choice is guided, never inferred from credentials or a preferred vendor.
+  Interactive review prompts only for captured targets using Agent Run, before
+  dependency preparation; explicit selection overrides operator-local preference.
+  Keep selection distinct from approval, preserve noninteractive operation, and
+  disclose final-only API support without inferring runtime requirements from code.
+
 - Change implementation, normative specification, schema, README, and tests
   together when a public contract changes.
 - Keep fault-injection seams private.

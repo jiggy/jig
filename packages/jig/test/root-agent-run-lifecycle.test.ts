@@ -198,6 +198,7 @@ globalThis.fetch = (url, init) => {
             OPENAI_API: 'responses',
             OPENAI_BASE_URL: 'https://repair-proof.invalid/v1',
             OPENAI_MODEL: 'local-fixed-response',
+            JIG_AGENT_CLIENT: 'api',
             OPENAI_API_KEY: 'synthetic-no-remote-credential',
           })
           let stdout = '',
@@ -611,6 +612,7 @@ proofDescribe('private contained Agent Run lifecycle', () => {
             OPENAI_API: 'responses',
             OPENAI_BASE_URL: 'https://skill-proof.invalid/v1',
             OPENAI_MODEL: 'local-recording-fixture',
+            JIG_AGENT_CLIENT: 'api',
             OPENAI_API_KEY: 'synthetic-unused-credential',
           }),
         })
@@ -953,6 +955,7 @@ proofDescribe('private contained Agent Run lifecycle', () => {
           const location = await writeInstalledFixture(releaseRoot)
           await writeProject(root)
           if (nested) await writeSpecialistParent(root)
+          environment.JIG_AGENT_CLIENT = 'api'
           environment.OPENAI_API_KEY = key
           environment.OPENAI_MODEL = 'provider/test-model'
 

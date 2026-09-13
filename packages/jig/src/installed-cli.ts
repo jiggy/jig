@@ -106,13 +106,15 @@ async function runPrivateInstalledCli(
         executablePath,
         installedCliPath,
       })
-      let agentUnavailableHint: string | undefined
+      let selectedHost: Awaited<ReturnType<typeof openPrivateInstalledBunHost>> | undefined
       if (recovery !== undefined) {
         delete process.env.JIG_PRIVATE_FILE_RECOVERY
         const installedHost = await openPrivateInstalledBunHost(
           location,
           operatorEnvironment,
           recovery.project,
+          undefined,
+          { remember: false },
         )
         const terminal = await recoverPrivateCheckpointRun(recovery, installedHost)
         process.stdout.write(`${Buffer.from(canonicalJson(publicTerminal(terminal))).toString()}\n`)
@@ -121,7 +123,7 @@ async function runPrivateInstalledCli(
       const host: PrivateCliCommandHost = Object.freeze({
         ...(delivery === undefined ? {} : { delivery }),
         get agentUnavailableHint() {
-          return agentUnavailableHint
+          return selectedHost?.agentUnavailableHint
         },
         acquire: async (
           project: string,
@@ -132,19 +134,45 @@ async function runPrivateInstalledCli(
             operatorEnvironment,
             project,
             options?.onStage,
+            {
+              remember: arguments_[0] === 'review',
+              ...(options?.chooseAgent === undefined ? {} : { choose: options.chooseAgent }),
+            },
           )
-          agentUnavailableHint = installedHost.agentUnavailableHint
-          if (arguments_[0] === 'review' && installedHost.agentExecutable !== undefined) {
+          selectedHost = installedHost
+          const noticeAgent = () => {
+            if (arguments_[0] !== 'review') return
             const selected = installedHost.agentExecutable
-            options?.onNotice?.(
-              `Selected Agent:\n\n  Client: ${selected.client}\n  Executable: ${JSON.stringify(selected.path).replace(/[\u007f-\uffff]/g, (value) => `\\u${value.charCodeAt(0).toString(16).padStart(4, '0')}`)}\n\n`,
-            )
+            const provider = installedHost.agentProvider
+            const quote = (value: string) =>
+              JSON.stringify(value).replace(
+                /[\u007f-\uffff]/g,
+                (value) => `\\u${value.charCodeAt(0).toString(16).padStart(4, '0')}`,
+              )
+            if (selected !== undefined)
+              options?.onNotice?.(
+                `Selected Agent:\n\n  Client: ${selected.client}\n  Executable: ${quote(selected.path)}\n\n`,
+              )
+            else if (provider?.kind === 'private-openai-agent-provider/1')
+              options?.onNotice?.(
+                `Selected Agent:\n\n  Client: API endpoint (final result only)\n  Endpoint: ${quote(provider.baseURL)}\n  Model: ${quote(provider.model)}\n\n`,
+              )
           }
+          noticeAgent()
           options?.onStage?.('Opening project state and checking recovery')
           return openPrivateProjectSession({
             directory: project,
             host: Object.freeze({
               ...installedHost,
+              get agentProvider() {
+                return installedHost.agentProvider
+              },
+              prepareAgent: async (signal: AbortSignal) => {
+                const previous = installedHost.agentProvider
+                const provider = await installedHost.prepareAgent?.(signal)
+                if (provider !== previous) noticeAgent()
+                return provider
+              },
               ...(options?.runTimeoutMs === undefined
                 ? {}
                 : { runTimeoutMs: options.runTimeoutMs }),

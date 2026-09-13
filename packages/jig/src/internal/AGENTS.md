@@ -73,6 +73,16 @@ child calls, project commands, and Agent providers.
   installation, not a parallel Jig resolver.
 - Provider credentials are host configuration and must not enter Flow input,
   project state, artifacts, diagnostics, or unrelated provider processes.
+- Installed Agent selection accepts explicit codex/claude/pi/api, then an
+  operator-local remembered client. Credentials never select implicitly.
+  `operator-agent-choice.ts` stores only a closed client name, keyed by canonical
+  project path, outside project source in owner-only state. Reject unsafe files;
+  preference is neither approval nor provider authentication. Review may acquire
+  a missing provider after captured capability inspection, before preparation;
+  Run/recovery never prompt or replace a missing selected provider. The chooser
+  verifies local candidates without dispatching model work. Optional channel
+  declarations cannot prove mandatory runtime Agent streaming; do not scan code
+  or add duplicate requirements just to filter clients.
 - Native Codex subscription access comes from the current operator's
   file-backed Codex login. Project only its short-lived bearer; never embed a
   development login, retain its refresh token, mount `CODEX_HOME`, or expose a

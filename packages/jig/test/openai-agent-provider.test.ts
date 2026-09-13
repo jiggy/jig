@@ -78,6 +78,7 @@ describe('private OpenAI Agent provider', () => {
 
   test('selects the same generic configuration in the installed host', async () => {
     const host = await openPrivateInstalledBunHost(installedBunLocation, {
+      JIG_AGENT_CLIENT: 'api',
       OPENAI_API_KEY: 'gateway-secret',
       OPENAI_MODEL: 'gateway/model',
       OPENAI_BASE_URL: 'https://gateway.example/v1',

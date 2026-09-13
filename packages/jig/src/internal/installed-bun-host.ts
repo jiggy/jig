@@ -19,16 +19,23 @@ import {
   openPrivateOpenAIAgentProvider,
   PrivateAgentConfigurationError,
 } from './openai-agent-provider.js'
+import { readPrivateAgentChoice, writePrivateAgentChoice } from './operator-agent-choice.js'
 import { openPrivatePiAgentProvider } from './pi-agent-provider.js'
 import type { PrivateProjectSessionHost } from './project-session-controller.js'
 import { PRIVATE_DEFAULT_ROOT_RUN_TIMEOUT_MS } from './root-run-timeout-policy.js'
 
 const AGENT_CLIENT = 'JIG_AGENT_CLIENT'
 const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1'
+export interface PrivateAgentChoice {
+  readonly id: string
+  readonly label: string
+  readonly unavailable?: string
+}
+
 interface AgentSelection {
   readonly agentProvider?: PrivateProjectSessionHost['agentProvider']
-  readonly agentUnavailableHint?: string
-  readonly agentExecutable?: { readonly client: string; readonly path: string }
+  readonly agentUnavailableHint?: string | undefined
+  readonly agentExecutable?: { readonly client: string; readonly path: string } | undefined
 }
 
 /** Read-only, command-local inspection. Never opens project state or a session. */
@@ -77,15 +84,31 @@ export async function openPrivateInstalledBunHost(
   environment: Readonly<Record<string, string | undefined>> = process.env,
   projectDirectory: string = process.cwd(),
   onStage?: (stage: string) => void,
+  selection?: {
+    readonly choose?: (
+      choices: readonly PrivateAgentChoice[],
+      signal: AbortSignal,
+    ) => Promise<string | undefined>
+    readonly remember: boolean
+  },
 ): Promise<PrivateProjectSessionHost & AgentSelection> {
-  const operatorEnvironment = Object.freeze({ ...environment })
+  let operatorEnvironment = Object.freeze({ ...environment })
+  let preferenceFailure = false
+  if (selection !== undefined && operatorEnvironment.JIG_AGENT_CLIENT === undefined) {
+    try {
+      const remembered = await readPrivateAgentChoice(operatorEnvironment, projectDirectory)
+      if (remembered !== undefined)
+        operatorEnvironment = Object.freeze({
+          ...operatorEnvironment,
+          JIG_AGENT_CLIENT: remembered,
+        })
+    } catch {
+      preferenceFailure = true
+    }
+  }
   const installedBunSupport = await openPrivateInstalledBunSupport(location)
   onStage?.('Verifying Agent configuration and runtime')
-  const agent = await tryOpenAgentProvider(
-    installedBunSupport,
-    operatorEnvironment,
-    projectDirectory,
-  )
+  let agent = await tryOpenAgentProvider(installedBunSupport, operatorEnvironment, projectDirectory)
   return Object.freeze({
     backend: new PrivateLinuxCgroupBackend({
       bunPath: installedBunSupport.executablePath,
@@ -94,7 +117,82 @@ export async function openPrivateInstalledBunHost(
     }),
     installedBunSupport,
     runTimeoutMs: PRIVATE_DEFAULT_ROOT_RUN_TIMEOUT_MS,
-    ...agent,
+    get agentProvider() {
+      return agent.agentProvider
+    },
+    get agentUnavailableHint() {
+      return agent.agentUnavailableHint
+    },
+    get agentExecutable() {
+      return agent.agentExecutable
+    },
+    async prepareAgent(signal: AbortSignal) {
+      if (preferenceFailure) {
+        agent = {
+          agentUnavailableHint:
+            'the saved Agent choice could not be read safely; set JIG_AGENT_CLIENT=codex, claude, pi, or api explicitly and retry jig review',
+        }
+        return undefined
+      }
+      if (
+        agent.agentProvider !== undefined ||
+        operatorEnvironment.JIG_AGENT_CLIENT !== undefined ||
+        selection?.choose === undefined
+      )
+        return agent.agentProvider
+      const candidates: { choice: PrivateAgentChoice; opened: AgentSelection }[] = []
+      for (const id of ['codex', 'claude', 'pi', 'api']) {
+        signal.throwIfAborted()
+        const opened = await tryOpenAgentProvider(
+          installedBunSupport,
+          { ...operatorEnvironment, JIG_AGENT_CLIENT: id },
+          projectDirectory,
+        )
+        const label =
+          id === 'api'
+            ? 'API endpoint — final result only'
+            : `${id === 'codex' ? 'Codex' : id === 'claude' ? 'Claude Code' : 'Pi'} — final result and live updates`
+        candidates.push({
+          choice: {
+            id,
+            label,
+            ...(opened.agentProvider === undefined
+              ? { unavailable: opened.agentUnavailableHint ?? 'Client unavailable' }
+              : {}),
+          },
+          opened,
+        })
+      }
+      signal.throwIfAborted()
+      const chosen = await selection.choose(
+        candidates.map(({ choice }) => choice),
+        signal,
+      )
+      signal.throwIfAborted()
+      const candidate = candidates.find(
+        ({ choice, opened }) => choice.id === chosen && opened.agentProvider !== undefined,
+      )
+      if (candidate === undefined) {
+        agent = {
+          agentUnavailableHint:
+            'no Agent was selected; run jig review in a terminal to choose, or set JIG_AGENT_CLIENT=codex, claude, pi, or api explicitly',
+        }
+        return undefined
+      }
+      if (selection.remember) {
+        try {
+          await writePrivateAgentChoice(operatorEnvironment, projectDirectory, candidate.choice.id)
+        } catch {
+          agent = {
+            agentUnavailableHint:
+              'the Agent choice could not be saved safely; set JIG_AGENT_CLIENT=codex, claude, pi, or api explicitly and retry jig review',
+          }
+          return undefined
+        }
+      }
+      agent = candidate.opened
+      return agent.agentProvider
+    },
   })
 }
 
@@ -104,14 +202,18 @@ async function tryOpenAgentProvider(
   projectDirectory: string,
 ): Promise<AgentSelection> {
   const client = environment[AGENT_CLIENT]
-  if (client !== undefined && !['codex', 'claude', 'pi'].includes(client))
+  if (client === undefined)
     return {
       agentUnavailableHint:
-        'JIG_AGENT_CLIENT must be codex, claude, or pi; unset it to use the configured API endpoint',
+        'no Agent client is selected; run jig review in a terminal to choose, or set JIG_AGENT_CLIENT=codex, claude, pi, or api explicitly; API clients currently support final results only',
+    }
+  if (!['codex', 'claude', 'pi', 'api'].includes(client))
+    return {
+      agentUnavailableHint: 'JIG_AGENT_CLIENT must be codex, claude, pi, or api',
     }
   let selectedEnvironment = environment
   let openRouter = false
-  if (client === undefined) {
+  if (client === 'api') {
     const hasOpenRouter = ['OPENROUTER_API_KEY', 'OPENROUTER_MODEL'].some(
       (key) => environment[key] !== undefined,
     )
@@ -146,7 +248,7 @@ async function tryOpenAgentProvider(
   }
   try {
     const agentProvider =
-      client === undefined
+      client === 'api'
         ? openPrivateOpenAIAgentProvider(installedBunSupport, selectedEnvironment)
         : client === 'codex'
           ? await openPrivateCodexAgentProvider(
@@ -171,7 +273,7 @@ async function tryOpenAgentProvider(
                 })()
     return {
       agentProvider,
-      ...(client === undefined || agentProvider?.kind !== 'private-acp-agent-provider/1'
+      ...(client === 'api' || agentProvider?.kind !== 'private-acp-agent-provider/1'
         ? {}
         : {
             agentExecutable: {
@@ -203,7 +305,7 @@ async function tryOpenAgentProvider(
                             : error.field
                         : error.field
                     } value before jig review`
-                  : client === undefined
+                  : client === 'api'
                     ? 'the API Agent could not be opened; check the installed support assets and exported configuration'
                     : `the selected ${client} client could not be opened; check its executable and exported host configuration`,
     }

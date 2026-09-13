@@ -57,6 +57,7 @@ import {
   type PackageArtifactRef,
   publishCapturedPackage,
 } from './package-artifact-store.js'
+import { AGENT_RUN_CONTRACT_DIGEST } from './private-agent-run.js'
 import type { PrivateProjectPlanReview } from './project-plan-review.js'
 import { renderPrivateProjectPlanReview } from './project-plan-review.js'
 import {
@@ -77,6 +78,7 @@ export interface PrivateProjectSessionHost {
   readonly installedBunSupport: PrivateInstalledBunSupport
   readonly runTimeoutMs: number
   readonly agentProvider?: PrivateAgentProvider | undefined
+  readonly prepareAgent?: (signal: AbortSignal) => Promise<PrivateAgentProvider | undefined>
   readonly files?: PrivateRootRunFiles
   readonly channelOutput?: PrivateRunChannelOutput
   readonly allowResolutionNetwork?: boolean
@@ -244,6 +246,23 @@ function createSession(
             'project has no exact Run target',
           )
         }
+        const agentRequest = requests.find((request) =>
+          Object.values(request.capabilities).some(
+            (use) => use.digest === AGENT_RUN_CONTRACT_DIGEST,
+          ),
+        )
+        const agentProvider =
+          agentRequest !== undefined && host.prepareAgent !== undefined
+            ? await host.prepareAgent(planningCancellation.signal)
+            : host.agentProvider
+        planningCancellation.signal.throwIfAborted()
+        if (agentRequest !== undefined && agentProvider === undefined)
+          throw new CheckError(
+            'unavailable',
+            'PROJECT_AGENT_UNAVAILABLE',
+            'Agent support is unavailable',
+            `${agentRequest.packagePath}/FLOW.md`,
+          )
         preparationBudget = createPrivateBunPreparationBudget(planningCancellation.signal)
         const recipes: PrivateDirectRunRecipe[] = []
         const executions = new Map<string, PrivateBunExecutionArtifact>()
@@ -319,7 +338,7 @@ function createSession(
                         execution: admitted.execution,
                         installedSupport: host.installedBunSupport,
                         backend: host.backend,
-                        agentProvider: host.agentProvider,
+                        agentProvider,
                       })
                       if (
                         current.digest === admitted.recipeDigest &&
@@ -373,7 +392,7 @@ function createSession(
                 execution,
                 installedSupport: host.installedBunSupport,
                 backend: host.backend,
-                agentProvider: host.agentProvider,
+                agentProvider,
               }),
             )
           } catch (error) {
@@ -418,7 +437,7 @@ function createSession(
           candidate,
           lockMode: request.lockMode,
           beforePersistApplicable(applicable): void {
-            review = renderPrivateProjectPlanReview(applicable, undefined, host.agentProvider)
+            review = renderPrivateProjectPlanReview(applicable, undefined, agentProvider)
           },
         })
         preparationBudget.signal.throwIfAborted()

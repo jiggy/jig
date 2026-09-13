@@ -8,14 +8,32 @@ An Agent-capable Flow asks Jig to perform intelligent work. You choose the
 client, model, and credentials on the host; the Flow supplies the task and its
 selected Skills. Ordinary Flows that do not call an Agent need no configuration.
 
-The current alpha reads exported environment variables for both `jig review`
-and `jig run`. Project `.env` files are not loaded automatically.
+Run `jig review` in a terminal. If the project uses an Agent and you have not
+selected one, Jig lists clients with available local configuration and asks you
+to choose. It remembers that client for this project on your machine; subsequent
+reviews and Runs reuse it. Projects without Agent capabilities need no choice.
+
+The menu labels native clients as supporting live updates and API clients as
+supporting the final result only. The current declarations do not establish
+whether Flow code needs live Agent updates, so the menu cannot guarantee that
+an API client supports every runtime call. A Flow that requests those updates
+needs a native client. No extra project configuration is required for the menu.
+
+Jig reads exported model and credential variables for both `jig review` and
+`jig run`. Project `.env` files are not loaded automatically. Credentials being
+present do not select an Agent. The menu makes no model requests.
+
+For scripts, set `JIG_AGENT_CLIENT` to `codex`, `claude`, `pi`, or `api`, or use
+an existing remembered choice. `--yes` approves the displayed revision; it
+does not choose an Agent. Explicit selection takes precedence over a remembered
+choice. Selection and execution approval remain separate.
 
 ## API access
 
+Choose API access in the menu, or set `JIG_AGENT_CLIENT=api`.
 For OpenRouter, export `OPENROUTER_API_KEY` and `OPENROUTER_MODEL`. Jig selects
-OpenRouter's Chat Completions endpoint. These variables are sufficient; there
-is no need to rename them to `OPENAI_*`.
+OpenRouter's Chat Completions endpoint; there is no need to rename these
+variables to `OPENAI_*`.
 
 For direct OpenAI access, export `OPENAI_API_KEY` and `OPENAI_MODEL`. An
 OpenAI-compatible service can additionally set `OPENAI_BASE_URL` to its HTTPS
@@ -27,8 +45,8 @@ variables are present, Jig asks you to resolve the ambiguity.
 
 ## Local clients
 
-Select a supported client using `JIG_AGENT_CLIENT`: `codex`, `claude`, or `pi`.
-For example:
+Choose a native client in the review menu, or set `JIG_AGENT_CLIENT` explicitly
+to `codex`, `claude`, or `pi`. For example, in automation:
 
 ```sh
 export JIG_AGENT_CLIENT=codex
@@ -80,16 +98,23 @@ Client, endpoint, model, and executable changes affect the admitted execution
 identity. Use the same selection for the subsequent `jig run`; rotating only
 a credential does not require another review.
 
-To return from a native client to API access, unset `JIG_AGENT_CLIENT` and
-export the chosen API variables. A missing or incompatible client produces
+To select API access explicitly, set `JIG_AGENT_CLIENT=api` and export the
+chosen API variables. Unsetting `JIG_AGENT_CLIENT` restores a remembered choice;
+it does not select API access. A missing or incompatible client produces
 an unavailable diagnostic; Jig does not silently select another provider.
+
+The prompted choice is saved immediately, even if you later decline approval.
+It stores only the client name in your operator state directory
+(`$XDG_STATE_HOME/jig/agent-choices`, normally `~/.local/state/jig/agent-choices`),
+separately for each canonical project directory. Credentials remain in your
+existing environment or client login. Copying a project does not copy this choice.
 
 ## Build your first Agent method
 
 Turn a support request into a draft reply, without sending it to anyone.
 Start inside the `hello-jig` project from [the quickstart](./index.md), with
-one Agent selection exported as described above. This keeps the greeting and
-adds a second ordinary Flow—no new project configuration is needed because
+an Agent configured as described above; review can prompt for the client.
+This keeps the greeting and adds a second ordinary Flow—no new project configuration is needed because
 `jig.ts` already discovers `flows/`.
 
 ```sh
