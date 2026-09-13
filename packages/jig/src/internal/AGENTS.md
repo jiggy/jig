@@ -79,11 +79,13 @@ child calls, project commands, and Agent providers.
   Resolve loader-owned libraries through the interpreter's canonical location;
   retain individual executable, loader, and
   library files at installation paths, hash their bytes, and revalidate before
-  launch. Provider construction compares its freshly hashed file identities with
-  native inspection evidence instead of immediately hashing those files again.
-  This comparison accepts only authentic providers and complete matching file
-  evidence; it never replaces launch-time filesystem and byte revalidation or
-  establishes a persistent verification cache. Reject unsupported or project-selected dependencies; never mount a
+  launch. Hash each native file before reading its metadata; inspection remains
+  provisional until provider construction's fresh hashes close that interval.
+  Every native factory must verify the complete inspection against its authentic
+  provider before returning it. Do not add an intermediate full-file hash pass
+  or treat path, size, or timestamps as byte evidence. This comparison never
+  replaces launch-time filesystem and byte revalidation or establishes a
+  persistent verification cache. Reject unsupported or project-selected dependencies; never mount a
   whole installation/store or import ambient loader variables. Each native
   launcher removes Bun's private loader override before starting its client.
 - Keep known channel-declaration, Agent-configuration and dependency-preparation failures actionable
@@ -98,6 +100,10 @@ child calls, project commands, and Agent providers.
   and direct the operator to review. Do not collapse it to EXECUTION_FAILED or
   infer this reason from arbitrary failures. Recovery and cancellation keep their
   existing precedence. Flow wire failures cannot emit this code; never replay work or claim no execution after a sandbox began.
+  Root execution compares the actual sealed owner's mechanism identity with the
+  reviewed recipe before admission, using sealing's fresh observation instead of
+  a duplicate pre-seal observation. Retain and settle the sealed owner on refusal;
+  final admission still revalidates support bytes and invocation authority.
 - Review projects only explicit public policy and allowlisted non-secret Agent
   selections. Environment-only target changes name the execution environment,
   distinguish unchanged source/dependencies/policy, and explain the new approval.
@@ -193,6 +199,12 @@ child calls, project commands, and Agent providers.
   requires independent installed consumers to earn its shape.
 - Close missing evidence with focused tests; do not remove a selected client
   solely because prerelease live coverage lags.
+- Optimize startup from measured command-entry-to-Flow-execution traces. Count
+  repeated file reads and separate Agent acquisition, project recovery, sealing,
+  and launch. Combine redundant checks only at explicit verification boundaries;
+  preserve durable recovery and independent launch checks. Use disposable reviewed
+  consumer projects for before/after measurements, never alter a user's approval
+  or replay their work to benchmark startup.
 
 ## Verification
 

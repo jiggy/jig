@@ -17,7 +17,9 @@ interface Elf {
   readonly wrapper?: { readonly executable: string; readonly path: string }
 }
 
-/** Read installation metadata as data. Never run ldd, a shell, or the selected client. */
+/** Read installation metadata as data. Never run ldd, a shell, or the selected client.
+ * The returned inspection is provisional until verifyProvider closes its byte check.
+ */
 export async function inspectPrivateNativeAgentRuntime(
   executable: string,
   projectDirectory: string = process.cwd(),
@@ -53,8 +55,7 @@ export async function inspectPrivateNativeAgentRuntime(
     mounts.set(destination, Object.freeze({ source, destination, role: 'support' }))
     if (inspected.has(source)) return
     inspected.add(source)
-    const before = await privateFileDigest(source)
-    digests.set(source, before)
+    digests.set(source, await privateFileDigest(source))
     const elf = await readElf(source)
     if (elf === undefined) throw new Error('native Agent runtime is not ELF')
     const search = elf.search.map((path) => {
@@ -111,14 +112,15 @@ export async function inspectPrivateNativeAgentRuntime(
       pathPrefix = elf.wrapper.path
       await visit(elf.wrapper.executable, [], new Map(), true)
     }
-    if (before !== (await privateFileDigest(source)))
-      throw new Error('native Agent runtime changed')
   }
   await visit(executable, [], new Map(), true)
   mounts.delete(executable)
   return Object.freeze({
     pathPrefix,
     mounts: Object.freeze([...mounts.values()]),
+    // Provider construction hashes every selected file after metadata traversal.
+    // Comparing that evidence with the pre-inspection hashes closes the whole
+    // inspection interval; another full-file pass inside visit would duplicate it.
     verifyProvider: (provider: PrivateAcpAgentProvider) =>
       verifyPrivateAcpAgentFileDigests(provider, digests),
   })

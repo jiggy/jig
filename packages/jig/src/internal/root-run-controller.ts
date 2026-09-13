@@ -252,7 +252,7 @@ async function startOrResumeCurrentExecution(
       return await settleBeforeSandbox(input, work, plan, stop.terminal)
     }
 
-    await revalidateRecipe(recipe)
+    await revalidatePrivateInstalledBunSupport(recipe.installedSupport)
     if (stop.terminal !== undefined) {
       return await settleBeforeSandbox(input, work, plan, stop.terminal)
     }
@@ -269,6 +269,17 @@ async function startOrResumeCurrentExecution(
     } as unknown as JsonValue)
     if (stop.terminal !== undefined) {
       return await settleSealedWithoutAdmission(input, work, sealed.identity, stop.terminal)
+    }
+    // Seal observes current mechanism bytes and authority. Bind that exact owner
+    // to the reviewed recipe, instead of observing the same support once more
+    // immediately before sealing. Admission still revalidates it before launch.
+    if (sealed.identity.mechanismDigest !== recipe.mechanismDigest) {
+      return await settleSealedWithoutAdmission(
+        input,
+        work,
+        sealed.identity,
+        executionFailed(new ReviewRequiredError()),
+      )
     }
 
     channelPackage = await captureStoredPackage(input.packageStoreRoot, recipe.request.package)
@@ -718,16 +729,6 @@ async function reproduceRecipe(
     throw new ReviewRequiredError()
   }
   return recipe
-}
-
-async function revalidateRecipe(recipe: PrivateDirectRunRecipe): Promise<void> {
-  const [mechanism] = await Promise.all([
-    recipe.backend.observeMechanism(),
-    revalidatePrivateInstalledBunSupport(recipe.installedSupport),
-  ])
-  if (mechanism.support.digest !== recipe.mechanismDigest) {
-    throw new ReviewRequiredError()
-  }
 }
 
 function backendPlan(

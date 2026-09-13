@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from 'bun:test'
-import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
+import { lstat, mkdir, mkdtemp, readFile, rm, symlink, utimes, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import {
@@ -31,6 +31,55 @@ function wrapper(executable: string, path: string) {
 }
 
 describe('native Agent runtime metadata', () => {
+  test.each(['executable', 'wrapped executable', 'library'])(
+    'rejects same-size %s byte replacement after inspection despite restored timestamps',
+    async (selected) => {
+      const { root, project, executable } = await fixture()
+      const wrapped = join(root, '.client-wrapped')
+      const library = join(root, 'libone.so')
+      await file(library)
+      await file(wrapped, { needed: [library] })
+      await file(
+        executable,
+        selected === 'wrapped executable'
+          ? { wrapper: wrapper(wrapped, root) }
+          : { needed: [library] },
+      )
+      const changed =
+        selected === 'library' ? library : selected === 'wrapped executable' ? wrapped : executable
+      // Include bytes beyond the metadata reader's bounded range.
+      const bytes = Buffer.concat([await readFile(changed), Buffer.alloc(2 * 1024 * 1024)])
+      await writeFile(changed, bytes)
+      const timestamp = new Date('2020-01-01T00:00:00.000Z')
+      await utimes(changed, timestamp, timestamp)
+      const before = await lstat(changed)
+      const inspected = await inspect(executable, project)
+      const create = () =>
+        createPrivateAcpAgentProvider({
+          client: 'test',
+          model: 'test',
+          credentialMode: 'none',
+          adapterPath: executable,
+          sandboxAdapterPath: '/agent/adapter',
+          executablePath: executable,
+          sandboxExecutablePath: '/agent/client',
+          environment: {},
+          readOnlyMounts: inspected.mounts,
+        })
+      const provider = await create()
+      expect(() => inspected.verifyProvider(provider)).not.toThrow()
+      bytes[bytes.length - 1] = 1
+      await writeFile(changed, bytes)
+      await utimes(changed, before.atime, before.mtime)
+      const after = await lstat(changed)
+      expect(after.size).toBe(before.size)
+      expect(after.mtimeMs).toBe(before.mtimeMs)
+      const replacement = await create()
+      expect(() => inspected.verifyProvider(replacement)).toThrow('runtime changed')
+      await expect(revalidatePrivateAcpAgentProvider(provider)).rejects.toThrow('support changed')
+    },
+  )
+
   test('matches fresh provider evidence and still rejects changes before launch', async () => {
     const { root, project, executable } = await fixture()
     const library = join(root, 'libone.so')

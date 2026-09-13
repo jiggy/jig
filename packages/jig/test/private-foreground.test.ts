@@ -569,6 +569,108 @@ proofDescribe('private rootless project session', () => {
     }
   }, 180_000)
 
+  test('refuses and cleans up an execution environment changed at sealing before admitting the Flow', async () => {
+    const temporary = await mkdtemp(join(tmpdir(), 'jig-seal-approval-'))
+    const root = join(temporary, 'project')
+    const releaseRoot = join(temporary, 'installed')
+    let session: Awaited<ReturnType<typeof openPrivateProjectSession>> | undefined
+    try {
+      await mkdir(root)
+      await mkdir(releaseRoot)
+      await cp(join(installedBunLocation.releaseRoot, 'libexec'), join(releaseRoot, 'libexec'), {
+        recursive: true,
+      })
+      await symlink(
+        join(installedBunLocation.releaseRoot, 'node_modules'),
+        join(releaseRoot, 'node_modules'),
+      )
+      const host = await openPrivateInstalledBunHost(
+        {
+          ...installedBunLocation,
+          releaseRoot,
+          installedCliPath: join(releaseRoot, 'libexec', 'installed-cli.js'),
+        },
+        {},
+      )
+      const supervisor = host.installedBunSupport.supervisorPath
+      let changeAtSeal = false
+      let changed = false
+      let admits = 0
+      class ChangingBackend extends PrivateLinuxCgroupBackend {
+        override async seal(
+          ...arguments_: Parameters<PrivateLinuxCgroupBackend['seal']>
+        ): Promise<PrivateLinuxSealedOwner> {
+          if (changeAtSeal) {
+            changeAtSeal = false
+            changed = true
+            await writeFile(supervisor, (await readFile(supervisor, 'utf8')) + '\n// changed\n')
+          }
+          const sealed = await super.seal(...arguments_)
+          return Object.freeze({
+            identity: sealed.identity,
+            admit: (...args: Parameters<PrivateLinuxSealedOwner['admit']>) => {
+              admits += 1
+              return sealed.admit(...args)
+            },
+          })
+        }
+      }
+      const backend = new ChangingBackend({
+        bunPath: host.installedBunSupport.executablePath,
+        bunHostLibraryPath: host.installedBunSupport.hostLibraryDirectory,
+        supervisorPath: supervisor,
+      })
+      await writeCapabilityFreeProject(root)
+      session = await openPrivateProjectSession({ directory: root, host: { ...host, backend } })
+      const review = await session.plan({ lockMode: 'update' })
+      if (review.state !== 'applicable') throw new Error('expected initial review')
+      await session.apply({ planDigest: review.planDigest })
+      admits = 0
+      changeAtSeal = true
+      const rejected = await session.rootAdministration.startRun({
+        submissionId: 'changed-at-seal',
+        target: { kind: 'flow', path: 'flows/worker' },
+        input: null,
+      })
+      expect(await waitForTerminalStatus(session.rootAdministration, rejected)).toMatchObject({
+        state: 'terminal',
+        terminal: {
+          status: 'failed',
+          code: 'REVIEW_REQUIRED',
+          details: { reason: 'EXECUTION_ENVIRONMENT_CHANGED', flowStarted: false },
+        },
+      })
+      expect(changed).toBeTrue()
+      expect(admits).toBe(0)
+      expect(inspectRootExecution(root, rejected.runId).sandboxDigest).not.toBe('null')
+      await session.close()
+      session = await openPrivateProjectSession({
+        directory: root,
+        host: await openPrivateInstalledBunHost(
+          {
+            ...installedBunLocation,
+            releaseRoot,
+            installedCliPath: join(releaseRoot, 'libexec', 'installed-cli.js'),
+          },
+          {},
+        ),
+      })
+      expect(await session.rootAdministration.runStatus(rejected)).toMatchObject({
+        state: 'terminal',
+        terminal: { code: 'REVIEW_REQUIRED' },
+      })
+      await session.close()
+      session = undefined
+      await expectNoChildResidue(root)
+      expect(await directoryEntries(join(root, '.jig/private-root-linux-owners'))).toEqual([])
+      await waitForRootlessCgroups(initialRootlessCgroups)
+      await waitForRootlessTemporaryState(initialRootlessTemporaryState)
+    } finally {
+      await session?.close().catch(() => undefined)
+      await rm(temporary, { recursive: true, force: true })
+    }
+  }, 180_000)
+
   test('keeps unavailable Agent configuration out of capability-free review and Run', async () => {
     const root = await mkdtemp(join(tmpdir(), 'jig-private-agent-isolation-'))
     let session: Awaited<ReturnType<typeof openPrivateProjectSession>> | undefined
