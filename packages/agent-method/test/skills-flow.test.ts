@@ -66,28 +66,70 @@ describe('explicit package Skill reader', () => {
 })
 
 describe('ordinary Flow wiring', () => {
-  test('prepares once, exchanges once and forwards the unused endpoint itself', async () => {
+  test('rejects missing model settings and unsupported channels before dispatch', async () => {
     const { url } = await fixture()
     let calls = 0
-    const events = {
-      direction: 'send',
-      send() {
-        throw new Error('must not consume endpoint')
-      },
-    }
     const run = {
-      input: { instructions: 'Answer.', methodSkills: ['check'] },
+      input: { instructions: 'Answer.' },
       settings: {},
       attachments: {},
-      channels: { events },
+      channels: {},
       signal: new AbortController().signal,
-      call: async (call: FlowCall) => {
+      call: async () => {
+        calls++
+        throw new Error('must not dispatch')
+      },
+    } as unknown as RunContext
+    await expect(agentFlow(run, url)).rejects.toThrow('model')
+    await expect(
+      agentFlow(
+        { ...run, settings: { model: 'x' }, channels: { events: {} } } as unknown as RunContext,
+        url,
+      ),
+    ).rejects.toThrow('channels')
+    expect(calls).toBe(0)
+  })
+  test('prepares once and requests one HTTP completion with the original cancellation signal', async () => {
+    const { url } = await fixture()
+    let calls = 0
+    const signal = new AbortController().signal
+    const run = {
+      input: { instructions: 'Answer.', methodSkills: ['check'] },
+      settings: { model: 'fixture-model' },
+      attachments: {},
+      channels: {},
+      signal,
+      call: async (call: FlowCall, options: { signal: AbortSignal }) => {
         calls += 1
-        expect(call.operationId).toBe('exchange')
-        expect(call.slot).toBe('exchange')
-        expect(call.channels?.events).toBe(events)
-        expect((call.input as { prompt: string }).prompt).toContain('Exact guidance.')
-        return { outcome: 'done', output: { text: 'Answer.', stop: 'end-turn' } }
+        expect(call.operationId).toBe('completion')
+        expect(call.slot).toBe('http')
+        expect(call.channels).toBeUndefined()
+        expect(options.signal).toBe(signal)
+        const body = (call.input as any).body
+        expect(body).toMatchObject({
+          model: 'fixture-model',
+          max_completion_tokens: 4096,
+          stream: false,
+          store: false,
+          n: 1,
+        })
+        expect(body.messages[0].content).toContain('Exact guidance.')
+        return {
+          outcome: 'done',
+          output: {
+            status: 200,
+            body: JSON.stringify({
+              object: 'chat.completion',
+              choices: [
+                {
+                  index: 0,
+                  finish_reason: 'stop',
+                  message: { role: 'assistant', content: 'Answer.' },
+                },
+              ],
+            }),
+          },
+        }
       },
     } as unknown as RunContext
     expect(await agentFlow(run, url)).toEqual({ outcome: 'done', output: { text: 'Answer.' } })
@@ -100,7 +142,7 @@ describe('ordinary Flow wiring', () => {
     const failure = new Error('uncertain transport')
     const run = {
       input: { instructions: 'Answer.' },
-      settings: {},
+      settings: { model: 'fixture-model' },
       attachments: {},
       channels: {},
       signal: new AbortController().signal,

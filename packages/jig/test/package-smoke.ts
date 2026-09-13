@@ -6,6 +6,7 @@ import { isAbsolute, join, resolve } from 'node:path'
 
 const packageRoot = resolve(import.meta.dir, '..')
 const temporary = await mkdtemp(join(tmpdir(), 'jig-package-'))
+let completed = false
 const expectedInstalledFiles = [
   'LICENSE',
   'README.md',
@@ -434,16 +435,134 @@ void binding;
     assert.equal(failure.output.exitCode, 17)
     assert.equal(failure.output.stderr.text, 'failed check\n')
     assert.equal(failure.output.cleanup, 'complete')
+
+    // Consume the complete ordinary Agent through installed public commands,
+    // with no rewritten workers or private host imports in the application.
+    const agentProject = join(consumer, 'http-agent')
+    for (const path of ['flows/agent', 'bindings'])
+      await mkdir(join(agentProject, path), { recursive: true })
+    const methodArtifacts = join(temporary, 'method-artifacts')
+    await mkdir(methodArtifacts)
+    const methodArchive = await selectArchive(methodArtifacts, 'agent-method')
+    await run(
+      [
+        'tar',
+        '-xzf',
+        methodArchive,
+        '--strip-components=1',
+        '-C',
+        join(agentProject, 'flows/agent'),
+      ],
+      consumer,
+    )
+    let mode: 'answer' | 'malformed' = 'answer'
+    let requests = 0
+    const server = Bun.serve({
+      hostname: '127.0.0.1',
+      port: 0,
+      async fetch(request) {
+        requests++
+        assert.equal(request.headers.get('authorization'), 'Bearer local-method-test-token')
+        const body = (await request.json()) as any
+        assert.equal(body.model, 'recorded-model')
+        assert.equal(body.max_completion_tokens, 32)
+        assert.equal(body.stream, false)
+        assert.equal(body.store, false)
+        assert.equal(body.n, 1)
+        assert.equal(body.tools, undefined)
+        assert.match(body.messages[0].content, /Classify this request/)
+        assert.doesNotMatch(JSON.stringify(body), /local-method-test-token/)
+        return Response.json({
+          object: 'chat.completion',
+          choices: [
+            {
+              index: 0,
+              finish_reason: 'stop',
+              message: {
+                role: 'assistant',
+                content: mode === 'answer' ? '{"category":"support"}' : '{"category":42}',
+              },
+            },
+          ],
+        })
+      },
+    })
+    try {
+      await writeFile(
+        join(agentProject, 'jig.ts'),
+        'import {defineJig,discover} from "@jigging/jig"; export default defineJig({flows:discover("flows"),bindings:discover("bindings")});',
+      )
+      await writeFile(
+        join(agentProject, 'bindings/agent.ts'),
+        'import {defineBinding} from "@jigging/jig"; export default defineBinding(' +
+          JSON.stringify({
+            package: 'flows/agent',
+            settings: { model: 'recorded-model', maxCompletionTokens: 32 },
+            slots: {
+              http: {
+                kind: 'http',
+                method: 'POST',
+                url: `http://127.0.0.1:${server.port}/v1/chat/completions`,
+                bearerEnv: 'METHOD_TEST_TOKEN',
+              },
+            },
+          }) +
+          ');',
+      )
+      const environment = { METHOD_TEST_TOKEN: 'local-method-test-token' }
+      await run(
+        [command, 'review', '--yes', '--allow-authority-changes'],
+        agentProject,
+        environment,
+        120000,
+      )
+      const input = JSON.stringify({
+        instructions: 'Classify this request: I need help.',
+        responseSchema: {
+          $schema: 'https://flow.jig.md/schemas/schema-1.json',
+          type: 'object',
+          properties: { category: { type: 'string', enum: ['support'] } },
+          required: ['category'],
+          additionalProperties: false,
+        },
+      })
+      const completed = await run(
+        [command, 'run', 'binding:agent', '--input', input],
+        agentProject,
+        environment,
+        120000,
+      )
+      const answer = JSON.parse(completed.stdout)
+      assert.equal(answer.status, 'succeeded')
+      assert.equal(answer.outcome, 'done')
+      assert.deepEqual(answer.output.structured, { category: 'support' })
+      assert.doesNotMatch(completed.stdout + completed.stderr, /local-method-test-token/)
+      mode = 'malformed'
+      await assert.rejects(
+        run([command, 'run', 'binding:agent', '--input', input], agentProject, environment, 120000),
+        /INVALID_RESULT/,
+      )
+      assert.equal(requests, 2) // One per invocation, including the unsuccessful one.
+    } finally {
+      await server.stop(true)
+    }
   }
+  completed = true
 } finally {
-  await rm(temporary, { recursive: true, force: true })
+  if (completed) await rm(temporary, { recursive: true, force: true })
+  else console.error(`Package smoke failed; retained consumer and artifacts at ${temporary}`)
 }
 
 async function selectArchive(
   artifacts: string,
-  packageName: 'jig' | 'flow-sdk' = 'jig',
+  packageName: 'jig' | 'flow-sdk' | 'agent-method' = 'jig',
 ): Promise<string> {
-  const variable = packageName === 'jig' ? 'JIG_PACKAGE_ARCHIVE' : 'FLOW_SDK_PACKAGE_ARCHIVE'
+  const variable =
+    packageName === 'jig'
+      ? 'JIG_PACKAGE_ARCHIVE'
+      : packageName === 'agent-method'
+        ? 'AGENT_METHOD_PACKAGE_ARCHIVE'
+        : 'FLOW_SDK_PACKAGE_ARCHIVE'
   const supplied = process.env[variable]
   if (supplied !== undefined) {
     if (!isAbsolute(supplied) || supplied.includes('\0') || !supplied.endsWith('.tgz')) {
@@ -456,7 +575,7 @@ async function selectArchive(
     return canonical
   }
   await run(
-    packageName === 'jig'
+    packageName !== 'flow-sdk'
       ? ['bun', 'scripts/pack.ts', '--destination', artifacts]
       : ['bun', 'pm', 'pack', '--ignore-scripts', '--destination', artifacts],
     resolve(packageRoot, '..', packageName),

@@ -30,6 +30,7 @@
     "FLOW.ts",
     "FLOW.contract.json",
     "flow.meta.json",
+    "settings.schema.json",
     "contracts",
     "skills",
     "README.md",

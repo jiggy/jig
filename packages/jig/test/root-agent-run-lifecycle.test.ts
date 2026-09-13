@@ -77,10 +77,10 @@ test('constructs a locked local workspace for root and child Skill-delivery evid
   }
 })
 
-test('constructs unchanged packed Agent method siblings and hostile native inputs', async () => {
+test('constructs unchanged packed HTTP Agent method siblings', async () => {
   const root = await mkdtemp(join(tmpdir(), 'jig-agent-method-fixture-'))
   try {
-    await writeAgentMethodProject(root)
+    await writeAgentMethodProject(root, 'http://127.0.0.1:1/v1/chat/completions')
     const method = join(root, 'flows/method')
     expect((await checkPackageDirectory(method)).entrypoint.path).toBe('FLOW.ts')
     expect(await readFile(join(method, 'FLOW.ts'), 'utf8')).toContain('./dist/flow.js')
@@ -714,7 +714,7 @@ proofDescribe('private contained Agent Run lifecycle', () => {
     }, 90_000)
   }
 
-  test('runs unchanged packed Agent method siblings and rejects hostile inputs before transport', async () => {
+  test('runs unchanged packed HTTP Agent siblings without a native Agent provider', async () => {
     const root = await mkdtemp(join(tmpdir(), 'jig-agent-method-project-'))
     const releaseRoot = await mkdtemp(join(tmpdir(), 'jig-agent-method-release-'))
     const requests: {
@@ -726,12 +726,13 @@ proofDescribe('private contained Agent Run lifecycle', () => {
     const pending: { response: ServerResponse; lane: string }[] = []
     let simultaneousRequests = 0
     // This is a local transport fixture, not independent consumption or model-quality evidence.
-    // The complete installed SDK worker runs; only its HTTPS destination is redirected.
+    // The unchanged method and trusted HTTP worker run. No Agent provider is configured.
     const server = createServer(async (request, response) => {
       try {
+        expect(request.headers.authorization).toBe('Bearer synthetic-unused-credential')
         const body = JSON.parse(await new Response(request as any).text())
         requests.push({ at: Date.now(), method: request.method, url: request.url, body })
-        const payload = agentPromptPayload(body.input)
+        const payload = agentPromptPayload(body.messages[0].content)
         const lane = payload.guidance.find((item: any) => item.label === 'lane')?.text
         if (lane !== 'left' && lane !== 'right') throw new Error('unexpected method request')
         pending.push({ response, lane })
@@ -741,17 +742,12 @@ proofDescribe('private contained Agent Run lifecycle', () => {
           for (const item of pending.splice(0)) {
             item.response.writeHead(200, { 'content-type': 'application/json' }).end(
               JSON.stringify({
-                status: 'completed',
-                output: [
+                object: 'chat.completion',
+                choices: [
                   {
-                    type: 'message',
-                    role: 'assistant',
-                    content: [
-                      {
-                        type: 'output_text',
-                        text: JSON.stringify({ lane: item.lane }),
-                      },
-                    ],
+                    index: 0,
+                    finish_reason: 'stop',
+                    message: { role: 'assistant', content: JSON.stringify({ lane: item.lane }) },
                   },
                 ],
               }),
@@ -771,36 +767,18 @@ proofDescribe('private contained Agent Run lifecycle', () => {
       const address = server.address()
       if (address === null || typeof address === 'string') throw new Error('no recorder port')
       const location = await writeInstalledFixture(releaseRoot)
-      const worker = await readFile(
-        join(installedBunLocation.releaseRoot, 'libexec/agent/openai-agent-worker.js'),
-        'utf8',
-      )
-      await writeFile(
-        join(releaseRoot, 'libexec/agent/openai-agent-worker.js'),
-        [
-          'const recorderFetch = globalThis.fetch;',
-          'globalThis.fetch = (input, init) => {',
-          '  if (String(input) !== "https://method-proof.invalid/v1/responses") throw new Error("unexpected test endpoint");',
-          `  return recorderFetch("http://127.0.0.1:${address.port}/v1/responses", init);`,
-          '};',
-          worker,
-        ].join('\n'),
-      )
-      await writeAgentMethodProject(root)
+      await writeAgentMethodProject(root, `http://127.0.0.1:${address.port}/v1/chat/completions`)
       const skill = await readFile(join(root, 'flows/method/skills/answer-check/SKILL.md'), 'utf8')
       session = await openPrivateProjectSession({
         directory: root,
         host: await openPrivateInstalledBunHost(location, {
-          OPENAI_API: 'responses',
-          OPENAI_BASE_URL: 'https://method-proof.invalid/v1',
-          OPENAI_MODEL: 'local-recording-fixture',
-          OPENAI_API_KEY: 'synthetic-unused-credential',
+          METHOD_TEST_TOKEN: 'synthetic-unused-credential',
         }),
       })
       const plan = await session.plan({ lockMode: 'update' })
       if (plan.state !== 'applicable')
         throw new Error('Agent method fixture did not produce a Plan')
-      await session.apply({ planDigest: plan.planDigest })
+      await session.apply({ planDigest: plan.planDigest, allowAuthorityChanges: true })
       const run = async (scenario: string) => {
         const started = Date.now()
         const receipt = await session!.rootAdministration.startRun({
@@ -819,7 +797,7 @@ proofDescribe('private contained Agent Run lifecycle', () => {
               status: await session!.rootAdministration.runStatus(receipt),
               requests: requests.map((item) => ({
                 afterMs: item.at - started,
-                guidance: agentPromptPayload(item.body.input).guidance,
+                guidance: agentPromptPayload(item.body.messages[0].content).guidance,
               })),
               owners: withStore(root, (database) =>
                 database
@@ -833,19 +811,14 @@ proofDescribe('private contained Agent Run lifecycle', () => {
           )
         }
       }
-      for (const scenario of [
-        'exchange-authority',
-        'exchange-bytes',
-        'exchange-schema',
-        'invalid-native-skill',
-      ]) {
+      for (const scenario of ['invalid-input', 'oversized']) {
         expect(await run(scenario)).toMatchObject({
           terminal: {
             status: 'succeeded',
             outcome: 'done',
             output: {
               status: 'failed',
-              code: scenario === 'exchange-bytes' ? 'RESOURCE_EXHAUSTED' : 'INVALID_INPUT',
+              code: scenario === 'oversized' ? 'RESOURCE_EXHAUSTED' : 'INVALID_INPUT',
             },
           },
         })
@@ -872,10 +845,16 @@ proofDescribe('private contained Agent Run lifecycle', () => {
       for (const request of requests) {
         expect(request).toMatchObject({
           method: 'POST',
-          url: '/v1/responses',
-          body: { model: 'local-recording-fixture', store: false, stream: false },
+          url: '/v1/chat/completions',
+          body: {
+            model: 'local-recording-fixture',
+            max_completion_tokens: 128,
+            store: false,
+            stream: false,
+            n: 1,
+          },
         })
-        const payload = agentPromptPayload(request.body.input)
+        const payload = agentPromptPayload(request.body.messages[0].content)
         expect(payload.skills).toEqual([
           { name: 'answer-check', files: [{ path: 'SKILL.md', content: skill }] },
         ])
@@ -1518,7 +1497,7 @@ function agentPromptPayload(prompt: string): any {
   return JSON.parse(lines[marker + 1]!)
 }
 
-async function writeAgentMethodProject(root: string): Promise<void> {
+async function writeAgentMethodProject(root: string, url: string): Promise<void> {
   await writeProject(root)
   const method = join(root, 'flows/method')
   const artifacts = join(root, 'artifacts')
@@ -1569,24 +1548,24 @@ async function writeAgentMethodProject(root: string): Promise<void> {
     [
       'import { defineBinding } from "@jigging/jig";',
       'export default defineBinding({ package: "flows/router",',
-      '  slots: { left: "flow:flows/method", right: "flow:flows/method" } });',
+      '  slots: { left: "binding:method", right: "binding:method" } });',
     ].join('\n'),
   )
   const router = join(root, 'flows/router')
-  await cp(
-    join(import.meta.dir, '../../../docs/jig/spec/contracts/agent-exchange'),
-    join(router, 'contracts/agent-exchange'),
-    { recursive: true },
+  await writeFile(
+    join(root, 'bindings/method.ts'),
+    [
+      'import { defineBinding } from "@jigging/jig";',
+      'export default defineBinding({ package: "flows/method",',
+      'settings: { model: "local-recording-fixture", maxCompletionTokens: 128 },',
+      `slots: { http: { kind: "http", method: "POST", url: ${JSON.stringify(url)}, bearerEnv: "METHOD_TEST_TOKEN" } } });`,
+    ].join('\n'),
   )
   await writeFile(
     join(router, 'flow.meta.json'),
     JSON.stringify({
       name: 'agent-method-caller',
-      description: 'Exercise two ordinary Agent method calls and reject malformed native requests.',
-      uses: {
-        agent: { contract: './contracts/agent-run/contract.json' },
-        exchange: { contract: './contracts/agent-exchange/contract.json' },
-      },
+      description: 'Exercise two ordinary HTTP Agent method calls and reject invalid requests.',
     }),
   )
   await writeFile(
@@ -1597,13 +1576,7 @@ async function writeAgentMethodProject(root: string): Promise<void> {
         type: 'object',
         properties: {
           scenario: {
-            enum: [
-              'batch',
-              'exchange-authority',
-              'exchange-bytes',
-              'exchange-schema',
-              'invalid-native-skill',
-            ],
+            enum: ['batch', 'invalid-input', 'oversized'],
           },
         },
         required: ['scenario'],
@@ -1611,8 +1584,6 @@ async function writeAgentMethodProject(root: string): Promise<void> {
       },
     }),
   )
-  await mkdir(join(router, 'skills/invalid'))
-  await writeFile(join(router, 'skills/invalid/SKILL.md'), new Uint8Array([0xc3, 0x28]))
   await writeFile(join(router, 'FLOW.ts'), agentMethodCallerProgram())
 }
 
@@ -1623,11 +1594,8 @@ function agentMethodCallerProgram(): string {
     '  const { scenario } = run.input as { scenario: string };',
     '  try {',
     '    if (scenario !== "batch") {',
-    '      const input = scenario === "exchange-authority" ? { prompt: "Rejected authority", provider: "package-selected" }',
-    '        : scenario === "exchange-bytes" ? { prompt: "é".repeat(524289) }',
-    '        : scenario === "exchange-schema" ? { prompt: "Rejected schema", responseSchema: { $schema: "https://flow.jig.md/schemas/schema-1.json", type: "boolean" } }',
-    '        : { instructions: "Rejected Skill bytes", skills: ["invalid"] };',
-    '      await run.call({ operationId: scenario, slot: scenario === "invalid-native-skill" ? "agent" : "exchange", input });',
+    '      const input = scenario === "oversized" ? { instructions: "é".repeat(150000) } : { instructions: "Rejected authority", provider: "package-selected" };',
+    '      await run.call({ operationId: scenario, slot: "left", input });',
     '      return { outcome: "done", output: { status: "unexpected-dispatch" } };',
     '    }',
     '    const results = await Promise.all(["left", "right"].map((lane) => run.call({',
@@ -1638,7 +1606,7 @@ function agentMethodCallerProgram(): string {
     '          properties: { lane: { type: "string", enum: [lane] } }, required: ["lane"], additionalProperties: false },',
     '      },',
     '    })));',
-    '    return { outcome: "done", output: { status: "succeeded", results, parentHasKey: process.env.OPENAI_API_KEY !== undefined } };',
+    '    return { outcome: "done", output: { status: "succeeded", results, parentHasKey: process.env.METHOD_TEST_TOKEN !== undefined } };',
     '  } catch (error) {',
     '    const code = typeof error === "object" && error !== null && "code" in error ? String(error.code) : "UNKNOWN";',
     '    return { outcome: "done", output: { status: "failed", code } };',

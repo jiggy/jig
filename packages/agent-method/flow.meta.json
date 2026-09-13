@@ -1,7 +1,7 @@
 {
   "name": "agent-method",
-  "description": "Prepare instructions and explicit guidance, make one authorized Agent exchange, and check the result.",
+  "description": "Prepare instructions and guidance, request one Chat Completion through an HTTP slot, and check the result.",
   "uses": {
-    "exchange": { "contract": "./contracts/agent-exchange/contract.json" }
+    "http": { "contract": "./contracts/http-request/contract.json" }
   }
 }

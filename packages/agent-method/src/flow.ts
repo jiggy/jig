@@ -1,6 +1,7 @@
 import { handle, OperationError, type RunContext, type RunResult } from '@jigging/flow'
 
 import { type AgentInput, AgentMethodError, finishAgent, prepareAgent } from './index.js'
+import { chatRequest, chatResult } from './chat.js'
 import { readPackageSkills } from './skills.js'
 import { ordinaryRecord, snapshot } from './values.js'
 
@@ -15,14 +16,10 @@ export async function agentFlow(run: RunContext, packageRoot: URL): Promise<RunR
     ) {
       throw new AgentMethodError('INVALID_INPUT', 'Supply Agent input with optional methodSkills')
     }
-    if (
-      Object.keys(run.settings).length > 0 ||
-      Object.keys(run.attachments).length > 0 ||
-      Object.keys(run.channels).some((name) => name !== 'events')
-    ) {
+    if (Object.keys(run.attachments).length > 0 || Object.keys(run.channels).length > 0) {
       throw new AgentMethodError(
         'INVALID_INPUT',
-        'This Agent method accepts only its declared input and optional events endpoint',
+        'This text-only Agent method accepts no attachments or channels',
       )
     }
     const selected = await readPackageSkills(
@@ -31,17 +28,16 @@ export async function agentFlow(run: RunContext, packageRoot: URL): Promise<RunR
     )
     const { methodSkills: _selection, ...methodInput } = input
     const prepared = prepareAgent(methodInput as unknown as AgentInput, selected)
-    const events = run.channels.events
+    const body = chatRequest(prepared, run.settings)
     const result = await run.call(
       {
-        operationId: 'exchange',
-        slot: 'exchange',
-        input: { ...prepared.request },
-        ...(events === undefined ? {} : { channels: { events } }),
+        operationId: 'completion',
+        slot: 'http',
+        input: { body },
       },
       { signal: run.signal },
     )
-    const resultValue = finishAgent(prepared, result)
+    const resultValue = finishAgent(prepared, chatResult(result))
     return { outcome: resultValue.outcome, output: { ...resultValue.output } }
   } catch (error) {
     if (error instanceof AgentMethodError) throw new OperationError(error.code, error.message)

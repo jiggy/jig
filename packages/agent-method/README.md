@@ -14,12 +14,12 @@ this README does not assert registry publication.
 | Entry | Guidance source | Invocation |
 | --- | --- | --- |
 | Pure library | Explicit input and Skill text supplied by its caller | In the caller's existing process |
-| Ordinary `FLOW.ts` | Explicit caller guidance and selected Skills in this package | One Run/1 invocation and one Agent Exchange |
+| Ordinary `FLOW.ts` | Explicit caller guidance and selected Skills in this package | One Run/1 invocation and one granted HTTP request |
 | Jig native Agent Run | Authenticated Skills in the active caller's admitted package | Jig's existing native integration, using this same library |
 
 The ordinary Flow is anonymous. Its result does not establish native caller
 context. With Jig's current topology a root can call the Agent Flow, which
-calls Exchange. A specialist already running as a child uses the library
+calls HTTP Request. A specialist already running as a child uses the library
 in-process or native Agent Run; it cannot insert another Flow level.
 
 ## Pure library
@@ -99,8 +99,36 @@ The root `FLOW.ts` runs the bundled method through Run/1. Its input adds
 
 `methodSkills` names this package's immediate `skills/<name>/` directories,
 each containing `SKILL.md`. It does not resolve names in the caller's package.
-The `answer-check` Skill is included as a small editable example. There is no
-settings schema or required Binding solely to select Skills.
+The `answer-check` Skill is included as a small editable example. Model choice
+belongs in reviewed Binding settings; selecting Skills needs no extra Binding.
+
+For a package extracted at `flows/agent`, configure one Binding:
+
+```ts
+import { defineBinding } from '@jigging/jig'
+
+export default defineBinding({
+  package: 'flows/agent',
+  settings: { model: 'your-model', maxCompletionTokens: 4096 },
+  slots: {
+    http: {
+      kind: 'http',
+      url: 'https://api.openai.com/v1/chat/completions',
+      method: 'POST',
+      bearerEnv: 'OPENAI_API_KEY',
+    },
+  },
+})
+```
+
+Name it `bindings/agent.ts`, include that Binding and Flow in `jig.ts`, then
+`jig review` and `jig run binding:agent --input @task.json`. The operator supplies
+the named credential through their environment. The Flow receives neither its
+value nor network access. This path needs no native Agent configuration.
+`settings.schema.json` requires a nonempty model; `maxCompletionTokens` defaults
+to 4096 and accepts 1–65536. A grant's optional `bodySchema` can enforce model and
+token restrictions outside the method; settings alone do not constrain malicious
+code. Review the exact endpoint and its data policy before granting access.
 
 Extract the complete archive into a real project directory, then add that
 directory using ordinary Flow membership. An explicit installed real directory
@@ -108,10 +136,21 @@ can also be used where the host accepts it; package-manager symlinks still
 receive that host's ordinary symlink rules. Running the packed `FLOW.ts` needs
 no consumer build or registry dependency resolution.
 
-The optional `events` send endpoint uses the exact included ACP public-updates
-contract. The Flow forwards the unused endpoint itself to Exchange, without
-consuming, relaying or interpreting updates. Unsupported event support fails
-at the lower call before transfer or dispatch; the outer Flow may have begun.
+This Flow implements the non-streaming text-only
+[Chat Completions wire API](https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create).
+It requests one completion with an explicit token cap and `store: false`, without
+tools. Structured output is requested in the prompt and checked locally, not
+claimed to be enforced by every compatible endpoint. It accepts only a complete
+single-choice response; tool requests, malformed replies and non-200 HTTP statuses
+fail. Refusal and token exhaustion remain `blocked` and `limit` outcomes. No request
+is retried, including after cancellation or uncertain dispatch.
+
+The ordinary Flow declares no channels: this HTTP profile supplies no streaming
+or ACP updates. Native Agent Run remains the separate path for those features.
+HTTP limits further bound this method to a 256 KiB canonical request, 1 MiB
+response and at most 60 seconds per request, shortened by the enclosing deadline
+or grant. Oversized prompts fail rather than being clipped. This is not full
+native Agent replacement or caller-Skill provenance equivalence.
 
 The separate filesystem export is:
 
@@ -196,7 +235,7 @@ The archive is the build input identity; its provisional SDK version alone
 does not identify candidate bytes.
 
 `just test` covers method preparation/results, JSON/1 bounds, package reads and
-ordinary Flow wiring with deterministic Exchange fixtures. After the initial
+ordinary Flow wiring with deterministic HTTP fixtures. After the initial
 build, it also checks the complete SDK archive, local dependency locator,
 digest and extracted-package repacking. Those tests do not
 establish provider quality, real-client compatibility or host containment.

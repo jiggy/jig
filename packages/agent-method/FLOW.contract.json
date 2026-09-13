@@ -50,13 +50,6 @@
     "blocked": "The Agent completed its bounded response but reported that the requested work is blocked.",
     "limit": "The Agent completed its bounded response but reported an Agent limit; host deadline and cancellation remain operational failures."
   },
-  "channels": {
-    "events": {
-      "direction": "send",
-      "required": false,
-      "contract": "./contracts/agent-exchange/contracts/acp-public-updates.json"
-    }
-  },
   "$defs": {
     "RunInput": {
       "type": "object",

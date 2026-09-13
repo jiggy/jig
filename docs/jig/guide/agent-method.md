@@ -27,8 +27,9 @@ consumer build hook or unpublished runtime dependency.
 
 Jig's native Agent Run imports the same pinned method implementation, while
 retaining its caller authentication, dynamic result checks and host lifecycle.
-The ordinary Flow is anonymous: it has no named Agent Run identity, settings
-schema or inherited caller source. Installing or invoking it does not establish
+The ordinary Flow is anonymous: it has no named Agent Run identity or inherited
+caller source. Its settings choose a model and token cap; its HTTP slot receives
+endpoint authority from the operator. Installing or invoking it does not establish
 native caller-context equivalence.
 
 ## Invoke the ordinary Flow
@@ -73,21 +74,55 @@ it satisfies Jig's normal capture rules. Package-manager links are still links:
 shallow discovery does not follow them, and an explicit symlink is not an
 adoption exception. No Binding is needed solely to select `methodSkills`.
 
-Configure the [host's Agent](agents.md), review the package, then invoke it:
+Add `bindings: discover('./bindings')` to the project (import `discover` from
+`@jigging/jig`) and create `bindings/agent.ts`:
 
-```console
-jig review
-jig run flow:flows/agent-method --input '{"instructions":"Explain a useful way to check an assumption."}'
+```ts
+import { defineBinding } from '@jigging/jig'
+
+export default defineBinding({
+  package: 'flows/agent-method',
+  settings: { model: 'your-model', maxCompletionTokens: 4096 },
+  slots: {
+    http: {
+      kind: 'http', method: 'POST',
+      url: 'https://api.openai.com/v1/chat/completions',
+      bearerEnv: 'OPENAI_API_KEY',
+    },
+  },
+})
 ```
 
-The Flow calls its exact `exchange` slot once and interprets its result.
-[Agent Exchange](../spec/agent-exchange.md) returns
-`{ outcome: 'done', output: { text, stop } }`; the method returns the complete
+Choose a model supported by the endpoint and supply the named credential in the
+operator environment. No native Agent configuration is needed. Review the exact
+[grant](../spec/grants.md), then invoke the Binding:
+
+```sh
+jig review
+jig run binding:agent --input '{"instructions":"Explain a useful way to check an assumption."}'
+```
+
+The Flow builds one non-streaming Chat Completions request and calls its exact
+`http` slot. Jig holds the credential and network access; the package interprets
+the HTTP status, response text and stop reason. The method returns the complete
 `{ outcome: 'done' | 'blocked' | 'limit', output: { text, structured? } }`.
 A successful structured method result contains the validated `structured`
 value. Operational errors remain execution errors. The installed Jig command
 wraps this invocation result in its ordinary Run terminal, which also reports
-host execution status.
+host execution status. Tool requests, malformed data and non-200 HTTP statuses
+remain failures. Nothing is retried automatically. A refused answer is `blocked`;
+token exhaustion is `limit`.
+
+`maxCompletionTokens` defaults to 4096, within 1–65536. Model and token settings
+guide the admitted method. To enforce them against malicious method code, add
+matching constraints in the HTTP grant's `bodySchema`. The endpoint still owns
+its billing and data policy. See [HTTP Request](../spec/http-request.md).
+
+HTTP narrows the library bounds above: the complete canonical request must fit
+256 KiB, the response 1 MiB, and execution the grant's timeout (at most 60 seconds)
+and remaining Run deadline. Requests are rejected, not truncated. Structured
+output is requested in the prompt and checked by the method; this does not claim
+provider-enforced schemas or semantic correctness.
 
 ## Reuse the library
 
@@ -138,18 +173,15 @@ Keep source and rebuilt runtime together; do not hand-edit generated files.
 ## Composition and observations
 
 A Jig root can call this Flow as an exact ordinary child, and the child can
-use Exchange within its reserved effect capacity. Two such siblings fit the
+use HTTP within its reserved effect capacity. Two such siblings fit the
 existing two-worker topology. A leaf specialist that already occupies a child
 position uses the library in-process; it cannot insert another ordinary Flow
 level. Existing aggregate resources and the remaining root deadline apply.
 
-The optional `events` endpoint uses the existing exact ACP public-updates
-agreement. The method forwards an unused endpoint directly to Exchange.
-An unsupported client rejects at the lower call before endpoint transfer or
-provider dispatch; the outer Flow may already have started. Updates are
-observations and never replace the execution result or grant session control.
+This text-only HTTP method declares no channels. It does not expose streaming
+or ACP updates and is not a replacement for native Agent callers that require
+them. Native Agent Run remains available separately.
 
-Other finite Run/1 hosts can supply the same exact Exchange interface under
-their own authority. The [specification](../spec/agent-exchange.md#independent-finite-hosts)
-states the required public behavior. Library reuse, unchanged Flow consumption,
+Other finite Run/1 hosts can supply the same exact HTTP Request interface under
+their own authority. Library reuse, unchanged Flow consumption,
 native caller-Skill support and Agent answer quality require separate evidence.

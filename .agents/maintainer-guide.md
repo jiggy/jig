@@ -294,13 +294,15 @@ The public value contract belongs in
 [`agent-run.md`](../docs/jig/spec/agent-run.md).
 
 `@jigging/agent-method` owns the reusable preparation and interpretation code,
-with a complete ordinary Flow entrypoint. Its keyless method uses
-[Agent Exchange](../docs/jig/spec/agent-exchange.md) for one bounded provider
-request. Native Agent Run imports the same code while retaining authenticated
+with a complete ordinary Flow entrypoint. Its keyless method owns one text-only
+Chat Completions request through an HTTP grant, with reviewed model/token settings.
+Native Agent Run imports the same pure code while retaining authenticated
 caller Skill selection and independent result validation. An ordinary Agent
 Flow selects only its own Skills or explicit guidance; it does not inherit
-native provenance. Existing specialists can reuse the library without another
-Flow level. Provider configuration, permissions and cleanup remain host-owned.
+native provenance. Existing specialists can reuse the library with
+[Agent Exchange](../docs/jig/spec/agent-exchange.md) without another Flow level.
+The ordinary HTTP method does not yet replace native streaming or caller context.
+Endpoint permissions, credentials and cleanup remain host-owned.
 
 The Flow supplies bounded instructions, an optional exact package-local skill
 selection, and an optional bounded result schema. It cannot select the Agent

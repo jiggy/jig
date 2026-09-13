@@ -1,0 +1,10 @@
+{
+  "$schema": "https://flow.jig.md/schemas/schema-1.json",
+  "type": "object",
+  "properties": {
+    "model": { "type": "string", "minLength": 1, "maxLength": 256 },
+    "maxCompletionTokens": { "type": "integer", "minimum": 1, "maximum": 65536 }
+  },
+  "required": ["model"],
+  "additionalProperties": false
+}

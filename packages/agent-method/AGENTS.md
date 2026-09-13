@@ -11,7 +11,9 @@ ordinary Flow, preserving operator ownership of Agent execution.
   result assembly, the optional package Skill reader, and ordinary Run/1 wiring.
 - The root `FLOW.ts` supplies the literal package root to the bundled runtime.
 - `contracts/agent-exchange/` mirrors the exact public descriptor and channel
-  closure owned by `docs/jig/spec/contracts/agent-exchange/`.
+  closure for library consumers. `contracts/http-request/` mirrors the ordinary
+  Flow's exact delegated HTTP interface. Canonical descriptors live under
+  `docs/jig/spec/contracts/`.
 - Package source, declarations, built runtime, licenses, tests, and build
   instructions form one release artifact.
 - `scripts/pack.ts` owns artifact staging. Packed `tooling/flow-sdk.tgz` is the
@@ -22,8 +24,14 @@ ordinary Flow, preserving operator ownership of Agent execution.
 
 - Pure exports perform no provider dispatch or filesystem access. The separate
   `./skills` export reads only explicitly selected package-local Skill trees.
-- The ordinary Flow exchanges once and forwards an unused optional events
-  endpoint directly. Its selected Skills belong to this package, never callers.
+- The ordinary Flow owns one non-streaming text-only Chat Completions exchange
+  through its HTTP slot, with model/token settings checked before dispatch.
+  Endpoint, credentials and request policy belong to the host grant. No retries,
+  native Agent dependency, channel projection or direct networking. Its selected
+  Skills belong to this package, never callers.
+- `settings.schema.json` owns model/token authoring validation. HTTP request
+  and response limits narrow the shared library's larger prompt bounds; reject
+  oversized requests before dispatch, never truncate them.
 - Preserve the shared 64-group, 1,024-item, 1 MiB content and 1 MiB rendered
   prompt limits. Reject duplicate selections, invalid UTF-8 and symlinks.
 - Runtime dependencies are bundled; installed consumers need no build hook.

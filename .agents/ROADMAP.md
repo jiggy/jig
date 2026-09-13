@@ -56,7 +56,28 @@ interpreted calls. The sequential Markdown profile does not promise universal
 Skill support or reliable model judgment; method quality needs its own evidence.
 Native Agent, command and checkpoint powers retain their actual host owners.
 
-### Immediate: dependable batch repair
+### Immediate: Decoupling
+
+Make the Agent independently replaceable through ordinary Flows and reviewed
+resource grants. Each slice must remove the path it supersedes, without adding
+another invocation API or weakening existing authority and lifecycle promises.
+
+1. **Run an ordinary HTTP-backed Agent.** The package owns request construction,
+   response interpretation and structured checks; Jig holds endpoint authority,
+   credentials and cleanup. Finish with installed use and honest failure evidence,
+   without a privileged Agent Exchange underneath.
+2. **Use that Agent from existing specialists.** Support the exact bounded
+   application → specialist → Agent → resource chain. Preserve caller guidance
+   provenance, independent result checks, remaining deadlines, aggregate capacity
+   and complete descendant cleanup. Make Markdown selection ordinary too;
+   remove superseded API-provider paths once their promises are replaced.
+3. **Move one finite native ACP adapter into a Flow.** Qualify narrowly reviewed
+   executable/runtime, authentication and bidirectional I/O authority. The package
+   owns ACP behavior; the host owns constrained launch and settlement. Delete the
+   replaced adapter path. Native workspace tools and continuing sessions remain
+   separate authority decisions.
+
+### Alongside: dependable batch repair
 
 A user can run two repair workers and receive each patch with trustworthy
 command and acceptance evidence. Diagnose the command-uncertainty failure at
