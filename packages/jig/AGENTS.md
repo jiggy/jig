@@ -35,7 +35,9 @@ admitted FLOW packages.
   leads with complete changed policy; `--details` includes unchanged policy.
   Run stdout is readable on terminals; redirection or `--json` selects exact
   JSON/NDJSON. Elapsed status uses terminal stderr only;
-  cancellation requested and cleanup confirmed are separate facts.
+  cancellation requested and cleanup confirmed are separate facts. Acquisition
+  reports Jig runtime verification, Agent verification, and project-state recovery
+  as separate stages instead of hiding them behind a prerequisites label.
 - FLOW and Jig specifications and machine schemas are authoritative. Accept
   only bounded, canonical current formats.
 - Capture mutable project source before evaluation, admission, preparation, or

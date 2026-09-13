@@ -79,7 +79,11 @@ child calls, project commands, and Agent providers.
   Resolve loader-owned libraries through the interpreter's canonical location;
   retain individual executable, loader, and
   library files at installation paths, hash their bytes, and revalidate before
-  launch. Reject unsupported or project-selected dependencies; never mount a
+  launch. Provider construction compares its freshly hashed file identities with
+  native inspection evidence instead of immediately hashing those files again.
+  This comparison accepts only authentic providers and complete matching file
+  evidence; it never replaces launch-time filesystem and byte revalidation or
+  establishes a persistent verification cache. Reject unsupported or project-selected dependencies; never mount a
   whole installation/store or import ambient loader variables. Each native
   launcher removes Bun's private loader override before starting its client.
 - Keep known channel-declaration, Agent-configuration and dependency-preparation failures actionable

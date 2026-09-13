@@ -18,6 +18,7 @@ export function privateDomainDigest(domain: string, value: JsonValue): string {
 /** Hash one already-selected host file without buffering it as one value. */
 export async function privateFileDigest(path: string): Promise<string> {
   const hash = createHash('sha256')
-  for await (const chunk of createReadStream(path)) hash.update(chunk)
+  for await (const chunk of createReadStream(path, { highWaterMark: 1024 * 1024 }))
+    hash.update(chunk)
   return `sha256:${hash.digest('hex')}`
 }

@@ -1,7 +1,11 @@
 import { lstat, open, realpath } from 'node:fs/promises'
 import { dirname, isAbsolute, join, normalize } from 'node:path'
 
-import type { PrivateAcpReadOnlyMount } from './acp-agent-provider.js'
+import {
+  type PrivateAcpAgentProvider,
+  type PrivateAcpReadOnlyMount,
+  verifyPrivateAcpAgentFileDigests,
+} from './acp-agent-provider.js'
 import { privateFileDigest } from './identity.js'
 import { privateNativeAgentSupportResolver } from './native-agent-executable.js'
 
@@ -20,7 +24,7 @@ export async function inspectPrivateNativeAgentRuntime(
 ): Promise<{
   readonly pathPrefix: string
   readonly mounts: readonly PrivateAcpReadOnlyMount[]
-  readonly revalidate: () => Promise<void>
+  readonly verifyProvider: (provider: PrivateAcpAgentProvider) => void
 }> {
   const outsideProject = await privateNativeAgentSupportResolver(projectDirectory)
   const mounts = new Map<string, PrivateAcpReadOnlyMount>()
@@ -115,12 +119,8 @@ export async function inspectPrivateNativeAgentRuntime(
   return Object.freeze({
     pathPrefix,
     mounts: Object.freeze([...mounts.values()]),
-    revalidate: async () => {
-      for (const [source, digest] of digests) {
-        if (digest !== (await privateFileDigest(source)))
-          throw new Error('native Agent runtime changed')
-      }
-    },
+    verifyProvider: (provider: PrivateAcpAgentProvider) =>
+      verifyPrivateAcpAgentFileDigests(provider, digests),
   })
 }
 

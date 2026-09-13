@@ -115,6 +115,7 @@ async function runPrivateInstalledCli(
             location,
             operatorEnvironment,
             project,
+            options?.onStage,
           )
           agentUnavailableHint = installedHost.agentUnavailableHint
           if (arguments_[0] === 'review' && installedHost.agentExecutable !== undefined) {
@@ -123,6 +124,7 @@ async function runPrivateInstalledCli(
               `Selected Agent:\n\n  Client: ${selected.client}\n  Executable: ${JSON.stringify(selected.path).replace(/[\u007f-\uffff]/g, (value) => `\\u${value.charCodeAt(0).toString(16).padStart(4, '0')}`)}\n\n`,
             )
           }
+          options?.onStage?.('Opening project state and checking recovery')
           return openPrivateProjectSession({
             directory: project,
             host: Object.freeze({

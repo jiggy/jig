@@ -170,8 +170,8 @@ export async function openPrivateCodexAgentProvider(
       model: apiModel,
       ...(apiBaseURL === undefined ? {} : { baseURL: apiBaseURL }),
     })
-    await runtime.revalidate()
-    await bubblewrapRuntime.revalidate()
+    runtime.verifyProvider(provider)
+    bubblewrapRuntime.verifyProvider(provider)
     return provider
   }
   const sourceHome = environment.CODEX_HOME ?? join(homedir(), '.codex')
@@ -186,8 +186,8 @@ export async function openPrivateCodexAgentProvider(
     credential,
     ...(environment.CODEX_MODEL === undefined ? {} : { model: environment.CODEX_MODEL }),
   })
-  await runtime.revalidate()
-  await bubblewrapRuntime.revalidate()
+  runtime.verifyProvider(provider)
+  bubblewrapRuntime.verifyProvider(provider)
   return provider
 }
 

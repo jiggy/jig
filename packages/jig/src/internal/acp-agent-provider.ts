@@ -4,10 +4,10 @@ import { access, lstat, realpath } from 'node:fs/promises'
 import type * as acp from '@agentclientprotocol/sdk'
 
 import type { JsonObject, JsonValue } from '../json.js'
-import type { PrivateLinuxReadOnlyMount } from './linux-rootless-backend.js'
-import { privateDomainDigest, privateFileDigest } from './identity.js'
-import { AGENT_RUN_CONTRACT_DIGEST } from './private-agent-run.js'
 import type { PrivateAcpSessionConfiguration } from './acp-agent-client.js'
+import { privateDomainDigest, privateFileDigest } from './identity.js'
+import type { PrivateLinuxReadOnlyMount } from './linux-rootless-backend.js'
+import { AGENT_RUN_CONTRACT_DIGEST } from './private-agent-run.js'
 import { snapshotPrivateOrdinaryJson } from './private-ordinary-json.js'
 
 const IDENTIFIER = /^[A-Za-z0-9][A-Za-z0-9._:/+-]{0,255}$/
@@ -235,6 +235,31 @@ export function requirePrivateAcpAgentProvider(value: unknown): PrivateAcpAgentP
 
 export function privateAcpAgentRuntime(value: PrivateAcpAgentProvider): PrivateAcpAgentRuntime {
   return authenticProviders.get(requirePrivateAcpAgentProvider(value))!
+}
+
+/** Match inspection evidence against freshly constructed, authenticated provider identity.
+ * This does not inspect current files or replace launch-time revalidation.
+ */
+export function verifyPrivateAcpAgentFileDigests(
+  value: PrivateAcpAgentProvider,
+  expected: ReadonlyMap<string, string>,
+): void {
+  const provider = requirePrivateAcpAgentProvider(value)
+  const runtime = privateAcpAgentRuntime(provider) as StoredRuntime
+  const digests = new Map<string, string>([
+    [runtime.adapterPath, provider.adapterDigest],
+    [runtime.executablePath, provider.executableDigest],
+  ])
+  for (const mount of runtime.exactMounts) {
+    if (mount.digest === undefined) continue
+    const previous = digests.get(mount.source)
+    if (previous !== undefined && previous !== mount.digest)
+      throw new Error('native Agent runtime changed')
+    digests.set(mount.source, mount.digest)
+  }
+  for (const [source, digest] of expected) {
+    if (digests.get(source) !== digest) throw new Error('native Agent runtime changed')
+  }
 }
 
 export async function revalidatePrivateAcpAgentProvider(value: unknown): Promise<void> {

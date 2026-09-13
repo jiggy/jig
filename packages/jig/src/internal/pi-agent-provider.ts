@@ -90,7 +90,7 @@ export async function openPrivatePiAgentProvider(
         model,
         apiKey,
       })
-      await runtime.revalidate()
+      runtime.verifyProvider(opened)
       return opened
     }
     const selectedProvider = requireSubscriptionProvider(provider)
@@ -117,7 +117,7 @@ export async function openPrivatePiAgentProvider(
         model,
         credential,
       })
-      await runtime.revalidate()
+      runtime.verifyProvider(opened)
       return opened
     } finally {
       sourceCredential.fill(0)

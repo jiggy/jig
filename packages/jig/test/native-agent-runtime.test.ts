@@ -2,6 +2,10 @@ import { afterEach, describe, expect, test } from 'bun:test'
 import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
+import {
+  createPrivateAcpAgentProvider,
+  revalidatePrivateAcpAgentProvider,
+} from '../src/internal/acp-agent-provider.js'
 import { inspectPrivateNativeAgentRuntime as inspect } from '../src/internal/native-agent-runtime.js'
 import { nativeElf } from './fixtures/native-elf.js'
 
@@ -27,6 +31,39 @@ function wrapper(executable: string, path: string) {
 }
 
 describe('native Agent runtime metadata', () => {
+  test('matches fresh provider evidence and still rejects changes before launch', async () => {
+    const { root, project, executable } = await fixture()
+    const library = join(root, 'libone.so')
+    await file(library)
+    await file(executable, { needed: ['libone.so'], search: root })
+    const inspected = await inspect(executable, project)
+    const create = (mounts = inspected.mounts) =>
+      createPrivateAcpAgentProvider({
+        client: 'test',
+        model: 'test',
+        credentialMode: 'none',
+        adapterPath: executable,
+        sandboxAdapterPath: '/agent/adapter',
+        executablePath: executable,
+        sandboxExecutablePath: '/agent/client',
+        environment: {},
+        readOnlyMounts: mounts,
+      })
+    const provider = await create()
+    expect(() => inspected.verifyProvider(provider)).not.toThrow()
+    expect(() => inspected.verifyProvider({ ...provider })).toThrow()
+    const incomplete = await create([])
+    expect(() => inspected.verifyProvider(incomplete)).toThrow('runtime changed')
+    await writeFile(library, Buffer.concat([nativeElf(), Buffer.from('changed')]))
+    const changed = await create()
+    expect(() => inspected.verifyProvider(changed)).toThrow('runtime changed')
+    await expect(revalidatePrivateAcpAgentProvider(provider)).rejects.toThrow('support changed')
+    await file(library)
+    await writeFile(executable, Buffer.concat([nativeElf(), Buffer.from('changed')]))
+    const changedExecutable = await create()
+    expect(() => inspected.verifyProvider(changedExecutable)).toThrow('runtime changed')
+  })
+
   test('retains transitive ELF libraries and their lookup paths without retaining directories', async () => {
     const { root, project, executable } = await fixture()
     const library = join(root, 'lib', 'libone.so')
@@ -129,8 +166,6 @@ describe('native Agent runtime metadata', () => {
       { source: first, destination: first, role: 'support' },
       { source: shared, destination: shared, role: 'support' },
     ])
-    await file(shared, { search: '' })
-    await expect(result.revalidate()).rejects.toThrow('runtime changed')
   })
 
   test('rejects malformed, non-ELF, missing, and privileged support', async () => {

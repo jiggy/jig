@@ -574,6 +574,29 @@ describe('finite Jig project commands', () => {
     },
   )
 
+  test('acquisition reports completed verification stages before project recovery', async () => {
+    const invocation = commandInvocation(
+      {
+        async acquire(_path, options) {
+          options?.onStage?.('Verifying Agent configuration and runtime')
+          options?.onStage?.('Opening project state and checking recovery')
+          return fakeSession([], { plan: { state: 'unchanged' } })
+        },
+      },
+      { interactive: true, terminalOutput: true },
+    )
+    expect(await main(['review'], invocation.options)).toBe(0)
+    const stages = [
+      'Verifying Jig runtime',
+      'Verifying Agent configuration and runtime',
+      'Opening project state and checking recovery',
+    ]
+    for (const stage of stages) expect(invocation.error).toContain(stage)
+    expect(invocation.error.indexOf(stages[0]!)).toBeLessThan(invocation.error.indexOf(stages[1]!))
+    expect(invocation.error.indexOf(stages[1]!)).toBeLessThan(invocation.error.indexOf(stages[2]!))
+    expect(invocation.error).not.toContain('Checking project prerequisites')
+  })
+
   test('yes alone does not grant resolution and a later invocation does not inherit it', async () => {
     const received: Parameters<PrivateCliCommandHost['acquire']>[1][] = []
     const host: PrivateCliCommandHost = {

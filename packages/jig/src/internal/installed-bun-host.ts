@@ -34,9 +34,11 @@ export async function openPrivateInstalledBunHost(
   location: PrivateInstalledBunLocation,
   environment: Readonly<Record<string, string | undefined>> = process.env,
   projectDirectory: string = process.cwd(),
+  onStage?: (stage: string) => void,
 ): Promise<PrivateProjectSessionHost & AgentSelection> {
   const operatorEnvironment = Object.freeze({ ...environment })
   const installedBunSupport = await openPrivateInstalledBunSupport(location)
+  onStage?.('Verifying Agent configuration and runtime')
   const agent = await tryOpenAgentProvider(
     installedBunSupport,
     operatorEnvironment,

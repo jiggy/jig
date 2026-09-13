@@ -99,7 +99,7 @@ export async function openPrivateClaudeAgentProvider(
       model: apiModel,
       ...(apiBaseURL === undefined ? {} : { baseURL: apiBaseURL }),
     })
-    await runtime.revalidate()
+    runtime.verifyProvider(provider)
     return provider
   }
   const token = environment.CLAUDE_CODE_OAUTH_TOKEN
@@ -111,7 +111,7 @@ export async function openPrivateClaudeAgentProvider(
     token,
     ...(environment.CLAUDE_MODEL === undefined ? {} : { model: environment.CLAUDE_MODEL }),
   })
-  await runtime.revalidate()
+  runtime.verifyProvider(provider)
   return provider
 }
 

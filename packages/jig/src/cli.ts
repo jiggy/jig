@@ -133,6 +133,7 @@ export interface PrivateCliCommandHost {
       readonly allowResolutionNetwork?: boolean
       readonly onResolution?: (packagePath: string) => void
       readonly onNotice?: (text: string) => void
+      readonly onStage?: (stage: string) => void
     },
   ): Promise<ProjectSession>
   readonly delivery?: PrivateDeliveryConnection
@@ -850,10 +851,14 @@ async function withProjectSession<T>(
   onSettledCloseFailure?: () => void,
 ): Promise<T> {
   runtime.signal?.throwIfAborted()
-  runtime.progress.stage('Checking project prerequisites')
+  runtime.progress.stage('Verifying Jig runtime')
   const session = await runtime.host.acquire(project, {
     ...acquisition,
     onNotice: (text) => runtime.writeNotice(text),
+    onStage: (stage) => {
+      runtime.progress.complete()
+      runtime.progress.stage(stage)
+    },
   })
   runtime.progress.complete()
   let closePromise: Promise<void> | undefined
