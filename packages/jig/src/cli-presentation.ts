@@ -119,7 +119,15 @@ export function privateCliHumanText(
           /^(Usage:|Reviewing |Running |Added:|Changed:|Removed:)/.test(line)
         )
           rendered = privateCliHeading(wrapped, 'info', true)
-        else rendered = highlightPolicy(wrapped, env)
+        else if (/^[+-] /.test(line)) {
+          const sign = line.slice(0, 1)
+          const body = line.slice(2)
+          rendered = `\u001b[${sign === '+' ? '32' : '31'}m${sign}\u001b[39m ${
+            /^\s*"digest": "sha256:/.test(body)
+              ? privateCliSecondary(body, true)
+              : highlightPolicy(body, env)
+          }`
+        } else rendered = highlightPolicy(wrapped, env)
       }
       // Width is supplied only for a terminal. Plain terminal mode keeps the same
       // spatial hierarchy; redirected text retains its compact, complete transcript.

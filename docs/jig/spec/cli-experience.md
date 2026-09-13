@@ -56,6 +56,12 @@ makes usable control an observable requirement;
    notices retain public/private-network access, pre-validation effects,
    irreversibility, possible rejection, and review-only scope. Approval shows
    every changed public policy record; `--details` includes unchanged policy.
+   Show public changes as contextual field diffs with explicit `-` previous and
+   `+` proposed markers, preserving exact values and container types. Omit
+   unchanged fields; additions/removals retain the complete affected value.
+   When retained execution or a selected child changes but public target fields
+   do not, explain that fact instead of printing identical before/after blocks.
+   Object key order alone is not a change; array order remains meaningful.
    Presentation must not hide policy behind truncation, decoration, or a pager.
 7. **Honest completion.** Command success follows required cleanup. Execution
    completion, application outcome, delivery, and cleanup remain separate.

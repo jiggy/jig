@@ -506,6 +506,76 @@ describe('private project Plan review', () => {
     }
   })
 
+  test('public diffs omit unchanged fields and preserve nested changes, arrays and empty values', () => {
+    const before = {
+      packagePath: 'flows/test',
+      settings: { keep: 'unchanged sentinel', nested: { count: 1 }, values: [1, 2], empty: {} },
+      slots: {},
+    }
+    const after = {
+      ...before,
+      settings: { keep: 'unchanged sentinel', nested: { count: 2 }, values: [2, 1], empty: [] },
+    }
+    const plan = reviewPlan('admission', 'unused')
+    const review = renderPrivateProjectPlanReview({
+      plan: {
+        ...plan,
+        proposed: { ...plan.proposed, lock: { packages: {}, bindings: { test: after } } },
+      },
+      baseCandidate: {
+        lock: { packages: {}, bindings: { test: before } },
+        candidate: { targets: [] },
+      },
+    } as unknown as PrivateActivationReviewPlan)
+    expect(review.text).toContain('    "settings" (object):')
+    expect(review.text).toContain('-       "count": 1')
+    expect(review.text).toContain('+       "count": 2')
+    expect(review.text).toContain('-     "empty": {}')
+    expect(review.text).toContain('+     "empty": []')
+    expect(review.text).toContain('-       "0": 1')
+    expect(review.text).toContain('+       "0": 2')
+    expect(review.text).not.toContain('unchanged sentinel')
+    expect(review.text).not.toContain('Previously:')
+    expect(review.details).toContain('unchanged sentinel')
+  })
+
+  test('identical public target fields explain retained identity changes and ignore object key order', () => {
+    const target = {
+      request: {
+        target: { kind: 'flow', path: 'flows/test' },
+        mode: 'run',
+        packagePath: 'flows/test',
+        entrypoint: { path: 'flow.ts', suffix: 'ts' },
+        settings: {},
+        attachments: {},
+      },
+      disposition: { state: 'ready', recipeDigest: 'private-before' },
+    }
+    const plan = reviewPlan('admission', 'unused')
+    const render = (next: unknown) =>
+      renderPrivateProjectPlanReview({
+        plan: { ...plan, proposed: { ...plan.proposed, targets: [next] } },
+        baseCandidate: { lock: plan.proposed.lock, candidate: { targets: [target] } },
+      } as unknown as PrivateActivationReviewPlan)
+    const changed = render({
+      ...target,
+      disposition: { state: 'ready', recipeDigest: 'private-after' },
+    })
+    expect(changed.text).toContain(
+      'Retained execution identity changed; public target fields are unchanged.',
+    )
+    expect(changed.text).not.toContain('"attachments"')
+    expect(changed.text).not.toContain('private-after')
+    const reordered = render({
+      disposition: target.disposition,
+      request: Object.fromEntries(Object.entries(target.request).reverse()),
+    })
+    expect(reordered.text).not.toContain('Changed:')
+    expect(
+      JSON.parse(reordered.details.slice(reordered.details.indexOf('{'))).changes.targets.changed,
+    ).toEqual([])
+  })
+
   test('fails before allocating a review larger than its public envelope', () => {
     const plan = reviewPlan('admission', `sha256:${'b'.repeat(64)}`)
     expect(() =>

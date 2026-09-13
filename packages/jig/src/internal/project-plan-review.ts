@@ -105,6 +105,15 @@ export function renderPrivateProjectPlanReview(
       (current?.targets ?? []).map((target) => [targetKey(target.target), target]),
     ),
     Object.fromEntries(proposed.targets.map((target) => [targetKey(target.target), target])),
+    (key) =>
+      samePolicy(
+        review.baseCandidate?.candidate.targets.find(
+          (target) => targetKey(target.request.target) === key,
+        ),
+        plan.proposed.targets.find((target) => targetKey(target.request.target) === key),
+      )
+        ? 'Selected child execution changed; public target fields are unchanged.'
+        : 'Retained execution identity changed; public target fields are unchanged.',
   )
   summary.write('Targets after approval:\n')
   if (proposed.targets.length === 0)
@@ -136,6 +145,7 @@ function writeChanges(
   changes: { added: readonly string[]; changed: readonly string[]; removed: readonly string[] },
   current: Readonly<Record<string, unknown>>,
   proposed: Readonly<Record<string, unknown>>,
+  unchangedReason?: (key: string) => string,
 ): void {
   writer.write(
     `${title}: ${changes.added.length} added, ${changes.changed.length} changed, ${changes.removed.length} removed\n`,
@@ -149,19 +159,99 @@ function writeChanges(
       writer.write(`\n${label}: `)
       writeAsciiJson(writer, key, 0)
       writer.write('\n')
-      // Show every changed public field exactly, not a lossy digest-only summary.
-      for (const [name, value] of [
-        ['Previously', current[key]],
-        ['Proposed', proposed[key]],
-      ] as const) {
-        if (value === undefined) continue
-        writer.write(`${name}:\n`)
-        writePolicy(writer, value, 1)
-        writer.write('\n')
+      if (label === 'Changed') {
+        if (samePolicy(current[key], proposed[key])) {
+          writer.write(`  ${unchangedReason?.(key) ?? 'Public policy is unchanged.'}\n`)
+        } else {
+          writer.write('  - removed / previous; + added / proposed\n')
+          writePolicyDiff(writer, current[key], proposed[key], 1)
+        }
+      } else {
+        writeSignedPolicy(
+          writer,
+          label === 'Added' ? proposed[key] : current[key],
+          1,
+          label === 'Added' ? '+' : '-',
+        )
       }
     }
   }
   writer.write('\n')
+}
+
+/** Object insertion order has no policy meaning; array order does. */
+function samePolicy(left: unknown, right: unknown): boolean {
+  if (left === right) return true
+  if (left === null || right === null || typeof left !== 'object' || typeof right !== 'object')
+    return false
+  if (Array.isArray(left) !== Array.isArray(right)) return false
+  const before = left as Record<string, unknown>
+  const after = right as Record<string, unknown>
+  const keys = Object.keys(before)
+  return (
+    keys.length === Object.keys(after).length &&
+    keys.every((key) => Object.hasOwn(after, key) && samePolicy(before[key], after[key]))
+  )
+}
+
+function writeSignedPolicy(
+  writer: BoundedAsciiWriter,
+  value: unknown,
+  depth: number,
+  sign: string,
+): void {
+  const part = new BoundedAsciiWriter(writer.maximumBytes)
+  writePolicy(part, value, depth)
+  for (const line of part.finish().trimEnd().split('\n')) writer.write(`${sign} ${line}\n`)
+}
+
+function writePolicyDiff(
+  writer: BoundedAsciiWriter,
+  before: unknown,
+  after: unknown,
+  depth: number,
+): void {
+  if (samePolicy(before, after)) return
+  if (
+    before !== null &&
+    after !== null &&
+    typeof before === 'object' &&
+    typeof after === 'object' &&
+    !Array.isArray(before) &&
+    !Array.isArray(after)
+  ) {
+    const old = before as Record<string, unknown>
+    const next = after as Record<string, unknown>
+    for (const key of [...new Set([...Object.keys(old), ...Object.keys(next)])].sort(
+      compareUtf16,
+    )) {
+      if (samePolicy(old[key], next[key])) continue
+      if (
+        Object.hasOwn(old, key) &&
+        Object.hasOwn(next, key) &&
+        old[key] !== null &&
+        next[key] !== null &&
+        typeof old[key] === 'object' &&
+        typeof next[key] === 'object' &&
+        !Array.isArray(old[key]) &&
+        !Array.isArray(next[key]) &&
+        Object.keys(old[key] as object).length > 0 &&
+        Object.keys(next[key] as object).length > 0
+      ) {
+        writer.write('  ')
+        writeIndent(writer, depth)
+        writeAsciiJsonString(writer, key)
+        writer.write(' (object):\n')
+        writePolicyDiff(writer, old[key], next[key], depth + 1)
+      } else {
+        if (Object.hasOwn(old, key)) writeSignedPolicy(writer, { [key]: old[key] }, depth, '-')
+        if (Object.hasOwn(next, key)) writeSignedPolicy(writer, { [key]: next[key] }, depth, '+')
+      }
+    }
+  } else {
+    writeSignedPolicy(writer, before, depth, '-')
+    writeSignedPolicy(writer, after, depth, '+')
+  }
 }
 
 function projectCandidate(
@@ -265,7 +355,7 @@ function changedBindingSlotDependencies(
         const before = currentByTarget.get(key)
         const after = proposedByTarget.get(key)
         return (
-          JSON.stringify(before) !== JSON.stringify(after) ||
+          !samePolicy(before, after) ||
           (before !== undefined &&
             after !== undefined &&
             current.portablePolicy.packages[before.request.packagePath]?.digest !==
@@ -290,10 +380,7 @@ function recordChanges(
     added: proposedKeys.filter((key) => !currentSet.has(key)).sort(compareUtf16),
     removed: currentKeys.filter((key) => !proposedSet.has(key)).sort(compareUtf16),
     changed: proposedKeys
-      .filter(
-        (key) =>
-          currentSet.has(key) && JSON.stringify(current[key]) !== JSON.stringify(proposed[key]),
-      )
+      .filter((key) => currentSet.has(key) && !samePolicy(current[key], proposed[key]))
       .sort(compareUtf16),
   }
 }

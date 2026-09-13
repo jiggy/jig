@@ -61,6 +61,9 @@ admitted FLOW packages.
   gray while consent, policy values, and recovery actions remain prominent.
   Structured human policy uses the shared syntax highlighter and `JIG_THEME`
   palettes; preserve exact escaped values and never style machine records.
+  Review uses contextual field diffs; identity-only target changes need an
+  explicit explanation, never identical previous/proposed blocks. Ignore object
+  insertion order when comparing review records; preserve array order.
 
 - Change implementation, normative specification, schema, README, and tests
   together when a public contract changes.

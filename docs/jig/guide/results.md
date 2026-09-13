@@ -46,6 +46,19 @@ move them outside the project and run `jig review` for fresh approval. Keep the
 source and dependency locks. If cleanup is uncertain, recover the owned work
 before replacing its state.
 
+### Reading review changes
+
+Review shows a field diff: `-` is the previous or removed value, and `+` is
+its proposed replacement or addition. Nested headings keep each changed field
+in context. Unchanged fields are omitted; `jig review --details` retains the
+complete previous and proposed public policy.
+
+A target can need renewed approval when its retained execution identity or a
+selected child changes even though its public fields are identical. Review
+explains this instead of repeating identical blocks. Private execution
+identities remain private. Object key ordering alone is ignored; array order
+is significant.
+
 ### Syntax colors
 
 Structured review output highlights keys, strings, numbers, and literals.

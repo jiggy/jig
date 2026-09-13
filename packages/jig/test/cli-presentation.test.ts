@@ -132,6 +132,16 @@ describe('CLI experience contract', () => {
     expect(privateCliHumanText(prose, true)).toBe(prose)
   })
 
+  test('diff markers retain direction and syntax colors without changing values', () => {
+    const input = '-   "mode": "old"\n+   "mode": "new"\n+   "digest": "sha256:123"'
+    const colored = privateCliHumanText(input, true, 40, { COLORTERM: 'truecolor' })
+    expect(strip(colored)).toBe(input)
+    expect(colored).toContain('\u001b[31m-\u001b[39m')
+    expect(colored).toContain('\u001b[32m+\u001b[39m')
+    expect(colored).toContain('\u001b[38;2;')
+    expect(colored).toContain('\u001b[90m  "digest"')
+  })
+
   test('long waits update one narrow active line and retain only confirmed completion', async () => {
     let transcript = ''
     const progress = new PrivateCliProgress(
