@@ -1,8 +1,8 @@
-import type { GrantPolicy, HttpGrant } from '../project/grants.js'
-import type { ProjectCommand } from '../project/commands.js'
 import { closeSync } from 'node:fs'
 import { CheckError } from '../diagnostics.js'
 import { canonicalJson, decodeJson1, type JsonObject, type JsonValue } from '../json.js'
+import type { ProjectCommand } from '../project/commands.js'
+import type { GrantPolicy, HttpGrant } from '../project/grants.js'
 import type { RunHostCall, RunHostOperationTerminal, WireFailureCode } from '../run/session.js'
 import { RunHostFatalOperationError } from '../run/session.js'
 import {
@@ -14,10 +14,22 @@ import {
   recordPrivateRootChildFence,
   recordPrivateRootChildSandbox,
 } from './activation-admission-store.js'
-import { type PrivateDirectRunRecipe, planPrivateDirectRun } from './direct-run.js'
-import { HTTP_LIMITS, httpCredential } from './http-grants.js'
+import type { PrivateAgentProvider } from './agent-provider.js'
+import {
+  type PrivateDirectRunInstalledSupport,
+  type PrivateDirectRunRecipe,
+  planPrivateDirectRun,
+} from './direct-run.js'
+import { HTTP_LIMITS, httpCredential, type PrivateHttpGrants } from './http-grants.js'
 import { privateDomainDigest } from './identity.js'
 import { revalidatePrivateInstalledBunSupport } from './installed-bun-support.js'
+import {
+  normalizeParentFlow,
+  protectedOwnerRoot,
+  requireParentFlowOwner,
+  requireParentTarget,
+  type PrivateInvocationContext,
+} from './invocation-context.js'
 import { privateSealedBytes, sha256 } from './linux-file-input.js'
 import {
   cancelPrivateLinuxOwnerStateAllocation,
@@ -27,6 +39,7 @@ import {
   normalizePrivateLinuxPreparedOwnerIdentity,
   normalizePrivateLinuxSealedOwnerIdentity,
   type PrivateLinuxCapturedInput,
+  type PrivateLinuxCgroupBackend,
   type PrivateLinuxComponentProcess,
   type PrivateLinuxConfirmedEnforcementReceipt,
   PrivateLinuxFenceUnconfirmedError,
@@ -49,16 +62,15 @@ import {
   type ProjectCommandResult,
   parseProjectCommandInput,
 } from './private-project-command.js'
-import {
-  normalizeParentFlow,
-  protectedOwnerRoot,
-  requireParentFlowOwner,
-  requireParentTarget,
-} from './root-agent-run-controller.js'
 
 const KIND = 'private-contained-effect-owner/1'
 const ROOT = '/jig-input/project'
-type Context = Parameters<typeof requireParentTarget>[0]
+interface Context extends PrivateInvocationContext {
+  readonly installedSupport: PrivateDirectRunInstalledSupport
+  readonly backend: PrivateLinuxCgroupBackend
+  readonly httpGrants?: PrivateHttpGrants | undefined
+  readonly agentProvider?: PrivateAgentProvider | undefined
+}
 interface Allocation {
   readonly kind: typeof KIND
   readonly effect: 'project-command' | 'http-request'

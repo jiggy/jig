@@ -1,4 +1,3 @@
-import { lstat, mkdir, realpath } from 'node:fs/promises'
 import { join } from 'node:path'
 import {
   AgentMethodError,
@@ -9,13 +8,7 @@ import {
 import { CheckError } from '../diagnostics.js'
 import { canonicalJson, decodeJson1, type JsonObject, type JsonValue } from '../json.js'
 import { inspectCapturedPackage } from '../package/inspect.js'
-import {
-  flowSlotTargets,
-  isAgentInvocation,
-  nativeInvocationKind,
-} from '../project/invocation-slots.js'
-import type { RunTargetIdentity } from '../project/package-project.js'
-import { validateProjectPath } from '../project/paths.js'
+import { isAgentInvocation, nativeInvocationKind } from '../project/invocation-slots.js'
 import {
   type ChannelBroker,
   ChannelOperationError,
@@ -30,13 +23,10 @@ import {
   runPrivateAcpTurn,
 } from './acp-agent-client.js'
 import { privateAcpAgentRuntime, revalidatePrivateAcpAgentProvider } from './acp-agent-provider.js'
-import { findPrivateActivationCandidateTargetV5 } from './activation-admission.js'
 import {
   allocatePrivateRootChildOwner,
   closePrivateRootChildOwner,
   listPrivateRootChildOwners,
-  type PrivateProjectCoordinator,
-  type PrivateReacquiredRootExecutionWork,
   type PrivateRootChildOwnerLifecycle,
   recordPrivateRootChildCleanup,
   recordPrivateRootChildFence,
@@ -51,6 +41,14 @@ import {
 } from './direct-run.js'
 import type { PrivateHttpGrants } from './http-grants.js'
 import { privateDomainDigest } from './identity.js'
+import {
+  normalizeParentFlow,
+  protectedOwnerRoot,
+  requireParentFlowOwner,
+  requireParentTarget,
+  type PrivateInvocationContext,
+  type PrivateParentFlow,
+} from './invocation-context.js'
 import { revalidatePrivateInstalledBunSupport } from './installed-bun-support.js'
 import {
   cancelPrivateLinuxOwnerStateAllocation,
@@ -115,7 +113,7 @@ interface AgentAllocation {
   readonly coordinatorEpoch: number
   readonly operationId: string
   readonly parentRequestDigest: string
-  readonly parentFlow: PrivateAgentParentFlow | null
+  readonly parentFlow: PrivateParentFlow | null
   /** Digest of the transient provider request; its bytes are never retained. */
   readonly requestDigest: string
   readonly providerDigest: string
@@ -133,12 +131,8 @@ interface AgentCleanup {
   readonly ownerRelease: PrivateLinuxOwnerStateReleaseReceipt
 }
 
-interface AgentRecoveryInput {
-  readonly projectRoot: string
+interface AgentRecoveryInput extends PrivateInvocationContext {
   readonly packageStoreRoot: string
-  readonly parent: PrivateReacquiredRootExecutionWork
-  readonly parentFlow?: PrivateAgentParentFlow
-  readonly coordinator: PrivateProjectCoordinator
   readonly installedSupport: PrivateDirectRunInstalledSupport
   readonly backend: PrivateLinuxCgroupBackend
   readonly httpGrants?: PrivateHttpGrants | undefined
@@ -147,13 +141,6 @@ interface AgentRecoveryInput {
 
 interface AgentInput extends AgentRecoveryInput {
   readonly agentProvider: PrivateAgentProvider
-}
-
-/** Exact admitted direct child Flow whose invocation owns this Agent call. */
-export interface PrivateAgentParentFlow {
-  readonly operationId: string
-  readonly target: RunTargetIdentity
-  readonly requestDigest: string
 }
 
 interface PreparedCall {
@@ -619,34 +606,6 @@ function selectAgentInvocation(input: AgentRecoveryInput, call: RunHostCall) {
   return selected
 }
 
-export function requireParentTarget(input: AgentRecoveryInput) {
-  const { parent, parentFlow } = input
-  const root = findPrivateActivationCandidateTargetV5(parent.candidate, parent.run.target)
-  if (
-    root === undefined ||
-    root.request.digest !== parent.intent.requestDigest ||
-    root.disposition.state !== 'ready'
-  ) {
-    throw new Error('parent Run differs from its admitted target')
-  }
-  if (parentFlow === undefined) return root
-  const target = findPrivateActivationCandidateTargetV5(parent.candidate, parentFlow.target)
-  if (
-    target === undefined ||
-    target.request.digest !== parentFlow.requestDigest ||
-    target.disposition.state !== 'ready' ||
-    Object.keys(flowSlotTargets(target.request.slots)).length !== 0 ||
-    !Object.values(flowSlotTargets(root.request.slots)).some(
-      (identity) =>
-        findPrivateActivationCandidateTargetV5(parent.candidate, identity)?.request.digest ===
-        target.request.digest,
-    )
-  ) {
-    throw new Error('Agent parent Flow differs from its admitted child target')
-  }
-  return target
-}
-
 async function reproduceParentRecipe(input: AgentInput): Promise<PrivateDirectRunRecipe> {
   const target = requireParentTarget(input)
   if (target.disposition.state !== 'ready') {
@@ -1086,77 +1045,6 @@ async function requireAllocationMatchesParent(
   }
 }
 
-export async function requireParentFlowOwner(
-  input: AgentRecoveryInput,
-  parentFlow: PrivateAgentParentFlow,
-  deadlineUnixMs: number,
-): Promise<void> {
-  const owners = await listPrivateRootChildOwners({
-    coordinator: input.coordinator,
-    projectRoot: input.projectRoot,
-    parentRunId: input.parent.run.runId,
-  })
-  const parent = owners.find(
-    (owner) =>
-      owner.parentOperationId === undefined && owner.operationId === parentFlow.operationId,
-  )
-  const allocation = parent?.allocation.value as JsonObject | undefined
-  if (
-    allocation === null ||
-    typeof allocation !== 'object' ||
-    Array.isArray(allocation) ||
-    allocation.kind !== 'private-root-child-owner-allocation/1' ||
-    allocation.parentRunId !== input.parent.run.runId ||
-    allocation.coordinatorEpoch !== input.parent.run.coordinatorEpoch ||
-    allocation.operationId !== parentFlow.operationId ||
-    allocation.requestDigest !== parentFlow.requestDigest ||
-    typeof allocation.effectiveDeadlineUnixMs !== 'number' ||
-    !Number.isSafeInteger(allocation.effectiveDeadlineUnixMs) ||
-    allocation.effectiveDeadlineUnixMs > input.parent.intent.deadlineUnixMs ||
-    allocation.effectiveDeadlineUnixMs < deadlineUnixMs ||
-    parent?.sandbox === undefined
-  ) {
-    throw new Error('Agent parent Flow differs from its durable execution owner')
-  }
-}
-
-export function normalizeParentFlow(
-  value: unknown,
-  parentOperationId: string | undefined,
-): PrivateAgentParentFlow | null {
-  if (parentOperationId === undefined) {
-    if (value !== null) throw new TypeError('root Agent allocation has a nested parent')
-    return null
-  }
-  const parent = exactObject(value, ['operationId', 'target', 'requestDigest'], 'Agent parent Flow')
-  if (parent.operationId !== parentOperationId || !isDigest(parent.requestDigest)) {
-    throw new TypeError('Agent parent Flow identity is invalid')
-  }
-  const target = exactObject(
-    parent.target,
-    parent.target?.kind === 'flow' ? ['kind', 'path'] : ['kind', 'id'],
-    'Agent parent Flow target',
-  )
-  let identity: RunTargetIdentity
-  if (target.kind === 'flow' && typeof target.path === 'string') {
-    validateProjectPath(target.path, 'Agent parent Flow target')
-    identity = Object.freeze({ kind: 'flow', path: target.path })
-  } else if (
-    target.kind === 'binding' &&
-    typeof target.id === 'string' &&
-    /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(target.id)
-  ) {
-    identity = Object.freeze({ kind: 'binding', id: target.id })
-  } else {
-    throw new TypeError('Agent parent Flow target is invalid')
-  }
-  return Object.freeze({
-    operationId: parentOperationId,
-    target: identity,
-    requestDigest: parent.requestDigest,
-  })
-}
-
 function providerFailure(code: PrivateOpenAIAgentErrorCode): RunHostOperationTerminal {
   if (code === 'AGENT_PROVIDER_OUTPUT_LIMIT') {
     return failed('RESOURCE_EXHAUSTED', 'the Agent provider result exceeded its fixed bound')
@@ -1234,26 +1122,6 @@ function agentIdentity(
   }).slice('sha256:'.length)
 }
 
-export async function protectedOwnerRoot(projectRoot: string): Promise<string> {
-  const state = await realpath(join(projectRoot, '.jig'))
-  const owners = join(state, 'private-root-linux-owners')
-  await mkdir(owners, { mode: 0o700 }).catch((error) => {
-    if (!hasCode(error, 'EEXIST')) throw error
-  })
-  const information = await lstat(owners)
-  const uid = typeof process.getuid === 'function' ? process.getuid() : -1
-  if (
-    !information.isDirectory() ||
-    information.isSymbolicLink() ||
-    information.uid !== uid ||
-    (information.mode & 0o077) !== 0 ||
-    (await realpath(owners)) !== owners
-  ) {
-    throw new Error('Agent execution owner directory is not protected')
-  }
-  return owners
-}
-
 function isDigest(value: unknown): value is string {
   return typeof value === 'string' && DIGEST.test(value)
 }
@@ -1269,10 +1137,4 @@ function failed(
     message,
     ...(details === undefined ? {} : { details }),
   })
-}
-
-function hasCode(error: unknown, code: string): boolean {
-  return (
-    error !== null && typeof error === 'object' && (error as NodeJS.ErrnoException).code === code
-  )
 }

@@ -10,6 +10,10 @@ child calls, project commands, delegated HTTP, and Agent providers.
 
 - Activation planning, admission storage, project sessions, root controllers,
   and durable lifecycle state.
+- `invocation-context.ts` owns shared admitted-parent identity and durable
+  parent-owner checks, plus protected owner-root validation. Agent, command and
+  HTTP controllers use these checks; resource ownership must not import Agent
+  execution logic. The current root/direct-child limits still apply.
 - Package artifact retention, materialization, and preparation.
 - Contract generation owns captured TypeSpec requests, a bounded trusted Node
   subprocess with empty environment and stdin lifetime lease, and per-package
