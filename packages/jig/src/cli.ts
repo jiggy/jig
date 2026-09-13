@@ -1277,6 +1277,12 @@ function renderRunFailure(
       'Effects may be uncertain; do not blindly repeat the Run. Inspect the result and any effects before starting new work. See https://jig.md/guide/results.',
       'Execution lost',
     )
+  if (terminal.code === 'EXECUTION_FAILED' && terminal.diagnostics.stderrBytes === 0)
+    return renderDiagnostic(
+      terminal.code,
+      'Execution failed, but the host did not retain a more specific cause.\nNo Flow diagnostic text was captured. This result does not establish whether the Flow started.\n\nInspect any effects before starting new work. See https://jig.md/guide/results.',
+      'Run failed',
+    )
   const reasons: Record<string, string> = {
     CANCELLED: 'Execution was cancelled.',
     DEADLINE_EXCEEDED: 'Execution reached its deadline.',

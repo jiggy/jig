@@ -37,7 +37,8 @@ filtering and a separate execution result.
 ## Verification
 
 - After preparing the current SDK dependency, `bun test examples/live-agent/test`
-  checks filtering and independent results. Release checks install the current
+  checks filtering, independent results, and actual Bun stderr fragment writes.
+  Release checks install the current
   packed SDK into a disposable application copy.
 - Installed native-client qualification belongs to Jig's host evidence.
 

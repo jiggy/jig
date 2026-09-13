@@ -384,6 +384,28 @@ describe('finite Jig project commands', () => {
     expect(machine.output).toBe(new TextDecoder().decode(canonicalJson(terminal)) + '\n')
   })
 
+  test('an unexplained terminal failure reports missing evidence without repeating a raw error block', async () => {
+    const terminal: RootRunTerminal = {
+      status: 'failed',
+      code: 'EXECUTION_FAILED',
+      message: 'root Run execution failed',
+      diagnostics: { stderr: '', stderrBytes: 0, stderrTruncated: false },
+    }
+    const events: string[] = []
+    const invocation = commandInvocation(fakeHost(fakeSession(events, { terminal }), events), {
+      terminalOutput: true,
+    })
+    expect(await main(['run', 'flow:flows/work'], invocation.options)).toBe(1)
+    expect(invocation.output).toBe('')
+    expect(invocation.error).toContain('No Flow diagnostic text was captured.')
+    expect(invocation.error.replace(/\s+/g, ' ')).toContain(
+      'does not establish whether the Flow started.',
+    )
+    expect(invocation.error).not.toContain('Inspect the result and diagnostics')
+    expect(invocation.error).not.toContain('root Run execution failed')
+    expect(invocation.error).toContain('Diagnostic code: EXECUTION_FAILED')
+  })
+
   test('protocol failures have safe recovery guidance without changing the JSON result', async () => {
     const terminal: RootRunTerminal = {
       status: 'failed',

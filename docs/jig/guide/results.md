@@ -30,6 +30,11 @@ work. An interruption or uncertain result is not permission to blindly retry.
 An interrupted command may exit without a JSON result; scripts must check the
 exit status and handle an absent terminal value.
 
+An `EXECUTION_FAILED` result with no captured diagnostic text does not establish
+whether the Flow started. The public result contains no more specific cause;
+keep the command and diagnostic code for investigation and inspect any effects
+before starting new work.
+
 A protocol error means the Flow did not complete Run/1 correctly. Check its
 SDK revision and stdout use, then inspect the result and any effects before
 running again. After changing source or dependencies, review the changes first.

@@ -100,7 +100,6 @@ export class PrivateCliRunPresentation {
   }
 
   async result(record: JsonValue, streamedDiagnostics: string): Promise<void> {
-    await this.#section('result')
     let view = record
     let note = ''
     if (isObject(record)) {
@@ -112,6 +111,19 @@ export class PrivateCliRunPresentation {
           note = `\n  Diagnostics: ${diagnostics.stderrBytes} bytes shown live${diagnostics.stderrTruncated ? '; retained capture truncated' : ''}.\n`
       }
     }
-    await this.write(privateCliHumanText(fields(view) + note, this.color, this.columns))
+    // The command's failure block owns status, code and the safe explanation.
+    if (isObject(view) && (view.status === 'failed' || view.status === 'lost')) {
+      const { status: _status, code: _code, message: _message, ...details } = view
+      view = details
+      if (Object.keys(details).length === 0 && note === '') return
+    }
+    await this.#section('result')
+    await this.write(
+      privateCliHumanText(
+        (isObject(view) && Object.keys(view).length === 0 ? '' : fields(view)) + note,
+        this.color,
+        this.columns,
+      ),
+    )
   }
 }

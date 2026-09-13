@@ -45,7 +45,10 @@ makes usable control an observable requirement;
    explanation/recovery, and diagnostic code. Codes support search and software;
    they must not replace the explanation. Name known missing prerequisites.
    Unknown causes stay unknown, with a bounded diagnostic step rather than a
-   guessed repair or raw exception. Explain whether work started and whether
+   guessed repair or raw exception. Explicitly identify absent diagnostic text
+   and an unretained cause; never direct users to inspect nonexistent evidence.
+   Show one failure explanation, retaining additional details without repeating
+   the raw status/code/message as a separate result block. Explain whether work started and whether
    effects or cleanup are uncertain whenever that affects recovery.
 5. **Useful next actions.** Successful setup and review identify the next
    supported action. Failures give a verified command, specific correction, or

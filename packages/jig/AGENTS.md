@@ -68,6 +68,8 @@ admitted FLOW packages.
   `cli-run-presentation.ts` owns human Run results and channel streaming. Join
   text fragments exactly, label channel switches and endings, escape controls,
   and preserve separate execution, application, delivery, and cleanup outcomes.
+  A generic failure without diagnostics must state the missing evidence; do not
+  imply that the Flow never started or repeat an identical raw error block.
 
 - Change implementation, normative specification, schema, README, and tests
   together when a public contract changes.

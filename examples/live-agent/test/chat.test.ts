@@ -216,3 +216,31 @@ describe('live Agent application', () => {
     }
   })
 })
+
+test('real Bun stderr joins fragments without affecting the returned result', async () => {
+  const source = `
+    import { chat } from ${JSON.stringify(new URL('../flows/chat/chat.ts', import.meta.url).pathname)};
+    const receive = (async function* () {
+      for (const text of ['One', ' answer', '.'])
+        yield { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text } };
+    })();
+    const result = await chat({
+      input: { instructions: 'synthetic test' }, channels: {},
+      channel: async () => ({ send: {}, receive }),
+      callCapability: async () => ({ outcome: 'completed', text: 'One answer.' })
+    });
+    process.stdout.write(JSON.stringify(result));
+  `
+  const child = Bun.spawn([process.execPath, '-e', source], { stdout: 'pipe', stderr: 'pipe' })
+  const [exit, stdout, stderr] = await Promise.all([
+    child.exited,
+    new Response(child.stdout).text(),
+    new Response(child.stderr).text(),
+  ])
+  expect(exit).toBe(0)
+  expect(stderr).toBe('One answer.\n')
+  expect(JSON.parse(stdout)).toMatchObject({
+    outcome: 'done',
+    output: { progress: { complete: true, displayed: 3 } },
+  })
+})
