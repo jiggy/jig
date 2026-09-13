@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test'
+import { parse as parseYaml } from 'yaml'
 
 import type { PrivateActivationReviewPlan } from '../src/internal/activation-admission-store.js'
 import type { PrivateAgentProvider } from '../src/internal/agent-provider.js'
@@ -23,7 +24,8 @@ describe('private project Plan review', () => {
       baseCandidate: { lock, candidate: { targets: [] } },
     } as unknown as PrivateActivationReviewPlan)
     expect(rendered.text).toStartWith('Review changes before approval\n')
-    expect(rendered.text).toContain('0 added, 0 changed, 0 removed')
+    expect(rendered.text).not.toContain('0 added, 0 changed, 0 removed')
+    expect(rendered.text).not.toContain('Packages (')
     expect(rendered.text).not.toContain('unchanged sentinel')
     expect(rendered.details).toContain('unchanged sentinel')
     expect(rendered.text).toContain('jig review --details')
@@ -150,7 +152,7 @@ describe('private project Plan review', () => {
 
     expect(rendered.mediaType).toBe('text/plain; charset=utf-8')
     expect(rendered.text).toContain('"packagePath": "flows/review"')
-    expect(rendered.text).toContain('"settings" (object):')
+    expect(rendered.text).toContain('"settings":')
     expect(rendered.text).toContain('"style": "focused"')
     expect(rendered.text).toContain(
       '"hidden": "\\u202e\\u200bline\\n\\t\\u0000\\u00e9\\ud83d\\ude00"',
@@ -252,9 +254,9 @@ describe('private project Plan review', () => {
       baseCandidate: current,
     } as unknown as PrivateActivationReviewPlan).details
 
-    expect(text).toContain('"current": {')
-    expect(text).toContain('"proposed": {')
-    const value = JSON.parse(text.slice(text.indexOf('{')))
+    expect(text).toContain('"current":')
+    expect(text).toContain('"proposed":')
+    const value = parseYaml(text.slice(text.indexOf('  "')))
     expect(value.changes.packages).toEqual({
       added: ['flows/new'],
       changed: [],
@@ -303,7 +305,7 @@ describe('private project Plan review', () => {
       plan: proposed,
       baseCandidate: current,
     } as unknown as PrivateActivationReviewPlan).details
-    const value = JSON.parse(text.slice(text.indexOf('{')))
+    const value = parseYaml(text.slice(text.indexOf('  "')))
 
     expect(value.current.portablePolicy.packages['flows/review'].digest).toBe(oldDigest)
     expect(value.proposed.portablePolicy.packages['flows/review'].digest).toBe(newDigest)
@@ -386,7 +388,7 @@ describe('private project Plan review', () => {
         targets: retargeted.candidate.targets,
       },
     }
-    const slotReview = JSON.parse(
+    const slotReview = parseYaml(
       renderPrivateProjectPlanReview({
         plan: slotChangePlan,
         baseCandidate: current,
@@ -405,7 +407,7 @@ describe('private project Plan review', () => {
         targets: candidate(newChildDigest, 'flows/bug').candidate.targets,
       },
     }
-    const digestReview = JSON.parse(
+    const digestReview = parseYaml(
       renderPrivateProjectPlanReview({
         plan: digestChangePlan,
         baseCandidate: current,
@@ -434,7 +436,7 @@ describe('private project Plan review', () => {
         targets: unavailable.candidate.targets,
       },
     }
-    const availabilityReview = JSON.parse(
+    const availabilityReview = parseYaml(
       renderPrivateProjectPlanReview({
         plan: availabilityPlan,
         baseCandidate: current,
@@ -490,7 +492,7 @@ describe('private project Plan review', () => {
         ...reviewPlan('admission', digest),
         proposed: { lock: proposed.lock, targets: proposed.candidate.targets },
       }
-      const review = JSON.parse(
+      const review = parseYaml(
         renderPrivateProjectPlanReview({
           plan,
           baseCandidate: current,
@@ -527,13 +529,13 @@ describe('private project Plan review', () => {
         candidate: { targets: [] },
       },
     } as unknown as PrivateActivationReviewPlan)
-    expect(review.text).toContain('    "settings" (object):')
+    expect(review.text).toContain('    "settings":')
     expect(review.text).toContain('-       "count": 1')
     expect(review.text).toContain('+       "count": 2')
     expect(review.text).toContain('-     "empty": {}')
     expect(review.text).toContain('+     "empty": []')
-    expect(review.text).toContain('-       "0": 1')
-    expect(review.text).toContain('+       "0": 2')
+    expect(review.text).toContain('-       - 1')
+    expect(review.text).toContain('+       - 2')
     expect(review.text).not.toContain('unchanged sentinel')
     expect(review.text).not.toContain('Previously:')
     expect(review.details).toContain('unchanged sentinel')
@@ -577,7 +579,7 @@ describe('private project Plan review', () => {
     })
     expect(reordered.text).not.toContain('Changed:')
     expect(
-      JSON.parse(reordered.details.slice(reordered.details.indexOf('{'))).changes.targets.changed,
+      parseYaml(reordered.details.slice(reordered.details.indexOf('  "'))).changes.targets.changed,
     ).toEqual([])
   })
 

@@ -52,7 +52,7 @@ function syntaxColor(role: SyntaxRole, env: NodeJS.ProcessEnv): string {
 function highlightPolicy(line: string, env: NodeJS.ProcessEnv): string {
   if (
     line.includes('\u001b') ||
-    !/^\s*(?:"(?:[^"\\]|\\.)*"\s*(?::|\((?:object|list|text)\):|,?$)|(?:true|false|null|-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)\s*,?$|[{}[\]])/.test(
+    !/^\s*(?:- )?(?:"(?:[^"\\]|\\.)*"\s*(?::|,?$)|(?:true|false|null|-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)\s*,?$|[{}[\]])/.test(
       line,
     )
   )
@@ -61,7 +61,7 @@ function highlightPolicy(line: string, env: NodeJS.ProcessEnv): string {
     /"(?:[^"\\]|\\.)*"|\b(?:true|false|null)\b|-?\b\d+(?:\.\d+)?(?:[eE][+-]?\d+)?/g,
     (token, offset: number) => {
       const role: SyntaxRole = token.startsWith('"')
-        ? /^\s*(?::|\((?:object|list|text)\):)/.test(line.slice(offset + token.length))
+        ? /^\s*:/.test(line.slice(offset + token.length))
           ? 'key'
           : 'string'
         : /^(true|false|null)$/.test(token)
@@ -79,9 +79,25 @@ export function privateCliHumanText(
   columns?: number,
   env = process.env,
 ): string {
+  let literal: { indent: number; prefix: string } | undefined
   return text
     .split('\n')
     .map((line) => {
+      const prefix = /^[+-] /.test(line) ? line.slice(0, 2) : ''
+      const body = line.slice(prefix.length)
+      const indent = /^ */.exec(body)![0].length
+      if (literal && prefix === literal.prefix && (body.trim() === '' || indent > literal.indent)) {
+        // Block scalars are data: no wrapping, heading recognition, or blank-line removal.
+        return color && body.trim() !== ''
+          ? `${prefix ? `\u001b[${prefix[0] === '+' ? '32' : '31'}m${prefix[0]}\u001b[39m ` : ''}\u001b[${syntaxColor('string', env)}m${body}\u001b[39m`
+          : line
+      }
+      literal = undefined
+      if (/^\s+(?:- )?(?:"(?:[^"\\]|\\.)*": )?\|[1-9]?[+-]?$/.test(body))
+        literal = {
+          indent: /^ +\|/.test(body) ? indent - 1 : /^ +- "/.test(body) ? indent + 2 : indent,
+          prefix,
+        }
       const section =
         /^(Choose an Agent|Run output:|Approval environment matches|Approval validity not checked|No approved revision|Selected Agent:|Host Agent selected|Packages \(|Bindings \(|Run targets \(|Targets after approval:|Review changes|Jig project|Warning:|Error:|Review could not finish|Run failed|Execution lost|Project ready|Created |Execution completed|Approval required|Review required|Review declined|Command interrupted|Run cancelled|Waiting for your approval)/.test(
           line,
@@ -109,11 +125,19 @@ export function privateCliHumanText(
         else if (/^(Project ready|Created |Execution completed)/.test(line))
           rendered = privateCliHeading(wrapped, 'success', true)
         else if (
-          /^\s*(?:Diagnostic code:|Category:|"digest": "sha256:)/.test(line) ||
-          /^Unchanged policy is omitted/.test(line)
+          /^\s*(?:Diagnostic code:|Category:|Executable:|Diagnostics:|"digest": "sha256:|Unavailable:|Flows needing live updates|Flow source, prepared dependencies, settings and permissions are unchanged\.)/.test(
+            line,
+          ) ||
+          /^(Changed:|Unchanged policy is omitted|Remembered locally\.)/.test(line)
         )
           rendered = privateCliSecondary(wrapped, true)
-        else if (
+        else if (/^ {2}\d+\. .* — /.test(line)) {
+          rendered = wrapped
+            .replace(/^ {2}\d+\. [^—\n]*\S(?= —|\n|$)/, (label) =>
+              privateCliHeading(label, 'info', true),
+            )
+            .replace('—', privateCliSecondary('—', true))
+        } else if (
           section ||
           /^[A-Z][^{}]*:$/.test(line) ||
           /^(Usage:|Reviewing |Running |Added:|Changed:|Removed:)/.test(line)

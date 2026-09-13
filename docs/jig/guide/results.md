@@ -37,7 +37,9 @@ and received JSON types. They do not print the rejected value. For example,
 not wrap it in an object. `jig inspect <target>` shows the approved input contract.
 
 Interactive stdout leads with execution and application outcome, plus packet
-delivery and unconfirmed cleanup when present, then retains the complete result.
+delivery and unconfirmed cleanup when present, then shows the complete result as
+syntax-highlighted YAML. Lists and multiline text use ordinary YAML formatting;
+strings remain quoted where needed to retain exact values.
 Application fields such as `success` are data, not host verdicts. With `--receive`, channel text
 streams continuously under labelled headings. Use `--json` for raw records in
 a terminal. Redirected stdout automatically contains exact JSON, or NDJSON
@@ -102,7 +104,7 @@ is significant.
 
 ### Syntax colors
 
-Structured review output highlights keys, strings, numbers, and literals.
+Structured review, inspection and Run output highlights keys, strings, numbers, and literals.
 Choose accents to match your terminal background:
 
 ```sh

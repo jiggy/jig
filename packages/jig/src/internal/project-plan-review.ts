@@ -1,4 +1,5 @@
 import { ProjectAdministrationError } from '../administration/project.js'
+import { privateCliValueFields } from '../cli-value-presentation.js'
 import type { RunTargetIdentity } from '../project/package-project.js'
 import type { PrivateActivationReviewPlan } from './activation-admission-store.js'
 import type { PrivateAgentProvider } from './agent-provider.js'
@@ -80,8 +81,7 @@ export function renderPrivateProjectPlanReview(
   const writer = new BoundedAsciiWriter(maximumBytes)
   writer.write('Jig project plan review\n\n')
   writer.write('Review the project changes below before applying them.\n\n')
-  writeAsciiJson(writer, proposal, 0)
-  writer.write('\n')
+  writePolicy(writer, proposal, 1)
   const details = writer.finish()
   const summary = new BoundedAsciiWriter(maximumBytes)
   summary.write('Review changes before approval\n\n')
@@ -129,7 +129,7 @@ export function renderPrivateProjectPlanReview(
     summary.write('  None. Add a Flow under flows/ and review again.\n')
   for (const target of proposed.targets) {
     summary.write('  ')
-    writeAsciiJson(summary, targetKey(target.target), 0)
+    writeAsciiJsonString(summary, targetKey(target.target))
     summary.write(` - ${target.availability.state}\n`)
   }
   summary.write(
@@ -189,6 +189,7 @@ function writeChanges(
   proposed: Readonly<Record<string, unknown>>,
   unchangedReason?: (key: string) => string,
 ): void {
+  if (changes.added.length + changes.changed.length + changes.removed.length === 0) return
   writer.write(
     `${title}: ${changes.added.length} added, ${changes.changed.length} changed, ${changes.removed.length} removed\n`,
   )
@@ -199,7 +200,7 @@ function writeChanges(
   ] as const) {
     for (const key of keys) {
       writer.write(`\n${label}: `)
-      writeAsciiJson(writer, key, 0)
+      writeAsciiJsonString(writer, key)
       writer.write('\n')
       if (label === 'Changed') {
         if (samePolicy(current[key], proposed[key])) {
@@ -244,7 +245,7 @@ function writeSignedPolicy(
 ): void {
   const part = new BoundedAsciiWriter(writer.maximumBytes)
   writePolicy(part, value, depth)
-  for (const line of part.finish().trimEnd().split('\n')) writer.write(`${sign} ${line}\n`)
+  for (const line of part.finish().slice(0, -1).split('\n')) writer.write(`${sign} ${line}\n`)
 }
 
 function writePolicyDiff(
@@ -283,7 +284,7 @@ function writePolicyDiff(
         writer.write('  ')
         writeIndent(writer, depth)
         writeAsciiJsonString(writer, key)
-        writer.write(' (object):\n')
+        writer.write(':\n')
         writePolicyDiff(writer, old[key], next[key], depth + 1)
       } else {
         if (Object.hasOwn(old, key)) writeSignedPolicy(writer, { [key]: old[key] }, depth, '-')
@@ -472,80 +473,9 @@ class BoundedAsciiWriter {
   }
 }
 
-/** A complete policy tree: exact keys/values, explicit container types, no JSON wall. */
+/** YAML keeps complete values and container types without extra type labels. */
 function writePolicy(writer: BoundedAsciiWriter, value: unknown, depth: number): void {
-  if (value === null || typeof value !== 'object' || Object.keys(value).length === 0) {
-    writeAsciiJson(writer, value, depth)
-    return
-  }
-  const entries = Array.isArray(value)
-    ? value.map((item, index) => [String(index), item] as const)
-    : Object.entries(value).sort(([left], [right]) => compareUtf16(left, right))
-  for (const [key, item] of entries) {
-    writeIndent(writer, depth)
-    writeAsciiJsonString(writer, key)
-    if (item !== null && typeof item === 'object' && Object.keys(item).length > 0) {
-      writer.write(Array.isArray(item) ? ' (list):\n' : ' (object):\n')
-      writePolicy(writer, item, depth + 1)
-    } else {
-      writer.write(': ')
-      writeAsciiJson(writer, item, depth)
-      writer.write('\n')
-    }
-  }
-}
-
-function writeAsciiJson(writer: BoundedAsciiWriter, value: unknown, depth: number): void {
-  if (value === null) {
-    writer.write('null')
-    return
-  }
-  if (typeof value === 'string') {
-    writeAsciiJsonString(writer, value)
-    return
-  }
-  if (typeof value === 'boolean') {
-    writer.write(value ? 'true' : 'false')
-    return
-  }
-  if (typeof value === 'number' && Number.isFinite(value)) {
-    writer.write(Object.is(value, -0) ? '0' : JSON.stringify(value))
-    return
-  }
-  if (Array.isArray(value)) {
-    writer.write('[')
-    for (let index = 0; index < value.length; index += 1) {
-      writer.write(index === 0 ? '\n' : ',\n')
-      writeIndent(writer, depth + 1)
-      writeAsciiJson(writer, value[index], depth + 1)
-    }
-    if (value.length > 0) {
-      writer.write('\n')
-      writeIndent(writer, depth)
-    }
-    writer.write(']')
-    return
-  }
-  if (typeof value === 'object') {
-    const object = value as Readonly<Record<string, unknown>>
-    const keys = Object.keys(object).sort(compareUtf16)
-    writer.write('{')
-    for (let index = 0; index < keys.length; index += 1) {
-      const key = keys[index]!
-      writer.write(index === 0 ? '\n' : ',\n')
-      writeIndent(writer, depth + 1)
-      writeAsciiJsonString(writer, key)
-      writer.write(': ')
-      writeAsciiJson(writer, object[key], depth + 1)
-    }
-    if (keys.length > 0) {
-      writer.write('\n')
-      writeIndent(writer, depth)
-    }
-    writer.write('}')
-    return
-  }
-  throw new TypeError('project plan review contains a non-JSON value')
+  writer.write(privateCliValueFields(value, depth, true))
 }
 
 function writeIndent(writer: BoundedAsciiWriter, depth: number): void {

@@ -34,11 +34,18 @@ makes usable control an observable requirement;
    terminal mode preserves these boundaries without escape sequences.
    Use the terminal's gray for secondary metadata: hashes, diagnostic codes,
    categories, change counts, completed-stage text, elapsed time, and optional
-   detail notes. Keep permission consequences, changed policy values, failures,
+   detail notes, executable paths, record identifiers, and unchanged context.
+   Omit review categories with no changes from the ordinary summary.
+   Keep permission consequences, changed policy values, failures,
    and next actions at normal or emphasized contrast. Gray never hides content
    or substitutes for labels, spacing, or explicit status words.
-   Highlight structured human policy keys, strings, numbers, and literals without
-   changing their escaped bytes. Keep punctuation neutral and hashes secondary.
+   Render structured human values as YAML using the shared standard serializer:
+   mappings, sequences, empty containers and multiline block strings convey types
+   without `(object)`, `(list)` or `(text)` labels. Quote strings and keys to preserve
+   exact JSON types and safe text. Preserve whitespace inside block strings, including
+   blank lines; never wrap or interpret their contents as status or headings.
+   Highlight keys, strings, numbers, and literals without changing their escaped
+   bytes. Keep punctuation neutral and hashes secondary.
    `JIG_THEME=one-dark` (default), `one-light`, or `macchiato` selects syntax
    accents for the terminal background; unknown values fall back to One Dark.
    Use truecolor when `COLORTERM=truecolor` or `24bit`, approximate accents for
@@ -83,9 +90,12 @@ makes usable control an observable requirement;
    Say no Flow started only when the host established a pre-execution refusal.
    Agent selection follows [Agent Run](agent-run.md#alpha-host-implementations):
    prompt only for Agent-using projects without explicit or remembered selection.
-   Number only available choices, explain unavailable clients, distinguish final
-   results from live updates, and state the limits of compatibility checks.
-   Keep selectable options adjacent to the prompt, after exclusion explanations.
+   Number only available choices and distinguish final results from live updates.
+   When an API client is selectable, state that the menu cannot detect whether
+   the Flow needs native live updates. When usable clients exist,
+   summarize unavailable names in one secondary line; `--details` expands setup
+   explanations. If none are usable, show the actionable explanations immediately.
+   Keep selectable options adjacent to the prompt, after secondary context.
    Suspend progress before input. Empty input, EOF and interruption choose nothing;
    `--yes` never selects a client. Remembering a client does not approve execution.
 7. **Honest completion.** Command success follows required cleanup. Execution

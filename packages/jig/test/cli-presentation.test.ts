@@ -110,7 +110,7 @@ describe('CLI experience contract', () => {
   "settings": {}
   "escaped": "quote: \" and unicode: \u001b"
   "limits": [true, false, null, -1.25e+3]
-  "uses" (object):
+  "uses":
     "agent": {"enabled": true}
   "values": [
     -2e-3,

@@ -1,4 +1,5 @@
 import { privateCliHumanText } from './cli-presentation.js'
+import { privateCliValueFields as fields } from './cli-value-presentation.js'
 import type { JsonValue } from './json.js'
 
 /** Untrusted text stays text, never terminal instructions or trusted headings. */
@@ -16,34 +17,6 @@ function safeText(text: string): string {
 function quoted(text: string): string {
   return safeText(JSON.stringify(text))
 }
-
-/** Preserve arbitrary application schemas, including nulls, arrays and text paragraphs. */
-export function privateCliValueFields(value: JsonValue, depth = 1): string {
-  const indent = '  '.repeat(depth)
-  if (typeof value === 'string')
-    return (
-      value
-        .split('\n')
-        .map((line) => `${indent}${safeText(line)}`)
-        .join('\n') + '\n'
-    )
-  if (value === null || typeof value !== 'object' || Object.keys(value).length === 0)
-    return `${indent}${JSON.stringify(value)}\n`
-  return Object.entries(value)
-    .map(([key, item]) => {
-      const label = `${indent}${quoted(key)}`
-      if (typeof item === 'string')
-        return item.includes('\n') || item.length > 60
-          ? `${label} (text):\n${fields(item, depth + 1)}`
-          : `${label}: ${quoted(item)}\n`
-      if (item !== null && typeof item === 'object' && Object.keys(item).length > 0)
-        return `${label} (${Array.isArray(item) ? 'list' : 'object'}):\n${fields(item, depth + 1)}`
-      return `${label}: ${JSON.stringify(item)}\n`
-    })
-    .join('')
-}
-
-const fields = privateCliValueFields
 
 function isObject(value: JsonValue | undefined): value is { readonly [key: string]: JsonValue } {
   return value !== null && typeof value === 'object' && !Array.isArray(value)

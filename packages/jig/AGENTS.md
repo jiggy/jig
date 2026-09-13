@@ -70,8 +70,13 @@ admitted FLOW packages.
   a separate raw diagnostic style or route machine output through styling.
   Major terminal sections need visible boundaries; secondary metadata uses
   gray while consent, policy values, and recovery actions remain prominent.
-  Structured human policy uses the shared syntax highlighter and `JIG_THEME`
-  palettes; preserve exact escaped values and never style machine records.
+  Dim executable paths, record identifiers, and unchanged context; omit review
+  categories with no changes from the ordinary summary.
+  `src/cli-value-presentation.ts` uses the existing YAML serializer for human
+  values in reviews, inspection, Run results, and structured channel messages.
+  Do not rebuild a custom type-labelled tree. Preserve exact types, safe quoted
+  keys, controls and block-string whitespace through syntax highlighting and
+  `JIG_THEME` palettes; never style or reserialize machine records.
   Review uses contextual field diffs; identity-only target changes need an
   concrete explanation of the changed execution environment or prepared files,
   unchanged policy, and approval consequence, never identical previous/proposed
@@ -94,6 +99,8 @@ admitted FLOW packages.
   dependency preparation; explicit selection overrides operator-local preference.
   Keep selection distinct from approval, preserve noninteractive operation, and
   disclose final-only API support without inferring runtime requirements from code.
+  Keep a usable chooser compact: secondary unavailable names, detailed setup only
+  with `--details` or when no client is usable, and options adjacent to the prompt.
 
 - Change implementation, normative specification, schema, README, and tests
   together when a public contract changes.
@@ -112,7 +119,7 @@ admitted FLOW packages.
 - `just jig::check`
 - Use `scripts/test-release.sh` for packed or cross-protocol changes.
 - Trust-boundary changes require the provisioned host-conformance workflow.
-- CLI acceptance: `bun test packages/jig/test/cli.test.ts packages/jig/test/cli-presentation.test.ts packages/jig/test/cli-run-presentation.test.ts packages/jig/test/cli-output.test.ts packages/jig/test/project-plan-review.test.ts`.
+- CLI acceptance: `bun test packages/jig/test/cli.test.ts packages/jig/test/cli-presentation.test.ts packages/jig/test/cli-run-presentation.test.ts packages/jig/test/cli-value-presentation.test.ts packages/jig/test/cli-output.test.ts packages/jig/test/project-plan-review.test.ts`.
   Check rendered success, failure, waits, cancellation, uncertain cleanup,
   plain/redirected output, narrow widths, and light/dark terminal palettes.
   Preserve byte-exact machine records and complete changed review policy.

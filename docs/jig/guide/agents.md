@@ -12,6 +12,9 @@ Run `jig review` in a terminal. If the project uses an Agent and you have not
 selected one, Jig lists clients with available local configuration and asks you
 to choose. It remembers that client for this project on your machine; subsequent
 reviews and Runs reuse it. Projects without Agent capabilities need no choice.
+Unavailable clients appear in a short secondary line. Use `jig review --details`
+to expand their setup instructions; Jig shows those instructions automatically
+when no client is usable.
 
 The menu labels native clients as supporting live updates and API clients as
 supporting the final result only. The current declarations do not establish

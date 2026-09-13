@@ -129,7 +129,9 @@ child calls, project commands, and Agent providers.
   distinguish unchanged source/dependencies/policy, and explain the new approval.
   Combined fingerprints cannot identify individual historical components; disclose
   that limit instead of inventing a component diff or displaying opaque identities.
-  A change-first display must retain every changed record; full
+  A change-first display omits empty categories and uses shared YAML field
+  rendering, with complete signed additions/removals and contextual diffs.
+  It must retain every changed record; full
   policy remains available without revealing private recipes or consent tokens.
   Missing-target suggestions come from the retained admitted revision, never a
   live filesystem scan, and cannot grant authority or select a replacement.

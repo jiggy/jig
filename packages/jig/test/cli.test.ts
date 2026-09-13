@@ -1738,7 +1738,10 @@ describe('finite Jig project commands', () => {
         expect(invocation.output).toContain('1. Codex')
         expect(invocation.output).not.toContain('2. API')
         expect(invocation.output).toContain('Unavailable: API')
-        expect(invocation.output.indexOf('Available clients:')).toBeGreaterThan(
+        expect(invocation.output).not.toContain('Configure API credentials first')
+        expect(invocation.output).not.toContain('this menu cannot detect that need')
+        expect(invocation.output).toContain('Setup: jig review --details')
+        expect(invocation.output.indexOf('1. Codex')).toBeGreaterThan(
           invocation.output.indexOf('Unavailable: API'),
         )
         expect(invocation.output).toContain('Enter a number from 1 to 1')
@@ -1746,6 +1749,53 @@ describe('finite Jig project commands', () => {
       } else expect(invocation.output).not.toContain('Choose an Agent')
       expect(events).toContain(`apply:${digest}`)
       expect(events.at(-1)).toBe('close')
+    },
+  )
+
+  test.each([false, true])(
+    'Agent setup instructions remain accessible (details=%s)',
+    async (details) => {
+      for (const usable of [false, true]) {
+        let prompts = 0
+        const session = fakeSession([], { plan: { state: 'unchanged' } })
+        const invocation = commandInvocation({
+          async acquire(_project, options) {
+            return {
+              ...session,
+              async plan(request) {
+                await options!.chooseAgent!(
+                  [
+                    ...(usable
+                      ? [{ id: 'codex' as const, label: 'Codex — final result and live updates' }]
+                      : []),
+                    {
+                      id: 'api',
+                      label: 'API endpoint — final result only',
+                      unavailable: 'Export OPENAI_API_KEY and OPENAI_MODEL before jig review.',
+                    },
+                  ],
+                  new AbortController().signal,
+                )
+                return session.plan(request)
+              },
+            }
+          },
+        })
+        await main(['review', ...(details ? ['--details'] : [])], {
+          ...invocation.options,
+          interactive: true,
+          answer: async () => {
+            prompts++
+            return ''
+          },
+        })
+        expect(prompts).toBe(usable ? 1 : 0)
+        if (details || !usable)
+          expect(invocation.output).toContain('Export OPENAI_API_KEY and OPENAI_MODEL')
+        else expect(invocation.output).not.toContain('Export OPENAI_API_KEY and OPENAI_MODEL')
+        if (!usable)
+          expect(invocation.output).toContain('No clients available. Configure a client above')
+      }
     },
   )
 

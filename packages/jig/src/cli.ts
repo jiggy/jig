@@ -19,7 +19,8 @@ import {
   privateCliDiagnostic as renderDiagnostic,
 } from './cli-presentation.js'
 import { PrivateCliProgress } from './cli-progress.js'
-import { PrivateCliRunPresentation, privateCliValueFields } from './cli-run-presentation.js'
+import { PrivateCliRunPresentation } from './cli-run-presentation.js'
+import { privateCliValueFields } from './cli-value-presentation.js'
 import {
   inspectPrivateApprovedProject,
   type PrivateInspectionEnvironmentCheck,
@@ -435,13 +436,20 @@ async function executeReview(arguments_: readonly string[], runtime: CliRuntime)
         ? {
             chooseAgent: async (choices: readonly PrivateAgentChoice[], signal: AbortSignal) => {
               const available = choices.filter((choice) => choice.unavailable === undefined)
+              const unavailable = choices.filter((choice) => choice.unavailable !== undefined)
+              const compatibility = available.some((choice) => choice.id === 'api')
+                ? '  Flows needing live updates require a native client; this menu cannot detect that need.\n'
+                : ''
+              const exclusions =
+                parsed.details || available.length === 0
+                  ? unavailable
+                      .map((choice) => `  Unavailable: ${choice.label}\n    ${choice.unavailable}`)
+                      .join('\n')
+                  : unavailable.length > 0
+                    ? `  Unavailable: ${unavailable.map((choice) => choice.label.split(' — ')[0]).join(', ')}. Setup: jig review --details.`
+                    : ''
               runtime.writeOutput(
-                `Choose an Agent for this project\n\nThe choice is remembered locally. Approval remains a separate step.\nSome Flows need live Agent updates. Their declarations do not establish\nthat requirement; API clients support only the final result.\n\n${choices
-                  .filter((choice) => choice.unavailable !== undefined)
-                  .map((choice) => `  Unavailable: ${choice.label}\n    ${choice.unavailable}`)
-                  .join(
-                    '\n',
-                  )}\n\nAvailable clients:\n${available.length === 0 ? '  None. Configure a client above, then retry jig review.' : available.map((choice, index) => `  ${index + 1}. ${choice.label}`).join('\n')}\n\n`,
+                `Choose an Agent for this project\n\nRemembered locally. Approval remains a separate step.\n${compatibility}${exclusions ? `${exclusions}\n` : ''}\n${available.length === 0 ? '  No clients available. Configure a client above, then retry jig review.' : available.map((choice, index) => `  ${index + 1}. ${choice.label}`).join('\n')}\n\n`,
               )
               if (available.length === 0) return undefined
               while (true) {

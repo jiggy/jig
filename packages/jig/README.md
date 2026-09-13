@@ -55,7 +55,7 @@ It checks that approval against current local execution identities and reports
 changed or unverifiable environments. It does not check visible source edits,
 launch readiness or remote availability; Run still revalidates before execution.
 
-`run` executes the approved revision and shows a readable terminal result after
+`run` executes the approved revision and shows a YAML terminal result after
 settling owned work. `--receive` streams labelled channel text. Redirect stdout
 or use `--json` for exact JSON (NDJSON with `--receive`). Terminal-only elapsed
 status, cancellation updates, and diagnostics use stderr. An application outcome such
