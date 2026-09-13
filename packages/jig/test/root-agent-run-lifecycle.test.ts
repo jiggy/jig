@@ -99,7 +99,7 @@ test('constructs unchanged packed HTTP Agent method siblings', async () => {
 }, 30_000)
 
 proofDescribe('contained repair file application', () => {
-  for (const scenario of ['successful', 'unsuccessful', 'batch'] as const) {
+  for (const scenario of ['successful', 'unsuccessful', 'batch', 'mixed-batch'] as const) {
     test(
       `exports ${scenario} repair evidence through a JSON leaf and real contained commands`,
       async () => {
@@ -140,6 +140,8 @@ proofDescribe('contained repair file application', () => {
           },
         ]
         let calls = 0
+        let verified = false
+        const batchScenario = scenario === 'batch' || scenario === 'mixed-batch'
         const repairPasses = scenario !== 'unsuccessful'
         const server = createServer(async (request, response) => {
           const requestText = await new Response(request as any).text()
@@ -147,6 +149,12 @@ proofDescribe('contained repair file application', () => {
             ? timesheetReplacements
             : replacements
           calls++
+          if (scenario === 'mixed-batch' && requestText.includes('src/total.ts')) {
+            response
+              .writeHead(503, { 'content-type': 'application/json' })
+              .end(JSON.stringify({ error: { message: 'Bounded fixture refusal.' } }))
+            return
+          }
           response.writeHead(200, { 'content-type': 'application/json' }).end(
             JSON.stringify({
               status: 'completed',
@@ -365,7 +373,7 @@ globalThis.fetch = (url, init) => {
             )
             expect(calls).toBe(2)
           }
-          if (scenario === 'batch') {
+          if (batchScenario) {
             const batchOut = join(root, 'batch')
             expect(
               await main(
@@ -388,13 +396,21 @@ globalThis.fetch = (url, init) => {
             const batch = JSON.parse(stdout)
             expect(batch).toMatchObject({
               status: 'succeeded',
-              outcome: 'done',
+              outcome: scenario === 'mixed-batch' ? 'blocked' : 'done',
               delivery: { status: 'written' },
             })
             expect(batch.output.overlaps).toEqual([])
             expect(batch.output.jobs).toHaveLength(2)
             expect(new Set(batch.output.jobs.map((job: any) => job.baseDigest)).size).toBe(2)
             for (const job of batch.output.jobs) {
+              if (scenario === 'mixed-batch' && job.id === 'timesheet') {
+                expect(job).toMatchObject({ status: 'failed' })
+                expect(job.ready).toBeUndefined()
+                expect(
+                  await Bun.file(join(batchOut, 'files', job.id, 'review.patch')).exists(),
+                ).toBe(false)
+                continue
+              }
               expect(job).toMatchObject({ status: 'settled', ready: true })
               expect(job.result.output.baseline.acceptance.some((c: any) => !c.passed)).toBe(true)
               expect(
@@ -417,16 +433,34 @@ globalThis.fetch = (url, init) => {
               originalTotal,
             )
             expect(calls).toBe(2)
+            expect(batch.checkpoint.evidence.pending).toEqual([])
+            expect(batch.checkpoint.files['logs/review.patch']).toContain('--- a/src/parse.ts')
+            expect(await readFile(join(batchOut, 'files/summary.txt'), 'utf8')).toContain(
+              'logs: review-ready',
+            )
+            if (scenario === 'mixed-batch') {
+              expect(batch.checkpoint.files['timesheet/review.patch']).toBeUndefined()
+              expect(await readFile(join(batchOut, 'files/summary.txt'), 'utf8')).toContain(
+                'timesheet: unsuccessful',
+              )
+            }
           }
+          verified = true
         } finally {
-          await owner.close()
-          await new Promise<void>((resolve) => server.close(() => resolve()))
-          await rm(root, { recursive: true, force: true })
+          let cleaned = false
+          try {
+            await owner.close()
+            cleaned = true
+          } finally {
+            await new Promise<void>((resolve) => server.close(() => resolve()))
+            if (verified && cleaned) await rm(root, { recursive: true, force: true })
+            else console.error(`Repair proof retained at ${root}`)
+          }
         }
         // Each case owns one bounded Run. Leave setup/cleanup time outside its
         // 120s/180s execution budget instead of killing a three-Run aggregate early.
       },
-      scenario === 'batch' ? 240_000 : 180_000,
+      scenario === 'batch' || scenario === 'mixed-batch' ? 240_000 : 180_000,
     )
   }
 })
