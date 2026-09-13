@@ -23,7 +23,6 @@ const sidebar = [
       { text: "Flow dependencies", link: "/guide/dependencies" },
       { text: "Working with files", link: "/guide/files" },
       { text: "Live progress", link: "/guide/channels" },
-      { text: "Two-way data exchange", link: "/guide/dataset-analysis" },
       { text: "Workflow structure", link: "/guide/workflow-design" },
     ],
   },
@@ -31,8 +30,8 @@ const sidebar = [
     text: "Examples",
     items: [
       { text: "One caller, three implementations", link: "/guide/request-triage" },
+      { text: "Handle a disputed charge", link: "/guide/support-case" },
       { text: "An issue becomes a tested patch", link: "/guide/tested-patch" },
-      { text: "A proposal workshop", link: "/guide/proposal-workshop" },
     ],
   },
   {

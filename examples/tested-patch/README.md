@@ -1,93 +1,63 @@
 # Get a project patch you can inspect
 
-Give this application a small Bun project and a bug. Its repair specialist
-proposes changes across selected source files; Jig runs reviewed commands in
-separate containment. Independent assertions check captured behavior.
-You receive a patch and evidence, while the originals remain unchanged.
+Give this application a small Bun project and a bug. It reproduces the failure,
+asks an Agent for a bounded change, runs reviewed commands, and independently
+checks their output. You receive a patch with evidence; your original source
+stays unchanged.
 
 ## Try it
 
-Install Jig on a [supported host](https://jig.md/guide/).
-
-Configure your [Agent](https://jig.md/guide/agents), then inspect
-`issue.json`, `bindings/specialist.ts`, and `flows/project/cases.json`.
-From this directory:
+Complete [workspace setup](https://jig.md/guide/dependencies#local-workspace-packages)
+and [configure an Agent](https://jig.md/guide/agents) on a
+[supported host](https://jig.md/guide/). Inspect `issue.json`,
+`bindings/specialist.ts`, and `flows/project/cases.json`, then run here:
 
 ```sh
 jig review
 jig run binding:repair --input @issue.json --attach source=fixtures/log-report --out repair-result --timeout 5m
 ```
 
-The example uses the checkout's SDK workspace. Complete the
-[workspace setup](https://jig.md/guide/dependencies#local-workspace-packages)
-once; review captures the local dependency bytes.
+The synthetic fixture is an HTTP log reporter with defects in parsing and
+aggregation. Open `repair-result/files/summary.txt`. A passing repair produces
+`review.patch`; valid unsuccessful proposals remain `proposal-N.patch`.
+`result.json` records candidate identities, command output and termination,
+and independent acceptance results. Review the patch before applying it.
 
-Open `repair-result/files/summary.txt`. A successful repair produces
-`review.patch`; unsuccessful proposals remain `proposal-N.patch`.
-`result.json` records candidate identities, actual command output and
-termination, and independent acceptance results. Review before applying.
+## Follow the evidence
 
-The fixture is an HTTP log-report CLI with defects in parsing and aggregation.
-The root Flow captures files and delivers patches. A JSON-input leaf uses
-Agent and Project Command effects; it has no attachments or child Flows.
-For one issue, a separate monitor formats the leaf's selected phase records
-as live diagnostics; an independent root subscriber records the same phases.
-The two Bindings configure these exact child slots and
-approved Bun commands.
+1. The root captures the selected files and fixed acceptance cases.
+2. The repair specialist reproduces an independent failure before asking an Agent.
+3. The Agent proposes complete replacements for permitted source paths.
+4. Reviewed Bun commands execute against the candidate in separate containment.
+5. Independent assertions check collected CLI behavior. The root validates the
+   evidence and constructs a patch from passing replacements.
 
-## Choose the progress presentation
+There are at most two Agent proposals. The acceptance expectations stay fixed.
+Repository tests can be interfered with by candidate code; the independent
+checks do not import that code or trust its pass flag. A finite case set proves
+only the tested behavior.
 
-The repair specialist publishes only bounded phases: reproducing the defect,
-requesting a proposal, checking a candidate, and finishing. It works with
-ordinary one-shot Agent clients; no Agent message or source text goes to the
-monitor. The monitor receives data, not execution or acceptance authority.
+The method accepts 16 UTF-8 files totaling 64 KiB and eight editable source paths.
+Its leaf receives JSON and uses Agent and Project Command capabilities, with no
+attachments or child Flows. Source selection and delivery belong to the root.
 
-`bindings/repair.ts` selects the monitor through its exact `monitor` slot.
-Replace that target with another Flow that receives `phases` and sends
-`display`, as declared in `flows/monitor/FLOW.md`. The included monitor also
-accepts Binding settings `style: 'compact'` and `phases: ['proposal', 'check']`
-for shorter, filtered output. The repair method stays unchanged.
+The output destination must be new. Ctrl-C cancels owned work; accepted
+checkpoints can retain completed evidence after cleanup without turning an
+interrupted Run into success. Selected source reaches the configured provider.
 
-Add `--receive progress` to a single-issue run for structured subprocess
-records instead of duplicate console diagnostics. A completed single-issue
-run's `result.json` contains separate `output.monitoring` and `output.recording`
-completeness records. `files/progress.json` holds the at-most-six-record trace;
-monitor filtering does not change it. A slow or failed subscriber cannot stall
-the other subscriber or the repair writer.
-A failed monitor may leave a review-ready patch; its messages never establish
-that a patch passed. The root validates and checkpoints repair evidence as
-soon as the specialist settles, independently of the monitor's final result.
-An interruption may retain that patch checkpoint without the final trace.
+## Build on the method
 
-This deliberately narrow application allows 16 UTF-8 files, 64 KiB of text,
-eight editable source paths, and two Agent proposals. It provides no network,
-installation, shell service, writable host repository, or automatic merge.
-Repository tests can be interfered with by candidate code; independent cases
-compare captured CLI behavior outside its execution scope.
-
-The output destination must be new. Ctrl-C requests cancellation. Settled jobs
-are checkpointed: interruption preserves only the latest accepted aggregate,
-after cleanup, and never becomes a successful Run. Selected source reaches your configured
-provider, and even unsuccessful calls may incur charges.
-
-## Repair two projects together
-
-`batch.json` pairs the log reporter with a timesheet CLI that mishandles
-overnight shifts and invalid minutes. The same unchanged specialist works on
-both projects, with separate source and acceptance cases:
+The same repair specialist handles the included timesheet CLI as well as the
+log reporter. `batch.json` requests both, preserving separate results:
 
 ```sh
 jig run binding:repair --input @batch.json --attach source=fixtures --out batch-result --timeout 5m
 ```
 
-Each job gets its own folder under `files/`, with a patch and checks. A failed
-worker does not discard its successful sibling. Optional `cancelAfterMs` on a
-job stops that worker; Ctrl-C cancels the whole Run. At most two workers run,
-each with two Agent proposals. Overlapping edits are reported, never merged.
-The patches were tested separately, not as a combined change.
-Both child positions belong to repair workers in batch mode; no monitor is
-started, and no live phase output is promised for that mode.
+The [walkthrough](https://jig.md/guide/tested-patch) explains adaptation, batch
+failure, and checkpoints. [Progress integration](https://jig.md/guide/channels)
+shows the single-job monitor, independent recorder, and `--receive progress`.
+These observations never establish that a patch passed.
 
-The [public guide](https://jig.md/guide/tested-patch) covers evidence, failures,
-and adaptation. This is an authored example, not a promoted Starter or a
-claim of general coding reliability.
+Run `bun test examples/tested-patch/test` from the repository root after workspace
+setup. These are authored application checks, not a claim of general coding reliability.

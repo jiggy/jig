@@ -152,7 +152,7 @@ protocol failures, and retained-state recovery.
 - [Choose an Agent](./agents.md) using an API or a supported local client.
 - [Work with files](./files.md) to capture inputs and export one result packet.
 - [Manage dependencies](./dependencies.md) for reusable Flow packages.
-- [Repair a project](./tested-patch.md) or [compose a proposal workshop](./proposal-workshop.md).
+- [Repair a project](./tested-patch.md) or [handle a disputed charge](./support-case.md).
 - [Choose a workflow structure](./workflow-design.md) for your application.
 
 ## Supported host

@@ -27,8 +27,7 @@ your application while keeping authority and consequences explicit.
 | Import libraries or share local packages | [Flow dependencies](./dependencies.md) |
 | Supply source files and deliver artifacts | [Working with files](./files.md) |
 | Show progress in a terminal or another application | [Live progress](./channels.md) |
-| Exchange data while child methods work | [Two-way data exchange](./dataset-analysis.md) |
-| Compose drafting and review specialists | [Proposal workshop](./proposal-workshop.md) |
+| Put Agent interpretation behind application policy | [Handle a disputed charge](./support-case.md) |
 | Decide whether I need a graph or several Agents | [Workflow structure](./workflow-design.md) |
 | Share work across a team | [Team ownership](./teams.md) |
 | Understand a result or recover from failure | [Results and recovery](./results.md) |

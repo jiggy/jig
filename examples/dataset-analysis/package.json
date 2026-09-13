@@ -1,8 +1,0 @@
-{
-  "name": "dataset-analysis-example",
-  "private": true,
-  "type": "module",
-  "devDependencies": {
-    "@jigging/flow": "workspace:*"
-  }
-}

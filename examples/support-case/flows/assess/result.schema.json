@@ -1,0 +1,69 @@
+{
+  "$schema": "https://flow.jig.md/schemas/schema-1.json",
+  "oneOf": [
+    {
+      "type": "object",
+      "properties": {
+        "outcome": {
+          "const": "done"
+        },
+        "output": {
+          "type": "object",
+          "properties": {
+            "chargeId": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "maxLength": 80,
+              "minLength": 1
+            },
+            "requestedCreditCents": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 1000000
+            }
+          },
+          "required": [
+            "chargeId",
+            "requestedCreditCents"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "outcome",
+        "output"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "outcome": {
+          "enum": [
+            "blocked",
+            "limit"
+          ]
+        },
+        "output": {
+          "type": "object",
+          "properties": {
+            "reason": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "reason"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "outcome",
+        "output"
+      ],
+      "additionalProperties": false
+    }
+  ]
+}

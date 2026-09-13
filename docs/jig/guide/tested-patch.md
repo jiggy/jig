@@ -35,36 +35,7 @@ Selected text reaches your configured Agent provider. Choose source and a
 provider suitable for your data. Ctrl-C cancels owned work; it cannot retract
 a remote request already received, and unsuccessful calls may incur charges.
 
-## See progress and change its presentation
-
-For a single issue, a separate `monitor` Flow receives the repair specialist's
-phase records and returns selected text to the parent. You see baseline,
-proposal and check progress live on stderr. Add `--receive progress` for
-[structured live output](channels.md#connect-another-application) on stdout.
-Neither presentation reports the final verdict; inspect the patch evidence.
-
-The `monitor` slot in `bindings/repair.ts` selects this capability-free Flow.
-Replace it with another Flow declaring the same channel shapes, or configure
-the included monitor through a Binding: `settings.style` accepts `compact`
-or `descriptive`, and `settings.phases` selects which phases to show (an empty
-list suppresses them). Review changed configuration as usual. The repair
-specialist remains unchanged and the monitor receives no source or Agent access.
-
-The specialist broadcasts once to two independent subscribers: the monitor
-and a root-owned recorder. `output.monitoring` reports whether presentation
-completed and how many messages the parent displayed. `output.recording` and
-`files/progress.json` retain at most six phase records with a separate completeness
-flag. Filtering or losing the display does not discard the recorder's feed.
-Failed optional progress can coexist with a review-ready
-patch. Cancellation, uncertain execution and failed cleanup remain separate
-failures; progress does not override them.
-
-Patch evidence is checkpointed as soon as repair settles, without waiting for
-the subscribers. An interrupted Run may therefore retain a patch without the
-final trace. The trace is application output, not durable channel delivery or
-proof that a patch passed.
-
-## What makes a patch review-ready?
+## From a reproduced failure to a tested patch
 
 The root application captures source and owns delivery. Its reusable repair
 specialist receives JSON, asks the Agent for replacement text, and requests
@@ -145,6 +116,35 @@ reuse it through an exact Binding with its own command policy and JSON cases.
 For application development, work in the repository's authoring directory:
 use the root workspace installation and run `bun test test` there. Those checks establish application
 policy, not model quality or a market advantage.
+
+## See progress and change its presentation
+
+For a single issue, a separate `monitor` Flow receives the repair specialist's
+phase records and returns selected text to the parent. You see baseline,
+proposal and check progress live on stderr. Add `--receive progress` for
+[structured live output](channels.md#connect-another-application) on stdout.
+Neither presentation reports the final verdict; inspect the patch evidence.
+
+The `monitor` slot in `bindings/repair.ts` selects this capability-free Flow.
+Replace it with another Flow declaring the same channel shapes, or configure
+the included monitor through a Binding: `settings.style` accepts `compact`
+or `descriptive`, and `settings.phases` selects which phases to show (an empty
+list suppresses them). Review changed configuration as usual. The repair
+specialist remains unchanged and the monitor receives no source or Agent access.
+
+The specialist broadcasts once to two independent subscribers: the monitor
+and a root-owned recorder. `output.monitoring` reports whether presentation
+completed and how many messages the parent displayed. `output.recording` and
+`files/progress.json` retain at most six phase records with a separate completeness
+flag. Filtering or losing the display does not discard the recorder's feed.
+Failed optional progress can coexist with a review-ready
+patch. Cancellation, uncertain execution and failed cleanup remain separate
+failures; progress does not override them.
+
+Patch evidence is checkpointed as soon as repair settles, without waiting for
+the subscribers. An interrupted Run may therefore retain a patch without the
+final trace. The trace is application output, not durable channel delivery or
+proof that a patch passed.
 
 ## Two workers, two reviewable patches
 

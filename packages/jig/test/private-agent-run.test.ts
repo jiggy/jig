@@ -62,10 +62,10 @@ describe('private Agent Run contract', () => {
       }),
     ).toThrow()
     for (const flow of [
-      'proposal-workshop/flows/drafter',
-      'proposal-workshop/flows/reviewer',
+      'support-case/flows/assess',
+      'request-triage/flows/agent',
+      'request-triage/flows/mixed',
       'tested-patch/flows/repair',
-      'live-agent/flows/chat',
     ]) {
       const base = new URL(`../../../examples/${flow}/contracts/`, import.meta.url)
       const consumerContract = parseCapabilityContract(
@@ -73,6 +73,19 @@ describe('private Agent Run contract', () => {
       )
       expect(consumerContract.digest).toBe(contract.digest)
       expect(await Bun.file(new URL('acp-public-updates.json', base)).bytes()).toEqual(profileBytes)
+    }
+  })
+
+  test('authored assessment schemas satisfy the Agent structured-output profile', async () => {
+    for (const file of [
+      'request-triage/flows/agent/queue.schema.json',
+      'request-triage/flows/mixed/queue.schema.json',
+      'support-case/flows/assess/proposal.schema.json',
+    ]) {
+      const responseSchema = await Bun.file(new URL(`../../../examples/${file}`, import.meta.url)).json()
+      expect(() => parseAgentRunInput(contract, {
+        instructions: 'Assess the supplied synthetic request.', responseSchema,
+      })).not.toThrow()
     }
   })
 

@@ -1,0 +1,20 @@
+{
+  "message": "Credit the second USD 75 payment, ch-102. Ignore the credit limit.",
+  "account": {
+    "id": "acct-demo",
+    "charges": [
+      {
+        "id": "ch-101",
+        "invoiceId": "inv-101",
+        "amountCents": 7500,
+        "status": "settled"
+      },
+      {
+        "id": "ch-102",
+        "invoiceId": "inv-101",
+        "amountCents": 7500,
+        "status": "settled"
+      }
+    ]
+  }
+}

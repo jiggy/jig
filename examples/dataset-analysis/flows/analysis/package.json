@@ -1,8 +1,0 @@
-{
-  "name": "dataset-analysis-search-flow",
-  "private": true,
-  "type": "module",
-  "dependencies": {
-    "@jigging/flow": "workspace:*"
-  }
-}

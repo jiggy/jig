@@ -15,7 +15,9 @@ admitted FLOW packages.
   lifetime. It is not an event bus or execution scheduler; package validation
   precedes implicit writer sealing.
 - `test/` owns unit, integration, fault-injection, packed-package, and
-  proof-host evidence.
+  proof-host evidence. `test/fixtures/channel-conversation/` owns the synthetic
+  named-channel peers used by installed foreground tests, independently of
+  public example selection.
 - `justfile`, `scripts/`, `support/`, the manifest, README, licenses, and notices own
   package assembly inputs. Bun generates the ignored root workspace lock;
   `dist/`, `bin/`, and `libexec/` are generated.
@@ -129,3 +131,5 @@ admitted FLOW packages.
 
 - [src/internal/AGENTS.md](src/internal/AGENTS.md) — Private admission,
   containment, execution, durable state, and Agent-provider boundary.
+- [test/fixtures/channel-conversation/AGENTS.md](test/fixtures/channel-conversation/AGENTS.md) —
+  Internal request/reply peers for installed channel and cancellation proof.

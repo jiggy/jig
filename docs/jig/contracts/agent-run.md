@@ -38,7 +38,7 @@ versions; the descriptor carries the version and exact interface.
   Keep an exact copy in the Flow package and reference that local file from
   `FLOW.md`, as the specification shows.
 - **See it in an application:** try the
-  [proposal workshop](../guide/proposal-workshop.md).
+  [support-case application](../guide/support-case.md).
 - **Understand contract matching:** read
   [FLOW Capability Contract/1](https://flow.jig.md/spec/capability-contracts).
 

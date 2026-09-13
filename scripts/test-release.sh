@@ -45,7 +45,7 @@ set -- "$release_tmp"/artifacts/*.tgz
 test "$#" -eq 1 && test -f "$1"
 sdk_archive=$1
 set --
-for application in tested-patch live-agent dataset-analysis request-triage; do
+for application in tested-patch request-triage support-case; do
   application_copy="$release_tmp/$application"
   mkdir -p "$application_copy"
   cp "examples/$application/package.json" "$application_copy/"
@@ -69,7 +69,7 @@ for application in tested-patch live-agent dataset-analysis request-triage; do
   (cd "$application_copy" && bun --no-env-file install --ignore-scripts --config=/dev/null)
   set -- "$@" "$application_copy/test"
 done
-FLOW_SDK_PACKAGE_ARCHIVE="$sdk_archive" bun test packages/flow-sdk packages/jig conformance/run-1 examples/proposal-workshop/test "$@"
+FLOW_SDK_PACKAGE_ARCHIVE="$sdk_archive" bun test packages/flow-sdk packages/jig conformance/run-1 "$@"
 bun packages/flow-sdk/test/package-smoke.ts
 bun packages/jig/test/package-smoke.ts
 

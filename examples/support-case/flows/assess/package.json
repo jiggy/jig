@@ -1,0 +1,8 @@
+{
+  "name": "support-case-assess-flow",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@jigging/flow": "workspace:*"
+  }
+}

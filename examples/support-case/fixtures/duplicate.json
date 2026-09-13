@@ -1,0 +1,20 @@
+{
+  "message": "My invoice inv-101 was charged twice. Please credit the second USD 24 payment, ch-102.",
+  "account": {
+    "id": "acct-demo",
+    "charges": [
+      {
+        "id": "ch-101",
+        "invoiceId": "inv-101",
+        "amountCents": 2400,
+        "status": "settled"
+      },
+      {
+        "id": "ch-102",
+        "invoiceId": "inv-101",
+        "amountCents": 2400,
+        "status": "settled"
+      }
+    ]
+  }
+}

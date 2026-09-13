@@ -40,6 +40,23 @@ describe('private foreground command boundary', () => {
     expect(failure).toContain('apply requires explicit --yes approval')
   })
 
+  test('constructs every named conversation peer', async () => {
+    for (const peer of ['normal', 'fahrenheit', 'duplicate', 'unexpected', 'eof', 'held'] as const) {
+      const root = await mkdtemp(join(tmpdir(), 'jig-conversation-fixture-'))
+      try {
+        await writeChannelConversationProject(root, peer)
+        for (const name of ['investigate', 'analysis', 'dataset']) {
+          const built = await Bun.build({
+            entrypoints: [join(root, 'flows', name, 'flow.ts')], target: 'bun',
+          })
+          expect(built.success, String(built.logs)).toBeTrue()
+        }
+      } finally {
+        await rm(root, { recursive: true, force: true })
+      }
+    }
+  })
+
   test('does not combine admission and root execution', async () => {
     expect(await invokeFailure(['run', '.', '--request'])).toContain('--request requires a value')
     expect(await invokeFailure(['apply-run'])).toContain('usage: private-foreground')
@@ -58,7 +75,7 @@ proofDescribe('private rootless project session', () => {
     ] as const) {
       const root = await mkdtemp(join(tmpdir(), `jig-private-dataset-${peer}-`))
       try {
-        await writeDatasetAnalysisProject(root, peer)
+        await writeChannelConversationProject(root, peer)
         const reviewed = await invokeChannelCli(root, ['review', '--yes'])
         expect(reviewed.code, peer + ':' + reviewed.stderr + reviewed.stdout).toBe(0)
         let interrupted = false
@@ -2135,8 +2152,8 @@ async function writeBroadcastChannelProject(root: string): Promise<void> {
 
 type DatasetPeer = 'normal' | 'fahrenheit' | 'duplicate' | 'unexpected' | 'eof' | 'held'
 
-async function writeDatasetAnalysisProject(root: string, peer: DatasetPeer): Promise<void> {
-  await cp(join(import.meta.dir, '../../../examples/dataset-analysis'), root, {
+async function writeChannelConversationProject(root: string, peer: DatasetPeer): Promise<void> {
+  await cp(join(import.meta.dir, 'fixtures/channel-conversation'), root, {
     recursive: true,
     filter: (source) => !['node_modules', '.jig', 'jig.lock'].includes(basename(source)),
   })
@@ -2153,8 +2170,6 @@ async function writeDatasetAnalysisProject(root: string, peer: DatasetPeer): Pro
         (await readFile(path, 'utf8')).replaceAll("'@jigging/flow'", "'./sdk/index.js'"),
       )
     }
-    await rm(join(flow, 'package.json'))
-    await rm(join(flow, 'bun.lock'), { force: true })
   }
   if (peer === 'normal') return
 

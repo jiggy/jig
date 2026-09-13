@@ -1,106 +1,38 @@
 # See progress while work runs
 
-A Flow can read selected Agent updates, filter them and choose their presentation.
-No logging capability or hook configuration is required.
+A repair can take time. Show its phases while it works, then handle the patch
+and evidence as the final result. The [tested-patch application](tested-patch.md)
+provides both through ordinary Flow channels.
 
-Use the [live-agent source example](https://github.com/jiggy/jig/tree/main/examples/live-agent).
-After [workspace setup](dependencies.md#local-workspace-packages), with Jig and
-a configured [native client](agents.md), run from that directory:
+After its setup and review, run from `examples/tested-patch`:
 
 ```sh
-jig review
-jig run flow:flows/chat --input '{"instructions":"Explain why the sky is blue."}'
+jig run binding:repair --input @issue.json --attach source=fixtures/log-report --out repair-result --timeout 5m
 ```
 
-Selected text appears live on stderr. The final result on stdout contains the
-actual Agent result, displayed readably in a terminal or as JSON when redirected
-or when `--json` is selected. This is observation, not permission to interrupt, continue
-or replace the Agent session.
-
-The chat Flow creates the channel and passes its writer to the Agent
-capability. The capability supplies public Agent updates; the chat Flow keeps
-the receiver and chooses what to display. Both the call and the reading loop
-below belong to that one Flow. This is a handler excerpt: `run` is the
-`RunContext` supplied by `handle()`.
-
-```ts
-import { OperationError } from '@jigging/flow'
-
-const input = run.input
-if (!input || typeof input !== 'object' || Array.isArray(input) ||
-    !('instructions' in input) || typeof input.instructions !== 'string')
-  throw new TypeError('Supply instructions')
-const updates = await run.channel({
-  contract: './contracts/acp-public-updates.json',
-})
-// Give the Agent capability the writer; it produces the updates.
-const answer = run.callCapability({
-  operationId: 'answer', slot: 'agent', method: 'run',
-  input: { instructions: input.instructions },
-  channels: { events: updates.send },
-}).catch(async (error) => {
-  // Rejected admission can leave no producer to end the stream.
-  await updates.receive.close().catch(() => undefined)
-  throw error
-})
-// The chat Flow consumes those updates while the Agent call is pending.
-const observation = (async () => {
-  try {
-    for await (const update of updates.receive) {
-      if (!update || typeof update !== 'object' || Array.isArray(update) ||
-          !('content' in update) || !('sessionUpdate' in update)) continue
-      const content = update.content
-      if (update.sessionUpdate === 'agent_message_chunk' &&
-          content && typeof content === 'object' && !Array.isArray(content) &&
-          'type' in content && content.type === 'text' &&
-          'text' in content && typeof content.text === 'string')
-        await new Promise<void>((resolve, reject) => {
-          process.stderr.write(content.text as string, (error) =>
-            error ? reject(error) : resolve())
-        })
-    }
-  } catch (error) {
-    if (!(error instanceof OperationError) ||
-        !['LAGGED', 'DISCONNECTED'].includes(error.code)) throw error
-    console.error('Progress delivery was incomplete.')
-  }
-})()
-const [execution, observed] = await Promise.allSettled([answer, observation])
-if (execution.status === 'rejected') throw execution.reason
-if (observed.status === 'rejected') throw observed.reason
-const result = execution.value
-```
-
-Text updates are fragments; do not add a newline after each one. The
-[complete application](https://github.com/jiggy/jig/blob/main/examples/live-agent/flows/chat/chat.ts)
-adds bounded input validation, output selection, a final diagnostic newline,
-write-failure handling, and Agent-outcome interpretation.
-Ordinary `catch` is sufficient. Closing the receiver joins disposal
-and may reveal a racing failure not previously exposed. It stops observation,
-not the Agent; await the Agent result separately. A caught display failure can
-coexist with successful work, while root cancellation and unresolved owned work
-still prevent success.
+Baseline, proposal, and check phases appear on stderr. They describe activity;
+they do not establish that the patch passed. Ctrl-C cancels owned work.
 
 ## Connect another application
 
-The example declares an optional `progress` output. Select it to receive the
-Flow's chosen text as structured live records instead of console diagnostics:
+Use a new output destination and select the optional `progress` output:
 
 ```sh
-jig run flow:flows/chat --input '{"instructions":"Explain tides."}' --receive progress --json
+jig run binding:repair --input @issue.json --attach source=fixtures/log-report --out repair-stream-result --timeout 5m --receive progress --json
 ```
 
 Read `begin`, ordered `data`, `end`, then `terminal` from stdout. Parse each
-complete line as JSON; keep stderr separate. Only `terminal.result` reports the
-Run outcome. Treat a disconnected stream or missing terminal as incomplete
+complete line as JSON and keep stderr separate. Only `terminal.result` reports
+the Run outcome. Treat a disconnected stream or missing terminal as incomplete
 delivery. The [output contract](../spec/channels.md#installed-subprocess-output)
 defines exact fields and bounds.
 
-Setting `"suppress": true` in this example's input suppresses progress only;
-it does not redact the actual final Agent answer. No host-side echo bypasses the
-Flow's filtering. Channels have no retention or replay guarantee; use explicit
-[checkpoints](../spec/run-checkpoint.md) when a completed artifact must survive
-later execution interruption.
+Closing a progress reader stops observation, not the underlying work. Always
+await the final result separately. A display failure can coexist with a passing
+patch; cancellation and unresolved owned work still prevent success. Channels
+have no retention or replay guarantee. Use explicit
+[checkpoints](../spec/run-checkpoint.md) when completed artifacts must survive
+later interruption.
 
 ## Give progress to another Flow
 
@@ -185,11 +117,20 @@ its own completeness flag. Filtering the monitor does not filter this independen
 trace. Neither is acceptance evidence, and a checkpoint retained before the
 observers settle may contain the patch without the trace.
 
-## Exchange structured requests and replies
+## Observe an Agent directly
 
-Channels also connect two running Flows in both directions. The
-[dataset analysis application](dataset-analysis.md) uses a request channel and
-a Celsius-reading channel to choose samples adaptively. Each side owns one
-writer; named contracts establish meaning, while application code checks
-correlation and an eight-request bound. The parent still awaits and validates
-both execution results separately.
+Application phases work with final-only API clients as well as native Agents.
+When a supported native client supplies public updates, a Flow can instead
+connect the Agent capability's optional `events` writer to a channel using the
+[public update contract](../spec/agent-run.md). Filter those events inside the
+Flow before displaying them; preserve spacing when joining text fragments.
+Observation never authorizes a follow-up turn or changes the Agent's powers.
+Always settle both the observer and the capability call.
+
+## Exchange requests and replies
+
+Two direct channels can connect running Flows in both directions, with each
+participant owning one writer. Named contracts establish item meaning;
+application code checks correlation and bounds. Await both child results
+separately: reply EOF alone cannot establish completed work. See the
+[channel contract](../spec/channels.md) for endpoint transfer and lifecycle rules.

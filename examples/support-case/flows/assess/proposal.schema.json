@@ -1,0 +1,20 @@
+{
+  "$schema": "https://flow.jig.md/schemas/schema-1.json",
+  "type": "object",
+  "properties": {
+    "chargeId": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "requestedCreditCents": {
+      "type": "integer"
+    }
+  },
+  "required": [
+    "chargeId",
+    "requestedCreditCents"
+  ],
+  "additionalProperties": false
+}

@@ -1,8 +1,0 @@
-{
-  "name": "live-agent-example",
-  "private": true,
-  "type": "module",
-  "devDependencies": {
-    "@jigging/flow": "workspace:*"
-  }
-}

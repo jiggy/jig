@@ -121,4 +121,4 @@ We call this **agency: power under control**.
 [Run your first Flow](./index.md), then
 [try one caller with three implementations](./request-triage.md).
 For a larger application, follow [a tested patch](./tested-patch.md) or the
-[proposal workshop](./proposal-workshop.md).
+[support-case example](./support-case.md).

@@ -83,7 +83,7 @@ showcase:
 <p className="eyebrow">Build around judgment, including when it is wrong</p>
 <h2>Intelligence can be uncertain.<br />Its authority must be explicit.</h2>
 <p>An Agent can hallucinate, misunderstand, or follow injected instructions. Jig makes its work governable and composable; it does not make its judgment correct. Your application checks meaning and consequences. Jig enforces its execution boundaries without asking the model to authorize itself.</p>
-<p>Try a larger method in the <a href="/guide/proposal-workshop">proposal workshop</a>, or see how a repair method puts <a href="/guide/tested-patch">executed checks beside a proposed patch</a>.</p>
+<p>See code check an Agent’s proposal in <a href="/guide/support-case">support-case handling</a>, or see how a repair method puts <a href="/guide/tested-patch">executed checks beside a proposed patch</a>.</p>
 </section>
 
 <div className="reader-grid">

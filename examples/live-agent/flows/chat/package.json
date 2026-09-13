@@ -1,8 +1,0 @@
-{
-  "name": "live-agent-chat-flow",
-  "private": true,
-  "type": "module",
-  "dependencies": {
-    "@jigging/flow": "workspace:*"
-  }
-}

@@ -82,6 +82,10 @@ application is not an unrestricted repository worker or independent probe.
 
 ## Work Guidance
 
+- Introduce baseline failure, bounded proposal, executed checks, and patch evidence
+  before monitoring, broadcast, checkpoints, or batch execution. Keep enforcement
+  intact while making the single-issue teaching path easy to follow.
+
 - Keep project-specific acceptance and patch policy here, not in Jig.
 - Provider choices and credentials remain operator authority. Reuse the
   documented effects; no sibling source imports or outer command helper.

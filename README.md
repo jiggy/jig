@@ -22,7 +22,7 @@ combination. Its caller stays unchanged. The shared interface keeps composition
 consistent; it does not guarantee equal answers or make Agent judgment correct.
 
 For larger applications, try [a tested patch](docs/jig/guide/tested-patch.md) or
-[the proposal workshop](docs/jig/guide/proposal-workshop.md).
+[support-case handling](docs/jig/guide/support-case.md).
 
 The shared aspiration is to **expand human possibility**. FLOW pursues
 **capability compounding**; Jig pursues **agency through power under control**.

@@ -8,6 +8,8 @@ authored examples, not independent consumer evidence or promoted Starters.
 
 ## Ownership
 
+- `README.md` routes readers through the three examples by useful outcome.
+
 - Each application owns its domain method, fixtures, local tests, and exact
   Flow and Binding declarations.
 - Public instructions belong in `docs/jig/`; portable procedure descriptions
@@ -36,36 +38,30 @@ authored examples, not independent consumer evidence or promoted Starters.
 - Prefer experienced authors and reviewers with full project context. Examples
   should show users how to use the public interfaces well; they do not need the
   fresh-context restrictions that make independent design probes effective.
+- Keep the portfolio selective: every example must teach a useful task for
+  developers putting intelligence inside software, or make the common code/Agent
+  boundary immediately understandable. Delete weak or redundant examples;
+  expected future additions are not a reason to preserve filler.
+- Introduce the user's outcome before mechanisms. Progress, channels, and
+  multiple Agents do not independently justify a standalone example. Host proof
+  fixtures belong with their tests, not in the public portfolio.
 - Use a small useful application to expose missing boundaries. Do not add a
   framework, general scheduler, or provider configuration surface here.
 
 ## Verification
 
-- Run `bun test examples/proposal-workshop/test` for the workshop's
-  deterministic completeness, citation, revision, and failure checks. The
-  same tests run in `scripts/test-release.sh` and existing CI.
+- Run `bun test examples/request-triage/test examples/support-case/test examples/tested-patch/test`
+  after workspace setup. The release gate repeats these application checks
+  against the freshly packed SDK.
 - Exercise package boundaries through an admitted Jig Run before claiming
   host execution; unit tests alone establish only application behavior.
-- Run `bun test examples/tested-patch/test` for multi-file patch policy and
-  independent acceptance of command observations after installing that application's development
-  dependencies as its Child DOX describes. These tests also run in `scripts/test-release.sh`.
-- Run `bun test examples/dataset-analysis/test` for bounded adaptive requests,
-  reply validation, and independent crossing verification after preparing its
-  development dependency. These tests also run in `scripts/test-release.sh`.
-
-- Run `bun test examples/request-triage/test` for one caller with code, Agent,
-  and mixed implementations, including malformed results and visible failures.
-  The release gate repeats these checks against the packed SDK.
+- Keep live Agent evidence separate from deterministic substitutes and model-quality claims.
 
 ## Child DOX Index
 
-- [proposal-workshop/AGENTS.md](proposal-workshop/AGENTS.md) — A bounded
-  proposal workshop with separate drafting and evidence-review methods.
-- [tested-patch/AGENTS.md](tested-patch/AGENTS.md) — A multi-file Bun project
-  repair with contained commands and independently checked patch evidence.
-- [live-agent/AGENTS.md](live-agent/AGENTS.md) — One Agent call with application-owned
-  live progress filtering and an independently interpreted final result.
-- [dataset-analysis/AGENTS.md](dataset-analysis/AGENTS.md) — Adaptive threshold
-  search through two named channels and separately checked child results.
 - [request-triage/AGENTS.md](request-triage/AGENTS.md) — One caller and three
   implementations of a queue suggestion, through the same Flow boundary.
+- [support-case/AGENTS.md](support-case/AGENTS.md) — Agent interpretation of a
+  disputed charge, checked by application-owned credit policy.
+- [tested-patch/AGENTS.md](tested-patch/AGENTS.md) — A multi-file Bun project
+  repair with contained commands and independently checked patch evidence.
