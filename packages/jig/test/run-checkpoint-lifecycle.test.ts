@@ -49,6 +49,7 @@ proof('root retained progress', () => {
       const ready = join(root, 'coordinator.pid'),
         destination = join(root, 'result')
       let pid: number | undefined
+      let stopped = false
       let finished = false
       const cancellation = new AbortController()
       const execution = privateOwnFileCommand(
@@ -82,12 +83,18 @@ proof('root retained progress', () => {
         while (!finished && Date.now() < until) {
           try {
             pid = Number(await readFile(ready, 'utf8'))
-            break
+            // The fixture writes its PID before SIGSTOP. Observe the pause
+            // before cancellation so SIGTERM cannot race that signal.
+            if (Number.isSafeInteger(pid) && pid >= 2) {
+              stopped = /^State:\s+T\s/m.test(await readFile(`/proc/${pid}/status`, 'utf8'))
+              if (stopped) break
+            }
           } catch {
-            await Bun.sleep(20)
+            // The PID marker or process status may not be available yet.
           }
+          await Bun.sleep(20)
         }
-        if (!Number.isSafeInteger(pid) || pid! < 2)
+        if (!stopped || !Number.isSafeInteger(pid) || pid! < 2)
           throw new Error('fixture did not reach selected save boundary')
         if (phase === 'cancel') cancellation.abort()
         else process.kill(pid!, 'SIGKILL')
