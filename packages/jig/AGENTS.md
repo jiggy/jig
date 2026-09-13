@@ -59,6 +59,8 @@ admitted FLOW packages.
   a separate raw diagnostic style or route machine output through styling.
   Major terminal sections need visible boundaries; secondary metadata uses
   gray while consent, policy values, and recovery actions remain prominent.
+  Structured human policy uses the shared syntax highlighter and `JIG_THEME`
+  palettes; preserve exact escaped values and never style machine records.
 
 - Change implementation, normative specification, schema, README, and tests
   together when a public contract changes.

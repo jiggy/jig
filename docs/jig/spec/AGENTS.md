@@ -29,6 +29,9 @@ descriptors.
 
 ## Work Guidance
 
+- CLI syntax themes and shell selection belong in `cli-experience.md`; keep
+  token styling separate from exact review policy and machine output.
+
 - Specify observable guarantees and explicit limits; keep private mechanisms
   private unless users must rely on them.
 

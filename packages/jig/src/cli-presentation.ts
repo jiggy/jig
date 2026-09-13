@@ -18,8 +18,67 @@ export function privateCliSecondary(text: string, color: boolean): string {
   return color ? `\u001b[90m${text}\u001b[39m` : text
 }
 
+type SyntaxRole = 'key' | 'string' | 'number' | 'literal'
+
+// Foreground accents from Atom One and Catppuccin Macchiato; no background changes.
+const syntaxThemes = {
+  'one-dark': { key: 'e06c75', string: '98c379', number: 'd19a66', literal: 'c678dd' },
+  'one-light': { key: 'e45649', string: '50a14f', number: '986801', literal: 'a626a4' },
+  macchiato: { key: '8aadf4', string: 'a6da95', number: 'f5a97f', literal: 'c6a0f6' },
+} as const
+
+function syntaxColor(role: SyntaxRole, env: NodeJS.ProcessEnv): string {
+  const theme = env.JIG_THEME
+  const palette =
+    theme === 'one-light' || theme === 'macchiato' ? syntaxThemes[theme] : syntaxThemes['one-dark']
+  const hex = palette[role]
+  const rgb = [0, 2, 4].map((offset) => Number.parseInt(hex.slice(offset, offset + 2), 16))
+  if (env.COLORTERM === 'truecolor' || env.COLORTERM === '24bit') return `38;2;${rgb.join(';')}`
+  if (env.TERM?.includes('256color')) {
+    const levels = [0, 95, 135, 175, 215, 255]
+    const cube = rgb.map((value) =>
+      levels.reduce(
+        (best, level, index) =>
+          Math.abs(value - level) < Math.abs(value - (levels[best] ?? 0)) ? index : best,
+        0,
+      ),
+    )
+    return `38;5;${16 + 36 * (cube[0] ?? 0) + 6 * (cube[1] ?? 0) + (cube[2] ?? 0)}`
+  }
+  return { key: '36', string: '32', number: '33', literal: '35' }[role]
+}
+
+/** Color tokens in the existing escaped representation, never parse/reserialize policy. */
+function highlightPolicy(line: string, env: NodeJS.ProcessEnv): string {
+  if (
+    line.includes('\u001b') ||
+    !/^\s*(?:"(?:[^"\\]|\\.)*"\s*(?::|\((?:object|list)\):|,?$)|(?:true|false|null|-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)\s*,?$|[{}[\]])/.test(
+      line,
+    )
+  )
+    return line
+  return line.replace(
+    /"(?:[^"\\]|\\.)*"|\b(?:true|false|null)\b|-?\b\d+(?:\.\d+)?(?:[eE][+-]?\d+)?/g,
+    (token, offset: number) => {
+      const role: SyntaxRole = token.startsWith('"')
+        ? /^\s*(?::|\((?:object|list)\):)/.test(line.slice(offset + token.length))
+          ? 'key'
+          : 'string'
+        : /^(true|false|null)$/.test(token)
+          ? 'literal'
+          : 'number'
+      return `\u001b[${syntaxColor(role, env)}m${token}\u001b[39m`
+    },
+  )
+}
+
 /** Style only trusted human text; machine records and live diagnostics bypass this. */
-export function privateCliHumanText(text: string, color: boolean, columns?: number): string {
+export function privateCliHumanText(
+  text: string,
+  color: boolean,
+  columns?: number,
+  env = process.env,
+): string {
   return text
     .split('\n')
     .map((line) => {
@@ -60,6 +119,7 @@ export function privateCliHumanText(text: string, color: boolean, columns?: numb
           /^(Usage:|Reviewing |Running |Added:|Changed:|Removed:)/.test(line)
         )
           rendered = privateCliHeading(wrapped, 'info', true)
+        else rendered = highlightPolicy(wrapped, env)
       }
       // Width is supplied only for a terminal. Plain terminal mode keeps the same
       // spatial hierarchy; redirected text retains its compact, complete transcript.

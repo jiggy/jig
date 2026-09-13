@@ -87,6 +87,51 @@ describe('CLI experience contract', () => {
     expect(diagnostic).toContain('\u001b[1;31mReview could not finish')
   })
 
+  test('syntax themes preserve escaped policy bytes and distinguish keys, strings and literals', () => {
+    const input = String.raw`  "mode": "run"
+  "packagePath": "flows/chat"
+  "settings": {}
+  "escaped": "quote: \" and unicode: \u001b"
+  "limits": [true, false, null, -1.25e+3]
+  "uses" (object):
+    "agent": {"enabled": true}
+  "values": [
+    -2e-3,
+    "text",
+    null
+  ]`
+    const outputs = new Set<string>()
+    for (const JIG_THEME of ['one-dark', 'one-light', 'macchiato']) {
+      const env = { JIG_THEME, TERM: 'xterm-256color', COLORTERM: 'truecolor' }
+      const output = privateCliHumanText(input, true, 40, env)
+      expect(strip(output)).toBe(input)
+      expect(output).toContain('\u001b[38;2;')
+      expect(output).toContain('m"mode"\u001b[39m: ')
+      expect(output).toContain('m"run"\u001b[39m')
+      expect(output).toContain('m-1.25e+3\u001b[39m')
+      expect(output).toContain('m-2e-3\u001b[39m')
+      expect(privateCliHumanText(input, false, 40, env)).toBe(input)
+      outputs.add(output)
+      const indexed = privateCliHumanText(input, true, undefined, {
+        JIG_THEME,
+        TERM: 'xterm-256color',
+      })
+      expect(indexed).toContain('\u001b[38;5;')
+      expect(strip(indexed)).toBe(input)
+    }
+    expect(outputs.size).toBe(3)
+    expect(
+      privateCliHumanText(input, true, undefined, { JIG_THEME: 'invalid', COLORTERM: 'truecolor' }),
+    ).toBe(
+      privateCliHumanText(input, true, undefined, {
+        JIG_THEME: 'one-dark',
+        COLORTERM: 'truecolor',
+      }),
+    )
+    const prose = 'Approval permits these exact methods.\n  Location: "flows/chat"'
+    expect(privateCliHumanText(prose, true)).toBe(prose)
+  })
+
   test('long waits update one narrow active line and retain only confirmed completion', async () => {
     let transcript = ''
     const progress = new PrivateCliProgress(

@@ -21,8 +21,8 @@ makes usable control an observable requirement;
    active line before prompts, notices, streamed diagnostics, or results.
 3. **Consistent visual hierarchy.** Use bold task/section headings and final
    outcomes, green completion, amber warnings, and red failures. Text must
-   carry every meaning independently of color or symbols. Use terminal palette
-   colors without background fills; remain legible in light and dark themes.
+   carry every meaning independently of color or symbols. Use foreground colors
+   without background fills; provide syntax palettes for light and dark terminals.
    Narrow terminals must retain complete consent and recovery information;
    only the transient progress label may shorten to fit. Separate major terminal
    sections with a blank line, a restrained horizontal rule, and a bold heading;
@@ -33,6 +33,14 @@ makes usable control an observable requirement;
    detail notes. Keep permission consequences, changed policy values, failures,
    and next actions at normal or emphasized contrast. Gray never hides content
    or substitutes for labels, spacing, or explicit status words.
+   Highlight structured human policy keys, strings, numbers, and literals without
+   changing their escaped bytes. Keep punctuation neutral and hashes secondary.
+   `JIG_THEME=one-dark` (default), `one-light`, or `macchiato` selects syntax
+   accents for the terminal background; unknown values fall back to One Dark.
+   Use truecolor when `COLORTERM=truecolor` or `24bit`, approximate accents for
+   `TERM` containing `256color`, and basic terminal colors otherwise. Theme
+   selection is a shell preference available before project loading, not a
+   `jig.ts` authoring or approval setting. Plain output ignores themes.
 4. **Readable failures.** Order the failure summary, relevant location, known
    explanation/recovery, and diagnostic code. Codes support search and software;
    they must not replace the explanation. Name known missing prerequisites.

@@ -45,3 +45,25 @@ and `jig.lock` for recovery; once prior work is confirmed stopped and cleaned up
 move them outside the project and run `jig review` for fresh approval. Keep the
 source and dependency locks. If cleanup is uncertain, recover the owned work
 before replacing its state.
+
+### Syntax colors
+
+Structured review output highlights keys, strings, numbers, and literals.
+Choose accents to match your terminal background:
+
+```sh
+JIG_THEME=one-dark jig review
+JIG_THEME=one-light jig review
+JIG_THEME=macchiato jig review
+```
+
+One Dark is the default. Use `export JIG_THEME=one-light` in your shell profile
+for a persistent preference. This is a shell setting, not a `jig.ts` field, so
+it also applies before a project loads. Truecolor terminals receive the full
+palette; other color terminals use 256-color approximations or basic accents.
+`NO_COLOR`, `TERM=dumb`, and redirected output remain plain. Run JSON/NDJSON
+is never highlighted.
+
+Palettes use [Atom One Dark](https://github.com/atom/one-dark-syntax),
+[Atom One Light](https://github.com/atom/one-light-syntax), and
+[Catppuccin Macchiato](https://catppuccin.com/palette/) foreground accents.
