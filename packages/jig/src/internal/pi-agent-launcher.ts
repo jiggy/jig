@@ -1,7 +1,7 @@
 #!/jig-runtime/bun
 
-import { closeSync, mkdirSync, openSync, readSync, writeFileSync, writeSync } from 'node:fs'
 import { spawn } from 'node:child_process'
+import { closeSync, mkdirSync, openSync, readSync, writeFileSync, writeSync } from 'node:fs'
 
 const STARTUP_INPUT_BYTES = 64 * 1024
 const PI_HOME = '/tmp/pi-home'
@@ -9,7 +9,6 @@ const PI_AGENT_DIR = '/tmp/pi-agent'
 const CREDENTIAL_PATH = `${PI_AGENT_DIR}/auth.json`
 const SETTINGS_PATH = `${PI_AGENT_DIR}/settings.json`
 const MODELS_PATH = `${PI_AGENT_DIR}/models.json`
-const NATIVE_PI_PATH = '/agent/pi'
 const ADAPTER_SPECIFIER = './pi-acp.js'
 const MAX_OUTPUT_TOKENS = 4_096
 const PROVIDER = /^[a-z0-9][a-z0-9._-]{0,127}$/
@@ -128,11 +127,14 @@ async function launchNativePi(): Promise<void> {
   const provider = requireProvider(process.env.JIG_PI_PROVIDER)
   const model = requireSelection(process.env.JIG_PI_MODEL, 'Pi model')
   const child = spawn(
-    NATIVE_PI_PATH,
+    requireNativeExecutable(process.env.JIG_PI_EXECUTABLE),
     [...PRIVATE_PI_NATIVE_ARGUMENTS, '--provider', provider, '--model', model],
     {
       cwd: '/work',
-      env: process.env,
+      // Keep Bun's own override for its launcher, not for the native client.
+      env: Object.fromEntries(
+        Object.entries(process.env).filter(([key]) => key !== 'LD_LIBRARY_PATH'),
+      ),
       stdio: 'inherit',
     },
   )
@@ -190,4 +192,11 @@ function exactKeys(value: Record<string, unknown>, expected: readonly string[]):
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
+}
+
+function requireNativeExecutable(value: string | undefined): string {
+  if (value === undefined || !value.startsWith('/') || value.includes('\0')) {
+    throw new Error('Pi executable is invalid')
+  }
+  return value
 }

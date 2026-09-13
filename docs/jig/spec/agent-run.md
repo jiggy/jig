@@ -298,17 +298,22 @@ resolved executable checked against admitted provider identity, without repeatin
 host PATH discovery. A changed selection cannot silently replace reviewed
 executable or support bytes.
 
-Jig's Codex adapter supports Linux x86-64 ELF executables and the declarative
-`makeBinaryWrapper` form which preserves arguments and prefixes PATH. Arbitrary
-shell/JavaScript wrappers, wrapper flags or environment changes, and nested
+All three native adapters inspect Linux x86-64 ELF executables. Codex and
+Claude Code also accept the declarative `makeBinaryWrapper` form which preserves
+arguments and prefixes PATH; Pi requires its unwrapped standalone executable.
+Arbitrary shell/JavaScript wrappers, wrapper flags or environment changes, and nested
 wrappers are unsupported. Jig reads installation metadata without executing the
 client during review. It retains the wrapped executable, ELF interpreter, and
 transitive shared libraries as individual regular files at their installation
-paths. Library resolution uses ELF RUNPATH/RPATH, `$ORIGIN`, and supported Linux
+paths. Library resolution uses ELF RUNPATH/RPATH, `$ORIGIN`, the selected
+interpreter’s directory (including its canonical location), and supported Linux
 loader locations; it does not import ambient loader variables or whole runtime
 directories. Missing, malformed, project-selected, or unsupported dependencies
 fail closed. Each executable's runtime dependency walk is bounded to 128 file
-destinations.
+destinations. Pi's matching manifest and themes remain beside its native
+executable and cannot be selected through the project tree. Bun's private loader
+settings are removed before each native client starts, so its libraries use
+the reviewed installation's ABI.
 
 For Codex's nested sandbox, Jig selects the first eligible unprivileged `bwrap`
 from the wrapper's declared PATH prefix followed by operator PATH, with the

@@ -63,7 +63,7 @@ export async function inspectPrivateNativeAgentRuntime(
     const directories = [...search, ...inherited]
     if (elf.interpreter !== undefined) {
       await visit(elf.interpreter, [], new Map(), true)
-      directories.push(dirname(elf.interpreter))
+      directories.push(dirname(elf.interpreter), dirname(mounts.get(elf.interpreter)!.source))
     }
     // Linux x86-64 ABI defaults. Package RUNPATH/RPATH remains first.
     directories.push(

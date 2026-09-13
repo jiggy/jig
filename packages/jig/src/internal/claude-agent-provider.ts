@@ -1,20 +1,19 @@
 import { lstat, realpath } from 'node:fs/promises'
-import { dirname, join } from 'node:path'
+import { join } from 'node:path'
 import {
   createPrivateAcpAgentProvider,
   type PrivateAcpAgentProvider,
+  type PrivateAcpReadOnlyMount,
 } from './acp-agent-provider.js'
-import { resolvePrivateLinuxHostLoader } from './linux-host-paths.js'
 import { resolvePrivateNativeAgentExecutable } from './native-agent-executable.js'
+import { inspectPrivateNativeAgentRuntime } from './native-agent-runtime.js'
 
 const CLAUDE_CLIENT = 'anthropic-claude-code'
 const DEFAULT_MODEL = 'default'
 const SANDBOX_LAUNCHER_PATH = '/agent/claude-agent-launcher.js'
 const SANDBOX_ADAPTER_PATH = '/agent/claude-agent-acp.js'
-const SANDBOX_EXECUTABLE_PATH = '/agent/claude'
 const HOST_CERTIFICATES_PATH = '/etc/ssl/certs/ca-certificates.crt'
 const SANDBOX_CERTIFICATES_PATH = '/etc/ssl/certs/ca-certificates.crt'
-const SANDBOX_RUNTIME_LIBRARY_PATH = '/jig-runtime/lib/librt.so.1'
 const MAX_TOKEN_BYTES = 16 * 1024
 const MAX_BASE_URL_CHARACTERS = 4_096
 const encoder = new TextEncoder()
@@ -30,8 +29,8 @@ export interface PrivateClaudeAgentSupport {
   readonly executablePath: string
   /** Exact host trust bundle selected by the installed Jig host. */
   readonly certificatesPath: string
-  /** Exact glibc realtime library required by the native Claude executable. */
-  readonly runtimeLibraryPath: string
+  /** Exact executable runtime files retained at their installation paths. */
+  readonly runtimeMounts: readonly PrivateAcpReadOnlyMount[]
 }
 
 export interface PrivateClaudeSubscriptionAgentConfiguration extends PrivateClaudeAgentSupport {
@@ -61,20 +60,19 @@ export async function openPrivateClaudeAgentProvider(
   environment: Readonly<Record<string, string | undefined>> = process.env,
   projectDirectory: string = process.cwd(),
 ): Promise<PrivateAcpAgentProvider> {
+  environment = Object.freeze({ ...environment })
   const executablePath = await resolvePrivateNativeAgentExecutable(
     'claude',
     environment,
     projectDirectory,
   )
+  const runtime = await inspectPrivateNativeAgentRuntime(executablePath, projectDirectory)
   const support = Object.freeze({
     launcherPath: join(releaseRoot, 'libexec', 'agent', 'claude-agent-launcher.js'),
     adapterPath: join(releaseRoot, 'libexec', 'agent', 'claude-agent-acp.js'),
     executablePath,
     certificatesPath: await ordinaryFile(HOST_CERTIFICATES_PATH, 'host certificate bundle'),
-    runtimeLibraryPath: await ordinaryFile(
-      join(dirname(await resolvePrivateLinuxHostLoader()), 'librt.so.1'),
-      'Claude runtime library',
-    ),
+    runtimeMounts: runtime.mounts,
   })
   const apiKey = environment.ANTHROPIC_API_KEY
   const authToken = environment.ANTHROPIC_AUTH_TOKEN
@@ -94,23 +92,27 @@ export async function openPrivateClaudeAgentProvider(
     if (apiModel === undefined || (!hasApiKey && !hasAuthToken)) {
       throw new Error('the Anthropic API configuration is unavailable')
     }
-    return await createPrivateClaudeAnthropicApiAgentProvider({
+    const provider = await createPrivateClaudeAnthropicApiAgentProvider({
       ...support,
       authentication: hasAuthToken ? 'auth-token' : 'api-key',
       credential: (hasAuthToken ? authToken : apiKey)!,
       model: apiModel,
       ...(apiBaseURL === undefined ? {} : { baseURL: apiBaseURL }),
     })
+    await runtime.revalidate()
+    return provider
   }
   const token = environment.CLAUDE_CODE_OAUTH_TOKEN
   if (token === undefined) {
     throw new Error('the Claude subscription credential is unavailable')
   }
-  return await createPrivateClaudeSubscriptionAgentProvider({
+  const provider = await createPrivateClaudeSubscriptionAgentProvider({
     ...support,
     token,
     ...(environment.CLAUDE_MODEL === undefined ? {} : { model: environment.CLAUDE_MODEL }),
   })
+  await runtime.revalidate()
+  return provider
 }
 
 /** Select native Claude Code with an explicitly supplied subscription token. */
@@ -165,7 +167,7 @@ function baseConfiguration(
     adapterPath: value.launcherPath,
     sandboxAdapterPath: SANDBOX_LAUNCHER_PATH,
     executablePath: value.executablePath,
-    sandboxExecutablePath: SANDBOX_EXECUTABLE_PATH,
+    sandboxExecutablePath: value.executablePath,
     environment: Object.freeze({
       ANTHROPIC_MODEL: model,
       ANTHROPIC_DEFAULT_HAIKU_MODEL: model,
@@ -180,7 +182,7 @@ function baseConfiguration(
       CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION: 'false',
       CLAUDE_CODE_MAX_RETRIES: '0',
       CLAUDE_CODE_SUBAGENT_MODEL: model,
-      CLAUDE_CODE_EXECUTABLE: SANDBOX_EXECUTABLE_PATH,
+      CLAUDE_CODE_EXECUTABLE: value.executablePath,
       CLAUDE_CONFIG_DIR: '/tmp/claude-config',
       CLAUDE_MODEL_CONFIG: JSON.stringify({ availableModels: [model] }),
       HOME: '/tmp/claude-home',
@@ -211,11 +213,7 @@ function baseConfiguration(
         destination: SANDBOX_CERTIFICATES_PATH,
         role: 'support' as const,
       },
-      {
-        source: value.runtimeLibraryPath,
-        destination: SANDBOX_RUNTIME_LIBRARY_PATH,
-        role: 'support' as const,
-      },
+      ...value.runtimeMounts,
     ],
   }
 }

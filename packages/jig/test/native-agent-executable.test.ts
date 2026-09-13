@@ -46,92 +46,98 @@ describe('operator native Agent executable discovery', () => {
     },
   )
 
-  test('invalid overrides never fall back to an available client', async () => {
-    const { project, first } = await fixture()
-    for (const selected of [
-      '',
-      'codex',
-      './codex',
-      join(first, 'missing'),
-      `${first}/codex\0`,
-      first,
-    ]) {
+  for (const client of ['codex', 'claude', 'pi'] as const) {
+    test(`${client}: invalid overrides never fall back to an available client`, async () => {
+      const { project, first } = await fixture()
+      for (const selected of [
+        '',
+        client,
+        `./${client}`,
+        join(first, 'missing'),
+        `${first}/${client}\0`,
+        first,
+      ]) {
+        await expect(
+          discover(client, { PATH: first, [`${client.toUpperCase()}_PATH`]: selected }, project),
+        ).rejects.toThrow('unavailable')
+      }
+      await chmod(join(first, client), 0o600)
       await expect(
-        discover('codex', { PATH: first, CODEX_PATH: selected }, project),
+        discover(
+          client,
+          { PATH: first, [`${client.toUpperCase()}_PATH`]: join(first, client) },
+          project,
+        ),
       ).rejects.toThrow('unavailable')
-    }
-    await chmod(join(first, 'codex'), 0o600)
-    await expect(
-      discover('codex', { PATH: first, CODEX_PATH: join(first, 'codex') }, project),
-    ).rejects.toThrow('unavailable')
-  })
+    })
 
-  test('skips missing and non-executable entries without falling back to fixed locations', async () => {
-    const { project, first, second } = await fixture()
-    await chmod(join(first, 'codex'), 0o600)
-    expect(await discover('codex', { PATH: `/does-not-exist:${first}:${second}` }, project)).toBe(
-      join(second, 'codex'),
-    )
-    await expect(discover('codex', {}, project)).rejects.toThrow('unavailable')
-    await expect(discover('codex', { PATH: ':.:bin:./bin:' }, project)).rejects.toThrow(
-      'unavailable',
-    )
-  })
+    test(`${client}: skips missing and non-executable entries without falling back to fixed locations`, async () => {
+      const { project, first, second } = await fixture()
+      await chmod(join(first, client), 0o600)
+      expect(await discover(client, { PATH: `/does-not-exist:${first}:${second}` }, project)).toBe(
+        join(second, client),
+      )
+      await expect(discover(client, {}, project)).rejects.toThrow('unavailable')
+      await expect(discover(client, { PATH: ':.:bin:./bin:' }, project)).rejects.toThrow(
+        'unavailable',
+      )
+    })
 
-  test('excludes the actual project, project aliases, and ancestor dependency binaries', async () => {
-    const { root, project, first } = await fixture()
-    const local = join(project, 'bin')
-    const dependencies = join(dirname(project), 'node_modules', '.bin')
-    const alias = join(root, 'project-alias')
-    const dependencyAlias = join(root, 'dependency-alias')
-    await mkdir(local)
-    await mkdir(dependencies, { recursive: true })
-    await writeFile(join(local, 'codex'), 'project-selected', { mode: 0o700 })
-    await writeFile(join(dependencies, 'codex'), 'dependency-selected', { mode: 0o700 })
-    await symlink(local, alias)
-    await symlink(dependencies, dependencyAlias)
-    const unsafe = `${local}:${alias}:${dependencies}:${dependencyAlias}`
-    expect(await discover('codex', { PATH: `${unsafe}:${first}` }, project)).toBe(
-      join(first, 'codex'),
-    )
-    await expect(discover('codex', { PATH: unsafe }, project)).rejects.toThrow('unavailable')
-    // Only an explicit operator override can select a project executable.
-    expect(await discover('codex', { CODEX_PATH: join(alias, 'codex') }, project)).toBe(
-      join(local, 'codex'),
-    )
-  })
+    test(`${client}: excludes the actual project, project aliases, and ancestor dependency binaries`, async () => {
+      const { root, project, first } = await fixture()
+      const local = join(project, 'bin')
+      const dependencies = join(dirname(project), 'node_modules', '.bin')
+      const alias = join(root, 'project-alias')
+      const dependencyAlias = join(root, 'dependency-alias')
+      await mkdir(local)
+      await mkdir(dependencies, { recursive: true })
+      await writeFile(join(local, client), 'project-selected', { mode: 0o700 })
+      await writeFile(join(dependencies, client), 'dependency-selected', { mode: 0o700 })
+      await symlink(local, alias)
+      await symlink(dependencies, dependencyAlias)
+      const unsafe = `${local}:${alias}:${dependencies}:${dependencyAlias}`
+      expect(await discover(client, { PATH: `${unsafe}:${first}` }, project)).toBe(
+        join(first, client),
+      )
+      await expect(discover(client, { PATH: unsafe }, project)).rejects.toThrow('unavailable')
+      // Only an explicit operator override can select a project executable.
+      expect(
+        await discover(client, { [`${client.toUpperCase()}_PATH`]: join(alias, client) }, project),
+      ).toBe(join(local, client))
+    })
 
-  test('resolves operator symlinks but excludes links into or out of the project', async () => {
-    const { root, project, first, second } = await fixture()
-    const profile = join(root, 'profile')
-    await symlink(first, profile)
-    expect(await discover('codex', { PATH: profile }, project)).toBe(join(first, 'codex'))
-    await symlink(first, join(project, 'operator-link'))
-    await symlink(join(second, 'codex'), join(project, 'codex'))
-    await rm(join(first, 'codex'))
-    await symlink(join(project, 'codex'), join(first, 'codex'))
-    await expect(discover('codex', { PATH: first }, project)).rejects.toThrow('unavailable')
-    // A project path itself is excluded even when its destination is external.
-    await expect(
-      discover('codex', { PATH: join(project, 'operator-link') }, project),
-    ).rejects.toThrow('unavailable')
-  })
+    test(`${client}: resolves operator symlinks but excludes links into or out of the project`, async () => {
+      const { root, project, first, second } = await fixture()
+      const profile = join(root, 'profile')
+      await symlink(first, profile)
+      expect(await discover(client, { PATH: profile }, project)).toBe(join(first, client))
+      await symlink(first, join(project, 'operator-link'))
+      await symlink(join(second, client), join(project, client))
+      await rm(join(first, client))
+      await symlink(join(project, client), join(first, client))
+      await expect(discover(client, { PATH: first }, project)).rejects.toThrow('unavailable')
+      // A project path itself is excluded even when its destination is external.
+      await expect(
+        discover(client, { PATH: join(project, 'operator-link') }, project),
+      ).rejects.toThrow('unavailable')
+    })
 
-  test('snapshots PATH and override values before filesystem work', async () => {
-    const { project, first, second } = await fixture()
-    const environment: Record<string, string> = { PATH: first }
-    const pending = discover('codex', environment, project)
-    environment.PATH = second
-    environment.CODEX_PATH = join(second, 'codex')
-    expect(await pending).toBe(join(first, 'codex'))
-  })
+    test(`${client}: snapshots PATH and override values before filesystem work`, async () => {
+      const { project, first, second } = await fixture()
+      const environment: Record<string, string> = { PATH: first }
+      const pending = discover(client, environment, project)
+      environment.PATH = second
+      environment[`${client.toUpperCase()}_PATH`] = join(second, client)
+      expect(await pending).toBe(join(first, client))
+    })
 
-  test('preserves filesystem semantics for symlinks followed by parent segments', async () => {
-    const { root, project, first, second } = await fixture()
-    const profile = join(root, 'profile')
-    await symlink(first, profile)
-    expect(await discover('codex', { PATH: `${profile}/../bin:${second}` }, project)).toBe(
-      join(first, 'codex'),
-    )
-  })
+    test(`${client}: preserves filesystem semantics for symlinks followed by parent segments`, async () => {
+      const { root, project, first, second } = await fixture()
+      const profile = join(root, 'profile')
+      await symlink(first, profile)
+      expect(await discover(client, { PATH: `${profile}/../bin:${second}` }, project)).toBe(
+        join(first, client),
+      )
+    })
+  }
 })

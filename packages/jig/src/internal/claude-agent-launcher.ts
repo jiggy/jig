@@ -25,6 +25,8 @@ async function main(): Promise<void> {
   }
   process.env.CLAUDE_CODE_MAX_OUTPUT_TOKENS = MAX_OUTPUT_TOKENS
   delete process.env.JIG_CLAUDE_STARTUP_INPUT
+  // Bun's private loader override must not select the native client's ABI.
+  delete process.env.LD_LIBRARY_PATH
   await import(ADAPTER_SPECIFIER)
 }
 

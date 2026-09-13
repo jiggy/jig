@@ -3,7 +3,10 @@ import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 
-import { privateAcpAgentRuntime } from '../src/internal/acp-agent-provider.js'
+import {
+  type PrivateAcpReadOnlyMount,
+  privateAcpAgentRuntime,
+} from '../src/internal/acp-agent-provider.js'
 import {
   PRIVATE_PI_NATIVE_ARGUMENTS,
   PRIVATE_PI_SETTINGS,
@@ -15,6 +18,8 @@ import {
   openPrivatePiAgentProvider,
 } from '../src/internal/pi-agent-provider.js'
 import { renderPrivateAgentRunInstructions } from '../src/internal/root-agent-run-controller.js'
+
+import { nativeElf } from './fixtures/native-elf.js'
 
 const temporary = new Set<string>()
 const encoder = new TextEncoder()
@@ -153,7 +158,9 @@ describe('private native Pi Agent provider', () => {
       credentialMode: 'pi-api-key',
       model: 'openrouter/google/test-model:free',
     })
-    expect(runtime.environment).toEqual(environment('openrouter', 'google/test-model:free'))
+    expect(runtime.environment).toEqual(
+      environment('openrouter', 'google/test-model:free', support.executablePath),
+    )
     expect(runtime.configuration).toEqual([
       {
         configId: 'model',
@@ -166,9 +173,9 @@ describe('private native Pi Agent provider', () => {
     expect(runtime.readOnlyMounts).toEqual([
       { source: support.adapterPath, destination: '/agent/pi-acp.js' },
       { source: support.certificatesPath, destination: '/etc/ssl/certs/ca-certificates.crt' },
-      { source: support.manifestPath, destination: '/agent/package.json' },
-      { source: support.darkThemePath, destination: '/agent/theme/dark.json' },
-      { source: support.lightThemePath, destination: '/agent/theme/light.json' },
+      { source: support.manifestPath, destination: support.manifestPath },
+      { source: support.darkThemePath, destination: support.darkThemePath },
+      { source: support.lightThemePath, destination: support.lightThemePath },
     ])
     expect(
       runtime.readOnlyMounts.every(
@@ -233,7 +240,9 @@ describe('private native Pi Agent provider', () => {
       credentialMode: 'pi-subscription',
       model: 'openai-codex/test-model',
     })
-    expect(runtime.environment).toEqual(environment('openai-codex', 'test-model', true))
+    expect(runtime.environment).toEqual(
+      environment('openai-codex', 'test-model', support.executablePath, true),
+    )
     expect(runtime.configuration).toEqual([
       {
         configId: 'model',
@@ -250,6 +259,34 @@ describe('private native Pi Agent provider', () => {
     })
     expect(JSON.stringify(first)).not.toContain('access-token')
     expect(JSON.stringify(runtime.environment)).not.toContain('access-token')
+  })
+
+  test('rechecks subscription expiry before exposing startup input', async () => {
+    const support = await files()
+    const now = Date.now()
+    const provider = await createPrivatePiSubscriptionAgentProvider({
+      ...support,
+      provider: 'openai-codex',
+      model: 'test-model',
+      credential: encoder.encode(
+        JSON.stringify({
+          'openai-codex': {
+            type: 'oauth',
+            access: 'test-secret',
+            refresh: '',
+            expires: now + 6 * 60_000,
+          },
+        }),
+      ),
+    })
+    const runtime = privateAcpAgentRuntime(provider)
+    const originalNow = Date.now
+    try {
+      Date.now = () => now + 2 * 60_000
+      expect(() => runtime.startupInput!()).toThrow('subscription credential is invalid')
+    } finally {
+      Date.now = originalNow
+    }
   })
 
   test('forces a tool-free, resource-free, ephemeral native Pi RPC process', () => {
@@ -426,9 +463,15 @@ function startupJson(startup: Uint8Array): unknown {
   return JSON.parse(decoder.decode(startup.slice(4)))
 }
 
-function environment(provider: string, model: string, subscription = false) {
+function environment(
+  provider: string,
+  model: string,
+  executablePath: string,
+  subscription = false,
+) {
   return {
     HOME: '/tmp/pi-home',
+    JIG_PI_EXECUTABLE: executablePath,
     JIG_PI_MODEL: model,
     JIG_PI_PROVIDER: provider,
     JIG_PI_STARTUP_INPUT: subscription ? 'subscription' : 'api-key',
@@ -460,7 +503,7 @@ async function files(): Promise<PrivatePiAgentSupportFixture> {
   await Promise.all([
     writeFile(launcherPath, 'launcher\n', { mode: 0o700 }),
     writeFile(adapterPath, 'adapter\n'),
-    writeFile(executablePath, 'pi\n', { mode: 0o700 }),
+    writeFile(executablePath, nativeElf(), { mode: 0o700 }),
     writeFile(
       manifestPath,
       JSON.stringify({
@@ -475,6 +518,7 @@ async function files(): Promise<PrivatePiAgentSupportFixture> {
     launcherPath,
     adapterPath,
     executablePath,
+    runtimeMounts: [],
     manifestPath,
     darkThemePath,
     lightThemePath,
@@ -486,6 +530,7 @@ interface PrivatePiAgentSupportFixture {
   readonly launcherPath: string
   readonly adapterPath: string
   readonly executablePath: string
+  readonly runtimeMounts: readonly PrivateAcpReadOnlyMount[]
   readonly manifestPath: string
   readonly darkThemePath: string
   readonly lightThemePath: string

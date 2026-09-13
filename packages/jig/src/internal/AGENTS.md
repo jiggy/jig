@@ -72,12 +72,16 @@ child calls, project commands, and Agent providers.
   routes, or the matching bundled helper when no eligible PATH helper exists.
   `JIG_BWRAP_PATH` selects only outer containment. Never substitute a system
   helper at the vendor bundle path; keep bundled fallback off PATH to preserve
-  Codex's vendor digest check. Inspect supported ELF and binary-wrapper
-  metadata without executing it; retain individual executable, loader, and
+  Codex's vendor digest check.
+- Codex, Claude Code, and Pi inspect supported ELF metadata without executing
+  it. Codex and Claude also support the bounded declarative binary wrapper;
+  Pi retains its unwrapped standalone layout and project-excluded sibling assets.
+  Resolve loader-owned libraries through the interpreter's canonical location;
+  retain individual executable, loader, and
   library files at installation paths, hash their bytes, and revalidate before
   launch. Reject unsupported or project-selected dependencies; never mount a
-  whole installation/store or import ambient loader variables. The Codex launcher
-  removes Bun's private loader override before starting the native client.
+  whole installation/store or import ambient loader variables. Each native
+  launcher removes Bun's private loader override before starting its client.
 - Keep known channel-declaration, Agent-configuration and dependency-preparation failures actionable
   through closed diagnostic codes and project-relative locations, never raw
   provider or worker messages. Missing Agent support affects only targets
@@ -183,6 +187,14 @@ child calls, project commands, and Agent providers.
   `bun test packages/jig`.
 - Containment, delegation, preparation, process-lifecycle, or Agent authority
   changes require the provisioned hostile-host suite and residue check.
+- Native installation regressions cover discovery, environment snapshots,
+  missing/project-selected support, byte replacement, and credential expiry.
+  `JIG_NATIVE_AGENT_STARTUP=1` with absolute `JIG_CODEX_STARTUP_PATH`,
+  `JIG_CLAUDE_STARTUP_PATH`, and `JIG_PI_STARTUP_PATH` enables
+  `test/native-agent-startup.test.ts` after building. It tests genuine native
+  versions and ACP sessions with networking disabled and dummy credentials;
+  missing selections fail instead of silently skipping. This is startup evidence,
+  separate from live model calls and the hostile-host gate.
 - Run real-host suites sequentially within one delegated cgroup. Their strict
   acquisition and residue checks intentionally reject other concurrent Runs;
   the ordinary suite also includes host tests when delegation is present.

@@ -4,16 +4,17 @@ import { dirname, join, resolve } from 'node:path'
 import {
   createPrivateAcpAgentProvider,
   type PrivateAcpAgentProvider,
+  type PrivateAcpReadOnlyMount,
 } from './acp-agent-provider.js'
-import { resolvePrivateNativeAgentExecutable } from './native-agent-executable.js'
+import {
+  privateNativeAgentSupportResolver,
+  resolvePrivateNativeAgentExecutable,
+} from './native-agent-executable.js'
+import { inspectPrivateNativeAgentRuntime } from './native-agent-runtime.js'
 
 const PI_CLIENT = 'pi'
 const SANDBOX_LAUNCHER_PATH = '/agent/pi-agent-launcher.js'
 const SANDBOX_ADAPTER_PATH = '/agent/pi-acp.js'
-const SANDBOX_EXECUTABLE_PATH = '/agent/pi'
-const SANDBOX_MANIFEST_PATH = '/agent/package.json'
-const SANDBOX_DARK_THEME_PATH = '/agent/theme/dark.json'
-const SANDBOX_LIGHT_THEME_PATH = '/agent/theme/light.json'
 const SANDBOX_CERTIFICATES_PATH = '/etc/ssl/certs/ca-certificates.crt'
 const PI_PACKAGE_NAME = '@earendil-works/pi-coding-agent'
 const PI_VERSION = '0.84.4'
@@ -38,24 +39,35 @@ export async function openPrivatePiAgentProvider(
   environment: Readonly<Record<string, string | undefined>> = process.env,
   projectDirectory: string = process.cwd(),
 ): Promise<PrivateAcpAgentProvider> {
+  environment = Object.freeze({ ...environment })
   const executablePath = await resolvePrivateNativeAgentExecutable(
     'pi',
     environment,
     projectDirectory,
   )
+  const runtime = await inspectPrivateNativeAgentRuntime(executablePath, projectDirectory)
+  // Pi locates its manifest and themes beside the actual standalone binary.
+  if (runtime.pathPrefix) throw new Error('wrapped native Pi is unsupported')
+  const outsideProject = await privateNativeAgentSupportResolver(projectDirectory)
+  async function asset(path: string): Promise<string> {
+    const exact = await outsideProject(path)
+    if (exact === undefined) throw new Error('native Pi support enters the project')
+    return exact
+  }
   const nativeRoot = dirname(executablePath)
-  const manifestPath = await piManifestFile(join(nativeRoot, 'package.json'))
+  const manifestPath = await piManifestFile(await asset(join(nativeRoot, 'package.json')))
   const support: PrivatePiAgentSupport = Object.freeze({
     launcherPath: join(releaseRoot, 'libexec', 'agent', 'pi-agent-launcher.js'),
     adapterPath: join(releaseRoot, 'libexec', 'agent', 'pi-acp.js'),
     executablePath,
+    runtimeMounts: runtime.mounts,
     manifestPath,
     darkThemePath: await ordinaryFile(
-      join(nativeRoot, 'theme', 'dark.json'),
+      await asset(join(nativeRoot, 'theme', 'dark.json')),
       'native Pi dark theme',
     ),
     lightThemePath: await ordinaryFile(
-      join(nativeRoot, 'theme', 'light.json'),
+      await asset(join(nativeRoot, 'theme', 'light.json')),
       'native Pi light theme',
     ),
     certificatesPath: await ordinaryFile(
@@ -72,12 +84,14 @@ export async function openPrivatePiAgentProvider(
       throw new Error('the Pi provider configuration is unavailable')
     }
     if (apiKey !== undefined) {
-      return await createPrivatePiApiKeyAgentProvider({
+      const opened = await createPrivatePiApiKeyAgentProvider({
         ...support,
         provider,
         model,
         apiKey,
       })
+      await runtime.revalidate()
+      return opened
     }
     const selectedProvider = requireSubscriptionProvider(provider)
     const configuredAgentDirectory = environment.PI_CODING_AGENT_DIR
@@ -97,12 +111,14 @@ export async function openPrivatePiAgentProvider(
     let credential: Uint8Array | undefined
     try {
       credential = projectSubscriptionCredential(sourceCredential, selectedProvider)
-      return await createPrivatePiSubscriptionAgentProvider({
+      const opened = await createPrivatePiSubscriptionAgentProvider({
         ...support,
         provider: selectedProvider,
         model,
         credential,
       })
+      await runtime.revalidate()
+      return opened
     } finally {
       sourceCredential.fill(0)
       credential?.fill(0)
@@ -118,6 +134,8 @@ export interface PrivatePiAgentSupport {
   readonly adapterPath: string
   /** Exact operator-installed, self-contained native Pi executable. */
   readonly executablePath: string
+  /** Exact executable runtime files retained at their installation paths. */
+  readonly runtimeMounts: readonly PrivateAcpReadOnlyMount[]
   /** Exact Pi package manifest required by the native executable. */
   readonly manifestPath: string
   /** Exact sibling theme support required even in no-theme RPC mode. */
@@ -217,9 +235,10 @@ async function createPiProvider(value: {
       sandboxAdapterPath: SANDBOX_LAUNCHER_PATH,
       adapterExecutable: true,
       executablePath: value.support.executablePath,
-      sandboxExecutablePath: SANDBOX_EXECUTABLE_PATH,
+      sandboxExecutablePath: value.support.executablePath,
       environment: Object.freeze({
         HOME: '/tmp/pi-home',
+        JIG_PI_EXECUTABLE: value.support.executablePath,
         JIG_PI_MODEL: value.model,
         JIG_PI_PROVIDER: value.provider,
         JIG_PI_STARTUP_INPUT: value.credentialType,
@@ -240,6 +259,7 @@ async function createPiProvider(value: {
           }
         : {}),
       readOnlyMounts: [
+        ...value.support.runtimeMounts,
         {
           source: value.support.adapterPath,
           destination: SANDBOX_ADAPTER_PATH,
@@ -252,17 +272,17 @@ async function createPiProvider(value: {
         },
         {
           source: value.support.manifestPath,
-          destination: SANDBOX_MANIFEST_PATH,
+          destination: join(dirname(value.support.executablePath), 'package.json'),
           role: 'support',
         },
         {
           source: value.support.darkThemePath,
-          destination: SANDBOX_DARK_THEME_PATH,
+          destination: join(dirname(value.support.executablePath), 'theme', 'dark.json'),
           role: 'support',
         },
         {
           source: value.support.lightThemePath,
-          destination: SANDBOX_LIGHT_THEME_PATH,
+          destination: join(dirname(value.support.executablePath), 'theme', 'light.json'),
           role: 'support',
         },
       ],

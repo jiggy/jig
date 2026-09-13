@@ -3,7 +3,10 @@ import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 
-import { privateAcpAgentRuntime } from '../src/internal/acp-agent-provider.js'
+import {
+  type PrivateAcpReadOnlyMount,
+  privateAcpAgentRuntime,
+} from '../src/internal/acp-agent-provider.js'
 import { projectPrivateClaudeCredential } from '../src/internal/claude-agent-launcher.js'
 import {
   createPrivateClaudeAnthropicApiAgentProvider,
@@ -11,6 +14,8 @@ import {
   openPrivateClaudeAgentProvider,
   PRIVATE_CLAUDE_DEFAULT_ANTHROPIC_BASE_URL,
 } from '../src/internal/claude-agent-provider.js'
+
+import { nativeElf } from './fixtures/native-elf.js'
 
 const temporary = new Set<string>()
 afterEach(async () => {
@@ -111,7 +116,9 @@ describe('private native Claude Code Agent provider', () => {
       credentialMode: 'claude-subscription',
       model: 'subscription/model',
     })
-    expect(runtime.environment).toEqual(environment('subscription/model', 'subscription'))
+    expect(runtime.environment).toEqual(
+      environment('subscription/model', 'subscription', support.executablePath),
+    )
     expect(runtime.configuration).toEqual([])
     expect(runtime.modeId).toBe('default')
     expect(runtime.sessionMeta).toEqual(sessionMeta('subscription/model'))
@@ -120,7 +127,7 @@ describe('private native Claude Code Agent provider', () => {
     expect(runtime.readOnlyMounts).toEqual([
       { source: support.adapterPath, destination: '/agent/claude-agent-acp.js' },
       { source: support.certificatesPath, destination: '/etc/ssl/certs/ca-certificates.crt' },
-      { source: support.runtimeLibraryPath, destination: '/jig-runtime/lib/librt.so.1' },
+      ...support.runtimeMounts.map(({ source, destination }) => ({ source, destination })),
     ])
     const startup = runtime.startupInput!()
     expect(new DataView(startup.buffer, startup.byteOffset, 4).getUint32(0, false)).toBe(
@@ -178,7 +185,12 @@ describe('private native Claude Code Agent provider', () => {
       model: 'provider/test-model',
     })
     expect(runtime.environment).toEqual(
-      environment('provider/test-model', 'api-key', 'https://gateway.example/anthropic'),
+      environment(
+        'provider/test-model',
+        'api-key',
+        support.executablePath,
+        'https://gateway.example/anthropic',
+      ),
     )
     expect(runtime.configuration).toEqual([])
     expect(runtime.modeId).toBe('default')
@@ -213,7 +225,12 @@ describe('private native Claude Code Agent provider', () => {
       model: 'provider/test-model',
     })
     expect(runtime.environment).toEqual(
-      environment('provider/test-model', 'auth-token', 'https://gateway.example/anthropic'),
+      environment(
+        'provider/test-model',
+        'auth-token',
+        support.executablePath,
+        'https://gateway.example/anthropic',
+      ),
     )
     expect(new TextDecoder().decode(runtime.startupInput!().slice(4))).toBe('first-bearer-secret')
     expect(JSON.stringify(first)).not.toContain('bearer-secret')
@@ -295,6 +312,7 @@ describe('private native Claude Code Agent provider', () => {
 function environment(
   model: string,
   credential: 'subscription' | 'api-key' | 'auth-token',
+  executablePath: string,
   baseURL?: string,
 ) {
   return {
@@ -311,7 +329,7 @@ function environment(
     CLAUDE_CODE_DISABLE_TERMINAL_TITLE: '1',
     CLAUDE_CODE_DISABLE_THINKING: '1',
     CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION: 'false',
-    CLAUDE_CODE_EXECUTABLE: '/agent/claude',
+    CLAUDE_CODE_EXECUTABLE: executablePath,
     CLAUDE_CODE_MAX_RETRIES: '0',
     CLAUDE_CODE_SUBAGENT_MODEL: model,
     CLAUDE_CONFIG_DIR: '/tmp/claude-config',
@@ -343,7 +361,7 @@ async function files(): Promise<{
   readonly adapterPath: string
   readonly executablePath: string
   readonly certificatesPath: string
-  readonly runtimeLibraryPath: string
+  readonly runtimeMounts: readonly PrivateAcpReadOnlyMount[]
 }> {
   const root = await mkdtemp(join(tmpdir(), 'jig-claude-provider-'))
   temporary.add(root)
@@ -353,12 +371,12 @@ async function files(): Promise<{
   const adapterPath = join(agentRoot, 'claude-agent-acp.js')
   const executablePath = join(root, 'claude')
   const certificatesPath = await realHostCertificates()
-  const runtimeLibraryPath = await realClaudeRuntimeLibrary()
+  const runtimeMounts: readonly PrivateAcpReadOnlyMount[] = []
   await mkdir(agentRoot, { recursive: true })
   await Promise.all([
     writeFile(launcherPath, 'launcher\n'),
     writeFile(adapterPath, 'adapter\n'),
-    writeFile(executablePath, 'claude\n', { mode: 0o700 }),
+    writeFile(executablePath, nativeElf(), { mode: 0o700 }),
   ])
   return {
     releaseRoot,
@@ -366,14 +384,10 @@ async function files(): Promise<{
     adapterPath,
     executablePath,
     certificatesPath,
-    runtimeLibraryPath,
+    runtimeMounts,
   }
 }
 
 async function realHostCertificates(): Promise<string> {
   return await realpath('/etc/ssl/certs/ca-certificates.crt')
-}
-
-async function realClaudeRuntimeLibrary(): Promise<string> {
-  return join(dirname(await realpath('/lib64/ld-linux-x86-64.so.2')), 'librt.so.1')
 }

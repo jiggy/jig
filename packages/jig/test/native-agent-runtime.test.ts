@@ -47,6 +47,22 @@ describe('native Agent runtime metadata', () => {
     ])
   })
 
+  test('resolves loader-owned libraries through an operator-managed interpreter link', async () => {
+    const { root, project, executable } = await fixture()
+    const loader = join(root, 'runtime', 'ld.so')
+    const alias = join(root, 'ld.so')
+    const library = join(root, 'runtime', 'libfixture.so')
+    await file(loader)
+    await file(library)
+    await symlink(loader, alias)
+    await file(executable, { interpreter: alias, needed: ['libfixture.so'] })
+    const result = await inspect(executable, project)
+    expect(result.mounts).toEqual([
+      { source: loader, destination: alias, role: 'support' },
+      { source: library, destination: library, role: 'support' },
+    ])
+  })
+
   test('reads a binary wrapper and retains the actual executable without running it', async () => {
     const { root, project, executable } = await fixture()
     const wrapped = join(root, '.codex-wrapped')
