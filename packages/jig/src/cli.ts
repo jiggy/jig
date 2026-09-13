@@ -20,7 +20,10 @@ import {
 } from './cli-presentation.js'
 import { PrivateCliProgress } from './cli-progress.js'
 import { PrivateCliRunPresentation, privateCliValueFields } from './cli-run-presentation.js'
-import { inspectPrivateApprovedProject } from './internal/activation-admission-store.js'
+import {
+  inspectPrivateApprovedProject,
+  type PrivateInspectionEnvironmentCheck,
+} from './internal/activation-admission-store.js'
 import { CheckError } from './diagnostics.js'
 import type { PrivateDeliveryConnection, PrivateDeliveryReceipt } from './internal/file-delivery.js'
 import {
@@ -68,9 +71,10 @@ const COMMAND_HELP = {
 List the current project's approved targets, or show one target's retained
 input/result schemas, settings, child slots, capabilities, files and channels.
 
-This reads only the last approved snapshot. It does not evaluate source,
-install dependencies, contact providers, recover state or approve changes.
-Visible edits and current runtime/provider readiness are not checked.
+Compare the last approval with the current local execution environment.
+Changed environments require review; unverifiable environments remain unchecked.
+No source evaluation, installation, provider requests, recovery or state writes.
+Visible edits, launch readiness and remote provider availability are not checked.
 
   --json     Emit JSON even in a terminal (redirected output is always JSON)
 
@@ -161,6 +165,7 @@ export interface PrivateCliCommandHost {
 }
 
 export interface PrivateCliOptions {
+  readonly inspectEnvironment?: PrivateInspectionEnvironmentCheck
   readonly host?: PrivateCliCommandHost
   readonly currentDirectory?: string
   readonly signal?: AbortSignal
@@ -174,6 +179,7 @@ export interface PrivateCliOptions {
 }
 
 interface CliRuntime {
+  readonly inspectEnvironment?: PrivateInspectionEnvironmentCheck
   readonly humanOutput: boolean
   readonly outputColor: boolean
   readonly outputColumns: number
@@ -293,8 +299,13 @@ async function executeInspect(arguments_: readonly string[], runtime: CliRuntime
     } else usage('inspect', 'Specify at most one target and one --json option.')
   }
   let snapshot: JsonValue
+  runtime.signal?.throwIfAborted()
   try {
-    snapshot = await inspectPrivateApprovedProject(runtime.currentDirectory, selector)
+    snapshot = await inspectPrivateApprovedProject(
+      runtime.currentDirectory,
+      selector,
+      runtime.inspectEnvironment,
+    )
   } catch (error) {
     if (error instanceof CheckError && error.code === 'INSPECTION_TARGET_MISSING')
       throw new CliDiagnostic(
@@ -308,16 +319,22 @@ async function executeInspect(arguments_: readonly string[], runtime: CliRuntime
       2,
     )
   }
+  runtime.signal?.throwIfAborted()
   if (runtime.humanOutput && !json) {
-    const unreviewed =
-      typeof snapshot === 'object' &&
-      snapshot !== null &&
-      'state' in snapshot &&
-      snapshot.state === 'unreviewed'
+    const state =
+      typeof snapshot === 'object' && snapshot !== null && 'state' in snapshot
+        ? snapshot.state
+        : 'unchecked'
+    const explanation =
+      state === 'review-required'
+        ? 'Review required\n\n  The execution environment has changed since approval.\n  Run jig review, inspect the changes, and approve before running again.'
+        : state === 'environment-matches'
+          ? 'Approval environment matches\n\n  Current local execution identities match this approval.\n  Run still revalidates launch authority; remote provider availability is not checked.'
+          : 'Approval validity not checked\n\n  The current execution environment could not be verified.\n  Use jig review to diagnose missing support or configuration before running.'
     runtime.writeOutput(
-      unreviewed
+      state === 'unreviewed'
         ? 'No approved revision\n\n  Run jig review to review and approve this project. Nothing was changed.\n'
-        : `Approved snapshot\n\n  This is retained project meaning, not a check of current source or runtime readiness.\n\n${privateCliValueFields(snapshot)}\nNext: jig run <target>; use jig review after source or configuration changes.\n`,
+        : `${explanation}\n\n  The interfaces below belong to the last approved revision. Visible source changes are not checked.\n\n${privateCliValueFields(snapshot)}\n`,
     )
   } else await runtime.writeRecord(`${textDecoder.decode(canonicalJson(snapshot))}\n`)
   return 0
@@ -1047,6 +1064,9 @@ function cliRuntime(options: PrivateCliOptions): CliRuntime {
     outputColumns: process.stdout.columns || 80,
     progress,
     host: options.host ?? unavailableHost,
+    ...(options.inspectEnvironment === undefined
+      ? {}
+      : { inspectEnvironment: options.inspectEnvironment }),
     currentDirectory: options.currentDirectory ?? process.cwd(),
     ...(options.signal === undefined ? {} : { signal: options.signal }),
     interactive:

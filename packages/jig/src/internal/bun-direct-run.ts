@@ -77,9 +77,31 @@ export async function planPrivateBunDirectRun(input: {
   readonly selector?: string
   readonly agentProvider?: PrivateAgentProvider | undefined
 }): Promise<PrivateBunDirectRecipe> {
+  const backend = requirePrivateLinuxCgroupBackend(input.backend)
+  const fields = await describePrivateBunDirectRun(
+    input,
+    async () => (await backend.observeMechanism()).support,
+  )
+  const recipe = Object.freeze({ ...fields, backend })
+  authenticRecipes.add(recipe)
+  return recipe
+}
+
+/** Same recipe identity as planning, without manufacturing an executable recipe. */
+export async function inspectPrivateBunDirectIdentity(
+  input: Omit<Parameters<typeof planPrivateBunDirectRun>[0], 'backend'>,
+  support: PrivateLinuxBackendMechanismSupport,
+): Promise<{ readonly digest: string; readonly observationDigest: string }> {
+  const fields = await describePrivateBunDirectRun(input, async () => support)
+  return { digest: fields.digest, observationDigest: fields.observation.digest }
+}
+
+async function describePrivateBunDirectRun(
+  input: Omit<Parameters<typeof planPrivateBunDirectRun>[0], 'backend'>,
+  observeSupport: () => Promise<PrivateLinuxBackendMechanismSupport>,
+): Promise<Omit<PrivateBunDirectRecipe, 'backend'>> {
   const request = requirePrivateActivationRequest(input.request)
   const installedSupport = requirePrivateInstalledBunSupport(input.installedSupport)
-  const backend = requirePrivateLinuxCgroupBackend(input.backend)
   const execution = normalizePrivateBunExecutionArtifact(
     input.execution ?? privateBunExecutionArtifact(request.package),
   )
@@ -142,8 +164,7 @@ export async function planPrivateBunDirectRun(input: {
     revision: ADAPTER_REVISION,
     installedSupportDigest: installedSupport.digest,
   })
-  const mechanism = await backend.observeMechanism()
-  const support = mechanism.support
+  const support = await observeSupport()
   const adapter = Object.freeze({ artifactDigest: adapterDigest, revision: ADAPTER_REVISION })
   const backendIdentity = Object.freeze({
     artifactDigest: support.trustedSupervisorDigest,
@@ -198,7 +219,6 @@ export async function planPrivateBunDirectRun(input: {
     request,
     execution,
     installedSupport,
-    backend,
     mechanismDigest: support.digest,
     observation,
     sandboxExecutablePath: installedSupport.sandboxExecutablePath,
@@ -216,7 +236,6 @@ export async function planPrivateBunDirectRun(input: {
     privateRuntimeDevices: true,
     ...(agentProvider === undefined ? {} : { agentProvider }),
   })
-  authenticRecipes.add(recipe)
   return recipe
 }
 

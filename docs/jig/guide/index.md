@@ -122,6 +122,9 @@ reuses the admitted bytes. An authored lock avoids fresh dependency selection.
 Use `flow:<path>` for a package or `binding:<id>` for a configured invocation.
 Use `jig inspect` to list the approved targets, or `jig inspect <target>` to
 read a target's retained schemas and configuration without performing a review.
+Inspection also reports whether current local execution identities match that
+approval, require review, or could not be verified. It does not check source edits
+or promise a later Run will succeed.
 A Binding supplies application settings and exact dependencies; see
 [project authoring](../spec/project-sdk.md). Omitting `--input` supplies `{}`.
 Use `@FILE` for JSON input from a file and `--timeout 2m` for a longer Run.

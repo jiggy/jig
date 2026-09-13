@@ -42,6 +42,11 @@ child calls, project commands, and Agent providers.
   coordinator. Reuse filesystem identity and retained-artifact verification;
   reject unreadable state instead of repairing it. Only explicit public target
   fields leave the store; private recipes and authority records remain private.
+  Environment inspection shares Run's recipe identity calculation but returns
+  inert comparison evidence, never an authenticated executable recipe. Compare
+  current support without cgroup acquisition or namespace execution; Run retains
+  full launch revalidation. Include selected child identities, isolate unrelated
+  targets, and report failed comparisons as unchecked without private causes.
 - Strictly parse, bound, snapshot, and authenticate values crossing a trust
   boundary. Decoding inert bytes must not mint authority.
 - Preserve the sequence observe, identify, plan, seal, admit, revalidate,

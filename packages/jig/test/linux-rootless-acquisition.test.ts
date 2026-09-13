@@ -3,6 +3,7 @@ import { constants } from 'node:fs'
 
 import {
   acquirePrivateRootlessLinux,
+  inspectPrivateRootlessLinuxSupport,
   PrivateRootlessLinuxAcquisitionError,
   revalidatePrivateRootlessLinux,
   type PrivateRootlessLinuxAcquisitionDependencies,
@@ -14,6 +15,28 @@ const DELEGATED = `${ROOT}/user.slice/session.scope`
 const BWRAP = '/immutable/bubblewrap-0.12.0/bin/bwrap'
 
 describe('private rootless Linux acquisition', () => {
+  test('inspection reads support without touching cgroups or performing the namespace probe', async () => {
+    const fixture = validFixture()
+    const fail = async (): Promise<never> => {
+      throw new Error('inspection must not inspect launch authority')
+    }
+    const support = await inspectPrivateRootlessLinuxSupport({
+      ...fixture.dependencies,
+      readText: fail,
+      listDirectories: fail,
+      filesystemType: fail,
+      requireAccess: fail,
+    })
+    expect(support).toEqual({
+      bubblewrapPath: BWRAP,
+      bubblewrapVersion: '0.12.0',
+      payloadUid: 1000,
+      payloadGid: 100,
+    })
+    expect(fixture.executions).toHaveLength(1)
+    expect(fixture.executions[0]).toEqual({ path: BWRAP, arguments: ['--version'] })
+  })
+
   test('validates an exact operator-selected Bubblewrap and rejects later selection drift', async () => {
     const fixture = validFixture()
     let selected = BWRAP

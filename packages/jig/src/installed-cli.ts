@@ -17,7 +17,10 @@ import {
   privateNeedsFileOwner,
   privateOwnFileCommand,
 } from './internal/file-command.js'
-import { openPrivateInstalledBunHost } from './internal/installed-bun-host.js'
+import {
+  openPrivateInstalledBunHost,
+  privateInstalledEnvironmentCheck,
+} from './internal/installed-bun-host.js'
 import { PrivateRootlessLinuxAcquisitionError } from './internal/linux-rootless-acquisition.js'
 import { acquireOrReexecutePrivateRootlessLinux } from './internal/linux-rootless-delegation.js'
 import {
@@ -64,7 +67,20 @@ async function runPrivateInstalledCli(
   signal?: AbortSignal,
 ): Promise<InstalledCliOutcome> {
   if (!privateCliRequiresHost(arguments_)) {
-    return exit(await main(arguments_, signal === undefined ? {} : { signal }))
+    return exit(
+      await main(arguments_, {
+        ...(signal === undefined ? {} : { signal }),
+        ...(arguments_[0] !== 'inspect'
+          ? {}
+          : {
+              inspectEnvironment: privateInstalledEnvironmentCheck(
+                { releaseRoot, executablePath, installedCliPath },
+                process.env,
+                process.cwd(),
+              ),
+            }),
+      }),
+    )
   }
 
   const operatorEnvironment = Object.freeze({ ...process.env })

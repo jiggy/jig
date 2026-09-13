@@ -49,6 +49,7 @@ import {
   submitPrivateRootRun,
 } from '../src/internal/activation-admission-store.js'
 import { privateDomainDigest } from '../src/internal/identity.js'
+import { main } from '../src/cli.js'
 import {
   normalizePackageArtifactRef,
   type PackageArtifactRef,
@@ -103,11 +104,11 @@ describe.serial('direct alpha activation store', () => {
       const information = await stat(fixture.database)
       const entries = await readdir(join(fixture.root, '.jig'))
       expect(await inspectPrivateApprovedProject(fixture.root)).toMatchObject({
-        state: 'approved',
+        state: 'unchecked',
         targets: [{ target: 'flow:flows/run', package: 'flows/run' }],
       })
       expect(await inspectPrivateApprovedProject(fixture.root, 'flow:flows/run')).toMatchObject({
-        state: 'approved',
+        state: 'unchecked',
         name: 'run',
         description: 'Direct alpha store fixture.',
         schemas: { input: { type: 'object', required: ['value'] } },
@@ -120,11 +121,103 @@ describe.serial('direct alpha activation store', () => {
       await expect(
         inspectPrivateApprovedProject(fixture.root, 'binding:missing'),
       ).rejects.toMatchObject({ code: 'INSPECTION_TARGET_MISSING' })
+      for (const [state, heading] of [
+        ['environment-matches', 'Approval environment matches'],
+        ['review-required', 'Review required'],
+        ['unchecked', 'Approval validity not checked'],
+      ] as const) {
+        for (const json of [false, true]) {
+          let output = ''
+          expect(
+            await main(['inspect', ...(json ? ['--json'] : [])], {
+              currentDirectory: fixture.root,
+              terminalOutput: true,
+              inspectEnvironment: async (target) => {
+                expect(target.request.packagePath).toBe('flows/run')
+                if (state === 'unchecked') throw new Error('PRIVATE_ENVIRONMENT_SECRET')
+                return state
+              },
+              host: {
+                acquire: async () => {
+                  throw new Error('must not acquire')
+                },
+              },
+              writeOutput: (text) => {
+                output += text
+              },
+              writeRecord: async (text) => {
+                output += text
+              },
+            }),
+          ).toBe(0)
+          if (json) expect(JSON.parse(output)).toMatchObject({ state, targets: [{ state }] })
+          else {
+            expect(output).toContain(heading)
+            expect(output).toMatch(/Visible source\s+changes are not checked/)
+            if (state !== 'environment-matches') {
+              expect(output).toContain('jig review')
+              expect(output).not.toContain('Next: jig run')
+            }
+          }
+          expect(output).not.toContain('PRIVATE_ENVIRONMENT_SECRET')
+        }
+      }
+      const interrupted = new AbortController()
+      let interruptedOutput = ''
+      let interruptedError = ''
+      expect(
+        await main(['inspect'], {
+          currentDirectory: fixture.root,
+          signal: interrupted.signal,
+          inspectEnvironment: async () => {
+            interrupted.abort()
+            return 'environment-matches'
+          },
+          writeOutput: (text) => {
+            interruptedOutput += text
+          },
+          writeError: (text) => {
+            interruptedError += text
+          },
+        }),
+      ).toBe(2)
+      expect(interruptedOutput).toBe('')
+      expect(interruptedError).toContain('JIG_COMMAND_INTERRUPTED')
       expect(await readFile(fixture.database)).toEqual(before)
       expect((await stat(fixture.database)).mtimeMs).toBe(information.mtimeMs)
       expect(await readdir(join(fixture.root, '.jig'))).toEqual(entries)
     } finally {
       await coordinator?.dispose()
+      await fixture.dispose()
+    }
+  })
+
+  test('inspection includes selected children but does not let unrelated targets stale a selected target', async () => {
+    const fixture = await createFixture('ready')
+    try {
+      const slotted = await insertSlottedCandidate(fixture)
+      await applyPlan(
+        fixture,
+        seedPlan(fixture, slotted, {
+          baseGeneration: null,
+          observedLock: 'absent',
+          operation: 'admission',
+        }),
+      )
+      await rename(fixture.store, join(fixture.root, '.jig/private-package-store'))
+      const check: import('../src/internal/activation-admission-store.js').PrivateInspectionEnvironmentCheck =
+        async (target) =>
+          target.request.packagePath === 'flows/child' ? 'review-required' : 'environment-matches'
+      expect(
+        await inspectPrivateApprovedProject(fixture.root, 'binding:router', check),
+      ).toMatchObject({ state: 'review-required' })
+      expect(
+        await inspectPrivateApprovedProject(fixture.root, 'flow:flows/run', check),
+      ).toMatchObject({ state: 'environment-matches' })
+      expect(await inspectPrivateApprovedProject(fixture.root, undefined, check)).toMatchObject({
+        state: 'review-required',
+      })
+    } finally {
       await fixture.dispose()
     }
   })

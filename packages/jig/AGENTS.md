@@ -38,9 +38,12 @@ admitted FLOW packages.
   cancellation requested and cleanup confirmed are separate facts. Acquisition
   reports Jig runtime verification, Agent verification, and project-state recovery
   as separate stages instead of hiding them behind a prerequisites label.
-- `inspect` reads the last local approval without source evaluation, host
-  acquisition, credentials, resolution, recovery or state writes. Its retained
-  descriptions and contracts are not a readiness or source-freshness check.
+- `inspect` compares the last local approval with current local execution
+  identities, including selected children. Report mismatches as review required
+  and unverifiable comparisons as unchecked. It does not evaluate source,
+  acquire execution authority, resolve dependencies, contact providers, recover
+  or write state. Credential reads stay private; matching identities do not
+  establish source freshness, launch readiness or remote availability.
   Schema type diagnostics retain only closed expected/received JSON types, not
   rejected values. Human Run output leads with host facts before arbitrary results.
 - FLOW and Jig specifications and machine schemas are authoritative. Accept

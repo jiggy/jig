@@ -23,6 +23,23 @@ function screen(text: string): string {
 }
 
 describe('CLI experience contract', () => {
+  test('inspection states keep section boundaries and distinguish warnings from matching identities', () => {
+    for (const heading of [
+      'Approval environment matches',
+      'Review required',
+      'Approval validity not checked',
+    ]) {
+      const plain = privateCliHumanText(`${heading}\n\n  Retained interface.\n`, false, 36)
+      const color = privateCliHumanText(`${heading}\n\n  Retained interface.\n`, true, 36)
+      expect(plain).toContain('-'.repeat(35))
+      expect(strip(color)).toBe(plain)
+      expect(color).toContain(
+        heading === 'Approval environment matches' ? '\u001b[1m' : '\u001b[1;33m',
+      )
+      expect(color).not.toContain('\u001b[1;32m')
+    }
+  })
+
   test('color is optional, meaning is identical, and only terminal streams are styled', () => {
     const plain = privateCliDiagnostic(
       'JIG_RUN_INPUT_INVALID',

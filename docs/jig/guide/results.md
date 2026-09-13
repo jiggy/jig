@@ -20,9 +20,15 @@ Use `jig inspect` to list targets in the last approved revision. Use
 `jig inspect binding:repair` (or an exact `flow:` target) to read its input,
 settings and result schemas, configured settings, child slots, capabilities,
 attachments, channels and commands. `--json` or redirected stdout returns JSON.
-Inspection needs no Agent credentials and performs no source evaluation,
-dependency preparation, state recovery or approval. It describes retained
-meaning, not current source or remote readiness; use `jig review` to review edits.
+Inspection compares approval with current local execution identities, including
+selected children. It reports `environment-matches`, `review-required`, or
+`unchecked` when verification is unavailable. Missing Agent configuration can
+leave Agent-using targets unchecked without hiding their retained interfaces.
+It performs no provider requests, source evaluation, dependency preparation,
+state recovery or approval. Matching identities do not promise source freshness,
+launch readiness or remote availability; Run still revalidates before execution.
+Use `jig review` to review edits or a changed environment. Snapshot reads return
+exit 0 even when review is required; scripts should examine `state`.
 Without local approval, it reports `unreviewed`, even if a portable lock exists.
 
 Type errors identify the value's location and, where available, its expected

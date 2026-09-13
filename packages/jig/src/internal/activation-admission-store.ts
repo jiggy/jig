@@ -32,6 +32,7 @@ import {
   findPrivateActivationCandidateTargetV5,
   type PrivateActivationAdmission,
   type PrivateActivationCandidateArtifactV5,
+  type PrivateActivationCandidateTarget,
   type PrivateActivationPlanV2,
   privateActivationAdmissionDigest,
   privateActivationCandidateDigestV5,
@@ -3079,12 +3080,26 @@ function initializeOrVerifyCoordinatorSchema(database: SqliteDatabase): void {
   }
 }
 
+export type PrivateInspectionState = 'environment-matches' | 'review-required' | 'unchecked'
+export type PrivateInspectionEnvironmentCheck = (
+  target: PrivateActivationCandidateTarget,
+) => Promise<PrivateInspectionState>
+
+function inspectionState(states: readonly PrivateInspectionState[]): PrivateInspectionState {
+  return states.includes('review-required')
+    ? 'review-required'
+    : states.length === 0 || states.includes('unchecked')
+      ? 'unchecked'
+      : 'environment-matches'
+}
+
 /** Read the last approved snapshot, not visible source or a pending review.
  * No coordinator, runtime, recovery, resolution, or write transaction is acquired.
  */
 export async function inspectPrivateApprovedProject(
   projectRoot: string,
   selector?: string,
+  checkEnvironment?: PrivateInspectionEnvironmentCheck,
 ): Promise<JsonValue> {
   let owner: StateOwner
   try {
@@ -3118,10 +3133,45 @@ export async function inspectPrivateApprovedProject(
           : `binding:${request.target.id}`,
       package: request.packagePath,
     }))
-    let result: JsonValue = { state: 'approved', revision: candidate.candidate.lockDigest, targets }
+    const targetIndexes = new Map(targets.map((item, index) => [item.target, index]))
+    const selectedIndex = selector === undefined ? undefined : targetIndexes.get(selector)
+    if (selector !== undefined && selectedIndex === undefined)
+      invalid('INSPECTION_TARGET_MISSING', 'target is not in the approved revision')
+    const checked = new Map<number, Promise<PrivateInspectionState>>()
+    const check = (index: number): Promise<PrivateInspectionState> => {
+      let pending = checked.get(index)
+      if (pending === undefined) {
+        pending = (async () => {
+          try {
+            return (await checkEnvironment?.(candidate.candidate.targets[index]!)) ?? 'unchecked'
+          } catch {
+            return 'unchecked'
+          }
+        })()
+        checked.set(index, pending)
+      }
+      return pending
+    }
+    const checkWithChildren = async (index: number): Promise<PrivateInspectionState> => {
+      const states = [await check(index)]
+      for (const child of Object.values(candidate.candidate.targets[index]!.request.flowSlots)) {
+        const childSelector = child.kind === 'flow' ? `flow:${child.path}` : `binding:${child.id}`
+        const childIndex = targetIndexes.get(childSelector)
+        states.push(childIndex === undefined ? 'unchecked' : await check(childIndex))
+      }
+      return inspectionState(states)
+    }
+    const listed: JsonValue[] = []
+    const states: PrivateInspectionState[] = []
+    for (const index of selectedIndex === undefined ? targets.keys() : [selectedIndex]) {
+      const state = await checkWithChildren(index)
+      states.push(state)
+      listed.push({ ...targets[index]!, state })
+    }
+    const state = inspectionState(states)
+    let result: JsonValue = { state, revision: candidate.candidate.lockDigest, targets: listed }
     if (selector !== undefined) {
-      const index = targets.findIndex((item) => item.target === selector)
-      if (index < 0) invalid('INSPECTION_TARGET_MISSING', 'target is not in the approved revision')
+      const index = selectedIndex!
       const { request } = candidate.candidate.targets[index]!
       const captured = await captureStoredPackage(
         descriptorChild(owner.directory, PRIVATE_PACKAGE_STORE_DIRECTORY),
@@ -3141,7 +3191,7 @@ export async function inspectPrivateApprovedProject(
           }
         }
         result = {
-          state: 'approved',
+          state,
           revision: candidate.candidate.lockDigest,
           target: selector,
           package: request.packagePath,

@@ -1,5 +1,9 @@
 import { describe, expect, test } from 'bun:test'
-import { planPrivateBunDirectRun } from '../src/internal/bun-direct-run.js'
+import {
+  planPrivateBunDirectRun,
+  inspectPrivateBunDirectIdentity,
+  requirePrivateBunDirectRecipe,
+} from '../src/internal/bun-direct-run.js'
 import {
   EMPTY_PRIVATE_BUN_EXECUTION_LAYOUT,
   privateBunExecutionArtifact,
@@ -25,6 +29,52 @@ import {
 import { installedBunLocation } from './fixtures/installed-bun-location.js'
 
 describe('private Bun direct Run', () => {
+  test('read-only identity matches Run planning, tracks environment changes, and cannot authorize execution', async () => {
+    const installedSupport = await openPrivateInstalledBunSupport(installedBunLocation)
+    const backend = new StaticMechanismBackend({
+      bunPath: '/test/bun',
+      bunHostLibraryPath: '/test/lib',
+    })
+    const provider = (model: string, key: string) =>
+      openPrivateOpenAIAgentProvider(installedSupport, {
+        OPENAI_MODEL: model,
+        OPENAI_API_KEY: key,
+      })
+    const input = {
+      request: activationRequest(true),
+      installedSupport,
+      agentProvider: provider('test-model-a', 'test-key-a'),
+    }
+    const planned = await planPrivateBunDirectRun({ ...input, backend })
+    const inspected = await inspectPrivateBunDirectIdentity(input, MECHANISM.support)
+    expect(inspected).toEqual({
+      digest: planned.digest,
+      observationDigest: planned.observation.digest,
+    })
+    expect(() => requirePrivateBunDirectRecipe(inspected)).toThrow()
+    expect(
+      await inspectPrivateBunDirectIdentity(
+        { ...input, agentProvider: provider('test-model-a', 'test-key-b') },
+        MECHANISM.support,
+      ),
+    ).toEqual(inspected)
+    expect(
+      await inspectPrivateBunDirectIdentity(
+        { ...input, agentProvider: provider('test-model-b', 'test-key-a') },
+        MECHANISM.support,
+      ),
+    ).not.toEqual(inspected)
+    expect(
+      await inspectPrivateBunDirectIdentity(input, {
+        ...MECHANISM.support,
+        digest: digest('changed-support'),
+      }),
+    ).not.toEqual(inspected)
+    await expect(
+      inspectPrivateBunDirectIdentity({ ...input, agentProvider: undefined }, MECHANISM.support),
+    ).rejects.toBeDefined()
+  })
+
   test('fixes the recipe envelope to the complete root Run timeout range', async () => {
     const installedSupport = await openPrivateInstalledBunSupport(installedBunLocation)
     const backend = new StaticMechanismBackend({

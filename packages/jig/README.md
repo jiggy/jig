@@ -51,7 +51,9 @@ permission. `--bare` creates only an empty project skeleton.
 
 `inspect` lists approved targets or shows a target's retained interface without
 evaluating source, contacting providers, preparing dependencies or changing state.
-It describes the last approval, not current source or runtime readiness.
+It checks that approval against current local execution identities and reports
+changed or unverifiable environments. It does not check visible source edits,
+launch readiness or remote availability; Run still revalidates before execution.
 
 `run` executes the approved revision and shows a readable terminal result after
 settling owned work. `--receive` streams labelled channel text. Redirect stdout

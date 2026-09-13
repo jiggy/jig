@@ -217,6 +217,57 @@ async function observe(
   await dependencies.requireAccess(`${currentCgroup}/cgroup.events`, constants.R_OK)
   await dependencies.requireAccess(`${currentCgroup}/cgroup.kill`, constants.W_OK)
 
+  const { bubblewrapPath, bubblewrapVersion: version } = await inspectBubblewrap(dependencies)
+  const featureResult = await dependencies.execute(
+    bubblewrapPath,
+    bubblewrapFeatureProbe(bubblewrapPath),
+  )
+  if (featureResult.stderr !== '' || featureResult.stdout.trim() !== `bubblewrap ${version}`) {
+    throw new Error('Bubblewrap feature probe returned an unexpected result')
+  }
+
+  if (
+    retained !== undefined &&
+    (retained.bubblewrapPath !== bubblewrapPath || retained.bubblewrapVersion !== version)
+  ) {
+    throw new Error('rootless Linux support changed after acquisition')
+  }
+
+  return Object.freeze({
+    kind: 'private-rootless-linux-acquisition/1' as const,
+    delegatedCgroup,
+    currentCgroup,
+    bubblewrapPath,
+    bubblewrapVersion: version,
+    payloadUid: uid,
+    payloadGid: gid,
+  })
+}
+
+/** Read support identity only. No cgroup acquisition or namespace feature probe. */
+export async function inspectPrivateRootlessLinuxSupport(
+  dependencies: PrivateRootlessLinuxAcquisitionDependencies = systemDependencies,
+): Promise<
+  Pick<
+    PrivateRootlessLinuxAcquisitionObservation,
+    'bubblewrapPath' | 'bubblewrapVersion' | 'payloadUid' | 'payloadGid'
+  >
+> {
+  const payloadUid = dependencies.uid()
+  const payloadGid = dependencies.gid()
+  if (
+    payloadUid === undefined ||
+    payloadGid === undefined ||
+    !Number.isSafeInteger(payloadUid) ||
+    !Number.isSafeInteger(payloadGid) ||
+    payloadUid <= 0 ||
+    payloadGid <= 0
+  )
+    throw new Error('unprivileged Linux identity is unavailable')
+  return { ...(await inspectBubblewrap(dependencies)), payloadUid, payloadGid }
+}
+
+async function inspectBubblewrap(dependencies: PrivateRootlessLinuxAcquisitionDependencies) {
   const selectedPath = dependencies.bubblewrapPath?.()
   if (
     selectedPath !== undefined &&
@@ -242,30 +293,7 @@ async function observe(
 
   const versionResult = await dependencies.execute(bubblewrapPath, ['--version'])
   const version = requireBubblewrapVersion(versionResult)
-  const featureResult = await dependencies.execute(
-    bubblewrapPath,
-    bubblewrapFeatureProbe(bubblewrapPath),
-  )
-  if (featureResult.stderr !== '' || featureResult.stdout.trim() !== `bubblewrap ${version}`) {
-    throw new Error('Bubblewrap feature probe returned an unexpected result')
-  }
-
-  if (
-    retained !== undefined &&
-    (retained.bubblewrapPath !== bubblewrapPath || retained.bubblewrapVersion !== version)
-  ) {
-    throw new Error('rootless Linux support changed after acquisition')
-  }
-
-  return Object.freeze({
-    kind: 'private-rootless-linux-acquisition/1' as const,
-    delegatedCgroup,
-    currentCgroup,
-    bubblewrapPath,
-    bubblewrapVersion: version,
-    payloadUid: uid,
-    payloadGid: gid,
-  })
+  return { bubblewrapPath, bubblewrapVersion: version }
 }
 
 function parseCurrentCgroup(input: string): string {

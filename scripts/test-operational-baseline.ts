@@ -1,5 +1,15 @@
 import assert from 'node:assert/strict'
-import { mkdir, mkdtemp, readdir, readFile, realpath, rm, stat, writeFile } from 'node:fs/promises'
+import {
+  cp,
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  realpath,
+  rm,
+  stat,
+  writeFile,
+} from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -163,9 +173,41 @@ try {
   const inspected = requireRecord(
     JSON.parse((await run([jig, 'inspect', 'flow:flows/hello'], project)).stdout),
   )
-  assert.equal(inspected.state, 'approved')
+  assert.equal(inspected.state, 'environment-matches')
   assert.equal(inspected.target, 'flow:flows/hello')
   assert.equal(requireRecord(requireRecord(inspected.schemas).input).type, 'object')
+  // A different installed supervisor path changes the reviewed environment.
+  // Inspect must catch that without opening a project session or attempting a Run.
+  const relocated = join(consumer, 'node_modules', '@jigging', 'jig-relocated')
+  await cp(await realpath(join(consumer, 'node_modules', '@jigging', 'jig')), relocated, {
+    recursive: true,
+  })
+  const staleInspection = requireRecord(
+    JSON.parse(
+      (await run([join(relocated, 'bin', 'jig'), 'inspect', 'flow:flows/hello'], project)).stdout,
+    ),
+  )
+  assert.equal(staleInspection.state, 'review-required')
+  assert.equal(staleInspection.revision, inspected.revision)
+  assert.equal(staleInspection.target, inspected.target)
+  const unchecked = requireRecord(
+    JSON.parse(
+      (
+        await run(
+          [
+            'env',
+            `JIG_BWRAP_PATH=${join(temporary, 'missing-bwrap')}`,
+            jig,
+            'inspect',
+            'flow:flows/hello',
+          ],
+          project,
+        )
+      ).stdout,
+    ),
+  )
+  assert.equal(unchecked.state, 'unchecked')
+  assert.equal(unchecked.revision, inspected.revision)
   assert.deepEqual(await readFile(join(project, '.jig/jig.sqlite3')), databaseBeforeInspect)
 
   const unsupportedDependency = await run(

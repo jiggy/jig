@@ -1,4 +1,6 @@
 import { privateAcpAgentRuntime } from './acp-agent-provider.js'
+import type { PrivateInspectionEnvironmentCheck } from './activation-admission-store.js'
+import { inspectPrivateBunDirectIdentity } from './bun-direct-run.js'
 import { openPrivateClaudeAgentProvider } from './claude-agent-provider.js'
 import {
   openPrivateCodexAgentProvider,
@@ -27,6 +29,46 @@ interface AgentSelection {
   readonly agentProvider?: PrivateProjectSessionHost['agentProvider']
   readonly agentUnavailableHint?: string
   readonly agentExecutable?: { readonly client: string; readonly path: string }
+}
+
+/** Read-only, command-local inspection. Never opens project state or a session. */
+export function privateInstalledEnvironmentCheck(
+  location: PrivateInstalledBunLocation,
+  environment: Readonly<Record<string, string | undefined>>,
+  projectDirectory: string,
+): PrivateInspectionEnvironmentCheck {
+  const operatorEnvironment = Object.freeze({ ...environment })
+  let evidence:
+    | Promise<{
+        host: Awaited<ReturnType<typeof openPrivateInstalledBunHost>>
+        support: Awaited<ReturnType<PrivateLinuxCgroupBackend['inspectSupport']>>
+      }>
+    | undefined
+  return async (target) => {
+    if (target.disposition.state !== 'ready') return 'unchecked'
+    evidence ??= (async () => {
+      const host = await openPrivateInstalledBunHost(
+        location,
+        operatorEnvironment,
+        projectDirectory,
+      )
+      return { host, support: await host.backend.inspectSupport() }
+    })()
+    const { host, support } = await evidence
+    const identity = await inspectPrivateBunDirectIdentity(
+      {
+        request: target.request,
+        execution: target.disposition.execution,
+        installedSupport: host.installedBunSupport,
+        agentProvider: host.agentProvider,
+      },
+      support,
+    )
+    return identity.digest === target.disposition.recipeDigest &&
+      identity.observationDigest === target.disposition.observationDigest
+      ? 'environment-matches'
+      : 'review-required'
+  }
 }
 
 /** Open the one fixed installed alpha host. This is not a public host SPI. */

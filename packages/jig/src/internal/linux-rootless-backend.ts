@@ -26,6 +26,7 @@ import type { JsonValue } from '../json.js'
 import type { ExactComponentExit, ExactComponentProcess } from '../run/session.js'
 import {
   acquirePrivateRootlessLinux,
+  inspectPrivateRootlessLinuxSupport,
   revalidatePrivateRootlessLinux,
   type PrivateRootlessLinuxAcquisitionObservation,
 } from './linux-rootless-acquisition.js'
@@ -389,6 +390,12 @@ export class PrivateLinuxCgroupBackend {
   async observeMechanism(): Promise<PrivateLinuxBackendMechanismObservation> {
     requirePrivateLinuxCgroupBackend(this)
     return await this.#observeMechanism()
+  }
+
+  /** Inert comparison evidence, never launch authority or a readiness proof. */
+  async inspectSupport(): Promise<PrivateLinuxBackendMechanismSupport> {
+    requirePrivateLinuxCgroupBackend(this)
+    return observeMechanismSupport(this.#options, await inspectPrivateRootlessLinuxSupport())
   }
 
   async seal(
@@ -1351,6 +1358,29 @@ async function observeMechanismWithAuthority(
   options: NormalizedOptions,
   authority: PrivateRootlessLinuxAcquisitionObservation,
 ): Promise<PrivateLinuxBackendMechanismObservation> {
+  const [support, scope, bootId] = await Promise.all([
+    observeMechanismSupport(options, authority),
+    lstat(authority.delegatedCgroup, { bigint: true }),
+    observeLinuxBootId(),
+  ])
+  return Object.freeze({
+    support,
+    authority: Object.freeze({
+      bootId,
+      delegatedCgroup: authority.delegatedCgroup,
+      delegatedCgroupDevice: String(scope.dev),
+      delegatedCgroupInode: String(scope.ino),
+    }),
+  })
+}
+
+async function observeMechanismSupport(
+  options: NormalizedOptions,
+  authority: Pick<
+    PrivateRootlessLinuxAcquisitionObservation,
+    'bubblewrapPath' | 'bubblewrapVersion' | 'payloadUid' | 'payloadGid'
+  >,
+): Promise<PrivateLinuxBackendMechanismSupport> {
   const [bunPath, bunHostLibraryPath, supervisorPath] = await Promise.all([
     realpath(options.bunPath),
     realpath(options.bunHostLibraryPath),
@@ -1363,9 +1393,7 @@ async function observeMechanismWithAuthority(
   ) {
     throw new Error('rootless Linux support paths must be canonical')
   }
-  const [scope, bootId, bun, bunLibraries, supervisor, bubblewrap] = await Promise.all([
-    lstat(authority.delegatedCgroup, { bigint: true }),
-    observeLinuxBootId(),
+  const [bun, bunLibraries, supervisor, bubblewrap] = await Promise.all([
     lstat(bunPath),
     lstat(bunHostLibraryPath),
     lstat(supervisorPath),
@@ -1408,13 +1436,7 @@ async function observeMechanismWithAuthority(
       supportFields as unknown as JsonValue,
     ),
   })
-  const launchAuthority = Object.freeze({
-    bootId,
-    delegatedCgroup: authority.delegatedCgroup,
-    delegatedCgroupDevice: String(scope.dev),
-    delegatedCgroupInode: String(scope.ino),
-  })
-  return Object.freeze({ support, authority: launchAuthority })
+  return support
 }
 
 async function observeLinuxBootId(): Promise<string> {

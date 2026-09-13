@@ -121,13 +121,30 @@ makes usable control an observable requirement;
 current project's last locally approved snapshot. Without a target it lists
 exact approved selectors; with one it projects retained package descriptions,
 schemas, settings, capability identities, child slots, attachments, channels and
-commands. It never evaluates visible source, fetches dependencies, reads Agent
-credentials, acquires execution authority, recovers state, or writes project
-state. A pending or declined review and a portable `jig.lock` do not substitute
-for local approval. The display must identify its retained basis and exclude
-claims of source freshness or current runtime/provider readiness. Missing state
-reports `unreviewed`; unsafe, incompatible or busy state produces a bounded
-diagnostic without repair. Redirected output or `--json` is JSON, never styling.
+commands. It compares each selected target's retained recipe and observation
+identities with the current installed runtime, local Agent configuration/support,
+and sandbox support, using the same identity calculation as Run. A selected
+Binding includes its child targets; unrelated targets do not affect an exact
+target's result. No target argument checks all approved targets.
+
+The top-level and listed target `state` is `environment-matches`,
+`review-required` for a known mismatch, or `unchecked` when comparison cannot
+complete. A known mismatch takes precedence over an unchecked comparison.
+Missing local approval reports `unreviewed` and needs no environment inspection.
+A pending/declined review or a portable `jig.lock` does not substitute for
+local approval. Successful snapshot reads return exit 0 even when review is
+required; automation must examine `state`.
+
+Inspection may read operator credentials to construct the same non-secret
+provider identity, but never publishes or retains them or sends provider requests.
+It never evaluates visible source, fetches dependencies, acquires execution
+authority, probes namespace execution, recovers state, or writes project state.
+It may run the selected trusted Bubblewrap's bounded `--version` query.
+The display identifies its retained basis: source freshness, launch readiness
+and remote availability remain unchecked. Run still revalidates before execution.
+Changed or unchecked environments recommend `jig review`, not `jig run`.
+Unsafe, incompatible or busy state produces a bounded diagnostic without repair.
+Redirected output or `--json` is JSON, never styling.
 
 The CLI's shared presentation and progress modules own human formatting;
 command branches supply facts. Installed-launcher errors follow the same
