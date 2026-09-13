@@ -1,7 +1,6 @@
 import * as acp from '@agentclientprotocol/sdk'
-
-import type { ExactComponentProcess } from '../run/session.js'
 import type { JsonValue } from '../json.js'
+import type { ExactComponentProcess } from '../run/session.js'
 
 const ACP_PROTOCOL_BYTES = 32 * 1024 * 1024
 const ACP_UPDATE_COUNT = 4_096
@@ -41,9 +40,9 @@ export interface PrivateAcpTurnResult {
 }
 
 /**
- * Run one headless ACP v1 turn. The native agent owns its tools inside the
- * caller-provided containment envelope; Jig exposes no editor filesystem or
- * terminal capability and never grants a persistent permission.
+ * Run one headless ACP v1 turn. The host's client profile disables tools;
+ * this peer exposes no editor filesystem or terminal capability and grants
+ * no permission. Native execution remains inside the host-owned envelope.
  */
 export async function runPrivateAcpTurn(
   stream: acp.Stream,
@@ -56,17 +55,11 @@ export async function runPrivateAcpTurn(
 
   const app = acp
     .client({ name: 'jig' })
-    .onRequest(acp.methods.client.session.requestPermission, ({ agent, params }) => {
-      if (request.signal?.aborted) {
-        return { outcome: { outcome: 'cancelled' as const } }
-      }
-      const rejected = params.options.find(({ kind }) => kind === 'reject_once')
-      if (rejected !== undefined) {
-        return { outcome: { outcome: 'selected' as const, optionId: rejected.optionId } }
-      }
-      void agent
-        .notify(acp.methods.agent.session.cancel, { sessionId: params.sessionId })
-        .catch(() => undefined)
+    .onRequest(acp.methods.client.session.requestPermission, () => {
+      // This profile has no authority to grant tools. Do not select identifiers
+      // supplied by the peer: even a nominal reject option can share an ID with
+      // an allow option. Refusing permission is not cancellation of the Run or
+      // permission to issue a command against a peer-supplied session identity.
       return { outcome: { outcome: 'cancelled' as const } }
     })
 

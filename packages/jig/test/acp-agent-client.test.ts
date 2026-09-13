@@ -4,6 +4,50 @@ import * as acp from '@agentclientprotocol/sdk'
 import { PrivateAcpProtocolError, runPrivateAcpTurn } from '../src/internal/acp-agent-client.js'
 
 describe('private ACP Agent client', () => {
+  test('does not select an ambiguous peer-supplied permission identifier', async () => {
+    let permission: acp.RequestPermissionResponse | undefined
+    const agent = deterministicAgent(async (connection, sessionId) => {
+      permission = await connection.request(acp.methods.client.session.requestPermission, {
+        sessionId,
+        toolCall: { toolCallId: 'ambiguous', title: 'request ungranted work' },
+        options: [
+          { optionId: 'same-id', name: 'Allow', kind: 'allow_once' },
+          { optionId: 'same-id', name: 'Reject', kind: 'reject_once' },
+        ],
+      })
+      return 'refusal'
+    })
+    await expect(
+      runPrivateAcpTurn(agent, { cwd: '/work', instructions: 'answer once' }),
+    ).resolves.toEqual({ stopReason: 'refusal', text: '' })
+    expect(permission).toEqual({ outcome: { outcome: 'cancelled' } })
+  })
+
+  test('permission refusal neither selects an allow option nor cancels a peer-named session', async () => {
+    const cancellations: string[] = []
+    const agent = deterministicAgent(
+      async (connection, sessionId) => {
+        const permission = await connection.request(acp.methods.client.session.requestPermission, {
+          sessionId: 'not-the-owned-session',
+          toolCall: { toolCallId: 'ungranted', title: 'request tools' },
+          options: [{ optionId: 'allow', name: 'Allow', kind: 'allow_always' }],
+        })
+        expect(permission).toEqual({ outcome: { outcome: 'cancelled' } })
+        await message(connection, sessionId, 'Finished without tools.')
+        return 'end_turn'
+      },
+      {
+        cancelled: (id) => {
+          cancellations.push(id)
+        },
+      },
+    )
+    await expect(
+      runPrivateAcpTurn(agent, { cwd: '/work', instructions: 'answer once' }),
+    ).resolves.toEqual({ stopReason: 'end_turn', text: 'Finished without tools.' })
+    expect(cancellations).toEqual([])
+  })
+
   test('runs one stable v1 turn and rejects native tool authority', async () => {
     let permission: acp.RequestPermissionResponse | undefined
     const agent = deterministicAgent(async (connection, sessionId) => {
@@ -26,10 +70,10 @@ describe('private ACP Agent client', () => {
         instructions: 'answer once',
       }),
     ).resolves.toEqual({ stopReason: 'end_turn', text: 'hello world' })
-    expect(permission).toEqual({ outcome: { outcome: 'selected', optionId: 'reject' } })
+    expect(permission).toEqual({ outcome: { outcome: 'cancelled' } })
   })
 
-  test('rejects once without granting a persistent permission', async () => {
+  test('refuses permission without granting a persistent permission', async () => {
     let permission: acp.RequestPermissionResponse | undefined
     const agent = deterministicAgent(async (connection, sessionId) => {
       permission = await connection.request(acp.methods.client.session.requestPermission, {
@@ -49,7 +93,7 @@ describe('private ACP Agent client', () => {
         instructions: 'answer once',
       }),
     ).resolves.toEqual({ stopReason: 'refusal', text: '' })
-    expect(permission).toEqual({ outcome: { outcome: 'selected', optionId: 'reject' } })
+    expect(permission).toEqual({ outcome: { outcome: 'cancelled' } })
   })
 
   test('authenticates over ACP before opening the session', async () => {
@@ -191,6 +235,7 @@ function deterministicAgent(
     >
     readonly setMode?: acp.AgentRequestHandler<typeof acp.methods.agent.session.setMode>
     readonly sessionNew?: () => void
+    readonly cancelled?: (sessionId: string) => void
   } = {},
 ): acp.AgentApp {
   return acp
@@ -209,6 +254,9 @@ function deterministicAgent(
       handlers.setConfigOption ?? (() => ({ configOptions: [] })),
     )
     .onRequest(acp.methods.agent.session.setMode, handlers.setMode ?? (() => ({})))
+    .onNotification(acp.methods.agent.session.cancel, ({ params }) => {
+      handlers.cancelled?.(params.sessionId)
+    })
     .onRequest(acp.methods.agent.session.new, () => {
       handlers.sessionNew?.()
       return { sessionId: 'test-session' }
