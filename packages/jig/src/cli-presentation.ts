@@ -117,7 +117,7 @@ export function privateCliHumanText(
         if (/^(Error:|Review could not finish|Run failed|Execution lost)/.test(line))
           rendered = privateCliHeading(wrapped, 'error', true)
         else if (
-          /^(Warning:|Approval validity not checked|Approval required|Review required|Review declined|Command interrupted|Run cancelled)/.test(
+          /^(Changed:|Warning:|Approval validity not checked|Approval required|Review required|Review declined|Command interrupted|Run cancelled)/.test(
             line,
           )
         )
@@ -128,7 +128,7 @@ export function privateCliHumanText(
           /^\s*(?:Diagnostic code:|Category:|Executable:|Diagnostics:|"digest": "sha256:|Unavailable:|Flows needing live updates|Flow source, prepared dependencies, settings and permissions are unchanged\.)/.test(
             line,
           ) ||
-          /^(Changed:|Unchanged policy is omitted|Remembered locally\.)/.test(line)
+          /^(Unchanged policy is omitted|Remembered locally\.)/.test(line)
         )
           rendered = privateCliSecondary(wrapped, true)
         else if (/^ {2}\d+\. .* — /.test(line)) {
@@ -140,7 +140,7 @@ export function privateCliHumanText(
         } else if (
           section ||
           /^[A-Z][^{}]*:$/.test(line) ||
-          /^(Usage:|Reviewing |Running |Added:|Changed:|Removed:)/.test(line)
+          /^(Usage:|Reviewing |Running |Added:|Removed:)/.test(line)
         )
           rendered = privateCliHeading(wrapped, 'info', true)
         else if (/^[+-] /.test(line)) {

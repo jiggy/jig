@@ -34,7 +34,8 @@ makes usable control an observable requirement;
    terminal mode preserves these boundaries without escape sequences.
    Use the terminal's gray for secondary metadata: hashes, diagnostic codes,
    categories, change counts, completed-stage text, elapsed time, and optional
-   detail notes, executable paths, record identifiers, and unchanged context.
+   detail notes, executable paths, and unchanged context. Changed-record labels,
+   including their identifiers, use bold amber to draw attention to changed work.
    Omit review categories with no changes from the ordinary summary.
    Keep permission consequences, changed policy values, failures,
    and next actions at normal or emphasized contrast. Gray never hides content

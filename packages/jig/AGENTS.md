@@ -70,8 +70,9 @@ admitted FLOW packages.
   a separate raw diagnostic style or route machine output through styling.
   Major terminal sections need visible boundaries; secondary metadata uses
   gray while consent, policy values, and recovery actions remain prominent.
-  Dim executable paths, record identifiers, and unchanged context; omit review
-  categories with no changes from the ordinary summary.
+  Dim executable paths and unchanged context; omit review categories with no
+  changes from the ordinary summary. Changed-record labels and their identifiers
+  use bold amber: they identify work requiring attention, not secondary metadata.
   `src/cli-value-presentation.ts` uses the existing YAML serializer for human
   values in reviews, inspection, Run results, and structured channel messages.
   Do not rebuild a custom type-labelled tree. Preserve exact types, safe quoted

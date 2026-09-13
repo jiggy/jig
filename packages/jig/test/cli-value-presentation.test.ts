@@ -71,10 +71,9 @@ test('signed review YAML preserves complete multiline changes and diff direction
   }
 })
 
-test('paths, unchanged context and record labels recede while approval consequences stay prominent', () => {
+test('paths and unchanged context recede while changes and approval consequences stay prominent', () => {
   const lines = [
     '  Executable: "/nix/store/installation/bin/codex"',
-    'Changed: "flow:flows/chat"',
     '  Flow source, prepared dependencies, settings and permissions are unchanged.',
     '  Unavailable: Pi, API endpoint. Setup: jig review --details.',
   ]
@@ -82,6 +81,9 @@ test('paths, unchanged context and record labels recede while approval consequen
     expect(privateCliHumanText(line, true)).toBe(`\u001b[90m${line}\u001b[39m`)
     expect(privateCliHumanText(line, false)).toBe(line)
   }
+  const changed = 'Changed: "flow:flows/chat"'
+  expect(privateCliHumanText(changed, true)).toBe(`\u001b[1;33m${changed}\u001b[0m`)
+  expect(privateCliHumanText(changed, false)).toBe(changed)
   const consequence =
     '  Approval authorizes this target to run with the currently selected execution environment.'
   expect(privateCliHumanText(consequence, true)).toBe(consequence)
