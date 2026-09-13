@@ -1,0 +1,8 @@
+{
+  "name": "request-triage-intake",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@jigging/flow": "workspace:*"
+  }
+}

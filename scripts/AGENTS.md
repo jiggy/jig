@@ -38,7 +38,7 @@ operational baselines, and public-site assembly.
   full-text bundle coverage, rejects public `AGENTS.md` routes, and includes
   notices for bundled fonts.
 - Site assembly requires both products’ home, guide, and understanding routes,
-  plus FLOW’s authoring entrypoint.
+  plus FLOW’s authoring entrypoint and Jig’s request-triage composition guide.
 - Site assembly requires Jig's contract identity pages and exact descriptor
   downloads together. The deployed-site check verifies their page titles,
   JSON content types, and canonical bytes; neither operation is runtime

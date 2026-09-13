@@ -2,104 +2,123 @@
 title: How Jig works
 ---
 
-# How Jig works
+# Put Agent intelligence inside your software
 
-Agents can produce work faster than you can review and coordinate it. A useful
-application gives that work a procedure: what to attempt, which checks to run,
-when to ask for another attempt, and when to return a result for a decision.
+Agents already help you build software. Putting them to work inside that
+software asks a different question: how does the application direct their
+work, use the result, and limit the consequences when they get it wrong?
 
-Jig runs reusable methods called **Flows**. A Flow can combine Agent judgment
-with ordinary code, keeping its procedure explicit and callable. Jig supplies
-the execution boundary around the method, so your application can build on it.
+**Jig is a host for methods that combine the flexibility of AI Agents with
+the discipline of a traditional codebase.** Those methods are called **Flows**.
+An executable Flow accepts input and returns an outcome and result. Inside,
+it can use ordinary code, Agent judgment, or both. Other Flows call it through
+the same boundary in each case.
 
-## Let code govern the procedure
+## Compose the work through one interface
 
-In the [tested-patch application](./tested-patch.md), an Agent proposes source
-changes. The repair method's code bounds attempts and requests execution of
-the candidate against application-owned checks. A patch is offered when those
-checks pass, with evidence the recipient can inspect before applying it.
+Imagine a support application asking a classifier which queue should inspect
+an incoming request. It calls a named slot with the message:
 
-This combines the flexibility of AI Agents with the discipline of a traditional
-codebase. Code governs procedural choices, including ordering, validation, and
-stopping conditions. Agent judgment contributes where generation or
-interpretation helps. [Choosing a workflow structure](./workflow-design.md)
-explains when a function, an Agent call, or an internal graph fits the work.
+```ts
+return run.runChildFlow({
+  operationId: 'classify-request',
+  slot: 'classifier',
+  input: run.input,
+})
+```
 
-Running an explicit procedure does not guarantee a correct answer. Code can
-have bugs, models can be wrong, and application checks can miss a defect. The
-benefit is a procedure you can inspect, test, and direct, with evidence about
-what happened. Uptime and disaster recovery are separate concerns.
+That caller can use a classifier written entirely in code, one that asks an
+Agent, or one that combines both. A **Binding** configures the exact Flow behind
+the slot. The caller receives the method's outcome and output without needing
+to orchestrate its internal implementation.
 
-## Four parts, distinct jobs
+The [request-triage example](./request-triage.md) demonstrates all three. Code
+handles explicit labels, an Agent interprets messages, and the mixed method
+uses code before asking an Agent. Each returns a suggested queue. The
+application decides whether and how to act on it.
+
+This is what **AI-native** means in Jig's architecture: code and Agent work
+compose at the same level through the methods that contain them. Intelligence
+can become part of a software system without making every caller an Agent
+coordinator. The independent [FLOW standard](https://flow.jig.md/guide/understand)
+supplies that method boundary; Jig supplies authorized execution around it.
+
+## Let Agents reason within a role
+
+A prompt can ask an Agent to stay on task. It cannot establish that the Agent
+will always understand, resist injected instructions, or reach the right
+conclusion. Those are reasons to make the surrounding system explicit.
+
+A Flow's code can choose when to ask for judgment, validate returned data,
+branch on a result, and stop at an authored limit. The Agent has room to
+interpret within that method. Jig supplies only its admitted powers and
+accounts for the work's execution lifecycle. Model output cannot grant new
+authority by requesting it.
+
+In the triage example, the method can suggest only one of three queue names.
+It receives no refund or messaging capability. A valid suggestion can still
+be wrong. The application needs its own policy before a classification can
+cause a consequential action; even a correctly enforced power can be misused
+within its scope.
+
+Jig makes Agent work governable and composable. It does not make Agent judgment
+correct. Result validation establishes shape; domain checks establish what
+your application can safely conclude from it.
+
+## Why a microkernel-inspired host?
+
+We believe a small common execution core is a strong foundation for software
+built with Agents. As methods grow more capable, the host should not need a
+new primitive for every reasoning technique or workflow.
+
+The architecture keeps responsibilities in four places:
 
 | Part | Responsibility |
 | --- | --- |
-| Application | Why the work exists, its user experience, and domain rules |
-| Flow | How one reusable method performs its work |
-| Jig | Which accepted work may run, with what powers, limits, and lifecycle |
-| FLOW | The independent standard for packaging and invoking methods |
+| Application | Purpose, domain rules, checks, and consequences |
+| Flow | Method, code, prompts, Skills, and internal control |
+| Operator | Agent clients, models, credentials, and authorized powers |
+| Jig | Review, admission, exact binding, limits, containment, and execution lifecycle |
 
-A runtime or graph library inside a Flow advances its own program. Jig does
-not reconstruct that graph or make its nodes into host concepts. The operator
-chooses Agents, providers, credentials, and execution policy.
+**Microkernel-inspired** describes this separation: Jig owns the common
+execution boundaries while substantial capability lives in composed methods.
+It does not prescribe a graph language or take over a Flow's internal program.
+A repair procedure, a classifier, and a proposal workshop can use the same
+host without becoming host features.
 
-## Why a small host can enable substantial work
+That is the architectural reason for building Jig: leave room for Agent
+intelligence to develop inside methods while authority stays outside model
+judgment. Minimalism concerns the responsibilities you need to understand;
+the machinery enforcing them must still uphold its promises.
 
-A repair method can propose a change, execute checks through an authorized
-capability, and bound its correction attempts. A proposal method can separate
-drafting and review. Those procedures belong to their Flows and applications;
-Jig need not add a repair engine or a proposal primitive.
+## Review the method, then run its accepted revision
 
-This follows a microkernel-inspired idea: a small host owns essential execution
-responsibilities while methods supply the behavior. You can change how a
-method works without teaching Jig a new kind of application. The machinery
-needed to enforce authority and settle execution can still be substantial;
-small conceptual scope does not promise negligible overhead.
+![Editable source goes through jig review and approval before jig run executes the accepted revision. Jig validates the result and settles owned work before returning an outcome or failure.](./review-run.svg)
 
-## Review once, run the accepted meaning
+`jig review` captures the proposed source and configuration for inspection and
+approval. `jig run` executes the accepted revision with its configured powers.
+Changing the classifier behind a slot leaves the caller's code intact, but
+still needs a new review. A matching interface does not authorize changed bytes.
 
-![Editable source is reviewed and approved before exact execution; Jig settles owned work before returning.](./review-run.svg)
+Runs return an execution status, a method outcome, and output. A completed
+method may report `blocked` or `limit`; an execution failure remains a failure.
+Jig accounts for owned work through completion, cancellation, and cleanup.
+Cancellation cannot retract a remote request already accepted by a provider
+or undo a completed external effect. See [execution policy](../spec/project-policy.md)
+and [results and recovery](./results.md) for the exact guarantees.
 
-`jig review` presents proposed changes for approval. `jig run` executes the
-accepted revision. Editing visible source proposes a new version; it does not
-silently change what has authority to run.
+## Build a system you can direct
 
-A model can choose within an authorized set or propose further work. Its
-output cannot grant new permissions. Applications and their authority owners
-decide which consequential actions are delegated.
+Begin with one useful method. Keep known procedure in code, add Agent judgment
+where interpretation helps, and compose further methods when they contribute
+capability. Their common boundary lets you change how the work happens while
+keeping the surrounding application understandable.
 
-Jig validates protocol results and declared schemas, and accounts for owned
-execution through completion, failure, and cancellation. Your application
-checks whether the result satisfies its domain requirements. A remote request
-already accepted cannot be retracted by stopping its local caller. Read
-[execution policy](../spec/project-policy.md)
-for exact guarantees and [the quickstart](./index.md) for the everyday loop.
+A physical jig guides tools toward repeatable work. Jig takes its name from
+that idea: help you put powerful methods to work under meaningful direction.
+We call this **agency: power under control**.
 
-## Keep the method, change the application
-
-The [tested-patch example](./tested-patch.md) reuses its repair specialist for
-two projects. Application-owned input capture, checks, and delivery surround
-the method. The [proposal workshop](./proposal-workshop.md) gives another
-example of combining specialists around a useful result.
-
-These examples show how a method can contribute to further work. The intended
-gain is more achievable capability without a proportional increase in
-supervision; establishing that gain requires evaluating the application.
-
-Jig's core idea is **agency**: the ability to pursue a purpose and accomplish
-useful work. Its promise, **power under control**, applies to this everyday
-process of building: understand the methods, choose their powers, run an
-accepted revision, inspect the outcome, and change or stop the work. People,
-applications, and software subsystems can act within delegated authority.
-
-## Where FLOW fits
-
-[FLOW](https://flow.jig.md/) is the independent standard, and a **Flow** is one
-method packaged according to it. FLOW defines portable meaning; Jig supplies
-host policy. FLOW can serve hosts besides Jig.
-
-The name Jig draws on a physical jig: a tool that guides repeatable work
-without becoming the thing being made. The product similarly helps you build
-and refine the methods that do your work.
-
-[Create your first Flow →](./index.md)
+[Run your first Flow](./index.md), then
+[try one caller with three implementations](./request-triage.md).
+For a larger application, follow [a tested patch](./tested-patch.md) or the
+[proposal workshop](./proposal-workshop.md).

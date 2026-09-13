@@ -6,7 +6,8 @@ description: A complete task map for authors, host implementers, SDK builders, a
 # Build on reusable know-how
 
 FLOW is the independent standard for packaging and invoking reusable methods.
-A **Flow** keeps the method together; a compatible host supplies local powers.
+A **Flow** puts code, Agent judgment, or both behind one method boundary.
+A compatible host supplies local powers.
 
 <div className="reader-grid">
 <a className="reader-card" href="/guide/start"><span className="tile-index">AUTHOR A METHOD</span><h3>Build your first Flow.</h3><p>Choose a language and a compatible host. Understand the package and handler boundary.</p><span className="card-link">Start building ↗</span></a>
@@ -19,6 +20,7 @@ A **Flow** keeps the method together; a compatible host supplies local powers.
 
 | I want to… | Read |
 | --- | --- |
+| See code and Agent work compose through one boundary | [Understand FLOW](./understand.md), then [the Jig example](https://jig.md/guide/request-triage) |
 | Package a reusable procedure | [Start building](./start.mdx), then [Package/1](../spec/package-format.md) |
 | Write a Python method and exercise the protocol | [Python SDK guide](./python.md) |
 | Write TypeScript under a qualified Jig build | [Jig's first Flow](https://jig.md/guide/) |

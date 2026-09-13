@@ -4,9 +4,10 @@ title: Get started with Jig
 
 # Get started with Jig
 
-Jig runs reusable Agent methods with powers you approve. This guide creates
-one small Flow and shows the review-and-run loop. For a fuller application,
-try [an issue becoming a tested patch](./tested-patch.md).
+Jig runs methods that use code, Agent judgment, or both through the same
+callable boundary. This guide starts with a small code-only Flow and the
+review-and-run loop. Then [use one caller with three implementations](./request-triage.md)
+to see how Agent work fits into the same model.
 
 ## Install
 
@@ -92,9 +93,11 @@ Approve the source change only after reviewing it. The new output contains
 previously accepted version. The network flag has the same dependency-resolution
 meaning described above; it does not authorize the Flow to access the network.
 
-You have now created, run, and adapted a method. To put an Agent to work,
-continue with [a tested patch](./tested-patch.md). To understand the few parts
-behind that loop, read [how Jig works](./understand.md).
+You have now created, run, and adapted a method. Next, see
+[one caller use code, an Agent, or both](./request-triage.md). The method boundary
+stays consistent as the implementation changes. Read [how Jig works](./understand.md)
+for the architecture behind it, or try [a tested patch](./tested-patch.md)
+for a larger application.
 
 ## Review, run, improve
 
@@ -137,6 +140,7 @@ protocol failures, and retained-state recovery.
 
 ## Next steps
 
+- [Compose code and Agent methods](./request-triage.md) through one caller.
 - [Choose an Agent](./agents.md) using an API or a supported local client.
 - [Work with files](./files.md) to capture inputs and export one result packet.
 - [Manage dependencies](./dependencies.md) for reusable Flow packages.

@@ -5,12 +5,13 @@ description: Find the shortest path from your task to a useful, controlled outco
 
 # Build with power under control
 
-Jig runs reusable methods with powers you approve. Start with one Flow, add an
-Agent where it helps, and combine specialists around the work you want to do.
+Jig runs code and Agent methods through the same composable boundary, with
+powers you approve. Start with one Flow, then build Agent intelligence into
+your application while keeping authority and consequences explicit.
 
 <div className="reader-grid">
 <a className="reader-card" href="/guide/"><span className="tile-index">START</span><h3>Run your first Flow.</h3><p>Install on a supported Linux host, create a method, review it, and change its result.</p><span className="card-link">Follow the quickstart ↗</span></a>
-<a className="reader-card" href="/guide/tested-patch"><span className="tile-index">BUILD SOMETHING USEFUL</span><h3>Turn an issue into a patch.</h3><p>Use an Agent, reviewed commands, and application-owned checks to produce a reviewable delivery.</p><span className="card-link">Explore the example ↗</span></a>
+<a className="reader-card" href="/guide/request-triage"><span className="tile-index">COMPOSE</span><h3>One caller. Three implementations.</h3><p>Call code, Agent judgment, and a combination through the same method boundary.</p><span className="card-link">Explore the example ↗</span></a>
 <a className="reader-card" href="/guide/understand"><span className="tile-index">UNDERSTAND</span><h3>Learn the small architecture.</h3><p>See what applications, methods, the host, and the FLOW standard each own.</p><span className="card-link">Meet the four parts ↗</span></a>
 <a className="reader-card" href="/guide/for-agents"><span className="tile-index">FOR AGENTS</span><h3>Bring the right context.</h3><p>Read focused Markdown pages or the complete public documentation bundle.</p><span className="card-link">Use the agent entrypoint ↗</span></a>
 </div>
@@ -19,6 +20,8 @@ Agent where it helps, and combine specialists around the work you want to do.
 
 | I want to… | Read |
 | --- | --- |
+| Compose code and Agent work through one caller | [Request triage](./request-triage.md) |
+| Produce a patch with executed checks | [Tested patch](./tested-patch.md) |
 | Check whether my host can run Jig | [Supported hosts](./index.md#supported-host) |
 | Choose a model, API, or native client | [Choose an Agent](./agents.md) |
 | Import libraries or share local packages | [Flow dependencies](./dependencies.md) |

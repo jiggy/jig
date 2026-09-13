@@ -15,7 +15,7 @@ the linked specifications define exact requirements.
 | Flow | Package containing one reusable method | [Package/1](../spec/package-format.md) |
 | `FLOW.md` | Required readable package description and metadata | [Package/1](../spec/package-format.md) |
 | Host | Consumer that supplies invocation and local execution policy | [Run/1](../spec/run-protocol.md) |
-| Runtime | Program or library advancing a method's internal execution | [The boundary](./understand.md#keep-the-boundary-small) |
+| Runtime | Program or library advancing a method's internal execution | [The boundary](./understand.md#a-small-boundary-room-for-the-method) |
 | Run/1 | Protocol for one finite process exchange | [Run/1](../spec/run-protocol.md) |
 | Outcome | Method-declared result meaning, paired with output data | [Run/1](../spec/run-protocol.md) |
 | Schema | A declared shape used to validate a portable value | [Schema/1](../spec/schema-files.md) |

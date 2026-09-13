@@ -12,7 +12,9 @@ Jig public sites.
   files. Each site's `diagrams.css` fits guide SVGs to the reading column;
   source diagrams remain with their owning guide under `docs/`.
 - FLOW publishes the Python SDK guide at `/guide/python`; navigation and
-  `llms.txt` link it, and site assembly checks the route.
+  `llms.txt` link it, and site assembly checks the route. Jig introduces
+  composition at `/guide/request-triage`; its navigation, generated index, and
+  assembly gate keep that walkthrough reachable.
 - `theme/` owns the shared default-theme extension; `landing.css` owns shared
   landing and reading presentation. Both deployment triggers include these inputs.
 - `package.json` and `bun.lock` own shared pinned site tooling; `justfile` owns
@@ -49,7 +51,8 @@ Jig public sites.
   documentation coverage against supported tasks, and simplicity by real paths
   to useful results; avoid unsupported competitive claims.
 - Use Rspress’s native Shiki highlighting with One Dark Pro for dark-mode
-  code blocks and One Light for light mode on both sites.
+  code blocks and One Light for light mode on both sites. Shared native color
+  replacements preserve their hues while improving token contrast.
   `landing.css` must apply the emitted dark token variables under `html.rp-dark`;
   selecting two palettes in configuration alone does not switch their styles.
 - Keep guide diagrams as static images with the existing image zoom. Preserve

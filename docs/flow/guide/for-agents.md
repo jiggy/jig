@@ -20,6 +20,17 @@ full-content bundle. Reading them requires no account or API key.
 plain-text version. The HTML page `/spec/run-protocol` corresponds to
 `/spec/run-protocol.md`.
 
+## The architecture to preserve
+
+Executable Flows put code, Agent judgment, and mixed methods behind one input,
+outcome, and result boundary. Compose through the method's contract; do not
+require a different calling model just because its implementation uses an Agent.
+FLOW owns the portable boundary. Jig owns local authority and execution lifecycle.
+A shared interface does not establish equal judgment, cost, or required powers.
+
+See [why FLOW exists](./understand.md) and the
+[complete Jig example](https://jig.md/guide/request-triage).
+
 ## A focused starting instruction
 
 ```text title="Documentation context"

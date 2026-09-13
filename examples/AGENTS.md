@@ -53,6 +53,10 @@ authored examples, not independent consumer evidence or promoted Starters.
   reply validation, and independent crossing verification after preparing its
   development dependency. These tests also run in `scripts/test-release.sh`.
 
+- Run `bun test examples/request-triage/test` for one caller with code, Agent,
+  and mixed implementations, including malformed results and visible failures.
+  The release gate repeats these checks against the packed SDK.
+
 ## Child DOX Index
 
 - [proposal-workshop/AGENTS.md](proposal-workshop/AGENTS.md) — A bounded
@@ -63,3 +67,5 @@ authored examples, not independent consumer evidence or promoted Starters.
   live progress filtering and an independently interpreted final result.
 - [dataset-analysis/AGENTS.md](dataset-analysis/AGENTS.md) — Adaptive threshold
   search through two named channels and separately checked child results.
+- [request-triage/AGENTS.md](request-triage/AGENTS.md) — One caller and three
+  implementations of a queue suggestion, through the same Flow boundary.

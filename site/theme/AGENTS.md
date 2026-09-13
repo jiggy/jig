@@ -9,16 +9,22 @@ shared reading experience.
 
 - `index.tsx` extends the default layout with homepage composition, document
   context, and a direct Markdown resource link beside Rspress's copy action.
-- `showcase.tsx` renders illustrative walkthroughs from homepage frontmatter;
-  all stages remain in generated Markdown. It never executes product work.
+- `showcase.tsx` renders illustrative implementations from homepage frontmatter,
+  keeping the caller and result contract visible while the reader selects a
+  method. Caller, contract, and all variants remain in generated Markdown.
+  It never executes product work.
 - `search.tsx` uses Rspress's native local search with conditional mounting,
   modal semantics, keyboard controls, focus containment, and focus restoration.
 - `navigation.tsx` presents the flat primary links in a native mobile disclosure
   with Escape dismissal and a theme control; configurations keep those links flat.
+- `appearance.tsx` supplies a native theme button, retaining keyboard focus
+  inside the mobile navigation so Escape can dismiss it after a theme change.
 - `sidebar.tsx` gives native sidebar groups keyboard controls and expanded
   state, and removes collapsed links from the focus order.
 - `tabs.tsx` adds keyboard tab semantics to native Rspress tabs while retaining
   language persistence and complete Markdown export.
+- `code-themes.ts` retains the One Light and One Dark Pro palettes with native
+  Shiki color replacements targeting 7:1 text contrast against their code backgrounds.
 - `llms.ts` orders generated page links using the same sidebar as human readers;
   unlisted public pages remain discoverable rather than silently disappearing.
 - `fonts/` owns self-hosted Latin variable Manrope and JetBrains Mono fonts,

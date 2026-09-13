@@ -3,6 +3,7 @@ import { defineConfig } from '@rspress/core'
 import { documentationIndex } from '../theme/llms'
 import { accessibleMarkdown } from '../theme/accessible-markdown'
 import { diagramImages } from '../theme/diagram-images'
+import { codeThemes } from '../theme/code-themes'
 
 const siteDirectory = import.meta.dirname
 
@@ -29,6 +30,7 @@ const sidebar = [
   {
     text: "Examples",
     items: [
+      { text: "One caller, three implementations", link: "/guide/request-triage" },
       { text: "An issue becomes a tested patch", link: "/guide/tested-patch" },
       { text: "A proposal workshop", link: "/guide/proposal-workshop" },
     ],
@@ -81,7 +83,7 @@ export default defineConfig({
   root: resolve(siteDirectory, '../../docs/jig'),
   themeDir: resolve(siteDirectory, '../theme'),
   globalStyles: resolve(siteDirectory, 'diagrams.css'),
-  markdown: { remarkPlugins: [diagramImages], rehypePlugins: [accessibleMarkdown], shiki: { themes: { light: 'one-light', dark: 'one-dark-pro' } } },
+  markdown: { remarkPlugins: [diagramImages], rehypePlugins: [accessibleMarkdown], shiki: codeThemes },
   llms: { llmsTxt: documentationIndex(sidebar) },
   route: { exclude: ['**/AGENTS.md'] },
   outDir: process.env.PUBLIC_SITE_OUTPUT ?? resolve(siteDirectory, 'doc_build'),
@@ -106,7 +108,7 @@ export default defineConfig({
     enableScrollToTop: true,
     nav: [
       {"text": "Documentation", "link": "/guide/overview"},
-      {"text": "Example", "link": "/guide/tested-patch"},
+      {"text": "Example", "link": "/guide/request-triage"},
       {"text": "For agents", "link": "/guide/for-agents"},
       {"text": "FLOW", "link": "https://flow.jig.md/"},
       {"text": "GitHub", "link": "https://github.com/jiggy/jig"},

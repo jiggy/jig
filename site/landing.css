@@ -155,7 +155,9 @@ html.dark {
 .showcase-tabs button[aria-selected='true'] { background: var(--signal); color: #17201a; }
 .showcase-tabs button:hover:not([aria-selected='true']) { border-color: #ffffff44; }
 .showcase-instrument :focus-visible { outline-color: var(--signal); }
-.showcase-panel { min-height: 385px; padding: 1.2rem .25rem .4rem; }
+.showcase-panel { min-height: 340px; padding: 1.2rem .25rem .4rem; }
+.showcase-caller { margin-top: 1.2rem; border-color: #c9ef9255; }
+.showcase-contract { border-left: 2px solid var(--signal); padding: .7rem 1rem; margin: .5rem .25rem 1rem; color: #e3f0df; font: 400 .67rem/1.8 'JetBrains Mono', monospace; overflow-wrap: anywhere; }
 .method-card { border: 1px solid #ffffff29; border-radius: 10px; background: #ffffff07; overflow: hidden; }
 .method-file { position: relative; display: flex; align-items: center; gap: .65rem; min-height: 42px; padding: .8rem 1rem; font: 500 .68rem 'JetBrains Mono', monospace; color: #e2ece1; border-bottom: 1px solid #ffffff1f; }
 .file-symbol { color: var(--signal); font-size: 1.2rem; line-height: .6; }
@@ -308,3 +310,11 @@ html.rp-dark .shiki span {
 /* Select fixed SVG palettes by site appearance, including mobile WebKit. */
 html:not(.dark) img[data-diagram-theme='dark'],
 html.dark img[data-diagram-theme='light'] { display: none; }
+
+button.rp-switch-appearance { border: 0; background: transparent; cursor: pointer; }
+
+.rp-llms-copy-button--success.rp-llms-copy-button,
+.rp-llms-copy-button--success .rp-llms-copy-button__icon-success {
+  color: var(--accent);
+  border-color: var(--accent);
+}

@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { useNav, useLocation } from '@rspress/core/runtime'
-import { Link, SwitchAppearance } from '@rspress/core/theme-original'
+import { Link } from '@rspress/core/theme-original'
+import { SwitchAppearance } from './appearance'
 
 /** A native disclosure keeps the small mobile menu usable without a modal. */
 export function NavHamburger() {

@@ -1,0 +1,8 @@
+{
+  "name": "request-triage-agent",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@jigging/flow": "workspace:*"
+  }
+}

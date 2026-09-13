@@ -1,0 +1,18 @@
+{
+  "$schema": "https://flow.jig.md/schemas/schema-1.json",
+  "type": "object",
+  "properties": {
+    "queue": {
+      "type": "string",
+      "enum": [
+        "billing",
+        "technical",
+        "manual"
+      ]
+    }
+  },
+  "required": [
+    "queue"
+  ],
+  "additionalProperties": false
+}

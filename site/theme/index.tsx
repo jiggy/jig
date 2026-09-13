@@ -6,6 +6,7 @@ import '../landing.css'
 
 export * from '@rspress/core/theme-original'
 export { Search } from './search'
+export { SwitchAppearance } from './appearance'
 export { Tabs } from './tabs'
 export { Sidebar } from './sidebar'
 export { NavHamburger } from './navigation'

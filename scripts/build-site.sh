@@ -128,6 +128,10 @@ docs/flow/spec/machine/schema-1.json|schema-1.json|https://flow.jig.md/schemas/s
     forbidden_page='spec/project-policy.html'
     ;;
   jig)
+    if [ ! -s "$staging/guide/request-triage.html" ]; then
+      echo "the code-and-Agent composition guide is missing" >&2
+      exit 1
+    fi
     schema_map='docs/jig/spec/machine/jig-lock-1.schema.json|jig-lock-1.schema.json|-
 docs/jig/spec/machine/project-authoring-1.schema.json|project-authoring-1.schema.json|-'
     forbidden_page='spec/package-format.html'

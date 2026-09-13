@@ -45,7 +45,7 @@ set -- "$release_tmp"/artifacts/*.tgz
 test "$#" -eq 1 && test -f "$1"
 sdk_archive=$1
 set --
-for application in tested-patch live-agent dataset-analysis; do
+for application in tested-patch live-agent dataset-analysis request-triage; do
   application_copy="$release_tmp/$application"
   mkdir -p "$application_copy"
   cp "examples/$application/package.json" "$application_copy/"

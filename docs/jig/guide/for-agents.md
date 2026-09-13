@@ -21,6 +21,18 @@ content. **View Markdown** opens the plain-text page. For example,
 `https://jig.md/guide/agents` has a Markdown version at
 `https://jig.md/guide/agents.md`.
 
+## The architecture to preserve
+
+Executable Flows put code, Agent judgment, and mixed methods behind one input,
+outcome, and result boundary. Compose through the method's contract; do not
+require a different calling model just because its implementation uses an Agent.
+FLOW owns the portable boundary. Jig owns local authority and execution lifecycle.
+A shared interface does not establish equal judgment, cost, or required powers.
+
+See [how Jig works](./understand.md) and
+[one caller, three implementations](./request-triage.md). Changing an implementation
+or Binding still needs review; a matching contract does not authorize new bytes.
+
 ## Start from the user's task
 
 A useful starting instruction for an Agent working in your own project:

@@ -8,7 +8,8 @@ import { Tabs, Tab } from '@rspress/core/theme'
 
 A Flow packages one reusable method so another consumer can understand and
 invoke it. Start with a small procedure whose input and useful result you can
-explain. An Agent is optional.
+explain. The same boundary can later contain code, Agent judgment, or both;
+starting with code makes that boundary easy to see.
 
 ## Choose a concrete result
 
@@ -90,6 +91,7 @@ check. A malformed input should have a deliberate, documented response.
 
 ## Build further
 
+- [See one caller with three implementations](https://jig.md/guide/request-triage) in a Jig example.
 - [Understand the design](./understand.md) before choosing a host boundary.
 - [Add schemas](../spec/schema-files.md) when consumers need exact value validation.
 - [Use the Run SDK](../spec/run-sdk.md) for host-supplied children and capabilities.
