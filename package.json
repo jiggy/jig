@@ -11,6 +11,7 @@
     "@biomejs/biome": "2.5.12"
   },
   "patchedDependencies": {
+    "@agentclientprotocol/codex-acp@1.8.0": "packages/jig/patches/codex-acp@1.8.0.patch",
     "pi-acp@0.0.33": "packages/jig/patches/pi-acp@0.0.33.patch"
   }
 }

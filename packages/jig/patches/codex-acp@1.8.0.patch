@@ -1,0 +1,14 @@
+diff --git a/dist/index.js b/dist/index.js
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -33773,10 +33773,6 @@
+         agentFileChangeReportTurnId = turnCompleted.turn.id;
+       }
+       await clearRecoveredSessionFailure(eventHandler);
+-      if (sessionState.titleGen) {
+-        const promptText = params.prompt.filter((b) => b.type === "text").map((b) => b.text).join(" ").trim();
+-        sessionState.titleGen.onTurnCompleted(promptText);
+-      }
+       await this.publishFallbackSessionTitle(
+         sessionState,
+         this.createPromptFallbackTitle(params.prompt)

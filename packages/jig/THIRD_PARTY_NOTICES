@@ -53,6 +53,11 @@ Jig ships the official ACP adapter for native OpenAI Codex as an inert support
 asset. It is selected only when the operator explicitly enables the native
 Codex client; Jig does not include the Codex executable or its credentials.
 
+Jig patches the pinned adapter to disable automatic model-based session titles.
+Requested turns keep their reviewed model and count; deterministic fallback
+titles remain. See `packages/jig/patches/codex-acp@1.8.0.patch` and its companion
+note for the correction and removal condition.
+
 Copyright 2025 JetBrains s.r.o.
 
 Licensed under the Apache License, Version 2.0. The complete adapter license is

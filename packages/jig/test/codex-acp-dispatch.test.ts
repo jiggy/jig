@@ -1,0 +1,120 @@
+import { expect, test } from 'bun:test'
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+for (const scenario of ['completed', 'rejected']) {
+  test(`Codex ACP makes only the requested model turn: ${scenario}`, async () => {
+    const root = await mkdtemp(join(tmpdir(), 'jig-codex-acp-dispatch-'))
+    const fixture = join(root, 'codex')
+    const recording = join(root, 'requests.ndjson')
+    await writeFile(
+      fixture,
+      `#!${process.execPath}\n${await readFile(new URL('./fixtures/codex-app-server-recording.ts', import.meta.url), 'utf8')}`,
+      { mode: 0o700 },
+    )
+    const child = Bun.spawn(
+      [
+        process.execPath,
+        '--no-env-file',
+        '--no-install',
+        '--config=/dev/null',
+        fileURLToPath(import.meta.resolve('@agentclientprotocol/codex-acp')),
+      ],
+      {
+        cwd: root,
+        env: {
+          HOME: root,
+          PATH: root,
+          CODEX_PATH: fixture,
+          RECORD_PATH: recording,
+          RECORD_SCENARIO: scenario,
+        },
+        stdin: 'pipe',
+        stdout: 'pipe',
+        stderr: 'pipe',
+      },
+    )
+    const deadline = setTimeout(() => child.kill(), 8_000)
+    const diagnostics = (async () => {
+      let text = ''
+      for await (const chunk of child.stderr) {
+        if (text.length + chunk.byteLength > 64 * 1024) {
+          child.kill()
+          return 'ACP fixture diagnostics exceeded capacity'
+        }
+        text += new TextDecoder().decode(chunk)
+      }
+      return text
+    })()
+    const lines = child.stdout.getReader()
+    let buffer = ''
+    let bytes = 0
+    const decoder = new TextDecoder()
+    const request = async (id: number, method: string, params: unknown) => {
+      child.stdin.write(JSON.stringify({ jsonrpc: '2.0', id, method, params }) + '\n')
+      await child.stdin.flush()
+      for (;;) {
+        const split = buffer.indexOf('\n')
+        if (split >= 0) {
+          const frame = JSON.parse(buffer.slice(0, split))
+          buffer = buffer.slice(split + 1)
+          if (frame.id === id) return frame
+        } else {
+          const part = await lines.read()
+          if (part.done) throw new Error(`ACP ended: ${await diagnostics}`)
+          if ((bytes += part.value.byteLength) > 256 * 1024)
+            throw new Error('ACP fixture output overflow')
+          buffer += decoder.decode(part.value, { stream: true })
+        }
+      }
+    }
+    try {
+      expect(
+        (await request(1, 'initialize', { protocolVersion: 1, clientCapabilities: {} })).error,
+      ).toBeUndefined()
+      const opened = await request(2, 'session/new', { cwd: root, mcpServers: [] })
+      expect(opened.error).toBeUndefined()
+      const sessionId = opened.result.sessionId
+      expect(
+        (await request(3, 'session/set_mode', { sessionId, modeId: 'read-only' })).error,
+      ).toBeUndefined()
+      const answer = await request(4, 'session/prompt', {
+        sessionId,
+        prompt: [{ type: 'text', text: 'Only this requested work' }],
+      })
+      if (scenario === 'completed') expect(answer.result?.stopReason).toBe('end_turn')
+      else expect(answer.error).toBeDefined()
+      expect((await request(5, 'session/close', { sessionId })).error).toBeUndefined()
+      await child.stdin.end()
+      expect(await child.exited, await diagnostics).toBe(0)
+      const recorded = (await readFile(recording, 'utf8'))
+        .trim()
+        .split('\n')
+        .map((line) => JSON.parse(line))
+      const started = recorded.filter((record) => record.method === 'turn/start')
+      expect(started).toHaveLength(1)
+      expect(started[0].params.model).toBe('fixture')
+      expect(recorded.filter((record) => record.method === 'thread/start')).toHaveLength(1)
+      expect(
+        recorded.some((record) =>
+          ['thread/fork', 'review/start', 'thread/compact/start', 'thread/goal/set'].includes(
+            record.method,
+          ),
+        ),
+      ).toBe(false)
+    } finally {
+      try {
+        await child.stdin.end()
+      } catch {
+        /* already exited */
+      }
+      await child.exited
+      clearTimeout(deadline)
+      await lines.cancel()
+      await diagnostics
+      await rm(root, { recursive: true, force: true })
+    }
+  }, 12_000)
+}
