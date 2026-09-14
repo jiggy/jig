@@ -16,11 +16,12 @@ and capability-contract semantics.
 - Admission, containment, permissions, persistence, providers, Agent policy,
   and routing belong to a host such as Jig, not FLOW.
 
-- `index.md` and `guide/understand.md` introduce one compositional boundary for
-  code and Agents through the request-triage example on Jig, then develop the
-  Skills bridge, capability compounding, and host independence. The landing page
-  opens the conceptual package after the demonstration and ends at first
-  authoring. Keep the host example distinct from portable FLOW requirements.
+- `index.md` introduces the shared code/Agent composition promise through a
+  package explorer: required `FLOW.md`, optional `flow.<suffix>`, host-supported
+  runtimes, child invocation, and optional schemas and capability contracts.
+  Its progressive disclosure describes package layers, not automatic Agent
+  context loading. `guide/understand.md` develops the same boundary through
+  request triage on Jig. Keep host examples distinct from portable requirements.
 - `guide/start.mdx` routes authors to complete SDK or host tutorials without
   treating a source candidate as a published install. Its native language tabs
   preserve both examples in the generated `/guide/start.md` resource.

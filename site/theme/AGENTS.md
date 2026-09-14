@@ -9,7 +9,11 @@ shared reading experience.
 
 - `index.tsx` extends the default layout with homepage composition, document
   context, and a direct Markdown resource link beside Rspress's copy action.
-- `showcase.tsx` renders illustrative implementations from homepage frontmatter,
+- `package-showcase.tsx` renders the FLOW package explorer from frontmatter,
+  preserving every stage, language, and optional layer in generated Markdown.
+  It uses native Rspress code rendering and the shared One Light/One Dark Pro
+  palettes; snippets demonstrate the protocol and do not execute in the browser.
+- `showcase.tsx` renders Jig’s illustrative implementations from homepage frontmatter,
   showing a request, selectable method steps, and an illustrative result.
   A native disclosure reveals the unchanged caller and implementation. All
   inputs, variants, results, and qualifications remain in generated Markdown.

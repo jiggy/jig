@@ -5,7 +5,7 @@ description: "Call Agent work from your application through a Flow: a method tha
 hero:
   name: Jig
   eyebrow: "Jig · Run code and Agents together"
-  text: "Build with Agents\nas naturally as code."
+  text: "Build with Agents\nas naturally as you\nbuild with code."
   tagline: "Call Agent work from your application through a Flow: a method that can use code, an Agent, or both. Jig runs it with the powers and limits you choose."
   status: "Developer alpha · supported Linux hosts"
   statusLink: "/guide/#supported-host"
@@ -17,6 +17,7 @@ hero:
       text: See it work
       link: "#showcase"
 showcase:
+  kind: execution
   label: Explore a support-request classifier
   title: One call. Code, an Agent, or both.
   description: Your app needs to route a request. Change how the classifier works below. Your application still makes the same call.

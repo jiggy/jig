@@ -312,8 +312,8 @@ html.dark { --rp-c-text-code: #c4d7ed; }
 @media (max-width: 1280px) { .compact-navigation { display: block; } }
 
 /* Shiki emits both palettes; Rspress's appearance class selects the dark one. */
-html.rp-dark .shiki,
-html.rp-dark .shiki span {
+html.rp-dark .shiki.shiki-themes,
+html.rp-dark .shiki.shiki-themes span {
   color: var(--shiki-dark) !important;
   background-color: var(--shiki-dark-bg) !important;
   font-style: var(--shiki-dark-font-style) !important;
@@ -331,4 +331,47 @@ button.rp-switch-appearance { border: 0; background: transparent; cursor: pointe
 .rp-llms-copy-button--success .rp-llms-copy-button__icon-success {
   color: var(--accent);
   border-color: var(--accent);
+}
+
+/* A package grows through explicit layers; the source stays readable. */
+.package-showcase .showcase-tabs { margin-top: 0; max-width: none; }
+.package-heading { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: .4rem 0 .8rem; }
+.package-heading > span:last-child { font-size: .72rem; color: var(--rp-c-text-2); }
+.package-files { list-style: none; padding: 0; margin: 0; border-block: 1px solid var(--rp-c-divider-light); }
+.package-files li { display: flex; justify-content: space-between; gap: 1rem; padding: .65rem .25rem; }
+.package-files code { font: 600 .85rem/1.5 'JetBrains Mono', monospace; color: var(--accent); }
+.package-files span { color: var(--rp-c-text-2); font-size: .75rem; }
+.package-stage-copy { margin: 1.2rem 0; }
+.package-stage-copy h3 { margin: 0 0 .6rem; font-size: 1.05rem; font-weight: 700; }
+.package-stage-copy p { color: var(--rp-c-text-2); font-size: .87rem; line-height: 1.75; margin: 0; }
+.package-code { min-width: 0; }
+.package-code .rp-codeblock { margin: 0; }
+.package-code pre { font-size: .76rem; line-height: 1.75; }
+.package-code .rp-codeblock__title { font-size: .75rem; }
+.package-code .rp-codeblock__content { max-height: none; }
+.implementation-picker { display: flex; gap: .5rem; margin: .8rem 0; }
+.implementation-picker button { padding: .55rem .8rem; min-height: 44px; border: 1px solid var(--rp-c-divider); border-radius: 7px; background: var(--rp-c-bg); color: var(--rp-c-text-2); font: 600 .8rem 'JetBrains Mono', monospace; cursor: pointer; }
+.implementation-picker button[aria-pressed='true'] { background: var(--wash); border-color: var(--accent); color: var(--accent); }
+.package-showcase .visual-footnote { font-size: .75rem; color: var(--rp-c-text-2); line-height: 1.7; }
+.package-internals, .package-precision { margin-top: 1rem; font-size: .82rem; }
+.package-internals summary, .package-precision summary { min-height: 44px; padding: .65rem 0; cursor: pointer; font-weight: 650; }
+.package-internals p, .package-precision dd { color: var(--rp-c-text-2); line-height: 1.75; }
+.package-precision { border-top: 1px solid var(--rp-c-divider-light); }
+.package-precision dl { margin: .4rem 0; }
+.package-precision dl > div { padding: .6rem 0; }
+.package-precision dt { font: 600 .8rem/1.7 'JetBrains Mono', monospace; }
+.package-precision dd { margin: .3rem 0 0; }
+.package-exchange { display: grid; grid-template-columns: .5fr 1.5fr; gap: 1rem; margin: 1rem 0 0; }
+.package-exchange dt { font-size: .75rem; color: var(--rp-c-text-2); margin-bottom: .5rem; }
+.package-exchange dd { margin: 0; font-size: .8rem; color: var(--accent); overflow-wrap: anywhere; }
+@media (max-width: 560px) {
+  .package-heading { align-items: flex-start; flex-direction: column; gap: .25rem; }
+  .package-code pre { font-size: .7rem; }
+  .package-files li { flex-wrap: wrap; gap: .25rem .75rem; }
+  .package-exchange { grid-template-columns: 1fr; }
+}
+.package-code { --rp-code-font-size: .8rem; }
+.package-code .rp-codeblock__content--wrap-code code {
+  word-break: normal !important;
+  overflow-wrap: anywhere;
 }

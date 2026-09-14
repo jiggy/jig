@@ -3,6 +3,7 @@ import { Link } from '@rspress/core/theme-original'
 import { Arrow } from './icons'
 
 export interface ShowcaseData {
+  kind: 'execution'
   label: string
   title: string
   description: string

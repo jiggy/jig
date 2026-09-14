@@ -2,6 +2,7 @@ import { Layout as DefaultLayout, HomeLayout as DefaultHomeLayout, DocContent, H
 import { Content, useFrontmatter, usePage, useSite } from '@rspress/core/runtime'
 import { Arrow } from './icons'
 import { Showcase, type ShowcaseData } from './showcase'
+import { PackageShowcase, type PackageShowcaseData } from './package-showcase'
 import '../landing.css'
 
 export * from '@rspress/core/theme-original'
@@ -13,13 +14,17 @@ export { NavHamburger } from './navigation'
 
 interface HomeData {
   hero: { name: string; text: string; tagline: string; eyebrow: string; status: string; statusLink: string; actions: { text: string; link: string; theme: string }[] }
-  showcase: ShowcaseData
+  showcase: ShowcaseData | PackageShowcaseData
+}
+
+function HomeShowcase({ data }: { data: ShowcaseData | PackageShowcaseData }) {
+  return data.kind === 'package' ? <PackageShowcase data={data} /> : <Showcase data={data} />
 }
 
 export function HomeLayout() {
   const { frontmatter } = useFrontmatter()
   const data = frontmatter as unknown as HomeData
-  if (import.meta.env.SSG_MD) return <><DefaultHomeLayout /><Showcase data={data.showcase} /><Content /></>
+  if (import.meta.env.SSG_MD) return <><DefaultHomeLayout /><HomeShowcase data={data.showcase} /><Content /></>
   return <>
     <main id="main-content" className="landing">
       <div className="landing-opening">
@@ -31,7 +36,7 @@ export function HomeLayout() {
         <nav className="hero-actions" aria-label="Get started">{data.hero.actions.map(action => <Link key={action.link} href={action.link} className={`action action--${action.theme}`}>{action.text}<Arrow /></Link>)}</nav>
         <Link className="hero-status" href={data.hero.statusLink}><span aria-hidden="true" />{data.hero.status}</Link>
       </header>
-      <Showcase data={data.showcase} />
+      <HomeShowcase data={data.showcase} />
       </div>
       <div className="landing-content"><div className="product-story rp-doc"><DocContent isOverviewPage /></div></div>
     </main>
